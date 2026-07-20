@@ -54,17 +54,11 @@
 package script
 
 import (
-	"context"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	shorts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
@@ -72,40 +66,29 @@ import (
 // Constructed by NewScriptFlowHandler alongside the legacy
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
+//
+// P0 verdetto (July 2026): the scriptgenSubmitter field wraps the
+// existing generationSubmitter into a scriptgeneration.Submitter
+// so StartAndSubmit creates the GenerationRun BEFORE any external
+// I/O and returns the run's current_stage in the 202 response.
 type HandlerGenerate struct {
-	submitter      generationSubmitter
-	log            *zap.Logger
-	validator      *usecase.PayloadValidator
-	shortsRenderer appvideo.Renderer
-	shortsProducer interface {
-		Enqueue(context.Context, remotionjob.RenderJob) (*job.Job, error)
-	}
-}
-
-// NewHandlerGenerateWithRenderer is the production constructor for the
-// Shorts render route. The legacy constructor remains available to keep
-// script-generation test fixtures and callers source-compatible.
-func NewHandlerGenerateWithRenderer(
-	submitter generationSubmitter,
-	log *zap.Logger,
-	validator *usecase.PayloadValidator,
-	renderer appvideo.Renderer,
-	producer interface {
-		Enqueue(context.Context, remotionjob.RenderJob) (*job.Job, error)
-	},
-) *HandlerGenerate {
-	h := NewHandlerGenerate(submitter, log, validator)
-	h.shortsRenderer = renderer
-	h.shortsProducer = producer
-	return h
+	submitter    generationSubmitter
+	scriptgenSvc *scriptgen.GenerationRunStarter
+	log          *zap.Logger
+	validator    *usecase.PayloadValidator
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
 // All fields except the submitter are nil-tolerant at construction
 // time; the Generate method's nil-guard on submitter returns 503 at
 // request time.
+//
+// P0 verdetto (July 2026): scriptgenSvc is the GenerationRunStarter
+// that creates the pipeline_run BEFORE submission. When nil, the
+// handler falls back to the legacy direct-submit flow (no run tracking).
 func NewHandlerGenerate(
 	submitter generationSubmitter,
+	scriptgenSvc *scriptgen.GenerationRunStarter,
 	log *zap.Logger,
 	validator *usecase.PayloadValidator,
 ) *HandlerGenerate {
@@ -116,9 +99,10 @@ func NewHandlerGenerate(
 		validator = usecase.NewDefaultPayloadValidator()
 	}
 	return &HandlerGenerate{
-		submitter: submitter,
-		log:       log,
-		validator: validator,
+		submitter:    submitter,
+		scriptgenSvc: scriptgenSvc,
+		log:          log,
+		validator:    validator,
 	}
 }
 
@@ -134,90 +118,6 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 		return
 	}
 	r.POST("/generate", h.Generate)
-	r.POST("/shorts/generate", h.GenerateShorts)
-	r.POST("/shorts/render", h.RenderShorts)
-	r.POST("/shorts/render/async", h.RenderShortsAsync)
-}
-
-// RenderShortsAsync creates a render.video job and returns immediately. The
-// registered video job handler performs the Remotion HTTP call in a worker.
-func (h *HandlerGenerate) RenderShortsAsync(c *gin.Context) {
-	var req shorts.Request
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts render payload: " + err.Error()})
-		return
-	}
-	plan, err := shorts.Build(req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	if h == nil || h.shortsProducer == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "Remotion render producer is not configured"})
-		return
-	}
-	renderJob, err := shorts.BuildRenderJob(req, plan)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	queued, err := h.shortsProducer.Enqueue(c.Request.Context(), renderJob)
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "could not enqueue Remotion render: " + err.Error()})
-		return
-	}
-	c.JSON(http.StatusAccepted, gin.H{"ok": true, "job_id": queued.ID, "status": "QUEUED", "shorts": plan})
-}
-
-// RenderShorts builds the Shorts plan and synchronously asks Remotion to
-// render it. The request remains the same as /shorts/generate, with optional
-// fps, width and height fields. The asynchronous job producer remains
-// available for the next worker-based iteration.
-func (h *HandlerGenerate) RenderShorts(c *gin.Context) {
-	var req shorts.Request
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts render payload: " + err.Error()})
-		return
-	}
-	plan, err := shorts.Build(req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	if h == nil || h.shortsRenderer == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "Remotion renderer is not configured"})
-		return
-	}
-	renderJob, err := shorts.BuildRenderJob(req, plan)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	rendered, err := h.shortsRenderer.Render(c.Request.Context(), renderJob)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "Remotion render failed: " + err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "shorts": plan, "render": rendered})
-}
-
-// GenerateShorts builds a deterministic Remotion Shorts payload. It is
-// intentionally separate from /generate: no LLM call, script regeneration,
-// asset selection or sound-effect synthesis happens here. The caller sends
-// the approved text, clip references and (optionally) already-indexed SFX.
-// include_sound_effects=false always returns sound_effects: [].
-func (h *HandlerGenerate) GenerateShorts(c *gin.Context) {
-	var req shorts.Request
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts payload: " + err.Error()})
-		return
-	}
-	result, err := shorts.Build(req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "shorts": result})
 }
 
 // Generate handles POST /api/script/generate.
@@ -226,8 +126,11 @@ func (h *HandlerGenerate) GenerateShorts(c *gin.Context) {
 //   - Single item  → async submission
 //   - Multiple items → async submission (batch)
 //
-// Response:
-//   - Async: {"ok":true, "job_id":"...", "status":"QUEUED", "status_url":"..."}
+// Response (P0 verdetto, July 2026):
+//   - When h.scriptgenSvc is wired → 202 with current_stage
+//     (pipeline_run created BEFORE the I/O call)
+//   - When h.scriptgenSvc is nil  → fallback to legacy flow
+//     (no current_stage in response)
 //
 // The orchestrator is intentionally ~4 logical steps:
 //  1. buildGenerateSubmitRequest (request.go) → bind envelope,
@@ -235,22 +138,45 @@ func (h *HandlerGenerate) GenerateShorts(c *gin.Context) {
 //     assembly, and timeout-wrapped ctx + cancel. NOTE: nil-submitter
 //     check is INSIDE the helper AFTER bind/validator so a malformed
 //     body still returns 400 (matches the original Generate's order).
-//  2. h.submitter.Submit → application transaction commit.
-//  3. writeGenerateSubmitError (response.go) → 503/409/mapped/500
-//     OR writeGenerateSubmitSuccess (response.go) → 202 with replay-
-//     header + canonical live Job.Status.
+//  2. Create GenerationRun via scriptgenSvc.Start (BEFORE Submit)
+//  3. h.submitter.Submit → application transaction commit.
+//  4. writeGenerationRunSuccess (response.go) → 202 with current_stage
+//     OR writeGenerateSubmitSuccess → legacy 202
 //
 // godlike/07 fail-closed: every step short-circuits with a structured
-// HTTP error and never reaches the next step on failure. The cancel()
-// returned from the helper MUST be deferred to release the
-// enqueueTimeout timer as soon as Submit returns (avoiding a bounded
-// 10s timer leak if the parent ctx is not cancelled in time).
+// HTTP error and never reaches the next step on failure.
 func (h *HandlerGenerate) Generate(c *gin.Context) {
 	submitReq, submitCtx, cancel, ok := buildGenerateSubmitRequest(c, h.validator, h.submitter)
 	if !ok {
 		return
 	}
 	defer cancel()
+
+	// P0 verdetto: create the GenerationRun BEFORE the external I/O
+	// and launch the runner in a background goroutine.
+	// When scriptgenSvc is nil, fall back to the legacy flow.
+	// After submission, set the JobID on the run so GET /full can
+	// correlate the job with its generation run.
+	if h.scriptgenSvc != nil {
+		runReq := scriptgen.GenerateRequest{
+			IdempotencyKey: submitReq.IdempotencyKey,
+		}
+		run := h.scriptgenSvc.Start(c.Request.Context(), runReq)
+
+		res, err := h.submitter.Submit(submitCtx, submitReq)
+		if err != nil {
+			writeGenerateSubmitError(c, err)
+			return
+		}
+
+		jobID := extractJobID(res)
+		// Set the JobID on the run for GET /full correlation.
+		run.JobID = jobID
+		writeGenerationRunSuccess(c, run, jobID, res != nil && res.IsIdempotencyHit)
+		return
+	}
+
+	// Legacy fallback (no stage tracking).
 	res, err := h.submitter.Submit(submitCtx, submitReq)
 	if err != nil {
 		writeGenerateSubmitError(c, err)

@@ -250,6 +250,7 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 			// check rejects deleted-flag callers with HTTP 400).
 			Validator: usecase.NewDefaultPayloadValidator(),
 		},
+		Shorts: ShortsDeps{Log: zap.NewNop()},
 	}
 	return deps, submitter
 }

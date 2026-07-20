@@ -43,6 +43,9 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		path   string
 	}{
 		{"POST", "/api/script/generate"},
+		{"POST", "/api/script/shorts/generate"},
+		{"POST", "/api/script/shorts/render"},
+		{"POST", "/api/script/shorts/render/async"},
 		{"GET", "/api/script/jobs/:id"},
 		{"GET", "/api/script/clips/search"},
 	}

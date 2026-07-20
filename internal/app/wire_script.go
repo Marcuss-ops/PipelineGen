@@ -252,11 +252,15 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
-			Submission:     submissionSvc,
-			Log:            log,
-			Validator:      usecase.NewPayloadValidator(cfg.Scripts),
-			ShortsRenderer: remotionRenderer,
-			ShortsProducer: remotionProducer,
+			Submission:    submissionSvc,
+			GenRunStarter: nil, // wired below when runRepo is available
+			Log:           log,
+			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
+		},
+		Shorts: scriptapi.ShortsDeps{
+			Renderer: remotionRenderer,
+			Producer: remotionProducer,
+			Log:      log,
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
 		// canonical MaxRetries lookup moved into

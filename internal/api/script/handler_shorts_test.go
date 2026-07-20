@@ -29,12 +29,7 @@ func (s *shortsProducerStub) Enqueue(_ context.Context, renderJob remotionjob.Re
 func TestGenerateShorts_ReturnsRemotionPayloadAndOptionalSFX(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	// NewHandlerGenerate canonical signature: submitter, scriptgenSvc, log, validator.
-	// All fields are nil-tolerant at construction time (the constructor falls back to
-	// zap.NewNop() / NewDefaultPayloadValidator()). scriptgenSvc=nil falls back to the
-	// legacy direct-submit flow exposed by Generate, but this test only exercises
-	// GenerateShorts which does not require any submitter wiring.
-	h := NewHandlerGenerate(nil, nil, nil, nil)
+	h := NewHandlerShorts(nil, nil, nil)
 	r.POST("/shorts/generate", h.GenerateShorts)
 	req := httptest.NewRequest("POST", "/shorts/generate", strings.NewReader(`{
       "id":"short-1","text":"one two three four five","duration_ms":5000,
@@ -53,10 +48,7 @@ func TestRenderShorts_CallsRemotionWithTimedProps(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &shortsRendererStub{}
 	r := gin.New()
-	// NewHandlerGenerateWithRenderer canonical signature: submitter, scriptgenSvc,
-	// log, validator, renderer, producer. The renderer at position 5 is the
-	// shortsRendererStub; producer at position 6 stays nil for this synchronous test.
-	h := NewHandlerGenerateWithRenderer(nil, nil, nil, nil, stub, nil)
+	h := NewHandlerShorts(stub, nil, nil)
 	r.POST("/shorts/render", h.RenderShorts)
 	req := httptest.NewRequest("POST", "/shorts/render", strings.NewReader(`{
       "id":"short-render-1","text":"one two three","duration_ms":3000,
@@ -78,9 +70,7 @@ func TestRenderShortsAsync_EnqueuesRemotionJob(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	producer := &shortsProducerStub{}
 	r := gin.New()
-	// Producer (position 6) is the shortsProducerStub; renderer (position 5) stays nil
-	// — RenderShortsAsync uses only the producer.
-	h := NewHandlerGenerateWithRenderer(nil, nil, nil, nil, nil, producer)
+	h := NewHandlerShorts(nil, producer, nil)
 	r.POST("/shorts/render/async", h.RenderShortsAsync)
 	req := httptest.NewRequest("POST", "/shorts/render/async", strings.NewReader(`{
       "id":"short-async-1","text":"one two","duration_ms":1000,

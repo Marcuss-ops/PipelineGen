@@ -17,8 +17,8 @@
 // bag with 12 ignored fields + a mandatory Engine check that was
 // never dereferenced (the api/ layer never reads Engine — the
 // pre-Step-14 Build fail-closed was defensive-only). Slim form
-// below: 2 small dep bags (Generate / Jobs) + the
-// ClipsSearcher + AdminToken + 3 build-time fields (6 total).
+// below: 3 small dep bags (Generate / Shorts / Jobs) + the
+// ClipsSearcher + AdminToken + 3 build-time fields (7 total).
 // ScriptDescriptor.Handler field is RETIRED (defensive
 // fake-availability — the 6 non-HTTP methods have ZERO external
 // callers at HEAD).
@@ -35,16 +35,18 @@ import (
 )
 
 // Dependencies is the typed narrow input to Build. After
-// PR-script-deps-slim the bag holds 2 small dep bags (Generate /
-// Jobs) + ClipsSearcher + AdminToken + 3 build-time
+// PR-script-deps-slim the bag holds 3 small dep bags (Generate /
+// Shorts / Jobs) + ClipsSearcher + AdminToken + 3 build-time
 // fields. Only EnabledFunc is mandatory (Build fail-closes on
 // nil — the pre-Step-14 Engine check is RETIRED because the api/
 // layer never dereferences Engine; godlike/07 minimum-blast-radius
 // means the defensive Engine check is dead wire).
 type Dependencies struct {
-	// ── Slim handler bag (was 22 fields, now 4) ─────────────────────
+	// ── Slim handler bag (was 22 fields, now 5) ─────────────────────
 	// Generate is the dep bag for POST /generate.
 	Generate GenerateDeps
+	// Shorts is the dep bag for /shorts/*.
+	Shorts ShortsDeps
 	// Jobs is the dep bag for /jobs/:id.
 	Jobs JobsDeps
 
@@ -112,7 +114,7 @@ func (d *ScriptDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 // Build composes the ScriptFlow HTTP capability from the slim
-// 7-field Dependencies. Returns a fail-closed error when
+// 8-field Dependencies. Returns a fail-closed error when
 // EnabledFunc is nil. The pre-Step-14 Engine mandatory check is
 // RETIRED (godlike/07 minimum-blast-radius: the api/ layer never
 // dereferences Engine; Build's defensive check was dead wire).
@@ -143,6 +145,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// is the new defensive layer.
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
 		Generate:      deps.Generate,
+		Shorts:        deps.Shorts,
 		Jobs:          deps.Jobs,
 		ClipsSearcher: deps.ClipsSearcher,
 		AdminToken:    deps.AdminToken,
