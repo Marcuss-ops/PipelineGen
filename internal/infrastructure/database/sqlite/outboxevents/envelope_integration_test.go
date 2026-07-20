@@ -47,8 +47,9 @@ func setupOutboxTable(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	// Minimal outbox_events — only the dedup-relevant columns +
-	// the structural columns needed by Repository.Enqueue.
+	// Minimal outbox_events — includes all columns read by scanEvent
+	// so read-only queries (ListPending, ListByStatus) can be tested
+	// against the same in-memory schema.
 	_, err = db.Exec(`
 		CREATE TABLE outbox_events (
 			id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +59,13 @@ func setupOutboxTable(t *testing.T) *sql.DB {
 			payload_json    TEXT    NOT NULL,
 			event_key       TEXT    NOT NULL UNIQUE,
 			status          TEXT    NOT NULL DEFAULT 'pending',
+			attempt_count   INTEGER NOT NULL DEFAULT 0,
+			max_attempts    INTEGER NOT NULL DEFAULT 3,
+			last_error      TEXT    NOT NULL DEFAULT '',
+			worker_id       TEXT    NOT NULL DEFAULT '',
+			lease_id        TEXT    NOT NULL DEFAULT '',
+			lease_expiry    TEXT,
+			completed_at    TEXT,
 			created_at      TEXT    NOT NULL,
 			updated_at      TEXT    NOT NULL
 		)

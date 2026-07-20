@@ -80,3 +80,39 @@ func (r *Repository) ListPending(ctx context.Context) ([]Event, error) {
 	}
 	return events, rows.Err()
 }
+
+// ListByStatus returns all events in a given status bucket, ordered
+// by created_at DESC. Used by the operator dashboard to inspect
+// failed / dead-letter / completed events.
+func (r *Repository) ListByStatus(ctx context.Context, status string) ([]Event, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("outboxevents.Repository: db is nil")
+	}
+	if status == "" {
+		return nil, fmt.Errorf("outboxevents.ListByStatus: status is required")
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, event_type, aggregate_id, aggregate_type, payload_json,
+		       status, attempt_count, max_attempts, last_error,
+		       event_key, worker_id, lease_id, lease_expiry, completed_at,
+		       created_at, updated_at
+		FROM outbox_events
+		WHERE status = ?
+		ORDER BY created_at DESC
+		LIMIT 100
+	`, status)
+	if err != nil {
+		return nil, fmt.Errorf("outboxevents.ListByStatus(%q): %w", status, err)
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		evt, err := scanEvent(rows)
+		if err != nil {
+			return nil, fmt.Errorf("outboxevents.ListByStatus scan: %w", err)
+		}
+		events = append(events, *evt)
+	}
+	return events, rows.Err()
+}

@@ -54,18 +54,40 @@ func (h *Handler) handleOutboxStatus(c *gin.Context) {
 	apiutil.OK(c, gin.H{"ok": true, "counts": counts})
 }
 
-// handleOutboxEvents lists pending and processing outbox events.
+// handleOutboxEvents lists outbox events. By default it returns
+// pending/processing events; pass ?status= to filter by a specific
+// status bucket (e.g. dead_letter, completed, failed).
 func (h *Handler) handleOutboxEvents(c *gin.Context) {
 	if h.outboxPort == nil {
 		apiutil.OK(c, gin.H{"ok": true, "events": []any{}, "count": 0})
 		return
 	}
 
-	events, err := h.outboxPort.ListPending(c.Request.Context())
-	if err != nil {
-		h.log.Error("failed to list outbox events", zap.Error(err))
-		apiutil.InternalError(c, err)
-		return
+	ctx := c.Request.Context()
+	var events []any
+
+	if status := c.Query("status"); status != "" {
+		dtos, listErr := h.outboxPort.ListByStatus(ctx, status)
+		if listErr != nil {
+			h.log.Error("failed to list outbox events by status", zap.String("status", status), zap.Error(listErr))
+			apiutil.InternalError(c, listErr)
+			return
+		}
+		events = make([]any, len(dtos))
+		for i, e := range dtos {
+			events[i] = e
+		}
+	} else {
+		dtos, listErr := h.outboxPort.ListPending(ctx)
+		if listErr != nil {
+			h.log.Error("failed to list outbox events", zap.Error(listErr))
+			apiutil.InternalError(c, listErr)
+			return
+		}
+		events = make([]any, len(dtos))
+		for i, e := range dtos {
+			events[i] = e
+		}
 	}
 
 	apiutil.OK(c, gin.H{

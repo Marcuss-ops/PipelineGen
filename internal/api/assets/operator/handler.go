@@ -103,7 +103,7 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 // its own sibling file). ALL sub-routers share the parent router
 // group, so the canonical /api/assets/operator/* prefix is preserved.
 // Register order matches the original spec to keep URL-grouping
-// canonical: summary → assets → outbox → index-health.
+// canonical: summary → assets → outbox → index-health → operations.
 //
 // godlike/06 SSOT: this method is the canonical entry point. Adding
 // a new resource = adding a new handleXxx file with a
@@ -113,6 +113,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	h.registerAssetsRoutes(rg)
 	h.registerOutboxRoutes(rg)
 	h.registerIndexRoutes(rg)
+	h.registerOperationsRoutes(rg)
 }
 
 // ── Module wrapper (consumed by sibling `module.go` for api.Descriptor) ──

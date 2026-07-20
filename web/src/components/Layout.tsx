@@ -11,7 +11,7 @@ const navItems: NavItem[] = [
   { to: '/', label: 'Overview', icon: '◎' },
   { to: '/content', label: 'Content Library', icon: '☰' },
   { to: '/jobs', label: 'Jobs', icon: '⚙' },
-  { to: '/indexing', label: 'Indexing', icon: '◉' },
+  { to: '/operations', label: 'Operations', icon: '◉' },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -45,6 +45,10 @@ type MonitorPort interface {
 	// processing state, ordered by created_at ASC. Used by the
 	// operator dashboard feed.
 	ListPending(ctx context.Context) ([]EventDTO, error)
+	// ListByStatus returns the events in a given status bucket,
+	// ordered by created_at DESC. Used by the operator dashboard
+	// to inspect failed / dead-letter / completed events.
+	ListByStatus(ctx context.Context, status string) ([]EventDTO, error)
 }
 
 // EventDTO mirrors the JSON-relevant subset of outboxevents.Event.
