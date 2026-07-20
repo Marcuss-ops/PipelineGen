@@ -166,7 +166,7 @@
 |--------|------|-------------|
 | GET | `/api/script/clips/search` | Search script clips by name |
 | GET | `/api/script/jobs/:id` | Get script job status |
-| POST | `/api/script/generate` | Generate a script asynchronously |
+| POST | `/api/script/generate` | Generate scripts from text, clips, catalog or search sources |
 | POST | `/api/script/shorts/generate` | Generate a Remotion Shorts video |
 | POST | `/api/script/shorts/render` | Render a Remotion Shorts video synchronously |
 | POST | `/api/script/shorts/render/async` | Enqueue a Remotion Shorts render job |
