@@ -17,8 +17,11 @@
 //     script generation request (50-line body — see verbatim body
 //     below; pre-extraction lowercase helper on ScriptFlowHandler
 //     retired as dead code post-extraction per godlike/07).
-//   - MaybeCreateGoogleDoc: creates a Google Doc via the document
-//     Creator when createDoc=true.
+//
+// Sprint 1.0 (July 2026): MaybeCreateGoogleDoc facade method is
+// RETIRED. Inline document creation is decommissioned; document
+// generation is produced by the canonical downstream document.generate
+// job (internal/application/document/usecase.go).
 //
 // ScriptFlowHandler retains thin delegator methods so existing
 // cross-package call sites (h.GetVoiceoverService() etc.) compile
@@ -56,16 +59,16 @@ import (
 //   - groupsResolver: script-side resolver (asset-tree-backed).
 //   - publisher: canonical delivery.Publisher for Drive folder resolution
 //     (replaces the legacy DriveFolderClient per FASE A5, July 2026).
-//   - documentCreator: typed Google Doc creator (consumes
-//     DocumentCreator interface).
 //   - log: structured logger (used by ResolveDriveFolderID's
-//     nil-tolerance warning path).
+//     nil-tolerance warning path). Sprint 1.0 (July 2026): the
+//     documentCreator facade field is RETIRED inline document creation
+//     was decommissioned; the canonical downstream document.generate
+//     job owns Doc creation.
 type FacadeHandler struct {
-	voService       *voiceover.Service
-	groupsResolver  *destination.Resolver
-	publisher       delivery.Publisher
-	documentCreator DocumentCreator
-	log             *zap.Logger
+	voService      *voiceover.Service
+	groupsResolver *destination.Resolver
+	publisher      delivery.Publisher
+	log            *zap.Logger
 }
 
 // NewFacadeHandler constructs the canonical FacadeHandler with all
@@ -78,18 +81,16 @@ func NewFacadeHandler(
 	voService *voiceover.Service,
 	groupsResolver *destination.Resolver,
 	publisher delivery.Publisher,
-	documentCreator DocumentCreator,
 	log *zap.Logger,
 ) *FacadeHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &FacadeHandler{
-		voService:       voService,
-		groupsResolver:  groupsResolver,
-		publisher:       publisher,
-		documentCreator: documentCreator,
-		log:             log,
+		voService:      voService,
+		groupsResolver: groupsResolver,
+		publisher:      publisher,
+		log:            log,
 	}
 }
 
@@ -205,15 +206,4 @@ func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaul
 	}
 
 	return dirID, nil
-}
-
-// MaybeCreateGoogleDoc creates a Google Doc via the document Creator
-// when createDoc=true; returns empty URL+ID otherwise. The creator
-// is expected to handle its own connectivity (returns empty strings
-// on transient failure — pre-extraction semantics preserved).
-func (fh *FacadeHandler) MaybeCreateGoogleDoc(ctx context.Context, title, content, folderID string, createDoc bool) (string, string) {
-	if !createDoc {
-		return "", ""
-	}
-	return fh.documentCreator.CreateDoc(ctx, title, content, folderID)
 }

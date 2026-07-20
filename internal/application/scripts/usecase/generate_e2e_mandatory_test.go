@@ -28,7 +28,7 @@ import (
 // fake clip resolver, a fake Ollama generator, and a minimal postprocessor
 // registry. Callers can optionally register extra postprocessors before the
 // registry is frozen.
-func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipResolver, extraProcs ...adapters.PostProcessor) *GenerateOneUseCase {
+func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipResolver) *GenerateOneUseCase {
 	reg := adapters.NewSourceRegistry(zap.NewNop())
 	if clipResolver != nil {
 		reg.Register(scriptpkg.SourceClips, NewClipsSourceResolver(NewClipSourceBuilder(clipResolver, nil, zap.NewNop()), zap.NewNop()))
@@ -38,9 +38,9 @@ func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipReso
 
 	e := buildTestEngine(gen, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	for _, p := range extraProcs {
-		ppReg.Register(p)
-	}
+	// Sprint 1.0: extraProcs parameter dropped — the only caller
+	// (TestGenerateE2E_DocumentServiceUnavailable) was retired when
+	// inline document creation was decommissioned.
 	// Wire the real clip-bindings processor so clip-source plans can
 	// synthesise scenes when the engine returns plain text.
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
@@ -186,29 +186,6 @@ func TestGenerateE2E_OllamaUnavailable(t *testing.T) {
 		"Ollama failure must surface ErrGenerationFailed, got %v", err)
 }
 
-func TestGenerateE2E_DocumentServiceUnavailable(t *testing.T) {
-	t.Parallel()
-
-	sourceText := "Source text for document generation."
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
-		Script: canonicalSceneJSON(1, nil, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
-	}}
-
-	// Document processor wired with nil service → best-effort warning.
-	uc := buildUsecaseWithClipResolver(gen, nil, docProc)
-	item := makeTextOnlyItem("e2e-doc-unavailable", sourceText)
-
-	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.NotEmpty(t, result.Warnings, "document unavailability must produce a warning")
-}
-
-// TestGenerateE2E_ClipsPlainTextSynthesizesScenes verifies that a
-// clip source whose engine output contains plain text and no scenes
-// still produces valid SpecScene scenes bound to the accepted clips.
-// This is the regression guard for the live source.type=clips path
-// that previously failed with CLIP_NATIVE_PLAN_UNAVAILABLE.
 func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
 	t.Parallel()
 

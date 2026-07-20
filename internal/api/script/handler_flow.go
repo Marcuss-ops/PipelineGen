@@ -53,13 +53,6 @@ type DriveFolderClient interface {
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
 }
 
-// DocumentCreator abstracts Google Doc creation. STAYS here per
-// godlike/06 SSOT (orchestrator owns the contract type); canonical
-// field reference lives on FacadeHandler.
-type DocumentCreator interface {
-	CreateDoc(ctx context.Context, title, content, folderID string) (docURL, docID string)
-}
-
 // ScriptFlowHandler is the slim struct-literal-friendly HTTP
 // orchestrator. Fields are partitioned into 3 groups:
 //

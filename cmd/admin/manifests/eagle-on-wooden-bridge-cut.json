@@ -1,0 +1,36 @@
+{
+  "drive_file_id": "1UIcLfmGpf5kQZ4zD9nYy5xisQQss7liP",
+  "name": "Eagle Juvenile on Wooden Bridge — Coastal Drive with Cut (pending: drop static profile 0:05-0:11)",
+  "description": "A close-up video from inside a car driving on a wooden coastal bridge under a cloudy sky. A juvenile bald eagle lands on the railing, stands briefly, then takes flight. After cut (see metadata.pending_cut_strategy) the static 7-second profile segment is dropped, keeping only the action: landing + takeoff.",
+  "description_alt": "Video dall'interno di un'auto su un ponte costiero in legno, cielo nuvoloso. Un'aquila calva giovanile si posa sulla ringhiera, sta ferma brevemente e poi prende il volo. Dopo il taglio (vedi metadata.pending_cut_strategy) viene rimosso il segmento statico di 7 secondi, mantenendo solo l'azione: atterraggio + partenza.",
+  "tags": [
+    "juvenile bald eagle",
+    "eagle taking flight",
+    "wooden bridge",
+    "coastal driving",
+    "dock railing",
+    "cloudy sky",
+    "bay view",
+    "wildlife moments",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "wildlife_moments",
+  "local_subdir": "viral_videos",
+  "default_filename": "eagle_on_wooden_bridge.mp4",
+  "duration_fallback_seconds": 19,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "juvenile bald eagle / wooden coastal bridge / bird landing and taking flight / action wildlife",
+    "visual_summary": "A juvenile bald eagle is filmed from inside a car on a wooden coastal bridge. It lands on the railing, stands briefly, then suddenly takes off into the bay. Action-driven wildlife moment.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:04\",\"visual\":\"Car drives slowly along a wooden bridge under cloudy sky; camera pans out the window to reveal a large dark bird landing on the railing.\",\"sfx_family\":\"background_music/mixkit_electronic\"},{\"start\":\"00:05\",\"end\":\"00:11\",\"visual\":\"Close-up profile of the juvenile bald eagle standing steady on the railing, looking around, water and distant marina in background.\",\"sfx_family\":\"background_music_alternative/podcast_talk\"},{\"start\":\"00:12\",\"end\":\"00:19\",\"visual\":\"Eagle spreads its wings, takes off into the air, flies away. Camera pans down sharply inside the car.\",\"sfx_family\":\"impact_sfx/flashback_shimmer\"}]",
+    "pending_cut": "true",
+    "pending_cut_strategy": "User asked 'rimuovi tutta la parte di video inutile' without specifying which scene. Best inference: Scene 2 (00:05-00:11 = 7s) is the 'inutile' part because the bird is motionless (no action). Keep Scene 1 (action: landing) + Scene 3 (action: takeoff) = 12s of action-only content.",
+    "pending_cut_keep_segments": "segments=[{ss:0, t:5, label:'scene_1_landing'}, {ss:12, t:8, label:'scene_3_takeoff'}]; concat_result_seconds=12",
+    "pending_cut_realization": "Step 1: trim Scene 1 + Scene 3 into separate clips.\n  ffmpeg -ss 0 -t 5 -i refactored/data/media/viral_videos/eagle_on_wooden_bridge.mp4 -c copy /tmp/eagle-part1.mp4\n  ffmpeg -ss 12 -t 7 -i refactored/data/media/viral_videos/eagle_on_wooden_bridge.mp4 -c copy /tmp/eagle-part2.mp4\nStep 2: concat with concat demuxer (no re-encode = fast, no quality loss).\n  printf 'file /tmp/eagle-part1.mp4\\nfile /tmp/eagle-part2.mp4\\n' > /tmp/eagle-filelist.txt\n  ffmpeg -f concat -safe 0 -i /tmp/eagle-filelist.txt -c copy /tmp/eagle-cut-12s.mp4\n  ffprobe -v error -show_entries format=duration /tmp/eagle-cut-12s.mp4  # should print ~12.0\nStep 3: upload /tmp/eagle-cut-12s.mp4 to Google Drive (yields new drive_file_id 'XYZ').\nStep 4: update THIS manifest's drive_file_id field from 1UIcLfmGpf5kQZ4zD9nYy5xisQQss7liP to 'XYZ' and lower duration_fallback_seconds from 19 to 12; rerun:\n  ./scripts/batch_index_drive_clips.sh --apply --pattern 'eagle*.json' --build\nStep 5: rerun the batch wrapper with the new manifest. The asset gets a fresh asset.id == 'XYZ' with duration ~12s measured by ffprobe.",
+    "alternative_cut_options": "OPTION strict_takeoff_only: drop Scene 1 + 2, keep only Scene 3 (8s) = just takeoff shot. Use if Scene 1 setup is also deemed inutile. ffmpeg: ffmpeg -ss 12 -t 7 -i <parent>.mp4 -c copy /tmp/eagle-cut-8s-takeoff.mp4\nOPTION trim_opening_then_drop_static: drop Scene 2 + opening 1s of Scene 1, keep tail of Scene 1 (1s..5s = 4 seconds of action only) + Scene 3 (12s..19s = 7 seconds). Result = 4s + 7s = 11s. ffmpeg: ffmpeg -ss 1 -t 4 -i <parent>.mp4 -c copy /tmp/eagle-part1-trimmed.mp4 && ffmpeg -ss 12 -t 7 -i <parent>.mp4 -c copy /tmp/eagle-part2.mp4 && concat.\nOPTION keep_full_19s: NO cut, all 3 scenes. Use if user changed their mind and wants the full unedited asset. ffmpeg: cp <parent>.mp4 /tmp/eagle-cut-full-19s.mp4",
+    "pending_sfx_verification": "3 audio_sfx referenced in user's pasted JSON: music_mixkit_21_445_01.mp3 (unconfirmed), music_podcast_background_talk_01.mp3 (referenced in turtle clip too, but never on-disk verified), FLASHBACK.wav (uppercase filename + .wav ext; unconfirmed). NONE of these 3 are confirmed for existence in refactored/data/media/sound_effects/. If a future render-job posts any of them, stageOneAsset will throw 'Local render asset does not exist' (editor/render.ts::stageOneAsset). Verify on disk or substitute with known files (e.g. sfx_impact_boom_heavy_01.mp3, sfx_music_kids_monkeys_spinning_monkeys_01.mp3) before posting a render-job."
+  }
+}

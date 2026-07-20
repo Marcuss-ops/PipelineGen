@@ -1,0 +1,35 @@
+{
+  "drive_file_id": "1v32S82KmG89imh9xoesDXMSXSokrHqZh",
+  "name": "Turtle Staring Out of Its Terrarium — Big Eyes Derp Moment",
+  "description": "A close-up shot of a funny-looking turtle with big, round eyes staring motionless out of its terrarium cave, creating a hilarious and meme-worthy moment. The slow camera glide through the lush jungle-glass environment sets up the derp-animal reveal.",
+  "description_alt": "Inquadratura ravvicinata di una tartaruga buffa con occhi enormi e spalancati che fissa immobile fuori dalla tana del suo terrarium, in un momento esilarante perfetto per un meme. La camera scorre lenta tra le piante prima di rivelare lo sguardo 'derp'.",
+  "tags": [
+    "turtle",
+    "terrarium",
+    "big eyes",
+    "staring",
+    "funny turtle",
+    "derp animal",
+    "cute reptile",
+    "motionless",
+    "funny animals",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_animals",
+  "local_subdir": "viral_videos",
+  "default_filename": "turtle_staring_in_terrarium.mp4",
+  "duration_fallback_seconds": 12,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "turtle / terrarium / big round eyes / motionless stare / derp reptile",
+    "visual_summary": "Funny-looking turtle with oversized round eyes stares motionless out of its terrarium cave, creating a classic derp-animal meme moment.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:03\",\"visual\":\"Camera glides along the glass of a lush, plant-filled terrarium, exploring the humid environment before finding the animal.\",\"sfx_family\":\"background_music/mr_turtle\"},{\"start\":\"00:04\",\"end\":\"00:12\",\"visual\":\"Slow zoom that settles on a funny turtle with huge, round, wide-open eyes, motionless inside a hollow log, staring intensely at the camera with a confused hilarious expression.\",\"sfx_family\":\"background_music_transition/spinning_monkeys (primary) | music_podcast_background_talk (alternative)\"}]",
+    "hook": "No thoughts, just vibes 👁️👄👁️ — when you zone out completely",
+    "audio_policy": "preserve original clip audio + layer cartoon sfx under at low volume",
+    "sound_design_plan": "00:00-00:03 sfx_music_kids_mr_turtle_01.mp3 (slow curious cadence matching the terrarium exploration); 00:04-00:12 transition to sfx_music_kids_monkeys_spinning_monkeys_01.mp3 (pizzicato flute underlining the derp stare) OR music_podcast_background_talk_01.mp3 (calmer ironic-contemplative alternative).",
+    "pending_sfx_verification": "Of the 3 referenced SFX: sfx_music_kids_monkeys_spinning_monkeys_01.mp3 is confirmed (used in beluga_render_job.json). sfx_music_kids_mr_turtle_01.mp3 and music_podcast_background_talk_01.mp3 are NOT confirmed for existence in refactored/data/media/sound_effects/. If a render-job is later created from this manifest, stageOneAsset will throw 'Local render asset does not exist' for any unconfirmed file. Verify on disk or substitute with known files before posting the render to render-server."
+  }
+}

@@ -9,11 +9,42 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
 
 const fishOutputFolderID = "1Kssuh0eQ7Wmg8uMg29aI7fShXSLCaw3x"
-const fishClipDriveID = ""
+
+// fishClipDriveIDEnvName is the canonical env var consulted by
+// runUploadFishClip's resolution chain when --drive-id is empty.
+// godlike/06 SSOT: this is the SOLE owner of the env var name; any
+// renames must update this constant.
+const fishClipDriveIDEnvName = "VELOX_FISH_CLIP_DRIVE_ID"
+
+// resolveFishClipDriveID picks a non-empty Drive file ID for the
+// fish clip upload via the canonical resolution chain (godlike/06
+// SSOT — single canonical ordering per fact):
+//
+//  1. CLI --drive-id flag (operator's explicit override).
+//  2. $VELOX_FISH_CLIP_DRIVE_ID env var (operator's CI env).
+//
+// If neither is non-empty (after TrimSpace), the chain fails closed
+// with a typed error so the operator gets a clear restart-required
+// message instead of an upload-routed-to-wrong-Drive-file silent
+// failure. godlike/07 NO-FAKE-AVAILABILITY: an empty/whitespace-only
+// value MUST NOT pass through to the upstream GetClip call.
+// envLookup is a function (default: os.Getenv) so the chain is
+// hermetically testable without process-level env mutation.
+func resolveFishClipDriveID(flagValue string, envLookup func(string) string) (driveID string, source string, err error) {
+	if v := strings.TrimSpace(flagValue); v != "" {
+		return v, "flag", nil
+	}
+	if v := strings.TrimSpace(envLookup(fishClipDriveIDEnvName)); v != "" {
+		return v, "env", nil
+	}
+	return "", "", fmt.Errorf("no fish clip drive ID resolved (pass --drive-id or set $%s)", fishClipDriveIDEnvName)
+}
 
 func runUploadFishClip(args []string) error {
 	fs := flag.NewFlagSet("upload-fish-clip", flag.ContinueOnError)
@@ -21,6 +52,7 @@ func runUploadFishClip(args []string) error {
 	folderID := fs.String("folder-id", fishOutputFolderID, "Google Drive destination folder ID")
 	filename := fs.String("filename", "stargazer-fish-sand-ambush.mp4", "Drive filename")
 	inputPath := fs.String("input", "", "local file to upload (defaults to the indexed source clip)")
+	driveIDFlag := fs.String("drive-id", "", "Drive file ID of the source clip (overrides $VELOX_FISH_CLIP_DRIVE_ID)")
 	replace := fs.Bool("replace", false, "replace an existing file with the same name")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -42,7 +74,16 @@ func runUploadFishClip(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	clip, err := root.Repos.ClipsRepo.GetClip(ctx, fishClipDriveID)
+	// Resolve the source Drive file ID via the canonical chain
+	// (CLI --drive-id > $VELOX_FISH_CLIP_DRIVE_ID > fail-closed).
+	// godlike/07: the helper fail-closes when no source resolves.
+	driveID, source, err := resolveFishClipDriveID(*driveIDFlag, os.Getenv)
+	if err != nil {
+		return fmt.Errorf("resolve fish clip drive ID: %w", err)
+	}
+	log.Info("upload-fish-clip: resolved drive ID", zap.String("source", source), zap.String("drive_id", driveID))
+
+	clip, err := root.Repos.ClipsRepo.GetClip(ctx, driveID)
 	if err != nil {
 		return fmt.Errorf("load indexed fish clip: %w", err)
 	}

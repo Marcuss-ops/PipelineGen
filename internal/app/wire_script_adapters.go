@@ -9,17 +9,15 @@
 // wire_script_postprocess.go), and the two responsibilities
 // collected here — concrete port adapters + composition invariants.
 //
-//  1. driveFolderAdapterImpl + docCreatorImpl — these are the ONLY
-//     adapter structs that bridge *drive.Uploader and drive.DocClient
-//     into scriptapi.DriveFolderClient / scriptapi.DocumentCreator
-//     ports used by the script handler. Source-resolver adapters live
-//     in wire_script_sources.go (Qdrant + ClipsRepository bridges);
-//     curation adapters live in wire_script_curation.go
-//     (imgservice → ImageGenService bridge). Promoting *drive usage
-//     to its own composition-root-local file keeps the
-//     `package app` cleanly sliced: wire_script.go itself no longer
-//     imports `internal/infrastructure/drive` directly (the
-//     drive.DocClient usage stays here, where it has natural ownership).
+//  1. driveFolderAdapterImpl — the ONLY adapter struct that bridges
+//     *drive.Uploader into scriptapi.DriveFolderClient port used by
+//     the script handler. Sprint 1.0 (July 2026): docCreatorImpl
+//     was RETIRED — script.generate no longer creates Google Docs
+//     inline. The canonical downstream document.generate job
+//     (internal/application/document/usecase.go) owns Doc creation.
+//     DocumentCreator interface + MaybeCreateGoogleDoc facade method
+//     are removed from internal/api/script. The drive.DocClient
+//     dependency also retires from this composition-root.
 //
 //  2. validateScriptGenerateWiring + validateRequiredProcessors +
 //     requiredProcessorNames — these are composition-time invariants
@@ -46,12 +44,10 @@
 //     registration).
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     populates the ppReg that validateRequiredProcessors scans.
-//   - internal/api/script: ScriptFlowDeps.DriveFolderClient +
-//     DocumentCreator (the typed-port shapes both adapters
-//     implement).
-//   - internal/infrastructure/drive: *drive.Uploader +
-//     drive.DocClient (the concrete services the adapters wrap).
-//     (the service-side collaborator used by docCreatorImpl.CreateDoc).
+//   - internal/api/script: ScriptFlowDeps.DriveFolderClient
+//     (the typed-port shape driveFolderAdapterImpl implements).
+//   - internal/infrastructure/drive: *drive.Uploader (the concrete
+//     service the adapter wraps). DocClient retired with Sprint 1.0.
 //   - internal/application/jobs: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
 //   - internal/domain/job: job.TypeScriptGenerate (the canonical
@@ -74,7 +70,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 
 	"go.uber.org/zap"
@@ -101,33 +96,6 @@ func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, pa
 		return "", nil
 	}
 	return a.admin.GetOrCreateFolder(ctx, name, parentID)
-}
-
-// docCreatorImpl wraps delivery.DocPublisher as scriptapi.DocumentCreator.
-// Composition-time build of NewDocumentsService was retired (Sprint 1.0)
-// (the service constructor reads the canonical Drive folder at call
-// time, which lets the folder ID propagate from cfg.Drive.ScriptsGenFolder()
-// without binding at struct-init time).
-type docCreatorImpl struct {
-	docClient     delivery.DocPublisher
-	log           *zap.Logger
-	driveFolderID string
-}
-
-// CreateDoc implements scriptapi.DocumentCreator. The resolveFolder
-// closure is a raw-ID passthrough (caller resolves beforehand) —
-// matches the pre-PR3 contract: the canonical Drive folder is derived
-// from cfg.Drive.ScriptsGenFolder() at wiring time and forwarded
-// absolute. Receiver-nil-tolerance mirrors driveFolderAdapterImpl.
-func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID string) (string, string) {
-	if d == nil || d.docClient == nil {
-		return "", ""
-	}
-	docsSvc := usecase.NewDocumentsService(d.docClient, d.log, d.driveFolderID)
-	resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
-		return input, nil // raw ID assumed (caller resolved beforehand)
-	}
-	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID, "", false)
 }
 
 // ── Composition validation: script.generate wiring must be complete ───
