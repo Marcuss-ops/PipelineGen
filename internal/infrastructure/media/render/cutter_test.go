@@ -141,6 +141,23 @@ func (r *cutterCaptureRunner) Run(_ context.Context, name string, args []string,
 		}, nil
 	}
 
+	// Simulate the file that ffmpeg would write. The cutter writes
+	// to a .part file first and renames it after validation, so
+	// create the .part path derived from the last non-flag argument.
+	if filepath.Base(name) == "ffmpeg" {
+		outputPath := ""
+		for i := len(args) - 1; i >= 0; i-- {
+			if !strings.HasPrefix(args[i], "-") && args[i] != "" {
+				outputPath = args[i]
+				break
+			}
+		}
+		if outputPath != "" {
+			_ = os.MkdirAll(filepath.Dir(outputPath), 0o755)
+			_ = os.WriteFile(outputPath, []byte("fake-clip"), 0o644)
+		}
+	}
+
 	return &process.Result{ExitCode: 0}, nil
 }
 
