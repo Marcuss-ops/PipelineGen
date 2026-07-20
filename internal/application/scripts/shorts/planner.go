@@ -32,6 +32,8 @@ type Request struct {
 	UploadToDrive       bool          `json:"upload_to_drive,omitempty"`
 	DriveFolderID       string        `json:"drive_folder_id,omitempty"`
 	DriveFilename       string        `json:"drive_filename,omitempty"`
+	Composition         string        `json:"composition,omitempty"`
+	Captions            []Caption     `json:"captions,omitempty"`
 }
 
 // BuildRenderJob converts the deterministic Shorts plan into the one-way
@@ -80,10 +82,30 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 			"volume": effect.Volume,
 		})
 	}
+	comp := "YouTubeShortComposition"
+	if req.Composition != "" {
+		comp = req.Composition
+	}
+	clipProps := make([]map[string]any, 0, len(plan.Clips))
+	for _, c := range plan.Clips {
+		vol := 1.0
+		if c.Volume != nil {
+			vol = *c.Volume
+		}
+		clipProps = append(clipProps, map[string]any{
+			"id":          c.ID,
+			"path":        assetURL(c.Path),
+			"startMs":     c.StartMs,
+			"endMs":       c.EndMs,
+			"clipStartMs": c.ClipStartMs,
+			"clipEndMs":   c.ClipEndMs,
+			"volume":      vol,
+		})
+	}
 	return remotionjob.RenderJob{
 		SchemaVersion:    remotionjob.SchemaVersion,
 		ID:               plan.ID,
-		Composition:      "YouTubeShortComposition",
+		Composition:      comp,
 		DurationInFrames: frames,
 		FPS:              fps,
 		Width:            width,
@@ -97,6 +119,7 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 			"eventBlendMs":          200,
 			"captions":              captionProps,
 			"soundEffects":          sfxProps,
+			"clips":                 clipProps,
 		},
 		UploadToDrive: req.UploadToDrive,
 		DriveFolderID: normalizeDriveFolderID(req.DriveFolderID),
@@ -136,10 +159,13 @@ func assetURL(value string) string {
 }
 
 type Clip struct {
-	ID      string `json:"id"`
-	Path    string `json:"path,omitempty"`
-	StartMs int64  `json:"start_ms,omitempty"`
-	EndMs   int64  `json:"end_ms,omitempty"`
+	ID          string   `json:"id"`
+	Path        string   `json:"path,omitempty"`
+	StartMs     int64    `json:"start_ms,omitempty"`
+	EndMs       int64    `json:"end_ms,omitempty"`
+	ClipStartMs int64    `json:"clip_start_ms,omitempty"`
+	ClipEndMs   int64    `json:"clip_end_ms,omitempty"`
+	Volume      *float64 `json:"volume,omitempty"`
 }
 
 type SoundEffect struct {
@@ -189,7 +215,12 @@ func Build(req Request) (Response, error) {
 		req.WordsPerCaption = 4
 	}
 
-	captions := buildCaptions(req.Text, req.DurationMs, req.WordsPerCaption)
+	var captions []Caption
+	if len(req.Captions) > 0 {
+		captions = req.Captions
+	} else {
+		captions = buildCaptions(req.Text, req.DurationMs, req.WordsPerCaption)
+	}
 	sfx := req.SoundEffects
 	if !req.IncludeSoundEffects {
 		sfx = []SoundEffect{}

@@ -94,6 +94,15 @@ var availableCommands = []string{
 	"render-beluga-short",
 	"list-folder-debug",
 	"reorganize-cartoon",
+	"download-kids-music",
+	"upload-drive-file",
+	"index-kids-music-metadata",
+	"check-indexed-ids",
+	"reorganize-and-index-sfx",
+	"check-drive-names",
+	"list-cartoon-files",
+	"check-db-cartoon-files",
+	"search-drive",
 	"gen-api-docs",
 	"list-drive-folder",
 	"sync-drive-folder",
@@ -203,6 +212,24 @@ func dispatchSubcommand(name string, args []string) error {
 		return runListFolderDebug(args)
 	case "reorganize-cartoon":
 		return runReorganizeCartoon(args)
+	case "download-kids-music":
+		return runDownloadKidsMusic(args)
+	case "upload-drive-file":
+		return runUploadDriveFile(args)
+	case "index-kids-music-metadata":
+		return runIndexKidsMusicMetadata(args)
+	case "check-indexed-ids":
+		return runCheckIndexedIds(args)
+	case "reorganize-and-index-sfx":
+		return runReorganizeAndIndexSFX(args)
+	case "check-drive-names":
+		return runCheckDriveNames(args)
+	case "list-cartoon-files":
+		return runListCartoonFiles(args)
+	case "check-db-cartoon-files":
+		return runCheckDBCartoonFiles(args)
+	case "search-drive":
+		return runSearchDrive(args)
 	case "reindex-qdrant":
 		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":
