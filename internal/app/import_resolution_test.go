@@ -162,17 +162,27 @@ func findGitRoot() (string, error) {
 }
 
 // TestModuleDependencyConstraints enforces the layered architecture
-// import rules (Wave 5, July 2026):
+// import rules (Wave 5, July 2026; Sprint 1.1 amendment, July 2026):
 //   - internal/domain packages MUST NOT import internal/application or internal/infrastructure.
 //   - internal/api packages MUST NOT import internal/infrastructure directly.
-//   - internal/application packages may import internal/domain and internal/infrastructure.
-//   - internal/app (composition root) may import any internal layer.
+//   - internal/application packages MUST NOT import internal/infrastructure directly.
+//     (Sprint 1.1 — earlier the test doc-comment silently permitted this; the
+//     AGENTS.md promise that application owns use cases + typed ports was not
+//     enforced by the gate. The case is now closed fail-fast; transitional
+//     exceptions are listed in appInfraBridgeAllowlist below with a strict
+//     ratchet tracked in architecture/policy.yaml :: app_infra_bridge_ratchet.)
+//   - internal/app (composition root) may import any internal layer (Pattern 0).
 //   - internal/kernel packages MUST NOT import internal/application or internal/infrastructure.
 //   - cmd packages may import any layer (operator tooling / CLI entry points).
 //
 // The test scans every production .go file under internal/ and fails
 // if a forbidden import is found. Allowlisted paths (e.g. composition
 // root adapters) can be added to dependencyAllowlist.
+//
+// Two counters gate allowlist drift: `maxBridgeEntries` for the legacy
+// API/domain bridge surface (Wave 5) and `maxAppInfraEntries` for the
+// new Sprint-1.1 application→infrastructure surface. Both drift
+// assertions fail loud so silent creep surfaces as a CI build failure.
 func TestModuleDependencyConstraints(t *testing.T) {
 	root, err := findGitRoot()
 	if err != nil {
