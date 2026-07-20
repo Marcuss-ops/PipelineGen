@@ -164,9 +164,8 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/script/clips/search` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/script/clips/search` | Search script clips by name |
 | GET | `/api/script/jobs/:id` | Get script job status |
-| GET | `/api/script/jobs/:id/full` | Get full script job details |
 | POST | `/api/script/generate` | Generate a script asynchronously |
 | POST | `/api/script/shorts/generate` | Generate a Remotion Shorts video |
 | POST | `/api/script/shorts/render` | Render a Remotion Shorts video synchronously |
