@@ -20,7 +20,7 @@
 // DRIFT-FIX (July 2026, user directive "nessun campo
 // documentato come deprecato può essere ancora materialmente
 // rispettato"): the 3 deprecation-registered post-processors
-// (ProcessorVoiceover / ProcessorImages / ProcessorDocument)
+// (ProcessorVoiceover / ProcessorImages)
 // are no longer appended by buildPostprocessorList. They
 // remain in adapters.CanonicalProcessorNames() ONLY because
 // other call sites still reference them (e.g. the

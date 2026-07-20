@@ -19,6 +19,14 @@ type ProcessorName string
 // canonical home for every postprocessor identifier in the package
 // (godlike/06 SSOT one-owner-per-fact) — do NOT redeclare these in
 // sibling files.
+//
+// Sprint 1.0: ProcessorDocument was RETIRED from the script
+// postprocessor chain. Document creation is now produced by the
+// canonical downstream document.generate job
+// (internal/application/document/usecase.go), which is the only
+// place that owns Google Drive writes for script artefacts. The
+// script postprocessor chain produces SpecScene; the document job
+// turns SpecScene into a Google Doc.
 const (
 	ProcessorEntities ProcessorName = "entities"
 	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is the canonical
@@ -31,7 +39,6 @@ const (
 	ProcessorStockAssociation ProcessorName = "stock_association"
 	ProcessorVoiceover        ProcessorName = "voiceover"
 	ProcessorImages           ProcessorName = "images"
-	ProcessorDocument         ProcessorName = "document"
 	ProcessorPersistence      ProcessorName = "persistence"
 	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
 	// translation postprocessor lives in the canonical SOLE identifier
@@ -42,7 +49,7 @@ const (
 	ProcessorTranslation ProcessorName = "translation"
 )
 
-// CanonicalProcessorNames returns the closed set of all 9 canonical
+// CanonicalProcessorNames returns the closed set of all 8 canonical
 // postprocessors in their canonical EXECUTION order.
 //
 // IMPORTANT (godlike/07 typed-distinction): this list reflects
@@ -52,9 +59,9 @@ const (
 // the same on purpose:
 //   - EXECUTION order (this list): entities → clip_search → metadata →
 //     translation → clip_bindings → stock_association → voiceover →
-//     images → document → persistence. Persistence at the tail because
-//     each processor that mutated scene/payload must run BEFORE the
-//     row is locked for replay/retry. Translation slots between
+//     images → persistence. Persistence at the tail because each
+//     processor that mutated scene/payload must run BEFORE the row
+//     is locked for replay/retry. Translation slots between
 //     metadata and clip_bindings so the translated SpecScene text is
 //     visible to the downstream clip_bindings pass.
 //   - REGISTRATION order (see registerScriptPostProcessors in
@@ -83,7 +90,6 @@ func CanonicalProcessorNames() []ProcessorName {
 		ProcessorStockAssociation,
 		ProcessorVoiceover,
 		ProcessorImages,
-		ProcessorDocument,
 		ProcessorPersistence,
 	}
 }

@@ -70,7 +70,7 @@ type ScriptTranslator interface {
 // godlike/06 SSOT (one canonical owner per fact): the postprocessor
 // layer does NOT call `usecase.TranslateScriptSpec` directly because
 // the `adapters → usecase` import edge is forbidden (cycle via
-// `usecase/documents_usecase.go`). The typed port + thin adapter
+// (was: `usecase/documents_usecase.go`, retired in Sprint 1.0). The typed port + thin adapter
 // pattern is the canonical godlike/06 SSOT solution: the port
 // lives in `ports/`, the adapter lives in `usecase/`, the consumer
 // lives in `adapters/` — three packages with NO cycle, each owning

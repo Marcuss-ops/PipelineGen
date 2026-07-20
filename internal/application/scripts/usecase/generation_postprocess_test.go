@@ -58,8 +58,7 @@ func TestGenerationPostprocessor_Process_Success(t *testing.T) {
 		name:   "fake",
 		policy: adapters.ProcessorBestEffort,
 		result: &adapters.PostProcessResult{
-			DocLink: "https://docs.example.com/doc1",
-			DocID:   "doc1",
+			Changed: true,
 		},
 	})
 	reg.Freeze()
@@ -88,8 +87,8 @@ func TestGenerationPostprocessor_Process_Success(t *testing.T) {
 	if processed == nil || processed.PostResult == nil {
 		t.Fatal("expected non-nil PostResult")
 	}
-	if processed.PostResult.DocLink != "https://docs.example.com/doc1" {
-		t.Errorf("expected DocLink set, got %s", processed.PostResult.DocLink)
+	if !processed.PostResult.Changed {
+		t.Errorf("expected Changed=true, got %v", processed.PostResult.Changed)
 	}
 	if processed.Provenance == nil {
 		t.Error("expected non-nil Provenance")
@@ -133,7 +132,7 @@ func TestGenerationPostprocessor_Process_EmptyPostprocessors_ReturnsEmptyResult(
 	reg.Register(&fakePostProcessor{
 		name:   "fake",
 		policy: adapters.ProcessorBestEffort,
-		result: &adapters.PostProcessResult{DocID: "should-not-run"},
+		result: &adapters.PostProcessResult{Changed: true},
 	})
 	reg.Freeze()
 
@@ -152,8 +151,8 @@ func TestGenerationPostprocessor_Process_EmptyPostprocessors_ReturnsEmptyResult(
 	if processed == nil || processed.PostResult == nil {
 		t.Fatal("expected non-nil PostResult")
 	}
-	if processed.PostResult.DocID != "" {
-		t.Errorf("expected no processor to run, got DocID %q", processed.PostResult.DocID)
+	if processed.PostResult.Changed {
+		t.Errorf("expected no processor to run, got Changed=true (timings=%v)", processed.PostResult)
 	}
 	if len(processed.PostprocessMs) != 0 {
 		t.Errorf("expected empty timings, got %v", processed.PostprocessMs)

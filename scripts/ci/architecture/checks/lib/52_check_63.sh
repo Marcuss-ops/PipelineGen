@@ -95,7 +95,7 @@ echo "OK: 0 http.NewRequest calls in storage_search.go (B4 lock upheld)"
 # forward-prevention lock that lives at number 64.
 # See architecture/action-plans/2026-07-08-script-pipeline-contract.md section 3.PR-3.
 
-EXPECTED_ORDER="adapters.NewPersistenceProcessor adapters.NewDocumentProcessor adapters.NewImageProcessor adapters.NewVoiceoverProcessor adapters.NewEntitiesProcessor adapters.NewMetadataProcessor adapters.NewTranslationProcessor adapters.NewClipBindingsProcessor adapters.NewStockAssociationProcessor adapters.NewClipSearchProcessor"
+EXPECTED_ORDER="adapters.NewPersistenceProcessor adapters.NewImageProcessor adapters.NewVoiceoverProcessor adapters.NewEntitiesProcessor adapters.NewMetadataProcessor adapters.NewTranslationProcessor adapters.NewClipBindingsProcessor adapters.NewStockAssociationProcessor adapters.NewClipSearchProcessor"
 
 # Scope the extraction to the registerScriptPostProcessors function body only
 # (avoids catching New*Processor ctor calls in the wire_*.go composition for

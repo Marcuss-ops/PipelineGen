@@ -77,11 +77,9 @@ func TestSemaphoreUseCase_AcquireReleaseReuse(t *testing.T) {
 
 // TestSemaphoreUseCase_NilSafe is now in semaphore_usecase_test.go
 
-// ── DocumentsUseCase ────────────────────────────────────────────────────────
-
-// TestDocumentsUseCase_NilUseCase is now in documents_usecase_test.go
-
-// TestDocumentsUseCase_NilDocClient is now in documents_usecase_test.go
+// (Sprint 1.0: DocumentsUseCase was retired — document generation
+// now lives at internal/application/document/usecase.go as the
+// document.generate downstream job.)
 
 // ── PostGenUseCase (Wave 14 problem #4 fixup) ──────────────────────────────
 

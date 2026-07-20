@@ -186,9 +186,6 @@ func TestGenerateE2E_OllamaUnavailable(t *testing.T) {
 		"Ollama failure must surface ErrGenerationFailed, got %v", err)
 }
 
-// TestGenerateE2E_DocumentServiceUnavailable verifies that a missing
-// document service degrades gracefully (best-effort policy) and the
-// pipeline still succeeds with a warning.
 func TestGenerateE2E_DocumentServiceUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -198,7 +195,6 @@ func TestGenerateE2E_DocumentServiceUnavailable(t *testing.T) {
 	}}
 
 	// Document processor wired with nil service → best-effort warning.
-	docProc := adapters.NewDocumentProcessor(nil, nil)
 	uc := buildUsecaseWithClipResolver(gen, nil, docProc)
 	item := makeTextOnlyItem("e2e-doc-unavailable", sourceText)
 

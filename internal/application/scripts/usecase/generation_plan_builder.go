@@ -130,9 +130,6 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	if strings.TrimSpace(out.VoiceoverGroup) != "" || strings.TrimSpace(out.VoiceoverFolderID) != "" {
 		processors = append(processors, adapters.ProcessorVoiceover)
 	}
-	if strings.TrimSpace(out.DriveFolderID) != "" {
-		processors = append(processors, adapters.ProcessorDocument)
-	}
 	if out.SaveToDB {
 		processors = append(processors, adapters.ProcessorPersistence)
 	}
@@ -146,7 +143,7 @@ func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.P
 	persist := false
 	for _, processor := range processors {
 		switch processor {
-		case adapters.ProcessorVoiceover, adapters.ProcessorDocument:
+		case adapters.ProcessorVoiceover:
 			// Reinsert once below in canonical order.
 		case adapters.ProcessorPersistence:
 			persist = true
@@ -154,7 +151,7 @@ func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.P
 			result = append(result, processor)
 		}
 	}
-	result = append(result, adapters.ProcessorVoiceover, adapters.ProcessorDocument)
+	result = append(result, adapters.ProcessorVoiceover)
 	if persist {
 		result = append(result, adapters.ProcessorPersistence)
 	}

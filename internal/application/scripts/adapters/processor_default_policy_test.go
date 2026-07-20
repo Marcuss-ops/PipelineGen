@@ -45,8 +45,7 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 		adapterspkg.ProcessorEntities,
 		adapterspkg.ProcessorMetadata:
 		return adapterspkg.ProcessorRequired
-	case adapterspkg.ProcessorDocument,
-		adapterspkg.ProcessorImages,
+	case adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorStockAssociation,

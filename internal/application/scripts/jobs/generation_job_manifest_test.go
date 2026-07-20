@@ -7,12 +7,12 @@
 // (PURE constructor), and the typed ExecutionResult dual-shape
 // merge is owned by MergeTypedExecutionEnvelope (PURE marshal/unmarshal).
 //
-// Round-trip + assertion tests:
+// Round-trip + assertion tests (Sprint 1.0: document generation
+// moved to the downstream document.generate job; the script
+// postprocessor chain no longer emits a document artifact):
 //   - script-json REQUIRED
-//   - document-pdf REQUIRED (when generated)
-//   - document-markdown OPTIONAL (reserved slot)
-//   - scenes OPTIONAL (when generated)
-//   - voiceover OPTIONAL (language-grouped)
+//   - scenes     OPTIONAL (when generated)
+//   - voiceover  OPTIONAL (language-grouped)
 package jobs
 
 import (
@@ -65,20 +65,8 @@ func validScriptResult(language string) *script.GenerationResult {
 				},
 			},
 		},
-		Artifacts: script.ArtifactResult{
-			Document: &script.DocumentArtifact{
-				DocLink: "https://docs.google.com/document/d/test-doc-link/edit",
-				DocID:   "test-doc-id",
-				Status:  "completed",
-			},
-		},
+		Artifacts: script.ArtifactResult{},
 	}
-}
-
-func validScriptResult_NoDocument() *script.GenerationResult {
-	r := validScriptResult("en")
-	r.Artifacts.Document = nil
-	return r
 }
 
 func validScriptResult_NoScenes() *script.GenerationResult {
@@ -133,10 +121,11 @@ func validScriptResult_VoiceoverMultiLanguage() *script.GenerationResult {
 // dispatch so tests assert the unit-level surface directly.
 //
 // PR-OUTBOX-SOURCE-VERSION: ensureFixtureFiles creates the voiceover
-// and document-pdf files on disk so PersistGeneratedArtifacts can
-// compute their SHA256 (the §8.4 contract requires SHA256 on all
-// non-placeholder artifacts for the FinalizeAsset outbox event's
-// source_version field to be non-empty).
+// files on disk so PersistGeneratedArtifacts can compute their
+// SHA256 (the §8.4 contract requires SHA256 on all non-placeholder
+// artifacts for the FinalizeAsset outbox event's source_version
+// field to be non-empty). Document artifacts are now produced by the
+// downstream document.generate job and are out of scope here.
 func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (map[string]any, *job.ArtifactManifest) {
 	t.Helper()
 	ensureFixtureFiles(t, jobID, res)
@@ -170,13 +159,6 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 	t.Cleanup(func() {
 		os.RemoveAll(filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID))
 	})
-	// Create a dummy PDF file for the document-pdf artifact.
-	if res.Artifacts.Document != nil && res.Artifacts.Document.DocLink != "" {
-		pdfPath := filepath.Join(outDir, "document.pdf")
-		if wErr := os.WriteFile(pdfPath, []byte("%%PDF-1.4 dummy"), 0o644); wErr != nil {
-			t.Fatalf("ensureFixtureFiles: write %s: %v", pdfPath, wErr)
-		}
-	}
 	// Create dummy voiceover files for each scene binding.
 	for _, scene := range res.Output.SpecScene.Scenes {
 		if scene.Bindings.Voiceover == nil || scene.Bindings.Voiceover.LocalPath == "" {
@@ -192,19 +174,18 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 	}
 }
 
-// TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts is the
-// canonical C12 round-trip e2e. With a fully-populated GenerationResult
-// (doc + scenes + voiceover), the manifest must contain EXACTLY the
-// §8.4 5-artifact shape:
+// TestPersistGeneratedArtifacts_HappyPath_ThreeArtifacts is the
+// canonical C12 round-trip e2e (Sprint 1.0: document generation
+// retired from the script path). With a fully-populated GenerationResult
+// (scenes + voiceover; no Document), the manifest must contain
+// EXACTLY the §8.4 3-artifact shape:
 //
-//  1. script-json    REQUIRED
-//  2. document-pdf   REQUIRED (Document.DocLink set in fixture)
-//  3. document-markdown — RESERVED SLOT, not emitted
-//  4. scenes         OPTIONAL (emitted because fixture has 2 scenes)
-//  5. voiceover      OPTIONAL (1 entry per language)
+//  1. script-json   REQUIRED
+//  2. scenes        OPTIONAL (emitted because fixture has 2 scenes)
+//  3. voiceover     OPTIONAL (1 entry per language)
 //
-// Total: 4 manifest entries.
-func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
+// Total: 3 manifest entries.
+func TestPersistGeneratedArtifacts_HappyPath_ThreeArtifacts(t *testing.T) {
 	res := validScriptResult("en")
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-happy", res)
 
@@ -223,8 +204,6 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 
 	want := map[string]int{
 		job.ArtifactKindScriptJSON: 1,
-		job.ArtifactKindPDF:        1,
-		job.ArtifactKindMarkdown:   0,
 		job.ArtifactKindScenes:     1,
 		job.ArtifactKindVoiceover:  1,
 	}
@@ -248,15 +227,11 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 
 	wantRequired := map[string]bool{
 		job.ArtifactKindScriptJSON: true,
-		job.ArtifactKindPDF:        true,
-		job.ArtifactKindMarkdown:   false,
 		job.ArtifactKindScenes:     false,
 		job.ArtifactKindVoiceover:  false,
 	}
 	for _, k := range []string{
 		job.ArtifactKindScriptJSON,
-		job.ArtifactKindPDF,
-		job.ArtifactKindMarkdown,
 		job.ArtifactKindScenes,
 		job.ArtifactKindVoiceover,
 	} {
@@ -277,21 +252,6 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 
 	if manifest.SchemaVersion != job.SchemaVersionArtifactManifestV1 {
 		t.Errorf("manifest schema_version = %q, want %q", manifest.SchemaVersion, job.SchemaVersionArtifactManifestV1)
-	}
-}
-
-func TestPersistGeneratedArtifacts_NoDocument_OmitsPDF(t *testing.T) {
-	res := validScriptResult_NoDocument()
-	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-doc", res)
-
-	manifest, decodeErr := job.Decode(handlerResult)
-	if decodeErr != nil {
-		t.Fatalf("decode: %v", decodeErr)
-	}
-	for _, a := range manifest.Artifacts {
-		if a.Kind == job.ArtifactKindPDF {
-			t.Errorf("PDF slot present in manifest when Document.DocLink empty — §8.4 spec says emit only when generated")
-		}
 	}
 }
 

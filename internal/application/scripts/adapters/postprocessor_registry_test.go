@@ -21,7 +21,6 @@ import (
 type countingProcessor struct {
 	name      adapterspkg.ProcessorName
 	calls     int
-	docID     string
 	err       error
 	policy    adapterspkg.ProcessorPolicy // PR 2 (June 2026): per-test override
 	warnings  []string                    // PR 2 (June 2026): populated into PostProcessResult.Warnings
@@ -58,9 +57,6 @@ func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGene
 	}
 	if p.empty {
 		return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
-	}
-	if p.docID != "" {
-		return &adapterspkg.PostProcessResult{DocID: p.docID, DocLink: "https://docs.example.com/" + p.docID, Changed: p.changed, Warnings: p.warnings}, nil
 	}
 	return &adapterspkg.PostProcessResult{Changed: p.changed, Warnings: p.warnings}, nil
 }
@@ -142,7 +138,7 @@ func TestRegistry_FreezeNil(t *testing.T) {
 
 func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document", docID: "doc-1"}
+	doc := &countingProcessor{name: "document"}
 	persist := &countingProcessor{name: "persistence", changed: true}
 	r.Register(doc)
 	r.Register(persist)
@@ -166,14 +162,14 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	if persist.calls != 1 {
 		t.Errorf("persistence calls: %d", persist.calls)
 	}
-	if result.DocID != "doc-1" {
-		t.Errorf("DocID: %s", result.DocID)
+	if !result.Changed {
+		t.Errorf("DocID: %s", result.Changed)
 	}
 }
 
 func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document", docID: "d1"}
+	doc := &countingProcessor{name: "document"}
 	persist := &countingProcessor{name: "persistence"}
 	r.Register(doc)
 	r.Register(persist)
@@ -296,8 +292,8 @@ func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
 	if persistence.calls != 1 {
 		t.Errorf("persistence should still be invoked before the gate fires: got %d calls", persistence.calls)
 	}
-	if result != nil && result.DocID != "row-1" {
-		t.Errorf("persistence's success DocID should be in result: got %q", result.DocID)
+	if result != nil && result.Changed != true {
+		t.Errorf("persistence's success DocID should be in result: got %q", result.Changed)
 	}
 	// 6. Both processors were attempted exactly once — the new gate
 	//    fires AT THE END after the loop, not per-processor.
@@ -407,7 +403,7 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 
 	// Create processors that each return a different field.
 	entitiesProc := &countingProcessor{name: "entities", changed: true}
-	docProc := &countingProcessor{name: "document", docID: "doc-merged"}
+	docProc := &countingProcessor{name: "document"}
 	r.Register(entitiesProc)
 	r.Register(docProc)
 
@@ -420,8 +416,8 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if result.DocID != "doc-merged" {
-		t.Errorf("DocID not merged: %s", result.DocID)
+	if !result.Changed {
+		t.Errorf("DocID not merged: %s", result.Changed)
 	}
 }
 
