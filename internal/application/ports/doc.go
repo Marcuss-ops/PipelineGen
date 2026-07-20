@@ -49,8 +49,6 @@
 //     and assets/persistence/writer.go (caller-migration).
 //   - Push 5.3 enforces internal/api → application boundary against
 //     concrete SQLite / Drive / FFmpeg provider orchestrators.
-//   - Push 5.4 migrates ScriptFlowDeps → ScriptRuntime (consumer-side
-//     narrowing; each route gets exactly one use case).
 //   - Push 5.5 lands BuildServer(ServerDependencies) fail-fast with
 //     startup validator + capability registry.
 //
