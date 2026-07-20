@@ -60,6 +60,7 @@ func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer { ret
 func (r *stageURLRecordingRunner) RunFingerprint() string                  { return "stage-url-test" }
 func (r *stageURLRecordingRunner) Log() *zap.Logger                        { return zap.NewNop() }
 func (r *stageURLRecordingRunner) State() *runState                        { return r.state }
+func (r *stageURLRecordingRunner) BatchRepository() StockBatchRepository   { return nil }
 
 var _ StepRunner = (*stageURLRecordingRunner)(nil)
 

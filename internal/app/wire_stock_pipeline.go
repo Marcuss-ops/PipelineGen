@@ -30,6 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stocksourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
@@ -181,6 +182,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		log.Info("WireStockPipeline: source cache disabled (no DB)")
 	}
 
+	// Batch repository (Fase 2 durable state) — wired when DB is available.
+	var stockBatchRepo stockpipeline.StockBatchRepository
+	if stockDB != nil {
+		stockBatchRepo = stockbatches.NewRepository(stockDB)
+		log.Info("WireStockPipeline: batch repository wired")
+	}
+
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{
 			Cfg: cfg,
@@ -192,10 +200,11 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			Finalizer: stockFinalizer,
 		},
 		Acquisition: StockAcquisitionDeps{
-			SourceStager: stockSourceStager,
-			ClipsRepo:    root.Repos.ClipsRepo,
-			AssetIndex:   root.Search.AssetIndexService,
-			Dispatcher:   root.Outbox.Dispatcher,
+			SourceStager:    stockSourceStager,
+			ClipsRepo:       root.Repos.ClipsRepo,
+			AssetIndex:      root.Search.AssetIndexService,
+			Dispatcher:      root.Outbox.Dispatcher,
+			BatchRepository: stockBatchRepo,
 		},
 		Media: StockMediaDeps{
 			Cutter:   stockCutter,

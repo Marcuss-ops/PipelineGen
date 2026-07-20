@@ -95,6 +95,9 @@ type Service struct {
 	jobsSvc       *appjobs.Service
 	assetIndex    stockAssetIndexUpserter
 	clipsRepo     stockClipsSearchTermUpdater
+	// batchRepo is the durable stock batch/group/artifact repository.
+	// nil means the pipeline runs in-memory/test mode (back-compat).
+	batchRepo StockBatchRepository
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
@@ -222,6 +225,7 @@ func NewService(deps Deps) (*Service, error) {
 		jobsSvc:           deps.Execution.Jobs,
 		assetIndex:        deps.Storage.AssetIndex,
 		clipsRepo:         deps.Storage.ClipsRepo,
+		batchRepo:         deps.Storage.BatchRepository,
 		dispatcher:        deps.Storage.Dispatcher,
 		finalizer:         deps.Finalizer,
 		sourceStager:      deps.Execution.SourceStager,

@@ -158,6 +158,16 @@ func (o *Orchestrator) WithSourceProbe(probe SourceDurationProbe) *Orchestrator 
 	return o
 }
 
+// WithBatchRepository (Fase 2, July 2026) threads the durable
+// stock batch/group/artifact repository into the orchestrator.
+// nil is allowed for tests and back-compat. Production wiring
+// injects the SQLite-backed adapter in
+// run_orchestrator.go::runOrchestratorResilient.
+func (o *Orchestrator) WithBatchRepository(repo StockBatchRepository) *Orchestrator {
+	o.batchRepository = repo
+	return o
+}
+
 // WithLogger threads a real zap.Logger into the Orchestrator so
 // step-level logs (download sizes, FFmpeg errors, cut results)
 // appear in the journal instead of being silently swallowed by

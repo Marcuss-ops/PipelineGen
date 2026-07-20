@@ -53,6 +53,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -167,6 +168,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	groupBuckets := make(map[string]*timestampGroupBuffer)
 	segmentCounts := make(map[string]int)
 	sourceIdx := 0
+	batchID := runner.JobID()
+	batchRepo := runner.BatchRepository()
+	batchEnsured := false
 
 	for sourceID, groupPlans := range grouped {
 		staged := stagedBySource[sourceID]
@@ -185,6 +189,50 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		sourcePath := staged.LocalPath
 
+		// Fase 2 durable state: ensure batch, group and artifact rows exist.
+		if batchRepo != nil {
+			if !batchEnsured {
+				if batchErr := batchRepo.CreateBatch(ctx, &StockBatch{
+					ID:          batchID,
+					Fingerprint: runner.RunFingerprint(),
+					SourceURL:   sourceID,
+					Status:      BatchStateRunning,
+				}); batchErr != nil && runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.extract_clips: failed to create batch row",
+						zap.String("batch_id", batchID), zap.Error(batchErr))
+				}
+				batchEnsured = true
+			}
+			groupID := batchID + ":group:" + sourceID
+			if groupErr := batchRepo.CreateGroup(ctx, &StockBatchGroup{
+				ID:            groupID,
+				BatchID:       batchID,
+				GroupKey:      sourceID,
+				Status:        GroupStateRunning,
+				ExpectedClips: len(groupPlans),
+			}); groupErr != nil && runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.extract_clips: failed to create group row",
+					zap.String("group_id", groupID), zap.Error(groupErr))
+			}
+			for clipIdx, plan := range groupPlans {
+				artifactID := groupID + ":clip:" + strconv.Itoa(clipIdx)
+				if artErr := batchRepo.CreateArtifact(ctx, &StockArtifact{
+					ID:          artifactID,
+					BatchID:     batchID,
+					GroupID:     groupID,
+					Ordinal:     clipIdx,
+					ArtifactKey: plan.OutputLogicalID,
+					SourceURL:   plan.SourceID,
+					StartSec:    plan.StartSec,
+					EndSec:      plan.EndSec,
+					Status:      ArtifactStatePlanned,
+				}); artErr != nil && runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.extract_clips: failed to create artifact row",
+						zap.String("artifact_id", artifactID), zap.Error(artErr))
+				}
+			}
+		}
+
 		// PR-STOCK-TIMESTAMP-CLIPS Front 5 (July 2026) + PR-SPLIT-STEP-EXTRACT-CLIPS
 		// (August 2026): pre-cut duration validation extracted to
 		// validateAndProbeSourceDuration (sister file
@@ -201,6 +249,15 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		sourceDuration, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, groupPlans)
 		if validationErr != nil {
 			return validationErr
+		}
+
+		// Mark durable artifacts as EXTRACTING before invoking FFmpeg.
+		if batchRepo != nil {
+			groupID := batchID + ":group:" + sourceID
+			for clipIdx := range groupPlans {
+				artifactID := groupID + ":clip:" + strconv.Itoa(clipIdx)
+				_ = batchRepo.MarkArtifactExtracting(ctx, artifactID)
+			}
 		}
 
 		// Cut all clips of the source group in a single batch.
@@ -259,6 +316,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		// Now process each clip.
 		for clipIdx, plan := range groupPlans {
 			item := result.Items[clipIdx]
+			artifactID := batchID + ":group:" + sourceID + ":clip:" + strconv.Itoa(clipIdx)
 			if item.Status == CutItemStatusFailed || item.OutputPath == "" {
 				if runner.Log() != nil {
 					runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
@@ -267,7 +325,34 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 						zap.String("output_path", item.JobID),
 						zap.Error(item.Err))
 				}
+				if batchRepo != nil {
+					_ = batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "cut failed or empty output")
+				}
 				continue
+			}
+
+			actualDurationMs := int(item.DurationSec * 1000)
+			hash := item.SHA256Hex
+			if hash == "" {
+				var hashErr error
+				hash, hashErr = job.ComputeSHA256(item.OutputPath)
+				if hashErr != nil {
+					if batchRepo != nil {
+						_ = batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "SHA256 compute failed: "+hashErr.Error())
+					}
+					if runner.Log() != nil {
+						runner.Log().Error("orchestrator: stock.extract_clips: SHA256 compute failed — aborting rich-asset write",
+							zap.String("source_id", sourceID),
+							zap.Int("clip_index", clipIdx),
+							zap.String("output_path", item.OutputPath),
+							zap.Error(hashErr))
+					}
+					return fmt.Errorf("orchestrator: stock.extract_clips: chunk %d (artifact=%s) SHA256 compute: %w",
+						clipIdx, plan.OutputLogicalID, hashErr)
+				}
+			}
+			if batchRepo != nil {
+				_ = batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, actualDurationMs)
 			}
 
 			cutPaths = append(cutPaths, item.OutputPath)
@@ -288,22 +373,6 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				// literal).
 				// Fase 1: reuse the hash already computed by the cutter
 				// during validation to avoid hashing the clip twice.
-				hash := item.SHA256Hex
-				if hash == "" {
-					var hashErr error
-					hash, hashErr = job.ComputeSHA256(item.OutputPath)
-					if hashErr != nil {
-						if runner.Log() != nil {
-							runner.Log().Error("orchestrator: stock.extract_clips: SHA256 compute failed — aborting rich-asset write",
-								zap.String("source_id", sourceID),
-								zap.Int("clip_index", clipIdx),
-								zap.String("output_path", item.OutputPath),
-								zap.Error(hashErr))
-						}
-						return fmt.Errorf("orchestrator: stock.extract_clips: chunk %d (artifact=%s) SHA256 compute: %w",
-							clipIdx, plan.OutputLogicalID, hashErr)
-					}
-				}
 
 				clip := buildRichStockAsset(plan, sourceIdx, clipIdx, item.OutputPath, hash)
 

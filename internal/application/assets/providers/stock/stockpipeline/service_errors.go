@@ -60,6 +60,17 @@ var (
 	// ctor time so a missed composition-root injection fails loud.
 	ErrStockPipelineNilSourceStager = errors.New("stockpipeline.NewService: storage.SourceStager is required (Stock Cutover §12-4 — yt-dlp must be hidden behind the acquisition port)")
 
+	// ErrStockProductionDBMissing surfaces when the stock pipeline is
+	// wired for production (Publisher + Finalizer) but no SQLite DB is
+	// available. Batch/group/artifact persistence is mandatory for
+	// production stock runs.
+	ErrStockProductionDBMissing = errors.New("stockpipeline: SQLite DB is mandatory for production stock pipeline (batch/group/artifact persistence)")
+
+	// ErrStockProductionBatchRepositoryMissing surfaces when the stock
+	// pipeline is wired for production but the composition root did not
+	// supply a StockBatchRepository adapter.
+	ErrStockProductionBatchRepositoryMissing = errors.New("stockpipeline: StockBatchRepository is mandatory for production stock pipeline")
+
 	// ErrStockPipelineNilDB surfaces a nil *sql.DB at ctor time.
 	// PROSSIMO STEP: make DB REQUIRED when WireStockPipeline is
 	// re-enabled and the SQLite step store survives restarts.

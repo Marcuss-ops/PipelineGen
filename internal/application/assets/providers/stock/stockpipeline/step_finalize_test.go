@@ -67,6 +67,7 @@ func (f *finalizeFakeRunner) JobFinalizer() finalization.JobFinalizer { return f
 func (f *finalizeFakeRunner) RunFingerprint() string                  { return "test-finalize-fingerprint" }
 func (f *finalizeFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
 func (f *finalizeFakeRunner) State() *runState                        { return f.state }
+func (f *finalizeFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
 // Compile-time assertion: *finalizeFakeRunner satisfies StepRunner.
 var _ StepRunner = (*finalizeFakeRunner)(nil)

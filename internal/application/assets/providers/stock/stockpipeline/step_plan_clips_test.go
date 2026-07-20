@@ -53,6 +53,7 @@ func (f *fakeStepRunner) JobFinalizer() finalization.JobFinalizer               
 func (f *fakeStepRunner) RunFingerprint() string                                       { return "test-fingerprint" }
 func (f *fakeStepRunner) Log() *zap.Logger                                             { return zap.NewNop() }
 func (f *fakeStepRunner) State() *runState                                             { return f.state }
+func (f *fakeStepRunner) BatchRepository() StockBatchRepository                        { return nil }
 
 // newFakeRunner builds a fakeStepRunner with the given clips,
 // clip duration, and policy version. The planner is the
