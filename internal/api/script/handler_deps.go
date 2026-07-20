@@ -31,6 +31,7 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -75,9 +76,14 @@ type AutoHarvestService interface {
 // BEFORE the submission I/O. When non-nil, the response includes
 // current_stage. When nil (tests / legacy wiring), the handler
 // falls back to the direct-submit flow.
+//
+// PR-SUBMISSION-FACTORY (July 2026): Factory builds the
+// operations.SubmitRequest from the bound command. When nil,
+// the handler falls back to the legacy direct-submit flow.
 type GenerateDeps struct {
 	Submission    generationSubmitter
 	GenRunStarter *scriptgen.GenerationRunStarter
+	Factory       *submission.SubmitRequestFactory
 	Log           *zap.Logger
 	Validator     *usecase.PayloadValidator
 }
@@ -168,9 +174,10 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c). PR-COMMIT3: the 4th
 		// `caps` arg is removed alongside the preflight module.
-		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
-		// with the optional GenerationRunStarter (P0 verdetto).
-		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Log, deps.Generate.Validator),
+		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
+		// with the optional GenerationRunStarter (P0 verdetto) and
+		// the SubmitRequestFactory (PR-SUBMISSION-FACTORY).
+		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Factory, deps.Generate.Log, deps.Generate.Validator),
 
 		// PR-SHORTS-EXTRACT (July 2026): construct the dedicated
 		// HandlerShorts for /shorts/* routes.
