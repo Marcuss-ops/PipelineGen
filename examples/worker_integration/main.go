@@ -105,7 +105,15 @@ func main() {
 	// not a security boundary (token check is); server's request-id
 	// middleware accepts up to 64 alphanumeric chars and 32 hex fits
 	// comfortably with room for human prefixes.
-	reqID := buildStableReqID(itemID, *language)
+	//
+	// V2 contract: items[].id is the canonical idempotency anchor for the
+	// server-side (type, correlation_id) UNIQUE index; we still derive
+	// reqID from `itemID + topic + language` so that varying -topic at
+	// runtime (with same -video-name) generates a fresh job rather than
+	// colliding on the existing one. Item.id stays deterministic by
+	// design; reqID is the secondary job-creation anchor for cross-run
+	// dedup at the worker layer.
+	reqID := buildStableReqID(itemID, *topic, *language)
 
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	log.Printf("worker starting endpoint=%s url=%s", scriptGenerateEndpoint, *baseURL)
