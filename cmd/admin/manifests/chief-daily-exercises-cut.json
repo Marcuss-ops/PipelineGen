@@ -1,0 +1,39 @@
+{
+  "drive_file_id": "REPLACE_WITH_CHIEF_DRIVE_FILE_ID_FROM_DRIVE_URL",
+  "name": "Chief the Pitbull — Daily Exercises (pending cut last 6s)",
+  "description": "Chief, a powerful Pitbull, repeatedly leaps in a sunny backyard to grab a rope toy hanging from a branch. After several attempts he grips the rope in his mouth, hangs mid-air for a beat, then lands. A viral athlete-dog moment.",
+  "description_alt": "Un potente cane Pitbull di nome Chief salta ripetutamente in un cortile soleggiato per afferrare un gioco di corda appeso a un ramo, riuscendo ad aggrapparsi e rimanendo sospeso a mezz'aria prima di atterrare.",
+  "tags": [
+    "pitbull",
+    "dog jumping",
+    "backyard",
+    "hanging toy",
+    "dog athlete",
+    "high jump",
+    "sunny day",
+    "rope toy",
+    "amazing pets",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "amazing_pets",
+  "local_subdir": "viral_videos",
+  "default_filename": "He is doing his daily exercises rAnimalsBeingDerps.mp4",
+  "duration_fallback_seconds": 20,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "pitbull / dog jumping / high jump / hanging toy",
+    "visual_summary": "Chief, a powerful Pitbull, leaps repeatedly in a sunny backyard to grab a rope toy hanging from a tree branch. Lands gracefully after each attempt; mid-air hang on the successful grab. Viral athlete-dog content.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:09\",\"visual\":\"Chief makes several athletic attempts jumping at the hanging toy without yet grabbing it.\",\"sfx_family\":\"background_music/driving_ambition\"},{\"start\":\"00:10\",\"end\":\"00:13\",\"visual\":\"Perfect leap: Chief grips the rope in his mouth and twists mid-air, hanging for a beat before landing.\",\"sfx_family\":\"impact_sfx/taco_bell\"},{\"start\":\"00:14\",\"end\":\"00:20\",\"visual\":\"Landing on the soft ground, then a few more agile leaps as the camera circles in backlight.\",\"sfx_family\":\"comedy_outro/crowd_awww\"}]",
+    "pending_cut": "true",
+    "pending_cut_start_seconds": "14",
+    "pending_cut_end_seconds": "20",
+    "pending_cut_result_seconds": "6",
+    "pending_cut_math_note": "Total source = 20s. Cut first 14s (0:00-0:14) → keep 0:14-0:20 = 6s = last 6 seconds. User asked for 'cut first 15 + leave last 6'; the math forces cut_first=14 to satisfy keep_last=6 (15+6=21 != 20).",
+    "pending_cut_realization": "ffmpeg -ss 14 -i <parent.mp4> -t 6 -c copy chief-cut-6s.mp4; upload chief-cut-6s.mp4 to Drive → yields new drive_file_id; UPDATE drive_file_id above + lower duration_fallback_seconds to 6; rerun batch_index_drive_clips.sh --apply.",
+    "pending_sfx_verification": "3 sound effects referenced: music_driving_ambition_01.mp3, 'taco bell.m4a' (NOTE: has a space in name!), awww.mp3. NONE are confirmed for existence in refactored/data/media/sound_effects/. stageOneAsset will throw 'Local render asset does not exist' at render time if used. Verify on disk or substitute with known files (e.g. sfx_impact_boom_heavy_01.mp3, sfx_cartoon_laughter_short_01.mp3) before posting a render-job.",
+    "render_job_skip_reason": "Operator did NOT request a render-job for this clip; minimal-scope per user instruction. Add a render-job on demand if the cut needs to be re-rendered as a YouTubeShort."
+  }
+}

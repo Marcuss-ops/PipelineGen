@@ -783,14 +783,14 @@ func TestResolvedGenerationPlanHasClips(t *testing.T) {
 
 func TestResolvedGenerationPlanHasPostprocessor(t *testing.T) {
 	plan := scriptpkg.ResolvedGenerationPlan{
-		Postprocessors: []string{"entities", "document", "persistence"},
+		Postprocessors: []string{"entities", "images", "persistence"},
 	}
 
 	if !plan.HasPostprocessor("entities") {
 		t.Error("should have 'entities' postprocessor")
 	}
-	if !plan.HasPostprocessor("document") {
-		t.Error("should have 'document' postprocessor")
+	if !plan.HasPostprocessor("images") {
+		t.Error("should have 'metadata' postprocessor")
 	}
 	if plan.HasPostprocessor("voiceover") {
 		t.Error("should NOT have 'voiceover' postprocessor")

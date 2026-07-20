@@ -31,11 +31,13 @@
 // PR-GODOBJ-4c-PERSIST-ADAPTER-SLIM extracts per-kind writers into
 // per-kind helper functions (≤30 LoC each). Deadline 2026-08-15.
 //
-// JSON-shape invariant: §8.4 spec lists exactly 5 kinds —
-// script-json (REQUIRED), document-pdf (REQUIRED when DocLink set),
-// document-markdown (OPTIONAL, slot reserved), scenes (OPTIONAL),
-// voiceover (OPTIONAL, language-grouped). Pre-§8.4 also emitted
-// script_text, metadata, entities, image. They are REMOVED here.
+// JSON-shape invariant: §8.4 spec post-Sprint-1.0 lists exactly
+// 3 kinds — script-json (REQUIRED), scenes (OPTIONAL when generated),
+// voiceover (OPTIONAL, language-grouped). Document artefacts
+// (document-pdf, document-markdown) were RETIRED in Sprint 1.0;
+// the canonical downstream document.generate job owns Google-Doc
+// creation. Pre-§8.4 kinds (script_text, metadata, entities,
+// image) are REMOVED here.
 package adapters
 
 import (
@@ -88,7 +90,7 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
 	}
 
-	artifacts := make([]job.Artifact, 0, 5 /* §8.4 best-case ceiling */)
+	artifacts := make([]job.Artifact, 0, 3 /* §8.4 best-case ceiling (Sprint 1.0: document retired) */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")

@@ -1,0 +1,22 @@
+{
+  "drive_file_id": "REPLACE_WITH_GOOGLE_DRIVE_FILE_ID",
+  "name": "REPLACE_WITH_TITLE",
+  "description": "REPLACE_WITH_LONG_DESCRIPTION_PARAGRAPH_1",
+  "description_alt": "REPLACE_WITH_OPTIONAL_LOCALIZED_DESCRIPTION_OR_EMPTY",
+  "tags": [
+    "REPLACE_TAG_1",
+    "REPLACE_TAG_2",
+    "REPLACE_TAG_N"
+  ],
+  "source": "REPLACE_WITH_SOURCE_ENUM_clip_drive_or_ai_generated_or_stock_or_youtube_clip",
+  "category": "REPLACE_WITH_CATEGORY",
+  "group": "REPLACE_WITH_GROUP",
+  "local_subdir": "REPLACE_OR_REMOVE_FOR_DEFAULT_TO_CATEGORY",
+  "default_filename": "REPLACE_OR_REMOVE_USED_ONLY_IF_DRIVE_NAME_IS_EMPTY",
+  "duration_fallback_seconds": 0,
+  "metadata": {
+    "content_type": "REPLACE_WITH_content_type",
+    "subject": "REPLACE_WITH_subject",
+    "visual_summary": "REPLACE_WITH_visual_summary"
+  }
+}

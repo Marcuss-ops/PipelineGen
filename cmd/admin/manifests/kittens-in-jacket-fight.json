@@ -1,0 +1,33 @@
+{
+  "drive_file_id": "11mhIGcXK95h4yxjtF_2HQxdCECvW9P2v",
+  "name": "Kittens in a Jacket Fight — Sibling Playfight Caught on Camera",
+  "description": "Two orange kittens tucked inside a woman's jacket pouch start a chaotic playfight, swiping and biting at each other while the owner laughs at the absurd scene. Pocketed-kitten ambush, sibling rivalry, classic viral cute-animal content for TikTok / Reels / YouTube Shorts.",
+  "description_alt": "Due piccoli gattini arancioni infilati dentro la giacca di una donna iniziano a fare una buffa zuffa tra loro, mentre la proprietaria ride per la situazione comica. Ambush nella tasca della giacca, zuffa tra fratellini, contenuto virale cute-animals per TikTok / Reels / YouTube Shorts.",
+  "tags": [
+    "kittens",
+    "orange cats",
+    "jacket pouch",
+    "cat fight",
+    "playfight",
+    "funny pets",
+    "cute animals",
+    "funny animals",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_animals",
+  "local_subdir": "viral_videos",
+  "default_filename": "kittens_in_jacket_fight.mp4",
+  "duration_fallback_seconds": 10,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "orange kittens / jacket pouch / sibling rivalry",
+    "visual_summary": "Two orange kittens in a jacket pouch engage in a chaotic playfight, swiping, biting, and tumbling while the owner laughs. Pocketed cat ambush — viral cute-animal content.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:04\",\"visual\":\"An orange kitten is initially calm in the jacket pouch but is suddenly ambushed by a second kitten that pops out and starts a series of paw swipes and mischief.\",\"sfx_family\":\"background_music/sneaky_intro\"},{\"start\":\"00:05\",\"end\":\"00:10\",\"visual\":\"The kitten fight intensifies with bites and paw swipes on the owner's chest; she bursts out laughing while the two keep rolling in the jacket. Beluga-style sibling ambush payoff.\",\"sfx_family\":\"background_music_transition/meme_vocal_effect\"}]",
+    "hook": "Two kittens, one jacket pouch — who claims the throne?",
+    "audio_policy": "preserve original clip audio + layer cartoon/meme sfx under at low volume",
+    "sound_design_plan": "00:00-00:04 sneaky pizzicato music intro for the ambush surprise; 00:05 transition into chaotic loop (monkeys_spinning or similar); 00:06-00:08 low-volume anime scream commentary layered during the bites; 00:08-00:10 cut on natural laugh + clean loop."
+  }
+}

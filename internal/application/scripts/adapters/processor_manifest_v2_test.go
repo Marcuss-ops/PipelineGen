@@ -19,8 +19,8 @@
 //     ItemRef=plan.ID, Required=true, AssetRequirements.Voiceover !=
 //     nil, Images == nil.
 //
-//  4. TestBuildManifestV2_AllCapabilities emits 3
-//     DownstreamRequests (voiceover + images + document) when
+//  4. TestBuildManifestV2_AllCapabilities emits 2
+//     DownstreamRequests (voiceover + images) when
 //     all 3 processors are registered. Each item is keyed to
 //     plan.ID. The Image request's Count=1 and the document
 //     request's OutputDest.Kind="google_doc".
@@ -135,9 +135,8 @@ func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 	plan := planWithPostprocessors(basePlanForIdem(), ProcessorVoiceover, ProcessorImages)
 	m := buildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
-	require.Len(t, m.Items, 3, "all-capabilities plan must emit exactly 3 DownstreamRequests")
+	require.Len(t, m.Items, 2, "all-capabilities plan must emit exactly 2 DownstreamRequests (voiceover + images; Sprint 1.0: document retired from script pipeline)")
 
-	// Order: voiceover → images → document (canonical build order
 	// matching the buildManifestV2 implementation).
 	assert.Equal(t, scriptpkg.DownstreamVoiceover, m.Items[0].Kind)
 	require.NotNil(t, m.Items[0].AssetRequirements.Voiceover)
@@ -145,9 +144,6 @@ func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 	assert.Equal(t, scriptpkg.DownstreamImages, m.Items[1].Kind)
 	require.NotNil(t, m.Items[1].AssetRequirements.Images)
 	assert.Equal(t, 1, m.Items[1].AssetRequirements.Images.Count, "canonical default Count=1")
-
-	assert.Equal(t, scriptpkg.DownstreamDocument, m.Items[2].Kind)
-	assert.Equal(t, "google_doc", m.Items[2].OutputDest.Kind)
 
 	// All 3 items must be keyed to plan.ID (the canonical
 	// per-item identifier).

@@ -36,8 +36,8 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	//    added translation at index 3; PR-CLIP-SEARCH-WIRING earlier
 	//    added clip_search at index 1; see file godoc above for
 	//    EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 10 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 10: %v", len(names), names)
+	if len(names) != 9 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 9: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (entities → clip_search → metadata →

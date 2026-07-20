@@ -26,7 +26,9 @@ type countingProcessor struct {
 	warnings  []string                    // PR 2 (June 2026): populated into PostProcessResult.Warnings
 	resultNil bool                        // PR 2 (June 2026): when true, returns (nil, nil) to exercise nil-handling
 	empty     bool                        // PR 2 (June 2026): when true, returns empty PostProcessResult
-	changed   bool                        // P1 #10 (June 2026): set on result when true
+	// Sprint 1.0: `changed` field removed — the merge function never
+	// propagates PostProcessResult.Changed to PipelineResult so the field
+	// was dead. Use `warnings` for propagated state instead.
 }
 
 func (p *countingProcessor) Name() adapterspkg.ProcessorName { return p.name }
@@ -58,7 +60,8 @@ func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGene
 	if p.empty {
 		return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 	}
-	return &adapterspkg.PostProcessResult{Changed: p.changed, Warnings: p.warnings}, nil
+	// Sprint 1.0: Changed field removed — see struct definition comment.
+	return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 }
 
 // ── Registration ───────────────────────────────────────────────────
@@ -138,15 +141,15 @@ func TestRegistry_FreezeNil(t *testing.T) {
 
 func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document"}
-	persist := &countingProcessor{name: "persistence", changed: true}
+	doc := &countingProcessor{name: "metadata"}
+	persist := &countingProcessor{name: "persistence", warnings: []string{"persistence-row-1"}}
 	r.Register(doc)
 	r.Register(persist)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
 		Title:          "Test",
-		Postprocessors: []string{"document", "persistence"},
+		Postprocessors: []string{"metadata", "persistence"},
 	}
 
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "Generated script text."})
@@ -162,21 +165,28 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	if persist.calls != 1 {
 		t.Errorf("persistence calls: %d", persist.calls)
 	}
-	if !result.Changed {
-		t.Errorf("DocID: %s", result.Changed)
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "persistence-row-1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("persistence-row-1 marker not in result.Warnings: %v", result.Warnings)
 	}
 }
 
 func TestRegistry_RunSkipsDisabledProcessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	doc := &countingProcessor{name: "document"}
+	doc := &countingProcessor{name: "metadata"}
 	persist := &countingProcessor{name: "persistence"}
 	r.Register(doc)
 	r.Register(persist)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document"}, // persistence NOT requested
+		Postprocessors: []string{"metadata"}, // persistence NOT requested
 	}
 
 	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
@@ -200,21 +210,21 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 	// NOT block other processors" assertion still holds.
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	doc := &countingProcessor{
-		name:   "document",
+		name:   "metadata",
 		policy: adapterspkg.ProcessorBestEffort,
 		err:    errors.New("drive api down"),
 	}
 	persist := &countingProcessor{
-		name:   "persistence",
-		policy: adapterspkg.ProcessorBestEffort,
-		docID:  "row-1",
+		name:     "persistence",
+		policy:   adapterspkg.ProcessorBestEffort,
+		warnings: []string{"persistence-row-1"},
 	}
 	r.Register(doc)
 	r.Register(persist)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document", "persistence"},
+		Postprocessors: []string{"metadata", "persistence"},
 	}
 
 	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
@@ -239,21 +249,21 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	document := &countingProcessor{
-		name:   "document",
+		name:   "metadata",
 		policy: adapterspkg.ProcessorRequired,
 		err:    errors.New("drive api down"),
 	}
 	persistence := &countingProcessor{
-		name:   "persistence",
-		policy: adapterspkg.ProcessorRequired,
-		docID:  "row-1", // non-empty success
+		name:     "persistence",
+		policy:   adapterspkg.ProcessorRequired,
+		warnings: []string{"persistence-row-1"}, // non-empty success
 	}
 	r.Register(document)
 	r.Register(persistence)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document", "persistence"},
+		Postprocessors: []string{"metadata", "persistence"},
 	}
 
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
@@ -276,7 +286,7 @@ func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
 	if !strings.Contains(err.Error(), "required postprocessor failure") {
 		t.Errorf("error message must use the canonical Issue 3 phrasing: %v", err)
 	}
-	if !strings.Contains(err.Error(), "document") {
+	if !strings.Contains(err.Error(), "metadata") {
 		t.Errorf("error message must name the failing Required processor (document): %v", err)
 	}
 	if !strings.Contains(err.Error(), "failed") {
@@ -292,8 +302,17 @@ func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
 	if persistence.calls != 1 {
 		t.Errorf("persistence should still be invoked before the gate fires: got %d calls", persistence.calls)
 	}
-	if result != nil && result.Changed != true {
-		t.Errorf("persistence's success DocID should be in result: got %q", result.Changed)
+	if result != nil {
+		found := false
+		for _, w := range result.Warnings {
+			if strings.Contains(w, "persistence-row-1") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("persistence-row-1 marker not in result.Warnings: %v", result.Warnings)
+		}
 	}
 	// 6. Both processors were attempted exactly once — the new gate
 	//    fires AT THE END after the loop, not per-processor.
@@ -308,7 +327,7 @@ func TestRegistry_Run_RequiredFailureAlwaysFailsPipeline(t *testing.T) {
 
 func TestRegistry_RunProcessorNotRegistered(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{name: "document"})
+	r.Register(&countingProcessor{name: "metadata"})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
@@ -325,7 +344,7 @@ func TestRegistry_RunNilRegistry(t *testing.T) {
 	var r *adapterspkg.PostProcessorRegistry
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document"},
+		Postprocessors: []string{"metadata"},
 	}
 
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
@@ -339,7 +358,7 @@ func TestRegistry_RunNilRegistry(t *testing.T) {
 
 func TestRegistry_RunEmptyRegistry(t *testing.T) {
 	// PR 2 (June 2026): the test was originally written to assert
-	// "empty registry runs cleanly" with Postprocessors=["document"]
+	// "empty registry runs cleanly" with Postprocessors=["metadata"]
 	// (a Required-class name). Under the new ALL-required-failed
 	// semantic, an empty registry + Required-name request counts
 	// as a hard failure (the pre-flight gate's Runtime catch-all).
@@ -383,7 +402,7 @@ func TestRegistry_RunEmptyRegistry(t *testing.T) {
 
 func TestRegistry_RunEmptyPostprocessors(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	r.Register(&countingProcessor{name: "document"})
+	r.Register(&countingProcessor{name: "metadata"})
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
@@ -402,22 +421,29 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 
 	// Create processors that each return a different field.
-	entitiesProc := &countingProcessor{name: "entities", changed: true}
-	docProc := &countingProcessor{name: "document"}
+	entitiesProc := &countingProcessor{name: "entities", warnings: []string{"entities-merger-1"}}
+	docProc := &countingProcessor{name: "metadata"}
 	r.Register(entitiesProc)
 	r.Register(docProc)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"entities", "document"},
+		Postprocessors: []string{"entities", "metadata"},
 	}
 
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if !result.Changed {
-		t.Errorf("DocID not merged: %s", result.Changed)
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "entities-merger-1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("entities-merger-1 marker not merged into result.Warnings: %v", result.Warnings)
 	}
 }
 
@@ -434,7 +460,7 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	// Only "persistence" (required) is registered. The caller
 	// will request "entities" — also required (post-PR 3) — but
-	// it is missing. Note: "document" was downgraded to BestEffort
+	// it is missing. Note: "metadata" was downgraded to BestEffort
 	// in Fase 2 Spina Dorsale so it would NOT trigger a preflight
 	// rejection; "entities" remains Required.
 	r.Register(&countingProcessor{name: "persistence"})
@@ -462,10 +488,10 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 func TestRegistry_ValidateRequested_BestEffortMissingTolerated(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{name: "persistence"})
-	r.Register(&countingProcessor{name: "document"})
-	// "voiceover" / "images" not registered -> both BestEffort.
+	r.Register(&countingProcessor{name: "metadata"})
+	// "voiceover" / "metadata" not registered -> both BestEffort.
 
-	if err := r.ValidateRequested([]string{"persistence", "document", "voiceover", "images"}); err != nil {
+	if err := r.ValidateRequested([]string{"persistence", "metadata", "voiceover", "metadata"}); err != nil {
 		t.Fatalf("ValidateRequested must tolerate best-effort missing: %v", err)
 	}
 }
@@ -491,7 +517,7 @@ func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	// "entities" is Required (post-PR 3); requesting it 3× when
 	// nothing is registered must produce exactly one deduplicated
-	// error entry. Note: "document" was downgraded to BestEffort
+	// error entry. Note: "metadata" was downgraded to BestEffort
 	// in Fase 2 and would NOT error on missing-registered.
 	err := r.ValidateRequested([]string{"entities", "entities", "entities"})
 	if err == nil {
@@ -578,13 +604,13 @@ func TestRegistry_Run_BestEffortFailureIsWarning(t *testing.T) {
 func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
-		name:   "document",
+		name:   "metadata",
 		policy: adapterspkg.ProcessorRequired,
 		empty:  true, // returns PostProcessResult{} (empty)
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"document"},
+		Postprocessors: []string{"metadata"},
 	}
 	_, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err == nil {
@@ -600,13 +626,13 @@ func TestRegistry_Run_RequiredEmptyOutputCountsAsFailure(t *testing.T) {
 func TestRegistry_Run_BestEffortEmptyOutputIsWarning(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
-		name:   "images",
+		name:   "metadata",
 		policy: adapterspkg.ProcessorBestEffort,
 		empty:  true,
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"images"},
+		Postprocessors: []string{"metadata"},
 	}
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {
@@ -643,14 +669,13 @@ func TestRegistry_Run_RequiredNilResultCountsAsFailure(t *testing.T) {
 func TestRegistry_Run_ProcessorWarningPropagatesToAggregate(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	r.Register(&countingProcessor{
-		name:     "images",
+		name:     "metadata",
 		policy:   adapterspkg.ProcessorBestEffort,
-		docID:    "img-1",
 		warnings: []string{"alt text missing for scene 0"},
 	})
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:             "item-1",
-		Postprocessors: []string{"images"},
+		Postprocessors: []string{"metadata"},
 	}
 	result, err := r.Run(context.Background(), plan, adapterspkg.ProcessInput{Text: "text"})
 	if err != nil {

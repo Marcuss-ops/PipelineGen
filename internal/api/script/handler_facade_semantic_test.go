@@ -75,7 +75,6 @@ func newFacadeForSemanticTest(pub *recordingPublisher) *FacadeHandler {
 		nil, // voService (unused by ResolveDriveFolderID)
 		nil, // groupsResolver (unused by ResolveDriveFolderID)
 		pub, // publisher
-		nil, // documentCreator (unused by ResolveDriveFolderID)
 		zap.NewNop(),
 	)
 }

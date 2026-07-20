@@ -1,0 +1,38 @@
+{
+  "drive_file_id": "1dWofCkboXEc57WMSPXWCd1AVXi-20-jQ",
+  "name": "Poodle Walking Backwards on Two Legs — Retromarcia Skills (pending cut 11s-16s)",
+  "description": "A small poodle walks backwards on its hind legs through the house, perfectly balanced, eyes locked on a treat held in the owner's hand. Transitions from the kitchen to the hallway onto a round grey carpet, ending in a perfect still pose. Classic viral funny-pets moment.",
+  "description_alt": "Un piccolo cane barboncino cammina agilmente all'indietro sulle sole zampe posteriori attraverso la casa, seguendo ipnotizzato un pezzo di cibo tenuto in mano dal padrone. Transizione cucina → corridoio → tappeto rotondo, finale in posa statua.",
+  "tags": [
+    "poodle",
+    "dog walking on two legs",
+    "walking backwards",
+    "funny dog",
+    "dog trick",
+    "cute puppy",
+    "balancing dog",
+    "funny pets",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_pets",
+  "local_subdir": "viral_videos",
+  "default_filename": "I think shes a skinwalkwer rAnimalsBeingDerps.mp4",
+  "duration_fallback_seconds": 16,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "poodle / dog on two legs / backwards / treat-motivated trick",
+    "visual_summary": "A small poodle balances on its hind legs and walks backwards through the house, perfectly tracking a treat held by the owner. Ends in a still pose awaiting the final reward. Viral funny-pets content.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:05\",\"visual\":\"The dog rises on its hind legs in the kitchen and starts walking backwards into the hallway, perfectly balanced, eyes on the treat.\",\"sfx_family\":\"background_music/bunny_hop\"},{\"start\":\"00:06\",\"end\":\"00:12\",\"visual\":\"The dog crosses the doorway onto a round grey carpet in the next room, continuing the backwards walk with dancer-like poise.\",\"sfx_family\":\"background_music_transition/sneaky_snitch\"},{\"start\":\"00:13\",\"end\":\"00:16\",\"visual\":\"The dog stops at the centre of the carpet, perfectly still on two legs, statue pose; the owner pulls the treat away — cliffhanger finale.\",\"sfx_family\":\"meme_vocal_effect/comedy_outro\"}]",
+    "hook": "Direzione: Retromarcia! 🚗 Quando il cibo è una motivazione troppo forte...",
+    "audio_policy": "preserve original clip audio + layer cartoon sfx under at low volume + outro meme vocal",
+    "sound_design_plan": "00:00-00:05 bunny_hop bouncy pizzicato matching the backward steps rhythm; 00:06-00:12 transition into Sneaky Snitch meme theme for the surreal two-legged walk feel (matches the 'skinwalker' title); 00:13-00:16 'Nope' sound effect when owner pulls the treat away + light 'Awww' outro crowd reaction for the statue-pose fade.",
+    "pending_cut": "true",
+    "pending_cut_start_seconds": "11",
+    "pending_cut_end_seconds": "16",
+    "pending_cut_result_seconds": "5",
+    "pending_cut_realization": "ffmpeg -ss 11 -i <parent.mp4> -t 5 -c copy <cut.mp4>; upload <cut.mp4> to Google Drive (yields new drive_file_id); update this manifest with new drive_file_id + duration_fallback_seconds=5; rerun batch_index_drive_clips.sh --apply. See sibling caveats.md."
+  }
+}
