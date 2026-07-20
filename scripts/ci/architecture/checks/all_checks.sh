@@ -41,7 +41,7 @@
 #    19. check_71_asset_committer_ssot_wave5.sh
 #    20. check_72_qdrant_upsert_ssot_wave5.sh
 #    21. check_73_search_aggregator_uniqueness_wave5.sh
-#    22. check_74_forbid_legacy_generate_from_clips.sh
+#    22. check_74_forbid_legacy_clip_generation.sh
 #
 # SLA (July 2026): contract test p95 ≤ 180s in CI (well under standard CI gates).
 # The check_50_jobs.sh sub-orchestrator alone is ~30-60s (sources 18 sub-checks

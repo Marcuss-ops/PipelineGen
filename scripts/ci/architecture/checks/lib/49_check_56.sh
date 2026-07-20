@@ -9,7 +9,7 @@
 # FASE 2.1 (July 2026) freezes the legacy script-generation adapter surface
 # (internal/api/script/handler_legacy_*.go) for retirement on 2026-12-31.
 # The FREEZE pattern is the canonical deadline-driven retirement per
-# godlike/07 minimum-blast-radius: counters (legacy_generate_from_clips_total
+# godlike/07 minimum-blast-radius: counters (legacy_clip_generation_total
 # + legacy_generate_with_images_total) keep observability alive until
 # rate(...[7d]) == 0, at which point the 4 handler_legacy_*.go files
 # (plus the 2 typed counter declarations in handler_legacy_deprecation.go)
@@ -59,7 +59,7 @@
 #     no-fake-availability (the operator sees marker accounting every
 #     CI run, not silently).
 #   - 7-day-zero-retirement: the operator checks Prometheus for
-#     rate(legacy_generate_from_clips_total[7d]) == 0 AND
+#     rate(legacy_clip_generation_total[7d]) == 0 AND
 #     rate(legacy_generate_with_images_total[7d]) == 0. When both
 #     counters report zero for 7 consecutive days, the post-2026-12-31
 #     deadline can be advanced — git rm the 4 handler_legacy_*.go files
