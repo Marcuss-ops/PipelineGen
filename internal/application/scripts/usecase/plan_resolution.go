@@ -11,18 +11,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-) // GenerateOneUseCase orchestrates the unified pipeline for a single
-// generation item. All dependencies are typed — no any on
-// the public surface.
+)// GenerateOneUseCase orchestrates the unified pipeline for a single
+// generation item. It owns only the four phase collaborators and
+// the canonical logger — no monolithic configuration state.
 type GenerateOneUseCase struct {
-	cfg             adapters.NormalizationConfig
-	preparer        *GenerationPreparer
-	engineRunner    *GenerationEngineRunner
-	postprocessor   *GenerationPostprocessor
-	finalizer       *GenerationFinalizer
-	log             *zap.Logger
-	voGroupResolver scriptports.VoiceoverGroupResolver
-	voRootID        string
+	preparer      *GenerationPreparer
+	engineRunner  *GenerationEngineRunner
+	postprocessor *GenerationPostprocessor
+	finalizer     *GenerationFinalizer
+	log           *zap.Logger
 }
 
 // NewGenerateOneUseCase constructs the use case. engine and registry
@@ -41,9 +38,8 @@ func NewGenerateOneUseCase(
 	preparer := NewGenerationPreparer(cfg, registry, ppReg, log)
 	engineRunner := NewGenerationEngineRunner(engine)
 	postprocessor := NewGenerationPostprocessor(ppReg)
-	finalizer := NewGenerationFinalizer()
+	finalizer := NewGenerationFinalizer(log, cfg)
 	return &GenerateOneUseCase{
-		cfg:           cfg,
 		preparer:      preparer,
 		engineRunner:  engineRunner,
 		postprocessor: postprocessor,
@@ -67,8 +63,6 @@ func (uc *GenerateOneUseCase) SetVoiceoverRouting(resolver scriptports.Voiceover
 	if uc == nil {
 		return
 	}
-	uc.voGroupResolver = resolver
-	uc.voRootID = parentID
 	uc.preparer.SetVoiceoverRouting(resolver, parentID)
 }
 

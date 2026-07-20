@@ -19,16 +19,21 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+
+	"go.uber.org/zap"
 )
 
 // GenerationFinalizer assembles the final GenerationResult and
 // runs the quality gate. It is constructed once per use case and
 // reused across calls.
-type GenerationFinalizer struct{}
+type GenerationFinalizer struct {
+	log *zap.Logger
+	cfg adapters.NormalizationConfig
+}
 
 // NewGenerationFinalizer constructs a GenerationFinalizer.
-func NewGenerationFinalizer() *GenerationFinalizer {
-	return &GenerationFinalizer{}
+func NewGenerationFinalizer(log *zap.Logger, cfg adapters.NormalizationConfig) *GenerationFinalizer {
+	return &GenerationFinalizer{log: log, cfg: cfg}
 }
 
 // FinalizeInputs carries everything the finalize phase needs from
@@ -100,6 +105,15 @@ func (f *GenerationFinalizer) Finalize(
 			result.Status = "FAILED_QUALITY_GATE"
 			return result, qErr
 		}
+	}
+
+	// Log source text metrics once at completion. The raw source text
+	// is never logged; only hash, length, token estimate and an
+	// optional preview are emitted.
+	if f.log != nil {
+		f.log.Info("generate-one: source text metrics",
+			zap.String("item_id", item.ID),
+			zap.Any("source_text", SourceTextLogFields(plan.SourceText, f.cfg)))
 	}
 
 	return result, nil
