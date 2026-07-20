@@ -94,7 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Logout
           </button>
           <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#64748b', textAlign: 'center' }}>
-            v0.1.0 · Fase 1
+            v0.2.0 · Fase 2
           </div>
         </div>
       </aside>

@@ -207,16 +207,21 @@ func fetchStockReports(t *testing.T, db *sql.DB) []stockIntegrityReport {
 	t.Helper()
 	rows, err := db.QueryContext(context.Background(), canonicalStockSelect)
 	require.NoError(t, err)
-	defer rows.Close()
 
-	var reports []stockIntegrityReport
+	var rawRows []stockRow
 	for rows.Next() {
 		var r stockRow
 		require.NoError(t, rows.Scan(
 			&r.ID, &r.Filename, &r.FolderIDAlias, &r.IndexState,
 			&r.Lifecycle, &r.FileHashDisp, &r.DriveIDDisp,
 		))
+		rawRows = append(rawRows, r)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
 
+	var reports []stockIntegrityReport
+	for _, r := range rawRows {
 		var d stockDetailRow
 		require.NoError(t, db.QueryRowContext(context.Background(),
 			`SELECT media_type, duration_ms, drive_link FROM media_assets WHERE id = ?`,
@@ -225,7 +230,6 @@ func fetchStockReports(t *testing.T, db *sql.DB) []stockIntegrityReport {
 
 		reports = append(reports, reportFromRow(r, d))
 	}
-	require.NoError(t, rows.Err())
 	return reports
 }
 

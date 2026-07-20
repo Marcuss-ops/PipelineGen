@@ -66,12 +66,9 @@ func TestRegisterJobs_FailsWhenBrokerMissing(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	handler := &GenerateJobHandler{
-		// nil `one` and `many` -- the fail-fast is checked before
-		// any use-case invocation, so partial construction is fine.
-		one: nil,
-		log: logger,
-	}
+	// nil `one` and `many` -- the fail-fast is checked before
+	// any use-case invocation, so partial construction is fine.
+	handler := NewGenerateJobHandler(nil, nil, logger)
 
 	err := handler.RegisterJobs(nil)
 	require.Error(t, err, "Issue 7 / P1: RegisterJobs must fail when broker is nil")
@@ -98,10 +95,8 @@ func TestRegisterJobs_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	handler := &GenerateJobHandler{
-		one: nil, // partial; RegisterJobs does not invoke the use cases
-		log: logger,
-	}
+	// partial; RegisterJobs does not invoke the use cases
+	handler := NewGenerateJobHandler(nil, nil, logger)
 
 	broker := &mockBroker{}
 	err := handler.RegisterJobs(broker)
@@ -122,10 +117,7 @@ func TestRegisterJobs_PropagatesBrokerError(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	handler := &GenerateJobHandler{
-		one: nil,
-		log: logger,
-	}
+	handler := NewGenerateJobHandler(nil, nil, logger)
 
 	broker := &mockBroker{forceError: errors.New("broker unavailable")}
 	err := handler.RegisterJobs(broker)

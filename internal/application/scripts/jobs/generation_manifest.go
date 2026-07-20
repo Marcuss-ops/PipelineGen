@@ -46,8 +46,8 @@ import (
 //
 // The caller is responsible for pre-phase steps:
 //   - service-core persistence (adapters/artifacts_persistence.go).
-//   - typed envelope construction (handled by handleSingle /
-//     handleBatch in generation_handler.go).
+//   - typed envelope construction (handled by the single executor
+//     in generation_single_executor.go).
 //   - manifest validation probe (callers may call manifest.Validate()
 //     before injecting into handlerResult). Validation failures
 //     are recoverable: the runner falls back to the typed envelope
