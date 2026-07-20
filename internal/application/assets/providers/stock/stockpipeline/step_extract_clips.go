@@ -279,9 +279,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			if writer != nil {
 				// PR-STOCK-TIMESTAMP-CLIPS Front 4 (July 2026):
 				// rich-asset write — compute SHA256 fail-closed
-			// (P0 2.4 hardening: a malformed digest short-circuits
-			// at the cut step rather than silently reaching the
-			// indexer which would terminal-reject it), then build
+				// (P0 2.4 hardening: a malformed digest short-circuits
+				// at the cut step rather than silently reaching the
+				// indexer which would terminal-reject it), then build
 				// the canonical 10-field asset via buildRichStockAsset
 				// (sister file step_extract_clips_assets.go) and pass
 				// the hash to WriteAndEnqueue (replaces the prior ""

@@ -1,0 +1,27 @@
+{
+  "drive_file_id": "1ggqRhdZbsHyyOiGspak9sTecEYofNzeh",
+  "name": "Dog Rolling on Beach — Funny Pet Moment",
+  "description": "A funny dog rolls back and forth on a sandy beach near the ocean waves, making grunting sounds before finally standing up to face the sea. Classic funny pet content suitable for TikTok, Reels, and YouTube Shorts.",
+  "tags": [
+    "dog rolling",
+    "beach",
+    "ocean waves",
+    "funny dog",
+    "sand",
+    "dog grunting",
+    "sunny day"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_pets",
+  "local_subdir": "viral_videos",
+  "default_filename": "dog_rolling_on_beach.mp4",
+  "duration_fallback_seconds": 15,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "dog rolling / sandy beach / funny pets",
+    "visual_summary": "A funny dog rolls back and forth on a sandy beach near the ocean waves, making grunting sounds before finally standing up to face the sea.",
+    "timeline_json": "[{\"start\":\"00:01\",\"end\":\"00:05\",\"visual\":\"The dog fully commits to rolling over its back on the wet sand, scratching its back and enjoying the beach texture.\",\"sfx_family\":\"background_music/cheerful_splash\"},{\"start\":\"00:06\",\"end\":\"00:10\",\"visual\":\"The dog continues to wriggle intensely on the ground, making funny grunting noises as the waves crash in the background.\",\"sfx_family\":\"background_music_transition/goofy_tuba\"},{\"start\":\"00:11\",\"end\":\"00:13\",\"visual\":\"The dog finally stands up on all fours, shakes off the sand, and proudly looks out towards the ocean waves.\",\"sfx_family\":\"comedy_outro/awww\"}]",
+    "hook": "Wait till the end to see the satisfaction! 🐕🌊"
+  }
+}
