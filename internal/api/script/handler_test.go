@@ -33,40 +33,69 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		routeMap[key] = true
 	}
 
-	// PR-script-deps-slim (July 2026, P1): the 2 routes that
-	// depended on sectionRegen + cacheEviction (RegenerateSection
-	// + EvictCache) are RETIRED — the fields were never populated
-	// by NewScriptFlowHandler so the routes always returned 503
-	// (godlike/07 no-fake-availability).
-	expectedRoutes := []struct {
-		method string
-		path   string
-	}{
-		{"POST", "/api/script/generate"},
-		{"POST", "/api/script/shorts/generate"},
-		{"POST", "/api/script/shorts/render"},
-		{"POST", "/api/script/shorts/render/async"},
-		{"GET", "/api/script/jobs/:id"},
-		{"GET", "/api/script/clips/search"},
+	// PR-script-deps-slim (July 2026, P1): the canonical ScriptFlow
+	// surface mounts 6 base routes via ScriptFlowHandler.RegisterRoutes
+	// (1 POST /generate + 3 POST /shorts/* + 1 GET /jobs/:id + 1 GET
+	// /clips/search). Sprint 1.3-unblock (July 2026): the enriched
+	// GET /jobs/:id/full route, registered by JobsHandler.RegisterJobRoutes
+	// (handler_jobs.go) and dispatched to GetFullJobRun
+	// (handler_run_full.go), is now part of the ScriptFlow route
+	// surface — the verdict's "/full" endpoint surface lives here
+	// so the orchestrator can serve enriched job status without a
+	// second router mount. Total: 7 routes. The earlier "6 routes,
+	// /jobs/:id/full is NOT in scope" comment was a PR-script-deps-slim
+	// intermediate state; the route was promoted in a later wave
+	// without the test being updated in lockstep, producing the
+	// test drift surfaced by `make verify-main` on 2026-07-19.
+	// assert.Equal on a map produces an exact-match diff: any route
+	// the handler LEGITIMATELY adds or removes fails the test loudly
+	// here AND must trigger a paired update of architecture/ownership
+	// SSOT in lockstep (godlike/06 SSOT: routes.yaml ↔
+	// architecture/ownership.generated.yaml ↔ this test are 4-way
+	// co-regenerated; any drift among the 4 surfaces is a first-class
+	// regression).
+	expectedRoutes := map[string]bool{
+		"POST /api/script/generate":            true,
+		"POST /api/script/shorts/generate":     true,
+		"POST /api/script/shorts/render":       true,
+		"POST /api/script/shorts/render/async": true,
+		"GET /api/script/jobs/:id":             true,
+		"GET /api/script/clips/search":         true,
+		"GET /api/script/jobs/:id/full":        true,
 	}
+	assert.Equal(t, expectedRoutes, routeMap,
+		"ScriptFlow routes must match canonical set EXACTLY (drift = regressions in either direction; update this test AND architecture/ownership SSOT in lockstep)")
 
-	for _, want := range expectedRoutes {
-		key := fmt.Sprintf("%s %s", want.method, want.path)
-		assert.True(t, routeMap[key], "required route %s %s must be registered", want.method, want.path)
+	// godlike/07 no-fake-availability: assert the 6 RETIRED legacy
+	// per-source routes are NOT registered. GenerationEnvelopeV2
+	// (PR-script-deps-slim + PR-script-deps-slim-p2) unified the
+	// /text, /clips, /catalog, /search source-type discriminations
+	// under the single POST /api/script/generate endpoint with
+	// items[].source.type=. The 5 retired generation-style routes
+	// each had fields never populated by NewScriptFlowHandler so
+	// they ALWAYS returned 503 (canonical fake-availability surface
+	// retired):
+	//   - /generate-from-clips                 (commit 09af3cdd3 + SSOT 6ec3e95b6)
+	//   - /generate-from-catalog               (commit 09af3cdd3 + SSOT 6ec3e95b6)
+	//   - /generate-with-images                (commit 09af3cdd3 + SSOT 6ec3e95b6)
+	//   - /curate                              (commit 09af3cdd3 + SSOT 6ec3e95b6)
+	//   - /cache/evict                         (commit 069b36ad2)
+	//   - /:id/sections/:section_id/regenerate (commit 09af3cdd3)
+	// Any return of these is a regression: the canonical entry point
+	// is POST /api/script/generate with items[i].source.{type,...};
+	// “legacy_adapter” aliases for them are explicitly banded.
+	notExpectedRoutes := map[string]struct{}{
+		"POST /api/script/:id/sections/:section_id/regenerate": {},
+		"POST /api/script/cache/evict":                         {},
+		"POST /api/script/generate-from-clips":                 {},
+		"POST /api/script/generate-from-catalog":               {},
+		"POST /api/script/generate-with-images":                {},
+		"POST /api/script/curate":                              {},
 	}
-
-	// godlike/07 no-fake-availability: assert the 2 RETIRED routes
-	// are NOT registered (they always returned 503 pre-PR).
-	notExpectedRoutes := []struct {
-		method string
-		path   string
-	}{
-		{"POST", "/api/script/:id/sections/:section_id/regenerate"},
-		{"POST", "/api/script/cache/evict"},
-	}
-	for _, notWant := range notExpectedRoutes {
-		key := fmt.Sprintf("%s %s", notWant.method, notWant.path)
-		assert.False(t, routeMap[key], "retired route %s %s must NOT be registered (godlike/07 no-fake-availability)", notWant.method, notWant.path)
+	for key := range routeMap {
+		_, isRetired := notExpectedRoutes[key]
+		assert.False(t, isRetired,
+			"retired legacy route %q must NOT be registered (godlike/07 no-fake-availability; canonical entry is POST /api/script/generate with items[].source.type)", key)
 	}
 }
 
