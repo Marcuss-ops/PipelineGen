@@ -22,7 +22,6 @@ module_route_map:
       - POST /generate-with-images
       - POST /generate-from-catalog
       - POST /curate
-      - POST /cache/evict
       - POST /:id/sections/:section_id/regenerate
       - GET  /jobs/:job_id
       - GET  /jobs/:job_id/full

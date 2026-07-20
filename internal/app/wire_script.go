@@ -54,7 +54,7 @@
 // PR-script-deps-slim (July 2026, P1): slim form of Dependencies
 // (2 small dep bags + ClipsSearcher + AdminToken + 3 build-time
 // fields, was 22+3 fields with 12 ignored). The 12 ignored
-// ScriptFlowDeps fields (Engine, Section, CacheEviction, Image,
+// ScriptFlowDeps fields (Engine, Section, Image,
 // Realtime, Association, Voiceover, AssetTree, ClipSourceBuilder,
 // MediaCurator, Harvest, ScriptsRepo, DriveScriptsGenFolder,
 // ClipServices) are RETIRED. The corresponding local-variable
@@ -114,7 +114,7 @@ func remotionBaseURL() string {
 //
 // PR-script-deps-slim (July 2026, P1): post-slim, the function
 // no longer constructs the 12 ignored deps (Engine + Section +
-// CacheEviction + Image + Realtime + Association + Voiceover +
+// Image + Realtime + Association + Voiceover +
 // AssetTree + ClipSourceBuilder + MediaCurator + Harvest +
 // ScriptsRepo + DriveScriptsGenFolder + ClipServices). The
 // slim Dependencies is 6 fields (Generate + Jobs +

@@ -84,16 +84,21 @@ type scriptOllamaGenerator interface {
 	GenerateScript(ctx context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error)
 }
 
-// memoryGateChecker is the narrow interface satisfied by the in-package
-// memoryCache interface; the canonical fakeMemoryGate type in the test
-// suite also satisfies it directly.
+// memoryGateChecker is the narrow interface satisfied by any future
+// gemmamemory adapter exposing CheckGate; the canonical fakeMemoryGate
+// type in the test suite also satisfies it directly.
 //
-// Commit H Phase 2 (June 2026): the gemmamemory gemmamemory gate service +
+// Commit H Phase 2 (June 2026): the gemmamemory gate service +
 // MemoryCacheAdapter wrapper were removed from the cross-package
-// surface. The engine now passes nil memoryCache to the ctor; the
+// surface. The engine now passes nil memoryGateChecker to the ctor; the
 // runtime `useMemory && !skipMemory && e.memorySvc != nil` check
 // short-circuits the cache path. Local types memoryGateRequest +
 // memoryGateResult remain as the in-package narrow-type contract.
+//
+// AZIONE 5 (July 2026): the broader `memoryCache` interface (declared
+// in cache_eviction_usecase.go until that file's retirement) and its
+// compile-time identity lock are gone. The narrow shape is the
+// single canonical contract.
 type memoryGateChecker interface {
 	CheckGate(ctx context.Context, req memoryGateRequest) (*memoryGateResult, error)
 }
@@ -122,8 +127,6 @@ type memoryGateResult struct {
 
 // Compile-time assertions: concrete types satisfy the narrow interfaces.
 var _ scriptOllamaGenerator = (*ollama.Generator)(nil)
-
-var _ memoryGateChecker = (memoryCache)(nil)
 
 // EngineResult is the canonical typed output of Engine.Generate.
 // It carries the canonical ModelScriptOutputV1 produced by the

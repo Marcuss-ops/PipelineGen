@@ -45,9 +45,6 @@ canonical_services:
   - service: GenerateBatchUseCase
     constructor: NewGenerateBatchUseCase
     location: internal/app/wire_script.go
-  - service: CacheEvictionUseCase
-    constructor: NewCacheEvictionUseCase
-    location: internal/app/wire_script.go
   - service: ImageService
     constructor: buildImagesService
     location: internal/app/build_bundles_images.go

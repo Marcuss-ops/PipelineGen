@@ -19,8 +19,11 @@
 //
 // AGENT-3 (June 2026): Engine uses narrow interfaces (scriptOllamaGenerator,
 // memoryGateChecker) defined in engine.go alongside the compile-time
-// assertions that the concrete *ollama.Generator and memoryCache
-// satisfy them. Tests inject typed fakes.
+// assertions that the concrete *ollama.Generator satisfies the
+// scriptOllamaGenerator shape. Tests inject typed fakes. The legacy
+// in-package `memoryCache` interface and its compile-time identity lock
+// were retired alongside cache_eviction_usecase.go (AZIONE 5) —
+// memoryGateChecker remains the single canonical narrow contract.
 //
 // PR 13 (June 2026): removed deprecated WriteScript tests — all tests
 // now exercise Engine.Generate directly.
@@ -78,9 +81,9 @@ func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGe
 // TODO #8 (June 2026): field types lowercased to memoryGateResult /
 // memoryGateRequest (the local narrow types declared in engine.go) so
 // the fake's CheckGate method satisfies the memoryGateChecker
-// interface. The compile-time assertion in engine.go
-// (`var _ memoryGateChecker = (memoryCache)(nil)`) confirms the
-// production narrow shape.
+// interface. AZIONE 5 retired the legacy `memoryCache` compile-time
+// identity lock — memoryGateChecker is now the single canonical
+// narrow shape.
 type fakeMemoryGate struct {
 	result      *memoryGateResult
 	returnErr   error
