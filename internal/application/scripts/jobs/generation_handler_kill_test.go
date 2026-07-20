@@ -5,10 +5,12 @@
 //	         asserts zero `os.*` calls and zero `filepath.*`
 //	         calls in generation_handler.go (the handler is the
 //	         canonical owner per godlike/06 SSOT).
-//	KILL-K2: single + batch MUST be 3 SEPARATE methods on the
-//	         handler. Compile-time interface probe asserts both
-//	         HandleSingle and HandleBatch exist as distinct
-//	         receivers with the canonical signatures.
+//	KILL-K2: single + batch paths MUST be separated into distinct
+//	         executors. Compile-time interface probes assert that
+//	         singleGenerationExecutor and batchGenerationExecutor
+//	         satisfy the SingleGenerationExecutor and
+//	         BatchGenerationExecutor ports. The handler itself only
+//	         decodes the envelope and delegates to the dispatcher.
 //	KILL-K3: outcome classification treats ctx.Canceled /
 //	         context.DeadlineExceeded as OutcomeCanceled BEFORE
 //	         the generic OutcomeFailed bucket — required for
@@ -24,52 +26,27 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ─────────────────────────────────────────────────────────────────
-// KILL-K2: single + batch are 3 SEPARATE methods on the handler.
+// KILL-K2: single + batch are distinct executors.
 // ─────────────────────────────────────────────────────────────────
 
-// requireSeparateDispatch is satisfied ONLY by a struct that exposes
-// BOTH handleSingle and handleBatch as DISTINCT methods (NOT a
-// single Handle method that branches on len(items)). Compile-time
-// `var _ requireSeparateDispatch = (*GenerateJobHandler)(nil)`
-// pins the contract: if a future contributor collapses them back
-// into one Handle method, the package fails to compile.
-//
-// Method names are LOOWER-CASE because the handler's methods are
-// unexported (package-internal); the test is in the same package
-// `jobs` and may reference unexported names directly.
-type requireSeparateDispatch interface {
-	handleSingle(
-		ctx context.Context,
-		j *scriptpkg.Job,
-		env *domainScript.GenerationEnvelopeV2,
-		tools *appjobs.JobTools,
-	) (map[string]any, error)
-	handleBatch(
-		ctx context.Context,
-		j *scriptpkg.Job,
-		env *domainScript.GenerationEnvelopeV2,
-		tools *appjobs.JobTools,
-	) (map[string]any, error)
-}
-
-// Compile-time assertion: if the handler does NOT have both methods
-// as distinct receivers with matching signatures, the package fails
-// to compile. This is the KILL-K2 contract.
-var _ requireSeparateDispatch = (*GenerateJobHandler)(nil)
+// Compile-time assertions: the single and batch execution paths are
+// extracted into distinct executor types that satisfy the narrow
+// SingleGenerationExecutor / BatchGenerationExecutor ports. This
+// pins the KILL-K2 contract: the handler itself no longer contains
+// the execution bodies; they live in generation_single_executor.go
+// and generation_batch_executor.go.
+var _ SingleGenerationExecutor = (*singleGenerationExecutor)(nil)
+var _ BatchGenerationExecutor = (*batchGenerationExecutor)(nil)
 
 // TestHandle_KillK2_CompilationProbe re-states the compile-time
 // contract assertion at runtime so CI dashboards surface a
 // named-test failure instead of "build failed" if the contract
 // is ever broken.
 func TestHandle_KillK2_CompilationProbe(t *testing.T) {
-	t.Log("KILL-K2 contract held: GenerateJobHandler has handleSingle and handleBatch as distinct methods (see compile-time assertion above)")
+	t.Log("KILL-K2 contract held: single and batch executors are distinct types satisfying SingleGenerationExecutor / BatchGenerationExecutor (see compile-time assertions above)")
 }
 
 // ─────────────────────────────────────────────────────────────────

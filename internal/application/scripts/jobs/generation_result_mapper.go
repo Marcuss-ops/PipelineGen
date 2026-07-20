@@ -9,8 +9,9 @@
 //   - NO filesystem ops in this file (persistence moved to
 //     adapters/artifacts_persistence.go per KILL K1).
 //   - NO log writers (logger concerns live in generation_handler.go).
-//   - Pure struct/marshal surface: handleSingle + handleBatch call
-//     these builders, then call toMap to produce the broker
+//   - Pure struct/marshal surface: the single and batch executors
+//     (generation_single_executor.go / generation_batch_executor.go)
+//     call these builders, then call toMap to produce the broker
 //     map[string]any result.
 //
 // godlike/07 typed-error contract: every builder returns a

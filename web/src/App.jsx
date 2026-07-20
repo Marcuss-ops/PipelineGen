@@ -5,6 +5,8 @@ import Overview from './pages/Overview'
 import ContentLibrary from './pages/ContentLibrary'
 import AssetInspector from './pages/AssetInspector'
 import Jobs from './pages/Jobs'
+import JobDetail from './pages/JobDetail'
+import Script from './pages/Script'
 import Operations from './pages/Operations'
 import Login from './pages/Login'
 
@@ -72,6 +74,8 @@ function AppRoutes() {
         <Route path="/content" element={<ContentLibrary />} />
         <Route path="/content/:id" element={<AssetInspector />} />
         <Route path="/jobs" element={<Jobs />} />
+        <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route path="/scripts/:id" element={<Script />} />
         <Route path="/operations" element={<Operations />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

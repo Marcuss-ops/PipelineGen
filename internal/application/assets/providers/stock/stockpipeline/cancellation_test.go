@@ -54,31 +54,24 @@ import (
 // "ctx-aware ffmpeg invocation" and this stub pins the same
 // contract at the step level.
 //
-// Race note: didEnter/didExit are written from the orchestrator's
-// goroutine and read from the test goroutine after `<-done` channel
-// close. Per Go memory model, channel close is a happens-before
-// barrier so post-close reads are safe; pre-close polling via
-// `require.Eventually` is technically a data race under `-race`
-// but the bool is published-once so the race detector reports
-// it as benign. Underlying contract is unchanged: the test asserts
-// the canceller entered Run, then exited on ctx.Done() within a
-// bounded budget; the channel-close sync guarantees the read is
-// observable on the test side.
+// blockingStep uses atomic.Bool for didEnter/didExit so tests can
+// poll the flags safely under the race detector. The flags are
+// published-once but read concurrently via require.Eventually.
 type blockingStep struct {
 	name     string
-	didEnter *bool
-	didExit  *bool
+	didEnter *atomic.Bool
+	didExit  *atomic.Bool
 }
 
 func (s *blockingStep) Name() string { return s.name }
 
 func (s *blockingStep) Run(ctx context.Context, _ StepRunner) error {
 	if s.didEnter != nil {
-		*s.didEnter = true
+		s.didEnter.Store(true)
 	}
 	<-ctx.Done()
 	if s.didExit != nil {
-		*s.didExit = true
+		s.didExit.Store(true)
 	}
 	return ctx.Err() // surfaces context.Canceled; orchestrator aborts cleanly
 }
@@ -138,8 +131,8 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 
 	// Block-tracking flags for the canceller step.
 	var (
-		blockingEnter bool
-		blockingExit  bool
+		blockingEnter atomic.Bool
+		blockingExit  atomic.Bool
 	)
 	var composeChunkCount int32
 	dispatchSteps := []Step{
@@ -168,7 +161,7 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 	}()
 
 	// Give blockingStep time to enter (sleep covers small scheduler slack).
-	require.Eventually(t, func() bool { return blockingEnter }, 2*time.Second, 20*time.Millisecond,
+	require.Eventually(t, func() bool { return blockingEnter.Load() }, 2*time.Second, 20*time.Millisecond,
 		"blockingStep must enter Run within 2s")
 
 	// Trigger cancel; the deleted-budget pin is 500ms (since the
@@ -190,8 +183,8 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 	}
 
 	// Step exit assertions.
-	assert.True(t, blockingEnter, "blockingStep must have entered Run")
-	assert.True(t, blockingExit, "blockingStep must have exited within budget (cancel observed)")
+	assert.True(t, blockingEnter.Load(), "blockingStep must have entered Run")
+	assert.True(t, blockingExit.Load(), "blockingStep must have exited within budget (cancel observed)")
 
 	// stepStore shape: pre-Completed "stock.plan" + a Pending row for
 	// "stock.extract_clips" (the canceller step; MarkStarted ran,
@@ -259,8 +252,8 @@ func TestOrchestrator_CtxCancellation_DoesNotRunSubsequentSteps(t *testing.T) {
 	jobID := "cancel-stock-test-2"
 
 	// Track entry into the blocking step + the two subsequent steps.
-	var blockingEntered bool
-	var blockingExited bool
+	var blockingEntered atomic.Bool
+	var blockingExited atomic.Bool
 	var afterBlockingCount1, afterBlockingCount2 int32
 
 	dispatchSteps := []Step{
@@ -290,7 +283,7 @@ func TestOrchestrator_CtxCancellation_DoesNotRunSubsequentSteps(t *testing.T) {
 	// dispatch loop: the canceller may never enter, leading to a
 	// false positive on the "subsequent steps don't run" assertion
 	// (they don't run because nothing ran, not because of cancel).
-	require.Eventually(t, func() bool { return blockingEntered }, 2*time.Second, 20*time.Millisecond,
+	require.Eventually(t, func() bool { return blockingEntered.Load() }, 2*time.Second, 20*time.Millisecond,
 		"blockingStep must enter Run within 2s before parent cancel")
 	parentCancel()
 
@@ -302,8 +295,8 @@ func TestOrchestrator_CtxCancellation_DoesNotRunSubsequentSteps(t *testing.T) {
 		t.Fatal("RunResilient did not return within 2s of cancel")
 	}
 
-	assert.True(t, blockingEntered, "blockingStep Run entered (per its didEnter flag)")
-	assert.True(t, blockingExited, "blockingStep Run exited (per its didExit flag)")
+	assert.True(t, blockingEntered.Load(), "blockingStep Run entered (per its didEnter flag)")
+	assert.True(t, blockingExited.Load(), "blockingStep Run exited (per its didExit flag)")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&afterBlockingCount1),
 		"stock.extract_clips MUST NOT run after blockingStep returns ctx.Err() (subset abort signal)")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&afterBlockingCount2),
@@ -359,7 +352,7 @@ func TestOrchestrator_CtxCancellation_PreservesPreCompletedArtifacts(t *testing.
 	// pinned AFTER the pre-Completed step and BEFORE the stage_sources
 	// already-completed step would re-run (which it shouldn't anyway
 	// per ErrStepAlreadyCompleted CAS).
-	var didEnterBlocking bool
+	var didEnterBlocking atomic.Bool
 	dispatchSteps := []Step{
 		&stubRecorderStep{name: "stock.plan", count: new(int32)},
 		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
@@ -380,7 +373,7 @@ func TestOrchestrator_CtxCancellation_PreservesPreCompletedArtifacts(t *testing.
 		defer close(done)
 		_, _ = o.RunResilient(parentCtx, &RunInput{})
 	}()
-	require.Eventually(t, func() bool { return didEnterBlocking }, 2*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return didEnterBlocking.Load() }, 2*time.Second, 20*time.Millisecond)
 	parentCancel()
 	<-done
 
