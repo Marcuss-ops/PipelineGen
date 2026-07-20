@@ -205,7 +205,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 
 		// Cut all clips of the source group in a single batch.
 		jobs := make([]CutJob, len(groupPlans))
-		workspaceDir, err := filepath.Abs(filepath.Join("data", "stock", "jobs", runner.JobID(), "extracted"))
+		workspaceDir, err := filepath.Abs(filepath.Join("data", "stock", "workspaces", runner.JobID(), "extracted"))
 		if err != nil {
 			return fmt.Errorf("orchestrator: stock.extract_clips: resolve persistent workspace: %w", err)
 		}
@@ -279,24 +279,30 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			if writer != nil {
 				// PR-STOCK-TIMESTAMP-CLIPS Front 4 (July 2026):
 				// rich-asset write — compute SHA256 fail-closed
-				// (P0 2.4 hardening: a malformed digest short-circuits
-				// at the cut step rather than silently reaching the
-				// indexer which would terminal-reject it), then build
+			// (P0 2.4 hardening: a malformed digest short-circuits
+			// at the cut step rather than silently reaching the
+			// indexer which would terminal-reject it), then build
 				// the canonical 10-field asset via buildRichStockAsset
 				// (sister file step_extract_clips_assets.go) and pass
 				// the hash to WriteAndEnqueue (replaces the prior ""
 				// literal).
-				hash, hashErr := job.ComputeSHA256(item.OutputPath)
-				if hashErr != nil {
-					if runner.Log() != nil {
-						runner.Log().Error("orchestrator: stock.extract_clips: SHA256 compute failed — aborting rich-asset write",
-							zap.String("source_id", sourceID),
-							zap.Int("clip_index", clipIdx),
-							zap.String("output_path", item.OutputPath),
-							zap.Error(hashErr))
+				// Fase 1: reuse the hash already computed by the cutter
+				// during validation to avoid hashing the clip twice.
+				hash := item.SHA256Hex
+				if hash == "" {
+					var hashErr error
+					hash, hashErr = job.ComputeSHA256(item.OutputPath)
+					if hashErr != nil {
+						if runner.Log() != nil {
+							runner.Log().Error("orchestrator: stock.extract_clips: SHA256 compute failed — aborting rich-asset write",
+								zap.String("source_id", sourceID),
+								zap.Int("clip_index", clipIdx),
+								zap.String("output_path", item.OutputPath),
+								zap.Error(hashErr))
+						}
+						return fmt.Errorf("orchestrator: stock.extract_clips: chunk %d (artifact=%s) SHA256 compute: %w",
+							clipIdx, plan.OutputLogicalID, hashErr)
 					}
-					return fmt.Errorf("orchestrator: stock.extract_clips: chunk %d (artifact=%s) SHA256 compute: %w",
-						clipIdx, plan.OutputLogicalID, hashErr)
 				}
 
 				clip := buildRichStockAsset(plan, sourceIdx, clipIdx, item.OutputPath, hash)

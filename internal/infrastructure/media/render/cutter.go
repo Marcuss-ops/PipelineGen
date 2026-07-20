@@ -26,9 +26,12 @@ package render
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"go.uber.org/zap"
@@ -36,6 +39,12 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
+
+// persistentStockWorkspace is the on-disk root used by the stock
+// pipeline for durable per-job clip workspaces. Files under this
+// prefix are trusted to be resumable and are validated with ffprobe
+// before reuse.
+const persistentStockWorkspace = "/data/stock/workspaces/"
 
 // FFmpegCutter is the canonical concrete implementation of the
 // VideoCutter port. It wraps the existing ffmpeg.Processor (kept as
@@ -100,6 +109,84 @@ func (c *FFmpegCutter) WithRunner(r ffmpeg.ProcessRunner) *FFmpegCutter {
 	return c
 }
 
+// partPath returns the transient .part path for a final output path.
+// FFmpeg writes here first; after validation the file is atomically
+// renamed to the final path. The .part marker is inserted before the
+// file extension so ffmpeg can still infer the container format from
+// the original extension (e.g. clip.mp4 -> clip.part.mp4).
+func partPath(final string) string {
+	// Split the path so the .part marker is inserted before the file
+	// extension, not somewhere in a parent directory name.
+	base := filepath.Base(final)
+	dir := filepath.Dir(final)
+	if i := strings.LastIndex(base, "."); i > 0 {
+		return filepath.Join(dir, base[:i]+".part"+base[i:])
+	}
+	return final + ".part"
+}
+
+// sha256File returns the hex-encoded SHA-256 digest of the file at path.
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("sha256 open: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("sha256 hash: %w", err)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// validateProducedClip validates a produced clip file, returns its
+// ffprobe-reported duration (seconds), its SHA-256 hex digest, and an
+// error if the file is not a valid video clip.
+//
+// Fase 1 contract: a clip is considered valid only when:
+//   - the file exists and is non-empty;
+//   - ffprobe can parse it;
+//   - it contains at least one video stream;
+//   - its duration is positive.
+//
+// When probeAfterCut is disabled, ffprobe is skipped and only the
+// existence/size/hash checks run. This supports test fixtures and
+// watcher paths that intentionally do not validate.
+func (c *FFmpegCutter) validateProducedClip(ctx context.Context, path string) (durationSec float64, sha string, err error) {
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		return 0, "", fmt.Errorf("clip stat failed: %w", statErr)
+	}
+	if info.Size() <= 0 {
+		return 0, "", errors.New("clip is empty")
+	}
+
+	if c.probeAfterCut {
+		probeInfo, probeErr := c.proc.Probe(ctx, path)
+		if probeErr != nil {
+			return 0, "", fmt.Errorf("clip ffprobe validation failed: %w", probeErr)
+		}
+		if probeInfo == nil {
+			return 0, "", errors.New("clip ffprobe returned nil info")
+		}
+		if !probeInfo.HasVideo {
+			return 0, "", errors.New("clip has no video stream")
+		}
+		if probeInfo.Duration <= 0 {
+			return 0, "", errors.New("clip has non-positive duration")
+		}
+		durationSec = probeInfo.Duration.Seconds()
+	}
+
+	sha, hashErr := sha256File(path)
+	if hashErr != nil {
+		return 0, "", fmt.Errorf("clip sha256 failed: %w", hashErr)
+	}
+
+	return durationSec, sha, nil
+}
+
 // toInternalCutJobs adapts the neutral stockpipeline.CutJob list to the
 // ffmpeg package's CutJob struct (which the existing Processor expects).
 func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {
@@ -118,14 +205,15 @@ func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {
 // first; on failure, it falls back to per-clip sequential cuts and
 // returns the union of successfully-produced clip paths.
 //
-// FASE 2.4 contract:
+// FASE 2.4 / Fase 1 contract:
 //   - Returns CutBatchResult with len(Items) == len(req.Jobs) ALWAYS.
-//   - Each Item carries Status / SizeBytes / DurationSec / Err
-//     according to the per-job outcome.
+//   - Each Item carries Status / SizeBytes / DurationSec /
+//     SHA256Hex / Err according to the per-job outcome.
+//   - Clips are written to a transient .part file, validated, and
+//     atomically renamed to the final deterministic path.
 //   - ffprobe runs on every produced clip (when probeAfterCut=true):
-//     Status flips from Succeeded to Validated on success; failures
-//     keep Status=Succeeded with Err set (soft-fail — file is on disk
-//     and ffprobe is informational, not blocking).
+//     a clip that fails validation is marked Failed and removed so
+//     it can be retried, never reused as a corrupt artifact.
 //   - Top-level err is non-nil only when EVERY job failed; partial-
 //     success batches return nil error so the caller iterates Items
 //     to partition succeeded / failed.
@@ -152,20 +240,50 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 
 	// Resume interrupted stock jobs without recreating clips that are
 	// already present at their deterministic output paths. The original
-	// item ordering is preserved; only missing files reach FFmpeg.
+	// item ordering is preserved; only missing or invalid files reach
+	// FFmpeg.
 	pendingJobs := make([]stockpipeline.CutJob, 0, len(req.Jobs))
 	pendingToOrig := make([]int, 0, len(req.Jobs))
 	for origIdx, j := range req.Jobs {
 		info, statErr := os.Stat(j.OutputPath)
-		if statErr == nil && info.Size() > 0 && strings.Contains(j.OutputPath, "/data/stock/jobs/") &&
-			strings.Contains(j.OutputPath, "/extracted/stock_cut_") {
-			items[origIdx].OutputPath = j.OutputPath
-			items[origIdx].SizeBytes = info.Size()
-			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
+		if statErr != nil || info.Size() <= 0 {
+			pendingJobs = append(pendingJobs, j)
+			pendingToOrig = append(pendingToOrig, origIdx)
 			continue
 		}
-		pendingJobs = append(pendingJobs, j)
-		pendingToOrig = append(pendingToOrig, origIdx)
+		// Only reuse files that live in the persistent stock workspace
+		// and follow the expected naming convention.
+		if !strings.Contains(j.OutputPath, persistentStockWorkspace) ||
+			!strings.Contains(j.OutputPath, "/extracted/stock_cut_") {
+			pendingJobs = append(pendingJobs, j)
+			pendingToOrig = append(pendingToOrig, origIdx)
+			continue
+		}
+
+		// Validate the existing file before trusting it: empty or
+		// corrupt leftovers from a previous interrupted run must be
+		// regenerated.
+		durationSec, sha, validateErr := c.validateProducedClip(ctx, j.OutputPath)
+		if validateErr != nil {
+			c.log.Warn("stock extractor: existing clip invalid, regenerating",
+				zap.String("output_path", j.OutputPath),
+				zap.Error(validateErr))
+			_ = os.Remove(j.OutputPath)
+			_ = os.Remove(partPath(j.OutputPath))
+			pendingJobs = append(pendingJobs, j)
+			pendingToOrig = append(pendingToOrig, origIdx)
+			continue
+		}
+
+		items[origIdx].OutputPath = j.OutputPath
+		items[origIdx].SizeBytes = info.Size()
+		items[origIdx].DurationSec = durationSec
+		items[origIdx].SHA256Hex = sha
+		if c.probeAfterCut {
+			items[origIdx].Status = stockpipeline.CutItemStatusValidated
+		} else {
+			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
+		}
 	}
 
 	if len(pendingJobs) == 0 {
@@ -292,6 +410,15 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	internalJobs := toInternalCutJobs(validJobs)
 	producedIdx := make([]int, 0, len(internalJobs)) // indices into items where a file is on disk
 
+	// Build .part paths for atomic output. FFmpeg writes to the
+	// transient .part file; after validation we rename to the final
+	// deterministic path.
+	finalOutputs := make([]string, len(internalJobs))
+	for i, j := range internalJobs {
+		finalOutputs[i] = j.Output
+		internalJobs[i].Output = partPath(j.Output)
+	}
+
 	// ── Attempt 1: single-pass batch cut ──────────────────────────────
 	logger.Info("stock extractor: single-pass batch cut starting",
 		zap.Int("source_index", req.SourceIdx),
@@ -306,20 +433,46 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	)
 
 	if batchErr == nil {
-		// Batch succeeded — verify on disk + record produced indices.
+		// Batch succeeded — validate each .part, rename to final,
+		// and record produced indices.
 		for i, j := range internalJobs {
 			origIdx := validToOrig[i]
-			if info, statErr := os.Stat(j.Output); statErr == nil {
-				producedIdx = append(producedIdx, origIdx)
-				items[origIdx].OutputPath = j.Output
-				items[origIdx].SizeBytes = info.Size()
-				items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
-			} else {
+			durationSec, sha, validateErr := c.validateProducedClip(ctx, j.Output)
+			if validateErr != nil {
+				logger.Warn("stock extractor: batch clip validation failed",
+					zap.Int("source_index", req.SourceIdx),
+					zap.Int("clip_index", i),
+					zap.String("part_path", j.Output),
+					zap.Error(validateErr))
 				items[origIdx].Status = stockpipeline.CutItemStatusFailed
-				items[origIdx].Err = fmt.Errorf("batch reported success but file missing: %w", statErr)
+				items[origIdx].Err = validateErr
+				_ = os.Remove(j.Output)
+				continue
+			}
+			finalPath := finalOutputs[i]
+			if err := os.Rename(j.Output, finalPath); err != nil {
+				items[origIdx].Status = stockpipeline.CutItemStatusFailed
+				items[origIdx].Err = fmt.Errorf("rename %s -> %s: %w", j.Output, finalPath, err)
+				_ = os.Remove(j.Output)
+				continue
+			}
+			info, statErr := os.Stat(finalPath)
+			if statErr != nil {
+				items[origIdx].Status = stockpipeline.CutItemStatusFailed
+				items[origIdx].Err = fmt.Errorf("stat final clip: %w", statErr)
+				continue
+			}
+			producedIdx = append(producedIdx, origIdx)
+			items[origIdx].OutputPath = finalPath
+			items[origIdx].SizeBytes = info.Size()
+			items[origIdx].DurationSec = durationSec
+			items[origIdx].SHA256Hex = sha
+			if c.probeAfterCut {
+				items[origIdx].Status = stockpipeline.CutItemStatusValidated
+			} else {
+				items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
 			}
 		}
-		c.runProbe(ctx, logger, items, producedIdx)
 		logger.Info("stock extractor: single-pass batch cut completed",
 			zap.Int("source_index", req.SourceIdx),
 			zap.Int("clips_produced", len(producedIdx)),
@@ -336,6 +489,9 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	var lastErr error
 	for i, j := range internalJobs {
 		origIdx := validToOrig[i]
+		finalPath := finalOutputs[i]
+		partFile := j.Output // internalJobs were already rewritten to .part
+
 		select {
 		case <-ctx.Done():
 			// Context cancelled: mark every still-unprocessed item as
@@ -350,8 +506,14 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 			return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, ctx.Err()
 		default:
 		}
+
+		// Ensure no stale final or .part file from a previous run
+		// remains.
+		_ = os.Remove(finalPath)
+		_ = os.Remove(partFile)
+
 		cutErr := c.proc.CutReencode(
-			ctx, req.SourcePath, j.Output,
+			ctx, req.SourcePath, partFile,
 			ffmpeg.FormatSec(j.StartSec), ffmpeg.FormatSec(j.EndSec),
 			req.NoAudio, req.Codec, req.Preset, req.CRF,
 		)
@@ -366,91 +528,54 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 			lastErr = cutErr
 			continue
 		}
-		if info, statErr := os.Stat(j.Output); statErr == nil {
-			items[origIdx].OutputPath = j.Output
-			items[origIdx].SizeBytes = info.Size()
-			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
-			producedIdx = append(producedIdx, origIdx)
-		} else {
+
+		durationSec, sha, validateErr := c.validateProducedClip(ctx, partFile)
+		if validateErr != nil {
+			logger.Warn("stock extractor: fallback clip validation failed",
+				zap.Int("source_index", req.SourceIdx),
+				zap.Int("clip_index", i),
+				zap.String("part_path", partFile),
+				zap.Error(validateErr))
 			items[origIdx].Status = stockpipeline.CutItemStatusFailed
-			items[origIdx].Err = fmt.Errorf("fallback reported success but file missing: %w", statErr)
-			lastErr = statErr
+			items[origIdx].Err = validateErr
+			lastErr = validateErr
+			_ = os.Remove(partFile)
+			continue
+		}
+
+		if err := os.Rename(partFile, finalPath); err != nil {
+			items[origIdx].Status = stockpipeline.CutItemStatusFailed
+			items[origIdx].Err = fmt.Errorf("rename %s -> %s: %w", partFile, finalPath, err)
+			lastErr = items[origIdx].Err
+			_ = os.Remove(partFile)
+			continue
+		}
+
+		info, statErr := os.Stat(finalPath)
+		if statErr != nil {
+			items[origIdx].Status = stockpipeline.CutItemStatusFailed
+			items[origIdx].Err = fmt.Errorf("stat final clip: %w", statErr)
+			lastErr = items[origIdx].Err
+			continue
+		}
+
+		producedIdx = append(producedIdx, origIdx)
+		items[origIdx].OutputPath = finalPath
+		items[origIdx].SizeBytes = info.Size()
+		items[origIdx].DurationSec = durationSec
+		items[origIdx].SHA256Hex = sha
+		if c.probeAfterCut {
+			items[origIdx].Status = stockpipeline.CutItemStatusValidated
+		} else {
+			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
 		}
 	}
-	c.runProbe(ctx, logger, items, producedIdx)
 
 	logger.Info("stock extractor: per-clip fallback completed",
 		zap.Int("source_index", req.SourceIdx),
 		zap.Int("clips_produced", len(producedIdx)),
 	)
 	return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items, lastErr)
-}
-
-// runProbe runs the ffprobe validation pass on every produced clip,
-// flipping Status from Succeeded to Validated on success. Probe
-// failures flip Status to ProbeFailed (with Err set) so downstream
-// SuccessfulItems partitions correctly.
-//
-// Concurrent: NOT safe — Cut callers do not parallelise per-job
-// (the ffmpeg batch-then-fallback ladder is sequential). If a
-// future port re-introduces parallel probes, this method needs
-// a per-clip goroutine + WaitGroup to avoid blocking on the probe
-// timeout. Today's call-surface stays sequential for simplicity.
-func (c *FFmpegCutter) runProbe(ctx context.Context, logger *zap.Logger, items []stockpipeline.CutItemResult, producedIdx []int) {
-	if !c.probeAfterCut {
-		return
-	}
-	// Honuor the upstream context — after a long batch +
-	// per-clip fallback path, the parent ctx may already be
-	// cancelled; sequential probes that ignore ctx could block
-	// for up to 2*time.Minute per clip before noticing the
-	// cancel. Bail fast so the broker's job-cancel path is
-	// responsive regardless of probe queue depth.
-	select {
-	case <-ctx.Done():
-		for _, i := range producedIdx {
-			it := &items[i]
-			if it.Status == stockpipeline.CutItemStatusSucceeded {
-				it.Status = stockpipeline.CutItemStatusProbeFailed
-				it.Err = fmt.Errorf("ffprobe validation cancelled: %w", ctx.Err())
-			}
-		}
-		return
-	default:
-	}
-	for _, i := range producedIdx {
-		it := &items[i]
-		info, err := c.proc.Probe(ctx, it.OutputPath)
-		if err != nil {
-			// Soft-fail: surface on the item but mark ProbeFailed
-			// so SuccessfulItems still includes it (the file IS
-			// on disk and downstream renderChunk can consume it)
-			// while AllSucceeded() reports it as a non-strict
-			// success for dashboards that partition
-			// "fully validated" from "playable but unvalidated".
-			logger.Warn("stock extractor: ffprobe validation failed for clip",
-				zap.String("output_path", it.OutputPath),
-				zap.String("job_id", it.JobID),
-				zap.Error(err),
-			)
-			it.Status = stockpipeline.CutItemStatusProbeFailed
-			it.Err = fmt.Errorf("ffprobe validation failed: %w", err)
-			continue
-		}
-		// Populate DurationSec; flip to Validated when the
-		// ffprobe-reported duration is a positive number. Zero
-		// or negative durations stay at ProbeFailed (the file
-		// is on disk but unvalidated).
-		if info != nil {
-			it.DurationSec = info.Duration.Seconds()
-			if it.DurationSec > 0 {
-				it.Status = stockpipeline.CutItemStatusValidated
-			} else {
-				it.Status = stockpipeline.CutItemStatusProbeFailed
-				it.Err = errors.New("ffprobe reported zero/negative duration")
-			}
-		}
-	}
 }
 
 // batchErr returns the top-level batch error for the Cut call.
