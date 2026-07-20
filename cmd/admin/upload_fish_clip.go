@@ -13,6 +13,7 @@ import (
 )
 
 const fishOutputFolderID = "1Kssuh0eQ7Wmg8uMg29aI7fShXSLCaw3x"
+const fishClipDriveID = ""
 
 func runUploadFishClip(args []string) error {
 	fs := flag.NewFlagSet("upload-fish-clip", flag.ContinueOnError)
