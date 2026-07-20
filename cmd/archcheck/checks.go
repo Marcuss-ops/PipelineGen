@@ -61,6 +61,12 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		}},
 		{"percheck_binder_scene_field_writes", scan.ScanBinderSceneFieldWrites},
 		{"percheck_qdrant_index_import_ban", scan.ScanQdrantIndexImportBan},
+		{"percheck_api_policy_literals", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanAPIPolicyLiterals(root, pol, r, productionOnly)
+		}},
+		{"percheck_pipeline_map_carrier_ban", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanPipelineMapCarrierBan(root, pol, r, productionOnly)
+		}},
 		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
 		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
