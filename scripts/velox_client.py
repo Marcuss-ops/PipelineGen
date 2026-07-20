@@ -6,15 +6,43 @@
 # semantics. Designed for the google-accounting Python sidecar and any
 # other Python worker that needs to enqueue jobs over HTTP.
 #
-# Usage (sync, idempotent):
+# Usage (sync, idempotent — single text item, with scene images):
 #     from velox_client import VeloxClient
 #     client = VeloxClient("https://pipeline.example.com", os.environ["VELOX_WORKER_TOKEN"])
 #     resp = client.submit_async(
-#         "api/script/generate-with-images",
-#         {"topic": "Hello world", "sentences_per_image": 6},
+#         "api/script/generate",
+#         {
+#             "version": 2,
+#             "preset": "custom",
+#             "items": [
+#                 {
+#                     "id": "item-1",
+#                     "title": "Hello world",
+#                     "language": "en",
+#                     "source": {"type": "text", "topic": "Hello world"},
+#                     "script_params": {"target_words": 1500},
+#                     "output": {"generate_scene_images": True},
+#                 }
+#             ],
+#         },
 #         req_id="req-2026-06-16-001",
 #     )
 #     print(resp["job_id"])  # → "job_..."
+#
+# All script generation now flows through the single canonical
+# `POST /api/script/generate` endpoint with the GenerationEnvelopeV2
+# shape (version: 2). The legacy per-source endpoints
+# (`/api/script/generate-with-images`, `/api/script/generate-from-clips`,
+# `/api/script/generate-from-catalog`, `/api/script/curate`) are retired;
+# clients must declare the source under `items[].source.type` and the
+# output flags under `items[].output`. See architecture/current.yaml
+# for the deprecation ticket.
+#
+# Note: the legacy `sentences_per_image` integer (per-image density) is
+# NOT a first-class field in the V2 envelope. Target word length lives
+# under `items[].script_params.target_words`; per-scene image density
+# is owned by the scene-synthesis postprocessor and tuned post-submit
+# (see architecture/capability_inventory.yaml#scene-synthesis).
 #
 # Usage (async polling loop):
 #     while True:
