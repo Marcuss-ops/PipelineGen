@@ -270,6 +270,11 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	// HIGH #7 (July 2026): construct QdrantHealthHandler for /qdrant/live
 	// and /qdrant/ready. nil-safe when Qdrant is disabled.
+	//
+	// Sprint 3.4 step1 (godlike/06 SSOT — single composition root):
+	// the adapter qdrantEndpointAdapter wires the 3 infra types into the
+	// systemhealth.QdrantEndpointPort; the handler (api/transport) consumes
+	// ONLY the port — no infra imports reach the api layer.
 	var qdrantHealth any
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
 		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
@@ -278,12 +283,13 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
 			embedder = search.NewTextEmbedderAdapter(ollamaEmb)
 		}
-		qdrantHealth = transport.NewQdrantHealthHandler(
+		qdrantEndpointPort := newQdrantEndpointAdapter(
 			root.Process.QdrantHealthProbe,
 			root.Process.CollectionManager,
 			root.Process.QdrantSearcher,
 			embedder,
 		)
+		qdrantHealth = transport.NewQdrantHealthHandler(qdrantEndpointPort)
 	}
 
 	return &AppDeps{

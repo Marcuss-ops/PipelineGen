@@ -162,4 +162,3 @@ internal/api/assets/clips/ingest.go
 internal/api/assets/clips/nonops/handler.go
 internal/api/assets/clips/ops.go
 internal/api/assets/clips/search.go
-internal/api/transport/qdrant_health.go
