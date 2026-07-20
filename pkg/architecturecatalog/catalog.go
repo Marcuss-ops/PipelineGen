@@ -50,11 +50,32 @@ type CurrentEntry struct {
 	CrossRefs       map[string]string `yaml:"cross_refs,omitempty"`
 }
 
+// Category is the doctrinal classification of an active issue's root cause.
+// Per the Sprint 4.1 reconciliation: every active issue MUST carry exactly one
+// of these values so the architecture catalog can be triaged by axis (Code
+// defect / Operational environment missing / Live deployment stale /
+// Credential not provisioned) instead of by severity alone. Severity
+// preserves the within-axis priority.
+const (
+	CategoryCodeDefect                    = "code_defect"
+	CategoryOperationalEnvironmentMissing = "operational_environment_missing"
+	CategoryLiveDeploymentStale           = "live_deployment_stale"
+	CategoryCredentialNotProvisioned      = "credential_not_provisioned"
+)
+
+var validCategories = map[string]struct{}{
+	CategoryCodeDefect:                    {},
+	CategoryOperationalEnvironmentMissing: {},
+	CategoryLiveDeploymentStale:           {},
+	CategoryCredentialNotProvisioned:      {},
+}
+
 type IssueEntry struct {
 	ID               string   `yaml:"id"`
 	Title            string   `yaml:"title"`
 	Status           string   `yaml:"status"`
 	Severity         string   `yaml:"severity"`
+	Category         string   `yaml:"category"`
 	OwnerCapability  string   `yaml:"owner_capability"`
 	FollowUp         []string `yaml:"follow_up"`
 	EvidenceFilename string   `yaml:"evidence_filename"`
@@ -133,6 +154,12 @@ func (c *Catalog) Validate() error {
 		default:
 			return fmt.Errorf("%s %q has invalid severity %q", where, e.ID, e.Severity)
 		}
+		if strings.TrimSpace(e.Category) == "" {
+			return fmt.Errorf("%s %q requires category (one of: code_defect, operational_environment_missing, live_deployment_stale, credential_not_provisioned)", where, e.ID)
+		}
+		if _, ok := validCategories[e.Category]; !ok {
+			return fmt.Errorf("%s %q has invalid category %q (allowed: code_defect, operational_environment_missing, live_deployment_stale, credential_not_provisioned)", where, e.ID, e.Category)
+		}
 		if strings.TrimSpace(e.Title) == "" || strings.TrimSpace(e.OwnerCapability) == "" || len(e.FollowUp) == 0 || strings.TrimSpace(e.TrackingIssue) == "" {
 			return fmt.Errorf("%s %q requires title, owner_capability, follow_up and tracking_issue", where, e.ID)
 		}
@@ -200,6 +227,7 @@ func (c *Catalog) RenderIssues() ([]byte, error) {
 		fmt.Fprintf(&b, "    title: %s\n", yamlString(e.Title))
 		fmt.Fprintf(&b, "    status: %s\n", yamlString(e.Status))
 		fmt.Fprintf(&b, "    severity: %s\n", yamlString(e.Severity))
+		fmt.Fprintf(&b, "    category: %s\n", yamlString(e.Category))
 		fmt.Fprintf(&b, "    owner_capability: %s\n", yamlString(e.OwnerCapability))
 		b.WriteString("    follow_up:\n")
 		for _, followUp := range e.FollowUp {

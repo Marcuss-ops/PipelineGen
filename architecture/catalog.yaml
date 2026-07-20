@@ -4,20 +4,12 @@ current:
   status: in_progress
   owner: architecture-governance
   deadline: '2026-09-15T00:00:00Z'
-  rationale: Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history.
+  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); the remaining tracked ticket in THIS umbrella is PRE-EXISTING-13. PRE-EXISTING-15 and PRE-EXISTING-16 are tracked as STANDALONE active issues (not under any current umbrella); their umbrella-level blocking relationship lives in architecture policy.yaml (wave_qdrant_005d_hygiene.blocked_by for -15) and the godlike doc recreation surface (for -16) respectively."
   count:
     baseline_initial: 9
-    current: 5
+    current: 1
     target_zero: 0
   follow_up_tickets:
-  - id: PRE-EXISTING-1-WAL-PRAGMAS
-    note: Restore the SQLite pragma contract.
-  - id: PRE-EXISTING-2-INTERNAL-APP-COMPOSITION
-    note: Close the remaining composition-root test failures.
-  - id: PRE-EXISTING-7-USECASE-TRANSLATION
-    note: Restore the missing-translation warning path.
-  - id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
-    note: Restore segment_topics fingerprint sensitivity.
   - id: PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT
     note: Close the plaintext source-enrichment regression.
   cross_refs:
@@ -128,6 +120,7 @@ issues:
   title: "Node scraper not running — PR-LIVE-VERIFY dry-run cannot probe /health"
   status: open
   severity: p0
+  category: operational_environment_missing
   owner_capability: "node-scraper / artlist_server.js"
   follow_up:
     - "Bring up the Node.js sidecar via `node node-scraper/artlist_server.js` in the dev environment with CHROME_EXECUTABLE=/usr/bin/google-chrome + ARTLIST_SCRAPER_BIND=127.0.0.1 + ARTLIST_SCRAPER_PORT=9123."
@@ -141,6 +134,7 @@ issues:
   title: "Velox server /ready does not report status=ready — operator preflight gate fails"
   status: open
   severity: p0
+  category: code_defect
   owner_capability: "internal/api/server (health/ready handler)"
   follow_up:
     - "Confirm /ready response shape: `curl -s http://127.0.0.1:8000/ready | jq .` — look for top-level `.status` field."
@@ -154,6 +148,7 @@ issues:
   title: "VELOX_DRIVE_ARTLIST_ROOT unset — Drive target folder is non-reproducible"
   status: open
   severity: p1
+  category: operational_environment_missing
   owner_capability: "internal/platform/config (ExternalConfig)"
   follow_up:
     - "Set VELOX_DRIVE_ARTLIST_ROOT to a known dedicated folder (e.g. `/Velox-Live-Verify`) in the dev environment's .env + CI secrets."
@@ -167,6 +162,7 @@ issues:
   title: "VELOX_ADMIN_TOKEN not provisioned in dev / CI — preflight gate refuses empty token"
   status: open
   severity: p1
+  category: credential_not_provisioned
   owner_capability: "internal/platform/auth (admin token bootstrap)"
   follow_up:
     - "Generate VELOX_ADMIN_TOKEN via the canonical scripts/tools/generate_drive_token.py analog (or scripts/tools/rotate_token.sh). Persist to dev .env + CI secrets (NEVER commit)."
@@ -180,6 +176,7 @@ issues:
   title: "Drive OAuth credentials not provisioned — Drive-issuable requests cannot authorize"
   status: open
   severity: p0
+  category: credential_not_provisioned
   owner_capability: "internal/infrastructure/drive (Drive SDK loader)"
   follow_up:
     - "Provision a Drive service-account JSON OR OAuth refresh token via the canonical scripts/tools/ path (per AGENTS.md Operational rules: NEVER commit credentials, only env path + .gitignore gates)."
@@ -194,6 +191,7 @@ issues:
   title: The local Go environment can report false missing symbols after split-file changes.
   status: open
   severity: p1
+  category: operational_environment_missing
   owner_capability: internal/infrastructure/database/sqlite/assets
   follow_up:
   - Reproduce after clearing build and test caches.
@@ -202,81 +200,11 @@ issues:
   opened_date: '2026-07-12'
   tracking_issue: split-file compilation environment integrity
 
-- id: "PRE-EXISTING-1-WAL-PRAGMAS"
-  title: "TestWalPragmas_PreservesAllThreePragmas failing on internal/infrastructure/database/sqlite/pool_test.go:132 (busy_timeout + synchronous pragmas missing)"
-  status: open
-  severity: p2
-  owner_capability: "internal/infrastructure/database/sqlite/pool_test.go::TestWalPragmas_PreservesAllThreePragmas"
-  follow_up:
-    - "Run pre-fix diagnostic: `go test -v ./internal/infrastructure/database/sqlite -run TestWalPragmas_PreservesAllThreePragmas -count=1` — capture exact failure trace + which pragmas are missing."
-    - "Verify production pool at internal/infrastructure/database/sqlite/pool.go applies busy_timeout + synchronous pragmas at Open time; if not, add them."
-    - "Verify the test assertion expects exactly 1 occurrence per pragma; if both production + test are aligned but expected != actual, fix the assertion to match production behavior."
-    - "Re-run `make verify-main` post-fix; expected pre-fix FAIL → post-fix PASS on this entry's surface."
-  evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/06 SSOT carry-forward discipline; ratified by commit 9 ship gate"
-
-- id: "PRE-EXISTING-2-INTERNAL-APP-COMPOSITION"
-  title: "Multiple internal/app composition tests failing (TestRecommend_MinScoreFilterWorks, TestComposition_NoGoroutinesSpawned_FrozenSiteCount, TestStartupIntegration, + project-related E2E/composition)"
-  status: open
-  severity: p2
-  owner_capability: "internal/app (composition root + registry_internal_modules)"
-  follow_up:
-    - "Diagnose each failing test individually; many are independent root causes."
-    - "TestRecommend_MinScoreFilterWorks: investigate MinScore filter config wiring in composition registry."
-    - "TestComposition_NoGoroutinesSpawned_FrozenSiteCount: investigate goroutine leak detection in composition."
-    - "TestStartupIntegration: investigate startup wiring race conditions (likely composition root issue)."
-    - "Re-run `make verify-main` post-fix; expected ALL Test*_* in internal/app to flip green."
-  evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/06 SSOT carry-forward discipline"
-
-- id: "PRE-EXISTING-7-USECASE-TRANSLATION"
-  title: "TestMissingTranslation_FallbackWithExplicitWarning failing on internal/application/scripts/usecase (testing multilingual persistence)"
-  status: open
-  severity: p2
-  owner_capability: "internal/application/scripts/usecase/multilingual_persistence_p1f_test.go"
-  follow_up:
-    - "Diagnose: `go test -v ./internal/application/scripts/usecase -run TestMissingTranslation_FallbackWithExplicitWarning -count=1` — captured during Commit 7b diagnostic; pre-existing on PURE main pre-Commit-7b working tree (stashed persistence.go + re-ran same file → SAME failure)."
-    - "Verify translation-fallback behavior; the test name suggests an explicit-warning path is expected when translation is missing but current production emits zero calls (test expectation mismatch)."
-    - "Fix the warning emission path; re-run targeted test until PASS."
-    - "Re-run `go test ./internal/application/scripts/usecase -count=1`; expect this + sibling tests to flip green."
-  evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/07 zero-legacy; ratified by Commit 7b ship-gate diagnostic (tests fail on PRE-7b PURE main, zero coupling to Commit 7b image-binding fix)"
-
-- id: "PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT"
-  title: "TestCacheFingerprint_P1A_PerFieldMutationSensitivity/segment_topics failing on internal/application/scripts/usecase (cache fingerprint per-field mutation sensitivity)"
-  status: open
-  severity: p2
-  owner_capability: "internal/application/scripts/usecase/generate_cache_fingerprint_p1a_test.go"
-  follow_up:
-    - "Diagnose: `go test -v ./internal/application/scripts/usecase -run TestCacheFingerprint_P1A_PerFieldMutationSensitivity -count=1` — captured during Commit 7b diagnostic; pre-existing on PURE main pre-Commit-7b working tree."
-    - "Verify cache-fingerprint per-field mutation sensitivity on segment_topics; the test parameterizes per-field mutations and expects distinct fingerprints."
-    - "Fix the fingerprint computation for segment_topics; likely a hash-domain collision or content-vs-pointer hashing bug."
-    - "Re-run targeted test; expect per-field-mutation sensitivity to match expected divergence pattern."
-  evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/07 zero-legacy; ratified by Commit 7b ship-gate diagnostic"
-
-- id: "PRE-EXISTING-9-ARCHCHECK-SNAPSHOT"
-  title: "cmd/archcheck::TestSnapshot failing (architecture-check snapshot regression)"
-  status: in_progress
-  severity: p1
-  owner_capability: "cmd/archcheck"
-  follow_up:
-    - "Diagnose: `go test -v ./cmd/archcheck -run TestSnapshot -count=1`."
-    - "Likely cause: snapshot test embeds a captured baseline file (architecture/ownership.generated.yaml or similar); the new carry-forward entry in architecture/current.yaml (PRE-EXISTING-BUILD-ISSUES-2026-07-04) appended in THIS commit may shift a hash and require a snapshot re-baseline."
-    - "Action: regenerate the snapshot baseline via `go run ./cmd/archcheck regen` (or equivalent) and commit the regenerated snapshot as a drive-by fixup."
-    - "Re-run `make verify-main`; expect TestSnapshot to flip green."
-  evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/06 SSOT carry-forward discipline"
-
 - id: "P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER"
   title: "Live battery Steps 6-7 fail diagnostic arc — composition-root gap hypothesis A falsified; race-condition hypothesis B untestable under current Dockerfile + host-process constraints; data-layer pivot revealed test-side Step 5 misread"
   status: open
   severity: p2
+  category: code_defect
   owner_capability: "internal/application/assets/providers/stock/stockpipeline (step_finalize.go + downstream cross-pkg surfaces; see tracking_issue for sibling pkgs)"
   follow_up:
     - "Path A — Dockerfile patch (lift build-blocker only): bump ARG YTDLP_VERSION=2025.03.20 to a current release tag (e.g. 2026.07.04) so `docker compose -f docker-compose.yml build pipelinegen-server pipelinegen-worker` succeeds. NOT sufficient alone — operator must additionally restart the live host process to deploy the fresh binary. Source-tree change required; coordinate with any other live Dockerfile consumers."
@@ -293,6 +221,7 @@ issues:
   title: "PlaintextOutput Orchestrator test residual — registry text-source resolver enriches plan.SourceText from item.Source.Topic post-merge; defeats FASE 13 PART 1 short-circuit + double-trips tolerance gate"
   status: in_progress
   severity: p2
+  category: code_defect
   owner_capability: "internal/application/scripts/usecase/clip_plaintext_output_p0f_test.go (test fixture) + internal/application/scripts/usecase/generate_one_usecase.go (Phase 4 merge logic) + internal/application/scripts/adapters/text_source_resolver (enrichment pattern)"
   follow_up:
     - "Asymmetry vs PRE-EXISTING-12: this entry has NO `Option B analogue` inline because Option C (the production-seam `buildUsecaseWithClipResolver uc.registry` refactor) is explicitly OUT-OF-SCOPE per AGENTS.md 'no features unless explicitly requested'. Future-investigators should NOT attempt this without filing a separate godlike/06 SSOT PR first."
@@ -309,6 +238,7 @@ issues:
   title: "Check 5 mutation-primitive lens: migrate from package_name-only filter to canonical (directory_path, package_name) Go-package identity tuple"
   status: open
   severity: p2
+  category: code_defect
   owner_capability: "scripts/ci/architecture/checks/check_05_mutation_primitives.sh (AWK lens + ARCH-ALLOWLISTED rg post-pass)"
   follow_up:
     - "Migrate check_05_mutation_primitives.sh's rg_window_allowlist from package_name-only filter to the (dir_path, pkg_name) canonical Go-package identity tuple (architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE::rationale point c)."
@@ -323,6 +253,7 @@ issues:
   title: "Five policy.yaml-referenced godlike docs are MISSING on disk (06/07/08/11/13); recreate in November sub-commit"
   status: open
   severity: p2
+  category: operational_environment_missing
   owner_capability: "docs/architecture/godlike/ (recreation surface; per-file owner listed in follow_up)"
   follow_up:
     - "Recreate 06_DATA_AND_CONFIG_OWNERSHIP.md (data+config ownership axis; DB rules + Qdrant projection sequence + Drive authority + configuration boot pipeline + EXPAND/BACKFILL/CUTOVER/CONTRACT migration sequence)."
