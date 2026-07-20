@@ -31,11 +31,14 @@ import (
 
 	"go.uber.org/zap"
 
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
+	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/enrichment"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -454,8 +457,32 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build returned unexpected descriptor type %T (want *stockapi.StockDescriptor)", sd)
 	}
 
+	// ── Gate 5: construct the stock batch coordinator + /stock-batches module ─
+	var batchModule api.Module
+	if deps.Acquisition.BatchRepository != nil {
+		coordinator := stockplan.NewCoordinator(stockplan.CoordinatorDeps{
+			Repo:     deps.Acquisition.BatchRepository,
+			Enqueuer: deps.Orchestration.Jobs,
+			Resolver: nil,
+			Stager:   svc,
+			Log:      deps.Runtime.Log,
+		})
+		batchDescriptor, batchErr := stockbatches.Build(stockbatches.Dependencies{
+			Coordinator: coordinator,
+			EnabledFunc: deps.Feature.StockPipelineEnabled,
+			Logger:      deps.Runtime.Log,
+		})
+		if batchErr != nil {
+			return nil, fmt.Errorf("stock.BuildStockBundle: stockbatches.Build: %w", batchErr)
+		}
+		if d, ok := batchDescriptor.(*stockbatches.StockBatchesDescriptor); ok && d != nil {
+			batchModule = d.Module
+		}
+	}
+
 	return &StockPipelineWiring{
-		Module:  typed.Module,
-		Service: svc,
+		Module:      typed.Module,
+		BatchModule: batchModule,
+		Service:     svc,
 	}, nil
 }

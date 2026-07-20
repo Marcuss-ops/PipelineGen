@@ -144,6 +144,7 @@ type StockBatchRepository interface {
 	CreateGroup(ctx context.Context, group *StockBatchGroup) error
 	GetGroup(ctx context.Context, id string) (*StockBatchGroup, error)
 	UpdateGroupStatus(ctx context.Context, id string, status GroupState, lastError string) error
+	ListGroups(ctx context.Context, batchID string) ([]StockBatchGroup, error)
 
 	// Artifact CRUD / lifecycle.
 	CreateArtifact(ctx context.Context, artifact *StockArtifact) error

@@ -163,6 +163,12 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
 			return fmt.Errorf("wire registry: stock-pipeline: %w", err)
 		}
+		if stockW.BatchModule != nil {
+			if err := tryRegisterModuleStrict(registry, log, stockW.BatchModule, WithRegistrationPoint("register.StockBatches")); err != nil {
+				return fmt.Errorf("wire registry: stock-batches: %w", err)
+			}
+			log.Info("registerInternalModules Step 8 stock-batches pipeline mounted")
+		}
 		if stockW.Service != nil && root.Jobs != nil && root.Jobs.Service != nil {
 			if err := stockW.Service.RegisterHandler(root.Jobs.Service); err != nil {
 				return fmt.Errorf("wire registry: stock-pipeline: register handler: %w", err)
