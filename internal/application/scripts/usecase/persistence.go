@@ -123,47 +123,7 @@ func buildGenerationResult(
 					if sc.Bindings.Image == nil {
 						sc.Bindings.Image = &scriptpkg.ImageBinding{}
 					}
-					// PR-PROCESSOR-FAILCLOSED-IMG-BINDING (commit 7b,
-					// July 2026): wave-coherence sync with commit 7
-					// (postprocessor_composite_merge.go). Apply the same
-					// fail-closed bind rule here.
-					//
-					// Pre-fix (and pre-fix pre-fix in commit 7): this
-					// block UNCONDITIONALLY set `Status="generated"`
-					// whenever the SceneImages buffer was non-empty,
-					// producing false successes when the underlying
-					// image URL / DriveFileID were empty (e.g. when the
-					// per-scene image call returned no asset). The
-					// API-response surface exposed by
-					// buildGenerationResult propagated the same
-					// false-success state to operators / dashboards.
-					//
-					// Post-fix (commit 7b): the same fail-closed proxy
-					// rule — `strings.TrimSpace(SceneImageDriveLink(s)) != ""`
-					// is the canonical "implicitly succeeded" signal on
-					// the SceneImage struct (no per-image Status field
-					// today). When DriveLink is empty (FAILED / SKIPPED
-					// / SUCCEEDED-without-link), terminate with
-					// Status="failed" + URL="" per godlike/07
-					// NO-FAKE-AVAILABILITY (an empty URL is the honest
-					// answer for a non-promoted binding). When
-					// DriveLink is populated, promote to
-					// Status="generated" + URL=<link>.
-					//
-					// Typed enum usage: scriptpkg.ImageStatusGenerated /
-					// scriptpkg.ImageStatusFailed are the canonical
-					// ownership surfaces for image-binding lifecycle
-					// states (binding_status.go). godlike/06 SSOT —
-					// string literals would re-introduce the magic-string
-					// drift that the typed enum family eliminated.
-					//
-					// Future work: a commit wiring []SceneImageOutcome
-					// through buildGenerationResult can replace this
-					// proxy with the typed Status comparison
-					// (outcome.Status == SceneImageSucceeded && ...) at
-					// the same site — mirroring the same architectural
-					// opportunity documented at
-					// postprocessor_composite_merge.go.
+					// fail-closed image-binding (godlike/07): promote to ImageStatusGenerated only when SceneImageDriveLink is non-empty; wave-coherent rule with postprocessor_composite_merge.go
 					driveLink := adapters.SceneImageDriveLink(s)
 					if strings.TrimSpace(driveLink) != "" {
 						sc.Bindings.Image.URL = driveLink
