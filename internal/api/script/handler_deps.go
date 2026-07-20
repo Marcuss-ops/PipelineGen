@@ -1,6 +1,6 @@
 // Package script (api/script) — handler_deps.go owns the construction
-// seam for ScriptFlowHandler: 2 typed-narrow dep bags
-// (GenerateDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
+// seam for ScriptFlowHandler: 3 typed-narrow dep bags
+// (GenerateDeps / ShortsDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
 // the optional auto-harvest port interface
 // (AutoHarvestService) + the canonical constructor
 // (NewScriptFlowHandler).
@@ -34,10 +34,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 
 	"go.uber.org/zap"
 )
+
+// ShortsDeps groups the canonical constructor inputs for the
+// /shorts/* handler. Kept separate from GenerateDeps so the two
+// surfaces can evolve independently.
+type ShortsDeps struct {
+	// Renderer is required by POST /shorts/render.
+	Renderer appvideo.Renderer
+	// Producer is required by POST /shorts/render/async.
+	Producer interface {
+		Enqueue(context.Context, remotionjob.RenderJob) (*jobs.Job, error)
+	}
+	Log *zap.Logger
+}
 
 // AutoHarvestService is the auto-harvest trigger surface. Optional; nil
 // disables the corresponding endpoint with a 503-equivalent sentinel.
@@ -56,16 +70,16 @@ type AutoHarvestService interface {
 //   - Log: structured logger.
 //   - Validator: config-aware payload validator for
 //     POST /api/script/generate.
+//
+// P0 verdetto (July 2026): GenRunStarter creates the GenerationRun
+// BEFORE the submission I/O. When non-nil, the response includes
+// current_stage. When nil (tests / legacy wiring), the handler
+// falls back to the direct-submit flow.
 type GenerateDeps struct {
-	Submission generationSubmitter
-	Log        *zap.Logger
-	Validator  *usecase.PayloadValidator
-	// ShortsRenderer is optional for direct/unit construction and required
-	// only when POST /shorts/render should reach a Remotion worker.
-	ShortsRenderer appvideo.Renderer
-	ShortsProducer interface {
-		Enqueue(context.Context, remotionjob.RenderJob) (*jobs.Job, error)
-	}
+	Submission    generationSubmitter
+	GenRunStarter *scriptgen.GenerationRunStarter
+	Log           *zap.Logger
+	Validator     *usecase.PayloadValidator
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -78,10 +92,16 @@ type GenerateDeps struct {
 // Registry thread fed the package-level enqueueEnvelopeFn for
 // MaxRetries lookup; the FASE 2 path is GenerationSubmissionService
 // which reads the registry independently at composition time. JobsDeps
-// now carries only the JobService port + the canonical logger.
+// now carries the JobService port, an optional RunRepository for the
+// GET /jobs/:id/full enriched endpoint, and the canonical logger.
+//
+// P1 verdetto (July 2026): RunRepo is the optional RunRepository for
+// reading GenerationRun data in GET /jobs/:id/full. When nil, the
+// endpoint returns basic job info without enriched pipeline data.
 type JobsDeps struct {
-	Jobs jobs.Service
-	Log  *zap.Logger
+	Jobs    jobs.Service
+	RunRepo scriptgen.RunRepository
+	Log     *zap.Logger
 }
 
 type generationSubmitter interface {
@@ -89,7 +109,7 @@ type generationSubmitter interface {
 }
 
 // ScriptFlowDeps is the slim top-level bag assembled by Build.
-// Was 23 fields; now 4 (Generate + Jobs + ClipsSearcher +
+// Was 23 fields; now 5 (Generate + Shorts + Jobs + ClipsSearcher +
 // AdminToken). godlike/07 minimum-blast-radius: Build still
 // constructs NewScriptFlowHandler(ScriptFlowDeps{...}) so direct
 // callers (test fixtures) compile unchanged in shape — only the
@@ -97,6 +117,8 @@ type generationSubmitter interface {
 type ScriptFlowDeps struct {
 	// Generate is the dep bag for POST /generate.
 	Generate GenerateDeps
+	// Shorts is the dep bag for /shorts/*.
+	Shorts ShortsDeps
 	// Jobs is the dep bag for /jobs/:id.
 	Jobs JobsDeps
 
@@ -112,7 +134,7 @@ type ScriptFlowDeps struct {
 }
 
 // NewScriptFlowHandler constructs the slim ScriptFlowHandler from
-// the 3 small dep bags. NewScriptFlowHandler has no fail-closed
+// the 4 small dep bags. NewScriptFlowHandler has no fail-closed
 // checks (preserves the pre-Step-14 behavior for direct callers
 // that bypass Build); Build's checks are the defensive layer.
 //
@@ -146,14 +168,22 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c). PR-COMMIT3: the 4th
 		// `caps` arg is removed alongside the preflight module.
-		gen: NewHandlerGenerateWithRenderer(deps.Generate.Submission, deps.Generate.Log, deps.Generate.Validator, deps.Generate.ShortsRenderer, deps.Generate.ShortsProducer),
+		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
+		// with the optional GenerationRunStarter (P0 verdetto).
+		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Log, deps.Generate.Validator),
 
-		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 2-field
+		// PR-SHORTS-EXTRACT (July 2026): construct the dedicated
+		// HandlerShorts for /shorts/* routes.
+		shorts: NewHandlerShorts(deps.Shorts.Renderer, deps.Shorts.Producer, deps.Shorts.Log),
+
+		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. GET /api/script/jobs/:id mounts via
 		// JobsHandler.RegisterJobRoutes; the legacy EnqueueEnvelope
 		// adapter is REMOVED in FASE 2 (the route was never
 		// registered, so the deletion is dead code).
-		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log),
+		// P1 verdetto (July 2026): RunRepo is optional — when nil,
+		// GET /jobs/:id/full returns basic job info only.
+		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.RunRepo, deps.Jobs.Log),
 	}
 }
 

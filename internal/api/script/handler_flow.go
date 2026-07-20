@@ -65,8 +65,8 @@ type DocumentCreator interface {
 //
 //  1. Domain primitives (clipsSearcher) — used by SearchClipsByName.
 //  2. Auth primitive (adminToken) — consumed by EnableAuth + AdminToken.
-//  3. Delegation pointers (gen + jobs) — sub-handlers that own
-//     canonical impls of POST /generate, /jobs/:id.
+//  3. Delegation pointers (gen + shorts + jobs) — sub-handlers that own
+//     canonical impls of POST /generate, /shorts/*, /jobs/:id.
 //
 // FASE 2 (July 2026): jobsSvc + registry fields are REMOVED.
 // The FASE 2 enqueue path is owned by h.gen.operations + h.jobs.operations.
@@ -74,6 +74,7 @@ type ScriptFlowHandler struct {
 	clipsSearcher ClipSearcher
 	adminToken    string
 	gen           *HandlerGenerate
+	shorts        *HandlerShorts
 	jobs          *JobsHandler
 	log           *zap.Logger
 }
@@ -87,11 +88,13 @@ func (h *ScriptFlowHandler) jobsRegisterRoutes(r *gin.RouterGroup) {
 
 // RegisterRoutes mounts every active script-flow route under r.
 // AZIONE 1 (July 2026): POST /generate → h.gen.
+// PR-SHORTS-EXTRACT (July 2026): /shorts/* → h.shorts.
 // PR-SCRIPT-JOBS-EXTRACT: /jobs/:id → h.jobsRegisterRoutes.
 //
 // Legacy generate adapters are no longer mounted.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.gen.GenerateRoute(r)
+	h.shorts.ShortsRoute(r)
 
 	r.GET("/clips/search", h.SearchClipsByName)
 
