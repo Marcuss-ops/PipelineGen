@@ -5,17 +5,17 @@
 // percheck_pipeline_map_carrier_ban test surface with the
 // new rule-family id (`percheck_no_pipeline_mapstr`).
 //
-// 1. A `map[string]any` typed FIELD inside one of the four
-//    pipeline-carrier files trips the gate as SeverityError.
-// 2. A `tracker.TrackEvent("...", "...", map[string]any{...})`
-//    inline metadata argument is EXEMPT.
-// 3. Comment-only matches produce a WARN residue in
-//    !productionOnly mode and are silenced in productionOnly
-//    mode.
-// 4. Out-of-scope files (NOT one of the canonical four) are
-//    not scanned.
-// 5. In-scope file with a typed non-violation regular field
-//    is not flagged.
+//  1. A `map[string]any` typed FIELD inside one of the four
+//     pipeline-carrier files trips the gate as SeverityError.
+//  2. A `tracker.TrackEvent("...", "...", map[string]any{...})`
+//     inline metadata argument is EXEMPT.
+//  3. Comment-only matches produce a WARN residue in
+//     !productionOnly mode and are silenced in productionOnly
+//     mode.
+//  4. Out-of-scope files (NOT one of the canonical four) are
+//     not scanned.
+//  5. In-scope file with a typed non-violation regular field
+//     is not flagged.
 package scan
 
 import (

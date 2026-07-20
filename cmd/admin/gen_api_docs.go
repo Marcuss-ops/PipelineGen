@@ -174,9 +174,9 @@ var routeDescriptions = map[string]string{
 	"POST /api/scripts/:id/delete": "Delete script",
 
 	// ── Script generation ─────────────────────────────────────
-	"GET /api/script/jobs/:job_id":         "Get script job status",
-	"GET /api/script/jobs/:job_id/full":    "Get full script job details",
-	"GET /api/script/clips/search":         "Search script clips by name","POST /api/script/generate": "Generate scripts from text, clips, catalog or search sources",
+	"GET /api/script/jobs/:job_id":      "Get script job status",
+	"GET /api/script/jobs/:job_id/full": "Get full script job details",
+	"GET /api/script/clips/search":      "Search script clips by name", "POST /api/script/generate": "Generate scripts from text, clips, catalog or search sources",
 	"POST /api/script/shorts/generate":     "Generate a Remotion Shorts video",
 	"POST /api/script/shorts/render":       "Render a Remotion Shorts video synchronously",
 	"POST /api/script/shorts/render/async": "Enqueue a Remotion Shorts render job",
