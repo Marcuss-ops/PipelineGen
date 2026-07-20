@@ -205,8 +205,15 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 
 		// Cut all clips of the source group in a single batch.
 		jobs := make([]CutJob, len(groupPlans))
+		workspaceDir, err := filepath.Abs(filepath.Join("data", "stock", "jobs", runner.JobID(), "extracted"))
+		if err != nil {
+			return fmt.Errorf("orchestrator: stock.extract_clips: resolve persistent workspace: %w", err)
+		}
+		if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+			return fmt.Errorf("orchestrator: stock.extract_clips: create persistent workspace: %w", err)
+		}
 		for clipIdx, plan := range groupPlans {
-			outputPath := filepath.Join(os.TempDir(),
+			outputPath := filepath.Join(workspaceDir,
 				fmt.Sprintf("stock_cut_%s_%d_%d.mp4", runner.JobID(), sourceIdx, clipIdx))
 			jobs[clipIdx] = CutJob{
 				StartSec:   plan.StartSec,

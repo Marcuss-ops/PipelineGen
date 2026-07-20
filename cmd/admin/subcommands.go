@@ -83,7 +83,6 @@ var availableCommands = []string{
 	"organize-family-drive",
 	"index-drive-clip",
 	"save-fish-commentary-index",
-	"save-cave-commentary-index",
 	"save-crab-commentary-index",
 	"index-provided-sound-effects",
 	"export-sound-effects-metadata",
@@ -189,8 +188,6 @@ func dispatchSubcommand(name string, args []string) error {
 		return runIndexDriveClip(args)
 	case "save-fish-commentary-index":
 		return runSaveFishCommentaryIndex(args)
-	case "save-cave-commentary-index":
-		return runSaveCaveCommentaryIndex(args)
 	case "save-crab-commentary-index":
 		return runSaveCrabCommentaryIndex(args)
 	case "index-provided-sound-effects":

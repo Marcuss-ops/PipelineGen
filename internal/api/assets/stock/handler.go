@@ -183,7 +183,6 @@ func (h *StockHandler) Run(c *gin.Context) {
 		})
 		return
 	}
-
 	// (2) Source-presence check.
 	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
 		c.JSON(http.StatusBadRequest, runResponse{
@@ -239,7 +238,6 @@ func (h *StockHandler) Run(c *gin.Context) {
 			return
 		}
 	}
-
 	// (5) Path traversal on folder fields.
 	if !isSafePath(req.Subfolder) || !isSafePath(req.FolderName) || !isSafePath(req.DriveFolderID) || !isSafePath(req.FolderID) {
 		c.JSON(http.StatusBadRequest, runResponse{

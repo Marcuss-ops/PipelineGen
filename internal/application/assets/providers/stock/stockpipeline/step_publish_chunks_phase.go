@@ -196,7 +196,14 @@ func publishChunkPhase(
 		// timestampGroupName, so the two modes now agree on the parent
 		// leaf and differ only in how many files are placed under it.
 		var leafName string
-		leafName = timestampGroupName
+		if explicitTimestamps && plan.Round > 0 {
+			// Round-indexed clips share exactly one Drive folder per
+			// round. Previously this value was always timestampGroupName,
+			// which merged every round into the same subdirectory.
+			leafName = stockClipFolderName(in, plan, timestampGroupName)
+		} else {
+			leafName = timestampGroupName
+		}
 		va := finalization.VerifiedArtifact{
 			ArtifactID:     cs.ArtifactID,
 			Kind:           finalization.KindVideo,
