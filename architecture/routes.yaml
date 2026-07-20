@@ -70,7 +70,7 @@ routes:
       source: internal/api/script/handler_flow.go
     - method: GET
       path: /diagnostics
-      source: internal/api/assets/artlist/artlist_handlers.go
+      source: internal/api/assets/youtube/youtube_handlers.go
     - method: GET
       path: /events
       source: internal/api/outbox/handler.go
@@ -104,9 +104,6 @@ routes:
     - method: GET
       path: /jobs/:id/cancelled
       source: internal/api/jobs/handler_workers.go
-    - method: GET
-      path: /jobs/:id/full
-      source: internal/api/script/handler_jobs.go
     - method: GET
       path: /metrics
       source: internal/api/routes.go
@@ -145,7 +142,7 @@ routes:
       source: internal/api/assets/artlist/artlist_handlers.go
     - method: GET
       path: /stats
-      source: internal/api/jobs/impl.go
+      source: internal/api/assets/youtube/youtube_handlers.go
     - method: GET
       path: /status
       source: internal/api/outbox/handler.go
@@ -163,7 +160,7 @@ routes:
       source: internal/api/admin/handler_workers_cert.go
     - method: GET
       path: Content-Type
-      source: internal/api/assets/clips/ingest_upload.go
+      source: internal/api/middleware/idempotency.go
     - method: PATCH
       path: /:source/clips/:id
       source: internal/api/assets/clips/ingest.go
@@ -181,7 +178,7 @@ routes:
       source: internal/api/assets/clips/operations/module.go
     - method: POST
       path: /:source/cleanup
-      source: internal/api/assets/clips/operations/module.go
+      source: internal/api/assets/clips/ops.go
     - method: POST
       path: /:source/clips
       source: internal/api/assets/clips/ingest.go
@@ -190,7 +187,7 @@ routes:
       source: internal/api/assets/clips/publication/module.go
     - method: POST
       path: /:source/clips/:id/duplicates
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      source: internal/api/assets/clips/catalog/module.go
     - method: POST
       path: /:source/clips/:id/fix-hash
       source: internal/api/assets/clips/sub_handler_wrappers.go
@@ -202,19 +199,19 @@ routes:
       source: internal/api/assets/clips/nonops/handler.go
     - method: POST
       path: /:source/clips/:id/reupload
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
       path: /:source/clips/:id/status
       source: internal/api/assets/clips/search.go
     - method: POST
       path: /:source/clips/:id/verify
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      source: internal/api/assets/clips/operations/module.go
     - method: POST
       path: /:source/clips/bulk-upload-youtube-clips
       source: internal/api/assets/clips/bulk_upload_transport.go
     - method: POST
       path: /:source/folders/:id/manifest
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      source: internal/api/assets/clips/ops.go
     - method: POST
       path: /:source/reconcile
       source: internal/api/assets/clips/sub_handler_wrappers.go
@@ -244,7 +241,7 @@ routes:
       source: internal/api/assets/clips/nonops/handler.go
     - method: POST
       path: /enrich/batch
-      source: internal/api/assets/clips/nonops/handler.go
+      source: internal/api/assets/clips/indexing/module.go
     - method: POST
       path: /extract-important
       source: internal/api/assets/youtube/youtube_handlers.go
@@ -253,7 +250,7 @@ routes:
       source: internal/api/system/handler_drive.go
     - method: POST
       path: /generate
-      source: internal/api/script/handler_generate_handler.go
+      source: internal/api/assets/voiceover/handler.go
     - method: POST
       path: /generated/generate
       source: internal/api/images/handler.go
@@ -319,7 +316,7 @@ routes:
       source: internal/api/system/handler_drive.go
     - method: POST
       path: /run
-      source: internal/api/assets/stock/handler.go
+      source: internal/api/assets/artlist/artlist_handlers.go
     - method: POST
       path: /search
       source: internal/api/assets/artlist/artlist_handlers.go

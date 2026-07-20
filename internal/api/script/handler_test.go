@@ -33,27 +33,20 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		routeMap[key] = true
 	}
 
-	// PR-script-deps-slim (July 2026, P1): the canonical ScriptFlow
-	// surface mounts 6 base routes via ScriptFlowHandler.RegisterRoutes
-	// (1 POST /generate + 3 POST /shorts/* + 1 GET /jobs/:id + 1 GET
-	// /clips/search). Sprint 1.3-unblock (July 2026): the enriched
-	// GET /jobs/:id/full route, registered by JobsHandler.RegisterJobRoutes
-	// (handler_jobs.go) and dispatched to GetFullJobRun
-	// (handler_run_full.go), is now part of the ScriptFlow route
-	// surface — the verdict's "/full" endpoint surface lives here
-	// so the orchestrator can serve enriched job status without a
-	// second router mount. Total: 7 routes. The earlier "6 routes,
-	// /jobs/:id/full is NOT in scope" comment was a PR-script-deps-slim
-	// intermediate state; the route was promoted in a later wave
-	// without the test being updated in lockstep, producing the
-	// test drift surfaced by `make verify-main` on 2026-07-19.
-	// assert.Equal on a map produces an exact-match diff: any route
-	// the handler LEGITIMATELY adds or removes fails the test loudly
-	// here AND must trigger a paired update of architecture/ownership
-	// SSOT in lockstep (godlike/06 SSOT: routes.yaml ↔
-	// architecture/ownership.generated.yaml ↔ this test are 4-way
-	// co-regenerated; any drift among the 4 surfaces is a first-class
-	// regression).
+	// PR-script-deps-slim (July 2026, P1) + WAVE-22-C2-E SSOT lock:
+	// the canonical ScriptFlow surface via RegisterRoutes mounts
+	// exactly 6 routes — 1 POST /generate + 3 POST /shorts/* +
+	// 1 GET /jobs/:id + 1 GET /clips/search. GET /jobs/:id/full is
+	// INTENTIONALLY NOT mounted here even though GetFullJobRun exists
+	// in handler_run_full.go: its canonical owner is the Jobs module
+	// at /api/jobs/:id/full (architecture/ownership/modules.yaml).
+	// Dual-mounting would violate godlike/06 SSOT (one canonical owner
+	// per fact) — the exact-match assert.Equal below is the regression
+	// gate that originally caught the duplicate mount in this very test.
+	// Sprint 1.3-unblock attempted to re-add the dual-mount via commit
+	// f8aa97c6b; the canonical option-A fix in this commit re-retires
+	// the route mount (handler_jobs.go::RegisterJobRoutes) and reverts
+	// the test's expected set back to 6 routes, restoring SSOT integrity.
 	expectedRoutes := map[string]bool{
 		"POST /api/script/generate":            true,
 		"POST /api/script/shorts/generate":     true,
@@ -61,7 +54,6 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		"POST /api/script/shorts/render/async": true,
 		"GET /api/script/jobs/:id":             true,
 		"GET /api/script/clips/search":         true,
-		"GET /api/script/jobs/:id/full":        true,
 	}
 	assert.Equal(t, expectedRoutes, routeMap,
 		"ScriptFlow routes must match canonical set EXACTLY (drift = regressions in either direction; update this test AND architecture/ownership SSOT in lockstep)")

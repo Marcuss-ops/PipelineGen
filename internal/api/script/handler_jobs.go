@@ -9,13 +9,20 @@
 // GenerationSubmissionService directly through HandlerGenerate
 // (handler_generate_handler.go). The legacy adapter routes that
 // invoked enqueueEnvelopeFn were never mounted (RegisterJobRoutes
-// only mounts GET /api/script/jobs/:id), so the removal is dead-code
-// — no active call sites remain.
+// only mounts GET /api/script/jobs/:id per SSOT — see
+// architecture/ownership/modules.yaml:WAVE-22-C2-E — so the
+// removal is dead-code, no active call sites remain.
 //
-// P1 verdetto (July 2026): added GetFullJobRun + optional runRepo
-// field for the enriched /jobs/:id/full endpoint. runRepo reads
-// GenerationRun data (scenes, translations, voiceovers, docs, render,
-// per-stage status).
+// P1 verdetto (July 2026): the enriched /jobs/:id/full endpoint was
+// initially added to RegisterJobRoutes; per WAVE-22-C2-E SSOT
+// alignment (commit 6ec3e95b6 + the strengthened route test in
+// handler_test.go), the /jobs/:id/full mount was RETIRED from this
+// ScriptFlow surface because it duplicates the canonical
+// /api/jobs/:id/full endpoint owned by the Jobs module
+// (godlike/06 SSOT: one canonical owner per fact). GetFullJobRun
+// + the runRepo field are RETAINED as reference implementations —
+// see handler_run_full.go doc on GetFullJobRun for the unmount
+// audit narrative and re-mount conditions.
 //
 // Pattern 5 (AGENTS.md): one capability per file, one struct per
 // capability. JobsHandler replaces the 2 methods that previously
@@ -36,18 +43,23 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// JobsHandler owns the canonical script-side job-observation surface:
+// JobsHandler owns the canonical ScriptFlow-side job-observation
+// surface:
 //
-//   - RegisterJobRoutes: mounts GET /api/script/jobs/:id and
-//     GET /api/script/jobs/:id/full under RequireAdminToken(auth).
+//   - RegisterJobRoutes: mounts GET /api/script/jobs/:id under
+//     RequireAdminToken(auth). The enriched /api/script/jobs/:id/full
+//     endpoint is NOT mounted here per WAVE-22-C2-E SSOT — its
+//     canonical owner is the Jobs module under /api/jobs/:id/full
+//     (godlike/06: one canonical owner per fact; the duplicate
+//     mount was retired by the strengthened route test in
+//     handler_test.go).
 //   - GetJobStatus: canonical handler for GET /api/script/jobs/:id.
-//   - GetFullJobRun: enriched handler for GET /api/script/jobs/:id/full
-//     with scenes, translations, voiceovers, Docs, render, per-stage status.
 //
 // It is a separate type from ScriptFlowHandler per AGENTS.md Pattern 5:
-// one capability per file, one struct per capability. godlike/06 SSOT
-// (one canonical owner per fact): JobsHandler owns ONLY these 2
-// methods — nothing else.
+// one capability per file, one struct per capability. GetFullJobRun
+// (defined in handler_run_full.go) remains as a REFERENCE-only
+// implementation retained for future re-mount if the SSOT policy
+// changes — see its in-file doc for the unmount audit narrative.
 type JobsHandler struct {
 	jobsSvc job.Service
 	runRepo scriptgen.RunRepository // optional, used by GetFullJobRun
@@ -68,10 +80,19 @@ func NewJobsHandler(jobsSvc job.Service, runRepo scriptgen.RunRepository, log *z
 	}
 }
 
-// RegisterJobRoutes mounts the canonical script job-status routes.
-// GET /api/script/jobs/:id — basic job status.
-// GET /api/script/jobs/:id/full — enriched job status with scenes,
-// translations, voiceovers, Docs, render, and per-stage status.
+// RegisterJobRoutes mounts the canonical ScriptFlow-side job-status
+// route:
+//
+//   - GET /api/script/jobs/:id — basic job status (canonical mount
+//     under the ScriptFlow module per architecture/ownership/
+//     modules.yaml:WAVE-22-C2-E route list).
+//
+// The enriched /api/script/jobs/:id/full endpoint is INTENTIONALLY
+// NOT mounted here: its canonical owner is the Jobs module under
+// /api/jobs/:id/full (see internal/api/jobs/impl.go::GetFull).
+// Mounting both copies would violate godlike/06 SSOT (one canonical
+// owner per fact) — the strengthened route test in handler_test.go
+// guards against accidental re-introduction.
 //
 // `auth` is the AdminTokenProvider (godlike/07 minimum-blast-radius
 // — interface stays in package script per middleware_auth.go header).
@@ -82,7 +103,6 @@ func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProv
 	jobs := r.Group("")
 	jobs.Use(RequireAdminToken(auth))
 	jobs.GET("/jobs/:id", jh.GetJobStatus)
-	jobs.GET("/jobs/:id/full", jh.GetFullJobRun)
 }
 
 // compile-time guard

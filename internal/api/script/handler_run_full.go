@@ -1,14 +1,34 @@
-// Package script — handler_run_full.go owns the enriched job-status
-// endpoint GET /api/script/jobs/{id}/full. It combines the kernel
-// job data (status, progress, error) with the GenerationRun data
-// (scenes, translations, voiceovers, documents, render, per-stage
-// status, retry metadata) into a single rich response.
+// Package script — handler_run_full.go owns the REFERENCE-only
+// enriched-job-status implementation (GetFullJobRun). The endpoint it
+// was originally built for, GET /api/script/jobs/{id}/full, was
+// RETIRED from the ScriptFlow module surface per WAVE-22-C2-E SSOT
+// (architecture/ownership/modules.yaml): its canonical owner is the
+// Jobs module under /api/jobs/:id/full. Mounting both copies would
+// violate godlike/06 (one canonical owner per fact).
 //
-// Verdetto § \"Test da aggiungere / GET /full\": the endpoint must
-// show scenes, traduzioni, voiceover, Docs, render e stato di
-// ogni fase.
+// WHY RETAINED (godlike/05 minimum-blast-radius): GetFullJobRun +
+// the runRepo field + the supporting builder helpers
+// (buildFullRunResponse, buildStageStatusMap, convertScenesToView,
+// convertDocumentsToView, convertLanguageMap, deriveStageFromJobStatus)
+// are kept here as a reference implementation. Re-mounting is
+// trivial if SSOT policy changes (1-line addition to RegisterJobRoutes
+// + handler_test.go update), and the wire shape already serves as the
+// test fixture for sibling surfaces.
 //
-// Response shape:
+// RE-MOUNT CONDITIONS (governance gate): to re-mount this under
+// /api/script, all of the following must hold atomically:
+//  1. architecture/ownership/modules.yaml::ScriptFlow has been
+//     updated to admit /jobs/:id/full (godlike/06 SSOT update), with
+//     the Jobs entry for /api/jobs/:id/full explicitly retired to
+//     avoid the dual-mount that triggered this retention.
+//  2. handler_test.go::TestScriptRoutes_Compatibility expectedRoutes
+//     map has been updated to admit the route (assert.Equal exact-match
+//     gate would otherwise RED).
+//  3. The PR passes `make regen-routes-yaml` and the AST walker
+//     includes GET /api/script/jobs/:id/full as a ScriptFlow route
+//     in architecture/ownership.generated.yaml (machine-consumed).
+//
+// Reference wire shape (matches /api/jobs/:id/full mesh):
 //
 //	{
 //	  "ok": true,
@@ -64,6 +84,11 @@ const (
 
 // FullJobRunResponse is the canonical wire shape for
 // GET /api/script/jobs/{id}/full.
+//
+// STATUS (WAVE-22-C2-E SSOT, July 2026): the canonical HTTP path
+// that surfaces this shape is /api/jobs/:id/full (Jobs module).
+// This type remains exported so test fixtures and any future wire
+// can construct the same shape.
 type FullJobRunResponse struct {
 	OK     bool   `json:"ok"`
 	JobID  string `json:"job_id"`
@@ -118,9 +143,21 @@ type RenderJobView struct {
 	Status string `json:"status"`
 }
 
-// ── Enriched GetFullJobRun handler ───────────────────────────────────
+// ── Enriched GetFullJobRun handler (reference-only, unmounted per SSOT) ─
 
 // GetFullJobRun handles GET /api/script/jobs/{id}/full.
+//
+// STATUS (WAVE-22-C2-E SSOT, July 2026): INTENTIONALLY UNMOUNTED from
+// the ScriptFlow module surface — see handler_run_full.go header doc
+// for the full audit narrative. The canonical owner of /jobs/:id/full
+// is the Jobs module under /api/jobs/:id/full; the 4-way SSOT lock
+// (architecture/ownership/modules.yaml + handler_test.go exact-match
+// + routes.yaml AST regen) gates the mount. GetFullJobRun is retained
+// as a reference implementation only; future wires that NEED this
+// shape (e.g. a per-pipeline enriched view) should import it via
+// `pkg/apiutil` or similar promoted-out helper, NOT by re-mounting
+// the same path twice.
+//
 // Returns enriched job status including scenes, translations,
 // voiceovers, documents, render data, and per-stage status.
 //
