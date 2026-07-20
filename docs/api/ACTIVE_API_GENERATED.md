@@ -13,6 +13,21 @@
 | GET | `/models` | ⚠️ MISSING DESCRIPTION |
 | GET | `/ready` | Readiness probe |
 
+## /admin/*filepath
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/*filepath` | ⚠️ MISSING DESCRIPTION |
+| HEAD | `/admin/*filepath` | ⚠️ MISSING DESCRIPTION |
+
+## /api/admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/auth/me` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/admin/auth/login` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/admin/auth/logout` | ⚠️ MISSING DESCRIPTION |
+
 ## /api/artlist
 
 | Method | Path | Description |
@@ -26,6 +41,19 @@
 | POST | `/api/artlist/run` | Start Artlist pipeline for a term |
 | POST | `/api/artlist/search` | Search Artlist catalog (cached) |
 | POST | `/api/artlist/sync-catalogs` | Sync Artlist catalogs to media DB |
+
+## /api/assets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/assets/operator/assets` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/assets/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/assets/:id/preview` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/index-health` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/operations/errors` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/outbox/events` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/outbox/status` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/summary` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/capabilities
 
@@ -138,7 +166,11 @@
 |--------|------|-------------|
 | GET | `/api/script/clips/search` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/script/jobs/:id` | Get script job status |
-| POST | `/api/script/generate` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/script/jobs/:id/full` | Get full script job details |
+| POST | `/api/script/generate` | Generate a script asynchronously |
+| POST | `/api/script/shorts/generate` | Generate a Remotion Shorts video |
+| POST | `/api/script/shorts/render` | Render a Remotion Shorts video synchronously |
+| POST | `/api/script/shorts/render/async` | Enqueue a Remotion Shorts render job |
 
 ## /api/script-assets
 
@@ -164,6 +196,12 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/system/doctor` | System diagnostics |
+
+## /api/ui
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/ui/health` | ⚠️ MISSING DESCRIPTION |
 
 ## /assets/*filepath
 
