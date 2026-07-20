@@ -348,6 +348,8 @@ var _ finalization.ArtifactPreparationService = (*recordingArtifactAndResult)(ni
 
 func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.location++
 	loc := r.location
 	// Each chunk's Drive URL is derived from the ArtifactID + a
@@ -361,7 +363,7 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 	url := fmt.Sprintf("https://drive.google.com/file/d/%s/view?loc=%d", chunkID, loc)
 	fileID := fmt.Sprintf("fileid-%s-loc%d", chunkID, loc)
 	downloadLink := fmt.Sprintf("https://drive.google.com/uc?id=%s&loc=%d", chunkID, loc)
-	r.mu.Unlock()
+
 	result := finalization.PublishedArtifact{
 		ArtifactID:     chunkID,
 		SourceVersion:  artifact.SourceVersion,
@@ -373,11 +375,11 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 			FileID:       fileID,
 			WebViewLink:  url,
 			DownloadLink: downloadLink,
-			FolderID:     fmt.Sprintf("folder-DOD-8-chunk-%d", r.location),
+			FolderID:     fmt.Sprintf("folder-DOD-8-chunk-%d", loc),
 			FolderPath:   "Pacquiao_Vs_Broner",
 		},
 	}
-	r.mu.Lock()
+
 	r.inputs = append(r.inputs, artifact)
 
 	r.results = append(r.results, result)
@@ -398,7 +400,6 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 			r.metadataContent = raw
 		}
 	}
-	r.mu.Unlock()
 	return result, nil
 }
 

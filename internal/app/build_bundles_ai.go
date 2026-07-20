@@ -139,6 +139,13 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	}
 	log.Info("WhisperTranscriber adapter configured (Fase 5)")
 
+	// P1 verdetto: SceneTextGenerator wraps the Engine to produce
+	// AI-generated scene text (scene-by-scene) separate from the
+	// Translator. The adapter bridges scriptgeneration.GenerateRequest
+	// to the existing engine ResolvedGenerationPlan.
+	sceneTextGen := NewSceneTextGenerator(engine, log)
+	log.Info("SceneTextGenerator adapter configured (P1 verdetto)")
+
 	return &AIBundle{
 		OllamaClient:       ollamaClient,
 		OllamaEmbedClient:  ollamaEmbedClient,
@@ -148,5 +155,6 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		MemoryRepo:         adapters.NewRepository(dbs.dualPool.Writer),
 		ScriptEngine:       engine,
 		WhisperTranscriber: whisperAdapter,
+		SceneTextGenerator: sceneTextGen,
 	}, nil
 }

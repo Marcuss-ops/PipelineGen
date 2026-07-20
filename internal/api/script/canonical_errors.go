@@ -30,16 +30,20 @@ import (
 // Nil error returns 200 to keep the signature symmetric for callers that
 // pass through the same mapper. Typed 4xx surfaces for known
 // client-caused sentinels (ErrPlanInvalid / ErrNoSource /
-// ErrSourceResolutionFailed). All other errors fall back to 500 —
-// godlike/07 fail-closed: the canonical 5xx is the safe default when we
-// don't recognize the typed surface.
+// ErrSourceResolutionFailed). Provider errors map to 502/504.
+// All other errors fall back to 500 — godlike/07 fail-closed: the
+// canonical 5xx is the safe default when we don't recognize the typed
+// surface.
 //
-// typed envelopes for GenerationError / PostprocessError intentionally
-// fall through to the 500 default because OLlama / TTS / Drive failures
-// are server-side concerns (the client didn't do anything wrong). The
-// godlike/07 typed-error contract keeps their canonical 5xx routing so
-// ops dashboards surface real service-impact incidents under the
-// correct status class.
+// P0 verdetto error classification (July 2026):
+//
+//	400 — client payload errors (existing)
+//	409 — handled at submitter level, not here
+//	422 — unprocessable entity
+//	502 — provider bad response (Gemma/Docs)
+//	503 — provider unavailable
+//	504 — provider timeout
+//	500 — unexpected internal error (default)
 func CanonicalHTTPStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
@@ -54,12 +58,30 @@ func CanonicalHTTPStatus(err error) int {
 	)
 
 	switch {
+	// 400 — client payload errors
 	case errors.As(err, &planErr), errors.Is(err, domainScript.ErrPlanInvalid):
 		return http.StatusBadRequest
 	case errors.As(err, &noSrcErr), errors.Is(err, domainScript.ErrNoSource):
 		return http.StatusBadRequest
 	case errors.As(err, &srcResErr), errors.Is(err, domainScript.ErrSourceResolutionFailed):
 		return http.StatusBadRequest
+
+	// 422 — unprocessable entity
+	case errors.Is(err, domainScript.ErrUnprocessable):
+		return http.StatusUnprocessableEntity
+
+	// 502 — provider bad response
+	case errors.Is(err, domainScript.ErrProviderBadResponse):
+		return http.StatusBadGateway
+
+	// 503 — provider unavailable
+	case errors.Is(err, domainScript.ErrUnavailable):
+		return http.StatusServiceUnavailable
+
+	// 504 — provider timeout
+	case errors.Is(err, domainScript.ErrProviderTimeout):
+		return http.StatusGatewayTimeout
+
 	default:
 		return http.StatusInternalServerError
 	}

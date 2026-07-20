@@ -6,9 +6,6 @@
 
 #   2. Every handler is owned by exactly one module.
 job_handler_map:
-  - job_type: script.generate_from_clips
-    handler: PipelineUseCase.HandleJob
-    owner: internal/application/scripts
   - job_type: script.generate_batch
     handler: BatchJobHandler.Handle
     owner: internal/application/scripts

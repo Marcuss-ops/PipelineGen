@@ -1,7 +1,7 @@
 // Package scriptgeneration — runner.go implements the durable
 // stage-based execution of the script generation workflow. Each
 // stage is executed in order, with checkpoint updates after every
-// successful stage. A retry resumes from the last checkpointed stage.
+// successful stage. A retry resumes from the last failed stage.
 //
 // Verdetto contract:
 //
@@ -16,18 +16,22 @@
 //
 // The runner is NOT an abstract phase registry or plugin system.
 // It is a single struct with a linear, readable Execute method.
+// Resume-from-checkpoint: on retry, Execute reads the run from
+// the repo and skips stages that are already checkpointed.
 package scriptgeneration
 
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
 
 // Runner executes the durable script generation stages.
 // Each stage is checkpointed so a retry resumes from the last
-// successfully completed stage.
+// failed stage.
 type Runner struct {
 	repo           RunRepository
 	textGen        TextGenerator
@@ -69,57 +73,115 @@ func (r *Runner) SetLogger(log *zap.Logger) {
 }
 
 // Execute runs the complete generation workflow for the given run.
-// It checks the current stage and resumes from that point.
+// It reads the run from the repository and resumes from the last
+// checkpointed stage, skipping already-completed stages.
 //
-// In production, this should be launched as a goroutine or via an
-// outbox event from the Start method. The HTTP handler must NOT
-// wait for Execute to complete — it should return 202 immediately.
+// Resume flow:
+//  1. Read GenerationRun from repo (or use provided req for new runs)
+//  2. Determine resume stage via ResumeFrom()
+//  3. Skip stages before the resume stage
+//  4. Execute from resume stage onward with checkpoint after each
+//  5. On failure: persist error, return
+//  6. On completion: persist final result, mark COMPLETED
+//
+// The handler must NOT wait for Execute to complete. This method
+// is intended to be launched as a goroutine.
 func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest) {
 	r.log.Info("scriptgeneration: starting execution",
 		zap.String("run_id", runID),
 		zap.String("source_type", string(req.Source.Type)),
 	)
 
-	// ── Stage 1: Normalize ──────────────────────────────────────
-	if err := r.updateStage(ctx, runID, RunStatusRunning, StageNormalizing); err != nil {
-		r.failRun(ctx, runID, StageNormalizing, err)
-		return
+	// Determine resume stage from existing run (if any).
+	run, err := r.repo.Get(ctx, runID)
+	resumeIdx := -1 // -1 means start from beginning
+	if err == nil && run != nil {
+		resumeStage := ResumeFrom(run)
+		if resumeStage == StageCompleted {
+			r.log.Info("run already completed", zap.String("run_id", runID))
+			return
+		}
+		resumeIdx = StageIndex(resumeStage)
+		r.log.Info("resuming from checkpoint",
+			zap.String("run_id", runID),
+			zap.String("resume_stage", string(resumeStage)),
+			zap.Int("attempt", run.AttemptCount+1),
+		)
+	} else {
+		// New run — set RUNNING.
+		if err := r.updateStage(ctx, runID, RunStatusRunning, StageNormalizing); err != nil {
+			r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+			return
+		}
 	}
-	r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageNormalizing)))
+
+	// Helper: skipIfCompleted returns true when the stage is before
+	// the resume index (already completed in a previous attempt).
+	skipIfCompleted := func(stage Stage) bool {
+		return resumeIdx >= 0 && StageIndex(stage) < resumeIdx
+	}
+
+	// ── Stage 1: Normalize ──────────────────────────────────────
+	if skipIfCompleted(StageNormalizing) {
+		r.log.Info("skipping completed stage", zap.String("stage", string(StageNormalizing)))
+	} else {
+		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageNormalizing)))
+	}
 
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
-	if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingSceneText); err != nil {
-		r.failRun(ctx, runID, StageGeneratingSceneText, err)
-		return
+	var result *GenerateResult
+	if !skipIfCompleted(StageGeneratingSceneText) {
+		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingSceneText); err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+			return
+		}
+		scenes, err := r.textGen.GenerateSceneText(ctx, req)
+		if err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text failed: %w", err))
+			return
+		}
+		if len(scenes) == 0 {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text returned zero scenes"))
+			return
+		}
+		result = &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName}
+		r.checkpoint(ctx, runID, result)
+		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
+	} else {
+		r.log.Info("skipping completed stage", zap.String("stage", string(StageGeneratingSceneText)))
+		// Load result from repo if available.
+		if run != nil && run.Result != nil {
+			result = run.Result
+		}
 	}
-	scenes, err := r.textGen.GenerateSceneText(ctx, req)
-	if err != nil {
-		r.failRun(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text failed: %w", err))
-		return
-	}
-	if len(scenes) == 0 {
-		r.failRun(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text returned zero scenes"))
-		return
-	}
-	result := &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName}
-	// Checkpoint after text generation.
-	if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
-		r.log.Warn("failed to save partial result after text generation", zap.String("run_id", runID), zap.Error(err))
-	}
-	r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
 
-	// ── Stage 3: Translate Scenes ───────────────────────────────
-	if len(req.Languages) > 0 {
+	// Nil guard: result must be non-nil before downstream stages.
+	if result == nil {
+		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName}
+	}
+
+	// ── Stage 3: Translate Scenes (scene-level idempotent) ───────
+	// On retry, scenes that already have translated text for a target
+	// language are skipped. The checkpoint after each scene ensures
+	// partial progress is preserved.
+	if !skipIfCompleted(StageTranslatingScenes) && len(req.Languages) > 0 {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageTranslatingScenes); err != nil {
-			r.failRun(ctx, runID, StageTranslatingScenes, err)
+			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 			return
 		}
 		for _, lang := range req.Languages {
-			// Skip the source language — no translation needed.
 			if lang == req.SourceLanguage {
 				continue
 			}
 			for i := range result.Scenes {
+				// Scene-level idempotency: skip if already translated.
+				if result.Scenes[i].Text[lang] != "" {
+					r.log.Debug("skipping already translated scene",
+						zap.String("scene_id", result.Scenes[i].ID),
+						zap.String("language", string(lang)),
+					)
+					continue
+				}
 				sourceText := result.Scenes[i].Text[req.SourceLanguage]
 				if sourceText == "" {
 					continue
@@ -131,7 +193,7 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					SourceText:     sourceText,
 				})
 				if err != nil {
-					r.failRun(ctx, runID, StageTranslatingScenes,
+					r.failRunWithRetry(ctx, runID, StageTranslatingScenes,
 						fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[i].ID, lang, err))
 					return
 				}
@@ -139,31 +201,34 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					result.Scenes[i].Text = make(map[Language]string)
 				}
 				result.Scenes[i].Text[lang] = translated
-
-				// Checkpoint after each translated scene.
-				if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
-					r.log.Warn("failed to save partial result after scene translation",
-						zap.String("run_id", runID),
-						zap.String("scene_id", result.Scenes[i].ID),
-						zap.Error(err),
-					)
-				}
+				// Checkpoint after each translated scene preserves progress.
+				r.checkpoint(ctx, runID, result)
 			}
 		}
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageTranslatingScenes)))
 	}
 
-	// ── Stage 4: Generate Voiceovers ────────────────────────────
-	if r.voiceoverGen != nil {
+	// ── Stage 4: Generate Voiceovers (scene-level idempotent) ───
+	// On retry, scenes that already have a voiceover for a language
+	// are skipped. The Upsert-style DocumentPublisher ensures docs
+	// are not duplicated either.
+	if !skipIfCompleted(StageGeneratingVoiceovers) && r.voiceoverGen != nil {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingVoiceovers); err != nil {
-			r.failRun(ctx, runID, StageGeneratingVoiceovers, err)
+			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 			return
 		}
 		for i := range result.Scenes {
 			scene := &result.Scenes[i]
-			// Generate a voiceover for every language that has text.
 			for lang, text := range scene.Text {
 				if text == "" {
+					continue
+				}
+				// Scene-level idempotency: skip if voiceover already exists.
+				if existing, ok := scene.Voiceover[lang]; ok && existing.ID != "" {
+					r.log.Debug("skipping already generated voiceover",
+						zap.String("scene_id", scene.ID),
+						zap.String("language", string(lang)),
+					)
 					continue
 				}
 				audioRef, err := r.voiceoverGen.Generate(ctx, VoiceoverInput{
@@ -172,7 +237,7 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					Text:     text,
 				})
 				if err != nil {
-					r.failRun(ctx, runID, StageGeneratingVoiceovers,
+					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers,
 						fmt.Errorf("voiceover generation for scene %s lang %s failed: %w", scene.ID, lang, err))
 					return
 				}
@@ -181,73 +246,66 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 				}
 				scene.Voiceover[lang] = audioRef
 			}
-			// Checkpoint after each scene's voiceovers.
-			if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
-				r.log.Warn("failed to save partial result after voiceover generation",
-					zap.String("run_id", runID),
-					zap.String("scene_id", scene.ID),
-					zap.Error(err),
-				)
-			}
+			r.checkpoint(ctx, runID, result)
 		}
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
 
 	// ── Stage 5: Publish Documents ──────────────────────────────
-	if r.docPublisher != nil {
+	// Verdetto: docs.enabled must be explicitly true. One document per
+	// language is created (not one bilingual doc). The identity is
+	// deterministic (run_id + language) for idempotent Upsert.
+	docsEnabled, docsLangs, docsFolderID := req.ResolveDocsConfig()
+
+	if !skipIfCompleted(StagePublishingDocuments) && r.docPublisher != nil && docsEnabled && len(docsLangs) > 0 {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StagePublishingDocuments); err != nil {
-			r.failRun(ctx, runID, StagePublishingDocuments, err)
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return
 		}
 		docs := make(map[Language]DocumentReference)
-		for _, lang := range req.Languages {
-			// Build document content from scenes for this language.
+		for _, lang := range docsLangs {
 			content := buildDocumentContent(result.Scenes, lang)
+			title := req.Title
+			if title == "" {
+				title = "Script"
+			}
 			docRef, err := r.docPublisher.UpsertDocument(ctx, DocumentInput{
 				RunID:    runID,
 				Language: lang,
-				Title:    req.Title + "_" + string(lang),
+				Title:    title + "_" + string(lang),
 				Content:  content,
-				FolderID: req.DriveFolderID,
+				FolderID: docsFolderID,
 			})
 			if err != nil {
-				r.failRun(ctx, runID, StagePublishingDocuments,
+				r.failRunWithRetry(ctx, runID, StagePublishingDocuments,
 					fmt.Errorf("upsert document for language %s failed: %w", lang, err))
 				return
 			}
 			docs[lang] = docRef
 		}
 		result.Documents = docs
-		if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
-			r.log.Warn("failed to save partial result after document publishing",
-				zap.String("run_id", runID),
-				zap.Error(err),
-			)
-		}
+		r.checkpoint(ctx, runID, result)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StagePublishingDocuments)))
 	}
 
 	// ── Stage 6: Build Render Payload ───────────────────────────
-	if req.RenderVideo {
+	if !skipIfCompleted(StageBuildingRenderPayload) && req.RenderVideo {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageBuildingRenderPayload); err != nil {
-			r.failRun(ctx, runID, StageBuildingRenderPayload, err)
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 			return
 		}
-		// The canonical render payload builder lives in
-		// internal/application/scripts/jobs/enqueue.
-		// Here we just signal that the payload was built.
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)))
 	}
 
 	// ── Stage 7: Enqueue Render ─────────────────────────────────
-	if req.RenderVideo && r.renderEnqueuer != nil {
+	if !skipIfCompleted(StageEnqueuingRender) && req.RenderVideo && r.renderEnqueuer != nil {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageEnqueuingRender); err != nil {
-			r.failRun(ctx, runID, StageEnqueuingRender, err)
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
 			return
 		}
 		renderRef, err := r.renderEnqueuer.Enqueue(ctx, *result)
 		if err != nil {
-			r.failRun(ctx, runID, StageEnqueuingRender,
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender,
 				fmt.Errorf("enqueue render failed: %w", err))
 			return
 		}
@@ -258,6 +316,55 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 
 	// ── Complete ────────────────────────────────────────────────
 	r.completeRun(ctx, runID, result)
+}
+
+// deriveErrorCode extracts a stable machine-readable error code from
+// the error chain and the failing stage. Returns a canonical string
+// suitable for persisting as GenerationRun.ErrorCode.
+//
+// P0 verdetto: error codes must be stable so clients (retry bots,
+// dashboards, monitoring) can branch on them reliably.
+func deriveErrorCode(err error, stage Stage) string {
+	if err == nil {
+		return string(stage) + "_FAILED"
+	}
+	errStr := err.Error()
+
+	// Check for known error patterns in the error message.
+	// This is a lightweight heuristic; a future improvement could
+	// use typed error interfaces (e.g. RetryableError, TransientError).
+	switch {
+	case containsAny(errStr, "timeout", "deadline exceeded", "context deadline"):
+		return "PROVIDER_TIMEOUT"
+	case containsAny(errStr, "unavailable", "not configured", "not initialized", "not found", "connection refused"):
+		return "PROVIDER_UNAVAILABLE"
+	case containsAny(errStr, "invalid response", "malformed", "decode failed", "parse error"):
+		return "PROVIDER_BAD_RESPONSE"
+	case containsAny(errStr, "empty", "zero", "no scenes", "no results"):
+		return "EMPTY_RESULT"
+	case containsAny(errStr, "generate scene text failed"):
+		return "TEXT_GENERATION_FAILED"
+	case containsAny(errStr, "translate"):
+		return "TRANSLATION_FAILED"
+	case containsAny(errStr, "voiceover"):
+		return "VOICEOVER_FAILED"
+	case containsAny(errStr, "document", "upsert", "google doc"):
+		return "DOCUMENT_FAILED"
+	case containsAny(errStr, "enqueue", "render", "worker"):
+		return "ENQUEUE_FAILED"
+	default:
+		return string(stage) + "_FAILED"
+	}
+}
+
+// containsAny reports whether s contains any of the substrings.
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildDocumentContent assembles the content string for a Google Doc
@@ -284,21 +391,77 @@ func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus
 	return r.repo.UpdateStage(ctx, runID, status, stage)
 }
 
-// failRun marks the run as FAILED with the given stage and error.
-// If the update itself fails (e.g. database unreachable), the error
-// is logged but not propagated — the caller has already encountered
-// a failure and there is no recovery path from a failing fail.
-func (r *Runner) failRun(ctx context.Context, runID string, failedStage Stage, err error) {
-	r.log.Error("scriptgeneration: run failed",
+// checkpoint saves the partial result to the repository.
+// Errors are logged but not propagated (best-effort checkpoint).
+func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) {
+	if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+		r.log.Warn("checkpoint save failed",
+			zap.String("run_id", runID),
+			zap.Error(err),
+		)
+	}
+}
+
+// failRunWithRetry marks the run as FAILED and persists all failure
+// metadata (error_code, failed_stage, attempt_count, next_retry_at)
+// via the repository's FailRun method.
+//
+// P0 verdetto contract: every failure persists:
+//   - error_code   — stable machine-readable code
+//   - failed_stage — which stage failed
+//   - attempt_count — incremented retry count
+//   - next_retry_at — exponential backoff window (nil when exhausted)
+func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage Stage, err error) {
+	r.log.Error("scriptgeneration: stage failed",
 		zap.String("run_id", runID),
 		zap.String("failed_stage", string(failedStage)),
 		zap.Error(err),
 	)
-	if updateErr := r.repo.UpdateStage(ctx, runID, RunStatusFailed, failedStage); updateErr != nil {
+
+	// Derive a stable error code from the error chain.
+	errorCode := deriveErrorCode(err, failedStage)
+
+	// Read current run to get attempt count.
+	run, readErr := r.repo.Get(ctx, runID)
+	attempt := 0
+	if readErr == nil && run != nil {
+		attempt = run.AttemptCount
+	}
+
+	// Compute the next retry attempt (1-based for display, 0-based for storage).
+	nextAttempt := attempt + 1
+	var nextRetryAt *time.Time
+	if nextAttempt <= MaxRetries {
+		delay := RetryDelay(attempt)
+		now := time.Now().UTC()
+		t := now.Add(delay)
+		nextRetryAt = &t
+		r.log.Info("retry scheduled",
+			zap.String("run_id", runID),
+			zap.Int("attempt", nextAttempt),
+			zap.Duration("delay", delay),
+			zap.Time("next_retry_at", t),
+		)
+	} else {
+		r.log.Warn("max retries exhausted",
+			zap.String("run_id", runID),
+			zap.Int("attempts", attempt),
+		)
+	}
+
+	// Persist all failure metadata atomically via FailRun.
+	// AttemptCount is incremented to reflect this failed attempt.
+	if failErr := r.repo.FailRun(ctx, FailRunInput{
+		RunID:        runID,
+		FailedStage:  failedStage,
+		ErrorCode:    errorCode,
+		ErrorMessage: err.Error(),
+		AttemptCount: attempt + 1,
+		NextRetryAt:  nextRetryAt,
+	}); failErr != nil {
 		r.log.Error("failed to persist run failure",
 			zap.String("run_id", runID),
-			zap.String("failed_stage", string(failedStage)),
-			zap.Error(updateErr),
+			zap.Error(failErr),
 		)
 	}
 }
@@ -309,12 +472,7 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 		zap.String("run_id", runID),
 		zap.Int("scene_count", len(result.Scenes)),
 	)
-	if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
-		r.log.Warn("failed to save final result",
-			zap.String("run_id", runID),
-			zap.Error(err),
-		)
-	}
+	r.checkpoint(ctx, runID, result)
 	if updateErr := r.repo.UpdateStage(ctx, runID, RunStatusCompleted, StageCompleted); updateErr != nil {
 		r.log.Error("failed to persist run completion",
 			zap.String("run_id", runID),

@@ -212,7 +212,7 @@ func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subj
 	// both return folder_name, causing double nesting and extra
 	// subfolders under the already-resolved root.
 	if artifact.RootFolderResolved {
-		return "", "", ""
+		return "", stockFolderLeafName(artifact.PathLeafName), ""
 	}
 	parts := strings.Split(artifact.ArtifactID, ":")
 	group = stockRunFolderName(artifact.RootFolderName)

@@ -11,16 +11,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-)
-
-// GenerateOneUseCase orchestrates the unified pipeline for a single
+) // GenerateOneUseCase orchestrates the unified pipeline for a single
 // generation item. All dependencies are typed — no any on
 // the public surface.
 type GenerateOneUseCase struct {
 	cfg             adapters.NormalizationConfig
 	preparer        *GenerationPreparer
-	engine          *Engine
-	ppReg           *adapters.PostProcessorRegistry
+	engineRunner    *GenerationEngineRunner
+	postprocessor   *GenerationPostprocessor
 	log             *zap.Logger
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
@@ -40,12 +38,14 @@ func NewGenerateOneUseCase(
 	log *zap.Logger,
 ) *GenerateOneUseCase {
 	preparer := NewGenerationPreparer(cfg, registry, ppReg, log)
+	engineRunner := NewGenerationEngineRunner(engine)
+	postprocessor := NewGenerationPostprocessor(ppReg)
 	return &GenerateOneUseCase{
-		cfg:      cfg,
-		preparer: preparer,
-		engine:   engine,
-		ppReg:    ppReg,
-		log:      log,
+		cfg:           cfg,
+		preparer:      preparer,
+		engineRunner:  engineRunner,
+		postprocessor: postprocessor,
+		log:           log,
 	}
 }
 
