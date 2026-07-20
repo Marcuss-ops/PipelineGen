@@ -145,9 +145,15 @@ func (uc *GenerateOneUseCase) Execute(
 			zap.Int64("total_ms", timings.TotalMs))
 	}
 
+	// Sprint 1.3 (godlike/08): emit the canonical per-item Status
+	// set by ClassifyGenerationStatus in generation_finalize.go
+	// instead of the legacy hardcoded "success" string. The
+	// verdict §"Usa sempre le costanti di dominio" forbids local
+	// string literals; using result.Status keeps the emit surface
+	// in lockstep with the classify phase.
 	tracker.TrackEvent("job.completed", "Script generation completed", map[string]any{
 		"item_id":    item.ID,
-		"status":     "success",
+		"status":     result.Status,
 		"total_ms":   timings.TotalMs,
 		"word_count": result.Output.WordCount,
 	})

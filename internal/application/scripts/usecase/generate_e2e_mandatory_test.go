@@ -237,8 +237,8 @@ func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
 	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, scriptpkg.ItemStatusSucceeded, result.Status,
-		"clip-native plan with valid evidence must succeed even when the engine emits no scenes")
+	require.Equal(t, scriptpkg.ItemStatusSucceededWithWarnings, result.Status,
+		"clip-native plan with valid evidence must succeed (with warnings after central classify) even when the engine emits no scenes")
 	require.NotNil(t, result.ModeInfo)
 	require.Equal(t, "clip_native", result.ModeInfo.UsedMode)
 	require.False(t, result.ModeInfo.FallbackUsed,

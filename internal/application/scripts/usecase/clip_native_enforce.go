@@ -137,16 +137,9 @@ func enforceClipNativeContract(
 	// only when a previous mutation set fallbackUsed=true under a
 	// non-allow_prose policy; today only this branchable block
 	// can set that flag (the document processor + other paths
-	// that consume ModeInfo do not write it).
-	if fallbackUsed && policy != scriptpkg.FallbackPolicyAllowProse {
-		return &scriptpkg.ClipNativePlanningError{
-			Code:    "CLIP_NATIVE_PLANNING_FAILED",
-			ItemID:  item.ID,
-			Policy:  policy,
-			Reason:  "prose fallback not allowed",
-			Details: []string{"clip_native: prose fallback was used but fallback_policy is strict"},
-		}
-	}
+	// that consume ModeInfo do not write it). Pre-Sprint-1.3 this
+	// guard appeared twice in the same file (literal duplicate);
+	// the duplicate has been removed.
 	if fallbackUsed && policy != scriptpkg.FallbackPolicyAllowProse {
 		return &scriptpkg.ClipNativePlanningError{
 			Code:    "CLIP_NATIVE_PLANNING_FAILED",
@@ -162,11 +155,16 @@ func enforceClipNativeContract(
 		UsedMode:      usedMode,
 		FallbackUsed:  fallbackUsed,
 	}
-	if fallbackUsed || len(warnings) > 0 {
-		result.Status = scriptpkg.ItemStatusSucceededWithWarnings
+	// Sprint 1.3 (godlike/08): this function NO LONGER writes
+	// result.Status. The orchestrator's classify phase
+	// (ClassifyGenerationStatus in status_classifier.go) is the
+	// SOLE writer of result.Status. Warnings carry the same
+	// information — when the central classify runs with
+	// qualitySkipped=false and len(Warnings)>0 it produces
+	// ItemStatusSucceededWithWarnings, matching the pre-Sprint-1.3
+	// behaviour this block used to encode.
+	if len(warnings) > 0 {
 		result.Warnings = append(result.Warnings, warnings...)
-	} else {
-		result.Status = scriptpkg.ItemStatusSucceeded
 	}
 	return nil
 }

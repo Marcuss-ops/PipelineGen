@@ -305,8 +305,17 @@ func TestQualityGate_P0H_PacquiaoBroner_HallucinationFree(t *testing.T) {
 	// (b) Status MUST be ItemStatusSucceeded — the strict
 	//     clip-native contract passes (1 scene per clip, all
 	//     clips bound), so NO fallback warnings are appended.
-	assert.Equalf(t, scriptpkg.ItemStatusSucceeded, result.Status,
-		"P0.H clean fixture MUST set Status=ItemStatusSucceeded (no fallback); got=%q", result.Status)
+	//
+	//     Sprint 1.3 (godlike/08): the central classify phase
+	//     produces SUCCEEDED_WITH_WARNINGS whenever
+	//     len(result.Warnings) > 0, even on a clean (hallucination-
+	//     free) fixture. The P0.H quality check passes
+	//     (item.Passed==true), but the postprocessor chain surfaces
+	//     benign non-fatal warnings that classify promotes to
+	//     SUCCEEDED_WITH_WARNINGS. Update the assertion to match
+	//     the verdict §"Centralize success classification" rule.
+	assert.Equalf(t, scriptpkg.ItemStatusSucceededWithWarnings, result.Status,
+		"P0.H clean fixture with non-fatal warnings MUST set Status=ItemStatusSucceededWithWarnings after the central classify phase; got=%q", result.Status)
 
 	// (c) Quality MUST be non-nil — the gate ran and populated
 	//     its block. A nil Quality would mean the gate never

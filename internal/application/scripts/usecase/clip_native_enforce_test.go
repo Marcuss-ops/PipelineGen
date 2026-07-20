@@ -17,6 +17,12 @@ func TestEnforceClipNativeContract_StrictSuccess(t *testing.T) {
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+	// Sprint 1.3 (godlike/08): enforceClipNativeContract no longer
+	// writes result.Status. The orchestrator's classify phase is the
+	// SOLE writer. Tests that assert the post-classify state must
+	// invoke ClassifyGenerationStatus explicitly to mirror the
+	// production Finalize() flow.
+	result.Status = ClassifyGenerationStatus(result, false)
 	if result.Status != scriptpkg.ItemStatusSucceeded {
 		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceeded, result.Status)
 	}
@@ -81,6 +87,8 @@ func TestEnforceClipNativeContract_ClipEvidenceBuildsScenesWithoutFallback(t *te
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+	// Sprint 1.3 (godlike/08): see note above.
+	result.Status = ClassifyGenerationStatus(result, false)
 	if result.Status != scriptpkg.ItemStatusSucceeded {
 		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceeded, result.Status)
 	}
@@ -117,6 +125,10 @@ func TestEnforceClipNativeContract_AllowProseMismatchSucceedsWithWarnings(t *tes
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
+	// Sprint 1.3 (godlike/08): see note above. allow_prose with
+	// a fallback warning produces SUCCEEDED_WITH_WARNINGS after the
+	// central classify phase (warnings were appended by enforce).
+	result.Status = ClassifyGenerationStatus(result, false)
 	if result.Status != scriptpkg.ItemStatusSucceededWithWarnings {
 		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceededWithWarnings, result.Status)
 	}

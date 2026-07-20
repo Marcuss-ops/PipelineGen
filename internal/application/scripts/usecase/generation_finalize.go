@@ -95,14 +95,25 @@ func (f *GenerationFinalizer) Finalize(
 			"target_words":           quality.TargetWords,
 		})
 	}
+	// Sprint 1.3 (godlike/08): centralize success classification.
+	// Order: build → enforce → quality → warnings → classify → emit.
+	// The classify step runs here, once, via
+	// ClassifyGenerationStatus. qualitySkipped is the only
+	// non-result input that influences the canonical Status
+	// (warnings are read directly off result.Warnings).
+	qualitySkipped := false
 	if qErr != nil {
 		if item.ScriptParams.SkipQualityGate {
+			qualitySkipped = true
 			tracker.TrackEvent("quality.skipped", "Editorial quality gate failure ignored by request", map[string]any{
 				"item_id": item.ID,
 				"error":   qErr.Error(),
 			})
 		} else {
-			result.Status = "FAILED_QUALITY_GATE"
+			// Terminal failure path: set the canonical FAILED status
+			// directly (NOT via ClassifyGenerationStatus — the verdict
+			// mandates a single classify call in the success path).
+			result.Status = scriptpkg.ItemStatusFailed
 			return result, qErr
 		}
 	}
@@ -116,5 +127,12 @@ func (f *GenerationFinalizer) Finalize(
 			zap.Any("source_text", SourceTextLogFields(plan.SourceText, f.cfg)))
 	}
 
+	// Sprint 1.3 classify phase (SOLE writer of result.Status in the
+	// success path). Order: build → enforce → quality → warnings
+	// (already collected above by buildGenerationResult, the
+	// clip-native warnings appended by enforceClipNativeContract,
+	// and the tracker events emitted by the quality gate) →
+	// classify → emit (in generate_one_usecase.go::Execute).
+	result.Status = ClassifyGenerationStatus(result, qualitySkipped)
 	return result, nil
 }
