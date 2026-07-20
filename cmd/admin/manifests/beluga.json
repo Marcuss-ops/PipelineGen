@@ -1,0 +1,30 @@
+{
+  "drive_file_id": "1dQPRaUjyqRCjKrH6F03aQ6rcZ5Qopqnv",
+  "name": "Beluga knew exactly what it was doing to that poor kid",
+  "description": "A calm encounter at the aquarium... Look who is coming! But the beluga has other plans... BOO! Prank perfectly executed! Childhood trauma at the aquarium",
+  "description_alt": "beluga whale scaring kid at aquarium prank funny animal video",
+  "tags": [
+    "beluga",
+    "whale",
+    "funny",
+    "aquarium",
+    "prank",
+    "kid",
+    "scare",
+    "funny animals",
+    "viral",
+    "video"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_animals",
+  "local_subdir": "viral_videos",
+  "default_filename": "This beluga knew exactly what it was doing to that poor kid rAni.mp4",
+  "duration_fallback_seconds": 9,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "beluga whale / kid",
+    "visual_summary": "A beluga whale swim towards a kid, turns upside down and suddenly opens its mouth to scare the child, making him fall and run away crying.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:02\",\"visual\":\"A young child stands in front of the large window of an ocean aquarium, looking at the blue water and pointing as a large white beluga whale swims calmly toward him from the right.\",\"sfx_family\":\"background_music/ambient_sound\"},{\"start\":\"00:03\",\"end\":\"00:05\",\"visual\":\"The beluga positions itself directly in front of the child, turns belly up, and suddenly opens its mouth wide to simulate an attack and intentionally scare him.\",\"sfx_family\":\"audio_control/impact_sfx\"},{\"start\":\"00:06\",\"end\":\"00:09\",\"visual\":\"The child gets very scared, jumps backward, loses balance, falls to the ground, and runs away screaming and crying in terror, while another girl watches the scene and someone laughs in the background. The beluga swims away, proud of its prank.\",\"sfx_family\":\"meme_vocal_effect/comedy_sfx\"}]"
+  }
+}

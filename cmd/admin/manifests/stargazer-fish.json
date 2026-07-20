@@ -1,0 +1,35 @@
+{
+  "drive_file_id": "19zV7kxyINQeMGP68VxlhuvWCRJUX-bc4",
+  "name": "Stargazer Fish Revealed Underwater \u2013 Sand Ambush",
+  "description": "stargazer fish hidden under sand underwater hand digging sudden reveal flat face eyes looking up bizarre marine creature",
+  "description_alt": "subacqueo fondale sabbioso mano scava nube di sabbia pesce mimetico rivelazione sorpresa hook video short",
+  "tags": [
+    "fish",
+    "stargazer",
+    "stargazer fish",
+    "pesce prete",
+    "underwater",
+    "subacqueo",
+    "ocean",
+    "sand",
+    "sabbia",
+    "buried animal",
+    "surprise reveal",
+    "hook",
+    "shorts"
+  ],
+  "source": "ai_generated",
+  "category": "Ocean",
+  "group": "topfive_fish",
+  "local_subdir": "fish_shorts",
+  "default_filename": "stargazer-fish-underwater.mp4",
+  "metadata": {
+    "content_type": "vertical fish short",
+    "subject": "stargazer fish / pesce prete",
+    "visual_summary": "A hand digs into clear underwater sand and reveals a camouflaged stargazer fish staring directly at the camera.",
+    "hook": "The sand cloud opens and an unexpected stargazer fish appears face-first.",
+    "audio_policy": "preserve original clip audio",
+    "sound_design_plan": "00:00-00:04 underwater ambience and sand movement; 00:05 stargazer fish reveal with one low cinematic bass impact; 00:06-00:08 natural underwater tail and clean loop cut.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:02\",\"visual\":\"underwater sandy seabed, hand enters and begins digging\",\"sfx_family\":\"ambient/foley\"},{\"start\":\"00:02\",\"end\":\"00:04\",\"visual\":\"sand cloud builds and hides the reveal\",\"sfx_family\":\"foley\"},{\"start\":\"00:04\",\"end\":\"00:05\",\"visual\":\"silhouette becomes visible beneath the sand\",\"sfx_family\":\"tension\"},{\"start\":\"00:05\",\"end\":\"00:06\",\"visual\":\"stargazer fish face is revealed\",\"sfx_family\":\"impact/cinematic_bass_drop\"},{\"start\":\"00:06\",\"end\":\"00:08.5\",\"visual\":\"fish remains visible, underwater resolution\",\"sfx_family\":\"ambient\"}]"
+  }
+}
