@@ -2,11 +2,11 @@
 // wire shape of POST /api/script/generate (PR-morti-sync, July 2026).
 //
 // godlike/07 forward-prevention gates:
-//   - Field count must remain EXACTLY 5 (NO re-introduction of dead
+//   - Field count must remain EXACTLY 6 (NO re-introduction of dead
 //     sync fields like Script/WordCount/Title/Language/Model/CacheStatus/
 //     CacheHit/Count/Total/Results/EntitiesJSON/DocLink/DocID/Warnings).
 //   - JSON-keys MUST be the canonical async set (ok + job_id + status +
-//     status_url + doc_title).
+//     status_url + doc_title + current_stage).
 //   - Empty doc_title MUST be omitted (production call site passes ""
 //     and operators read the wire shape verbatim via chrome tests).
 //   - Zero value MUST serialize as far as omitempty permits (ok:false
@@ -26,7 +26,7 @@ import (
 )
 
 // TestGenerateResponse_FieldCountLock pins the field count to exactly
-// 5. godlike/07 forward-prevention gate: a future re-introduction of
+// 6. godlike/07 forward-prevention gate: a future re-introduction of
 // dead sync fields (Script / WordCount / Title / Language / Model /
 // CacheStatus / CacheHit / Count / Total / Results / EntitiesJSON /
 // DocLink / DocID) would surface as a test failure, requiring a
@@ -34,7 +34,7 @@ import (
 func TestGenerateResponse_FieldCountLock(t *testing.T) {
 	t.Parallel()
 
-	const wantCount = 5
+	const wantCount = 6
 	got := reflect.TypeOf(GenerateResponse{}).NumField()
 	if got != wantCount {
 		t.Fatalf("GenerateResponse field count = %d, want %d (forward-prevention lock).\nField names: %v",
@@ -48,7 +48,7 @@ func TestGenerateResponse_FieldCountLock(t *testing.T) {
 func TestGenerateResponse_FieldNamesCanonical(t *testing.T) {
 	t.Parallel()
 
-	const want = "ok job_id status status_url doc_title"
+	const want = "ok job_id status status_url doc_title current_stage"
 	got := fieldNamesCanonical()
 	if got != want {
 		t.Fatalf("GenerateResponse JSON-keys = %q\n  want   = %q", got, want)
