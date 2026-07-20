@@ -48,9 +48,6 @@ canonical_services:
   - service: CacheEvictionUseCase
     constructor: NewCacheEvictionUseCase
     location: internal/app/wire_script.go
-  - service: SectionRegenerator
-    constructor: NewSectionRegenerator
-    location: internal/app/wire_script.go
   - service: ImageService
     constructor: buildImagesService
     location: internal/app/build_bundles_images.go
