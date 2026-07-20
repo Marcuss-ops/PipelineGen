@@ -145,15 +145,6 @@ func (uc *GenerateOneUseCase) Execute(
 			zap.Int64("total_ms", timings.TotalMs))
 	}
 
-	// Log source text metrics once at completion. The raw source text
-	// is never logged; only hash, length, token estimate and an
-	// optional preview are emitted.
-	if uc.log != nil {
-		uc.log.Info("generate-one: source text metrics",
-			zap.String("item_id", item.ID),
-			zap.Any("source_text", SourceTextLogFields(plan.SourceText, uc.cfg)))
-	}
-
 	tracker.TrackEvent("job.completed", "Script generation completed", map[string]any{
 		"item_id":    item.ID,
 		"status":     "success",

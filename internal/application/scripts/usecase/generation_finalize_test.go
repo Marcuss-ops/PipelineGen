@@ -5,11 +5,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"go.uber.org/zap"
 )
 
 func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
-	finalizer := NewGenerationFinalizer()
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-success"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-success",
@@ -50,7 +52,7 @@ func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
-	finalizer := NewGenerationFinalizer()
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-clip"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-clip",
@@ -85,7 +87,7 @@ func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
-	finalizer := NewGenerationFinalizer()
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-quality"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:          "finalize-quality",
@@ -123,7 +125,7 @@ func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_SkipQualityGate(t *testing.T) {
-	finalizer := NewGenerationFinalizer()
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-skip"}
 	item.ScriptParams.SkipQualityGate = true
 	plan := scriptpkg.ResolvedGenerationPlan{
