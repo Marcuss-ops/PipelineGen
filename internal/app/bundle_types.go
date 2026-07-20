@@ -142,9 +142,13 @@ type StockBundle struct {
 // wiring. The pre-Step-6 `Handler` field has no non-HTTP consumer in
 // the codebase (/run + /search-and-run are the entire public surface,
 // both reachable via HTTP).
+//
+// Fase 3 (July 2026): BatchModule exposes the /api/stock-batches
+// capability as a second, sibling route module.
 type StockPipelineWiring struct {
-	Module  api.Module
-	Service *stockpipeline.Service
+	Module      api.Module
+	BatchModule api.Module
+	Service     *stockpipeline.Service
 }
 
 // YouTubeClipWiring holds the YouTube Clip module wiring.

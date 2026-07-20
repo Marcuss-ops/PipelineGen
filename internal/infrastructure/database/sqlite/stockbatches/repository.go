@@ -157,6 +157,40 @@ func (r *Repository) UpdateGroupStatus(ctx context.Context, id string, status st
 	return nil
 }
 
+// ListGroups returns all groups belonging to a batch, ordered by group_key.
+func (r *Repository) ListGroups(ctx context.Context, batchID string) ([]stockpipeline.StockBatchGroup, error) {
+	const q = `SELECT id, batch_id, group_key, title, folder_name, drive_folder_id,
+		start_sec, end_sec, expected_clips, verified_clips, status, child_job_id, attempts,
+		created_at, updated_at, last_error
+		FROM stock_batch_groups WHERE batch_id = ? ORDER BY group_key`
+	rows, err := r.db.QueryContext(ctx, q, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("stockbatches.ListGroups: %w", err)
+	}
+	defer rows.Close()
+
+	var out []stockpipeline.StockBatchGroup
+	for rows.Next() {
+		var g stockpipeline.StockBatchGroup
+		var status, createdAt, updatedAt string
+		err := rows.Scan(&g.ID, &g.BatchID, &g.GroupKey, &g.Title, &g.FolderName,
+			&g.DriveFolderID, &g.StartSec, &g.EndSec, &g.ExpectedClips, &g.VerifiedClips,
+			&status, &g.ChildJobID, &g.Attempts, &createdAt, &updatedAt, &g.LastError,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("stockbatches.ListGroups: scan: %w", err)
+		}
+		g.Status = stockpipeline.GroupState(status)
+		scanTime(&g.CreatedAt, createdAt)
+		scanTime(&g.UpdatedAt, updatedAt)
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("stockbatches.ListGroups: rows: %w", err)
+	}
+	return out, nil
+}
+
 // CreateArtifact creates a stock_artifacts row if it does not already exist.
 // Existing rows are left untouched so that retry/resume never loses
 // accumulated state (status, attempts, local_path, sha256, etc.).
