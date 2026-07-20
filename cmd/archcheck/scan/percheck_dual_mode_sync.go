@@ -3,8 +3,8 @@
 //
 // scan/percheck_dual_mode_sync.go is the canonical SSOT scanner
 // for the post-PR-morti-sync (July 2026) wire-shape contract:
-// GenerateResponse is async-only (5 fields: OK + JobID + Status
-// + StatusURL + DocTitle). syncSingle and syncMulti helpers
+// GenerateResponse is async-only (6 fields: OK + JobID + Status
+// + StatusURL + DocTitle + CurrentStage). syncSingle and syncMulti helpers
 // (both zombie after the slim) MUST stay retired.
 //
 // Rationale (godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY):
@@ -23,7 +23,7 @@
 // definitions) surfaces as a CI build failure (--strict mode
 // exit 1), not a silent production wire-shape drift.
 //
-// Companion gate: the struct field count is locked to 5 by
+// Companion gate: the struct field count is locked to 6 by
 // internal/api/script/response_test.go::TestGenerateRespons
 // e_FieldCountLock. A future contributor adding a sync field
 // would surface as a unit-test failure here AND as a CI
@@ -286,4 +286,4 @@ func scanDualModeSyncFile(path, relPath string, r *report.Report) {
 // PR-morti-sync precedent + the response_test.go companion
 // gate so future agents reading the CI failure have the full
 // migration context inline.
-const dualModeSyncViolationNote = "forbidden dual-mode (sync-async) GenerateResponse helper re-introduction. Post-PR-morti-sync (July 2026): GenerateResponse is async-only (5 fields: OK + JobID + Status + StatusURL + DocTitle). syncSingle and syncMulti helpers were RETIRED with zero production or test callers (cross-package rg audit confirmed). Re-introducing them reverses godlike/06 SSOT (the async() helper is the SOLE canonical path; the 5-field struct is the wire-shape contract) and re-creates the dual-mode surface that godlike/07 NO-FAKE-AVAILABILITY explicitly retired. The struct field count is locked to 5 by internal/api/script/response_test.go::TestGenerateResponse_FieldCountLock; a future contributor who bumps the count MUST also revisit this gate."
+const dualModeSyncViolationNote = "forbidden dual-mode (sync-async) GenerateResponse helper re-introduction. Post-PR-morti-sync (July 2026): GenerateResponse is async-only (6 fields: OK + JobID + Status + StatusURL + DocTitle + CurrentStage). syncSingle and syncMulti helpers were RETIRED with zero production or test callers (cross-package rg audit confirmed). Re-introducing them reverses godlike/06 SSOT (the async() helper is the SOLE canonical path; the 6-field struct is the wire-shape contract) and re-creates the dual-mode surface that godlike/07 NO-FAKE-AVAILABILITY explicitly retired. The struct field count is locked to 6 by internal/api/script/response_test.go::TestGenerateResponse_FieldCountLock; a future contributor who bumps the count MUST also revisit this gate."

@@ -80,6 +80,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
@@ -150,6 +151,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
 	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
+
+	// Wire the source registry into the SceneTextGenerator so the
+	// durable pipeline can resolve clip/catalog/search/curate sources.
+	if root.AI != nil && root.AI.SceneTextGenerator != nil {
+		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
+	}
 
 	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
@@ -254,6 +261,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		Generate: scriptapi.GenerateDeps{
 			Submission:    submissionSvc,
 			GenRunStarter: nil, // wired below when runRepo is available
+			Factory:       submission.NewSubmitRequestFactory(),
 			Log:           log,
 			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
 		},
