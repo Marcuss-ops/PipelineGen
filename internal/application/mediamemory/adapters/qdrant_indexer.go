@@ -101,6 +101,20 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 		)
 	}
 
+	// godlike/07 NO-FAKE-AVAILABILITY: a concept that has not
+	// yet been assigned an embedding_version must NOT be indexed
+	// silently with the canonical version — the column-vs-payload
+	// drift would surface as an out-of-band diagnostic later.
+	// Callers MUST set EmbeddingVersion before calling
+	// IndexConcept (admin reindex flow uses ReindexConcept which
+	// bumps the version before re-writing).
+	if c.EmbeddingVersion == "" {
+		return fmt.Errorf(
+			"mediamemory: concept %q has empty embedding_version (call ReindexConcept or set before IndexConcept): %w",
+			c.ID, mediamemory.ErrInvalidBindingInput,
+		)
+	}
+
 	payload := map[string]any{
 		"concept_id":         c.ID,
 		"language":           c.Language,
@@ -108,7 +122,7 @@ func (i *QdrantIndexer) IndexConcept(ctx context.Context, c mediamemory.MediaCon
 		"concept_type":       string(c.ConceptType),
 		"canonical_text":     c.CanonicalText,
 		"normalized_text":    c.NormalizedText,
-		"embedding_version":  schema.ConceptEmbeddingVersion,
+		"embedding_version":  c.EmbeddingVersion,
 	}
 
 	point := schema.Point{
@@ -139,4 +153,51 @@ func (i *QdrantIndexer) DeindexConcept(ctx context.Context, conceptID string) er
 		return fmt.Errorf("mediamemory: QdrantIndexer delete concept=%q: %w", conceptID, err)
 	}
 	return nil
+}
+
+// ReindexConcept bumps the concept's embedding_version and
+// rewrites the canonical Qdrant point. The point ID is unchanged
+// (concept-<conceptID>) so an in-place overwrite supersedes the
+// old vectors + payload with the new ones. The
+// ConceptRepository row's embedding_version column must be
+// updated by the caller (typically the admin orchestrator that
+// owns the reindex loop).
+//
+// godlike/06 SSOT (Level 0 cache independence under versioning):
+// targetVersion="" triggers qdrantschema.BumpEmbeddingVersion
+// which computes the canonical next version from the existing
+// c.EmbeddingVersion. PhraseFingerprint is INVARIANT under this
+// bump — ConceptRepository.FindByFingerprint continues to
+// resolve to the same concept_id before and after the rewrite.
+// That's the property this contract preserves.
+//
+// godlike/07: a malformed prior version propagates the
+// qdrantschema.BumpEmbeddingVersion error wrapped at the call
+// site; the caller decides whether to fall back on the JSON
+// manifest of last-known-good versions or abort.
+func (i *QdrantIndexer) ReindexConcept(ctx context.Context, c mediamemory.MediaConcept, targetVersion string) error {
+	if i == nil || i.client == nil || i.embedder == nil {
+		return fmt.Errorf("mediamemory: QdrantIndexer not wired (client + registry required): %w",
+			mediamemory.ErrSemanticNotConfigured)
+	}
+	if c.ID == "" {
+		return fmt.Errorf("mediamemory: ReindexConcept with empty concept_id: %w",
+			mediamemory.ErrInvalidBindingInput)
+	}
+	if targetVersion == "" {
+		next, err := schema.BumpEmbeddingVersion(c.EmbeddingVersion)
+		if err != nil {
+			return fmt.Errorf("mediamemory: ReindexConcept bump from %q: %w", c.EmbeddingVersion, err)
+		}
+		targetVersion = next
+	}
+	// godlike/06 SSOT (parameter-copy clarity): c is the callee's
+	// parameter copy, NOT a reference into the caller's
+	// MediaConcept. The assignment below touches only this
+	// function's local view before the chained IndexConcept call
+	// observes the bumped version. The caller's struct is left
+	// untouched so admin reindex loops can fold the result back
+	// into ConceptRepository.Upsert without an extra round-trip.
+	c.EmbeddingVersion = targetVersion
+	return i.IndexConcept(ctx, c)
 }

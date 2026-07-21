@@ -271,6 +271,26 @@ type SemanticLookup interface {
 type EmbeddingIndexer interface {
 	IndexConcept(ctx context.Context, c MediaConcept) error
 	DeindexConcept(ctx context.Context, conceptID string) error
+	// ReindexConcept bumps the concept's embedding_version to
+	// targetVersion (or — when targetVersion is empty — to the
+	// canonical next version computed via
+	// qdrantschema.BumpEmbeddingVersion) and rewrites the
+	// canonical Qdrant point at the SAME point ID. The Qdrant
+	// point's payload field `embedding_version` updates to the
+	// new value; vectors are re-computed using the same
+	// EmbeddingChannelRegistry.
+	//
+	// godlike/06 SSOT (Level 0 cache independence under
+	// versioning): rebumping the version does NOT mutate
+	// PhraseFingerprint. The Normalizer hashes (language +
+	// normalized_phrase + visual_intent_version) deterministically
+	// from the original canonical text so the (language,
+	// fingerprint) tuple is invariant under reindex. Callers
+	// relying only on ConceptRepository.FindByFingerprint see the
+	// same concept_id resolve to the same canonical row before
+	// and after the bump — that's the contract this port method
+	// preserves.
+	ReindexConcept(ctx context.Context, c MediaConcept, targetVersion string) error
 }
 
 // StockPipelineAcquirer is the materialization port. The production
