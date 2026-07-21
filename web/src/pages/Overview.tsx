@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { usePollingQuery } from '../hooks/usePollingQuery'
+import RefreshButton from '../components/RefreshButton'
 import { getSummary } from '../api/client'
 
 interface SummaryData {
@@ -17,24 +18,26 @@ interface SummaryData {
 }
 
 export default function Overview() {
-  const [summary, setSummary] = useState<SummaryData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getSummary()
-      .then((data) => setSummary(data as SummaryData))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Errore'))
-      .finally(() => setLoading(false))
-  }, [])
+  const {
+    data: summary,
+    loading,
+    error,
+    refresh,
+  } = usePollingQuery<SummaryData>({
+    queryFn: async () => (await getSummary()) as SummaryData,
+    interval: 5000,
+  })
 
   return (
     <div style={{ padding: '2rem' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.75rem', color: '#e2e8f0' }}>Overview</h2>
-        <p style={{ margin: '0.5rem 0 0', color: '#94a3b8' }}>
-          Panoramica del sistema e degli asset indicizzati.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.75rem', color: '#e2e8f0' }}>Overview</h2>
+          <p style={{ margin: '0.5rem 0 0', color: '#94a3b8' }}>
+            Panoramica del sistema e degli asset indicizzati.
+          </p>
+        </div>
+        <RefreshButton onClick={refresh} />
       </div>
 
       {loading ? (
