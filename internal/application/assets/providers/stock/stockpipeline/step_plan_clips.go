@@ -49,9 +49,10 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	// When explicit clips are provided, bypass the deterministic
-	// planner and use the timestamp ranges directly. Each clip
-	// carries its own source URL; the first non-empty URL is used
-	// for the VideoSource.
+	// planner and use the timestamp ranges directly. The first
+	// per-clip URL is used for the VideoSource; if no clip has a
+	// URL, the orchestrator falls back to the root source
+	// (DirectURLs > DriveURLs > SearchQueries).
 	//
 	// Clips with zero-valued StartSec/EndSec are normalised:
 	// EndSec defaults to clip_duration (10s if unset) so the
@@ -67,7 +68,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 		}
 		if srcURL == "" {
-			return errors.New("orchestrator: stock.plan: explicit clips require at least one clip with a non-empty URL")
+			if fallback, ok := firstSource(in); ok {
+				srcURL = fallback.URL
+			} else {
+				return errors.New("orchestrator: stock.plan: explicit clips require either a per-clip URL or a root source (direct_urls/drive_urls/search_queries)")
+			}
 		}
 
 		// Normalise zero-valued timestamp ranges before handing

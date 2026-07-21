@@ -123,6 +123,11 @@ type Service struct {
 	// structurally. nil-tolerant at ctor time (wire-up deferred pending
 	// composition-root re-enablement).
 	channelLister ChannelLister
+	// driveReader enables listing Google Drive folders so a Drive folder
+	// URL can be expanded to its first video file, and downloads single
+	// Drive files. nil-tolerant — when nil, Drive URLs fail with a typed
+	// error.
+	driveReader DriveReaderPort
 
 	// db is the SQLite handle for the step store (Phase 2, July 2026).
 	// nil-tolerant — when nil, the orchestrator falls back to in-memory.
@@ -230,6 +235,7 @@ func NewService(deps Deps) (*Service, error) {
 		finalizer:         deps.Finalizer,
 		sourceStager:      deps.Execution.SourceStager,
 		channelLister:     deps.Execution.ChannelLister,
+		driveReader:       deps.DriveReader,
 		db:                deps.Runtime.DB,
 		sourceCacheReader: deps.SourceCache.Reader,
 		sourceCacheWriter: deps.SourceCache.Writer,

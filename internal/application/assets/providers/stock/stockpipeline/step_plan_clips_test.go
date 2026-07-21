@@ -397,7 +397,7 @@ func TestStockPlanStep_ClipsNoURL_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for clips with no URL")
 	}
-	if !strings.Contains(err.Error(), "require at least one clip with a non-empty URL") {
+	if !strings.Contains(err.Error(), "explicit clips require either a per-clip URL or a root source") {
 		t.Errorf("expected URL-required error, got: %v", err)
 	}
 }
@@ -412,7 +412,7 @@ func TestStockPlanStep_ClipsEmptyNoURL_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for clips with empty URL")
 	}
-	if !strings.Contains(err.Error(), "require at least one clip with a non-empty URL") {
+	if !strings.Contains(err.Error(), "explicit clips require either a per-clip URL or a root source") {
 		t.Errorf("expected URL-required error, got: %v", err)
 	}
 }

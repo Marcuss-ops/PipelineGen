@@ -11,10 +11,11 @@
 // the yt-dlp direct path is the production-tested download path.
 //
 // Google Drive download (July 2026): when a URL points to Drive
-// (drive.google.com), the stager routes through DriveDownloaderPort
-// instead of yt-dlp. The port mirrors drive.Reader.DownloadFile so
-// the concrete *drive.Uploader satisfies it without an adapter.
-// Composition root wires the port via WithDriveDownloader.
+// (drive.google.com), the stager routes through DriveReaderPort
+// instead of yt-dlp. The port mirrors drive.Reader so the concrete
+// *drive.Uploader satisfies it without an adapter. Folder URLs are
+// expanded by listing the folder and picking the first video file.
+// Composition root wires the port via WithDriveReader.
 package stockpipeline
 
 import (
@@ -37,18 +38,6 @@ import (
 
 // Compile-time assertion: *StockStager satisfies assets.SourceStager.
 var _ assets.SourceStager = (*StockStager)(nil)
-
-// DriveDownloaderPort is the Pattern 0 port for downloading files
-// from Google Drive. The port mirrors drive.Reader.DownloadFile so
-// the concrete *drive.Uploader satisfies it without an adapter.
-//
-// godlike/06 SSOT: this port lives in the stockpipeline package
-// (application layer); the concrete implementation lives in
-// internal/infrastructure/drive/ and is injected via
-// WithDriveDownloader at composition time.
-type DriveDownloaderPort interface {
-	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
-}
 
 // sharedSourceLease carries the reference count + leader path for a
 // single in-flight singleflight download. Mutex-guarded for
@@ -74,7 +63,7 @@ type sharedSourceLease struct {
 
 // StockStager adapts a stockpipeline.Service to the shared
 // assets.SourceStager port. It downloads directly via yt-dlp
-// (YouTube/DirectURLs) and via DriveDownloaderPort (Google Drive
+// (YouTube/DirectURLs) and via DriveReaderPort (Google Drive
 // URLs), bypassing the acquisition.SourceStager chain.
 //
 // Source cache (July 2026): when a SourceCacheReader + SourceCacheWriter
@@ -133,12 +122,12 @@ type sharedSourceLease struct {
 // leader's own Cleanup would otherwise eagerly unlink the leader's
 // tmpDir, defeating the FD-based protection of (a).
 type StockStager struct {
-	svc             *Service
-	downloader      DownloaderPort
-	driveDownloader DriveDownloaderPort
-	cacheReader     SourceCacheReader
-	cacheWriter     SourceCacheWriter
-	sf              singleflight.Group
+	svc         *Service
+	downloader  DownloaderPort
+	driveReader DriveReaderPort
+	cacheReader SourceCacheReader
+	cacheWriter SourceCacheWriter
+	sf          singleflight.Group
 
 	// sharedRefs maps each in-flight cacheKey to its reference-counted
 	// lease on the leader's tmpDir file. acquireSharedLease /
@@ -172,7 +161,7 @@ type StockStager struct {
 // structurally).
 //
 // Google Drive download support is wired separately via
-// WithDriveDownloader (optional — nil means Drive URLs fall through
+// WithDriveReader (optional — nil means Drive URLs fall through
 // to the downloader, which will fail with a descriptive error).
 //
 // Downloader override is wired separately via WithDownloader
@@ -185,16 +174,17 @@ func NewStockStager(svc *Service) *StockStager {
 	return &StockStager{svc: svc, downloader: dl}
 }
 
-// WithDriveDownloader threads a Google Drive downloader into the
-// stager. When non-nil, StageSource routes drive.google.com URLs
-// through the Drive API instead of yt-dlp. Returns the receiver for
-// fluent chaining.
+// WithDriveReader threads a Google Drive reader into the stager.
+// When non-nil, StageSource routes drive.google.com URLs through
+// the Drive API instead of yt-dlp, and supports both file URLs and
+// folder URLs (the first video file in the folder is chosen).
+// Returns the receiver for fluent chaining.
 //
 // The canonical concrete implementation is *drive.Uploader (which
-// satisfies DriveDownloaderPort structurally via its DownloadFile
-// method). Composition root injects it via the DriveBundle.
-func (s *StockStager) WithDriveDownloader(dl DriveDownloaderPort) *StockStager {
-	s.driveDownloader = dl
+// satisfies DriveReaderPort structurally). Composition root injects
+// it via the DriveBundle.
+func (s *StockStager) WithDriveReader(r DriveReaderPort) *StockStager {
+	s.driveReader = r
 	return s
 }
 
@@ -354,12 +344,14 @@ func (s *StockStager) isLeaseLeader(leaseKey, localPath string) bool {
 }
 
 // StageSource implements assets.SourceStager. Downloads the source video
-// directly via yt-dlp (YouTube/DirectURLs) or via DriveDownloaderPort
-// (Google Drive file URLs), bypassing the acquisition.SourceStager chain.
+// directly via yt-dlp (YouTube/DirectURLs) or via DriveReaderPort
+// (Google Drive file or folder URLs), bypassing the
+// acquisition.SourceStager chain.
 //
 // URL detection: if the URL contains "drive.google.com", the stager
-// extracts the file ID and downloads via the Drive API. All other URLs
-// flow through yt-dlp.
+// extracts the file ID and downloads via the Drive API. If the URL is
+// a folder, the stager lists the folder contents and picks the first
+// video file. All other URLs flow through yt-dlp.
 func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
 	if s.svc == nil {
 		return nil, fmt.Errorf("stock stager: service not wired")
@@ -629,27 +621,43 @@ func extractDriveFileID(rawURL string) (string, error) {
 }
 
 // stageFromDrive downloads a file from Google Drive via the
-// DriveDownloaderPort and writes it to outputPath. Returns a
+// DriveReaderPort and writes it to outputPath. Returns a
 // *StagedAsset pointing at the downloaded file on success.
+// If the URL is a Drive folder, the folder is listed and the
+// first video file is selected.
 //
-// godlike/07 typed-error contract: fileID extraction failure,
-// unwired drive downloader, Drive API errors, and local I/O
-// errors each surface as typed wraps (%w) so callers can
-// errors.Is/As probe the underlying cause.
+// godlike/07 typed-error contract: fileID/folderID extraction
+// failure, unwired drive reader, Drive API errors, empty folder,
+// and local I/O errors each surface as typed wraps (%w) so
+// callers can errors.Is/As probe the underlying cause.
 func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, outputPath string) (*assets.StagedAsset, error) {
-	if s.driveDownloader == nil {
-		return nil, fmt.Errorf("stock stager: drive downloader not wired (use WithDriveDownloader at composition time)")
+	if s.driveReader == nil {
+		return nil, fmt.Errorf("stock stager: drive reader not wired (use WithDriveReader at composition time)")
 	}
 
-	fileID, err := extractDriveFileID(ref.URL)
-	if err != nil {
-		return nil, fmt.Errorf("stock stager: extract drive file ID from %q: %w", ref.URL, err)
-	}
-	if fileID == "" {
-		return nil, fmt.Errorf("stock stager: empty file ID extracted from %q", ref.URL)
+	fileID, fileErr := extractDriveFileID(ref.URL)
+	if fileErr != nil || fileID == "" {
+		// Not a file URL — try treating it as a folder URL.
+		folderID := urlutil.FolderIDFromDriveLink(ref.URL)
+		if folderID == "" {
+			return nil, fmt.Errorf("stock stager: could not extract a Drive file or folder ID from %q", ref.URL)
+		}
+		files, listErr := s.driveReader.ListFiles(ctx, folderID)
+		if listErr != nil {
+			return nil, fmt.Errorf("stock stager: list drive folder %q: %w", folderID, listErr)
+		}
+		for _, f := range files {
+			if strings.HasPrefix(f.MimeType, "video/") {
+				fileID = f.ID
+				break
+			}
+		}
+		if fileID == "" {
+			return nil, fmt.Errorf("stock stager: no video file found in Drive folder %q", folderID)
+		}
 	}
 
-	body, _, dlErr := s.driveDownloader.DownloadFile(ctx, fileID)
+	body, _, dlErr := s.driveReader.DownloadFile(ctx, fileID)
 	if dlErr != nil {
 		return nil, fmt.Errorf("stock stager: drive download file %q: %w", fileID, dlErr)
 	}
