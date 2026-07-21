@@ -147,6 +147,15 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 	// Resolve the repository for the given source
 	repo := s.resolveRepo(source)
 	if repo == nil {
+		// Fallback to the first available target repo if not explicitly configured for this source name
+		for _, t := range s.targets {
+			if t.Repo != nil {
+				repo = t.Repo
+				break
+			}
+		}
+	}
+	if repo == nil {
 		return nil, fmt.Errorf("no repository configured for source: %s", source)
 	}
 
