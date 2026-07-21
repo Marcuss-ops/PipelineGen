@@ -605,7 +605,7 @@ func TestFeedbackAggregateSinceFiltersBySinceTimestamp(t *testing.T) {
 		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
 			AssetID: b.AssetID, BindingID: b.ID,
 			Selected:  true,
-			CreatedAt: cutoff.Add(-1 * time.Hour)},
+			CreatedAt: cutoff.Add(1 * time.Hour)},
 	}
 
 	agg, err := svc.AggregateSince(context.Background(), cutoff.Format(time.RFC3339))
