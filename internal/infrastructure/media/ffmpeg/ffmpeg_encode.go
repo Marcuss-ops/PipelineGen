@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,15 +106,27 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		args = append(args, "-hwaccel", "cuda")
 	}
 
-	args = append(args, "-i", input)
 	if start != "" {
 		args = append(args, "-ss", start)
 	}
-	if end != "" {
+	args = append(args, "-i", input)
+
+	// Prefer -t (duration) over -to so the output length is honored even when
+	// the filter chain alters timestamps. Falls back to -to when start/end are
+	// not plain seconds.
+	if start != "" && end != "" {
+		s, err1 := strconv.ParseFloat(start, 64)
+		e, err2 := strconv.ParseFloat(end, 64)
+		if err1 == nil && err2 == nil && e > s {
+			args = append(args, "-t", fmt.Sprintf("%.3f", e-s))
+		} else {
+			args = append(args, "-to", end)
+		}
+	} else if end != "" {
 		args = append(args, "-to", end)
 	}
 
-	args = append(args, "-vf", CanonicalClipFilter(canonical))
+	args = append(args, "-vf", CanonicalClipFilterTrim(canonical))
 	args = append(args, "-c:v", codec)
 	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
@@ -251,7 +264,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 	var filterParts []string
 	for i, j := range jobs {
 		filterParts = append(filterParts,
-			fmt.Sprintf("[0:v]trim=start=%f:end=%f,%s[v%d]", j.StartSec, j.EndSec, CanonicalClipFilter(canonical), i))
+			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS,%s[v%d]", j.StartSec, j.EndSec, CanonicalClipFilterTrim(canonical), i))
 		if !noAudio {
 			filterParts = append(filterParts,
 				fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a%d]", j.StartSec, j.EndSec, i))
@@ -283,6 +296,9 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		} else {
 			args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2")
 		}
+		// Bound each output to the intended duration so the container duration
+		// stays correct regardless of how the filter chain rewrites timestamps.
+		args = append(args, "-t", fmt.Sprintf("%.3f", j.EndSec-j.StartSec))
 		args = append(args, j.Output)
 	}
 
