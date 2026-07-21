@@ -297,7 +297,7 @@ func (p *Provider) FetchDetails(ctx context.Context, clipPageURL string) (*artap
 	client := &http.Client{Timeout: p.cfg.HTTPTimeout}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+		return nil, fmt.Errorf("%w: %v", artapp.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 
