@@ -78,6 +78,10 @@ import (
 // parsing the human-readable prefix.
 var ErrStockClipsOutOfRange = errors.New("stock.extract_clips: clip EndSec exceeds source duration — input out of range (PR-STOCK-TIMESTAMP-CLIPS Front 5, godlike/07 NO-FAKE-AVAILABILITY)")
 
+// maxDriveUploadWorkers caps the concurrent Drive uploads issued by
+// stock.extract_clips for a single source group.
+const maxDriveUploadWorkers = 3
+
 // StockExtractClipsStep is the canonical implementation of
 // stock.extract_clips. Phase 1 (July 2026): rewired to use the
 // real VideoCutter.Cut port instead of emitting logical IDs.
@@ -425,7 +429,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 		}
 
-		// Upload prepared clips with a bounded worker pool (max 2
+		// Upload prepared clips with a bounded worker pool (max 3
 		// concurrent Drive uploads per source group). Results are
 		// written into a pre-allocated slice and aggregated
 		// sequentially afterwards so publishedChunks and
@@ -439,7 +443,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 			close(taskCh)
 
-			numWorkers := 2
+			numWorkers := maxDriveUploadWorkers
 			if len(uploadTasks) < numWorkers {
 				numWorkers = len(uploadTasks)
 			}

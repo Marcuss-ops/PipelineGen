@@ -743,7 +743,7 @@ func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
 }
 
 // TestStockExtractClips_UploadWorkerPoolLimitsConcurrency asserts that
-// artifact uploads are performed by a bounded worker pool (max 2
+// artifact uploads are performed by a bounded worker pool (max 3
 // concurrent Prepare calls per source group) and that the resulting
 // chunks remain ordered by clip index with deterministic clip_001.mp4
 // filenames.
@@ -811,14 +811,14 @@ func TestStockExtractClips_UploadWorkerPoolLimitsConcurrency(t *testing.T) {
 		t.Errorf("Prepare calls = %d, want %d", prep.calls, wantCalls)
 	}
 
-	// Assert: concurrency never exceeded 2 and the pool actually
-	// parallelized work (max concurrent must be exactly 2 when there
-	// are more than 2 clips to upload).
-	if prep.maxConcurrent > 2 {
-		t.Errorf("max concurrent uploads = %d, want <= 2", prep.maxConcurrent)
+	// Assert: concurrency never exceeded 3 and the pool actually
+	// parallelized work (max concurrent must be exactly 3 when there
+	// are more than 3 clips to upload).
+	if prep.maxConcurrent > 3 {
+		t.Errorf("max concurrent uploads = %d, want <= 3", prep.maxConcurrent)
 	}
-	if prep.maxConcurrent < 2 {
-		t.Errorf("max concurrent uploads = %d, want 2 (pool did not parallelize)", prep.maxConcurrent)
+	if prep.maxConcurrent < 3 {
+		t.Errorf("max concurrent uploads = %d, want 3 (pool did not parallelize)", prep.maxConcurrent)
 	}
 
 	// Assert: published chunks are in clip-index order and use the
