@@ -197,6 +197,43 @@ export function triggerClipAction(url: string, payload: Record<string, unknown> 
   })
 }
 
+// ── Bulk operations ────────────────────────────────────────────────
+
+export type BulkAction = 'add_tags' | 'remove_tags' | 'set_category' | 'set_review_status' | 'reindex' | 'verify' | 'archive'
+
+export interface BulkOperationRequest {
+  asset_ids: string[]
+  action: BulkAction
+  dry_run: boolean
+  payload: Record<string, unknown>
+}
+
+export interface BulkChange {
+  asset_id: string
+  status: 'success' | 'error'
+  message?: string
+  before?: Record<string, unknown>
+  after?: Record<string, unknown>
+}
+
+export interface BulkOperationResponse {
+  ok: boolean
+  action: BulkAction
+  dry_run: boolean
+  affected: number
+  failed: number
+  failed_ids: string[]
+  changes: BulkChange[]
+}
+
+export function bulkAssets(req: BulkOperationRequest): Promise<BulkOperationResponse> {
+  return request<BulkOperationResponse>('/assets/operator/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+}
+
 export function getSummary(): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>('/assets/operator/summary')
 }
