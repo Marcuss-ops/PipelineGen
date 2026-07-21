@@ -403,6 +403,7 @@ func TestQdrantIndexerIndexConceptWritesCanonicalPoint(t *testing.T) {
 		Language:          "it",
 		PhraseFingerprint: "fingerprint-001",
 		ConceptType:       mediamemory.ConceptPhrase,
+		EmbeddingVersion:  qdrantschema.ConceptEmbeddingVersion,
 	}
 
 	require.NoError(t, indexer.IndexConcept(ctx, concept))
@@ -559,6 +560,93 @@ func (f *fakeBindingRepoMulti) ListByAsset(_ context.Context, _ string) ([]media
 	return nil, nil
 }
 func (f *fakeBindingRepoMulti) Delete(_ context.Context, _ string) error { return nil }
+
+// Test 8: ReindexConcept bumps embedding_version while leaving
+// the (concept_id, language, phrase_fingerprint) tuple invariant.
+// godlike/06 SSOT (Level 0 cache independence under versioning):
+// the canonical Level 0 lookup is ConceptRepository.FindByFingerprint
+// keyed on (lang, fp). Re-bumping the version does NOT mutate
+// phrase_fingerprint, so the Level 0 cache hit SURVIVES the bump.
+// This test pins that contract: IndexConcept writes v1; ReindexConcept
+// with targetVersion="" bumps to v2 at the SAME point ID with the
+// SAME phrase_fingerprint; explicit targetVersion="v3" writes
+// without auto-bump. Each step asserts the invariant in-place so
+// the test fails closed the moment a future refactor breaks it.
+func TestQdrantReindexConceptBumpsVersionAndPreservesLevel0Fingerprint(t *testing.T) {
+	ctx := context.Background()
+	mq := newMockQdrantServer(t, nil)
+	defer mq.Close()
+
+	embedder := newMockEmbedder()
+	vec := make([]float32, canonicalDenseDim)
+	for i := range vec {
+		vec[i] = float32(i+1) / float32(canonicalDenseDim)
+	}
+	embedder.set("I Maya costruirono grandi citta", vec)
+
+	client := transport.NewClient(
+		&qdrantschema.Config{BaseURL: mq.URL(), Timeout: 5},
+		zap.NewNop(),
+	)
+	indexer := NewQdrantIndexer(client, embedder, zap.NewNop())
+
+	const conceptID = "concept-reindex-001"
+	const fp = "fingerprint-reinv-aaaa"
+	concept := mediamemory.MediaConcept{
+		ID:                conceptID,
+		CanonicalText:     "I Maya costruirono grandi citta",
+		NormalizedText:    "i maya costruirono grandi citta",
+		Language:          "it",
+		PhraseFingerprint: fp,
+		ConceptType:       mediamemory.ConceptPhrase,
+		EmbeddingVersion:  "v1",
+	}
+
+	// Step 1: IndexConcept writes v1 + canonical (lang, fp) tuple
+	// on the canonical collection's Qdrant point.
+	require.NoError(t, indexer.IndexConcept(ctx, concept))
+
+	mq.mu.Lock()
+	bucket, ok := mq.points[qdrantschema.ConceptCollectionName]
+	require.True(t, ok)
+	pmap, ok := bucket["concept-"+conceptID].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "v1", pmap["embedding_version"])
+	require.Equal(t, fp, pmap["phrase_fingerprint"])
+	require.Equal(t, conceptID, pmap["concept_id"])
+	mq.mu.Unlock()
+
+	// Step 2: ReindexConcept with targetVersion="" invokes
+	// qdrantschema.BumpEmbeddingVersion → "v2". The point ID
+	// and phrase_fingerprint MUST stay invariant so the Level 0
+	// cache (ConceptRepository.FindByFingerprint on (lang, fp))
+	// resolves to the same canonical row before and after the bump.
+	require.NoError(t, indexer.ReindexConcept(ctx, concept, ""))
+
+	mq.mu.Lock()
+	pmap, ok = bucket["concept-"+conceptID].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "v2", pmap["embedding_version"],
+		"targetVersion=\"\" MUST bump from v1 to v2 via BumpEmbeddingVersion")
+	require.Equal(t, fp, pmap["phrase_fingerprint"],
+		"phrase_fingerprint MUST stay invariant under version bump — the canonical Level 0 cache key")
+	require.Equal(t, conceptID, pmap["concept_id"],
+		"concept_id MUST stay invariant under version bump")
+	mq.mu.Unlock()
+
+	// Step 3: explicit targetVersion="v3" writes v3 without
+	// auto-bump — demonstrates that ReindexConcept's caller-facing
+	// API also accepts an explicit target.
+	require.NoError(t, indexer.ReindexConcept(ctx, concept, "v3"))
+	mq.mu.Lock()
+	pmap, ok = bucket["concept-"+conceptID].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "v3", pmap["embedding_version"])
+	require.Equal(t, fp, pmap["phrase_fingerprint"])
+	assert.Equal(t, "it", pmap["language"],
+		"language MUST also stay invariant under version bump")
+	mq.mu.Unlock()
+}
 
 // Compile-time guard: the file imports io for json.Encoder
 // compatibility; the var _ line keeps the io dependency
