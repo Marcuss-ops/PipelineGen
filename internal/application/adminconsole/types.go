@@ -16,7 +16,24 @@ var (
 	ErrNotSupported       = errors.New("adminconsole: operation not supported")
 	ErrNotEditable        = errors.New("adminconsole: entity is not editable")
 	ErrActionNotSupported = errors.New("adminconsole: action not supported")
+	ErrVersionConflict    = errors.New("adminconsole: version conflict")
 )
+
+// VersionConflictError surfaces the current version when an optimistic
+// concurrency check fails. It wraps ErrVersionConflict.
+type VersionConflictError struct {
+	CurrentVersion int
+}
+
+// Error implements the error interface.
+func (e *VersionConflictError) Error() string {
+	return ErrVersionConflict.Error()
+}
+
+// Unwrap returns ErrVersionConflict so callers can use errors.Is.
+func (e *VersionConflictError) Unwrap() error {
+	return ErrVersionConflict
+}
 
 // FieldType is the canonical wire type for a schema field.
 type FieldType string
@@ -117,4 +134,16 @@ type ListResponse struct {
 	Total  int              `json:"total"`
 	Limit  int              `json:"limit"`
 	Offset int              `json:"offset"`
+}
+
+// EntityVersionStore is the canonical optimistic-concurrency
+// check-and-bump port. Every PATCH on an entity that carries an
+// admin_version integer routes through this port to avoid
+// read-modify-write races.
+//
+// Implementations MUST combine the version-check and the version-bump
+// in a single atomic SQL statement so two concurrent PATCHes cannot
+// both observe the same expected version.
+type EntityVersionStore interface {
+	CheckAndIncrementAssetVersion(ctx context.Context, assetID string, expectedVersion int) (currentVersion int, ok bool, err error)
 }

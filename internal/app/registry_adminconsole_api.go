@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/api/adminconsole"
@@ -13,7 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -24,6 +26,9 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	if root == nil || root.Repos == nil || root.Repos.Assets == nil {
 		return fmt.Errorf("wire registry: adminconsole-api: asset service not available")
 	}
+
+	auditStore := adminconsolesqlite.NewAuditStore(root.DB.DB)
+	versionStore := adminconsolesqlite.NewVersionStore(root.DB.DB)
 
 	reg := adminconsole.NewRegistry()
 
@@ -90,11 +95,13 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 				if err != nil {
 					return nil, err
 				}
-				return structToMap(details), nil
+				item := structToMap(details)
+				item["_version"] = assetAdminVersion(ctx, root.DB.DB, id)
+				return item, nil
 			},
 		},
 		Mutator: &adminconsole.Adapter{
-			PatchFn: func(ctx context.Context, id string, changes map[string]any, _ int) (map[string]any, error) {
+			PatchFn: func(ctx context.Context, id string, changes map[string]any, expectedVersion int) (map[string]any, error) {
 				details, err := root.Repos.Assets.Get(ctx, id)
 				if err != nil {
 					return nil, err
@@ -102,11 +109,31 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 				if details.Asset == nil {
 					return nil, fmt.Errorf("asset not found")
 				}
-				applyAssetChanges(details.Asset, changes)
-				if err := root.Repos.Assets.Save(ctx, details); err != nil {
+
+				previousJSON, _, changedFields := snapshotAsset(details.Asset, changes)
+
+				newVersion, ok, err := versionStore.CheckAndIncrementAssetVersion(ctx, id, expectedVersion)
+				if err != nil {
+					logAudit(ctx, auditStore, "assets", id, "patch", previousJSON, "", changedFields, false, err.Error())
 					return nil, err
 				}
-				return structToMap(details), nil
+				if !ok {
+					msg := fmt.Sprintf("expected_version=%d does not match current admin_version=%d", expectedVersion, newVersion)
+					logAudit(ctx, auditStore, "assets", id, "patch", previousJSON, "", changedFields, false, msg)
+					return nil, &adminconsole.VersionConflictError{CurrentVersion: newVersion}
+				}
+
+				applyAssetChanges(details.Asset, changes)
+				if err := root.Repos.Assets.Save(ctx, details); err != nil {
+					logAudit(ctx, auditStore, "assets", id, "patch", previousJSON, "", changedFields, false, err.Error())
+					return nil, err
+				}
+
+				_, nextJSON, _ := snapshotAsset(details.Asset, nil)
+				logAudit(ctx, auditStore, "assets", id, "patch", previousJSON, nextJSON, changedFields, true, "")
+				item := structToMap(details)
+				item["_version"] = newVersion
+				return item, nil
 			},
 			ActionFn: func(ctx context.Context, id, action string, payload map[string]any) (map[string]any, error) {
 				// Placeholder: actions can be wired to the mutations dispatcher.
@@ -240,9 +267,6 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		Repository: &adminconsole.Adapter{},
 	})
 
-	auditStore := adminconsolesqlite.NewAuditStore(root.DB.DB)
-	versionStore := adminconsolesqlite.NewVersionStore(root.DB.DB)
-
 	svc := adminconsole.NewService(reg, auditStore, versionStore)
 	desc := adminconsoleapi.Build(svc, log)
 
@@ -250,6 +274,77 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		return fmt.Errorf("wire registry: adminconsole-api module: %w", err)
 	}
 	return nil
+}
+
+// assetAdminVersion reads the current admin_version for an asset.
+func assetAdminVersion(ctx context.Context, db *sql.DB, id string) int {
+	var v int
+	row := db.QueryRowContext(ctx, "SELECT COALESCE(admin_version,0) FROM media_assets WHERE id = ?", id)
+	if err := row.Scan(&v); err != nil {
+		return 0
+	}
+	return v
+}
+
+// snapshotAsset returns a JSON snapshot of the asset before and after
+// applying the requested changes. It also returns the set of changed
+// fields so the audit log can store a compact diff.
+func snapshotAsset(a *asset.Asset, changes map[string]any) (previousJSON, nextJSON string, changedFields map[string]any) {
+	previousJSON = assetToJSON(a)
+	changedFields = make(map[string]any, len(changes))
+	for k, v := range changes {
+		changedFields[k] = v
+	}
+	after := shallowCloneAsset(a)
+	applyAssetChanges(after, changes)
+	nextJSON = assetToJSON(after)
+	return previousJSON, nextJSON, changedFields
+}
+
+// assetToJSON serializes an asset to a compact JSON string.
+func assetToJSON(a *asset.Asset) string {
+	if a == nil {
+		return ""
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// shallowCloneAsset returns a shallow copy of the asset, enough for a
+// before/after JSON snapshot without mutating the original.
+func shallowCloneAsset(a *asset.Asset) *asset.Asset {
+	if a == nil {
+		return nil
+	}
+	clone := *a
+	return &clone
+}
+
+// logAudit writes an audit entry using the provided audit logger.
+// If audit is nil the call is a no-op.
+func logAudit(ctx context.Context, audit adminconsole.AuditLogger, entityType, entityID, action, previousJSON, nextJSON string, changedFields map[string]any, success bool, errMsg string) {
+	if audit == nil {
+		return
+	}
+	actor, requestID, idempotencyKey := adminconsoleapi.RequestMetadataFromContext(ctx)
+	_ = audit.Log(ctx, adminconsole.AuditEntry{
+		ID:             uuid.New().String(),
+		EntityType:     entityType,
+		EntityID:       entityID,
+		Action:         action,
+		PreviousJSON:   previousJSON,
+		NextJSON:       nextJSON,
+		ChangedFields:  changedFields,
+		Actor:          actor,
+		RequestID:      requestID,
+		IdempotencyKey: idempotencyKey,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		Success:        success,
+		ErrorMessage:   errMsg,
+	})
 }
 
 // assetFilterFromOptions translates admin list options into the asset

@@ -1,6 +1,8 @@
 package adminconsoleapi
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -9,6 +11,15 @@ import (
 
 	adminapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+)
+
+// context keys used to thread request metadata down to the audit log.
+type contextKey string
+
+const (
+	actorContextKey       contextKey = "admin_actor"
+	requestIDContextKey   contextKey = "admin_request_id"
+	idempotencyContextKey contextKey = "admin_idempotency_key"
 )
 
 // Handler is the thin HTTP transport for the admin console registry.
@@ -83,9 +94,20 @@ func (h *Handler) handlePatch(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
-	updated, err := h.service.Patch(c.Request.Context(), entity, id, req.Changes, req.ExpectedVersion)
+
+	ctx := withRequestMetadata(c.Request.Context(), c)
+	updated, err := h.service.Patch(ctx, entity, id, req.Changes, req.ExpectedVersion)
 	if err != nil {
 		h.log.Error("failed to patch entity", zap.String("entity", entity), zap.String("id", id), zap.Error(err))
+		var verr *adminapp.VersionConflictError
+		if errors.As(err, &verr) {
+			c.JSON(http.StatusConflict, map[string]any{
+				"error_code":      "VERSION_CONFLICT",
+				"message":         err.Error(),
+				"current_version": verr.CurrentVersion,
+			})
+			return
+		}
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -121,4 +143,35 @@ func (h *Handler) handleEvents(c *gin.Context) {
 		fmt.Fprintf(c.Writer, ":ok\n\n")
 		f.Flush()
 	}
+}
+
+// withRequestMetadata injects request-scoped metadata into ctx so the
+// audit logger can record actor, request_id and idempotency_key.
+func withRequestMetadata(ctx context.Context, c *gin.Context) context.Context {
+	actor := "admin"
+	if u, ok := c.Get("user"); ok {
+		if s, ok := u.(string); ok && s != "" {
+			actor = s
+		}
+	}
+	ctx = context.WithValue(ctx, actorContextKey, actor)
+	ctx = context.WithValue(ctx, requestIDContextKey, c.GetHeader("X-Request-ID"))
+	ctx = context.WithValue(ctx, idempotencyContextKey, c.GetHeader("Idempotency-Key"))
+	return ctx
+}
+
+// RequestMetadataFromContext extracts audit metadata previously injected
+// by withRequestMetadata. It is used by the application-layer mutators to
+// populate the audit log without depending on Gin types.
+func RequestMetadataFromContext(ctx context.Context) (actor, requestID, idempotencyKey string) {
+	if v, ok := ctx.Value(actorContextKey).(string); ok {
+		actor = v
+	}
+	if v, ok := ctx.Value(requestIDContextKey).(string); ok {
+		requestID = v
+	}
+	if v, ok := ctx.Value(idempotencyContextKey).(string); ok {
+		idempotencyKey = v
+	}
+	return
 }

@@ -15,6 +15,8 @@ type AuditEntry struct {
 	RequestID      string         `json:"request_id,omitempty"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 	CreatedAt      string         `json:"created_at"`
+	Success        bool           `json:"success"`
+	ErrorMessage   string         `json:"error_message,omitempty"`
 }
 
 // AuditLogger is the write-side port for the admin console audit log.

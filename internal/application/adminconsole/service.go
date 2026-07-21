@@ -8,12 +8,19 @@ import (
 
 // Service is the application-layer entry point for admin entity operations.
 type Service struct {
-	registry *Registry
+	registry     *Registry
+	audit        AuditLogger
+	versionStore EntityVersionStore
 }
 
-// NewService creates the service from a registry.
-func NewService(r *Registry) *Service {
-	return &Service{registry: r}
+// NewService creates the service from a registry, audit logger and version store.
+// audit and versionStore may be nil; the service degrades gracefully by
+// skipping audit logging and optimistic version checks in that case.
+func NewService(r *Registry, audit AuditLogger, versionStore EntityVersionStore) *Service {
+	if audit == nil {
+		audit = NoOpAuditLogger{}
+	}
+	return &Service{registry: r, audit: audit, versionStore: versionStore}
 }
 
 // Registry returns the underlying registry.
