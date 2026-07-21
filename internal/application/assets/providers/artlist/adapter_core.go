@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -120,20 +121,25 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 	candidates := make([]providers.Candidate, 0, len(resp.Clips))
 	for i := range resp.Clips {
 		clip := &resp.Clips[i]
+		previewURL := firstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL)
 		candidates = append(candidates, providers.Candidate{
 			Provider:     a.Name(),
 			ExternalID:   clip.ID,
 			ID:           clip.ID,
 			Title:        clip.Name,
+			Description:  clip.GetMetadataString("description"),
+			Creator:      clip.GetMetadataString("creator"),
 			PageURL:      clip.ClipPageURL,
-			PreviewURL:   clip.ClipPageURL,
+			PreviewURL:   previewURL,
 			ThumbnailURL: clip.ThumbnailURL,
-			SourceRef:    clip.ID,
+			SourceRef:    firstNonEmpty(clip.SourceURL, clip.ClipPageURL),
 			SourceName:   a.Name(),
 			MediaType:    clip.MediaType,
 			Duration:     clip.Duration,
 			DurationMs:   clip.Duration.Milliseconds(),
 			Keywords:     clip.Tags,
+			Categories:   stringSliceFromMetadata(clip.Metadata, "provider_categories"),
+			RawMetadata:  cloneMetadata(clip.Metadata),
 			PublishedAt:  nil, // artlist DB record may carry CreatedAt but not publish time
 			Score:        0,
 		})
@@ -258,12 +264,46 @@ func (s *DBSearcher) Search(ctx context.Context, req SearchRequest) ([]Candidate
 	candidates := make([]Candidate, 0, len(dbClips))
 	for _, clip := range dbClips {
 		candidates = append(candidates, Candidate{
-			ID:         clip.ID,
-			Title:      clip.Name,
-			SourceRef:  clip.ExternalURL(),
-			PageURL:    clip.ClipPageURL,
-			SourceName: "database",
+			Provider:     "artlist",
+			ExternalID:   clip.ID,
+			ID:           clip.ID,
+			Title:        clip.Name,
+			Description:  clip.GetMetadataString("description"),
+			Creator:      clip.GetMetadataString("creator"),
+			PageURL:      clip.ClipPageURL,
+			PreviewURL:   firstNonEmpty(clip.GetMetadataString("preview_url"), clip.ClipPageURL),
+			ThumbnailURL: clip.ThumbnailURL,
+			SourceRef:    firstNonEmpty(clip.SourceURL, clip.ClipPageURL),
+			SourceName:   "database",
+			MediaType:    clip.MediaType,
+			Duration:     clip.Duration,
+			DurationMs:   clip.Duration.Milliseconds(),
+			Keywords:     clip.Tags,
+			Categories:   stringSliceFromMetadata(clip.Metadata, "provider_categories"),
+			RawMetadata:  cloneMetadata(clip.Metadata),
 		})
 	}
 	return candidates, nil
+}
+
+// firstNonEmpty returns the first non-empty string, or empty if none.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// cloneMetadata returns a shallow copy of an asset metadata map.
+func cloneMetadata(m asset.Metadata) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

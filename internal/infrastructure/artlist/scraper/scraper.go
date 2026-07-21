@@ -22,6 +22,7 @@ import (
 	"time"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"go.uber.org/zap"
 )
@@ -56,6 +57,12 @@ type Clip struct {
 	ThumbnailURL string         `json:"thumbnail_url"`
 	PreviewURL   string         `json:"preview_url"`
 	RawMetadata  map[string]any `json:"raw_metadata"`
+	// Optional rich metadata that the detail page may provide.
+	DurationMs   int64   `json:"duration_ms"`
+	Width        int     `json:"width"`
+	Height       int     `json:"height"`
+	FPS          float64 `json:"fps"`
+	LicenseClass string  `json:"license_class"`
 }
 
 // Config carries the wiring values the application owns.
@@ -245,20 +252,36 @@ func clipToCandidate(c Clip) artapp.Candidate {
 		raw["stream_urls"] = c.StreamURLs
 	}
 
-	return artapp.Candidate{
+	candidate := artapp.Candidate{
+		Provider:     "artlist",
+		ExternalID:   id,
 		ID:           id,
 		Title:        title,
 		Description:  c.Description,
 		Creator:      c.Creator,
-		SourceRef:    c.PrimaryURL,
+		SourceRef:    firstNonEmpty(c.PrimaryURL, c.PreviewURL, c.ClipPageURL),
 		PageURL:      c.ClipPageURL,
 		ThumbnailURL: c.ThumbnailURL,
-		PreviewURL:   c.PreviewURL,
+		PreviewURL:   firstNonEmpty(c.PreviewURL, c.PrimaryURL, c.ClipPageURL),
 		Keywords:     c.Tags,
 		Categories:   c.Categories,
 		RawMetadata:  raw,
 		SourceName:   "artlist",
+		MediaType:    asset.MediaType("video"),
 	}
+	if c.DurationMs > 0 {
+		candidate.DurationMs = c.DurationMs
+		candidate.Duration = time.Duration(c.DurationMs) * time.Millisecond
+	}
+	candidate.Width = c.Width
+	candidate.Height = c.Height
+	candidate.FPS = c.FPS
+	candidate.FPSNumerator = int(c.FPS)
+	if c.FPS > 0 {
+		candidate.FPSDenominator = 1
+	}
+	candidate.LicenseClass = c.LicenseClass
+	return candidate
 }
 
 // DetailResponse mirrors the Node scraper POST /detail JSON envelope.
