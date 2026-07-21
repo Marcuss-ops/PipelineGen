@@ -248,8 +248,20 @@ type MediaCandidate struct {
 	DiscoveryStatus       DiscoveryStatus
 	MaterializationStatus MaterializationStatus
 	AssetID               string // "" until materialize produces a media_assets row
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	// ChannelID and VideoID are the Fase 2.3 anti-repetition
+	// identity fields. godlike/06 SSOT (Fase 3 linker
+	// forward-pointer): the linker worker enriches a candidate
+	// row with these after discovery+analysis so the resolver's
+	// PopulateRepetitionPenalty can cross-reference the
+	// append-only UsageEvent history.
+	// Empty values are valid for pre-Fase-2.3 rows; the ranker
+	// treats empty as "no penalty input available" but the
+	// same-asset penalty (UsageCount + SuccessScore) still
+	// drives the contract.
+	ChannelID string
+	VideoID   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // VisualIntent is the resolver input. Produced by the upstream
@@ -397,6 +409,17 @@ type BatchChild struct {
 // UsageEvent records one human/auto action in the feedback loop.
 // godlike/06 SSOT: the ranker promotes success_score from these
 // rows (SuccessScore increment on RenderCompleted + !Rejected).
+//
+// godlike/06 SSOT (Fase 2.3 anti-repetition contract): ChannelID
+// and VideoID are recorded alongside the existing ProjectID /
+// AssetID so the resolver can apply repetition_penalty deterministically
+// without a runtime join against media_assets. ChannelID is
+// the canonical YouTube channel_id (or any equivalent publishing
+// channel); VideoID is the canonical source_video_id of the
+// underlying clip/image. Empty values are valid (caller-side
+// omitted, e.g. legacy log rows pre-Fase 2.3) — the ranker treats
+// empty channel/video as "no penalty input available" but the
+// same-asset penalty still drives the contract.
 type UsageEvent struct {
 	ID               string
 	ProjectID        string
@@ -405,6 +428,8 @@ type UsageEvent struct {
 	AssetID          string
 	BindingID        string
 	SlotKind         SlotKind
+	ChannelID        string
+	VideoID          string
 	Selected         bool
 	ManuallySelected bool
 	Rejected         bool

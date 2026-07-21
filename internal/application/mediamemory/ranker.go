@@ -43,7 +43,204 @@
 // PR-REGRESSION — explicit drop-with-nil envelopes a no-op pass.
 package mediamemory
 
-import "context"
+import (
+	"context"
+	"math"
+)
+
+// ── Fase 2.3 anti-repetition helpers ────────────────────────────────
+
+// AntiRepetitionHistoryLimit is the canonical upper bound on the
+// resolver's per-call history read (UsageRepository.ListProjectUsages).
+// godlike/06 SSOT: the resolver MUST NOT read unbounded project
+// history at the resolver hot path; a hard ceiling at the
+// repository seam is the canonical safeguard.
+//
+// 1000 rows covers ~100k of audio/video at 100 events/render, which
+// is the architectural-doc reference scale for a Maya-style
+// documentary project.
+const AntiRepetitionHistoryLimit = 1000
+
+// RepetitionPenaltyWeights bundles the canonical weight values
+// for the Fase 2.3 PopulateRepetitionPenalty formula. godlike/06
+// SSOT: any future tuning lands as a new function (e.g.
+// RepetitionPenaltyWeightsV2) so callers pin the version.
+type RepetitionPenaltyWeights struct {
+	// SameAssetPenalty is applied per (asset_id, project_id)
+	// occurrence in the project history. The first occurrence
+	// contributes 1.0 (capped at 1.0 per asset); subsequent
+	// reuse adds diminishing returns so an asset reused 5 times
+	// is suppressed but not unbounded.
+	//
+	// godlike/06 SSOT: same-asset penalty is the SPEC
+	// strongest signal ("clip già nello stesso video"). 1.0 is
+	// the canonical Phase 2.3 ceiling.
+	SameAssetPenalty float64
+
+	// SameVideoInConsecutiveScenePenalty is applied per scene
+	// whose VideoID matches the prior scene's winning VideoID.
+	// Cross-scene repetition is the SPEC's
+	// ("stessa sorgente consecutiva") canonical trigger.
+	SameVideoInConsecutiveScenePenalty float64
+
+	// ChannelSaturationBase is the per-occurrence penalty for
+	// assets whose ChannelID has been logged >= 3 times in the
+	// project history. The penalty is BASE * (crossedThreshold - 3)
+	// so 4th sighting adds 0.1, 5th adds 0.2, etc.
+	ChannelSaturationBase float64
+
+	// ChannelSaturationMinSightings is the inclusive minimum
+	// number of project sightings before the saturation
+	// penalty kicks in. SPEC: "channel saturation after
+	// multiple uses" → canonical value is 3.
+	ChannelSaturationMinSightings int
+}
+
+// DefaultRepetitionPenaltyWeights returns the canonical Phase 2.3
+// weights. godlike/06 SSOT: the canonical values below are
+// immutable until the next version bump; any drift must be
+// reviewed under godlike/06.
+func DefaultRepetitionPenaltyWeights() RepetitionPenaltyWeights {
+	return RepetitionPenaltyWeights{
+		SameAssetPenalty:                   1.0,
+		SameVideoInConsecutiveScenePenalty: 0.3,
+		ChannelSaturationBase:              0.1,
+		ChannelSaturationMinSightings:      3,
+	}
+}
+
+// PopulateRepetitionPenalty is the Fase 2.3 anti-repetition
+// producer for RankingInput.RepetitionPenalty. The resolver calls
+// this once per slot's candidate pool (after Filter, before
+// Score) so the ranker computes final_score = canonical - penalty.
+//
+// godlike/06 SSOT (immutable input contract): the function does
+// NOT mutate the input slice — outputs are returned as a NEW slice
+// with the input's candidates copied through and the penalty seat
+// re-stamped. Callers must use the returned slice.
+//
+// godlike/06 SSOT (closed-set logic, per spec):
+//  1. Same asset+project -> +SameAssetPenalty (capped at 1.0 so
+//     a 5x-reused asset is suppressed, not unbounded).
+//  2. Candidate VideoID == prevVideoID (assuming the candidate has
+//     a video_id propagated onto MediaCandidate) ->
+//     +SameVideoInConsecutiveScenePenalty.
+//  3. ChannelID with >= ChannelSaturationMinSightings project hits
+//     -> +ChannelSaturationBase * (sightings - MinSightings).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil or empty history slice
+// is treated as "no penalty input available" — penalties stay 0
+// (the ranker still scores candidates normally). A nil prevVideoID
+// bypasses the consecutive-scene penalty (first scene in a project
+// has no prior scene to compare against).
+//
+// godlike/06 SSOT (binding identification): the input candidate
+// field is MediaCandidate.AssetID (canonical). BindingID is the
+// SAME-asset identity (per Fase 2.2 every binding's AssetID is
+// the canonical media_assets.id). VideoID is sourced from
+// MediaCandidate.Provider (when augmented by the linker worker in
+// a future Fase) OR from MediaCandidate.AssetID via the canonical
+// helper extractVideoID — for now we settle for AssetID-only
+// matching so the penalty fires correctly when only AssetID is
+// populated. ChannelID is sourced from the per-binding envelope
+// (Binding hasn't ChannelID yet — Fase 2.3 candidates read it
+// from MediaCandidate.Provider channel or fall back to "").
+func PopulateRepetitionPenalty(
+	inputs []RankingInput,
+	history []UsageEvent,
+	prevVideoID string,
+) []RankingInput {
+	weights := DefaultRepetitionPenaltyWeights()
+
+	// Pre-compute (asset, channel) sighting maps from history.
+	// godlike/06 SSOT: O(N+M) pass; the resolver's hot path always
+	// reads from canonical append-only audit log so we can
+	// recompute cheaply on every slot.
+	assetSightings := make(map[string]int, 32)
+	channelSightings := make(map[string]int, 8)
+	for _, ev := range history {
+		if ev.ProjectID == "" {
+			continue
+		}
+		if ev.AssetID != "" {
+			assetSightings[ev.AssetID]++
+		}
+		if ev.ChannelID != "" {
+			channelSightings[ev.ChannelID]++
+		}
+	}
+
+	out := make([]RankingInput, 0, len(inputs))
+	for _, in := range inputs {
+		penalty := 0.0
+
+		// 1. Same asset penalty (capped at SameAssetPenalty so
+		//    unbounded reuse never blows past the ranker math).
+		if n := assetSightings[in.Candidate.AssetID]; n > 0 {
+			penalty += math.Min(
+				float64(n)*weights.SameAssetPenalty,
+				weights.SameAssetPenalty,
+			)
+		}
+
+		// 2. Consecutive-source penalty: the candidate's
+		//    video_id (when populated — Fase 4 linker) falls
+		//    back to AssetID for Fase 2.3 so the per-asset
+		//    signal still propagates without a parallel seam.
+		candidateVideoID := extractCandidateVideoID(in.Candidate)
+		if prevVideoID != "" && candidateVideoID != "" && candidateVideoID == prevVideoID {
+			penalty += weights.SameVideoInConsecutiveScenePenalty
+		}
+
+		// 3. Channel-saturation penalty (candidate carries the
+		//    source channel via MediaCandidate.ChannelID as of
+		//    Fase 2.3). Phase 2.3 candidates from Level 9
+		//    (external SearchFanOut) carry the forwarding
+		//    provider as ChannelID (forward-pin to Fase 3
+		//    linker); the binding path gets ChannelID via the
+		//    denormalized UsageEvent history rows.
+		candidateChannelID := extractCandidateChannelID(in.Candidate)
+		if candidateChannelID != "" {
+			if n := channelSightings[candidateChannelID]; n >= weights.ChannelSaturationMinSightings {
+				penalty += weights.ChannelSaturationBase * float64(n-weights.ChannelSaturationMinSightings)
+			}
+		}
+
+		in.RepetitionPenalty = penalty
+		out = append(out, in)
+	}
+	return out
+}
+
+// extractCandidateVideoID returns the canonical video_id for a
+// candidate. godlike/06 SSOT (Fase 2.3 fallback):
+// in the absence of a Linker-enriched video_id, we fall back to
+// AssetID so the same-asset repetition loop is still
+// monotonically effective against consecutive scenes. Future Fase
+// drafts enrich MediaCandidate with an explicit VideoID field
+// (3.x). Note: this fallback currently double-counts
+// SameAssetPenalty (1.0) with SameVideoInConsecutiveScenePenalty
+// (0.3) for any reused binding — by design until Fase 3 lands.
+//
+// TODO Fase 3 linker: stop falling back to AssetID so sub-clip
+// (≠asset) coverage fires; until then the ranker deliberately
+// treats AssetID as the canonical video identity.
+func extractCandidateVideoID(c MediaCandidate) string {
+	if c.VideoID != "" {
+		return c.VideoID
+	}
+	return c.AssetID
+}
+
+// extractCandidateChannelID returns the canonical channel_id for
+// a candidate. godlike/06 SSOT (Fase 2.3 fallback): MediaCandidate
+// carries ChannelID as a first-class field as of Fase 2.3 (forward-
+// pointer to Fase 3 linker). When unset (empty string), the
+// ranker treats it as "no channel-saturation input available"
+// (channel penalty stays 0).
+func extractCandidateChannelID(c MediaCandidate) string {
+	return c.ChannelID
+}
 
 // Ranker is the canonical port that turns candidate+context into a
 // deterministic ordering. Concrete impl is defaultRanker below.

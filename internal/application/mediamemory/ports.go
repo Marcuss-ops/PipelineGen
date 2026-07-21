@@ -203,10 +203,26 @@ type CandidateRepository interface {
 
 // UsageRepository owns media_usage_events. Used by FeedbackService
 // and the ranker success-score promotion loop.
+//
+// godlike/06 SSOT (Fase 2.3 anti-repetition contract): the
+// repository exposes ListProjectUsages so the resolver can read
+// the canonical same-project same-asset / channel-saturation /
+// consecutive-source identity for every event without a runtime
+// join against media_assets. ChannelID and VideoID are denormalized
+// into the row by Fase 2.3 wiring (forward-pointer to
+// migrations/sqlite/169_mediamemory_anti_repetition_columns.sql).
 type UsageRepository interface {
 	Append(ctx context.Context, ev UsageEvent) error
 	ListByConcept(ctx context.Context, conceptID string, limit int) ([]UsageEvent, error)
 	ListByAsset(ctx context.Context, assetID string, limit int) ([]UsageEvent, error)
+	// ListProjectUsages returns every event for a project (newest
+	// first) so the resolver can apply the Fase 2.3
+	// repetition_penalty formula (same-asset penalty +
+	// channel-saturation penalty + consecutive-video penalty)
+	// using the canonical append-only audit trail. ChannelID and
+	// VideoID flow through verbatim from the columns added in
+	// migration 169.
+	ListProjectUsages(ctx context.Context, projectID string, limit int) ([]UsageEvent, error)
 }
 
 // ── External ports (consumed by composition-root adapters) ────────

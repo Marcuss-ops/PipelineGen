@@ -90,6 +90,31 @@ func (r *fakeUsageRepo) ListByAsset(_ context.Context, assetID string, limit int
 	return out, nil
 }
 
+// ListProjectUsages is the Fase 2.3 anti-repetition read seam
+// mirror. Returns every event for the project (newest first) up
+// to the limit. The fake preserves the column-store identity of
+// usage events (ChannelID, VideoID) so resolver-level tests can
+// assert the canonical repetition_penalty formulas.
+func (r *fakeUsageRepo) ListProjectUsages(_ context.Context, projectID string, limit int) ([]UsageEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]UsageEvent, 0, 4)
+	// Iterate events in newest-first order so the resolver's
+	// pre-cached history mirrors the canonical
+	// ORDER BY created_at DESC contract from
+	// sqlite/usage_repository.go::ListProjectUsages.
+	for i := len(r.events) - 1; i >= 0; i-- {
+		e := r.events[i]
+		if e.ProjectID == projectID {
+			out = append(out, e)
+			if limit > 0 && len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 // ── Test fixtures ───────────────────────────────────────────────────
 
 const (

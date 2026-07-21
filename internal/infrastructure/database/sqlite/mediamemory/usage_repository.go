@@ -42,8 +42,14 @@ var _ mediamemory.UsageRepository = (*usageRepository)(nil)
 
 const usageSelectColumns = `id, project_id, scene_id, concept_id,
 		asset_id, binding_id, slot_kind,
+		channel_id, video_id,
 		selected, manually_selected, rejected, render_completed,
 		created_at`
+
+// usageInsertColumnAliases keeps the INSERT placeholder ? count
+// in lock-step with usageSelectColumns (godlike/06 SSOT: a drift
+// between SELECT and INSERT is a silent runtime fault).
+const usageInsertColumnCount = 14
 
 // Append is the canonical entrypoint. The port signature is
 // `Append(ctx, ev) error` per godlike/06 SSOT — an append-only
@@ -68,12 +74,26 @@ func (r *usageRepository) Append(ctx context.Context, ev mediamemory.UsageEvent)
 	if ev.CreatedAt.IsZero() {
 		ev.CreatedAt = now
 	}
+	// godlike/06 SSOT (Fase 2.3 anti-repetition): channel_id +
+	// video_id flow verbatim into the row, mirroring the
+	// SELECT column order above. Nullable for legacy rows
+	// pre-migration-169 so a back-fill is unnecessary — the
+	// ranker treats empty strings as "no penalty input available"
+	// but the same-asset penalty (UsageCount + SuccessScore)
+	// still drives the contract.
+	nullable := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
 	q := `INSERT INTO media_usage_events
 		(` + usageSelectColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.ExecContext(ctx, q,
 		ev.ID, ev.ProjectID, ev.SceneID, ev.ConceptID,
 		ev.AssetID, ev.BindingID, string(ev.SlotKind),
+		nullable(ev.ChannelID), nullable(ev.VideoID),
 		boolToInt(ev.Selected), boolToInt(ev.ManuallySelected),
 		boolToInt(ev.Rejected), boolToInt(ev.RenderCompleted),
 		ev.CreatedAt.Format(time.RFC3339Nano),
@@ -108,6 +128,25 @@ func (r *usageRepository) ListByAsset(ctx context.Context, assetID string, limit
 	return r.queryUsageEvents(ctx, q, args, "list by asset")
 }
 
+// ListProjectUsages is the Fase 2.3 anti-repetition read seam.
+//
+// godlike/06 SSOT (denormalized identity): the SELECT enumerates
+// every column including channel_id + video_id (migration 169) so
+// the resolver's PopulateRepetitionPenalty has full identity to
+// work with (no media_assets join). The result set is bounded by
+// `limit` (canonical upper bound at the resolver is
+// AntiRepetitionHistoryLimit = 1000) so unbounded project scans
+// cannot blow up at runtime.
+func (r *usageRepository) ListProjectUsages(ctx context.Context, projectID string, limit int) ([]mediamemory.UsageEvent, error) {
+	args := []any{projectID}
+	q := `SELECT ` + usageSelectColumns + ` FROM media_usage_events WHERE project_id = ? ORDER BY created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	return r.queryUsageEvents(ctx, q, args, "list by project")
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 func (r *usageRepository) queryUsageEvents(ctx context.Context, q string, args []any, op string) ([]mediamemory.UsageEvent, error) {
@@ -134,6 +173,8 @@ func scanUsageEventRow(s rowScanner) (mediamemory.UsageEvent, error) {
 	var (
 		ev               mediamemory.UsageEvent
 		slotKind         string
+		channelID        sql.NullString
+		videoID          sql.NullString
 		selected         int
 		manuallySelected int
 		rejected         int
@@ -143,10 +184,17 @@ func scanUsageEventRow(s rowScanner) (mediamemory.UsageEvent, error) {
 	if err := s.Scan(
 		&ev.ID, &ev.ProjectID, &ev.SceneID, &ev.ConceptID,
 		&ev.AssetID, &ev.BindingID, &slotKind,
+		&channelID, &videoID,
 		&selected, &manuallySelected, &rejected, &renderCompleted,
 		&createdAt,
 	); err != nil {
 		return mediamemory.UsageEvent{}, err
+	}
+	if channelID.Valid {
+		ev.ChannelID = channelID.String
+	}
+	if videoID.Valid {
+		ev.VideoID = videoID.String
 	}
 	ev.SlotKind = mediamemory.SlotKind(slotKind)
 	if !mediamemory.IsKnownSlotKind(ev.SlotKind) {

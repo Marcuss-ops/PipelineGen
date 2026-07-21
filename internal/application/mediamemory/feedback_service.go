@@ -50,11 +50,22 @@ type FeedbackService interface {
 }
 
 // FeedbackInput is the canonical shape received from the API.
+//
+// godlike/06 SSOT (Fase 2.3 anti-repetition contract): ChannelID
+// and VideoID are recorded alongside ProjectID so the resolver's
+// repetition_penalty has a deterministic source-of-truth identity
+// for every event without a runtime join against media_assets.
+// Empty values are valid (caller-side omitted, e.g. legacy log
+// rows pre-Fase 2.3) — the ranker treats empty channel/video as
+// "no penalty input available" but the same-asset penalty still
+// drives the contract (UsageCount + SuccessScore lifetime).
 type FeedbackInput struct {
 	ProjectID  string
 	SceneID    string
 	BindingID  string
 	Action     FeedbackAction
+	ChannelID  string // optional; "" when caller omits
+	VideoID    string // optional; "" when caller omits
 	OccurredAt string // ISO8601; defaults to clock.Now() if empty
 	Reason     string // free-form, optional
 }
@@ -218,6 +229,12 @@ func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (
 
 	// 1. Append the audit event (append-only; ALWAYS succeeds
 	// before we touch the binding success score).
+	//
+	// godlike/06 SSOT (Fase 2.3 anti-repetition): ChannelID +
+	// VideoID flow verbatim from FeedbackInput into the
+	// append-only UsageEvent so the resolver's
+	// repetition_penalty loop has identity-bearing rows to
+	// read via ListProjectUsages (forward-pointer to Fase 2.3).
 	event := UsageEvent{
 		ProjectID:        in.ProjectID,
 		SceneID:          in.SceneID,
@@ -225,6 +242,8 @@ func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (
 		AssetID:          binding.AssetID,
 		BindingID:        binding.ID,
 		SlotKind:         binding.SlotKind,
+		ChannelID:        in.ChannelID,
+		VideoID:          in.VideoID,
 		Selected:         delta.SelectedIncrement > 0 || in.Action == FeedbackAccepted,
 		ManuallySelected: delta.ManuallySelectedIncrement > 0 || in.Action == FeedbackAccepted,
 		Rejected:         in.Action == FeedbackRejected || in.Action == FeedbackReplaced,
