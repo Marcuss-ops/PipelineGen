@@ -270,7 +270,7 @@ func (r *Repository) MarkArtifactExtracted(ctx context.Context, id, localPath, s
 	const q = `UPDATE stock_artifacts
 		SET status = 'EXTRACTED', local_path = ?, sha256 = ?, actual_duration_ms = ?,
 		    updated_at = datetime('now'), last_error = ''
-		WHERE id = ? AND status = 'EXTRACTING'`
+		WHERE id = ? AND status IN ('EXTRACTING', 'EXTRACTED')`
 	return checkAffected(r.db.ExecContext(ctx, q, localPath, sha256, actualDurationMs, id))
 }
 
@@ -280,7 +280,7 @@ func (r *Repository) MarkArtifactPublished(ctx context.Context, id, driveFileID,
 	const q = `UPDATE stock_artifacts
 		SET status = 'PUBLISHED', drive_file_id = ?, drive_folder_id = ?, drive_link = ?,
 		    updated_at = datetime('now'), last_error = ''
-		WHERE id = ? AND status = 'EXTRACTED'`
+		WHERE id = ? AND status IN ('EXTRACTED', 'PUBLISHED')`
 	return checkAffected(r.db.ExecContext(ctx, q, driveFileID, driveFolderID, driveLink, id))
 }
 
@@ -288,7 +288,7 @@ func (r *Repository) MarkArtifactPublished(ctx context.Context, id, driveFileID,
 func (r *Repository) MarkArtifactVerified(ctx context.Context, id string) error {
 	const q = `UPDATE stock_artifacts
 		SET status = 'VERIFIED', updated_at = datetime('now'), last_error = ''
-		WHERE id = ? AND status = 'PUBLISHED'`
+		WHERE id = ? AND status IN ('PUBLISHED', 'VERIFIED')`
 	return checkAffected(r.db.ExecContext(ctx, q, id))
 }
 
