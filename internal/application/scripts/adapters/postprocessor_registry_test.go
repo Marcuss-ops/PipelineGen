@@ -60,8 +60,9 @@ func (p *countingProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGene
 	if p.empty {
 		return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
 	}
-	// Sprint 1.0: Changed field removed — see struct definition comment.
-	return &adapterspkg.PostProcessResult{Warnings: p.warnings}, nil
+	// Changed marks the result as non-empty so the registry propagates
+	// warnings instead of treating a Required processor as failed.
+	return &adapterspkg.PostProcessResult{Warnings: p.warnings, Changed: true}, nil
 }
 
 // ── Registration ───────────────────────────────────────────────────

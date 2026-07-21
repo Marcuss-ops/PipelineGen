@@ -60,9 +60,10 @@ func TestGenerationPostprocessor_Process_Success(t *testing.T) {
 		name:   "fake",
 		policy: adapters.ProcessorBestEffort,
 		result: &adapters.PostProcessResult{
-			// Sprint 1.0: Changed is not propagated through merge;
-			// use the Warnings marker the Success test asserts below.
-			Warnings: []string{"row-1"},
+			// Changed marks the result as non-empty so merge runs
+			// and the Warnings marker below is propagated.
+			Warnings: []string{"persistence-row-1"},
+			Changed:  true,
 		},
 	})
 	reg.Freeze()
