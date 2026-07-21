@@ -43,14 +43,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	args = append(args, "-i", input)
 
-	// Filter chain with PTS reset to ensure monotonic timestamps
-	// Hardware acceleration note: scaling on CPU for now to keep it stable across platforms,
-	// but using NVENC for the heavy lifting (encoding).
-	filter := fmt.Sprintf(
-		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
-		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS,
-	)
-	args = append(args, "-vf", filter)
+	args = append(args, "-vf", CanonicalClipFilter(canonical))
 
 	if !opts.KeepAudio {
 		args = append(args, "-an")
@@ -120,7 +113,9 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		args = append(args, "-to", end)
 	}
 
+	args = append(args, "-vf", CanonicalClipFilter(canonical))
 	args = append(args, "-c:v", codec)
+	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
 	if strings.Contains(codec, "nvenc") {
 		p := preset
@@ -139,6 +134,9 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	}
 
 	args = append(args,
+		"-pix_fmt", "yuv420p",
+		"-movflags", "+faststart",
+		"-vsync", "cfr",
 		"-avoid_negative_ts", "make_zero",
 		"-reset_timestamps", "1",
 		output,
@@ -176,11 +174,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 		args = append(args, "-to", end)
 	}
 
-	filter := fmt.Sprintf(
-		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
-		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS,
-	)
-	args = append(args, "-vf", filter)
+	args = append(args, "-vf", CanonicalClipFilter(canonical))
 
 	if opts.NoAudio {
 		args = append(args, "-an")
@@ -190,7 +184,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 
 	args = append(args, "-c:v", opts.Codec)
 	args = append(args, "-preset", opts.Preset)
-	args = append(args, "-g", fmt.Sprintf("%d", opts.FPS*2))
+	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
 	if strings.Contains(opts.Codec, "nvenc") {
 		args = append(args, "-rc", "vbr")
@@ -233,7 +227,7 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	err := p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf)
 	if err != nil && strings.Contains(codec, "nvenc") {
 		// Fallback to software encoder if hardware encoder fails
-		return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, "libx264", "veryfast", 18)
+		return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, "libx264", preset, crf)
 	}
 	return err
 }
@@ -257,7 +251,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 	var filterParts []string
 	for i, j := range jobs {
 		filterParts = append(filterParts,
-			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS[v%d]", j.StartSec, j.EndSec, i))
+			fmt.Sprintf("[0:v]trim=start=%f:end=%f,%s[v%d]", j.StartSec, j.EndSec, CanonicalClipFilter(canonical), i))
 		if !noAudio {
 			filterParts = append(filterParts,
 				fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a%d]", j.StartSec, j.EndSec, i))
@@ -279,6 +273,9 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		}
 		args = append(args,
 			"-pix_fmt", "yuv420p",
+			"-movflags", "+faststart",
+			"-vsync", "cfr",
+			"-g", fmt.Sprintf("%d", canonical.KeyframeInterval),
 			"-avoid_negative_ts", "make_zero",
 		)
 		if noAudio {

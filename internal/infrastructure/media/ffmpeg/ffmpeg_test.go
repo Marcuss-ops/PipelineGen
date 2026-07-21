@@ -394,6 +394,39 @@ func TestCutReencode_StreamCopyFlags(t *testing.T) {
 		"-an must be present when noAudio=true; got argv: %v", argv)
 }
 
+// TestCutReencode_CanonicalFilter verifies that CutReencode applies the
+// canonical video filter (scale, pad, fps, setpts) to force every output
+// clip to the canonical geometry.
+func TestCutReencode_CanonicalFilter(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "10", "15",
+		false, "libx264", "veryfast", 18)
+	require.NoError(t, err)
+
+	argv := runner.lastArgv
+	assert.True(t, hasArg(argv, "-vf"),
+		"CutReencode must apply a video filter; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "scale=1920:1080"),
+		"canonical filter must scale to 1920x1080; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "pad=1920:1080"),
+		"canonical filter must pad to 1920x1080; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "fps=24"),
+		"canonical filter must force 24 fps; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "setpts=PTS-STARTPTS"),
+		"canonical filter must reset PTS; got argv: %v", argv)
+}
+
+// TestCanonicalClipFilter verifies the canonical filter string matches the
+// expected scale/pad/fps/setpts chain for the canonical profile.
+func TestCanonicalClipFilter(t *testing.T) {
+	cfg := canonicalClipProfile()
+	got := CanonicalClipFilter(cfg)
+	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24,setpts=PTS-STARTPTS"
+	assert.Equal(t, want, got)
+}
+
 // ── CutReencodeBatch noAudio tests ─────────────────────────────────────
 
 // TestCutReencodeBatch_EmptyJobs_ReturnsNil verifies that empty jobs slice
@@ -496,6 +529,34 @@ func TestCutReencodeBatch_MultipleJobs_NoAudio_False(t *testing.T) {
 	// -an must NOT be present
 	assert.False(t, hasArg(argv, "-an"),
 		"noAudio=false must NOT have -an; got argv: %v", argv)
+}
+
+// TestCutReencodeBatch_MultipleJobs_CanonicalFilter verifies that the
+// batch filter_complex applies the canonical video filter to every clip.
+func TestCutReencodeBatch_MultipleJobs_CanonicalFilter(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	jobs := []fftypes.CutJob{
+		{StartSec: 0.0, EndSec: 5.0, Output: "out0.mp4"},
+		{StartSec: 10.0, EndSec: 15.0, Output: "out1.mp4"},
+	}
+	err := p.CutReencodeBatch(context.Background(), "in.mp4",
+		jobs, true, "libx264", "veryfast", 18)
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.calls, "batch must call Run exactly once")
+
+	argv := runner.lastArgv
+	assert.True(t, hasArg(argv, "-filter_complex"),
+		"batch must use -filter_complex; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "scale=1920:1080"),
+		"canonical filter must scale to 1920x1080; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "pad=1920:1080"),
+		"canonical filter must pad to 1920x1080; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "fps=24"),
+		"canonical filter must force 24 fps; got argv: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "setpts=PTS-STARTPTS"),
+		"canonical filter must reset PTS; got argv: %v", argv)
 }
 
 // TestCutReencodeBatch_OutputPaths verifies that each job's output path
