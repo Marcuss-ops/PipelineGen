@@ -118,7 +118,10 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 	trace.NormalizedText = normalized.Normalized
 
 	// 2. Resolve visual intent.
-	intentOut, err := b.resolver.Resolve(ctx, language, normalized.Normalized)
+	// Pass both the original scene text and the normalized text so
+	// the resolver can detect capitalisation-based entities while
+	// building keywords from the canonical lowercase form.
+	intentOut, err := b.resolver.Resolve(ctx, language, scene.Text, normalized.Normalized)
 	if err != nil {
 		trace.Reasons = append(trace.Reasons, "intent resolver failed: "+err.Error())
 		return brain.SceneVisualPlan{
