@@ -118,16 +118,10 @@ func (s EnrichState) IsFailedTerminal() bool {
 }
 
 // IsScrapeCandidate returns true if a row at this state is eligible
-// to be picked up by the VLM 15-min sweeper. Both PENDING (initial
-// sentinel: never attempted) and FAILED (last attempt failed; no
-// automatic retry per godlike/07 — but operator may have since reset
-// the row back to PENDING via reindex admin) are scrape candidates;
-// ENRICHING (claim held by another worker) and ENRICHED (terminal
-// success) are NOT.
+// to be picked up by the VLM 15-min sweeper. Only PENDING is a
+// scrape candidate; FAILED is terminal and requires operator reset
+// back to PENDING before it can be claimed again. ENRICHING (claim
+// held by another worker) and ENRICHED (terminal success) are NOT.
 func (s EnrichState) IsScrapeCandidate() bool {
-	switch s {
-	case EnrichStatePending, EnrichStateFailed:
-		return true
-	}
-	return false
+	return s == EnrichStatePending
 }

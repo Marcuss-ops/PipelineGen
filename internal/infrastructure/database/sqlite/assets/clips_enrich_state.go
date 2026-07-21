@@ -44,6 +44,9 @@ import (
 // Idempotent: the column flip on an already-target-state row is a
 // no-op write (RowsAffected=0 because the column value matches the
 // WHERE predicate implicitly via the column assignment).
+//
+// Unconditional: use SetEnrichStateIfCurrent when the caller needs
+// to ensure the current state matches an expected from-state.
 func (r *ClipsRepository) SetEnrichState(ctx context.Context, id string, state asset.EnrichState) error {
 	if id == "" {
 		return fmt.Errorf("clips.SetEnrichState: id is required")
@@ -71,6 +74,49 @@ func (r *ClipsRepository) SetEnrichState(ctx context.Context, id string, state a
 		// caller surfaces a fmt.Errorf so the absence is still
 		// diagnoseable.
 		return fmt.Errorf("clips.SetEnrichState(%s, %s): asset row missing in media_assets", id, state)
+	}
+	return nil
+}
+
+// SetEnrichStateIfCurrent atomically flips the canonical
+// media_assets.enrich_state column from `from` to `to` only if the
+// row currently holds `from`. It also atomically stamps
+// enrich_state_updated_at. Returns ErrEnrichStateMissing-equivalent
+// when the asset row is absent OR when the row's current state is
+// not `from` (CAS lost, e.g. another worker claimed the row first).
+//
+// This is the primitive used by EnrichStateMachine.Transition for
+// all validated transitions; the unconditional SetEnrichState is
+// reserved for MarkPending and admin tooling paths that do not
+// require a current-state guard.
+func (r *ClipsRepository) SetEnrichStateIfCurrent(ctx context.Context, id string, from, to asset.EnrichState) error {
+	if id == "" {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent: id is required")
+	}
+	if from == "" {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent: from state is required")
+	}
+	if to == "" {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent: to state is required")
+	}
+	if !from.Valid() {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent: from state %q is not canonical (godlike/06 SSOT: %v)",
+			string(from), asset.CanonicalEnrichStateValues())
+	}
+	if !to.Valid() {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent: to state %q is not canonical (godlike/06 SSOT: %v)",
+			string(to), asset.CanonicalEnrichStateValues())
+	}
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET enrich_state = ?, enrich_state_updated_at = ? WHERE id = ? AND enrich_state = ?`,
+		string(to), nowStr, id, string(from))
+	if err != nil {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent(%s, %s, %s): %w", id, from, to, err)
+	}
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent(%s, %s, %s): asset row missing or current state mismatch", id, from, to)
 	}
 	return nil
 }

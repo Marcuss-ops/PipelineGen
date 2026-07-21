@@ -131,15 +131,14 @@ func (m *EnrichStateMachine) Transition(ctx context.Context, assetID string, fro
 			To:   to,
 		}
 	}
-	if err := m.repo.SetEnrichState(ctx, assetID, to); err != nil {
-		// Remap the SQL primitive's row-missing fmt.Errorf into the
-		// canonical typed sentinel (godlike/07). The probe format is
-		// "clips.SetEnrichState(<id>, <state>): asset row missing in
-		// media_assets" (clips_enrich_state.go) — stable enough to
-		// string-match for the remap without coupling to internal
-		// format details. A future PR tightens this with a typed
-		// return from the SQL primitive (forward-pointer).
-		if strings.Contains(err.Error(), "asset row missing in media_assets") {
+	if err := m.repo.SetEnrichStateIfCurrent(ctx, assetID, from, to); err != nil {
+		// Remap the SQL primitive's row-missing/current-state-mismatch
+		// fmt.Errorf into the canonical typed sentinel (godlike/07).
+		// The probe format is "clips.SetEnrichStateIfCurrent(<id>,
+		// <from>, <to>): asset row missing or current state mismatch"
+		// (clips_enrich_state.go) — stable enough to string-match for
+		// the remap without coupling to internal format details.
+		if strings.Contains(err.Error(), "asset row missing or current state mismatch") {
 			return ErrEnrichStateMissing
 		}
 		return err

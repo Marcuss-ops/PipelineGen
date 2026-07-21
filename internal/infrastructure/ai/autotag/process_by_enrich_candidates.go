@@ -39,36 +39,32 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ProcessByEnrichCandidates scans media_assets for rows whose canonical
-// media_assets.enrich_state column is in {PENDING, FAILED} AND whose
+// media_assets.enrich_state column is PENDING AND whose
 // enrich_state_updated_at stamp is older than now()-claimFence (the
 // sweep claim-fence race-mitigation). Returns the number of rows
 // successfully tagged.
 //
 // Mirrors the legacy sweep's outer contract (size limits, VLM-disabled
 // fail-closed, per-row TagAsset invocation) but uses the typed-state
-// SQL filter as the godlike/06 SSOT scan surface. Does NOT mutate
-// enrich_state directly — the typed transitions
-// (PENDING|FAILED→ENRICHING on claim; ENRICHING→ENRICHED on success;
+// SQL filter as the godlike/06 SSOT scan surface. State transitions
+// (PENDING→ENRICHING on claim; ENRICHING→ENRICHED on success;
 // ENRICHING→FAILED on error) are owned by the application-layer
 // EnrichStateMachine wrapper
 // (internal/application/assets/enrichment/state_machine.go). The
-// autotag service is a TypedStateFilterConsumer: it READS the column
-// + INVOKES the wrappers (via the composition root's injected
-// enrichState port — see PR-ENRICHMENT-STATE-MACHINE-BACKFILL for the
-// composition-root wiring forward-pointer).
-//
-// EXPAND-phase discipline: this method ships the SQL-filter change
-// + race-mitigation claim-fence + typed-state contract; the actual
-// Tier-1 transitions (PENDING→ENRICHING via ClaimForEnrichment) are
-// a follow-up BACKFILL wiring PR. Until that lands, the typed-state
-// scan reads only — TagAsset still drives the metadata_json
-// vlm_tagged marker + tags merge.
+// autotag service is the typed-state consumer: it READS the column
+// and INVOKES the state-machine wrappers, which are injected via the
+// composition root.
 func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, claimFence time.Duration) (int, error) {
 	if !s.vlmClient.IsEnabled() {
 		return 0, fmt.Errorf("VLM client is disabled")
+	}
+	if s.enrichState == nil {
+		return 0, fmt.Errorf("enrichment state machine is not wired")
 	}
 
 	if limit <= 0 {
@@ -76,18 +72,16 @@ func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, clai
 	}
 
 	// Canonical godlike/06 SSOT typed-state filter (migration 123):
-	//   WHERE enrich_state IN ('PENDING','FAILED')
+	//   WHERE enrich_state = 'PENDING'
 	//     AND enrich_state_updated_at < datetime('now', ?)
 	//     AND media_type != 'folder'
 	//     AND local_path != ''
 	// ORDER BY enrich_state_updated_at ASC LIMIT ?
 	// The ORDER BY surfaces the OLDEST scrape candidate first so
-	// long-pending rows get processed before brand-new ones (the
-	// expiring-sweep semantics — pre-PR rows that somehow bypassed
-	// the ingest canonical stamp surface first).
+	// long-pending rows get processed before brand-new ones.
 	query := `
-		SELECT id FROM media_assets
-		WHERE enrich_state IN ('PENDING','FAILED')
+		SELECT id, enrich_state FROM media_assets
+		WHERE enrich_state = 'PENDING'
 		  AND enrich_state_updated_at < datetime('now', ?)
 		  AND media_type != 'folder'
 		  AND local_path != ''
@@ -107,53 +101,81 @@ func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, clai
 	}
 	defer rows.Close()
 
-	var ids []string
+	type candidate struct {
+		id    string
+		state asset.EnrichState
+	}
+	var candidates []candidate
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			s.log.Warn("scan enrich candidate id failed", zap.Error(err))
+		var c candidate
+		var rawState string
+		if err := rows.Scan(&c.id, &rawState); err != nil {
+			s.log.Warn("scan enrich candidate failed", zap.Error(err))
 			continue
 		}
-		ids = append(ids, id)
+		c.state = asset.EnrichState(rawState)
+		candidates = append(candidates, c)
 	}
 	if err := rows.Err(); err != nil {
 		return 0, fmt.Errorf("enrich candidate rows: %w", err)
 	}
-	if len(ids) == 0 {
+	if len(candidates) == 0 {
 		return 0, nil
 	}
 
-	// EXPAND-phase discipline (see package doc): the typed-state Tier-1
-	// transitions (PENDING→ENRICHING on claim; ENRICHING→ENRICHED on
-	// success; ENRICHING→FAILED on error) are a future BACKFILL wiring
-	// PR. Until that lands, TagAsset is invoked against the candidate
-	// set selected by the typed-state filter. The TagAsset success/failure
-	// path already writes metadata_json.$.vlm_tagged = "success"/"failed"
-	// which is the godlike/07 typed-error marker the operator dashboard
-	// already reads. Future BACKFILL replaces these with the canonical
-	// enrich_state column writes via the typed state-machine wrapper.
+	// The state machine owns the Tier-1 transitions: each candidate is
+	// atomically claimed (PENDING→ENRICHING), processed by TagAsset,
+	// and then marked ENRICHED or FAILED by the typed state-machine
+	// wrapper. The legacy metadata_json.$.vlm_tagged marker is still
+	// written by TagAsset for dashboard compatibility.
 	s.log.Info("starting typed-state VLM batch (PR-ENRICHMENT-STATE-MACHINE EXPAND)",
-		zap.Int("count", len(ids)),
+		zap.Int("count", len(candidates)),
 		zap.String("claim_fence", fenceMod))
 
 	processed := 0
-	for _, id := range ids {
-		// Re-fetch the full Asset row (the scan only reads id; TagAsset
+	for _, c := range candidates {
+		if c.state != asset.EnrichStatePending {
+			s.log.Debug("skipping non-scrape candidate", zap.String("id", c.id), zap.String("state", string(c.state)))
+			continue
+		}
+
+		// 1. Atomically claim the row via the typed state machine.
+		// If another worker claimed it concurrently, this will fail
+		// and we move on to the next candidate.
+		if err := s.enrichState.ClaimForEnrichment(ctx, c.id, c.state); err != nil {
+			s.log.Debug("failed to claim asset for enrichment (likely already claimed)",
+				zap.String("id", c.id), zap.Error(err))
+			continue
+		}
+
+		// 2. Re-fetch the full Asset row (the scan only reads id; TagAsset
 		// needs the full row to drive the tags merge + metadata writes).
-		a, fetchErr := s.repo.Get(ctx, id)
+		a, fetchErr := s.repo.Get(ctx, c.id)
 		if fetchErr != nil {
-			s.log.Warn("failed to fetch asset for enrichment",
-				zap.String("id", id), zap.Error(fetchErr))
+			s.log.Warn("failed to fetch asset for enrichment, marking failed",
+				zap.String("id", c.id), zap.Error(fetchErr))
+			_ = s.enrichState.MarkFailed(ctx, c.id)
 			continue
 		}
 		if a == nil {
+			_ = s.enrichState.MarkFailed(ctx, c.id)
 			continue
 		}
+
+		// 3. Run VLM tagging.
 		if err := s.TagAsset(ctx, a); err != nil {
-			s.log.Warn("failed to tag asset (typed-state sweep)",
-				zap.String("id", id), zap.Error(err))
+			s.log.Warn("failed to tag asset (typed-state sweep), marking failed",
+				zap.String("id", c.id), zap.Error(err))
+			_ = s.enrichState.MarkFailed(ctx, c.id)
 			continue
 		}
+
+		// 4. Close the success terminal.
+		if err := s.enrichState.MarkEnriched(ctx, c.id); err != nil {
+			s.log.Error("failed to mark asset as enriched", zap.String("id", c.id), zap.Error(err))
+			continue
+		}
+
 		processed++
 	}
 

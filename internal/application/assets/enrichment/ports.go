@@ -40,7 +40,21 @@ type EnrichRepositoryPort interface {
 	// SetEnrichState writes the typed enum column + atomic
 	// enrich_state_updated_at stamp. Returns ErrEnrichStateMissing
 	// if the asset row is not in media_assets.
+	//
+	// Idempotent on same-state: the column flip on an already-target
+	// state row is a no-op write. This method is intentionally
+	// unconditional — callers that need the current state to match a
+	// specific from-state must use SetEnrichStateIfCurrent.
 	SetEnrichState(ctx context.Context, id string, state asset.EnrichState) error
+
+	// SetEnrichStateIfCurrent atomically flips the column from the
+	// expected from-state to the target to-state, stamping
+	// enrich_state_updated_at. Returns ErrEnrichStateMissing when the
+	// asset row is absent OR when the row's current state is not the
+	// expected from-state (CAS lost). This is the primitive used by
+	// the state-machine wrapper for all validated transitions so
+	// that concurrent sweepers cannot claim the same PENDING row.
+	SetEnrichStateIfCurrent(ctx context.Context, id string, from, to asset.EnrichState) error
 
 	// GetEnrichState reads the current typed enum column. Returns
 	// EnrichStatePending when the row exists and the column carries
@@ -76,7 +90,7 @@ type EnrichStateMachinePort interface {
 	// but expresses the intent at the type system level.
 	MarkPending(ctx context.Context, assetID string) error
 
-	// ClaimForEnrichment performs the VLM-swecper claim:
+	// ClaimForEnrichment performs the VLM-sweeper claim:
 	// PENDING→ENRICHING or FAILED→ENRICHING (the latter only when
 	// an admin tool has reset state to FAILED-transitioned-PENDING,
 	// see godlike/07 explicit-retry-via-admin forward-pointer). The

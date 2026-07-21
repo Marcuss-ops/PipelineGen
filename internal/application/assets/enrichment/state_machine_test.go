@@ -29,20 +29,21 @@ import (
 )
 
 // mockEnrichRepo is an in-memory EnrichRepositoryPort for the
-// state-machine TDD tests. Captures the last SetEnrichState call so
-// tests can assert on the (id, state) pair without spinning up a
-// SQLite fixture. The read surface (GetEnrichState) is implemented
-// as a getter to keep the mock hermetic — current tests focus on the
-// write path; future tests that exercise the from-state pre-flight
-// (transition_validation_via_GetEnrichState) will consult
-// getResp.
+// state-machine TDD tests. Captures the last SetEnrichStateIfCurrent
+// call so tests can assert on the (id, from, to) triple without
+// spinning up a SQLite fixture. The read surface (GetEnrichState)
+// is implemented as a getter to keep the mock hermetic.
 type mockEnrichRepo struct {
-	mu      sync.Mutex
-	lastID  string
-	lastSt  asset.EnrichState
-	setErr  error
-	getResp asset.EnrichState
-	getErr  error
+	mu        sync.Mutex
+	lastID    string
+	lastFrom  asset.EnrichState
+	lastTo    asset.EnrichState
+	lastSt    asset.EnrichState
+	setErr    error
+	setIfErr  error
+	getResp   asset.EnrichState
+	getErr    error
+	stateByID map[string]asset.EnrichState
 }
 
 func (m *mockEnrichRepo) SetEnrichState(_ context.Context, id string, st asset.EnrichState) error {
@@ -53,6 +54,33 @@ func (m *mockEnrichRepo) SetEnrichState(_ context.Context, id string, st asset.E
 	}
 	m.lastID = id
 	m.lastSt = st
+	if m.stateByID == nil {
+		m.stateByID = make(map[string]asset.EnrichState)
+	}
+	m.stateByID[id] = st
+	return nil
+}
+
+func (m *mockEnrichRepo) SetEnrichStateIfCurrent(_ context.Context, id string, from, to asset.EnrichState) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.setIfErr != nil {
+		return m.setIfErr
+	}
+	m.lastID = id
+	m.lastFrom = from
+	m.lastTo = to
+	m.lastSt = to
+	// CAS check is enforced only when the test explicitly initializes
+	// the backing state map. Existing golden-path tests leave it nil
+	// to keep the mock permissive.
+	if m.stateByID != nil && m.stateByID[id] != from {
+		return fmt.Errorf("clips.SetEnrichStateIfCurrent(%s, %s, %s): asset row missing or current state mismatch", id, from, to)
+	}
+	if m.stateByID == nil {
+		m.stateByID = make(map[string]asset.EnrichState)
+	}
+	m.stateByID[id] = to
 	return nil
 }
 
@@ -175,16 +203,14 @@ func TestStateMachine_Transition_EmptyAssetID(t *testing.T) {
 	}
 }
 
-// TestStateMachine_Transition_RowMissingRemapsToTypedSentinel pins the
-// godlike/07 typed-error contract on the row-missing remap. The
-// Transition() method must surface ErrEnrichStateMissing (errors.Is
-// probe-friendly) when the SQL primitive's row-missing fmt.Errorf
-// propagates through. Without this test the stringly-typed remap
-// (strings.Contains on the SQL error message) could silently break
-// in a future refactor of the SQL primitive's error format.
-func TestStateMachine_Transition_RowMissingRemapsToTypedSentinel(t *testing.T) {
+// TestStateMachine_Transition_CASOrRowMissingRemapsToTypedSentinel pins the
+// godlike/07 typed-error contract on the row-missing / CAS-lost remap.
+// The Transition() method must surface ErrEnrichStateMissing
+// (errors.Is probe-friendly) when the SQL primitive's row-missing or
+// current-state-mismatch fmt.Errorf propagates through.
+func TestStateMachine_Transition_CASOrRowMissingRemapsToTypedSentinel(t *testing.T) {
 	repo := &mockEnrichRepo{
-		setErr: fmt.Errorf("clips.SetEnrichState(test-id, PENDING): asset row missing in media_assets"),
+		setIfErr: fmt.Errorf("clips.SetEnrichStateIfCurrent(test-id, PENDING, ENRICHING): asset row missing or current state mismatch"),
 	}
 	m, err := NewEnrichStateMachine(repo)
 	if err != nil {
@@ -193,6 +219,29 @@ func TestStateMachine_Transition_RowMissingRemapsToTypedSentinel(t *testing.T) {
 	err = m.Transition(context.Background(), "test-id", asset.EnrichStatePending, asset.EnrichStateEnriching)
 	if err == nil {
 		t.Fatal("Transition row-missing: expected ErrEnrichStateMissing, got nil")
+	}
+	if !errors.Is(err, ErrEnrichStateMissing) {
+		t.Errorf("errors.Is(ErrEnrichStateMissing): got false for err=%v", err)
+	}
+}
+
+// TestStateMachine_Transition_CASFailsWhenCurrentStateMismatches
+// verifies the compare-and-swap path: a second worker cannot claim a
+// row that has already moved out of the expected from-state.
+func TestStateMachine_Transition_CASFailsWhenCurrentStateMismatches(t *testing.T) {
+	repo := &mockEnrichRepo{
+		stateByID: map[string]asset.EnrichState{
+			"asset-abc": asset.EnrichStateEnriching,
+		},
+	}
+	m, err := NewEnrichStateMachine(repo)
+	if err != nil {
+		t.Fatalf("NewEnrichStateMachine: %v", err)
+	}
+	// Row is already ENRICHING; attempting PENDING→ENRICHING must lose CAS.
+	err = m.Transition(context.Background(), "asset-abc", asset.EnrichStatePending, asset.EnrichStateEnriching)
+	if err == nil {
+		t.Fatal("Transition CAS mismatch: expected ErrEnrichStateMissing, got nil")
 	}
 	if !errors.Is(err, ErrEnrichStateMissing) {
 		t.Errorf("errors.Is(ErrEnrichStateMissing): got false for err=%v", err)
