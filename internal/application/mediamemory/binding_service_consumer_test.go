@@ -15,8 +15,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/mutations"
 )
 
 // fixedClock returns a Clock pinned to a deterministic time so
@@ -69,28 +67,28 @@ func TestBindingServiceFailsClosedWhenDispatcherNil(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Create succeeded with nil dispatcher; want error")
 	}
-	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+	if !errors.Is(err, ErrBindingMutationDispatcherUnavailable) {
 		t.Fatalf("Create returned %v, want ErrBindingMutationDispatcherUnavailable", err)
 	}
 
 	if err := svc.Delete(context.Background(), "b-1"); err == nil {
 		t.Fatalf("Delete succeeded with nil dispatcher; want error")
 	}
-	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+	if !errors.Is(err, ErrBindingMutationDispatcherUnavailable) {
 		t.Fatalf("Delete returned %v, want ErrBindingMutationDispatcherUnavailable", err)
 	}
 
 	if err := svc.Approve(context.Background(), "b-1"); err == nil {
 		t.Fatalf("Approve succeeded with nil dispatcher; want error")
 	}
-	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+	if !errors.Is(err, ErrBindingMutationDispatcherUnavailable) {
 		t.Fatalf("Approve returned %v, want ErrBindingMutationDispatcherUnavailable", err)
 	}
 
 	if err := svc.Reject(context.Background(), "b-1"); err == nil {
 		t.Fatalf("Reject succeeded with nil dispatcher; want error")
 	}
-	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+	if !errors.Is(err, ErrBindingMutationDispatcherUnavailable) {
 		t.Fatalf("Reject returned %v, want ErrBindingMutationDispatcherUnavailable", err)
 	}
 }

@@ -22,6 +22,7 @@ package adapters
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -560,6 +561,12 @@ func (f *fakeBindingRepoMulti) ListByAsset(_ context.Context, _ string) ([]media
 	return nil, nil
 }
 func (f *fakeBindingRepoMulti) Delete(_ context.Context, _ string) error { return nil }
+func (f *fakeBindingRepoMulti) UpsertBindingTx(_ context.Context, _ *sql.Tx, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
+	return b, nil
+}
+func (f *fakeBindingRepoMulti) DeleteBindingTx(_ context.Context, _ *sql.Tx, _ string) error {
+	return nil
+}
 
 // Test 8: ReindexConcept bumps embedding_version while leaving
 // the (concept_id, language, phrase_fingerprint) tuple invariant.
