@@ -414,8 +414,10 @@ func TestCutReencode_CanonicalFilter(t *testing.T) {
 		"canonical filter must pad to 1920x1080; got argv: %v", argv)
 	assert.True(t, hasArgSubstring(argv, "fps=24"),
 		"canonical filter must force 24 fps; got argv: %v", argv)
-	assert.True(t, hasArgSubstring(argv, "setpts=PTS-STARTPTS"),
-		"canonical filter must reset PTS; got argv: %v", argv)
+	// CutReencode uses the trim variant so -to/-ss remain authoritative
+	// and the output duration is not expanded to the source length.
+	assert.False(t, hasArgSubstring(argv, "setpts=PTS-STARTPTS"),
+		"CutReencode must NOT reset PTS in the video filter; got argv: %v", argv)
 }
 
 // TestCanonicalClipFilter verifies the canonical filter string matches the
@@ -424,6 +426,15 @@ func TestCanonicalClipFilter(t *testing.T) {
 	cfg := canonicalClipProfile()
 	got := CanonicalClipFilter(cfg)
 	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24,setpts=PTS-STARTPTS"
+	assert.Equal(t, want, got)
+}
+
+// TestCanonicalClipFilterTrim verifies the no-setpts variant used for
+// trimmed segments where the cut boundary is authoritative.
+func TestCanonicalClipFilterTrim(t *testing.T) {
+	cfg := canonicalClipProfile()
+	got := CanonicalClipFilterTrim(cfg)
+	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24"
 	assert.Equal(t, want, got)
 }
 
@@ -555,8 +566,11 @@ func TestCutReencodeBatch_MultipleJobs_CanonicalFilter(t *testing.T) {
 		"canonical filter must pad to 1920x1080; got argv: %v", argv)
 	assert.True(t, hasArgSubstring(argv, "fps=24"),
 		"canonical filter must force 24 fps; got argv: %v", argv)
+	// Batch trims first, then resets PTS before applying the canonical
+	// geometry filter, so the output starts at zero and has the trimmed
+	// duration.
 	assert.True(t, hasArgSubstring(argv, "setpts=PTS-STARTPTS"),
-		"canonical filter must reset PTS; got argv: %v", argv)
+		"CutReencodeBatch must reset PTS after trim; got argv: %v", argv)
 }
 
 // TestCutReencodeBatch_OutputPaths verifies that each job's output path
