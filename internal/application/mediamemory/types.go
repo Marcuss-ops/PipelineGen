@@ -204,14 +204,22 @@ type MediaBinding struct {
 	SlotKind       SlotKind
 	Origin         Origin
 	ApprovalStatus ApprovalStatus
-	ManualScore    float64
-	SemanticScore  float64
-	QualityScore   float64
-	SuccessScore   float64
-	UsageCount     int
-	LastUsedAt     *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Provider is the canonical source tag from the candidate
+	// that produced this binding (godlike/06 SSOT: see the
+	// closed-set constant group below). Phase 4.3 wires this so
+	// deriveLayerProvider can return the real provider tag
+	// (enables the SceneVisualPlan.Source = "mixed" branch).
+	// Defaults to ProviderLocal when empty (binding_service
+	// applyDefaults backfills manual edits).
+	Provider      string
+	ManualScore   float64
+	SemanticScore float64
+	QualityScore  float64
+	SuccessScore  float64
+	UsageCount    int
+	LastUsedAt    *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // MediaCandidate stores metadata about a clip/image discovered by
@@ -284,6 +292,14 @@ type SceneSpec struct {
 	DurationMs int64
 	Slots      []SlotKind
 	Language   string
+	// SceneConcepts is the Fase 4.3 per-scene concept_id
+	// list. godlike/06 SSOT (scene-concepts union): when
+	// non-empty it overrides the request-level
+	// PlanGeneratorRequest.SceneConcepts so the
+	// SceneVisualPlanGenerator scopes pickBindingForSlot to
+	// the scene's actual concept set. Empty (the default)
+	// falls back to the request-level filter.
+	SceneConcepts []string
 }
 
 // Layer is one entry in a SceneVisualPlan.
@@ -640,27 +656,56 @@ var (
 // ranker's Source upgrade logic and the dashboard's per-source
 // diagnostics aggregate over the closed set.
 //
-// Note: MediaCandidate.Provider MAY also carry forwarded
-// Source values from external SearchFanOut (e.g. "artlist",
-// "youtube") that originate outside the mediamemory
-// capability and are not closed-set here — those are
-// translucent handoffs, not first-class providers.
+// Note: MediaCandidate.Provider (and MediaBinding.Provider)
+// MAY also carry forwarded Source values from external
+// SearchFanOut (e.g. "artlist", "youtube") that originate
+// outside the mediamemory capability and are not closed-set
+// here — those are translucent handoffs, not first-class
+// providers. The IsKnownProvider predicate returns true for
+// both mediamemory-owned tags (ProviderLocal /
+// ProviderSemanticIndex) AND the translucent handoff tags so
+// a binding row never carries an unknown provider string.
 const (
+	// ProviderLocal is the canonical tag for bindings created
+	// by the dashboard manual-editor path. Migration 170
+	// backfills pre-Fase-4.3 rows to this value via the
+	// ALTER TABLE DEFAULT 'local' clause. godlike/06 SSOT:
+	// dispatch on this string only through IsKnownProvider.
+	ProviderLocal = "local"
 	// ProviderSemanticIndex is the tag stamped on candidates
 	// emitted by mediamemory.SemanticLookup
 	// (QdrantSemanticLookup). godlike/06 SSOT: do NOT
 	// dispatch on string compare; use IsKnownProvider.
 	ProviderSemanticIndex = "mediamemory.semantic"
+	// ProviderArtlist is the translucent handoff tag for
+	// bindings auto-linked from the Artlist SearchFanOut
+	// provider. NOT a mediamemory-owned first-class provider;
+	// accepted verbatim on MediaBinding.Provider / MediaCandidate.Provider
+	// rows so the dashboard's per-source diagnostics can
+	// aggregate per-Artlist.
+	ProviderArtlist = "artlist"
+	// ProviderYouTube is the translucent handoff tag for
+	// bindings auto-linked from the YouTube SearchFanOut
+	// provider.
+	ProviderYouTube = "youtube"
+	// ProviderPexels is the translucent handoff tag for
+	// bindings auto-linked from the Pexels image provider
+	// (Fase 4.1).
+	ProviderPexels = "pexels"
 )
 
 // IsKnownProvider reports whether p is in the canonical
-// closed set of mediamemory-owned provider tags. godlike/06
-// SSOT (one-canonical-predicate-next-to-closed-set): a
-// companion predicate is the standard SSOT pattern for any
-// enum-style string surface.
+// closed set of mediamemory-owned provider tags AND the
+// translucent handoff tags from external SearchFanOut
+// providers. godlike/06 SSOT (one-canonical-predicate-next-
+// to-closed-set): a companion predicate is the standard SSOT
+// pattern for any enum-style string surface. A return value
+// of false means the caller should reject the binding /
+// candidate row rather than silently rank an unknown provider.
 func IsKnownProvider(p string) bool {
 	switch p {
-	case ProviderSemanticIndex:
+	case ProviderLocal, ProviderSemanticIndex,
+		ProviderArtlist, ProviderYouTube, ProviderPexels:
 		return true
 	}
 	return false

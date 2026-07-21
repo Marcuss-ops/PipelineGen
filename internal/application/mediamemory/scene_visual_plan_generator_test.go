@@ -79,6 +79,46 @@ func (noopBindingRepository) Delete(context.Context, string) error {
 	panic("noopBindingRepository.Delete: unused in current test scope")
 }
 
+// fakeBindingsRepoForGenerator is the Fase 4.3 ListApprovedByConcept fake
+// used by lookupPrimaryBinding-wired tests. godlike/06 SSOT
+// (test seam narrow port doctrine): implements ONLY the read
+// seam the Fase 4.3 fallback path uses. Upsert / Delete /
+// FindByID / ListByConcept / ListByAsset panic so a future
+// caller that accidentally exercises the write surface
+// surfaces the drift loudly.
+//
+// listApprovedByConceptFn is an overridable function hook so
+// each test can craft the exact return shape (one binding,
+// multiple bindings, an error, ...).
+type fakeBindingsRepoForGenerator struct {
+	listApprovedByConceptFn func(ctx context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error)
+}
+
+func (f *fakeBindingsRepoForGenerator) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error) {
+	if f.listApprovedByConceptFn != nil {
+		return f.listApprovedByConceptFn(ctx, conceptID, slotKinds, limit)
+	}
+	return nil, nil
+}
+func (f *fakeBindingsRepoForGenerator) Upsert(context.Context, MediaBinding) (MediaBinding, error) {
+	panic("fakeBindingsRepo.Upsert: write surface not exercised in test scope")
+}
+func (f *fakeBindingsRepoForGenerator) FindByID(context.Context, string) (MediaBinding, error) {
+	panic("fakeBindingsRepo.FindByID: write surface not exercised in test scope")
+}
+func (f *fakeBindingsRepoForGenerator) ListApprovedByConcepts(context.Context, []string, []SlotKind, int) (map[string][]MediaBinding, error) {
+	panic("fakeBindingsRepo.ListApprovedByConcepts: unused in current test scope")
+}
+func (f *fakeBindingsRepoForGenerator) ListByConcept(context.Context, string) ([]MediaBinding, error) {
+	panic("fakeBindingsRepo.ListByConcept: unused in current test scope")
+}
+func (f *fakeBindingsRepoForGenerator) ListByAsset(context.Context, string) ([]MediaBinding, error) {
+	panic("fakeBindingsRepo.ListByAsset: unused in current test scope")
+}
+func (f *fakeBindingsRepoForGenerator) Delete(context.Context, string) error {
+	panic("fakeBindingsRepo.Delete: unused in current test scope")
+}
+
 // ── Test 1: DefaultLayoutForSlot canonical mapping ────────────────
 
 func TestDefaultLayoutForSlot_CanonicalMapping(t *testing.T) {
@@ -392,5 +432,232 @@ func TestParsePlans_UnknownLayoutReturnsError(t *testing.T) {
 	_, _, err := ParsePlans(bad)
 	if err == nil {
 		t.Fatal("expected error on unknown layout")
+	}
+}
+
+// ── Fase 4.3 tests ─────────────────────────────────────────────────
+
+// ── Test 15: pickBindingForSlot filters by concept_id when SceneConcepts set ──
+
+func TestGenerator_Generate_FiltersBySceneConcepts(t *testing.T) {
+	// Two concepts, only one of which is in SceneConcepts.
+	// Without filtering, pickBindingForSlot would return
+	// the higher-scoring binding from concept-other; with
+	// filtering, only concept-target is considered.
+	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)
+	req := PlanGeneratorRequest{
+		ProjectID:     "p1",
+		Language:      "it",
+		SceneConcepts: []string{"concept-target"},
+		Scenes: []SceneSpec{
+			{
+				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
+				Slots: []SlotKind{SlotPrimaryVideo},
+			},
+		},
+		ConceptBindings: map[string][]MediaBinding{
+			"concept-target": {
+				approvedBinding("bind-tgt", "asset-target", SlotPrimaryVideo, 0.7),
+			},
+			"concept-other": {
+				approvedBinding("bind-other", "asset-other", SlotPrimaryVideo, 0.95), // higher score
+			},
+		},
+	}
+	out, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(out.Plans) != 1 || len(out.Plans[0].Layers) != 1 {
+		t.Fatalf("expected 1 plan with 1 layer, got %d plans", len(out.Plans))
+	}
+	if got := out.Plans[0].Layers[0].AssetID; got != "asset-target" {
+		t.Fatalf("expected asset-target (concept-target filter), got %q", got)
+	}
+}
+
+// ── Test 16: pickBindingForSlot falls back to all concept_ids when SceneConcepts empty ──
+
+func TestGenerator_Generate_NoSceneConcepts_FallsBackToAll(t *testing.T) {
+	// Empty SceneConcepts → the pre-Fase-4.3 behaviour:
+	// walk every concept_id and pick the highest-scoring
+	// binding per slot.
+	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)
+	req := PlanGeneratorRequest{
+		ProjectID: "p1",
+		Language:  "it",
+		// SceneConcepts is empty / nil.
+		Scenes: []SceneSpec{
+			{
+				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
+				Slots: []SlotKind{SlotPrimaryVideo},
+			},
+		},
+		ConceptBindings: map[string][]MediaBinding{
+			"concept-target": {
+				approvedBinding("bind-tgt", "asset-target", SlotPrimaryVideo, 0.7),
+			},
+			"concept-other": {
+				approvedBinding("bind-other", "asset-other", SlotPrimaryVideo, 0.95),
+			},
+		},
+	}
+	out, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(out.Plans) != 1 || len(out.Plans[0].Layers) != 1 {
+		t.Fatalf("expected 1 plan with 1 layer, got %d plans", len(out.Plans))
+	}
+	// No filter → higher-scoring binding from concept-other wins.
+	if got := out.Plans[0].Layers[0].AssetID; got != "asset-other" {
+		t.Fatalf("expected asset-other (no filter, top-scoring wins), got %q", got)
+	}
+}
+
+// ── Test 17: lookupPrimaryBinding wires to ListApprovedByConcept ──
+
+func TestGenerator_Generate_LookupPrimaryBinding_WiresToRepository(t *testing.T) {
+	// Empty ConceptBindings + non-empty SceneConcepts →
+	// lookupPrimaryBinding MUST be invoked, which in turn
+	// calls ListApprovedByConcept on each concept_id. The
+	// fakeBindingsRepo returns one approved binding per
+	// concept; the generator picks the top-scoring across
+	// concepts.
+	calls := make([]string, 0, 4)
+	fake := &fakeBindingsRepoForGenerator{
+		listApprovedByConceptFn: func(_ context.Context, conceptID string, slotKinds []SlotKind, _ int) ([]MediaBinding, error) {
+			calls = append(calls, conceptID)
+			// Concept-A returns a higher-scoring binding so
+			// it should win.
+			if conceptID == "concept-a" {
+				return []MediaBinding{
+					approvedBinding("bind-a", "asset-a", slotKinds[0], 0.95),
+				}, nil
+			}
+			return []MediaBinding{
+				approvedBinding("bind-b", "asset-b", slotKinds[0], 0.7),
+			}, nil
+		},
+	}
+	gen := NewDefaultSceneVisualPlanGenerator(fake, NoopLogger(), nil)
+	req := PlanGeneratorRequest{
+		ProjectID:     "p1",
+		Language:      "it",
+		SceneConcepts: []string{"concept-a", "concept-b"},
+		Scenes: []SceneSpec{
+			{
+				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
+				Slots: []SlotKind{SlotPrimaryVideo},
+			},
+		},
+		// ConceptBindings is nil → lookupPrimaryBinding is the
+		// only path.
+	}
+	out, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 ListApprovedByConcept calls (one per concept), got %d: %v", len(calls), calls)
+	}
+	if len(out.Plans) != 1 || len(out.Plans[0].Layers) != 1 {
+		t.Fatalf("expected 1 plan with 1 layer, got %d plans", len(out.Plans))
+	}
+	if got := out.Plans[0].Layers[0].AssetID; got != "asset-a" {
+		t.Fatalf("expected asset-a (higher-scoring concept), got %q", got)
+	}
+	if got := out.Plans[0].Layers[0].Provider; got != ProviderLocal {
+		t.Fatalf("expected ProviderLocal (default binding provenance), got %q", got)
+	}
+}
+
+// ── Test 18: deriveLayerProvider returns real binding.Provider ──
+
+func TestGenerator_Generate_DeriveLayerProviderReturnsRealTag(t *testing.T) {
+	// A binding with Provider=ProviderArtlist surfaces on
+	// the resulting Layer as "artlist", not "local". This
+	// enables the SceneVisualPlan.Source="mixed" branch
+	// the Fase 4.2 forward-pin promised.
+	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)
+	artlistBinding := approvedBinding("bind-art", "asset-artlist", SlotPrimaryVideo, 0.9)
+	artlistBinding.Provider = ProviderArtlist
+	req := PlanGeneratorRequest{
+		ProjectID: "p1",
+		Language:  "it",
+		Scenes: []SceneSpec{
+			{
+				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
+				Slots: []SlotKind{SlotPrimaryVideo},
+			},
+		},
+		ConceptBindings: map[string][]MediaBinding{
+			"concept-maya": {artlistBinding},
+		},
+	}
+	out, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(out.Plans) != 1 || len(out.Plans[0].Layers) != 1 {
+		t.Fatalf("expected 1 plan with 1 layer, got %d plans", len(out.Plans))
+	}
+	if got := out.Plans[0].Layers[0].Provider; got != ProviderArtlist {
+		t.Fatalf("expected Provider=artlist (real binding provenance), got %q", got)
+	}
+}
+
+// ── Test 19: SceneSpec.SceneConcepts overrides request-level filter ──
+
+func TestGenerator_Generate_SceneSpecConceptsOverridesRequest(t *testing.T) {
+	// Per-scene SceneSpec.SceneConcepts MUST take
+	// precedence over the request-level SceneConcepts.
+	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)
+	req := PlanGeneratorRequest{
+		ProjectID:     "p1",
+		Language:      "it",
+		SceneConcepts: []string{"concept-default"},
+		Scenes: []SceneSpec{
+			{
+				ID:            "scene-1",
+				Text:          "Maya temples.",
+				DurationMs:    10000,
+				Language:      "it",
+				SceneConcepts: []string{"concept-override"},
+				Slots:         []SlotKind{SlotPrimaryVideo},
+			},
+		},
+		ConceptBindings: map[string][]MediaBinding{
+			"concept-default": {
+				approvedBinding("bind-d", "asset-default", SlotPrimaryVideo, 0.95),
+			},
+			"concept-override": {
+				approvedBinding("bind-o", "asset-override", SlotPrimaryVideo, 0.7),
+			},
+		},
+	}
+	out, err := gen.Generate(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(out.Plans) != 1 || len(out.Plans[0].Layers) != 1 {
+		t.Fatalf("expected 1 plan with 1 layer, got %d plans", len(out.Plans))
+	}
+	if got := out.Plans[0].Layers[0].AssetID; got != "asset-override" {
+		t.Fatalf("expected asset-override (scene-level filter), got %q", got)
+	}
+}
+
+// ── Test 20: deriveLayerProvider returns ProviderLocal for empty binding.Provider ──
+
+func TestDeriveLayerProvider_EmptyProviderDefaultsToLocal(t *testing.T) {
+	if got := deriveLayerProvider(&MediaBinding{Provider: ""}); got != ProviderLocal {
+		t.Fatalf("expected ProviderLocal for empty Provider, got %q", got)
+	}
+	if got := deriveLayerProvider(nil); got != ProviderLocal {
+		t.Fatalf("expected ProviderLocal for nil binding, got %q", got)
+	}
+	if got := deriveLayerProvider(&MediaBinding{Provider: ProviderSemanticIndex}); got != ProviderSemanticIndex {
+		t.Fatalf("expected ProviderSemanticIndex verbatim, got %q", got)
 	}
 }

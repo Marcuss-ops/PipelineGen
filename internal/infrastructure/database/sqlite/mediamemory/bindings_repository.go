@@ -46,7 +46,7 @@ func NewBindingsRepository(db *sql.DB) mediamemory.BindingRepository {
 var _ mediamemory.BindingRepository = (*bindingsRepository)(nil)
 
 const bindingsSelectColumns = `id, concept_id, asset_id, start_ms, end_ms,
-		slot_kind, origin, approval_status,
+		slot_kind, origin, approval_status, provider,
 		manual_score, semantic_score, quality_score, success_score,
 		usage_count, last_used_at, created_at, updated_at`
 
@@ -72,12 +72,13 @@ func (r *bindingsRepository) Upsert(ctx context.Context, b mediamemory.MediaBind
 
 	q := `INSERT INTO media_bindings
 		(` + bindingsSelectColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(concept_id, asset_id, slot_kind) DO UPDATE SET
 			start_ms        = excluded.start_ms,
 			end_ms          = excluded.end_ms,
 			origin          = excluded.origin,
 			approval_status = excluded.approval_status,
+			provider        = excluded.provider,
 			manual_score    = excluded.manual_score,
 			semantic_score  = excluded.semantic_score,
 			quality_score   = excluded.quality_score,
@@ -90,7 +91,7 @@ func (r *bindingsRepository) Upsert(ctx context.Context, b mediamemory.MediaBind
 	row := r.db.QueryRowContext(ctx, q,
 		b.ID, b.ConceptID, b.AssetID,
 		b.StartMs, b.EndMs,
-		string(b.SlotKind), string(b.Origin), string(b.ApprovalStatus),
+		string(b.SlotKind), string(b.Origin), string(b.ApprovalStatus), b.Provider,
 		b.ManualScore, b.SemanticScore, b.QualityScore, b.SuccessScore,
 		b.UsageCount, nullableTimePtr(b.LastUsedAt),
 		b.CreatedAt.Format(time.RFC3339Nano), b.UpdatedAt.Format(time.RFC3339Nano),
@@ -328,7 +329,7 @@ func scanBindingRow(s rowScanner) (mediamemory.MediaBinding, error) {
 	if err := s.Scan(
 		&b.ID, &b.ConceptID, &b.AssetID,
 		&startMs, &endMs,
-		&slotKind, &origin, &approvalStatus,
+		&slotKind, &origin, &approvalStatus, &b.Provider,
 		&b.ManualScore, &b.SemanticScore, &b.QualityScore, &b.SuccessScore,
 		&b.UsageCount, &lastUsedAt,
 		&createdAt, &updatedAt,
@@ -354,6 +355,21 @@ func scanBindingRow(s rowScanner) (mediamemory.MediaBinding, error) {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding %q has unknown approval_status %q",
 			b.ID, approvalStatus,
+		)
+	}
+	if b.Provider == "" {
+		// godlike/07 NO-FAKE-AVAILABILITY: legacy rows
+		// pre-Fase-4.3 land here (the migration backfills
+		// the column to 'local' but an in-flight read on a
+		// row written before the migration ran can still
+		// surface empty). Default to ProviderLocal so
+		// deriveLayerProvider never has to handle empty.
+		b.Provider = mediamemory.ProviderLocal
+	}
+	if !mediamemory.IsKnownProvider(b.Provider) {
+		return mediamemory.MediaBinding{}, fmt.Errorf(
+			"mediamemory: binding %q has unknown provider %q",
+			b.ID, b.Provider,
 		)
 	}
 	if startMs.Valid {
