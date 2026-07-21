@@ -507,4 +507,7 @@ var (
 	ErrInvalidFeedbackAction = errors.New(
 		"mediamemory: unknown FeedbackAction value (closed set: accepted/rejected/replaced/trimmed/used_successfully)",
 	)
+	ErrCandidateNotFound = errors.New(
+		"mediamemory: candidate_id absent from candidate repository",
+	)
 )
