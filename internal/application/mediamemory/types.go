@@ -665,3 +665,147 @@ func IsKnownProvider(p string) bool {
 	}
 	return false
 }
+
+// ── Fase 3.2 linker wire envelopes (godlike/06 SSOT) ─────────────
+
+// LinkerRequest is the per-candidate input bundle consumed by
+// LinkerWorker.EnrichCandidate. godlike/06 SSOT (narrow port
+// doctrine): the envelope carries ONLY the candidate and a
+// ProjectID for rights-trail context. Provider name + media
+// type are derived from the candidate itself so the worker
+// cannot branch on caller-supplied ownership data that could
+// drift from the canonical MediaCandidate row.
+type LinkerRequest struct {
+	Candidate MediaCandidate
+	ProjectID string
+	Language  string
+}
+
+// LinkerResult is the per-candidate output of EnrichCandidate.
+// godlike/06 SSOT: PersistedBindingIDs + IndexedConceptIDs +
+// DiscoveryStatus are the canonical durable footprint of one
+// EnrichCandidate call; Failures is the canonical per-step
+// failure record for the dashboard. The orchestrator (batch_
+// service.EnrichLinker) accumulates Failures into the parent
+// Failure channel without re-formatting them.
+type LinkerResult struct {
+	PersistedBindingIDs []string
+	IndexedConceptIDs   []string
+	DetectedEntities    []string // canonical free-text labels, NOT concept IDs
+	Status              DiscoveryStatus
+	Failures            []string
+	Empty               bool // true when the linker short-circuited via the idempotency no-op path
+}
+
+// EncodingChannels is the canonical multichannel input bundle
+// for EmbeddingEncoder.Encode. godlike/06 SSOT (channel
+// SSOT): text + transcript + visual_desc + audio + BM25
+// sparse are the canonical channels. Empty strings are NOT a
+// silent zero-output (godlike/07) — receivers can choose to
+// reject an Encode call whose Text AND Transcript AND
+// VisualDesc are all empty, but the canonical default is to
+// return a zero-vector so the canonical embedding call site
+// surfaces ErrLinkerEmbeddingFailed on its own predicate.
+type EncodingChannels struct {
+	Text       string
+	Transcript string
+	VisualDesc string
+	Audio      string
+}
+
+// MediaEmbedding is the canonical model output of
+// EmbeddingEncoder.Encode. godlike/06 SSOT (vector SSOT):
+// Vector is dense float32 in the model's native dimensionality.
+type MediaEmbedding struct {
+	Vector []float32
+	Dim    int
+	Model  string // encoder identifier (used by EmbeddingIndexer for Qdrant payload stamping)
+}
+
+// TranscriptSegment is one window of the transcriber output.
+// godlike/06 SSOT: StartMs / EndMs / Text is the canonical
+// 3-tuple. Phase 3.5 stockpipeline-level transcriber is the
+// production adapter.
+type TranscriptSegment struct {
+	StartMs int64
+	EndMs   int64
+	Text    string
+}
+
+// Keyframe is one still-frame the linker indexes for visual
+// description. godlike/06 SSOT: the canonical wire shape
+// carries timestamp + raw URL/blob + an optional pre-computed
+// embedding (forward-pointer to Fase 4.1 visual channel).
+// For Fase 3.2 the URL is the canonical envelope; ImageData
+// is left optional.
+type Keyframe struct {
+	Ms        int64
+	ImageURL  string
+	ImageData []byte    // optional pre-fetched bytes for offline encoders
+	Embedding []float32 // optional, set by Fase 4.1 visual-channel encoder
+}
+
+// Linker sentinels (godlike/06 SSOT: same envelope family as
+// discovery-worker sentinels; godlike/07 NO-FAKE-AVAILABILITY:
+// every non-trivial linker failure surfaces a typed envelope
+// so the BatchService.EnrichLinker orchestrator can branch
+// hard-fail (Failed+continue) vs resumable (leave Searched +
+// return).
+
+// ErrLinkerUnmappableConcept is the HARD-fail sentinel: the
+// linker could not produce any (concept × slot_kind) tuple
+// for the candidate (e.g. zero detectable entities, zero
+// mappable visual actions). The candidate's DiscoveryStatus
+// is set to DiscoveryFailed at the batch orchestrator and the
+// batch continues with the next candidate. Operator-visible
+// in the dashboard per-candidate Failures[] column.
+var ErrLinkerUnmappableConcept = errors.New(
+	"mediamemory: linker could not map candidate to any (concept × slot_kind) tuple (no detectable entities / no mappable visual actions)",
+)
+
+// ErrLinkerExtractFailed is the FAIL-CLOSED envelope for any
+// failure in the extraction phase (TranscriptExtractor /
+// KeyframeExtractor / VisualDescriptionGenerator). Wrapped
+// with %w so the BatchService orchestrator's errors.Is branch
+// routes it through its per-candidate failure record. The
+// candidate's DiscoveryStatus is NOT mutated on this envelope
+// so a subsequent EnrichLinker retry re-runs the full
+// extraction pipeline naturally (idempotent Resume contract).
+var ErrLinkerExtractFailed = errors.New(
+	"mediamemory: linker extractor failed (transcript / keyframe / visual description generator)",
+)
+
+// ErrLinkerEmbeddingFailed is the FAIL-CLOSED envelope for the
+// multichannel embedding encoder path. Same Resume-on-retry
+// semantics as ErrLinkerExtractFailed — the candidate stays
+// at DiscoverySearched until the encoder returns a valid
+// vector. godlike/07 NO-FAKE-AVAILABILITY: a zero-length
+// vector is NOT silently accepted; canonical embedding call
+// sites check len(MediaEmbedding.Vector) > 0 before stamping
+// the Qdrant payload and surface ErrLinkerEmbeddingFailed
+// otherwise.
+var ErrLinkerEmbeddingFailed = errors.New(
+	"mediamemory: linker multichannel embedding encoder failed",
+)
+
+// ErrLinkerConceptAssignmentFailed is the FAIL-CLOSED envelope
+// for the concept-assignment phase: the EntityDetector /
+// ConceptAssigner generated zero canonical concepts.
+// godlike/06 SSOT distinct from ErrLinkerUnmappableConcept
+// (assignment-failure vs unmappable: a zero-concept assignment
+// result is operational; an unmappable result is semantic).
+// Both end up at DiscoveryFailed on the candidate.
+var ErrLinkerConceptAssignmentFailed = errors.New(
+	"mediamemory: linker concept assignment layer returned zero concepts",
+)
+
+// ErrLinkerInvariantBroken is the PANIC-equivalent sentinel:
+// the linker reached an internal post-write state that the
+// canonical invariants forbid (e.g. binding persisted without
+// a concept row, embedding stamped to Qdrant without a
+// concept_id Match). godlike/07 NO-FAKE-AVAILABILITY: this is
+// NEVER recoverable from Resume — it surfaces a 500-level
+// typed envelope and the candidate goes to DiscoveryFailed.
+var ErrLinkerInvariantBroken = errors.New(
+	"mediamemory: linker internal invariant broken (binding-without-concept or embedding-without-binding detected post-write)",
+)
