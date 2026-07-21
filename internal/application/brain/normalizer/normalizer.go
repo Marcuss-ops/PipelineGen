@@ -36,6 +36,7 @@ type Result struct {
 // into its normalized form and a deterministic fingerprint.
 type PhraseNormalizer interface {
 	Normalize(ctx context.Context, language, text string) (Result, error)
+	Version() string
 }
 
 // defaultNormalizer is the canonical pure implementation. It performs
@@ -51,6 +52,11 @@ func NewDefaultNormalizer() PhraseNormalizer {
 
 // Compile-time assertion: defaultNormalizer satisfies PhraseNormalizer.
 var _ PhraseNormalizer = (*defaultNormalizer)(nil)
+
+// Version returns the canonical normalizer version.
+func (n *defaultNormalizer) Version() string {
+	return n.version
+}
 
 // Normalize applies the canonical normalization pipeline:
 //

@@ -8,6 +8,9 @@ package core
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
@@ -26,7 +29,7 @@ type CanonicalBrain struct {
 	searcher   brain.CandidateSearcher
 	ranker     ranker.CandidateRanker
 	planner    planner.SceneVisualPlanner
-	versions   brain.ResolutionVersions
+	brainVersion string
 }
 
 // NewCanonicalBrain constructs a CanonicalBrain from the four brain
@@ -56,18 +59,12 @@ func NewCanonicalBrain(
 		panic("brain: planner is required")
 	}
 	return &CanonicalBrain{
-		normalizer: n,
-		resolver:   res,
-		searcher:   searcher,
-		ranker:     r,
-		planner:    p,
-		versions: brain.ResolutionVersions{
-			BrainVersion:          "brain-v1",
-			NormalizerVersion:     normalizer.Version,
-			IntentResolverVersion: "visual-intent-v1",
-			EmbeddingVersion:      "multilingual-e5-v1",
-			RankingPolicyVersion:  "media-ranker-v1",
-		},
+		normalizer:   n,
+		resolver:     res,
+		searcher:     searcher,
+		ranker:       r,
+		planner:      p,
+		brainVersion: "brain-v1",
 	}
 }
 
@@ -77,51 +74,58 @@ var _ brain.Brain = (*CanonicalBrain)(nil)
 // Resolve is the single canonical entry point. It processes every
 // scene in the request, normalizing text, resolving intent,
 // searching candidates, ranking them, and producing a visual plan.
+// Each scene carries its own ResolutionTrace and DecisionFingerprint
+// so every decision is versioned and reproducible.
 // Errors from any step surface in the per-scene plan status and the
 // trace, and processing continues with the remaining scenes.
 func (b *CanonicalBrain) Resolve(ctx context.Context, req brain.BrainRequest) (brain.BrainResult, error) {
 	result := brain.BrainResult{
 		ProjectID: req.ProjectID,
-		Trace: brain.ResolutionTrace{
-			Versions:     b.versions,
-			BackendCalls: []brain.BackendCall{},
-		},
 	}
 
 	for _, scene := range req.Scenes {
-		scenePlan, trace := b.resolveScene(ctx, req.Language, scene, req.Policy)
+		scenePlan := b.resolveScene(ctx, req.Language, scene, req.Policy)
 		result.Scenes = append(result.Scenes, scenePlan)
-
-		if trace != nil {
-			result.Trace.NormalizedText += trace.NormalizedText + " "
-			result.Trace.BackendCalls = append(result.Trace.BackendCalls, trace.BackendCalls...)
-			result.Trace.Selected = append(result.Trace.Selected, trace.Selected...)
-		}
 	}
 
 	return result, nil
 }
 
-func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scene brain.SceneRequest, policy brain.ResolutionPolicy) (brain.SceneVisualPlan, *brain.ResolutionTrace) {
-	trace := &brain.ResolutionTrace{}
+func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scene brain.SceneRequest, policy brain.ResolutionPolicy) brain.SceneVisualPlan {
+	versions := brain.ResolutionVersions{
+		BrainVersion:           b.brainVersion,
+		NormalizerVersion:      b.normalizer.Version(),
+		IntentResolverVersion:  b.resolver.Version(),
+		EmbeddingVersion:       "multilingual-e5-v1",
+		RankingPolicyVersion:   b.ranker.Version(),
+		DiversityPolicyVersion: "diversity-policy-v1",
+	}
+
+	trace := &brain.ResolutionTrace{
+		Versions: versions,
+	}
 
 	// 1. Normalize phrase.
 	normalized, err := b.normalizer.Normalize(ctx, language, scene.Text)
 	if err != nil {
+		trace.Reasons = append(trace.Reasons, "normalizer failed: "+err.Error())
 		return brain.SceneVisualPlan{
 			SceneID: scene.ID,
 			Status:  "error",
-		}, trace
+			Trace:   *trace,
+		}
 	}
 	trace.NormalizedText = normalized.Normalized
 
 	// 2. Resolve visual intent.
 	intentOut, err := b.resolver.Resolve(ctx, language, normalized.Normalized)
 	if err != nil {
+		trace.Reasons = append(trace.Reasons, "intent resolver failed: "+err.Error())
 		return brain.SceneVisualPlan{
 			SceneID: scene.ID,
 			Status:  "error",
-		}, trace
+			Trace:   *trace,
+		}
 	}
 
 	// 3. Search candidates through the canonical port.
@@ -133,11 +137,13 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 	}
 	searchResult, err := b.searcher.Search(ctx, query)
 	if err != nil {
+		trace.Reasons = append(trace.Reasons, "search failed: "+err.Error())
 		return brain.SceneVisualPlan{
 			SceneID: scene.ID,
 			Intent:  intentOut,
 			Status:  "error",
-		}, trace
+			Trace:   *trace,
+		}
 	}
 	trace.BackendCalls = append(trace.BackendCalls, brain.BackendCall{
 		Backend: "search",
@@ -147,26 +153,29 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 	// 4. Rank candidates.
 	ranked, err := b.ranker.Rank(ctx, scene, intentOut, searchResult.Candidates, policy)
 	if err != nil {
+		trace.Reasons = append(trace.Reasons, "ranker failed: "+err.Error())
 		return brain.SceneVisualPlan{
 			SceneID: scene.ID,
 			Intent:  intentOut,
 			Status:  "error",
-		}, trace
+			Trace:   *trace,
+		}
 	}
 
 	// 5. Plan visual layers.
 	plan, err := b.planner.Plan(ctx, scene, intentOut, ranked)
 	if err != nil {
+		trace.Reasons = append(trace.Reasons, "planner failed: "+err.Error())
 		return brain.SceneVisualPlan{
 			SceneID: scene.ID,
 			Intent:  intentOut,
 			Status:  "error",
-		}, trace
+			Trace:   *trace,
+		}
 	}
 
 	for _, layer := range plan.Layers {
 		trace.Selected = append(trace.Selected, brain.SelectedRecord{
-			SceneID:     scene.ID,
 			Slot:        layer.Slot,
 			AssetID:     layer.AssetID,
 			CandidateID: layer.CandidateID,
@@ -174,7 +183,29 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 		})
 	}
 
-	return plan, trace
+	plan.Trace = *trace
+	plan.DecisionFingerprint = decisionFingerprint(language, trace.NormalizedText, versions)
+
+	return plan
+}
+
+// decisionFingerprint deterministically identifies a decision by
+// hashing the language, normalized phrase and every version that
+// influenced the decision. Changing any input or version produces a
+// different fingerprint, invalidating exact-memory hits from an
+// incompatible brain generation.
+func decisionFingerprint(language, normalized string, versions brain.ResolutionVersions) string {
+	input := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s",
+		language,
+		normalized,
+		versions.BrainVersion,
+		versions.NormalizerVersion,
+		versions.IntentResolverVersion,
+		versions.EmbeddingVersion,
+		versions.RankingPolicyVersion,
+	)
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:])
 }
 
 func mediaTypesForSlots(slots []brain.SlotKind) []string {

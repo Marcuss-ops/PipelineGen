@@ -21,6 +21,7 @@ type SceneVisualPlanner interface {
 		intent brain.VisualIntent,
 		rankedCandidates []brain.Candidate,
 	) (brain.SceneVisualPlan, error)
+	Version() string
 }
 
 // defaultPlanner is the canonical pure implementation.
@@ -33,6 +34,11 @@ func NewDefaultPlanner() SceneVisualPlanner {
 
 // Compile-time assertion: defaultPlanner satisfies SceneVisualPlanner.
 var _ SceneVisualPlanner = (*defaultPlanner)(nil)
+
+// Version returns the canonical planner version.
+func (p *defaultPlanner) Version() string {
+	return "scene-planner-v1"
+}
 
 // Plan assigns one candidate to each requested slot, in order.
 // The planner never invents candidates: if there are fewer candidates

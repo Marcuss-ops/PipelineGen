@@ -18,6 +18,7 @@ import (
 // phrase into a structured visual intent.
 type VisualIntentResolver interface {
 	Resolve(ctx context.Context, language, text string) (brain.VisualIntent, error)
+	Version() string
 }
 
 // defaultResolver is the canonical pure implementation. It extracts
@@ -31,6 +32,11 @@ func NewDefaultResolver() VisualIntentResolver {
 
 // Compile-time assertion: defaultResolver satisfies VisualIntentResolver.
 var _ VisualIntentResolver = (*defaultResolver)(nil)
+
+// Version returns the canonical intent-resolver version.
+func (r *defaultResolver) Version() string {
+	return "visual-intent-v1"
+}
 
 // Resolve extracts keywords, entities and concepts from the input
 // text. The current implementation is intentionally lightweight:
