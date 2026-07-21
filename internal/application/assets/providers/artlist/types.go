@@ -291,6 +291,44 @@ type SearchRequest struct {
 	PreferRemote bool   `json:"prefer_remote,omitempty"`
 }
 
+// ImportClipRequest represents a request to import a single Artlist clip
+// by its detail page URL.
+type ImportClipRequest struct {
+	// ClipPageURL is the Artlist clip detail page, e.g.
+	// https://artlist.io/stock-footage/clip/slug/123456
+	ClipPageURL string `json:"clip_page_url"`
+	// RootFolderID is the Drive folder where the clip should land.
+	// When empty the configured Artlist root folder is used.
+	RootFolderID string `json:"root_folder_id,omitempty"`
+	// Download controls whether the video is downloaded, normalized,
+	// uploaded to Drive, and indexed. When false, only metadata is
+	// fetched and the asset is saved as STAGING/DISCOVERED.
+	Download bool `json:"download,omitempty"`
+}
+
+// ImportClipResponse is the result of a single-clip import.
+type ImportClipResponse struct {
+	OK           bool           `json:"ok"`
+	ClipID       string         `json:"clip_id,omitempty"`
+	Name         string         `json:"name,omitempty"`
+	Status       string         `json:"status,omitempty"`
+	DriveLink    string         `json:"drive_link,omitempty"`
+	DriveFileID  string         `json:"drive_file_id,omitempty"`
+	LocalPath    string         `json:"local_path,omitempty"`
+	FileHash     string         `json:"file_hash,omitempty"`
+	DownloadLink string         `json:"download_link,omitempty"`
+	ClipPageURL  string         `json:"clip_page_url,omitempty"`
+	ThumbnailURL string         `json:"thumbnail_url,omitempty"`
+	PreviewURL   string         `json:"preview_url,omitempty"`
+	Tags         []string       `json:"tags,omitempty"`
+	Categories   []string       `json:"categories,omitempty"`
+	Creator      string         `json:"creator,omitempty"`
+	Country      string         `json:"country,omitempty"`
+	Location     string         `json:"location,omitempty"`
+	Error        string         `json:"error,omitempty"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
 // SearchResponse represents a search response with canonical asset types.
 type SearchResponse struct {
 	OK     bool          `json:"ok"`

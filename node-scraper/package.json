@@ -7,7 +7,7 @@
   },
   "scripts": {
     "test": "mocha test/*.test.js",
-    "test:fallback": "node --test test/",
+    "test:fallback": "node --test test/*.test.js",
     "lint": "eslint .",
     "check": "npm run lint && npm test"
   },

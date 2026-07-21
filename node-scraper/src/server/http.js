@@ -26,6 +26,7 @@ import http from 'node:http';
 import { openBrowser, evaluateBrowserPreflight } from '../driver/browser.js';
 import { searchArtlist } from '../../artlist_search.js';
 import { downloadClipVideo } from './download.js';
+import { fetchClipDetails } from '../scrape/detail-page.js';
 import { computeHealthVerdict } from './health.js';
 import { dispatchRequest } from './routes.js';
 
@@ -294,6 +295,7 @@ function createCtx() {
       getBrowser,
       searchArtlist,
       downloadClipVideo,
+      fetchClipDetails,
       computeHealthVerdict,
     }),
   };
@@ -312,7 +314,7 @@ export async function startArtlistServer() {
 
   server.listen(PORT, BIND, () => {
     console.log(`[artlist-server] Listening on http://${BIND}:${PORT} (bind via ARTLIST_SCRAPER_BIND env var)`);
-    console.log(`[artlist-server] Endpoints: POST /search, POST /download, GET /health`);
+    console.log(`[artlist-server] Endpoints: POST /search, POST /detail, POST /download, GET /health`);
     console.log(`[artlist-server] Browser will warm up on first request`);
   });
 

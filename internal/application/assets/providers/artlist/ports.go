@@ -85,6 +85,15 @@ type Searcher interface {
 	Search(ctx context.Context, req SearchRequest) ([]Candidate, error)
 }
 
+// DetailFetcher fetches rich structured metadata for a single clip page.
+// The canonical implementation is the Node.js scraper /detail endpoint;
+// other providers may leave it unimplemented.
+//
+// DetailFetcher MUST NOT mutate the request.
+type DetailFetcher interface {
+	FetchDetails(ctx context.Context, clipPageURL string) (*Candidate, error)
+}
+
 // DownloadRequest describes what to download. SourceRef is the primary URL
 // returned by the Searcher; DestinationID is the resolved local-path under
 // which the bytes should be staged (application owns the policy; infrastructure

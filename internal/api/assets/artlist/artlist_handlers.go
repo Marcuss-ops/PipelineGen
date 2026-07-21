@@ -7,6 +7,7 @@ package artlist
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -105,6 +106,7 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Protected routes (require standard Auth)
 	r.POST("/run", h.RunTagPipeline)
+	r.POST("/import", h.ImportClip)
 	r.GET("/runs/:run_id", h.RunStatus)
 	r.GET("/stats", h.Stats)
 	r.POST("/search", h.Search)
@@ -118,6 +120,48 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 		internalGroup.POST("/recommend", h.Recommend)
 		internalGroup.POST("/sync-catalogs", h.SyncCatalogs)
 	}
+}
+
+// ImportClip imports a single Artlist clip by its detail page URL.
+func (h *ArtlistHandler) ImportClip(c *gin.Context) {
+	req, ok := apiutil.BindJSON[artlist.ImportClipRequest](c)
+	if !ok {
+		return
+	}
+
+	if strings.TrimSpace(req.ClipPageURL) == "" {
+		apiutil.BadRequest(c, "clip_page_url is required")
+		return
+	}
+
+	// Normalize request before processing.
+	req.ClipPageURL = strings.TrimSpace(req.ClipPageURL)
+	if strings.TrimSpace(req.RootFolderID) == "" {
+		req.RootFolderID = h.cfg.ArtlistRootFolderID()
+	}
+
+	h.log.Info("artlist import requested",
+		zap.String("clip_page_url", req.ClipPageURL),
+		zap.String("root_folder_id", req.RootFolderID),
+		zap.Bool("download", req.Download),
+	)
+
+	resp, err := h.service.ImportClip(c.Request.Context(), &req)
+	if err != nil {
+		h.log.Error("artlist import failed", zap.String("clip_page_url", req.ClipPageURL), zap.Error(err))
+		if errors.Is(err, artlist.ErrEmpty) {
+			apiutil.BadRequest(c, "clip_page_url is required")
+			return
+		}
+		if errors.Is(err, artlist.ErrNotFound) {
+			apiutil.NotFound(c, "clip not found")
+			return
+		}
+		apiutil.InternalError(c, fmt.Errorf("import failed: %w", err))
+		return
+	}
+
+	apiutil.OK(c, resp)
 }
 
 // RunTagPipeline executes the full Artlist flow for a tag.

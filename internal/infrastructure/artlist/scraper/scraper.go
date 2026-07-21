@@ -37,15 +37,25 @@ type Response struct {
 	Saved     int    `json:"saved"`
 }
 
-// Clip is the JSON shape returned by the Node scraper.
+// Clip is the JSON shape returned by the Node scraper. The detail endpoint
+// returns additional rich fields (description, creator, tags, etc.).
 type Clip struct {
-	ClipID      string   `json:"clip_id"`
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Name        string   `json:"name"`
-	PrimaryURL  string   `json:"primary_url"`
-	StreamURLs  []string `json:"stream_urls"`
-	ClipPageURL string   `json:"clip_page_url"`
+	ClipID       string         `json:"clip_id"`
+	ID           string         `json:"id"`
+	Title        string         `json:"title"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Creator      string         `json:"creator"`
+	Country      string         `json:"country"`
+	Location     string         `json:"location"`
+	Tags         []string       `json:"tags"`
+	Categories   []string       `json:"categories"`
+	PrimaryURL   string         `json:"primary_url"`
+	StreamURLs   []string       `json:"stream_urls"`
+	ClipPageURL  string         `json:"clip_page_url"`
+	ThumbnailURL string         `json:"thumbnail_url"`
+	PreviewURL   string         `json:"preview_url"`
+	RawMetadata  map[string]any `json:"raw_metadata"`
 }
 
 // Config carries the wiring values the application owns.
@@ -85,6 +95,7 @@ func New(cfg Config, log *zap.Logger) *Provider {
 // Compile-time interface assertion so the scraper is forced to satisfy
 // the application port.
 var _ artapp.Searcher = (*Provider)(nil)
+var _ artapp.DetailFetcher = (*Provider)(nil)
 
 // Search tries the configured server first, falls back to exec if the
 // server returns a transport-level failure. Empty results from the server
@@ -212,17 +223,104 @@ func (p *Provider) searchViaExec(ctx context.Context, term string, limit int) ([
 func toCandidates(clips []Clip) []artapp.Candidate {
 	out := make([]artapp.Candidate, 0, len(clips))
 	for _, c := range clips {
-		id := firstNonEmpty(c.ClipID, c.ID)
-		title := firstNonEmpty(c.Title, c.Name, id)
-		out = append(out, artapp.Candidate{
-			ID:         id,
-			Title:      title,
-			SourceRef:  c.PrimaryURL,
-			PageURL:    c.ClipPageURL,
-			SourceName: "artlist",
-		})
+		out = append(out, clipToCandidate(c))
 	}
 	return out
+}
+
+func clipToCandidate(c Clip) artapp.Candidate {
+	id := firstNonEmpty(c.ClipID, c.ID)
+	title := firstNonEmpty(c.Title, c.Name, id)
+	raw := make(map[string]any, len(c.RawMetadata)+2)
+	for k, v := range c.RawMetadata {
+		raw[k] = v
+	}
+	if c.Country != "" {
+		raw["country"] = c.Country
+	}
+	if c.Location != "" {
+		raw["location"] = c.Location
+	}
+	if len(c.StreamURLs) > 0 {
+		raw["stream_urls"] = c.StreamURLs
+	}
+
+	return artapp.Candidate{
+		ID:           id,
+		Title:        title,
+		Description:  c.Description,
+		Creator:      c.Creator,
+		SourceRef:    c.PrimaryURL,
+		PageURL:      c.ClipPageURL,
+		ThumbnailURL: c.ThumbnailURL,
+		PreviewURL:   c.PreviewURL,
+		Keywords:     c.Tags,
+		Categories:   c.Categories,
+		RawMetadata:  raw,
+		SourceName:   "artlist",
+	}
+}
+
+// DetailResponse mirrors the Node scraper POST /detail JSON envelope.
+type DetailResponse struct {
+	OK   bool `json:"ok"`
+	Clip Clip `json:"clip"`
+}
+
+// FetchDetails calls the Node scraper /detail endpoint to hydrate a single
+// Artlist clip page. It satisfies artlist.DetailFetcher.
+func (p *Provider) FetchDetails(ctx context.Context, clipPageURL string) (*artapp.Candidate, error) {
+	clipPageURL = strings.TrimSpace(clipPageURL)
+	if clipPageURL == "" {
+		return nil, artapp.ErrEmpty
+	}
+
+	if p.cfg.ServerURL == "" {
+		return nil, fmt.Errorf("%w: detail fetch requires a configured scraper server URL", artapp.ErrUnavailable)
+	}
+
+	type detailReq struct {
+		ClipPageURL string `json:"clip_page_url"`
+	}
+	body, err := json.Marshal(detailReq{ClipPageURL: clipPageURL})
+	if err != nil {
+		return nil, fmt.Errorf("artlist server: marshal detail request: %w", err)
+	}
+
+	reqURL := strings.TrimRight(p.cfg.ServerURL, "/") + "/detail"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("artlist server: build detail request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: p.cfg.HTTPTimeout}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, artapp.ErrNotFound
+	}
+	if resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("%w: scraper server returned %d", artapp.ErrUnavailable, resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: status %d", artapp.ErrInvalidResponse, resp.StatusCode)
+	}
+
+	var detail DetailResponse
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return nil, fmt.Errorf("%w: %v", artapp.ErrInvalidResponse, err)
+	}
+	if !detail.OK || detail.Clip.ClipPageURL == "" {
+		return nil, artapp.ErrEmptyResult
+	}
+
+	c := clipToCandidate(detail.Clip)
+	return &c, nil
 }
 
 func firstNonEmpty(values ...string) string {

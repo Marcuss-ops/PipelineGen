@@ -156,6 +156,14 @@ func WireArtlist(
 	// adapter from the repos bundle to wire into ResolverConfig.AuditRepository.
 	providers := constructArtlistProviders(cfg, log, bundle, repos.DownloadAuditAdapter)
 
+	// The Node scraper provider is both a Searcher and a DetailFetcher.
+	// Reuse the same instance so /search and /import share the browser pool.
+	scraperProvider := scraper.New(scraper.Config{
+		ServerURL:  cfg.External.ArtlistScraperServerURL,
+		ScraperDir: cfg.External.NodeScraperDir,
+		ScriptName: "artlist_search.js",
+	}, log)
+
 	// godlike/06 SSOT: SemanticEnricher is the canonical app-layer wrapper for
 	// semantic.MetadataWriterPort; its Enrich(ctx, clip, term) signature matches
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
@@ -190,17 +198,14 @@ func WireArtlist(
 			// constructed inline from cfg + the canonical infra concretes; runtime
 			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
 			// degradation, instead of nil-tolerated 503 at the handler layer).
-			AssetStore:     bundle.ClipsRepo,
-			Indexer:        bundle.ClipIndexerService,
-			MetadataWriter: semanticEnricher,
-			Publisher:      bundle.Publisher,
-			ScraperSearcher: scraper.New(scraper.Config{
-				ServerURL:  cfg.External.ArtlistScraperServerURL,
-				ScraperDir: cfg.External.NodeScraperDir,
-				ScriptName: "artlist_search.js",
-			}, log),
+			AssetStore:      bundle.ClipsRepo,
+			Indexer:         bundle.ClipIndexerService,
+			MetadataWriter:  semanticEnricher,
+			Publisher:       bundle.Publisher,
+			ScraperSearcher: scraperProvider,
 			PixabaySearcher: providers.PixabaySearcher,
 			PexelsSearcher:  providers.PexelsSearcher,
+			DetailFetcher:   scraperProvider,
 			Stager:          providers.ArtlistStager,
 			IsLiveProbe:     providers.IsLiveProbe,
 			// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory
