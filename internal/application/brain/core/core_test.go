@@ -56,11 +56,35 @@ func TestCanonicalBrain_ResolvesScene(t *testing.T) {
 	if len(result.Scenes) != 1 {
 		t.Fatalf("expected 1 scene, got %d", len(result.Scenes))
 	}
-	if len(result.Scenes[0].Layers) != 1 {
-		t.Fatalf("expected 1 layer, got %d", len(result.Scenes[0].Layers))
+	scene := result.Scenes[0]
+	if len(scene.Layers) != 1 {
+		t.Fatalf("expected 1 layer, got %d", len(scene.Layers))
 	}
-	if result.Scenes[0].Layers[0].CandidateID != "c1" {
-		t.Errorf("unexpected candidate: %s", result.Scenes[0].Layers[0].CandidateID)
+	if scene.Layers[0].CandidateID != "c1" {
+		t.Errorf("unexpected candidate: %s", scene.Layers[0].CandidateID)
+	}
+
+	// Per-scene trace and decision fingerprint must be populated.
+	if scene.Trace.NormalizedText == "" {
+		t.Errorf("expected normalized text in per-scene trace")
+	}
+	if scene.Trace.Versions.BrainVersion == "" {
+		t.Errorf("expected brain version in per-scene trace")
+	}
+	if scene.Trace.Versions.NormalizerVersion == "" {
+		t.Errorf("expected normalizer version in per-scene trace")
+	}
+	if scene.Trace.Versions.IntentResolverVersion == "" {
+		t.Errorf("expected intent resolver version in per-scene trace")
+	}
+	if scene.Trace.Versions.RankingPolicyVersion == "" {
+		t.Errorf("expected ranking policy version in per-scene trace")
+	}
+	if scene.DecisionFingerprint == "" {
+		t.Errorf("expected decision fingerprint on scene")
+	}
+	if len(scene.Trace.BackendCalls) != 1 {
+		t.Errorf("expected 1 backend call record, got %d", len(scene.Trace.BackendCalls))
 	}
 }
 

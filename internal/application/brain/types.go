@@ -64,17 +64,23 @@ type ResolutionPolicy struct {
 type BrainResult struct {
 	ProjectID string
 	Scenes    []SceneVisualPlan
-	Trace     ResolutionTrace
 }
 
 // SceneVisualPlan is the canonical visual plan for a single scene.
 // It is intentionally independent from transport or storage concerns.
+//
+// Each scene carries its own ResolutionTrace so operators can
+// reconstruct exactly how that scene was resolved, and a
+// DecisionFingerprint that uniquely identifies the input+versions
+// tuple used to produce the plan.
 type SceneVisualPlan struct {
-	SceneID    string
-	Intent     VisualIntent
-	Layers     []VisualLayer
-	Confidence float64
-	Status     string
+	SceneID           string
+	Intent            VisualIntent
+	Layers            []VisualLayer
+	Confidence        float64
+	Status            string
+	Trace             ResolutionTrace
+	DecisionFingerprint string
 }
 
 // VisualIntent describes what the brain understood about a scene.
@@ -102,6 +108,10 @@ type VisualLayer struct {
 
 // ResolutionTrace records how the brain arrived at its decisions.
 // It is meant for diagnostics, reproducibility and feedback loops.
+//
+// When embedded in SceneVisualPlan, the trace is scoped to that
+// single scene. Selected/Excluded records therefore do not repeat
+// the scene ID.
 type ResolutionTrace struct {
 	NormalizedText string
 	Versions       ResolutionVersions
@@ -130,9 +140,10 @@ type BackendCall struct {
 	Error   string
 }
 
-// SelectedRecord records a candidate selected by the brain.
+// SelectedRecord records a candidate selected by the brain. It is
+// scoped to the containing ResolutionTrace, which itself lives inside
+// a single SceneVisualPlan, so it does not repeat the scene ID.
 type SelectedRecord struct {
-	SceneID     string
 	Slot        SlotKind
 	AssetID     string
 	CandidateID string
@@ -141,8 +152,7 @@ type SelectedRecord struct {
 
 // ExcludedRecord records a candidate excluded by the brain and why.
 type ExcludedRecord struct {
-	SceneID string
-	Slot    SlotKind
+	Slot   SlotKind
 	AssetID string
 	Reason  string
 }

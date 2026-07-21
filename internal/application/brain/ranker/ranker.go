@@ -24,6 +24,7 @@ type CandidateRanker interface {
 		candidates []brain.Candidate,
 		policy brain.ResolutionPolicy,
 	) ([]brain.Candidate, error)
+	Version() string
 }
 
 // defaultRanker is the canonical pure implementation. It composes a
@@ -39,6 +40,11 @@ func NewDefaultRanker() CandidateRanker {
 
 // Compile-time assertion: defaultRanker satisfies CandidateRanker.
 var _ CandidateRanker = (*defaultRanker)(nil)
+
+// Version returns the canonical ranking-policy version.
+func (r *defaultRanker) Version() string {
+	return "media-ranker-v1"
+}
 
 // Rank orders candidates by descending composite score. The composite
 // score is the sum of:

@@ -68,22 +68,22 @@ func (r *MediaMemoryResolver) Resolve(ctx context.Context, req ResolveRequest) (
 		if scene.Status == "error" {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("scene_id=%q: brain resolution returned error status", scene.SceneID))
 		}
-	}
 
-	// Surface backend calls and reasons from the brain trace as
-	// diagnostic warnings. They are not failures — the brain has
-	// already made its selection — but they help operators understand
-	// which backends contributed.
-	if brainResult.Trace.Reasons != nil {
-		for _, reason := range brainResult.Trace.Reasons {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("brain: %s", reason))
+		// Surface backend calls and reasons from the per-scene
+		// brain trace as diagnostic warnings. They are not failures
+		// — the brain has already made its selection — but they
+		// help operators understand which backends contributed.
+		if scene.Trace.Reasons != nil {
+			for _, reason := range scene.Trace.Reasons {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("scene_id=%q: brain: %s", scene.SceneID, reason))
+			}
 		}
-	}
-	for _, call := range brainResult.Trace.BackendCalls {
-		if call.Error != "" {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("brain backend=%q error=%s", call.Backend, call.Error))
-		} else {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("brain backend=%q hits=%d", call.Backend, call.Hits))
+		for _, call := range scene.Trace.BackendCalls {
+			if call.Error != "" {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("scene_id=%q: brain backend=%q error=%s", scene.SceneID, call.Backend, call.Error))
+			} else {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("scene_id=%q: brain backend=%q hits=%d", scene.SceneID, call.Backend, call.Hits))
+			}
 		}
 	}
 
