@@ -1,38 +1,44 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { usePollingQuery } from '../hooks/usePollingQuery'
+import RefreshButton from '../components/RefreshButton'
 import { getJobFull, JobFull, cancelJob, retryJob } from '../api/client'
 
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>()
-  const [job, setJob] = useState<JobFull | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'summary' | 'timeline' | 'input' | 'output' | 'errors' | 'artifacts' | 'raw'>('summary')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [pausePolling, setPausePolling] = useState(false)
 
-  const fetchJob = () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    getJobFull(id)
-      .then(setJob)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Errore caricamento job'))
-      .finally(() => setLoading(false))
-  }
+  const {
+    data: job,
+    loading,
+    error,
+    refresh,
+  } = usePollingQuery<JobFull>({
+    queryFn: async () => {
+      if (!id) throw new Error('ID mancante')
+      return getJobFull(id)
+    },
+    interval: 1500,
+    enabled: !!id,
+    pause: pausePolling,
+  })
 
   useEffect(() => {
-    fetchJob()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+    setPausePolling(job?.status !== 'RUNNING')
+  }, [job])
 
   const handleCancel = async () => {
     if (!id) return
     setActionLoading('cancel')
+    setActionError(null)
     try {
       await cancelJob(id)
-      fetchJob()
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore cancellazione')
+      setActionError(err instanceof Error ? err.message : 'Errore cancellazione')
     } finally {
       setActionLoading(null)
     }
@@ -41,11 +47,12 @@ export default function JobDetail() {
   const handleRetry = async () => {
     if (!id) return
     setActionLoading('retry')
+    setActionError(null)
     try {
       await retryJob(id)
-      fetchJob()
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore retry')
+      setActionError(err instanceof Error ? err.message : 'Errore retry')
     } finally {
       setActionLoading(null)
     }
@@ -107,7 +114,8 @@ export default function JobDetail() {
             {job.retryable !== undefined && <Badge label="Retryable" value={job.retryable ? 'Sì' : 'No'} />}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <RefreshButton onClick={refresh} />
           {isScriptJob && (
             <Link to={`/scripts/${encodeURIComponent(job.id)}`} style={{ ...buttonStyle, background: '#818cf8' }}>
               Apri Script
@@ -122,7 +130,7 @@ export default function JobDetail() {
         </div>
       </div>
 
-      {job.error && (
+      {(job.error || actionError) && (
         <div
           style={{
             background: 'rgba(248,113,113,0.1)',
@@ -133,7 +141,8 @@ export default function JobDetail() {
             marginBottom: '1.5rem',
           }}
         >
-          <strong>Errore:</strong> {job.error}
+          {job.error && <div><strong>Errore job:</strong> {job.error}</div>}
+          {actionError && <div><strong>Errore azione:</strong> {actionError}</div>}
         </div>
       )}
 
