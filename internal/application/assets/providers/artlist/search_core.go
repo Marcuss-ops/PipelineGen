@@ -99,15 +99,25 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		if name == "" {
 			name = candidate.ID
 		}
+		providerTags := make([]string, 0, len(candidate.Keywords))
+		providerTags = append(providerTags, candidate.Keywords...)
+		tags := deduplicateStrings(append([]string{originalTerm}, providerTags...))
+		searchTerms := deduplicateStrings(append([]string{originalTerm}, providerTags...))
+
 		clip := &asset.Asset{
 			ID:          candidate.ID,
 			Name:        name,
 			Source:      asset.Source("artlist"),
 			MediaType:   asset.MediaType("video"),
-			Tags:        []string{originalTerm},
-			SearchTerms: []string{originalTerm},
+			Tags:        tags,
+			SearchTerms: searchTerms,
 			SourceURL:   candidate.SourceRef,
 			ClipPageURL: candidate.PageURL,
+			Metadata: map[string]any{
+				"provider_tags":       providerTags,
+				"provider_categories": candidate.Categories,
+				"metadata_origin":     "artlist",
+			},
 		}
 		clip.SetDownloadLink(candidate.SourceRef)
 
