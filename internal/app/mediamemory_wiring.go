@@ -37,9 +37,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -137,7 +137,32 @@ func WireBindingService(
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
 	dispatcher := sqliteMediaMemory.NewBindingDispatcher(bindings, outboxRepo, txmgr)
-	return mediamemory.NewDefaultBindingService(concepts, bindings, dispatcher, log, mediamemory.RealClock())
+	return mediamemory.NewDefaultBindingService(concepts, bindings, dispatcher, mediamemoryZapLogger{log}, mediamemory.RealClock())
+}
+
+// mediamemoryZapLogger bridges *zap.Logger to mediamemory.Logger.
+type mediamemoryZapLogger struct {
+	log *zap.Logger
+}
+
+func (l mediamemoryZapLogger) Info(msg string, kv ...any)  { l.log.Info(msg, anyToZap(kv)...) }
+func (l mediamemoryZapLogger) Warn(msg string, kv ...any)  { l.log.Warn(msg, anyToZap(kv)...) }
+func (l mediamemoryZapLogger) Debug(msg string, kv ...any) { l.log.Debug(msg, anyToZap(kv)...) }
+func (l mediamemoryZapLogger) Error(msg string, kv ...any) { l.log.Error(msg, anyToZap(kv)...) }
+
+func anyToZap(kv []any) []zap.Field {
+	if len(kv) == 0 {
+		return nil
+	}
+	fields := make([]zap.Field, 0, len(kv)/2)
+	for i := 0; i+1 < len(kv); i += 2 {
+		key, ok := kv[i].(string)
+		if !ok {
+			continue
+		}
+		fields = append(fields, zap.Any(key, kv[i+1]))
+	}
+	return fields
 }
 
 // NoopSemanticLookup is the canonical noop SemanticLookup for
