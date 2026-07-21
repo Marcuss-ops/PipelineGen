@@ -516,6 +516,16 @@ func (s *Service) ImportClip(ctx context.Context, req *ImportClipRequest) (*Impo
 	if strings.TrimSpace(req.ClipPageURL) == "" {
 		return nil, ErrEmpty
 	}
+	clipID := extractClipIDFromURL(req.ClipPageURL)
+
+	// Avoid duplicate imports: if the clip already exists, return the
+	// existing record without scraping the detail page again.
+	if s.assetStore != nil {
+		if existing, getErr := s.assetStore.Get(ctx, clipID); getErr == nil && existing != nil {
+			s.log.Info("artlist import skipped: clip already exists", zap.String("clip_id", existing.ID))
+			return existingAssetToImportResponse(existing), nil
+		}
+	}
 
 	candidate, err := s.detailFetcher.FetchDetails(ctx, req.ClipPageURL)
 	if err != nil {
@@ -526,20 +536,6 @@ func (s *Service) ImportClip(ctx context.Context, req *ImportClipRequest) (*Impo
 	}
 
 	clip := candidateToAsset(candidate, req.ClipPageURL)
-
-	// Avoid duplicate imports: if the clip already exists, return the
-	// existing record.
-	if s.assetStore != nil {
-		if existing, getErr := s.assetStore.Get(ctx, clip.ID); getErr == nil && existing != nil {
-			s.log.Info("artlist import skipped: clip already exists", zap.String("clip_id", clip.ID))
-			return &ImportClipResponse{
-				OK:     true,
-				ClipID: existing.ID,
-				Name:   existing.Name,
-				Status: "already_imported",
-			}, nil
-		}
-	}
 
 	resp := &ImportClipResponse{
 		OK:           true,
@@ -595,6 +591,51 @@ func (s *Service) ImportClip(ctx context.Context, req *ImportClipRequest) (*Impo
 	}
 
 	return resp, nil
+}
+
+// existingAssetToImportResponse maps a persisted asset to the import
+// response shape returned when a clip is already imported.
+func existingAssetToImportResponse(a *asset.Asset) *ImportClipResponse {
+	resp := &ImportClipResponse{
+		OK:           true,
+		ClipID:       a.ID,
+		Name:         a.Name,
+		ClipPageURL:  a.ClipPageURL,
+		ThumbnailURL: a.ThumbnailURL,
+		Status:       "already_imported",
+		Tags:         a.Tags,
+		Metadata:     make(map[string]any),
+	}
+	if a.Metadata != nil {
+		resp.Metadata = a.Metadata
+		resp.Creator, _ = a.Metadata["creator"].(string)
+		resp.Country, _ = a.Metadata["country"].(string)
+		resp.Location, _ = a.Metadata["location"].(string)
+		resp.Categories = stringSliceFromMetadata(a.Metadata, "provider_categories")
+	}
+	return resp
+}
+
+// stringSliceFromMetadata safely extracts a []string from a metadata map.
+// It tolerates both []string and []any (JSON round-trip) representations.
+func stringSliceFromMetadata(meta map[string]any, key string) []string {
+	v, ok := meta[key]
+	if !ok {
+		return nil
+	}
+	if ss, ok := v.([]string); ok {
+		return ss
+	}
+	if arr, ok := v.([]any); ok {
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // candidateToAsset maps a provider-level candidate to the canonical
