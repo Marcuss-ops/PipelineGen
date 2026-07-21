@@ -196,10 +196,12 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		if batchRepo != nil {
 			if !batchEnsured {
 				if batchErr := batchRepo.CreateBatch(ctx, &StockBatch{
-					ID:          batchID,
-					Fingerprint: runner.RunFingerprint(),
-					SourceURL:   sourceID,
-					Status:      BatchStateRunning,
+					ID:             batchID,
+					Fingerprint:    runner.RunFingerprint(),
+					SourceURL:      sourceID,
+					Status:         BatchStateRunning,
+					ExpectedGroups: len(grouped),
+					ExpectedClips:  len(plans),
 				}); batchErr != nil && runner.Log() != nil {
 					runner.Log().Warn("orchestrator: stock.extract_clips: failed to create batch row",
 						zap.String("batch_id", batchID), zap.Error(batchErr))
@@ -472,10 +474,11 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 								clipPublished.Location.FolderID,
 								clipPublished.Location.WebViewLink,
 							)
-							if pubErr != nil && runner.Log() != nil {
-								runner.Log().Warn("orchestrator: stock.extract_clips: MarkArtifactPublished failed",
-									zap.String("artifact_id", artifactID),
-									zap.Error(pubErr))
+							if pubErr != nil {
+								uploadResults[taskIdx] = clipUploadResult{
+									err: fmt.Errorf("%w: durable state save failed for chunk %d: %w", ErrStockPublishArtifactFailed, task.clipIdx, pubErr),
+								}
+								continue
 							}
 						}
 
