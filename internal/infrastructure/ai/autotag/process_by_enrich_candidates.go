@@ -2,23 +2,19 @@
 // typed-state-aware VLM sweep surface (PR-ENRICHMENT-STATE-MACHINE,
 // July 2026, godlike/06 SSOT).
 //
-// ProcessByEnrichCandidates is the EXPAND-phase companion to the
-// pre-PR legacy ProcessUntagged (autotag.go). It reads the canonical
-// media_assets.enrich_state column (migration 123) instead of the
-// legacy JSON-extract "tags is null OR tags=” + no vlm_tagged flag"
-// filter. The VLM 15-min sweeper
-// (internal/app/lifecycle_sweepers.go::startVLMAutoTagSweeper)
-// switched from ProcessUntagged(t) to ProcessByEnrichCandidates(t,
-// batchSize, claimFence) so the canonical godlike/06 SSOT typed-
-// state filter drives the scrape-candidate scan.
+// ProcessByEnrichCandidates is the canonical selector used by the
+// VLM 15-min sweeper (internal/app/lifecycle_sweepers.go::startVLMAutoTagSweeper).
+// It reads the canonical media_assets.enrich_state column (migration 123)
+// instead of the retired JSON-extract "tags is null OR tags=” + no
+// vlm_tagged flag" filter. The legacy ProcessUntagged path has been
+// removed; ProcessByEnrichCandidates is now the only sweep surface
+// for VLM auto-tagging.
 //
-// Why a SEPARATE method instead of changing ProcessUntagged in place:
+// Design notes:
 //   - godlike/06 SSOT "one owner per fact" + AGENTS.md Pattern 0: the
 //     typed-state filter is owned by the enrichment package (PR-
-//     ENRICHMENT-STATE-MACHINE). ProcessByEnrichCandidates refactors
-//     ProcessByEnrichCandidateRow to wrap the typed-state filter in
-//     its own scoped query (does NOT touch ProcessUntagged's filter
-//     surface).
+//     ENRICHMENT-STATE-MACHINE). ProcessByEnrichCandidates wraps the
+//     typed-state filter in its own scoped query.
 //   - godlike/07 typed-error contract: ProcessByEnrichCandidates
 //     surfaces typed errors via the existing TagAsset error path
 //     (which already explicitly marks metadata_json.$.vlm_tagged =
@@ -26,10 +22,6 @@
 //     metadata_json marker, no added sentinel needed because the
 //     existing VLM-mark shape already signals failure to the
 //     operator dashboard without a logical silent-success surface).
-//   - backward compatibility: ProcessUntagged stays available for
-//     admin tooling that explicitly wants the JSON-extract legacy
-//     path during the BACKFILL+CONTRACT waves. CUTOVER/CONTRACT
-//     retirement is a future PR (per godlike/07 EXPAND sequence).
 //
 // claimFence invariant: rows whose enrich_state_updated_at is more
 // recent than `now-claimFence` are excluded from the query. This is
@@ -55,7 +47,7 @@ import (
 // sweep claim-fence race-mitigation). Returns the number of rows
 // successfully tagged.
 //
-// Mirrors ProcessUntagged's outer contract (size limits, VLM-disabled
+// Mirrors the legacy sweep's outer contract (size limits, VLM-disabled
 // fail-closed, per-row TagAsset invocation) but uses the typed-state
 // SQL filter as the godlike/06 SSOT scan surface. Does NOT mutate
 // enrich_state directly — the typed transitions
@@ -73,7 +65,7 @@ import (
 // Tier-1 transitions (PENDING→ENRICHING via ClaimForEnrichment) are
 // a follow-up BACKFILL wiring PR. Until that lands, the typed-state
 // scan reads only — TagAsset still drives the metadata_json
-// vlm_tagged marker + tags merge exactly like ProcessUntagged.
+// vlm_tagged marker + tags merge.
 func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, claimFence time.Duration) (int, error) {
 	if !s.vlmClient.IsEnabled() {
 		return 0, fmt.Errorf("VLM client is disabled")
@@ -134,12 +126,11 @@ func (s *Service) ProcessByEnrichCandidates(ctx context.Context, limit int, clai
 	// EXPAND-phase discipline (see package doc): the typed-state Tier-1
 	// transitions (PENDING→ENRICHING on claim; ENRICHING→ENRICHED on
 	// success; ENRICHING→FAILED on error) are a future BACKFILL wiring
-	// PR. Until that lands, TagAsset is invoked against the same masked
-	// set ProcessUntagged uses — the only difference is the typed-state
-	// filter changes. The TagAsset success/failure path already writes
-	// metadata_json.$.vlm_tagged = "success"/"failed" which is the
-	// godlike/07 typed-error marker the operator dashboard already
-	// reads. Future BACKFILL replaces these with the canonical
+	// PR. Until that lands, TagAsset is invoked against the candidate
+	// set selected by the typed-state filter. The TagAsset success/failure
+	// path already writes metadata_json.$.vlm_tagged = "success"/"failed"
+	// which is the godlike/07 typed-error marker the operator dashboard
+	// already reads. Future BACKFILL replaces these with the canonical
 	// enrich_state column writes via the typed state-machine wrapper.
 	s.log.Info("starting typed-state VLM batch (PR-ENRICHMENT-STATE-MACHINE EXPAND)",
 		zap.Int("count", len(ids)),

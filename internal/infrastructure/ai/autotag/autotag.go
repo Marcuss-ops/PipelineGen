@@ -38,64 +38,6 @@ func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, vector
 	}
 }
 
-// ProcessUntagged scans the database for assets without visual tags and processes them.
-func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
-	if !s.vlmClient.IsEnabled() {
-		return 0, fmt.Errorf("VLM client is disabled")
-	}
-
-	if limit <= 0 {
-		limit = 10
-	}
-
-	// Query untagged assets. We target those with empty tags and no 'vlm_tagged' flag.
-	query := `
-		SELECT id, source, name, tags, local_path, media_type, metadata_json
-		FROM media_assets
-		WHERE (tags IS NULL OR tags = '[]' OR tags = '')
-		  AND media_type != 'folder'
-		  AND local_path != ''
-		  AND json_extract(COALESCE(metadata_json, '{}'), '$.vlm_tagged') IS NULL
-		LIMIT ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, limit)
-	if err != nil {
-		return 0, fmt.Errorf("query untagged: %w", err)
-	}
-	defer rows.Close()
-
-	var batch []*asset.Asset
-	for rows.Next() {
-		a := &asset.Asset{}
-		var tagsJSON, metaJSON, localPath string
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &localPath, &a.MediaType, &metaJSON); err != nil {
-			return 0, fmt.Errorf("scan asset: %w", err)
-		}
-		json.Unmarshal([]byte(tagsJSON), &a.Tags)
-		a.SetLocalPath(localPath)
-		a.SetMetadataJSON(metaJSON)
-		batch = append(batch, a)
-	}
-
-	if len(batch) == 0 {
-		return 0, nil
-	}
-
-	s.log.Info("starting auto-tagging batch", zap.Int("count", len(batch)))
-
-	processed := 0
-	for _, a := range batch {
-		if err := s.TagAsset(ctx, a); err != nil {
-			s.log.Warn("failed to tag asset", zap.String("id", a.ID), zap.Error(err))
-			continue
-		}
-		processed++
-	}
-
-	return processed, nil
-}
-
 // TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
 func (s *Service) TagAsset(ctx context.Context, a *asset.Asset) error {
 	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath()))
