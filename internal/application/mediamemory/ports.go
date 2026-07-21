@@ -121,6 +121,12 @@ type BindingRepository interface {
 	// approved bindings only, ordered by SuccessScore desc.
 	ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error)
 
+	// ListByConcept returns every binding (any status) for the
+	// concept, ordered by updated_at desc. Used by the dashboard
+	// "Visual Memory" page / admin diff / audit trail. NOT used
+	// by the resolver hot path (use ListApprovedByConcept there).
+	ListByConcept(ctx context.Context, conceptID string) ([]MediaBinding, error)
+
 	// ListByAsset returns every binding that references an asset_id
 	// (used by anti-repetition on the same-source-clip check).
 	ListByAsset(ctx context.Context, assetID string) ([]MediaBinding, error)

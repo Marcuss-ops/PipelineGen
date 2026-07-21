@@ -510,4 +510,13 @@ var (
 	ErrCandidateNotFound = errors.New(
 		"mediamemory: candidate_id absent from candidate repository",
 	)
+	// ErrInvalidBindingInput is the canonical sentinel for binding
+	// payloads that miss required fields (concept_id, asset_id,
+	// slot_kind) but are otherwise well-typed. godlike/06 SSOT:
+	// distinct from ErrInvalidSlotKind (which means "slot kind is
+	// outside the canonical closed set"); the wire code branches on
+	// these separately.
+	ErrInvalidBindingInput = errors.New(
+		"mediamemory: binding input missing required field(s) (concept_id / asset_id / slot_kind)",
+	)
 )

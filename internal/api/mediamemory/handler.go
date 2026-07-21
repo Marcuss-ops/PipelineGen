@@ -36,6 +36,9 @@
 package mediamemory
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -43,6 +46,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ── Handler ports (composition-root-narrow) ────────────────────────
@@ -55,25 +59,35 @@ type ResolverPort interface {
 	Resolve(c *gin.Context, req mediamemory.ResolveRequest) (mediamemory.ResolveResult, error)
 }
 
-// BindingServicePort is the narrow binding-service surface.
+// BindingServicePort is the narrow binding-service surface. The
+// service-side signatures DO NOT TAKE *gin.Context (godlike/06 SSOT:
+// the application layer is transport-agnostic); the handler
+// adapters below pluck workspace-id + actor info from the gin
+// context and inject them into the service call as plain args.
+//
+// Phase 1.x limitation: this surface forwards the gin.Context
+// solely so future workspace-scope middleware can attach it; for
+// now, the ports above are direct passthroughs.
 type BindingServicePort interface {
-	Create(c *gin.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error)
-	ListByConcept(c *gin.Context, conceptID string) ([]mediamemory.MediaBinding, error)
-	Approve(c *gin.Context, id string) error
-	Reject(c *gin.Context, id string) error
-	Delete(c *gin.Context, id string) error
+	Create(ctx context.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error)
+	Update(ctx context.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error)
+	Delete(ctx context.Context, id string) error
+	Approve(ctx context.Context, id string) error
+	Reject(ctx context.Context, id string) error
+	ListByConcept(ctx context.Context, conceptID string) ([]mediamemory.MediaBinding, error)
+	ListBySlot(ctx context.Context, conceptID string, slot mediamemory.SlotKind, limit int) ([]mediamemory.MediaBinding, error)
 }
 
 // FeedbackServicePort is the narrow feedback-service surface.
 type FeedbackServicePort interface {
-	Record(c *gin.Context, in mediamemory.FeedbackInput) (mediamemory.UsageEvent, error)
+	Record(ctx context.Context, in mediamemory.FeedbackInput) (mediamemory.UsageEvent, error)
 }
 
 // BatchServicePort is the narrow batch-service surface.
 type BatchServicePort interface {
-	CreateBatch(c *gin.Context, spec mediamemory.BatchSpec) (mediamemory.Batch, []mediamemory.BatchChild, error)
-	Get(c *gin.Context, batchID string) (mediamemory.Batch, error)
-	Reconcile(c *gin.Context, batchID string) (mediamemory.Batch, error)
+	CreateBatch(ctx context.Context, spec mediamemory.BatchSpec) (mediamemory.Batch, []mediamemory.BatchChild, error)
+	Get(ctx context.Context, batchID string) (mediamemory.Batch, error)
+	Reconcile(ctx context.Context, batchID string) (mediamemory.Batch, error)
 }
 
 // ── WireParams + Handler ───────────────────────────────────────────
@@ -138,12 +152,29 @@ func (h *Handler) safeError(msg string, fields ...zap.Field) {
 // /api/media-memory. Authorization + workspace-scope middleware
 // MUST be applied upstream (composition root owns that decision,
 // parallel to internal/api/mediasearch::RegisterRoutes).
+//
+// Fase 1.4 routes (live):
+//
+//	POST /api/media-memory/bindings                       (Fase 1.4)
+//	GET  /api/media-memory/bindings                       (Fase 1.4)
+//	POST /api/media-memory/bindings/:id/approve           (Fase 1.4)
+//	POST /api/media-memory/bindings/:id/reject            (Fase 1.4)
+//	DELETE /api/media-memory/bindings/:id                 (Fase 1.4)
+//	POST /api/media-memory/feedback                       (Fase 1.4)
+//
+// Still 501 (wire-stub only):
+//
+//	POST /api/media-memory/resolve                        (Fase 1.5)
+//	POST /api/media-memory/batches*                       (Fase 3.x)
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	g := r.Group("/media-memory")
 
 	g.POST("/resolve", h.Resolve)
 	g.POST("/bindings", h.BindingsCreate)
 	g.GET("/bindings", h.BindingsList)
+	g.POST("/bindings/:id/approve", h.BindingsApprove)
+	g.POST("/bindings/:id/reject", h.BindingsReject)
+	g.DELETE("/bindings/:id", h.BindingsDelete)
 	g.POST("/feedback", h.Feedback)
 	g.POST("/batches", h.BatchesCreate)
 	g.GET("/batches/:id", h.BatchGet)
@@ -185,43 +216,191 @@ func (h *Handler) notImplemented(c *gin.Context, route string) {
 	})
 }
 
+// writeError renders a typed-sentinel envelope as JSON. The HTTP
+// status comes from MapError; the body is the canonical
+// errorEnvelope DTO (drift-pinned via tests in dto-pin).
+func (h *Handler) writeError(c *gin.Context, route string, err error) {
+	mapped := MapError(err)
+	// godlike/07: log the underlying cause via safeError so we
+	// keep a server-side trail without leaking internal detail
+	// to the wire envelope.
+	h.safeError(route,
+		zap.Int("status", mapped.Status),
+		zap.String("code", mapped.Code),
+		zap.String("canonical_route", route),
+		zap.Error(err),
+	)
+	c.JSON(mapped.Status, errorEnvelope{
+		OK:        false,
+		Code:      mapped.Code,
+		Message:   mapped.Message,
+		Timestamp: h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
 // Resolve is the HTTP handler for POST /api/media-memory/resolve.
+//
+// Fase 1.4: still 501 (resolver concrete lands in Fase 1.5).
 func (h *Handler) Resolve(c *gin.Context) {
 	if h.resolver == nil {
 		h.notImplemented(c, "POST /api/media-memory/resolve")
 		return
 	}
-	// Composition root will inject a real resolver. Phase 1.1
-	// returns 501 via the hold above; subsequent phases replace
-	// the closure with: bind req → h.resolver.Resolve(...) →
-	// resultToResponse(...).
 }
 
 // BindingsCreate is the HTTP handler for POST /api/media-memory/bindings.
+//
+// godlike/06 SSOT: thin transport. JSON binding → canonical
+// MediaBinding → service → response DTO → JSON. Errors map via
+// MapError to typed HTTP statuses.
 func (h *Handler) BindingsCreate(c *gin.Context) {
 	if h.bindings == nil {
 		h.notImplemented(c, "POST /api/media-memory/bindings")
 		return
 	}
+	var req bindingCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, "POST /api/media-memory/bindings",
+			fmt.Errorf("mediamemory: bind JSON: %w",
+				mediamemory.ErrInvalidSlotKind)) // 400 surface
+		return
+	}
+
+	bindingIn := req.toMediaBinding()
+	bindingOut, err := h.bindings.Create(c.Request.Context(), bindingIn)
+	if err != nil {
+		h.writeError(c, "POST /api/media-memory/bindings", err)
+		return
+	}
+
+	out := gin.H{
+		"ok":        true,
+		"binding":   toBindingDTO(bindingOut),
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	}
+	apiutil.OK(c, out)
 }
 
 // BindingsList is the HTTP handler for GET /api/media-memory/bindings.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: missing concept_id is a 400
+// (godlike/06 SSOT surface: ??concept_id is required to scope the
+// diff; an unscoped listing would return every binding in the
+// catalog, silently failing the dashboard's pagination contract).
 func (h *Handler) BindingsList(c *gin.Context) {
 	if h.bindings == nil {
 		h.notImplemented(c, "GET /api/media-memory/bindings")
 		return
 	}
+	var req bindingListRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		h.writeError(c, "GET /api/media-memory/bindings",
+			fmt.Errorf("mediamemory: bind query: %w", err))
+		return
+	}
+	bindings, err := h.bindings.ListByConcept(c.Request.Context(), req.ConceptID)
+	if err != nil {
+		h.writeError(c, "GET /api/media-memory/bindings", err)
+		return
+	}
+	out := gin.H{
+		"ok":        true,
+		"bindings":  bindingsToDTOs(bindings),
+		"count":     len(bindings),
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	}
+	apiutil.OK(c, out)
+}
+
+// BindingsApprove is the HTTP handler for POST /api/media-memory/bindings/:id/approve.
+// godlike/06 SSOT: explicit approve/reject endpoints mirror the
+// dashboard's two-button UI; the service guards ApprovalStatus
+// flips via the canonical approve/reject paths (NOT via Update).
+func (h *Handler) BindingsApprove(c *gin.Context) {
+	if h.bindings == nil {
+		h.notImplemented(c, "POST /api/media-memory/bindings/:id/approve")
+		return
+	}
+	id := c.Param("id")
+	if err := h.bindings.Approve(c.Request.Context(), id); err != nil {
+		h.writeError(c, "POST /api/media-memory/bindings/:id/approve", err)
+		return
+	}
+	apiutil.OK(c, gin.H{
+		"ok":        true,
+		"id":        id,
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
+// BindingsReject is the HTTP handler for POST /api/media-memory/bindings/:id/reject.
+func (h *Handler) BindingsReject(c *gin.Context) {
+	if h.bindings == nil {
+		h.notImplemented(c, "POST /api/media-memory/bindings/:id/reject")
+		return
+	}
+	id := c.Param("id")
+	if err := h.bindings.Reject(c.Request.Context(), id); err != nil {
+		h.writeError(c, "POST /api/media-memory/bindings/:id/reject", err)
+		return
+	}
+	apiutil.OK(c, gin.H{
+		"ok":        true,
+		"id":        id,
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
+// BindingsDelete is the HTTP handler for DELETE /api/media-memory/bindings/:id.
+// Routes admin reindex flows (dashboard "remove binding" button).
+func (h *Handler) BindingsDelete(c *gin.Context) {
+	if h.bindings == nil {
+		h.notImplemented(c, "DELETE /api/media-memory/bindings/:id")
+		return
+	}
+	id := c.Param("id")
+	if err := h.bindings.Delete(c.Request.Context(), id); err != nil {
+		h.writeError(c, "DELETE /api/media-memory/bindings/:id", err)
+		return
+	}
+	apiutil.OK(c, gin.H{
+		"ok":        true,
+		"id":        id,
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // Feedback is the HTTP handler for POST /api/media-memory/feedback.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: an invalid FeedbackAction
+// returns 400 + typed envelope (NOT a 5xx that would let callers
+// retry the same action). ErrInvalidFeedbackAction is the
+// canonical sentinel for "?action is outside the closed set".
 func (h *Handler) Feedback(c *gin.Context) {
 	if h.feedback == nil {
 		h.notImplemented(c, "POST /api/media-memory/feedback")
 		return
 	}
+	var req feedbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, "POST /api/media-memory/feedback",
+			fmt.Errorf("mediamemory: bind JSON: %w", err))
+		return
+	}
+	ev, err := h.feedback.Record(c.Request.Context(), req.toFeedbackInput())
+	if err != nil {
+		h.writeError(c, "POST /api/media-memory/feedback", err)
+		return
+	}
+	apiutil.OK(c, gin.H{
+		"ok":        true,
+		"event":     toUsageEventDTO(ev),
+		"timestamp": h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // BatchesCreate is the HTTP handler for POST /api/media-memory/batches.
+// Fase 3.x: real impl lands with the BatchService concrete.
 func (h *Handler) BatchesCreate(c *gin.Context) {
 	if h.batches == nil {
 		h.notImplemented(c, "POST /api/media-memory/batches")
@@ -244,3 +423,19 @@ func (h *Handler) BatchReconcile(c *gin.Context) {
 		return
 	}
 }
+
+// bindingsToDTOs projects a slice of canonical MediaBindings into
+// the wire shape (godlike/06 SSOT: no LocalPath / DriveLink
+// leaks; canonical bool strings preserved exactly).
+func bindingsToDTOs(in []mediamemory.MediaBinding) []bindingDTO {
+	out := make([]bindingDTO, 0, len(in))
+	for _, b := range in {
+		out = append(out, toBindingDTO(b))
+	}
+	return out
+}
+
+// Compile-time assertion: unused helpers do not drift out of
+// the source (forward-pin for future handlers).
+var _ = errors.Is
+var _ = fmt.Errorf

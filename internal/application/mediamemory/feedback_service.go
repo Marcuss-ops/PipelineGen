@@ -11,15 +11,30 @@
 // success_score uniformly across all manual UI paths.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: unknown FeedbackAction values
-// surface as wrapped ErrInvalidPhrase (re-using the canonical
-// envelope — semantic-equivalent failure). Per-binding ownership
-// mismatches (a binding_id owned by a different project) surface
-// as wrapped ErrBindingNotFound so callers branch via errors.Is.
+// surface as wrapped ErrInvalidFeedbackAction. Per-binding
+// ownership mismatches (a binding_id we cannot resolve) surface as
+// wrapped ErrBindingNotFound so callers branch via errors.Is.
+//
+// order of operations in Record (godlike/07 fail-closed audit):
+//  1. validate the action (DeltaForAction — surfaces
+//     ErrInvalidFeedbackAction on unknown values);
+//  2. validate the binding_id exists (BindingRepository.FindByID);
+//  3. append the UsageEvent (audit log; append-only by design);
+//  4. update the binding's SuccessScore + UsageCount + LastUsedAt
+//     via BindingsRepository.Upsert (which now propagates these
+//     three columns in its ON CONFLICT DO UPDATE clause as of
+//     Fase 1.4).
+//
+// godlike/06 SSOT (append-then-update): if step 4 fails after step
+// 3, the audit log retains the event and reconciliation can replay
+// later — the alternative (update-then-append) would risk a
+// silent score drift with no audit trail.
 package mediamemory
 
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // FeedbackService is the canonical port for feedback ingestion.
@@ -117,7 +132,7 @@ type FeedbackAggregate struct {
 	LastUsedAt string
 }
 
-// ── Default implementation (skeleton) ─────────────────────────────
+// ── Default implementation (canonical) ──────────────────────────
 
 // defaultFeedbackService is the canonical implementation.
 type defaultFeedbackService struct {
@@ -145,13 +160,114 @@ func NewDefaultFeedbackService(usage UsageRepository, bindings BindingRepository
 
 var _ FeedbackService = (*defaultFeedbackService)(nil)
 
-// Record is the canonical Phase 1.x entrypoint: identity stub;
-// Phase 2 wires the (append usage_event → update binding success_score)
-// chain.
-func (s *defaultFeedbackService) Record(_ context.Context, _ FeedbackInput) (UsageEvent, error) {
-	return UsageEvent{}, errNotImplemented("mediamemory: defaultFeedbackService.Record not yet implemented (Phase 1.x)")
+// Record is the canonical entrypoint.
+//
+// godlike/06 SSOT (closed set, see IsKnownFeedbackAction):
+// unknown actions return ErrInvalidFeedbackAction wrapped.
+//
+// godlike/06 SSOT (binding lookup): the binding MUST exist before
+// the feedback event is recorded; the ranker reads the binding's
+// updated SuccessScore on the very next resolver call. A missing
+// binding returns wrapped ErrBindingNotFound.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the binding update is atomic
+// (Upsert via ON CONFLICT — usage_count and last_used_at now
+// propagate). Selection vs rejection signals are recorded on the
+// UsageEvent (audit trail); SuccessScore is the canonical ranker
+// input incremented by DeltaForAction.RenderCompletedIncrement.
+//
+// godlike/06 SSOT (lost-update trade-off, Phase 1.x):
+// Record reads the binding → increments UsageCount + SuccessScore
+// locally → Upserts the row. Concurrent feedback events for the
+// same binding race on UsageCount (last writer wins). The
+// append-only media_usage_events audit log retains the full event
+// sequence, so an offline job can replay SuccessScore
+// deterministically from the audit log on warm-up. This is the
+// Phase 1.x trade-off — full optimistic concurrency (e.g.
+// SQL `usage_count = usage_count + 1`) lands in Fase 2.x alongside
+// the ranker warm-up reader. Until then, the bind-side audit
+// log is the canonical truth.
+func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (UsageEvent, error) {
+	if in.BindingID == "" {
+		return UsageEvent{}, fmt.Errorf(
+			"mediamemory: feedback record missing binding_id: %w",
+			ErrBindingNotFound,
+		)
+	}
+	if !IsKnownFeedbackAction(in.Action) {
+		return UsageEvent{}, fmt.Errorf(
+			"mediamemory: feedback record action=%q: %w",
+			string(in.Action), ErrInvalidFeedbackAction,
+		)
+	}
+
+	delta, err := DeltaForAction(in.Action)
+	if err != nil {
+		return UsageEvent{}, err
+	}
+
+	binding, err := s.bindings.FindByID(ctx, in.BindingID)
+	if err != nil {
+		return UsageEvent{}, fmt.Errorf(
+			"mediamemory: feedback record binding %q: %w",
+			in.BindingID, err,
+		)
+	}
+
+	now := s.clock.Now().UTC()
+
+	// 1. Append the audit event (append-only; ALWAYS succeeds
+	// before we touch the binding success score).
+	event := UsageEvent{
+		ProjectID:        in.ProjectID,
+		SceneID:          in.SceneID,
+		ConceptID:        binding.ConceptID,
+		AssetID:          binding.AssetID,
+		BindingID:        binding.ID,
+		SlotKind:         binding.SlotKind,
+		Selected:         delta.SelectedIncrement > 0 || in.Action == FeedbackAccepted,
+		ManuallySelected: delta.ManuallySelectedIncrement > 0 || in.Action == FeedbackAccepted,
+		Rejected:         in.Action == FeedbackRejected || in.Action == FeedbackReplaced,
+		RenderCompleted:  in.Action == FeedbackUsedSuccessful,
+		CreatedAt:        now,
+	}
+	if err := s.usage.Append(ctx, event); err != nil {
+		return UsageEvent{}, fmt.Errorf("mediamemory: feedback record append usage event: %w", err)
+	}
+
+	// 2. Update the binding's score lineage (atomic via Upsert).
+	// godlike/06 SSOT: RenderCompletedIncrement is the canonical
+	// SuccessScore increment per architecture doc section 12
+	// ("non restituire sempre il candidato con punteggio più
+	// alto"). Other deltas (SelectedIncrement, ManuallySelected,
+	// Rejected) drive future Phase-2 weights / penalty tuning.
+	binding.SuccessScore += delta.RenderCompletedIncrement
+	binding.UsageCount++
+	binding.LastUsedAt = &now
+	binding.UpdatedAt = now
+
+	if _, err := s.bindings.Upsert(ctx, binding); err != nil {
+		return UsageEvent{}, fmt.Errorf(
+			"mediamemory: feedback record upsert binding %q: "+
+				"UsageEvent appended but binding score not "+
+				"promoted (will require offline reconciliation): %w",
+			in.BindingID, err,
+		)
+	}
+
+	return event, nil
 }
 
+// AggregateSince is the ranker warm-up read. Phase 1.4 leaves this
+// as an explicit stub because the canonical implementation needs
+// a real SQL aggregate query (UsageRepository.ListSince + a
+// ranker-side GROUP BY aggregation). The companion suggest_followup
+// lands this in Fase 1.5.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: returning an empty slice here
+// would silently give the ranker "no signal" and is wrong; so we
+// return the stub sentinel rather than fake data. Composition root
+// surfaces this as a 501 to any consumer until Fase 1.5 lands.
 func (s *defaultFeedbackService) AggregateSince(_ context.Context, _ string) ([]FeedbackAggregate, error) {
-	return nil, errNotImplemented("mediamemory: defaultFeedbackService.AggregateSince not yet implemented (Phase 1.x)")
+	return nil, errNotImplemented("mediamemory: defaultFeedbackService.AggregateSince not yet implemented (Phase 1.5)")
 }
