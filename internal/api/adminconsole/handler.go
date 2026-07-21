@@ -1,0 +1,124 @@
+package adminconsoleapi
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	adminapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+)
+
+// Handler is the thin HTTP transport for the admin console registry.
+type Handler struct {
+	service *adminapp.Service
+	log     *zap.Logger
+}
+
+// NewHandler creates a new admin console handler.
+func NewHandler(service *adminapp.Service, log *zap.Logger) *Handler {
+	return &Handler{service: service, log: log}
+}
+
+// RegisterRoutes mounts the admin console endpoints under the given group.
+func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/entities", h.handleListEntities)
+	rg.GET("/entities/:entity/schema", h.handleSchema)
+	rg.GET("/entities/:entity", h.handleList)
+	rg.GET("/entities/:entity/:id", h.handleGet)
+	rg.PATCH("/entities/:entity/:id", h.handlePatch)
+	rg.POST("/entities/:entity/:id/actions/:action", h.handleAction)
+	rg.GET("/events", h.handleEvents)
+}
+
+func (h *Handler) handleListEntities(c *gin.Context) {
+	apiutil.OK(c, h.service.ListEntities())
+}
+
+func (h *Handler) handleSchema(c *gin.Context) {
+	entity := c.Param("entity")
+	schema, err := h.service.SchemaFor(entity)
+	if err != nil {
+		apiutil.NotFound(c, err.Error())
+		return
+	}
+	apiutil.OK(c, schema)
+}
+
+func (h *Handler) handleList(c *gin.Context) {
+	entity := c.Param("entity")
+	opts := adminapp.ListOptions{}
+	// TODO: parse filters, orderBy, orderDir, limit, offset from query string
+	result, err := h.service.List(c.Request.Context(), entity, opts)
+	if err != nil {
+		h.log.Error("failed to list entity", zap.String("entity", entity), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, result)
+}
+
+func (h *Handler) handleGet(c *gin.Context) {
+	entity := c.Param("entity")
+	id := c.Param("id")
+	item, err := h.service.Get(c.Request.Context(), entity, id)
+	if err != nil {
+		h.log.Error("failed to get entity", zap.String("entity", entity), zap.String("id", id), zap.Error(err))
+		apiutil.NotFound(c, err.Error())
+		return
+	}
+	apiutil.OK(c, item)
+}
+
+func (h *Handler) handlePatch(c *gin.Context) {
+	entity := c.Param("entity")
+	id := c.Param("id")
+	var req struct {
+		ExpectedVersion int            `json:"expected_version"`
+		Changes         map[string]any `json:"changes"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	updated, err := h.service.Patch(c.Request.Context(), entity, id, req.Changes, req.ExpectedVersion)
+	if err != nil {
+		h.log.Error("failed to patch entity", zap.String("entity", entity), zap.String("id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, updated)
+}
+
+func (h *Handler) handleAction(c *gin.Context) {
+	entity := c.Param("entity")
+	id := c.Param("id")
+	action := c.Param("action")
+	var payload map[string]any
+	if err := c.ShouldBindJSON(&payload); err != nil && c.Request.ContentLength > 0 {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+	result, err := h.service.Action(c.Request.Context(), entity, id, action, payload)
+	if err != nil {
+		h.log.Error("failed to run action", zap.String("entity", entity), zap.String("id", id), zap.String("action", action), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, result)
+}
+
+func (h *Handler) handleEvents(c *gin.Context) {
+	// SSE placeholder: sets headers and keeps the connection open.
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.WriteHeader(http.StatusOK)
+	// Flush is best-effort; the real event bus will replace this loop.
+	if f, ok := c.Writer.(interface{ Flush() }); ok {
+		fmt.Fprintf(c.Writer, ":ok\n\n")
+		f.Flush()
+	}
+}

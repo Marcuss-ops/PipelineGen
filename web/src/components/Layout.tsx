@@ -10,6 +10,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', label: 'Overview', icon: '◎' },
   { to: '/content', label: 'Content Library', icon: '☰' },
+  { to: '/database', label: 'Database', icon: '▦' },
   { to: '/jobs', label: 'Jobs', icon: '⚙' },
   { to: '/operations', label: 'Operations', icon: '◉' },
 ]

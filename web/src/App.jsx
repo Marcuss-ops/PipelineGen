@@ -8,6 +8,7 @@ import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
 import Script from './pages/Script'
 import Operations from './pages/Operations'
+import Database from './pages/Database'
 import Login from './pages/Login'
 
 function ProtectedRoutes() {
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
         <Route path="/scripts/:id" element={<Script />} />
+        <Route path="/database" element={<Database />} />
         <Route path="/operations" element={<Operations />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

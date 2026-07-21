@@ -267,6 +267,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: operator-admin-api: %w", err)
 	}
 
+	// Step 5b — Admin Console: schema-driven entity registry and
+	// Database Explorer API surface. Registered after operator console
+	// and before late bindings.
+	if err := registerAdminConsoleAPI(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: adminconsole-api: %w", err)
+	}
+
 	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +
 	// QDRANT-004 mediasearch handler + COLLECTS provider registration
 	// entries (artlist + youtube + stock); internally still publishes
