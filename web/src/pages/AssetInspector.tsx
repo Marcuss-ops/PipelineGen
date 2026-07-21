@@ -1,26 +1,188 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getAsset, AssetDetails, getAssetPreviewUrl } from '../api/client'
-import MetadataViewer from '../components/MetadataViewer'
+import { usePollingQuery } from '../hooks/usePollingQuery'
+import RefreshButton from '../components/RefreshButton'
+import {
+  getAsset,
+  AssetDetails,
+  getAssetPreviewUrl,
+  patchAsset,
+  AssetPatchRequest,
+  getAssetActions,
+  AssetActionsResponse,
+  triggerClipAction,
+} from '../api/client'
 import AssetPreview from '../components/AssetPreview'
+
+type TabKey =
+  | 'generale'
+  | 'metadata'
+  | 'indicizzazione'
+  | 'files'
+  | 'processing'
+  | 'versions'
+  | 'azioni'
+  | 'raw'
+  | 'audit'
+
+interface FormState {
+  name: string
+  category: string
+  group: string
+  tags: string
+  search_terms: string
+  search_text: string
+  review_status: string
+  description: string
+  language: string
+}
+
+function initialForm(asset: AssetDetails | null): FormState {
+  return {
+    name: asset?.name ?? '',
+    category: asset?.category ?? '',
+    group: asset?.group ?? '',
+    tags: (asset?.tags ?? []).join(', '),
+    search_terms: (asset?.search_terms ?? []).join(', '),
+    search_text: asset?.search_text ?? '',
+    review_status: asset?.review_status ?? '',
+    description: String(asset?.metadata?.description ?? ''),
+    language: String(asset?.metadata?.language ?? ''),
+  }
+}
+
+function parseTags(value: string): string[] {
+  return value
+    .split(/[,;]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+}
+
+const TRANSIENT_LIFECYCLE_STATES = ['INDEXING', 'PROCESSING', 'REPROCESSING', 'PENDING', 'READY']
+
+function isAssetTransient(asset: AssetDetails | null): boolean {
+  if (!asset) return false
+  if (asset.lifecycle_state && TRANSIENT_LIFECYCLE_STATES.includes(asset.lifecycle_state)) {
+    return true
+  }
+  return false
+}
 
 export default function AssetInspector() {
   const { id } = useParams<{ id: string }>()
-  const [asset, setAsset] = useState<AssetDetails | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [activeTab, setActiveTab] = useState<TabKey>('generale')
+  const [actions, setActions] = useState<AssetActionsResponse | null>(null)
+  const [form, setForm] = useState<FormState>(initialForm(null))
+  const [dirty, setDirty] = useState(false)
+  const [pausePolling, setPausePolling] = useState(false)
+
+  const {
+    data: asset,
+    loading,
+    error,
+    refresh,
+  } = usePollingQuery<AssetDetails>({
+    queryFn: async () => {
+      if (!id) throw new Error('ID mancante')
+      return getAsset(id)
+    },
+    interval: 5000,
+    enabled: !!id,
+    pause: pausePolling,
+  })
 
   useEffect(() => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    getAsset(id)
-      .then(setAsset)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Errore sconosciuto'))
-      .finally(() => setLoading(false))
+    setPausePolling(!isAssetTransient(asset))
+  }, [asset])
+
+  useEffect(() => {
+    if (!id || !asset) return
+    let cancelled = false
+    getAssetActions(id)
+      .then((acts) => {
+        if (!cancelled) setActions(acts)
+      })
+      .catch(() => {
+        if (!cancelled) setActions(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, asset])
+
+  useEffect(() => {
+    setDirty(false)
+    setForm(initialForm(asset))
   }, [id])
 
-  if (loading) {
+  useEffect(() => {
+    if (!dirty) {
+      setForm(initialForm(asset))
+    }
+  }, [asset, dirty])
+
+  const load = refresh
+
+  const changedFields = useMemo<AssetPatchRequest>(() => {
+    if (!asset) return {}
+    const changes: AssetPatchRequest = {}
+    if (form.name !== (asset.name ?? '')) changes.name = form.name
+    if (form.category !== (asset.category ?? '')) changes.category = form.category
+    if (form.group !== (asset.group ?? '')) changes.group = form.group
+    if (form.search_text !== (asset.search_text ?? '')) changes.search_text = form.search_text
+    if (form.review_status !== (asset.review_status ?? '')) changes.review_status = form.review_status
+
+    const tags = parseTags(form.tags)
+    if (JSON.stringify(tags) !== JSON.stringify(asset.tags ?? [])) changes.tags = tags
+
+    const searchTerms = parseTags(form.search_terms)
+    if (JSON.stringify(searchTerms) !== JSON.stringify(asset.search_terms ?? [])) changes.search_terms = searchTerms
+
+    const origDesc = String(asset.metadata?.description ?? '')
+    if (form.description !== origDesc) changes.description = form.description
+
+    const origLang = String(asset.metadata?.language ?? '')
+    if (form.language !== origLang) changes.language = form.language
+
+    return changes
+  }, [form, asset])
+
+  const handleSave = async () => {
+    if (!id || !Object.keys(changedFields).length) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      await patchAsset(id, changedFields)
+      setSaveMsg({ type: 'ok', text: 'Modifiche salvate e reindicizzazione richiesta.' })
+      setDirty(false)
+      await load()
+    } catch (err) {
+      setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore di salvataggio' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateForm = (patch: Partial<FormState>) => {
+    setForm((prev) => ({ ...prev, ...patch }))
+    setDirty(true)
+    setSaveMsg(null)
+  }
+
+  const runAction = async (url?: string) => {
+    if (!url) return
+    try {
+      const res = await triggerClipAction(url)
+      setSaveMsg({ type: 'ok', text: `Azione avviata: ${JSON.stringify(res)}` })
+      setTimeout(() => load(), 1000)
+    } catch (err) {
+      setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore azione' })
+    }
+  }
+
+  if (loading && !asset) {
     return (
       <div style={{ padding: '2rem', color: '#94a3b8', textAlign: 'center' }}>
         Caricamento asset...
@@ -52,10 +214,11 @@ export default function AssetInspector() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <Link to="/content" style={{ color: '#38bdf8', textDecoration: 'none', fontSize: '0.9rem' }}>
           ← Torna alla Content Library
         </Link>
+        <RefreshButton onClick={refresh} />
       </div>
 
       <div
@@ -111,8 +274,378 @@ export default function AssetInspector() {
         </div>
       </div>
 
-      <MetadataViewer asset={asset as Record<string, unknown>} title="Metadata dell'asset" />
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', borderBottom: '1px solid #334155' }}>
+        {(
+          [
+            { key: 'generale', label: 'Generale' },
+            { key: 'metadata', label: 'Metadata' },
+            { key: 'indicizzazione', label: 'Indicizzazione' },
+            { key: 'files', label: 'File e posizioni' },
+            { key: 'processing', label: 'Processing' },
+            { key: 'versions', label: 'Versioni' },
+            { key: 'azioni', label: 'Azioni' },
+            { key: 'raw', label: 'Raw JSON' },
+            { key: 'audit', label: 'Audit' },
+          ] as { key: TabKey; label: string }[]
+        ).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            style={{
+              ...tabButtonStyle,
+              borderBottom: activeTab === t.key ? '2px solid #38bdf8' : undefined,
+              background: activeTab === t.key ? '#0f172a' : '#1e293b',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          background: '#1e293b',
+          border: '1px solid #334155',
+          borderRadius: '8px',
+          padding: '1.5rem',
+          minHeight: '300px',
+        }}
+      >
+        {activeTab === 'generale' && (
+          <GeneralTab form={form} updateForm={updateForm} asset={asset} />
+        )}
+        {activeTab === 'metadata' && (
+          <MetadataTab form={form} updateForm={updateForm} asset={asset} />
+        )}
+        {activeTab === 'indicizzazione' && (
+          <IndexingTab asset={asset} actions={actions} onAction={runAction} />
+        )}
+        {activeTab === 'files' && <LocationsTab asset={asset} actions={actions} onAction={runAction} />}
+        {activeTab === 'processing' && <ProcessingTab asset={asset} />}
+        {activeTab === 'versions' && <VersionsTab asset={asset} />}
+        {activeTab === 'azioni' && <ActionsTab actions={actions} onAction={runAction} />}
+        {activeTab === 'raw' && <RawJsonTab asset={asset} />}
+        {activeTab === 'audit' && <AuditTab />}
+      </div>
+
+      {saveMsg && (
+        <div
+          style={{
+            marginTop: '1rem',
+            padding: '0.75rem 1rem',
+            borderRadius: '6px',
+            background: saveMsg.type === 'ok' ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
+            color: saveMsg.type === 'ok' ? '#34d399' : '#f87171',
+            border: `1px solid ${saveMsg.type === 'ok' ? '#34d399' : '#f87171'}`,
+          }}
+        >
+          {saveMsg.text}
+        </div>
+      )}
+
+      <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem' }}>
+        <button onClick={handleSave} disabled={!dirty || saving} style={primaryButtonStyle}>
+          {saving ? 'Salvataggio...' : 'Salva modifiche'}
+        </button>
+        <button onClick={load} style={secondaryButtonStyle}>
+          Ricarica
+        </button>
+      </div>
     </div>
+  )
+}
+
+const REVIEW_STATUS_OPTIONS = ['', 'none', 'pending', 'approved', 'rejected']
+
+function GeneralTab({
+  form,
+  updateForm,
+}: {
+  form: FormState
+  updateForm: (patch: Partial<FormState>) => void
+  asset: AssetDetails
+}) {
+  return (
+    <div style={{ display: 'grid', gap: '1rem' }}>
+      <FormField label="Nome" value={form.name} onChange={(v) => updateForm({ name: v })} />
+      <FormField label="Categoria" value={form.category} onChange={(v) => updateForm({ category: v })} />
+      <FormField label="Gruppo" value={form.group} onChange={(v) => updateForm({ group: v })} />
+      <div>
+        <label style={labelStyle}>Review status</label>
+        <select
+          value={form.review_status}
+          onChange={(e) => updateForm({ review_status: e.target.value })}
+          style={inputStyle}
+        >
+          {REVIEW_STATUS_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt || '(nessuno)'}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
+function MetadataTab({
+  form,
+  updateForm,
+}: {
+  form: FormState
+  updateForm: (patch: Partial<FormState>) => void
+  asset: AssetDetails
+}) {
+  return (
+    <div style={{ display: 'grid', gap: '1rem' }}>
+      <FormField
+        label="Tags (separati da virgola)"
+        value={form.tags}
+        onChange={(v) => updateForm({ tags: v })}
+      />
+      <FormField
+        label="Search terms (separati da virgola)"
+        value={form.search_terms}
+        onChange={(v) => updateForm({ search_terms: v })}
+      />
+      <div>
+        <label style={labelStyle}>Search text</label>
+        <textarea
+          value={form.search_text}
+          onChange={(e) => updateForm({ search_text: e.target.value })}
+          style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
+        />
+      </div>
+      <FormField label="Descrizione" value={form.description} onChange={(v) => updateForm({ description: v })} />
+      <FormField label="Lingua" value={form.language} onChange={(v) => updateForm({ language: v })} />
+    </div>
+  )
+}
+
+function IndexingTab({
+  asset,
+  actions,
+  onAction,
+}: {
+  asset: AssetDetails
+  actions: AssetActionsResponse | null
+  onAction: (url?: string) => void
+}) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Stato indicizzazione</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+        <InfoCard label="SQLite" value={asset.lifecycle_state ? 'presente' : '-'} />
+        <InfoCard label="Embedding" value={asset.embedding_info?.present ? `${asset.embedding_info.dimensions}d (${asset.embedding_info.version})` : 'mancante'} />
+        <InfoCard label="Modello" value={asset.embedding_info?.version || '-'} />
+        <InfoCard label="Dimensioni" value={asset.embedding_info?.dimensions ? String(asset.embedding_info.dimensions) : '-'} />
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <ActionButton label="Reindicizza" url={actions?.reindex} onClick={onAction} />
+        <ActionButton label="Verifica Qdrant" url={actions?.verify} onClick={onAction} />
+      </div>
+    </div>
+  )
+}
+
+function LocationsTab({
+  asset,
+  actions,
+  onAction,
+}: {
+  asset: AssetDetails
+  actions: AssetActionsResponse | null
+  onAction: (url?: string) => void
+}) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>File e posizioni</h3>
+      {!asset.locations?.length && <p style={{ color: '#94a3b8' }}>Nessuna posizione disponibile.</p>}
+      {asset.locations?.map((loc, idx) => (
+        <div
+          key={idx}
+          style={{
+            background: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '6px',
+            padding: '1rem',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{loc.kind}</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.85rem', wordBreak: 'break-all' }}>{loc.uri}</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+            {loc.external_id && <span>ID: {loc.external_id} </span>}
+            {loc.file_hash && <span>Hash: {loc.file_hash} </span>}
+            {loc.file_size_bytes !== undefined && <span>Size: {loc.file_size_bytes} bytes</span>}
+          </div>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+        <ActionButton label="Verifica hash" url={actions?.verify} onClick={onAction} />
+        <ActionButton label="Correggi hash" url={actions?.fix_hash} onClick={onAction} />
+        <ActionButton label="Ricarica" url={actions?.reupload} onClick={onAction} />
+        <ActionButton label="Riconcilia" url={actions?.reconcile} onClick={onAction} />
+      </div>
+    </div>
+  )
+}
+
+function ProcessingTab({ asset }: { asset: AssetDetails }) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Processing</h3>
+      {!asset.processing?.length && <p style={{ color: '#94a3b8' }}>Nessun record di processing.</p>}
+      {asset.processing?.map((p, idx) => (
+        <div
+          key={idx}
+          style={{
+            background: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '6px',
+            padding: '1rem',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{p.step}</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+            Stato: {p.status} {p.error && `- ${p.error}`}
+          </div>
+          {p.started_at && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Iniziato: {p.started_at}</div>}
+          {p.completed_at && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Completato: {p.completed_at}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function VersionsTab({ asset }: { asset: AssetDetails }) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Versioni</h3>
+      {!asset.versions?.length && <p style={{ color: '#94a3b8' }}>Nessuna versione archiviata.</p>}
+      {asset.versions?.map((v, idx) => (
+        <div
+          key={idx}
+          style={{
+            background: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '6px',
+            padding: '1rem',
+            marginBottom: '0.75rem',
+          }}
+        >
+          <div style={{ color: '#e2e8f0', fontWeight: 600 }}>Versione {v.version_number}</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+            {v.file_hash && <span>Hash: {v.file_hash} </span>}
+            {v.file_size !== undefined && <span>Size: {v.file_size} bytes </span>}
+            {v.mime_type && <span>MIME: {v.mime_type}</span>}
+          </div>
+          {v.created_at && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{v.created_at}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionsTab({
+  actions,
+  onAction,
+}: {
+  actions: AssetActionsResponse | null
+  onAction: (url?: string) => void
+}) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Azioni</h3>
+      {!actions?.is_clip_source && <p style={{ color: '#94a3b8' }}>Azioni avanzate disponibili solo per asset clip.</p>}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <ActionButton label="Reindicizza" url={actions?.reindex} onClick={onAction} />
+        <ActionButton label="Verifica" url={actions?.verify} onClick={onAction} />
+        <ActionButton label="Riprocessa" url={actions?.reprocess} onClick={onAction} />
+        <ActionButton label="Ricarica su Drive" url={actions?.reupload} onClick={onAction} />
+        <ActionButton label="Correggi hash" url={actions?.fix_hash} onClick={onAction} />
+        <ActionButton label="Riconcilia" url={actions?.reconcile} onClick={onAction} />
+      </div>
+    </div>
+  )
+}
+
+function RawJsonTab({ asset }: { asset: AssetDetails }) {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Raw JSON</h3>
+      <pre
+        style={{
+          background: '#0f172a',
+          color: '#e2e8f0',
+          padding: '1rem',
+          borderRadius: '8px',
+          fontSize: '0.75rem',
+          overflowX: 'auto',
+          maxHeight: '60vh',
+          overflowY: 'auto',
+          border: '1px solid #334155',
+        }}
+      >
+        {JSON.stringify(asset, null, 2)}
+      </pre>
+    </div>
+  )
+}
+
+function AuditTab() {
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Audit log</h3>
+      <p style={{ color: '#94a3b8' }}>
+        L&apos;audit log amministrativo sarà disponibile dopo l&apos;implementazione della tabella
+        admin_mutation_audit.
+      </p>
+    </div>
+  )
+}
+
+function FormField({
+  label: labelText,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  return (
+    <div>
+      <label style={labelStyle}>{labelText}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={inputStyle}
+      />
+    </div>
+  )
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '6px', padding: '1rem' }}>
+      <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.25rem' }}>{label}</div>
+      <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{value}</div>
+    </div>
+  )
+}
+
+function ActionButton({ label, url, onClick }: { label: string; url?: string; onClick: (url?: string) => void }) {
+  const disabled = !url
+  return (
+    <button onClick={() => onClick(url)} disabled={disabled} style={disabled ? disabledButtonStyle : secondaryButtonStyle}>
+      {label}
+    </button>
   )
 }
 
@@ -216,6 +749,64 @@ function PreviewMedia({ url, mediaType }: { url: string; mediaType?: string }) {
       }}
     />
   )
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.85rem',
+  color: '#94a3b8',
+  marginBottom: '0.35rem',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.55rem 0.75rem',
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: '6px',
+  color: '#e2e8f0',
+  fontSize: '0.9rem',
+  boxSizing: 'border-box',
+}
+
+const tabButtonStyle: React.CSSProperties = {
+  padding: '0.55rem 1rem',
+  background: '#1e293b',
+  color: '#e2e8f0',
+  border: '1px solid #334155',
+  borderBottom: 'none',
+  borderRadius: '6px 6px 0 0',
+  cursor: 'pointer',
+  fontSize: '0.85rem',
+}
+
+const primaryButtonStyle: React.CSSProperties = {
+  padding: '0.55rem 1.25rem',
+  background: '#38bdf8',
+  color: '#0f172a',
+  border: 'none',
+  borderRadius: '6px',
+  fontWeight: 600,
+  cursor: 'pointer',
+}
+
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: '0.55rem 1rem',
+  background: '#1e293b',
+  color: '#e2e8f0',
+  border: '1px solid #334155',
+  borderRadius: '6px',
+  cursor: 'pointer',
+}
+
+const disabledButtonStyle: React.CSSProperties = {
+  padding: '0.55rem 1rem',
+  background: '#1e293b',
+  color: '#64748b',
+  border: '1px solid #334155',
+  borderRadius: '6px',
+  cursor: 'not-allowed',
+  opacity: 0.6,
 }
 
 const buttonStyle: React.CSSProperties = {
