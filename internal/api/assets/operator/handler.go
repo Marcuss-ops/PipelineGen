@@ -56,6 +56,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -70,6 +71,7 @@ type Handler struct {
 	jobService   job.Service
 	jobStats     JobStatsReader
 	outboxPort   outbox.MonitorPort
+	mutator      mutations.AssetMutationDispatcher
 	allowedRoots []string
 	log          *zap.Logger
 }
@@ -83,6 +85,7 @@ type Dependencies struct {
 	JobService   job.Service
 	JobStats     JobStatsReader
 	OutboxPort   outbox.MonitorPort
+	Mutator      mutations.AssetMutationDispatcher
 	AllowedRoots []string // directories allowed for file previews
 }
 
@@ -93,6 +96,7 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 		jobService:   deps.JobService,
 		jobStats:     deps.JobStats,
 		outboxPort:   deps.OutboxPort,
+		mutator:      deps.Mutator,
 		allowedRoots: deps.AllowedRoots,
 		log:          log,
 	}
