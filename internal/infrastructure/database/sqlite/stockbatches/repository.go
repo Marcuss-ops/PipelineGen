@@ -297,12 +297,8 @@ func (r *Repository) MarkArtifactVerified(ctx context.Context, id string) error 
 func (r *Repository) MarkGroupSucceeded(ctx context.Context, id string, verifiedClips int) error {
 	const q = `UPDATE stock_batch_groups
 		SET status = 'SUCCEEDED', verified_clips = ?, updated_at = datetime('now'), last_error = ''
-		WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, q, verifiedClips, id)
-	if err != nil {
-		return fmt.Errorf("stockbatches.MarkGroupSucceeded: %w", err)
-	}
-	return nil
+		WHERE id = ? AND expected_clips = ?`
+	return checkAffected(r.db.ExecContext(ctx, q, verifiedClips, id, verifiedClips))
 }
 
 // MarkBatchSucceeded transitions a batch to SUCCEEDED and records the
@@ -310,12 +306,8 @@ func (r *Repository) MarkGroupSucceeded(ctx context.Context, id string, verified
 func (r *Repository) MarkBatchSucceeded(ctx context.Context, id string, verifiedClips int) error {
 	const q = `UPDATE stock_batches
 		SET status = 'SUCCEEDED', verified_clips = ?, updated_at = datetime('now'), last_error = ''
-		WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, q, verifiedClips, id)
-	if err != nil {
-		return fmt.Errorf("stockbatches.MarkBatchSucceeded: %w", err)
-	}
-	return nil
+		WHERE id = ? AND expected_clips = ?`
+	return checkAffected(r.db.ExecContext(ctx, q, verifiedClips, id, verifiedClips))
 }
 
 // MarkArtifactFailed transitions an artifact from EXTRACTING to the given
