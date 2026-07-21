@@ -109,7 +109,7 @@ func (f *Finalizer) selectJobForFinalization(
 
 	// Validate lease ownership inside the transaction (defence against
 	// race between pre-validation and commit).
-	if row.status != "RUNNING" && row.status != "FINALIZING" && row.status != "SUCCEEDED" {
+	if row.status != "RUNNING" && row.status != "FINALIZING" && row.status != "SUCCEEDED" && row.status != "RETRY_WAIT" {
 		return nil, finalization.NewFinalizationError(
 			"INVALID_STATUS",
 			fmt.Sprintf("job status %q is not completable", row.status),

@@ -164,7 +164,7 @@ func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*Pipelin
 			jobID,
 			input.FinalizationLease.WorkerID,
 			input.FinalizationLease.LeaseID,
-			input.FinalizationLease.ExpiresAt.Format("2006-01-02 15:04:05"),
+			input.FinalizationLease.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: insert synthetic job: %w", err)
