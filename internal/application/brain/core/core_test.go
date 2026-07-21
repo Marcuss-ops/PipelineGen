@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
@@ -86,6 +88,79 @@ func TestCanonicalBrain_ResolvesScene(t *testing.T) {
 	if len(scene.Trace.BackendCalls) != 1 {
 		t.Errorf("expected 1 backend call record, got %d", len(scene.Trace.BackendCalls))
 	}
+}
+
+// TestCanonicalBrain_MayaVenusSceneIntent documents the expected
+// understanding of a real historical scene. The intent resolver is
+// still at V1, so the test currently fails on concepts and actions;
+// it is intentionally left as a failing/regression test that drives
+// the next iteration of the brain.
+func TestCanonicalBrain_MayaVenusSceneIntent(t *testing.T) {
+	candidates := []brain.Candidate{
+		{ID: "c1", AssetID: "a1", MediaType: "image", Score: 0.9, Title: "Maya temple Venus"},
+	}
+	b := newTestBrain(candidates)
+
+	req := brain.BrainRequest{
+		ProjectID: "p1",
+		Language:  "it",
+		Scenes: []brain.SceneRequest{
+			{
+				ID:         "maya-1",
+				Text:       "I Maya osservavano Venere dai loro templi",
+				DurationMS: 5000,
+				Slots:      []brain.SlotKind{brain.SlotSecondaryImage},
+			},
+		},
+		Policy: brain.ResolutionPolicy{MaxCandidatesPerSlot: 10},
+	}
+
+	result, err := b.Resolve(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Scenes) != 1 {
+		t.Fatalf("expected 1 scene, got %d", len(result.Scenes))
+	}
+	scene := result.Scenes[0]
+
+	if scene.Trace.NormalizedText != "i maya osservavano venere dai loro templi" {
+		t.Errorf("normalized text = %q, want %q", scene.Trace.NormalizedText, "i maya osservavano venere dai loro templi")
+	}
+	if scene.DecisionFingerprint == "" {
+		t.Errorf("expected decision fingerprint on scene")
+	}
+	if len(scene.Layers) != 1 {
+		t.Errorf("expected 1 layer, got %d", len(scene.Layers))
+	}
+
+	intent := scene.Intent
+	for _, entity := range []string{"maya", "venere"} {
+		if !slices.Contains(intent.Entities, entity) {
+			t.Errorf("expected entity %q, got %v", entity, intent.Entities)
+		}
+	}
+
+	if !slices.Contains(intent.Actions, "osservare") {
+		t.Errorf("expected action 'osservare', got %v", intent.Actions)
+	}
+
+	wantConcepts := []string{"astronomia maya", "pianeta venere", "templi maya"}
+	for _, concept := range wantConcepts {
+		found := false
+		for _, c := range intent.Concepts {
+			if strings.Contains(strings.ToLower(c), concept) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected concept containing %q, got %v", concept, intent.Concepts)
+		}
+	}
+
+	// Print the actual intent so the gap is explicit in test output.
+	t.Logf("actual intent: entities=%v actions=%v concepts=%v keywords=%v", intent.Entities, intent.Actions, intent.Concepts, intent.Keywords)
 }
 
 func TestCanonicalBrain_EmptySearchResult(t *testing.T) {
