@@ -153,6 +153,50 @@ export function getAssetPreviewUrl(id: string): string {
   return `${API_BASE}/assets/operator/assets/${encodeURIComponent(id)}/preview`
 }
 
+export interface AssetPatchRequest {
+  name?: string
+  category?: string
+  group?: string
+  tags?: string[]
+  search_terms?: string[]
+  search_text?: string
+  review_status?: string
+  description?: string
+  language?: string
+}
+
+export function patchAsset(id: string, payload: AssetPatchRequest): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>(`/assets/operator/assets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export interface AssetActionsResponse {
+  source: string
+  canonical_source: string
+  is_clip_source: boolean
+  reindex?: string
+  verify?: string
+  reprocess?: string
+  reupload?: string
+  fix_hash?: string
+  reconcile?: string
+}
+
+export function getAssetActions(id: string): Promise<AssetActionsResponse> {
+  return request<AssetActionsResponse>(`/assets/operator/assets/${encodeURIComponent(id)}/actions`)
+}
+
+export function triggerClipAction(url: string, payload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
 export function getSummary(): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>('/assets/operator/summary')
 }
