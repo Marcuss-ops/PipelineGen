@@ -83,17 +83,36 @@ func hasFFmpegAndFFprobe(t *testing.T) string {
 // fast but real-enough to exercise the cut + probe pipeline
 // end-to-end. durationSec is the seconds of synthetic content;
 // size is the libavfilter size string (e.g. "320x240").
-func generateSyntheticSource(t *testing.T, ffmpegPath, dir string, durationSec int, size string) string {
+// When withAudio is true a 48 kHz stereo AAC sine track is added
+// so downstream canonical-profile validation passes.
+func generateSyntheticSource(t *testing.T, ffmpegPath, dir string, durationSec int, size string, withAudio bool) string {
 	t.Helper()
 	sourcePath := filepath.Join(dir, fmt.Sprintf("source_%ds_%s.mp4", durationSec, size))
-	cmd := exec.Command(ffmpegPath,
+	args := []string{
 		"-y", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", fmt.Sprintf("testsrc=duration=%d:size=%s:rate=10", durationSec, size),
+	}
+	if withAudio {
+		args = append(args,
+			"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=1000:duration=%d", durationSec),
+		)
+	}
+	args = append(args,
 		"-pix_fmt", "yuv420p",
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
-		sourcePath,
 	)
+	if withAudio {
+		args = append(args,
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
+			"-shortest",
+		)
+	}
+	args = append(args, sourcePath)
+	cmd := exec.Command(ffmpegPath, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("synthetic source generation failed: %v\nffmpeg output:\n%s", err, string(out))
 	}
@@ -202,7 +221,7 @@ func (r *cutterCaptureRunner) invocationCount() int {
 // the Pattern 0 ProcessRunner injection contract end-to-end.
 func TestFFmpegCutter_InjectionChain_NoAudio_True(t *testing.T) {
 	runner := &cutterCaptureRunner{}
-	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
 
 	_, _ = cutter.Cut(context.Background(), stockpipeline.CutRequest{
 		SourcePath: "/tmp/source.mp4",
@@ -230,7 +249,7 @@ func TestFFmpegCutter_InjectionChain_NoAudio_True(t *testing.T) {
 // captureRunner receives -c:a aac but NOT -an.
 func TestFFmpegCutter_InjectionChain_NoAudio_False(t *testing.T) {
 	runner := &cutterCaptureRunner{}
-	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
 
 	_, _ = cutter.Cut(context.Background(), stockpipeline.CutRequest{
 		SourcePath: "/tmp/source.mp4",
@@ -352,9 +371,10 @@ func TestFFmpegCutter_BatchFallback_PreservesPartialResults(t *testing.T) {
 		Logger:         zap.NewNop(),
 	})
 
-	// Batch-level error should be nil because at least one clip succeeded.
-	if err != nil {
-		t.Fatalf("expected nil batch-level error when some clips succeed, got %v", err)
+	// With fail-closed canonical validation the whole batch fails when
+	// any clip fails, even if other clips were produced successfully.
+	if err == nil {
+		t.Fatalf("expected batch-level error because one clip failed, got nil")
 	}
 
 	// Batch was attempted and failed.
@@ -383,7 +403,8 @@ func TestFFmpegCutter_BatchFallback_PreservesPartialResults(t *testing.T) {
 		t.Errorf("item[2].Status = %v, want Succeeded", result.Items[2].Status)
 	}
 
-	// SuccessfulItems must contain exactly the two produced clips.
+	// The two produced clips are still reported as successful before
+	// the batch-level fail-closed error is surfaced.
 	produced := result.SuccessfulItems()
 	if len(produced) != 2 {
 		t.Errorf("SuccessfulItems() = %d, want 2", len(produced))
@@ -561,7 +582,7 @@ func TestFFmpegCutter_RealFFmpeg_BatchValidatesWithProbe(t *testing.T) {
 	defer cancel()
 
 	dir := t.TempDir()
-	sourcePath := generateSyntheticSource(t, ffmpegPath, dir, 2, "320x240")
+	sourcePath := generateSyntheticSource(t, ffmpegPath, dir, 2, "320x240", true)
 
 	cutter := NewFFmpegCutter(ffmpegPath, zap.NewNop())
 	out0 := filepath.Join(dir, "clip_0.mp4")
@@ -684,7 +705,7 @@ func TestFFmpegCutter_RealFFmpeg_PartialSuccessBatch(t *testing.T) {
 	// 1-second source so the second clip's [5s,6s] window is
 	// entirely beyond the duration — ffmpeg's response varies by
 	// version (clamp vs hard error).
-	sourcePath := generateSyntheticSource(t, ffmpegPath, dir, 1, "320x240")
+	sourcePath := generateSyntheticSource(t, ffmpegPath, dir, 1, "320x240", true)
 
 	cutter := NewFFmpegCutter(ffmpegPath, zap.NewNop())
 	out0 := filepath.Join(dir, "clip_0.mp4")
@@ -725,6 +746,11 @@ func TestFFmpegCutter_RealFFmpeg_PartialSuccessBatch(t *testing.T) {
 	// FailedItems=2). We accept all three.
 	if len(batch.FailedItems()) > 2 {
 		t.Errorf("FailedItems unexpectedly > 2 (got %d): %+v", len(batch.FailedItems()), batch.FailedItems())
+	}
+	// With fail-closed canonical validation the batch must report
+	// an error whenever at least one clip failed.
+	if err == nil {
+		t.Errorf("expected batch-level error due to fail-closed contract when one clip failed, got nil")
 	}
 	// Log the actual state for diagnostic visibility. Slice the
 	// fields so the log line stays compact but informative.
