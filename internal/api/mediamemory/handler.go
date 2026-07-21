@@ -55,8 +55,17 @@ import (
 // Production wiring injects *mediamemory.VisualResolver (cast to the
 // interface). Skeletons inject a stub closure (see
 // Handler.WireParams).
+//
+// godlike/06 SSOT (transport-leak discipline): the port takes
+// standard context.Context NOT *gin.Context. The *gin.Context is
+// the handler's own input (per gin's framework contract); the
+// port is consumed by the application layer which is
+// transport-agnostic. Passing *gin.Context through the port would
+// leak the HTTP framework into the resolver — anti-pattern.
+// Mirror of BindingServicePort / FeedbackServicePort which also
+// accept context.Context for the same reason.
 type ResolverPort interface {
-	Resolve(c *gin.Context, req mediamemory.ResolveRequest) (mediamemory.ResolveResult, error)
+	Resolve(ctx context.Context, req mediamemory.ResolveRequest) (mediamemory.ResolveResult, error)
 }
 
 // BindingServicePort is the narrow binding-service surface. The
@@ -240,12 +249,37 @@ func (h *Handler) writeError(c *gin.Context, route string, err error) {
 
 // Resolve is the HTTP handler for POST /api/media-memory/resolve.
 //
-// Fase 1.4: still 501 (resolver concrete lands in Fase 1.5).
+// Fase 1.5: thin transport — JSON binding → canonical
+// ResolveRequest → ResolverPort.Resolve → response DTO. Errors
+// map via MapError to typed HTTP statuses. Per-scene failures
+// surface in the `warnings` array (not as a 500) so the
+// dashboard preview can keep displaying the partial plan.
 func (h *Handler) Resolve(c *gin.Context) {
 	if h.resolver == nil {
 		h.notImplemented(c, "POST /api/media-memory/resolve")
 		return
 	}
+	var req resolveCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.writeError(c, "POST /api/media-memory/resolve",
+			fmt.Errorf("mediamemory: bind JSON: %w", err))
+		return
+	}
+	resolved, err := h.resolver.Resolve(c.Request.Context(), req.toResolveRequest())
+	if err != nil {
+		h.writeError(c, "POST /api/media-memory/resolve", err)
+		return
+	}
+	plans := make([]resolvePlanDTO, 0, len(resolved.Plans))
+	for _, p := range resolved.Plans {
+		plans = append(plans, toResolvePlanDTO(p))
+	}
+	apiutil.OK(c, resolveResponse{
+		OK:        true,
+		Plans:     plans,
+		Warnings:  resolved.Warnings,
+		Timestamp: h.clock.Now().UTC().Format(time.RFC3339Nano),
+	})
 }
 
 // BindingsCreate is the HTTP handler for POST /api/media-memory/bindings.

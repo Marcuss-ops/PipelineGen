@@ -222,6 +222,12 @@ type MediaBinding struct {
 // godlike/07 NO-FAKE-AVAILABILITY: rights-uncertain candidates stay
 // in Cold tier until RightsValidator verifies them. The ranker MUST
 // apply rights_penalty for RightsStatus != RightsVerified.
+//
+// MediaType is the canonical wire-mirrored media category used by
+// the ranker gates (aspect-ratio / format checks). Values follow
+// the canonical search.Candidate.MediaType vocabulary (video /
+// image / audio / music). Empty string is treated as ambiguous and
+// bypasses the gate (legacy rows pending backfill).
 type MediaCandidate struct {
 	ID                    string
 	Provider              string
@@ -230,6 +236,7 @@ type MediaCandidate struct {
 	ThumbnailURL          string
 	Title                 string
 	Description           string
+	MediaType             string // "video" / "image" / "audio" / "music" or "" (legacy ambiguous)
 	DurationMs            int64
 	CandidateScore        float64
 	RightsStatus          RightsStatus
@@ -293,12 +300,17 @@ type SceneVisualPlan struct {
 
 // ResolvePolicy bundles the controller knobs that VisualResolver
 // reads on each Resolve call.
+//
+// godlike/06 SSOT: the MaxExternalMaterializations knob was
+// retired in Fase 1.5 cleanup — materialization is owned by the
+// BatchService.MaterializeTopK path (BatchSpec.MaterializeTopK),
+// not by per-request policy. The remaining knobs are the live
+// controls the dashboard preview / API consumers supply.
 type ResolvePolicy struct {
-	PreferApprovedBindings      bool
-	AllowExternalSearch         bool
-	MaxCandidatesPerSlot        int
-	MaxExternalMaterializations int
-	AvoidRecentAssets           bool
+	PreferApprovedBindings bool
+	AllowExternalSearch    bool
+	MaxCandidatesPerSlot   int
+	AvoidRecentAssets      bool
 }
 
 // ResolveRequest is the top-level controller input to the resolver.
