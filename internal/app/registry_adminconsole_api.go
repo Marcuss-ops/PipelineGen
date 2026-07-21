@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/api/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -237,7 +240,10 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		Repository: &adminconsole.Adapter{},
 	})
 
-	svc := adminconsole.NewService(reg)
+	auditStore := adminconsolesqlite.NewAuditStore(root.DB.DB)
+	versionStore := adminconsolesqlite.NewVersionStore(root.DB.DB)
+
+	svc := adminconsole.NewService(reg, auditStore, versionStore)
 	desc := adminconsoleapi.Build(svc, log)
 
 	if err := tryRegisterModuleStrict(registry, log, desc, WithRegistrationPoint("register.AdminConsole")); err != nil {

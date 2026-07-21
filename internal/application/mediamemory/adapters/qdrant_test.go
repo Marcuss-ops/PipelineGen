@@ -140,7 +140,7 @@ func (mq *mockQdrantServer) handle(w http.ResponseWriter, r *http.Request) {
 			mq.points[coll] = bucket
 		}
 		for _, p := range req.Points {
-			bucket[p.ID] = p
+			bucket[p.ID] = p.Payload
 		}
 		fmt.Fprint(w, `{"result":{"status":"ok"}}`)
 		return
