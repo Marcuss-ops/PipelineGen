@@ -617,6 +617,13 @@ var (
 	ErrInvalidBindingInput = errors.New(
 		"mediamemory: binding input missing required field(s) (concept_id / asset_id / slot_kind)",
 	)
+	// ErrBindingMutationDispatcherUnavailable is the canonical sentinel
+	// returned when BindingService detects that the canonical
+	// BindingMutationDispatcher was not wired at composition time. A nil
+	// dispatcher must never be treated as a silent no-op.
+	ErrBindingMutationDispatcherUnavailable = errors.New(
+		"mediamemory: BindingMutationDispatcher unavailable",
+	)
 	// ErrSemanticNotConfigured is the canonical sentinel for a
 	// missing/broken semantic backend at the mediamemory
 	// capability boundary (godlike/07 NO-FAKE-AVAILABILITY —

@@ -11,6 +11,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -103,8 +104,7 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 	)
 
 	if p.ConceptID == "" {
-		log.Info("binding.index.requested: no concept_id in payload; nothing to reindex")
-		return nil
+		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing concept_id"))
 	}
 
 	if h.indexer == nil {
@@ -116,7 +116,7 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 
 	concept, err := h.concepts.FindByID(ctx, p.ConceptID)
 	if err != nil {
-		if err == mediamemory.ErrConceptNotFound {
+		if errors.Is(err, mediamemory.ErrConceptNotFound) {
 			return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: concept %q not found", p.ConceptID))
 		}
 		return fmt.Errorf("binding.index.requested: find concept %q: %w", p.ConceptID, err)

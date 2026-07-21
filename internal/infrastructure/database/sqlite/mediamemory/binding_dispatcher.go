@@ -97,6 +97,9 @@ func (d *BindingDispatcher) DeleteBinding(ctx context.Context, id, conceptID str
 	if id == "" {
 		return fmt.Errorf("BindingDispatcher.DeleteBinding: id is required")
 	}
+	if conceptID == "" {
+		return fmt.Errorf("BindingDispatcher.DeleteBinding: concept_id is required")
+	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
 		if err := d.primitives.DeleteBindingTx(ctx, tx, id); err != nil {

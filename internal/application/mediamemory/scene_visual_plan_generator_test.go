@@ -21,6 +21,7 @@ package mediamemory
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -78,6 +79,12 @@ func (noopBindingRepository) ListByAsset(context.Context, string) ([]MediaBindin
 func (noopBindingRepository) Delete(context.Context, string) error {
 	panic("noopBindingRepository.Delete: unused in current test scope")
 }
+func (noopBindingRepository) UpsertBindingTx(context.Context, *sql.Tx, MediaBinding) (MediaBinding, error) {
+	panic("noopBindingRepository.UpsertBindingTx: unused in current test scope")
+}
+func (noopBindingRepository) DeleteBindingTx(context.Context, *sql.Tx, string) error {
+	panic("noopBindingRepository.DeleteBindingTx: unused in current test scope")
+}
 
 // fakeBindingsRepoForGenerator is the Fase 4.3 ListApprovedByConcept fake
 // used by lookupPrimaryBinding-wired tests. godlike/06 SSOT
@@ -117,6 +124,12 @@ func (f *fakeBindingsRepoForGenerator) ListByAsset(context.Context, string) ([]M
 }
 func (f *fakeBindingsRepoForGenerator) Delete(context.Context, string) error {
 	panic("fakeBindingsRepo.Delete: unused in current test scope")
+}
+func (f *fakeBindingsRepoForGenerator) UpsertBindingTx(context.Context, *sql.Tx, MediaBinding) (MediaBinding, error) {
+	panic("fakeBindingsRepo.UpsertBindingTx: unused in current test scope")
+}
+func (f *fakeBindingsRepoForGenerator) DeleteBindingTx(context.Context, *sql.Tx, string) error {
+	panic("fakeBindingsRepo.DeleteBindingTx: unused in current test scope")
 }
 
 // ── Test 1: DefaultLayoutForSlot canonical mapping ────────────────

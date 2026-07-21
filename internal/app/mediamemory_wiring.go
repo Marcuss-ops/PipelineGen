@@ -154,13 +154,14 @@ func anyToZap(kv []any) []zap.Field {
 	if len(kv) == 0 {
 		return nil
 	}
-	fields := make([]zap.Field, 0, len(kv)/2)
-	for i := 0; i+1 < len(kv); i += 2 {
-		key, ok := kv[i].(string)
-		if !ok {
-			continue
+	fields := make([]zap.Field, 0, (len(kv)+1)/2)
+	for i := 0; i < len(kv); i += 2 {
+		key := fmt.Sprint(kv[i])
+		if i+1 < len(kv) {
+			fields = append(fields, zap.Any(key, kv[i+1]))
+		} else {
+			fields = append(fields, zap.String(key, "<missing value>"))
 		}
-		fields = append(fields, zap.Any(key, kv[i+1]))
 	}
 	return fields
 }
