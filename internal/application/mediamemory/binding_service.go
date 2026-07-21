@@ -22,6 +22,8 @@ package mediamemory
 import (
 	"context"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/mutations"
 )
 
 // BindingService is the canonical port for media_bindings
@@ -62,16 +64,24 @@ type BindingService interface {
 // defaultBindingService is the canonical implementation of
 // BindingService.
 type defaultBindingService struct {
-	concepts ConceptRepository
-	bindings BindingRepository
-	log      Logger
-	clock    Clock
+	concepts   ConceptRepository
+	bindings   BindingRepository
+	dispatcher mutations.BindingMutationDispatcher
+	log        Logger
+	clock      Clock
 }
 
 // NewDefaultBindingService constructs the service with the canonical
-// (concepts, bindings) dependency set. Composition root wires the
-// SQLite repos in Phase 1.2.
-func NewDefaultBindingService(concepts ConceptRepository, bindings BindingRepository, log Logger, clock Clock) *defaultBindingService {
+// (concepts, bindings, dispatcher) dependency set. Composition root
+// wires the SQLite repos and the canonical BindingMutationDispatcher in
+// Phase 1.2.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: dispatcher is MANDATORY. Passing nil
+// makes every write method fail with
+// ErrBindingMutationDispatcherUnavailable, so a mis-wired composition
+// root is caught immediately instead of silently writing without the
+// outbox.
+func NewDefaultBindingService(concepts ConceptRepository, bindings BindingRepository, dispatcher mutations.BindingMutationDispatcher, log Logger, clock Clock) *defaultBindingService {
 	if log == nil {
 		log = NoopLogger()
 	}
@@ -79,10 +89,11 @@ func NewDefaultBindingService(concepts ConceptRepository, bindings BindingReposi
 		clock = RealClock()
 	}
 	return &defaultBindingService{
-		concepts: concepts,
-		bindings: bindings,
-		log:      log,
-		clock:    clock,
+		concepts:   concepts,
+		bindings:   bindings,
+		dispatcher: dispatcher,
+		log:        log,
+		clock:      clock,
 	}
 }
 
@@ -143,6 +154,9 @@ func applyDefaults(b *MediaBinding, clock Clock) {
 // typed-sentinel envelope so the API handler can map it to a
 // correct HTTP status (400 for SlotKind/Concept, 409 for Duplicate).
 func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (MediaBinding, error) {
+	if s.dispatcher == nil {
+		return MediaBinding{}, fmt.Errorf("mediamemory: create binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+	}
 	if !IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: create binding slot_kind=%q: %w",
@@ -168,7 +182,7 @@ func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (Med
 		)
 	}
 	applyDefaults(&b, s.clock)
-	return s.bindings.Upsert(ctx, b)
+	return s.dispatcher.UpsertBinding(ctx, b)
 }
 
 // Update mutates an existing binding. Approval-only updates MUST
@@ -176,6 +190,9 @@ func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (Med
 // trail; the dashboard's "approve this binding" button calls
 // Approve, not Update with ApprovalStatus=approved).
 func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (MediaBinding, error) {
+	if s.dispatcher == nil {
+		return MediaBinding{}, fmt.Errorf("mediamemory: update binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+	}
 	if !IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: update binding slot_kind=%q: %w",
@@ -189,23 +206,37 @@ func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (Med
 		)
 	}
 	b.UpdatedAt = s.clock.Now().UTC()
-	return s.bindings.Upsert(ctx, b)
+	return s.dispatcher.UpsertBinding(ctx, b)
 }
 
 // Delete is provided for admin reindex flows (dashboard "remove
 // binding"). The Phase-3 linker NEVER deletes (auto discovery is
 // append-only; corrections are a re-Approve or new OriginManual).
 func (s *defaultBindingService) Delete(ctx context.Context, id string) error {
+	if s.dispatcher == nil {
+		return fmt.Errorf("mediamemory: delete binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+	}
 	if id == "" {
 		return fmt.Errorf("mediamemory: delete binding missing id: %w", ErrBindingNotFound)
 	}
-	return s.bindings.Delete(ctx, id)
+	// Read the binding before deletion to propagate concept_id to the
+	// async outbox event. The binding row may already be gone in a
+	// concurrent delete; that race is surfaced as ErrBindingNotFound
+	// and the caller can retry.
+	b, err := s.bindings.FindByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("mediamemory: delete binding read %q: %w", id, err)
+	}
+	return s.dispatcher.DeleteBinding(ctx, id, b.ConceptID)
 }
 
 // Approve sets ApprovalStatus=ApprovalApproved. Preserves the
 // existing usage_count + last_used_at + origin (godlike/06 SSOT:
 // the canonical "approve" flow is a status flip, not a reset).
 func (s *defaultBindingService) Approve(ctx context.Context, id string) error {
+	if s.dispatcher == nil {
+		return fmt.Errorf("mediamemory: approve binding %q: %w", id, mutations.ErrBindingMutationDispatcherUnavailable)
+	}
 	b, err := s.bindings.FindByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("mediamemory: approve binding %q: %w", id, err)
@@ -215,7 +246,7 @@ func (s *defaultBindingService) Approve(ctx context.Context, id string) error {
 		b.Origin = OriginManual
 	}
 	b.UpdatedAt = s.clock.Now().UTC()
-	if _, err := s.bindings.Upsert(ctx, b); err != nil {
+	if _, err := s.dispatcher.UpsertBinding(ctx, b); err != nil {
 		return fmt.Errorf("mediamemory: approve binding %q: %w", id, err)
 	}
 	return nil
@@ -231,6 +262,9 @@ func (s *defaultBindingService) Approve(ctx context.Context, id string) error {
 // status flip is NOT a reset — usage_count / last_used_at /
 // success_score / manual scores are preserved.
 func (s *defaultBindingService) Reject(ctx context.Context, id string) error {
+	if s.dispatcher == nil {
+		return fmt.Errorf("mediamemory: reject binding %q: %w", id, mutations.ErrBindingMutationDispatcherUnavailable)
+	}
 	b, err := s.bindings.FindByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("mediamemory: reject binding %q: %w", id, err)
@@ -240,7 +274,7 @@ func (s *defaultBindingService) Reject(ctx context.Context, id string) error {
 		b.Origin = OriginManual
 	}
 	b.UpdatedAt = s.clock.Now().UTC()
-	if _, err := s.bindings.Upsert(ctx, b); err != nil {
+	if _, err := s.dispatcher.UpsertBinding(ctx, b); err != nil {
 		return fmt.Errorf("mediamemory: reject binding %q: %w", id, err)
 	}
 	return nil
