@@ -103,7 +103,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		enrichState = esm
 	}
-	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, nil, enrichState, params.log)
+	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, params.mutationsDisp, enrichState, params.log)
 
 	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(
