@@ -123,8 +123,13 @@ func TestDiscoveryWorker_DoesNotSetAssetIDOnPersistedCandidates(t *testing.T) {
 						Title:           "Maya pyramid 2",
 						DurationMs:      12000,
 						RightsStatus:    RightsUnknown,
-						// AssetID correctly empty; RIGHTS_STATUS == UNKNOWN is
-						// allowed (ranker applies rights_penalty).
+						// AssetID correctly empty; RightsUnknown is still
+						// persisted by the discovery worker (which only
+						// drops RightsDenied/RightsExpired at the gate).
+						// At the ranker.Filter level (godlike/07 Fase 1.5
+						// fail-closed) the resolver flags MissingRights=true
+						// and PopulateRightsPenalty assigns 1.0, so the
+						// candidate is excluded from top-K auto-promotion.
 					},
 				},
 			},
@@ -185,7 +190,7 @@ func TestDiscoveryWorker_DropsDeniedAndExpiredRights(t *testing.T) {
 					{Provider: "youtube", ProviderAssetID: "yt-3", SourceURL: "https://yt/3",
 						RightsStatus: RightsExpired}, // dropped
 					{Provider: "youtube", ProviderAssetID: "yt-4", SourceURL: "https://yt/4",
-						RightsStatus: RightsUnknown}, // allowed (ranker rights_penalty)
+						RightsStatus: RightsUnknown}, // discovery worker persists; ranker.Filter drops (godlike/07 Fase 1.5)
 				},
 			},
 		},

@@ -13,15 +13,25 @@
 //	            - repetition_penalty
 //	            - rights_penalty
 //
-// Mandatory pre-rank filters (godlike/07):
+// Mandatory pre-rank filters (godlike/07) — CANONICAL seven gates
+// (Fase 1.5 SSOT, architecture-doc section 11):
 //
-//   - licenza valida
-//   - media disponibile
-//   - durata valida
-//   - formato supportato
-//   - aspect ratio compatibile
-//   - nessun file corrotto
-//   - nessun duplicato
+//  1. valid_license        — RightsStatus == RightsVerified
+//  2. available_media      — MaterializationStatus ∈ {Warm, Hot}
+//  3. valid_duration       — DurationMs >= 0
+//  4. supported_format     — MediaType ∈ {video, image, audio, music}
+//     (empty MediaType is the legacy ambiguous
+//     sentinel and bypasses the gate for
+//     forward-compat)
+//  5. compatible_aspect    — AspectRatioW/AspectRatioH ∈ canonical set
+//  6. no_corruption        — IntegrityChecked == true
+//  7. no_duplicates        — DuplicateOfAssetID == ""
+//
+// godlike/06 SSOT (gate order): RunMandatoryGates evaluates gates in
+// the canonical order above so log scans + dashboard diagnostics
+// see a stable drop reason. Format precedes aspect because aspect
+// ratio is a structural property of visual media only (audio has
+// no aspect ratio).
 //
 // godlike/06 SSOT (extension point): new ranking modes plug in via
 // RankingStrategy registered in registry.go. The default weights
@@ -713,20 +723,31 @@ func ComputeDurationFit(sceneDurationMs, bindingDurationMs int64) float64 {
 
 // PopulateRightsPenalty applies the canonical per-RightsStatus
 // penalty stamp onto RankingInput.RightsPenalty. godlike/06 SSOT
-// (closed-set mapping):
+// (closed-set mapping) — godlike/07 fail-closed (Fase 1.5):
 //
-//	RightsVerified → 0.0  (no penalty; godlike/07 fail-closed →
-//	                    the ranker's MissingRights gate already
-//	                    rejects Verified-with-unknown-bridge
-//	                    candidates upstream)
-//	RightsUnknown  → 0.10 (uncertain; mild penalty so a verified
-//	                    competitor outranks without auto-drop)
+//	RightsVerified → 0.0  (no penalty; Resolver MissingRights gate
+//	                    already rejects non-Verified upstream as
+//	                    defense in depth — this path is the
+//	                    happy-case)
+//	RightsUnknown  → 1.0  (FAIL-CLOSED: unverified rights receive
+//	                    full penalty, guaranteeing VerdictDrop.
+//	                    The Hot-tier guard in batch_service.
+//	                    MarkMaterialized already requires RightsVerified
+//	                    for promotion; this penalty is the
+//	                    ranker's second-line guarantee so a
+//	                    candidate slipping past Filter still
+//	                    cannot auto-promote to Hot.)
 //	RightsDenied   → 1.0  (full penalty; guarantees VerdictDrop
-//	                    — but the MissingRights gate in Filter
-//	                    already rejects this case upstream)
-//	RightsExpired  → 0.20 (expired; moderate penalty so the
-//	                    caller can still surface if a refresh
-//	                    arrives before the final verdict)
+//	                    — the MissingRights gate in Filter already
+//	                    rejects this case upstream)
+//	RightsExpired  → 1.0  (FAIL-CLOSED: expired rights also
+//	                    receive full penalty per Fase 1.5
+//	                    godlike/07 policy — the architecture
+//	                    doc treats unverified/expired/denied
+//	                    uniformly as "no positive rights
+//	                    attestation" and the ranker must not
+//	                    promote them. The caller MUST refresh
+//	                    rights_status before the next render.)
 //
 // godlike/06 SSOT (immutable input contract, mirrors
 // PopulateRepetitionPenalty): the function does NOT mutate the
@@ -739,12 +760,15 @@ func PopulateRightsPenalty(inputs []RankingInput) []RankingInput {
 		switch in.Candidate.RightsStatus {
 		case RightsVerified:
 			in.RightsPenalty = 0.0
-		case RightsUnknown:
-			in.RightsPenalty = 0.10
-		case RightsDenied:
+		case RightsUnknown, RightsDenied, RightsExpired:
+			// godlike/07 fail-closed (Fase 1.5): any
+			// non-Verified rights status applies full
+			// penalty. The MissingRights filter gate
+			// already drops these upstream; this
+			// penalty is the second-line guarantee
+			// so no candidate with unverified/expired/
+			// denied rights can sneak into Hot.
 			in.RightsPenalty = 1.0
-		case RightsExpired:
-			in.RightsPenalty = 0.20
 		}
 		out = append(out, in)
 	}
@@ -788,13 +812,19 @@ const (
 	// GateAvailableMedia — MaterializationStatus MUST be Warm
 	// or Hot (Cold / Failed drop).
 	GateAvailableMedia PreRankGate = "available_media"
-	// GateValidDuration — DurationMs MUST be positive.
+	// GateValidDuration — DurationMs MUST be non-negative
+	// (DurationMs == 0 is the canonical image/document
+	// binding sentinel per HasValidDuration so 0 is accepted).
 	GateValidDuration PreRankGate = "valid_duration"
+	// GateSupportedFormat — MediaType MUST be in the canonical
+	// set {video, image, audio, music}. Empty MediaType is the
+	// legacy ambiguous sentinel and bypasses the gate
+	// (forward-compat for pre-Fase-1.5 fixtures).
+	GateSupportedFormat PreRankGate = "supported_format"
 	// GateCompatibleAspect — AspectRatioW / AspectRatioH MUST
-	// be 16:9 / 4:3 / 1:1 / 9:16 (canonical set); MediaType
-	// MUST be in the canonical set (video / image / audio /
-	// music); empty MediaType is the legacy ambiguous sentinel
-	// and bypasses the gate (forward-pointer to migration).
+	// be 16:9 / 4:3 / 1:1 / 9:16 (canonical set). Folds
+	// MediaType out to GateSupportedFormat so each gate has a
+	// single owner per godlike/06 SSOT.
 	GateCompatibleAspect PreRankGate = "compatible_aspect"
 	// GateNoCorruption — IntegrityChecked MUST be true.
 	GateNoCorruption PreRankGate = "no_corruption"
@@ -802,27 +832,37 @@ const (
 	GateNoDuplicates PreRankGate = "no_duplicates"
 )
 
-// RunMandatoryGates applies the six pre-rank gates to a candidate
-// and returns the first failing gate (empty string = all passed).
-// godlike/06 SSOT (narrow contract): the helper is math-only
-// (no IO); the resolver pre-populates the four boolean flags on
-// FilteredCandidate + the two numeric fields on MediaCandidate
-// before calling this helper. godlike/07 NO-FAKE-AVAILABILITY:
-// a candidate failing ANY gate MUST NOT proceed to Score.
+// RunMandatoryGates applies the canonical seven pre-rank gates
+// (Fase 1.5 SSOT) and returns the first failing gate (empty
+// string = all passed). godlike/06 SSOT (narrow contract): the
+// helper is math-only (no IO); the resolver pre-populates the
+// four boolean flags on FilteredCandidate + the structural fields
+// on MediaCandidate before calling this helper. godlike/07
+// NO-FAKE-AVAILABILITY: a candidate failing ANY gate MUST NOT
+// proceed to Score.
 //
-// The four FilteredCandidate flags (IsDuplicate, MissingRights,
-// AspectMismatch, Contaminated) cover the four gates that the
-// resolver already computes upstream; the two materialization /
-// duration gates are checked here directly against MediaCandidate.
+// Gate evaluation order is canonical (matches the constants'
+// declaration order):
+//  1. GateNoDuplicates    (IsDuplicate flag)
+//  2. GateValidLicense    (MissingRights flag — set by resolver
+//     when RightsStatus != RightsVerified)
+//  3. GateNoCorruption    (Contaminated flag — set by the
+//     integrity checker worker)
+//  4. GateAvailableMedia  (MaterializationStatus, computed here)
+//  5. GateValidDuration   (DurationMs, computed here)
+//  6. GateSupportedFormat (MediaType, computed here; Fase 1.5)
+//  7. GateCompatibleAspect (AspectMismatch flag — set by resolver)
+//
+// Flags 2, 6, 7 are resolver-set; flags 1, 3 are worker-set;
+// fields 4, 5 are computed in this helper against MediaCandidate.
+// godlike/06 SSOT (single owner per fact): every gate has exactly
+// one computation site, here.
 func RunMandatoryGates(fc FilteredCandidate) PreRankGate {
 	if fc.IsDuplicate {
 		return GateNoDuplicates
 	}
 	if fc.MissingRights {
 		return GateValidLicense
-	}
-	if fc.AspectMismatch {
-		return GateCompatibleAspect
 	}
 	if fc.Contaminated {
 		return GateNoCorruption
@@ -833,5 +873,39 @@ func RunMandatoryGates(fc FilteredCandidate) PreRankGate {
 	if !HasValidDuration(fc.Candidate) {
 		return GateValidDuration
 	}
+	if !HasSupportedFormat(fc.Candidate) {
+		return GateSupportedFormat
+	}
+	if fc.AspectMismatch {
+		return GateCompatibleAspect
+	}
 	return ""
+}
+
+// HasSupportedFormat reports whether a candidate's MediaType is in
+// the canonical supported-set {video, image, audio, music}.
+// godlike/06 SSOT (canonical format set): adding a new supported
+// MediaType requires both a code change here AND an update to the
+// IsKnownMediaType helper (per the architectural doc section 11).
+//
+// godlike/06 SSOT (forward-compat bypass): empty MediaType is the
+// legacy ambiguous sentinel for candidates produced before the
+// MediaType field was populated; the gate bypasses so historical
+// fixtures remain testable until a Fase 1.x migration backfills
+// MediaType. A future Fase draft may flip the empty-string branch
+// to fail-closed once all upstream discovery workers emit MediaType.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a non-canonical MediaType (e.g.
+// "vrm", "raw", "") used to be passed silently; now this helper
+// gates it so the ranker never credits an unknown MediaType.
+func HasSupportedFormat(c MediaCandidate) bool {
+	if c.MediaType == "" {
+		return true // legacy ambiguous sentinel bypass
+	}
+	switch c.MediaType {
+	case "video", "image", "audio", "music":
+		return true
+	default:
+		return false
+	}
 }
