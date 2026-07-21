@@ -320,6 +320,33 @@ type Layer struct {
 	Provider string
 }
 
+// SceneIntent captures what the brain understood about a scene.
+// It mirrors the brain's VisualIntent without importing the brain
+// package into the mediamemory SSOT.
+type SceneIntent struct {
+	Entities []string
+	Concepts []string
+	Actions  []string
+	Keywords []string
+}
+
+// SceneBackendCall records one backend invocation performed by the
+// brain for a scene. It mirrors brain.BackendCall.
+type SceneBackendCall struct {
+	Backend string
+	Hits    int
+	Error   string
+}
+
+// SceneResolutionTrace records how the brain arrived at its
+// decisions for a scene. It mirrors brain.ResolutionTrace, scoped
+// to the subset of fields useful for diagnostics on the wire.
+type SceneResolutionTrace struct {
+	NormalizedText string
+	BackendCalls   []SceneBackendCall
+	Reasons        []string
+}
+
 // SceneVisualPlan is the canonical output of the ranker, consumed
 // by the headless renderer. The plan carries 1–3 layers per scene
 // (godlike/06 SSOT: 1 ≤ len(Layers) ≤ 3 for current renderer).
@@ -331,6 +358,12 @@ type SceneVisualPlan struct {
 	DurationMs int64
 	Layers     []Layer
 	Source     string // "exact", "semantic", "local", "external", "mixed"
+	// Intent, Trace and DecisionFingerprint are produced by the
+	// brain-backed resolver to aid debugging. They are optional:
+	// the legacy VisualResolver leaves them zero-valued.
+	Intent              SceneIntent
+	Trace               SceneResolutionTrace
+	DecisionFingerprint string
 }
 
 // ResolvePolicy bundles the controller knobs that VisualResolver

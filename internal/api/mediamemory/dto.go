@@ -305,15 +305,41 @@ type resolveLayerDTO struct {
 	CandidateScore float64 `json:"candidate_score"`
 }
 
+// resolveIntentDTO exposes what the brain understood about a scene.
+type resolveIntentDTO struct {
+	Entities []string `json:"entities,omitempty"`
+	Concepts []string `json:"concepts,omitempty"`
+	Actions  []string `json:"actions,omitempty"`
+	Keywords []string `json:"keywords,omitempty"`
+}
+
+// resolveBackendCallDTO records one backend invocation performed
+// by the brain for a scene.
+type resolveBackendCallDTO struct {
+	Backend string `json:"backend"`
+	Hits    int    `json:"hits"`
+	Error   string `json:"error,omitempty"`
+}
+
+// resolveTraceDTO exposes the brain's decision trace for a scene.
+type resolveTraceDTO struct {
+	NormalizedText string                  `json:"normalized_text,omitempty"`
+	BackendCalls   []resolveBackendCallDTO `json:"backend_calls,omitempty"`
+	Reasons        []string                `json:"reasons,omitempty"`
+}
+
 // resolvePlanDTO is the per-scene plan projection.
 type resolvePlanDTO struct {
-	ProjectID  string            `json:"project_id"`
-	SceneID    string            `json:"scene_id"`
-	Text       string            `json:"text"`
-	Language   string            `json:"language"`
-	DurationMs int64             `json:"duration_ms"`
-	Layers     []resolveLayerDTO `json:"layers"`
-	Source     string            `json:"source"`
+	ProjectID           string            `json:"project_id"`
+	SceneID             string            `json:"scene_id"`
+	Text                string            `json:"text"`
+	Language            string            `json:"language"`
+	DurationMs          int64             `json:"duration_ms"`
+	Layers              []resolveLayerDTO `json:"layers"`
+	Source              string            `json:"source"`
+	Intent              *resolveIntentDTO `json:"intent,omitempty"`
+	Trace               *resolveTraceDTO  `json:"trace,omitempty"`
+	DecisionFingerprint string            `json:"decision_fingerprint,omitempty"`
 }
 
 // resolveResponse is the canonical 2xx response envelope.
@@ -341,14 +367,58 @@ func toResolvePlanDTO(p mediamemory.SceneVisualPlan) resolvePlanDTO {
 			CandidateScore: l.CandidateScore,
 		})
 	}
+
 	return resolvePlanDTO{
-		ProjectID:  p.ProjectID,
-		SceneID:    p.SceneID,
-		Text:       p.Text,
-		Language:   p.Language,
-		DurationMs: p.DurationMs,
-		Layers:     layers,
-		Source:     p.Source,
+		ProjectID:           p.ProjectID,
+		SceneID:             p.SceneID,
+		Text:                p.Text,
+		Language:            p.Language,
+		DurationMs:          p.DurationMs,
+		Layers:              layers,
+		Source:              p.Source,
+		Intent:              intentToDTO(p.Intent),
+		Trace:               traceToDTO(p.Trace),
+		DecisionFingerprint: p.DecisionFingerprint,
+	}
+}
+
+// intentToDTO returns a pointer only when the intent carries
+// information. This keeps the JSON response backward-compatible:
+// legacy callers see no `intent` key when the brain left it empty.
+func intentToDTO(in mediamemory.SceneIntent) *resolveIntentDTO {
+	if len(in.Entities) == 0 && len(in.Concepts) == 0 &&
+		len(in.Actions) == 0 && len(in.Keywords) == 0 {
+		return nil
+	}
+	return &resolveIntentDTO{
+		Entities: in.Entities,
+		Concepts: in.Concepts,
+		Actions:  in.Actions,
+		Keywords: in.Keywords,
+	}
+}
+
+// traceToDTO returns a pointer only when the trace carries
+// information. This keeps the JSON response backward-compatible:
+// legacy callers see no `trace` key when the brain left it empty.
+func traceToDTO(in mediamemory.SceneResolutionTrace) *resolveTraceDTO {
+	hasBackendCall := len(in.BackendCalls) > 0
+	hasReasons := len(in.Reasons) > 0
+	if in.NormalizedText == "" && !hasBackendCall && !hasReasons {
+		return nil
+	}
+	backendCalls := make([]resolveBackendCallDTO, 0, len(in.BackendCalls))
+	for _, call := range in.BackendCalls {
+		backendCalls = append(backendCalls, resolveBackendCallDTO{
+			Backend: call.Backend,
+			Hits:    call.Hits,
+			Error:   call.Error,
+		})
+	}
+	return &resolveTraceDTO{
+		NormalizedText: in.NormalizedText,
+		BackendCalls:   backendCalls,
+		Reasons:        in.Reasons,
 	}
 }
 

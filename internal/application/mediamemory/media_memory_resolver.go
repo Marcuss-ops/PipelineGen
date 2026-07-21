@@ -164,6 +164,31 @@ func toMediaMemorySceneVisualPlan(req ResolveRequest, scene brain.SceneVisualPla
 	}
 
 	plan.Source = deriveSource(sourceSet)
+
+	// Surface the brain's understanding and decision trace for
+	// diagnostics. These fields are optional for backward
+	// compatibility; zero values are valid for legacy resolvers.
+	plan.Intent = SceneIntent{
+		Entities: scene.Intent.Entities,
+		Concepts: scene.Intent.Concepts,
+		Actions:  scene.Intent.Actions,
+		Keywords: scene.Intent.Keywords,
+	}
+	backendCalls := make([]SceneBackendCall, 0, len(scene.Trace.BackendCalls))
+	for _, call := range scene.Trace.BackendCalls {
+		backendCalls = append(backendCalls, SceneBackendCall{
+			Backend: call.Backend,
+			Hits:    call.Hits,
+			Error:   call.Error,
+		})
+	}
+	plan.Trace = SceneResolutionTrace{
+		NormalizedText: scene.Trace.NormalizedText,
+		BackendCalls:   backendCalls,
+		Reasons:        scene.Trace.Reasons,
+	}
+	plan.DecisionFingerprint = scene.DecisionFingerprint
+
 	return plan
 }
 
