@@ -45,6 +45,11 @@ func NewBindingsRepository(db *sql.DB) mediamemory.BindingRepository {
 // canonical port. Drift is a build error.
 var _ mediamemory.BindingRepository = (*bindingsRepository)(nil)
 
+// Compile-time assertion: bindingsRepository also satisfies the
+// infrastructure-level primitive surface used by the canonical
+// BindingMutationDispatcher.
+var _ BindingMutationPrimitives = (*bindingsRepository)(nil)
+
 const bindingsSelectColumns = `id, concept_id, asset_id, start_ms, end_ms,
 		slot_kind, origin, approval_status, provider,
 		manual_score, semantic_score, quality_score, success_score,

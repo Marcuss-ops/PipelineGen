@@ -136,7 +136,11 @@ func WireBindingService(
 ) mediamemory.BindingService {
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
-	dispatcher := sqliteMediaMemory.NewBindingDispatcher(bindings, outboxRepo, txmgr)
+	primitives, ok := bindings.(sqliteMediaMemory.BindingMutationPrimitives)
+	if !ok {
+		panic("mediamemory: bindings repository must implement BindingMutationPrimitives")
+	}
+	dispatcher := sqliteMediaMemory.NewBindingDispatcher(primitives, outboxRepo, txmgr)
 	return mediamemory.NewDefaultBindingService(concepts, bindings, dispatcher, mediamemoryZapLogger{log}, mediamemory.RealClock())
 }
 
