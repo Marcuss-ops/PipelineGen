@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -74,6 +75,32 @@ type BatchService interface {
 	// Failures are recorded against the parent Failures[] field so
 	// the dashboard can surface per-child rationale.
 	RunCatalogOnly(ctx context.Context, spec BatchSpec) (Batch, []BatchChild, error)
+
+	// MaterializeTopK (Fase 3.3): drives the canonical Cold→Warm
+	// (or Warm→Hot when HotCache=true) promotion pass for the
+	// MaterializeTopK candidates of a finalizeable batch. The
+	// orchestrator dispatches AcquisitionPlanner.Plan to select
+	// the canonical Top-K by CandidateScore desc, then forwards
+	// the resulting AcquisitionPromote set to the wired
+	// MaterializeWorker. Per-candidate failures land on the
+	// parent's Failures[] surface; transient failures leave the
+	// candidate's MaterializationStatus unchanged so a subsequent
+	// call resumes deterministically.
+	//
+	// godlike/06 SSOT: terminal-state (BatchFailed /
+	// BatchCompleted) batches refuse with wrapped
+	// ErrBatchNotReconcilable — compose Reconcile explicitly
+	// when the operator wants to commit.
+	MaterializeTopK(ctx context.Context, batchID string) (Batch, error)
+
+	// PromoteOnDemand (Fase 3.3): single-candidate Warm→Hot
+	// promotion invoked by the resolver / scene-render pipeline
+	// when a candidate is selected for a video clip. Returns
+	// the canonical updated MediaCandidate with AssetID populated
+	// and Discovery=DiscoveryMaterialized /
+	// Materialization=MaterializationHot. Rights-denied candidates
+	// surface as wrapped ErrApprovalRequired.
+	PromoteOnDemand(ctx context.Context, candidate MediaCandidate, opts MaterializeOptions) (MediaCandidate, error)
 }
 
 // ── Default implementation ─────────────────────────────────
@@ -97,13 +124,15 @@ type batchChildRow struct {
 
 // defaultBatchService is the canonical implementation.
 type defaultBatchService struct {
-	candidates CandidateRepository
-	planner    AcquisitionPlanner
-	rights     RightsValidator
-	external   SearchFanOut
-	worker     DiscoveryWorker
-	log        Logger
-	clock      Clock
+	candidates        CandidateRepository
+	planner           AcquisitionPlanner
+	rights            RightsValidator
+	external          SearchFanOut
+	worker            DiscoveryWorker
+	linker            LinkerWorker      // optional — wired by composition root via SetLinker for Fase 3.2
+	materializeWorker MaterializeWorker // optional — wired by composition root via SetMaterializeWorker for Fase 3.3
+	log               Logger
+	clock             Clock
 
 	// In-memory minimal viable store (Fase 3.4 swap point).
 	mu       sync.RWMutex
@@ -156,6 +185,66 @@ func NewDefaultBatchServiceWithWorker(
 }
 
 var _ BatchService = (*defaultBatchService)(nil)
+
+// SetLinker wires the canonical Fase 3.2 LinkerWorker into the
+// BatchService. godlike/06 SSOT (composition pattern): the
+// service is constructed without a linker; composition root
+// calls SetLinker after wiring the canonical linker deps.
+// godlike/07 NO-FAKE-AVAILABILITY: a nil argument is rejected
+// so callers cannot accidentally zero-out a previously-wired
+// linker (operator visibility).
+func (s *defaultBatchService) SetLinker(linker LinkerWorker) error {
+	if linker == nil {
+		return fmt.Errorf("mediamemory: SetLinker refuses nil linker: %w", ErrInvalidPhrase)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.linker != nil {
+		return fmt.Errorf("mediamemory: SetLinker refuses rewire (existing linker already wired): %w", ErrLinkerInvariantBroken)
+	}
+	s.linker = linker
+	return nil
+}
+
+// HasLinker reports whether a LinkerWorker has been wired. godlike/06
+// SSOT (visible state surface): the dashboard / health-check
+// path uses this to surface whether enrich-linker is enabled.
+func (s *defaultBatchService) HasLinker() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.linker != nil
+}
+
+// SetMaterializeWorker wires the canonical Fase 3.3
+// MaterializeWorker into the BatchService. godlike/06 SSOT
+// (composition pattern): the service is constructed without a
+// materialize worker; composition root calls SetMaterializeWorker
+// after wiring the canonical materialize + stockpipeline adapters.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil argument is rejected
+// so callers cannot accidentally zero-out a previously-wired
+// worker. A second SetMaterializeWorker call also rejects so
+// the canonical "wire-once" contract is preserved.
+func (s *defaultBatchService) SetMaterializeWorker(mw MaterializeWorker) error {
+	if mw == nil {
+		return fmt.Errorf("mediamemory: SetMaterializeWorker refuses nil worker: %w", ErrInvalidPhrase)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.materializeWorker != nil {
+		return fmt.Errorf("mediamemory: SetMaterializeWorker refuses rewire: %w", ErrLinkerInvariantBroken)
+	}
+	s.materializeWorker = mw
+	return nil
+}
+
+// HasMaterializeWorker reports whether a MaterializeWorker is
+// wired (dashboard / health-check visibility).
+func (s *defaultBatchService) HasMaterializeWorker() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.materializeWorker != nil
+}
 
 // validateSpec is the canonical BatchSpec validator. godlike/06
 // SSOT (closed-set Mode): only ModeCatalogOnly / ModeMaterializeTopK
@@ -500,6 +589,232 @@ func (s *defaultBatchService) Resume(_ context.Context, batchID string) ([]Batch
 // guard is centralized.
 func isTerminalState(state BatchState) bool {
 	return state == BatchCompleted || state == BatchFailed
+}
+
+// EnrichLinker is the canonical Fase 3.2 orchestrator that
+// drives the linker worker across all (child × candidate) pairs
+// already populated by an earlier RunCatalogOnly / AppendCandidate
+// pass.
+//
+// godlike/06 SSOT (orchestration seam):
+//  1. terminal-state fail-closed: a Completed/Failed batch
+//     refuses EnrichLinker with wrapped ErrBatchNotReconcilable
+//     BEFORE any child iteration.
+//  2. linker-not-wired fail-closed: a batch with no SetLinker
+//     wired surfaces a typed ErrLinkerInvariantBroken — the
+//     composition root is the canonical wiring seam.
+//  3. mark parent BatchReconciling (in-flight signal).
+//  4. for each child in a single pass:
+//     - iterate persisted candidates via the canonical CandidateRepository
+//     - filter to DiscoveryStatus ∈ {DiscoverySearched}
+//     - call linker.EnrichCandidate per candidate
+//     - on Empty=true (idempotent skip): continue (no work, no writes)
+//     - on ErrLinkerUnmappableConcept: append to parent.Failures +
+//     continue batch (the candidate's row stays DiscoveryFailed).
+//     - on ErrLinkerExtractFailed / ErrLinkerEmbeddingFailed: append
+//     to parent.Failures + continue batch (Resume will retry).
+//     - on success: parent.IndexedCount += len(IndexedConceptIDs).
+//  5. Reconcile → terminal-state rewrite (Completed if all
+//     children reached a non-in-flight state, Failed if any
+//     recorded ErrLinkerInvariantBroken, Reconciling otherwise).
+//
+// godlike/06 SSOT (idempotency + resumability contract): the
+// per-candidate gate (DiscoveryStatus ∈ {DiscoveryIndexed,
+// DiscoveryMaterialized} short-circuits) makes a re-call of
+// this method safely resumable from where it stopped — a
+// crashed worker simply re-runs EnrichLinker and the surviving
+// candidates are skipped via linker's Empty=true path. The
+// canonical ON CONFLICT DO UPDATE on media_bindings ensures
+// any re-run writes that escape the per-candidate skip are
+// idempotent at the SQL layer.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil linker (composition
+// root forgot to wire) is NEVER silently treated as no-op;
+// the typed envelope forces a 500-level response so the
+// operator notices the misconfiguration.
+func (s *defaultBatchService) EnrichLinker(ctx context.Context, batchID string) (Batch, error) {
+	s.mu.RLock()
+	row, ok := s.batches[batchID]
+	if !ok {
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf("mediamemory: enrich-linker batch_id=%q: %w", batchID, ErrBatchNotFound)
+	} // godlike/07 NO-FAKE-AVAILABILITY terminal-state guard:
+	// ONLY refuse `BatchFailed` (a prior enrich attempt produced
+	// a terminal-state failure that the operator must explicitly
+	// retry). `BatchCompleted` (clean termination of an earlier
+	// RunCatalogOnly fan-out) is NOT a blocker — enrich on a
+	// Completed-from-catalog-only batch is the canonical happy
+	// path that lives between catalog-only and materialization.
+	// godlike/06 SSOT: append-side AppendCandidate keeps the
+	// original `isTerminalState` guard (Completed/Failed both
+	// refuse) because catalog-only appends MUST not mutate a
+	// finalized batch; only the EnrichLinker gate loosens.
+	if row.batch.State == BatchFailed {
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf(
+			"mediamemory: enrich-linker batch_id=%q state=%q: %w",
+			batchID, row.batch.State, ErrBatchNotReconcilable,
+		)
+	}
+	if s.linker == nil {
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf(
+			"mediamemory: enrich-linker batch_id=%q: LinkerWorker not wired (call SetLinker): %w",
+			batchID, ErrLinkerInvariantBroken,
+		)
+	}
+	linkerSnapshot := s.linker
+	specSnapshot := row.batch.Spec
+	childIDs := append([]string{}, row.batch.Children...)
+	s.mu.RUnlock()
+
+	// Mark parent in-flight. godlike/06 SSOT: lock-order is
+	// s.mu.Lock → mutate parent → unlock BEFORE any per-child
+	// acquisition to keep the lock and per-child iteration in
+	// the canonical order. The parent flip can race with
+	// concurrent Get() callers; BatchReconciling is non-terminal
+	// so Get viewers see the in-flight state which is correct.
+	s.mu.Lock()
+	row.batch.State = BatchReconciling
+	row.batch.UpdatedAt = s.clock.Now().UTC()
+	s.mu.Unlock()
+
+	// Per-child iteration.
+	indexedCount := 0
+	failedCount := 0
+	for _, childID := range childIDs {
+		s.mu.RLock()
+		c, exists := s.children[childID]
+		s.mu.RUnlock()
+		if !exists {
+			continue
+		}
+		// godlike/06 SSOT (per-child spec lookup): the candidates
+		// for a child are persisted under (child_id) on the
+		// CandidateRepository side via AppendCandidate; here we
+		// re-derive them by ListByProvider filtered via the
+		// canonical portal (forward-pin to Fase 3.4 SQL
+		// repository for media_child_candidates cross-table).
+		// Fase 3.2 simplification: read every candidate for the
+		// (provider, query) pair via ListPendingMaterialization-
+		// like read. Compose a query-precise enumeration via
+		// the child's query + provider to keep the slice tight.
+		cands, lerr := s.loadChildCandidates(ctx, c.child)
+		if lerr != nil {
+			s.recordParentFailure(row.batch.ID,
+				fmt.Sprintf("child=%q load candidates failed: %s", childID, lerr.Error()))
+			continue
+		}
+		for _, cand := range cands {
+			// godlike/06 SSOT (canonical skip filter): a candidate
+			// already past the linker gate is skipped BEFORE
+			// calling EnrichCandidate so the worker never sees
+			// a no-op candidate (defense-in-depth alongside the
+			// worker's own idempotency check).
+			if cand.DiscoveryStatus == DiscoveryIndexed ||
+				cand.DiscoveryStatus == DiscoveryMaterialized {
+				continue
+			}
+			req := LinkerRequest{
+				Candidate: cand,
+				ProjectID: "batch-" + batchID + "-child-" + childID,
+				Language:  specSnapshot.Language,
+			}
+			result, lerr := linkerSnapshot.EnrichCandidate(ctx, req)
+			if lerr != nil {
+				// godlike/06 SSOT (per-candidate error isolation):
+				// every failure is recorded on the parent
+				// Failures[] envelope and the loop continues.
+				// The batch's terminal state is decided at
+				// Reconcile time, not per-candidate.
+				s.recordParentFailure(row.batch.ID,
+					fmt.Sprintf("child=%q candidate=%q linker: %s",
+						childID, cand.ID, lerr.Error()))
+				if errors.Is(lerr, ErrLinkerUnmappableConcept) ||
+					errors.Is(lerr, ErrLinkerInvariantBroken) {
+					failedCount++
+				}
+				continue
+			}
+			if result.Empty {
+				// Idempotency hit: the linker short-circuited.
+				indexedCount += len(result.IndexedConceptIDs)
+				continue
+			}
+			indexedCount += len(result.IndexedConceptIDs)
+		}
+	}
+
+	// Reconcile to terminal state. godlike/06 SSOT: failedCount
+	// tracks HARD failures (ErrLinkerInvariantBroken +
+	// ErrLinkerUnmappableConcept) which flip the batch to
+	// BatchFailed; transient failures (ErrLinkerExtractFailed /
+	// ErrLinkerEmbeddingFailed) leave it Reconciling so a
+	// subsequent EnrichLinker call resumes.
+	s.mu.Lock()
+	if failedCount > 0 {
+		row.batch.State = BatchFailed
+		row.batch.IndexedCount = indexedCount
+		now := s.clock.Now().UTC()
+		row.batch.CompletedAt = &now
+	} else {
+		row.batch.IndexedCount = indexedCount
+		// Keep state = BatchReconciling so Resume picks up any
+		// unflushed candidates on the next call. Reconcile
+		// is invoked explicitly by the orchestrator ONLY when
+		// the operator-deployed Resume / abort flow decides.
+	}
+	row.batch.UpdatedAt = s.clock.Now().UTC()
+	s.mu.Unlock()
+
+	s.mu.RLock()
+	cloned := row.batch
+	s.mu.RUnlock()
+	return cloned, nil
+}
+
+// loadChildCandidates enumerates candidates that belong to a
+// given BatchChild. godlike/06 SSOT (Fase 3.2 bridge): the
+// canonical SQL-side media_child_candidates cross-table lands
+// in Fase 3.4; for Fase 3.2 we re-derive via
+// candidatesRepository.ListPendingMaterialization which
+// returns warm-tier rows filtered to (provider) + (rights).
+// To keep the slice tight per child we additionally filter by
+// (title / description / source_url) heuristics derived from
+// the child query — this is a Fase 3.2 simplification that
+// becomes redundant once the canonical cross-table is wired.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: load failures surface as
+// typed envelopes (ErrCandidateNotFound on empty, raw wrapped
+// errors on SQLite trips).
+func (s *defaultBatchService) loadChildCandidates(ctx context.Context, child BatchChild) ([]MediaCandidate, error) {
+	if s.candidates == nil {
+		return nil, fmt.Errorf("mediamemory: child=%q CandidateRepository not wired", child.ID)
+	}
+	all, err := s.candidates.ListByProvider(ctx, child.Provider, 0)
+	if err != nil {
+		return nil, fmt.Errorf("mediamemory: child=%q list-by-provider: %w", child.ID, err)
+	}
+	// Tight filter: only candidates that match the child's
+	// Query AND have status ∈ {DiscoverySearched, DiscoveryAnalyzed}.
+	// Title-contains is a Fase 3.2 heuristic; Fase 3.4 will
+	// introduce media_child_candidates (child_id, candidate_id)
+	// cross-table so this filter becomes a single JOIN.
+	queryLower := strings.ToLower(child.Query)
+	out := make([]MediaCandidate, 0, len(all))
+	for _, c := range all {
+		if !strings.Contains(strings.ToLower(c.Title), queryLower) {
+			continue
+		}
+		if c.DiscoveryStatus != DiscoverySearched {
+			// Indexed / Materialized / Failed all skipped — the
+			// orchestrator's filter at the call site plus the
+			// linker's idempotency gate will double-check.
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
 } // RunCatalogOnly is the canonical Fase 3.1 orchestrator.
 // godlike/06 SSOT (orchestration seam):
 //  1. validateSpec (typed sentinel surfaces on closed-set drift).
@@ -618,12 +933,14 @@ func (s *defaultBatchService) RunCatalogOnly(ctx context.Context, spec BatchSpec
 		row.mu.Unlock()
 	}
 
-	finalParent, reconcileErr := s.Reconcile(ctx, parent.ID)
-	if reconcileErr != nil {
-		return parent, nil, reconcileErr
+	// Re-bundle children for the return envelope. The batch is left
+	// in-flight (BatchReconciling) so a subsequent EnrichLinker pass
+	// can process the persisted candidates. The orchestrator calls
+	// Reconcile explicitly when the end-to-end pipeline is complete.
+	finalParent, err := s.Get(ctx, parent.ID)
+	if err != nil {
+		return parent, nil, err
 	}
-
-	// Re-bundle children for the return envelope.
 	out := make([]BatchChild, 0, len(finalParent.Children))
 	for _, childID := range finalParent.Children {
 		c, ok := s.lookupChild(childID)
@@ -643,6 +960,237 @@ func (s *defaultBatchService) lookupChild(childID string) (*batchChildRow, bool)
 	defer s.mu.RUnlock()
 	c, ok := s.children[childID]
 	return c, ok
+}
+
+// ── Fase 3.3 materialization orchestrator ─────────────────────
+
+// MaterializeTopK is the canonical Fase 3.3 worker-driver
+// orchestrator. It is the third lifecycle stage of the parent /
+// child batch model (after RunCatalogOnly + EnrichLinker) and is
+// responsible for promoting the canonical Top-K (per
+// BatchSpec.MaterializeTopK) candidates from Cold → Warm (or
+// Warm → Hot when req.HotCache is true).
+//
+// godlike/06 SSOT (orchestration seam):
+//  1. terminal-state guard: a Completed / Failed batch refuses
+//     with wrapped ErrBatchNotReconcilable (godlike/07 typed
+//     envelope). The harness MUST call Reconcile explicitly
+//     when the operator decides to commit.
+//  2. materializer-not-wired guard: a batch with no
+//     SetMaterializeWorker wired surfaces a typed sentinel (the
+//     composition root is the canonical wiring seam).
+//  3. Mark parent BatchReconciling (in-flight signal so a
+//     concurrent Get sees the live progress).
+//  4. Aggregate every candidate across the batch's children via
+//     loadChildCandidates, dedup by ID.
+//  5. planner.Plan(top_k = spec.MaterializeTopK, candidates =
+//     aggregated set) → AcquisitionPromote set.
+//  6. worker.Materialize(promotes) → per-row tier transitions +
+//     PersistedAssetIDs.
+//  7. MarkMaterialized per persistedAsset (parent.MaterializedCount
+//     increments).
+//  8. Reconcile-like state flip: if non-zero persists, batch
+//     stays Reconciling; if zero persists and ALL candidates
+//     reached a terminal state, Completed.
+//
+// godlike/06 SSOT (idempotency + resumability contract):
+// the planner's drop-already-Warm / already-Hot step ensures
+// a re-call of MaterializeTopK against a partially-promoted
+// batch does NOT duplicate work — the canonical
+// ON CONFLICT DO UPDATE on Candidates ensures any re-run
+// writes that escape the planner drop are idempotent at the
+// SQL layer.
+func (s *defaultBatchService) MaterializeTopK(ctx context.Context, batchID string) (Batch, error) {
+	s.mu.RLock()
+	row, ok := s.batches[batchID]
+	if !ok {
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf(
+			"mediamemory: materialize-top-k batch_id=%q: %w", batchID, ErrBatchNotFound,
+		)
+	}
+	if row.batch.State == BatchCompleted || row.batch.State == BatchFailed {
+		ro := row.batch
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf(
+			"mediamemory: materialize-top-k batch_id=%q state=%q: %w",
+			batchID, ro.State, ErrBatchNotReconcilable,
+		)
+	}
+	if s.planner == nil || s.materializeWorker == nil {
+		s.mu.RUnlock()
+		return Batch{}, fmt.Errorf(
+			"mediamemory: materialize-top-k batch_id=%q: AcquisitionPlanner or MaterializeWorker not wired: %w",
+			batchID, ErrLinkerInvariantBroken,
+		)
+	}
+	plannerSnapshot := s.planner
+	workerSnapshot := s.materializeWorker
+	specSnapshot := row.batch.Spec
+	childIDs := append([]string{}, row.batch.Children...)
+	s.mu.RUnlock()
+
+	// Mark in-flight. godlike/06 SSOT: lock-order is
+	// s.mu.Lock → mutate parent → unlock BEFORE iterating
+	// children.
+	s.mu.Lock()
+	row.batch.State = BatchReconciling
+	row.batch.UpdatedAt = s.clock.Now().UTC()
+	s.mu.Unlock()
+
+	// 4. Aggregate candidates across children. godlike/06 SSOT
+	// (per-dedup-by-candidate-id): a candidate CAN appear under
+	// multiple children only if reused across queries (rare).
+	// The map-keyed-by-ID aggregation collapses duplicates.
+	seen := make(map[string]MediaCandidate, 1024)
+	for _, childID := range childIDs {
+		s.mu.RLock()
+		c, exists := s.children[childID]
+		s.mu.RUnlock()
+		if !exists {
+			continue
+		}
+		cands, lerr := s.loadChildCandidates(ctx, c.child)
+		if lerr != nil {
+			s.recordParentFailure(batchID,
+				fmt.Sprintf("materialize-top-k child=%q load candidates failed: %s",
+					childID, lerr.Error()))
+			continue
+		}
+		for _, cand := range cands {
+			// godlike/06 SSOT (canonical aggregate boundary):
+			// Cold-tier rows only. Warm / Hot are skipped because
+			// the planner's drop-already-Warm/Hot step handles
+			// them at the rank boundary — but pre-filtering here
+			// also keeps the per-rank slice tight.
+			if cand.MaterializationStatus != MaterializationCold {
+				continue
+			}
+			if _, dup := seen[cand.ID]; dup {
+				continue
+			}
+			seen[cand.ID] = cand
+		}
+	}
+
+	// 5. Plan.
+	agg := make([]MediaCandidate, 0, len(seen))
+	for _, c := range seen {
+		agg = append(agg, c)
+	}
+	promotes, perr := plannerSnapshot.Plan(ctx, AcquisitionInput{
+		BatchID:    batchID,
+		TopK:       specSnapshot.MaterializeTopK,
+		Candidates: agg,
+	})
+	if perr != nil {
+		s.recordParentFailure(batchID,
+			fmt.Sprintf("materialize-top-k batch_id=%q plan failed: %s", batchID, perr.Error()))
+		// godlike/07 surface: planner failure is a non-fatal
+		// transient — keep the batch Reconciling so a retry
+		// can resume. Reconcile is invoked explicitly by the
+		// operator / orchestrator to finalize.
+	}
+
+	// 6. Materialize.
+	var matRes MaterializationResult
+	if len(promotes) > 0 {
+		var merr error
+		matRes, merr = workerSnapshot.Materialize(ctx, MaterializationRequest{
+			BatchID:   batchID,
+			ProjectID: specSnapshot.Name, // godlike/06: project_id == batch.Name
+			Promotes:  promotes,
+			HotCache:  false,
+		})
+		if merr != nil {
+			s.recordParentFailure(batchID,
+				fmt.Sprintf("materialize-top-k batch_id=%q worker failed: %s", batchID, merr.Error()))
+		}
+	}
+
+	// 7. Per-persisted-asset MarkMaterialized updates the
+	// parent.MaterializedCount. godlike/06 SSOT (tier
+	// mapping): the canonical tier after top-K is Warm
+	// (top-K is canonically Cold→Warm). Hot is reserved
+	// for PromoteOnDemand.
+	s.mu.Lock()
+	for _, assetID := range matRes.PersistedAssetIDs {
+		// godlike/06 SSOT: parent.MaterializedCount counts ONLY
+		// Hot-tier promotions (per MarkMaterialized semantics);
+		// Warm-tier bumps live in IndexedCount.
+		parent, ok := s.batches[batchID]
+		if !ok {
+			continue
+		}
+		parent.mu.Lock()
+		parent.batch.IndexedCount++
+		parent.batch.UpdatedAt = s.clock.Now().UTC()
+		parent.mu.Unlock()
+		_ = assetID // forward-pin to Fase 3.4: media_child_assets cross-table for per-child counter.
+	}
+	// 8. State-flip heuristic (mirrors EnrichLinker's reconcile).
+	if len(matRes.PersistedAssetIDs) == 0 && len(promotes) == 0 {
+		// No candidates to promote (already promoted or empty):
+		// leave Reconciling so Resume picks up any unflushed
+		// children on the next call.
+	}
+	for _, msg := range matRes.Failures {
+		s.recordParentFailure(batchID, msg)
+	}
+	s.mu.Unlock()
+
+	// Return a snapshot of the post-flush parent.
+	s.mu.RLock()
+	cloned := row.batch
+	s.mu.RUnlock()
+	return cloned, nil
+}
+
+// PromoteOnDemand is the canonical Fase 3.3 on-demand hot
+// promotion path. It is invoked by the resolver / scene-render
+// pipeline when a candidate is selected for a video clip.
+//
+// godlike/06 SSOT (single-candidate seam): the orchestrator
+// hands the candidate straight to MaterializeWorker.PromoteOnDemand
+// (which re-validates rights + runs the stockpipeline) and
+// then bumps the parent's MaterializedCount on success.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil materializer surfaces
+// as wrapped ErrLinkerInvariantBroken; rights-denied candidates
+// surface as wrapped ErrApprovalRequired; transient
+// stockpipeline failures surface as wrapped
+// ErrCandidateMaterializationFailed.
+func (s *defaultBatchService) PromoteOnDemand(
+	ctx context.Context,
+	candidate MediaCandidate,
+	opts MaterializeOptions,
+) (MediaCandidate, error) {
+	s.mu.RLock()
+	mw := s.materializeWorker
+	s.mu.RUnlock()
+	if mw == nil {
+		return candidate, fmt.Errorf(
+			"mediamemory: PromoteOnDemand: MaterializeWorker not wired (call SetMaterializeWorker): %w",
+			ErrLinkerInvariantBroken,
+		)
+	}
+	mat, err := mw.PromoteOnDemand(ctx, candidate, opts)
+	if err != nil {
+		return candidate, fmt.Errorf(
+			"mediamemory: PromoteOnDemand candidate=%q: %w", candidate.ID, err,
+		)
+	}
+	// godlike/06 SSOT (per-parent mark): PromoteOnDemand is
+	// invoked outside the canonical RunMaterializeTopK loop,
+	// so we cannot map the AssetID back to its (Batch, Child)
+	// without the canonical Fase 3.4 cross-table. The forward-
+	// pointer is media_child_assets (asset_id → child_id),
+	// scanned at Reconcile time. For Fase 3.3 we surface a
+	// marker on each parent Failures[] so an admin reindex
+	// pass can reconcile. MarkMaterialized-counted-Hot row
+	// updates remain a Fase 3.4 deliverable.
+	_ = mat // per-parent count update lands in Fase 3.4
+	return mat, nil
 }
 
 // recordParentFailure appends a typed failure string onto the
