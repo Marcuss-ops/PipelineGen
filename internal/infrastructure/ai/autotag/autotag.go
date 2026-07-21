@@ -66,29 +66,27 @@ func (s *Service) TagAsset(ctx context.Context, a *asset.Asset) error {
 		return fmt.Errorf("vlm autotag: %w", err)
 	}
 
-	// 2. Merge tags
-	newTags := make(map[string]bool)
-	for _, t := range a.Tags {
-		newTags[strings.ToLower(t)] = true
-	}
+	// 2. Build VLM-specific tags and keep the aggregated Tags view consistent.
+	vlmTagSet := make(map[string]bool)
 	for _, o := range vTags.VisualObjects {
-		newTags[strings.ToLower(o)] = true
+		vlmTagSet[strings.ToLower(o)] = true
 	}
 	for _, m := range vTags.Mood {
-		newTags[strings.ToLower(m)] = true
+		vlmTagSet[strings.ToLower(m)] = true
 	}
 	if vTags.SceneType != "" {
-		newTags[strings.ToLower(vTags.SceneType)] = true
+		vlmTagSet[strings.ToLower(vTags.SceneType)] = true
 	}
 	if vTags.Lighting != "" {
-		newTags[strings.ToLower(vTags.Lighting)] = true
+		vlmTagSet[strings.ToLower(vTags.Lighting)] = true
 	}
 
-	finalTags := make([]string, 0, len(newTags))
-	for t := range newTags {
-		finalTags = append(finalTags, t)
+	vlmTags := make([]string, 0, len(vlmTagSet))
+	for t := range vlmTagSet {
+		vlmTags = append(vlmTags, t)
 	}
-	a.Tags = finalTags
+	a.VLMTags = vlmTags
+	a.RebuildTags()
 
 	// 3. Update metadata with full structured VLM info
 	a.SetMetadataString("vlm_tagged", "success")

@@ -106,6 +106,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 
 	// Parse metadata_json first so other setters write into it.
 	a.SetMetadataJSON(metadataStr.String)
+	a.SyncTagFieldsFromMetadata()
 
 	a.SetLocalPath(localPathNull.String)
 	a.SetDriveFileID(driveFileIDNull.String)

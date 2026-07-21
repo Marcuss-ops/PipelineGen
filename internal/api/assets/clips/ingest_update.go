@@ -45,7 +45,8 @@ func (ih *IngestHandler) UpdateClip(c *gin.Context) {
 				tags[i] = s
 			}
 		}
-		clip.Tags = tags
+		clip.ManualTags = tags
+		clip.RebuildTags()
 	}
 	if val, ok := payload["search_terms"].([]any); ok {
 		terms := make([]string, len(val))

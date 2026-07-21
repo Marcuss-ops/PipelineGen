@@ -3,6 +3,8 @@ package asset
 import (
 	"encoding/json"
 	"time"
+
+	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 // Source identifies where an asset originated.
@@ -37,6 +39,10 @@ type Asset struct {
 	ThumbnailURL   string         `json:"thumbnail_url"`
 	Duration       time.Duration  `json:"duration"`
 	Tags           []string       `json:"tags"`
+	ProviderTags   []string       `json:"provider_tags,omitempty"`
+	VLMTags        []string       `json:"vlm_tags,omitempty"`
+	ManualTags     []string       `json:"manual_tags,omitempty"`
+	TranscriptTags []string       `json:"transcript_tags,omitempty"`
 	SearchTerms    []string       `json:"search_terms"`
 	SearchText     string         `json:"search_text"`
 	LifecycleState LifecycleState `json:"lifecycle_state"`
@@ -128,6 +134,63 @@ func (m *Asset) SetMetadataString(key, value string) {
 		m.Metadata = make(map[string]any)
 	}
 	m.Metadata[key] = value
+}
+
+// RebuildTags rebuilds the aggregated Tags field from the source-specific
+// tag slices (ProviderTags, VLMTags, ManualTags, TranscriptTags) while
+// preserving the original order and removing duplicates.
+func (a *Asset) RebuildTags() {
+	capacity := len(a.ProviderTags) + len(a.VLMTags) + len(a.ManualTags) + len(a.TranscriptTags)
+	combined := make([]string, 0, capacity)
+	combined = append(combined, a.ProviderTags...)
+	combined = append(combined, a.VLMTags...)
+	combined = append(combined, a.ManualTags...)
+	combined = append(combined, a.TranscriptTags...)
+	a.Tags = sliceutil.UniqueStrings(combined)
+}
+
+// SyncTagFieldsToMetadata persists the source-specific tag slices into
+// the Metadata map so they survive storage in the metadata_json column.
+func (a *Asset) SyncTagFieldsToMetadata() {
+	if a.Metadata == nil {
+		a.Metadata = make(map[string]any)
+	}
+	a.Metadata["provider_tags"] = a.ProviderTags
+	a.Metadata["vlm_tags"] = a.VLMTags
+	a.Metadata["manual_tags"] = a.ManualTags
+	a.Metadata["transcript_tags"] = a.TranscriptTags
+}
+
+// SyncTagFieldsFromMetadata restores the source-specific tag slices from
+// the Metadata map after a load from the database.
+func (a *Asset) SyncTagFieldsFromMetadata() {
+	if a.Metadata == nil {
+		return
+	}
+	a.ProviderTags = getStringSlice(a.Metadata, "provider_tags")
+	a.VLMTags = getStringSlice(a.Metadata, "vlm_tags")
+	a.ManualTags = getStringSlice(a.Metadata, "manual_tags")
+	a.TranscriptTags = getStringSlice(a.Metadata, "transcript_tags")
+}
+
+func getStringSlice(m map[string]any, key string) []string {
+	v, ok := m[key]
+	if !ok {
+		return nil
+	}
+	switch arr := v.(type) {
+	case []string:
+		return arr
+	case []any:
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // GetMetadataInt retrieves an int from the Metadata map.

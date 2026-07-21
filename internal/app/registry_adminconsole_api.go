@@ -379,7 +379,8 @@ func applyAssetChanges(a *asset.Asset, changes map[string]any) {
 		a.ReviewStatus = asset.ReviewStatus(v)
 	}
 	if raw, ok := changes["tags"]; ok {
-		a.Tags = toStringSlice(raw)
+		a.ManualTags = toStringSlice(raw)
+		a.RebuildTags()
 	}
 	if raw, ok := changes["search_terms"]; ok {
 		a.SearchTerms = toStringSlice(raw)
