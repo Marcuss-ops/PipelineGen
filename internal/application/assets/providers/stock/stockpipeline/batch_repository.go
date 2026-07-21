@@ -11,6 +11,7 @@ package stockpipeline
 
 import (
 	"context"
+	"strconv"
 	"time"
 )
 
@@ -131,6 +132,21 @@ type StockArtifact struct {
 	UpdatedAt          time.Time
 }
 
+// StockArtifactGroupID returns the deterministic canonical group ID for a
+// (batch, source) pair. The format is a stable opaque identifier used by
+// the extract/finalize steps when creating or looking up StockBatchGroup
+// rows without a second round-trip to the repository.
+func StockArtifactGroupID(batchID, sourceID string) string {
+	return batchID + ":group:" + sourceID
+}
+
+// StockArtifactID returns the deterministic canonical artifact ID for a
+// (batch, source, clip-index) tuple. The format is stable across restarts
+// so the same clip always maps to the same artifact row.
+func StockArtifactID(batchID, sourceID string, clipIdx int) string {
+	return StockArtifactGroupID(batchID, sourceID) + ":clip:" + strconv.Itoa(clipIdx)
+}
+
 // StockBatchRepository is the application-layer port for durable stock
 // batch state. Production wiring supplies the SQLite-backed adapter;
 // nil is allowed for tests and back-compat paths.
@@ -157,10 +173,22 @@ type StockBatchRepository interface {
 	// MarkArtifactExtracted transitions an artifact from EXTRACTING to EXTRACTED
 	// and persists the produced file path, SHA-256 and actual duration.
 	MarkArtifactExtracted(ctx context.Context, id, localPath, sha256 string, actualDurationMs int) error
+	// MarkArtifactPublished transitions an artifact from EXTRACTED to PUBLISHED
+	// and persists the Drive file id, folder id and web link.
+	MarkArtifactPublished(ctx context.Context, id, driveFileID, driveFolderID, driveLink string) error
+	// MarkArtifactVerified transitions an artifact from PUBLISHED to VERIFIED.
+	MarkArtifactVerified(ctx context.Context, id string) error
 	// MarkArtifactFailed transitions an artifact from EXTRACTING to the given
 	// error state (RETRY_WAIT, FAILED_PERMANENT or QUARANTINED) and records
 	// the last error.
 	MarkArtifactFailed(ctx context.Context, id string, status ArtifactState, lastError string) error
+
+	// MarkGroupSucceeded transitions a group to SUCCEEDED and records the
+	// number of verified clips.
+	MarkGroupSucceeded(ctx context.Context, id string, verifiedClips int) error
+	// MarkBatchSucceeded transitions a batch to SUCCEEDED and records the
+	// number of verified clips.
+	MarkBatchSucceeded(ctx context.Context, id string, verifiedClips int) error
 
 	// FindIncompleteArtifacts returns artifacts of a group that are not yet
 	// terminal (VERIFIED / FAILED_PERMANENT / QUARANTINED), ordered by ordinal.

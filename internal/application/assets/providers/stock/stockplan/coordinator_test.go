@@ -108,6 +108,43 @@ func (r *fakeBatchRepository) MarkArtifactFailed(ctx context.Context, id string,
 	return fmt.Errorf("artifact %s not in EXTRACTING state", id)
 }
 
+func (r *fakeBatchRepository) MarkArtifactPublished(ctx context.Context, id, driveFileID, driveFolderID, driveLink string) error {
+	if a, ok := r.artifacts[id]; ok && a.Status == stockpipeline.ArtifactStateExtracted {
+		a.Status = stockpipeline.ArtifactStatePublished
+		a.DriveFileID = driveFileID
+		a.DriveFolderID = driveFolderID
+		a.DriveLink = driveLink
+		return nil
+	}
+	return fmt.Errorf("artifact %s not in EXTRACTED state", id)
+}
+
+func (r *fakeBatchRepository) MarkArtifactVerified(ctx context.Context, id string) error {
+	if a, ok := r.artifacts[id]; ok && a.Status == stockpipeline.ArtifactStatePublished {
+		a.Status = stockpipeline.ArtifactStateVerified
+		return nil
+	}
+	return fmt.Errorf("artifact %s not in PUBLISHED state", id)
+}
+
+func (r *fakeBatchRepository) MarkGroupSucceeded(ctx context.Context, id string, verifiedClips int) error {
+	if g, ok := r.groups[id]; ok {
+		g.Status = stockpipeline.GroupStateSucceeded
+		g.VerifiedClips = verifiedClips
+		return nil
+	}
+	return fmt.Errorf("group %s not found", id)
+}
+
+func (r *fakeBatchRepository) MarkBatchSucceeded(ctx context.Context, id string, verifiedClips int) error {
+	if b, ok := r.batches[id]; ok {
+		b.Status = stockpipeline.BatchStateSucceeded
+		b.VerifiedClips = verifiedClips
+		return nil
+	}
+	return fmt.Errorf("batch %s not found", id)
+}
+
 func (r *fakeBatchRepository) FindIncompleteArtifacts(ctx context.Context, groupID string, maxAttempts int) ([]stockpipeline.StockArtifact, error) {
 	var out []stockpipeline.StockArtifact
 	for _, a := range r.artifacts {

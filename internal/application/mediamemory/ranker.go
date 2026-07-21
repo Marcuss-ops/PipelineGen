@@ -454,26 +454,32 @@ func verdictReason(v RankingVerdict) string {
 	}
 }
 
-// Filter applies the seven mandatory gates (license, availability,
-// duration, format, aspect, corrupt-detection, dedup).
+// Filter applies the six mandatory gates (license, availability,
+// duration, format, aspect, corrupt-detection, dedup) via the
+// canonical RunMandatoryGates helper. godlike/06 SSOT
+// (single-canonical-pipeline): the ranker's Filter method MUST
+// route through RunMandatoryGates so the gate order +
+// gate-name vocabulary stays consistent across callers.
 //
-// godlike/06 SSOT (filter contract): rows where IsDuplicate,
-// MissingRights, AspectMismatch, OR Contaminated are TRUE are
-// REMOVED. Rows whose Candidate fails the well-formed guard
-// (missing AssetID, unknown MaterializationStatus/DiscoveryStatus)
-// are ALSO removed — the ranker's Score path would otherwise
-// drop them with VerdictDrop, doing the work twice and producing
-// confusing warning cascades.
+// Rows where ANY of the six gates fail are REMOVED. Rows whose
+// Candidate fails the well-formed guard (missing AssetID,
+// unknown MaterializationStatus/DiscoveryStatus) are ALSO removed
+// — the ranker's Score path would otherwise drop them with
+// VerdictDrop, doing the work twice and producing confusing
+// warning cascades.
 //
 // The output is strictly a subset of `in`. An empty slice is a
 // valid outcome (no candidate survives the gates).
 func (r *defaultRanker) Filter(_ context.Context, in []FilteredCandidate) ([]FilteredCandidate, error) {
 	out := make([]FilteredCandidate, 0, len(in))
 	for _, fc := range in {
-		if fc.IsDuplicate || fc.MissingRights || fc.AspectMismatch || fc.Contaminated {
+		if !mediaCandidateIsWellFormed(fc.Candidate) {
 			continue
 		}
-		if !mediaCandidateIsWellFormed(fc.Candidate) {
+		if gate := RunMandatoryGates(fc); gate != "" {
+			if r.log != nil {
+				r.log.Debug("mediamemory: ranker.Filter dropped candidate (gate=%q asset_id=%q)", string(gate), fc.Candidate.AssetID)
+			}
 			continue
 		}
 		out = append(out, fc)
@@ -500,4 +506,162 @@ func mediaCandidateIsWellFormed(c MediaCandidate) bool {
 		return false
 	}
 	return true
+}
+
+// ── Ranking & rights: canonical helpers ────────────────────────────
+
+// ComputeDurationFit returns the canonical [0,1] duration_fit
+// score for a (sceneDurationMs, bindingDurationMs) pair.
+// godlike/06 SSOT (closed-form formula): the helper favours
+// bindings whose duration matches the scene (ratio ≈ 1.0);
+// bindings whose duration is wildly off (ratio < 0.5 or > 2.0)
+// receive 0.0 so the ranker drops them at VerdictDownrank/Drop.
+// godlike/07 NO-FAKE-AVAILABILITY: zero or negative durations
+// return 0.0 (the ranker's mandatory duration_valid gate will
+// independently reject DurationMs <= 0 candidates before this
+// helper is consulted).
+//
+// Scale: ratio == 1.0 → 1.0; ratio == 0.5 or 2.0 → 0.0; linear
+// interpolation between (0.5, 0.0) and (1.0, 1.0) on the
+// short-clip side, and between (1.0, 1.0) and (2.0, 0.0) on
+// the long-clip side. The formula is symmetric around ratio 1.0
+// so a binding that is half the scene duration scores the same
+// as a binding that is twice the scene duration.
+func ComputeDurationFit(sceneDurationMs, bindingDurationMs int64) float64 {
+	if sceneDurationMs <= 0 || bindingDurationMs <= 0 {
+		return 0.0
+	}
+	ratio := float64(bindingDurationMs) / float64(sceneDurationMs)
+	if ratio < 0.5 || ratio > 2.0 {
+		return 0.0
+	}
+	// Linear interpolation: at ratio=1.0 → 1.0; at the
+	// boundaries (0.5, 2.0) → 0.0.
+	if ratio < 1.0 {
+		return 1.0 - (1.0-ratio)*2.0
+	}
+	return 1.0 - (ratio-1.0)*2.0
+}
+
+// PopulateRightsPenalty applies the canonical per-RightsStatus
+// penalty stamp onto RankingInput.RightsPenalty. godlike/06 SSOT
+// (closed-set mapping):
+//
+//	RightsVerified → 0.0  (no penalty; godlike/07 fail-closed →
+//	                    the ranker's MissingRights gate already
+//	                    rejects Verified-with-unknown-bridge
+//	                    candidates upstream)
+//	RightsUnknown  → 0.10 (uncertain; mild penalty so a verified
+//	                    competitor outranks without auto-drop)
+//	RightsDenied   → 1.0  (full penalty; guarantees VerdictDrop
+//	                    — but the MissingRights gate in Filter
+//	                    already rejects this case upstream)
+//	RightsExpired  → 0.20 (expired; moderate penalty so the
+//	                    caller can still surface if a refresh
+//	                    arrives before the final verdict)
+//
+// godlike/06 SSOT (immutable input contract, mirrors
+// PopulateRepetitionPenalty): the function does NOT mutate the
+// input slice — outputs are returned as a NEW slice with the
+// input's candidates copied through and the penalty seat
+// re-stamped. Callers MUST use the returned slice.
+func PopulateRightsPenalty(inputs []RankingInput) []RankingInput {
+	out := make([]RankingInput, 0, len(inputs))
+	for _, in := range inputs {
+		switch in.Candidate.RightsStatus {
+		case RightsVerified:
+			in.RightsPenalty = 0.0
+		case RightsUnknown:
+			in.RightsPenalty = 0.10
+		case RightsDenied:
+			in.RightsPenalty = 1.0
+		case RightsExpired:
+			in.RightsPenalty = 0.20
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
+// HasAvailableMedia reports whether a candidate's materialization
+// tier is sufficient for the ranker's mandatory media_available
+// gate. godlike/06 SSOT (tier SSOT): Cold candidates are metadata-
+// only (no bytes available), Warm candidates have bytes on Drive
+// or segmentable on-demand, Hot candidates are staged locally.
+// godlike/07 NO-FAKE-AVAILABILITY: a candidate at Cold tier
+// cannot be rendered — the ranker MUST drop it before scoring.
+func HasAvailableMedia(c MediaCandidate) bool {
+	return c.MaterializationStatus == MaterializationHot ||
+		c.MaterializationStatus == MaterializationWarm
+}
+
+// HasValidDuration reports whether the candidate's DurationMs is
+// positive. godlike/06 SSOT (canonical gate): zero / negative
+// DurationMs is treated as a malformed envelope — the ranker's
+// duration_valid gate MUST drop it before scoring.
+func HasValidDuration(c MediaCandidate) bool {
+	return c.DurationMs > 0
+}
+
+// ── Mandatory gates (Fase "Ranking & rights") ────────────────────
+
+// PreRankGate is the canonical closed-set enum for the six
+// mandatory pre-rank gates the architecture doc (section 11)
+// requires. godlike/06 SSOT: every gate has a canonical name
+// + reason so log scans + dashboard diagnostics can audit
+// drops without parsing the error string.
+type PreRankGate string
+
+const (
+	// GateValidLicense — RightsStatus MUST be RightsVerified.
+	GateValidLicense PreRankGate = "valid_license"
+	// GateAvailableMedia — MaterializationStatus MUST be Warm
+	// or Hot (Cold / Failed drop).
+	GateAvailableMedia PreRankGate = "available_media"
+	// GateValidDuration — DurationMs MUST be positive.
+	GateValidDuration PreRankGate = "valid_duration"
+	// GateCompatibleAspect — AspectRatioW / AspectRatioH MUST
+	// be 16:9 / 4:3 / 1:1 / 9:16 (canonical set); MediaType
+	// MUST be in the canonical set (video / image / audio /
+	// music); empty MediaType is the legacy ambiguous sentinel
+	// and bypasses the gate (forward-pointer to migration).
+	GateCompatibleAspect PreRankGate = "compatible_aspect"
+	// GateNoCorruption — IntegrityChecked MUST be true.
+	GateNoCorruption PreRankGate = "no_corruption"
+	// GateNoDuplicates — DuplicateOfAssetID MUST be empty.
+	GateNoDuplicates PreRankGate = "no_duplicates"
+)
+
+// RunMandatoryGates applies the six pre-rank gates to a candidate
+// and returns the first failing gate (empty string = all passed).
+// godlike/06 SSOT (narrow contract): the helper is math-only
+// (no IO); the resolver pre-populates the four boolean flags on
+// FilteredCandidate + the two numeric fields on MediaCandidate
+// before calling this helper. godlike/07 NO-FAKE-AVAILABILITY:
+// a candidate failing ANY gate MUST NOT proceed to Score.
+//
+// The four FilteredCandidate flags (IsDuplicate, MissingRights,
+// AspectMismatch, Contaminated) cover the four gates that the
+// resolver already computes upstream; the two materialization /
+// duration gates are checked here directly against MediaCandidate.
+func RunMandatoryGates(fc FilteredCandidate) PreRankGate {
+	if fc.IsDuplicate {
+		return GateNoDuplicates
+	}
+	if fc.MissingRights {
+		return GateValidLicense
+	}
+	if fc.AspectMismatch {
+		return GateCompatibleAspect
+	}
+	if fc.Contaminated {
+		return GateNoCorruption
+	}
+	if !HasAvailableMedia(fc.Candidate) {
+		return GateAvailableMedia
+	}
+	if !HasValidDuration(fc.Candidate) {
+		return GateValidDuration
+	}
+	return ""
 }

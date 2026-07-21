@@ -464,9 +464,35 @@ func (s *defaultBatchService) AppendCandidate(_ context.Context, childID string,
 // MarkMaterialized bumps the parent's MaterializedCount and
 // transitions the child toward Reconciliation when every
 // candidate has been processed.
-func (s *defaultBatchService) MarkMaterialized(_ context.Context, childID string, candidateID string, tier MaterializationStatus) error {
+//
+// godlike/06 SSOT (Fase "Ranking & rights" defense-in-depth): a
+// Hot-tier promotion MUST verify RightsStatus == RightsVerified
+// BEFORE the parent's MaterializedCount is incremented. The
+// planner + worker already gate this upstream; this method is
+// the canonical seal so a rights-denied candidate cannot slip
+// through a worker bypass and inflate MaterializedCount.
+// godlike/07 NO-FAKE-AVAILABILITY: a rights-denied / unknown /
+// expired candidate surfaces as wrapped ErrApprovalRequired
+// BEFORE the in-memory counters move — a partial flip is a
+// regression that the dashboard would silently absorb.
+func (s *defaultBatchService) MarkMaterialized(ctx context.Context, childID string, candidateID string, tier MaterializationStatus) error {
 	if !IsKnownMaterializationStatus(tier) {
 		return fmt.Errorf("mediamemory: mark materialized tier=%q: not in canonical closed set", string(tier))
+	}
+	if tier == MaterializationHot {
+		cand, err := s.candidates.FindByID(ctx, candidateID)
+		if err != nil {
+			return fmt.Errorf(
+				"mediamemory: MarkMaterialized Hot candidate lookup %q: %w",
+				candidateID, err,
+			)
+		}
+		if cand.RightsStatus != RightsVerified {
+			return fmt.Errorf(
+				"mediamemory: MarkMaterialized cannot promote %q to Hot (rights_status=%q, must be %q): %w",
+				candidateID, cand.RightsStatus, RightsVerified, ErrApprovalRequired,
+			)
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
