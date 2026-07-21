@@ -9,7 +9,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -61,6 +63,12 @@ func (h *Handler) registerBulkRoutes(rg *gin.RouterGroup) {
 }
 
 // handleBulk executes or previews a bulk operation.
+//
+// godlike/06 SSOT: when h.mutator is nil (composition root did
+// not inject the canonical AssetMutationDispatcher) every action
+// — including the read-only diagnostic bulkActionVerify — is
+// refused with 503 so operators cannot accidentally rely on a
+// partially-wired handler.
 func (h *Handler) handleBulk(c *gin.Context) {
 	if h.mutator == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "bulk operations unavailable: AssetMutationDispatcher not wired")
