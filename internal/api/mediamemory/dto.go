@@ -208,3 +208,155 @@ type okEnvelope struct {
 	OK        bool   `json:"ok"`
 	Timestamp string `json:"timestamp"`
 }
+
+// ── Resolve (POST /api/media-memory/resolve) ──────────────────────
+
+// resolveCreateRequest is the POST /api/media-memory/resolve body.
+//
+// godlike/06 SSOT (canonical field set): every field maps 1:1 to a
+// canonical column on mediamemory/sceneVisualPlan. ProjectID +
+// Language are project-shared; Scenes carry per-scene text,
+// duration, and slot requirements.
+type resolveCreateRequest struct {
+	ProjectID string                `json:"project_id" binding:"required"`
+	Language  string                `json:"language" binding:"required"`
+	Scenes    []resolveSceneRequest `json:"scenes" binding:"required"`
+	Policy    *resolvePolicyRequest `json:"policy,omitempty"`
+}
+
+// resolveSceneRequest is one scene entry. godlike/06 SSOT: the
+// canonical ID is supplied by the caller (the splitter may assign
+// scene-1..scene-N); we don't mint IDs on the wire side.
+type resolveSceneRequest struct {
+	ID         string   `json:"id" binding:"required"`
+	Text       string   `json:"text" binding:"required"`
+	DurationMs int64    `json:"duration_ms" binding:"min=0"`
+	Slots      []string `json:"slots,omitempty"`
+	Language   string   `json:"language,omitempty"`
+}
+
+// resolvePolicyRequest is the optional client-supplied override.
+// godlike/06 SSOT: defaults are conservative (PreferApprovedBindings
+// = true, AllowExternalSearch = false) — the dashboard preview
+// path is sandboxed and does NOT want to fan out to live providers.
+type resolvePolicyRequest struct {
+	PreferApprovedBindings bool `json:"prefer_approved_bindings"`
+	AllowExternalSearch    bool `json:"allow_external_search"`
+	MaxCandidatesPerSlot   int  `json:"max_candidates_per_slot"`
+	AvoidRecentAssets      bool `json:"avoid_recent_assets"`
+}
+
+// toResolveRequest projects the wire DTO into the canonical
+// mediamemory.ResolveRequest. Empty meaningful fields are filled
+// by the canonical defaults below.
+func (r resolveCreateRequest) toResolveRequest() mediamemory.ResolveRequest {
+	policy := mediamemory.ResolvePolicy{
+		PreferApprovedBindings: defaultPreferApprovedBindings,
+		AllowExternalSearch:    defaultAllowExternalSearch,
+		MaxCandidatesPerSlot:   defaultMaxCandidatesPerSlot,
+		AvoidRecentAssets:      defaultAvoidRecentAssets,
+	}
+	if r.Policy != nil {
+		policy.PreferApprovedBindings = r.Policy.PreferApprovedBindings || policy.PreferApprovedBindings
+		policy.AllowExternalSearch = r.Policy.AllowExternalSearch || policy.AllowExternalSearch
+		if r.Policy.MaxCandidatesPerSlot > 0 {
+			policy.MaxCandidatesPerSlot = r.Policy.MaxCandidatesPerSlot
+		}
+		policy.AvoidRecentAssets = r.Policy.AvoidRecentAssets || policy.AvoidRecentAssets
+	}
+
+	scenes := make([]mediamemory.SceneSpec, 0, len(r.Scenes))
+	for _, s := range r.Scenes {
+		lang := s.Language
+		if lang == "" {
+			lang = r.Language
+		}
+		slotKinds := make([]mediamemory.SlotKind, 0, len(s.Slots))
+		for _, slotStr := range s.Slots {
+			if slotStr == "" {
+				continue
+			}
+			slotKinds = append(slotKinds, mediamemory.SlotKind(slotStr))
+		}
+		scenes = append(scenes, mediamemory.SceneSpec{
+			ID:         s.ID,
+			Text:       s.Text,
+			DurationMs: s.DurationMs,
+			Slots:      slotKinds,
+			Language:   lang,
+		})
+	}
+	return mediamemory.ResolveRequest{
+		ProjectID: r.ProjectID,
+		Language:  r.Language,
+		Scenes:    scenes,
+		Policy:    policy,
+	}
+}
+
+// resolveLayerDTO is one Layer entry in the response.
+type resolveLayerDTO struct {
+	Slot           string  `json:"slot"`
+	AssetID        string  `json:"asset_id"`
+	BindingID      string  `json:"binding_id,omitempty"`
+	StartMs        int64   `json:"start_ms,omitempty"`
+	EndMs          int64   `json:"end_ms,omitempty"`
+	Layout         string  `json:"layout,omitempty"`
+	CandidateScore float64 `json:"candidate_score"`
+}
+
+// resolvePlanDTO is the per-scene plan projection.
+type resolvePlanDTO struct {
+	ProjectID  string            `json:"project_id"`
+	SceneID    string            `json:"scene_id"`
+	Text       string            `json:"text"`
+	Language   string            `json:"language"`
+	DurationMs int64             `json:"duration_ms"`
+	Layers     []resolveLayerDTO `json:"layers"`
+	Source     string            `json:"source"`
+}
+
+// resolveResponse is the canonical 2xx response envelope.
+type resolveResponse struct {
+	OK        bool             `json:"ok"`
+	Plans     []resolvePlanDTO `json:"plans"`
+	Warnings  []string         `json:"warnings,omitempty"`
+	Timestamp string           `json:"timestamp"`
+}
+
+// toResolvePlanDTO projects a canonical SceneVisualPlan to its
+// wire shape. godlike/06 SSOT: empty Layers is a legitimate
+// "fall-through exhausted" response — clients can branch on
+// len(Layers) == 0 to render an "asset unavailable" notice.
+func toResolvePlanDTO(p mediamemory.SceneVisualPlan) resolvePlanDTO {
+	layers := make([]resolveLayerDTO, 0, len(p.Layers))
+	for _, l := range p.Layers {
+		layers = append(layers, resolveLayerDTO{
+			Slot:           string(l.Slot),
+			AssetID:        l.AssetID,
+			BindingID:      l.BindingID,
+			StartMs:        l.StartMs,
+			EndMs:          l.EndMs,
+			Layout:         l.Layout,
+			CandidateScore: l.CandidateScore,
+		})
+	}
+	return resolvePlanDTO{
+		ProjectID:  p.ProjectID,
+		SceneID:    p.SceneID,
+		Text:       p.Text,
+		Language:   p.Language,
+		DurationMs: p.DurationMs,
+		Layers:     layers,
+		Source:     p.Source,
+	}
+}
+
+// ── Canonical defaults (godlike/06 SSOT — composition pin) ──────
+
+const (
+	defaultPreferApprovedBindings = true
+	defaultAllowExternalSearch    = false
+	defaultMaxCandidatesPerSlot   = 10
+	defaultAvoidRecentAssets      = false
+)
