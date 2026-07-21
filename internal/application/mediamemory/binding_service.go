@@ -22,8 +22,6 @@ package mediamemory
 import (
 	"context"
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/mutations"
 )
 
 // BindingService is the canonical port for media_bindings
@@ -66,7 +64,7 @@ type BindingService interface {
 type defaultBindingService struct {
 	concepts   ConceptRepository
 	bindings   BindingRepository
-	dispatcher mutations.BindingMutationDispatcher
+	dispatcher BindingMutationDispatcher
 	log        Logger
 	clock      Clock
 }
@@ -81,7 +79,7 @@ type defaultBindingService struct {
 // ErrBindingMutationDispatcherUnavailable, so a mis-wired composition
 // root is caught immediately instead of silently writing without the
 // outbox.
-func NewDefaultBindingService(concepts ConceptRepository, bindings BindingRepository, dispatcher mutations.BindingMutationDispatcher, log Logger, clock Clock) *defaultBindingService {
+func NewDefaultBindingService(concepts ConceptRepository, bindings BindingRepository, dispatcher BindingMutationDispatcher, log Logger, clock Clock) *defaultBindingService {
 	if log == nil {
 		log = NoopLogger()
 	}
@@ -155,7 +153,7 @@ func applyDefaults(b *MediaBinding, clock Clock) {
 // correct HTTP status (400 for SlotKind/Concept, 409 for Duplicate).
 func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (MediaBinding, error) {
 	if s.dispatcher == nil {
-		return MediaBinding{}, fmt.Errorf("mediamemory: create binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+		return MediaBinding{}, fmt.Errorf("mediamemory: create binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
 	if !IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
@@ -191,7 +189,7 @@ func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (Med
 // Approve, not Update with ApprovalStatus=approved).
 func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (MediaBinding, error) {
 	if s.dispatcher == nil {
-		return MediaBinding{}, fmt.Errorf("mediamemory: update binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+		return MediaBinding{}, fmt.Errorf("mediamemory: update binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
 	if !IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
@@ -214,7 +212,7 @@ func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (Med
 // append-only; corrections are a re-Approve or new OriginManual).
 func (s *defaultBindingService) Delete(ctx context.Context, id string) error {
 	if s.dispatcher == nil {
-		return fmt.Errorf("mediamemory: delete binding: %w", mutations.ErrBindingMutationDispatcherUnavailable)
+		return fmt.Errorf("mediamemory: delete binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
 	if id == "" {
 		return fmt.Errorf("mediamemory: delete binding missing id: %w", ErrBindingNotFound)
@@ -235,7 +233,7 @@ func (s *defaultBindingService) Delete(ctx context.Context, id string) error {
 // the canonical "approve" flow is a status flip, not a reset).
 func (s *defaultBindingService) Approve(ctx context.Context, id string) error {
 	if s.dispatcher == nil {
-		return fmt.Errorf("mediamemory: approve binding %q: %w", id, mutations.ErrBindingMutationDispatcherUnavailable)
+		return fmt.Errorf("mediamemory: approve binding %q: %w", id, ErrBindingMutationDispatcherUnavailable)
 	}
 	b, err := s.bindings.FindByID(ctx, id)
 	if err != nil {
@@ -263,7 +261,7 @@ func (s *defaultBindingService) Approve(ctx context.Context, id string) error {
 // success_score / manual scores are preserved.
 func (s *defaultBindingService) Reject(ctx context.Context, id string) error {
 	if s.dispatcher == nil {
-		return fmt.Errorf("mediamemory: reject binding %q: %w", id, mutations.ErrBindingMutationDispatcherUnavailable)
+		return fmt.Errorf("mediamemory: reject binding %q: %w", id, ErrBindingMutationDispatcherUnavailable)
 	}
 	b, err := s.bindings.FindByID(ctx, id)
 	if err != nil {

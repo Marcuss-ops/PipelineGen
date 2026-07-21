@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/mutations"
 )
 
 // fixedClock returns a Clock pinned to a deterministic time so
@@ -54,11 +56,50 @@ func seedConcept(repo *fakeConceptRepo, id string) MediaConcept {
 
 // ── Create ──────────────────────────────────────────────────────────
 
+func TestBindingServiceFailsClosedWhenDispatcherNil(t *testing.T) {
+	t.Parallel()
+	concepts := newFakeConceptRepo()
+	bindings := newFakeBindingsRepo()
+	// godlike/07 fail-closed: a nil dispatcher must be treated as an
+	// unavailable mutation surface, never as a silent no-op.
+	svc := NewDefaultBindingService(concepts, bindings, nil, NoopLogger(), newFixedClock())
+	c := seedConcept(concepts, "concept-dispatcher-nil")
+
+	_, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-x", SlotPrimaryVideo))
+	if err == nil {
+		t.Fatalf("Create succeeded with nil dispatcher; want error")
+	}
+	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+		t.Fatalf("Create returned %v, want ErrBindingMutationDispatcherUnavailable", err)
+	}
+
+	if err := svc.Delete(context.Background(), "b-1"); err == nil {
+		t.Fatalf("Delete succeeded with nil dispatcher; want error")
+	}
+	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+		t.Fatalf("Delete returned %v, want ErrBindingMutationDispatcherUnavailable", err)
+	}
+
+	if err := svc.Approve(context.Background(), "b-1"); err == nil {
+		t.Fatalf("Approve succeeded with nil dispatcher; want error")
+	}
+	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+		t.Fatalf("Approve returned %v, want ErrBindingMutationDispatcherUnavailable", err)
+	}
+
+	if err := svc.Reject(context.Background(), "b-1"); err == nil {
+		t.Fatalf("Reject succeeded with nil dispatcher; want error")
+	}
+	if !errors.Is(err, mutations.ErrBindingMutationDispatcherUnavailable) {
+		t.Fatalf("Reject returned %v, want ErrBindingMutationDispatcherUnavailable", err)
+	}
+}
+
 func TestBindingServiceCreateHappyPath(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	c := seedConcept(concepts, "concept-maya")
 
 	got, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-chichen-itza", SlotPrimaryVideo))
@@ -93,7 +134,7 @@ func TestBindingServiceCreateRejectsInvalidSlotKind(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	c := seedConcept(concepts, "concept-maya2")
 
 	_, err := svc.Create(context.Background(), MediaBinding{
@@ -114,7 +155,7 @@ func TestBindingServiceCreateRejectsMissingConceptID(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 
 	_, err := svc.Create(context.Background(), MediaBinding{
 		AssetID: "asset-x", SlotKind: SlotPrimaryVideo,
@@ -138,7 +179,7 @@ func TestBindingServiceCreateRejectsMissingAssetID(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	c := seedConcept(concepts, "concept-maya3")
 
 	_, err := svc.Create(context.Background(), MediaBinding{
@@ -166,7 +207,7 @@ func TestBindingServiceCreateRejectsUnknownConcept(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	// Concept doesn't exist — FindByID will fail.
 	_, err := svc.Create(context.Background(), MediaBinding{
 		ConceptID: "concept-unknown", AssetID: "asset-x", SlotKind: SlotPrimaryVideo,
@@ -201,7 +242,7 @@ func TestBindingServiceUpdateRejectsInvalidSlotKind(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	// Seed via raw bindings.Upsert with explicit Origin +
 	// ApprovalStatus (consistent with the other test setups in
 	// this file). Mirrors production semantics: any bindings.Upsert
@@ -229,7 +270,7 @@ func TestBindingServiceUpdateRejectsEmptyID(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	_, err := svc.Update(context.Background(), MediaBinding{
 		ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
 	})
@@ -245,7 +286,7 @@ func TestBindingServiceUpdateHappyPathPreservesUsageCount(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	// Seed with valid Origin + ApprovalStatus (or the fake's
 	// IsKnownOrigin gate would reject the empty string and
 	// Update would receive an empty binding.ID).
@@ -274,7 +315,7 @@ func TestBindingServiceDeleteRejectsEmptyID(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	err := svc.Delete(context.Background(), "")
 	if err == nil {
 		t.Fatalf("Delete accepted empty ID")
@@ -288,7 +329,7 @@ func TestBindingServiceDeleteHappyPath(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	// Seed with valid Origin + ApprovalStatus so the fake's
 	// IsKnownOrigin gate doesn't reject the empty Origin (which
 	// would cascade into Delete getting an empty b.ID).
@@ -310,7 +351,7 @@ func TestBindingServiceApproveHappyPathPreservesOrigin(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-4", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
 		Origin: OriginAutoLink, ApprovalStatus: ApprovalPending,
@@ -332,7 +373,7 @@ func TestBindingServiceApproveSurfacesBindingNotFound(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	err := svc.Approve(context.Background(), "missing-id")
 	if err == nil {
 		t.Fatalf("Approve accepted missing ID")
@@ -346,7 +387,7 @@ func TestBindingServiceRejectSetsRejectedAndPreservesOrigin(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-5", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
 		Origin: OriginManual, ApprovalStatus: ApprovalApproved,
@@ -367,7 +408,7 @@ func TestBindingServiceRejectSurfacesBindingNotFound(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	err := svc.Reject(context.Background(), "missing-id")
 	if !errors.Is(err, ErrBindingNotFound) {
 		t.Fatalf("Reject returned %v, want wrapped ErrBindingNotFound", err)
@@ -380,7 +421,7 @@ func TestBindingServiceListByConceptRejectsEmptyConceptID(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	_, err := svc.ListByConcept(context.Background(), "")
 	if err == nil {
 		t.Fatalf("ListByConcept accepted empty concept_id")
@@ -394,7 +435,7 @@ func TestBindingServiceListByConceptReturnsAllStatuses(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	// Seed 3 bindings: 1 approved, 1 pending, 1 rejected.
 	for i, status := range []ApprovalStatus{ApprovalApproved, ApprovalPending, ApprovalRejected} {
 		_, _ = bindings.Upsert(context.Background(), MediaBinding{
@@ -416,7 +457,7 @@ func TestBindingServiceListBySlotRejectsInvalidSlotKind(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	_, err := svc.ListBySlot(context.Background(), "c-1", SlotKind("garbage"), 10)
 	if err == nil {
 		t.Fatalf("ListBySlot accepted garbage SlotKind")
@@ -430,7 +471,7 @@ func TestBindingServiceListBySlotFilterHappyPath(t *testing.T) {
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	_, _ = bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-slot-pv-1", ConceptID: "c-1", AssetID: "a-1",
 		SlotKind: SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
@@ -456,7 +497,7 @@ func TestBindingServiceListBySlotEmptyResultWhenLimitExceedsAvailable(t *testing
 	t.Parallel()
 	concepts := newFakeConceptRepo()
 	bindings := newFakeBindingsRepo()
-	svc := NewDefaultBindingService(concepts, bindings, NoopLogger(), newFixedClock())
+	svc := newBindingService(concepts, bindings)
 	_, _ = bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-slot-lim-1", ConceptID: "c-1", AssetID: "a-1",
 		SlotKind: SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,

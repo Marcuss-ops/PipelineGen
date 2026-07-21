@@ -23,6 +23,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -36,6 +37,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -115,6 +119,25 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, log *zap.Logger) 
 	p := brainplanner.NewDefaultPlanner()
 	b := braincore.NewCanonicalBrain(n, ir, candidateSearcher, r, p)
 	return mediamemory.NewMediaMemoryResolver(b)
+}
+
+// WireBindingService builds the canonical mediamemory.BindingService
+// backed by the SQLite BindingMutationDispatcher.
+//
+// godlike/06 SSOT: this is the single composition site for the
+// binding write surface. Callers that need a BindingService must
+// use this function and must not construct defaultBindingService
+// manually.
+func WireBindingService(
+	db *sql.DB,
+	txmgr outbox.TxManager,
+	outboxRepo *outboxevents.Repository,
+	log *zap.Logger,
+) mediamemory.BindingService {
+	concepts := sqliteMediaMemory.NewConceptsRepository(db)
+	bindings := sqliteMediaMemory.NewBindingsRepository(db)
+	dispatcher := sqliteMediaMemory.NewBindingDispatcher(bindings, outboxRepo, txmgr)
+	return mediamemory.NewDefaultBindingService(concepts, bindings, dispatcher, log, mediamemory.RealClock())
 }
 
 // NoopSemanticLookup is the canonical noop SemanticLookup for

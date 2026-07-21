@@ -103,6 +103,22 @@ func (f *fakeConceptRepo) FindManyByFingerprints(_ context.Context, language str
 
 // ── Fake BindingRepository ──────────────────────────────────────────
 
+// fakeBindingDispatcher is a test-only implementation of
+// BindingMutationDispatcher that delegates to the in-memory
+// fake binding repo. It lets binding_service tests exercise the
+// service through the dispatcher seam without SQLite or outbox.
+type fakeBindingDispatcher struct {
+	bindings *fakeBindingsRepo
+}
+
+func (f *fakeBindingDispatcher) UpsertBinding(_ context.Context, b MediaBinding) (MediaBinding, error) {
+	return f.bindings.Upsert(context.Background(), b)
+}
+
+func (f *fakeBindingDispatcher) DeleteBinding(_ context.Context, id, conceptID string) error {
+	return f.bindings.Delete(context.Background(), id)
+}
+
 // fakeBindingsRepo is an in-memory BindingRepository used by both
 // binding_service and feedback_service tests.
 //
@@ -124,6 +140,13 @@ func newFakeBindingsRepo() *fakeBindingsRepo {
 	return &fakeBindingsRepo{
 		byID: make(map[string]MediaBinding),
 	}
+}
+
+// newBindingService is a test helper that wires the canonical
+// defaultBindingService with a fake dispatcher. Keeps test setup
+// one-liners after the dispatcher became mandatory.
+func newBindingService(concepts *fakeConceptRepo, bindings *fakeBindingsRepo) BindingService {
+	return NewDefaultBindingService(concepts, bindings, &fakeBindingDispatcher{bindings: bindings}, NoopLogger(), newFixedClock())
 }
 
 func (r *fakeBindingsRepo) Upsert(_ context.Context, b MediaBinding) (MediaBinding, error) {
