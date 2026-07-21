@@ -115,6 +115,29 @@ func (r *fakeUsageRepo) ListProjectUsages(_ context.Context, projectID string, l
 	return out, nil
 }
 
+// ListSince is the Fase 1.6 ranker warm-up read seam mirror.
+// Returns every event whose CreatedAt is >= since (newest first),
+// bounded by limit. A zero `since` returns the most recent
+// `limit` events across all projects — matches the canonical
+// post-deploy full warm-up behavior.
+func (r *fakeUsageRepo) ListSince(_ context.Context, since time.Time, limit int) ([]UsageEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]UsageEvent, 0, 4)
+	// Iterate events in newest-first order so the ranker warm-up
+	// sees the canonical ORDER BY created_at DESC contract.
+	for i := len(r.events) - 1; i >= 0; i-- {
+		e := r.events[i]
+		if since.IsZero() || !e.CreatedAt.Before(since) {
+			out = append(out, e)
+			if limit > 0 && len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 // ── Test fixtures ───────────────────────────────────────────────────
 
 const (
@@ -407,17 +430,318 @@ func TestFeedbackRecordAppendsEventBeforeUpsertingBinding(t *testing.T) {
 
 // ── AggregateSince stub invariant ──────────────────────────────────
 
-func TestFeedbackAggregateSinceReturnsNotImplemented(t *testing.T) {
+func TestFeedbackAggregateSinceReturnsEmptyForNoEvents(t *testing.T) {
 	t.Parallel()
 	svc, _, _ := defaultFeedbackSvc(t)
-	_, err := svc.AggregateSince(context.Background(), "2026-01-01T00:00:00Z")
-	if err == nil {
-		t.Fatalf("AggregateSince should fail-closed per godlike/07 NO-FAKE-AVAILABILITY (Phase 1.x stub)")
+	aggregates, err := svc.AggregateSince(context.Background(), "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("AggregateSince returned unexpected error: %v", err)
 	}
-	// godlike/06 SSOT: the canonical contract is "this returns a
-	// non-nil error and does not silently return []". We do not pin
-	// the specific sentinel (errNotImplemented or a typed
-	// envelope) — both are acceptable.
+	if len(aggregates) != 0 {
+		t.Fatalf("expected 0 aggregates for empty repo, got %d", len(aggregates))
+	}
+}
+
+// TestFeedbackAggregateSinceGroupsByConceptSlot pins the SPEC
+// contract: AggregateSince returns one FeedbackAggregate per
+// (ConceptID, SlotKind) pair with the canonical count fields
+// (AcceptedN, RejectedN, SuccessN) derived from the bounded event
+// slice since `since`.
+func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+
+	b1 := seedFeedbackBinding(bindings, 0.0, 0)
+	b1.ConceptID = "concept-A"
+	b1.SlotKind = SlotPrimaryVideo
+	bindings.byID[b1.ID] = b1
+
+	b2 := seedFeedbackBinding(bindings, 0.0, 0)
+	b2.ConceptID = "concept-A"
+	b2.SlotKind = SlotSecondaryImage
+	bindings.byID[b2.ID] = b2
+
+	b3 := seedFeedbackBinding(bindings, 0.0, 0)
+	b3.ConceptID = "concept-B"
+	b3.SlotKind = SlotPrimaryVideo
+	bindings.byID[b3.ID] = b3
+
+	b4 := seedFeedbackBinding(bindings, 0.0, 0)
+	b4.ConceptID = "concept-B"
+	b4.SlotKind = SlotSecondaryImage
+	bindings.byID[b4.ID] = b4
+
+	now := newFixedClock().Now()
+	mkEv := func(c string, s SlotKind, b MediaBinding, sel, rej, rc bool) UsageEvent {
+		return UsageEvent{
+			ProjectID: "p-1", ConceptID: c, SlotKind: s,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected: sel, Rejected: rej, RenderCompleted: rc,
+			CreatedAt: now,
+		}
+	}
+	usage.events = []UsageEvent{
+		mkEv("concept-A", SlotPrimaryVideo, b1, true, false, false),
+		mkEv("concept-A", SlotPrimaryVideo, b1, false, true, false),
+		mkEv("concept-A", SlotSecondaryImage, b2, false, false, true),
+		mkEv("concept-B", SlotPrimaryVideo, b3, true, false, false),
+		mkEv("concept-B", SlotPrimaryVideo, b3, true, false, false),
+		mkEv("concept-B", SlotSecondaryImage, b4, false, true, false),
+	}
+
+	agg, err := svc.AggregateSince(context.Background(), "")
+	if err != nil {
+		t.Fatalf("AggregateSince returned error: %v", err)
+	}
+	if len(agg) != 4 {
+		t.Fatalf("AggregateSince returned %d aggregates, want 4 (one per concept × slot pair); got %+v",
+			len(agg), agg)
+	}
+
+	for i := 1; i < len(agg); i++ {
+		prev, cur := agg[i-1], agg[i]
+		if prev.ConceptID > cur.ConceptID ||
+			(prev.ConceptID == cur.ConceptID && prev.SlotKind > cur.SlotKind) {
+			t.Fatalf("AggregateSince ordering violated at index %d: prev=%+v cur=%+v", i, prev, cur)
+		}
+	}
+
+	find := func(c string, s SlotKind) (FeedbackAggregate, bool) {
+		for _, a := range agg {
+			if a.ConceptID == c && a.SlotKind == s {
+				return a, true
+			}
+		}
+		return FeedbackAggregate{}, false
+	}
+	aAPV, ok := find("concept-A", SlotPrimaryVideo)
+	if !ok {
+		t.Fatalf("missing aggregate for (concept-A, primary_video)")
+	}
+	if aAPV.AcceptedN != 1 || aAPV.RejectedN != 1 || aAPV.SuccessN != 0 {
+		t.Fatalf("(concept-A, primary_video) counts = %+v, want {AcceptedN=1 RejectedN=1 SuccessN=0}", aAPV)
+	}
+	if aAPV.AvgScore != 0.0 {
+		t.Fatalf("(concept-A, primary_video) AvgScore = %v, want 0.0", aAPV.AvgScore)
+	}
+
+	aASI, ok := find("concept-A", SlotSecondaryImage)
+	if !ok {
+		t.Fatalf("missing aggregate for (concept-A, secondary_image)")
+	}
+	if aASI.AcceptedN != 0 || aASI.RejectedN != 0 || aASI.SuccessN != 1 {
+		t.Fatalf("(concept-A, secondary_image) counts = %+v, want {AcceptedN=0 RejectedN=0 SuccessN=1}", aASI)
+	}
+	if aASI.AvgScore != 1.0 {
+		t.Fatalf("(concept-A, secondary_image) AvgScore = %v, want 1.0", aASI.AvgScore)
+	}
+
+	aBPV, ok := find("concept-B", SlotPrimaryVideo)
+	if !ok {
+		t.Fatalf("missing aggregate for (concept-B, primary_video)")
+	}
+	if aBPV.AcceptedN != 2 || aBPV.RejectedN != 0 || aBPV.SuccessN != 0 {
+		t.Fatalf("(concept-B, primary_video) counts = %+v, want {AcceptedN=2 RejectedN=0 SuccessN=0}", aBPV)
+	}
+	if aBPV.AvgScore != 1.0 {
+		t.Fatalf("(concept-B, primary_video) AvgScore = %v, want 1.0", aBPV.AvgScore)
+	}
+}
+
+// TestFeedbackAggregateSinceUsesRawEventCountForAvgScore pins
+// the SPEC contract: AvgScore divides by the raw event count
+// (totalN), NOT by the sum of boolean counters. A
+// used_successfully event stamps BOTH Selected=true AND
+// RenderCompleted=true; without the totalN fix, that single
+// event would inflate the denominator and depress AvgScore.
+func TestFeedbackAggregateSinceUsesRawEventCountForAvgScore(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+	b := seedFeedbackBinding(bindings, 0.0, 0)
+	b.ConceptID = "concept-A"
+	b.SlotKind = SlotPrimaryVideo
+	bindings.byID[b.ID] = b
+
+	now := newFixedClock().Now()
+	usage.events = []UsageEvent{
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected: true, RenderCompleted: true,
+			CreatedAt: now},
+	}
+
+	agg, err := svc.AggregateSince(context.Background(), "")
+	if err != nil {
+		t.Fatalf("AggregateSince returned error: %v", err)
+	}
+	if len(agg) != 1 {
+		t.Fatalf("AggregateSince returned %d aggregates, want 1", len(agg))
+	}
+	if agg[0].AvgScore != 2.0 {
+		t.Fatalf("AvgScore = %v, want 2.0 (raw event count denominator pins used_successfully's full weight)",
+			agg[0].AvgScore)
+	}
+}
+
+// TestFeedbackAggregateSinceFiltersBySinceTimestamp pins the
+// ranker warm-up read contract: events with CreatedAt < `since`
+// are excluded from the bounded slice and therefore from the
+// aggregate.
+func TestFeedbackAggregateSinceFiltersBySinceTimestamp(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+
+	b := seedFeedbackBinding(bindings, 0.0, 0)
+	b.ConceptID = "concept-A"
+	b.SlotKind = SlotPrimaryVideo
+	bindings.byID[b.ID] = b
+
+	cutoff := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	usage.events = []UsageEvent{
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected:  true,
+			CreatedAt: cutoff.Add(-48 * time.Hour)},
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected:  true,
+			CreatedAt: cutoff.Add(-1 * time.Hour)},
+	}
+
+	agg, err := svc.AggregateSince(context.Background(), cutoff.Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("AggregateSince returned error: %v", err)
+	}
+	if len(agg) != 1 {
+		t.Fatalf("AggregateSince returned %d aggregates, want 1 (after-since filter)", len(agg))
+	}
+	if agg[0].AcceptedN != 1 {
+		t.Fatalf("AcceptedN = %d, want 1 (only the after-cutoff event)", agg[0].AcceptedN)
+	}
+}
+
+// TestFeedbackAggregateSinceInvalidTimestampRejects pins the
+// fail-closed envelope for malformed `since` inputs via the
+// canonical ErrInvalidAggregateSince sentinel.
+func TestFeedbackAggregateSinceInvalidTimestampRejects(t *testing.T) {
+	t.Parallel()
+	svc, _, _ := defaultFeedbackSvc(t)
+	_, err := svc.AggregateSince(context.Background(), "not-a-real-timestamp")
+	if err == nil {
+		t.Fatalf("AggregateSince accepted malformed `since` input")
+	}
+	if !errors.Is(err, ErrInvalidAggregateSince) {
+		t.Fatalf("AggregateSince returned %v, want wrapped ErrInvalidAggregateSince", err)
+	}
+}
+
+// TestFeedbackAggregateSinceEmptySinceReturnsAll pins the
+// post-deploy full warm-up path: an empty `since` is treated
+// as "no lower bound" (godlike/06 SSOT for full warm-up).
+func TestFeedbackAggregateSinceEmptySinceReturnsAll(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+	b := seedFeedbackBinding(bindings, 0.0, 0)
+	bindings.byID[b.ID] = b
+
+	usage.events = []UsageEvent{
+		{ProjectID: "p-1", ConceptID: b.ConceptID, SlotKind: b.SlotKind,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected:  true,
+			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{ProjectID: "p-1", ConceptID: b.ConceptID, SlotKind: b.SlotKind,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected:  true,
+			CreatedAt: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)},
+		{ProjectID: "p-1", ConceptID: b.ConceptID, SlotKind: b.SlotKind,
+			AssetID: b.AssetID, BindingID: b.ID,
+			RenderCompleted: true,
+			CreatedAt:       time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC)},
+	}
+
+	agg, err := svc.AggregateSince(context.Background(), "")
+	if err != nil {
+		t.Fatalf("AggregateSince returned error: %v", err)
+	}
+	if len(agg) != 1 {
+		t.Fatalf("AggregateSince returned %d aggregates, want 1", len(agg))
+	}
+	if agg[0].AcceptedN != 2 || agg[0].SuccessN != 1 {
+		t.Fatalf("counts = %+v, want {AcceptedN=2 SuccessN=1}", agg[0])
+	}
+	if agg[0].LastUsedAt != "2026-07-21T00:00:00Z" {
+		t.Fatalf("LastUsedAt = %q, want %q", agg[0].LastUsedAt, "2026-07-21T00:00:00Z")
+	}
+}
+
+// TestFeedbackAggregateSinceLastUsedAtMaxTimestamp pins the
+// LastUsedAt field contract: it must be the maximum CreatedAt
+// across all events in the (concept, slot) group, formatted
+// as RFC3339.
+func TestFeedbackAggregateSinceLastUsedAtMaxTimestamp(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+	b := seedFeedbackBinding(bindings, 0.0, 0)
+	bindings.byID[b.ID] = b
+
+	earlier := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	later := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
+	usage.events = []UsageEvent{
+		{ProjectID: "p-1", ConceptID: b.ConceptID, SlotKind: b.SlotKind,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected: true, CreatedAt: later},
+		{ProjectID: "p-1", ConceptID: b.ConceptID, SlotKind: b.SlotKind,
+			AssetID: b.AssetID, BindingID: b.ID,
+			Selected: true, CreatedAt: earlier},
+	}
+
+	agg, err := svc.AggregateSince(context.Background(), "")
+	if err != nil {
+		t.Fatalf("AggregateSince returned error: %v", err)
+	}
+	if len(agg) != 1 {
+		t.Fatalf("AggregateSince returned %d aggregates, want 1", len(agg))
+	}
+	if agg[0].LastUsedAt != later.Format(time.RFC3339) {
+		t.Fatalf("LastUsedAt = %q, want %q (max CreatedAt)",
+			agg[0].LastUsedAt, later.Format(time.RFC3339))
+	}
+}
+
+// TestFeedbackRecordRejectsInvalidSlotKind pins the SPEC
+// contract: a binding with an uncanonical SlotKind surfaces
+// wrapped ErrInvalidSlotKind BEFORE any UsageEvent is appended
+// or binding Upsert is called.
+func TestFeedbackRecordRejectsInvalidSlotKind(t *testing.T) {
+	t.Parallel()
+	svc, bindings, usage := defaultFeedbackSvc(t)
+
+	b := MediaBinding{
+		ID:             "b-invalid-slot-" + uuid.NewString(),
+		ConceptID:      testConceptID,
+		AssetID:        testAssetID,
+		SlotKind:       SlotKind("not_a_real_slot"),
+		Origin:         OriginManual,
+		ApprovalStatus: ApprovalApproved,
+		SuccessScore:   0.0,
+		UsageCount:     0,
+	}
+	bindings.mu.Lock()
+	bindings.byID[b.ID] = b
+	bindings.mu.Unlock()
+
+	_, err := svc.Record(context.Background(), FeedbackInput{
+		ProjectID: "p-1", SceneID: "s-1", BindingID: b.ID, Action: FeedbackAccepted,
+	})
+	if err == nil {
+		t.Fatalf("Record accepted invalid SlotKind binding")
+	}
+	if !errors.Is(err, ErrInvalidSlotKind) {
+		t.Fatalf("Record returned %v, want wrapped ErrInvalidSlotKind", err)
+	}
+	if len(usage.events) != 0 {
+		t.Fatalf("Record must NOT append an event when SlotKind is invalid; got %d events", len(usage.events))
+	}
 }
 
 // ── Compile-time assertion ─────────────────────────────────────────

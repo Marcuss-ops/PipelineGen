@@ -35,6 +35,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
 )
 
 // FeedbackService is the canonical port for feedback ingestion.
@@ -225,6 +227,20 @@ func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (
 		)
 	}
 
+	// godlike/07 NO-FAKE-AVAILABILITY (Fase 1.6 SlotKind guard):
+	// the binding's SlotKind is propagated verbatim onto the
+	// UsageEvent; a binding with an uncanonical SlotKind would
+	// slip past the append-only audit log and corrupt the ranker
+	// warm-up aggregate (Aggregator groups by SlotKind). Surface
+	// the canonical sentinel so the dashboard / API handler can
+	// branch via errors.Is and surface a 400 to the operator.
+	if !IsKnownSlotKind(binding.SlotKind) {
+		return UsageEvent{}, fmt.Errorf(
+			"mediamemory: feedback record binding %q slot_kind=%q: %w",
+			in.BindingID, string(binding.SlotKind), ErrInvalidSlotKind,
+		)
+	}
+
 	now := s.clock.Now().UTC()
 
 	// 1. Append the audit event (append-only; ALWAYS succeeds
@@ -277,16 +293,130 @@ func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (
 	return event, nil
 }
 
-// AggregateSince is the ranker warm-up read. Phase 1.4 leaves this
-// as an explicit stub because the canonical implementation needs
-// a real SQL aggregate query (UsageRepository.ListSince + a
-// ranker-side GROUP BY aggregation). The companion suggest_followup
-// lands this in Fase 1.5.
+// AggregateSince is the ranker warm-up read. Fase 1.6 implementation:
+// parse the `since` ISO8601 timestamp, call usage.ListSince to read
+// the bounded event slice (canonical limit = AntiRepetitionHistoryLimit),
+// then group by (ConceptID, SlotKind) in Go and emit one
+// FeedbackAggregate per group.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: returning an empty slice here
-// would silently give the ranker "no signal" and is wrong; so we
-// return the stub sentinel rather than fake data. Composition root
-// surfaces this as a 501 to any consumer until Fase 1.5 lands.
-func (s *defaultFeedbackService) AggregateSince(_ context.Context, _ string) ([]FeedbackAggregate, error) {
-	return nil, errNotImplemented("mediamemory: defaultFeedbackService.AggregateSince not yet implemented (Phase 1.5)")
+// godlike/06 SSOT (port-driven read): the SQL query is the single
+// bottleneck at the repository seam (no media_bindings JOIN); the
+// Go-side aggregation is O(N) over the bounded slice. This is the
+// canonical warm-up cost ceiling — a future SQL-side GROUP BY lands
+// as a sibling method (ListAggregatesSince) when the volume
+// justifies the index round-trip.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: an empty bounded slice returns
+// an empty (non-nil) aggregate slice with zero entries. The caller
+// MUST NOT interpret this as "no signal" — godlike/06 SSOT pins
+// empty == "no events yet" (legitimate initial state after a fresh
+// deploy).
+//
+// AvgScore is computed as the simple success-rate signal for the
+// (concept, slot) group: (SuccessN + AcceptedN - RejectedN) /
+// max(1, total_events). This is in [-1, +2] and is consumed by
+// the ranker as a warm-up seed for HistoricalSuccessScore. A future
+// migration denormalizes the binding SuccessScore at event time so
+// AvgScore can be an exact value rather than a derived rate.
+func (s *defaultFeedbackService) AggregateSince(ctx context.Context, since string) ([]FeedbackAggregate, error) {
+	parsed, err := parseAggregateSince(since)
+	if err != nil {
+		return nil, err
+	}
+	events, err := s.usage.ListSince(ctx, parsed, AntiRepetitionHistoryLimit)
+	if err != nil {
+		return nil, fmt.Errorf("mediamemory: AggregateSince list since: %w", err)
+	}
+	if len(events) == 0 {
+		return []FeedbackAggregate{}, nil
+	}
+	// Group by (concept, slot). The internal accumulator carries
+	// the raw event count (totalN) so AvgScore divides by the
+	// canonical event count, NOT by the sum of the boolean
+	// counters — a single used_successfully event has BOTH
+	// Selected=true AND RenderCompleted=true, so the boolean sum
+	// would double-count it and depress AvgScore. totalN is the
+	// godlike/06 SSOT denominator.
+	type groupKey struct {
+		conceptID string
+		slotKind  SlotKind
+	}
+	type groupAcc struct {
+		agg    FeedbackAggregate
+		totalN int
+	}
+	groups := make(map[groupKey]*groupAcc, 8)
+	for _, ev := range events {
+		k := groupKey{conceptID: ev.ConceptID, slotKind: ev.SlotKind}
+		g, ok := groups[k]
+		if !ok {
+			g = &groupAcc{
+				agg: FeedbackAggregate{
+					ConceptID: ev.ConceptID,
+					SlotKind:  ev.SlotKind,
+				},
+			}
+			groups[k] = g
+		}
+		g.totalN++
+		if ev.Selected {
+			g.agg.AcceptedN++
+		}
+		if ev.Rejected {
+			g.agg.RejectedN++
+		}
+		if ev.RenderCompleted {
+			g.agg.SuccessN++
+		}
+		if g.agg.LastUsedAt == "" || ev.CreatedAt.Format(time.RFC3339) > g.agg.LastUsedAt {
+			g.agg.LastUsedAt = ev.CreatedAt.Format(time.RFC3339)
+		}
+	}
+	out := make([]FeedbackAggregate, 0, len(groups))
+	for _, g := range groups {
+		if g.totalN > 0 {
+			g.agg.AvgScore = float64(g.agg.SuccessN+g.agg.AcceptedN-g.agg.RejectedN) / float64(g.totalN)
+		}
+		out = append(out, g.agg)
+	}
+	// godlike/06 SSOT (deterministic ordering): sort by
+	// (ConceptID ASC, SlotKind ASC) so the ranker warm-up can
+	// apply its own ordering on top of a stable base.
+	sortFeedbackAggregates(out)
+	return out, nil
+}
+
+// parseAggregateSince parses the canonical ISO8601 input. An
+// empty string is treated as "no lower bound" (the canonical
+// post-deploy full warm-up), mapping to time.Time{}. A malformed
+// string returns a typed envelope (godlike/07 NO-FAKE-AVAILABILITY)
+// wrapping ErrInvalidAggregateSince so the wire handler can
+// branch via errors.Is and return a 400.
+func parseAggregateSince(since string) (time.Time, error) {
+	if since == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, since)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"mediamemory: AggregateSince invalid since=%q (expected RFC3339): %w",
+			since, ErrInvalidAggregateSince,
+		)
+	}
+	return t.UTC(), nil
+}
+
+// sortFeedbackAggregates sorts in place by (ConceptID ASC,
+// SlotKind ASC) for the canonical deterministic ordering
+// contract. godlike/06 SSOT (stable sort): equal keys preserve
+// the insertion order (which mirrors the event scan order).
+// sort.SliceStable so a future caller iterating this aggregate
+// in a UI sees deterministic ordering.
+func sortFeedbackAggregates(in []FeedbackAggregate) {
+	sort.SliceStable(in, func(i, j int) bool {
+		if in[i].ConceptID != in[j].ConceptID {
+			return in[i].ConceptID < in[j].ConceptID
+		}
+		return in[i].SlotKind < in[j].SlotKind
+	})
 }

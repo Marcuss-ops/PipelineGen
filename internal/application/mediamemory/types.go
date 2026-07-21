@@ -595,6 +595,16 @@ var (
 	ErrInvalidFeedbackAction = errors.New(
 		"mediamemory: unknown FeedbackAction value (closed set: accepted/rejected/replaced/trimmed/used_successfully)",
 	)
+	// ErrInvalidAggregateSince is the canonical Fase 1.6 sentinel
+	// for a malformed `since` input to FeedbackService.AggregateSince.
+	// godlike/07 NO-FAKE-AVAILABILITY: an invalid timestamp MUST
+	// surface as a typed envelope (NOT a silent zero-value
+	// time.Time) so the wire handler can branch via errors.Is and
+	// return a 400 to the caller. godlike/06 SSOT: distinct from
+	// ErrInvalidPhrase (reserved for Normalizer input corruption).
+	ErrInvalidAggregateSince = errors.New(
+		"mediamemory: AggregateSince `since` is not a valid RFC3339 timestamp",
+	)
 	ErrCandidateNotFound = errors.New(
 		"mediamemory: candidate_id absent from candidate repository",
 	)
