@@ -764,11 +764,13 @@ func HasAvailableMedia(c MediaCandidate) bool {
 }
 
 // HasValidDuration reports whether the candidate's DurationMs is
-// positive. godlike/06 SSOT (canonical gate): zero / negative
-// DurationMs is treated as a malformed envelope — the ranker's
-// duration_valid gate MUST drop it before scoring.
+// non-negative. godlike/06 SSOT (canonical gate): negative
+// DurationMs is treated as a malformed envelope and is dropped.
+// DurationMs == 0 is the canonical image/document binding sentinel
+// and is accepted so image bindings and unmeasured clips are not
+// silently discarded before the duration_fit scoring stage.
 func HasValidDuration(c MediaCandidate) bool {
-	return c.DurationMs > 0
+	return c.DurationMs >= 0
 }
 
 // ── Mandatory gates (Fase "Ranking & rights") ────────────────────

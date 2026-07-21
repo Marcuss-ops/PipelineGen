@@ -223,6 +223,17 @@ type UsageRepository interface {
 	// VideoID flow through verbatim from the columns added in
 	// migration 169.
 	ListProjectUsages(ctx context.Context, projectID string, limit int) ([]UsageEvent, error)
+	// ListSince returns every event whose CreatedAt is >= since
+	// (newest first), bounded by limit. Used by FeedbackService
+	// .AggregateSince for the ranker warm-up read after re-deploys:
+	// the canonical (concept, slot) aggregate is computed in Go
+	// from the bounded event slice so the ranker can seed its
+	// initial score estimate without a runtime JOIN against
+	// media_bindings. godlike/06 SSOT: a zero `since` is
+	// treated as "no lower bound" (returns the most recent
+	// `limit` events across all projects), matching the
+	// forward-pointer for post-deploy full warm-up.
+	ListSince(ctx context.Context, since time.Time, limit int) ([]UsageEvent, error)
 }
 
 // ── External ports (consumed by composition-root adapters) ────────

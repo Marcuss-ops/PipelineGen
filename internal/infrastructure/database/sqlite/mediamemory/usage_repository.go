@@ -147,6 +147,41 @@ func (r *usageRepository) ListProjectUsages(ctx context.Context, projectID strin
 	return r.queryUsageEvents(ctx, q, args, "list by project")
 }
 
+// ListSince is the Fase 1.6 ranker warm-up read seam.
+// godlike/06 SSOT (port-driven read): the canonical read is a
+// single SQL query bounded by both `since` (lower bound on
+// created_at) and `limit` (canonical upper bound for warm-up is
+// AntiRepetitionHistoryLimit = 1000). The FeedbackService
+// .AggregateSince helper groups the bounded slice by (concept, slot)
+// in Go so the ranker can seed its initial score estimate without a
+// runtime JOIN against media_bindings.
+//
+// A zero `since` is treated as "no lower bound" — the canonical
+// post-deploy warm-up path reads every event newer-than-the-cutoff
+// timestamp; a legacy zero-value call returns the most recent
+// `limit` events so the warm-up can never silently drop rows.
+func (r *usageRepository) ListSince(ctx context.Context, since time.Time, limit int) ([]mediamemory.UsageEvent, error) {
+	var (
+		args []any
+		q    string
+	)
+	if since.IsZero() {
+		// Zero-value since = "no lower bound"; canonical fallback
+		// for post-deploy full warm-up. ORDER BY created_at DESC
+		// so the most recent rows come first (ranker warm-up
+		// priority is recency-weighted).
+		q = `SELECT ` + usageSelectColumns + ` FROM media_usage_events ORDER BY created_at DESC`
+	} else {
+		args = append(args, since.UTC().Format(time.RFC3339Nano))
+		q = `SELECT ` + usageSelectColumns + ` FROM media_usage_events WHERE created_at >= ? ORDER BY created_at DESC`
+	}
+	if limit > 0 {
+		q += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	return r.queryUsageEvents(ctx, q, args, "list since")
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 func (r *usageRepository) queryUsageEvents(ctx context.Context, q string, args []any, op string) ([]mediamemory.UsageEvent, error) {
