@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
@@ -15,6 +16,7 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	imagerypexels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/imagery/pexels"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -93,6 +95,13 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if err := registerArtlist(ctx, registry, log, cfg, root, wiring); err != nil {
 		return err
 	}
+	// Fase 4.1: native Pexels image search provider. Registered
+	// alongside Artlist + YouTube so the canonical SearchFanOut
+	// aggregator fans MediaTypes=["image"] queries out to it.
+	// godlike/07 fail-closed: empty API key logs an Info and
+	// skips registration; the linker degrades to image-less
+	// resolutions without aborting boot.
+	registerPexelsImageSearch(providerReg, log, cfg)
 	if err := registerYouTubeClip(registry, log, cfg, root, wiring, searchAgg, searchFanOut); err != nil {
 		return err
 	}
@@ -286,6 +295,45 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 	log.Info("created YouTubeClip module via youtube.Build (Blocco C1-Step 4)")
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
+}
+
+// registerPexelsImageSearch wires the canonical Fase 4.1 Pexels
+// image search provider into the providers.Registry so the
+// canonical SearchFanOut routes image-typed queries through it.
+//
+// godlike/06 SSOT: this is the SOLE composition-site for
+// Pexels image search; downstream consumers (mediamemory
+// SearchFanOutAdapter, search.Aggregator) iterate the registry
+// canonically.
+//
+// godlike/07 fail-closed envelope: when cfg.External.PexelsAPIKey
+// is empty, the function logs Info + skips Register; a misconfigured
+// provider at composition time MUST NOT abort boot (the
+// canonical SearchFanOut's "no eligible backends for media_type=image"
+// path is fail-soft).
+func registerPexelsImageSearch(providerReg *providers.Registry, log *zap.Logger, cfg *config.Config) {
+	if providerReg == nil {
+		return
+	}
+	if cfg == nil || cfg.External.PexelsAPIKey == "" {
+		log.Info("registerPexelsImageSearch: cfg.External.PexelsAPIKey empty; skipping Pexels image-search registration (canonical fail-soft path)")
+		return
+	}
+	pe := imagerypexels.NewProvider(imagerypexels.Config{
+		APIKey:     cfg.External.PexelsAPIKey,
+		BaseURL:    cfg.External.PexelsBaseURL,
+		Timeout:    45 * time.Second,
+		SourceName: imagerypexels.ProviderName,
+	})
+	if err := providerReg.Register(pe); err != nil {
+		log.Warn("registerPexelsImageSearch: providers.Registry.Register returned error; skipping",
+			zap.String("provider", imagerypexels.ProviderName),
+			zap.Error(err))
+		return
+	}
+	log.Info("registerPexelsImageSearch: Pexels image provider registered (Fase 4.1)",
+		zap.String("provider", imagerypexels.ProviderName),
+		zap.Bool("capability_image", true))
 }
 
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {

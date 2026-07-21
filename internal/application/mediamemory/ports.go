@@ -273,6 +273,31 @@ type SemanticLookup interface {
 	LookupByConcept(ctx context.Context, conceptType ConceptType, text string, language string, limit int) ([]MediaCandidate, error)
 }
 
+// KeyframeVisualIndexer is the Fase 4.1 visual-channel port for
+// keyframe vectors. godlike/06 SSOT (dedicated seam): keyframe
+// vectors live in a DIFFERENT collection from concept vectors
+// (pipelinegen_media_frames vs pipelinegen_media_concepts) —
+// this port owns the frame-collection write path so the canonical
+// QdrantIndexer (which writes concepts) is not mutated.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: an absent transport / wrong
+// dimensionality surfaces as wrapped ErrSemanticNotConfigured
+// (fail-closed; never a silent zero-vector write).
+type KeyframeVisualIndexer interface {
+	// IndexKeyframe writes one (video_id, ts_ms) point into
+	// pipelinegen_media_frames with a 768d SigLIP vector. The
+	// point ID is canonical `frame-{videoID}-{tsMs}` so a
+	// re-extract of the same timestamp is idempotent (Upsert
+	// semantics at the Qdrant layer).
+	//
+	// vector is the canonical visual-channel embedding (must be
+	// 768d; ErrSemanticNotConfigured on dim mismatch). A nil
+	// vector rejects with ErrLinkerEmbeddingFailed so the
+	// linker worker's resume contract kicks in (caller
+	// branches on errors.Is).
+	IndexKeyframe(ctx context.Context, videoID string, tsMs int64, assetID string, language string, vec []float32, model string) error
+}
+
 // EmbeddingIndexer is the Level 1 ingest port. The production adapter
 // proxies to the canonical EmbeddingChannelRegistry
 // (internal/application/search).
@@ -375,4 +400,94 @@ func IsKnownRightsVerdict(v RightsVerdict) bool {
 	default:
 		return false
 	}
+}
+
+// ── Fase 3.2 linker ports (godlike/06 SSOT: narrow doctrine) ────
+
+// TranscriptExtractor is the canonical extraction port for the
+// linker worker's transcript step. godlike/06 SSOT (forward-pin
+// to Fase 3.5): the production adapter wraps the canonical
+// stockpipeline stock-transcribe command over the candidate's
+// SourceURL. The linker owns only the seam; transcription policy
+// lives in stockpipeline.
+type TranscriptExtractor interface {
+	Extract(ctx context.Context, sourceURL string, mediaType string) ([]TranscriptSegment, error)
+}
+
+// KeyframeExtractor is the canonical keyframe port for the
+// linker worker. godlike/06 SSOT (forward-pin to Fase 4.1): the
+// production adapter wraps ffprobe scene detection + stockpipeline
+// keyframe generation. For Fase 3.2 a noop stub returns zero
+// keyframes; the linker fans out fine because the visual channel
+// degrades gracefully.
+type KeyframeExtractor interface {
+	Extract(ctx context.Context, sourceURL string, mediaType string) ([]Keyframe, error)
+}
+
+// VisualDescriptionGenerator is the canonical per-keyframe
+// description port. godlike/06 SSOT (encoder split): the model
+// side (Encoder) produces a vector; the description port
+// returns a textual description string for the canonical
+// (text + transcript + visual_desc) EncodingChannels envelope.
+// Production adapter wraps SigLIP-style visual captioning.
+type VisualDescriptionGenerator interface {
+	Generate(ctx context.Context, k Keyframe) (string, error)
+}
+
+// EntityDetector is the canonical entity-detection port. The
+// detector returns free-text entity labels; the canonical
+// concept-assignment step normalises each label into a
+// MediaConcept (via Normalizer.Normalize then ConceptRepository.
+// Upsert). godlike/06 SSOT: this port is owned distinctly from
+// the EmbeddingEncoder because entity detection is a CLASSIFIER
+// (text → labels) not an EMBEDDER (text → vector).
+type EntityDetector interface {
+	DetectEntities(ctx context.Context, transcript string, visualDesc string) ([]string, error)
+}
+
+// EmbeddingEncoder is the canonical model-side encoder port
+// (godlike/06 SSOT: split from EmbeddingIndexer). The encoder
+// produces MediaEmbedding vectors; the indexer writes them into
+// Qdrant. The linker's Encode call site threads the resulting
+// vector through the Indexer.IndexConcept path so Phase 2's
+// Qdrant point stays authoritative. Production adapter routes
+// through the canonical EmbeddingChannelRegistry
+// (internal/application/search).
+type EmbeddingEncoder interface {
+	Encode(ctx context.Context, channels EncodingChannels) (MediaEmbedding, error)
+}
+
+// LinkerWorker is the canonical Fase 3.2 worker port. godlike/06
+// SSOT (narrow doctrine): single method, focused on per-
+// candidate enrichment. Concurrency / batching / orchestration
+// / Resume are BatchService concerns (see EnrichLinker).
+//
+// godlike/06 SSOT (idempotence + resumability contract, enforced
+// at this port's boundary):
+//
+//  1. Idempotency: a second EnrichCandidate call with a
+//     candidate whose DiscoveryStatus ∈ {DiscoveryIndexed,
+//     DiscoveryMaterialized} returns LinkerResult.Empty=true
+//     and produces ZERO new writes (godlike/07 NO-FAKE-AVAILABILITY:
+//     the early-return MUST be detectable via Empty so callers
+//     don't re-invoke downstream steps).
+//
+//  2. Resumability: a candidate whose DiscoveryStatus ==
+//     DiscoverySearched is processed in full again. The
+//     canonical binding semantic (BindingsRepository.Upsert
+//     uses ON CONFLICT DO UPDATE) makes a re-run safe — the
+//     rows are rewritten with identical values, the candidate's
+//     timestamp stamps update.
+//
+//  3. Hard-fail semantic: a candidate whose enrichment cannot
+//     produce any (concept, slot_kind) tuple transitions to
+//     DiscoveryFailed and the batch continues. ErrLinkerUnmappableConcept
+//     is the canonical sentinel.
+//
+//  4. Transient semantic: extract / encode failures leave the
+//     candidate at DiscoverySearched. Subsequent Resume retries
+//     until success or until an operator-driven kill flips the
+//     batch to Failed.
+type LinkerWorker interface {
+	EnrichCandidate(ctx context.Context, req LinkerRequest) (LinkerResult, error)
 }
