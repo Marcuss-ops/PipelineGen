@@ -463,10 +463,11 @@ func wireMediaProcessor(
 
 func newVLMClient(cfg *config.Config) *vlm.Client {
 	return vlm.NewClient(vlm.Config{
-		Enabled:   cfg.VLM.Enabled,
-		Endpoint:  cfg.VLM.URL,
-		Model:     cfg.VLM.Model,
-		TimeoutMs: cfg.VLM.TimeoutMs,
-		Weight:    cfg.VLM.Weight,
+		Enabled:      cfg.VLM.Enabled,
+		Endpoint:     cfg.VLM.URL,
+		Model:        cfg.VLM.Model,
+		ModelVersion: cfg.VLM.ModelVersion,
+		TimeoutMs:    cfg.VLM.TimeoutMs,
+		Weight:       cfg.VLM.Weight,
 	})
 }
