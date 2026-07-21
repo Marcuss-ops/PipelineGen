@@ -115,6 +115,10 @@ type BindingRepository interface {
 	// IsKnownSlotKind); otherwise ErrInvalidSlotKind is returned.
 	Upsert(ctx context.Context, b MediaBinding) (MediaBinding, error)
 
+	// UpsertBindingTx is the transaction-bound variant used by the
+	// canonical BindingMutationDispatcher.
+	UpsertBindingTx(ctx context.Context, tx *sql.Tx, b MediaBinding) (MediaBinding, error)
+
 	FindByID(ctx context.Context, id string) (MediaBinding, error)
 
 	// ListApprovedByConcept is the resolver's Level-0 hot path:
@@ -144,6 +148,19 @@ type BindingRepository interface {
 	// Delete is provided for admin reindex flows; it is not used by
 	// the resolver hot path.
 	Delete(ctx context.Context, id string) error
+
+	// DeleteBindingTx is the transaction-bound variant used by the
+	// canonical BindingMutationDispatcher.
+	DeleteBindingTx(ctx context.Context, tx *sql.Tx, id string) error
+}
+
+// BindingMutationPrimitives is the narrow repository surface the
+// canonical BindingMutationDispatcher needs inside a transaction.
+// It is intentionally a subset of BindingRepository so the concrete
+// SQLite repository can satisfy both without adapter boilerplate.
+type BindingMutationPrimitives interface {
+	UpsertBindingTx(ctx context.Context, tx *sql.Tx, b MediaBinding) (MediaBinding, error)
+	DeleteBindingTx(ctx context.Context, tx *sql.Tx, id string) error
 }
 
 // ── QueryCacheRepository ───────────────────────────────────────────

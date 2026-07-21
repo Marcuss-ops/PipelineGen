@@ -17,6 +17,7 @@ package mediamemory
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -323,4 +324,16 @@ func (r *fakeBindingsRepo) Delete(_ context.Context, id string) error {
 	}
 	delete(r.byID, id)
 	return nil
+}
+
+// UpsertBindingTx and DeleteBindingTx satisfy the transaction-bound
+// surface required by the canonical BindingMutationDispatcher. The
+// fake delegates to the non-transactional methods because there is no
+// real SQL transaction in unit tests.
+func (r *fakeBindingsRepo) UpsertBindingTx(_ context.Context, _ *sql.Tx, b MediaBinding) (MediaBinding, error) {
+	return r.Upsert(context.Background(), b)
+}
+
+func (r *fakeBindingsRepo) DeleteBindingTx(_ context.Context, _ *sql.Tx, id string) error {
+	return r.Delete(context.Background(), id)
 }
