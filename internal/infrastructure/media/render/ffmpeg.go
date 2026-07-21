@@ -28,7 +28,8 @@ import (
 
 	"go.uber.org/zap"
 
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -236,8 +237,7 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 
 	for idx := 0; idx < inputCount; idx++ {
 		clipFilters := []string{
-			fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
-				req.Width, req.Height, req.Width, req.Height, req.FPS),
+			ffmpeg.CanonicalClipFilter(config.VideoConfig{Width: req.Width, Height: req.Height, FPS: req.FPS}),
 		}
 
 		// Fade-out at the END of every Nth clip.
