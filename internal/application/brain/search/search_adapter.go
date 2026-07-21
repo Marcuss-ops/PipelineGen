@@ -60,15 +60,15 @@ func (a *CandidateSearcherAdapter) Search(ctx context.Context, query brain.Searc
 	candidates := make([]brain.Candidate, 0, len(res.Items))
 	for _, c := range res.Items {
 		candidates = append(candidates, brain.Candidate{
-			ID:         c.SourceRef,
-			AssetID:    c.AssetID,
-			Provider:   c.Source,
-			SourceURL:  c.PreviewURL,
+			ID:           c.SourceRef,
+			AssetID:      c.AssetID,
+			Provider:     c.Source,
+			SourceURL:    c.PreviewURL,
 			ThumbnailURL: c.ThumbnailURL,
-			Title:      c.Title,
-			Description: c.Name,
-			MediaType:  c.MediaType,
-			Score:      c.Score,
+			Title:        c.Title,
+			Description:  c.Name,
+			MediaType:    c.MediaType,
+			Score:        c.Score,
 		})
 	}
 
