@@ -46,6 +46,7 @@ package mediamemory
 import (
 	"context"
 	"math"
+	"time"
 )
 
 // ── Fase 2.3 anti-repetition helpers ────────────────────────────────
@@ -60,6 +61,46 @@ import (
 // is the architectural-doc reference scale for a Maya-style
 // documentary project.
 const AntiRepetitionHistoryLimit = 1000
+
+// Fase 2.2 anti-repetition: 24h channel-recency window (canonical
+// SSOT value). Any project-history event for the candidate's
+// ChannelID whose CreatedAt is within this window contributes to
+// the channel-recency penalty component.
+const ChannelRecencyWindowMaxAge = 24 * time.Hour
+
+// ChannelRecencyPenaltyPerEvent is the canonical additive penalty
+// per (project_id, channel_id) event in the 24h recency window.
+// Each sighting adds this much before the per-candidate ceiling
+// clamp; the ranker composes it into the same RepetitionPenalty
+// seat so the formula stays additive (godlike/06 SSOT).
+const ChannelRecencyPenaltyPerEvent = 0.20
+
+// ChannelRecencyMaxPenalty is the canonical per-candidate ceiling
+// for the 24h channel-recency penalty component. Prevents
+// unbounded growth when a single channel has hundreds of recent
+// project events; canonical value matches the SPEC's "stesso
+// canale nelle ultime 24h" threshold.
+const ChannelRecencyMaxPenalty = 0.50
+
+// RepetitionPenaltyTotalCeiling is the canonical per-candidate
+// total-penalty ceiling applied at the end of
+// PopulateRepetitionPenalty. Without this clamp, three or four
+// compounding components (SameAsset + Consecutive +
+// ChannelSaturation + ChannelRecency) would routinely drive the
+// final score below 0.0 → VerdictDrop even on otherwise-strong
+// candidates. The clamp keeps a heavily-reused but
+// semantically-strong candidate in the Accept/Downrank band so
+// the ranker's diversity filter can still see it.
+const RepetitionPenaltyTotalCeiling = 1.5
+
+// DiversityFinalScoreDelta is the canonical per-call ceiling on
+// how far PickTopFromRose will swap a top-1 winner for a
+// non-consecutive-source alternative. A delta of 0.10 means an
+// alternative within 0.10 FinalScore of top-1 can displace it
+// when top-1 shares prevVideoID (otherwise the highest-scoring
+// survivor wins). This is the SPEC's "deterministic-but-
+// diversified" knob.
+const DiversityFinalScoreDelta = 0.10
 
 // RepetitionPenaltyWeights bundles the canonical weight values
 // for the Fase 2.3 PopulateRepetitionPenalty formula. godlike/06
@@ -94,6 +135,28 @@ type RepetitionPenaltyWeights struct {
 	// penalty kicks in. SPEC: "channel saturation after
 	// multiple uses" → canonical value is 3.
 	ChannelSaturationMinSightings int
+
+	// ChannelRecencyWindow is the inclusive time window used
+	// by the 24h channel-recency penalty component. Any
+	// project-history event whose CreatedAt is within
+	// now.Sub(ev.CreatedAt) <= ChannelRecencyWindow
+	// contributes ChannelRecencyPenaltyPerEvent to the
+	// candidate's total penalty (capped at ChannelRecencyMaxPenalty).
+	// godlike/06 SSOT (canonical duration): the value is a
+	// time.Duration so a future "1h window" tuning lands via
+	// a new RepetitionPenaltyWeightsV2 — never by mutating
+	// this field in place.
+	ChannelRecencyWindow time.Duration
+
+	// ChannelRecencyPenaltyPerEvent is the additive penalty
+	// per in-window event. Mirrors ChannelRecencyPenaltyPerEvent
+	// constant for the struct; both must agree (tests pin).
+	ChannelRecencyPenaltyPerEvent float64
+
+	// ChannelRecencyMaxPenalty is the per-candidate ceiling
+	// for the recency-penalty component. Mirrors the
+	// ChannelRecencyMaxPenalty constant; both must agree.
+	ChannelRecencyMaxPenalty float64
 }
 
 // DefaultRepetitionPenaltyWeights returns the canonical Phase 2.3
@@ -106,6 +169,9 @@ func DefaultRepetitionPenaltyWeights() RepetitionPenaltyWeights {
 		SameVideoInConsecutiveScenePenalty: 0.3,
 		ChannelSaturationBase:              0.1,
 		ChannelSaturationMinSightings:      3,
+		ChannelRecencyWindow:               ChannelRecencyWindowMaxAge,
+		ChannelRecencyPenaltyPerEvent:      ChannelRecencyPenaltyPerEvent,
+		ChannelRecencyMaxPenalty:           ChannelRecencyMaxPenalty,
 	}
 }
 
@@ -149,6 +215,7 @@ func PopulateRepetitionPenalty(
 	inputs []RankingInput,
 	history []UsageEvent,
 	prevVideoID string,
+	now time.Time,
 ) []RankingInput {
 	weights := DefaultRepetitionPenaltyWeights()
 
@@ -158,6 +225,13 @@ func PopulateRepetitionPenalty(
 	// recompute cheaply on every slot.
 	assetSightings := make(map[string]int, 32)
 	channelSightings := make(map[string]int, 8)
+	// Fase 2.2: pre-compute per-candidate-channel 24h-window
+	// sighting counts (no asset_id scope — the recency penalty
+	// is channel-level, not asset-level). Recency is keyed by
+	// (project_id, channel_id, ev.CreatedAt) so we filter the
+	// per-channel count to events within ChannelRecencyWindow
+	// of `now`.
+	channelRecency := make(map[string]int, 8)
 	for _, ev := range history {
 		if ev.ProjectID == "" {
 			continue
@@ -167,6 +241,13 @@ func PopulateRepetitionPenalty(
 		}
 		if ev.ChannelID != "" {
 			channelSightings[ev.ChannelID]++
+			// In-window events contribute to the recency
+			// component (empty `now` → zero-value → no
+			// recency matches, godlike/07 backward compat).
+			if !now.IsZero() && now.Sub(ev.CreatedAt) >= 0 &&
+				now.Sub(ev.CreatedAt) <= weights.ChannelRecencyWindow {
+				channelRecency[ev.ChannelID]++
+			}
 		}
 	}
 
@@ -204,12 +285,99 @@ func PopulateRepetitionPenalty(
 			if n := channelSightings[candidateChannelID]; n >= weights.ChannelSaturationMinSightings {
 				penalty += weights.ChannelSaturationBase * float64(n-weights.ChannelSaturationMinSightings)
 			}
+			// 4. Channel-recency penalty (Fase 2.2 NEW):
+			//    SPEC's "stesso canale nelle ultime 24h".
+			//    Per in-window event for the candidate's
+			//    ChannelID, add ChannelRecencyPenaltyPerEvent.
+			//    Capped at ChannelRecencyMaxPenalty per
+			//    candidate so a channel with hundreds of
+			//    recent hits doesn't push the candidate into
+			//    VerdictDrop solely on recency grounds.
+			if n := channelRecency[candidateChannelID]; n > 0 {
+				penalty += math.Min(
+					float64(n)*weights.ChannelRecencyPenaltyPerEvent,
+					weights.ChannelRecencyMaxPenalty,
+				)
+			}
+		}
+
+		// Final ceiling clamp: prevents 4-component compounding
+		// from routinely forcing VerdictDrop on otherwise-
+		// strong candidates. The ranker's diversity filter
+		// downstream still sees the candidate (in Downrank
+		// band) so the top-K rose can rotate it out.
+		if penalty > RepetitionPenaltyTotalCeiling {
+			penalty = RepetitionPenaltyTotalCeiling
 		}
 
 		in.RepetitionPenalty = penalty
 		out = append(out, in)
 	}
 	return out
+}
+
+// PickTopFromRose is the canonical Fase 2.2 deterministic-but-
+// diversified pick from a ranker rose. The caller (resolver)
+// produces `rose` as the sorted-by-FinalScore-DESC slice of
+// surviving candidates after Filter + PopulateRepetitionPenalty.
+// godlike/06 SSOT (single canonical pick): this helper is the
+// SOLE owner of the per-slot top-1 selection — the resolver MUST
+// NOT inline a sort+pick.
+//
+// godlike/06 SSOT (caller-sorted contract): the helper does NOT
+// sort. The caller (resolver) MUST invoke sortByFinalScoreDesc
+// before passing the rose. A future caller passing an unsorted
+// rose gets a silent wrong answer (rose[0] is whatever happens to
+// be first); the godlike/06 SSOT here pins the contract so the
+// failure mode is auditable, not silent.
+//
+// Determinism: rose[0] wins by FinalScore DESC (sort.SliceStable
+// preserves input order on ties → AssetID ASC tiebreak via the
+// canonical lessRanked comparator).
+//
+// Diversity: when prevVideoID is non-empty AND rose[0]'s video_id
+// matches prevVideoID AND a non-consecutive alternative exists
+// within DiversityFinalScoreDelta, swap to that alternative. This
+// is the SPEC's "selezione deterministica ma diversificata"
+// knob — operators don't want the same source video to dominate
+// the entire project when alternatives exist within a small score
+// delta.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: an empty rose returns the
+// zero-value rankedCandidate (no panic). A single-element rose
+// returns rose[0] verbatim — no diversity swap possible.
+//
+// godlike/06 SSOT (immutable contract): the helper does not
+// mutate the input slice.
+func PickTopFromRose(rose []rankedCandidate, prevVideoID string) rankedCandidate {
+	if len(rose) == 0 {
+		return rankedCandidate{}
+	}
+	top := rose[0]
+	if prevVideoID == "" {
+		return top
+	}
+	topVideoID := extractCandidateVideoID(top.fc.Candidate)
+	if topVideoID == "" || topVideoID != prevVideoID {
+		// No consecutive-source pressure on top-1; accept the
+		// canonical highest-scoring survivor.
+		return top
+	}
+	// Top-1 shares VideoID with prevVideoID — look for a
+	// non-consecutive alternative within DiversityFinalScoreDelta.
+	for _, alt := range rose[1:] {
+		altVideoID := extractCandidateVideoID(alt.fc.Candidate)
+		if altVideoID == prevVideoID || altVideoID == "" {
+			continue
+		}
+		if top.out.FinalScore-alt.out.FinalScore <= DiversityFinalScoreDelta {
+			return alt
+		}
+	}
+	// No diverse alternative within delta — accept the
+	// consecutive-source winner (the diversity knob only
+	// swaps when an alternative is competitive).
+	return top
 }
 
 // extractCandidateVideoID returns the canonical video_id for a

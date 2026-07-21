@@ -359,7 +359,7 @@ func (r *VisualResolver) resolveScene(
 		// drop in FinalScore comparison while the rose top
 		// remains the highest-scoring survivor. No rotation is
 		// needed: the deterministic sort keeps determinism.
-		inputs = PopulateRepetitionPenalty(inputs, projectHistory, prevVideoID)
+		inputs = PopulateRepetitionPenalty(inputs, projectHistory, prevVideoID, r.clock.Now())
 
 		scored := make([]rankedCandidate, 0, len(inputs))
 		for _, in := range inputs {
@@ -380,14 +380,21 @@ func (r *VisualResolver) resolveScene(
 		// Sort DESC by FinalScore (deterministic, no RNG).
 		sortByFinalScoreDesc(scored)
 
-		// Take the top one for this slot (single layer per slot).
+		// Take the top one for this slot via PickTopFromRose
+		// (single layer per slot).
 		//
-		// godlike/06 SSOT (Fase 2.3 anti-repetition cross-scene
-		// invariant): priorSceneVideoID() reads
+		// godlike/06 SSOT (Fase 2.2 rosa pick): the resolver
+		// delegates the per-slot top-1 selection to the canonical
+		// PickTopFromRose helper so the deterministic-but-
+		// diversified knob (DiversityFinalScoreDelta) lives in
+		// one place. The helper accepts the sorted rose + the
+		// prior scene's VideoID and returns either the highest-
+		// scoring survivor OR a non-consecutive alternative
+		// within delta. priorSceneVideoID() reads
 		// plan.Layers[0].AssetID so the consecutive-scene penalty
 		// for scene N+1 is grounded in the canonical winner
 		// from scene N. Provider flows through layerFromFilteredCandidate.
-		top := scored[0]
+		top := PickTopFromRose(scored, prevVideoID)
 		layer := layerFromFilteredCandidate(top.fc, slot, top.out.FinalScore)
 		plan.Layers = append(plan.Layers, layer)
 		plan.Source = upgradeSource(plan.Source, source)
@@ -588,12 +595,14 @@ const defaultResolverLimit = 10
 // skipped and a typed warning is appended).
 //
 // godlike/06 SSOT (canonical defaults): the synthesized Candidate
-// carries canonical MaterializationStatus=Cold + DiscoveryStatus=Searched.
-// These are NEUTRAL defaults — the binding envelope does NOT
-// carry the cache-tier or pipeline-completion assertion (those
-// live on the linked media_assets row). Phase 2 adds the
-// projection loader (binding → asset hot-tier query) at which
-// point the canonical defaults are replaced with real values.
+// carries canonical MaterializationStatus=Hot + DiscoveryStatus=Searched.
+// An approved, manually-curated binding is treated as available
+// media so it survives the ranker's availability gate; the
+// binding envelope does NOT carry the cache-tier or pipeline-
+// completion assertion (those live on the linked media_assets row).
+// Phase 2 adds the projection loader (binding → asset hot-tier
+// query) at which point the canonical defaults are replaced with
+// real values.
 //
 // Filter's well-formed guard requires non-empty Materialization/
 // Discovery statuses in the canonical closed sets; without
@@ -608,7 +617,7 @@ func bindingsToFilteredCandidates(bindings []MediaBinding) []FilteredCandidate {
 		out = append(out, FilteredCandidate{
 			Candidate: MediaCandidate{
 				AssetID:               b.AssetID,
-				MaterializationStatus: MaterializationCold,
+				MaterializationStatus: MaterializationHot,
 				DiscoveryStatus:       DiscoverySearched,
 			},
 			Binding: b,

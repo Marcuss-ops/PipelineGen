@@ -21,6 +21,7 @@ package mediamemory
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -98,7 +99,7 @@ func TestRanker_PopulateRepetitionPenalty_CrossSceneSaturation(t *testing.T) {
 		makeRankingInput("asset-fresh-X", "channel-fresh-X", "video-fresh-X"),
 	}
 
-	out := PopulateRepetitionPenalty(in, history, prevVideo)
+	out := PopulateRepetitionPenalty(in, history, prevVideo, time.Time{})
 
 	if len(out) != 2 {
 		t.Fatalf("PopulateRepetitionPenalty returned %d inputs, want 2", len(out))
@@ -134,7 +135,7 @@ func TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams(t *testing.T) {
 	t.Parallel()
 
 	// nil inputs
-	if out := PopulateRepetitionPenalty(nil, nil, ""); len(out) != 0 {
+	if out := PopulateRepetitionPenalty(nil, nil, "", time.Time{}); len(out) != 0 {
 		t.Fatalf("nil inputs returned %d outputs, want 0", len(out))
 	}
 
@@ -142,7 +143,7 @@ func TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams(t *testing.T) {
 	in := []RankingInput{
 		makeRankingInput("asset-X", "channel-X", "video-X"),
 	}
-	out := PopulateRepetitionPenalty(in, nil, "")
+	out := PopulateRepetitionPenalty(in, nil, "", time.Time{})
 	if !floatNear(out[0].RepetitionPenalty, 0.0, 1e-9) {
 		t.Fatalf("nil history RepetitionPenalty = %v, want 0 (±1e-9; no penalty input available)",
 			out[0].RepetitionPenalty)
@@ -156,7 +157,7 @@ func TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams(t *testing.T) {
 		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
 		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
 	}
-	out = PopulateRepetitionPenalty(in, history, "")
+	out = PopulateRepetitionPenalty(in, history, "", time.Time{})
 	// SameAsset penalty still fires (4 sightings), but Consecutive penalty
 	// does NOT (empty prevVideoID = first scene). Channel-saturation fires
 	// (4 sightings >= 3 → 0.1).
@@ -190,7 +191,7 @@ func TestRanker_PopulateRepetitionPenalty_ImmutableInput(t *testing.T) {
 		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
 		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
 	}
-	out := PopulateRepetitionPenalty(in, history, "video-A")
+	out := PopulateRepetitionPenalty(in, history, "video-A", time.Time{})
 
 	// Output has non-zero penalty.
 	if !floatNear(out[0].RepetitionPenalty, 1.4, 1e-9) {
