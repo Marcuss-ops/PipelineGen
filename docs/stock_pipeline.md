@@ -162,6 +162,45 @@ If `stock_root_folder` is empty, the unified `media_root_folder` is used as fall
 
 If both `drive_folder_id` and `folder_name` are supplied, the pipeline creates the subfolder under the provided `drive_folder_id` instead of the configured stock root.
 
+## Canonical output profile
+
+Every produced stock clip is normalized to the same canonical technical profile:
+
+| Property | Value |
+|----------|-------|
+| Resolution | 1920×1080 |
+| Frame rate | 24 fps (constant frame rate) |
+| Video codec | H.264 (`libx264`) |
+| Pixel format | `yuv420p` |
+| Audio codec | AAC |
+| Audio sample rate | 48 kHz |
+| Audio channels | stereo (2) |
+| Container | MP4 with faststart |
+
+Source material may have a different resolution, frame rate, or codec; the stock cutter re-encodes through a shared canonical FFmpeg filter chain (`scale/pad/fps/setpts`) so that all published clips share the same profile.
+
+## VERIFIED state and ffprobe validation
+
+A stock batch transitions to `VERIFIED` only after every produced clip passes mandatory ffprobe checks. The verification step fails closed: if a single clip is non-conformant, the whole batch is marked failed.
+
+Required checks per clip:
+
+| Field | Requirement |
+|-------|-------------|
+| `width` | 1920 |
+| `height` | 1080 |
+| `fps` | 24 (within a small technical tolerance) |
+| `codec_name` | `h264` |
+| `pix_fmt` | `yuv420p` |
+| `audio_codec` | `aac` (when audio is enabled) |
+| `sample_rate` | 48000 Hz |
+| `channels` | 2 |
+| `duration` | within tolerance of the requested clip length |
+| `size` | > 0 |
+| `sha256` | present and matches the on-disk file |
+
+`VERIFIED` therefore means the clips exist **and** match the canonical profile, not merely that the files are present and have a positive duration.
+
 ## Limitations and behaviour notes
 
 - Folder expansion is deterministic only to the extent that the Drive API list order is stable; the pipeline selects the first video file returned by `ListFiles`.

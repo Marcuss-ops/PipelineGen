@@ -6,6 +6,8 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
 
 - YouTube clip extraction and metadata processing.
 - Stock and Artlist asset ingestion.
+  - Stock clips are normalized to a canonical 1920×1080 / 24 fps / H.264 / AAC / `yuv420p` profile.
+  - The `VERIFIED` state requires every clip to pass ffprobe checks on resolution, fps, codec, pixel format, audio codec, sample rate, and channels.
 - Script, image, and voiceover workflows.
 - SQLite-backed jobs and transactional outbox processing.
 - Qdrant semantic and hybrid search.
