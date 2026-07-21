@@ -82,6 +82,8 @@ func (r *bindingsRepository) Upsert(ctx context.Context, b mediamemory.MediaBind
 			semantic_score  = excluded.semantic_score,
 			quality_score   = excluded.quality_score,
 			success_score   = excluded.success_score,
+			usage_count     = excluded.usage_count,
+			last_used_at    = excluded.last_used_at,
 			updated_at      = excluded.updated_at
 		RETURNING ` + bindingsSelectColumns
 
@@ -183,6 +185,35 @@ func (r *bindingsRepository) ListByAsset(ctx context.Context, assetID string) ([
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("mediamemory: list by asset iterate: %w", err)
+	}
+	return out, nil
+}
+
+// ListByConcept returns every binding (any status) for the
+// concept, ordered by updated_at desc. Used by the dashboard's
+// Visual Memory page (full diff view, including pending + rejected
+// rows). NOT the resolver hot path (the resolver uses
+// ListApprovedByConcept).
+func (r *bindingsRepository) ListByConcept(ctx context.Context, conceptID string) ([]mediamemory.MediaBinding, error) {
+	q := `SELECT ` + bindingsSelectColumns + `
+		FROM media_bindings
+		WHERE concept_id = ?
+		ORDER BY updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, q, conceptID)
+	if err != nil {
+		return nil, fmt.Errorf("mediamemory: list by concept %q: %w", conceptID, err)
+	}
+	defer rows.Close()
+	out := make([]mediamemory.MediaBinding, 0, 8)
+	for rows.Next() {
+		b, err := scanBindingRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("mediamemory: list by concept iterate: %w", err)
 	}
 	return out, nil
 }
