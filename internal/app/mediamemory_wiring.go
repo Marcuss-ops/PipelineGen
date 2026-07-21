@@ -27,6 +27,12 @@ import (
 
 	"go.uber.org/zap"
 
+	braincore "github.com/Marcuss-ops/PipelineGen/internal/application/brain/core"
+	brainintent "github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
+	brainnormalizer "github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
+	brainplanner "github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
+	brainranker "github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	brainsearch "github.com/Marcuss-ops/PipelineGen/internal/application/brain/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -88,6 +94,27 @@ func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrant
 		Indexer: adapters.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
 		Lookup:  adapters.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
 	}, nil
+}
+
+// WireMediaMemoryResolver builds the canonical mediamemory.Resolver
+// backed by the Brain. All search (exact memory, local catalog,
+// semantic, external providers) is delegated to the Brain, which in
+// turn uses the canonical search.SearchFanOut through the
+// CandidateSearcher port.
+//
+// godlike/06 SSOT: this is the single composition site for the
+// MediaMemoryResolver. Callers that need a Resolver must use this
+// function and must not construct VisualResolver or
+// MediaMemoryResolver manually.
+func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, log *zap.Logger) mediamemory.Resolver {
+	_ = log
+	candidateSearcher := brainsearch.NewCandidateSearcherAdapter(searchFanOut)
+	n := brainnormalizer.NewDefaultNormalizer()
+	ir := brainintent.NewDefaultResolver()
+	r := brainranker.NewDefaultRanker()
+	p := brainplanner.NewDefaultPlanner()
+	b := braincore.NewCanonicalBrain(n, ir, candidateSearcher, r, p)
+	return mediamemory.NewMediaMemoryResolver(b)
 }
 
 // NoopSemanticLookup is the canonical noop SemanticLookup for
