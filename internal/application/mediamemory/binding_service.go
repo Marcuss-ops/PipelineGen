@@ -117,6 +117,15 @@ func applyDefaults(b *MediaBinding, clock Clock) {
 	if b.ApprovalStatus == "" {
 		b.ApprovalStatus = ApprovalApproved
 	}
+	if b.Provider == "" {
+		// godlike/06 SSOT (Fase 4.3 binding provenance
+		// contract): manual dashboard edits land with
+		// ProviderLocal (the canonical "human-curated" tag).
+		// Auto-linker writes set Provider explicitly to the
+		// SearchFanOut-translated value (artlist, youtube,
+		// pexels, mediamemory.semantic, ...).
+		b.Provider = ProviderLocal
+	}
 }
 
 // Create is the canonical entrypoint for the dashboard's manual

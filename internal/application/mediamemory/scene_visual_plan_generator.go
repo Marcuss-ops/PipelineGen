@@ -36,6 +36,14 @@ type PlanGeneratorRequest struct {
 	Language        string
 	Scenes          []SceneSpec
 	ConceptBindings map[string][]MediaBinding // concept_id → approved bindings (one row per slot)
+	// SceneConcepts is the canonical concept_id filter that
+	// Fase 4.3 lands to scope pickBindingForSlot to the
+	// scene's actual concept set. godlike/06 SSOT (concept-
+	// id scoping): when non-empty, pickBindingForSlot ONLY
+	// walks the bindings whose concept_id is in this slice;
+	// when empty, the helper falls back to the pre-Fase-4.3
+	// "all concept_ids" behaviour for backward compat.
+	SceneConcepts []string
 	// ApprovedLayersUsed tracks the (asset_id) keys already taken
 	// by an earlier scene in this plan, so consecutive scenes
 	// don't double-up on the same asset. godlike/06 SSOT (per-
@@ -166,10 +174,20 @@ func (g *defaultSceneVisualPlanGenerator) Generate(ctx context.Context, req Plan
 		layers := make([]Layer, 0, 3)
 		sceneUsesMixedSource := false
 		sceneHasLocalOnly := true
+		// godlike/06 SSOT (Fase 4.3 scene-concepts union):
+		// the per-scene SceneSpec.SceneConcepts (when set)
+		// takes precedence over the request-level
+		// req.SceneConcepts. The helper below picks the
+		// first non-empty source so a per-scene override can
+		// be expressed by the upstream VisualResolver.
+		effectiveConcepts := req.SceneConcepts
+		if len(scene.SceneConcepts) > 0 {
+			effectiveConcepts = scene.SceneConcepts
+		}
 		for _, slot := range slots {
-			bid := pickBindingForSlot(req.ConceptBindings, slot)
+			bid := pickBindingForSlot(req.ConceptBindings, effectiveConcepts, slot)
 			if bid == nil {
-				bid = g.lookupPrimaryBinding(ctx, req, scene, slot)
+				bid = g.lookupPrimaryBinding(ctx, effectiveConcepts, slot)
 			}
 			if bid == nil {
 				out.Warnings = append(out.Warnings,
@@ -192,7 +210,17 @@ func (g *defaultSceneVisualPlanGenerator) Generate(ctx context.Context, req Plan
 			startMs, endMs := FitLayerWindow(slot, bid.StartMs, bid.EndMs, scene.DurationMs)
 			layout := DefaultLayoutForSlot(slot)
 			provider := deriveLayerProvider(bid)
-			if provider == ProviderSemanticIndex || provider == "" {
+			// godlike/06 SSOT (Fase 4.3 source-classification
+			// contract): any non-ProviderLocal layer (external
+			// SearchFanOut handoff + Qdrant semantic index)
+			// marks the scene as mixed-source. godlike/07
+			// NO-FAKE-AVAILABILITY: deriveLayerProvider now
+			// backfills empty Provider to ProviderLocal, so
+			// the empty-string checks are inert — kept as a
+			// defensive guard against any future helper that
+			// returns "" (a misclassified layer would otherwise
+			// silently regress Source="mixed" to "local").
+			if provider != ProviderLocal {
 				sceneUsesMixedSource = true
 			}
 			if provider == "" || provider == ProviderSemanticIndex {
@@ -285,15 +313,41 @@ func filterSceneSlots(userSlots []SlotKind, canonical []SlotKind) []SlotKind {
 // map is the canonical Level-3 hot path (the resolver's
 // ConceptBindings slot already populated); this is the cheap
 // path before falling back to the repository.
-func pickBindingForSlot(m map[string][]MediaBinding, slot SlotKind) *MediaBinding {
+//
+// godlike/06 SSOT (Fase 4.3 concept-id scoping): when
+// conceptIDs is non-empty, the helper ONLY walks the bindings
+// whose concept_id is in the slice; otherwise it falls back
+// to the pre-Fase-4.3 "all concept_ids" behaviour (preserves
+// backward compat for callers that don't yet pass scene
+// concepts). godlike/06 SSOT (closed-set scoping): the filter
+// is enforced here so a future caller that passes a
+// scene-irrelevant concept_id is silently ignored at the
+// generator boundary.
+func pickBindingForSlot(m map[string][]MediaBinding, conceptIDs []string, slot SlotKind) *MediaBinding {
 	if m == nil {
 		return nil
+	}
+	// Build a fast O(1) lookup of the concept-id filter when
+	// the caller supplies one. godlike/06 SSOT (narrow
+	// envelope): nil / empty conceptIDs means "no filter,
+	// walk all concept_ids" — preserves Fase 4.2 behaviour.
+	var allow map[string]struct{}
+	if len(conceptIDs) > 0 {
+		allow = make(map[string]struct{}, len(conceptIDs))
+		for _, cid := range conceptIDs {
+			allow[cid] = struct{}{}
+		}
 	}
 	// godlike/06 SSOT (scoring): pick the binding with the
 	// canonical SuccessScore desc, ties broken by ID asc so
 	// the result is deterministic.
 	var best *MediaBinding
-	for _, bindings := range m {
+	for cid, bindings := range m {
+		if allow != nil {
+			if _, ok := allow[cid]; !ok {
+				continue
+			}
+		}
 		for i := range bindings {
 			b := bindings[i]
 			if b.SlotKind != slot {
@@ -312,26 +366,53 @@ func pickBindingForSlot(m map[string][]MediaBinding, slot SlotKind) *MediaBindin
 }
 
 // lookupPrimaryBinding is the repository fallback for
-// pickBindingForSlot. godlike/06 SSOT: ListApprovedByConcept is
-// the canonical Level-0 hot path — the caller would normally
-// have pre-aggregated bindings, but the generator remains
-// functional even with empty ConceptBindings.
+// pickBindingForSlot. godlike/06 SSOT (Fase 4.3 wiring):
+// ListApprovedByConcept is the canonical Level-0 hot path
+// — the resolver normally pre-aggregates bindings into
+// ConceptBindings, but when the caller only knows concept
+// ids (no pre-fetched map) this fallback walks each concept
+// via the repository and picks the top-scoring binding per
+// slot. godlike/07 NO-FAKE-AVAILABILITY: an empty
+// conceptIDs slice short-circuits to nil (no repository
+// round-trip) so a caller without scene-concepts preserves
+// the Fase 4.2 zero-cost path.
 func (g *defaultSceneVisualPlanGenerator) lookupPrimaryBinding(
 	ctx context.Context,
-	req PlanGeneratorRequest,
-	scene SceneSpec,
+	conceptIDs []string,
 	slot SlotKind,
 ) *MediaBinding {
 	if g.bindings == nil {
 		return nil
 	}
-	// The generator does NOT hash the scene text into a phrase
-	// fingerprint (the upstream Normalizer owns that). It
-	// iterates the concept-binding map if available; otherwise
-	// it surfaces the missing-binding warning upstream.
-	_ = ctx
-	_ = scene
-	return nil
+	if len(conceptIDs) == 0 {
+		return nil
+	}
+	// godlike/06 SSOT (per-concept canonical limit=1): each
+	// concept contributes ONE candidate per slot, then the
+	// helper picks the top-scoring across all concepts. The
+	// narrow per-concept cap keeps the Level-0 hot path
+	// constant-time per concept.
+	var best *MediaBinding
+	for _, cid := range conceptIDs {
+		rows, err := g.bindings.ListApprovedByConcept(ctx, cid, []SlotKind{slot}, 1)
+		if err != nil {
+			// godlike/07 NO-FAKE-AVAILABILITY: a transient
+			// repo error on one concept MUST NOT poison
+			// the whole lookup — try the next concept
+			// instead. The caller surfaces the missing
+			// binding via the warning emitted in Generate.
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		b := rows[0]
+		if best == nil || bidSuccessScore(&b) > bidSuccessScore(best) {
+			bb := b
+			best = &bb
+		}
+	}
+	return best
 }
 
 // bidSuccessScore returns the canonical scoring slot for the
@@ -352,17 +433,21 @@ func bidSuccessScore(b *MediaBinding) float64 {
 }
 
 // deriveLayerProvider returns the canonical source tag for a
-// layer, computing from the binding metadata. godlike/06 SSOT:
-// the binding alone does not carry a provider tag; the ranker's
-// per-rank input is the canonical source. The generator delegates
-// to the ranker upstream — when binding provenance lands (Fase
-// 4.3), this helper will read it. For Fase 4.2 the forward-pin
-// default is "local" (matches the doc-stated intent that all
-// unprovenance'd bindings are "local"); ProviderSemanticIndex
-// is returned only when a binding carries Qdrant-style
-// approval provenance (Fase 4.3 wiring).
-func deriveLayerProvider(_ *MediaBinding) string {
-	return "local"
+// layer, computing from the binding metadata. godlike/06 SSOT
+// (Fase 4.3 binding provenance wiring): the helper reads
+// binding.Provider (canonical column added in migration 170)
+// and returns the real provider tag so deriveLayerProvider can
+// distinguish ProviderLocal / ProviderSemanticIndex / the
+// translucent handoff tags (ProviderArtlist / ProviderYouTube
+// / ProviderPexels). godlike/07 NO-FAKE-AVAILABILITY: a nil
+// binding or empty Provider backfills ProviderLocal so the
+// SceneVisualPlan.Source classifier NEVER sees an empty
+// provider string.
+func deriveLayerProvider(b *MediaBinding) string {
+	if b == nil || b.Provider == "" {
+		return ProviderLocal
+	}
+	return b.Provider
 }
 
 func classifySource(hasLocalOnly, usedMixedSource bool) string {
