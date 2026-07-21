@@ -357,7 +357,35 @@ type BatchSpec struct {
 	Providers       []string // "artlist", "youtube", "images"
 	MaxCandidates   int
 	MaterializeTopK int
-	Mode            string // "catalog_only" | "materialize_top_k"
+	Mode            BatchMode // canonical closed-set: ModeCatalogOnly | ModeMaterializeTopK
+}
+
+// BatchMode is the canonical closed-set enum for BatchSpec.Mode
+// (godlike/06 SSOT: every enum gets a typed predicate next to its
+// constants). The wire code branches on these via IsKnownBatchMode
+// so a drift surfaces as ErrInvalidBatchMode rather than a silent
+// zero-return.
+type BatchMode string
+
+const (
+	// ModeCatalogOnly is the canonical "save metadata for all N
+	// candidates without downloading" mode (architecture doc
+	// section 8). The discovery worker runs cold-tier writes only.
+	ModeCatalogOnly BatchMode = "catalog_only"
+	// ModeMaterializeTopK is the canonical "save metadata + promote
+	// materialize_top_k candidates to Warm tier" mode. AcquisitionPlanner
+	// picks the top K from the catalog_only result set.
+	ModeMaterializeTopK BatchMode = "materialize_top_k"
+)
+
+// IsKnownBatchMode reports whether m is in the canonical closed set.
+func IsKnownBatchMode(m BatchMode) bool {
+	switch m {
+	case ModeCatalogOnly, ModeMaterializeTopK:
+		return true
+	default:
+		return false
+	}
 }
 
 // BatchState is the per-batch audit envelope (godlike/07).
@@ -577,6 +605,26 @@ var (
 	// failed with a transient/non-ignored error).
 	ErrSemanticBackendFailed = errors.New(
 		"mediamemory: semantic lookup backend failed (Qdrant query returned an error envelope, embedding call failed)",
+	)
+	// ErrInvalidBatchMode is the canonical sentinel for a
+	// BatchSpec whose Mode is not in the closed set
+	// (catalog_only / materialize_top_k). godlike/06 SSOT:
+	// distinct from ErrBatchNotReconcilable (terminal-state
+	// refusal) so the wire handler can branch 400 (mode) vs 409
+	// (terminal-state) cleanly.
+	ErrInvalidBatchMode = errors.New(
+		"mediamemory: batch mode outside canonical closed set (use catalog_only or materialize_top_k)",
+	)
+	// ErrBatchSpecDrift is the canonical sentinel for the
+	// idempotent-by-name CreateBatch path: when a caller supplies
+	// the same Spec.Name + a different Spec body (e.g. switched
+	// Mode from catalog_only to materialize_top_k after the
+	// parent was already created), the canonical SSOT rejects
+	// the second call. godlike/06 SSOT: Spec is immutable
+	// post-CreateBatch so the worker treats the parent shape
+	// as fixed for the batch lifetime.
+	ErrBatchSpecDrift = errors.New(
+		"mediamemory: batch Spec drift on idempotent CreateBatch (same Name + different body)",
 	)
 )
 

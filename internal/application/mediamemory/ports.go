@@ -333,14 +333,17 @@ type MaterializeOptions struct {
 	MaxDurationMs int64
 	// ProjectID scopes the materialization for rights enforcement.
 	ProjectID string
-}
-
-// RightsValidator is the rights brand-check port. The production
+} // RightsValidator is the rights brand-check port. The production
 // adapter reads the metadata registry for license_basis /
 // allowed_channels / allowed_regions / expiration.
 type RightsValidator interface {
 	Validate(ctx context.Context, c MediaCandidate, projectID string) (RightsDecision, error)
 }
+
+// AcquisitionPlanner is the canonical port defined in
+// acquisition_planner.go (godlike/06 SSOT — single canonical home).
+// It owns the Cold→Warm→Hot tiering decision; concrete impl is
+// defaultAcquisitionPlanner in that file.
 
 // RightsDecision is the verdict produced by the rights port.
 // godlike/07 NO-FAKE-AVAILABILITY: Verdict == AllowConditional
