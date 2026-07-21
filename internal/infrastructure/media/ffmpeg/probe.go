@@ -36,6 +36,12 @@ type MediaInfo struct {
 	VideoCodec string
 	// AudioCodec name (e.g. "aac", "mp3"). Empty for video-only files.
 	AudioCodec string
+	// SampleRate is the audio sample rate in Hz (e.g. 48000).
+	// 0 when no audio stream is present.
+	SampleRate int
+	// Channels is the number of audio channels (e.g. 2).
+	// 0 when no audio stream is present.
+	Channels int
 	// HasVideo is true when at least one video stream is present.
 	HasVideo bool
 	// HasAudio is true when at least one audio stream is present.
@@ -101,6 +107,10 @@ type ffprobeStream struct {
 	// (e.g. "yuv420p", "yuvj420p"). Empty for non-video streams.
 	// Maps to ffprobe's `streams[i].pix_fmt` JSON key.
 	PixFmt string `json:"pix_fmt"`
+	// SampleRate is the audio sample rate in Hz (e.g. "48000").
+	SampleRate string `json:"sample_rate"`
+	// Channels is the number of audio channels.
+	Channels int `json:"channels"`
 }
 
 // Probe interrogates a media file using ffprobe and returns its MediaInfo.
@@ -214,6 +224,14 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 		case "audio":
 			info.HasAudio = true
 			info.AudioCodec = s.CodecName
+			if info.SampleRate == 0 && s.SampleRate != "" {
+				if sr, err := strconv.Atoi(s.SampleRate); err == nil {
+					info.SampleRate = sr
+				}
+			}
+			if info.Channels == 0 && s.Channels > 0 {
+				info.Channels = s.Channels
+			}
 		}
 	}
 

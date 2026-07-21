@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,6 +188,100 @@ func (c *FFmpegCutter) validateProducedClip(ctx context.Context, path string) (d
 	return durationSec, sha, nil
 }
 
+// validateCanonicalClip validates a produced clip against the canonical
+// stock profile. In addition to the checks performed by
+// validateProducedClip, it enforces 1920×1080/24 fps H.264 yuv420p
+// video and, when noAudio is false, AAC 48 kHz stereo audio. The
+// returned duration must match expectedDurationSec within a small
+// tolerance; pass expectedDurationSec <= 0 to skip the duration check.
+func (c *FFmpegCutter) validateCanonicalClip(ctx context.Context, path string, noAudio bool, expectedDurationSec float64) (durationSec float64, sha string, err error) {
+	info, statErr := os.Stat(path)
+	if statErr != nil {
+		return 0, "", fmt.Errorf("clip stat failed: %w", statErr)
+	}
+	if info.Size() <= 0 {
+		return 0, "", errors.New("clip is empty")
+	}
+
+	if !c.probeAfterCut {
+		// Canonical validation requires ffprobe; if probing is disabled
+		// fall back to the basic existence/hash checks only.
+		computedSHA, hashErr := sha256File(path)
+		if hashErr != nil {
+			return 0, "", fmt.Errorf("clip sha256 failed: %w", hashErr)
+		}
+		return 0, computedSHA, nil
+	}
+
+	probeInfo, probeErr := c.proc.Probe(ctx, path)
+	if probeErr != nil {
+		return 0, "", fmt.Errorf("clip ffprobe validation failed: %w", probeErr)
+	}
+	if probeInfo == nil {
+		return 0, "", errors.New("clip ffprobe returned nil info")
+	}
+	if !probeInfo.HasVideo {
+		return 0, "", errors.New("clip has no video stream")
+	}
+	if probeInfo.Duration <= 0 {
+		return 0, "", errors.New("clip has non-positive duration")
+	}
+	durationSec = probeInfo.Duration.Seconds()
+
+	// Canonical video profile guards.
+	if probeInfo.Width != 1920 {
+		return 0, "", fmt.Errorf("canonical width violation: got %d, want 1920", probeInfo.Width)
+	}
+	if probeInfo.Height != 1080 {
+		return 0, "", fmt.Errorf("canonical height violation: got %d, want 1080", probeInfo.Height)
+	}
+	if math.Abs(probeInfo.FPS-24.0) > 0.5 {
+		return 0, "", fmt.Errorf("canonical fps violation: got %.2f, want ~24", probeInfo.FPS)
+	}
+	if probeInfo.VideoCodec != "h264" {
+		return 0, "", fmt.Errorf("canonical video codec violation: got %q, want h264", probeInfo.VideoCodec)
+	}
+	if probeInfo.PixelFormat != "yuv420p" {
+		return 0, "", fmt.Errorf("canonical pixel format violation: got %q, want yuv420p", probeInfo.PixelFormat)
+	}
+
+	// Canonical audio profile guards.
+	if !noAudio {
+		if !probeInfo.HasAudio {
+			return 0, "", errors.New("canonical audio violation: no audio stream present")
+		}
+		if probeInfo.AudioCodec != "aac" {
+			return 0, "", fmt.Errorf("canonical audio codec violation: got %q, want aac", probeInfo.AudioCodec)
+		}
+		if probeInfo.SampleRate != 48000 {
+			return 0, "", fmt.Errorf("canonical sample rate violation: got %d, want 48000", probeInfo.SampleRate)
+		}
+		if probeInfo.Channels != 2 {
+			return 0, "", fmt.Errorf("canonical channels violation: got %d, want 2", probeInfo.Channels)
+		}
+	} else {
+		if probeInfo.HasAudio {
+			return 0, "", errors.New("canonical audio violation: audio stream present but noAudio requested")
+		}
+	}
+
+	// Duration guard.
+	if expectedDurationSec > 0 {
+		const durationTolerance = 0.25
+		if math.Abs(durationSec-expectedDurationSec) > durationTolerance {
+			return 0, "", fmt.Errorf("canonical duration violation: got %.3fs, want %.3fs ± %.3fs",
+				durationSec, expectedDurationSec, durationTolerance)
+		}
+	}
+
+	sha, hashErr := sha256File(path)
+	if hashErr != nil {
+		return 0, "", fmt.Errorf("clip sha256 failed: %w", hashErr)
+	}
+
+	return durationSec, sha, nil
+}
+
 // toInternalCutJobs adapts the neutral stockpipeline.CutJob list to the
 // ffmpeg package's CutJob struct (which the existing Processor expects).
 func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {
@@ -210,13 +305,12 @@ func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {
 //   - Each Item carries Status / SizeBytes / DurationSec /
 //     SHA256Hex / Err according to the per-job outcome.
 //   - Clips are written to a transient .part file, validated, and
-//     atomically renamed to the final deterministic path.
-//   - ffprobe runs on every produced clip (when probeAfterCut=true):
+//     atomically renamed to the final deterministic path.	//   - ffprobe runs on every produced clip (when probeAfterCut=true):
 //     a clip that fails validation is marked Failed and removed so
 //     it can be retried, never reused as a corrupt artifact.
-//   - Top-level err is non-nil only when EVERY job failed; partial-
-//     success batches return nil error so the caller iterates Items
-//     to partition succeeded / failed.
+//   - Top-level err is non-nil when ANY job failed (fail-closed):
+//     the whole batch is rejected if even one clip does not match
+//     the canonical profile.
 func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {
 	items := make([]stockpipeline.CutItemResult, len(req.Jobs))
 	for i, j := range req.Jobs {
@@ -437,7 +531,8 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		// and record produced indices.
 		for i, j := range internalJobs {
 			origIdx := validToOrig[i]
-			durationSec, sha, validateErr := c.validateProducedClip(ctx, j.Output)
+			expectedDuration := j.EndSec - j.StartSec
+			durationSec, sha, validateErr := c.validateCanonicalClip(ctx, j.Output, req.NoAudio, expectedDuration)
 			if validateErr != nil {
 				logger.Warn("stock extractor: batch clip validation failed",
 					zap.Int("source_index", req.SourceIdx),
@@ -477,7 +572,7 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 			zap.Int("source_index", req.SourceIdx),
 			zap.Int("clips_produced", len(producedIdx)),
 		)
-		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items)
+		return c.finalBatchResult(req, items, logger)
 	}
 
 	// ── Attempt 2: per-clip fallback ─────────────────────────────────
@@ -529,7 +624,8 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 			continue
 		}
 
-		durationSec, sha, validateErr := c.validateProducedClip(ctx, partFile)
+		expectedDuration := j.EndSec - j.StartSec
+		durationSec, sha, validateErr := c.validateCanonicalClip(ctx, partFile, req.NoAudio, expectedDuration)
 		if validateErr != nil {
 			logger.Warn("stock extractor: fallback clip validation failed",
 				zap.Int("source_index", req.SourceIdx),
@@ -575,10 +671,25 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		zap.Int("source_index", req.SourceIdx),
 		zap.Int("clips_produced", len(producedIdx)),
 	)
-	return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items, lastErr)
+	return c.finalBatchResult(req, items, logger, lastErr)
 }
 
-// batchErr returns the top-level batch error for the Cut call.
+// finalBatchResult returns the batch result. If any item failed it
+// returns an error so the whole batch is rejected (fail-closed).
+func (c *FFmpegCutter) finalBatchResult(req stockpipeline.CutRequest, items []stockpipeline.CutItemResult, logger *zap.Logger, lastErrs ...error) (stockpipeline.CutBatchResult, error) {
+	for _, it := range items {
+		if it.Status == stockpipeline.CutItemStatusFailed {
+			if it.Err != nil {
+				return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items},
+					fmt.Errorf("cutter: batch fail-closed — clip %s failed canonical validation: %w", it.JobID, it.Err)
+			}
+			return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items},
+				fmt.Errorf("cutter: batch fail-closed — clip %s failed", it.JobID)
+		}
+	}
+	return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, c.batchErr(logger, items, lastErrs...)
+}
+
 // nil err when at least one Item succeeded; non-nil when ALL items
 // failed (with the last captured failure preconditioned as argu).
 //
