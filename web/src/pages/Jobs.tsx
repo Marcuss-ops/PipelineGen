@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { usePollingQuery } from '../hooks/usePollingQuery'
+import RefreshButton from '../components/RefreshButton'
 import { listJobs, JobSummary } from '../api/client'
+
+const ACTIVE_JOB_STATUSES = ['RUNNING', 'LEASED', 'PENDING', 'QUEUED', 'FINALIZING', 'WAITING_CHILDREN']
 
 const statusColors: Record<string, string> = {
   SUCCEEDED: '#34d399',
@@ -17,21 +21,32 @@ const statusColors: Record<string, string> = {
 }
 
 export default function Jobs() {
-  const [jobs, setJobs] = useState<JobSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [pausePolling, setPausePolling] = useState(false)
+
+  const {
+    data: jobsResponse,
+    loading,
+    error,
+    refresh,
+  } = usePollingQuery<{ jobs: JobSummary[]; count: number }>({
+    queryFn: () => listJobs({ limit: 200 }),
+    interval: 2000,
+    pause: pausePolling,
+  })
+
+  const jobs = jobsResponse?.jobs || []
+
+  const hasActiveJobs = useMemo(
+    () => jobs.some((j) => ACTIVE_JOB_STATUSES.includes(j.status)),
+    [jobs]
+  )
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    listJobs({ limit: 200 })
-      .then((res) => setJobs(res.jobs || []))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Errore caricamento job'))
-      .finally(() => setLoading(false))
-  }, [])
+    setPausePolling(!hasActiveJobs)
+  }, [hasActiveJobs])
 
   const filtered = jobs.filter((j) => {
     const matchesSearch =
@@ -49,7 +64,10 @@ export default function Jobs() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.75rem', color: '#e2e8f0' }}>Jobs</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.75rem', color: '#e2e8f0' }}>Jobs</h2>
+        <RefreshButton onClick={refresh} />
+      </div>
 
       <div
         style={{
