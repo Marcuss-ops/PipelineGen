@@ -151,4 +151,14 @@ func (m *Asset) SetVisualEmbedding(v string)     { m.SetMetadataString("visual_e
 func (m *Asset) TranscriptEmbedding() string     { return m.GetMetadataString("transcript_embedding") }
 func (m *Asset) SetTranscriptEmbedding(v string) { m.SetMetadataString("transcript_embedding", v) }
 func (m *Asset) VisualEmbeddingJSON() string     { return m.GetMetadataString("visual_embedding_json") }
-func (m *Asset) SetVisualEmbeddingJSON(v string) { m.SetMetadataString("visual_embedding_json", v) }
+func (m *Asset) SetVisualEmbeddingJSON(v string) { m.SetMetadataString("visual_embedding_json", v) } // Source-specific tag accessors.
+// These read from and write to the typed struct fields. The fields are
+// mirrored to metadata_json by SyncTagFieldsToMetadata before persistence.
+func (m *Asset) GetProviderTags() []string    { return m.ProviderTags }
+func (m *Asset) SetProviderTags(v []string)   { m.ProviderTags = v }
+func (m *Asset) GetVLMTags() []string         { return m.VLMTags }
+func (m *Asset) SetVLMTags(v []string)        { m.VLMTags = v }
+func (m *Asset) GetManualTags() []string      { return m.ManualTags }
+func (m *Asset) SetManualTags(v []string)     { m.ManualTags = v }
+func (m *Asset) GetTranscriptTags() []string  { return m.TranscriptTags }
+func (m *Asset) SetTranscriptTags(v []string) { m.TranscriptTags = v }

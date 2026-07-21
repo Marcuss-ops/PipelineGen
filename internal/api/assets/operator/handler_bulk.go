@@ -134,27 +134,29 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 		if !ok || len(tags) == 0 {
 			return bulkChange{AssetID: id, Status: "error", Message: "missing tags"}
 		}
-		newTags := union(a.Tags, tags)
+		newTags := union(a.ManualTags, tags)
 		before := snapshot(a)
 		if dryRun {
 			before["tags"] = a.Tags
 			return bulkChange{AssetID: id, Status: "success", Before: before, After: withTags(before, newTags)}
 		}
-		a.Tags = newTags
-		return h.reindexAsset(ctx, a, before, withTags(before, newTags))
+		a.ManualTags = newTags
+		a.RebuildTags()
+		return h.reindexAsset(ctx, a, before, withTags(before, a.Tags))
 
 	case bulkActionRemoveTags:
 		tags, ok := stringSlice(payload, "tags")
 		if !ok || len(tags) == 0 {
 			return bulkChange{AssetID: id, Status: "error", Message: "missing tags"}
 		}
-		newTags := difference(a.Tags, tags)
+		newTags := difference(a.ManualTags, tags)
 		before := snapshot(a)
 		if dryRun {
 			return bulkChange{AssetID: id, Status: "success", Before: before, After: withTags(before, newTags)}
 		}
-		a.Tags = newTags
-		return h.reindexAsset(ctx, a, before, withTags(before, newTags))
+		a.ManualTags = newTags
+		a.RebuildTags()
+		return h.reindexAsset(ctx, a, before, withTags(before, a.Tags))
 
 	case bulkActionSetCategory:
 		category, ok := stringValue(payload, "category")

@@ -113,6 +113,11 @@ type ProviderAsset struct {
 	Width  int
 	Height int
 
+	// FPS is the frame rate as a floating-point value when the provider
+	// reports it directly. When set, it takes precedence over the rational
+	// FPSNumerator/FPSDenominator pair.
+	FPS float64
+
 	// FPSNumerator and FPSDenominator describe the frame rate.
 	FPSNumerator   int
 	FPSDenominator int

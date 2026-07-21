@@ -237,7 +237,8 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 		clip.Metadata = make(map[string]any)
 	}
 	clip.SearchText = item.EmbeddingText
-	clip.Tags = tagutil.MergeTagLists(item.Tags, item.SourceTags, item.ClipTags, item.Topics, item.Speakers, item.MentionedPeople, item.People)
+	clip.TranscriptTags = tagutil.MergeTagLists(item.Tags, item.SourceTags, item.ClipTags, item.Topics, item.Speakers, item.MentionedPeople, item.People)
+	clip.RebuildTags()
 	clip.SetMetadataString("clean_title", item.CleanTitle)
 	clip.SetMetadataString("short_title", item.ShortTitle)
 	clip.SetMetadataString("clip_summary", item.ClipSummary)

@@ -117,6 +117,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, details *asset.Details) err
 	}
 
 	nowStr := timeutil.FormatRFC3339(time.Now())
+	a.SyncTagFieldsToMetadata()
 	tagsJSON, _ := json.Marshal(a.Tags)
 	searchTermsJSON, _ := json.Marshal(a.SearchTerms)
 	metadataJSON, _ := json.Marshal(a.Metadata)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -606,12 +607,15 @@ func existingAssetToImportResponse(a *asset.Asset) *ImportClipResponse {
 		Tags:         a.Tags,
 		Metadata:     make(map[string]any),
 	}
+	resp.Metadata["provider_tags"] = a.ProviderTags
 	if a.Metadata != nil {
 		resp.Metadata = a.Metadata
 		resp.Creator, _ = a.Metadata["creator"].(string)
 		resp.Country, _ = a.Metadata["country"].(string)
 		resp.Location, _ = a.Metadata["location"].(string)
 		resp.Categories = stringSliceFromMetadata(a.Metadata, "provider_categories")
+		resp.PreviewURL, _ = a.Metadata["preview_url"].(string)
+		resp.Description, _ = a.Metadata["description"].(string)
 	}
 	return resp
 }
@@ -658,22 +662,35 @@ func candidateToAsset(c *Candidate, clipPageURL string) *asset.Asset {
 	searchTerms = append(searchTerms, name)
 	searchTerms = append(searchTerms, providerTags...)
 
+	mediaType := c.MediaType
+	if mediaType == "" {
+		mediaType = asset.MediaType("video")
+	}
+	provider := c.Provider
+	if provider == "" {
+		provider = "artlist"
+	}
+
 	clip := &asset.Asset{
-		ID:          id,
-		Name:        name,
-		Source:      asset.Source("artlist"),
-		MediaType:   asset.MediaType("video"),
-		Tags:        providerTags,
-		SearchTerms: deduplicateStrings(searchTerms),
-		SourceURL:   c.SourceRef,
-		ClipPageURL: clipPageURL,
+		ID:           id,
+		Name:         name,
+		Source:       asset.Source("artlist"),
+		MediaType:    mediaType,
+		ProviderTags: providerTags,
+		SearchTerms:  deduplicateStrings(searchTerms),
+		SourceURL:    c.SourceRef,
+		ClipPageURL:  clipPageURL,
 		Metadata: map[string]any{
 			"creator":             c.Creator,
 			"provider_tags":       providerTags,
 			"provider_categories": c.Categories,
 			"metadata_origin":     "artlist",
+			"external_id":         c.ExternalID,
+			"provider":            provider,
+			"media_type":          string(mediaType),
 		},
 	}
+	clip.RebuildTags()
 	if c.Description != "" {
 		clip.Metadata["description"] = c.Description
 	}
@@ -685,8 +702,35 @@ func candidateToAsset(c *Candidate, clipPageURL string) *asset.Asset {
 	}
 	if c.PageURL != "" {
 		clip.ClipPageURL = c.PageURL
+		clip.Metadata["page_url"] = c.PageURL
 	} else if clipPageURL != "" {
 		clip.ClipPageURL = clipPageURL
+		clip.Metadata["page_url"] = clipPageURL
+	}
+	if c.Duration > 0 {
+		clip.Duration = c.Duration
+		clip.Metadata["duration"] = c.Duration.String()
+	} else if c.DurationMs > 0 {
+		clip.Duration = time.Duration(c.DurationMs) * time.Millisecond
+		clip.Metadata["duration"] = clip.Duration.String()
+	}
+	if c.Width > 0 {
+		clip.Metadata["width"] = c.Width
+	}
+	if c.Height > 0 {
+		clip.Metadata["height"] = c.Height
+	}
+	if c.FPSNumerator > 0 && c.FPSDenominator > 0 {
+		clip.Metadata["fps"] = float64(c.FPSNumerator) / float64(c.FPSDenominator)
+	}
+	if c.LicenseClass != "" {
+		clip.Metadata["license_class"] = c.LicenseClass
+	}
+	if c.CollectionID != "" {
+		clip.Metadata["collection_id"] = c.CollectionID
+	}
+	if c.CollectionTitle != "" {
+		clip.Metadata["collection_title"] = c.CollectionTitle
 	}
 	for k, v := range c.RawMetadata {
 		clip.Metadata[k] = v
