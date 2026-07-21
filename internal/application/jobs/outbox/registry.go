@@ -29,6 +29,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
@@ -114,6 +115,13 @@ type JobDeps struct {
 	AssetDeleter           AssetDeleter
 	SourceVersionQuerier   SourceVersionQuerier
 	VoiceoverCleanupDriver VoiceoverCleanupDriver
+	// BindingIndexer + BindingConceptRepo + BindingRepo wire the
+	// optional binding.index.requested handler. All three are nil
+	// in environments that do not use the mediamemory capability;
+	// when ALL three are non-nil the handler is registered.
+	BindingIndexer     BindingIndexer
+	BindingConceptRepo BindingConceptRepository
+	BindingRepo        mediamemory.BindingRepository
 }
 
 // DriveDeleteDeps bundles the 4 narrow ports DriveDeleteHandler
@@ -314,6 +322,23 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		}
 	}
 	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs.Jobs))
+
+	// binding.index.requested (Phase 1.2+): when mediamemory is wired,
+	// reindex the parent concept in Qdrant after every binding
+	// mutation.
+	if deps != nil &&
+		deps.Jobs.BindingIndexer != nil &&
+		deps.Jobs.BindingConceptRepo != nil &&
+		deps.Jobs.BindingRepo != nil {
+		optional = append(optional, NewBindingIndexingHandler(
+			deps.Jobs.BindingIndexer,
+			deps.Jobs.BindingConceptRepo,
+			log,
+		))
+	} else {
+		log.Info("outbox RegisterOptionalHandlers: BindingIndexingHandler skipped (mediamemory not wired)")
+	}
+
 	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
 	// handler. Registered unconditionally — the handler itself is
 	// nil-safe (driver == nil → log+skip the Drive delete branch,

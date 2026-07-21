@@ -50,11 +50,29 @@ const bindingsSelectColumns = `id, concept_id, asset_id, start_ms, end_ms,
 		manual_score, semantic_score, quality_score, success_score,
 		usage_count, last_used_at, created_at, updated_at`
 
+// queryExecer is the narrow surface used by both Upsert and
+// UpsertBindingTx so the same SQL logic runs inside or outside a
+// transaction (godlike/06 SSOT: one canonical upsert statement).
+type queryExecer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // Upsert validates the SlotKind against the canonical closed set
 // BEFORE the SQL round-trip (godlike/06 SSOT: gate input on the
 // boundary). Inserts a new binding or updates the existing row
 // keyed by (concept_id, asset_id, slot_kind).
 func (r *bindingsRepository) Upsert(ctx context.Context, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
+	return r.upsertWithExec(ctx, r.db, b)
+}
+
+// UpsertBindingTx is the transaction-bound variant used by the
+// canonical BindingMutationDispatcher. It runs the SAME upsert
+// statement as Upsert but inside an caller-supplied transaction.
+func (r *bindingsRepository) UpsertBindingTx(ctx context.Context, tx *sql.Tx, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
+	return r.upsertWithExec(ctx, tx, b)
+}
+
+func (r *bindingsRepository) upsertWithExec(ctx context.Context, exec queryExecer, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
 	if !mediamemory.IsKnownSlotKind(b.SlotKind) {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding slot_kind=%q: %w",
@@ -88,7 +106,7 @@ func (r *bindingsRepository) Upsert(ctx context.Context, b mediamemory.MediaBind
 			updated_at      = excluded.updated_at
 		RETURNING ` + bindingsSelectColumns
 
-	row := r.db.QueryRowContext(ctx, q,
+	row := exec.QueryRowContext(ctx, q,
 		b.ID, b.ConceptID, b.AssetID,
 		b.StartMs, b.EndMs,
 		string(b.SlotKind), string(b.Origin), string(b.ApprovalStatus), b.Provider,
@@ -304,7 +322,21 @@ func (r *bindingsRepository) ListByConcept(ctx context.Context, conceptID string
 // Delete is provided for admin reindex flows. Not used by the
 // resolver hot path.
 func (r *bindingsRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM media_bindings WHERE id = ?`, id)
+	return r.deleteWithExec(ctx, r.db, id)
+}
+
+// DeleteBindingTx is the transaction-bound variant used by the
+// canonical BindingMutationDispatcher.
+func (r *bindingsRepository) DeleteBindingTx(ctx context.Context, tx *sql.Tx, id string) error {
+	return r.deleteWithExec(ctx, tx, id)
+}
+
+type deleteExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func (r *bindingsRepository) deleteWithExec(ctx context.Context, exec deleteExecer, id string) error {
+	_, err := exec.ExecContext(ctx, `DELETE FROM media_bindings WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("mediamemory: delete binding %q: %w", id, err)
 	}

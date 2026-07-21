@@ -115,6 +115,14 @@ const (
 	// with EventAssetRightsChanged is intentional so a future
 	// per-row upgrade reuses the same payload codec.
 	EventAssetRightsExtensionBatchApplied = "asset.rights_extension.batch_applied"
+
+	// EventBindingIndexRequested is emitted by the canonical
+	// BindingMutationDispatcher whenever a media_bindings row is
+	// mutated (Create/Update/Approve/Reject/Delete). The consumer
+	// reindexes the parent media_concepts row in Qdrant so the
+	// semantic projection stays consistent with the authoritative
+	// SQLite state.
+	EventBindingIndexRequested = "binding.index.requested"
 )
 
 // SchemaVersionAssetPublished is the canonical v1 schema string.
