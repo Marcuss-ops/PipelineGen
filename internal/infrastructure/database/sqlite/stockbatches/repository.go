@@ -274,6 +274,50 @@ func (r *Repository) MarkArtifactExtracted(ctx context.Context, id, localPath, s
 	return checkAffected(r.db.ExecContext(ctx, q, localPath, sha256, actualDurationMs, id))
 }
 
+// MarkArtifactPublished transitions an artifact from EXTRACTED to PUBLISHED
+// and persists the Drive file id, folder id and web link.
+func (r *Repository) MarkArtifactPublished(ctx context.Context, id, driveFileID, driveFolderID, driveLink string) error {
+	const q = `UPDATE stock_artifacts
+		SET status = 'PUBLISHED', drive_file_id = ?, drive_folder_id = ?, drive_link = ?,
+		    updated_at = datetime('now'), last_error = ''
+		WHERE id = ? AND status = 'EXTRACTED'`
+	return checkAffected(r.db.ExecContext(ctx, q, driveFileID, driveFolderID, driveLink, id))
+}
+
+// MarkArtifactVerified transitions an artifact from PUBLISHED to VERIFIED.
+func (r *Repository) MarkArtifactVerified(ctx context.Context, id string) error {
+	const q = `UPDATE stock_artifacts
+		SET status = 'VERIFIED', updated_at = datetime('now'), last_error = ''
+		WHERE id = ? AND status = 'PUBLISHED'`
+	return checkAffected(r.db.ExecContext(ctx, q, id))
+}
+
+// MarkGroupSucceeded transitions a group to SUCCEEDED and records the
+// number of verified clips.
+func (r *Repository) MarkGroupSucceeded(ctx context.Context, id string, verifiedClips int) error {
+	const q = `UPDATE stock_batch_groups
+		SET status = 'SUCCEEDED', verified_clips = ?, updated_at = datetime('now'), last_error = ''
+		WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, q, verifiedClips, id)
+	if err != nil {
+		return fmt.Errorf("stockbatches.MarkGroupSucceeded: %w", err)
+	}
+	return nil
+}
+
+// MarkBatchSucceeded transitions a batch to SUCCEEDED and records the
+// number of verified clips.
+func (r *Repository) MarkBatchSucceeded(ctx context.Context, id string, verifiedClips int) error {
+	const q = `UPDATE stock_batches
+		SET status = 'SUCCEEDED', verified_clips = ?, updated_at = datetime('now'), last_error = ''
+		WHERE id = ?`
+	_, err := r.db.ExecContext(ctx, q, verifiedClips, id)
+	if err != nil {
+		return fmt.Errorf("stockbatches.MarkBatchSucceeded: %w", err)
+	}
+	return nil
+}
+
 // MarkArtifactFailed transitions an artifact from EXTRACTING to the given
 // error state (RETRY_WAIT, FAILED_PERMANENT or QUARANTINED) and records the
 // last error.

@@ -197,6 +197,53 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 	runner.State().FinalizationResult = finResult
 
+	// Phase 5: durable batch state flip from PUBLISHED → VERIFIED and
+	// group/batch status to SUCCEEDED. This happens only after the
+	// single-TX spine write succeeded so VERIFIED truly means the
+	// artifact is durably committed.
+	if batchRepo := runner.BatchRepository(); batchRepo != nil {
+		verifiedByGroup := make(map[string]int)
+		verifiedCount := 0
+		for _, chunk := range runner.State().Published {
+			if chunk.SourceURL == "" {
+				continue
+			}
+			groupID := StockArtifactGroupID(runner.JobID(), chunk.SourceURL)
+			artifactID := StockArtifactID(runner.JobID(), chunk.SourceURL, chunk.Index)
+			if err := batchRepo.MarkArtifactVerified(ctx, artifactID); err != nil {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.finalize: MarkArtifactVerified failed",
+						zap.String("artifact_id", artifactID),
+						zap.Error(err))
+				}
+			} else {
+				verifiedByGroup[groupID]++
+				verifiedCount++
+			}
+		}
+		for groupID, count := range verifiedByGroup {
+			if count == 0 {
+				continue
+			}
+			if err := batchRepo.MarkGroupSucceeded(ctx, groupID, count); err != nil {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.finalize: MarkGroupSucceeded failed",
+						zap.String("group_id", groupID),
+						zap.Int("count", count),
+						zap.Error(err))
+				}
+			}
+		}
+		if err := batchRepo.MarkBatchSucceeded(ctx, runner.JobID(), verifiedCount); err != nil {
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.finalize: MarkBatchSucceeded failed",
+					zap.String("batch_id", runner.JobID()),
+					zap.Int("count", verifiedCount),
+					zap.Error(err))
+			}
+		}
+	}
+
 	if runner.Log() != nil {
 		runner.Log().Info("orchestrator: stock.finalize: SUCCEEDED (spine write)",
 			zap.String("job_id", runner.JobID()),

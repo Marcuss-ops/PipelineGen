@@ -53,7 +53,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -207,7 +206,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				}
 				batchEnsured = true
 			}
-			groupID := batchID + ":group:" + sourceID
+			groupID := StockArtifactGroupID(batchID, sourceID)
 			if groupErr := batchRepo.CreateGroup(ctx, &StockBatchGroup{
 				ID:            groupID,
 				BatchID:       batchID,
@@ -219,7 +218,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					zap.String("group_id", groupID), zap.Error(groupErr))
 			}
 			for clipIdx, plan := range groupPlans {
-				artifactID := groupID + ":clip:" + strconv.Itoa(clipIdx)
+				artifactID := StockArtifactID(batchID, sourceID, clipIdx)
 				if artErr := batchRepo.CreateArtifact(ctx, &StockArtifact{
 					ID:          artifactID,
 					BatchID:     batchID,
@@ -257,9 +256,8 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 
 		// Mark durable artifacts as EXTRACTING before invoking FFmpeg.
 		if batchRepo != nil {
-			groupID := batchID + ":group:" + sourceID
 			for clipIdx := range groupPlans {
-				artifactID := groupID + ":clip:" + strconv.Itoa(clipIdx)
+				artifactID := StockArtifactID(batchID, sourceID, clipIdx)
 				_ = batchRepo.MarkArtifactExtracting(ctx, artifactID)
 			}
 		}
@@ -320,7 +318,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		// Now process each clip.
 		for clipIdx, plan := range groupPlans {
 			item := result.Items[clipIdx]
-			artifactID := batchID + ":group:" + sourceID + ":clip:" + strconv.Itoa(clipIdx)
+			artifactID := StockArtifactID(batchID, sourceID, clipIdx)
 			if item.Status == CutItemStatusFailed || item.OutputPath == "" {
 				if runner.Log() != nil {
 					runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
@@ -462,6 +460,23 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 									ErrStockPublishArtifactFailed, task.clipIdx, task.plan.OutputLogicalID, clipPrepErr),
 							}
 							continue
+						}
+
+						// Persist the published Drive reference in the durable
+						// batch store so the artifact transitions from EXTRACTED
+						// to PUBLISHED and survives process restarts.
+						if batchRepo != nil {
+							artifactID := StockArtifactID(batchID, task.plan.SourceID, task.clipIdx)
+							pubErr := batchRepo.MarkArtifactPublished(ctx, artifactID,
+								clipPublished.Location.FileID,
+								clipPublished.Location.FolderID,
+								clipPublished.Location.WebViewLink,
+							)
+							if pubErr != nil && runner.Log() != nil {
+								runner.Log().Warn("orchestrator: stock.extract_clips: MarkArtifactPublished failed",
+									zap.String("artifact_id", artifactID),
+									zap.Error(pubErr))
+							}
 						}
 
 						publishedChunk := ChunkState{

@@ -65,10 +65,13 @@ func TestRegisterGate_NoDirectRegistryRegisterOutsideCapabilityRegistry(t *testi
 	args := []string{
 		"--no-heading",
 		"--line-number",
+		// Ripgrep evaluates globs left-to-right and the LAST
+		// matching glob wins. Include *.go first, then apply
+		// the explicit exclusions so they take precedence.
+		"-g", "*.go",
 		"-g", "!capability_registry.go",
 		"-g", "!capability_registry_gate_test.go",
 		"-g", "!*_test.go",
-		"-g", "*.go",
 		"--regexp", forbiddenPattern,
 		".",
 	}
