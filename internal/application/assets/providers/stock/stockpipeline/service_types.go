@@ -24,6 +24,7 @@ package stockpipeline
 import (
 	"context"
 	"database/sql"
+	"io"
 
 	"go.uber.org/zap"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -144,6 +146,15 @@ type SourceCacheDeps struct {
 	LocalFS LocalFSPort
 }
 
+// DriveReaderPort is the Google Drive read-side port used by the
+// stock pipeline to download a single file and to list the contents
+// of a Drive folder (so a folder URL can be expanded to the first
+// video). The concrete *drive.Uploader satisfies it structurally.
+type DriveReaderPort interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+	ListFiles(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+}
+
 type Deps struct {
 	// F2.10: Drive field dropped — every Drive write routes through
 	// delivery.Publisher (Publisher field below). The legacy
@@ -158,6 +169,11 @@ type Deps struct {
 	Media         MediaDeps
 	Execution     ExecutionDeps
 	SourceCache   SourceCacheDeps
+
+	// DriveReader provides file download + folder listing for Google
+	// Drive source URLs. OPTIONAL — when nil, Drive source URLs fail
+	// closed at staging time.
+	DriveReader DriveReaderPort
 
 	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
 	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes

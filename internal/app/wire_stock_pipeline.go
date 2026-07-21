@@ -205,6 +205,8 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			AssetIndex:      root.Search.AssetIndexService,
 			Dispatcher:      root.Outbox.Dispatcher,
 			BatchRepository: stockBatchRepo,
+			DriveDownloader: root.Drive.driveUploader,
+			DriveReader:     root.Drive.Reader,
 		},
 		Media: StockMediaDeps{
 			Cutter:   stockCutter,

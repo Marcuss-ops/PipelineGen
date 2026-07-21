@@ -320,14 +320,18 @@ func (s *Service) stagerForRun() assets.SourceStager {
 	// (the canonical yt-dlp-backed download path) and satisfies
 	// assets.SourceStager via the compile-time assertion at
 	// stager_adapter.go:18.
-	if err := reg.Register(assets.SourceKindExistingCatalog, NewStockStager(s).WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter)); err != nil {
+	stockStager := NewStockStager(s).WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter)
+	if s.driveReader != nil {
+		stockStager = stockStager.WithDriveReader(s.driveReader)
+	}
+	if err := reg.Register(assets.SourceKindExistingCatalog, stockStager); err != nil {
 		// godlike/07 typed-error path: log+drop for production;
 		// tests assert via the registry's own error sentinels.
 		return nil
 	}
-	stager, err := reg.Resolve(assets.SourceKindExistingCatalog)
+	resolvedStager, err := reg.Resolve(assets.SourceKindExistingCatalog)
 	if err != nil {
 		return nil
 	}
-	return stager
+	return resolvedStager
 }

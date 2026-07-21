@@ -133,13 +133,28 @@ type StockDeliveryDeps struct {
 
 // StockAcquisitionDeps groups the storage + dispatch layer the stock
 // pipeline reads from (SourceStager, ClipsRepo, AssetIndex,
-// Dispatcher, BatchRepository). Field count: 5.
+// Dispatcher, BatchRepository, DriveDownloader). Field count: 6.
 type StockAcquisitionDeps struct {
 	SourceStager    acquisition.SourceStager           // required
 	ClipsRepo       *sqassets.ClipsRepository          // required
 	AssetIndex      *assetindex.Service                // required
 	Dispatcher      *outbox.Dispatcher                 // required
 	BatchRepository stockpipeline.StockBatchRepository // optional; required in production via DB gate
+	// DriveDownloader enables staging of Google Drive source URLs.
+	// Optional — nil means Drive URLs fail with a typed error (no
+	// silent fallback to yt-dlp). The canonical concrete is
+	// *driveup.Uploader, which satisfies stockpipeline.DriveReaderPort
+	// structurally via its DownloadFile + ListFiles methods.
+	//
+	// Deprecated: DriveReader is the canonical field going forward.
+	// DriveDownloader is still accepted for backward compatibility.
+	DriveDownloader stockpipeline.DriveReaderPort
+	// DriveReader enables staging of Google Drive source URLs,
+	// including folder expansion. Optional — nil means Drive URLs
+	// fail with a typed error. The canonical concrete is
+	// *driveup.Uploader, which satisfies stockpipeline.DriveReaderPort
+	// structurally.
+	DriveReader stockpipeline.DriveReaderPort
 }
 
 // StockMediaDeps groups the ffmpeg-mediated media processing layer
@@ -221,13 +236,15 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 	return nil
 }
 
-// stockDriveReaderFromBundle + stockDriveReaderAdapter RETIRED
-// (godlike/07 NO-FAKE-AVAILABILITY, July 2026): the HTTP handler that
-// consumed the StockDriveReader port was deleted (handler.go +
-// handler_download.go). The composition root no longer adapts
-// drive.Reader to stockapi.StockDriveReader because no caller reads
-// the port. Zero-availability masquerade removed; size guard AND
-// MIME gate that the adapter fed have no surface anymore.
+// chooseDriveReader returns the canonical DriveReaderPort to wire
+// into the stock pipeline. It prefers the explicit DriveReader field;
+// if nil, it falls back to DriveDownloader for backward compatibility.
+func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
+	if acq.DriveReader != nil {
+		return acq.DriveReader
+	}
+	return acq.DriveDownloader
+}
 
 // BuildStockBundle assembles the stock video pipeline composition root:
 //
@@ -319,6 +336,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			SourceStager:  deps.Acquisition.SourceStager,
 			ChannelLister: deps.Orchestration.ChannelLister,
 		},
+		DriveReader: chooseDriveReader(deps.Acquisition),
 		SourceCache: stockpipeline.SourceCacheDeps{
 			Reader:  deps.SourceCache.Reader,
 			Writer:  deps.SourceCache.Writer,
