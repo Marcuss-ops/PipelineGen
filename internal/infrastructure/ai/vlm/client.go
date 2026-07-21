@@ -19,17 +19,34 @@ import (
 
 // Config holds the VLM client configuration.
 type Config struct {
-	Enabled   bool    `yaml:"enabled" default:"false"`
-	Endpoint  string  `yaml:"endpoint" default:"http://127.0.0.1:8000"`
-	Model     string  `yaml:"model" default:"nvidia/nemotron-nano-12b-v2-vl:free"`
-	TimeoutMs int     `yaml:"timeout_ms" default:"60000"`
-	Weight    float64 `yaml:"weight" default:"0.3"` // weight for VLM score in blended scoring
+	Enabled      bool    `yaml:"enabled" default:"false"`
+	Endpoint     string  `yaml:"endpoint" default:"http://127.0.0.1:8000"`
+	Model        string  `yaml:"model" default:"nvidia/nemotron-nano-12b-v2-vl:free"`
+	ModelVersion string  `yaml:"model_version" default:""`
+	TimeoutMs    int     `yaml:"timeout_ms" default:"60000"`
+	Weight       float64 `yaml:"weight" default:"0.3"` // weight for VLM score in blended scoring
 }
 
 // Client is a VLM client that calls the google-accounting sidecar.
 type Client struct {
 	cfg  Config
 	http *http.Client
+}
+
+// Model returns the configured model name.
+func (c *Client) Model() string {
+	if c == nil {
+		return ""
+	}
+	return c.cfg.Model
+}
+
+// ModelVersion returns the configured model version.
+func (c *Client) ModelVersion() string {
+	if c == nil {
+		return ""
+	}
+	return c.cfg.ModelVersion
 }
 
 // NewClient creates a new VLM client.
@@ -216,9 +233,11 @@ func (c *Client) DedupCheck(ctx context.Context, imageURLs []string, threshold f
 }
 
 // AutoTagLocal calls /vlm/autotag/analyze-file for a local file (image or video).
-func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) (*VisualTag, error) {
+// It returns the structured visual tags and the model name reported by the
+// sidecar (or the configured model if the sidecar omits the field).
+func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) (*VisualTag, string, error) {
 	if !c.IsEnabled() {
-		return nil, ErrVLMDisabled
+		return nil, "", ErrVLMDisabled
 	}
 
 	u := fmt.Sprintf("%s/vlm/autotag/analyze-file?local_path=%s&media_type=%s",
@@ -226,25 +245,25 @@ func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create vlm autotag request: %w", err)
+		return nil, "", fmt.Errorf("create vlm autotag request: %w", err)
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("vlm autotag request: %w", err)
+		return nil, "", fmt.Errorf("vlm autotag request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("vlm autotag returned %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("vlm autotag returned %d", resp.StatusCode)
 	}
 
 	var result VisualTagResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode vlm autotag response: %w", err)
+		return nil, "", fmt.Errorf("decode vlm autotag response: %w", err)
 	}
 
-	return &result.Tags, nil
+	return &result.Tags, result.Model, nil
 }
 
 // godlike/06 SSOT compile-time pin: ErrVLMDisabled surface is canonically
