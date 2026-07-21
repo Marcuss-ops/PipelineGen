@@ -58,11 +58,19 @@ type Resolver interface {
 // composes the 9-level priority pipeline. Each level reads from
 // the canonical ports declared in ports.go — there is no parallel
 // "fast path" (godlike/06 SSOT).
+//
+// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): the resolver
+// holds an optional UsageRepository (nil-safe composition) so the
+// per-project history read can flow through the canonical
+// append-only audit log. When nil, the resolver degrades
+// gracefully: RepetitionPenalty stays 0 (no penalty input
+// available) and the ranker still scores candidates normally.
 type VisualResolver struct {
 	concepts   ConceptRepository
 	bindings   BindingRepository
 	external   SearchFanOut
 	semantic   SemanticLookup
+	usage      UsageRepository // optional; nil-safe for backward compat
 	ranker     Ranker
 	normalizer Normalizer // godlike/06 SSOT: SINGLE canonical normalization surface
 	log        Logger
@@ -80,11 +88,35 @@ type VisualResolver struct {
 // algorithm. A nil normalizer triggers NewCanonicalNormalizer
 // (composition-root-friendly default) so test harnesses can
 // pass nil without breaking the SSOT.
+//
+// godlike/06 SSOT (Fase 2.3 wiring): the optional UsageRepository
+// is the consumer seam for ListProjectUsages. A nil usage
+// surfaces as "anti-repetition disabled" — penalties stay 0 and the
+// ranker still scores candidates normally. Composition root wires
+// the canonical concrete UsageRepository (sqlite-backed) unless
+// the caller explicitly opts out (e.g. test harnesses).
 func NewVisualResolver(
 	concepts ConceptRepository,
 	bindings BindingRepository,
 	external SearchFanOut,
 	semantic SemanticLookup,
+	ranker Ranker,
+	log Logger,
+	clock Clock,
+	metrics MetricsSink,
+) *VisualResolver {
+	return NewVisualResolverWithUsage(concepts, bindings, external, semantic, nil, ranker, log, clock, metrics)
+}
+
+// NewVisualResolverWithUsage is the canonical Fase 2.3
+// constructor. Composition root uses this form when wiring the
+// concrete UsageRepository so repetition_penalty has identity.
+func NewVisualResolverWithUsage(
+	concepts ConceptRepository,
+	bindings BindingRepository,
+	external SearchFanOut,
+	semantic SemanticLookup,
+	usage UsageRepository,
 	ranker Ranker,
 	log Logger,
 	clock Clock,
@@ -104,6 +136,7 @@ func NewVisualResolver(
 		bindings:   bindings,
 		external:   external,
 		semantic:   semantic,
+		usage:      usage,
 		ranker:     ranker,
 		normalizer: NewDefaultNormalizer(""), // godlike/06 SSOT: canonical SHA256 surface
 		log:        log,
@@ -138,8 +171,34 @@ func (r *VisualResolver) Resolve(ctx context.Context, req ResolveRequest) (Resol
 		Warnings:  make([]string, 0),
 	}
 
+	// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): the
+	// entire Resolve batch pre-caches the project history ONCE
+	// (canonical scope: AntiRepetitionHistoryLimit rows, newest
+	// first). When r.usage is nil the resolver degrades
+	// gracefully (no penalty input available). When the read
+	// errors, we surface it as a typed warning so the batch
+	// still progresses.
+	//
+	// godlike/06 SSOT (per-project cache, not per-scene): the
+	// level-by-level warnings are per-scene but the history is
+	// project-scoped. Hoisting it out of resolveScene keeps the
+	// inner loop's IO surface narrow (one repository call per
+	// Resolve, not per scene).
+	prevVideoID := ""
+	projectHistory := make([]UsageEvent, 0)
+	if r.usage != nil && req.ProjectID != "" {
+		history, histErr := r.usage.ListProjectUsages(ctx, req.ProjectID, AntiRepetitionHistoryLimit)
+		if histErr != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("project_id=%q: anti-repetition history read failed (degraded to no-penalty mode): %s",
+					req.ProjectID, histErr.Error()))
+		} else {
+			projectHistory = history
+		}
+	}
+
 	for _, scene := range req.Scenes {
-		plan, warns, err := r.resolveScene(ctx, req, scene)
+		plan, warns, err := r.resolveScene(ctx, req, scene, prevVideoID, projectHistory)
 		if err != nil {
 			// godlike/07 NO-FAKE-AVAILABILITY: per-scene failure
 			// is surfaced as a typed warning; the batch continues.
@@ -154,6 +213,14 @@ func (r *VisualResolver) Resolve(ctx context.Context, req ResolveRequest) (Resol
 		// branch on len(Plans).
 		if len(plan.Layers) > 0 {
 			result.Plans = append(result.Plans, plan)
+			// godlike/06 SSOT (Fase 2.3 anti-repetition
+			// cross-scene invariant): roll the winning layer's
+			// VideoID forward as the prior-scene VideoID so the
+			// consecutive-scene penalty for scene N+1 is grounded
+			// in the canonical winner from scene N. Empty plan
+			// (no layers) leaves prevVideoID unchanged so the
+			// penalty doesn't fire on a zero-layer boundary.
+			prevVideoID = priorSceneVideoID(plan)
 		}
 		result.Warnings = append(result.Warnings, warns...)
 	}
@@ -167,6 +234,21 @@ func (r *VisualResolver) Resolve(ctx context.Context, req ResolveRequest) (Resol
 	return result, nil
 }
 
+// priorSceneVideoID returns the canonical VideoID of the first
+// winning layer in `plan`, used to roll forward into the next
+// scene's prevVideoID. Empty when the plan has zero layers.
+// godlike/06 SSOT: Layer.AssetID is the canonical per-scene
+// identity (matches MediaCandidate.AssetID). The Fase 4 linker
+// will attach an explicit VideoID for non-asset-id repetition
+// (e.g. sub-clips of the same source video); until then
+// AssetID IS the cross-scene identity.
+func priorSceneVideoID(plan SceneVisualPlan) string {
+	if len(plan.Layers) == 0 {
+		return ""
+	}
+	return plan.Layers[0].AssetID
+}
+
 // resolveScene runs the full 9-level cascade for a single scene.
 // Returns (plan, warnings, error). When error is non-nil, the
 // caller (Resolve) records a per-scene warning and short-circuits
@@ -177,10 +259,18 @@ func (r *VisualResolver) Resolve(ctx context.Context, req ResolveRequest) (Resol
 // ranked candidate per requested slot kind. Layer 1 (primary
 // video) + Layer 2 (secondary image) + Layer 3 (evidence overlay)
 // are the canonical renderer ceiling; exceeding it is forbidden.
+//
+// godlike/06 SSOT (Fase 2.3 anti-repetition wiring): projectHistory
+// is the project-scoped cache read once per Resolve() batch;
+// prevVideoID is the prior-scene winning layer's video_id (empty
+// on the first scene) so the consecutive-source penalty fires
+// deterministically.
 func (r *VisualResolver) resolveScene(
 	ctx context.Context,
 	req ResolveRequest,
 	scene SceneSpec,
+	prevVideoID string,
+	projectHistory []UsageEvent,
 ) (SceneVisualPlan, []string, error) {
 	plan := SceneVisualPlan{
 		ProjectID:  req.ProjectID,
@@ -246,9 +336,35 @@ func (r *VisualResolver) resolveScene(
 		}
 
 		// Score + sort + pick top per slot.
-		scored := make([]rankedCandidate, 0, len(filtered))
+		//
+		// godlike/06 SSOT (Fase 2.3 anti-repetition): the
+		// RankingInput pool is fed through
+		// PopulateRepetitionPenalty BEFORE Score so the
+		// ranker's canonical formula subtracts the penalty
+		// directly (no re-Score pass, no post-Score nudge).
+		// Empty projectHistory (no UsageRepository wired / no
+		// project_id / read error previously surfaced as a
+		// warning) -> all penalties stay 0, the ranker still
+		// scores candidates normally.
+		inputs := make([]RankingInput, 0, len(filtered))
 		for _, fc := range filtered {
-			score, scoreErr := r.ranker.Score(ctx, buildRankingInput(scene, fc))
+			inputs = append(inputs, buildRankingInput(scene, fc))
+		}
+		// godlike/06 SSOT (Top-10 rose, deterministic-but-diverse):
+		// the rose is implicitly the surviving input pool after
+		// Filter; limit is bound upstream at ListApprovedByConcept
+		// (limit=10). Diversity propagates through the penalty
+		// formula: candidates sharing prevVideoID receive
+		// SameVideoInConsecutiveScenePenalty (0.3) so they
+		// drop in FinalScore comparison while the rose top
+		// remains the highest-scoring survivor. No rotation is
+		// needed: the deterministic sort keeps determinism.
+		inputs = PopulateRepetitionPenalty(inputs, projectHistory, prevVideoID)
+
+		scored := make([]rankedCandidate, 0, len(inputs))
+		for _, in := range inputs {
+			fc := FilteredCandidate{Candidate: in.Candidate, Binding: in.Binding}
+			score, scoreErr := r.ranker.Score(ctx, in)
 			if scoreErr != nil {
 				continue
 			}
@@ -265,6 +381,12 @@ func (r *VisualResolver) resolveScene(
 		sortByFinalScoreDesc(scored)
 
 		// Take the top one for this slot (single layer per slot).
+		//
+		// godlike/06 SSOT (Fase 2.3 anti-repetition cross-scene
+		// invariant): priorSceneVideoID() reads
+		// plan.Layers[0].AssetID so the consecutive-scene penalty
+		// for scene N+1 is grounded in the canonical winner
+		// from scene N. Provider flows through layerFromFilteredCandidate.
 		top := scored[0]
 		layer := layerFromFilteredCandidate(top.fc, slot, top.out.FinalScore)
 		plan.Layers = append(plan.Layers, layer)

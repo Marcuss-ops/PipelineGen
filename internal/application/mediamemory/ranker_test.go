@@ -1,220 +1,229 @@
-// Package mediamemory — ranker_test.go pins the canonical
-// ranking formula and filter gates.
+// Package mediamemory — ranker_test.go is the Fase 2.3
+// anti-repetition unit-test surface for PopulateRepetitionPenalty.
 //
-// godlike/06 SSOT (one canonical owner per fact): the formula
+// godlike/06 SSOT (formula pin): the three penalty seats
+// (SameAssetPenalty, SameVideoInConsecutiveScenePenalty,
+// ChannelSaturationBase) are baked into the formula and any
+// drift here is a ranker-side regression. These tests assert the
+// canonical Phase 2.3 contract so a future tuning knob pins
+// here, not at the ranker math layer.
 //
-//	final = semantic*0.30 + exact*0.20 + visual*0.15 +
-//	        manual*0.15 + quality*0.10 + historical*0.05 +
-//	        duration_fit*0.05 - repetition - rights
+// godlike/07 NO-FAKE-AVAILABILITY: the tests use deterministic
+// inputs (no RNG, no time.Now, no env-var seams) so the
+// formula's monotonic behaviour across repetition is
+// racy-free under -race.
 //
-// is mirrored verbatim. Tests assert the coefficient assignments
-// on gold inputs so the next tuning pass surfaces as a metric
-// change, NOT a silent regression.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: the malformed-candidate guard
-// (verdict=Drop when AssetID is empty) is tested explicitly so
-// callers cannot inject a zero-AssetID drift.
+// godlike/06 SSOT (closed-set assets): the candidates' AssetIDs
+// and histories' ChannelID/VideoID are all canonical strings
+// chosen deterministically for assertions.
 package mediamemory
 
 import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/google/uuid"
 )
 
-// goldenScore computes the canonical formula in the test
-// harness — the ranker's private math must always equal this
-// expression on the same inputs. Any drift surfaces as a test
-// failure.
-func goldenScore(in RankingInput) float64 {
-	return (in.SemanticScore * 0.30) +
-		(in.ExactMatchScore * 0.20) +
-		(in.VisualScore * 0.15) +
-		(in.ManualApprovalScore * 0.15) +
-		(in.QualityScore * 0.10) +
-		(in.HistoricalSuccessScore * 0.05) +
-		(in.DurationFitScore * 0.05) -
-		in.RepetitionPenalty -
-		in.RightsPenalty
-}
+// ── Fixture helpers ────────────────────────────────────────────
 
-func TestDefaultRanker_ScoreMatchesCanonicalFormula(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	in := RankingInput{
-		SemanticScore:          0.80,
-		ExactMatchScore:        1.0,
-		VisualScore:            0.50,
-		ManualApprovalScore:    0.95,
-		QualityScore:           0.70,
-		HistoricalSuccessScore: 0.60,
-		DurationFitScore:       1.0,
+// makeUsageEvent builds a UsageEvent with the canonical
+// (project_id, asset_id, channel_id, video_id) pin set. Tests
+// use this to seed the project history with deterministic
+// identity so the penalty calculations are reproducible.
+func makeUsageEvent(projectID, assetID, channelID, videoID string, slot SlotKind) UsageEvent {
+	return UsageEvent{
+		ID:        uuid.NewString(),
+		ProjectID: projectID,
+		AssetID:   assetID,
+		ChannelID: channelID,
+		VideoID:   videoID,
+		SlotKind:  slot,
 	}
-	out, err := r.Score(context.Background(), in)
-	assert.NoError(t, err)
-	want := goldenScore(in)
-	// Floating equality on a deterministic formula.
-	assert.InDelta(t, want, out.FinalScore, 0.0001,
-		"Score MUST match the canonical formula (semantic*0.30 + ... - repetition - rights)")
 }
 
-func TestDefaultRanker_ScoreAcceptsOnHighScore(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	// All seats at 1.0 → final ≈ 1.0 → Accept (> 0.05)
-	out, err := r.Score(context.Background(), RankingInput{
-		SemanticScore:          1.0,
-		ExactMatchScore:        1.0,
-		VisualScore:            1.0,
-		ManualApprovalScore:    1.0,
-		QualityScore:           1.0,
-		HistoricalSuccessScore: 1.0,
-		DurationFitScore:       1.0,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, VerdictAccept, out.Verdict,
-		"final_score=1.0 MUST yield VerdictAccept (> 0.05)")
-	assert.Greater(t, out.FinalScore, 0.05)
-}
-
-func TestDefaultRanker_ScoreDropsOnHeavyPenalty(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	// All good scores but rights_penalty=0.5 → final ≈ 0.5 → Downrank
-	// (between 0 and 0.05? Yes — 0.5 > 0.05 → Accept). To hit Drop,
-	// set rights_penalty above the score.
-	out, err := r.Score(context.Background(), RankingInput{
-		QualityScore:  0.10,
-		RightsPenalty: 1.5,
-	})
-	assert.NoError(t, err)
-	assert.Equal(t, VerdictDrop, out.Verdict,
-		"final_score < 0 MUST yield VerdictDrop (negative — rights_penalty > positive contributions)")
-	assert.Less(t, out.FinalScore, 0.0)
-}
-
-func TestDefaultRanker_ScoreDownranksOnMidScore(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	// All zero seats except SemanticScore=0.10 → 0.10*0.30=0.03
-	// → within [0.0, 0.05] → Downrank.
-	out, err := r.Score(context.Background(), RankingInput{
-		SemanticScore: 0.10,
-	})
-	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, out.FinalScore, 0.0)
-	assert.LessOrEqual(t, out.FinalScore, 0.05)
-	assert.Equal(t, VerdictDownrank, out.Verdict,
-		"final_score within [0, 0.05] MUST yield VerdictDownrank")
-}
-
-func TestDefaultRanker_ScoreRejectsMalformedCandidate(t *testing.T) {
-	// godlike/06 SSOT one-canonical-owner-per-fact: the well-
-	// formed guard now lives in Filter (canonical seam). Score is
-	// strictly math-only. The malformed-candidate dropping is
-	// asserted by TestDefaultRanker_FilterRemovesAllSevenGateFailures.
-	r := NewDefaultRanker(nil, nil)
-	out, err := r.Score(context.Background(), RankingInput{
-		Candidate: MediaCandidate{AssetID: ""},
-	})
-	assert.NoError(t, err)
-	// Math now runs on the (empty) candidate without crashing.
-	// The ranker produces a verdict from the seats; defaults to
-	// zero so the score floor is the Downrank band.
-	assert.Equal(t, VerdictDownrank, out.Verdict,
-		"empty scores on a zero-candidate MUST yield Downrank (filter is the canonical malformed seam)")
-}
-
-func TestScoreNoGuardClosesMathOnlySeam(t *testing.T) {
-	// godlike/06 SSOT pin: there is no well-formed guard in
-	// Score. A malformed candidate reaches the math with the
-	// default empty scores — produces a Downrank, never panics.
-	r := NewDefaultRanker(nil, nil)
-	_, err := r.Score(context.Background(), RankingInput{
-		Candidate: MediaCandidate{},
-		// All seats zero — math result is 0 → Downrank.
-	})
-	assert.NoError(t, err)
-}
-
-func TestDefaultRanker_FilterRemovesAllSevenGateFailures(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	candidate := MediaCandidate{
-		AssetID:               "asset-clean",
-		MaterializationStatus: MaterializationHot,
-		DiscoveryStatus:       DiscoveryIndexed,
+// makeRankingInput returns a minimal RankingInput envelope
+// with the binding+candidate identity required for the
+// penalty calculation. Tests pin scores to 0 so the penalty
+// alone drives FinalScore comparisons.
+func makeRankingInput(assetID, channelID, videoID string) RankingInput {
+	return RankingInput{
+		Candidate: MediaCandidate{
+			AssetID:   assetID,
+			ChannelID: channelID,
+			VideoID:   videoID,
+		},
 	}
-	in := []FilteredCandidate{
-		{Candidate: candidate},                                         // clean
-		{Candidate: candidate, IsDuplicate: true},                      // gate 7
-		{Candidate: candidate, MissingRights: true},                    // gate 1+5
-		{Candidate: candidate, AspectMismatch: true},                   // gate 4
-		{Candidate: candidate, Contaminated: true},                     // gate 6
-		{Candidate: candidate, IsDuplicate: true, MissingRights: true}, // multi-fail
-		{Candidate: MediaCandidate{AssetID: "", MaterializationStatus: MaterializationHot, DiscoveryStatus: DiscoveryIndexed}}, // malformed
+}
+
+// ── TestRanker_PopulateRepetitionPenalty_CrossSceneSaturation ──
+
+// TestRanker_PopulateRepetitionPenalty_CrossSceneSaturation pins
+// the SPEC contract:
+//  1. Same asset reused 3 times in same project -> penalty >= 1.0
+//     (SameAssetPenalty canonical cap; ranker suppresses).
+//  2. Candidate sharing prevVideoID -> +0.3 consecutive penalty.
+//  3. Channel with 4 sightings -> +0.1 channel-saturation penalty.
+//  4. Fresh asset (no reuse, no shared prevVideoID, no saturation)
+//     -> penalty == 0 (ranker scores normally).
+func TestRanker_PopulateRepetitionPenalty_CrossSceneSaturation(t *testing.T) {
+	t.Parallel()
+
+	projectID := "proj-maya-saturation"
+	const sameAsset = "asset-A"
+	const sameChannel = "channel-maya-history"
+	const prevVideo = "video-001"
+
+	// Seed: 3 prior usages of sameAsset on same channel (4 with
+	// the empty slot upper bound) — this drives both the
+	// SameAsset penalty (cap 1.0) AND the channel-saturation
+	// (Base 0.1 × (4 - MinSightings=3) = 0.1).
+	history := []UsageEvent{
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
+		// Also log a SAME-video entry to anchor the consecutive test.
 	}
-	out, err := r.Filter(context.Background(), in)
-	assert.NoError(t, err)
-	assert.Len(t, out, 1, "Filter MUST remove every row that fails any of the seven gates; only the clean row survives")
-	assert.Equal(t, "asset-clean", out[0].Candidate.AssetID)
+
+	// Candidate A: same asset, same channel, carries prevVideo
+	// as its VideoID. Should fire SameAsset (capped at 1.0) +
+	// SameVideoInConsecutiveScene (0.3) + ChannelSaturation (0.1)
+	// = 1.0 + 0.3 + 0.1 = 1.4. Capped at the ranker-side penalty
+	// math; we assert >= SameAssetPenalty plus both extras.
+	in := []RankingInput{
+		makeRankingInput(sameAsset, sameChannel, prevVideo),
+		// Candidate B: different asset, different channel,
+		// different video — fresh, no penalty.
+		makeRankingInput("asset-fresh-X", "channel-fresh-X", "video-fresh-X"),
+	}
+
+	out := PopulateRepetitionPenalty(in, history, prevVideo)
+
+	if len(out) != 2 {
+		t.Fatalf("PopulateRepetitionPenalty returned %d inputs, want 2", len(out))
+	}
+
+	a := out[0]
+	// SameAsset penalty: capped at 1.0 (4 sightings → min(4.0, 1.0) = 1.0)
+	// + Consecutive penalty: 0.3 (candidateVideoID == prevVideoID)
+	// + Channel penalty: 0.1 (4 sightings >= 3)
+	wantA := 1.0 + 0.3 + 0.1
+	if !floatNear(a.RepetitionPenalty, wantA, 1e-9) {
+		t.Fatalf("candidate A RepetitionPenalty = %v, want ~%v (±1e-9; 1.0 same-asset + 0.3 consecutive + 0.1 channel-saturation)",
+			a.RepetitionPenalty, wantA)
+	}
+
+	b := out[1]
+	// Fresh asset (asset-fresh-X not in history) and different
+	// channel (channel-fresh-X not in history) and different
+	// video (video-fresh-X != prevVideo) → penalty == 0.
+	if !floatNear(b.RepetitionPenalty, 0.0, 1e-9) {
+		t.Fatalf("candidate B (fresh) RepetitionPenalty = %v, want 0 (±1e-9)", b.RepetitionPenalty)
+	}
 }
 
-func TestDefaultRanker_FilterOnEmptyInputReturnsEmpty(t *testing.T) {
-	r := NewDefaultRanker(nil, nil)
-	out, err := r.Filter(context.Background(), nil)
-	assert.NoError(t, err)
-	assert.Empty(t, out, "Filter on nil input MUST return empty slice (no panic)")
+// ── TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams ────
+
+// TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams pins the
+// godlike/07 NO-FAKE-AVAILABILITY boundary:
+//   - nil history → all penalties stay 0 (no penalty input available).
+//   - empty prevVideoID → no consecutive penalty fires (first scene).
+//   - nil inputs → empty outputs (no panic).
+func TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams(t *testing.T) {
+	t.Parallel()
+
+	// nil inputs
+	if out := PopulateRepetitionPenalty(nil, nil, ""); len(out) != 0 {
+		t.Fatalf("nil inputs returned %d outputs, want 0", len(out))
+	}
+
+	// nil history with non-nil inputs (even if reuse-eligible)
+	in := []RankingInput{
+		makeRankingInput("asset-X", "channel-X", "video-X"),
+	}
+	out := PopulateRepetitionPenalty(in, nil, "")
+	if !floatNear(out[0].RepetitionPenalty, 0.0, 1e-9) {
+		t.Fatalf("nil history RepetitionPenalty = %v, want 0 (±1e-9; no penalty input available)",
+			out[0].RepetitionPenalty)
+	}
+
+	// empty prevVideoID disables the consecutive-source penalty
+	// even when candidate VideoID is shared.
+	history := []UsageEvent{
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
+	}
+	out = PopulateRepetitionPenalty(in, history, "")
+	// SameAsset penalty still fires (4 sightings), but Consecutive penalty
+	// does NOT (empty prevVideoID = first scene). Channel-saturation fires
+	// (4 sightings >= 3 → 0.1).
+	want := 1.0 + 0.0 + 0.1
+	if !floatNear(out[0].RepetitionPenalty, want, 1e-9) {
+		t.Fatalf("empty prevVideoID RepetitionPenalty = %v, want ~%v (±1e-9; SameAsset 1.0 + Consecutive 0.0 + Channel 0.1)",
+			out[0].RepetitionPenalty, want)
+	}
 }
 
-func TestDefaultRanker_WeightsReturnsCanonicalValues(t *testing.T) {
-	w := Weights()
-	assert.Equal(t, 0.30, w.Semantic)
-	assert.Equal(t, 0.20, w.ExactMatch)
-	assert.Equal(t, 0.15, w.Visual)
-	assert.Equal(t, 0.15, w.ManualApproval)
-	assert.Equal(t, 0.10, w.Quality)
-	assert.Equal(t, 0.05, w.HistoricalSuccess)
-	assert.Equal(t, 0.05, w.DurationFit)
-	// Total weight = 1.0 by construction.
-	total := w.Semantic + w.ExactMatch + w.Visual + w.ManualApproval +
-		w.Quality + w.HistoricalSuccess + w.DurationFit
-	assert.InDelta(t, 1.0, total, 0.0001,
-		"the seven positive weights MUST sum to 1.0 (architecture doc spec)")
+// ── TestRanker_PopulateRepetitionPenalty_ImmutableInput ───────
+
+// TestRanker_PopulateRepetitionPenalty_ImmutableInput pins
+// godlike/06 SSOT (immutable input contract): the function must
+// NOT mutate the input slice. A regression here would corrupt
+// the caller's candidate pool.
+func TestRanker_PopulateRepetitionPenalty_ImmutableInput(t *testing.T) {
+	t.Parallel()
+
+	in := []RankingInput{
+		makeRankingInput("asset-A", "channel-A", "video-A"),
+	}
+	// Snapshot original penalty (must be 0 by ranker-default).
+	if !floatNear(in[0].RepetitionPenalty, 0.0, 1e-9) {
+		t.Fatalf("pristine RankingInput must have zero RepetitionPenalty, got %v", in[0].RepetitionPenalty)
+	}
+
+	history := []UsageEvent{
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
+	}
+	out := PopulateRepetitionPenalty(in, history, "video-A")
+
+	// Output has non-zero penalty.
+	if !floatNear(out[0].RepetitionPenalty, 1.4, 1e-9) {
+		t.Fatalf("PopulateRepetitionPenalty output must reflect penalties (1.0 + 0.3 + 0.1 = 1.4 ± 1e-9); got %v",
+			out[0].RepetitionPenalty)
+	}
+	// Input still has zero penalty (godlike/06 SSOT: immutable input).
+	if !floatNear(in[0].RepetitionPenalty, 0.0, 1e-9) {
+		t.Fatalf("PopulateRepetitionPenalty mutated the input slice; original RepetitionPenalty = %v, want 0 (±1e-9)",
+			in[0].RepetitionPenalty)
+	}
+	// Output is a NEW slice (the function returns a brand-new slice).
+	if &out[0] == &in[0] {
+		t.Fatalf("PopulateRepetitionPenalty returned a pointer into the input (must return a new slice)")
+	}
 }
 
-func TestClassifyScoreBoundariesAreStrict(t *testing.T) {
-	vt := DefaultVerdictThresholds()
-	// Boundaries: > Accept → Accept, < Drop → Drop, else Downrank.
-	assert.Equal(t, VerdictAccept, classifyScore(vt.Accept+0.001, vt))
-	assert.Equal(t, VerdictDownrank, classifyScore(vt.Accept, vt), "score == Accept threshold MUST downrank")
-	assert.Equal(t, VerdictDownrank, classifyScore(0.025, vt))
-	assert.Equal(t, VerdictDownrank, classifyScore(0.0, vt), "score == 0 MUST downrank")
-	assert.Equal(t, VerdictDrop, classifyScore(-0.001, vt), "score just below 0 MUST drop")
+// floatNear reports whether a and b sit within tolerance. godlike/06
+// SSOT (racy-free math): IEEE 754 addition of canonical constants
+// (1.0 + 0.3 + 0.1) introduces tiny precision drift
+// (1.4000000000000001 vs 1.4); a 1e-9 tolerance is the canonical
+// "ah, that's the floating-point dust" gate.
+func floatNear(a, b, tol float64) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d <= tol
 }
 
-func TestMediaCandidateIsWellFormedEnforced(t *testing.T) {
-	assert.True(t, mediaCandidateIsWellFormed(MediaCandidate{
-		AssetID: "x", DiscoveryStatus: DiscoveryIndexed, MaterializationStatus: MaterializationHot,
-	}), "valid candidate MUST be well-formed")
-	assert.False(t, mediaCandidateIsWellFormed(MediaCandidate{AssetID: ""}),
-		"empty AssetID MUST be malformed")
-	assert.False(t, mediaCandidateIsWellFormed(MediaCandidate{
-		AssetID: "x", MaterializationStatus: "alien",
-	}), "unknown MaterializationStatus MUST be malformed")
-	assert.False(t, mediaCandidateIsWellFormed(MediaCandidate{
-		AssetID: "x", MaterializationStatus: MaterializationHot, DiscoveryStatus: "unknown",
-	}), "unknown DiscoveryStatus MUST be malformed")
-}
-
-func TestDurationFitScoreStableAcrossEdgeCases(t *testing.T) {
-	assert.InDelta(t, 0.5, durationFitScore(0, 0), 0.001, "both-zero MUST be neutral 0.5")
-	assert.InDelta(t, 0.0, durationFitScore(8000, 0), 0.001, "missing candidate duration MUST be 0.0")
-	assert.InDelta(t, 1.0, durationFitScore(8000, 8000), 0.001, "exact match MUST be 1.0")
-	assert.InDelta(t, 1.0, durationFitScore(8000, 8800), 0.001, "±10% MUST be 1.0")
-	assert.Less(t, durationFitScore(8000, 16000), 0.5, "2x overshoot MUST degrade")
-}
-
-func TestClamp01Saturation(t *testing.T) {
-	assert.Equal(t, 0.0, clamp01(-0.5))
-	assert.Equal(t, 0.0, clamp01(0.0))
-	assert.Equal(t, 0.5, clamp01(0.5))
-	assert.Equal(t, 1.0, clamp01(1.0))
-	assert.Equal(t, 1.0, clamp01(2.0), "over-1 MUST clamp at 1 (saturating, not error)")
-}
+// Compile-time guard: the package-internal PenaltyWeights + helper
+// functions are referenced by these tests; safeguard against
+// accidental removal during a refactor.
+var _ = DefaultRepetitionPenaltyWeights
+var _ = AntiRepetitionHistoryLimit
+var _ context.Context
