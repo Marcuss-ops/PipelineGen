@@ -455,5 +455,10 @@ hard_gates:
   # allowlist on disk (godlike/07 NO-FAKE-AVAILABILITY).
   - percheck_api_infrastructure_imports
   - percheck_api_infrastructure_imports_allowlist_missing
+  # Brain capability hard gates: the brain must never import
+  # infrastructure or spawn processes, and each canonical
+  # brain component must have exactly one production implementation.
+  - percheck_brain_infra_ban
+  - percheck_brain_single_impl
 
 lint_gates:
