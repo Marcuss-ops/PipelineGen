@@ -175,7 +175,10 @@ export default function AssetInspector() {
     if (!url) return
     try {
       const res = await triggerClipAction(url)
-      setSaveMsg({ type: 'ok', text: `Azione avviata: ${JSON.stringify(res)}` })
+      const msg = typeof res === 'object' && res !== null && 'message' in res
+        ? String(res.message)
+        : 'Azione completata'
+      setSaveMsg({ type: 'ok', text: msg })
       setTimeout(() => load(), 1000)
     } catch (err) {
       setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore azione' })
@@ -314,16 +317,14 @@ export default function AssetInspector() {
         {activeTab === 'generale' && (
           <GeneralTab form={form} updateForm={updateForm} asset={asset} />
         )}
-        {activeTab === 'metadata' && (
-          <MetadataTab form={form} updateForm={updateForm} asset={asset} />
-        )}
+        {activeTab === 'metadata' && <MetadataTab asset={asset} />}
         {activeTab === 'indicizzazione' && (
           <IndexingTab asset={asset} actions={actions} onAction={runAction} />
         )}
         {activeTab === 'files' && <LocationsTab asset={asset} actions={actions} onAction={runAction} />}
         {activeTab === 'processing' && <ProcessingTab asset={asset} />}
         {activeTab === 'versions' && <VersionsTab asset={asset} />}
-        {activeTab === 'azioni' && <ActionsTab actions={actions} onAction={runAction} />}
+        {activeTab === 'azioni' && <ActionsTab actions={actions} onAction={runAction} onUpdate={handleSave} />}
         {activeTab === 'raw' && <RawJsonTab asset={asset} />}
         {activeTab === 'audit' && <AuditTab />}
       </div>
@@ -367,42 +368,29 @@ function GeneralTab({
 }) {
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
-      <FormField label="Nome" value={form.name} onChange={(v) => updateForm({ name: v })} />
-      <FormField label="Categoria" value={form.category} onChange={(v) => updateForm({ category: v })} />
-      <FormField label="Gruppo" value={form.group} onChange={(v) => updateForm({ group: v })} />
-      <div>
-        <label style={labelStyle}>Review status</label>
-        <select
-          value={form.review_status}
-          onChange={(e) => updateForm({ review_status: e.target.value })}
-          style={inputStyle}
-        >
-          {REVIEW_STATUS_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt || '(nessuno)'}
-            </option>
-          ))}
-        </select>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <FormField label="Nome" value={form.name} onChange={(v) => updateForm({ name: v })} />
+        <FormField label="Categoria" value={form.category} onChange={(v) => updateForm({ category: v })} />
       </div>
-    </div>
-  )
-}
-
-function MetadataTab({
-  form,
-  updateForm,
-}: {
-  form: FormState
-  updateForm: (patch: Partial<FormState>) => void
-  asset: AssetDetails
-}) {
-  return (
-    <div style={{ display: 'grid', gap: '1rem' }}>
-      <FormField
-        label="Tags (separati da virgola)"
-        value={form.tags}
-        onChange={(v) => updateForm({ tags: v })}
-      />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <FormField label="Gruppo" value={form.group} onChange={(v) => updateForm({ group: v })} />
+        <div>
+          <label style={labelStyle}>Review status</label>
+          <select
+            value={form.review_status}
+            onChange={(e) => updateForm({ review_status: e.target.value })}
+            style={inputStyle}
+          >
+            {REVIEW_STATUS_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt || '(nessuno)'}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <FormField label="Lingua" value={form.language} onChange={(v) => updateForm({ language: v })} />
+      <FormField label="Tags (separati da virgola)" value={form.tags} onChange={(v) => updateForm({ tags: v })} />
       <FormField
         label="Search terms (separati da virgola)"
         value={form.search_terms}
@@ -417,7 +405,46 @@ function MetadataTab({
         />
       </div>
       <FormField label="Descrizione" value={form.description} onChange={(v) => updateForm({ description: v })} />
-      <FormField label="Lingua" value={form.language} onChange={(v) => updateForm({ language: v })} />
+    </div>
+  )
+}
+
+function MetadataTab({ asset }: { asset: AssetDetails }) {
+  const entries = useMemo(() => {
+    const out: [string, unknown][] = []
+    if (asset.metadata && typeof asset.metadata === 'object') {
+      for (const [k, v] of Object.entries(asset.metadata)) {
+        out.push([k, v])
+      }
+    }
+    return out
+  }, [asset.metadata])
+
+  return (
+    <div>
+      <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Metadata</h3>
+      {entries.length === 0 ? (
+        <p style={{ color: '#94a3b8' }}>Nessun metadata disponibile.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          {entries.map(([k, v]) => (
+            <div
+              key={k}
+              style={{
+                background: '#0f172a',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                padding: '0.75rem 1rem',
+              }}
+            >
+              <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '0.25rem' }}>{k}</div>
+              <div style={{ color: '#e2e8f0', fontSize: '0.85rem', wordBreak: 'break-word' }}>
+                {typeof v === 'string' ? v : JSON.stringify(v)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -551,13 +578,20 @@ function VersionsTab({ asset }: { asset: AssetDetails }) {
 function ActionsTab({
   actions,
   onAction,
+  onUpdate,
 }: {
   actions: AssetActionsResponse | null
   onAction: (url?: string) => void
+  onUpdate: () => void
 }) {
   return (
     <div>
       <h3 style={{ marginTop: 0, color: '#38bdf8' }}>Azioni</h3>
+      <div style={{ marginBottom: '1rem' }}>
+        <button onClick={onUpdate} style={primaryButtonStyle}>
+          💾 Update clip (salva modifiche)
+        </button>
+      </div>
       {!actions?.is_clip_source && <p style={{ color: '#94a3b8' }}>Azioni avanzate disponibili solo per asset clip.</p>}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
         <ActionButton label="Reindicizza" url={actions?.reindex} onClick={onAction} />
