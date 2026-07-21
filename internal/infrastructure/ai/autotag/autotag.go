@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
@@ -21,19 +22,21 @@ type Service struct {
 	repo        asset.Repository
 	vlmClient   *vlm.Client
 	vectorStore clipindexer.VectorStoreIndexer
+	enrichState enrichment.EnrichStateMachinePort
 	log         *zap.Logger
 }
 
 // NewService constructs an autotag.Service. Vector store is wired via
 // constructor injection (optional — pass nil when Qdrant indexing is
-// disabled). Post-construction SetVectorStore setter has been removed in
-// PR4-H Commit 4.
-func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, vectorStore clipindexer.VectorStoreIndexer, log *zap.Logger) *Service {
+// disabled). enrichState is the canonical state-machine port for
+// media_assets.enrich_state transitions (PR-ENRICHMENT-STATE-MACHINE).
+func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, vectorStore clipindexer.VectorStoreIndexer, enrichState enrichment.EnrichStateMachinePort, log *zap.Logger) *Service {
 	return &Service{
 		db:          db,
 		repo:        repo,
 		vlmClient:   vlmClient,
 		vectorStore: vectorStore,
+		enrichState: enrichState,
 		log:         log,
 	}
 }

@@ -13,8 +13,8 @@
 //  4. TestEnrichStateIsTerminal — IsTerminal() returns true for
 //     ENRICHED + FAILED (the 2 terminal sinks).
 //  5. TestEnrichStateIsScrapeCandidate — IsScrapeCandidate() returns
-//     true for PENDING + FAILED (the 2 values the VLM 15-min sweeper
-//     can pick up — admin-reset FAILED→PENDING re-enables the row).
+//     true for PENDING only (FAILED is terminal and must be reset to
+//     PENDING by an admin before it can be picked up again).
 package asset
 
 import "testing"
@@ -106,7 +106,7 @@ func TestEnrichStateIsScrapeCandidate(t *testing.T) {
 		{EnrichStatePending, true},    // canonical scrape candidate
 		{EnrichStateEnriching, false}, // claim held; not scrape-eligible
 		{EnrichStateEnriched, false},  // terminal success; not scrape-eligible
-		{EnrichStateFailed, true},     // admin-reset path: eligible
+		{EnrichStateFailed, false},    // terminal failure; requires admin reset to PENDING
 	}
 	for _, c := range cases {
 		if got := c.state.IsScrapeCandidate(); got != c.candidate {

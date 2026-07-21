@@ -13,6 +13,7 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -94,7 +95,15 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		Dispatcher:    params.outbox.Dispatcher,
 	})
 
-	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, nil, params.log)
+	var enrichState enrichment.EnrichStateMachinePort
+	if params.repos.ClipsRepo != nil {
+		esm, err := enrichment.NewEnrichStateMachine(params.repos.ClipsRepo)
+		if err != nil {
+			return fmt.Errorf("compose domains: enrich state machine: %w", err)
+		}
+		enrichState = esm
+	}
+	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, nil, enrichState, params.log)
 
 	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(

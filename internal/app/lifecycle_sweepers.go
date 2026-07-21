@@ -216,21 +216,20 @@ func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 	process := func() {
 		sCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 		defer cancel()
-		// PR-ENRICHMENT-STATE-MACHINE (July 2026): the VLM swecper
-		// filter is the typed-state-mask filter, NOT the legacy
-		// "untagged" JSON-Extract query. The autotag service was
-		// pre-PR relying on `SELECT ... WHERE tags IS NULL OR tags=''`
-		// against metadata_json; the typed canonical path is:
+		// PR-ENRICHMENT-STATE-MACHINE (July 2026): the VLM sweeper
+		// filter is the typed-state filter, NOT the legacy
+		// "untagged" JSON-Extract query. The typed canonical path is:
 		//   SELECT id FROM media_assets
-		//   WHERE enrich_state IN ('PENDING','FAILED')
+		//   WHERE enrich_state = 'PENDING'
 		//     AND enrich_state_updated_at < (now - 30s claim-fence)
-		//     AND lifecycle_state NOT IN ('deleted','DELETED')
+		//     AND media_type != 'folder'
+		//     AND local_path != ''
 		//   ORDER BY enrich_state_updated_at ASC
 		//   LIMIT 10
-		// FAILED is included so an operator-reset row (FAILED --(admin
-		// reindex)--> PENDING) is picked up. The 30s claim fence
-		// prevents overlapping ticks from racing on a row whose VLM
-		// call is in-flight.
+		// FAILED is terminal; an operator-reset row must first be
+		// transitioned back to PENDING before it can be claimed. The
+		// 30s claim fence prevents overlapping ticks from racing on a
+		// row whose VLM call is in-flight.
 		processed, err := autotagSvc.ProcessByEnrichCandidates(sCtx, batchSize, claimFence)
 		if err != nil {
 			log.Warn("vlm auto-tag sweep failed", zap.Error(err))
