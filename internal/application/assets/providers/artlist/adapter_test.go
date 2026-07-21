@@ -179,7 +179,7 @@ func TestSearch_CandidateTranslation_RoundTrip(t *testing.T) {
 	if c0.SourceName != "artlist" {
 		t.Errorf("candidate[0].SourceName=%q, want \"artlist\"", c0.SourceName)
 	}
-	if c0.SourceRef != "artlist_abc123" {
+	if c0.SourceRef != "https://artlist.io/clip/abc123" {
 		t.Errorf("candidate[0].SourceRef=%q", c0.SourceRef)
 	}
 	if c0.Title != "Cinematic Drone Shot" {

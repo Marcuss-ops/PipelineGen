@@ -71,14 +71,30 @@ export function extractClipsFromApiResponses(apiResponses, term) {
         if (seenIds.has(key)) continue;
         seenIds.add(key);
 
+        const tags = Array.isArray(item.tags) ? item.tags.filter((t) => t && typeof t === 'string') : [];
+        const categories = Array.isArray(item.categories)
+          ? item.categories.filter((c) => c && typeof c === 'string')
+          : [];
+        const creator =
+          item.creator || item.author || item.artist || item.contributor || '';
+        const description = item.description || '';
+        const thumbnailUrl = item.thumbnailUrl || item.thumbnail_url || item.image || '';
+        const previewUrl = item.previewUrl || item.preview_url || item.video || '';
+
         clips.push({
           clip_id: String(itemId),
           id: String(itemId),
           title: String(itemTitle || term),
           name: String(itemTitle || term),
+          description: String(description),
+          creator: String(creator),
+          tags,
+          categories,
           primary_url: String(itemUrl || clipPageUrl),
           stream_urls: itemUrl ? [String(itemUrl)] : [],
           clip_page_url: String(clipPageUrl || ''),
+          thumbnail_url: String(thumbnailUrl),
+          preview_url: String(previewUrl || itemUrl),
         });
 
         if (clips.length >= 50) break;

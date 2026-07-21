@@ -311,6 +311,7 @@ type ImportClipResponse struct {
 	OK           bool           `json:"ok"`
 	ClipID       string         `json:"clip_id,omitempty"`
 	Name         string         `json:"name,omitempty"`
+	Description  string         `json:"description,omitempty"`
 	Status       string         `json:"status,omitempty"`
 	DriveLink    string         `json:"drive_link,omitempty"`
 	DriveFileID  string         `json:"drive_file_id,omitempty"`
