@@ -615,9 +615,25 @@ func buildRankingInput(scene SceneSpec, fc FilteredCandidate) RankingInput {
 		}
 		in.QualityScore = clamp01(fc.Binding.QualityScore)
 		in.HistoricalSuccessScore = clamp01(fc.Binding.SuccessScore)
+	} else if fc.Candidate.CandidateScore > 0 {
+		// Path B-variant: candidate-only path from Level 3-7
+		// semantic lookup (QdrantSemanticLookup). The Qdrant
+		// hybrid-search RRF score propagates verbatim into
+		// the ranker's SemanticScore seat so a paraphrase
+		// match beats a neutral zero. godlike/06 SSOT
+		// (lossless Qdrant-score → ranker-seat projection).
+		in.SemanticScore = clamp01(fc.Candidate.CandidateScore)
+		in.ExactMatchScore = 0.0 // semantic ≠ exact-match
+		in.VisualScore = 0.0
+		in.ManualApprovalScore = 0.0
+		in.QualityScore = 0.5
+		in.HistoricalSuccessScore = 0.4
 	} else {
-		// Path B: candidate-only path (Levels 8/9). Defaults are
-		// godlike/06 SSOT — Phase 1.x's canonical neutral scores.
+		// Path B (Levels 8/9 path: no binding envelope, no
+		// Qdrant score). Defaults are godlike/06 SSOT —
+		// Phase 1.x's canonical neutral scores for the
+		// candidate-only path that arrives without a Qdrant
+		// RRF hint.
 		in.SemanticScore = 0.0
 		in.ExactMatchScore = 0.0
 		in.VisualScore = 0.0
@@ -729,16 +745,21 @@ func lessRanked(a, b rankedCandidate) bool {
 // layerFromFilteredCandidate composes a Layer envelope from the
 // winning FilteredCandidate + the slot + the final score.
 //
-// godlike/06 SSOT (lossless binding propagation): when the
-// FilteredCandidate has a binding envelope, StartMs / EndMs /
-// BindingID flow through verbatim. Candidate-only path (Levels
-// 8/9) uses 0..0 and an empty binding_id, which the renderer
-// treats as a "use the whole clip" hint.
+// godlike/06 SSOT (lossless binding + provider propagation):
+// when the FilteredCandidate has a binding envelope, StartMs /
+// EndMs / BindingID flow through verbatim. The Provider tag
+// always propagates from the source MediaCandidate — a binding
+// envelope does NOT mask the canonical Provider (the Level
+// 3-7 semantic adapter stamps ProviderSemanticIndex; the
+// Level 9 SearchFanOutAdapter stamps the forwarding provider;
+// Level 1+2 binding wins preserve the binding's manually-curated
+// origin via fc.Candidate.Provider when present, otherwise "").
 func layerFromFilteredCandidate(fc FilteredCandidate, slot SlotKind, finalScore float64) Layer {
 	layer := Layer{
 		Slot:           slot,
 		AssetID:        fc.Candidate.AssetID,
 		CandidateScore: finalScore,
+		Provider:       fc.Candidate.Provider,
 	}
 	if fc.Binding.AssetID != "" {
 		layer.BindingID = fc.Binding.ID

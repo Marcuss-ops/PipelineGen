@@ -165,6 +165,88 @@ func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptI
 	return out, nil
 }
 
+// ListApprovedByConcepts is the batched variant of
+// ListApprovedByConcept. The result map is keyed by
+// concept_id; missing entries mean "no approved bindings for
+// this concept + slot kind" (caller MUST tolerate the miss
+// gracefully). The `limit` parameter is a PER-CONCEPT cap:
+// each concept_id in the input slice surfaces up to `limit`
+// approved bindings (matches the singular variant's
+// semantics). SQLite-side per-concept row-number window
+// function enforces the cap deterministically.
+//
+// SQLITE VERSION PRECONDITION (godlike/06 SSOT): the query
+// below uses window-function syntax (WITH ... AS (SELECT
+// ..., ROW_NUMBER() OVER (PARTITION BY concept_id ...))). Window
+// functions require SQLite 3.25.0 or newer. PipelineGen
+// embeds modernc.org/sqlite which currently ships SQLite ≥
+// 3.40.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: unknown SlotKind
+// values surface as wrapped ErrInvalidSlotKind BEFORE the
+// SQL round-trip. A nil result envelope (no approved
+// bindings across all input concepts) is returned as an
+// empty map, NOT nil.
+func (r *bindingsRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []mediamemory.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
+	for _, sk := range slotKinds {
+		if !mediamemory.IsKnownSlotKind(sk) {
+			return nil, fmt.Errorf(
+				"mediamemory: list approved (batch) slot_kind=%q: %w",
+				string(sk), mediamemory.ErrInvalidSlotKind,
+			)
+		}
+	}
+	if len(conceptIDs) == 0 {
+		return map[string][]mediamemory.MediaBinding{}, nil
+	}
+	placeholders := strings.Repeat("?,", len(conceptIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := []any{string(mediamemory.ApprovalApproved)}
+	for _, id := range conceptIDs {
+		args = append(args, id)
+	}
+	q := `WITH ranked AS (
+		SELECT ` + bindingsSelectColumns + `,
+		       ROW_NUMBER() OVER (
+		         PARTITION BY concept_id
+		         ORDER BY success_score DESC, manual_score DESC, updated_at DESC
+		       ) AS rn
+		FROM media_bindings
+		WHERE approval_status = ? AND concept_id IN (` + placeholders + `)`
+	if len(slotKinds) > 0 {
+		skPlaceholders := strings.Repeat("?,", len(slotKinds))
+		skPlaceholders = skPlaceholders[:len(skPlaceholders)-1]
+		q += ` AND slot_kind IN (` + skPlaceholders + `)`
+		for _, sk := range slotKinds {
+			args = append(args, string(sk))
+		}
+	}
+	q += `)
+		SELECT ` + bindingsSelectColumns + ` FROM ranked`
+	if limit > 0 {
+		q += ` WHERE rn <= ?`
+		args = append(args, limit)
+	}
+	q += ` ORDER BY concept_id ASC, success_score DESC, manual_score DESC, updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("mediamemory: list approved bindings batched (n=%d): %w", len(conceptIDs), err)
+	}
+	defer rows.Close()
+	out := make(map[string][]mediamemory.MediaBinding, len(conceptIDs))
+	for rows.Next() {
+		b, err := scanBindingRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[b.ConceptID] = append(out[b.ConceptID], b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("mediamemory: list approved bindings batched iterate: %w", err)
+	}
+	return out, nil
+}
+
 // ListByAsset returns every binding that references an asset_id
 // (used by anti-repetition on the same-source-clip check).
 func (r *bindingsRepository) ListByAsset(ctx context.Context, assetID string) ([]mediamemory.MediaBinding, error) {

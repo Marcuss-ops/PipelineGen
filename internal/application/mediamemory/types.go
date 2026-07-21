@@ -283,6 +283,13 @@ type Layer struct {
 	EndMs          int64
 	Layout         string // "fullscreen", "right_panel", "fullscreen_fade", ...
 	CandidateScore float64
+	// Provider is the canonical source tag from the winning
+	// MediaCandidate that produced this layer (godlike/06
+	// SSOT propagation: the Level 3-7 semantic adapter
+	// stamps mediamemory.ProviderSemanticIndex, the Level 9
+	// SearchFanOutAdapter stamps the forwarding provider
+	// name, ...).
+	Provider string
 }
 
 // SceneVisualPlan is the canonical output of the ranker, consumed
@@ -531,4 +538,57 @@ var (
 	ErrInvalidBindingInput = errors.New(
 		"mediamemory: binding input missing required field(s) (concept_id / asset_id / slot_kind)",
 	)
+	// ErrSemanticNotConfigured is the canonical sentinel for a
+	// missing/broken semantic backend at the mediamemory
+	// capability boundary (godlike/07 NO-FAKE-AVAILABILITY —
+	// absent backend MUST NOT silently degrade to zero-candidate
+	// reads).
+	ErrSemanticNotConfigured = errors.New(
+		"mediamemory: semantic lookup backend not configured (Qdrant not reachable at boot, or composition wiring missing)",
+	)
+	// ErrSemanticBackendFailed is the canonical sentinel for an
+	// operational failure of the semantic backend (Qdrant
+	// HybridSearch returned an error envelope, embedding call
+	// failed with a transient/non-ignored error).
+	ErrSemanticBackendFailed = errors.New(
+		"mediamemory: semantic lookup backend failed (Qdrant query returned an error envelope, embedding call failed)",
+	)
 )
+
+// Provider is the canonical small string the mediamemory
+// capability stamps on every MediaCandidate it emits,
+// regardless of source (Level 1-2 exact, Level 3-7 semantic
+// index, Level 8 local catalog, Level 9 external SearchFanOut).
+//
+// godlike/06 SSOT (closed set): every Provider the mediamemory
+// capability emits is one of the canonical values below; the
+// ranker and dashboard switch on these strings. Adding a new
+// value requires a godlike/06 SSOT review because both the
+// ranker's Source upgrade logic and the dashboard's per-source
+// diagnostics aggregate over the closed set.
+//
+// Note: MediaCandidate.Provider MAY also carry forwarded
+// Source values from external SearchFanOut (e.g. "artlist",
+// "youtube") that originate outside the mediamemory
+// capability and are not closed-set here — those are
+// translucent handoffs, not first-class providers.
+const (
+	// ProviderSemanticIndex is the tag stamped on candidates
+	// emitted by mediamemory.SemanticLookup
+	// (QdrantSemanticLookup). godlike/06 SSOT: do NOT
+	// dispatch on string compare; use IsKnownProvider.
+	ProviderSemanticIndex = "mediamemory.semantic"
+)
+
+// IsKnownProvider reports whether p is in the canonical
+// closed set of mediamemory-owned provider tags. godlike/06
+// SSOT (one-canonical-predicate-next-to-closed-set): a
+// companion predicate is the standard SSOT pattern for any
+// enum-style string surface.
+func IsKnownProvider(p string) bool {
+	switch p {
+	case ProviderSemanticIndex:
+		return true
+	}
+	return false
+}

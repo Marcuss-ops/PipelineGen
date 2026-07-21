@@ -121,6 +121,16 @@ type BindingRepository interface {
 	// approved bindings only, ordered by SuccessScore desc.
 	ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error)
 
+	// ListApprovedByConcepts is the batched variant used by
+	// the Level 3-7 semantic adapter (qdrant_semantic.go) when
+	// it joins N Qdrant concept hits to their canonical
+	// bindings in ONE round-trip. The result map is keyed by
+	// concept_id; missing entries mean "no approved bindings
+	// for this concept + slot kind". The same ordering,
+	// slot-filter, and limit-per-concept semantics as
+	// ListApprovedByConcept apply.
+	ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []SlotKind, limit int) (map[string][]MediaBinding, error)
+
 	// ListByConcept returns every binding (any status) for the
 	// concept, ordered by updated_at desc. Used by the dashboard
 	// "Visual Memory" page / admin diff / audit trail. NOT used
@@ -250,10 +260,17 @@ type SemanticLookup interface {
 // EmbeddingIndexer is the Level 1 ingest port. The production adapter
 // proxies to the canonical EmbeddingChannelRegistry
 // (internal/application/search).
+//
+// godlike/06 (narrow port doctrine): the port owns single-
+// concept mutation ONLY. Batch reindex is an admin/orchestrator
+// concern, not an indexer concern — composition root callers
+// iterate the canonical ConceptRepository for a language and
+// invoke IndexConcept per row. Keeping the port single-entity
+// avoids leaking the ordering / batching / ownership of
+// per-language iteration into the indexer seam.
 type EmbeddingIndexer interface {
 	IndexConcept(ctx context.Context, c MediaConcept) error
 	DeindexConcept(ctx context.Context, conceptID string) error
-	ReindexAll(ctx context.Context, language string) error
 }
 
 // StockPipelineAcquirer is the materialization port. The production

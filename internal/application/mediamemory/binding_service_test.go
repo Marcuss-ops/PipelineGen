@@ -227,6 +227,47 @@ func (r *fakeBindingsRepo) ListApprovedByConcept(_ context.Context, conceptID st
 	return out, nil
 }
 
+func (r *fakeBindingsRepo) ListApprovedByConcepts(_ context.Context, conceptIDs []string, slotKinds []SlotKind, limit int) (map[string][]MediaBinding, error) {
+	for _, sk := range slotKinds {
+		if !IsKnownSlotKind(sk) {
+			return nil, fmt.Errorf("mediamemory: list approved (batch) slot_kind=%q: %w",
+				sk, ErrInvalidSlotKind)
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	set := make(map[string]struct{}, len(conceptIDs))
+	for _, id := range conceptIDs {
+		set[id] = struct{}{}
+	}
+	out := make(map[string][]MediaBinding, len(conceptIDs))
+	for _, b := range r.byID {
+		if _, ok := set[b.ConceptID]; !ok {
+			continue
+		}
+		if b.ApprovalStatus != ApprovalApproved {
+			continue
+		}
+		if len(slotKinds) > 0 {
+			match := false
+			for _, sk := range slotKinds {
+				if b.SlotKind == sk {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+		if limit > 0 && len(out[b.ConceptID]) >= limit {
+			continue
+		}
+		out[b.ConceptID] = append(out[b.ConceptID], b)
+	}
+	return out, nil
+}
+
 func (r *fakeBindingsRepo) ListByConcept(_ context.Context, conceptID string) ([]MediaBinding, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

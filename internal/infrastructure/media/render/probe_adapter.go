@@ -1,0 +1,46 @@
+package render
+
+import (
+	"context"
+	"fmt"
+
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+)
+
+// Compile-time check that FFProbeSourceDurationProbe satisfies
+// SourceDurationProbe.
+var _ stockpipeline.SourceDurationProbe = (*FFProbeSourceDurationProbe)(nil)
+
+// FFProbeSourceDurationProbe is the canonical concrete implementation
+// of the stockpipeline.SourceDurationProbe port. It uses the shared
+// ffmpeg.Processor Probe path so the duration measurement stays
+// consistent with the rest of the media stack.
+type FFProbeSourceDurationProbe struct {
+	proc *ffmpeg.Processor
+}
+
+// NewFFProbeSourceDurationProbe constructs a probe adapter. An empty
+// ffmpegPath defaults to "ffmpeg" via ffmpeg.NewProcessor.
+func NewFFProbeSourceDurationProbe(ffmpegPath string) *FFProbeSourceDurationProbe {
+	return &FFProbeSourceDurationProbe{
+		proc: ffmpeg.NewProcessor(ffmpegPath),
+	}
+}
+
+// ProbeDurationSec returns the source duration in seconds using
+// ffprobe. Returns a typed error when the file is missing, empty,
+// or not a recognizable video container.
+func (p *FFProbeSourceDurationProbe) ProbeDurationSec(ctx context.Context, sourcePath string) (float64, error) {
+	info, err := p.proc.Probe(ctx, sourcePath)
+	if err != nil {
+		return 0, fmt.Errorf("ffprobe source duration probe: %w", err)
+	}
+	if info == nil {
+		return 0, fmt.Errorf("ffprobe source duration probe: nil MediaInfo")
+	}
+	if !info.HasVideo {
+		return 0, fmt.Errorf("ffprobe source duration probe: no video stream in %s", sourcePath)
+	}
+	return info.Duration.Seconds(), nil
+}
