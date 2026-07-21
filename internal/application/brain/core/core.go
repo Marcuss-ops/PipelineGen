@@ -24,11 +24,11 @@ import (
 // It composes the four pure brain services and delegates search to the
 // CandidateSearcher port, which is the only place where IO happens.
 type CanonicalBrain struct {
-	normalizer normalizer.PhraseNormalizer
-	resolver   intent.VisualIntentResolver
-	searcher   brain.CandidateSearcher
-	ranker     ranker.CandidateRanker
-	planner    planner.SceneVisualPlanner
+	normalizer   normalizer.PhraseNormalizer
+	resolver     intent.VisualIntentResolver
+	searcher     brain.CandidateSearcher
+	ranker       ranker.CandidateRanker
+	planner      planner.SceneVisualPlanner
 	brainVersion string
 }
 

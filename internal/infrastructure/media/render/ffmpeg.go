@@ -28,7 +28,7 @@ import (
 
 	"go.uber.org/zap"
 
-	stockpipeline	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

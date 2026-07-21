@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -320,6 +321,70 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 // outbox event inside stagePersistResults, so no async indexing stage
 // is required.
 func (o *RunOrchestratorService) stageIndexAsync(_ context.Context, _ *RunTagResponse) {
+}
+
+// ImportSingleClip runs the full download/normalize/upload/persist pipeline
+// for a single Artlist clip discovered via the detail endpoint. It reuses
+// the same stageBuildProcessInputs + stageProcessBatch machinery as the
+// tag-pipeline, but for exactly one clip so the caller can return a
+// synchronous response.
+func (o *RunOrchestratorService) ImportSingleClip(ctx context.Context, req *ImportClipRequest, clip *asset.Asset) (*RunTagItem, error) {
+	if clip == nil {
+		return nil, fmt.Errorf("asset is required")
+	}
+	if strings.TrimSpace(clip.ID) == "" {
+		return nil, fmt.Errorf("asset has no ID")
+	}
+
+	term := clip.Name
+	if term == "" {
+		term = clip.ID
+	}
+
+	rootFolderID := o.svc.cfg.Drive.ArtlistFolder()
+	if strings.TrimSpace(req.RootFolderID) != "" {
+		rootFolderID = strings.TrimSpace(req.RootFolderID)
+	}
+
+	destination, err := o.svc.destinationService.ResolveDestination(ctx, term, rootFolderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve destination: %w", err)
+	}
+
+	resp := &RunTagResponse{
+		OK:          true,
+		Term:        term,
+		TagFolderID: destination.FolderID,
+	}
+
+	workItems := o.stageBuildProcessInputs(ctx, &RunTagRequest{
+		Term:         term,
+		RootFolderID: rootFolderID,
+		Limit:        1,
+		ClipDuration: 0,
+		Width:        0,
+		Height:       0,
+		FPS:          0,
+		Concurrency:  1,
+	}, resp, []asset.Asset{*clip})
+
+	if len(workItems) == 0 {
+		return nil, fmt.Errorf("clip was skipped (dry-run not supported in import)")
+	}
+
+	ps := &pipelineState{
+		resp:        resp,
+		workItems:   workItems,
+		concurrency: 1,
+	}
+	if err := o.stageProcessBatch(ctx, ps); err != nil {
+		return nil, err
+	}
+
+	if len(resp.Items) == 0 {
+		return nil, fmt.Errorf("no item produced by single-clip import")
+	}
+	return &resp.Items[0], nil
 }
 
 // concurrencyFromRequest determines the concurrency level: default 3, max 10.

@@ -74,12 +74,12 @@ type BrainResult struct {
 // DecisionFingerprint that uniquely identifies the input+versions
 // tuple used to produce the plan.
 type SceneVisualPlan struct {
-	SceneID           string
-	Intent            VisualIntent
-	Layers            []VisualLayer
-	Confidence        float64
-	Status            string
-	Trace             ResolutionTrace
+	SceneID             string
+	Intent              VisualIntent
+	Layers              []VisualLayer
+	Confidence          float64
+	Status              string
+	Trace               ResolutionTrace
 	DecisionFingerprint string
 }
 
@@ -152,7 +152,7 @@ type SelectedRecord struct {
 
 // ExcludedRecord records a candidate excluded by the brain and why.
 type ExcludedRecord struct {
-	Slot   SlotKind
+	Slot    SlotKind
 	AssetID string
 	Reason  string
 }

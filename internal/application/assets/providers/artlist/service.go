@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -45,6 +46,9 @@ type ServicePorts struct {
 	ScraperSearcher Searcher
 	PixabaySearcher Searcher
 	PexelsSearcher  Searcher
+	// DetailFetcher fetches rich metadata for a single Artlist clip page.
+	// Optional — when nil the import endpoint returns ErrUnavailable.
+	DetailFetcher DetailFetcher
 	// Stager is the shared SourceStager port (Step 9/12 wire-up, July 2026).
 	// Optional — when non-nil, stageProcessBatch uses it as the canonical
 	// source-staging surface (wrapping the Artlist Downloader port) so
@@ -226,6 +230,10 @@ type Service struct {
 	pixabaySearcher Searcher
 	pexelsSearcher  Searcher
 
+	// detailFetcher fetches rich metadata for a single Artlist clip page.
+	// Optional; when nil the import endpoint fails closed.
+	detailFetcher DetailFetcher
+
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor
 	assetDestResolver asset.Resolver
@@ -332,6 +340,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		scraperSearcher:   deps.ScraperSearcher,
 		pixabaySearcher:   deps.PixabaySearcher,
 		pexelsSearcher:    deps.PexelsSearcher,
+		detailFetcher:     deps.DetailFetcher,
 		searchStrategy:    deps.SearchStrategy,
 		liveCache:         newLiveSearchCache(),
 		assetProcessing:   deps.Repos.AssetProcRepo,
@@ -493,4 +502,167 @@ func (s *Service) Searchers() (Searcher, Searcher, Searcher) {
 // GetJobByRunID ottiene un job per run ID.
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*appjobs.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
+}
+
+// ImportClip imports a single Artlist clip by its detail page URL.
+// When req.Download is false the asset is persisted as STAGING/DISCOVERED
+// and returned without downloading the video. When req.Download is true
+// the clip is also downloaded, normalized, uploaded to Drive, and
+// prepared for indexing via the canonical outbox path.
+func (s *Service) ImportClip(ctx context.Context, req *ImportClipRequest) (*ImportClipResponse, error) {
+	if s.detailFetcher == nil {
+		return nil, ErrUnavailable
+	}
+	if strings.TrimSpace(req.ClipPageURL) == "" {
+		return nil, ErrEmpty
+	}
+
+	candidate, err := s.detailFetcher.FetchDetails(ctx, req.ClipPageURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch clip details: %w", err)
+	}
+	if candidate == nil {
+		return nil, ErrEmptyResult
+	}
+
+	clip := candidateToAsset(candidate, req.ClipPageURL)
+
+	// Avoid duplicate imports: if the clip already exists, return the
+	// existing record.
+	if s.assetStore != nil {
+		if existing, getErr := s.assetStore.Get(ctx, clip.ID); getErr == nil && existing != nil {
+			s.log.Info("artlist import skipped: clip already exists", zap.String("clip_id", clip.ID))
+			return &ImportClipResponse{
+				OK:     true,
+				ClipID: existing.ID,
+				Name:   existing.Name,
+				Status: "already_imported",
+			}, nil
+		}
+	}
+
+	resp := &ImportClipResponse{
+		OK:           true,
+		ClipID:       clip.ID,
+		Name:         clip.Name,
+		ClipPageURL:  clip.ClipPageURL,
+		ThumbnailURL: candidate.ThumbnailURL,
+		PreviewURL:   candidate.PreviewURL,
+		Tags:         candidate.Keywords,
+		Categories:   candidate.Categories,
+		Creator:      candidate.Creator,
+		Metadata:     make(map[string]any),
+	}
+	if clip.Metadata != nil {
+		resp.Metadata = clip.Metadata
+	}
+	if candidate.RawMetadata != nil {
+		if country, ok := candidate.RawMetadata["country"].(string); ok {
+			resp.Country = country
+		}
+		if loc, ok := candidate.RawMetadata["location"].(string); ok {
+			resp.Location = loc
+		}
+	}
+
+	if !req.Download {
+		if s.dispatcher == nil {
+			return nil, ErrAssetMutationDispatcherUnavailable
+		}
+		if err := s.dispatcher.SaveDiscoveredAsset(ctx, clip, asset.StateStaging, asset.StateDiscovered); err != nil {
+			return nil, fmt.Errorf("save discovered asset: %w", err)
+		}
+		resp.Status = "discovered"
+		return resp, nil
+	}
+
+	item, err := s.runOrchestrator.ImportSingleClip(ctx, req, clip)
+	if err != nil {
+		resp.OK = false
+		resp.Error = err.Error()
+		resp.Status = "failed"
+		return resp, err
+	}
+
+	resp.Status = item.Status
+	resp.DriveLink = item.DriveLink
+	resp.DriveFileID = item.DriveFileID
+	resp.LocalPath = item.LocalPath
+	resp.FileHash = item.FileHash
+	resp.DownloadLink = item.DownloadLink
+	if resp.Status == "" {
+		resp.Status = "completed"
+	}
+
+	return resp, nil
+}
+
+// candidateToAsset maps a provider-level candidate to the canonical
+// asset model, preserving all Artlist-specific metadata in the JSON
+// Metadata field.
+func candidateToAsset(c *Candidate, clipPageURL string) *asset.Asset {
+	id := c.ID
+	if id == "" {
+		id = extractClipIDFromURL(clipPageURL)
+	}
+	name := c.Title
+	if name == "" {
+		name = id
+	}
+
+	providerTags := make([]string, len(c.Keywords))
+	copy(providerTags, c.Keywords)
+
+	searchTerms := make([]string, 0, len(providerTags)+1)
+	searchTerms = append(searchTerms, name)
+	searchTerms = append(searchTerms, providerTags...)
+
+	clip := &asset.Asset{
+		ID:          id,
+		Name:        name,
+		Source:      asset.Source("artlist"),
+		MediaType:   asset.MediaType("video"),
+		Tags:        providerTags,
+		SearchTerms: deduplicateStrings(searchTerms),
+		SourceURL:   c.SourceRef,
+		ClipPageURL: clipPageURL,
+		Metadata: map[string]any{
+			"creator":             c.Creator,
+			"provider_tags":       providerTags,
+			"provider_categories": c.Categories,
+			"metadata_origin":     "artlist",
+		},
+	}
+	if c.Description != "" {
+		clip.Metadata["description"] = c.Description
+	}
+	if c.ThumbnailURL != "" {
+		clip.ThumbnailURL = c.ThumbnailURL
+	}
+	if c.PreviewURL != "" {
+		clip.Metadata["preview_url"] = c.PreviewURL
+	}
+	if c.PageURL != "" {
+		clip.ClipPageURL = c.PageURL
+	} else if clipPageURL != "" {
+		clip.ClipPageURL = clipPageURL
+	}
+	for k, v := range c.RawMetadata {
+		clip.Metadata[k] = v
+	}
+	return clip
+}
+
+// extractClipIDFromURL pulls the numeric clip id from an Artlist
+// detail page URL. Falls back to the full URL when no numeric id is
+// present.
+func extractClipIDFromURL(u string) string {
+	// artlist.io/stock-footage/clip/<slug>/<id>
+	parts := strings.Split(strings.TrimRight(u, "/"), "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] != "" {
+			return parts[i]
+		}
+	}
+	return u
 }

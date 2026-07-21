@@ -51,6 +51,68 @@ function rejectIfNotMethod(req, res, allowedMethod, endpointLabel) {
   return false;
 }
 
+// ─── /detail ─────────────────────────────────────────────────────────────────
+// Fetch rich structured metadata for a single Artlist clip detail page.
+// Body: { clip_page_url: string }
+// Returns the hydrated Clip object from src/scrape/detail-page.js.
+export async function handleDetail(req, res, ctx) {
+  if (rejectIfNotMethod(req, res, 'POST', '/detail')) return;
+
+  let body;
+  try {
+    body = await readBody(req, MAX_DOWNLOAD_BODY_BYTES);
+  } catch (err) {
+    res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.message }));
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+    return;
+  }
+
+  const clipPageUrl = (payload.clip_page_url || payload.url || '').trim();
+  if (!clipPageUrl) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Missing clip_page_url or url' }));
+    return;
+  }
+
+  const reqId = ctx.state.incRequest();
+  console.log(`[${new Date().toISOString()}] #${reqId} DETAIL url="${clipPageUrl.substring(0, 120)}"`);
+  const t0 = Date.now();
+
+  try {
+    const browser = await ctx.deps.getBrowser();
+    const clip = await ctx.deps.fetchClipDetails(browser, clipPageUrl);
+    const elapsed = Date.now() - t0;
+
+    if (!clip) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Clip detail not found or blocked' }));
+      return;
+    }
+
+    console.log(`[${new Date().toISOString()}] #${reqId} DONE detail clip_id=${clip.clip_id || 'unknown'} in ${elapsed}ms`);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      clip,
+      _meta: { request_id: reqId, elapsed_ms: elapsed },
+    }));
+  } catch (err) {
+    const elapsed = Date.now() - t0;
+    console.error(`[${new Date().toISOString()}] #${reqId} DETAIL ERROR after ${elapsed}ms:`, err.message);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.message || String(err) }));
+  }
+}
+
 // ─── /search ──────────────────────────────────────────────────────────────────
 export async function handleSearch(req, res, ctx) {
   if (rejectIfNotMethod(req, res, 'POST', '/search')) return;
@@ -251,6 +313,8 @@ export async function dispatchRequest(req, res, ctx) {
   const url = new URL(req.url, `http://localhost:${ctx.config.PORT}`);
   if (url.pathname === '/search') {
     await handleSearch(req, res, ctx);
+  } else if (url.pathname === '/detail') {
+    await handleDetail(req, res, ctx);
   } else if (url.pathname === '/download') {
     await handleDownload(req, res, ctx);
   } else if (url.pathname === '/health') {
