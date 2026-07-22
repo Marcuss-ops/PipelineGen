@@ -92,10 +92,20 @@ type SceneVisualPlan struct {
 
 // VisualIntent describes what the brain understood about a scene.
 type VisualIntent struct {
+	// Backward-compatible fields. New code should prefer the
+	// structured fields below whenever possible.
 	Entities []string
 	Concepts []string
 	Actions  []string
 	Keywords []string
+
+	// Structured intent decomposition produced by the language-aware
+	// intent resolver registry.
+	Topics           []string
+	Objects          []string
+	VisualActions    []string
+	SearchKeywords   []string
+	NegativeConcepts []string
 }
 
 // VisualLayer is a single resolved layer inside a SceneVisualPlan.
