@@ -22,7 +22,6 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverDocumentInSameJob(t *testing.T) 
 	want := []string{
 		string(adapters.ProcessorTranslation),
 		string(adapters.ProcessorClipBindings),
-		string(adapters.ProcessorStockAssociation),
 		string(adapters.ProcessorVoiceover),
 		string(adapters.ProcessorPersistence),
 	}
@@ -43,6 +42,15 @@ func TestBuildPlan_TextDoesNotImplicitlyCreateClipArtifacts(t *testing.T) {
 	for _, processor := range plan.Postprocessors {
 		if processor == string(adapters.ProcessorVoiceover) {
 			t.Fatalf("text-only plan unexpectedly contains %q: %v", processor, plan.Postprocessors)
+		}
+	}
+}
+
+func TestBuildPlan_TextWithoutMediaPlanSkipsVisualPlanning(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"}})
+	for _, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorVisualPlanning) {
+			t.Fatalf("text-only plan unexpectedly contains visual planning: %v", plan.Postprocessors)
 		}
 	}
 }
