@@ -169,7 +169,7 @@ func registerAIBackedProcessors(
 				log.Info("VisualCandidatePlanner wired with real Ollama backend")
 			}
 		}
-		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, planner, log)) {
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, planner, nil, log)) {
 			return fmt.Errorf("register visual_planning processor: composition bug")
 		}
 		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")

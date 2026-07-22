@@ -382,6 +382,8 @@ func (r *VisualResolver) resolveScene(
 		for _, candidate := range scored {
 			plan.Candidates = append(plan.Candidates, CandidateOption{
 				AssetID:      candidate.fc.Candidate.AssetID,
+				CandidateID:  candidate.fc.Candidate.ID,
+				SourceURL:    candidate.fc.Candidate.SourceURL,
 				Provider:     candidate.fc.Candidate.Provider,
 				Score:        candidate.out.FinalScore,
 				DurationMs:   candidate.fc.Candidate.DurationMs,
@@ -899,6 +901,7 @@ func layerFromFilteredCandidate(fc FilteredCandidate, slot SlotKind, finalScore 
 	layer := Layer{
 		Slot:           slot,
 		AssetID:        fc.Candidate.AssetID,
+		CandidateID:    fc.Candidate.ID,
 		CandidateScore: finalScore,
 		Provider:       fc.Candidate.Provider,
 	}
