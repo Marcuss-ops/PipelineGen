@@ -105,15 +105,20 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		clip := candidateToAsset(&candidate, pageURL)
 		clip.SetDownloadLink(candidate.SourceRef)
 
-		// Inject the original search term into the indexed tags/search terms
-		// while keeping provider_tags as the pure provider-supplied keywords.
-		clip.ProviderTags = deduplicateStrings(append([]string{originalTerm}, providerTags...))
+		// Keep provider-side tags pure; the search term that discovered the
+		// clip lives in SearchTerms and Metadata["discovered_by_queries"].
+		clip.ProviderTags = providerTags
 		clip.RebuildTags()
-		clip.SearchTerms = deduplicateStrings(append([]string{originalTerm}, providerTags...))
+
+		clip.SearchTerms = deduplicateStrings(
+			append([]string{originalTerm}, providerTags...),
+		)
+
 		if clip.Metadata == nil {
 			clip.Metadata = map[string]any{}
 		}
 		clip.Metadata["provider_tags"] = providerTags
+		clip.Metadata["discovered_by_queries"] = []string{originalTerm}
 		clip.Metadata["provider_categories"] = candidate.Categories
 		clip.Metadata["metadata_origin"] = "artlist"
 
