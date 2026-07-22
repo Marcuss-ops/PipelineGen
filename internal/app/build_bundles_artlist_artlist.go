@@ -39,6 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -168,15 +169,17 @@ func WireArtlist(
 	// semantic.MetadataWriterPort; its Enrich(ctx, clip, term) signature matches
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
 	// constructor args are all DIRECT receivers — no shim layer.
+	searchTextRegistry := searchtextinfra.NewRegistry()
 	semanticEnricher := artlist.NewSemanticEnricher(artlist.SemanticEnricherDeps{
-		Repo:       bundle.ClipsRepo,
-		Indexer:    bundle.ClipIndexerService,
-		MetaWriter: metaWriter,
-		Publisher:  bundle.Publisher,
-		Reader:     reader,
-		Dispatcher: dispatcher,
-		Lifecycle:  lifecycle,
-		Log:        log,
+		Repo:             bundle.ClipsRepo,
+		Indexer:          bundle.ClipIndexerService,
+		MetaWriter:       metaWriter,
+		SearchDocBuilder: searchtextinfra.NewAssetSearchDocumentBuilder(searchTextRegistry),
+		Publisher:        bundle.Publisher,
+		Reader:           reader,
+		Dispatcher:       dispatcher,
+		Lifecycle:        lifecycle,
+		Log:              log,
 	})
 
 	// PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER (July 2026): inject

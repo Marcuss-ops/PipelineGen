@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	searchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -78,10 +79,11 @@ var enrichMetaMu sync.Mutex
 // indexed-Qdrant in a single transaction. Indexer is the canonical
 // port (was *clipindexer.Service concrete); nil-fallback path remains.
 type SemanticEnricher struct {
-	repo       AssetStore
-	indexer    Indexer
-	metaWriter semantic.MetadataWriterPort
-	log        *zap.Logger
+	repo             AssetStore
+	indexer          Indexer
+	metaWriter       semantic.MetadataWriterPort
+	searchDocBuilder searchtext.SearchDocumentBuilder
+	log              *zap.Logger
 	// dispatcher is the canonical media_index_outbox dispatcher used by
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
 	// When nil, falls back to the legacy indexer path. PR2.5: this is
@@ -115,14 +117,15 @@ type SemanticEnricher struct {
 // Grouping them keeps the constructor under the archcheck 8-parameter cap
 // while preserving the canonical artlist semantic-enricher surface.
 type SemanticEnricherDeps struct {
-	Repo       AssetStore
-	Indexer    Indexer
-	MetaWriter semantic.MetadataWriterPort
-	Publisher  delivery.Publisher
-	Reader     drivepkg.Reader
-	Dispatcher Dispatcher
-	Lifecycle  drivepkg.FileLifecycle
-	Log        *zap.Logger
+	Repo             AssetStore
+	Indexer          Indexer
+	MetaWriter       semantic.MetadataWriterPort
+	SearchDocBuilder searchtext.SearchDocumentBuilder
+	Publisher        delivery.Publisher
+	Reader           drivepkg.Reader
+	Dispatcher       Dispatcher
+	Lifecycle        drivepkg.FileLifecycle
+	Log              *zap.Logger
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
@@ -158,14 +161,15 @@ type SemanticEnricherDeps struct {
 // `e.metaWriter == nil` so both paths are fail-closed.
 func NewSemanticEnricher(deps SemanticEnricherDeps) *SemanticEnricher {
 	return &SemanticEnricher{
-		repo:       deps.Repo,
-		indexer:    deps.Indexer,
-		metaWriter: deps.MetaWriter,
-		publisher:  deps.Publisher,
-		reader:     deps.Reader,
-		dispatcher: deps.Dispatcher,
-		lifecycle:  deps.Lifecycle,
-		log:        deps.Log,
+		repo:             deps.Repo,
+		indexer:          deps.Indexer,
+		metaWriter:       deps.MetaWriter,
+		searchDocBuilder: deps.SearchDocBuilder,
+		publisher:        deps.Publisher,
+		reader:           deps.Reader,
+		dispatcher:       deps.Dispatcher,
+		lifecycle:        deps.Lifecycle,
+		log:              deps.Log,
 	}
 }
 
