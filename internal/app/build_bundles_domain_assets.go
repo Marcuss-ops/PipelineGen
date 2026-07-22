@@ -23,7 +23,7 @@ import (
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
-	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/qdrantmm"
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to
@@ -137,7 +137,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 
 	var frameIndexer mediamemory.KeyframeVisualIndexer
 	if params.process.QdrantClient != nil {
-		frameIndexer = mmadapters.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
+		frameIndexer = qdrantmm.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
 	}
 
 	autotagSvc := autotag.NewService(

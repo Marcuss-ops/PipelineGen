@@ -1,4 +1,4 @@
-// Package adapters — qdrant_frame_indexer.go is the canonical
+// Package qdrantmm — qdrant_frame_indexer.go is the canonical
 // concrete mediamemory.KeyframeVisualIndexer (Fase 4.1 — visual
 // channel completion).
 //
@@ -15,7 +15,7 @@
 // vector / wrong dimensionality surfaces as a typed sentinel
 // (ErrSemanticNotConfigured / ErrLinkerEmbeddingFailed via %w).
 // No silent zero-vector writes to the frame collection.
-package adapters
+package qdrantmm
 
 import (
 	"context"

@@ -160,7 +160,10 @@ func callQdrant() {
 
 func TestScanBrainInfraBan_AdaptersSubdirExempt(t *testing.T) {
 	root := t.TempDir()
-	makeBrainInfraFile(t, root, "internal/application/mediamemory/adapters/qdrant_indexer.go",
+	// The adapters/ subdir is the canonical deliberate infrastructure
+	// bridge zone; a file there must remain exempt even if the real
+	// qdrant adapter now lives in infrastructure/qdrant/qdrantmm.
+	makeBrainInfraFile(t, root, "internal/application/mediamemory/adapters/generic_bridge.go",
 		`package adapters
 
 import _ "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"

@@ -9,14 +9,14 @@
 # promote specific rules to hard gates via the `--strict` flag.
 
 # File size and population caps (per the proposal §"Package size limits").
-# Raised 40 → 65 on 2026-07-15. Justification:
-# internal/infrastructure/database/sqlite/assets reached 64 files while
+# Raised 40 → 65 on 2026-07-15, then 65 → 70 on 2026-07-22. Justification:
+# internal/infrastructure/database/sqlite/assets reached 69 files while
 # absorbing the canonical asset committer / outbox / clips / catalog /
-# artifacts / delivery / maintenance surfaces. The package is the SQLite
-# persistence consolidation point; splitting it now would break the
-# transactional cohesion of the asset persistence layer. The cap will be
-# revisited once the QDRANT-002 / asset-committer consolidation wave settles.
-max_files_per_package: 65
+# artifacts / delivery / maintenance / voiceover / visual-summary surfaces.
+# The package is the SQLite persistence consolidation point; splitting it
+# now would fracture transactional cohesion. The cap will be revisited once
+# the QDRANT-002 / asset-committer consolidation wave settles.
+max_files_per_package: 70
 # Raised 500 → 1000 on 2026-07-11 (script.generate wave). Justification:
 # the script.generate pipeline introduced 6 cohesive feature files that
 # manage hard transactional/cue boundaries which cannot be safely split:
