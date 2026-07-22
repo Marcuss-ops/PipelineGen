@@ -61,6 +61,7 @@ func TestVoiceoverProcessor_UsesTranslatedSceneTextAndTargetLanguage(t *testing.
 		SpecScene:         translatedSpec,
 		OriginalText:      "Complete English source text.",
 		OriginalSpecScene: originalSpec,
+		EffectiveLanguage: "it",
 	})
 
 	require.NoError(t, err)
@@ -93,8 +94,9 @@ func TestVoiceoverProcessor_SkipsWhenRequestedTranslationDidNotComplete(t *testi
 	}
 
 	result, err := proc.Process(context.Background(), plan, ProcessInput{
-		Text:      "Complete English source text.",
-		SpecScene: originalSpec,
+		Text:              "Complete English source text.",
+		SpecScene:         originalSpec,
+		EffectiveLanguage: "en",
 	})
 
 	require.NoError(t, err)
@@ -103,6 +105,6 @@ func TestVoiceoverProcessor_SkipsWhenRequestedTranslationDidNotComplete(t *testi
 	require.Len(t, result.Voiceovers, 1)
 	assert.Equal(t, "skipped", result.Voiceovers[0].Status)
 	require.Len(t, result.Warnings, 1)
-	assert.True(t, strings.Contains(result.Warnings[0], "translation from \"en\" to \"it\" did not produce translated content"),
+	assert.True(t, strings.Contains(result.Warnings[0], "requested translation to \"it\" was not completed"),
 		"warning must explain why voiceover was skipped; got %q", result.Warnings[0])
 }
