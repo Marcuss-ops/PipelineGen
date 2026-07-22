@@ -28,6 +28,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -113,6 +114,21 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	if input.Text == "" {
 		return &PostProcessResult{}, nil
+	}
+
+	if shouldSkipVoiceoverForIncompleteTranslation(plan, input) {
+		warning := fmt.Sprintf(
+			"voiceover skipped: translation from %q to %q did not produce translated content; refusing to synthesize source-language text as target-language audio",
+			strings.TrimSpace(plan.Language),
+			strings.TrimSpace(plan.TranslateTo),
+		)
+		if p.log != nil {
+			p.log.Warn("voiceover processor: requested translation unavailable",
+				zap.String("item_id", plan.ID),
+				zap.String("source_language", strings.TrimSpace(plan.Language)),
+				zap.String("target_language", strings.TrimSpace(plan.TranslateTo)))
+		}
+		return skippedVoiceoverResult(len(scenes), warning), nil
 	}
 
 	language := plan.TranslateTo
@@ -201,6 +217,57 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		Voiceovers: voiceovers,
 		Warnings:   warnings,
 	}, nil
+}
+
+// shouldSkipVoiceoverForIncompleteTranslation prevents the TTS stage from
+// labelling source-language text as target-language audio. A successful
+// TranslationProcessor run writes the original text/spec into ProcessInput;
+// at least one translated text surface must then differ from that baseline.
+func shouldSkipVoiceoverForIncompleteTranslation(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
+	if plan == nil {
+		return false
+	}
+	sourceLanguage := strings.TrimSpace(plan.Language)
+	targetLanguage := strings.TrimSpace(plan.TranslateTo)
+	if sourceLanguage == "" || targetLanguage == "" || strings.EqualFold(sourceLanguage, targetLanguage) {
+		return false
+	}
+
+	originalText := strings.TrimSpace(input.OriginalText)
+	if originalText == "" {
+		return true
+	}
+	if strings.TrimSpace(input.Text) != originalText {
+		return false
+	}
+	return !specSceneTextChanged(input.OriginalSpecScene, input.SpecScene)
+}
+
+func specSceneTextChanged(original, translated scriptpkg.SpecSceneOutput) bool {
+	if len(original.Scenes) == 0 || len(translated.Scenes) == 0 {
+		return false
+	}
+	if len(original.Scenes) != len(translated.Scenes) {
+		return true
+	}
+	for i := range original.Scenes {
+		if strings.TrimSpace(original.Scenes[i].Text) != strings.TrimSpace(translated.Scenes[i].Text) ||
+			strings.TrimSpace(original.Scenes[i].Title) != strings.TrimSpace(translated.Scenes[i].Title) {
+			return true
+		}
+	}
+	return false
+}
+
+func skippedVoiceoverResult(sceneCount int, warning string) *PostProcessResult {
+	voiceovers := make([]SceneVoiceover, sceneCount)
+	for i := range voiceovers {
+		voiceovers[i] = SceneVoiceover{SceneIndex: i, Status: "skipped"}
+	}
+	return &PostProcessResult{
+		Voiceovers: voiceovers,
+		Warnings:   []string{warning},
+	}
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0, June 2026): the
