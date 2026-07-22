@@ -157,9 +157,19 @@ func registerAIBackedProcessors(
 	// The processor owns no provider or database implementation: the
 	// composition root supplies the canonical MediaMemory resolver, which
 	// fans out through the shared SearchFanOut exactly once per plan.
+	// Gemma is used as a ranking strategy to choose among the closed
+	// candidate list returned by the resolver; on LLM failure the
+	// adapter deterministically falls back to the top-scoring candidate.
 	if root.Search != nil && root.Search.SearchFanOut != nil {
 		resolver := WireMediaMemoryResolver(root.Search.SearchFanOut, log)
-		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, nil, log)) {
+		var planner adapters.VisualCandidatePlanner
+		if root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				planner = ollamaadapters.NewOllamaVisualPlannerAdapter(ollamaClient, log)
+				log.Info("VisualCandidatePlanner wired with real Ollama backend")
+			}
+		}
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, planner, log)) {
 			return fmt.Errorf("register visual_planning processor: composition bug")
 		}
 		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
