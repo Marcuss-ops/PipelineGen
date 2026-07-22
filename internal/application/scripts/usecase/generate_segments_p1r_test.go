@@ -516,8 +516,8 @@ func TestSegments_PayloadValidator_RejectsNegativeTargetWords(t *testing.T) {
 	if pve.Code != "INVALID_TARGET_WORDS" {
 		t.Fatalf("DoD #8.d code MUST be INVALID_TARGET_WORDS; got %s", pve.Code)
 	}
-	if pve.Extra["actual_target_words"] != -5 {
-		t.Errorf("DoD #8.d extra MUST surface actual value; got %v", pve.Extra["actual_target_words"])
+	if pve.Extra.ActualTargetWords != -5 {
+		t.Errorf("DoD #8.d extra MUST surface actual value; got %v", pve.Extra.ActualTargetWords)
 	}
 }
 
@@ -560,7 +560,7 @@ func TestSegments_PayloadValidator_RejectsTooManySegments(t *testing.T) {
 	if pve.Code != "TOO_MANY_SEGMENTS" {
 		t.Fatalf("DoD #8.e code MUST be TOO_MANY_SEGMENTS; got %s", pve.Code)
 	}
-	if pve.Extra["actual_segments"] != 51 || pve.Extra["max_segments_cap"] != 50 {
+	if pve.Extra.ActualSegments != 51 || pve.Extra.MaxSegmentsCap != 50 {
 		t.Errorf("DoD #8.e extras MUST report actual_segments=51 max=50; got %v", pve.Extra)
 	}
 }

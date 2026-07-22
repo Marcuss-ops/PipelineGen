@@ -52,12 +52,12 @@ func enforceClipEvidenceTextSupport(plan *scriptpkg.ResolvedGenerationPlan, cfg 
 		Message:   "source_text word count exceeds what the available clip evidence duration can support",
 		Stage:     "plan.validation",
 		Retryable: false,
-		Extra: map[string]any{
-			"actual_words":     words,
-			"max_words":        maxWords,
-			"evidence_seconds": totalSeconds,
-			"words_per_second": cfg.WordsPerSecondClipEvidence,
-			"source_type":      plan.SourceKind,
+		Extra: scriptpkg.ValidationExtras{
+			ActualWords:     words,
+			MaxWords:        maxWords,
+			EvidenceSeconds: totalSeconds,
+			WordsPerSecond:  cfg.WordsPerSecondClipEvidence,
+			SourceType:      plan.SourceKind,
 		},
 	}
 }

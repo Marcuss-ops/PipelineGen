@@ -58,9 +58,9 @@ func TestPayloadValidator_SourceTextTooManyChars(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
-	assert.Equal(t, 32, pve.Extra["actual_chars"])
-	assert.Equal(t, 10, pve.Extra["max_chars"])
-	assert.Contains(t, pve.Extra["limits"], "chars")
+	assert.Equal(t, 32, pve.Extra.ActualChars)
+	assert.Equal(t, 10, pve.Extra.MaxChars)
+	assert.Contains(t, pve.Extra.Limits, "chars")
 	assert.NotContains(t, pve.Error(), "this source text is way too long")
 }
 
@@ -87,9 +87,9 @@ func TestPayloadValidator_SourceTextTooManyBytes(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
-	assert.Equal(t, 32, pve.Extra["actual_bytes"])
-	assert.Equal(t, 10, pve.Extra["max_bytes"])
-	assert.Contains(t, pve.Extra["limits"], "bytes")
+	assert.Equal(t, 32, pve.Extra.ActualBytes)
+	assert.Equal(t, 10, pve.Extra.MaxBytes)
+	assert.Contains(t, pve.Extra.Limits, "bytes")
 }
 
 func TestPayloadValidator_SourceTextExceedsTargetRatio(t *testing.T) {
@@ -115,9 +115,9 @@ func TestPayloadValidator_SourceTextExceedsTargetRatio(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_EXCEEDS_TARGET_RATIO", pve.Code)
-	assert.Equal(t, 12, pve.Extra["source_words"])
-	assert.Equal(t, 5, pve.Extra["target_words"])
-	assert.Equal(t, 2.0, pve.Extra["max_ratio"])
+	assert.Equal(t, 12, pve.Extra.SourceWords)
+	assert.Equal(t, 5, pve.Extra.TargetWords)
+	assert.Equal(t, 2.0, pve.Extra.MaxRatio)
 }
 
 func TestPayloadValidator_TokenEstimate(t *testing.T) {
@@ -143,9 +143,9 @@ func TestPayloadValidator_TokenEstimate(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
-	assert.NotNil(t, pve.Extra["actual_tokens"])
-	assert.Equal(t, 2, pve.Extra["max_tokens"])
-	assert.Contains(t, pve.Extra["limits"], "tokens")
+	assert.Greater(t, pve.Extra.ActualTokens, 0)
+	assert.Equal(t, 2, pve.Extra.MaxTokens)
+	assert.Contains(t, pve.Extra.Limits, "tokens")
 }
 
 func TestPayloadValidator_SourceTextExceedsMultipleLimits(t *testing.T) {
@@ -175,8 +175,8 @@ func TestPayloadValidator_SourceTextExceedsMultipleLimits(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
-	limits, ok := pve.Extra["limits"].([]string)
-	require.True(t, ok)
+	limits := pve.Extra.Limits
+	require.NotEmpty(t, limits)
 	assert.Contains(t, limits, "chars")
 	assert.Contains(t, limits, "bytes")
 	assert.Contains(t, limits, "tokens")
@@ -259,7 +259,7 @@ func TestPayloadValidator_TargetWordsMustBePositive(t *testing.T) {
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "INVALID_TARGET_WORDS", pve.Code)
 	assert.Equal(t, "target_words must be > 0", pve.Message)
-	assert.Equal(t, 0, pve.Extra["actual_target_words"])
+	assert.Equal(t, 0, pve.Extra.ActualTargetWords)
 }
 
 func TestPayloadValidator_UnsupportedLanguage(t *testing.T) {
@@ -544,8 +544,8 @@ func TestPayloadValidator_TooManySegments(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "TOO_MANY_SEGMENTS", pve.Code)
-	assert.Equal(t, 51, pve.Extra["actual_segments"])
-	assert.Equal(t, 50, pve.Extra["max_segments_cap"])
+	assert.Equal(t, 51, pve.Extra.ActualSegments)
+	assert.Equal(t, 50, pve.Extra.MaxSegmentsCap)
 }
 
 func TestPayloadValidator_HappyPathFourSegments(t *testing.T) {

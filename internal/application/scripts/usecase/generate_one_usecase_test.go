@@ -407,10 +407,10 @@ func TestEnforceClipEvidenceTextSupport_ExceedsBudget(t *testing.T) {
 	var pve *scriptpkg.PayloadValidationError
 	require.ErrorAs(t, err, &pve)
 	assert.Equal(t, "SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE", pve.Code)
-	assert.Equal(t, 12, pve.Extra["actual_words"])
-	assert.Equal(t, 5, pve.Extra["max_words"])
-	assert.Equal(t, 2.0, pve.Extra["evidence_seconds"])
-	assert.Equal(t, 2.5, pve.Extra["words_per_second"])
+	assert.Equal(t, 12, pve.Extra.ActualWords)
+	assert.Equal(t, 5, pve.Extra.MaxWords)
+	assert.Equal(t, 2.0, pve.Extra.EvidenceSeconds)
+	assert.Equal(t, 2.5, pve.Extra.WordsPerSecond)
 }
 
 func TestEnforceClipEvidenceTextSupport_DisabledWhenZero(t *testing.T) {

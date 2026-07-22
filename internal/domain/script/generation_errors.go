@@ -226,6 +226,33 @@ func (e *PlanInvalidError) Error() string {
 
 func (e *PlanInvalidError) Unwrap() error { return ErrPlanInvalid }
 
+// ValidationExtras carries the structured context for a
+// PayloadValidationError. It replaces the previous
+// `map[string]any` so every supported extra field is typed and
+// discoverable at compile time. The JSON tags preserve the
+// snake_case keys consumed by clients.
+type ValidationExtras struct {
+	ActualChars       int      `json:"actual_chars,omitempty"`
+	MaxChars          int      `json:"max_chars,omitempty"`
+	ActualBytes       int      `json:"actual_bytes,omitempty"`
+	MaxBytes          int      `json:"max_bytes,omitempty"`
+	ActualTokens      int      `json:"actual_tokens,omitempty"`
+	MaxTokens         int      `json:"max_tokens,omitempty"`
+	Limits            []string `json:"limits,omitempty"`
+	SourceWords       int      `json:"source_words,omitempty"`
+	TargetWords       int      `json:"target_words,omitempty"`
+	MaxRatio          float64  `json:"max_ratio,omitempty"`
+	ActualRatio       float64  `json:"actual_ratio,omitempty"`
+	ActualSegments    int      `json:"actual_segments,omitempty"`
+	MaxSegmentsCap    int      `json:"max_segments_cap,omitempty"`
+	ActualTargetWords int      `json:"actual_target_words,omitempty"`
+	ActualWords       int      `json:"actual_words,omitempty"`
+	MaxWords          int      `json:"max_words,omitempty"`
+	EvidenceSeconds   float64  `json:"evidence_seconds,omitempty"`
+	WordsPerSecond    float64  `json:"words_per_second,omitempty"`
+	SourceType        string   `json:"source_type,omitempty"`
+}
+
 // PayloadValidationError carries a stable machine-readable code and
 // optional structured context for a payload validation failure.
 // It is the canonical surface for 400 Bad Request responses on
@@ -241,7 +268,7 @@ type PayloadValidationError struct {
 	// the payload).
 	Retryable bool
 	// Extra carries structured context (e.g. actual_chars, max_chars).
-	Extra map[string]any
+	Extra ValidationExtras
 }
 
 func (e *PayloadValidationError) Error() string {
