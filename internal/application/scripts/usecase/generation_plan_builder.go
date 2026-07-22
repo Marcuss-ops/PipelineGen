@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -97,19 +98,21 @@ func modeForSource(st scriptpkg.SourceType) string {
 	return defaultEngineMode
 }
 
+// mediaPlanRequested reports whether the caller configured an active media
+// plan. An active plan has a non-empty, valid mode that is not disabled.
 func mediaPlanRequested(item scriptpkg.GenerationItemV2) bool {
-	return item.MediaPlan.Mode != "" || len(item.MediaPlan.Providers) > 0 || len(item.MediaPlan.Assignments) > 0 || len(item.MediaPlan.Searches) > 0
+	return media.IsActiveMediaPlanMode(item.MediaPlan.Mode)
 }
 
-// insertVisualPlanningAfterClipBindings places ProcessorVisualPlanning
-// immediately after ProcessorClipBindings so the visual-planning pass
-// sees the final clip-bound scenes before voiceover/persistence run.
-func insertVisualPlanningAfterClipBindings(processors []adapters.ProcessorName) []adapters.ProcessorName {
+// insertProcessorAfterClipBindings places the given processor immediately
+// after ProcessorClipBindings so the post-clip resolution pass sees the final
+// clip-bound scenes before voiceover/persistence run.
+func insertProcessorAfterClipBindings(processors []adapters.ProcessorName, proc adapters.ProcessorName) []adapters.ProcessorName {
 	out := make([]adapters.ProcessorName, 0, len(processors)+1)
 	for _, p := range processors {
 		out = append(out, p)
 		if p == adapters.ProcessorClipBindings {
-			out = append(out, adapters.ProcessorVisualPlanning)
+			out = append(out, proc)
 		}
 	}
 	return out
@@ -122,8 +125,19 @@ func insertVisualPlanningAfterClipBindings(processors []adapters.ProcessorName) 
 // source.type: clips is the SOLE entry point for clip-based generation.
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
 	processors := buildPostprocessorList(item.Output)
-	if mediaPlanRequested(item) {
-		processors = insertVisualPlanningAfterClipBindings(processors)
+	switch {
+	case mediaPlanRequested(item):
+		// Active media plan: route through the new visual_planning processor
+		// right after clip_bindings so it sees the final clip-bound scenes.
+		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
+	case item.MediaPlan.Mode == "":
+		// Temporary backward compatibility: legacy requests without an explicit
+		// media plan mode keep the retired stock_association slot. The
+		// processor is unregistered and therefore skipped at runtime, but the
+		// slot remains in the plan until the cutover is complete.
+		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorStockAssociation)
+	case item.MediaPlan.Mode == media.MediaPlanModeDisabled:
+		// Explicitly disabled: neither visual_planning nor stock_association run.
 	}
 	if item.Source.Type != scriptpkg.SourceClips {
 		return processors
