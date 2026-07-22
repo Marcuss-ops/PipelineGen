@@ -67,7 +67,7 @@ var exceptionList = map[string]bool{
 	"internal/application/jobs/outbox/registry.go:26":                                 true,
 	"internal/application/jobs/outbox/indexing_handle.go:5":                           true,
 	"internal/application/jobs/outbox/delivery.go:52":                                 true,
-	"internal/application/scripts/adapters/gemmamemory.go:8":                          true,
+	"internal/application/scripts/adapters/gemmamemory.go:7":                          true,
 	"internal/application/books/service.go:37":                                        true,
 	"internal/application/assets/maintenance/deep_cleanup.go:5":                       true,
 	"internal/application/assets/providers/artlist/service.go:5":                      true,

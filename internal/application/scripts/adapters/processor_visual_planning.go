@@ -46,7 +46,7 @@ func (p *VisualPlanningProcessor) Policy(*scriptpkg.ResolvedGenerationPlan) Proc
 }
 
 func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if plan == nil || plan.MediaPlan.Mode == mediadomain.MediaPlanModeDisabled || len(input.SpecScene.Scenes) == 0 {
+	if plan == nil || plan.MediaPlan.Mode == mediadomain.MediaPlanModeDisabled || !mediaPlanRequested(plan.MediaPlan) || len(input.SpecScene.Scenes) == 0 {
 		return &PostProcessResult{}, nil
 	}
 
@@ -118,6 +118,10 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	projected := cloneScenes(input.SpecScene.Scenes)
 	projectVisualBindings(projected, plans, plan.MediaPlan.Assignments)
 	return &PostProcessResult{VisualPlans: plans, SynthesizedScenes: projected, Changed: len(plans) > 0}, nil
+}
+
+func mediaPlanRequested(plan mediadomain.MediaPlanSpec) bool {
+	return plan.Mode != "" || len(plan.Providers) > 0 || len(plan.Assignments) > 0 || len(plan.Searches) > 0
 }
 
 func plannerLimit(plan *scriptpkg.ResolvedGenerationPlan) int {
