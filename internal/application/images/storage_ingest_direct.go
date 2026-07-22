@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -145,43 +144,21 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 	}
 
-	var metaJSON []byte
+	builder := NewCanonicalImageMetadataBuilder(source, generator).
+		WithBaseInfo(description, style, hash, tags, width, height).
+		WithGenerator(generator)
 	if metaResult != nil && metaResult.Payload != nil {
 		payload := *metaResult.Payload
 		payload.AssetID = hash
-		metaJSON, _ = json.Marshal(payload)
+		builder.WithSemanticPayload(&payload)
 		tags = uniqueAppend(tags, payload.Tags...)
-	} else {
-		// PR-CANONICAL-GENERATED-IMAGE-METADATA (July 2026):
-		// authoritative 10-key shape produced when the semantic
-		// enricher didn't run. The semantic-enricher branch above is
-		// preserved verbatim — it carries a richer typed Payload.
-		// This fallback is the SSOT contract for generated images
-		// without extra enrichment; operators + downstream tooling
-		// must treat these keys as canonical (godlike/06). The
-		// "origin" string is doubly-pinned: this JSON key mirrors
-		// ImageAsset.Origin via classifyImageOrigin(source, generator)
-		// at the struct literal below (both encode "generated" for
-		// the AI path).
-		metaJSON, _ = json.Marshal(map[string]any{
-			"prompt_original":      description,
-			"semantic_description": "",
-			"style":                style,
-			"tags":                 tags,
-			"provider":             string(provider),
-			"origin":               string(origin),
-			"width":                width,
-			"height":               height,
-			// Wave YY (July 2026, image ingest drift-fix per
-			// percheck_qdrant_index_import_ban): VisualEmbeddingModelVersion
-			// moved to pkg/defaults (cross-layer constant) to break
-			// the infra/qdrant import from the application layer.
-			// The schema package re-exports the same const for
-			// backward compat with infra-layer consumers.
-			"content_hash":             hash,
-			"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
-		})
 	}
+	metaJSONStr, builtOrigin, builtProvider := builder.Build()
+	metaJSON := []byte(metaJSONStr)
+	// The builder is the SSOT for origin/provider; align the asset
+	// record so that MetadataJSON.origin matches asset.Origin.
+	origin = builtOrigin
+	provider = builtProvider
 
 	result := &asset.ImageAsset{
 		SubjectID:    slug,
