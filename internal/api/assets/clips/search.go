@@ -29,6 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -41,7 +42,7 @@ type SearchDeps struct {
 	ClipsRepo     *assets.ClipsRepository
 	AssetRepo     asset.Repository
 	VoiceoverRepo *assets.VoiceoversRepository
-	ImagesRepo    *assets.ImagesRepository
+	ImagesRepo    *imagesrepo.ImagesRepository
 	SearchSvc     *search.Aggregator
 }
 
@@ -52,7 +53,7 @@ type SearchHandler struct {
 	clipsRepo     *assets.ClipsRepository
 	assetRepo     asset.Repository
 	voiceoverRepo *assets.VoiceoversRepository
-	imagesRepo    *assets.ImagesRepository
+	imagesRepo    *imagesrepo.ImagesRepository
 	searchSvc     *search.Aggregator
 }
 

@@ -1,7 +1,10 @@
 package jobs
 
-import "time"
-import youtubejob "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+import (
+	"time"
+
+	youtubejob "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+)
 
 // registerExtractionEntries registers all extraction/YouTube job types
 // into the canonical registry. Called by Compose() after the base

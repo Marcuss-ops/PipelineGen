@@ -16,6 +16,8 @@ import (
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
+	DocID            string
+	DocLink          string
 	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
 	VideoMetadata    []scriptpkg.VideoMetadata
@@ -75,6 +77,8 @@ type PipelineResult struct {
 
 // PostProcessResult carries the output of a single processor.
 type PostProcessResult struct {
+	DocID            string
+	DocLink          string
 	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
 	Metadata         []scriptpkg.VideoMetadata

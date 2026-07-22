@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 )
 
 // Wave 19 / P1-9 typed-port family:
@@ -19,7 +20,7 @@ import (
 //   voiceoverSourceAdapter wraps *assets.VoiceoversRepository — converts
 //                         *assets.Record -> *asset.Asset via the
 //                         existing VoiceoverRecordToClip helper
-//   imagesSourceAdapter  wraps *assets.ImagesRepository      — converts
+//   imagesSourceAdapter  wraps *imagesrepo.ImagesRepository      — converts
 //                         *asset.ImageAsset -> *asset.Asset via
 //                         ImageAssetToClip; relies on Go's automatic
 //                         string->any boxing for the `id any` param
@@ -170,17 +171,17 @@ func (a *voiceoverSourceAdapter) Delete(ctx context.Context, id string) error {
 	return a.inner.Delete(ctx, id)
 }
 
-// imagesSourceAdapter implements SourceRepo against *assets.ImagesRepository.
+// imagesSourceAdapter implements SourceRepo against *imagesrepo.ImagesRepository.
 // ImagesRepository uses `id any` on its canonical methods to support
 // both string slugids and int64 hash-row IDs against the same SQL
 // skeleton. The SourceRepo interface keeps the call site uniform
 // (typed `id string`); Go boxes string into any automatically at the
 // call site, so the adapter is a thin shape-translation layer.
 type imagesSourceAdapter struct {
-	inner *assets.ImagesRepository
+	inner *imagesrepo.ImagesRepository
 }
 
-func newImagesSourceAdapter(r *assets.ImagesRepository) SourceRepo {
+func newImagesSourceAdapter(r *imagesrepo.ImagesRepository) SourceRepo {
 	return &imagesSourceAdapter{inner: r}
 }
 
@@ -253,7 +254,7 @@ type SourceCatalog struct {
 func NewSourceCatalog(
 	artlist, clips, stock *assets.ClipsRepository,
 	voiceover *assets.VoiceoversRepository,
-	images *assets.ImagesRepository,
+	images *imagesrepo.ImagesRepository,
 ) *SourceCatalog {
 	reg := &SourceCatalog{byCanonical: make(map[string]SourceRepo, 7)}
 	reg.byCanonical["artlist"] = newClipsSourceAdapter(artlist)

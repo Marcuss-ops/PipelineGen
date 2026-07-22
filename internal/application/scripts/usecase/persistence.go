@@ -95,6 +95,11 @@ func buildGenerationResult(
 
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
+		if strings.TrimSpace(postResult.DocID) != "" || strings.TrimSpace(postResult.DocLink) != "" {
+			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
+				DocID: postResult.DocID, DocLink: postResult.DocLink,
+			}
+		}
 		result.Artifacts.Entities = postResult.Entities
 		if postResult.Entities != nil {
 			if raw, err := SerializeEntityResultRoundTrip(postResult.Entities); err == nil {

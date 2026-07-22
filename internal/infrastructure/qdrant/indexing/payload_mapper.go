@@ -66,7 +66,7 @@ func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 
 // TextTrackQuerier is the narrow port the PayloadMapper uses to fetch
 // text tracks from asset_text_tracks at search-text construction time.
-// The concrete *assets.TextTrackRepositorySQLite satisfies this via
+// The concrete *texttracks.TextTrackRepositorySQLite satisfies this via
 // the domain-level asset.TextTrackRepository; we define a narrower
 // interface here to avoid pulling the full domain port surface.
 type TextTrackQuerier interface {

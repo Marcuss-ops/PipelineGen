@@ -8,7 +8,7 @@
 //
 // The upsert SQL template lives in this file (locality-of-reference
 // over splitting SQL constants into schema.go).
-package assets
+package texttracks
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-const upsertTextTrackSQL = `
+const UpsertTextTrackSQL = `
 INSERT INTO asset_text_tracks (
     asset_id, language_code, text_kind,
     text_content,
@@ -66,7 +66,7 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 		}
 	}()
 
-	stmt, err := tx.PrepareContext(ctx, upsertTextTrackSQL)
+	stmt, err := tx.PrepareContext(ctx, UpsertTextTrackSQL)
 	if err != nil {
 		return fmt.Errorf("text_track_repository.UpsertBatch: prepare: %w", err)
 	}

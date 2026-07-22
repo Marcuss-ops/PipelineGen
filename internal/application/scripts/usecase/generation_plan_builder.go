@@ -130,7 +130,10 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		// right after clip_bindings so it sees the final clip-bound scenes.
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
 	}
-	if item.Source.Type != scriptpkg.SourceClips {
+	if item.Source.Type != scriptpkg.SourceClips &&
+		item.Source.Type != scriptpkg.SourceSearch &&
+		item.Source.Type != scriptpkg.SourceCatalog &&
+		item.Source.Type != scriptpkg.SourceCurate {
 		return processors
 	}
 	return ensureInlineClipArtifacts(processors)
@@ -156,6 +159,9 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	if strings.TrimSpace(out.VoiceoverGroup) != "" || strings.TrimSpace(out.VoiceoverFolderID) != "" {
 		processors = append(processors, adapters.ProcessorVoiceover)
 	}
+	if strings.TrimSpace(out.DriveFolderID) != "" {
+		processors = append(processors, adapters.ProcessorDocument)
+	}
 	if out.SaveToDB {
 		processors = append(processors, adapters.ProcessorPersistence)
 	}
@@ -173,11 +179,13 @@ func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.P
 			// Reinsert once below in canonical order.
 		case adapters.ProcessorPersistence:
 			persist = true
+		case adapters.ProcessorDocument:
+			// Reinsert once below in canonical clip order.
 		default:
 			result = append(result, processor)
 		}
 	}
-	result = append(result, adapters.ProcessorVoiceover)
+	result = append(result, adapters.ProcessorVoiceover, adapters.ProcessorDocument)
 	if persist {
 		result = append(result, adapters.ProcessorPersistence)
 	}

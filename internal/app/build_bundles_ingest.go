@@ -23,13 +23,13 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// imageListRepoAdapter bridges *assets.ImagesRepository (the infra
+// imageListRepoAdapter bridges *imagesrepo.ImagesRepository (the infra
 // producer of routing.RepositoryListFilter + []routing.RepositoryImageRow)
 // to the canonical routing.ImageListRepository interface expected by
 // the FASE 7 ImageSearchResolver (which accepts routing.ImageFilter +
@@ -37,7 +37,7 @@ import (
 // identical — different package names only — so the adapter does a
 // field-for-field rebind with no data loss.
 type imageListRepoAdapter struct {
-	repo *assets.ImagesRepository
+	repo *imagesrepo.ImagesRepository
 }
 
 // ListImages satisfies routing.ImageListRepository. Repository-only
@@ -87,7 +87,7 @@ var _ routing.ImageListRepository = (*imageListRepoAdapter)(nil)
 // Fail-closed (godlike/07): if either input is nil we surface the
 // composition error so NewComposition aborts rather than silently
 // mounting a half-wired resolver.
-func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *assets.ImagesRepository, log *zap.Logger) (routing.ImageSearchResolver, error) {
+func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *imagesrepo.ImagesRepository, log *zap.Logger) (routing.ImageSearchResolver, error) {
 	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
 		return nil, fmt.Errorf("routing.NewImageSearchResolver: retrieval backend is nil — image service must be constructed first")
 	}

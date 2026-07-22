@@ -36,7 +36,7 @@ import (
 // function.
 type Dependencies struct {
 	// Repository is the persistence port the capability consumes.
-	// Build wraps the concrete *assets.ChannelsRepository in a
+	// Build wraps the concrete *channels.ChannelsRepository in a
 	// RepositoryAdapter before this point (the composition root's
 	// job — internal/application/* never imports
 	// internal/infrastructure/*). Passing nil here is an explicit

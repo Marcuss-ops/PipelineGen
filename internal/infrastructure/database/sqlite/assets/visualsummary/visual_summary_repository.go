@@ -20,7 +20,7 @@
 // visible_entities entirely in this state. See
 // qdrant.payload_builder_test.go's omitempty regression contract
 // for the strict-emit test.
-package assets
+package visualsummary
 
 import (
 	"context"

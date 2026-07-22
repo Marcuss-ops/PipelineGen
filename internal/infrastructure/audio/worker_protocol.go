@@ -141,6 +141,11 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 			result.FileHash = hash
 		}
 	}
+	if info, probeErr := audio.NewProcessor("").Probe(ctx, result.LocalPath); probeErr == nil {
+		result.Duration = info.Duration
+	} else {
+		p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+	}
 
 	return result, nil
 }

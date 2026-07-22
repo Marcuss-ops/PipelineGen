@@ -25,10 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	_ "github.com/mattn/go-sqlite3" // stdlib-only driver lock per AGENTS.md
-
 	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15; PR-CHECK-5-FOLLOWUP (2026-08-08); transitional hermetic-test seam (sqlassets.NewInMemoryRepo); forward-pointer PR-MONITOR-TEST-COMPOSITION
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // migrationsSQLite114 is the canonical CREATE TABLE + INDEX for the
@@ -75,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_youtube_discoveries_lease
 // migration 114, and constructs the canonical repository on top. The
 // returned cleanup func tears the DB down; tests should `defer cleanup()`
 // to free the connection under heavy parallel load.
-func newInMemoryLedger(t *testing.T) (*sqlassets.YoutubeDiscoveriesRepository, *sql.DB, func()) {
+func newInMemoryLedger(t *testing.T) (*youtubediscoveries.YoutubeDiscoveriesRepository, *sql.DB, func()) {
 	t.Helper()
 	db, openErr := sql.Open("sqlite3", ":memory:")
 	if openErr != nil {
@@ -84,7 +83,7 @@ func newInMemoryLedger(t *testing.T) (*sqlassets.YoutubeDiscoveriesRepository, *
 	if _, execErr := db.Exec(migrationsSQLite114); execErr != nil {
 		t.Fatalf("newInMemoryLedger: apply migration 114 (create table + index): %v", execErr)
 	}
-	repo := sqlassets.NewYoutubeDiscoveriesRepository(db)
+	repo := youtubediscoveries.NewYoutubeDiscoveriesRepository(db)
 	cleanup := func() { _ = db.Close() }
 	return repo, db, cleanup
 }

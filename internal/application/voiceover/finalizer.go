@@ -104,9 +104,10 @@ type FinalizeCommand struct {
 	MetaJSON []byte // Canonical JSON metadata map
 
 	// Audio Asset State
-	LocalPath   string
-	CleanedPath string
-	FileHash    string // Index outbox skipped when empty
+	LocalPath       string
+	CleanedPath     string
+	FileHash        string // Index outbox skipped when empty
+	DurationSeconds float64
 
 	// Destination & Drive State
 	FolderID     string

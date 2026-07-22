@@ -50,7 +50,8 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorClipBindings,
-		adapterspkg.ProcessorTranslation:
+		adapterspkg.ProcessorTranslation,
+		adapterspkg.ProcessorDocument:
 		return adapterspkg.ProcessorBestEffort
 	}
 	// A processor name not in our classifier map is an audit-pin

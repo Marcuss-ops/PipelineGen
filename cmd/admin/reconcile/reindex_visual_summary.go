@@ -43,18 +43,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	assetsSQLite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/visualsummary"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -276,7 +277,7 @@ func reindexVisualSummaryMain(
 	}
 
 	// Build the canonical visual_summary repository (FASE-9 SSOT).
-	repo, err := assetsSQLite.NewVisualSummaryRepository(db, log)
+	repo, err := visualsummary.NewVisualSummaryRepository(db, log)
 	if err != nil {
 		return report, fmt.Errorf("visual_summary_repository: %w", err)
 	}

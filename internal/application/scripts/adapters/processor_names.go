@@ -40,6 +40,7 @@ const (
 	ProcessorVoiceover      ProcessorName = "voiceover"
 	ProcessorImages         ProcessorName = "images"
 	ProcessorPersistence    ProcessorName = "persistence"
+	ProcessorDocument       ProcessorName = "document"
 	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
 	// translation postprocessor lives in the canonical SOLE identifier
 	// set (godlike/06 SSOT one-canonical-owner-per-fact) — inserted

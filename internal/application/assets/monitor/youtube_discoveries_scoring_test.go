@@ -14,8 +14,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // stdlib-only driver lock per AGENTS.md
 
-	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15; PR-CHECK-5-FOLLOWUP (2026-08-08); transitional hermetic-test seam (sqlassets.NewInMemoryRepo); forward-pointer PR-MONITOR-TEST-COMPOSITION
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 )
 
 // ── Commit 3/6 NEW tests (P1 #5/#6/#7) ──────────────────────────────────
@@ -248,7 +247,7 @@ func TestComputeRetryBackoffSeconds_Monotonic(t *testing.T) {
 		{1000, 300}, // hard cap, no bit-shift wrap
 	}
 	for _, tc := range cases {
-		got := sqlassets.ComputeRetryBackoffSeconds(tc.attempt)
+		got := youtubediscoveries.ComputeRetryBackoffSeconds(tc.attempt)
 		if got != tc.want {
 			t.Errorf("attempt=%d: got %d, want %d", tc.attempt, got, tc.want)
 		}
@@ -275,7 +274,7 @@ func TestComputeRetryBackoffSeconds_Monotonic(t *testing.T) {
 // monitor.discoverChannelVideos dispatcher wiring.
 func TestResolveDateAfter_PrecedenceAndFormat(t *testing.T) {
 	t.Run("RFC3339 LastCursor truncates to YYYYMMDD", func(t *testing.T) {
-		got := sqlassets.ResolveDateAfter("2026-06-30T15:04:05Z", 0)
+		got := youtubediscoveries.ResolveDateAfter("2026-06-30T15:04:05Z", 0)
 		want := "20260630"
 		if got != want {
 			t.Errorf("ResolveDateAfter(RFC3339, 0) = %q, want %q", got, want)
@@ -286,7 +285,7 @@ func TestResolveDateAfter_PrecedenceAndFormat(t *testing.T) {
 		// Even when LookbackDays=7 is a fallback, the RFC3339 cursor
 		// is the SOURCE-OF-TRUTH (the cursor drives monotonic
 		// "after this date" filtering).
-		got := sqlassets.ResolveDateAfter("2026-06-30T15:04:05Z", 7)
+		got := youtubediscoveries.ResolveDateAfter("2026-06-30T15:04:05Z", 7)
 		if got != "20260630" {
 			t.Errorf("RFC3339 should win over lookbackDays; got %q, want 20260630", got)
 		}
@@ -294,7 +293,7 @@ func TestResolveDateAfter_PrecedenceAndFormat(t *testing.T) {
 
 	t.Run("lookbackDays when cursor is empty", func(t *testing.T) {
 		// Time-bound assertion: should be near (now - 7d).
-		got := sqlassets.ResolveDateAfter("", 7)
+		got := youtubediscoveries.ResolveDateAfter("", 7)
 		parsed, err := time.Parse("20060102", got)
 		if err != nil {
 			t.Fatalf("ResolveDateAfter(empty, 7) %q not YYYYMMDD: %v", got, err)
@@ -307,7 +306,7 @@ func TestResolveDateAfter_PrecedenceAndFormat(t *testing.T) {
 	})
 
 	t.Run("empty cursor + zero lookback → empty string", func(t *testing.T) {
-		got := sqlassets.ResolveDateAfter("", 0)
+		got := youtubediscoveries.ResolveDateAfter("", 0)
 		if got != "" {
 			t.Errorf("expected empty DateAfter for no-cursor+no-lookback path, got %q", got)
 		}
@@ -316,7 +315,7 @@ func TestResolveDateAfter_PrecedenceAndFormat(t *testing.T) {
 	t.Run("malformed RFC3339 falls back to lookbackDays", func(t *testing.T) {
 		// Garbage that doesn't start with YYYY-... or that has dashes
 		// in the wrong position must not produce a wrong YYYYMMDD.
-		got := sqlassets.ResolveDateAfter("garbage-not-rfc3339", 7)
+		got := youtubediscoveries.ResolveDateAfter("garbage-not-rfc3339", 7)
 		parsed, err := time.Parse("20060102", got)
 		if err != nil {
 			t.Fatalf("malformed RFC3339 fallback should yield parseable YYYYMMDD, got %q (err %v)", got, err)

@@ -34,6 +34,8 @@ import (
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
+
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	scriptdocsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/scriptdocs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -177,7 +179,7 @@ func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root
 		return nil
 	}
 	d, err := channelsapi.Build(channelsapi.Dependencies{
-		Repository: appchannels.NewRepositoryAdapter(sqliteassets.NewChannelsRepository(root.DB.DB)),
+		Repository: appchannels.NewRepositoryAdapter(sqlchannels.NewChannelsRepository(root.DB.DB)),
 		Logger:     log,
 	})
 	if err != nil {

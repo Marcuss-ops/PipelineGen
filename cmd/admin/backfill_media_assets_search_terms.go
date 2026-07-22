@@ -24,8 +24,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 
 	"go.uber.org/zap"
 

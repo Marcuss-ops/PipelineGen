@@ -16,7 +16,7 @@
 # The package is the SQLite persistence consolidation point; splitting it
 # now would fracture transactional cohesion. The cap will be revisited once
 # the QDRANT-002 / asset-committer consolidation wave settles.
-max_files_per_package: 70
+max_files_per_package: 65
 # Raised 500 → 1000 on 2026-07-11 (script.generate wave). Justification:
 # the script.generate pipeline introduced 6 cohesive feature files that
 # manage hard transactional/cue boundaries which cannot be safely split:

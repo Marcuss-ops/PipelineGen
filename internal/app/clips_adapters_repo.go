@@ -7,6 +7,7 @@ import (
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 )
 
 // clipsRepoAdapter wraps *assets.ClipsRepository to satisfy
@@ -203,17 +204,17 @@ func voiceoverDTOToRecord(dto *clips.ClipVoiceoverRecordDTO) *assets.Record {
 
 // ── ImageRepository adapter ──────────────────────────────────────
 
-// imageRepoAdapter wraps *assets.ImagesRepository to satisfy
+// imageRepoAdapter wraps *imagesrepo.ImagesRepository to satisfy
 // clips.ImageRepositoryPort. Only ListAll is exposed because Cleanup()
 // is the only callsite for images source on the clips route surface.
 type imageRepoAdapter struct {
-	inner *assets.ImagesRepository
+	inner *imagesrepo.ImagesRepository
 }
 
 // Compile-time assertion: imageRepoAdapter satisfies clips.ImageRepositoryPort.
 var _ clips.ImageRepositoryPort = (*imageRepoAdapter)(nil)
 
-func newImageRepoAdapter(r *assets.ImagesRepository) clips.ImageRepositoryPort {
+func newImageRepoAdapter(r *imagesrepo.ImagesRepository) clips.ImageRepositoryPort {
 	if r == nil {
 		return nil
 	}

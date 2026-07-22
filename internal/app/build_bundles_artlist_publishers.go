@@ -22,6 +22,7 @@ import (
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
 	"go.uber.org/zap"
 )
 
@@ -56,14 +57,14 @@ func constructArtlistRepositories(
 ) (artlistRepositories, error) {
 	assetSQLiteStore := assets.NewAssetStoreSQLite(bundle.DB.DB, log)
 
-	artlistRunsRepo, err := assets.NewArtlistRunsRepository(bundle.DB.DB, log)
+	artlistRunsRepo, err := artlistsql.NewArtlistRunsRepository(bundle.DB.DB, log)
 	if err != nil {
 		return artlistRepositories{}, fmt.Errorf("WireArtlist: NewArtlistRunsRepository: %w", err)
 	}
 	artlistRunsAdapter := NewArtlistRunsRepoAdapter(artlistRunsRepo)
 	_ = (artlist.RunRepository)(artlistRunsAdapter) // compile-time pin surface
 
-	artlistDownloadAuditRepo, err := assets.NewArtlistDownloadAuditRepository(bundle.DB.DB, log)
+	artlistDownloadAuditRepo, err := artlistsql.NewArtlistDownloadAuditRepository(bundle.DB.DB, log)
 	if err != nil {
 		return artlistRepositories{}, fmt.Errorf("WireArtlist: NewArtlistDownloadAuditRepository: %w", err)
 	}

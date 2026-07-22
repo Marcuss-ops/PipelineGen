@@ -186,7 +186,10 @@ func evaluateQualityGate(
 	// enforces when a source anchor exists (plan.SourceText or clip
 	// evidence). Pure-prose free-form generation has no anchor —
 	// the tolerance is observational only.
-	if plan.TargetWords > 0 && strings.TrimSpace(sourceText) != "" {
+	// TargetWords belongs to the canonical source script. Translations
+	// naturally change word count across languages, so applying the
+	// English tolerance to translated text creates false failures.
+	if plan.TargetWords > 0 && strings.TrimSpace(sourceText) != "" && strings.TrimSpace(plan.TranslateTo) == "" {
 		lower := float64(plan.TargetWords) * minTargetWordsRatio
 		upper := float64(plan.TargetWords) * maxTargetWordsRatio
 		if float64(q.ActualWords) < lower || float64(q.ActualWords) > upper {

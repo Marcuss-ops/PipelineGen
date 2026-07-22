@@ -39,6 +39,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	texttrackssql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 
@@ -52,7 +53,7 @@ import (
 // the PayloadMapper wired with TextTrackQuerier + index_languages.
 type textTrackFixture struct {
 	*e2eFixture
-	TTRepo   *clipwriter.TextTrackRepositorySQLite
+	TTRepo   *texttrackssql.TextTrackRepositorySQLite
 	Resolver *youtubeusecase.TextTrackResolver
 }
 
@@ -98,7 +99,7 @@ CREATE TABLE IF NOT EXISTS asset_text_track_segments (
 	require.NoError(t, err, "CREATE TABLE asset_text_track_segments must succeed")
 
 	// Construct TextTrackRepository from the same in-memory DB.
-	ttRepo, err := clipwriter.NewTextTrackRepository(fx.DB, fx.Log)
+	ttRepo, err := texttrackssql.NewTextTrackRepository(fx.DB, fx.Log)
 	require.NoError(t, err, "NewTextTrackRepository must succeed")
 
 	// Wire PayloadMapper with TextTrackQuerier + index_languages so
@@ -569,7 +570,7 @@ type textTrackPipelineFixture struct {
 //
 //	texttracks.MaterializeEnqueuer := *appjobs.Service (compile-time pin)
 //	texttracks.OutboxEnqueuer       := *outboxevents.Repository
-//	asset.TextTrackRepository       := *clipwriter.TextTrackRepositorySQLite
+//	asset.TextTrackRepository       := *texttracks.TextTrackRepositorySQLite
 //	translation.TranslationPort     := *stubPipelineTranslator
 //	job.JobBroker                   := *sqljobs.SQLiteStore
 //	job.Dispatcher.Register         := *texttracks.MaterializeJobHandler

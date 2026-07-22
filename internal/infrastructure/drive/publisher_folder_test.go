@@ -4,11 +4,12 @@ package drive
 
 import (
 	"context"
+	"testing"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"testing"
 )
 
 func TestPublisher_EmptyRootFolderRejected(t *testing.T) {

@@ -6,7 +6,7 @@
 // da monitor/. Every type / helper / sentinel in this file is the canonical
 // monitor-owned projection of a fact that previously lived in an
 // infrastructure package. Infra-side concrete adapters (e.g.
-// *downloader.YTDLPDownloader, *assets.YoutubeDiscoveriesRepository) now
+// *downloader.YTDLPDownloader, *youtubediscoveries.YoutubeDiscoveriesRepository) now
 // either return monitor-typed DTOs directly (the standard Hexagonal
 // Architecture direction: infra → app imports are permitted; the reverse
 // is the violation) OR are wrapped by a thin monitor-adapter in
@@ -55,7 +55,7 @@ type ListChannelVideosQuery struct {
 // monitor_enqueue_outbox table. Replaces the previous
 // `assets.OutboxEntry` import in ports_discoveries.go + outbox_drainer.go.
 //
-// Concrete adapter (*assets.YoutubeDiscoveriesRepository.DrainPendingOutbox
+// Concrete adapter (*youtubediscoveries.YoutubeDiscoveriesRepository.DrainPendingOutbox
 // + DrainDispatched) now returns []monitor.OutboxEntry directly — the
 // Hexagonal Architecture direction infra → app is permitted.
 type OutboxEntry struct {
@@ -78,12 +78,12 @@ type OutboxEntry struct {
 // of "what SQL actually returned an error".
 //
 // The infra-side repository method (`assets.MarkEnqueued` etc.)
-// returns `assets.ErrStateConflict` for the same SQL transition
+// returns `youtubediscoveries.ErrStateConflict` for the same SQL transition
 // failure. Production callers in the monitor package pattern-match
 // via `errors.Is(err, monitor.ErrLedgerStateConflict)` — this
 // resolves to true ONLY after the composition-root adapter
 // (`internal/app/lifecycle.go::monitorDiscoveriesAdapter`) translates
-// `assets.ErrStateConflict` → `monitor.ErrLedgerStateConflict` via
+// `youtubediscoveries.ErrStateConflict` → `monitor.ErrLedgerStateConflict` via
 // `fmt.Errorf("%w: %w", monitor.ErrLedgerStateConflict, err)` (multi-%w
 // wrap chain — Go 1.20+). The adapter is the canonical Hexagonal
 // bridge between infra (SQLite layout detail) and app (canonical
@@ -91,7 +91,7 @@ type OutboxEntry struct {
 //
 // FASE 3.7 Commit 1b (2026-07-04) replaces the previous pre-fix
 // bridge (commit 60a61808 declared monitor.ErrLedgerStateConflict
-// as a distinct sentinel value from sqlassets.ErrStateConflict;
+// as a distinct sentinel value from youtubediscoveries.ErrStateConflict;
 // callers relied on a fragile `fmt.Errorf("...: %w",)` wrap chain
 // to bridge the two — any unwrap error path silently invalidated
 // the comparison) and the intermediate thin-alias shape (parallel
@@ -102,7 +102,7 @@ type OutboxEntry struct {
 //
 // The adapter pattern resolves the cycle without inverting the
 // layering: monitor owns canonical sentinel locally (no infra import
-// in this file), infra owns `assets.ErrStateConflict` locally (no
+// in this file), infra owns `youtubediscoveries.ErrStateConflict` locally (no
 // monitor import), and the only place BOTH come together is the
 // composition root where the adapter translates between them. This
 // mirrors the existing `monitorYtdlpAdapter` precedent
@@ -124,15 +124,15 @@ var ErrLedgerStateConflict = errors.New("monitor: youtube_discoveries ledger sta
 // chain via Go 1.20+ multi-%w formatting. The composition-root adapter
 // in `internal/app/lifecycle.go::monitorDiscoveriesAdapter` (see
 // `mapDiscoveriesErr` there) calls this helper when the input error's
-// chain contains `assets.ErrStateConflict`; this helper itself does
+// chain contains `youtubediscoveries.ErrStateConflict`; this helper itself does
 // NOT detect the infra sentinel — it only does the wrap so the
-// adapter's `errors.Is(err, assets.ErrStateConflict)` gate decides
+// adapter's `errors.Is(err, youtubediscoveries.ErrStateConflict)` gate decides
 // whether to translate.
 //
 // nil → nil (canonical pass-through).
 // non-nil → `fmt.Errorf("%w: %w", ErrLedgerStateConflict, err)` so
 // the resulting chain contains BOTH `ErrLedgerStateConflict` and
-// whatever the original chain contained (e.g. `assets.ErrStateConflict`,
+// whatever the original chain contained (e.g. `youtubediscoveries.ErrStateConflict`,
 // plus any additional message text from the infra SQL layer).
 //
 // Exporting this helper from the monitor package keeps the

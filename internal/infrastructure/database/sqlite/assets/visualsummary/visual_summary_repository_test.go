@@ -27,7 +27,7 @@
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every test asserts the FULL
 // state (row counts + field values), not just "no error".
-package assets
+package visualsummary
 
 import (
 	"context"

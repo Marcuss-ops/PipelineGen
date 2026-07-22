@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -50,7 +50,7 @@ type ImagesCoreDeps struct {
 // AssetCommitter; it no longer holds any drive.Store / mediaStore
 // surface.
 type ImagesStorageDeps struct {
-	ImageRepo    *assets.ImagesRepository
+	ImageRepo    *imagesrepo.ImagesRepository
 	DriveReader  drive.Reader
 	Publisher    delivery.Publisher
 	DestResolver destinations.DestinationResolver

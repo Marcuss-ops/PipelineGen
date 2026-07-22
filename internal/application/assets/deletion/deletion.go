@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 )
 
 // DispatcherPort is the application-layer port for DeletionService's
@@ -130,7 +131,7 @@ type DeletionService struct {
 	clipsRepo     *assets.ClipsRepository
 	stockRepo     *assets.ClipsRepository
 	voiceoverRepo *assets.VoiceoversRepository
-	imagesRepo    *assets.ImagesRepository
+	imagesRepo    *imagesrepo.ImagesRepository
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `*drive.Uploader`
 	// field is RETIRED from the DeletionService struct entirely.
 	// The field + ctor parameter were already unused by every
@@ -200,7 +201,7 @@ type DeletionRepoDeps struct {
 	ClipsRepo     *assets.ClipsRepository
 	StockRepo     *assets.ClipsRepository
 	VoiceoverRepo *assets.VoiceoversRepository
-	ImagesRepo    *assets.ImagesRepository
+	ImagesRepo    *imagesrepo.ImagesRepository
 }
 
 // DeletionIndexDeps groups the live index / tree services the

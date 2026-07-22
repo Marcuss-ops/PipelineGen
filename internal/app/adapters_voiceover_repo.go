@@ -168,7 +168,7 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *persistence.VoiceoverRecord) *sq
 		Error:           rec.Error,
 		Strategy:        rec.Strategy,
 		Metadata:        rec.Metadata,
-		DurationSeconds: 0, // canonical use case does not track duration today
+		DurationSeconds: rec.DurationSeconds,
 		// FASE 3 (July 2026): thread the deterministic idempotency
 		// key and the producing job ID through to the SQLite row.
 		IdempotencyKey: rec.IdempotencyKey,

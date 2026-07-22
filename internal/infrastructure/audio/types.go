@@ -1,5 +1,7 @@
 package audioasset
 
+import "time"
+
 // AudioInput is the input to Processor.Generate. PR-VO-B1 (June 2026):
 // the previous `Destination *asset.ResolveRequest` field is gone.
 // Processor writes ONLY to local FS; the resolved Drive destination
@@ -33,6 +35,7 @@ type AudioResult struct {
 	LocalPath   string
 	CleanedPath string
 	FileHash    string
+	Duration    time.Duration
 	// DriveLink / DriveFileID: always zero from audioasset.Processor;
 	// Lifecycle fills. Deprecated for direct read on Processor output.
 	DriveLink   string

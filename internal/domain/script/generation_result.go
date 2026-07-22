@@ -236,6 +236,8 @@ type CacheResult struct {
 
 // ArtifactResult holds all postprocessor outputs in one typed bundle.
 type ArtifactResult struct {
+	// Document is the idempotently published Google Doc for this script.
+	Document *DocumentArtifact `json:"document,omitempty"`
 	// Metadata holds YouTube-style metadata.
 	Metadata []VideoMetadata `json:"metadata,omitempty"`
 	// Entities is the canonical typed V1 entity output (PR 3).
@@ -253,6 +255,12 @@ type ArtifactResult struct {
 	// campo Raw". Persists only as a courtesy round-trip
 	// marshalling of Entities.
 	EntitiesJSON string `json:"entities_json,omitempty"`
+}
+
+// DocumentArtifact is the stable result surface for a published Google Doc.
+type DocumentArtifact struct {
+	DocID   string `json:"doc_id"`
+	DocLink string `json:"doc_link"`
 }
 
 // VideoMetadata holds YouTube-style metadata for a script result.

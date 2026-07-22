@@ -58,7 +58,7 @@ type ChannelMonitor struct {
 	// discoveries (Commit D, June 2026) is the typed port over the
 	// youtube_discoveries ledger (table created in
 	// migrations/sqlite/113_youtube_discoveries.sql). Composition wires
-	// the concrete *assets.YoutubeDiscoveriesRepository (declared in
+	// the concrete *youtubediscoveries.YoutubeDiscoveriesRepository (declared in
 	// internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go)
 	// via the CompositionDeps.Discoveries field. Nil-tolerant at runtime:
 	// processVideo's recordDiscoveryAndClassify classifies already_scheduled
@@ -115,7 +115,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): fail-fast posture
 	// for the discoveries port. Per the verdict's P0 #1 directive,
 	// production composition MUST supply a concrete YoutubeDiscoveries
-	// adapter (the *assets.YoutubeDiscoveriesRepository over the canonical
+	// adapter (the *youtubediscoveries.YoutubeDiscoveriesRepository over the canonical
 	// media.db.sqlite). A missing wiring collapses every video's
 	// outcome classification to OutcomeAlreadyScheduled in
 	// discovery.go::recordDiscoveryAndClassify (the defensive nil-port
@@ -130,7 +130,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// the right signal; tolerating nil in tests preserves the test
 	// pattern that PR1 / PR2 / PR3 were built on.
 	if deps.Cfg != nil && deps.Ports.Discoveries == nil {
-		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *assets.YoutubeDiscoveriesRepository from internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
+		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *youtubediscoveries.YoutubeDiscoveriesRepository from internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
 	}
 
 	// Apply default-unbound placeholder stubs if the caller left them nil.

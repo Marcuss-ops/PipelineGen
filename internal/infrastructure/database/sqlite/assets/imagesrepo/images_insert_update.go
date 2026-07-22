@@ -5,7 +5,7 @@
 // UpsertRetrievedDetails, UpdateOrigin, UpdateImageMetadata,
 // UpdateEmbeddingStatus, UpdateEmbeddingData.
 // Extracted from images_repository.go (July 2026, LONG-FILES-SPLIT-2026-07-06).
-package assets
+package imagesrepo
 
 import (
 	"context"

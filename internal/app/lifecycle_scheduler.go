@@ -28,7 +28,8 @@ import (
 	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
@@ -72,7 +73,7 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 		// replaced by the canonical channels service which is the
 		// single source of truth for channel configuration.
 		channelsSvc := channels.NewService(
-			channels.NewRepositoryAdapter(assets.NewChannelsRepository(deps.root.DB.DB)),
+			channels.NewRepositoryAdapter(sqlchannels.NewChannelsRepository(deps.root.DB.DB)),
 			deps.log,
 		)
 		// Step 9 commit 2 (June 2026): wire the concrete
@@ -129,10 +130,10 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 				// in Commit 2 (2026-07-04). The per-video discovery ledger
 				// (TryReserve + MarkEnqueued + MarkRejected + MaxDiscoveredAt)
 				// is wrapped in monitorDiscoveriesAdapter (struct-embeds
-				// *assets.YoutubeDiscoveriesRepository + overrides the
+				// *youtubediscoveries.YoutubeDiscoveriesRepository + overrides the
 				// translation methods). See lifecycle_adapters.go for the
 				// canonical adapter surface.
-				Discoveries: newMonitorDiscoveriesAdapter(assets.NewYoutubeDiscoveriesRepository(deps.root.DB.DB)),
+				Discoveries: newMonitorDiscoveriesAdapter(youtubediscoveries.NewYoutubeDiscoveriesRepository(deps.root.DB.DB)),
 			},
 			// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
 			// *observability.ObservabilityMetricsRecorder so analyzer +

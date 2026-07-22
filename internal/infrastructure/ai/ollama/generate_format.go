@@ -1,8 +1,10 @@
 package ollama
 
-import "encoding/json"
+import (
+	"encoding/json"
 
-import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+)
 
 // resolveGenerationFormat returns the canonical Ollama wire-shape Format
 // value for a text-generation request.

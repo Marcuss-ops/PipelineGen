@@ -18,7 +18,7 @@
 // the canonical AssetCommitter. The committer is the SOLE place that
 // performs the actual INSERT/UPSERT into media_assets,
 // asset_locations, and outbox_events.
-package assets
+package artlist
 
 import (
 	"context"
@@ -26,6 +26,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"go.uber.org/zap"
 
@@ -123,7 +125,7 @@ func newArtlistPublishTxAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 		log = zap.NewNop()
 	}
 	return &artlistPublishTxAdapter{
-		committer: NewSQLiteAssetCommitter(db, box, log),
+		committer: assets.NewSQLiteAssetCommitter(db, box, log),
 		log:       log,
 		now:       time.Now,
 	}

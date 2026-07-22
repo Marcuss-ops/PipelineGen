@@ -5,7 +5,7 @@
 // internal/api/assets/clips/** reached through 6 concrete
 // internal/infrastructure/* types (*config.Config,
 // *assets.ClipsRepository, *assets.VoiceoversRepository,
-// *assets.ImagesRepository, *drive.Uploader, semantic.MetadataWriterPort,
+// *imagesrepo.ImagesRepository, *drive.Uploader, semantic.MetadataWriterPort,
 // *clipindexer.Service, *foldermemory.Service) plus a raw hashutil
 // helper. Per AGENTS.md Pattern 0 + PG-005 ticket scope, every
 // infrastructure-shaped dependency now flows through a typed port
@@ -171,7 +171,7 @@ type VoiceoverRepositoryPort interface {
 }
 
 // ImageRepositoryPort is the canonical narrow surface of
-// *assets.ImagesRepository. Only ListAll is exposed because Cleanup()
+// *imagesrepo.ImagesRepository. Only ListAll is exposed because Cleanup()
 // is the only callsite.
 type ImageRepositoryPort interface {
 	ListAll(ctx context.Context) ([]*asset.ImageAsset, error)

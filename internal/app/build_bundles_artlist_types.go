@@ -76,7 +76,7 @@ type artlistRepositories struct {
 	AssetVerRepo  asset.VersionRepository
 	// RunsAdapter holds the canonical composition-root runs adapter (single
 	// translation site between the artlist.RunRepository port and the
-	// sqliteassets.ArtlistRunsRepository concrete). The struct type is
+	// artlist.ArtlistRunsRepository concrete). The struct type is
 	// intentionally unexported (godlike/06 SSOT): outside callers reach it
 	// only through the constructor NewArtlistRunsRepoAdapter and the typed
 	// assertion in artlist_runs_adapter.go.

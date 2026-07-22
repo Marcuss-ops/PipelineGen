@@ -117,11 +117,11 @@ func (e *TransientInfrastructureError) Unwrap() error {
 // Production classifiers MUST register a typed Classifier via
 // decision.go::RegisterClassifier at init().
 //
-// NOTE on sqlassets.ErrStateConflict: it is a typed *logical* sentinel
+// NOTE on youtubediscoveries.ErrStateConflict: it is a typed *logical* sentinel
 // ("row state is in conflict"). The canonical contract today is that
 // this error remains TERMINAL (callers explicitly force retryable=false
-// after `errors.Is(err, sqlassets.ErrStateConflict)`). The classifier
-// for sqlassets.ErrStateConflict (when added to the sqljobs package
+// after `errors.Is(err, youtubediscoveries.ErrStateConflict)`). The classifier
+// for youtubediscoveries.ErrStateConflict (when added to the sqljobs package
 // init()) MUST emit RetryDecision{ErrValidation, Retryable: false}.
 
 // RetryableError is a structural interface for errors that carry their

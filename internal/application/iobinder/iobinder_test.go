@@ -25,7 +25,7 @@ import (
 //   - comment references to `os.Open` (staged/resolver.go:30/84/195)
 var exceptionList = map[string]bool{
 	// ── os.Open / os.OpenFile hits (16) ────────────────────────────────
-	"internal/application/jobs/assets/service.go:83":                                  true,
+	"internal/application/jobs/assets/service.go:100":                                 true,
 	"internal/application/assets/artifacts/resolvers/resolvers.go:118":                true,
 	"internal/application/assets/artifacts/resolvers/resolvers.go:168":                true,
 	"internal/application/images/sync_generation.go:138":                              true,
@@ -52,8 +52,7 @@ var exceptionList = map[string]bool{
 	"internal/application/images/generated_image_ingest.go:57":                        true,
 	"internal/application/images/storage_download.go:56":                              true,
 	"internal/application/images/visual_validate/visual_validate.go:101":              true,
-	"internal/application/jobs/assets/service.go:99":                                  true,
-	"internal/application/jobs/assets/service.go:311":                                 true,
+	"internal/application/jobs/assets/service.go:312":                                 true,
 	"internal/application/publish_outbox/handler.go:226":                              true,
 	"internal/application/staging/service.go:142":                                     true,
 

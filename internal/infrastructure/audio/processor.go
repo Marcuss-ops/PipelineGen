@@ -230,6 +230,11 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	result.LocalPath = outputPath
 	result.Status = "generated"
+	if info, probeErr := audio.NewProcessor("").Probe(ctx, result.LocalPath); probeErr == nil {
+		result.Duration = info.Duration
+	} else {
+		p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+	}
 
 	p.log.Info("TTS generated (legacy spawn-per-call)", zap.String("path", outputPath))
 

@@ -21,7 +21,7 @@
 //   - startBackgroundJobs (lifecycle.go)
 //   - buildCleanup (shutdown.go)
 //   - security.SetAllowedHosts (infra/security)
-//   - workerassets.NewWorkerNodesRepository + localbroker.New +
+//   - workernodes.NewWorkerNodesRepository + localbroker.New +
 //     localbroker.NewProgressCoalescer + assetfinalizer.NewAssetTxFinalizer
 //   - jobsfinalizer.New
 //
@@ -45,7 +45,7 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
-	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"go.uber.org/zap"
@@ -99,7 +99,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// "CompletionPort not wired". The WireServices caller reuses this
 	// same broker instance via type-assertion for the full
 	// appjobs.Broker surface needed by the internal worker handler.
-	workerNodesRepo := workerassets.NewWorkerNodesRepository(dbs.dualPool.Writer)
+	workerNodesRepo := workernodes.NewWorkerNodesRepository(dbs.dualPool.Writer)
 
 	progressCoalesceWindow := 100 * time.Millisecond
 	if cfg.Jobs.ProgressCoalesceWindow != "" {

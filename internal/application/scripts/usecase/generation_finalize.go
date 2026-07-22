@@ -84,6 +84,12 @@ func (f *GenerationFinalizer) Finalize(
 	}
 
 	result.Provenance = provenance
+	if provenance != nil && (provenance.DocID != "" || provenance.DocLink != "") {
+		result.Artifacts.Document = &scriptpkg.DocumentArtifact{
+			DocID:   provenance.DocID,
+			DocLink: provenance.DocLink,
+		}
+	}
 
 	qualityInput := *result
 	qualityInput.Output = result.Output

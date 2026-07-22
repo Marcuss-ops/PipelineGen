@@ -3,7 +3,7 @@
 // SQLite concrete for the artlist download audit repository. Tracks every
 // automatic Artlist download and supports daily per-account rate-limit
 // queries.
-package artlist
+package assets
 
 import (
 	"context"

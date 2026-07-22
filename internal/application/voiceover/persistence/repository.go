@@ -145,23 +145,24 @@ type VoiceoverRecord struct {
 	// internal/app/adapters_voiceover_use_case.go converts between
 	// the raw string (DB wire shape) and the typed envelope
 	// (voiceover-package surface) at the persistence boundary.
-	Language     string
-	Voice        string
-	Filename     string
-	LocalPath    string
-	CleanedPath  string
-	FolderID     string
-	FolderPath   string
-	DriveFileID  string
-	DriveLink    string
-	DownloadLink string
-	FileHash     string
-	Status       string
-	Error        string
-	Strategy     string
-	Metadata     string
-	CreatedAt    string
-	UpdatedAt    string
+	Language        string
+	Voice           string
+	Filename        string
+	LocalPath       string
+	CleanedPath     string
+	FolderID        string
+	FolderPath      string
+	DriveFileID     string
+	DriveLink       string
+	DownloadLink    string
+	FileHash        string
+	DurationSeconds float64
+	Status          string
+	Error           string
+	Strategy        string
+	Metadata        string
+	CreatedAt       string
+	UpdatedAt       string
 
 	// IdempotencyKey is the FASE 3 (July 2026) deterministic retry-safe
 	// deduplication key. Stored in the voiceovers.idempotency_key column

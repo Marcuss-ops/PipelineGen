@@ -9,7 +9,7 @@
 //   - DELETE CASCADE: deleting a media_assets row drops its detail row.
 //   - Dual-write branching in AddImage (origin=generated retrieves
 //     detail row; origin=” skips; origin=retrieved routes to retrieved).
-package assets
+package imagesrepo
 
 import (
 	"context"

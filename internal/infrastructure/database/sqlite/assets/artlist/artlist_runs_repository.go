@@ -42,7 +42,7 @@
 // in earlier drafts of the bug closure and were rejected by the schema-
 // reconciliation review (PR-ARTLIST-PERSIST-FIX schema validation,
 // 2026-07-04). Don't reintroduce them without a new migration.
-package assets
+package artlist
 
 import (
 	"context"
