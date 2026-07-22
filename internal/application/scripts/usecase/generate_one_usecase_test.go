@@ -114,7 +114,7 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			GenerateMetadata: scriptpkg.ToggleEnabled,
 			// Opt-out of every other postprocessor so
 			// plan.Postprocessors stays to: entities, metadata,
-			// clip_bindings, stock_association, persistence —
+			// clip_bindings, visual_planning, persistence —
 			// (persistence is an unconditional best-effort per
 			// buildPostprocessorList and missing-registered
 			// in this test, surfacing as a warning only).
@@ -247,7 +247,7 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	// Identity assertion: keys present in timings must be a
 	// strict subset of names the registry actually ran. The
 	// best-effort unconditional postprocessors
-	// (clip_bindings + stock_association) are NOT registered
+	// (clip_bindings + visual_planning) are NOT registered
 	// here; the registry's Run loop only writes
 	// result.StageDurations entries for successfully-ran
 	// procs, so timings.PostprocessMs MUST NOT include any

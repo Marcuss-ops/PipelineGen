@@ -38,7 +38,7 @@ import (
 // canonical postprocessor on the supplied registry. Each registration
 // is gated on its required infrastructure dependency (DocClient for
 // document, ImageService for images, VoiceoverService for voiceover,
-// QdrantSearcher + OllamaClient for stock_association) — when the dep
+// QdrantSearcher + OllamaClient for clip_search) — when the dep
 // is absent at the call site the registration is silently skipped
 // and the composition-time validator in wire_script_adapters.go
 // (validateRequiredProcessors) surfaces the gap after the freeze.
@@ -47,7 +47,7 @@ import (
 // extended PR-TRANSLATE-SCRIPT-SPEC FP2 2026-08-08 with TranslationProcessor):
 //
 //	Persistence → Document → Image → Voiceover → Entities → Metadata →
-//	Translation → ClipBindings → StockAssociation → ClipSearch
+//	Translation → ClipBindings → VisualPlanning → ClipSearch
 //
 // Persistence is FIRST so no Drive-write side effect runs before the
 // local SQLite row is locked. Pre-PR-1 order was Document →
@@ -144,7 +144,7 @@ func registerScriptPostProcessors(
 	}
 
 	// AI-backed processors (entities, metadata, translation,
-	// stock_association, clip_search) — see wire_script_postprocess_ai.go.
+	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.
 	if err := registerAIBackedProcessors(ppReg, root, cfg, log); err != nil {
 		return err
 	}

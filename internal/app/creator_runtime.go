@@ -217,7 +217,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Postprocessor registry ────────────────────────
 	// Creator postprocessors write outputs as files in the workspace.
 	// Forbidden: PersistenceProcessor (SQLite)
-	// (Google Drive), StockAssociation (Qdrant). See package doc.
+	// (Google Drive). See package doc.
 	ppReg := registerCreatorPostProcessors(log)
 
 	log.Info("creator: postprocessor registry built",
@@ -404,7 +404,7 @@ var _ = func() any { var _ *sql.DB = nil; return nil }
 // FORBIDDEN (never registered):
 //   - persistence (SQLite)
 //   - document (Google Drive)
-//   - stock_association (Qdrant)
+//   - visual_planning (MediaMemory resolver)
 //
 // voiceover and images are NOT registered yet — the Creator's
 // VoiceoverEngine and ImageGenerator are typed-nil placeholders

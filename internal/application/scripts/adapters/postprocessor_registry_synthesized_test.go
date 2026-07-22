@@ -333,7 +333,7 @@ func TestRegistry_Run_NoProcessorsFinalSpecSceneUnchanged(t *testing.T) {
 
 // Stub processors: all 5 postprocessors the plan expects must
 // be registered (entities + metadata + clip_bindings +
-// stock_association + persistence). clip_bindings
+// visual_planning + persistence). clip_bindings
 // synthesises scenes from prose; persistence is the
 // downstream consumer of synthesised scenes.
 
@@ -342,7 +342,7 @@ func TestRegistry_Run_NoProcessorsFinalSpecSceneUnchanged(t *testing.T) {
 
 // The postprocessor list contains the 2 ACTIVE postprocessors
 // (entities + metadata) + the unconditional scene-normalisation
-// stages (clip_bindings + stock_association) + persistence. The
+// stages (clip_bindings + visual_planning) + persistence. The
 // clip_bindings ordering invariant is still valid: it must run
 // before the final persistence write so synthesised scenes are
 // visible.

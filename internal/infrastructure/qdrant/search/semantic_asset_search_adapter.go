@@ -1,6 +1,6 @@
 // Package qdrant — SemanticAssetSearchAdapter is the canonical
 // unified concrete that subsumes the legacy ClipSearchAdapter
-// (curate path) and StockSearchAdapter (stock_association
+// (curate path) and StockSearchAdapter (visual_planning
 // postprocessor) per PR-POSTPROCESSOR-UNIFICATION-PHASE-4
 // (August 2026).
 //
