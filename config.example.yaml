@@ -1,5 +1,8 @@
 server:
-  host: "127.0.0.1"
+  # 0.0.0.0 binds all interfaces and makes the server reachable on the LAN.
+  # Use this only on a trusted private network; for public exposure always
+  # prefer a reverse-proxy with HTTPS and leave the bind on 127.0.0.1.
+  host: "0.0.0.0"
   # Canonical port is 8000 (chosen in the Operational Readiness PR — June 2026
   # Canonical port 8000 (Operational Readiness PR, June 2026).
   # Override at runtime via VELOX_PORT; see `internal/platform/config/types.go::ServerConfig` for single source of truth.). Override at runtime via
