@@ -58,7 +58,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		if !a.Locked {
 			continue
 		}
-		key := a.SegmentID + "/" + a.Slot
+		key := a.SegmentID + "/" + string(a.Slot)
 		locked[key] = visualPlanFromAssignment(plan, a)
 	}
 
@@ -189,12 +189,12 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediamemory
 	}
 	for _, a := range plan.Assignments {
 		if a.SegmentID == segmentID {
-			add(a.Slot)
+			add(string(a.Slot))
 		}
 	}
 	for _, s := range plan.Searches {
 		if s.SegmentID == segmentID {
-			add(s.Slot)
+			add(string(s.Slot))
 		}
 	}
 	if len(seen) == 0 {
@@ -232,7 +232,7 @@ func visualPlanFromAssignment(plan *scriptpkg.ResolvedGenerationPlan, a mediadom
 		assetID = a.Asset.ClipID
 	}
 	provider := a.Asset.Provider
-	return mediamemory.SceneVisualPlan{ProjectID: plan.ID, SegmentID: a.SegmentID, Source: provider, Layers: []mediamemory.Layer{{Slot: mediamemory.SlotKind(a.Slot), AssetID: assetID, Provider: provider, StartMs: a.Asset.StartMs, EndMs: a.Asset.EndMs}}}
+	return mediamemory.SceneVisualPlan{ProjectID: plan.ID, SegmentID: a.SegmentID, Source: provider, Layers: []mediamemory.Layer{{Slot: a.Slot, AssetID: assetID, Provider: provider, StartMs: a.Asset.StartMs, EndMs: a.Asset.EndMs}}}
 }
 
 func cloneScenes(in []scriptpkg.SpecScene) []scriptpkg.SpecScene {
@@ -268,7 +268,7 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 				}
 				durationMs := layer.EndMs - layer.StartMs
 				visualPlan.Layers = append(visualPlan.Layers, scriptpkg.VisualLayer{
-					Slot:       string(layer.Slot),
+					Slot:       layer.Slot,
 					AssetID:    layer.AssetID,
 					Provider:   layer.Provider,
 					StartMs:    layer.StartMs,

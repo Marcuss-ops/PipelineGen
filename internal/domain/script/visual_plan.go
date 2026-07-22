@@ -6,6 +6,8 @@
 // cold candidates that were evaluated but not materialized.
 package script
 
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+
 // VisualPlan is the per-scene visual plan produced by the visual
 // planning processor. It contains the ordered layers chosen for
 // the scene and the list of candidates that were considered but
@@ -24,7 +26,7 @@ type VisualPlan struct {
 type VisualLayer struct {
 	// Slot is the canonical slot kind (primary_video, secondary_image,
 	// evidence_overlay, ...).
-	Slot string `json:"slot,omitempty"`
+	Slot media.SlotKind `json:"slot,omitempty"`
 
 	// AssetID is the canonical ID of the selected asset. After
 	// materialization this is the local media_assets.id.
