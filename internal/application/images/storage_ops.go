@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -139,30 +138,16 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 
 	asset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
 	if err == nil && asset != nil {
-		meta := make(map[string]any)
-		if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {
-			_ = json.Unmarshal([]byte(asset.MetadataJSON), &meta)
-		}
-		meta["source_image_url"] = imgURL
-		// runRetrievalFallback (Step 8) returns the third value as
-		// the canonical page URL; we receive it via the local
-		// `wikiURL` variable (preserved from the legacy cascade so
-		// metadata writes don't churn).
+		pageURL := ""
 		if wikiURL != "" {
-			meta["source_page_url"] = wikiURL
+			pageURL = wikiURL
 		}
-		meta["source_name"] = source
-		meta["source_query"] = finalQuery
-		metaJSON, marshalErr := json.Marshal(meta)
-		if marshalErr != nil {
-			s.log.Error("searchAndDownloadInner: failed to marshal metadata", zap.Error(marshalErr))
-			return asset, fmt.Errorf("marshal image metadata: %w", marshalErr)
-		}
-		if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, string(metaJSON)); updateErr != nil {
+		updatedJSON := AppendImageProvenance(asset.MetadataJSON, imgURL, pageURL, source, finalQuery)
+		if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, updatedJSON); updateErr != nil {
 			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))
 			return asset, fmt.Errorf("update image metadata: %w", updateErr)
 		}
-		asset.MetadataJSON = string(metaJSON)
+		asset.MetadataJSON = updatedJSON
 	}
 	return asset, err
 }

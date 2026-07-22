@@ -7,7 +7,6 @@ package images
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -99,23 +98,12 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}
 
 	// Metadata enrichment — surface failure rather than silently ignoring it.
-	meta := make(map[string]any)
-	if imgAsset.MetadataJSON != "" && imgAsset.MetadataJSON != "{}" {
-		_ = json.Unmarshal([]byte(imgAsset.MetadataJSON), &meta)
-	}
-	meta["source_image_url"] = imgURL
-	meta["source_name"] = "duckduckgo"
-	meta["source_query"] = prompt
-	metaJSON, marshalErr := json.Marshal(meta)
-	if marshalErr != nil {
-		s.log.Error("SearchWebImage: failed to marshal metadata", zap.Error(marshalErr))
-		return imgAsset, fmt.Errorf("marshal image metadata: %w", marshalErr)
-	}
-	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, string(metaJSON)); updateErr != nil {
+	updatedJSON := AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
+	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
 		s.log.Error("SearchWebImage: UpdateImageMetadata failed", zap.Error(updateErr))
 		return imgAsset, fmt.Errorf("update image metadata: %w", updateErr)
 	}
-	imgAsset.MetadataJSON = string(metaJSON)
+	imgAsset.MetadataJSON = updatedJSON
 
 	s.log.Info("Web image ingested successfully",
 		zap.String("slug", slug),
