@@ -320,6 +320,15 @@ type Layer struct {
 	Provider string
 }
 
+type CandidateOption struct {
+	AssetID      string
+	Provider     string
+	Score        float64
+	DurationMs   int64
+	MediaType    string
+	RightsStatus string
+}
+
 // SceneIntent captures what the brain understood about a scene.
 // It mirrors the brain's VisualIntent without importing the brain
 // package into the mediamemory SSOT.
@@ -353,6 +362,7 @@ type SceneResolutionTrace struct {
 type SceneVisualPlan struct {
 	ProjectID  string
 	SceneID    string
+	SegmentID  string
 	Text       string
 	Language   string
 	DurationMs int64
@@ -364,6 +374,7 @@ type SceneVisualPlan struct {
 	Intent              SceneIntent
 	Trace               SceneResolutionTrace
 	DecisionFingerprint string
+	Candidates          []CandidateOption
 }
 
 // ResolvePolicy bundles the controller knobs that VisualResolver

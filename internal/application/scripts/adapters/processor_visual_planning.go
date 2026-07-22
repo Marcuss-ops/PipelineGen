@@ -61,31 +61,34 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 	open := make([]mediamemory.SceneSpec, 0, len(input.SpecScene.Scenes))
 	for i, scene := range input.SpecScene.Scenes {
-		segmentID := scene.SegmentID
-		if segmentID == "" && i < len(plan.Segments) {
-			segmentID = plan.Segments[i].ID
+		segmentID := visualSegmentID(plan, scene, i)
+		slots := visualSlots(plan.MediaPlan, segmentID)
+		openSlots := make([]mediamemory.SlotKind, 0, len(slots))
+		for _, slot := range slots {
+			if _, ok := locked[segmentID+"/"+string(slot)]; !ok {
+				openSlots = append(openSlots, slot)
+			}
 		}
-		if segmentID == "" {
-			segmentID = scene.ID
+		if len(openSlots) > 0 {
+			open = append(open, mediamemory.SceneSpec{ID: scene.ID, Text: scene.Text, Language: plan.Language, Slots: openSlots})
 		}
-		if _, ok := locked[segmentID+"/primary_video"]; ok {
-			continue
-		}
-		open = append(open, mediamemory.SceneSpec{ID: scene.ID, Text: scene.Text, Language: plan.Language, Slots: []mediamemory.SlotKind{mediamemory.SlotPrimaryVideo}})
 	}
 
 	plans := make([]mediamemory.SceneVisualPlan, 0, len(locked)+len(open))
 	for _, scene := range input.SpecScene.Scenes {
-		segmentID := scene.SegmentID
-		if segmentID == "" {
-			segmentID = scene.ID
-		}
-		if i := sceneIndex(input.SpecScene.Scenes, scene.ID); i >= 0 && segmentID == scene.ID && i < len(plan.Segments) {
-			segmentID = plan.Segments[i].ID
-		}
+		segmentID := visualSegmentID(plan, scene, sceneIndex(input.SpecScene.Scenes, scene.ID))
 		if v, ok := locked[segmentID+"/primary_video"]; ok {
 			v.SceneID, v.SegmentID, v.Text = scene.ID, segmentID, scene.Text
 			plans = append(plans, v)
+		}
+		for _, slot := range visualSlots(plan.MediaPlan, segmentID) {
+			if slot == mediamemory.SlotPrimaryVideo {
+				continue
+			}
+			if v, ok := locked[segmentID+"/"+string(slot)]; ok {
+				v.SceneID, v.SegmentID, v.Text = scene.ID, segmentID, scene.Text
+				plans = append(plans, v)
+			}
 		}
 	}
 	if len(open) > 0 {
@@ -130,6 +133,47 @@ func plannerLimit(plan *scriptpkg.ResolvedGenerationPlan) int {
 	}
 	return 10
 }
+
+func visualSegmentID(plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.SpecScene, index int) string {
+	if scene.SegmentID != "" {
+		return scene.SegmentID
+	}
+	if index >= 0 && index < len(plan.Segments) && plan.Segments[index].ID != "" {
+		return plan.Segments[index].ID
+	}
+	return scene.ID
+}
+
+func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediamemory.SlotKind {
+	seen := map[mediamemory.SlotKind]bool{}
+	add := func(raw string) {
+		slot := mediamemory.SlotKind(raw)
+		if mediamemory.IsKnownSlotKind(slot) {
+			seen[slot] = true
+		}
+	}
+	for _, a := range plan.Assignments {
+		if a.SegmentID == segmentID {
+			add(a.Slot)
+		}
+	}
+	for _, s := range plan.Searches {
+		if s.SegmentID == segmentID {
+			add(s.Slot)
+		}
+	}
+	if len(seen) == 0 {
+		add(string(mediamemory.SlotPrimaryVideo))
+	}
+	ordered := []mediamemory.SlotKind{mediamemory.SlotPrimaryVideo, mediamemory.SlotSecondaryImage, mediamemory.SlotEvidenceOverlay, mediamemory.SlotPortrait, mediamemory.SlotDocument, mediamemory.SlotBackground, mediamemory.SlotMap}
+	out := make([]mediamemory.SlotKind, 0, len(seen))
+	for _, slot := range ordered {
+		if seen[slot] {
+			out = append(out, slot)
+		}
+	}
+	return out
+}
 func candidateExists(c []mediamemory.CandidateOption, id string) bool {
 	for _, x := range c {
 		if x.AssetID == id {
@@ -171,7 +215,11 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 				continue
 			}
 			for _, layer := range vp.Layers {
-				if layer.Slot != mediamemory.SlotPrimaryVideo || layer.AssetID == "" {
+				if layer.AssetID == "" {
+					continue
+				}
+				scenes[i].Bindings.Media = append(scenes[i].Bindings.Media, scriptpkg.ResolvedMediaBinding{Slot: string(layer.Slot), AssetID: layer.AssetID, BindingID: layer.BindingID, Provider: layer.Provider, Score: layer.CandidateScore})
+				if layer.Slot != mediamemory.SlotPrimaryVideo {
 					continue
 				}
 				if scenes[i].Bindings.Stock == nil {

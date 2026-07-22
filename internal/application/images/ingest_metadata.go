@@ -6,10 +6,11 @@ package images
 type contextKey string
 
 const (
-	SourceTypeKey = contextKey("source_type")
-	RetrieverKey  = contextKey("retriever")
-	PageURLKey    = contextKey("page_url")
-	ImageURLKey   = contextKey("image_url")
-	LicenseKey    = contextKey("license")
-	AuthorKey     = contextKey("author")
+	SourceTypeKey  = contextKey("source_type")
+	RetrieverKey   = contextKey("retriever")
+	PageURLKey     = contextKey("page_url")
+	ImageURLKey    = contextKey("image_url")
+	LicenseKey     = contextKey("license")
+	AuthorKey      = contextKey("author")
+	SearchQueryKey = contextKey("search_query")
 )

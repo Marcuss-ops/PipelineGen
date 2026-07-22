@@ -32,11 +32,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
+	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
@@ -237,6 +239,11 @@ func WireArtlist(
 			// the upstream probes (Commit 2/3/4 replace 6 stubs with
 			// real probe logic).
 			SystemProber: providers.SystemProber,
+			// MediaMemory linking: create media_concepts / media_bindings
+			// after a clip is materialized (Maya demo graph).
+			MediaMemoryConceptRepo: sqliteMediaMemory.NewConceptsRepository(bundle.DB.DB),
+			MediaMemoryBindingRepo: sqliteMediaMemory.NewBindingsRepository(bundle.DB.DB),
+			MediaMemoryNormalizer:  mediamemory.NewDefaultNormalizer(""),
 		},
 		ServiceDependencies: artlist.ServiceDependencies{
 			// ServiceDependencies (10) — grouped into sub-bundles to

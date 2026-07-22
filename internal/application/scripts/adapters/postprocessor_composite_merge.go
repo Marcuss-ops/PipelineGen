@@ -31,6 +31,9 @@ import (
 // passes to processors; nil-safe so callers that pre-Issue-1 wiring
 // (eg. in older tests) keep working.
 func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
+	if len(src.VisualPlans) > 0 {
+		dst.VisualPlans = append(dst.VisualPlans, src.VisualPlans...)
+	}
 	// P1 #10 (June 2026): record per-processor wall-clock timing.
 	if dst.StageDurations == nil {
 		dst.StageDurations = make(map[string]int64)

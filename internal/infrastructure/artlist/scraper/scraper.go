@@ -166,6 +166,11 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 	client := &http.Client{Timeout: p.cfg.HTTPTimeout}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		// Context cancellation / deadline must propagate to callers
+		// instead of being converted into a transport fallback.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
 	}
 	defer resp.Body.Close()

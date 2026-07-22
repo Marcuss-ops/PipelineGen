@@ -235,7 +235,8 @@ func (s *SpecSceneOutput) Validate() error {
 //	}
 type SpecScene struct {
 	// ID is a stable identifier within the result. Must be non-empty.
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	SegmentID string `json:"segment_id,omitempty"`
 
 	// Index is the zero-based position in the scene array.
 	Index int `json:"index"`
@@ -313,7 +314,20 @@ type SceneBindings struct {
 	// Stock binds this scene to a semantically associated stock
 	// footage asset, found by vector search. When no stock matches
 	// the scene text, falls back to the Clip.DriveLink.
-	Stock *StockBinding `json:"stock,omitempty"`
+	Stock *StockBinding          `json:"stock,omitempty"`
+	Media []ResolvedMediaBinding `json:"media,omitempty"`
+}
+
+type ResolvedMediaBinding struct {
+	Slot                 string  `json:"slot"`
+	AssetID              string  `json:"asset_id,omitempty"`
+	BindingID            string  `json:"binding_id,omitempty"`
+	Provider             string  `json:"provider,omitempty"`
+	MediaType            string  `json:"media_type,omitempty"`
+	DriveLink            string  `json:"drive_link,omitempty"`
+	Score                float64 `json:"score,omitempty"`
+	MaterializationState string  `json:"materialization_state,omitempty"`
+	CacheStatus          string  `json:"cache_status,omitempty"`
 }
 
 // ── Clip binding ───────────────────────────────────────────────────

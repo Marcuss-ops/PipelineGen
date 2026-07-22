@@ -57,7 +57,21 @@ type MediaPlanSpec struct {
 	Cache MediaCachePolicy `json:"cache,omitempty"`
 
 	// Planner controls the ranking/planner strategy.
-	Planner MediaPlannerPolicy `json:"planner,omitempty"`
+	Planner         MediaPlannerPolicy         `json:"planner,omitempty"`
+	Materialization MediaMaterializationPolicy `json:"materialization,omitempty"`
+	IncludeTrace    bool                       `json:"include_trace,omitempty"`
+}
+
+const (
+	MaterializationMetadataOnly = "metadata_only"
+	MaterializationSelected     = "selected"
+)
+
+type MediaMaterializationPolicy struct {
+	Mode          string `json:"mode,omitempty"`
+	UploadToDrive bool   `json:"upload_to_drive,omitempty"`
+	EnrichVLM     bool   `json:"enrich_vlm,omitempty"`
+	WaitForReady  bool   `json:"wait_for_ready,omitempty"`
 }
 
 // Clone returns a deep copy of MediaPlanSpec. Slice fields are

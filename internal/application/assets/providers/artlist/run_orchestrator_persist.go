@@ -7,6 +7,7 @@ import (
 	"os"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 
@@ -151,6 +152,34 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		}
 
 		resp.Processed++
+
+		// Link materialized Artlist assets to the canonical Maya concept
+		// graph in media memory. The linker is optional: when the
+		// mediamemory repos are not wired, this is a no-op.
+		o.linkMayaMediaMemory(ctx, item)
+	}
+}
+
+// linkMayaMediaMemory creates the canonical Maya concept graph and binds
+// it to the materialized asset. It is a best-effort post-persist step:
+// failures are logged but do not fail the run.
+func (o *RunOrchestratorService) linkMayaMediaMemory(ctx context.Context, item *RunTagItem) {
+	linker := newMediaMemoryLinker(o.svc.conceptRepo, o.svc.bindingRepo, o.svc.normalizer, o.svc.log)
+	if linker.disabled() {
+		return
+	}
+	if item.ClipID == "" {
+		return
+	}
+
+	slot := mediamemory.SlotPrimaryVideo
+	// TODO: the language and topic are hard-coded for the legacy Maya
+	// run. Drive both from the run context once topic-driven concept
+	// discovery is implemented.
+	if err := linker.linkMayaConcepts(ctx, item.ClipID, "it", slot); err != nil {
+		o.svc.log.Warn("stagePersistResults: failed to link Maya media memory concepts",
+			zap.String("clip_id", item.ClipID),
+			zap.Error(err))
 	}
 }
 

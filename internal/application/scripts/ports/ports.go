@@ -14,6 +14,11 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
+type TopicSourceCache interface {
+	GetResearchCache(context.Context, string) (string, error)
+	SaveResearchCache(context.Context, string, string, string, int, string) error
+}
+
 // Broker is consumed by GenerateJobHandler.RegisterJobs (PR6).
 //
 // Producers (*appjobs.Service) satisfy the interface structurally —

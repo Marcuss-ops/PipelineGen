@@ -68,7 +68,7 @@ log_info "Scraper: healthy (${SCRAPER_URL})"
 # the connect-timeout window proves TCP+TLS are healthy (functional search results are
 # asserted later by § 1). Per godlike/07 minimum-blast-radius + the §11.0 contract
 # (SCRAPER_CONNECT_TIMEOUT_SECONDS=5):
-if curl -sS --connect-timeout 5 --max-time 10 -X POST "${SCRAPER_URL}/search" \
+if curl -sS --connect-timeout 5 --max-time "${SCROLL_TIMEOUT:-120}" -X POST "${SCRAPER_URL}/search" \
         -H 'Content-Type: application/json' \
         -d '{"term":"__preflight_connect_probe__","limit":1}' \
         -o /dev/null 2>/dev/null; then

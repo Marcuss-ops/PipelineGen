@@ -16,20 +16,6 @@
 // across 12 scenarios (all-flags-on, all-flags-off, 6
 // individual flag toggles, 2 flag-combination permutations,
 // 2 translate_to scenarios).
-//
-// DRIFT-FIX (July 2026, user directive "nessun campo
-// documentato come deprecato può essere ancora materialmente
-// rispettato"): the 3 deprecation-registered post-processors
-// (ProcessorVoiceover / ProcessorImages)
-// are no longer appended by buildPostprocessorList. They
-// remain in adapters.CanonicalProcessorNames() ONLY because
-// other call sites still reference them (e.g. the
-// compat-only no-op wrappers — see ADR 0001). The
-// §2 set-membership guard is preserved across the drift-fix
-// so a future code path that DOES need to surface voiceover/
-// images/document MUST route through the canonical
-// ProcessorName constants rather than introduce new string
-// literals.
 package usecase
 
 import (
@@ -42,8 +28,7 @@ import (
 // buildPostprocessorListTestScenarios enumerates OutputSpec
 // variants that cover the conditional branches of
 // buildPostprocessorList (ExtractEntities / GenerateMetadata /
-// SaveToDB / TranslateTo, plus the unconditional clip_bindings +
-// stock_association).
+// SaveToDB / TranslateTo, plus the unconditional clip_bindings).
 func buildPostprocessorListTestScenarios() []struct {
 	name string
 	out  scriptpkg.OutputSpec
@@ -155,8 +140,7 @@ func TestBuildPostprocessorList_OnlyUsesCanonicalProcessorNames(t *testing.T) {
 		t.Run(sc.name, func(t *testing.T) {
 			got := buildPostprocessorList(sc.out)
 			if len(got) == 0 {
-				t.Fatalf("buildPostprocessorList(%q) returned 0 names; expected at least the "+
-					"unconditional clip_bindings + stock_association per the goddoc in "+
+				t.Fatalf("buildPostprocessorList(%q) returned 0 names; expected at least the "+"unconditional clip_bindings per the goddoc in "+
 					"generation_plan_builder.go", sc.name)
 			}
 			for i, name := range got {
