@@ -132,14 +132,14 @@ func TestCheckGate_MissThenHit(t *testing.T) {
 	}
 
 	_, err = svc.SaveAfterGeneration(context.Background(), SaveGenerationInput{
-		ChannelID:  req.ChannelID,
-		Mode:       req.Mode,
-		Language:   req.Language,
-		Title:      req.Title,
-		Prompt:     req.Prompt,
+		ChannelID: req.ChannelID,
+		Mode:      req.Mode,
+		Language:  req.Language,
+		Title:     req.Title,
+		Prompt:    req.Prompt,
 		Model:     "gemma-test",
 		WordCount: 123,
-		CacheKey:   req.CacheKey,
+		CacheKey:  req.CacheKey,
 	}, "cached output text")
 	if err != nil {
 		t.Fatalf("SaveAfterGeneration failed: %v", err)
@@ -211,14 +211,14 @@ func TestSaveAfterGeneration_Upsert(t *testing.T) {
 	svc := NewService(repo, zap.NewNop())
 
 	in := SaveGenerationInput{
-		ChannelID:  "ch-1",
-		Mode:       ModeText,
-		Language:   "it",
-		Title:      "Upsert",
-		Prompt:     "prompt",
+		ChannelID: "ch-1",
+		Mode:      ModeText,
+		Language:  "it",
+		Title:     "Upsert",
+		Prompt:    "prompt",
 		Model:     "gemma",
 		WordCount: 100,
-		CacheKey:   "upsert-hash",
+		CacheKey:  "upsert-hash",
 	}
 
 	n, err := svc.SaveAfterGeneration(context.Background(), in, "first output")
@@ -230,14 +230,14 @@ func TestSaveAfterGeneration_Upsert(t *testing.T) {
 	}
 
 	n, err = svc.SaveAfterGeneration(context.Background(), SaveGenerationInput{
-		ChannelID:  "ch-1",
-		Mode:       ModeText,
-		Language:   "it",
-		Title:      "Upsert",
-		Prompt:     "prompt",
+		ChannelID: "ch-1",
+		Mode:      ModeText,
+		Language:  "it",
+		Title:     "Upsert",
+		Prompt:    "prompt",
 		Model:     "gemma",
 		WordCount: 200,
-		CacheKey:   "upsert-hash",
+		CacheKey:  "upsert-hash",
 	}, "second output")
 	if err != nil {
 		t.Fatalf("second save failed: %v", err)
@@ -263,14 +263,14 @@ func TestSaveAfterGeneration_Upsert(t *testing.T) {
 func TestSaveAfterGeneration_NilRepo(t *testing.T) {
 	svc := NewService(nil, zap.NewNop())
 	n, err := svc.SaveAfterGeneration(context.Background(), SaveGenerationInput{
-		ChannelID:  "ch-1",
-		Mode:       ModeText,
-		Language:   "en",
-		Title:      "Test",
-		Prompt:     "prompt",
+		ChannelID: "ch-1",
+		Mode:      ModeText,
+		Language:  "en",
+		Title:     "Test",
+		Prompt:    "prompt",
 		Model:     "gemma",
 		WordCount: 10,
-		CacheKey:   "key",
+		CacheKey:  "key",
 	}, "text")
 	if err != nil {
 		t.Fatalf("SaveAfterGeneration nil repo should not error: %v", err)
@@ -288,14 +288,14 @@ func TestEvictExactOutputs_RemovesMatchingTitles(t *testing.T) {
 
 	for _, title := range []string{"Keep", "Evict A", "Evict B"} {
 		in := SaveGenerationInput{
-			ChannelID:  "ch",
-			Mode:       ModeText,
-			Language:   "en",
-			Title:      title,
-			Prompt:     "p",
+			ChannelID: "ch",
+			Mode:      ModeText,
+			Language:  "en",
+			Title:     title,
+			Prompt:    "p",
 			Model:     "gemma",
 			WordCount: 1,
-			CacheKey:   title,
+			CacheKey:  title,
 		}
 		if _, err := svc.SaveAfterGeneration(context.Background(), in, title); err != nil {
 			t.Fatalf("save %q: %v", title, err)
