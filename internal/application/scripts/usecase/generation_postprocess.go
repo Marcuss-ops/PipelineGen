@@ -92,6 +92,8 @@ func (p *GenerationPostprocessor) Process(
 		SourceTrace:       engineResult.ClipEvidence,
 		Provenance:        provenance,
 		EffectiveLanguage: strings.TrimSpace(plan.Language),
+		StockEnabled:      plan.StockEnabled,
+		StockBindings:     append([]scriptpkg.StockBindingInput(nil), plan.StockBindings...),
 	}
 
 	postResult, err := p.ppReg.Run(ctx, &plan, procInput)

@@ -56,6 +56,8 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		MaxChars:            item.Output.MaxChars,
 		OutputFmt:           item.Output.OutputFmt,
 		SaveToDB:            item.Output.SaveToDB,
+		StockEnabled:        item.Output.StockEnabled,
+		StockBindings:       append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
 		Languages:           append([]string(nil), item.Output.Languages...),
 		TranslateTo:         item.Output.TranslateTo,
 		FallbackPolicy:      item.Source.FallbackPolicy,
@@ -155,6 +157,9 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// Scene-normalisation must precede artifact producers so voiceover and the
 	// Google Doc consume the final translated, clip-bound SpecScene.
 	processors = append(processors, adapters.ProcessorClipBindings)
+	if out.StockEnabled == scriptpkg.ToggleEnabled || out.StockEnabled == scriptpkg.ToggleDisabled || len(out.StockBindings) > 0 {
+		processors = append(processors, adapters.ProcessorStockBindings)
+	}
 
 	if strings.TrimSpace(out.VoiceoverGroup) != "" || strings.TrimSpace(out.VoiceoverFolderID) != "" {
 		processors = append(processors, adapters.ProcessorVoiceover)

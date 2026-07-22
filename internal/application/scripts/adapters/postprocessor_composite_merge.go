@@ -51,6 +51,10 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	if currentInput != nil {
 		currentInput.SpecScene.Scenes = cloneSpecSceneSlice(currentInput.SpecScene.Scenes)
 	}
+	if len(src.UpdatedSpecScene.Scenes) > 0 && currentInput != nil {
+		currentInput.SpecScene = src.UpdatedSpecScene
+		dst.FinalSpecScene = src.UpdatedSpecScene
+	}
 	if src.Entities != nil {
 		dst.Entities = src.Entities
 		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):

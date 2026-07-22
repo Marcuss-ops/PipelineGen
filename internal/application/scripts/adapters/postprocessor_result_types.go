@@ -125,6 +125,7 @@ type PostProcessResult struct {
 	OriginalText        string                    `json:"original_text,omitempty"`
 	OriginalSpecScene   scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
 	EffectiveLanguage   string                    `json:"effective_language,omitempty"`
+	UpdatedSpecScene    scriptpkg.SpecSceneOutput `json:"updated_specscene,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -163,6 +164,9 @@ func (r *PostProcessResult) IsEmpty() bool {
 	if len(r.SynthesizedScenes) > 0 {
 		return false
 	}
+	if len(r.UpdatedSpecScene.Scenes) > 0 {
+		return false
+	}
 	// PR-CLIP-SEARCH-WIRING (July 2026): clip search results count
 	// as observable work.
 	if len(r.ArtlistClipSuggestions) > 0 {
@@ -198,6 +202,8 @@ type ProcessInput struct {
 	SourceTrace       *scriptpkg.ClipEvidence
 	PriorArtifacts    map[string]PostProcessResult
 	EffectiveLanguage string
+	StockEnabled      scriptpkg.Toggle
+	StockBindings     []scriptpkg.StockBindingInput
 
 	// Entities carries the entity-extraction result, populated by
 	// mergePostProcessResult when the entities processor produces

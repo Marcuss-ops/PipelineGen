@@ -81,10 +81,13 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
+	// LocalPath is an internal staging detail. It is deliberately removed
+	// before rendering Google Docs; Drive links remain visible.
+	docSpecScene := sanitizeSpecSceneOutputForPersistence(input.SpecScene)
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		Text:          input.Text,
-		SpecScene:     input.SpecScene,
+		SpecScene:     docSpecScene,
 	}
 
 	// Create the doc first, then rewrite it with the final provenance once

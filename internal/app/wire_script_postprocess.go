@@ -147,6 +147,9 @@ func registerScriptPostProcessors(
 	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
 		return fmt.Errorf("register clip_bindings processor: composition bug")
 	}
+	if !ppReg.Register(adapters.NewStockBindingsProcessor()) {
+		return fmt.Errorf("register stock_bindings processor: composition bug")
+	}
 
 	// AI-backed processors (entities, metadata, translation,
 	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.

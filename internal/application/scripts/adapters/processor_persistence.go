@@ -189,7 +189,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 
 	sections := buildSectionsFromScenes(input.SpecScene.Scenes)
-	scriptID, err := p.repo.SaveScript(ctx, rec, sections, nil)
+	scriptID, err := p.repo.SaveScript(ctx, rec, sections, buildStockMatchRowsFromSpecScene(input.SpecScene))
 	if err != nil {
 		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
@@ -226,6 +226,22 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	return &PostProcessResult{
 		ScriptID: scriptID,
 	}, nil
+}
+
+func buildStockMatchRowsFromSpecScene(scene scriptpkg.SpecSceneOutput) []ports.ScriptStockMatchRecord {
+	rows := make([]ports.ScriptStockMatchRecord, 0)
+	for _, sc := range scene.Scenes {
+		stock := sc.Bindings.Stock
+		if stock == nil {
+			continue
+		}
+		rows = append(rows, ports.ScriptStockMatchRecord{
+			ClipID: stock.AssetID, SegmentIndex: sc.Index,
+			StockPath: stock.DriveLink, StockSource: stock.Source,
+			Score: stock.Score, MatchedTerms: stock.Name,
+		})
+	}
+	return rows
 }
 
 // originalSpecSceneForPersistence keeps the source-language row structurally

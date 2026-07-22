@@ -265,7 +265,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 		keywords := strings.Fields(req.Q)
 		if len(keywords) > 0 {
 			columns := clipSearchColumns()
-			cond, kwArgs := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+			cond, kwArgs := sqlutil.BuildFallbackLikeConditionsOR(keywords, columns)
 			if cond != "" {
 				conditions = append(conditions, "("+cond+")")
 				args = append(args, kwArgs...)
