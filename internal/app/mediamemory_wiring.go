@@ -28,13 +28,8 @@ import (
 
 	"go.uber.org/zap"
 
-	braincore "github.com/Marcuss-ops/PipelineGen/internal/application/brain/core"
-	brainintent "github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
-	brainnormalizer "github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
-	brainplanner "github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
-	brainranker "github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
-	brainsearch "github.com/Marcuss-ops/PipelineGen/internal/application/brain/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -101,24 +96,28 @@ func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrant
 }
 
 // WireMediaMemoryResolver builds the canonical mediamemory.Resolver
-// backed by the Brain. All search (exact memory, local catalog,
-// semantic, external providers) is delegated to the Brain, which in
-// turn uses the canonical search.SearchFanOut through the
-// CandidateSearcher port.
+// backed by the rich MediaMemory cascade (VisualResolver). All search
+// (exact memory, local catalog, semantic, external providers) is
+// delegated to the cascade; the hardcoded Brain orchestration is no
+// longer used for the production resolver surface.
 //
 // godlike/06 SSOT: this is the single composition site for the
-// MediaMemoryResolver. Callers that need a Resolver must use this
-// function and must not construct VisualResolver or
+// production MediaMemory resolver. Callers that need a Resolver must
+// use this function and must not construct VisualResolver or
 // MediaMemoryResolver manually.
-func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, log *zap.Logger) mediamemory.Resolver {
-	_ = log
-	candidateSearcher := brainsearch.NewCandidateSearcherAdapter(searchFanOut)
-	n := brainnormalizer.NewDefaultNormalizer()
-	ir := brainintent.NewDefaultResolver()
-	r := brainranker.NewDefaultRanker()
-	p := brainplanner.NewDefaultPlanner()
-	b := braincore.NewCanonicalBrain(n, ir, candidateSearcher, r, p)
-	return mediamemory.NewMediaMemoryResolver(b)
+func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *zap.Logger) (mediamemory.Resolver, error) {
+	if db == nil {
+		return nil, fmt.Errorf("mediamemory: db is required to wire the cascade resolver")
+	}
+	logAdapter := mediamemoryZapLogger{log}
+	concepts := sqliteMediaMemory.NewConceptsRepository(db)
+	bindings := sqliteMediaMemory.NewBindingsRepository(db)
+	ranker := mediamemory.NewDefaultRanker(nil, logAdapter)
+	adapter, err := mmadapters.NewSearchFanOutAdapter(searchFanOut)
+	if err != nil {
+		return nil, fmt.Errorf("mediamemory: search fanout adapter: %w", err)
+	}
+	return mediamemory.NewVisualResolver(concepts, bindings, adapter, NoopSemanticLookup{}, ranker, logAdapter, mediamemory.RealClock(), mediamemory.NoopMetrics()), nil
 }
 
 // WireBindingService builds the canonical mediamemory.BindingService

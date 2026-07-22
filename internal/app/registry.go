@@ -111,6 +111,7 @@ import (
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
@@ -126,6 +127,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -274,6 +277,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: adminconsole-api: %w", err)
 	}
 
+	// Step 5c — MediaMemory: canonical resolve + bindings + feedback
+	// surface. Consumes wiring.searchFanOut (Step 2) + root.DB +
+	// root.Outbox for the binding dispatcher.
+	if err := registerMediaMemory(registry, log, root, wiring); err != nil {
+		return nil, fmt.Errorf("wire registry: mediamemory: %w", err)
+	}
+
 	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +
 	// QDRANT-004 mediasearch handler + COLLECTS provider registration
 	// entries (artlist + youtube + stock); internally still publishes
@@ -332,6 +342,48 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	return wiring, nil
+}
+
+// ── Step 5c helper ────────────────────────────────────────────────
+
+// registerMediaMemory wires the canonical MediaMemory resolve +
+// bindings + feedback surface. The resolver is backed by the Brain
+// (canonical 9-level cascade); the binding service is backed by
+// SQLite + outbox dispatcher.
+func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
+	if wiring.searchFanOut == nil {
+		log.Warn("registerMediaMemory: searchFanOut not wired; skipping (Level 3-9 cascade unavailable)")
+		return nil
+	}
+	if root.DB == nil {
+		log.Warn("registerMediaMemory: DB not available; skipping")
+		return nil
+	}
+
+	resolver, err := WireMediaMemoryResolver(wiring.searchFanOut, root.DB.DB, log)
+	if err != nil {
+		return fmt.Errorf("registerMediaMemory: wire resolver: %w", err)
+	}
+
+	txMgr := outbox.NewManager(root.DB.DB, log)
+	eventsRepo := outboxevents.NewRepository(root.DB.DB)
+	bindingSvc := WireBindingService(root.DB.DB, txMgr, eventsRepo, log)
+
+	handler := mediamemoryapi.NewHandler(mediamemoryapi.WireParams{
+		Resolver: resolver,
+		Bindings: bindingSvc,
+		Feedback: nil,
+		Batches:  nil,
+		Log:      log,
+	})
+
+	descriptor := mediamemoryapi.Build(handler, log)
+	if err := tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.MediaMemory")); err != nil {
+		return fmt.Errorf("registerMediaMemory: tryRegisterModuleStrict: %w", err)
+	}
+
+	log.Info("registerMediaMemory: mediamemory module mounted")
+	return nil
 }
 
 // ── Step 8 helper (P0 Commit 3, July 2026) ───────────────────────────

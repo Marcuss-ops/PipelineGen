@@ -160,8 +160,11 @@ func registerAIBackedProcessors(
 	// Gemma is used as a ranking strategy to choose among the closed
 	// candidate list returned by the resolver; on LLM failure the
 	// adapter deterministically falls back to the top-scoring candidate.
-	if root.Search != nil && root.Search.SearchFanOut != nil {
-		resolver := WireMediaMemoryResolver(root.Search.SearchFanOut, log)
+	if root.Search != nil && root.Search.SearchFanOut != nil && root.DB != nil {
+		resolver, err := WireMediaMemoryResolver(root.Search.SearchFanOut, root.DB.DB, log)
+		if err != nil {
+			return fmt.Errorf("register visual_planning: wire resolver: %w", err)
+		}
 		var planner adapters.VisualCandidatePlanner
 		if root.AI != nil && root.AI.ScriptGen != nil {
 			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
@@ -174,7 +177,7 @@ func registerAIBackedProcessors(
 		}
 		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
 	} else {
-		log.Warn("VisualPlanningProcessor: SearchFanOut not available; postprocessor not registered")
+		log.Warn("VisualPlanningProcessor: SearchFanOut or DB not available; postprocessor not registered")
 	}
 
 	return nil
