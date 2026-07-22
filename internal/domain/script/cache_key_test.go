@@ -24,18 +24,20 @@ import (
 // axis at a time.
 func basePlan() script.ResolvedGenerationPlan {
 	return script.ResolvedGenerationPlan{
-		Title:             "Cache Key Test",
-		Topic:             "Test Topic",
-		Language:          "en",
-		Tone:              "documentary",
-		Model:             "llama3:8b",
-		Style:             "cinematic",
-		SourceKind:        "text",
-		Guidelines:        "Documentary tone.",
-		SourceFingerprint: "fp-abc123",
-		TargetWords:       500,
-		PromptVersion:     "v1",
-		PromptProfile:     "default-v1",
+		Title:               "Cache Key Test",
+		Topic:               "Test Topic",
+		Language:            "en",
+		Tone:                "documentary",
+		Model:               "llama3:8b",
+		Style:               "cinematic",
+		SourceKind:          "text",
+		Guidelines:          "Documentary tone.",
+		SourceFingerprint:   "fp-abc123",
+		TargetWords:         500,
+		PromptVersion:       "v1",
+		EditorPromptVersion: "v1",
+		QAPromptVersion:     "v1",
+		PromptProfile:       "default-v1",
 	}
 }
 
@@ -104,6 +106,22 @@ func TestBuildCacheKey_DifferentPromptProfileChanges(t *testing.T) {
 	p1 := basePlan()
 	p2 := basePlan()
 	p2.PromptProfile = "experimental-v3"
+	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
+}
+
+func TestBuildCacheKey_DifferentEditorPromptVersionChanges(t *testing.T) {
+	t.Parallel()
+	p1 := basePlan()
+	p2 := basePlan()
+	p2.EditorPromptVersion = "v2"
+	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
+}
+
+func TestBuildCacheKey_DifferentQAPromptVersionChanges(t *testing.T) {
+	t.Parallel()
+	p1 := basePlan()
+	p2 := basePlan()
+	p2.QAPromptVersion = "v2"
 	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
 }
 

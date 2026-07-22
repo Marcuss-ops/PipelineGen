@@ -66,6 +66,16 @@ type GenerationFingerprintInput struct {
 	// editorial prompt.
 	PromptVersion string `json:"prompt_version"`
 
+	// EditorPromptVersion is the editor/rewriter prompt version.
+	// It is part of the canonical generation identity because
+	// different editor prompts can produce different script text.
+	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
+
+	// QAPromptVersion is the quality-assurance prompt version.
+	// It is part of the canonical generation identity because
+	// different QA passes can change the final script text.
+	QAPromptVersion string `json:"qa_prompt_version,omitempty"`
+
 	// PlannerVersion is the scene-planning algorithm version.
 	PlannerVersion string `json:"planner_version"`
 
@@ -121,7 +131,7 @@ func BuildFingerprint(input GenerationFingerprintInput) string {
 // It is the canonical input for ResolvedSource.Fingerprint.
 func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
-		ContractVersion: 1,
+		ContractVersion: 2,
 		SourceType:      string(src.Type),
 		Guidelines:      src.Guidelines,
 		GroundingPolicy: src.GroundingPolicy,
@@ -153,18 +163,20 @@ func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFing
 // ResolvedGenerationPlan.CacheKey.
 func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
-		ContractVersion: 1,
-		SourceType:      plan.SourceKind,
-		SourceTextHash:  plan.SourceFingerprint,
-		Language:        plan.Language,
-		Tone:            plan.Tone,
-		Style:           plan.Style,
-		Guidelines:      plan.Guidelines,
-		TargetWords:     plan.TargetWords,
-		Model:           plan.Model,
-		PromptVersion:   plan.PromptVersion,
-		PlannerVersion:  plan.PromptProfile,
-		GroundingPolicy: plan.GroundingPolicy,
+		ContractVersion:     2,
+		SourceType:          plan.SourceKind,
+		SourceTextHash:      plan.SourceFingerprint,
+		Language:            plan.Language,
+		Tone:                plan.Tone,
+		Style:               plan.Style,
+		Guidelines:          plan.Guidelines,
+		TargetWords:         plan.TargetWords,
+		Model:               plan.Model,
+		PromptVersion:       plan.PromptVersion,
+		EditorPromptVersion: plan.EditorPromptVersion,
+		QAPromptVersion:     plan.QAPromptVersion,
+		PlannerVersion:      plan.PromptProfile,
+		GroundingPolicy:     plan.GroundingPolicy,
 	}
 
 	if plan.ClipEvidence != nil {
@@ -201,17 +213,19 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 // is the canonical input for adapters.BuildItemIdentity.
 func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
-		ContractVersion: 1,
-		SourceType:      string(item.Source.Type),
-		Language:        item.Language,
-		Tone:            item.Tone,
-		Style:           item.Style,
-		Guidelines:      item.Source.Guidelines,
-		TargetWords:     item.ScriptParams.TargetWords,
-		Model:           item.Model,
-		PromptVersion:   item.ScriptParams.PromptVersion,
-		PlannerVersion:  item.ScriptParams.PlannerVersion,
-		GroundingPolicy: item.Source.GroundingPolicy,
+		ContractVersion:     2,
+		SourceType:          string(item.Source.Type),
+		Language:            item.Language,
+		Tone:                item.Tone,
+		Style:               item.Style,
+		Guidelines:          item.Source.Guidelines,
+		TargetWords:         item.ScriptParams.TargetWords,
+		Model:               item.Model,
+		PromptVersion:       item.ScriptParams.PromptVersion,
+		EditorPromptVersion: item.ScriptParams.EditorPromptVersion,
+		QAPromptVersion:     item.ScriptParams.QAPromptVersion,
+		PlannerVersion:      item.ScriptParams.PlannerVersion,
+		GroundingPolicy:     item.Source.GroundingPolicy,
 	}
 
 	if len(item.Source.ClipIDs) > 0 {
