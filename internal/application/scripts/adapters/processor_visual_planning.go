@@ -17,11 +17,12 @@ type VisualCandidatePlanner interface {
 }
 
 type VisualSelectionRequest struct {
-	SceneID    string
-	SegmentID  string
-	Text       string
-	Slot       mediamemory.SlotKind
-	Candidates []mediamemory.CandidateOption
+	SceneID      string
+	SegmentID    string
+	Text         string
+	VisualIntent string
+	Slot         mediamemory.SlotKind
+	Candidates   []mediamemory.CandidateOption
 }
 
 // VisualPlanningProcessor resolves every open scene through one batched
@@ -102,7 +103,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		for _, v := range resolved.Plans {
 			if p.planner != nil && len(v.Candidates) > 0 && len(v.Layers) > 0 {
 				for i := range v.Layers {
-					selected, err := p.planner.Select(ctx, VisualSelectionRequest{SceneID: v.SceneID, SegmentID: v.SegmentID, Text: v.Text, Slot: v.Layers[i].Slot, Candidates: v.Candidates})
+					selected, err := p.planner.Select(ctx, VisualSelectionRequest{SceneID: v.SceneID, SegmentID: v.SegmentID, Text: v.Text, VisualIntent: v.Text, Slot: v.Layers[i].Slot, Candidates: v.Candidates})
 					if err == nil && candidateExists(v.Candidates, selected) {
 						v.Layers[i].AssetID = selected
 					} else if err == nil && selected != "" {
