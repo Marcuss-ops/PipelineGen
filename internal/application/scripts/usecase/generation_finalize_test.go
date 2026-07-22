@@ -10,6 +10,137 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
+	gate := newFakeScriptMemoryGate()
+	svc := adapters.NewService(gate, zap.NewNop())
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer.SetMemoryService(svc)
+
+	item := scriptpkg.GenerationItemV2{ID: "finalize-cache"}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		ID:             "finalize-cache",
+		Title:          "Cached",
+		Language:       "en",
+		Mode:           "text",
+		UseMemory:      true,
+		CacheKey:       "cache-key-123",
+		RenderedPrompt: "prompt",
+		// Keep the fixture above the editorial coverage threshold so
+		// this test observes cache persistence rather than quality-gate
+		// rejection.
+		SourceText: "cached script text",
+	}
+	engineResult := &EngineResult{
+		Output: scriptpkg.ModelScriptOutputV1{
+			Text:      "cached script text",
+			WordCount: 42,
+		},
+		Model:       "test-model",
+		CacheStatus: "generated",
+	}
+	provenance := &scriptpkg.GenerationProvenance{Model: "test-model"}
+
+	result, err := finalizer.Finalize(context.Background(), FinalizeInputs{
+		Item:         item,
+		Plan:         plan,
+		EngineResult: engineResult,
+		Provenance:   provenance,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	// Verify the row was written.
+	res, err := svc.CheckGate(context.Background(), adapters.MemoryGateRequest{
+		ChannelID: "default",
+		Mode:      "text",
+		CacheKey:  "cache-key-123",
+		UseMemory: true,
+	})
+	if err != nil {
+		t.Fatalf("CheckGate failed: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected cache row to be saved")
+	}
+	if res.Output != "cached script text" {
+		t.Errorf("output = %q, want %q", res.Output, "cached script text")
+	}
+	if res.WordCount != 42 {
+		t.Errorf("word_count = %d, want 42", res.WordCount)
+	}
+	if res.Model != "test-model" {
+		t.Errorf("model = %q, want test-model", res.Model)
+	}
+}
+
+func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
+	gate := newFakeScriptMemoryGate()
+	svc := adapters.NewService(gate, zap.NewNop())
+	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
+	finalizer.SetMemoryService(svc)
+
+	// Pre-seed the cache.
+	_, err := svc.SaveAfterGeneration(context.Background(), adapters.SaveGenerationInput{
+		ChannelID: "default",
+		Mode:      "text",
+		Language:  "en",
+		Title:     "Cached",
+		Prompt:    "p",
+		Model:     "m",
+		WordCount: 1,
+		CacheKey:  "cache-key-dup",
+	}, "old")
+	if err != nil {
+		t.Fatalf("seed cache failed: %v", err)
+	}
+
+	item := scriptpkg.GenerationItemV2{ID: "finalize-cache-hit"}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		ID:             "finalize-cache-hit",
+		Title:          "Cached",
+		Language:       "en",
+		Mode:           "text",
+		UseMemory:      true,
+		CacheKey:       "cache-key-dup",
+		RenderedPrompt: "p",
+		SourceText:     "old",
+	}
+	engineResult := &EngineResult{
+		Output: scriptpkg.ModelScriptOutputV1{
+			Text:      "old",
+			WordCount: 99,
+		},
+		Model:       "test-model",
+		CacheStatus: "exact_hit",
+	}
+
+	_, err = finalizer.Finalize(context.Background(), FinalizeInputs{
+		Item:         item,
+		Plan:         plan,
+		EngineResult: engineResult,
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	res, err := svc.CheckGate(context.Background(), adapters.MemoryGateRequest{
+		ChannelID: "default",
+		Mode:      "text",
+		CacheKey:  "cache-key-dup",
+		UseMemory: true,
+	})
+	if err != nil {
+		t.Fatalf("CheckGate failed: %v", err)
+	}
+	if res == nil || res.Output != "old" {
+		t.Errorf("cache row should be unchanged, got %+v", res)
+	}
+}
+
 func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
 	finalizer := NewGenerationFinalizer(zap.NewNop(), adapters.NormalizationConfig{})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-success"}

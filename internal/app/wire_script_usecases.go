@@ -69,6 +69,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -108,6 +109,13 @@ func buildScriptUseCases(
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
 	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	if root.AI.MemorySvc != nil {
+		oneUC.SetMemoryService(root.AI.MemorySvc)
+		log.Info("wireScriptFlow: gemmamemory service wired to GenerateOneUseCase")
+	}
+	if root.DB != nil {
+		oneUC.SetTopicSourceCache(topicsourcecache.NewRepository(root.DB.DB))
+	}
 
 	// ── Voiceover group → folder routing ────────────────────────
 	voRootID := strings.TrimSpace(cfg.Drive.VoiceoverFolder())

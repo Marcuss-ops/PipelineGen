@@ -104,18 +104,22 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
 	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
 
-	// Commit H Phase 2 (June 2026): the gemmamemory gate service +
-	// MemoryCacheAdapter wrapper were removed from the cross-package
-	// surface. The canonical engine no longer consumes the gemmamemory
-	// cross-package type — the second NewEngine argument is nil because
-	// the canonical gemmamemory adapter (with `CheckGate`) is not yet
-	// wired. The runtime `useMemory && !skipMemory && e.memorySvc != nil`
-	// check short-circuits the cache path entirely when nil is supplied,
-	// so script generation falls through to the fresh ollama call.
-	// MemoryRepo (Repository struct, still in gemmamemory.go) is retained
+	// PR-2 GemmaMemory wiring: construct the real SQLite-backed cache
+	// service and inject it into the engine. The engine uses it for
+	// CheckGate on the read path; the finalizer uses the same instance
+	// for SaveAfterGeneration on the write path. MemoryRepo is retained
 	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
 	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
-	engine := usecase.NewEngine(scriptGen, nil, log)
+	//
+	// The application-layer adapters.Service depends on the typed
+	// scriptports.MemoryGate port; the concrete SQLite implementation is
+	// provided by sqlitescripts.MemoryRepository and wrapped here in the
+	// composition root so that no application-layer package imports
+	// database/sql (PR-REFACTOR-P0-IO-BINDER).
+	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.dualPool.Writer)
+	memGate := newScriptMemoryGate(scriptMemRepo)
+	memSvc := adapters.NewService(memGate, log)
+	engine := usecase.NewEngine(scriptGen, usecase.NewMemoryGateChecker(memSvc), log)
 
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// WhisperTranscriber adapter is the SOLE canonical concrete
@@ -154,7 +158,8 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		Reranker:           rerankerClient,
 		ScriptGen:          scriptGen,
 		OllamaTranslator:   ollamaTranslator,
-		MemoryRepo:         adapters.NewRepository(dbs.dualPool.Writer),
+		MemoryRepo:         memGate,
+		MemorySvc:          memSvc,
 		ScriptEngine:       engine,
 		WhisperTranscriber: whisperAdapter,
 		SceneTextGenerator: sceneTextGen,

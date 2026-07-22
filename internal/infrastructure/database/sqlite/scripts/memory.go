@@ -35,27 +35,48 @@ func (r *MemoryRepository) FindExactOutput(ctx context.Context, channelID, mode,
 		&out.OutputText, &out.OutputJSON, &out.Model, &out.JobID,
 		&out.WordCount, &out.CreatedAt)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &out, nil
 }
 
 // SaveGeneration saves a completed generation output and returns the ID.
+// It performs an upsert on (channel_id, mode, input_hash) so the
+// existing id is preserved on updates.
 func (r *MemoryRepository) SaveGeneration(ctx context.Context, input SaveGenerationInput, normalizedInput, inputHash string) (string, error) {
 	id := "gen_" + uuid.New().String()[:12]
-	_, err := r.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO gemma_script_outputs
+	var returnedID string
+	err := r.db.QueryRowContext(ctx,
+		`INSERT INTO gemma_script_outputs
 		 (id, channel_id, mode, language, title, prompt, normalized_input, input_hash,
 		  output_text, output_json, model, job_id, word_count)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(channel_id, mode, input_hash) DO UPDATE SET
+		   language = excluded.language,
+		   title = excluded.title,
+		   prompt = excluded.prompt,
+		   normalized_input = excluded.normalized_input,
+		   output_text = excluded.output_text,
+		   output_json = excluded.output_json,
+		   model = excluded.model,
+		   job_id = excluded.job_id,
+		   word_count = excluded.word_count,
+		   updated_at = datetime('now')
+		 RETURNING id`,
 		id, input.ChannelID, input.Mode, input.Language, input.Title, input.Prompt,
 		normalizedInput, inputHash, input.OutputText, input.OutputJSON,
 		input.Model, input.JobID, input.WordCount,
-	)
+	).Scan(&returnedID)
 	if err != nil {
 		return "", fmt.Errorf("save generation: %w", err)
 	}
-	return id, nil
+	if returnedID == "" {
+		return id, nil
+	}
+	return returnedID, nil
 }
 
 // ─── Level 2: Memory entries ───
@@ -279,6 +300,34 @@ func isAllowedMemoryTable(t string) bool {
 		return true
 	}
 	return false
+}
+
+// SweepExactOutputs removes gemma_script_outputs rows whose updated_at
+// is older than 90 days. It returns the number of rows deleted.
+func (r *MemoryRepository) SweepExactOutputs(ctx context.Context) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx,
+		"DELETE FROM gemma_script_outputs WHERE updated_at < datetime('now', '-90 days')")
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// TouchExactOutput bumps the updated_at timestamp of the exact
+// cache row identified by id.
+func (r *MemoryRepository) TouchExactOutput(ctx context.Context, id string) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, nil
+	}
+	res, err := r.db.ExecContext(ctx,
+		"UPDATE gemma_script_outputs SET updated_at = datetime('now') WHERE id = ?", id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // ─── Level 2: Script chunks ───

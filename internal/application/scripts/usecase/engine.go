@@ -51,6 +51,7 @@ package usecase
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
@@ -123,6 +124,49 @@ type memoryGateResult struct {
 	Output    string
 	WordCount int
 	Model     string
+}
+
+// memoryGateAdapter bridges the canonical gemmamemory adapter
+// (internal/application/scripts/adapters.Service) to the engine's
+// in-package memoryGateChecker interface. This keeps the engine's
+// narrow contract local while still allowing the real SQLite-backed
+// service to be injected from the composition root.
+type memoryGateAdapter struct {
+	svc *adapters.Service
+}
+
+// CheckGate implements memoryGateChecker by forwarding to the canonical
+// gemmamemory adapter and translating the request/response shapes.
+func (a *memoryGateAdapter) CheckGate(ctx context.Context, req memoryGateRequest) (*memoryGateResult, error) {
+	if a == nil || a.svc == nil {
+		return nil, nil
+	}
+	res, err := a.svc.CheckGate(ctx, adapters.MemoryGateRequest{
+		ChannelID:    req.ChannelID,
+		Title:        req.Title,
+		Prompt:       req.Prompt,
+		Language:     req.Language,
+		Mode:         req.Mode,
+		CacheKey:     req.CacheKey,
+		UseMemory:    req.UseMemory,
+		ForceRefresh: req.ForceRefresh,
+	})
+	if err != nil || res == nil {
+		return nil, err
+	}
+	return &memoryGateResult{
+		Hit:       res.Hit,
+		Output:    res.Output,
+		WordCount: res.WordCount,
+		Model:     res.Model,
+	}, nil
+}
+
+// NewMemoryGateChecker wraps the canonical gemmamemory service so it
+// satisfies the engine's narrow memoryGateChecker interface. A nil
+// service returns a checker that always reports a cache miss.
+func NewMemoryGateChecker(svc *adapters.Service) memoryGateChecker {
+	return &memoryGateAdapter{svc: svc}
 }
 
 // Compile-time assertions: concrete types satisfy the narrow interfaces.

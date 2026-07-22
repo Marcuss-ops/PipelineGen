@@ -1,12 +1,11 @@
 // Package gemmamemory provides the gemma-based memory caching layer
-// for script generation. Recreated as a minimal stub after production
-// code was removed from remote.
+// for script generation.
 package adapters
 
 import (
 	"context"
-	"database/sql"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"go.uber.org/zap"
 )
 
@@ -18,54 +17,83 @@ const (
 	ModeBook         = "book"
 )
 
-// ── Repository ─────────────────────────────────────────────────────────
-
-// Repository holds the database handle for gemma memory operations.
-type Repository struct {
-	DB *sql.DB
-}
-
-// NewRepository creates a new Repository with the given DB handle.
-func NewRepository(db *sql.DB) *Repository {
-	return &Repository{DB: db}
-}
-
-// SweepAll is a stub that always returns 0. Return type upgraded from
-// int → int64 so callers compile without ad-hoc casts. Stub semantics
-// unchanged.
-func (r *Repository) SweepAll(ctx context.Context) (int64, error) {
-	return 0, nil
-}
-
 // ── Service ────────────────────────────────────────────────────────────
 
 // Service is the gemma memory caching service.
 type Service struct {
-	repo *Repository
+	repo scriptports.MemoryGate
 	log  *zap.Logger
 }
 
 // NewService creates a new Service. If log is nil, a no-op logger is used.
-func NewService(repo *Repository, log *zap.Logger) *Service {
+func NewService(repo scriptports.MemoryGate, log *zap.Logger) *Service {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &Service{repo: repo, log: log}
 }
 
-// CheckGate is a stub that always returns nil (cache miss).
+// CheckGate queries the gemma_script_outputs table for an exact cache match.
 func (s *Service) CheckGate(ctx context.Context, req MemoryGateRequest) (*GateResult, error) {
-	return nil, nil
+	if !req.UseMemory || req.ForceRefresh {
+		return nil, nil
+	}
+	if s.repo == nil {
+		return nil, nil
+	}
+	hashKey := req.CacheKey
+	if hashKey == "" {
+		hashKey = req.Title
+	}
+	if hashKey == "" {
+		return nil, nil
+	}
+
+	out, err := s.repo.FindExactOutput(ctx, req.ChannelID, req.Mode, hashKey)
+	if err != nil {
+		s.log.Error("gemmamemory: CheckGate query failed", zap.Error(err))
+		return nil, err
+	}
+	if out == nil {
+		return nil, nil
+	}
+
+	return &GateResult{
+		Hit:       true,
+		Output:    out.OutputText,
+		WordCount: out.WordCount,
+		Model:     out.Model,
+	}, nil
 }
 
-// SaveAfterGeneration is a stub that always returns 0.
+// SaveAfterGeneration inserts or updates the gemma_script_outputs table.
+// The output parameter is the generated text written to output_text.
 func (s *Service) SaveAfterGeneration(ctx context.Context, in SaveGenerationInput, output string) (int, error) {
-	return 0, nil
+	if s.repo == nil {
+		return 0, nil
+	}
+	if output == "" {
+		return 0, nil
+	}
+	affected, err := s.repo.SaveGeneration(ctx, in, output)
+	if err != nil {
+		s.log.Error("gemmamemory: SaveAfterGeneration failed", zap.Error(err))
+		return 0, err
+	}
+	return int(affected), nil
 }
 
-// EvictExactOutputs is a stub that always returns 0.
+// EvictExactOutputs removes cached outputs whose title is in titles.
 func (s *Service) EvictExactOutputs(ctx context.Context, titles []string) (int, error) {
-	return 0, nil
+	if s.repo == nil || len(titles) == 0 {
+		return 0, nil
+	}
+	affected, err := s.repo.DeleteExactOutputsByTitles(ctx, titles)
+	if err != nil {
+		s.log.Error("gemmamemory: EvictExactOutputs failed", zap.Error(err))
+		return 0, err
+	}
+	return int(affected), nil
 }
 
 // ── Request/Response types ─────────────────────────────────────────────
@@ -97,21 +125,10 @@ type GateResult struct {
 }
 
 // SaveGenerationInput carries the inputs to save a generation result.
-type SaveGenerationInput struct {
-	ChannelID  string `json:"channel_id"`
-	Mode       string `json:"mode"`
-	Language   string `json:"language"`
-	Title      string `json:"title"`
-	Prompt     string `json:"prompt"`
-	Model      string `json:"model"`
-	OutputText string `json:"output_text"`
-	WordCount  int    `json:"word_count"`
-}
+type SaveGenerationInput = scriptports.SaveGenerationInput
 
 // GenerationOutput carries a previous generation output.
-type GenerationOutput struct {
-	OutputText string `json:"output_text"`
-}
+type GenerationOutput = scriptports.GenerationOutput
 
 // ── Free functions ─────────────────────────────────────────────────────
 
