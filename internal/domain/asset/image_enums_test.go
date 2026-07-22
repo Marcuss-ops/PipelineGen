@@ -59,6 +59,8 @@ func TestImageProvider_StableValues(t *testing.T) {
 		{ProviderSearXNG, "searxng"},
 		{ProviderDrive, "drive"},
 		{ProviderGoogleSlides, "google-slides"},
+		{ProviderNVIDIA, "nvidia"},
+		{ProviderFlux, "flux"},
 		{ProviderUpload, "upload"},
 		{ProviderUnknown, "unknown"},
 	}
@@ -70,7 +72,7 @@ func TestImageProvider_StableValues(t *testing.T) {
 			t.Errorf("%q should be valid", tc.provider)
 		}
 	}
-	for _, invalid := range []ImageProvider{"", "flux", "nvidia", "midjourney", "WIKIPEDIA", "unknown "} {
+	for _, invalid := range []ImageProvider{"", "midjourney", "WIKIPEDIA", "unknown "} {
 		if invalid.IsValid() {
 			t.Errorf("%q should be invalid", invalid)
 		}
@@ -80,6 +82,11 @@ func TestImageProvider_StableValues(t *testing.T) {
 func TestImageProvider_Territories(t *testing.T) {
 	if !ProviderGoogleSlides.IsGenerated() || ProviderGoogleSlides.IsRetrieved() {
 		t.Fatal("google-slides must be generated-only")
+	}
+	for _, provider := range []ImageProvider{ProviderNVIDIA, ProviderFlux} {
+		if !provider.IsGenerated() || provider.IsRetrieved() {
+			t.Errorf("%q must be generated-only", provider)
+		}
 	}
 	for _, provider := range []ImageProvider{ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive} {
 		if !provider.IsRetrieved() || provider.IsGenerated() {
@@ -99,7 +106,7 @@ func TestImageProvider_JSONRoundTrip(t *testing.T) {
 	}
 	providers := []ImageProvider{
 		ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive,
-		ProviderGoogleSlides, ProviderUpload, ProviderUnknown,
+		ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload, ProviderUnknown,
 	}
 	for _, provider := range providers {
 		encoded, err := json.Marshal(payload{Provider: provider})

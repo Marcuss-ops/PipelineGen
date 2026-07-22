@@ -133,17 +133,10 @@ func extractSourceFromMeta(metaJSON string) string {
 	if metaJSON == "" || metaJSON == "{}" {
 		return "web"
 	}
-	meta := strings.ToLower(metaJSON)
-	switch {
-	case strings.Contains(meta, "\"wikipedia\""):
-		return "wikipedia"
-	case strings.Contains(meta, "\"searxng\""):
-		return "searxng"
-	case strings.Contains(meta, "\"duckduckgo\""):
-		return "duckduckgo"
-	default:
-		return "web"
+	if d := asset.DefaultProviderRegistry().Match(strings.ToLower(metaJSON)); d != nil {
+		return string(d.ID)
 	}
+	return "web"
 }
 
 // ── Entity extraction ───────────────────────────────────────────────────────
