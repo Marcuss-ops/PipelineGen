@@ -1,12 +1,12 @@
 // Package scripts — AssetSearchPort is the canonical semantic asset
 // discovery surface that subsumes the legacy ClipSearchPort (curate
-// path) and StockSearchPort (stock_association postprocessor) per
+// path) and StockSearchPort (visual_planning postprocessor) per
 // PR-POSTPROCESSOR-UNIFICATION-PHASE-3 (July 2026, deadline 2026-07-22).
 //
 // godlike/06 SSOT (one canonical owner per fact): AssetSearchPort is
 // the SOLE owner of the unified "search assets" interface. A single
 // SearchAssets call subsumes the legacy SearchClips (curate path
-// with workspace isolation) and SearchStock (stock_association
+// with workspace isolation) and SearchStock (visual_planning
 // postprocessor with hard-coded source=stock + lifecycle_state=ACTIVE
 // filter) operations.
 //
@@ -47,7 +47,7 @@
 //     lifecycle_state=ACTIVE must-clause (stock default; clip path
 //     passes false because CompileQdrantFilter already includes it).
 //
-// nil-safe in MediaCurator + StockAssociationProcessor — Qdrant-disabled
+// nil-safe in MediaCurator + VisualPlanningProcessor — Qdrant-disabled
 // deployments keep working with HintClipIDs-only / nil-port as before;
 // the port call is skipped when SetClipSearchPort / SetStockSearchPort
 // has never been invoked.
@@ -57,7 +57,7 @@ import "context"
 
 // AssetSearchPort is the canonical semantic asset discovery surface.
 // A single SearchAssets call subsumes the legacy SearchClips (curate
-// path with workspace isolation) and SearchStock (stock_association
+// path with workspace isolation) and SearchStock (visual_planning
 // postprocessor with hard-coded source=stock + lifecycle_state=ACTIVE
 // filter) operations.
 type AssetSearchPort interface {

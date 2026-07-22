@@ -93,7 +93,7 @@ type BindStockResult struct {
 }
 
 // SceneAssetBinder is the canonical per-scene asset binder shared
-// by ClipBindingsProcessor + StockAssociationProcessor.
+// by ClipBindingsProcessor and the legacy stock binding helper.
 //
 // The struct holds only the logger. All binding inputs are passed
 // per-call, so the binder remains a pure function of scene_id,
@@ -195,7 +195,7 @@ func (b *SceneAssetBinder) BindStock(reqs []StockBindingRequest) BindStockResult
 	}
 
 	if b.log != nil {
-		b.log.Info("stock_association: processed scenes",
+		b.log.Info("stock binding: processed scenes",
 			zap.Int("scenes", len(reqs)),
 			zap.Int("stocks_bound", len(bindings)))
 	}

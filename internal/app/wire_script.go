@@ -106,7 +106,7 @@ func remotionBaseURL() string {
 // FASE 2.A PR3 (June 2026): after construction of ppReg the
 // orchestrator delegates all canonical postprocessor registrations
 // (persistence / document / images / voiceover / entities / metadata /
-// clip_bindings / stock_association) to
+// clip_bindings / visual_planning) to
 // registerScriptPostProcessors in wire_script_postprocess.go. The
 // orchestrator owns ppReg construction + ppReg.Freeze() +
 // post-freeze required-processors validation; the registration

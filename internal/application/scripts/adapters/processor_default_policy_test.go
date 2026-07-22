@@ -50,8 +50,7 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorClipBindings,
-		adapterspkg.ProcessorTranslation,
-		adapterspkg.ProcessorStockAssociation:
+		adapterspkg.ProcessorTranslation:
 		return adapterspkg.ProcessorBestEffort
 	}
 	// A processor name not in our classifier map is an audit-pin
@@ -66,11 +65,9 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 // the canonical ProcessorName set adds a name without a
 // corresponding policy entry in defaultPolicyByName (or vice-versa).
 //
-// Pre-PR-2 the canonical closed set was 10 names but defaultPolicyByName
-// only had 8 entries — ProcessorTranslation + ProcessorClipBindings +
-// ProcessorStockAssociation were missing. PR-2 closes the gap for
-// ProcessorTranslation; the remaining 2 are out-of-PR-2-scope and
-// surfaced via this test as audit-diagnostics for future PRs.
+// This test ensures every name in CanonicalProcessorNames() has a
+// corresponding policy entry in defaultPolicyByName and that the policy
+// matches the documented contract.
 func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 	canonical := adapterspkg.CanonicalProcessorNames()
 
@@ -112,16 +109,5 @@ func TestDefaultPolicyFor_UnknownNameReturnsEmpty(t *testing.T) {
 	if got != "" {
 		t.Errorf("DefaultPolicyFor(%q) = %q, want empty string (fail-open for unknown names)",
 			unknownName, got)
-	}
-}
-
-// ProcessorStockAssociation is deprecated and unregistered, but it
-// still carries a default policy so legacy plans that list it do not
-// fail preflight. Its policy must remain BestEffort.
-func TestDefaultPolicyFor_StockAssociationIsBestEffort(t *testing.T) {
-	got := adapterspkg.DefaultPolicyFor(adapterspkg.ProcessorStockAssociation)
-	want := adapterspkg.ProcessorBestEffort
-	if got != want {
-		t.Errorf("DefaultPolicyFor(ProcessorStockAssociation) = %q, want %q", got, want)
 	}
 }

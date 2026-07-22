@@ -101,11 +101,6 @@ var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
 	ProcessorTranslation:    ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: translation enrichment, not a hard gate; defaults to BestEffort because the canonical composition root at internal/app/wire_script_postprocess.go::registerScriptPostProcessors silently skips registration when OllamaTranslator is nil
 	ProcessorClipBindings:   ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: clip-binding enrichment, not a hard gate; same silent-skip-on-missing-wiring pattern as Translation
 	ProcessorVisualPlanning: ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: visual-planning lookup, not a hard gate; nil MediaMemory resolver fails-open per the canonical composition root
-	// ProcessorStockAssociation is deprecated. It is kept as a
-	// best-effort placeholder so legacy plans that still list it do
-	// not fail preflight while the MediaPlan visual_planning path
-	// completes cutover.
-	ProcessorStockAssociation: ProcessorBestEffort,
 }
 
 // DefaultPolicyFor returns the canonical default policy for a

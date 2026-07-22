@@ -3,7 +3,7 @@ package ports
 import "context"
 
 // StockSearchPort is the legacy narrow port for semantic stock
-// footage discovery, consumed by the stock_association postprocessor.
+// footage discovery, consumed by the visual_planning postprocessor.
 //
 // PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 3 (July 2026):
 // StockSearchPort EMBEDS the canonical AssetSearchPort AND

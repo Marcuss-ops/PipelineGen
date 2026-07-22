@@ -420,7 +420,7 @@ type VoiceoverBinding struct {
 // ── Stock binding ──────────────────────────────────────────────────
 
 // StockBinding binds a scene to a semantically associated stock
-// footage asset. Populated by the stock_association postprocessor
+// footage asset. Populated by the legacy stock binding surface
 // which searches Qdrant per-scene and falls back to the clip
 // drive link when no stock match is found.
 type StockBinding struct {

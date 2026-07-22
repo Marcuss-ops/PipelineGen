@@ -125,19 +125,10 @@ func insertProcessorAfterClipBindings(processors []adapters.ProcessorName, proc 
 // source.type: clips is the SOLE entry point for clip-based generation.
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
 	processors := buildPostprocessorList(item.Output)
-	switch {
-	case mediaPlanRequested(item):
+	if mediaPlanRequested(item) {
 		// Active media plan: route through the new visual_planning processor
 		// right after clip_bindings so it sees the final clip-bound scenes.
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
-	case item.MediaPlan.Mode == "":
-		// Temporary backward compatibility: legacy requests without an explicit
-		// media plan mode keep the retired stock_association slot. The
-		// processor is unregistered and therefore skipped at runtime, but the
-		// slot remains in the plan until the cutover is complete.
-		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorStockAssociation)
-	case item.MediaPlan.Mode == media.MediaPlanModeDisabled:
-		// Explicitly disabled: neither visual_planning nor stock_association run.
 	}
 	if item.Source.Type != scriptpkg.SourceClips {
 		return processors
