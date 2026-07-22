@@ -11,7 +11,11 @@
 // there locks the port-implementation contract.
 package searchtext
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
 
 // TextTrackEntry carries a single localized text resource for
 // inclusion in the search text. Strategies iterate over TextTracks
@@ -109,4 +113,18 @@ type SearchTextBuilder interface {
 	// Returns ("", error) only when the input is fundamentally invalid
 	// (nil input, empty AssetID).
 	Build(ctx context.Context, input SearchTextInput) (string, error)
+}
+
+// SearchDocumentBuilder assembles the canonical search text directly
+// from an asset's structured fields. It is source-aware but favours
+// deterministic, metadata-driven composition over AI-generated text,
+// preventing contamination between ProviderTags, VLMTags, and the
+// aggregated Tags list.
+//
+// The returned string is what gets stored in media_assets.search_text.
+type SearchDocumentBuilder interface {
+	// Build assembles the search text from the asset fields.
+	// Returns (text, nil) even when most fields are empty; an empty
+	// asset (no AssetID) is the only error condition.
+	Build(ctx context.Context, a asset.Asset) (string, error)
 }

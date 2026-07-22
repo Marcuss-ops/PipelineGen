@@ -16,38 +16,13 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Enrich esegue il tagger e aggiorna il DB con i metadati semantici.
-// Restituisce errore solo se il tagger stesso fallisce; aggiornamenti parziali
-// sono tollerati (il clip è già salvato, il metadata è un bonus).
+// Enrich arricchisce un clip Artlist con metadati semantici.
+// Il tagger AI è facoltativo: quando è assente o disabilitato, l'enricher
+// costruisce comunque il search_text deterministicamente tramite il
+// SearchDocumentBuilder condiviso.
 func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term string) error {
-	if e.metaWriter == nil {
-		return fmt.Errorf("metadata writer not configured")
-	}
-
-	// Costruiamo un prompt ricco dal titolo + term di ricerca
-	prompt := buildArtlistPrompt(clip.Name, term, clip.Tags)
-
-	// Stile di default per stock footage
-	style := "cinematic"
-
-	e.log.Debug("enriching artlist clip semantically",
-		zap.String("clip_id", clip.ID),
-		zap.String("prompt_preview", textutil.Truncate(prompt, 80)),
-	)
-
-	// Usa MetadataWriter.GeneratePayload() invece di chiamare Tagger() direttamente
-	// Questo garantisce che il metadata passi dal percorso centralizzato con fallback e override.
-	payload, _, err := e.metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
-		AssetID:   clip.ID,
-		AssetType: "clip",
-		MediaType: "video",
-		Source:    "artlist",
-		Generator: "artlist_scraper",
-		Style:     style,
-		Prompt:    prompt,
-	})
-	if err != nil {
-		return fmt.Errorf("metaWriter.GeneratePayload: %w", err)
+	if e.repo == nil {
+		return fmt.Errorf("asset repository not configured")
 	}
 
 	// Ricarichiamo il clip dal DB per non sovrascrivere campi aggiornati nel frattempo
@@ -57,48 +32,90 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term s
 		existing = clip
 	}
 
-	// Patch dei campi semantici
-	if payload.SearchText != "" {
-		existing.SearchText = payload.SearchText
+	// Tagger AI: facoltativo. Se presente, arricchisce i metadati ma NON
+	// contamina più i tags canonici né genera direttamente il search_text.
+	if e.metaWriter != nil {
+		// Costruiamo un prompt ricco dal titolo + term di ricerca
+		prompt := buildArtlistPrompt(existing.Name, term, existing.Tags)
+
+		// Stile di default per stock footage
+		style := "cinematic"
+
+		e.log.Debug("enriching artlist clip semantically",
+			zap.String("clip_id", existing.ID),
+			zap.String("prompt_preview", textutil.Truncate(prompt, 80)),
+		)
+
+		// Usa MetadataWriter.GeneratePayload() invece di chiamare Tagger() direttamente
+		// Questo garantisce che il metadata passi dal percorso centralizzato con fallback e override.
+		payload, _, err := e.metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
+			AssetID:   existing.ID,
+			AssetType: "clip",
+			MediaType: "video",
+			Source:    "artlist",
+			Generator: "artlist_scraper",
+			Style:     style,
+			Prompt:    prompt,
+		})
+		if err != nil {
+			return fmt.Errorf("metaWriter.GeneratePayload: %w", err)
+		}
+
+		// Concept tags vanno salvati in Metadata, NON in EmbeddingJSON.
+		// EmbeddingJSON deve contenere solo vettori float numerici per Qdrant.
+		// Salvare tag testuali qui romperebbe l'indicizzazione vettoriale.
+		if existing.Metadata == nil {
+			existing.Metadata = make(map[string]any)
+		}
+		if len(payload.ConceptTags) > 0 {
+			existing.Metadata["concept_tags"] = payload.ConceptTags
+		}
+		if len(payload.Mood) > 0 {
+			existing.Metadata["mood"] = payload.Mood
+		}
+		if len(payload.Categories) > 0 {
+			existing.Metadata["categories"] = payload.Categories
+		}
+		if len(payload.VisualObjects) > 0 {
+			existing.Metadata["visual_objects"] = payload.VisualObjects
+		}
+		if len(payload.EmotionalTone) > 0 {
+			existing.Metadata["emotional_tone"] = payload.EmotionalTone
+		}
+		if payload.SemanticDescription != "" {
+			existing.Metadata["semantic_description"] = payload.SemanticDescription
+		}
+		existing.Metadata["semantic_enriched"] = true
+		if payload.RetrievalScore != nil {
+			existing.Metadata["semantic_confidence"] = *payload.RetrievalScore
+		} else {
+			existing.Metadata["semantic_confidence"] = 0.0
+		}
+
+		// Preserva SearchTerms (i termini di ricerca originali) e aggiungi subjects
+		if payload.Subjects != nil {
+			existing.SearchTerms = deduplicateStrings(append(existing.SearchTerms, payload.Subjects...))
+		}
 	}
 
-	// Aggiungi concept tags + subjects ai tags esistenti (deduplicati)
-	existing.Tags = deduplicateStrings(append(existing.Tags, payload.Tags...))
+	// Ricostruisci i tags solo dalle fonti certificate (ProviderTags,
+	// VLMTags, ManualTags, TranscriptTags). Non aggiungere più i tags
+	// sintetici del tagger AI ai tags canonici.
+	existing.RebuildTags()
 
-	// Preserva SearchTerms (i termini di ricerca originali) e aggiungi subjects
-	if payload.Subjects != nil {
-		existing.SearchTerms = deduplicateStrings(append(existing.SearchTerms, payload.Subjects...))
-	}
-
-	// Concept tags vanno salvati in Metadata, NON in EmbeddingJSON.
-	// EmbeddingJSON deve contenere solo vettori float numerici per Qdrant.
-	// Salvare tag testuali qui romperebbe l'indicizzazione vettoriale.
+	// Segna l'asset come arricchito indipendentemente dal tagger AI.
 	if existing.Metadata == nil {
 		existing.Metadata = make(map[string]any)
 	}
-	if len(payload.ConceptTags) > 0 {
-		existing.Metadata["concept_tags"] = payload.ConceptTags
-	}
-	if len(payload.Mood) > 0 {
-		existing.Metadata["mood"] = payload.Mood
-	}
-	if len(payload.Categories) > 0 {
-		existing.Metadata["categories"] = payload.Categories
-	}
-	if len(payload.VisualObjects) > 0 {
-		existing.Metadata["visual_objects"] = payload.VisualObjects
-	}
-	if len(payload.EmotionalTone) > 0 {
-		existing.Metadata["emotional_tone"] = payload.EmotionalTone
-	}
-	if payload.SemanticDescription != "" {
-		existing.Metadata["semantic_description"] = payload.SemanticDescription
-	}
 	existing.Metadata["semantic_enriched"] = true
-	if payload.RetrievalScore != nil {
-		existing.Metadata["semantic_confidence"] = *payload.RetrievalScore
-	} else {
-		existing.Metadata["semantic_confidence"] = 0.0
+
+	// Costruisci il search_text deterministicamente dal documento di ricerca.
+	if e.searchDocBuilder != nil {
+		searchText, buildErr := e.searchDocBuilder.Build(ctx, *existing)
+		if buildErr != nil {
+			return fmt.Errorf("searchDocBuilder.Build: %w", buildErr)
+		}
+		existing.SearchText = searchText
 	}
 
 	// Aggiorna il DB
