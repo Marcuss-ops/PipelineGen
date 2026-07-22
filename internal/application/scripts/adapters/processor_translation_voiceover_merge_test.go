@@ -340,7 +340,7 @@ func TestTranslationMergeWriteback_PartialTranslationFailurePreservesEnglish(t *
 	mergePostProcessResult(&PipelineResult{}, txResult, &currentInput)
 
 	// Act: VoiceoverProcessor receives the merged input.
-	// Because merge was a no-op, the text must still be English.
+	// Because translation failed, the voiceover must be skipped.
 	voResult, err := voProc.Process(context.Background(), plan, currentInput)
 	if err != nil {
 		t.Fatalf("VoiceoverProcessor.Process() returned error: %v", err)
@@ -350,24 +350,18 @@ func TestTranslationMergeWriteback_PartialTranslationFailurePreservesEnglish(t *
 	captured := append([]string(nil), voStub.capturedTexts...)
 	voStub.mu.Unlock()
 
-	if len(captured) != 1 {
-		t.Fatalf("VoiceoverService received %d calls, want 1", len(captured))
-	}
-	if strings.Contains(captured[0], "[it]") {
-		t.Errorf(
-			"VoiceoverService received Italian text %q after translation FAILURE — "+
-				"merge must not overwrite with empty TranslatedText",
-			captured[0],
-		)
-	}
-	if !strings.Contains(captured[0], "Welcome to the arena.") {
-		t.Errorf(
-			"VoiceoverService did not receive original English text; got %q",
-			captured[0],
-		)
+	// New behavior: voiceover must be skipped when requested translation is not completed
+	if len(captured) != 0 {
+		t.Fatalf("VoiceoverService received %d calls, want 0 (voiceover should be skipped)", len(captured))
 	}
 	if len(voResult.Voiceovers) != 1 {
 		t.Fatalf("VoiceoverProcessor.Voiceovers = %d, want 1", len(voResult.Voiceovers))
+	}
+	if voResult.Voiceovers[0].Status != "skipped" {
+		t.Errorf("Expected status to be 'skipped', got %q", voResult.Voiceovers[0].Status)
+	}
+	if len(voResult.Warnings) == 0 {
+		t.Error("Expected warnings to be present on skip")
 	}
 }
 
