@@ -53,11 +53,18 @@ type SceneRequest struct {
 // ResolutionPolicy controls how the brain resolves candidates for a
 // request. Keeping the policy explicit makes the decision reproducible
 // and cacheable.
+//
+// SearchPolicy carries the canonical search knobs that are forwarded
+// to the underlying SearchFanOut. The legacy PreferApprovedBindings /
+// AllowExternalSearch / MaxCandidatesPerSlot fields are still
+// respected when SearchPolicy is zero so existing callers keep working;
+// new code should populate SearchPolicy directly.
 type ResolutionPolicy struct {
 	PreferApprovedBindings bool
 	AllowExternalSearch    bool
 	MaxCandidatesPerSlot   int
 	AvoidRecentAssets      bool
+	SearchPolicy           media.ResolutionSearchPolicy
 }
 
 // BrainResult is the canonical output of Brain.Resolve.

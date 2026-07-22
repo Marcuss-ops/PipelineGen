@@ -2,7 +2,11 @@
 // See types.go for the data shapes consumed and produced by these ports.
 package brain
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+)
 
 // Brain is the canonical single entry point of the brain capability.
 // It receives a BrainRequest and returns a deterministic BrainResult
@@ -34,11 +38,12 @@ type CandidateSearcher interface {
 // SearchQuery is the narrow input shape consumed by CandidateSearcher.
 // It intentionally avoids provider-specific coordinates.
 type SearchQuery struct {
-	Text       string
-	Language   string
-	MediaTypes []string
-	Sources    []string
-	Limit      int
+	Text         string
+	Language     string
+	MediaTypes   []string
+	Sources      []string
+	Limit        int
+	SearchPolicy media.ResolutionSearchPolicy
 }
 
 // SearchResult is the narrow output shape produced by CandidateSearcher.

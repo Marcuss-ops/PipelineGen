@@ -26,6 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // SearchFanOutAdapter implements mediamemory.SearchFanOut on top
@@ -75,14 +76,38 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 		)
 	}
 
+	policy := q.SearchPolicy
+	mode := search.SearchMode(media.SearchModeToSearch(policy.Mode))
+	if mode == "" {
+		mode = search.SearchModeANN
+	}
+	if policy.Language == "" {
+		policy.Language = q.Language
+	}
+	if len(policy.MediaTypes) == 0 {
+		policy.MediaTypes = append([]string(nil), q.MediaTypes...)
+	}
+	if len(policy.AllowedProviders) == 0 {
+		policy.AllowedProviders = append([]string(nil), q.Sources...)
+	}
+	if policy.MaxCandidates <= 0 && q.Limit > 0 {
+		policy.MaxCandidates = q.Limit
+	}
+	if policy.MaxCandidates <= 0 {
+		policy.MaxCandidates = search.DefaultLimit
+	}
+
 	canonicalQuery := search.Query{
-		Text:       q.Text,
-		Limit:      clampLimit(q.Limit),
-		Mode:       search.SearchModeANN, // Phase 1.x: ANN is the default semantic mode
-		MediaTypes: append([]string(nil), q.MediaTypes...),
-		Sources:    append([]string(nil), q.Sources...),
+		Text:           q.Text,
+		Limit:          clampLimit(policy.MaxCandidates),
+		Mode:           mode,
+		MediaTypes:     append([]string(nil), policy.MediaTypes...),
+		Sources:        append([]string(nil), policy.AllowedProviders...),
+		AllowExternal:  policy.AllowExternal,
+		CacheRead:      policy.CacheRead,
+		PreferApproved: policy.PreferApproved,
 		Filters: search.Filters{
-			Language: q.Language,
+			Language: policy.Language,
 		},
 		// Phase 1.x: Actor is zero-value (no workspace scoping at
 		// the SearchFanOut boundary; production wiring adds the

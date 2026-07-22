@@ -118,14 +118,17 @@ func (a Actor) IsZero() bool {
 // backend. Handlers MUST set it from auth middleware; backends MUST
 // forward it instead of substituting default values.
 type Query struct {
-	Text       string   // trimmed before fanout
-	Hash       string   // PR-2 (June 2026): when non-empty, hash-match backends answer; text-match backends ignore
-	Sources    []string // empty = all from registry; aliases resolved via ResolveCanonicals
-	MediaTypes []string // empty = all ("video","image","audio","music")
-	Filters    Filters
-	Limit      int        // 0 → aggregator defaults to DefaultLimit, capped MaxLimit
-	Cursor     string     // opaque base64-JSON; "" = first page
-	Mode       SearchMode // applied to the semantic backend only
-	Actor      Actor      // PR-1: tenant identity forwarded to every backend
-	MinScore   float64    // 0 → use backend default (semanticMinScore 0.50); >0 overrides the score floor
+	Text           string   // trimmed before fanout
+	Hash           string   // PR-2 (June 2026): when non-empty, hash-match backends answer; text-match backends ignore
+	Sources        []string // empty = all from registry; aliases resolved via ResolveCanonicals
+	MediaTypes     []string // empty = all ("video","image","audio","music")
+	Filters        Filters
+	Limit          int        // 0 → aggregator defaults to DefaultLimit, capped MaxLimit
+	Cursor         string     // opaque base64-JSON; "" = first page
+	Mode           SearchMode // applied to the semantic backend only
+	Actor          Actor      // PR-1: tenant identity forwarded to every backend
+	MinScore       float64    // 0 → use backend default (semanticMinScore 0.50); >0 overrides the score floor
+	AllowExternal  bool       // advisory hint: when false, external provider backends should be skipped
+	CacheRead      bool       // advisory hint for backends that serve cached content
+	PreferApproved bool       // advisory hint for backends that track approval state
 }

@@ -23,6 +23,8 @@ package mediamemory
 import (
 	"context"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Logger port ────────────────────────────────────────────────────
@@ -277,11 +279,12 @@ type SearchFanOut interface {
 // SearchFanOutQuery is the narrow input shape consumed by MediaMemory.
 // The production adapter translates it into search.Query.
 type SearchFanOutQuery struct {
-	Text       string
-	Language   string
-	MediaTypes []string
-	Sources    []string
-	Limit      int
+	Text         string
+	Language     string
+	MediaTypes   []string
+	Sources      []string
+	Limit        int
+	SearchPolicy media.ResolutionSearchPolicy
 }
 
 // SearchFanOutResult is the narrow output shape consumed by
