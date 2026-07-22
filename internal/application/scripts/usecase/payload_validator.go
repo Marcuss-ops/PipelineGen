@@ -105,8 +105,8 @@ func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref str
 			Message:   "target_words must be > 0",
 			Stage:     "request.validation",
 			Retryable: false,
-			Extra: map[string]any{
-				"actual_target_words": item.ScriptParams.TargetWords,
+			Extra: scriptpkg.ValidationExtras{
+				ActualTargetWords: item.ScriptParams.TargetWords,
 			},
 		}
 	}
@@ -133,9 +133,9 @@ func (v *PayloadValidator) validateSegmentsCap(item scriptpkg.GenerationItemV2) 
 			Code:    "TOO_MANY_SEGMENTS",
 			Message: fmt.Sprintf("script_params.segments has too many entries (max %d)", v.maxSegmentsCap),
 			Stage:   "request.validation",
-			Extra: map[string]any{
-				"actual_segments":  len(sp.Segments),
-				"max_segments_cap": v.maxSegmentsCap,
+			Extra: scriptpkg.ValidationExtras{
+				ActualSegments: len(sp.Segments),
+				MaxSegmentsCap: v.maxSegmentsCap,
 			},
 		}
 	}
@@ -176,21 +176,21 @@ func (v *PayloadValidator) validateSourceText(item scriptpkg.GenerationItemV2, r
 	// raw source text is intentionally omitted from the error payload
 	// and from any log fields to avoid leaking caller data.
 	if exceeded := v.exceededSourceTextLimits(m); len(exceeded) > 0 {
-		extra := map[string]any{
-			"actual_chars":  m.chars,
-			"actual_bytes":  m.bytes,
-			"actual_tokens": m.tokens,
+		extra := scriptpkg.ValidationExtras{
+			ActualChars:  m.chars,
+			ActualBytes:  m.bytes,
+			ActualTokens: m.tokens,
 		}
 		if v.maxSourceTextChars > 0 {
-			extra["max_chars"] = v.maxSourceTextChars
+			extra.MaxChars = v.maxSourceTextChars
 		}
 		if v.maxSourceTextBytes > 0 {
-			extra["max_bytes"] = v.maxSourceTextBytes
+			extra.MaxBytes = v.maxSourceTextBytes
 		}
 		if v.maxSourceTextTokens > 0 {
-			extra["max_tokens"] = v.maxSourceTextTokens
+			extra.MaxTokens = v.maxSourceTextTokens
 		}
-		extra["limits"] = exceeded
+		extra.Limits = exceeded
 		return &scriptpkg.PayloadValidationError{
 			Code:      "SOURCE_TEXT_TOO_LARGE",
 			Message:   "source_text exceeds configured limits (chars/bytes/tokens)",
@@ -208,11 +208,11 @@ func (v *PayloadValidator) validateSourceText(item scriptpkg.GenerationItemV2, r
 			Message:   "source_text word count exceeds configured ratio to target_words",
 			Stage:     "request.validation",
 			Retryable: false,
-			Extra: map[string]any{
-				"source_words": words,
-				"target_words": targetWords,
-				"max_ratio":    v.maxSourceTextToTargetWordsRatio,
-				"actual_ratio": float64(words) / float64(targetWords),
+			Extra: scriptpkg.ValidationExtras{
+				SourceWords: words,
+				TargetWords: targetWords,
+				MaxRatio:    v.maxSourceTextToTargetWordsRatio,
+				ActualRatio: float64(words) / float64(targetWords),
 			},
 		}
 	}
