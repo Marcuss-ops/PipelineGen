@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // mediaMemoryRankerAdapter adapts the rich MediaMemory ranker to the
@@ -162,23 +163,11 @@ func toFilteredCandidate(c brain.Candidate) mediamemory.FilteredCandidate {
 // keeping the MediaMemory ranker as the authoritative scorer.
 func slotFitnessBonus(c mediamemory.MediaCandidate, slots []brain.SlotKind) float64 {
 	for _, slot := range slots {
-		if mediaTypeMatchesSlot(c.MediaType, slot) {
+		if media.IsMediaTypeAllowed(slot, c.MediaType) {
 			return 0.10
 		}
 	}
 	return 0.0
-}
-
-func mediaTypeMatchesSlot(mediaType string, slot brain.SlotKind) bool {
-	switch slot {
-	case brain.SlotPrimaryVideo:
-		return mediaType == "video"
-	case brain.SlotSecondaryImage, brain.SlotEvidenceOverlay,
-		brain.SlotMap, brain.SlotPortrait, brain.SlotDocument,
-		brain.SlotBackground:
-		return mediaType == "image"
-	}
-	return false
 }
 
 func toRankingInput(fc mediamemory.FilteredCandidate, sceneDurationMs int64) mediamemory.RankingInput {

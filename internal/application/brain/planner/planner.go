@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // SceneVisualPlanner is the canonical port that projects ranked
@@ -24,64 +25,120 @@ type SceneVisualPlanner interface {
 	Version() string
 }
 
-// defaultPlanner is the canonical pure implementation.
-type defaultPlanner struct{}
+// SlotCandidateSampler is the canonical pure implementation of the
+// scene visual planner. It partitions candidates by slot, enforces
+// mandatory gates per slot, ranks candidates per slot, applies
+// diversity (no duplicate asset across slots unless unavoidable), and
+// selects one winner per requested slot.
+//
+// godlike/06 SSOT: the sampler never invents candidates; slots that
+// cannot be filled are left empty and the plan status becomes
+// "partial".
+type SlotCandidateSampler struct{}
 
 // NewDefaultPlanner returns the canonical scene visual planner.
 func NewDefaultPlanner() SceneVisualPlanner {
-	return &defaultPlanner{}
+	return NewSlotCandidateSampler()
 }
 
-// Compile-time assertion: defaultPlanner satisfies SceneVisualPlanner.
-var _ SceneVisualPlanner = (*defaultPlanner)(nil)
+// NewSlotCandidateSampler returns a SlotCandidateSampler.
+func NewSlotCandidateSampler() SceneVisualPlanner {
+	return &SlotCandidateSampler{}
+}
+
+// Compile-time assertion: SlotCandidateSampler satisfies SceneVisualPlanner.
+var _ SceneVisualPlanner = (*SlotCandidateSampler)(nil)
 
 // Version returns the canonical planner version.
-func (p *defaultPlanner) Version() string {
-	return "scene-planner-v1"
+func (s *SlotCandidateSampler) Version() string {
+	return "slot-sampler-v1"
 }
 
-// Plan assigns one candidate to each requested slot, in order.
-// The planner never invents candidates: if there are fewer candidates
-// than slots, the remaining slots are left empty and the plan status
-// is set to "partial". Materialization state is copied from the
-// candidate verbatim.
-func (p *defaultPlanner) Plan(_ context.Context, scene brain.SceneRequest, intent brain.VisualIntent, rankedCandidates []brain.Candidate) (brain.SceneVisualPlan, error) {
+// Plan assigns one candidate to each requested slot. Candidates are
+// filtered by slot media-type compatibility and mandatory gates, then
+// selected in ranked order while preserving asset diversity across
+// slots.
+func (s *SlotCandidateSampler) Plan(_ context.Context, scene brain.SceneRequest, intent brain.VisualIntent, rankedCandidates []brain.Candidate) (brain.SceneVisualPlan, error) {
 	plan := brain.SceneVisualPlan{
 		SceneID: scene.ID,
 		Intent:  intent,
 		Status:  "success",
+		Layers:  make([]brain.VisualLayer, 0, len(scene.Slots)),
 	}
 
-	used := 0
+	usedAssets := make(map[string]struct{})
+
 	for _, slot := range scene.Slots {
-		if used >= len(rankedCandidates) {
-			plan.Status = "partial"
-			break
+		var winner *brain.Candidate
+		var fallback *brain.Candidate
+
+		for i := range rankedCandidates {
+			c := &rankedCandidates[i]
+			if !s.passesGates(c) {
+				continue
+			}
+			if !media.IsMediaTypeAllowed(slot, c.MediaType) {
+				continue
+			}
+
+			if _, used := usedAssets[c.AssetID]; !used {
+				winner = c
+				break
+			}
+			if fallback == nil {
+				fallback = c
+			}
 		}
-		c := rankedCandidates[used]
+
+		if winner == nil {
+			winner = fallback
+		}
+
+		if winner == nil {
+			continue
+		}
+
+		usedAssets[winner.AssetID] = struct{}{}
 		plan.Layers = append(plan.Layers, brain.VisualLayer{
 			Slot:                 slot,
-			CandidateID:          c.ID,
-			AssetID:              c.AssetID,
-			BindingID:            c.BindingID,
+			CandidateID:          winner.ID,
+			AssetID:              winner.AssetID,
+			BindingID:            winner.BindingID,
 			StartMs:              0,
 			EndMs:                scene.DurationMS,
-			MaterializationState: c.MaterializationState,
-			Provider:             c.Provider,
-			Score:                c.Score,
+			MaterializationState: winner.MaterializationState,
+			Provider:             winner.Provider,
+			Score:                winner.Score,
 		})
-		used++
 	}
 
 	if len(plan.Layers) == 0 {
 		plan.Status = "empty"
+	} else if len(plan.Layers) < len(scene.Slots) {
+		plan.Status = "partial"
 	}
 
-	// Confidence is a simple function of how many requested slots
-	// received a layer. Future planners may use intent uncertainty.
 	if len(scene.Slots) > 0 {
 		plan.Confidence = float64(len(plan.Layers)) / float64(len(scene.Slots))
 	}
 
 	return plan, nil
+}
+
+// passesGates enforces the mandatory gates every candidate must pass
+// before being assigned to any slot. The ranker already filters most
+// problematic candidates; the sampler keeps a small, deterministic
+// safety net for media-type, rights and materialization.
+func (s *SlotCandidateSampler) passesGates(c *brain.Candidate) bool {
+	// Rights: fail-closed when an explicit denial/expiry is known.
+	switch c.RightsStatus {
+	case "denied", "expired":
+		return false
+	}
+	// Materialization: never assign a candidate whose materialization
+	// explicitly failed.
+	if c.MaterializationState == "failed" {
+		return false
+	}
+	return true
 }

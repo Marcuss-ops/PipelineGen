@@ -62,6 +62,22 @@ func DefaultLayout(k SlotKind) string {
 	}
 }
 
+// IsMediaTypeAllowed reports whether the given media type is
+// compatible with the slot. It is the canonical SSOT for the
+// slot ↔ media type mapping used by the planner, ranker, and
+// renderer.
+func IsMediaTypeAllowed(k SlotKind, mediaType string) bool {
+	if mediaType == "" {
+		return false
+	}
+	for _, t := range AllowedMediaTypes(k) {
+		if t == mediaType {
+			return true
+		}
+	}
+	return false
+}
+
 // MaxLayers returns the maximum number of layers supported for a
 // single scene of the given slot kind. Most slots accept one layer.
 func MaxLayers(k SlotKind) int {
