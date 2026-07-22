@@ -29,6 +29,33 @@ const (
 	FallbackPolicyAllowProse = "allow_prose"
 )
 
+// Source cache policy modes.
+const (
+	SourceCacheModeDisabled       = "disabled"
+	SourceCacheModeCacheOnly      = "cache_only"
+	SourceCacheModePreferCache    = "prefer_cache"
+	SourceCacheModeRefreshIfStale = "refresh_if_stale"
+	SourceCacheModeForceRefresh   = "force_refresh"
+)
+
+// SourceCachePolicy controls how the per-topic source text cache is
+// used during the prepare phase. It is independent from the script
+// output cache (gemmamemory).
+type SourceCachePolicy struct {
+	// Mode is one of disabled, cache_only, prefer_cache,
+	// refresh_if_stale, force_refresh.
+	Mode string `json:"mode,omitempty"`
+
+	// TTLHours is the cache entry lifetime. Zero or negative values
+	// fall back to the repository default (7 days).
+	TTLHours int `json:"ttl_hours,omitempty"`
+
+	// Version is an opaque policy/version token included in the
+	// cache key so that research-version changes invalidate
+	// previously cached source text.
+	Version string `json:"version,omitempty"`
+}
+
 // SourceSpec declares where script-generation input comes from.
 type SourceSpec struct {
 	Type SourceType `json:"type"`
@@ -57,6 +84,10 @@ type SourceSpec struct {
 	AllowTextOnly   bool   `json:"allow_text_only,omitempty"`
 	SourceFilter    string `json:"source_filter,omitempty"`
 	MediaTypeFilter string `json:"media_type_filter,omitempty"`
+
+	// CachePolicy controls caching of resolved source text per topic.
+	// Empty/Disabled means no caching.
+	CachePolicy SourceCachePolicy `json:"cache,omitempty"`
 }
 
 func (s *SourceSpec) IsText() bool     { return s.Type == SourceText }
