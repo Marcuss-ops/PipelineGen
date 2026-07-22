@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // bindingCreateRequest is the POST /api/media-memory/bindings body.
@@ -255,57 +254,10 @@ type resolvePolicyRequest struct {
 }
 
 // toResolveRequest projects the wire DTO into the canonical
-// mediamemory.ResolveRequest. Empty meaningful fields are filled
-// by the canonical defaults below.
-func (r resolveCreateRequest) toResolveRequest() mediamemory.ResolveRequest {
-	policy := mediamemory.ResolvePolicy{
-		PreferApprovedBindings: defaultPreferApprovedBindings,
-		AllowExternalSearch:    defaultAllowExternalSearch,
-		MaxCandidatesPerSlot:   defaultMaxCandidatesPerSlot,
-		AvoidRecentAssets:      defaultAvoidRecentAssets,
-		SearchPolicy:           defaultSearchPolicyForRequest(),
-	}
-	if r.Policy != nil {
-		preferApproved := defaultPreferApprovedBindings
-		if r.Policy.PreferApprovedBindings != nil {
-			preferApproved = *r.Policy.PreferApprovedBindings
-		}
-		allowExternal := defaultAllowExternalSearch
-		if r.Policy.AllowExternalSearch != nil {
-			allowExternal = *r.Policy.AllowExternalSearch
-		}
-		avoidRecent := defaultAvoidRecentAssets
-		if r.Policy.AvoidRecentAssets != nil {
-			avoidRecent = *r.Policy.AvoidRecentAssets
-		}
-		cacheRead := defaultCacheRead
-		if r.Policy.CacheRead != nil {
-			cacheRead = *r.Policy.CacheRead
-		}
-		mode := string(media.SearchModeANN)
-		if r.Policy.Mode != "" {
-			mode = r.Policy.Mode
-		}
-		maxCandidates := defaultMaxCandidatesPerSlot
-		if r.Policy.MaxCandidatesPerSlot > 0 {
-			maxCandidates = r.Policy.MaxCandidatesPerSlot
-		}
-
-		policy.PreferApprovedBindings = preferApproved
-		policy.AllowExternalSearch = allowExternal
-		policy.AvoidRecentAssets = avoidRecent
-		policy.MaxCandidatesPerSlot = maxCandidates
-		policy.SearchPolicy = media.ResolutionSearchPolicy{
-			Mode:             media.SearchMode(mode),
-			AllowExternal:    allowExternal,
-			AllowedProviders: append([]string(nil), r.Policy.AllowedProviders...),
-			CacheRead:        cacheRead,
-			PreferApproved:   preferApproved,
-			MaxCandidates:    maxCandidates,
-			Language:         r.Language,
-		}
-	}
-
+// mediamemory.ResolveRequest. Policy defaults are NOT applied
+// here; the handler passes the optional policy to
+// ResolutionPolicyResolver.Resolve() in the application layer.
+func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy) mediamemory.ResolveRequest {
 	scenes := make([]mediamemory.SceneSpec, 0, len(r.Scenes))
 	for _, s := range r.Scenes {
 		lang := s.Language
@@ -332,6 +284,24 @@ func (r resolveCreateRequest) toResolveRequest() mediamemory.ResolveRequest {
 		Language:  r.Language,
 		Scenes:    scenes,
 		Policy:    policy,
+	}
+}
+
+// toOptionalPolicy projects the optional wire policy fields into
+// the application-layer OptionalResolvePolicy. It performs no
+// defaulting — defaults are owned by ResolutionPolicyResolver.
+func (r resolveCreateRequest) toOptionalPolicy() mediamemory.OptionalResolvePolicy {
+	if r.Policy == nil {
+		return mediamemory.OptionalResolvePolicy{}
+	}
+	return mediamemory.OptionalResolvePolicy{
+		PreferApprovedBindings: r.Policy.PreferApprovedBindings,
+		AllowExternalSearch:    r.Policy.AllowExternalSearch,
+		MaxCandidatesPerSlot:   r.Policy.MaxCandidatesPerSlot,
+		AvoidRecentAssets:      r.Policy.AvoidRecentAssets,
+		Mode:                   r.Policy.Mode,
+		AllowedProviders:       append([]string(nil), r.Policy.AllowedProviders...),
+		CacheRead:              r.Policy.CacheRead,
 	}
 }
 
@@ -460,24 +430,5 @@ func traceToDTO(in mediamemory.SceneResolutionTrace) *resolveTraceDTO {
 		NormalizedText: in.NormalizedText,
 		BackendCalls:   backendCalls,
 		Reasons:        in.Reasons,
-	}
-}
-
-// ── Canonical defaults (godlike/06 SSOT — composition pin) ──────
-
-const (
-	defaultPreferApprovedBindings = true
-	defaultAllowExternalSearch    = false
-	defaultMaxCandidatesPerSlot   = 10
-	defaultAvoidRecentAssets      = false
-	defaultCacheRead              = true
-)
-
-func defaultSearchPolicyForRequest() media.ResolutionSearchPolicy {
-	return media.ResolutionSearchPolicy{
-		Mode:          media.SearchModeANN,
-		AllowExternal: defaultAllowExternalSearch,
-		CacheRead:     defaultCacheRead,
-		MaxCandidates: defaultMaxCandidatesPerSlot,
 	}
 }
