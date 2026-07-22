@@ -11,12 +11,24 @@ import (
 	"context"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
+// TopicSourceCache is the canonical port for reading and writing the
+// research_cache. Callers compute the cache key via
+// scriptpkg.ComputeResearchCacheKey and pass a ResearchCacheRecord to
+// SaveResearchCache.
 type TopicSourceCache interface {
-	GetResearchCache(context.Context, string) (string, error)
-	SaveResearchCache(context.Context, string, string, string, int, string) error
+	// GetResearchCache looks up a non-expired research_cache row by its
+	// canonical key. On hit it returns the cached source text and bumps
+	// hit_count/last_used atomically. On miss or expiry it returns
+	// ("", nil).
+	GetResearchCache(ctx context.Context, key string) (string, error)
+
+	// SaveResearchCache persists a ResearchCacheRecord. The record Key
+	// must already be computed via scriptpkg.ComputeResearchCacheKey.
+	SaveResearchCache(ctx context.Context, rec scriptpkg.ResearchCacheRecord) error
 }
 
 // Broker is consumed by GenerateJobHandler.RegisterJobs (PR6).

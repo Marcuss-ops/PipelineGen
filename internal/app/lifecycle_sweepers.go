@@ -36,13 +36,23 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 	sweep := func() {
 		sCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		deleted, err := repo.SweepStaleResearchCache(sCtx, maxAgeDays)
+
+		expired, err := repo.SweepExpiredResearchCache(sCtx)
 		if err != nil {
-			log.Warn("research_cache sweep failed", zap.Error(err))
+			log.Warn("research_cache expired sweep failed", zap.Error(err))
 			return
 		}
-		if deleted > 0 {
-			log.Info("research_cache swept", zap.Int64("deleted", deleted), zap.Int("max_age_days", maxAgeDays))
+		if expired > 0 {
+			log.Info("research_cache expired swept", zap.Int64("expired_deleted", expired))
+		}
+
+		stale, err := repo.SweepStaleResearchCache(sCtx, maxAgeDays)
+		if err != nil {
+			log.Warn("research_cache stale sweep failed", zap.Error(err))
+			return
+		}
+		if stale > 0 {
+			log.Info("research_cache stale swept", zap.Int64("stale_deleted", stale), zap.Int("max_age_days", maxAgeDays))
 		}
 	}
 	sweep()

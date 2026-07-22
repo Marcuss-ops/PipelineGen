@@ -16,9 +16,22 @@ type Repository interface {
 
 	SaveResearchSources(ctx context.Context, scriptID int64, sources []ResearchSource) error
 	GetResearchSources(ctx context.Context, scriptID int64) ([]ResearchSource, error)
-	SaveResearchCache(ctx context.Context, key, topic, language string, maxSteps int, sourceText string) error
+
+	// SaveResearchCache persists a ResearchCacheRecord keyed by rec.Key.
+	// The key must be computed via ComputeResearchCacheKey.
+	SaveResearchCache(ctx context.Context, rec ResearchCacheRecord) error
+	// GetResearchCache returns the cached source_text for key when the
+	// row has not expired. It atomically bumps hit_count and last_used.
+	// On miss or expiry it returns ("", nil).
 	GetResearchCache(ctx context.Context, key string) (string, error)
+	// TouchResearchCache bumps last_used for a key and returns the
+	// number of rows affected. Kept for compatibility.
 	TouchResearchCache(ctx context.Context, key string) (int64, error)
+	// SweepExpiredResearchCache deletes rows whose expires_at is older
+	// than now. Returns the number of rows deleted.
+	SweepExpiredResearchCache(ctx context.Context) (int64, error)
+	// SweepStaleResearchCache is the legacy TTL sweeper based on
+	// last_used (kept for compatibility with the existing lifecycle).
 	SweepStaleResearchCache(ctx context.Context, maxAgeDays int) (int64, error)
 
 	SaveGenerationLog(ctx context.Context, logEntry GenerationLog) error
