@@ -156,8 +156,9 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			Filename:      item.Filename,
 			TextHash:      textHash,
 			Destination:   item.Destination, // nil-safe at the use case boundary
-			Strategy:      "replace",        // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
-			RemoveSilence: false,            // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			Project:       sceneProject(item.Destination),
+			Strategy:      "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			RemoveSilence: false,     // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
 		}
 
 		// Execute the per-item pipeline (TTS → publish → finalize).
@@ -198,6 +199,13 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 		}
 		return out
 	})
+}
+
+func sceneProject(dest *voiceover.DestinationRequest) string {
+	if dest == nil {
+		return ""
+	}
+	return dest.Project
 }
 
 // resolveSceneFanoutRequestID derives a stable per-batch RequestID
