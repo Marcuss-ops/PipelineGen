@@ -244,6 +244,9 @@ type OutputSpec struct {
 	// Toggle semantics.
 	GenerateMetadata Toggle `json:"generate_metadata,omitempty"`
 
+	StockEnabled  Toggle              `json:"stock_enabled,omitempty"`
+	StockBindings []StockBindingInput `json:"stock_bindings,omitempty"`
+
 	// ── Persistence (bool — out of PR-3 scope per action plan) ──
 	SaveToDB         bool `json:"save_to_db,omitempty"`
 	GenerateTimeline bool `json:"generate_timeline,omitempty"`
@@ -334,6 +337,9 @@ func (o *OutputSpec) UnmarshalJSON(data []byte) error {
 		if _, ok := raw["generate_metadata"]; !ok {
 			o.GenerateMetadata = ToggleDefault
 		}
+		if _, ok := raw["stock_enabled"]; !ok {
+			o.StockEnabled = ToggleDefault
+		}
 	}
 	return nil
 }
@@ -364,6 +370,7 @@ func (o OutputSpec) MarshalJSON() ([]byte, error) {
 
 	hideIfDefault(&tmp.ExtractEntities)
 	hideIfDefault(&tmp.GenerateMetadata)
+	hideIfDefault(&tmp.StockEnabled)
 
 	return json.Marshal(tmp)
 }

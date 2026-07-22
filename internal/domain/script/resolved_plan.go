@@ -134,12 +134,14 @@ type ResolvedGenerationPlan struct {
 	Postprocessors []string `json:"postprocessors,omitempty"`
 
 	// ── Output ────────────────────────────────────────────────────────
-	DriveFolderID     string `json:"drive_folder_id,omitempty"`
-	VoiceoverGroup    string `json:"voiceover_group,omitempty"`
-	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
-	MaxChars          int    `json:"max_chars,omitempty"`
-	OutputFmt         string `json:"output_fmt,omitempty"` // PR 9: "json" only; "prose" REJECTED by the PR 6 validator
-	SaveToDB          bool   `json:"save_to_db,omitempty"`
+	DriveFolderID     string              `json:"drive_folder_id,omitempty"`
+	VoiceoverGroup    string              `json:"voiceover_group,omitempty"`
+	VoiceoverFolderID string              `json:"voiceover_folder_id,omitempty"`
+	MaxChars          int                 `json:"max_chars,omitempty"`
+	OutputFmt         string              `json:"output_fmt,omitempty"` // PR 9: "json" only; "prose" REJECTED by the PR 6 validator
+	SaveToDB          bool                `json:"save_to_db,omitempty"`
+	StockEnabled      Toggle              `json:"stock_enabled,omitempty"`
+	StockBindings     []StockBindingInput `json:"stock_bindings,omitempty"`
 
 	// ── Translations ──────────────────────────────────────────────────
 	Languages []string `json:"languages,omitempty"`

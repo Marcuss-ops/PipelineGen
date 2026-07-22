@@ -37,7 +37,7 @@ var _ VisualIntentResolver = (*defaultResolver)(nil)
 
 // Version returns the canonical intent-resolver version.
 func (r *defaultResolver) Version() string {
-	return "visual-intent-v1"
+	return "visual-intent-v2"
 }
 
 // Resolve extracts keywords, entities and concepts from the input
@@ -76,6 +76,9 @@ func (r *defaultResolver) Resolve(_ context.Context, language, originalText, nor
 	for _, tok := range normTokens {
 		clean := strings.ToLower(strings.TrimSpace(tok))
 		if clean == "" {
+			continue
+		}
+		if len(clean) < 3 || isStopWord(clean) {
 			continue
 		}
 		keywords = append(keywords, clean)
@@ -131,4 +134,46 @@ func uniqueStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// isStopWord checks if a token is a common English or Italian stop word.
+// This keeps keyword lists focused on meaningful content terms.
+func isStopWord(tok string) bool {
+	_, ok := stopWords[tok]
+	return ok
+}
+
+// stopWords is a minimal set of common stop words across English and
+// Italian. It is intentionally small to avoid false positives; the
+// primary goal is to prevent AND-semantics search queries from
+// becoming too restrictive.
+var stopWords = map[string]struct{}{
+	// English
+	"the": {}, "and": {}, "for": {}, "are": {}, "but": {}, "not": {},
+	"you": {}, "all": {}, "can": {}, "had": {}, "her": {}, "was": {},
+	"one": {}, "our": {}, "out": {}, "has": {}, "his": {}, "how": {},
+	"its": {}, "may": {}, "new": {}, "now": {}, "old": {}, "see": {},
+	"way": {}, "who": {}, "did": {}, "get": {}, "got": {}, "let": {},
+	"say": {}, "she": {}, "too": {}, "use": {}, "him": {},
+	"with": {}, "that": {}, "this": {}, "will": {}, "each": {}, "make": {},
+	"like": {}, "than": {}, "them": {}, "then": {}, "what": {}, "when": {},
+	"your": {}, "from": {}, "they": {}, "been": {}, "have": {}, "said": {},
+	"were": {}, "being": {}, "would": {}, "could": {}, "other": {},
+	"which": {}, "their": {}, "about": {}, "there": {},
+	"these": {}, "into": {}, "more": {}, "also": {},
+	"some": {}, "very": {}, "here": {}, "just": {}, "over": {},
+	"such": {}, "after": {}, "most": {}, "only": {}, "where": {},
+	// Italian
+	"del": {}, "della": {}, "dei": {}, "delle": {}, "di": {}, "a": {},
+	"da": {}, "in": {}, "con": {}, "su": {}, "per": {}, "tra": {},
+	"fra": {}, "che": {}, "non": {}, "una": {}, "il": {}, "lo": {},
+	"la": {}, "i": {}, "gli": {}, "le": {}, "un": {}, "uno": {},
+	"al": {}, "allo": {}, "alla": {}, "ai": {}, "agli": {}, "alle": {},
+	"dal": {}, "dallo": {}, "dalla": {}, "dai": {}, "dagli": {}, "dalle": {},
+	"nel": {}, "nello": {}, "nella": {}, "nei": {}, "negli": {}, "nelle": {},
+	"col": {}, "coi": {}, "si": {}, "no": {}, "se": {}, "ma": {},
+	"come": {}, "più": {}, "anche": {}, "sono": {}, "era": {}, "ha": {},
+	"ho": {}, "hai": {}, "hanno": {}, "suo": {}, "sua": {}, "suoi": {},
+	"sue": {}, "questo": {}, "questa": {}, "questi": {}, "queste": {},
+	"quello": {}, "quella": {}, "quelli": {}, "quelle": {},
 }

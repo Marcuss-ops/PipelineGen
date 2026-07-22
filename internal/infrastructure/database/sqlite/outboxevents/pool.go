@@ -77,6 +77,7 @@ func (RealClock) Now() time.Time { return time.Now() }
 // ── WorkerPollConfig ──────────────────────────────────────────────────
 
 type WorkerPollConfig struct {
+	Workers         int
 	PollInterval    time.Duration
 	ProcessTimeout  time.Duration
 	ReclaimInterval time.Duration

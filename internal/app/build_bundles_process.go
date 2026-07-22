@@ -367,6 +367,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		cfgProcess = time.Duration(cfg.Outbox.ProcessTimeoutSeconds) * time.Second
 	}
 	outboxEventsCfg := outboxevents.WorkerPollConfig{
+		Workers:         cfg.Outbox.Workers,
 		PollInterval:    cfgPoll,
 		ProcessTimeout:  cfgProcess,
 		ReclaimInterval: cfgReclaim,
@@ -409,7 +410,11 @@ func startOutboxEventsPool(
 		return nil
 	}
 	concurrent.SafeGo("outbox-events-pool", func() {
-		eventsPool.Start(ctx, 1)
+		workers := cfg.Workers
+		if workers <= 0 {
+			workers = 1
+		}
+		eventsPool.Start(ctx, workers)
 	})
 	concurrent.SafeGo("outbox-events-shutdown", func() {
 		<-ctx.Done()

@@ -102,6 +102,7 @@ var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
 	ProcessorClipBindings:   ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: clip-binding enrichment, not a hard gate; same silent-skip-on-missing-wiring pattern as Translation
 	ProcessorVisualPlanning: ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: visual-planning lookup, not a hard gate; nil MediaMemory resolver fails-open per the canonical composition root
 	ProcessorDocument:       ProcessorBestEffort,
+	ProcessorStockBindings:  ProcessorRequired,
 }
 
 // DefaultPolicyFor returns the canonical default policy for a
