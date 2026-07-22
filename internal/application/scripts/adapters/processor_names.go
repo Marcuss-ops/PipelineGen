@@ -33,13 +33,13 @@ const (
 	// identifier for the ClipSearchProcessor (artlist phrase enrichment,
 	// BestEffort policy). Lives here — NOT in processor_clip_search.go —
 	// to satisfy godlike/06 SSOT one-canonical-owner-per-fact.
-	ProcessorClipSearch       ProcessorName = "clip_search"
-	ProcessorMetadata         ProcessorName = "metadata"
-	ProcessorClipBindings     ProcessorName = "clip_bindings"
-	ProcessorStockAssociation ProcessorName = "stock_association"
-	ProcessorVoiceover        ProcessorName = "voiceover"
-	ProcessorImages           ProcessorName = "images"
-	ProcessorPersistence      ProcessorName = "persistence"
+	ProcessorClipSearch     ProcessorName = "clip_search"
+	ProcessorMetadata       ProcessorName = "metadata"
+	ProcessorClipBindings   ProcessorName = "clip_bindings"
+	ProcessorVisualPlanning ProcessorName = "visual_planning"
+	ProcessorVoiceover      ProcessorName = "voiceover"
+	ProcessorImages         ProcessorName = "images"
+	ProcessorPersistence    ProcessorName = "persistence"
 	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
 	// translation postprocessor lives in the canonical SOLE identifier
 	// set (godlike/06 SSOT one-canonical-owner-per-fact) — inserted
@@ -49,7 +49,7 @@ const (
 	ProcessorTranslation ProcessorName = "translation"
 )
 
-// CanonicalProcessorNames returns the closed set of all 8 canonical
+// CanonicalProcessorNames returns the closed set of all 9 canonical
 // postprocessors in their canonical EXECUTION order.
 //
 // IMPORTANT (godlike/07 typed-distinction): this list reflects
@@ -58,7 +58,7 @@ const (
 // are added to the registry at composition time). The two are not
 // the same on purpose:
 //   - EXECUTION order (this list): entities → clip_search → metadata →
-//     translation → clip_bindings → stock_association → voiceover →
+//     translation → clip_bindings → visual_planning → voiceover →
 //     images → persistence. Persistence at the tail because each
 //     processor that mutated scene/payload must run BEFORE the row
 //     is locked for replay/retry. Translation slots between
@@ -87,7 +87,7 @@ func CanonicalProcessorNames() []ProcessorName {
 		ProcessorMetadata,
 		ProcessorTranslation,
 		ProcessorClipBindings,
-		ProcessorStockAssociation,
+		ProcessorVisualPlanning,
 		ProcessorVoiceover,
 		ProcessorImages,
 		ProcessorPersistence,

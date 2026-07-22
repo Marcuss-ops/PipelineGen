@@ -2,8 +2,8 @@
 //
 // FASE 2.A PR3 split (July 2026): AI-backed postprocessor registration
 // extracted from wire_script_postprocess.go per AGENTS.md Pattern 5
-// godlike/06 SSOT one-canonical-owner-per-fact. The 5 AI-backed processors
-// (entities, metadata, translation, stock_association, clip_search) form
+// godlike/06 SSOT one-canonical-owner-per-fact. The 4 AI-backed processors
+// (entities, metadata, translation, clip_search) form
 // a natural group: they all wire through Ollama/Qdrant backends with
 // nil-tolerant graceful degradation.
 //
@@ -11,8 +11,7 @@
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     calls registerAIBackedProcessors after inline registrations.
 //   - internal/application/scripts/adapters: NewEntitiesProcessor,
-//     NewMetadataProcessor, NewTranslationProcessor, NewStockAssociationProcessor,
-//     NewClipSearchProcessor
+//     NewMetadataProcessor, NewTranslationProcessor, NewClipSearchProcessor
 //     (PR-LEGACY-UNAVAILABLE-CLIPSEARCH + PR-LEGACY-UNAVAILABLE-ENTITY-METADATA, 2026-07-10:
 //     NewUnavailable* constructors no longer called from this file — processors
 //     are skipped entirely when backend is absent)
@@ -22,8 +21,6 @@
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/infrastructure/embeddings: NewOllamaEmbedderAdapter
 //   - internal/infrastructure/observability: NewTranslationMetricsAdapter
-//   - internal/infrastructure/qdrant/search: NewTextEmbedderAdapter,
-//     NewStockSearchAdapter
 //   - internal/application/scripts/ports: NewScriptTranslatorFromFunc
 package app
 
@@ -34,28 +31,26 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"go.uber.org/zap"
 )
 
-// registerAIBackedProcessors registers the 5 AI-backed postprocessors:
-// entities, metadata, translation, stock_association, and clip_search.
+// registerAIBackedProcessors registers the 4 AI-backed postprocessors:
+// entities, metadata, translation, and clip_search.
 // Each processor is gated on its required infrastructure dependency
-// (Ollama client for entities/metadata/translation, Qdrant+Ollama for
-// stock_association, OllamaTranslator for clip_search) — when the dep
+// (Ollama client for entities/metadata/translation, OllamaTranslator
+// for clip_search) — when the dep
 // is absent, the processor is silently skipped (BestEffort policy).
 //
 // Canonical ordering (per CanonicalProcessorNames):
 //
-//	Entities → Metadata → Translation → ClipBindings → StockAssociation → ClipSearch
+//	Entities → Metadata → Translation → ClipBindings → ClipSearch
 //
 // ClipBindings is registered BEFORE this function is called (in the
-// orchestrator), so this function handles the remaining 5 processors
+// orchestrator), so this function handles the remaining 4 processors
 // in their canonical positions after ClipBindings.
 func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
@@ -115,22 +110,6 @@ func registerAIBackedProcessors(
 		log.Warn("TranslationProcessor: OllamaTranslator not available; postprocessor not registered (translation requests will produce warnings)")
 	}
 
-	// ── StockAssociation ─────────────────────────────────────────────
-	// Wraps Qdrant searcher for per-scene vector search over stock-indexed
-	// assets. BestEffort policy: a missing or failing stock search does
-	// not block the pipeline.
-	if root.AI != nil && root.AI.ScriptGen != nil &&
-		root.Process != nil && root.Process.QdrantSearcher != nil {
-		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-			embedder := search.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
-			stockSearchPort := search.NewStockSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
-			if !ppReg.Register(adapters.NewStockAssociationProcessor(stockSearchPort, log)) {
-				return fmt.Errorf("register stock_association processor: composition bug")
-			}
-			log.Info("StockAssociationProcessor wired (Qdrant + Ollama embedder)")
-		}
-	}
-
 	// ── ClipSearch ───────────────────────────────────────────────────
 	// ClipSearchProcessor wires OllamaTranslator so that artlist_phrases
 	// extracted by EntitiesProcessor trigger actual Artlist clip searches.
@@ -172,6 +151,20 @@ func registerAIBackedProcessors(
 		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
 			return fmt.Errorf("register clip_search processor: composition bug")
 		}
+	}
+
+	// ── Visual planning ──────────────────────────────────────────────
+	// The processor owns no provider or database implementation: the
+	// composition root supplies the canonical MediaMemory resolver, which
+	// fans out through the shared SearchFanOut exactly once per plan.
+	if root.Search != nil && root.Search.SearchFanOut != nil {
+		resolver := WireMediaMemoryResolver(root.Search.SearchFanOut, log)
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, nil, log)) {
+			return fmt.Errorf("register visual_planning processor: composition bug")
+		}
+		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
+	} else {
+		log.Warn("VisualPlanningProcessor: SearchFanOut not available; postprocessor not registered")
 	}
 
 	return nil
