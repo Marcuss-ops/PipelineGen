@@ -16,6 +16,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -194,6 +195,48 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			ItemID: resCtx.ItemID,
 			Reason: "search source resolver: ClipSourceBuilder not configured",
 		}
+	}
+
+	// Semantic search returns relevance order, but a chronological source
+	// contract must bind scene N to the clip's real timeline position. The
+	// sampler remains the sole selector; this stable reorder only changes
+	// the presentation order after selection and before evidence hydration.
+	if strings.EqualFold(strings.TrimSpace(src.OrderingStrategy), "chronological") {
+		type timedClip struct {
+			id    string
+			start int64
+			pos   int
+		}
+		timed := make([]timedClip, 0, len(clipIDs))
+		for i, id := range clipIDs {
+			start := int64(^uint64(0) >> 1)
+			if clip, reason := r.clipBuilder.resolveOneClip(ctx, id); reason == clipResolveOK && clip != nil {
+				if value, _ := clipTimeline(clip); value >= 0 {
+					start = value
+				}
+			}
+			timed = append(timed, timedClip{id: id, start: start, pos: i})
+		}
+		sort.SliceStable(timed, func(i, j int) bool {
+			if timed[i].start == timed[j].start {
+				return timed[i].pos < timed[j].pos
+			}
+			return timed[i].start < timed[j].start
+		})
+		orderedIDs := make([]string, 0, len(timed))
+		orderedItems := make([]scriptpkg.SearchResultItem, 0, len(timed))
+		itemsByID := make(map[string]scriptpkg.SearchResultItem, len(searchItems))
+		for _, item := range searchItems {
+			itemsByID[item.ClipID] = item
+		}
+		for _, item := range timed {
+			orderedIDs = append(orderedIDs, item.id)
+			if searchItem, ok := itemsByID[item.id]; ok {
+				orderedItems = append(orderedItems, searchItem)
+			}
+		}
+		clipIDs = orderedIDs
+		searchItems = orderedItems
 	}
 
 	opts := buildSearchClipOpts(src)
