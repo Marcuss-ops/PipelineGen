@@ -8,6 +8,8 @@ package script
 
 import (
 	"slices"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ResolvedGenerationPlan is the fully resolved, validated plan that
@@ -159,6 +161,12 @@ type ResolvedGenerationPlan struct {
 	NumPredict int `json:"num_predict,omitempty"`
 	// Temperature is the LLM temperature override (0 = use server default).
 	Temperature float64 `json:"temperature,omitempty"`
+
+	// ── Media plan ─────────────────────────────────────────────────────
+	// MediaPlan carries the resolved visual-media plan for this item.
+	// It is copied from GenerationItemV2 and made available to the
+	// visual_planning postprocessor.
+	MediaPlan media.MediaPlanSpec `json:"media_plan,omitempty"`
 }
 
 // HasClips returns true when the plan carries clip evidence (the

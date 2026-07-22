@@ -175,6 +175,7 @@ func (e *toggleInvalidTypeError) Error() string {
 // layer (DoD #8). ScriptSpec.Segments is the SOLE canonical owner;
 // SourceSpec and Item layers consume via generator-normalizer copies.
 type ScriptSegment struct {
+	ID          string `json:"id,omitempty"`
 	Topic       string `json:"topic"`
 	SourceText  string `json:"source_text,omitempty"`
 	TargetWords int    `json:"target_words,omitempty"`

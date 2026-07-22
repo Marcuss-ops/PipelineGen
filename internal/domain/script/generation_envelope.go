@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // GenerationEnvelopeV2 is the canonical top-level request for all
@@ -86,6 +88,12 @@ type GenerationItemV2 struct {
 	// Output declares WHAT post-generation artifacts to produce.
 	// Every postprocessor is opt-in.
 	Output OutputSpec `json:"output,omitempty"`
+
+	// ── Media plan ────────────────────────────────────────────────────
+	// MediaPlan declares which visual media should accompany the
+	// generated script. It is separate from SourceSpec because it
+	// describes media assets, not narrative content.
+	MediaPlan media.MediaPlanSpec `json:"media_plan,omitempty"`
 }
 
 // knownSourceTypes is the canonical set of script-side SourceType

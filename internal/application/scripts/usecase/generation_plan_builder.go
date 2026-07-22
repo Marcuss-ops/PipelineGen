@@ -58,6 +58,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		Languages:           append([]string(nil), item.Output.Languages...),
 		TranslateTo:         item.Output.TranslateTo,
 		FallbackPolicy:      item.Source.FallbackPolicy,
+		MediaPlan:           item.MediaPlan.Clone(),
 	}
 
 	plan.Postprocessors = adapters.ProcessorNamesToStrings(buildPostprocessorListForItem(item))
