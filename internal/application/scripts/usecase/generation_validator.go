@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -37,6 +38,8 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	details = append(details, validateSource(item.Source, ref)...)
 	details = append(details, validateOutput(item.Output, ref)...)
 	details = append(details, validateScript(item.ScriptParams, ref)...)
+	details = append(details, validateSegmentIDs(item, ref)...)
+	details = append(details, validateMediaPlan(item.MediaPlan, item.ScriptParams.Segments, ref)...)
 
 	if len(details) > 0 {
 		return &scriptpkg.PlanInvalidError{
@@ -204,4 +207,139 @@ func validateScript(sp scriptpkg.ScriptSpec, ref string) []string {
 		d = append(d, ref+": images_per_scene exceeds maximum of 20")
 	}
 	return d
+}
+
+// validateSegmentIDs ensures every explicitly-provided segment ID is
+// unique within an item. Empty IDs are ignored so callers that omit
+// the field continue to work; they will simply not be addressable by
+// the media plan.
+func validateSegmentIDs(item scriptpkg.GenerationItemV2, ref string) []string {
+	var d []string
+	seen := make(map[string]struct{})
+	for i, s := range item.ScriptParams.Segments {
+		id := strings.TrimSpace(s.ID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].id %q is duplicate", ref, i, id))
+			continue
+		}
+		seen[id] = struct{}{}
+	}
+	return d
+}
+
+// validateMediaPlan checks the structural shape of a media plan. It
+// validates that referenced segment IDs exist, slots are known, and
+// asset references contain at least one identifier.
+func validateMediaPlan(mp media.MediaPlanSpec, segments []scriptpkg.ScriptSegment, ref string) []string {
+	var d []string
+
+	if mp.Mode != "" && !media.IsValidMediaPlanMode(mp.Mode) {
+		d = append(d, fmt.Sprintf("%s: media_plan.mode %q is not valid", ref, mp.Mode))
+	}
+
+	segmentIDs := make(map[string]struct{})
+	for _, s := range segments {
+		if id := strings.TrimSpace(s.ID); id != "" {
+			segmentIDs[id] = struct{}{}
+		}
+	}
+
+	seenAssignment := make(map[string]struct{})
+	for i, a := range mp.Assignments {
+		prefix := fmt.Sprintf("%s: media_plan.assignments[%d]", ref, i)
+		segID := strings.TrimSpace(a.SegmentID)
+		if segID == "" {
+			d = append(d, prefix+": segment_id is required")
+		} else if _, ok := segmentIDs[segID]; !ok && len(segments) > 0 {
+			d = append(d, fmt.Sprintf("%s: segment_id %q does not match any segment", prefix, segID))
+		}
+		slot := strings.TrimSpace(a.Slot)
+		if slot == "" {
+			d = append(d, prefix+": slot is required")
+		} else if !media.IsValidMediaPlanSlot(slot) {
+			d = append(d, fmt.Sprintf("%s: slot %q is not valid", prefix, slot))
+		}
+		if segID != "" && slot != "" {
+			key := segID + "/" + slot
+			if _, ok := seenAssignment[key]; ok {
+				d = append(d, fmt.Sprintf("%s: duplicate assignment for segment_id %q and slot %q", prefix, segID, slot))
+			}
+			seenAssignment[key] = struct{}{}
+		}
+		if msg := validateMediaRef(a.Asset, prefix); msg != "" {
+			d = append(d, msg)
+		}
+	}
+
+	seenSearch := make(map[string]struct{})
+	for i, s := range mp.Searches {
+		prefix := fmt.Sprintf("%s: media_plan.searches[%d]", ref, i)
+		segID := strings.TrimSpace(s.SegmentID)
+		if segID == "" {
+			d = append(d, prefix+": segment_id is required")
+		} else if _, ok := segmentIDs[segID]; !ok && len(segments) > 0 {
+			d = append(d, fmt.Sprintf("%s: segment_id %q does not match any segment", prefix, segID))
+		}
+		slot := strings.TrimSpace(s.Slot)
+		if slot == "" {
+			d = append(d, prefix+": slot is required")
+		} else if !media.IsValidMediaPlanSlot(slot) {
+			d = append(d, fmt.Sprintf("%s: slot %q is not valid", prefix, slot))
+		}
+		if segID != "" && slot != "" {
+			key := segID + "/" + slot
+			if _, ok := seenSearch[key]; ok {
+				d = append(d, fmt.Sprintf("%s: duplicate search for segment_id %q and slot %q", prefix, segID, slot))
+			}
+			seenSearch[key] = struct{}{}
+		}
+		if s.Limit < 0 {
+			d = append(d, prefix+": limit cannot be negative")
+		}
+	}
+
+	return d
+}
+
+// validateMediaRef checks that a media reference contains enough
+// information to identify an asset. It returns a human-readable error
+// message, or an empty string when the reference is valid.
+func validateMediaRef(ref media.MediaRef, prefix string) string {
+	kind := strings.TrimSpace(ref.Kind)
+	if kind == "" {
+		return prefix + ": asset.kind is required"
+	}
+
+	assetID := strings.TrimSpace(ref.AssetID)
+	clipID := strings.TrimSpace(ref.ClipID)
+	provider := strings.TrimSpace(ref.Provider)
+	providerAssetID := strings.TrimSpace(ref.ProviderAssetID)
+	sourceURL := strings.TrimSpace(ref.SourceURL)
+
+	switch kind {
+	case "clip":
+		if clipID == "" {
+			return prefix + ": asset.kind=clip requires clip_id"
+		}
+	case "stock":
+		if assetID == "" && (provider == "" || providerAssetID == "") {
+			return prefix + ": asset.kind=stock requires asset_id or provider+provider_asset_id"
+		}
+	case "image", "video":
+		if assetID == "" && providerAssetID == "" && sourceURL == "" {
+			return prefix + ": asset.kind=" + kind + " requires asset_id, provider_asset_id, or source_url"
+		}
+	default:
+		if assetID == "" && clipID == "" && providerAssetID == "" && sourceURL == "" {
+			return prefix + ": asset must contain one of asset_id, clip_id, provider_asset_id, or source_url"
+		}
+	}
+
+	if ref.StartMs > 0 && ref.EndMs > 0 && ref.StartMs >= ref.EndMs {
+		return prefix + ": start_ms must be less than end_ms"
+	}
+	return ""
 }
