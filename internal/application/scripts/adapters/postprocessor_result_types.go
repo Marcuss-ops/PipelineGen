@@ -68,6 +68,7 @@ type PipelineResult struct {
 	// canonical language rows.
 	OriginalText      string                    `json:"original_text,omitempty"`
 	OriginalSpecScene scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
+	EffectiveLanguage string                    `json:"effective_language,omitempty"`
 }
 
 // PostProcessResult carries the output of a single processor.
@@ -116,6 +117,7 @@ type PostProcessResult struct {
 	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
 	OriginalText        string                    `json:"original_text,omitempty"`
 	OriginalSpecScene   scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
+	EffectiveLanguage   string                    `json:"effective_language,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -188,6 +190,7 @@ type ProcessInput struct {
 	CacheStatus       string
 	SourceTrace       *scriptpkg.ClipEvidence
 	PriorArtifacts    map[string]PostProcessResult
+	EffectiveLanguage string
 
 	// Entities carries the entity-extraction result, populated by
 	// mergePostProcessResult when the entities processor produces

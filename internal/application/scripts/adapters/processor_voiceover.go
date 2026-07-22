@@ -28,6 +28,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -115,9 +116,40 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return &PostProcessResult{}, nil
 	}
 
-	language := plan.TranslateTo
+	sourceLanguage := strings.TrimSpace(plan.Language)
+	targetLanguage := strings.TrimSpace(plan.TranslateTo)
+	effectiveLanguage := strings.TrimSpace(input.EffectiveLanguage)
+
+	translationRequested :=
+		targetLanguage != "" &&
+			!strings.EqualFold(sourceLanguage, targetLanguage)
+
+	if translationRequested &&
+		!strings.EqualFold(effectiveLanguage, targetLanguage) {
+
+		warning := fmt.Sprintf(
+			"voiceover skipped: requested translation to %q was not completed; effective text language is %q",
+			targetLanguage,
+			effectiveLanguage,
+		)
+
+		voiceovers := make([]SceneVoiceover, len(scenes))
+		for i := range voiceovers {
+			voiceovers[i] = SceneVoiceover{
+				SceneIndex: i,
+				Status:     "skipped",
+			}
+		}
+
+		return &PostProcessResult{
+			Voiceovers: voiceovers,
+			Warnings:   []string{warning},
+		}, nil
+	}
+
+	language := effectiveLanguage
 	if language == "" {
-		language = plan.Language
+		language = sourceLanguage
 	}
 	if language == "" {
 		language = defaults.DefaultScriptConfig().DefaultLanguage
