@@ -48,13 +48,20 @@ type GenerationPreparer struct {
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
 	log             *zap.Logger
-	enricher        *sourceEnricher
+	enricher        scriptports.SourceTextEnricher
+}
+
+// SetSourceTextEnricher wires the source-text enricher into the prepare phase.
+func (p *GenerationPreparer) SetSourceTextEnricher(enricher scriptports.SourceTextEnricher) {
+	if p != nil {
+		p.enricher = enricher
+	}
 }
 
 // SetTopicSourceCache wires the source-text cache into the prepare phase.
 func (p *GenerationPreparer) SetTopicSourceCache(cache scriptports.TopicSourceCache) {
 	if p != nil {
-		p.enricher = newSourceEnricher(cache, p.log)
+		p.enricher = NewSourceTextEnricher(cache, p.log)
 	}
 }
 
@@ -119,11 +126,11 @@ func (p *GenerationPreparer) Prepare(
 		// resolver (and any LLM it would call) is skipped entirely.
 		cacheHit := false
 		if p.enricher != nil {
-			cacheResult, cacheErr := p.enricher.enrich(ctx, &item)
+			cacheResult, cacheErr := p.enricher.Enrich(ctx, &item)
 			if cacheErr != nil {
 				return nil, p.logPhaseError(item, "source_enrichment", scriptpkg.ErrSourceResolutionFailed, cacheErr, tracker)
 			}
-			cacheHit = cacheResult == sourceCacheHit
+			cacheHit = cacheResult == scriptports.EnrichHit
 		}
 
 		if !cacheHit {
@@ -135,7 +142,7 @@ func (p *GenerationPreparer) Prepare(
 			// Persist the freshly resolved source text so the next
 			// identical request avoids the LLM call.
 			if p.enricher != nil && resolved != nil && resolved.SourceText != "" {
-				if saveErr := p.enricher.save(ctx, item, resolved.SourceText); saveErr != nil && p.log != nil {
+				if saveErr := p.enricher.Save(ctx, item, resolved.SourceText); saveErr != nil && p.log != nil {
 					p.log.Warn("source cache save failed", zap.String("item_id", item.ID), zap.Error(saveErr))
 				}
 			}

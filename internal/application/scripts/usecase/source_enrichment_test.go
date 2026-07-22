@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -36,9 +37,9 @@ func (f *fakeTopicSourceCache) SaveResearchCache(_ context.Context, rec scriptpk
 	return nil
 }
 
-func TestSourceEnricher_enrich_Disabled(t *testing.T) {
+func TestSourceEnricher_Enrich_Disabled(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := &scriptpkg.GenerationItemV2{
 		ID:       "item-1",
@@ -52,11 +53,11 @@ func TestSourceEnricher_enrich_Disabled(t *testing.T) {
 		},
 	}
 
-	res, err := e.enrich(context.Background(), item)
+	res, err := e.Enrich(context.Background(), item)
 	if err != nil {
 		t.Fatalf("enrich disabled: %v", err)
 	}
-	if res != sourceCacheBypass {
+	if res != scriptports.EnrichBypass {
 		t.Fatalf("expected bypass, got %v", res)
 	}
 	if item.Source.SourceText != "original" {
@@ -64,9 +65,9 @@ func TestSourceEnricher_enrich_Disabled(t *testing.T) {
 	}
 }
 
-func TestSourceEnricher_enrich_Hit(t *testing.T) {
+func TestSourceEnricher_Enrich_Hit(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:       "item-1",
@@ -91,11 +92,11 @@ func TestSourceEnricher_enrich_Hit(t *testing.T) {
 
 	// Reset mutable field used by the test subject.
 	item.Source.SourceText = ""
-	res, err := e.enrich(context.Background(), &item)
+	res, err := e.Enrich(context.Background(), &item)
 	if err != nil {
 		t.Fatalf("enrich hit: %v", err)
 	}
-	if res != sourceCacheHit {
+	if res != scriptports.EnrichHit {
 		t.Fatalf("expected hit, got %v", res)
 	}
 	if item.Source.SourceText != "cached source text" {
@@ -103,9 +104,9 @@ func TestSourceEnricher_enrich_Hit(t *testing.T) {
 	}
 }
 
-func TestSourceEnricher_enrich_CacheOnlyMiss(t *testing.T) {
+func TestSourceEnricher_Enrich_CacheOnlyMiss(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := &scriptpkg.GenerationItemV2{
 		ID:       "item-1",
@@ -118,15 +119,15 @@ func TestSourceEnricher_enrich_CacheOnlyMiss(t *testing.T) {
 		},
 	}
 
-	_, err := e.enrich(context.Background(), item)
+	_, err := e.Enrich(context.Background(), item)
 	if err == nil {
 		t.Fatal("expected error on cache_only miss")
 	}
 }
 
-func TestSourceEnricher_enrich_ForceRefresh(t *testing.T) {
+func TestSourceEnricher_Enrich_ForceRefresh(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:       "item-1",
@@ -148,18 +149,18 @@ func TestSourceEnricher_enrich_ForceRefresh(t *testing.T) {
 		ExpiresAt:  time.Now().UTC().Add(time.Hour),
 	})
 
-	res, err := e.enrich(context.Background(), &item)
+	res, err := e.Enrich(context.Background(), &item)
 	if err != nil {
 		t.Fatalf("enrich force_refresh: %v", err)
 	}
-	if res != sourceCacheBypass {
+	if res != scriptports.EnrichBypass {
 		t.Fatalf("expected bypass on force_refresh, got %v", res)
 	}
 }
 
-func TestSourceEnricher_save(t *testing.T) {
+func TestSourceEnricher_Save(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:       "item-1",
@@ -172,7 +173,7 @@ func TestSourceEnricher_save(t *testing.T) {
 		},
 	}
 
-	if err := e.save(context.Background(), item, "resolved text"); err != nil {
+	if err := e.Save(context.Background(), item, "resolved text"); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
@@ -189,7 +190,7 @@ func TestSourceEnricher_save(t *testing.T) {
 	}
 
 	// A second save should be idempotent (overwrite, not error).
-	if err := e.save(context.Background(), item, "resolved text v2"); err != nil {
+	if err := e.Save(context.Background(), item, "resolved text v2"); err != nil {
 		t.Fatalf("second save: %v", err)
 	}
 	rec = cache.data[key]
@@ -198,9 +199,9 @@ func TestSourceEnricher_save(t *testing.T) {
 	}
 }
 
-func TestSourceEnricher_save_Disabled(t *testing.T) {
+func TestSourceEnricher_Save_Disabled(t *testing.T) {
 	cache := newFakeTopicSourceCache()
-	e := newSourceEnricher(cache, zap.NewNop())
+	e := NewSourceTextEnricher(cache, zap.NewNop())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "item-1",
@@ -212,7 +213,7 @@ func TestSourceEnricher_save_Disabled(t *testing.T) {
 		},
 	}
 
-	if err := e.save(context.Background(), item, "resolved text"); err != nil {
+	if err := e.Save(context.Background(), item, "resolved text"); err != nil {
 		t.Fatalf("save disabled: %v", err)
 	}
 
@@ -221,9 +222,9 @@ func TestSourceEnricher_save_Disabled(t *testing.T) {
 	}
 }
 
-func TestSourceEnricher_save_PropagatesError(t *testing.T) {
+func TestSourceEnricher_Save_PropagatesError(t *testing.T) {
 	failingCache := &failingTopicSourceCache{}
-	e := newSourceEnricher(failingCache, zap.NewNop())
+	e := NewSourceTextEnricher(failingCache, zap.NewNop())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "item-1",
@@ -235,7 +236,7 @@ func TestSourceEnricher_save_PropagatesError(t *testing.T) {
 		},
 	}
 
-	if err := e.save(context.Background(), item, "resolved text"); err == nil {
+	if err := e.Save(context.Background(), item, "resolved text"); err == nil {
 		t.Fatal("expected error from failing cache")
 	}
 }

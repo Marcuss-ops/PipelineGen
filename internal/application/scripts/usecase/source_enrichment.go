@@ -21,29 +21,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// sourceCacheResult describes the outcome of a cache lookup.
-type sourceCacheResult int
-
-const (
-	sourceCacheMiss sourceCacheResult = iota
-	sourceCacheHit
-	sourceCacheBypass
-)
-
-// sourceEnricher encapsulates the cache lookup/save logic. It is a
+// sourceTextEnricher encapsulates the cache lookup/save logic. It is a
 // thin helper owned by GenerationPreparer.
-type sourceEnricher struct {
+type sourceTextEnricher struct {
 	cache scriptports.TopicSourceCache
 	log   *zap.Logger
 }
 
-// newSourceEnricher returns a sourceEnricher. A nil cache is valid and
-// causes every call to bypass the cache.
-func newSourceEnricher(cache scriptports.TopicSourceCache, log *zap.Logger) *sourceEnricher {
-	return &sourceEnricher{cache: cache, log: log}
+// NewSourceTextEnricher returns the canonical SourceTextEnricher. A nil
+// cache causes every call to bypass the cache.
+func NewSourceTextEnricher(cache scriptports.TopicSourceCache, log *zap.Logger) scriptports.SourceTextEnricher {
+	return &sourceTextEnricher{cache: cache, log: log}
 }
 
-// enrich runs before source resolution. It may populate
+// Enrich runs before source resolution. It may populate
 // item.Source.SourceText from the cache. The returned result tells the
 // caller whether it can skip source resolution.
 //
@@ -53,24 +44,24 @@ func newSourceEnricher(cache scriptports.TopicSourceCache, log *zap.Logger) *sou
 //   - prefer_cache:   read cache; on miss resolve source normally.
 //   - refresh_if_stale: alias of prefer_cache (TTL is handled by the repository).
 //   - force_refresh:  do not read cache; always resolve source.
-func (e *sourceEnricher) enrich(ctx context.Context, item *scriptpkg.GenerationItemV2) (sourceCacheResult, error) {
+func (e *sourceTextEnricher) Enrich(ctx context.Context, item *scriptpkg.GenerationItemV2) (scriptports.EnrichResult, error) {
 	if e.cache == nil || item == nil {
-		return sourceCacheBypass, nil
+		return scriptports.EnrichBypass, nil
 	}
 
 	mode := normalizeCacheMode(item.Source.CachePolicy.Mode)
 	if mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh {
-		return sourceCacheBypass, nil
+		return scriptports.EnrichBypass, nil
 	}
 
 	key := computeSourceCacheKey(item)
 	if key == "" {
-		return sourceCacheBypass, nil
+		return scriptports.EnrichBypass, nil
 	}
 
 	text, err := e.cache.GetResearchCache(ctx, key)
 	if err != nil {
-		return sourceCacheMiss, fmt.Errorf("source cache read failed: %w", err)
+		return scriptports.EnrichMiss, fmt.Errorf("source cache read failed: %w", err)
 	}
 
 	if text != "" {
@@ -80,19 +71,19 @@ func (e *sourceEnricher) enrich(ctx context.Context, item *scriptpkg.GenerationI
 				zap.String("item_id", item.ID),
 				zap.String("cache_key", key))
 		}
-		return sourceCacheHit, nil
+		return scriptports.EnrichHit, nil
 	}
 
 	if mode == scriptpkg.SourceCacheModeCacheOnly {
-		return sourceCacheMiss, fmt.Errorf("source cache miss with mode=%s", mode)
+		return scriptports.EnrichMiss, fmt.Errorf("source cache miss with mode=%s", mode)
 	}
 
-	return sourceCacheMiss, nil
+	return scriptports.EnrichMiss, nil
 }
 
-// save stores the resolved source text in the cache when the policy
+// Save stores the resolved source text in the cache when the policy
 // allows writes. It is called after source resolution succeeds.
-func (e *sourceEnricher) save(ctx context.Context, item scriptpkg.GenerationItemV2, text string) error {
+func (e *sourceTextEnricher) Save(ctx context.Context, item scriptpkg.GenerationItemV2, text string) error {
 	if e.cache == nil || text == "" {
 		return nil
 	}
