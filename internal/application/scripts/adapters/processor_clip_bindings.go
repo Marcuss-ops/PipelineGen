@@ -119,9 +119,17 @@ func (p *ClipBindingsProcessor) Process(
 		// Build one candidate per accepted clip in canonical order.
 		candidates := make([]scene.ClipCandidate, 0, len(clipIDs))
 		for _, id := range clipIDs {
+			var startMs, endMs int64
+			if plan.ClipEvidence != nil {
+				if detail, ok := plan.ClipEvidence.ClipDetails[id]; ok {
+					startMs, endMs = detail.StartMs, detail.EndMs
+				}
+			}
 			candidates = append(candidates, scene.ClipCandidate{
 				ClipID:    id,
 				DriveLink: driveLinks[id],
+				StartMs:   startMs,
+				EndMs:     endMs,
 			})
 		}
 

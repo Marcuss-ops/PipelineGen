@@ -28,6 +28,8 @@ type AssetRequirements struct{}
 type ClipCandidate struct {
 	ClipID    string
 	DriveLink string
+	StartMs   int64
+	EndMs     int64
 }
 
 // StockCandidate is a candidate stock asset for binding.
@@ -130,8 +132,11 @@ func (b *SceneAssetBinder) BindClips(reqs []ClipBindingRequest) BindClipsResult 
 				continue
 			}
 			bindings[req.SceneID] = &script.ClipBinding{
-				ClipID:    c.ClipID,
-				DriveLink: c.DriveLink,
+				ClipID:     c.ClipID,
+				DriveLink:  c.DriveLink,
+				StartMs:    c.StartMs,
+				EndMs:      c.EndMs,
+				DurationMs: script.ClipDurationMs(c.StartMs, c.EndMs),
 			}
 			changed = true
 			break // one clip per scene, first candidate wins

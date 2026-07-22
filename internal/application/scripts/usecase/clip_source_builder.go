@@ -339,8 +339,9 @@ type clipContextRecord struct {
 
 func chronologicalSortKey(clip *asset.Asset, id string) int64 {
 	if clip != nil {
-		if n := clip.GetMetadataInt("start_ms"); n != 0 {
-			return int64(n)
+		startMs, _ := clipTimeline(clip)
+		if startMs >= 0 {
+			return startMs
 		}
 	}
 	for i := 0; i < len(id); i++ {
@@ -357,6 +358,28 @@ func chronologicalSortKey(clip *asset.Asset, id string) int64 {
 		i = j - 1
 	}
 	return int64(^uint64(0) >> 1)
+}
+
+// clipTimeline is the single timestamp projection for indexed clips. Ingested
+// boxing chunks commonly carry chunk_index + chunk_duration_sec instead of
+// explicit millisecond offsets; both representations must produce the same
+// binding contract downstream.
+func clipTimeline(clip *asset.Asset) (int64, int64) {
+	if clip == nil {
+		return -1, -1
+	}
+	startMs := int64(clip.GetMetadataInt("start_ms"))
+	endMs := int64(clip.GetMetadataInt("end_ms"))
+	if endMs > startMs {
+		return startMs, endMs
+	}
+	chunkIndex := int64(clip.GetMetadataInt("chunk_index"))
+	chunkDurationSec := int64(clip.GetMetadataInt("chunk_duration_sec"))
+	if chunkIndex >= 0 && chunkDurationSec > 0 {
+		startMs = chunkIndex * chunkDurationSec * 1000
+		return startMs, startMs + chunkDurationSec*1000
+	}
+	return -1, -1
 }
 
 // clipResolveReason is the typed return value of resolveOneClip.

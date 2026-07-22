@@ -149,6 +149,11 @@ func (s *SceneSynthesizer) FromText(text string, numClips int, evidence *scriptp
 		if link, ok := evidence.DriveLinks[clipID]; ok {
 			binding.DriveLink = link
 		}
+		if detail, ok := evidence.ClipDetails[clipID]; ok {
+			binding.StartMs = detail.StartMs
+			binding.EndMs = detail.EndMs
+			binding.DurationMs = scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs)
+		}
 		scenes[i].Bindings.Clip = binding
 	}
 	return scenes

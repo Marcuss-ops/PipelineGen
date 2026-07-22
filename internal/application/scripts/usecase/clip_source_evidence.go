@@ -95,8 +95,13 @@ func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDe
 	if desc == "" {
 		desc = strings.TrimSpace(clip.GetMetadataString("description"))
 	}
-	startMs := parseMetadataMs(clip.GetMetadataString("start_ms"))
-	endMs := parseMetadataMs(clip.GetMetadataString("end_ms"))
+	startMs, endMs := clipTimeline(clip)
+	if startMs < 0 {
+		startMs = parseMetadataMs(clip.GetMetadataString("start_ms"))
+	}
+	if endMs < 0 {
+		endMs = parseMetadataMs(clip.GetMetadataString("end_ms"))
+	}
 	details[id] = scriptpkg.ClipDetail{
 		Name:        clipDisplayName(clip, id),
 		Description: desc,
