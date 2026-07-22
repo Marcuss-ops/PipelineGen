@@ -133,10 +133,11 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 
 	// 3. Search candidates through the canonical port.
 	query := brain.SearchQuery{
-		Text:       strings.Join(intentOut.Keywords, " "),
-		Language:   language,
-		MediaTypes: mediaTypesForSlots(scene.Slots),
-		Limit:      policy.MaxCandidatesPerSlot,
+		Text:         strings.Join(intentOut.Keywords, " "),
+		Language:     language,
+		MediaTypes:   mediaTypesForSlots(scene.Slots),
+		Limit:        policy.MaxCandidatesPerSlot,
+		SearchPolicy: policy.SearchPolicy,
 	}
 	searchResult, err := b.searcher.Search(ctx, query)
 	if err != nil {

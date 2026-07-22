@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // bindingCreateRequest is the POST /api/media-memory/bindings body.
@@ -239,11 +240,18 @@ type resolveSceneRequest struct {
 // godlike/06 SSOT: defaults are conservative (PreferApprovedBindings
 // = true, AllowExternalSearch = false) — the dashboard preview
 // path is sandboxed and does NOT want to fan out to live providers.
+//
+// Pointer bools let callers explicitly override the conservative
+// defaults; otherwise a JSON `false` would be merged with the default
+// and lost.
 type resolvePolicyRequest struct {
-	PreferApprovedBindings bool `json:"prefer_approved_bindings"`
-	AllowExternalSearch    bool `json:"allow_external_search"`
-	MaxCandidatesPerSlot   int  `json:"max_candidates_per_slot"`
-	AvoidRecentAssets      bool `json:"avoid_recent_assets"`
+	PreferApprovedBindings *bool    `json:"prefer_approved_bindings,omitempty"`
+	AllowExternalSearch    *bool    `json:"allow_external_search,omitempty"`
+	MaxCandidatesPerSlot   int      `json:"max_candidates_per_slot,omitempty"`
+	AvoidRecentAssets      *bool    `json:"avoid_recent_assets,omitempty"`
+	Mode                   string   `json:"mode,omitempty"`
+	AllowedProviders       []string `json:"allowed_providers,omitempty"`
+	CacheRead              *bool    `json:"cache_read,omitempty"`
 }
 
 // toResolveRequest projects the wire DTO into the canonical
@@ -255,14 +263,47 @@ func (r resolveCreateRequest) toResolveRequest() mediamemory.ResolveRequest {
 		AllowExternalSearch:    defaultAllowExternalSearch,
 		MaxCandidatesPerSlot:   defaultMaxCandidatesPerSlot,
 		AvoidRecentAssets:      defaultAvoidRecentAssets,
+		SearchPolicy:           defaultSearchPolicyForRequest(),
 	}
 	if r.Policy != nil {
-		policy.PreferApprovedBindings = r.Policy.PreferApprovedBindings || policy.PreferApprovedBindings
-		policy.AllowExternalSearch = r.Policy.AllowExternalSearch || policy.AllowExternalSearch
-		if r.Policy.MaxCandidatesPerSlot > 0 {
-			policy.MaxCandidatesPerSlot = r.Policy.MaxCandidatesPerSlot
+		preferApproved := defaultPreferApprovedBindings
+		if r.Policy.PreferApprovedBindings != nil {
+			preferApproved = *r.Policy.PreferApprovedBindings
 		}
-		policy.AvoidRecentAssets = r.Policy.AvoidRecentAssets || policy.AvoidRecentAssets
+		allowExternal := defaultAllowExternalSearch
+		if r.Policy.AllowExternalSearch != nil {
+			allowExternal = *r.Policy.AllowExternalSearch
+		}
+		avoidRecent := defaultAvoidRecentAssets
+		if r.Policy.AvoidRecentAssets != nil {
+			avoidRecent = *r.Policy.AvoidRecentAssets
+		}
+		cacheRead := defaultCacheRead
+		if r.Policy.CacheRead != nil {
+			cacheRead = *r.Policy.CacheRead
+		}
+		mode := string(media.SearchModeANN)
+		if r.Policy.Mode != "" {
+			mode = r.Policy.Mode
+		}
+		maxCandidates := defaultMaxCandidatesPerSlot
+		if r.Policy.MaxCandidatesPerSlot > 0 {
+			maxCandidates = r.Policy.MaxCandidatesPerSlot
+		}
+
+		policy.PreferApprovedBindings = preferApproved
+		policy.AllowExternalSearch = allowExternal
+		policy.AvoidRecentAssets = avoidRecent
+		policy.MaxCandidatesPerSlot = maxCandidates
+		policy.SearchPolicy = media.ResolutionSearchPolicy{
+			Mode:             media.SearchMode(mode),
+			AllowExternal:    allowExternal,
+			AllowedProviders: append([]string(nil), r.Policy.AllowedProviders...),
+			CacheRead:        cacheRead,
+			PreferApproved:   preferApproved,
+			MaxCandidates:    maxCandidates,
+			Language:         r.Language,
+		}
 	}
 
 	scenes := make([]mediamemory.SceneSpec, 0, len(r.Scenes))
@@ -429,4 +470,14 @@ const (
 	defaultAllowExternalSearch    = false
 	defaultMaxCandidatesPerSlot   = 10
 	defaultAvoidRecentAssets      = false
+	defaultCacheRead              = true
 )
+
+func defaultSearchPolicyForRequest() media.ResolutionSearchPolicy {
+	return media.ResolutionSearchPolicy{
+		Mode:          media.SearchModeANN,
+		AllowExternal: defaultAllowExternalSearch,
+		CacheRead:     defaultCacheRead,
+		MaxCandidates: defaultMaxCandidatesPerSlot,
+	}
+}

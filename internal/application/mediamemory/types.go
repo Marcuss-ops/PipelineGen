@@ -387,11 +387,17 @@ type SceneVisualPlan struct {
 // BatchService.MaterializeTopK path (BatchSpec.MaterializeTopK),
 // not by per-request policy. The remaining knobs are the live
 // controls the dashboard preview / API consumers supply.
+//
+// SearchPolicy carries the canonical search knobs forwarded to the
+// underlying SearchFanOut. Legacy fields are still honoured when
+// SearchPolicy is zero so existing callers keep working; new code
+// should populate SearchPolicy directly.
 type ResolvePolicy struct {
 	PreferApprovedBindings bool
 	AllowExternalSearch    bool
 	MaxCandidatesPerSlot   int
 	AvoidRecentAssets      bool
+	SearchPolicy           media.ResolutionSearchPolicy
 }
 
 // ResolveRequest is the top-level controller input to the resolver.

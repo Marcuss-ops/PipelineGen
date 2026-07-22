@@ -503,10 +503,11 @@ func (r *VisualResolver) candidatesForSlot(
 		return nil, "", cascadeWarns
 	}
 	res, err := r.external.Search(ctx, SearchFanOutQuery{
-		Text:       scene.Text,
-		Language:   scene.Language,
-		Limit:      policy.MaxCandidatesPerSlot,
-		MediaTypes: mediaTypesForSlot(slot),
+		Text:         scene.Text,
+		Language:     scene.Language,
+		Limit:        policy.MaxCandidatesPerSlot,
+		MediaTypes:   mediaTypesForSlot(slot),
+		SearchPolicy: policy.SearchPolicy,
 	})
 	if err != nil {
 		cascadeWarns = append(cascadeWarns, fmt.Sprintf("level=9: external search error: %s", err.Error()))
