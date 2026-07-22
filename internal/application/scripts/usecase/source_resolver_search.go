@@ -41,6 +41,14 @@ type SemanticSearchResult struct {
 	ClipID string  `json:"clip_id"`
 	Name   string  `json:"name"`
 	Score  float64 `json:"score"`
+	// Evidence fields are carried from the semantic index so the shared
+	// sampler can evaluate its canonical gates before clip hydration.
+	Transcript          string
+	VisualSummary       string
+	MediaType           string
+	DriveLink           string
+	AvailableByIngest   bool
+	AnchorCoverageRatio float64
 }
 
 // SearchSourceResolver resolves SourceSearch sources by performing
@@ -137,18 +145,30 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	candidates := make([]ports.ClipSamplerCandidate, 0, len(results))
 	for _, result := range results {
 		candidates = append(candidates, ports.ClipSamplerCandidate{
-			ClipID: strings.TrimSpace(result.ClipID),
-			Name:   result.Name,
-			Score:  result.Score,
-			Source: "semantic",
+			ClipID:              strings.TrimSpace(result.ClipID),
+			Name:                result.Name,
+			Score:               result.Score,
+			Source:              "semantic",
+			Transcript:          result.Transcript,
+			VisualSummary:       result.VisualSummary,
+			MediaType:           result.MediaType,
+			DriveLink:           result.DriveLink,
+			AvailableByIngest:   result.AvailableByIngest,
+			AnchorCoverageRatio: result.AnchorCoverageRatio,
 		})
 	}
 
+	minQualityScore := 0.0
+	if src.MinQualityScore != nil {
+		minQualityScore = *src.MinQualityScore
+	}
 	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerSearch).Select(
 		ports.ClipSamplerRequest{
 			Query:         query,
 			Limit:         limit,
 			MinCoverage:   minCoverage,
+			MinScore:      minQualityScore,
+			Slot:          scriptpkg.ClipSearchSlot{Topic: query},
 			SourceType:    scriptpkg.SourceSearch,
 			CallingSource: ClipSamplerCallerSearch,
 		},

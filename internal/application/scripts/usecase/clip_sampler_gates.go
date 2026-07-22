@@ -72,7 +72,11 @@ const (
 
 	// MinQualityScore: cosine-similarity floor for the quality
 	// gate.
-	MinQualityScore = 0.5
+	// nomic-embed-text cosine scores for the canonical stock-clip index
+	// are in the 0.40+ range. Keep the audit floor aligned with that
+	// embedding contract; source-specific MinScore remains an additional
+	// operator-controlled floor.
+	MinQualityScore = 0.4
 
 	// DiversityMaxCosine: max cosine sim between candidate and
 	// any previously-selected candidate. Cross-slot governance.

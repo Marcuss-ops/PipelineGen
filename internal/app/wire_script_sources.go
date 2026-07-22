@@ -97,7 +97,10 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 	if limit <= 0 {
 		limit = 10
 	}
-	minScore := 0.5
+	// The deployed nomic document/query embeddings produce valid semantic
+	// matches in the 0.01–0.50 range. Keep this aligned with the canonical
+	// semantic backend floor instead of dropping all stock hits at 0.5.
+	minScore := 0.01
 
 	results, err := p.searcher.SearchByText(ctx, query, p.embedder, p.vectorName, limit, minScore)
 	if err != nil {
@@ -111,9 +114,15 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 			continue
 		}
 		out = append(out, usecase.SemanticSearchResult{
-			ClipID: assetID,
-			Name:   qdrantPayloadStr(r.Payload, "name"),
-			Score:  r.Score,
+			ClipID:              assetID,
+			Name:                qdrantPayloadStr(r.Payload, "name"),
+			Score:               r.Score,
+			Transcript:          qdrantPayloadStr(r.Payload, "search_text"),
+			VisualSummary:       qdrantPayloadStr(r.Payload, "description"),
+			MediaType:           qdrantPayloadStr(r.Payload, "media_type"),
+			DriveLink:           qdrantPayloadStr(r.Payload, "drive_link"),
+			AvailableByIngest:   qdrantPayloadStr(r.Payload, "lifecycle_state") == "PUBLISHED",
+			AnchorCoverageRatio: 1.0,
 		})
 	}
 	return out, nil
