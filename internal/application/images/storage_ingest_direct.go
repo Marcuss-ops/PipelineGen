@@ -70,6 +70,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	generator := imageGeneratorLabel(source)
+	provider := classifyImageProvider(source, generator)
+	origin := classifyImageOrigin(source, generator)
 	width, height := decodeImageDimensions(content)
 
 	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
@@ -166,8 +168,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			"semantic_description": "",
 			"style":                style,
 			"tags":                 tags,
-			"provider":             string(classifyImageProvider(source, generator)),
-			"origin":               "generated",
+			"provider":             string(provider),
+			"origin":               string(origin),
 			"width":                width,
 			"height":               height,
 			// Wave YY (July 2026, image ingest drift-fix per
@@ -195,8 +197,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Status:       "ready",
 		MetadataJSON: string(metaJSON),
 		Tags:         tags,
-		Origin:       classifyImageOrigin(source, generator),
-		Provider:     classifyImageProvider(source, generator),
+		Origin:       origin,
+		Provider:     provider,
 	}
 
 	// ingestDirect uses a single atomic CommitAsset transaction so a
@@ -235,13 +237,13 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			// width + height live in Extra because TypedMetadata has no
 			// typed slots for them — mirror the JSON keys produced by
 			// the metaJSON fallback above.
-			SourceProvider: string(classifyImageProvider(source, generator)),
+			SourceProvider: string(provider),
 			Extra: map[string]any{
 				"path_rel":                 result.PathRel,
 				"width":                    width,
 				"height":                   height,
-				"origin":                   classifyImageOrigin(source, generator),
-				"provider":                 classifyImageProvider(source, generator),
+				"origin":                   origin,
+				"provider":                 provider,
 				"generator":                generator,
 				"style":                    style,
 				"gen_id":                   genID,
@@ -298,18 +300,14 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 }
 
 func imageGeneratorLabel(source string) string {
-	lower := strings.ToLower(source)
-	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
-		return source
+	if d := asset.DefaultProviderRegistry().Match(source); d != nil {
+		return string(d.ID)
 	}
-	switch {
-	case strings.Contains(lower, "wikipedia.org"):
-		return "wikipedia"
-	case strings.Contains(lower, "duckduckgo"):
-		return "duckduckgo"
-	default:
+	lower := strings.ToLower(strings.TrimSpace(source))
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		return "web-download"
 	}
+	return source
 }
 
 // errImageIngestCommitterNil is the canonical typed sentinel returned

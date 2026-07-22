@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -173,10 +172,5 @@ func isAIImageIngestSource(req *ingest.Request) bool {
 	if req == nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(req.Source)) {
-	case "google-vids", "google-vids-image", "google-slides", "google-flow", "nvidia", "nvidia-local", "local-nim", "flux-1-dev", "flux-1-schnell", "flux.1-schnell", "flux1-schnell", "flux-2-klein", "flux.2-klein-4b", "flux-2-klein-4b":
-		return true
-	default:
-		return false
-	}
+	return imgapp.IsAIImageSource(req.Source)
 }

@@ -11,10 +11,13 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func isAIImageSource(source string) bool {
+// IsAIImageSource reports whether source identifies an AI/generated
+// image provider. URLs are never considered AI sources.
+func IsAIImageSource(source string) bool {
 	source = strings.ToLower(strings.TrimSpace(source))
 	if source == "" {
 		return false
@@ -22,26 +25,8 @@ func isAIImageSource(source string) bool {
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		return false
 	}
-
-	switch source {
-	case "google-flow",
-		"google-vids",
-		"google-vids-image",
-		"google-slides",
-		"nvidia",
-		"nvidia-local",
-		"local-nim",
-		"flux-1-dev",
-		"flux.1-schnell",
-		"flux-1-schnell",
-		"flux1-schnell",
-		"flux-2-klein",
-		"flux.2-klein-4b",
-		"flux-2-klein-4b":
-		return true
-	default:
-		return false
-	}
+	d := asset.DefaultProviderRegistry().Match(source)
+	return d != nil && d.Origin == asset.ImageOriginGenerated
 }
 
 // decodeImageDimensions estrae larghezza e altezza da bytes immagine.

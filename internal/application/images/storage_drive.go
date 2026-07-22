@@ -42,9 +42,11 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 	webLink := result.WebViewLink
 
 	prompt := imgAsset.Description
-	generator := "nvidia"
-	if imgAsset.SourceURL == "google-vids" || imgAsset.SourceURL == "google-slides" || textutil.ContainsCI(prompt, "google vids") || textutil.ContainsCI(prompt, "google slides") {
-		generator = "google-slides"
+	generator := string(asset.ProviderNVIDIA)
+	if d := asset.DefaultProviderRegistry().Match(imgAsset.SourceURL); d != nil && d.Origin == asset.ImageOriginGenerated {
+		generator = string(d.ID)
+	} else if d := asset.DefaultProviderRegistry().Match(prompt); d != nil && d.Origin == asset.ImageOriginGenerated {
+		generator = string(d.ID)
 	} else if imgAsset.MetadataJSON != "" && imgAsset.MetadataJSON != "{}" {
 		var meta map[string]any
 		if err := json.Unmarshal([]byte(imgAsset.MetadataJSON), &meta); err == nil {
@@ -137,7 +139,7 @@ func (s *ImageStorageService) aiImageDriveRootForSource(source, style string) st
 	if s == nil || s.cfg == nil {
 		return ""
 	}
-	if !isAIImageSource(source) {
+	if !IsAIImageSource(source) {
 		return ""
 	}
 	styleFolders := map[string]string{

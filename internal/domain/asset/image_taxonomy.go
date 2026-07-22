@@ -29,6 +29,8 @@ const (
 	ProviderSearXNG      ImageProvider = "searxng"
 	ProviderDrive        ImageProvider = "drive"
 	ProviderGoogleSlides ImageProvider = "google-slides"
+	ProviderNVIDIA       ImageProvider = "nvidia"
+	ProviderFlux         ImageProvider = "flux"
 	ProviderUpload       ImageProvider = "upload"
 	ProviderUnknown      ImageProvider = "unknown"
 )
@@ -36,7 +38,7 @@ const (
 func (p ImageProvider) IsValid() bool {
 	switch p {
 	case ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive,
-		ProviderGoogleSlides, ProviderUpload, ProviderUnknown:
+		ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload, ProviderUnknown:
 		return true
 	default:
 		return false
@@ -44,7 +46,12 @@ func (p ImageProvider) IsValid() bool {
 }
 
 func (p ImageProvider) IsGenerated() bool {
-	return p == ProviderGoogleSlides
+	switch p {
+	case ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p ImageProvider) IsRetrieved() bool {

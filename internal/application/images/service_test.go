@@ -247,16 +247,16 @@ func TestMeaningfulLookupTokens_EmptyInput(t *testing.T) {
 }
 
 func TestIsAIImageSource(t *testing.T) {
-	if !isAIImageSource("google-flow") {
+	if !IsAIImageSource("google-flow") {
 		t.Fatal("expected google-flow to be treated as AI source")
 	}
-	if !isAIImageSource("flux-2-klein") {
+	if !IsAIImageSource("flux-2-klein") {
 		t.Fatal("expected flux-2-klein to be treated as AI source")
 	}
-	if isAIImageSource("https://example.com/image.jpg") {
+	if IsAIImageSource("https://example.com/image.jpg") {
 		t.Fatal("expected direct image URL to not be treated as AI source")
 	}
-	if isAIImageSource("duckduckgo") {
+	if IsAIImageSource("duckduckgo") {
 		t.Fatal("expected duckduckgo to not be treated as AI source")
 	}
 }
