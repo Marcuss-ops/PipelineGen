@@ -116,6 +116,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	mediamemoryapp "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -370,11 +371,12 @@ func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *Compo
 	bindingSvc := WireBindingService(root.DB.DB, txMgr, eventsRepo, log)
 
 	handler := mediamemoryapi.NewHandler(mediamemoryapi.WireParams{
-		Resolver: resolver,
-		Bindings: bindingSvc,
-		Feedback: nil,
-		Batches:  nil,
-		Log:      log,
+		Resolver:       resolver,
+		PolicyResolver: mediamemoryapp.NewResolutionPolicyResolver(),
+		Bindings:       bindingSvc,
+		Feedback:       nil,
+		Batches:        nil,
+		Log:            log,
 	})
 
 	descriptor := mediamemoryapi.Build(handler, log)

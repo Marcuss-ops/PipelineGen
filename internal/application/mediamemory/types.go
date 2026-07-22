@@ -400,6 +400,25 @@ type ResolvePolicy struct {
 	SearchPolicy           media.ResolutionSearchPolicy
 }
 
+// OptionalResolvePolicy carries the client-supplied overrides before
+// canonical defaults are applied. Pointer bools distinguish "field
+// absent" from "field explicitly false". The zero value means "use
+// the application-layer defaults" (see ResolutionPolicyResolver).
+//
+// godlike/06 SSOT: the API layer maps its wire DTO directly to this
+// struct and does NOT apply defaults; defaulting is the sole
+// responsibility of ResolutionPolicyResolver in the application
+// layer.
+type OptionalResolvePolicy struct {
+	PreferApprovedBindings *bool
+	AllowExternalSearch    *bool
+	MaxCandidatesPerSlot   int
+	AvoidRecentAssets      *bool
+	Mode                   string
+	AllowedProviders       []string
+	CacheRead              *bool
+}
+
 // ResolveRequest is the top-level controller input to the resolver.
 type ResolveRequest struct {
 	ProjectID string

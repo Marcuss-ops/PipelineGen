@@ -111,22 +111,24 @@ type BatchServicePort interface {
 // mediamemory.Logger belongs to the application layer; the handler
 // does NOT re-export it (no double logger seam).
 type WireParams struct {
-	Resolver ResolverPort
-	Bindings BindingServicePort
-	Feedback FeedbackServicePort
-	Batches  BatchServicePort
-	Log      *zap.Logger
-	Clock    mediamemory.Clock
+	Resolver       ResolverPort
+	PolicyResolver mediamemory.ResolutionPolicyResolver
+	Bindings       BindingServicePort
+	Feedback       FeedbackServicePort
+	Batches        BatchServicePort
+	Log            *zap.Logger
+	Clock          mediamemory.Clock
 }
 
 // Handler is the thin HTTP transport for the canonical MediaMemory API.
 type Handler struct {
-	resolver ResolverPort
-	bindings BindingServicePort
-	feedback FeedbackServicePort
-	batches  BatchServicePort
-	log      *zap.Logger
-	clock    mediamemory.Clock
+	resolver       ResolverPort
+	policyResolver mediamemory.ResolutionPolicyResolver
+	bindings       BindingServicePort
+	feedback       FeedbackServicePort
+	batches        BatchServicePort
+	log            *zap.Logger
+	clock          mediamemory.Clock
 }
 
 // NewHandler creates the Handler. Composition root wires concrete
@@ -137,13 +139,18 @@ func NewHandler(p WireParams) *Handler {
 	if clock == nil {
 		clock = mediamemory.RealClock()
 	}
+	policyResolver := p.PolicyResolver
+	if policyResolver == nil {
+		policyResolver = mediamemory.NewResolutionPolicyResolver()
+	}
 	return &Handler{
-		resolver: p.Resolver,
-		bindings: p.Bindings,
-		feedback: p.Feedback,
-		batches:  p.Batches,
-		log:      p.Log,
-		clock:    clock,
+		resolver:       p.Resolver,
+		policyResolver: policyResolver,
+		bindings:       p.Bindings,
+		feedback:       p.Feedback,
+		batches:        p.Batches,
+		log:            p.Log,
+		clock:          clock,
 	}
 }
 
@@ -265,7 +272,8 @@ func (h *Handler) Resolve(c *gin.Context) {
 			fmt.Errorf("mediamemory: bind JSON: %w", err))
 		return
 	}
-	resolved, err := h.resolver.Resolve(c.Request.Context(), req.toResolveRequest())
+	policy := h.policyResolver.Resolve(req.Language, req.toOptionalPolicy())
+	resolved, err := h.resolver.Resolve(c.Request.Context(), req.toResolveRequest(policy))
 	if err != nil {
 		h.writeError(c, "POST /api/media-memory/resolve", err)
 		return
