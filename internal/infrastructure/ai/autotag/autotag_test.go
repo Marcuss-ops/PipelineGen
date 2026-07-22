@@ -68,7 +68,7 @@ func TestTagAsset_SavesModelAndDuration(t *testing.T) {
 	})
 
 	dispatcher := &fakeDispatcher{}
-	svc := NewService(nil, nil, client, dispatcher, nil, zap.NewNop())
+	svc := NewService(nil, nil, client, dispatcher, nil, zap.NewNop(), nil, nil, nil, nil)
 
 	a := &asset.Asset{ID: "asset-1", MediaType: asset.MediaTypeClip}
 	a.SetLocalPath(newTestFile(t))
@@ -138,7 +138,7 @@ func TestTagAsset_FallsBackToConfiguredModel(t *testing.T) {
 	})
 
 	dispatcher := &fakeDispatcher{}
-	svc := NewService(nil, nil, client, dispatcher, nil, zap.NewNop())
+	svc := NewService(nil, nil, client, dispatcher, nil, zap.NewNop(), nil, nil, nil, nil)
 
 	a := &asset.Asset{ID: "asset-2", MediaType: asset.MediaTypeImage}
 	a.SetLocalPath(newTestFile(t))

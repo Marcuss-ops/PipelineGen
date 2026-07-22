@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,9 +17,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 )
+
+// Percentages used for the canonical multi-frame video analysis:
+// start, 25%, 50%, 75%, end.
+var videoFramePercentages = []float64{0.0, 0.25, 0.50, 0.75, 1.0}
 
 type Service struct {
 	db          *sql.DB
@@ -27,6 +35,15 @@ type Service struct {
 	dispatcher  mutations.AssetMutationDispatcher
 	enrichState enrichment.EnrichStateMachinePort
 	log         *zap.Logger
+
+	// Optional video analysis ports. When all four are wired, video
+	// assets are analysed with a multi-frame sampler + per-frame VLM +
+	// keyframe embedding + keyframe indexing. When any is nil, video
+	// falls back to the same single-shot path as images.
+	videoSampler  indexing.PercentageFrameSampler
+	visualVLM     indexing.VLMClient
+	imageEmbedder qdrantsearch.ImageEmbedder
+	frameIndexer  mediamemory.KeyframeVisualIndexer
 }
 
 // NewService constructs an autotag.Service. The dispatcher is the
@@ -35,14 +52,34 @@ type Service struct {
 // changes and trigger Qdrant re-indexing. enrichState is the
 // canonical state-machine port for media_assets.enrich_state
 // transitions (PR-ENRICHMENT-STATE-MACHINE).
-func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, dispatcher mutations.AssetMutationDispatcher, enrichState enrichment.EnrichStateMachinePort, log *zap.Logger) *Service {
+//
+// The optional video-analysis ports (videoSampler, visualVLM,
+// imageEmbedder, frameIndexer) enable the multi-frame VLM pipeline
+// for video assets. Pass nil to all four to keep the legacy
+// single-shot behaviour.
+func NewService(
+	db *sql.DB,
+	repo asset.Repository,
+	vlmClient *vlm.Client,
+	dispatcher mutations.AssetMutationDispatcher,
+	enrichState enrichment.EnrichStateMachinePort,
+	log *zap.Logger,
+	videoSampler indexing.PercentageFrameSampler,
+	visualVLM indexing.VLMClient,
+	imageEmbedder qdrantsearch.ImageEmbedder,
+	frameIndexer mediamemory.KeyframeVisualIndexer,
+) *Service {
 	return &Service{
-		db:          db,
-		repo:        repo,
-		vlmClient:   vlmClient,
-		dispatcher:  dispatcher,
-		enrichState: enrichState,
-		log:         log,
+		db:            db,
+		repo:          repo,
+		vlmClient:     vlmClient,
+		dispatcher:    dispatcher,
+		enrichState:   enrichState,
+		log:           log,
+		videoSampler:  videoSampler,
+		visualVLM:     visualVLM,
+		imageEmbedder: imageEmbedder,
+		frameIndexer:  frameIndexer,
 	}
 }
 
@@ -52,9 +89,249 @@ func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, dispat
 // asset.index.requested outbox event; the outbox worker then handles
 // Qdrant re-indexing, replacing the previous goroutine-based direct
 // Qdrant call.
+//
+// For video assets, when the multi-frame analysis ports are wired,
+// TagAsset extracts frames at 0%, 25%, 50%, 75% and 100% of the
+// duration, runs VLM on each frame, aggregates the metadata, embeds
+// the frames with SigLIP, and indexes each keyframe separately in
+// pipelinegen_media_frames.
 func (s *Service) TagAsset(ctx context.Context, a *asset.Asset) error {
+	if a == nil {
+		return fmt.Errorf("autotag: asset is nil")
+	}
 	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath()))
 
+	if isVideoAsset(a) && s.videoSampler != nil && s.visualVLM != nil {
+		return s.tagVideoMultiFrame(ctx, a)
+	}
+
+	return s.tagAssetSingle(ctx, a)
+}
+
+// isVideoAsset reports whether the asset media type should be treated
+// as a video for the multi-frame VLM pipeline.
+func isVideoAsset(a *asset.Asset) bool {
+	if a == nil {
+		return false
+	}
+	mt := strings.ToLower(string(a.MediaType))
+	switch mt {
+	case "video", "clip", "image_video":
+		return true
+	default:
+		return strings.HasPrefix(mt, "video/")
+	}
+}
+
+// tagVideoMultiFrame runs the canonical 5-point video analysis:
+// extract start/25%/50%/75%/end frames, VLM each, aggregate
+// metadata, embed frames with SigLIP, and index each keyframe.
+func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error {
+	localPath := a.LocalPath()
+	if localPath == "" {
+		return fmt.Errorf("autotag: asset %s has no local_path", a.ID)
+	}
+
+	jobDir, err := os.MkdirTemp("", "vlm-video-")
+	if err != nil {
+		return fmt.Errorf("autotag: mkdir temp: %w", err)
+	}
+	defer os.RemoveAll(jobDir)
+
+	start := time.Now()
+
+	frames, err := s.videoSampler.ExtractPercentageFrames(ctx, localPath, videoFramePercentages, jobDir)
+	if err != nil {
+		a.SetMetadataString("vlm_tag_error", err.Error())
+		a.SetMetadataString("vlm_tagged", "failed")
+		if derr := s.persistVLM(ctx, a); derr != nil {
+			return fmt.Errorf("vlm video sampler failed and dispatcher persistence failed: vlm=%w; dispatcher=%v", err, derr)
+		}
+		return fmt.Errorf("vlm video sampler: %w", err)
+	}
+
+	responses := make([]*indexing.VLMInferenceResponse, 0, len(frames))
+	for i, f := range frames {
+		resp, err := s.visualVLM.Infer(ctx, f.Path)
+		if err != nil {
+			a.SetMetadataString("vlm_tag_error", err.Error())
+			a.SetMetadataString("vlm_tagged", "failed")
+			if derr := s.persistVLM(ctx, a); derr != nil {
+				return fmt.Errorf("vlm video inference failed (frame %d) and dispatcher persistence failed: vlm=%w; dispatcher=%v", i, err, derr)
+			}
+			return fmt.Errorf("vlm video inference (frame %d): %w", i, err)
+		}
+		responses = append(responses, resp)
+	}
+
+	duration := time.Since(start)
+
+	// Aggregate canonical visible actions/entities from all frames.
+	text, actions, _ := indexing.AggregateVLMResponses(responses)
+
+	// Aggregate the rest of the per-frame metadata for storage.
+	sceneTypeSet := make(map[string]struct{})
+	moodSet := make(map[string]struct{})
+	visualObjectSet := make(map[string]struct{})
+	ocrSet := make(map[string]struct{})
+	var dominantScene string
+	for _, r := range responses {
+		if r == nil {
+			continue
+		}
+		if strings.TrimSpace(r.SceneType) != "" {
+			sceneTypeSet[r.SceneType] = struct{}{}
+			if dominantScene == "" {
+				dominantScene = r.SceneType
+			}
+		}
+		for _, m := range r.Mood {
+			if strings.TrimSpace(m) != "" {
+				moodSet[m] = struct{}{}
+			}
+		}
+		for _, o := range r.VisualObjects {
+			if strings.TrimSpace(o) != "" {
+				visualObjectSet[o] = struct{}{}
+			}
+		}
+		for _, t := range r.TextOnScreen {
+			if strings.TrimSpace(t) != "" {
+				ocrSet[t] = struct{}{}
+			}
+		}
+	}
+
+	// Build VLMTags from the aggregated per-frame metadata plus the
+	// canonical actions returned by the shared aggregator.
+	vlmTagSet := make(map[string]bool)
+	for _, a := range actions {
+		vlmTagSet[strings.ToLower(a)] = true
+	}
+	for s := range sceneTypeSet {
+		vlmTagSet[strings.ToLower(s)] = true
+	}
+	for m := range moodSet {
+		vlmTagSet[strings.ToLower(m)] = true
+	}
+	for o := range visualObjectSet {
+		vlmTagSet[strings.ToLower(o)] = true
+	}
+	vlmTags := make([]string, 0, len(vlmTagSet))
+	for t := range vlmTagSet {
+		vlmTags = append(vlmTags, t)
+	}
+	a.VLMTags = vlmTags
+	a.RebuildTags()
+
+	// Persist aggregated metadata.
+	a.SetMetadataString("vlm_tagged", "success")
+	a.SetMetadataString("vlm_model", s.vlmClient.Model())
+	a.SetMetadataString("vlm_model_version", s.vlmClient.ModelVersion())
+	a.SetMetadataInt("vlm_analysis_duration_ms", int(duration.Milliseconds()))
+	a.SetMetadataInt("vlm_frames_analyzed", len(frames))
+	a.SetMetadataString("scene_type", dominantScene)
+
+	sceneTypes := sortedStringKeys(sceneTypeSet)
+	moods := sortedStringKeys(moodSet)
+	visualObjects := sortedStringKeys(visualObjectSet)
+	ocrTexts := sortedStringKeys(ocrSet)
+
+	if len(sceneTypes) > 0 {
+		a.SetMetadataString("vlm_scene_types", joinJSON(sceneTypes))
+	}
+	if len(moods) > 0 {
+		a.SetMetadataString("vlm_moods", joinJSON(moods))
+	}
+	if len(visualObjects) > 0 {
+		a.SetMetadataString("vlm_visual_objects", joinJSON(visualObjects))
+	}
+	if len(ocrTexts) > 0 {
+		a.SetMetadataString("vlm_ocr_text", joinJSON(ocrTexts))
+		a.SetMetadataString("text_on_screen", joinJSON(ocrTexts))
+	}
+	if text != "" {
+		a.SetMetadataString("vlm_aggregate_description", text)
+	}
+
+	// Embed frames and index each keyframe separately.
+	if s.imageEmbedder != nil && s.frameIndexer != nil {
+		if err := s.indexKeyframes(ctx, a, frames, responses); err != nil {
+			// Keyframe indexing is best-effort: we still want the VLM
+			// metadata to be persisted, but we surface the failure in
+			// the logs so the operator can investigate.
+			s.log.Warn("autotag: keyframe indexing failed", zap.String("asset_id", a.ID), zap.Error(err))
+		}
+	}
+
+	if err := s.persistVLM(ctx, a); err != nil {
+		return fmt.Errorf("dispatcher.EnqueueAndIndex after video VLM: %w", err)
+	}
+
+	return nil
+}
+
+// indexKeyframes generates SigLIP embeddings for the extracted frames
+// and writes one point per frame into pipelinegen_media_frames.
+func (s *Service) indexKeyframes(ctx context.Context, a *asset.Asset, frames []indexing.FrameSample, responses []*indexing.VLMInferenceResponse) error {
+	paths := make([]string, 0, len(frames))
+	for _, f := range frames {
+		paths = append(paths, f.Path)
+	}
+	vectors, err := s.imageEmbedder.EmbedImages(ctx, paths)
+	if err != nil {
+		return fmt.Errorf("embed frames: %w", err)
+	}
+	if len(vectors) != len(frames) {
+		return fmt.Errorf("embed frames: expected %d vectors, got %d", len(frames), len(vectors))
+	}
+
+	language := strings.ToLower(a.GetMetadataString("language"))
+	if language == "" {
+		language = "en"
+	}
+
+	for i, f := range frames {
+		vec := vectors[i]
+		if len(vec) == 0 {
+			s.log.Warn("autotag: empty frame embedding", zap.String("asset_id", a.ID), zap.Int("frame_index", i))
+			continue
+		}
+		tsMs := int64(f.Timestamp * 1000)
+		if err := s.frameIndexer.IndexKeyframe(ctx, a.ID, tsMs, a.ID, language, vec, ""); err != nil {
+			s.log.Warn("autotag: index keyframe failed",
+				zap.String("asset_id", a.ID),
+				zap.Int("frame_index", i),
+				zap.Int64("ts_ms", tsMs),
+				zap.Error(err))
+		}
+	}
+	return nil
+}
+
+// sortedStringKeys returns the keys of a string set as a sorted slice.
+func sortedStringKeys(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// joinJSON marshals a string slice to JSON. On failure it falls back
+// to joining with commas.
+func joinJSON(v []string) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return strings.Join(v, ", ")
+	}
+	return string(b)
+}
+
+// tagAssetSingle runs the legacy single-shot VLM analysis used for
+// images, audio and for video when the multi-frame ports are not wired.
+func (s *Service) tagAssetSingle(ctx context.Context, a *asset.Asset) error {
 	// 1. Call VLM sidecar and measure analysis duration.
 	start := time.Now()
 	vTags, usedModel, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath(), string(a.MediaType))
