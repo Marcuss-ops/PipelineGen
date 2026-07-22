@@ -95,18 +95,36 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			continue
 		}
 
-		providerTags := make([]string, len(candidate.Keywords))
-		copy(providerTags, candidate.Keywords)
-
 		pageURL := candidate.PageURL
 		if pageURL == "" && candidate.ID != "" {
 			pageURL = "https://artlist.io/stock-footage/clip/" + candidate.ID
 		}
-		clip := candidateToAsset(&candidate, pageURL)
+
+		// Hydrate search metadata with the full clip detail page before
+		// persisting the discovered asset. The detail fetcher enriches the
+		// synthetic search result with creator, categories, duration,
+		// dimensions, license, collection, and raw metadata.
+		hydrated := &candidate
+		if s.detailFetcher != nil {
+			detailed, detailErr := s.detailFetcher.FetchDetails(ctx, pageURL)
+			if detailErr != nil {
+				s.log.Warn("failed to hydrate Artlist clip details, using search metadata",
+					zap.String("clip_id", candidate.ID),
+					zap.String("page_url", pageURL),
+					zap.Error(detailErr))
+			} else if detailed != nil {
+				hydrated = detailed
+			}
+		}
+
+		clip := candidateToAsset(hydrated, pageURL)
 		clip.SetDownloadLink(candidate.SourceRef)
 
 		// Keep provider-side tags pure; the search term that discovered the
 		// clip lives in SearchTerms and Metadata["discovered_by_queries"].
+		providerTags := make([]string, len(hydrated.Keywords))
+		copy(providerTags, hydrated.Keywords)
+
 		clip.ProviderTags = providerTags
 		clip.RebuildTags()
 
@@ -119,7 +137,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 		clip.Metadata["provider_tags"] = providerTags
 		clip.Metadata["discovered_by_queries"] = []string{originalTerm}
-		clip.Metadata["provider_categories"] = candidate.Categories
+		clip.Metadata["provider_categories"] = hydrated.Categories
 		clip.Metadata["metadata_origin"] = "artlist"
 
 		if s.assetStore != nil {
