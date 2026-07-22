@@ -35,12 +35,12 @@ import (
 	brainranker "github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	brainsearch "github.com/Marcuss-ops/PipelineGen/internal/application/brain/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/qdrantmm"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
@@ -95,8 +95,8 @@ func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrant
 		log = zap.NewNop()
 	}
 	return &MediaMemoryQdrantStack{
-		Indexer: adapters.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
-		Lookup:  adapters.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
+		Indexer: qdrantmm.NewQdrantIndexer(deps.Transport, deps.Embedder, log),
+		Lookup:  qdrantmm.NewQdrantSemanticLookup(deps.Transport, deps.Embedder, deps.ConceptsRepo, deps.BindingsRepo, log),
 	}, nil
 }
 

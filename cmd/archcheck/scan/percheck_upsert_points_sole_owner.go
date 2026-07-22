@@ -89,10 +89,14 @@ var upsertPointsSoleOwnerSkipPathPrefixes = []string{
 }
 
 // upsertPointsSoleOwnerCanonicalCallers is the EXEMPT set:
-// the canonical surface where the IndexingHandler routes
-// `\.UpsertPoints\(` calls.
+// the canonical surfaces where direct `\.UpsertPoints\(` calls
+// are legitimate. The IndexingHandler routes asset index events
+// through `internal/infrastructure/qdrant/indexing/`; the
+// qdrantmm package (mediamemory concept/frame indexers) is the
+// SOLE additional owner for concept/frame vector writes.
 var upsertPointsSoleOwnerCanonicalCallers = []string{
 	"internal/infrastructure/qdrant/indexing/",
+	"internal/infrastructure/qdrant/qdrantmm/",
 }
 
 // upsertPointsSoleOwnerScanScope is the prefix the gate

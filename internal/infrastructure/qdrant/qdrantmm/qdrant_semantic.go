@@ -1,4 +1,4 @@
-// Package adapters — qdrant_semantic.go is the canonical concrete
+// Package qdrantmm — qdrant_semantic.go is the canonical concrete
 // mediamemory.SemanticLookup that bridges the mediamemory
 // capability to the existing Qdrant semantic stack.
 //
@@ -12,7 +12,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: a nil dependency at any
 // slot is a literal ErrSemanticNotConfigured. A HybridSearch
 // envelope error surfaces as wrapped ErrSemanticBackendFailed.
-package adapters
+package qdrantmm
 
 import (
 	"context"

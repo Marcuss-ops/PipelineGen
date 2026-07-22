@@ -1,4 +1,4 @@
-// Package adapters — qdrant_frame_indexer_test.go pins the
+// Package qdrantmm — qdrant_frame_indexer_test.go pins the
 // Fase 4.1 KeyframeVisualIndexer contract.
 //
 //  1. IndexKeyframe writes a canonical `frame-{videoID}-{tsMs}`
@@ -8,7 +8,7 @@
 //     / ErrSemanticNotConfigured).
 //  3. Deterministic point ID: same (videoID, tsMs) → same point
 //     ID across calls (Upsert idempotence).
-package adapters
+package qdrantmm
 
 import (
 	"bytes"

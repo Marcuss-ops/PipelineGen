@@ -1,4 +1,4 @@
-// Package adapters - qdrant_test.go pins the Phase 2.1 contract
+// Package qdrantmm - qdrant_test.go pins the Phase 2.1 contract
 // for QdrantIndexer + QdrantSemanticLookup.
 //
 //  1. QdrantIndexer.IndexConcept delegates to
@@ -18,7 +18,7 @@
 //  3. A paraphrase round-trip via httptest server recomputes
 //     scores via cosine(query, hit) so the test validates real
 //     ANN-style recall (not just wire-shape echo).
-package adapters
+package qdrantmm
 
 import (
 	"context"
