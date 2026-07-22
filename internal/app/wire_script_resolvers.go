@@ -158,8 +158,8 @@ func buildScriptSourceResolvers(
 
 	// ── Qdrant embedder (shared by SemanticSearchPort and ClipSearchPort) ──
 	var ollamaEmbedder search.TextEmbedder
-	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
-		if ollamaClient := gen.GetClient(); ollamaClient != nil {
+	if root.Process != nil && root.Process.QdrantSearcher != nil && root.AI != nil {
+		if ollamaClient := root.AI.OllamaEmbedClient; ollamaClient != nil {
 			ollamaEmbedder = search.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
 		}
 	}
