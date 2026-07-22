@@ -23,6 +23,7 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverDocumentInSameJob(t *testing.T) 
 	want := []string{
 		string(adapters.ProcessorTranslation),
 		string(adapters.ProcessorClipBindings),
+		string(adapters.ProcessorStockAssociation),
 		string(adapters.ProcessorVoiceover),
 		string(adapters.ProcessorPersistence),
 	}
@@ -73,5 +74,58 @@ func TestBuildPlan_MediaPlanIncludesVisualPlanningAfterClipBindings(t *testing.T
 	}
 	if !found {
 		t.Fatalf("plan with media plan missing visual planning: %v", plan.Postprocessors)
+	}
+}
+
+func TestBuildPlan_DisabledMediaPlanSkipsVisualPlanning(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source:    scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		MediaPlan: media.MediaPlanSpec{Mode: "disabled"},
+	})
+	for _, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorVisualPlanning) {
+			t.Fatalf("disabled media plan unexpectedly contains visual planning: %v", plan.Postprocessors)
+		}
+		if processor == string(adapters.ProcessorStockAssociation) {
+			t.Fatalf("disabled media plan unexpectedly contains stock_association: %v", plan.Postprocessors)
+		}
+	}
+}
+
+func TestBuildPlan_EmptyMediaPlanModeFallsBackToStockAssociation(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source:    scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		MediaPlan: media.MediaPlanSpec{},
+	})
+	found := false
+	for i, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorVisualPlanning) {
+			t.Fatalf("legacy empty media plan unexpectedly contains visual planning: %v", plan.Postprocessors)
+		}
+		if processor != string(adapters.ProcessorStockAssociation) {
+			continue
+		}
+		found = true
+		if i == 0 || plan.Postprocessors[i-1] != string(adapters.ProcessorClipBindings) {
+			t.Fatalf("stock_association must immediately follow clip_bindings; got %v", plan.Postprocessors)
+		}
+	}
+	if !found {
+		t.Fatalf("legacy empty media plan missing stock_association fallback: %v", plan.Postprocessors)
+	}
+}
+
+func TestBuildPlan_InvalidMediaPlanModeSkipsBothProcessors(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source:    scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		MediaPlan: media.MediaPlanSpec{Mode: "bogus"},
+	})
+	for _, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorVisualPlanning) {
+			t.Fatalf("invalid media plan mode unexpectedly contains visual planning: %v", plan.Postprocessors)
+		}
+		if processor == string(adapters.ProcessorStockAssociation) {
+			t.Fatalf("invalid media plan mode unexpectedly contains stock_association: %v", plan.Postprocessors)
+		}
 	}
 }

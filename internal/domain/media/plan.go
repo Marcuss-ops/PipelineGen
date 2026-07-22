@@ -33,6 +33,12 @@ func IsValidMediaPlanMode(mode string) bool {
 	return false
 }
 
+// IsActiveMediaPlanMode returns true when mode is a non-empty, valid media
+// plan mode that is not disabled. Active modes trigger visual planning.
+func IsActiveMediaPlanMode(mode string) bool {
+	return mode != "" && mode != MediaPlanModeDisabled && IsValidMediaPlanMode(mode)
+}
+
 // MediaPlanSpec declares how visual media is resolved for each
 // segment of a generation item. It is intentionally independent from
 // SourceSpec: SourceSpec describes where narrative content comes

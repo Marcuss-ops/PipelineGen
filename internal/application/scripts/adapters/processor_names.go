@@ -37,9 +37,15 @@ const (
 	ProcessorMetadata       ProcessorName = "metadata"
 	ProcessorClipBindings   ProcessorName = "clip_bindings"
 	ProcessorVisualPlanning ProcessorName = "visual_planning"
-	ProcessorVoiceover      ProcessorName = "voiceover"
-	ProcessorImages         ProcessorName = "images"
-	ProcessorPersistence    ProcessorName = "persistence"
+	// ProcessorStockAssociation is deprecated and retained only for
+	// temporary backward compatibility. The legacy stock_association
+	// postprocessor has no implementation; plans that request it receive
+	// a best-effort skip. It will be removed once the MediaPlan-based
+	// visual_planning path is the sole resolution surface.
+	ProcessorStockAssociation ProcessorName = "stock_association"
+	ProcessorVoiceover        ProcessorName = "voiceover"
+	ProcessorImages           ProcessorName = "images"
+	ProcessorPersistence      ProcessorName = "persistence"
 	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
 	// translation postprocessor lives in the canonical SOLE identifier
 	// set (godlike/06 SSOT one-canonical-owner-per-fact) — inserted

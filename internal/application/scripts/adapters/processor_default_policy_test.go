@@ -50,7 +50,8 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorClipBindings,
-		adapterspkg.ProcessorTranslation:
+		adapterspkg.ProcessorTranslation,
+		adapterspkg.ProcessorStockAssociation:
 		return adapterspkg.ProcessorBestEffort
 	}
 	// A processor name not in our classifier map is an audit-pin
@@ -111,5 +112,16 @@ func TestDefaultPolicyFor_UnknownNameReturnsEmpty(t *testing.T) {
 	if got != "" {
 		t.Errorf("DefaultPolicyFor(%q) = %q, want empty string (fail-open for unknown names)",
 			unknownName, got)
+	}
+}
+
+// ProcessorStockAssociation is deprecated and unregistered, but it
+// still carries a default policy so legacy plans that list it do not
+// fail preflight. Its policy must remain BestEffort.
+func TestDefaultPolicyFor_StockAssociationIsBestEffort(t *testing.T) {
+	got := adapterspkg.DefaultPolicyFor(adapterspkg.ProcessorStockAssociation)
+	want := adapterspkg.ProcessorBestEffort
+	if got != want {
+		t.Errorf("DefaultPolicyFor(ProcessorStockAssociation) = %q, want %q", got, want)
 	}
 }

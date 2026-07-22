@@ -123,8 +123,10 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	return &PostProcessResult{VisualPlans: plans, SynthesizedScenes: projected, Changed: len(plans) > 0}, nil
 }
 
+// Deprecated local helper kept only for backward compatibility.
+// Use media.IsActiveMediaPlanMode from the domain package instead.
 func mediaPlanRequested(plan mediadomain.MediaPlanSpec) bool {
-	return plan.Mode != "" || len(plan.Providers) > 0 || len(plan.Assignments) > 0 || len(plan.Searches) > 0
+	return mediadomain.IsActiveMediaPlanMode(plan.Mode)
 }
 
 func plannerLimit(plan *scriptpkg.ResolvedGenerationPlan) int {
