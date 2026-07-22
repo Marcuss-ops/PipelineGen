@@ -256,7 +256,7 @@ func validateMediaPlan(mp media.MediaPlanSpec, segments []scriptpkg.ScriptSegmen
 		} else if _, ok := segmentIDs[segID]; !ok && len(segments) > 0 {
 			d = append(d, fmt.Sprintf("%s: segment_id %q does not match any segment", prefix, segID))
 		}
-		slot := strings.TrimSpace(a.Slot)
+		slot := strings.TrimSpace(string(a.Slot))
 		if slot == "" {
 			d = append(d, prefix+": slot is required")
 		} else if !media.IsValidMediaPlanSlot(slot) {
@@ -283,7 +283,7 @@ func validateMediaPlan(mp media.MediaPlanSpec, segments []scriptpkg.ScriptSegmen
 		} else if _, ok := segmentIDs[segID]; !ok && len(segments) > 0 {
 			d = append(d, fmt.Sprintf("%s: segment_id %q does not match any segment", prefix, segID))
 		}
-		slot := strings.TrimSpace(s.Slot)
+		slot := strings.TrimSpace(string(s.Slot))
 		if slot == "" {
 			d = append(d, prefix+": slot is required")
 		} else if !media.IsValidMediaPlanSlot(slot) {

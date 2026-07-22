@@ -36,6 +36,8 @@ package mediamemory
 import (
 	"errors"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Enumerations (godlike/06 closed-set SSOT) ──────────────────────
@@ -44,30 +46,27 @@ import (
 // SceneVisualPlan. Closed set; new kinds require a godlike/06 SSOT
 // review because the ranker, resolver, and renderer all switch on
 // this value.
-type SlotKind string
+//
+// This is an alias to the domain-level SSOT in
+// internal/domain/media/slot.go. MediaMemory and Brain share the same
+// canonical type so that conversions between the two subsystems are
+// identity operations.
+type SlotKind = media.SlotKind
 
 const (
-	SlotPrimaryVideo    SlotKind = "primary_video"
-	SlotSecondaryImage  SlotKind = "secondary_image"
-	SlotEvidenceOverlay SlotKind = "evidence_overlay"
-	SlotMap             SlotKind = "map"
-	SlotPortrait        SlotKind = "portrait"
-	SlotDocument        SlotKind = "document"
-	SlotBackground      SlotKind = "background"
+	SlotPrimaryVideo    = media.SlotPrimaryVideo
+	SlotSecondaryImage  = media.SlotSecondaryImage
+	SlotEvidenceOverlay = media.SlotEvidenceOverlay
+	SlotMap             = media.SlotMap
+	SlotPortrait        = media.SlotPortrait
+	SlotDocument        = media.SlotDocument
+	SlotBackground      = media.SlotBackground
 )
 
 // IsKnownSlotKind reports whether k is in the canonical closed set.
 // Used by binding_service and resolver to distinguish ErrInvalidSlotKind
 // from programmatic string drift.
-func IsKnownSlotKind(k SlotKind) bool {
-	switch k {
-	case SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay,
-		SlotMap, SlotPortrait, SlotDocument, SlotBackground:
-		return true
-	default:
-		return false
-	}
-}
+func IsKnownSlotKind(k SlotKind) bool { return media.IsKnownSlotKind(k) }
 
 // ConceptType classifies a MediaConcept so the ranker can apply
 // concept-type-aware weights. Closed set; see IsKnownConceptType.

@@ -94,7 +94,7 @@ func (m MediaPlanSpec) Clone() MediaPlanSpec {
 // and slot. When Locked is true the resolver must not override it.
 type SegmentMediaAssignment struct {
 	SegmentID string   `json:"segment_id"`
-	Slot      string   `json:"slot"`
+	Slot      SlotKind `json:"slot"`
 	Locked    bool     `json:"locked,omitempty"`
 	Asset     MediaRef `json:"asset"`
 }
@@ -134,7 +134,7 @@ type MediaRef struct {
 // Assignments with Locked=true, the search is skipped.
 type SegmentMediaSearch struct {
 	SegmentID  string   `json:"segment_id"`
-	Slot       string   `json:"slot"`
+	Slot       SlotKind `json:"slot"`
 	Query      string   `json:"query,omitempty"`
 	Providers  []string `json:"providers,omitempty"`
 	MediaTypes []string `json:"media_types,omitempty"`
@@ -161,19 +161,22 @@ type MediaPlannerPolicy struct {
 // KnownMediaPlanSlots is the canonical set of supported slots. It is
 // exported for validation and is intentionally a string set so future
 // slots can be added without breaking older callers.
+//
+// Deprecated: use media.IsKnownSlotKind directly. This function is
+// kept only for backward compatibility during the SSOT migration.
 func KnownMediaPlanSlots() map[string]struct{} {
 	return map[string]struct{}{
-		"primary_video":    {},
-		"secondary_image":  {},
-		"evidence_overlay": {},
-		"portrait":         {},
-		"document":         {},
-		"background":       {},
+		string(SlotPrimaryVideo):    {},
+		string(SlotSecondaryImage):  {},
+		string(SlotEvidenceOverlay): {},
+		string(SlotPortrait):        {},
+		string(SlotDocument):        {},
+		string(SlotBackground):      {},
+		string(SlotMap):             {},
 	}
 }
 
 // IsValidMediaPlanSlot returns true when slot is a known slot.
 func IsValidMediaPlanSlot(slot string) bool {
-	_, ok := KnownMediaPlanSlots()[slot]
-	return ok
+	return IsKnownSlotKind(SlotKind(slot))
 }

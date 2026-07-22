@@ -10,29 +10,29 @@
 // plan passes through the Brain.
 package brain
 
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+
 // SlotKind identifies the visual slot a layer may occupy in a scene.
 // It is a closed set; new values require a code change.
-type SlotKind string
+//
+// This is an alias to the domain-level SSOT in
+// internal/domain/media/slot.go. Brain types use the same canonical
+// type as mediamemory, script and renderer so conversions between
+// subsystems are identity operations.
+type SlotKind = media.SlotKind
 
 const (
-	SlotPrimaryVideo    SlotKind = "primary_video"
-	SlotSecondaryImage  SlotKind = "secondary_image"
-	SlotEvidenceOverlay SlotKind = "evidence_overlay"
-	SlotMap             SlotKind = "map"
-	SlotPortrait        SlotKind = "portrait"
-	SlotDocument        SlotKind = "document"
-	SlotBackground      SlotKind = "background"
+	SlotPrimaryVideo    = media.SlotPrimaryVideo
+	SlotSecondaryImage  = media.SlotSecondaryImage
+	SlotEvidenceOverlay = media.SlotEvidenceOverlay
+	SlotMap             = media.SlotMap
+	SlotPortrait        = media.SlotPortrait
+	SlotDocument        = media.SlotDocument
+	SlotBackground      = media.SlotBackground
 )
 
 // IsKnownSlotKind reports whether k is a supported slot kind.
-func IsKnownSlotKind(k SlotKind) bool {
-	switch k {
-	case SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay,
-		SlotMap, SlotPortrait, SlotDocument, SlotBackground:
-		return true
-	}
-	return false
-}
+func IsKnownSlotKind(k SlotKind) bool { return media.IsKnownSlotKind(k) }
 
 // BrainRequest is the canonical input to Brain.Resolve.
 type BrainRequest struct {
