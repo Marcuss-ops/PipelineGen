@@ -1,0 +1,85 @@
+package topicsourcecache
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+type Repository struct{ db *sql.DB }
+
+func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
+
+// GetResearchCache returns a non-expired source_text for the given key.
+// On hit it atomically increments hit_count and refreshes last_used.
+func (r *Repository) GetResearchCache(ctx context.Context, key string) (string, error) {
+	if r == nil || r.db == nil {
+		return "", nil
+	}
+	var v string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT source_text FROM research_cache
+		WHERE key = ? AND (expires_at IS NULL OR expires_at > datetime('now'))
+	`, key).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	_, _ = r.db.ExecContext(ctx, `
+		UPDATE research_cache
+		SET last_used = datetime('now'), hit_count = hit_count + 1
+		WHERE key = ?
+	`, key)
+	return v, nil
+}
+
+// SaveResearchCache inserts or replaces a research_cache row from the
+// canonical ResearchCacheRecord.
+func (r *Repository) SaveResearchCache(ctx context.Context, rec scriptpkg.ResearchCacheRecord) error {
+	if r == nil || r.db == nil {
+		return nil
+	}
+	if rec.Key == "" {
+		return fmt.Errorf("SaveResearchCache: key is required")
+	}
+
+	now := time.Now().UTC()
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = now
+	}
+	if rec.UpdatedAt.IsZero() {
+		rec.UpdatedAt = now
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT OR REPLACE INTO research_cache (
+			key, topic, language, max_steps, source_text,
+			concept_id, topic_fingerprint, source_fingerprint,
+			resolver_version, research_version,
+			hit_count, expires_at, created_at, updated_at, last_used
+		) VALUES (
+			?, ?, ?, ?, ?,
+			?, ?, ?,
+			?, ?,
+			?, ?, ?, ?, datetime('now')
+		)
+	`,
+		rec.Key, rec.Topic, rec.Language, rec.MaxSteps, rec.SourceText,
+		rec.ConceptID, rec.TopicFingerprint, rec.SourceFingerprint,
+		rec.ResolverVersion, rec.ResearchVersion,
+		rec.HitCount, toSQLiteDatetime(rec.ExpiresAt), toSQLiteDatetime(rec.CreatedAt), toSQLiteDatetime(rec.UpdatedAt),
+	)
+	return err
+}
+
+func toSQLiteDatetime(t time.Time) interface{} {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UTC().Format("2006-01-02 15:04:05")
+}

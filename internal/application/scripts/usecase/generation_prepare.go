@@ -4,7 +4,7 @@
 // Responsibilities:
 //   - normalize the incoming GenerationItemV2
 //   - validate the normalized item
-//   - resolve the source via SourceRegistry
+//   - resolve the source via SourceRegistry (with source-text cache short-circuit)
 //   - resolve voiceover group → folder ID
 //   - build the ResolvedGenerationPlan
 //   - derive the cache key
@@ -48,12 +48,13 @@ type GenerationPreparer struct {
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
 	log             *zap.Logger
-	topicCache      scriptports.TopicSourceCache
+	enricher        *sourceEnricher
 }
 
+// SetTopicSourceCache wires the source-text cache into the prepare phase.
 func (p *GenerationPreparer) SetTopicSourceCache(cache scriptports.TopicSourceCache) {
 	if p != nil {
-		p.topicCache = cache
+		p.enricher = newSourceEnricher(cache, p.log)
 	}
 }
 
@@ -107,16 +108,47 @@ func (p *GenerationPreparer) Prepare(
 		"source_type": string(item.Source.Type),
 	})
 
-	// ── Phase 3: Resolve source ───────────────────────────────────────
+	// ── Phase 3: Source enrichment / resolution ───────────────────────
 	tracker.PhaseResolveSource()
 	sourceStart := time.Now()
 	var resolved *scriptpkg.ResolvedSource
 	if p.registry != nil {
 		resCtx := buildResolutionContext(item)
-		var resolveErr error
-		resolved, resolveErr = p.registry.Resolve(ctx, item.Source, resCtx)
-		if resolveErr != nil {
-			return nil, p.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr, tracker)
+
+		// Try the research cache short-circuit first. On hit the real
+		// resolver (and any LLM it would call) is skipped entirely.
+		cacheHit := false
+		if p.enricher != nil {
+			cacheResult, cacheErr := p.enricher.enrich(ctx, &item)
+			if cacheErr != nil {
+				return nil, p.logPhaseError(item, "source_enrichment", scriptpkg.ErrSourceResolutionFailed, cacheErr, tracker)
+			}
+			cacheHit = cacheResult == sourceCacheHit
+		}
+
+		if !cacheHit {
+			var resolveErr error
+			resolved, resolveErr = p.registry.Resolve(ctx, item.Source, resCtx)
+			if resolveErr != nil {
+				return nil, p.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr, tracker)
+			}
+			// Persist the freshly resolved source text so the next
+			// identical request avoids the LLM call.
+			if p.enricher != nil && resolved != nil && resolved.SourceText != "" {
+				if saveErr := p.enricher.save(ctx, item, resolved.SourceText); saveErr != nil && p.log != nil {
+					p.log.Warn("source cache save failed", zap.String("item_id", item.ID), zap.Error(saveErr))
+				}
+			}
+		} else {
+			// Cache hit already populated item.Source.SourceText; build a
+			// minimal ResolvedSource so downstream plan building works.
+			resolved = &scriptpkg.ResolvedSource{
+				Type:       scriptpkg.SourceType(item.Source.Type),
+				Topic:      item.Source.Topic,
+				Title:      item.Title,
+				SourceText: item.Source.SourceText,
+				Language:   item.Language,
+			}
 		}
 	}
 	sourceResolveMs := time.Since(sourceStart).Milliseconds()

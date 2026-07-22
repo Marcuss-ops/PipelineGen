@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
@@ -69,7 +71,15 @@ const testSchema = `
 		max_steps INTEGER NOT NULL,
 		source_text TEXT NOT NULL,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
-		last_used TEXT NOT NULL DEFAULT (datetime('now'))
+		last_used TEXT NOT NULL DEFAULT (datetime('now')),
+		concept_id TEXT,
+		topic_fingerprint TEXT,
+		source_fingerprint TEXT,
+		resolver_version TEXT,
+		research_version TEXT,
+		hit_count INTEGER NOT NULL DEFAULT 0,
+		expires_at DATETIME,
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	);
 `
 
@@ -363,32 +373,39 @@ func TestGetResearchCache_TTLBoundaries(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
 
-	if err := repo.SaveResearchCache(ctx, "key-1", "topic-a", "en", 5, "alpha text"); err != nil {
-		t.Fatal(err)
+	rec1 := scriptpkg.ResearchCacheRecord{
+		Key: "key-1", Topic: "topic-a", Language: "en", MaxSteps: 5,
+		SourceText: "alpha text", SourceFingerprint: "fp-1", ResearchVersion: "v1",
 	}
-	if err := repo.SaveResearchCache(ctx, "key-2", "topic-b", "en", 5, "beta text"); err != nil {
-		t.Fatal(err)
+	rec2 := scriptpkg.ResearchCacheRecord{
+		Key: "key-2", Topic: "topic-b", Language: "en", MaxSteps: 5,
+		SourceText: "beta text", SourceFingerprint: "fp-2", ResearchVersion: "v1",
 	}
-	if err := repo.SaveResearchCache(ctx, "key-3", "topic-c", "en", 5, "gamma text"); err != nil {
-		t.Fatal(err)
+	rec3 := scriptpkg.ResearchCacheRecord{
+		Key: "key-3", Topic: "topic-c", Language: "en", MaxSteps: 5,
+		SourceText: "gamma text", SourceFingerprint: "fp-3", ResearchVersion: "v1",
+	}
+	for _, rec := range []scriptpkg.ResearchCacheRecord{rec1, rec2, rec3} {
+		if err := repo.SaveResearchCache(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	// Age key-1 to 6 days ago (inside 7d window: should HIT)
+	// key-1: expires in the future (HIT)
 	if _, err := repo.db.Exec(
-		"UPDATE research_cache SET last_used = datetime('now', '-6 days') WHERE key = ?", "key-1",
+		"UPDATE research_cache SET expires_at = datetime('now', '+1 day') WHERE key = ?", "key-1",
 	); err != nil {
 		t.Fatal(err)
 	}
-	// Age key-2 to exactly 7 days ago: the SQL filter is `> -7 days`,
-	// so a row at exactly -7 days is at the boundary and will MISS.
+	// key-2: expired just now (MISS)
 	if _, err := repo.db.Exec(
-		"UPDATE research_cache SET last_used = datetime('now', '-7 days') WHERE key = ?", "key-2",
+		"UPDATE research_cache SET expires_at = datetime('now', '-1 second') WHERE key = ?", "key-2",
 	); err != nil {
 		t.Fatal(err)
 	}
-	// Age key-3 to 8 days ago (well past TTL: MISS)
+	// key-3: expired long ago (MISS)
 	if _, err := repo.db.Exec(
-		"UPDATE research_cache SET last_used = datetime('now', '-8 days') WHERE key = ?", "key-3",
+		"UPDATE research_cache SET expires_at = datetime('now', '-8 days') WHERE key = ?", "key-3",
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -416,10 +433,7 @@ func TestGetResearchCache_TTLBoundaries(t *testing.T) {
 		}
 	}
 
-	// On HIT, last_used should be bumped forward. Key-1 was 6 days old;
-	// it should now be "now", which means a second Get within the same
-	// nanosecond would still hit, and a re-age would be needed to test
-	// the boundary a second time. Just verify the column was touched.
+	// On HIT, last_used should be bumped forward.
 	var lastUsed string
 	if err := repo.db.QueryRow(
 		"SELECT last_used FROM research_cache WHERE key = ?", "key-1",
@@ -435,10 +449,15 @@ func TestSaveResearchCache_OverwritesExistingKey(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
 
-	if err := repo.SaveResearchCache(ctx, "shared", "topic1", "en", 3, "first"); err != nil {
+	rec := scriptpkg.ResearchCacheRecord{
+		Key: "shared", Topic: "topic1", Language: "en", MaxSteps: 3,
+		SourceText: "first", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+	}
+	if err := repo.SaveResearchCache(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.SaveResearchCache(ctx, "shared", "topic1", "en", 3, "second"); err != nil {
+	rec.SourceText = "second"
+	if err := repo.SaveResearchCache(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -455,7 +474,11 @@ func TestTouchResearchCache_AffectsRowsAffected(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
 
-	if err := repo.SaveResearchCache(ctx, "real-key", "topic", "en", 3, "data"); err != nil {
+	rec := scriptpkg.ResearchCacheRecord{
+		Key: "real-key", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "data", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+	}
+	if err := repo.SaveResearchCache(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -480,10 +503,18 @@ func TestSweepStaleResearchCache_DeletesOnlyOldRows(t *testing.T) {
 	ctx := context.Background()
 	repo := newTestRepo(t)
 
-	if err := repo.SaveResearchCache(ctx, "fresh", "topic-a", "en", 3, "a"); err != nil {
+	freshRec := scriptpkg.ResearchCacheRecord{
+		Key: "fresh", Topic: "topic-a", Language: "en", MaxSteps: 3,
+		SourceText: "a", SourceFingerprint: "fp-fresh", ResearchVersion: "v1",
+	}
+	staleRec := scriptpkg.ResearchCacheRecord{
+		Key: "stale", Topic: "topic-b", Language: "en", MaxSteps: 3,
+		SourceText: "b", SourceFingerprint: "fp-stale", ResearchVersion: "v1",
+	}
+	if err := repo.SaveResearchCache(ctx, freshRec); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.SaveResearchCache(ctx, "stale", "topic-b", "en", 3, "b"); err != nil {
+	if err := repo.SaveResearchCache(ctx, staleRec); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.db.Exec(
@@ -507,6 +538,134 @@ func TestSweepStaleResearchCache_DeletesOnlyOldRows(t *testing.T) {
 	}
 	if deleted != 0 {
 		t.Errorf("expected 0 deletions (default 30d, fresh row is 0d), got %d", deleted)
+	}
+}
+
+func TestGetResearchCache_ExpiresAtBoundary(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepo(t)
+
+	// Record with expires_at in the future should HIT.
+	futureRec := scriptpkg.ResearchCacheRecord{
+		Key: "future", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "future text", SourceFingerprint: "fp-future", ResearchVersion: "v1",
+	}
+	futureRec.ExpiresAt = time.Now().UTC().Add(1 * time.Hour)
+	if err := repo.SaveResearchCache(ctx, futureRec); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record with expires_at in the past should MISS.
+	pastRec := scriptpkg.ResearchCacheRecord{
+		Key: "past", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "past text", SourceFingerprint: "fp-past", ResearchVersion: "v1",
+	}
+	pastRec.ExpiresAt = time.Now().UTC().Add(-1 * time.Hour)
+	if err := repo.SaveResearchCache(ctx, pastRec); err != nil {
+		t.Fatal(err)
+	}
+
+	gotFuture, err := repo.GetResearchCache(ctx, "future")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotFuture != "future text" {
+		t.Errorf("expected future text, got %q", gotFuture)
+	}
+
+	gotPast, err := repo.GetResearchCache(ctx, "past")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPast != "" {
+		t.Errorf("expected expired row to miss, got %q", gotPast)
+	}
+}
+
+func TestGetResearchCache_IncrementsHitCount(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepo(t)
+
+	rec := scriptpkg.ResearchCacheRecord{
+		Key: "hits", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "text", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+	}
+	if err := repo.SaveResearchCache(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 3; i++ {
+		_, err := repo.GetResearchCache(ctx, "hits")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var hitCount int
+	if err := repo.db.QueryRow(
+		"SELECT hit_count FROM research_cache WHERE key = ?", "hits",
+	).Scan(&hitCount); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount != 3 {
+		t.Errorf("expected hit_count=3, got %d", hitCount)
+	}
+}
+
+func TestSaveResearchCache_RequiresKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepo(t)
+
+	rec := scriptpkg.ResearchCacheRecord{
+		Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "text", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+	}
+	if err := repo.SaveResearchCache(ctx, rec); err == nil {
+		t.Error("expected error for missing key, got nil")
+	}
+}
+
+func TestSweepExpiredResearchCache_RemovesExpiredRows(t *testing.T) {
+	ctx := context.Background()
+	repo := newTestRepo(t)
+
+	expired := scriptpkg.ResearchCacheRecord{
+		Key: "expired", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "old", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+	}
+	expired.ExpiresAt = time.Now().UTC().Add(-1 * time.Hour)
+	valid := scriptpkg.ResearchCacheRecord{
+		Key: "valid", Topic: "topic", Language: "en", MaxSteps: 3,
+		SourceText: "fresh", SourceFingerprint: "fp-2", ResearchVersion: "v1",
+	}
+	valid.ExpiresAt = time.Now().UTC().Add(1 * time.Hour)
+	for _, rec := range []scriptpkg.ResearchCacheRecord{expired, valid} {
+		if err := repo.SaveResearchCache(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	deleted, err := repo.SweepExpiredResearchCache(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 1 {
+		t.Errorf("expected 1 expired row swept, got %d", deleted)
+	}
+
+	got, err := repo.GetResearchCache(ctx, "expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("expected expired row to be gone, got %q", got)
+	}
+	got, err = repo.GetResearchCache(ctx, "valid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "fresh" {
+		t.Errorf("expected valid row to remain, got %q", got)
 	}
 }
 
