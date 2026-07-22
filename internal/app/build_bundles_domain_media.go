@@ -24,6 +24,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
@@ -160,7 +161,7 @@ func buildDomainMediaServices(
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
 	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
-	var _ asset.TextTrackRepository = (*assets.TextTrackRepositorySQLite)(nil)
+	var _ asset.TextTrackRepository = (*texttracks.TextTrackRepositorySQLite)(nil)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
 	// resolver now consumes cfg.Media.Multilingual.RequireLanguageCertainty
 	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9

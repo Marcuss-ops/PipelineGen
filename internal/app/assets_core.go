@@ -53,6 +53,7 @@ import (
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
@@ -84,7 +85,7 @@ type CoreDeps struct {
 type RepositoryDeps struct {
 	ClipsRepo     *sqassets.ClipsRepository
 	VoiceoverRepo *sqassets.VoiceoversRepository
-	ImageRepo     *sqassets.ImagesRepository
+	ImageRepo     *imagesrepo.ImagesRepository
 }
 
 // ServiceDeps groups the service-like ports owned by CoreDeps.

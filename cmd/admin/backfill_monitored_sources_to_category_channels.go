@@ -63,7 +63,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -97,7 +97,7 @@ func runBackfillMonitoredSourcesToCategoryChannels(args []string) error {
 	}
 
 	svc := channels.NewService(
-		channels.NewRepositoryAdapter(assets.NewChannelsRepository(sqliteDB.DB)),
+		channels.NewRepositoryAdapter(sqlchannels.NewChannelsRepository(sqliteDB.DB)),
 		log,
 	)
 

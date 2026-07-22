@@ -14,7 +14,7 @@
 //     (deprecated) + ListImages (FASE 6)
 //   - images_repository_aggregate.go — aggregate: ListImagesByOrigin +
 //     ListAll + limit constants
-package assets
+package imagesrepo
 
 import (
 	"database/sql"

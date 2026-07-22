@@ -11,16 +11,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type imageStoreAdapter struct {
-	repo      *imagerepo.ImagesRepository
+	repo      *imagesrepo.ImagesRepository
 	imagesDir string
 }
 
-func NewImageStoreAdapter(repo *imagerepo.ImagesRepository, imagesDir string) lifecycle.AssetRecordStore {
+func NewImageStoreAdapter(repo *imagesrepo.ImagesRepository, imagesDir string) lifecycle.AssetRecordStore {
 	return &imageStoreAdapter{repo: repo, imagesDir: imagesDir}
 }
 

@@ -2,7 +2,7 @@ package images
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 )
@@ -11,7 +11,7 @@ import (
 // images subsystem. AI generation reports only the Google Slides-backed
 // Chrome/Playwright capability.
 type DiagnosticsService struct {
-	repo        *assets.ImagesRepository
+	repo        *imagesrepo.ImagesRepository
 	driveReader drive.Reader
 	imageGen    ImageGenerator
 	ingestSvc   *ingest.Service
@@ -69,6 +69,6 @@ func (d *DiagnosticsService) AllCapabilities() map[Capability]CapabilityStatus {
 
 func (d *DiagnosticsService) Log() *zap.Logger { return d.log }
 
-func (d *DiagnosticsService) Repo() *assets.ImagesRepository { return d.repo }
+func (d *DiagnosticsService) Repo() *imagesrepo.ImagesRepository { return d.repo }
 
 func (d *DiagnosticsService) SyncAssets() error { return nil }

@@ -9,7 +9,7 @@
 //     return typed errors (ErrAlreadyApplied, ErrStateConflict, ErrNotFound)
 //     when their WHERE clause matches zero rows.
 //   • FASE 3.7 sentinel-alias tests verify that monitor.ErrLedgerStateConflict
-//     is the SAME *errorString pointer as sqlassets.ErrStateConflict via the
+//     is the SAME *errorString pointer as youtubediscoveries.ErrStateConflict via the
 //     thin-alias declared in types_dto.go (production code); the
 //     TranslateLedgerSentinel helper wraps the chain via multi-%w fmt.Errorf
 //     so errors.Is probes resolve BOTH sentinel identities.
@@ -26,7 +26,8 @@ import (
 	_ "github.com/mattn/go-sqlite3" // stdlib-only driver lock per AGENTS.md
 
 	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15; PR-CHECK-5-FOLLOWUP (2026-08-08); transitional hermetic-test seam (sqlassets.NewInMemoryRepo); forward-pointer PR-MONITOR-TEST-COMPOSITION
-	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -81,7 +82,7 @@ func TestMarkEnqueued_IsIdempotent(t *testing.T) {
 
 	// Second call: ErrAlreadyApplied (idempotent).
 	err2 := repo.MarkEnqueued(ctx, id, enqueuedAt)
-	if !errors.Is(err2, sqlassets.ErrAlreadyApplied) {
+	if !errors.Is(err2, youtubediscoveries.ErrAlreadyApplied) {
 		t.Fatalf("second MarkEnqueued should return ErrAlreadyApplied, got: %v", err2)
 	}
 
@@ -117,7 +118,7 @@ func TestMarkEnqueued_RejectsTerminalRejection(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkEnqueued on rejected_terminal should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrStateConflict) {
+	if !errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		t.Errorf("MarkEnqueued on rejected_terminal should return ErrStateConflict, got: %v", err)
 	}
 }
@@ -133,7 +134,7 @@ func TestMarkEnqueued_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkEnqueued on nonexistent id should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrNotFound) {
+	if !errors.Is(err, youtubediscoveries.ErrNotFound) {
 		t.Errorf("MarkEnqueued on nonexistent id should return ErrNotFound, got: %v", err)
 	}
 }
@@ -197,10 +198,10 @@ func TestMarkEnqueuedVsMarkRejected_OnlyOneTransitionWins(t *testing.T) {
 		if enqOk != rejOk {
 			applied++ // exactly one winner
 		}
-		if enqOk && !errors.Is(rejErr, sqlassets.ErrStateConflict) && rejErr != nil {
+		if enqOk && !errors.Is(rejErr, youtubediscoveries.ErrStateConflict) && rejErr != nil {
 			t.Errorf("iteration %d: reject error is not ErrStateConflict: %v", i, rejErr)
 		}
-		if rejOk && !errors.Is(enqErr, sqlassets.ErrStateConflict) && enqErr != nil {
+		if rejOk && !errors.Is(enqErr, youtubediscoveries.ErrStateConflict) && enqErr != nil {
 			t.Errorf("iteration %d: enqueue error is not ErrStateConflict: %v", i, enqErr)
 		}
 	}
@@ -232,7 +233,7 @@ func TestMarkRejected_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(retryable) on nonexistent id should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrNotFound) {
+	if !errors.Is(err, youtubediscoveries.ErrNotFound) {
 		t.Errorf("MarkRejected(retryable) on nonexistent id should return ErrNotFound, got: %v", err)
 	}
 
@@ -241,7 +242,7 @@ func TestMarkRejected_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(terminal) on nonexistent id should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrNotFound) {
+	if !errors.Is(err, youtubediscoveries.ErrNotFound) {
 		t.Errorf("MarkRejected(terminal) on nonexistent id should return ErrNotFound, got: %v", err)
 	}
 }
@@ -269,7 +270,7 @@ func TestMarkRejected_StateConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(retryable) on enqueued row should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrStateConflict) {
+	if !errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		t.Errorf("MarkRejected(retryable) on enqueued row should return ErrStateConflict, got: %v", err)
 	}
 
@@ -278,7 +279,7 @@ func TestMarkRejected_StateConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(terminal) on enqueued row should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrStateConflict) {
+	if !errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		t.Errorf("MarkRejected(terminal) on enqueued row should return ErrStateConflict, got: %v", err)
 	}
 
@@ -296,7 +297,7 @@ func TestMarkRejected_StateConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(terminal) on rejected_terminal row should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrStateConflict) {
+	if !errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		t.Errorf("MarkRejected(terminal) on rejected_terminal row should return ErrStateConflict, got: %v", err)
 	}
 
@@ -306,7 +307,7 @@ func TestMarkRejected_StateConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("MarkRejected(retryable) on rejected_terminal row should fail, got nil")
 	}
-	if !errors.Is(err, sqlassets.ErrStateConflict) {
+	if !errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		t.Errorf("MarkRejected(retryable) on rejected_terminal row should return ErrStateConflict, got: %v", err)
 	}
 }
@@ -350,7 +351,7 @@ func TestIsTransientEnqueueError(t *testing.T) {
 //
 // FASE 3.7 follow-up to the rename commit (98e7ba41): the parallel-agent
 // landing on origin/main switched the sentinel design from a wrap-chain
-// to a thin-alias (var ErrLedgerStateConflict = assetsdb.ErrStateConflict —
+// to a thin-alias (var ErrLedgerStateConflict = youtubediscoveries.ErrStateConflict —
 // SAME *errorString pointer per Go sentinel semantics). Three tests pin
 // the alias contract end-to-end:
 //
@@ -369,9 +370,9 @@ func TestIsTransientEnqueueError(t *testing.T) {
 
 // TestSentinelWrap_Conflict pins the FASE 3.7 thin-alias sentinel contract:
 // ErrLedgerStateConflict is the SAME *errorString as
-// sqlassets.ErrStateConflict (declared as `var ErrLedgerStateConflict =
-// assetsdb.ErrStateConflict`). Therefore an error constructed via
-// `fmt.Errorf("...: %w", sqlassets.ErrStateConflict)` MUST resolve to
+// youtubediscoveries.ErrStateConflict (declared as `var ErrLedgerStateConflict =
+// youtubediscoveries.ErrStateConflict`). Therefore an error constructed via
+// `fmt.Errorf("...: %w", youtubediscoveries.ErrStateConflict)` MUST resolve to
 // true under `errors.Is(err, ErrLedgerStateConflict)`. Verified
 // the reverse direction too (errors.Is to the canonical sentinel).
 // Drift in the alias (any future change from `var X = Y` to `var X =
@@ -387,21 +388,21 @@ func TestSentinelWrap_Conflict(t *testing.T) {
 
 	// (ii) Adapter simulation via TranslateLedgerSentinel: the
 	// production composition-root adapter path on a manually
-	// constructed error wrapping sqlassets.ErrStateConflict. The
+	// constructed error wrapping youtubediscoveries.ErrStateConflict. The
 	// multi-%w wiring MUST preserve BOTH sentinels (ErrLedgerStateConflict
-	// added by adapter + sqlassets.ErrStateConflict preserved via
+	// added by adapter + youtubediscoveries.ErrStateConflict preserved via
 	// the second %w).
-	infraWrap := fmt.Errorf("infra: row state precondition failed: %w", sqlassets.ErrStateConflict)
+	infraWrap := fmt.Errorf("infra: row state precondition failed: %w", youtubediscoveries.ErrStateConflict)
 	translated := TranslateLedgerSentinel(infraWrap)
 	if !errors.Is(translated, ErrLedgerStateConflict) {
 		t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain)")
 	}
-	if !errors.Is(translated, sqlassets.ErrStateConflict) {
+	if !errors.Is(translated, youtubediscoveries.ErrStateConflict) {
 		// NOTE: `%%w` (escaped percent) prints the literal `%w` token in
 		// the test-failure message; Go vet treats the unescaped `%w`
 		// as an error-wrapping format directive incompatible with
 		// t.Errorf (which discards the format error arg).
-		t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain)")
+		t.Errorf("TestSentinelWrap_Conflict (adapter): errors.Is(translated, youtubediscoveries.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain)")
 	}
 }
 
@@ -424,8 +425,8 @@ func TestSentinelWrap_NonConflict(t *testing.T) {
 			if errors.Is(tc.err, ErrLedgerStateConflict) {
 				t.Errorf("non-conflict err matched ErrLedgerStateConflict: %v", tc.err)
 			}
-			if errors.Is(tc.err, sqlassets.ErrStateConflict) {
-				t.Errorf("non-conflict err matched sqlassets.ErrStateConflict: %v", tc.err)
+			if errors.Is(tc.err, youtubediscoveries.ErrStateConflict) {
+				t.Errorf("non-conflict err matched youtubediscoveries.ErrStateConflict: %v", tc.err)
 			}
 		})
 	}
@@ -438,7 +439,7 @@ func TestSentinelWrap_NonConflict(t *testing.T) {
 //     moves it to state='rejected_terminal'.
 //   - Trigger: MarkEnqueued on rejected_terminal row hits the WHERE
 //     clause `state IN ('pending','analyzing')` → 0 rows matched → infra
-//     surfaces the canonical sqlassets.ErrStateConflict.
+//     surfaces the canonical youtubediscoveries.ErrStateConflict.
 //
 // The FASE 3.7 contract assertion is `errors.Is(enqErr,
 // ErrLedgerStateConflict)`. This is the NEW path: a future
@@ -468,13 +469,13 @@ func TestSentinelWrap_InfraReturnsCanonical(t *testing.T) {
 
 	// Step 3: MarkEnqueued on rejected_terminal — the WHERE clause gates
 	// on state IN ('pending','analyzing'), so UPDATE matches 0 rows and
-	// the infra surfaces the canonical sqlassets.ErrStateConflict.
+	// the infra surfaces the canonical youtubediscoveries.ErrStateConflict.
 	enqErr := repo.MarkEnqueued(ctx, id, time.Now().UTC().Format(time.RFC3339))
 	if enqErr == nil {
 		t.Fatal("step 3 MarkEnqueued on rejected_terminal must fail, got nil")
 	}
-	if !errors.Is(enqErr, sqlassets.ErrStateConflict) {
-		t.Errorf("step 3: infra error NOT matching sqlassets.ErrStateConflict: %v", enqErr)
+	if !errors.Is(enqErr, youtubediscoveries.ErrStateConflict) {
+		t.Errorf("step 3: infra error NOT matching youtubediscoveries.ErrStateConflict: %v", enqErr)
 	}
 	// Adapter simulation: apply TranslateLedgerSentinel to mimic the
 	// production adapter. BOTH sentinels MUST resolve after translation
@@ -486,10 +487,10 @@ func TestSentinelWrap_InfraReturnsCanonical(t *testing.T) {
 	if !errors.Is(translated, ErrLedgerStateConflict) {
 		t.Errorf("step 3 (adapter): errors.Is(translated, ErrLedgerStateConflict) = false; want true (adapter MUST add ErrLedgerStateConflict to chain): %v", translated)
 	}
-	if !errors.Is(translated, sqlassets.ErrStateConflict) {
+	if !errors.Is(translated, youtubediscoveries.ErrStateConflict) {
 		// NOTE: `%%w` (escaped percent) prints the literal `%w` token in
 		// the test-failure message; see TestSentinelWrap_Conflict for
 		// the full vet rationale.
-		t.Errorf("step 3 (adapter): errors.Is(translated, sqlassets.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain): %v", translated)
+		t.Errorf("step 3 (adapter): errors.Is(translated, youtubediscoveries.ErrStateConflict) = false; want true (multi-%%w MUST preserve infra chain): %v", translated)
 	}
 }

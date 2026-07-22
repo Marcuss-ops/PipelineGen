@@ -32,6 +32,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
+
 	"github.com/google/uuid"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -170,7 +172,7 @@ func buildMetadataPayload(
 // caller's transaction. Uses INSERT ON CONFLICT DO UPDATE on the
 // UNIQUE(asset_id, language_code, text_kind) constraint.
 //
-// `upsertTextTrackSQL` is the canonical SQL constant declared in
+// `texttracks.UpsertTextTrackSQL` is the canonical SQL constant declared in
 // text_track_repository.go (same `assets` package — package-level
 // symbol sharing makes it visible without an explicit import).
 func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []asset.TextTrack, nowStr string) error {
@@ -178,7 +180,7 @@ func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []asset.TextTr
 		return nil
 	}
 
-	stmt, err := tx.PrepareContext(ctx, upsertTextTrackSQL)
+	stmt, err := tx.PrepareContext(ctx, texttracks.UpsertTextTrackSQL)
 	if err != nil {
 		return fmt.Errorf("upsertTextTracksInTx: prepare: %w", err)
 	}

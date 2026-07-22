@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 )
 
 // Resolver provides a unified way to resolve assets across all databases.
@@ -15,7 +16,7 @@ import (
 type Resolver struct {
 	svc           *Service
 	clipsRepos    map[string]*assets.ClipsRepository // source -> repo (youtube, stock, artlist)
-	imageRepo     *assets.ImagesRepository
+	imageRepo     *imagesrepo.ImagesRepository
 	voiceoverRepo *assets.VoiceoversRepository
 	log           *zap.Logger
 }
@@ -23,7 +24,7 @@ type Resolver struct {
 // ResolverConfig holds the configuration for the AssetResolver
 type ResolverConfig struct {
 	ClipsRepos    map[string]*assets.ClipsRepository
-	ImageRepo     *assets.ImagesRepository
+	ImageRepo     *imagesrepo.ImagesRepository
 	VoiceoverRepo *assets.VoiceoversRepository
 }
 
@@ -153,7 +154,7 @@ func (r *Resolver) resolveImageFromDB(ctx context.Context, id string) (*AssetRec
 		return nil, nil
 	}
 
-	// Note: assets.ImagesRepository needs a Get method - check if available
+	// Note: imagesrepo.ImagesRepository needs a Get method - check if available
 	// For now, return nil as placeholder
 	r.log.Warn("image resolution from DB not fully implemented")
 	return nil, nil

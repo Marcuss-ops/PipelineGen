@@ -60,6 +60,8 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -152,10 +154,10 @@ type DriveBundle struct {
 // RepoBundle owns all SQLite-backed repositories.
 type RepoBundle struct {
 	ScriptsRepo      *sqlitescripts.ScriptRepository
-	ImageRepo        *assets.ImagesRepository
+	ImageRepo        *imagesrepo.ImagesRepository
 	ClipsRepo        *assets.ClipsRepository
 	Assets           *asset.Service
-	MonitorsRepo     *assets.MonitorsRepository
+	MonitorsRepo     *monitors.MonitorsRepository
 	VoiceoverRepo    *assets.VoiceoversRepository
 	CatalogRepo      *catalog.Repository
 	SQRepo           *assets.SearchQueriesRepository
@@ -164,7 +166,7 @@ type RepoBundle struct {
 	// TextTrackRepository used by the video pipeline
 	// (ClipSourceBuilder.ConfigureTextTrackReader) and the
 	// TextTrackResolver (Fase 1.b). The composition root
-	// wires the *assets.TextTrackRepositorySQLite here so
+	// wires the *texttracks.TextTrackRepositorySQLite here so
 	// both consumers can share one canonical surface.
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): added
 	// so the cutover wiring

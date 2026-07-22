@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -21,7 +22,7 @@ import (
 type Service struct {
 	assetIndex    *assetindex.Service
 	querySvc      *asset.Service
-	imagesRepo    *sqliteassets.ImagesRepository
+	imagesRepo    *imagesrepo.ImagesRepository
 	voiceoverRepo *sqliteassets.VoiceoversRepository
 	uploadRoot    string
 	// sourceStager is the canonical port for staging remote URLs
@@ -48,11 +49,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqliteassets.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *Service {
+func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *Service {
 	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqliteassets.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}

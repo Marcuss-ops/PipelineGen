@@ -1,8 +1,9 @@
 package soundcues
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 func TestPlannerDefaultsToEnhanceOnlyAndKeepsTiming(t *testing.T) {

@@ -162,10 +162,10 @@ func (m *ChannelMonitor) enqueueFromAnalysis(ctx context.Context, info VideoInfo
 			zap.Error(commitErr))
 		// FASE 3.7 Commit 1b (2026-07-04): pattern-match against the
 		// canonical monitor-side sentinel ErrLedgerStateConflict
-		// instead of the previous `sqlassets.ErrStateConflict`. The
+		// instead of the previous `youtubediscoveries.ErrStateConflict`. The
 		// composition-root adapter
 		// (`internal/app/lifecycle.go::monitorDiscoveriesAdapter` +
-		// `mapDiscoveriesErr`) translates `assets.ErrStateConflict` →
+		// `mapDiscoveriesErr`) translates `youtubediscoveries.ErrStateConflict` →
 		// `monitor.ErrLedgerStateConflict` via `fmt.Errorf("%w: %w", ...)`
 		// multi-%w wrap (Go 1.20+). If the error chain contains the
 		// infra sentinel, the monitor-side pattern-match still resolves

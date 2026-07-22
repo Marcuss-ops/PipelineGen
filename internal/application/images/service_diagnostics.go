@@ -5,7 +5,7 @@
 package images
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"go.uber.org/zap"
 )
 
@@ -48,7 +48,7 @@ func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
 func (s *Service) Log() *zap.Logger { return s.Diag.Log() }
 
 // Repo returns the held ImagesRepository (from the Diag sub-service).
-func (s *Service) Repo() *assets.ImagesRepository { return s.Diag.Repo() }
+func (s *Service) Repo() *imagesrepo.ImagesRepository { return s.Diag.Repo() }
 
 // SyncAssets triggers a local filesystem asset sync via the Diag sub-service.
 func (s *Service) SyncAssets() error { return s.Diag.SyncAssets() }

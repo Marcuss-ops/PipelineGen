@@ -77,6 +77,7 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 		CleanedPath: res.CleanedPath,
 		Voice:       res.Voice,
 		FileHash:    res.FileHash,
+		Duration:    res.Duration,
 	}, nil
 }
 

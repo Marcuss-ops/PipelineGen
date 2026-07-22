@@ -31,6 +31,12 @@ import (
 // passes to processors; nil-safe so callers that pre-Issue-1 wiring
 // (eg. in older tests) keep working.
 func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
+	if strings.TrimSpace(src.DocID) != "" {
+		dst.DocID = src.DocID
+	}
+	if strings.TrimSpace(src.DocLink) != "" {
+		dst.DocLink = src.DocLink
+	}
 	if len(src.VisualPlans) > 0 {
 		dst.VisualPlans = append(dst.VisualPlans, src.VisualPlans...)
 	}

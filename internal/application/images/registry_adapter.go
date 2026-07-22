@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
@@ -18,7 +18,7 @@ import (
 // NewRegistryAdapter returns an artifacts.Registry backed by an
 // ImagesRepository. The returned *artifacts.SimpleRegistry delegates
 // every Registry method to a repo-specific callback.
-func NewRegistryAdapter(repo *assets.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
+func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
 	return &artifacts.SimpleRegistry{
 		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
 			if rec == nil {

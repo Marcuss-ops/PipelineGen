@@ -11,6 +11,7 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/monitors"
 )
 
 // ── clipStoreAdapter ──────────────────────────────────────────────────
@@ -85,10 +86,10 @@ func (a *clipStoreAdapter) ListYouTubeClipIDsForSearchText(ctx context.Context, 
 // ── monitorsStoreAdapter ──────────────────────────────────────────────
 
 type monitorsStoreAdapter struct {
-	inner *assetsrepo.MonitorsRepository
+	inner *monitors.MonitorsRepository
 }
 
-func newMonitorsStoreAdapter(r *assetsrepo.MonitorsRepository) youtubeports.MonitorsStorePort {
+func newMonitorsStoreAdapter(r *monitors.MonitorsRepository) youtubeports.MonitorsStorePort {
 	if r == nil {
 		return nil
 	}

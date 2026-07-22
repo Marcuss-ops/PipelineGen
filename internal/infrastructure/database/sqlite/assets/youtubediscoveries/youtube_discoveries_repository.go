@@ -19,7 +19,7 @@
 // min(30s * 2^(attempt_count-1), 300s). attempt_count starts at 1
 // for the first retry, so the FIRST retry fires after ~30s and the
 // TWELFTH retry still fires within 300s (capped).
-package assets
+package youtubediscoveries
 
 import (
 	"context"
@@ -96,7 +96,7 @@ type YoutubeDiscoveriesRepository struct {
 // repositories.)
 func NewYoutubeDiscoveriesRepository(db *sql.DB) *YoutubeDiscoveriesRepository {
 	if db == nil {
-		panic("assets.NewYoutubeDiscoveriesRepository: db is nil")
+		panic("youtubediscoveries.NewYoutubeDiscoveriesRepository: db is nil")
 	}
 	return &YoutubeDiscoveriesRepository{db: db, now: time.Now}
 }

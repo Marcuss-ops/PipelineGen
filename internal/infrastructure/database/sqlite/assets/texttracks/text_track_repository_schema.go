@@ -31,7 +31,7 @@
 // source_text_hash (persisted source-text SHA-256) columns added
 // by migration 156. The column-to-domain mapping lives next to
 // scanTextTrack in mapping.go.
-package assets
+package texttracks
 
 import (
 	"database/sql"

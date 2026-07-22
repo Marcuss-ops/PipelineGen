@@ -32,7 +32,7 @@ import (
 	"fmt"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	artlistsql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/artlist"
 )
 
 // artlistRunsRepoAdapter is the canonical composition-root adapter
@@ -41,7 +41,7 @@ import (
 // delegates the actual SQL work to the *ArtlistRunsRepository
 // concrete (composition-pre-created).
 type artlistRunsRepoAdapter struct {
-	concrete *sqliteassets.ArtlistRunsRepository
+	concrete *artlistsql.ArtlistRunsRepository
 }
 
 // NewArtlistRunsRepoAdapter wraps the SQLite-backed concrete behind
@@ -50,7 +50,7 @@ type artlistRunsRepoAdapter struct {
 // adapters with nil concrete to exercise nil-handling paths;
 // production callers must pre-validate via WireArtlist's
 // NewArtlistRunsRepository error return).
-func NewArtlistRunsRepoAdapter(concrete *sqliteassets.ArtlistRunsRepository) *artlistRunsRepoAdapter {
+func NewArtlistRunsRepoAdapter(concrete *artlistsql.ArtlistRunsRepository) *artlistRunsRepoAdapter {
 	return &artlistRunsRepoAdapter{concrete: concrete}
 }
 
@@ -77,7 +77,7 @@ func (a *artlistRunsRepoAdapter) Record(ctx context.Context, rec artlist.RunReco
 		// concrete via NewArtlistRunsRepository's error return.
 		return nil
 	}
-	translated := sqliteassets.RunRecord{
+	translated := artlistsql.RunRecord{
 		RunID:        rec.RunID,
 		Term:         rec.Term,
 		Status:       rec.Status,

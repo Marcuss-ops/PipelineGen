@@ -3,7 +3,7 @@
 // images_generated.go owns the generated/retrieved detail methods:
 // GetGeneratedDetails, GetRetrievedDetails, ListImagesByOrigin + constants.
 // Extracted from images_repository.go (July 2026, LONG-FILES-SPLIT-2026-07-06).
-package assets
+package imagesrepo
 
 import (
 	"context"

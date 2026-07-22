@@ -9,7 +9,7 @@
 //
 // sqlmock-style stubs would not exercise the constraint failure or the
 // DEFAULT-clock behaviour; we want both.
-package assets
+package artlist
 
 import (
 	"context"

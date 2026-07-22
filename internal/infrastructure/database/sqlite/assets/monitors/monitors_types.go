@@ -11,10 +11,10 @@
 // held both json:"..." and db:"..." tags + a TableName() method, leaking
 // the SQLite schema into the domain layer. This file splits the SQL
 // concerns out; callers that need to persist convert via FromDomain /
-// ToDomain. The 4 public methods on *assets.MonitorsRepository continue
+// ToDomain. The 4 public methods on *monitors.MonitorsRepository continue
 // to expose the domain type to consumers (D3 — repo signatures unchanged).
 
-package assets
+package monitors
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

@@ -10,7 +10,7 @@
 // by migration 156. scanTextTrack reads them into the domain
 // TextTrack struct's SourceTrackID (nullable *int64) and
 // SourceTextHash (string, ” when unset) fields.
-package assets
+package texttracks
 
 import (
 	"database/sql"

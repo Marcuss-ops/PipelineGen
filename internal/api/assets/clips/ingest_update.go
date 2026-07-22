@@ -57,6 +57,9 @@ func (ih *IngestHandler) UpdateClip(c *gin.Context) {
 		}
 		clip.SearchTerms = terms
 	}
+	if val, ok := payload["search_text"].(string); ok {
+		clip.SetMetadataString("search_text", val)
+	}
 	if val, ok := payload["status"].(string); ok {
 		clip.SetMetadataString("status", val)
 	}

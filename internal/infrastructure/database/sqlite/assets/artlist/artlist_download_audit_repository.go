@@ -3,7 +3,7 @@
 // SQLite concrete for the artlist download audit repository. Tracks every
 // automatic Artlist download and supports daily per-account rate-limit
 // queries.
-package assets
+package artlist
 
 import (
 	"context"
@@ -266,4 +266,7 @@ func (r *ArtlistDownloadAuditRepository) CountDailyDownloads(ctx context.Context
 		return 0, fmt.Errorf("artlist_download_audit_repository.CountDailyDownloads: %w", err)
 	}
 	return count, nil
+}
+func toNullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
 }

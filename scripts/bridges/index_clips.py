@@ -169,16 +169,21 @@ def generate_search_text(parts):
 embedding_cache_text = {}
 
 def compute_embedding(text):
-    """Encode `text` with the E5 SentenceTransformer; cache results by
-    raw text to dedupe identical inputs across clips.
-    """
+    """Encode documents in the same Ollama vector space used by queries."""
     if text in embedding_cache_text:
         return embedding_cache_text[text]
-    # E5 requires 'passage:' prefix for documents being indexed
-    # See: https://huggingface.co/intfloat/multilingual-e5-base
-    _, _, model = get_models()
-    prefixed = "passage: " + text
-    emb = json.dumps(model.encode(prefixed, normalize_embeddings=True).tolist())
+    ollama_addr = os.getenv("OLLAMA_ADDR", "http://127.0.0.1:11434").rstrip("/")
+    model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    response = requests.post(
+        f"{ollama_addr}/api/embeddings",
+        json={"model": model, "prompt": text},
+        timeout=120,
+    )
+    response.raise_for_status()
+    vector = response.json().get("embedding")
+    if not isinstance(vector, list) or len(vector) != 768:
+        raise RuntimeError(f"unexpected Ollama embedding dimensions: {len(vector) if isinstance(vector, list) else 0}")
+    emb = json.dumps(vector)
     embedding_cache_text[text] = emb
     return emb
 

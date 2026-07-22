@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -95,7 +95,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	repo := assets.NewImagesRepository(db)
+	repo := imagesrepo.NewImagesRepository(db)
 
 	// Create the minimal schema needed by ImagesRepository for the
 	// pre-Commit flows (subjects upsert). The post-CommitAsset path

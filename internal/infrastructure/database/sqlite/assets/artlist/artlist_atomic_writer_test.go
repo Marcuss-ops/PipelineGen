@@ -8,7 +8,7 @@
 //     and one asset.index.requested outbox row.
 //  3. Idempotent replay collapses to a single outbox row.
 //  4. Nil constructor / nil receiver surfaces at the right boundary.
-package assets
+package artlist
 
 import (
 	"context"

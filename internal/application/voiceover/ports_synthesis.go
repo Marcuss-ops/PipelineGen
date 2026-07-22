@@ -1,5 +1,7 @@
 package voiceover
 
+import "time"
+
 import "context"
 
 // ────────────────────────────────────────────────────────────────────────
@@ -40,6 +42,7 @@ type TTSOutput struct {
 	CleanedPath string
 	Voice       string
 	FileHash    string
+	Duration    time.Duration
 }
 
 // AudioPostProcessor is the canonical port for post-TTS audio cleanup

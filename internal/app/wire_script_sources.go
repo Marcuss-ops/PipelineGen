@@ -48,6 +48,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"go.uber.org/zap"
 )
@@ -102,7 +103,31 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 	// semantic backend floor instead of dropping all stock hits at 0.5.
 	minScore := 0.01
 
-	results, err := p.searcher.SearchByText(ctx, query, p.embedder, p.vectorName, limit, minScore)
+	// Overfetch because the shared media index also contains voiceover
+	// assets. Keep semantic clip search restricted to published media and
+	// exclude voiceover rows before the canonical sampler ranks candidates.
+	vec, err := p.embedder.Embed(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant semantic search: embed query: %w", err)
+	}
+	searchLimit := limit * 3
+	if searchLimit < 30 {
+		searchLimit = 30
+	}
+	results, err := p.searcher.Search(ctx, qdrantschema.SearchRequest{
+		QueryVector: vec,
+		VectorName:  p.vectorName,
+		Limit:       searchLimit,
+		MinScore:    minScore,
+		Filter: map[string]any{
+			"must": []any{
+				map[string]any{"key": "lifecycle_state", "match": map[string]any{"value": "PUBLISHED"}},
+			},
+			"must_not": []any{
+				map[string]any{"key": "source", "match": map[string]any{"value": "voiceover"}},
+			},
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("qdrant semantic search: %w", err)
 	}

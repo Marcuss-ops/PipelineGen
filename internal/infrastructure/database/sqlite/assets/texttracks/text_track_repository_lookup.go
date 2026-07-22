@@ -10,7 +10,7 @@
 //   - ListByAsset                — all tracks for one asset (admin/debug).
 //   - ListReadyLanguages         — languages that have a READY track for an asset.
 //   - findCuesForTrackID         — per-segment timed-cue fetch for FindReady.
-package assets
+package texttracks
 
 import (
 	"context"

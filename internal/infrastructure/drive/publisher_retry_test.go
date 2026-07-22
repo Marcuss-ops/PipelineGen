@@ -3,9 +3,10 @@ package drive
 // retry surface tests for the drive publisher.
 
 import (
+	"testing"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestYouTubeClipPath_IsDeterministic(t *testing.T) {

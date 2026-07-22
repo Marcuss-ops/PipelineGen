@@ -8,6 +8,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -36,7 +37,7 @@ type JobsBundle struct {
 	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): cross-domain deps
 	// threaded into buildClipOpsPorts via the strict 2-arg jobs parameter.
 	VoiceoverRepo  *assets.VoiceoversRepository
-	ImagesRepo     *assets.ImagesRepository
+	ImagesRepo     *imagesrepo.ImagesRepository
 	DriveUploader  *drive.Uploader
 	DriveLifecycle drive.FileLifecycle
 }
@@ -68,7 +69,7 @@ func BuildJobsBundle(
 	db *storage.SQLiteDB,
 	log *zap.Logger,
 	voiceoverRepo *assets.VoiceoversRepository,
-	imagesRepo *assets.ImagesRepository,
+	imagesRepo *imagesrepo.ImagesRepository,
 	driveUploader *drive.Uploader,
 	driveLifecycle drive.FileLifecycle,
 ) (*JobsBundle, error) {

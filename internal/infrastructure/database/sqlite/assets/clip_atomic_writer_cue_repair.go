@@ -3,10 +3,11 @@ package assets
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"sort"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {

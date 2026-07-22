@@ -30,6 +30,9 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/monitors"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -49,9 +52,9 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	_ = cfg
 	assetsStore := sqassets.NewAssetStoreSQLite(dbs.dualPool.Writer, log)
 	assetsSvc := asset.NewService(assetsStore, log)
-	imageRepo := sqassets.NewImagesRepository(dbs.dualPool.Writer)
+	imageRepo := imagesrepo.NewImagesRepository(dbs.dualPool.Writer)
 	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.dualPool.Writer)
-	monitorsRepo := sqassets.NewMonitorsRepository(dbs.dualPool.Writer)
+	monitorsRepo := monitors.NewMonitorsRepository(dbs.dualPool.Writer)
 	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.dualPool.Writer, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.dualPool.Writer)
@@ -70,7 +73,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
-	textTrackRepo, err := sqassets.NewTextTrackRepository(dbs.dualPool.Writer, log)
+	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.dualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init text track repository: %w", err)
 	}
@@ -272,7 +275,7 @@ type buildImagesParams struct {
 	StyleRegistry *generation.StyleRegistry
 	ScriptGen     *ollama.Generator
 	Publisher     delivery.Publisher
-	ImageRepo     *sqassets.ImagesRepository
+	ImageRepo     *imagesrepo.ImagesRepository
 	VOMetaWriter  semantic.MetadataWriterPort
 	IngestSvc     *ingest.Service
 	Committer     assetspersistence.AssetCommitter

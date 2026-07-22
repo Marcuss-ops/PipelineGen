@@ -24,6 +24,7 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverDocumentInSameJob(t *testing.T) 
 		string(adapters.ProcessorTranslation),
 		string(adapters.ProcessorClipBindings),
 		string(adapters.ProcessorVoiceover),
+		string(adapters.ProcessorDocument),
 		string(adapters.ProcessorPersistence),
 	}
 	if len(plan.Postprocessors) != len(want) {

@@ -11,13 +11,13 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type Broker struct {
 	jobs       job.Store
-	workers    *assets.WorkerNodesRepository
+	workers    *workernodes.WorkerNodesRepository
 	progress   ProgressSink
 	coalescer  *ProgressCoalescer
 	finalizer  finalization.JobFinalizer
@@ -41,7 +41,7 @@ type Broker struct {
 // producing completions through the transactional finalization spine.
 type Deps struct {
 	Jobs      job.Store
-	Workers   *assets.WorkerNodesRepository
+	Workers   *workernodes.WorkerNodesRepository
 	Progress  ProgressSink
 	Coalescer *ProgressCoalescer
 	Finalizer finalization.JobFinalizer

@@ -151,7 +151,7 @@ func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJob
 		imgSvc := root.Domains.ImageService
 		poolSize := cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations
 		plan = append(plan, StartupStep{
-			Name: "chrome-pool-prewarm", Required: true,
+			Name: "chrome-pool-prewarm", Required: false,
 			Start: func(ctx context.Context) error {
 				log.Info("StartupStep: prewarming ChromeImageProviderPool", zap.Int("pool_size", poolSize))
 				imgSvc.TriggerPrewarm(ctx, "startup-prewarm", poolSize)

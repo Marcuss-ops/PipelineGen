@@ -6,7 +6,7 @@
 //
 //   - outboxMonitorAdapter        (outbox.MonitorPort ← outboxevents.Repository)
 //   - monitorYtdlpAdapter         (monitor.MonitorDownloaderPort ← *downloader.YTDLPDownloader)
-//   - monitorDiscoveriesAdapter   (monitor.YoutubeDiscoveriesPort ← *assets.YoutubeDiscoveriesRepository)
+//   - monitorDiscoveriesAdapter   (monitor.YoutubeDiscoveriesPort ← *youtubediscoveries.YoutubeDiscoveriesRepository)
 //   - uploadIntentsAdapter        (voiceover.UploadIntentsRepository ← *scripts.UploadIntentsRepository)
 //
 // Plus the FASE 3.7 Commit 2 monitor.MetricsRecorder compile-time
@@ -38,7 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -190,7 +190,7 @@ var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
 
 // ── monitorDiscoveriesAdapter ─────────────────────────────────
 
-// monitorDiscoveriesAdapter wraps *assets.YoutubeDiscoveriesRepository
+// monitorDiscoveriesAdapter wraps *youtubediscoveries.YoutubeDiscoveriesRepository
 // (the infra-side ledger DB producer) so the channel-monitor's typed
 // port `monitor.YoutubeDiscoveriesPort` (the domain DTO / sentinel
 // consumer) is satisfied.
@@ -200,7 +200,7 @@ var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
 //     `[]assets.OutboxEntry`; the monitor port expects
 //     `[]monitor.OutboxEntry`.
 //   - Sentinel error (`MarkEnqueued` / `MarkRejected` /
-//     `CommitEnqueueOutbox`): infra wraps `assets.ErrStateConflict`;
+//     `CommitEnqueueOutbox`): infra wraps `youtubediscoveries.ErrStateConflict`;
 //     the monitor port's callers pattern-match against
 //     `monitor.ErrLedgerStateConflict`.
 //
@@ -212,7 +212,7 @@ var _ monitor.MonitorDownloaderPort = (*monitorYtdlpAdapter)(nil)
 // the ONLY point where both come together is the composition root
 // where this adapter translates between them.
 type monitorDiscoveriesAdapter struct {
-	*assets.YoutubeDiscoveriesRepository
+	*youtubediscoveries.YoutubeDiscoveriesRepository
 }
 
 // DrainPendingOutbox translates `[]assets.OutboxEntry` →
@@ -269,7 +269,7 @@ func (a *monitorDiscoveriesAdapter) DrainDispatched(ctx context.Context, limit i
 	return out, nil
 }
 
-// MarkEnqueued translates `assets.ErrStateConflict` →
+// MarkEnqueued translates `youtubediscoveries.ErrStateConflict` →
 // `monitor.ErrLedgerStateConflict` (multi-%w wrap chain — Go 1.20+).
 func (a *monitorDiscoveriesAdapter) MarkEnqueued(ctx context.Context, id, enqueuedAt string) error {
 	if a == nil || a.YoutubeDiscoveriesRepository == nil {
@@ -278,7 +278,7 @@ func (a *monitorDiscoveriesAdapter) MarkEnqueued(ctx context.Context, id, enqueu
 	return mapDiscoveriesErr(a.YoutubeDiscoveriesRepository.MarkEnqueued(ctx, id, enqueuedAt))
 }
 
-// MarkRejected translates `assets.ErrStateConflict` →
+// MarkRejected translates `youtubediscoveries.ErrStateConflict` →
 // `monitor.ErrLedgerStateConflict` (same multi-%w wrap shape).
 func (a *monitorDiscoveriesAdapter) MarkRejected(ctx context.Context, id, rejectionReason string, retryable bool) error {
 	if a == nil || a.YoutubeDiscoveriesRepository == nil {
@@ -287,7 +287,7 @@ func (a *monitorDiscoveriesAdapter) MarkRejected(ctx context.Context, id, reject
 	return mapDiscoveriesErr(a.YoutubeDiscoveriesRepository.MarkRejected(ctx, id, rejectionReason, retryable))
 }
 
-// CommitEnqueueOutbox translates `assets.ErrStateConflict` and
+// CommitEnqueueOutbox translates `youtubediscoveries.ErrStateConflict` and
 // `monitor_outbox.ErrDuplicateOutboxKey` (the latter is infra-side
 // idempotency sentinel, not yet re-exported in monitor — the adapter
 // just passes the error through with the SSOT wrap). Duplicate-key
@@ -302,16 +302,16 @@ func (a *monitorDiscoveriesAdapter) CommitEnqueueOutbox(ctx context.Context, dis
 }
 
 // mapDiscoveriesErr is the canonical sentinel-translator between
-// the infra-side `assets.ErrStateConflict` and the monitor-side
+// the infra-side `youtubediscoveries.ErrStateConflict` and the monitor-side
 // `monitor.ErrLedgerStateConflict`. nil → nil. errors.Is(err,
-// assets.ErrStateConflict) → delegates to `monitor.TranslateLedgerSentinel`
+// youtubediscoveries.ErrStateConflict) → delegates to `monitor.TranslateLedgerSentinel`
 // (the public monitor-package helper that does the actual multi-%w
 // wrap). Any other error → passed through unchanged.
 func mapDiscoveriesErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, assets.ErrStateConflict) {
+	if errors.Is(err, youtubediscoveries.ErrStateConflict) {
 		return monitor.TranslateLedgerSentinel(err)
 	}
 	return err
@@ -321,7 +321,7 @@ func mapDiscoveriesErr(err error) error {
 // bridge. Returns a valid monitor.YoutubeDiscoveriesPort even when
 // repo is nil (no-op: every method surfaces nil-or-empty so a
 // missing wire silently fails-soft).
-func newMonitorDiscoveriesAdapter(repo *assets.YoutubeDiscoveriesRepository) monitor.YoutubeDiscoveriesPort {
+func newMonitorDiscoveriesAdapter(repo *youtubediscoveries.YoutubeDiscoveriesRepository) monitor.YoutubeDiscoveriesPort {
 	if repo == nil {
 		return nil
 	}

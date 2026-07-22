@@ -1,8 +1,9 @@
 package texttracks
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 func TestBuildVisualTracksPreservesSourceTimeline(t *testing.T) {

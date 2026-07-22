@@ -383,6 +383,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		Metadata:      cmd.Metadata,
 		RemoveSilence: removeSilence,
 		Dest:          dest,
+		Project:       cmd.Project,
 		// ShouldSwap stays false: the batch path does not capture
 		// old-row swap context today (the pre-DRY code had a
 		// PreReadByID call but explicitly discarded the result —

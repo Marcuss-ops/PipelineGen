@@ -96,9 +96,14 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Sprint 1.0: the inline Google Doc postprocessor was retired.
-	// Document creation is now produced by the canonical downstream
-	// document.generate job (internal/application/document/usecase.go).
+	// Google Docs are published through the canonical idempotent DocClient.
+	// Keep this processor best-effort: a missing Drive capability must be
+	// visible as a warning/error, never as a fabricated document link.
+	if root.Drive != nil && root.Drive.DocClient != nil {
+		if err := registerDocumentProcessor(ppReg, root, cfg, log); err != nil {
+			return err
+		}
+	}
 
 	// Inline Image generation processor (temporarily restored).
 	if root.Domains != nil && root.Domains.ImageService != nil {

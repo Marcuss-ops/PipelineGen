@@ -20,6 +20,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -93,7 +94,7 @@ type MediaIngestBundle struct {
 	DriveUploader     *driveutil.Uploader
 	Lifecycle         driveutil.FileLifecycle
 	Publisher         delivery.Publisher
-	ImageRepo         *sqassets.ImagesRepository
+	ImageRepo         *imagesrepo.ImagesRepository
 	VoiceoverRepo     *sqassets.VoiceoversRepository
 	ClipsRepo         *sqassets.ClipsRepository
 	AssetIndexService *assetindex.Service

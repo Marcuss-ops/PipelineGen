@@ -27,7 +27,7 @@
 // and is enforced via UNIQUE constraint — the same (discovery_id,
 // policy_version) pair cannot produce duplicate outbox entries.
 
-package assets
+package youtubediscoveries
 
 import (
 	"context"

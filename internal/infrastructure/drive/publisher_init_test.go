@@ -3,9 +3,10 @@ package drive
 // init surface tests for the drive publisher.
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"testing"
 )
 
 func TestNewPublisher_NilRegistry(t *testing.T) {
