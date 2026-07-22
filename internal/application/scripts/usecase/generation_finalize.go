@@ -27,13 +27,22 @@ import (
 // runs the quality gate. It is constructed once per use case and
 // reused across calls.
 type GenerationFinalizer struct {
-	log *zap.Logger
-	cfg adapters.NormalizationConfig
+	log    *zap.Logger
+	cfg    adapters.NormalizationConfig
+	memSvc *adapters.Service
 }
 
 // NewGenerationFinalizer constructs a GenerationFinalizer.
 func NewGenerationFinalizer(log *zap.Logger, cfg adapters.NormalizationConfig) *GenerationFinalizer {
 	return &GenerationFinalizer{log: log, cfg: cfg}
+}
+
+// SetMemoryService wires the gemmamemory service used to cache
+// successfully generated scripts. If nil, caching is a no-op.
+func (f *GenerationFinalizer) SetMemoryService(svc *adapters.Service) {
+	if f != nil {
+		f.memSvc = svc
+	}
 }
 
 // FinalizeInputs carries everything the finalize phase needs from
@@ -50,7 +59,7 @@ type FinalizeInputs struct {
 // Finalize builds the result, enforces the clip-native contract,
 // surfaces provenance, and evaluates the editorial quality gate.
 func (f *GenerationFinalizer) Finalize(
-	_ context.Context,
+	ctx context.Context,
 	inputs FinalizeInputs,
 	tracker *ProgressTracker,
 ) (*scriptpkg.GenerationResult, error) {
@@ -80,6 +89,9 @@ func (f *GenerationFinalizer) Finalize(
 	qualityInput.Output = result.Output
 	qualityInput.Output.Text = engineResult.Output.Text
 	qualityInput.Output.WordCount = engineResult.Output.WordCount
+	// Keep the canonical result in sync with the engine envelope before
+	// persistence; the script cache must retain the observed word count.
+	result.Output.WordCount = engineResult.Output.WordCount
 	quality, qErr := evaluateQualityGate(&qualityInput, item, plan)
 	if quality != nil {
 		result.Quality = quality
@@ -115,6 +127,33 @@ func (f *GenerationFinalizer) Finalize(
 			// mandates a single classify call in the success path).
 			result.Status = scriptpkg.ItemStatusFailed
 			return result, qErr
+		}
+	}
+
+	// Cache the generated script so future requests with the same
+	// canonical inputs can be served without calling the LLM. We save
+	// the RAW engine output (not post-processed translations) so the
+	// cached value matches the cache key, which is derived from the
+	// generation plan. We save only on the success path (quality
+	// passed or explicitly skipped), only when the caller opted into
+	// memory. Exact cache hits are not re-persisted; force-refresh
+	// generations overwrite the exact row.
+	if f.memSvc != nil && plan.UseMemory &&
+		engineResult.CacheStatus == "generated" && engineResult.Output.Text != "" {
+		_, saveErr := f.memSvc.SaveAfterGeneration(ctx, adapters.SaveGenerationInput{
+			ChannelID: "default",
+			Mode:      plan.Mode,
+			Language:  plan.Language,
+			Title:     plan.Title,
+			Prompt:    plan.RenderedPrompt,
+			Model:     engineResult.Model,
+			WordCount: engineResult.Output.WordCount,
+			CacheKey:  plan.CacheKey,
+		}, engineResult.Output.Text)
+		if saveErr != nil && f.log != nil {
+			f.log.Warn("generate-one: failed to save script cache",
+				zap.String("item_id", item.ID),
+				zap.Error(saveErr))
 		}
 	}
 

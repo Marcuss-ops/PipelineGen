@@ -66,6 +66,23 @@ func (uc *GenerateOneUseCase) SetVoiceoverRouting(resolver scriptports.Voiceover
 	uc.preparer.SetVoiceoverRouting(resolver, parentID)
 }
 
+// SetTopicSourceCache wires the source-text cache into the prepare phase.
+func (uc *GenerateOneUseCase) SetTopicSourceCache(cache scriptports.TopicSourceCache) {
+	if uc != nil {
+		uc.preparer.SetTopicSourceCache(cache)
+	}
+}
+
+// SetMemoryService wires the gemmamemory service used to cache
+// generated scripts in the finalizer. Optional: if not called, the
+// finalizer does not persist to the script cache.
+func (uc *GenerateOneUseCase) SetMemoryService(svc *adapters.Service) {
+	if uc == nil {
+		return
+	}
+	uc.finalizer.SetMemoryService(svc)
+}
+
 // ── Plan-phase helpers ────────────────────────────────────────────────
 
 // buildResolutionContext constructs a SourceResolutionContext from a

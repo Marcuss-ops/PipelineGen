@@ -379,6 +379,16 @@ func (r *VisualResolver) resolveScene(
 
 		// Sort DESC by FinalScore (deterministic, no RNG).
 		sortByFinalScoreDesc(scored)
+		for _, candidate := range scored {
+			plan.Candidates = append(plan.Candidates, CandidateOption{
+				AssetID:      candidate.fc.Candidate.AssetID,
+				Provider:     candidate.fc.Candidate.Provider,
+				Score:        candidate.out.FinalScore,
+				DurationMs:   candidate.fc.Candidate.DurationMs,
+				MediaType:    candidate.fc.Candidate.MediaType,
+				RightsStatus: string(candidate.fc.Candidate.RightsStatus),
+			})
+		}
 
 		// Take the top one for this slot via PickTopFromRose
 		// (single layer per slot).

@@ -38,6 +38,7 @@ import (
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/application/staging"
@@ -177,6 +178,7 @@ type SearchBundle struct {
 	AssetTreeService  *assettree.Service
 	AssetResolver     *assetindex.Resolver
 	ProviderRegistry  *providers.Registry
+	SearchFanOut      search.SearchFanOut
 }
 
 // ProcessQdrantBundle groups all Qdrant-related adapter fields.
@@ -222,7 +224,8 @@ type AIBundle struct {
 	Reranker          *reranker.Client
 	ScriptGen         *ollama.Generator
 	OllamaTranslator  *translation.OllamaTranslator
-	MemoryRepo        *adapters.Repository
+	MemoryRepo        scriptports.MemoryGate
+	MemorySvc         *adapters.Service
 	ScriptEngine      *scriptcore.Engine
 	// WhisperTranscriber is the concrete Whisper adapter
 	// (Fase 5: wired into the AcquireService for the backfill
