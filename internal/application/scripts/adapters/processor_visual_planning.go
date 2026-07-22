@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
@@ -29,16 +30,17 @@ type VisualSelectionRequest struct {
 // MediaMemory request. Locked assignments are applied locally and are never
 // sent to the resolver or planner.
 type VisualPlanningProcessor struct {
-	resolver mediamemory.Resolver
-	planner  VisualCandidatePlanner
-	log      *zap.Logger
+	resolver     mediamemory.Resolver
+	planner      VisualCandidatePlanner
+	materializer scriptports.AssetMaterializer
+	log          *zap.Logger
 }
 
-func NewVisualPlanningProcessor(resolver mediamemory.Resolver, planner VisualCandidatePlanner, log *zap.Logger) *VisualPlanningProcessor {
+func NewVisualPlanningProcessor(resolver mediamemory.Resolver, planner VisualCandidatePlanner, materializer scriptports.AssetMaterializer, log *zap.Logger) *VisualPlanningProcessor {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &VisualPlanningProcessor{resolver: resolver, planner: planner, log: log}
+	return &VisualPlanningProcessor{resolver: resolver, planner: planner, materializer: materializer, log: log}
 }
 
 func (p *VisualPlanningProcessor) Name() ProcessorName { return ProcessorVisualPlanning }
@@ -119,9 +121,39 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 	}
 
+	p.materializeLayers(ctx, plans)
+
 	projected := cloneScenes(input.SpecScene.Scenes)
 	projectVisualBindings(projected, plans, plan.MediaPlan.Assignments)
 	return &PostProcessResult{VisualPlans: plans, SynthesizedScenes: projected, Changed: len(plans) > 0}, nil
+}
+
+// materializeLayers ensures each winning external asset is materialized
+// once. The layer is mutated in place with the materialized asset ID
+// and provider.
+func (p *VisualPlanningProcessor) materializeLayers(ctx context.Context, plans []mediamemory.SceneVisualPlan) {
+	if p.materializer == nil {
+		return
+	}
+	for pi := range plans {
+		for li := range plans[pi].Layers {
+			layer := &plans[pi].Layers[li]
+			mat, err := p.materializer.Materialize(ctx, *layer)
+			if err != nil {
+				p.log.Warn("visual planning: materialization failed",
+					zap.String("scene_id", plans[pi].SceneID),
+					zap.String("slot", string(layer.Slot)),
+					zap.Error(err),
+				)
+				continue
+			}
+			layer.AssetID = mat.AssetID
+			layer.Provider = mat.Provider
+			if mat.DurationMs > 0 && layer.EndMs == 0 {
+				layer.EndMs = layer.StartMs + mat.DurationMs
+			}
+		}
+	}
 }
 
 // Deprecated local helper kept only for backward compatibility.
@@ -217,21 +249,45 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 			if scenes[i].ID != vp.SceneID {
 				continue
 			}
+			visualPlan := &scriptpkg.VisualPlan{
+				Layers:     make([]scriptpkg.VisualLayer, 0, len(vp.Layers)),
+				Candidates: make([]scriptpkg.VisualCandidate, 0, len(vp.Candidates)),
+			}
 			for _, layer := range vp.Layers {
 				if layer.AssetID == "" {
 					continue
 				}
 				scenes[i].Bindings.Media = append(scenes[i].Bindings.Media, scriptpkg.ResolvedMediaBinding{Slot: string(layer.Slot), AssetID: layer.AssetID, BindingID: layer.BindingID, Provider: layer.Provider, Score: layer.CandidateScore})
-				if layer.Slot != mediamemory.SlotPrimaryVideo {
-					continue
+				if layer.Slot == mediamemory.SlotPrimaryVideo {
+					if scenes[i].Bindings.Stock == nil {
+						scenes[i].Bindings.Stock = &scriptpkg.StockBinding{}
+					}
+					scenes[i].Bindings.Stock.AssetID = layer.AssetID
+					scenes[i].Bindings.Stock.Source = layer.Provider
+					scenes[i].Bindings.Stock.Score = layer.CandidateScore
 				}
-				if scenes[i].Bindings.Stock == nil {
-					scenes[i].Bindings.Stock = &scriptpkg.StockBinding{}
-				}
-				scenes[i].Bindings.Stock.AssetID = layer.AssetID
-				scenes[i].Bindings.Stock.Source = layer.Provider
-				scenes[i].Bindings.Stock.Score = layer.CandidateScore
+				durationMs := layer.EndMs - layer.StartMs
+				visualPlan.Layers = append(visualPlan.Layers, scriptpkg.VisualLayer{
+					Slot:       string(layer.Slot),
+					AssetID:    layer.AssetID,
+					Provider:   layer.Provider,
+					StartMs:    layer.StartMs,
+					EndMs:      layer.EndMs,
+					DurationMs: durationMs,
+					Score:      layer.CandidateScore,
+				})
 			}
+			for _, c := range vp.Candidates {
+				visualPlan.Candidates = append(visualPlan.Candidates, scriptpkg.VisualCandidate{
+					AssetID:      c.AssetID,
+					Provider:     c.Provider,
+					Score:        c.Score,
+					DurationMs:   c.DurationMs,
+					MediaType:    c.MediaType,
+					RightsStatus: c.RightsStatus,
+				})
+			}
+			scenes[i].VisualPlan = visualPlan
 		}
 	}
 	for _, a := range assignments {

@@ -254,6 +254,11 @@ type SpecScene struct {
 	// Kind tags the scene's primary visual treatment.
 	Kind SceneKind `json:"kind"`
 
+	// VisualPlan carries the canonical visual plan produced by the
+	// visual planning processor. It is nil when visual planning is
+	// disabled or produced no layers for this scene.
+	VisualPlan *VisualPlan `json:"visual_plan,omitempty"`
+
 	// Bindings holds the resolved asset references for this scene.
 	// Always present in the JSON output (as {} when no assets are
 	// bound). Individual binding fields (clip, image, voiceover)

@@ -306,6 +306,7 @@ type SceneSpec struct {
 type Layer struct {
 	Slot           SlotKind
 	AssetID        string
+	CandidateID    string
 	BindingID      string
 	StartMs        int64
 	EndMs          int64
@@ -322,6 +323,8 @@ type Layer struct {
 
 type CandidateOption struct {
 	AssetID      string
+	CandidateID  string
+	SourceURL    string
 	Provider     string
 	Score        float64
 	DurationMs   int64
