@@ -328,5 +328,6 @@ func (p *TranslationProcessor) Process(
 		TranslatedSpecScene: postTranslatedSpecScene,
 		OriginalText:        originalText,
 		OriginalSpecScene:   originalSpecScene,
+		EffectiveLanguage:   targetLang,
 	}, nil
 }

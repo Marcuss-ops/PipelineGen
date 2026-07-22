@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -83,13 +84,14 @@ func (p *GenerationPostprocessor) Process(
 	}
 
 	procInput := adapters.ProcessInput{
-		Text:        engineResult.Output.Text,
-		WordCount:   engineResult.WordCount,
-		SpecScene:   engineResult.Output.SpecScene,
-		ModelUsed:   engineResult.Model,
-		CacheStatus: engineResult.CacheStatus,
-		SourceTrace: engineResult.ClipEvidence,
-		Provenance:  provenance,
+		Text:              engineResult.Output.Text,
+		WordCount:         engineResult.WordCount,
+		SpecScene:         engineResult.Output.SpecScene,
+		ModelUsed:         engineResult.Model,
+		CacheStatus:       engineResult.CacheStatus,
+		SourceTrace:       engineResult.ClipEvidence,
+		Provenance:        provenance,
+		EffectiveLanguage: strings.TrimSpace(plan.Language),
 	}
 
 	postResult, err := p.ppReg.Run(ctx, &plan, procInput)
