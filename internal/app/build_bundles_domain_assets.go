@@ -8,7 +8,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
@@ -17,7 +19,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to
@@ -103,7 +109,49 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		enrichState = esm
 	}
-	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, params.mutationsDisp, enrichState, params.log)
+
+	// Optional multi-frame video analysis ports. Each constructor is
+	// best-effort: if any dependency is missing the autotag service
+	// falls back to single-shot VLM analysis for video assets.
+	var videoSampler indexing.PercentageFrameSampler
+	proc := ffmpeg.NewFromConfig(params.cfg)
+	if sampler, err := indexing.NewFFMPEGFrameSampler(proc); err == nil {
+		videoSampler = sampler
+	} else {
+		params.log.Warn("compose domains: failed to build ffmpeg percentage sampler", zap.Error(err))
+	}
+
+	var visualVLM indexing.VLMClient
+	if params.cfg.VLM.URL != "" {
+		visualVLM = indexing.NewHTTPVLMClient(params.cfg.VLM.URL, 0)
+	}
+
+	var imageEmbedder qdrantsearch.ImageEmbedder
+	if params.cfg.ClipIndexer.ServerURL != "" {
+		imageEmbedder = qdrantsearch.NewImageEmbedderAdapter(
+			qdrantsearch.ImageEmbedderConfig{ServerURL: params.cfg.ClipIndexer.ServerURL},
+			nil,
+			params.log,
+		)
+	}
+
+	var frameIndexer mediamemory.KeyframeVisualIndexer
+	if params.process.QdrantClient != nil {
+		frameIndexer = mmadapters.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
+	}
+
+	autotagSvc := autotag.NewService(
+		params.dbs.dualPool.Writer,
+		params.repos.Assets.Repository(),
+		params.process.VLMClient,
+		params.mutationsDisp,
+		enrichState,
+		params.log,
+		videoSampler,
+		visualVLM,
+		imageEmbedder,
+		frameIndexer,
+	)
 
 	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(
