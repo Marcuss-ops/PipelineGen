@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"sort"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -64,10 +63,15 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 		if images, err := s.repo.ListImagesBySubject(ctx, subject.Slug); err == nil && len(images) > 0 {
 			s.log.Info("Images found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
 			if len(images) > 1 {
-				source := rand.New(rand.NewSource(time.Now().UnixNano()))
-				randomIndex := source.Intn(len(images))
-				s.log.Info("Picking random image from database", zap.Int("index", randomIndex), zap.Int("total", len(images)))
-				return &images[randomIndex], nil
+				// Retrieval is a reproducible resolver: a repeated query with
+				// the same catalog must not select a random asset.
+				sort.SliceStable(images, func(i, j int) bool {
+					if images[i].Hash != images[j].Hash {
+						return images[i].Hash < images[j].Hash
+					}
+					return images[i].Provider < images[j].Provider
+				})
+				s.log.Info("Picking deterministic image from database", zap.String("asset_id", images[0].Hash), zap.Int("total", len(images)))
 			}
 			return &images[0], nil
 		}
@@ -118,6 +122,7 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 
 	provCtx := context.WithValue(ctx, SourceTypeKey, "retrieved")
 	provCtx = context.WithValue(provCtx, RetrieverKey, source)
+	provCtx = context.WithValue(provCtx, SearchQueryKey, finalQuery)
 	provCtx = context.WithValue(provCtx, ImageURLKey, imgURL)
 	if wikiURL != "" {
 		provCtx = context.WithValue(provCtx, PageURLKey, wikiURL)

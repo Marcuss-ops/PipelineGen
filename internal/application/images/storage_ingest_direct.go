@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
@@ -262,6 +263,35 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		// GetImageByHash fallback path was retired because the new
 		// canonical writer handles dedup atomically.
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
+	}
+	if result.Origin == asset.ImageOriginRetrieved && s.repo != nil {
+		detail := &asset.RetrievedImageDetail{
+			AssetID: hash, SourceImageURL: source,
+			Provider: string(result.Provider), RetrievedAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		if v, ok := ctx.Value(PageURLKey).(string); ok {
+			detail.SourcePageURL = v
+		}
+		if v, ok := ctx.Value(LicenseKey).(string); ok {
+			detail.License = v
+		}
+		if v, ok := ctx.Value(AuthorKey).(string); ok {
+			detail.Author = v
+		}
+		if v, ok := ctx.Value(SearchQueryKey).(string); ok {
+			detail.SearchQuery = v
+		}
+		if err := s.repo.UpsertRetrievedDetails(ctx, detail); err != nil {
+			// Older test/maintenance databases may predate migration 117;
+			// the canonical media commit has already succeeded, so keep the
+			// asset usable while making the missing projection observable.
+			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				return nil, fmt.Errorf("image retrieved provenance: %w", err)
+			}
+			if s.log != nil {
+				s.log.Warn("retrieved_image_details table unavailable", zap.Error(err))
+			}
+		}
 	}
 
 	return result, nil

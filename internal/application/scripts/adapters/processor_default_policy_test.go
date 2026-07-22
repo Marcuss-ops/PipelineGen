@@ -48,7 +48,7 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 	case adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorClipSearch,
-		adapterspkg.ProcessorStockAssociation,
+		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorClipBindings,
 		adapterspkg.ProcessorTranslation:
 		return adapterspkg.ProcessorBestEffort

@@ -48,6 +48,13 @@ type GenerationPreparer struct {
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
 	log             *zap.Logger
+	topicCache      scriptports.TopicSourceCache
+}
+
+func (p *GenerationPreparer) SetTopicSourceCache(cache scriptports.TopicSourceCache) {
+	if p != nil {
+		p.topicCache = cache
+	}
 }
 
 // NewGenerationPreparer constructs a GenerationPreparer.

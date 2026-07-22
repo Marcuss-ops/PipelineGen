@@ -97,6 +97,24 @@ func modeForSource(st scriptpkg.SourceType) string {
 	return defaultEngineMode
 }
 
+func mediaPlanRequested(item scriptpkg.GenerationItemV2) bool {
+	return item.MediaPlan.Mode != "" || len(item.MediaPlan.Providers) > 0 || len(item.MediaPlan.Assignments) > 0 || len(item.MediaPlan.Searches) > 0
+}
+
+// insertVisualPlanningAfterClipBindings places ProcessorVisualPlanning
+// immediately after ProcessorClipBindings so the visual-planning pass
+// sees the final clip-bound scenes before voiceover/persistence run.
+func insertVisualPlanningAfterClipBindings(processors []adapters.ProcessorName) []adapters.ProcessorName {
+	out := make([]adapters.ProcessorName, 0, len(processors)+1)
+	for _, p := range processors {
+		out = append(out, p)
+		if p == adapters.ProcessorClipBindings {
+			out = append(out, adapters.ProcessorVisualPlanning)
+		}
+	}
+	return out
+}
+
 // buildPostprocessorListForItem is the source-aware post-processing resolver.
 // Explicit clips are a complete generate job: translation (when requested),
 // clip binding, voiceover, Google Doc creation and persistence all execute in
@@ -104,6 +122,9 @@ func modeForSource(st scriptpkg.SourceType) string {
 // source.type: clips is the SOLE entry point for clip-based generation.
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
 	processors := buildPostprocessorList(item.Output)
+	if mediaPlanRequested(item) {
+		processors = insertVisualPlanningAfterClipBindings(processors)
+	}
 	if item.Source.Type != scriptpkg.SourceClips {
 		return processors
 	}
@@ -126,7 +147,6 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// Scene-normalisation must precede artifact producers so voiceover and the
 	// Google Doc consume the final translated, clip-bound SpecScene.
 	processors = append(processors, adapters.ProcessorClipBindings)
-	processors = append(processors, adapters.ProcessorStockAssociation)
 
 	if strings.TrimSpace(out.VoiceoverGroup) != "" || strings.TrimSpace(out.VoiceoverFolderID) != "" {
 		processors = append(processors, adapters.ProcessorVoiceover)

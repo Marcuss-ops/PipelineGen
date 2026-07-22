@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -89,6 +90,12 @@ type ServicePorts struct {
 	// NewDiagnosticsService, which reports every probe as failed
 	// rather than fake-availability).
 	SystemProber SystemProber
+	// MediaMemoryConceptRepo / MediaMemoryBindingRepo / MediaMemoryNormalizer
+	// are optional ports used to create media_concepts / media_bindings
+	// after a clip is materialized. nil means linking is skipped.
+	MediaMemoryConceptRepo mediamemory.ConceptRepository
+	MediaMemoryBindingRepo mediamemory.BindingRepository
+	MediaMemoryNormalizer  mediamemory.Normalizer
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -269,6 +276,13 @@ type Service struct {
 	// ErrRunRepositoryUnavailable (fail-closed).
 	runRepo RunRepository
 
+	// conceptRepo, bindingRepo, and normalizer are optional ports used
+	// to create media_concepts / media_bindings after a clip is
+	// materialized. When nil, linking is skipped (graceful degradation).
+	conceptRepo mediamemory.ConceptRepository
+	bindingRepo mediamemory.BindingRepository
+	normalizer  mediamemory.Normalizer
+
 	// systemProber is the canonical godlike/06 SystemProber port
 	// (Fase 2, July 2026). nil means the diagnostics endpoint reports
 	// every probe as failed via the fallback stubSystemProber
@@ -352,6 +366,9 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
 		systemProber:      deps.SystemProber,
+		conceptRepo:       deps.MediaMemoryConceptRepo,
+		bindingRepo:       deps.MediaMemoryBindingRepo,
+		normalizer:        deps.MediaMemoryNormalizer,
 		locationRepo:      deps.Repos.LocationRepository,
 		renditionRepo:     deps.Repos.RenditionRepository,
 	}

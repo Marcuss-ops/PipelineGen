@@ -7,6 +7,7 @@ package adapters
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -15,6 +16,7 @@ import (
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
+	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
 	VideoMetadata    []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
@@ -73,6 +75,7 @@ type PipelineResult struct {
 
 // PostProcessResult carries the output of a single processor.
 type PostProcessResult struct {
+	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
 	Metadata         []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover

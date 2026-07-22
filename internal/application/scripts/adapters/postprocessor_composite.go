@@ -92,15 +92,15 @@ const (
 // registered but with BestEffort policy so legacy callers that
 // still request them do not trigger a hard preflight failure.
 var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
-	ProcessorPersistence:      ProcessorRequired,
-	ProcessorImages:           ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
-	ProcessorVoiceover:        ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
-	ProcessorEntities:         ProcessorRequired,
-	ProcessorMetadata:         ProcessorRequired,
-	ProcessorClipSearch:       ProcessorBestEffort, // PR-CLIP-SEARCH-WIRING (July 2026): enrichment, not a hard gate
-	ProcessorTranslation:      ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: translation enrichment, not a hard gate; defaults to BestEffort because the canonical composition root at internal/app/wire_script_postprocess.go::registerScriptPostProcessors silently skips registration when OllamaTranslator is nil
-	ProcessorClipBindings:     ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: clip-binding enrichment, not a hard gate; same silent-skip-on-missing-wiring pattern as Translation
-	ProcessorStockAssociation: ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: stock-association lookup, not a hard gate; nil Qdrant enrichment fails-open per the canonical composition root
+	ProcessorPersistence:    ProcessorRequired,
+	ProcessorImages:         ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
+	ProcessorVoiceover:      ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
+	ProcessorEntities:       ProcessorRequired,
+	ProcessorMetadata:       ProcessorRequired,
+	ProcessorClipSearch:     ProcessorBestEffort, // PR-CLIP-SEARCH-WIRING (July 2026): enrichment, not a hard gate
+	ProcessorTranslation:    ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: translation enrichment, not a hard gate; defaults to BestEffort because the canonical composition root at internal/app/wire_script_postprocess.go::registerScriptPostProcessors silently skips registration when OllamaTranslator is nil
+	ProcessorClipBindings:   ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: clip-binding enrichment, not a hard gate; same silent-skip-on-missing-wiring pattern as Translation
+	ProcessorVisualPlanning: ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: visual-planning lookup, not a hard gate; nil MediaMemory resolver fails-open per the canonical composition root
 }
 
 // DefaultPolicyFor returns the canonical default policy for a
