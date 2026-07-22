@@ -9,18 +9,20 @@ import (
 
 func TestBuildFingerprint_Deterministic(t *testing.T) {
 	input := script.GenerationFingerprintInput{
-		ContractVersion: 1,
-		SourceType:      "text",
-		SourceTextHash:  "sha256:abc",
-		Language:        "en",
-		Tone:            "documentary",
-		Style:           "cinematic",
-		Guidelines:      "Keep it factual.",
-		TargetWords:     500,
-		Model:           "llama3:8b",
-		PromptVersion:   "v1",
-		PlannerVersion:  "default-v1",
-		GroundingPolicy: "strict",
+		ContractVersion:     1,
+		SourceType:          "text",
+		SourceTextHash:      "sha256:abc",
+		Language:            "en",
+		Tone:                "documentary",
+		Style:               "cinematic",
+		Guidelines:          "Keep it factual.",
+		TargetWords:         500,
+		Model:               "llama3:8b",
+		PromptVersion:       "v1",
+		EditorPromptVersion: "v1",
+		QAPromptVersion:     "v1",
+		PlannerVersion:      "default-v1",
+		GroundingPolicy:     "strict",
 	}
 
 	id1 := script.BuildFingerprint(input)
@@ -57,6 +59,8 @@ func TestBuildFingerprint_DifferentFieldChanges(t *testing.T) {
 		{"target_words", func(i *script.GenerationFingerprintInput) { i.TargetWords = 800 }},
 		{"model", func(i *script.GenerationFingerprintInput) { i.Model = "qwen2:7b" }},
 		{"prompt_version", func(i *script.GenerationFingerprintInput) { i.PromptVersion = "v2" }},
+		{"editor_prompt_version", func(i *script.GenerationFingerprintInput) { i.EditorPromptVersion = "v2" }},
+		{"qa_prompt_version", func(i *script.GenerationFingerprintInput) { i.QAPromptVersion = "v2" }},
 		{"planner_version", func(i *script.GenerationFingerprintInput) { i.PlannerVersion = "experimental-v3" }},
 		{"grounding_policy", func(i *script.GenerationFingerprintInput) { i.GroundingPolicy = "loose" }},
 		{"source_text_hash", func(i *script.GenerationFingerprintInput) { i.SourceTextHash = "sha256:def" }},
@@ -171,4 +175,23 @@ func TestFingerprintInputFromPlan_WiresGroundingPolicy(t *testing.T) {
 	assert.Equal(t, "loose", input.GroundingPolicy)
 	assert.Equal(t, "default-v1", input.PlannerVersion)
 	assert.Equal(t, []string{"clip-a"}, input.ClipIDs)
+}
+
+func TestFingerprintInputFromPlan_WiresPromptVersions(t *testing.T) {
+	plan := script.ResolvedGenerationPlan{
+		Language:            "en",
+		SourceKind:          "text",
+		SourceFingerprint:   "fp-abc",
+		PromptVersion:       "pv1",
+		EditorPromptVersion: "ev1",
+		QAPromptVersion:     "qv1",
+		PromptProfile:       "default-v1",
+	}
+
+	input := script.FingerprintInputFromPlan(&plan)
+
+	assert.Equal(t, "pv1", input.PromptVersion)
+	assert.Equal(t, "ev1", input.EditorPromptVersion)
+	assert.Equal(t, "qv1", input.QAPromptVersion)
+	assert.Equal(t, 2, input.ContractVersion)
 }
