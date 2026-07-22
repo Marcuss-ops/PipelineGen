@@ -13,7 +13,7 @@ func TestDefaultResolver_ExtractsKeywords(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []string{"i", "maya", "studiavano", "le", "stelle"}
+	want := []string{"maya", "studiavano", "stelle"}
 	if len(intent.Keywords) != len(want) {
 		t.Fatalf("keywords = %v, want %v", intent.Keywords, want)
 	}
