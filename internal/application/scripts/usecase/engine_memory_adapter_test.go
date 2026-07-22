@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"go.uber.org/zap"
 )
 
@@ -74,14 +74,14 @@ func TestMemoryGateAdapter_MissThenHit(t *testing.T) {
 
 	// Save a row through the service.
 	_, err = svc.SaveAfterGeneration(context.Background(), adapters.SaveGenerationInput{
-		ChannelID:  "default",
-		Mode:       "text",
-		Language:   "en",
-		Title:      "Adapter",
-		Prompt:     "p",
+		ChannelID: "default",
+		Mode:      "text",
+		Language:  "en",
+		Title:     "Adapter",
+		Prompt:    "p",
 		Model:     "gemma",
 		WordCount: 7,
-		CacheKey:   "adapter-key",
+		CacheKey:  "adapter-key",
 	}, "adapter output")
 	if err != nil {
 		t.Fatalf("save failed: %v", err)
