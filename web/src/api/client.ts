@@ -197,6 +197,46 @@ export function triggerClipAction(url: string, payload: Record<string, unknown> 
   })
 }
 
+export interface VerifyIndexResponse {
+  asset_id: string
+  sqlite: {
+    index_state: string
+    embedding_present: boolean
+    content_hash: string
+    indexed_content_hash: string
+  }
+  outbox: {
+    pending: number
+  }
+  qdrant: {
+    checked: boolean
+    point_present: boolean
+    collection: string
+    vector_dimensions: number
+    payload_lifecycle_state: string
+  }
+  consistent: boolean
+}
+
+export function verifyAssetIndex(id: string): Promise<VerifyIndexResponse> {
+  return request<VerifyIndexResponse>(`/assets/operator/assets/${encodeURIComponent(id)}/verify-index`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+export interface ReindexAssetResponse {
+  asset_id: string
+  queued: boolean
+}
+
+export function reindexAsset(id: string): Promise<ReindexAssetResponse> {
+  return request<ReindexAssetResponse>(`/assets/operator/assets/${encodeURIComponent(id)}/reindex`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 // ── Bulk operations ────────────────────────────────────────────────
 
 export type BulkAction = 'add_tags' | 'remove_tags' | 'set_category' | 'set_review_status' | 'reindex' | 'verify' | 'archive'

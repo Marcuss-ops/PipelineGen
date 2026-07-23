@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePollingQuery } from '../hooks/usePollingQuery'
 import RefreshButton from '../components/RefreshButton'
@@ -11,6 +11,9 @@ import {
   getAssetActions,
   AssetActionsResponse,
   triggerClipAction,
+  verifyAssetIndex,
+  reindexAsset,
+  VerifyIndexResponse,
 } from '../api/client'
 import AssetPreview from '../components/AssetPreview'
 
@@ -77,6 +80,13 @@ export default function AssetInspector() {
   const [form, setForm] = useState<FormState>(initialForm(null))
   const [dirty, setDirty] = useState(false)
   const [pausePolling, setPausePolling] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<VerifyIndexResponse | null>(null)
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [reindexLoading, setReindexLoading] = useState(false)
+
+  useEffect(() => {
+    setVerifyResult(null)
+  }, [id])
 
   const {
     data: asset,
@@ -184,6 +194,38 @@ export default function AssetInspector() {
       setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore azione' })
     }
   }
+
+  const handleVerify = useCallback(async () => {
+    if (!id) return
+    setVerifyLoading(true)
+    setSaveMsg(null)
+    try {
+      const res = await verifyAssetIndex(id)
+      setVerifyResult(res)
+      setSaveMsg({ type: 'ok', text: `Verifica Qdrant completata: ${res.consistent ? 'coerente' : 'non coerente'}` })
+    } catch (err) {
+      setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore verifica Qdrant' })
+    } finally {
+      setVerifyLoading(false)
+    }
+  }, [id])
+
+  const handleReindex = useCallback(async () => {
+    if (!id) return
+    setReindexLoading(true)
+    setSaveMsg(null)
+    try {
+      const res = await reindexAsset(id)
+      if (res.queued) {
+        setSaveMsg({ type: 'ok', text: 'Reindicizzazione accodata; lo stato si aggiornerà a breve.' })
+        load()
+      }
+    } catch (err) {
+      setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore reindicizzazione' })
+    } finally {
+      setReindexLoading(false)
+    }
+  }, [id, load])
 
   if (loading && !asset) {
     return (
@@ -319,7 +361,14 @@ export default function AssetInspector() {
         )}
         {activeTab === 'metadata' && <MetadataTab asset={asset} />}
         {activeTab === 'indicizzazione' && (
-          <IndexingTab asset={asset} actions={actions} onAction={runAction} />
+          <IndexingTab
+            asset={asset}
+            onVerify={handleVerify}
+            onReindex={handleReindex}
+            verifyResult={verifyResult}
+            verifyLoading={verifyLoading}
+            reindexLoading={reindexLoading}
+          />
         )}
         {activeTab === 'files' && <LocationsTab asset={asset} actions={actions} onAction={runAction} />}
         {activeTab === 'processing' && <ProcessingTab asset={asset} />}
@@ -451,12 +500,18 @@ function MetadataTab({ asset }: { asset: AssetDetails }) {
 
 function IndexingTab({
   asset,
-  actions,
-  onAction,
+  onVerify,
+  onReindex,
+  verifyResult,
+  verifyLoading,
+  reindexLoading,
 }: {
   asset: AssetDetails
-  actions: AssetActionsResponse | null
-  onAction: (url?: string) => void
+  onVerify: () => void
+  onReindex: () => void
+  verifyResult: VerifyIndexResponse | null
+  verifyLoading: boolean
+  reindexLoading: boolean
 }) {
   return (
     <div>
@@ -467,10 +522,37 @@ function IndexingTab({
         <InfoCard label="Modello" value={asset.embedding_info?.version || '-'} />
         <InfoCard label="Dimensioni" value={asset.embedding_info?.dimensions ? String(asset.embedding_info.dimensions) : '-'} />
       </div>
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <ActionButton label="Reindicizza" url={actions?.reindex} onClick={onAction} />
-        <ActionButton label="Verifica Qdrant" url={actions?.verify} onClick={onAction} />
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <button onClick={onReindex} disabled={reindexLoading} style={reindexLoading ? disabledButtonStyle : secondaryButtonStyle}>
+          {reindexLoading ? 'Reindicizzazione...' : 'Reindicizza'}
+        </button>
+        <button onClick={onVerify} disabled={verifyLoading} style={verifyLoading ? disabledButtonStyle : secondaryButtonStyle}>
+          {verifyLoading ? 'Verifica in corso...' : 'Verifica Qdrant'}
+        </button>
       </div>
+      {verifyResult && (
+        <div
+          style={{
+            background: '#0f172a',
+            border: '1px solid #334155',
+            borderRadius: '8px',
+            padding: '1rem',
+            marginBottom: '1rem',
+          }}
+        >
+          <h4 style={{ margin: '0 0 0.75rem', color: '#38bdf8' }}>Risultato verifica Qdrant</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <InfoCard label="Coerente" value={verifyResult.consistent ? 'Sì' : 'No'} />
+            <InfoCard label="Point presente" value={verifyResult.qdrant.point_present ? 'Sì' : 'No'} />
+            <InfoCard label="Collection" value={verifyResult.qdrant.collection || '-'} />
+            <InfoCard label="Dimensioni vettore" value={String(verifyResult.qdrant.vector_dimensions ?? '-')} />
+            <InfoCard label="Hash corrente" value={verifyResult.sqlite.content_hash || '-'} />
+            <InfoCard label="Hash indicizzato" value={verifyResult.sqlite.indexed_content_hash || '-'} />
+            <InfoCard label="Embedding SQLite" value={verifyResult.sqlite.embedding_present ? 'Presente' : 'Mancante'} />
+            <InfoCard label="Outbox pending" value={String(verifyResult.outbox.pending)} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
