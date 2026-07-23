@@ -1,0 +1,343 @@
+.page {
+  padding: 2rem;
+}
+
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.loadingText {
+  padding: 2rem;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.backLink {
+  color: #38bdf8;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.errorBox {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid #f87171;
+  color: #f87171;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.headerCard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.headerPreview {
+  flex-shrink: 0;
+}
+
+.headerMeta {
+  flex: 1;
+  min-width: 280px;
+}
+
+.assetTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  color: #e2e8f0;
+}
+
+.badgeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.metaLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.headerActions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tabBar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #334155;
+}
+
+.tabButton {
+  padding: 0.55rem 1rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tabButtonActive {
+  composes: tabButton;
+  background: #0f172a;
+  border-bottom: 2px solid #38bdf8;
+}
+
+.tabPanel {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 1.5rem;
+  min-height: 300px;
+}
+
+.message {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+}
+
+.messageOk {
+  composes: message;
+  background: rgba(52, 211, 153, 0.1);
+  color: #34d399;
+  border: 1px solid #34d399;
+}
+
+.messageErr {
+  composes: message;
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  border: 1px solid #f87171;
+}
+
+.footerActions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 1rem;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+}
+
+.formLabel {
+  display: block;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin-bottom: 0.35rem;
+}
+
+.formInput {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.formTextarea {
+  composes: formInput;
+  min-height: 80px;
+  resize: vertical;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.infoCard {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.infoCardLabel {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.infoCardValue {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.cardList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.listItem {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.listItem:last-child {
+  margin-bottom: 0;
+}
+
+.itemTitle {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.itemMeta {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.sectionTitle {
+  margin-top: 0;
+  color: #38bdf8;
+}
+
+.emptyText {
+  color: #94a3b8;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.primaryButton {
+  padding: 0.55rem 1.25rem;
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryButton {
+  padding: 0.55rem 1rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.disabledButton {
+  padding: 0.55rem 1rem;
+  background: #1e293b;
+  color: #64748b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.summaryBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.badgeLabel {
+  color: #64748b;
+}
+
+.badgeValue {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 2rem;
+}
+
+.modalContent {
+  max-width: 90vw;
+  max-height: 90vh;
+  position: relative;
+}
+
+.modalClose {
+  position: absolute;
+  top: -1.5rem;
+  right: -1.5rem;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+}
+
+.mediaPreview {
+  max-width: 100%;
+  max-height: 85vh;
+  border-radius: 8px;
+}
+
+.rawJson {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid #334155;
+}
