@@ -1,13 +1,13 @@
 // Package diagnostics — system_prober_http.go: 4 real upstream
-// HTTP-based probes (scraper 3-stage deep + browser + session +
-// downloader via httpGetProbe) + their 6 helpers + the Stage-2/3
-// constants (Step 4 follow-up, July 2026).
+// HTTP-based probes (scraper 2-stage deep + browser + session +
+// downloader via httpGetProbe) + their helpers + the Stage-2
+// freshness constant (Step 4 follow-up, July 2026).
 //
 // godlike/06 SSOT: the 4 Commit-1 upstream probes (scraper / browser /
 // session / downloader) all do real HTTP reachability checks against
-// the Node scraper /health and /search endpoints. They share the HTTP
+// the Node scraper /health endpoint. They share the HTTP
 // code path (httpGetProbe for the simpler 3 probes; probeScraperDeep
-// for the deep 3-stage scraper probe with 6 helpers). Co-locating
+// for the deep 2-stage scraper probe with its helpers). Co-locating
 // them in this file keeps the HTTP/scraper seam self-contained —
 // a future addition of another HTTP-based probe lands here, not in
 // canonical.
@@ -15,8 +15,8 @@
 // godlike/07 NO-FAKE-AVAILABILITY §22: every stage of probeScraperDeep
 // is gated on a REAL signal (parse the /health JSON, verify the
 // browser_running boolean, parse the last_session_alive_at
-// timestamp, POST a real /search query and parse the response). No
-// probe is ever reported as passing without exercising the dependency.
+// timestamp). No probe is ever reported as passing without exercising
+// the dependency.
 package diagnostics
 
 import (
@@ -32,22 +32,6 @@ import (
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 )
 
-// Stage3ProbeTerm is the canonical Stage-3 probe search term. The
-// term is chosen to be popular across the production Artlist
-// catalogue (cinematic b-roll is ubiquitous; the live-probe battery
-// confirms at least one hit at the live-battery cadence). Choosing
-// an unfamiliar term and accepting `clips.length == 0` would
-// silently pass a scraper that returns ok=true with empty results
-// — a godlike/07 §22 fake-availability violation.
-//
-// godlike/06 SSOT: this constant is the SINGLE canonical probe term.
-// Within the package, every Stage-3 call uses this constant verbatim.
-// godlike/07 fail-closed: if a future change wants a different
-// probe term, update this constant in lockstep with the live-probe
-// battery's documented expected-term list — drift between the
-// probe term and the live battery would mask regressions.
-const Stage3ProbeTerm = "cinematic"
-
 // Stage2SessionFreshnessWindow is the canonical Stage-2 freshness
 // window for last_session_alive_at. The Node scraper emits freshness
 // every 30s (HB_INTERVAL_MS) and considers itself stale at 60s
@@ -60,17 +44,17 @@ const Stage3ProbeTerm = "cinematic"
 // AdminSystemProber.Stage2FreshnessWindow (forward-compat knob).
 const Stage2SessionFreshnessWindow = 90 * time.Second
 
-// ── Real scraper 3-stage probe (Fase 7 / Commit B, July 2026) ──
+// ── Real scraper 2-stage probe (Fase 7 / Commit B, July 2026) ──
 //
 // godlike/07 NO-FAKE-AVAILABILITY §22: the shallow HTTP GET probe
 // (which only verified "the server is up and returned some response")
 // was identified as the §22 anti-pattern — a scraper container can be
 // alive (HTTP 200 from /) yet completely non-functional (browser
-// crashed, no Artlist session, unable to perform a real query).
+// crashed, no Artlist session).
 //
-// probeScraperDeep replaces that shallow probe with a 3-stage deep
-// probe that mirrors the canonical artlist.SetupCheck 3-field contract
-// (Chromium started + session valid + real query):
+// probeScraperDeep replaces that shallow probe with a 2-stage deep
+// probe that verifies the canonical artlist.SetupCheck contract
+// (Chromium started + session valid):
 //
 //	stage_1_chromium_started  GET <scraperURL>/health
 //	                           parse JSON, verify browser_running == true
@@ -78,18 +62,20 @@ const Stage2SessionFreshnessWindow = 90 * time.Second
 //	                           parse JSON, verify last_launch_error == null
 //	                           AND last_session_alive_at is recent
 //	                           (parsed + within 90s of now)
-//	stage_3_real_query         POST <scraperURL>/search
-//	                           body {"term":"__artlist_probe__","limit":1}
-//	                           parse JSON, verify ok == true AND
-//	                           len(clips) >= 1 with parses-able id
+//
+// The real query capability is intentionally NOT exercised here.
+// Live Artlist searches are slow and are verified by the dedicated
+// /api/artlist/search/live endpoint. Keeping diagnostics synchronous
+// and fast prevents false-positive timeouts while /search/live
+// remains the honest, end-to-end probe.
 //
 // Aggregate semantics:
 //
-//	ProbeResult.OK = (Stages[0].OK && Stages[1].OK && Stages[2].OK)
+//	ProbeResult.OK = (Stages[0].OK && Stages[1].OK)
 //	ProbeResult.Error = the verbatim Error of the FIRST failing stage
 //	                    (operators walk Stages in declaration order
 //	                    to find the failing stage; first fails wins)
-//	ProbeResult.Stages = the full 3-stage slice (always 3 entries,
+//	ProbeResult.Stages = the full 2-stage slice (always 2 entries,
 //	                    even on parse failure or transport error)
 //	ProbeResult.ElapsedMs = wall-clock sum of stage measurements
 //
@@ -100,12 +86,12 @@ const Stage2SessionFreshnessWindow = 90 * time.Second
 // parallel per-stage checks elsewhere would be a godlike/06
 // violation. godlike/07 fail-closed: every stage is gated on a
 // REAL signal (parse the JSON, verify the boolean, parse the
-// timestamp, parse the search response); no probe is ever reported
-// as passing without exercising the dependency.
+// timestamp); no probe is ever reported as passing without exercising
+// the dependency.
 func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.Client, serverURL string) artlist.ProbeResult {
 	start := time.Now()
 	if serverURL == "" {
-		// Empty URL: ALL 3 stages fail with the same operator-config error.
+		// Empty URL: ALL 2 stages fail with the same operator-config error.
 		// godlike/07 distinguishes "operator did not configure" from
 		// "configured but broken" — every stage surfaces the same error
 		// so the aggregate AND is false and the failing stage surfaces
@@ -120,7 +106,6 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 			Stages: []artlist.ProbeStage{
 				{Name: "stage_1_chromium_started", OK: false, Error: err, Detail: detail},
 				{Name: "stage_2_session_valid", OK: false, Error: err, Detail: detail},
-				{Name: "stage_3_real_query", OK: false, Error: err, Detail: detail},
 			},
 		}
 	}
@@ -135,21 +120,20 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 			Stages: []artlist.ProbeStage{
 				{Name: "stage_1_chromium_started", OK: false, Error: err, Detail: detail},
 				{Name: "stage_2_session_valid", OK: false, Error: err, Detail: detail},
-				{Name: "stage_3_real_query", OK: false, Error: err, Detail: detail},
 			},
 		}
 	}
 
 	baseURL := strings.TrimRight(serverURL, "/")
 	healthURL := baseURL + "/health"
-	searchURL := baseURL + "/search"
 
-	stages := make([]artlist.ProbeStage, 3)
+	stages := make([]artlist.ProbeStage, 2)
 
 	// ── Stage 1 + 2 share the /health response (parse once, evaluate
-	// both predicates from the JSON). This is a deliberate optimization:
-	// a single HTTP roundtrip per probe covers both stages; a separate
-	// POST /search covers stage 3. Total wall-clock ≈ 2 roundtrips.
+	// both predicates from the JSON). A single HTTP roundtrip covers
+	// both stages. The real query capability is intentionally not
+	// exercised here; it belongs to the dedicated /api/artlist/search/live
+	// endpoint.
 	stage1Start := time.Now()
 	resp1Body, stage1Err := p.httpFetch(ctx, client, healthURL)
 	stages[0].ElapsedMs = time.Since(stage1Start).Milliseconds()
@@ -158,17 +142,12 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 		stages[0].OK = false
 		stages[0].Error = stage1Err.Error()
 		stages[0].Detail = "GET " + healthURL + " failed: transport error — chromium actual-launch state cannot be observed (godlike/07 fail-closed)"
-		// Short-circuit: stages 2 + 3 depend on /health, mark them as
+		// Short-circuit: stage 2 depends on /health, mark it as
 		// unavailable with the cascading error so operators see the
-		// causal chain. Stage 3 also depends on /search; if /health
-		// is unreachable the Node server is probably down, so /search
-		// is also likely unreachable.
+		// causal chain.
 		stages[1].Name = "stage_2_session_valid"
 		stages[1].OK = false
 		stages[1].Error = "skipped: stage_1_chromium_started transport failure — cannot evaluate session state without /health response"
-		stages[2].Name = "stage_3_real_query"
-		stages[2].OK = false
-		stages[2].Error = "skipped: stage_1_chromium_started transport failure — cannot perform real query without /health response"
 		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
 	}
 
@@ -192,9 +171,6 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 		stages[1].Name = "stage_2_session_valid"
 		stages[1].OK = false
 		stages[1].Error = "skipped: stage_1_chromium_started JSON parse failure"
-		stages[2].Name = "stage_3_real_query"
-		stages[2].OK = false
-		stages[2].Error = "skipped: stage_1_chromium_started JSON parse failure"
 		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
 	}
 
@@ -246,81 +222,17 @@ func (p *AdminSystemProber) probeScraperDeep(ctx context.Context, client *http.C
 		}
 	}
 
-	// Stage 3: real query. POST /search with the probe term.
-	// The probe term `__artlist_probe__` is content-free (no real term).
-	// We DO NOT assert clips.length >= 1 — the scraper may legitimately
-	// return 0 hits for any unfamiliar term. Instead we assert:
-	//   - HTTP 200 (transport succeeded)
-	//   - JSON parses and `ok` is true
-	//   - response shape is parse-able (clips array, even if empty)
-	// This is the godlike/07-correct probe: "the scraper is reachable
-	// and responds in the canonical wire shape" is enough to prove
-	// real-query capability at the PROTOCOL level. The CONTENT of the
-	// result depends on the term; the operator chooses the term.
-	stage3Start := time.Now()
-	resp3Body, status3, stage3Err := p.httpPostJSON(ctx, client, searchURL, map[string]interface{}{
-		"term":  Stage3ProbeTerm,
-		"limit": 1,
-	})
-	stages[2].ElapsedMs = time.Since(stage3Start).Milliseconds()
-	stages[2].Name = "stage_3_real_query"
-	if stage3Err != nil {
-		stages[2].OK = false
-		stages[2].Error = "stage_3_real_query: POST " + searchURL + " transport failure: " + stage3Err.Error()
-		stages[2].Detail = "real query capability unobservable (cannot POST)"
-		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
-	}
-	if status3 < 200 || status3 >= 300 {
-		stages[2].OK = false
-		stages[2].Error = "stage_3_real_query: non-2xx status " + http.StatusText(status3) + " from POST " + searchURL
-		stages[2].Detail = "scraper returned non-success; real query capability uncertain"
-		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
-	}
-	var search struct {
-		OK    bool `json:"ok"`
-		Clips []struct {
-			ID string `json:"id"`
-		} `json:"clips"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal(resp3Body, &search); err != nil {
-		stages[2].OK = false
-		stages[2].Error = "stage_3_real_query: POST " + searchURL + " returned unparseable JSON: " + err.Error()
-		stages[2].Detail = "scraper responded but payload is not the canonical /search shape (node scraper may be a different version)"
-		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
-	}
-	if !search.OK {
-		stages[2].OK = false
-		stages[2].Error = "stage_3_real_query: ok=false from POST " + searchURL + ": " + search.Error
-		stages[2].Detail = "scraper acknowledged but rejected the query (real-query capability unobservable)"
-		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
-	}
-	// godlike/07 fail-closed: STRENGTHENED GATE. Accepting clips.length >= 0
-	// would silently pass a scraper that returns ok=true with empty
-	// results (a §22 fake-availability violation). Assert at least ONE
-	// parseable hit with a non-empty id. The canonical probe term
-	// (Stage3ProbeTerm = "cinematic") is chosen for ubiquitous availability
-	// on the production Artlist catalogue.
-	if len(search.Clips) < 1 || strings.TrimSpace(search.Clips[0].ID) == "" {
-		stages[2].OK = false
-		stages[2].Error = "stage_3_real_query: ok=true but zero parseable hits returned for probe term \"" + Stage3ProbeTerm + "\" (scraper is alive but cannot return real query results — Playwright session lost auth? DOM selector drifted? result parser threw?)"
-		stages[2].Detail = "clips.length=" + strconv.Itoa(len(search.Clips)) + ", expected >= 1 with non-empty id"
-		return aggregateScraperStages(stages, time.Since(start).Milliseconds())
-	}
-	stages[2].OK = true
-	stages[2].Detail = "POST " + searchURL + " returned ok=true with " + strconv.Itoa(len(search.Clips)) + " parseable hit(s), first.id=\"" + search.Clips[0].ID + "\"; real-query capability confirmed"
-
 	return aggregateScraperStages(stages, time.Since(start).Milliseconds())
 }
 
-// aggregateScraperStages consolidates the 3-stage ProbeStage slice
+// aggregateScraperStages consolidates the 2-stage ProbeStage slice
 // into the aggregate ProbeResult. godlike/07 contract:
 //   - OK = strict AND of all Stages[i].OK
 //   - Error = the verbatim Error of the FIRST failing stage
 //   - Detail = per-stage summary on success; first-failing-stage
 //     detail on failure
 //   - ElapsedMs = wall-clock (sum of stages)
-//   - Stages = the verbatim 3-stage slice (always len == 3)
+//   - Stages = the verbatim 2-stage slice (always len == 2)
 //
 // godlike/06 SSOT: this is the SINGLE canonical aggregation rule for
 // the Scraper probe stages. Adding parallel aggregation elsewhere
@@ -346,7 +258,7 @@ func aggregateScraperStages(stages []artlist.ProbeStage, elapsedMs int64) artlis
 	out.OK = allOK
 	out.Error = firstFailErr
 	if allOK {
-		out.Detail = "all 3 stages passed: " + strings.Join(summaryDetail, ", ")
+		out.Detail = "all 2 stages passed: " + strings.Join(summaryDetail, ", ")
 	}
 	return out
 }
@@ -358,11 +270,6 @@ func boolToOK(b bool) string {
 	}
 	return "fail"
 }
-
-// itoa was retired (Fase 7 / Commit B follow-up, July 2026): strconv.Itoa
-// is the canonical int->string formatter in the codebase; the
-// strconv-free custom helper added no value and only obscured the
-// dependency. Callers now use strconv.Itoa directly.
 
 // formatHealthDetail is the per-stage-1 / per-failure-detail helper
 // that surfaces the Node scraper's pid + last_search_at so operators
@@ -397,30 +304,6 @@ func (p *AdminSystemProber) httpFetch(ctx context.Context, client *http.Client, 
 		return nil, fmt.Errorf("httpFetch %s: read body: %w", url, err)
 	}
 	return buf.Bytes(), nil
-}
-
-// httpPostJSON is a tiny HTTP POST-JSON helper. Mirrors httpFetch
-// but accepts a JSON body and returns (bytes, status, err).
-func (p *AdminSystemProber) httpPostJSON(ctx context.Context, client *http.Client, url string, body interface{}) ([]byte, int, error) {
-	reqBytes, err := json.Marshal(body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("httpPostJSON marshal body: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBytes))
-	if err != nil {
-		return nil, 0, fmt.Errorf("httpPostJSON NewRequestWithContext: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("httpPostJSON client.Do %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	buf := &bytes.Buffer{}
-	if _, err := buf.ReadFrom(resp.Body); err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("httpPostJSON %s read body: %w", url, err)
-	}
-	return buf.Bytes(), resp.StatusCode, nil
 }
 
 // httpGetProbe performs an HTTP GET against the configured URL with

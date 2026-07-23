@@ -19,11 +19,12 @@ import (
 //
 // ProbeStage.Error is the verbatim underlying error (no truncation,
 // no wrapping) so operators can grep for canonical patterns like
-// "stage_3_real_query: search returned 0 clips".
+// "stage_1_chromium_started: browser_running=false" or
+// "stage_2_session_valid: last_session_alive_at is stale".
 type ProbeStage struct {
 	// Name is the canonical stage identifier. Operators grep on it.
 	// Canonical values for the Scraper probe: "stage_1_chromium_started",
-	// "stage_2_session_valid", "stage_3_real_query".
+	// "stage_2_session_valid".
 	Name string `json:"name"`
 	// OK is the per-stage verdict: true iff this stage passed.
 	OK bool `json:"ok"`
@@ -48,7 +49,7 @@ type ProbeStage struct {
 // probes (e.g. Qdrant probe taking 4.5s on an 8-of-10 probes endpoint).
 //
 // Stages (Fase 7 / Commit B, July 2026): when the probe is multi-stage
-// (e.g. the Scraper probe runs 3 sub-steps), `Stages` carries the
+// (e.g. the Scraper probe runs 2 sub-steps), `Stages` carries the
 // per-stage verdict. The aggregate `OK` MUST equal the logical AND of
 // all `Stages[i].OK`; `Error` is the typed error of the FIRST failing
 // stage (operators walk Stages in order to find the actual failure

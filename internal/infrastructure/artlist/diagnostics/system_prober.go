@@ -10,10 +10,9 @@
 //     struct, the ProbeAll entry point, the DefaultRunner type, the
 //     FFmpegRunner interface, the 2 compile-time pins, the
 //     DefaultProbeTimeout const.
-//   - system_prober_http.go: 4 real upstream probes (scraper 3-stage
+//   - system_prober_http.go: 4 real upstream probes (scraper 2-stage
 //     deep + browser + session + downloader via httpGetProbe) + their
-//     6 helpers + the Stage3ProbeTerm + Stage2SessionFreshnessWindow
-//     consts.
+//     helpers + the Stage2SessionFreshnessWindow const.
 //   - system_prober_stubs.go: the stubFailSet helper used by the
 //     application-layer stubSystemProber fallback + ProbeAll's
 //     "nil receiver" branch.
@@ -222,14 +221,15 @@ func (p *AdminSystemProber) ProbeAll(ctx context.Context) artlist.ProbeSet {
 	// shallow GET (which only verified /health returned 200 — a godlike/07
 	// §22 NO-FAKE-AVAILABILITY violation because the scraper can be
 	// "alive" with browser_running=false, last_launch_error=non-null,
-	// and unable to perform a real query) to a deep 3-stage probe that
+	// and unable to perform a real query) to a deep 2-stage probe that
 	// verifies:
 	//   1. Chromium started           (browser_running == true from /health)
 	//   2. Artlist session valid      (last_launch_error==null + recent
 	//                                  last_session_alive_at from /health)
-	//   3. Real query capability      (POST /search with a deterministic
-	//                                  probe term returns parses-able hits)
-	// The aggregate ProbeResult.OK is the strict AND of the 3 stages.
+	// The real query capability is verified by /api/artlist/search/live
+	// (Test 3 / live battery) because live Artlist searches are too slow
+	// for a synchronous diagnostics endpoint.
+	// The aggregate ProbeResult.OK is the strict AND of the 2 stages.
 	// Aggregate.Error is the verbatim error of the first failing stage.
 	// ProbeResult.Stages surfaces the per-stage verdict for operator
 	// forensics (godlike/06 SSOT: ProbeStage wire shape lives in types.go).
