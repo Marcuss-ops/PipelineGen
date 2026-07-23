@@ -26,7 +26,7 @@ import {
   relevanceOverfetch,
   DEFAULT_MAX_FETCH_PAGES,
 } from '../src/scrape/relevance-overfetch.js';
-import { exportCookiesForYtDlp } from '../src/driver/cookies.js';
+import { exportCookiesForYtDlp, importCookies, DEFAULT_COOKIE_FILE_PATH } from '../src/driver/cookies.js';
 import { extractClipId } from '../src/scrape/url.js';
 import {
   setupApiInterception,
@@ -134,6 +134,12 @@ export async function searchArtlist(
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
 
+  // PR-ARTLIST-COOKIE-IMPORT (July 2026): inject a session cookie file
+  // (JSON or Netscape) before touching Artlist. Without this the scraper
+  // cannot reach authenticated streams / API responses.
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  await importCookies(page, cookiePath);
+
   const searchUrl = `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`;
 
   // ─── Phase 1: API Interception ─────────────────────────────────────────
@@ -151,7 +157,7 @@ export async function searchArtlist(
         (c) => c.primary_url && c.primary_url !== c.clip_page_url
       );
       try {
-        await exportCookiesForYtDlp(page, '/tmp/artlist_cookies.txt');
+        await exportCookiesForYtDlp(page, cookiePath);
       } catch {
         /* ignore cookie export failures on the fast path */
       }
@@ -242,7 +248,7 @@ export async function searchArtlist(
     });
 
     try {
-      await exportCookiesForYtDlp(page, '/tmp/artlist_cookies.txt');
+      await exportCookiesForYtDlp(page, cookiePath);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[artlist] cookie export failed:', e.message);
@@ -287,6 +293,11 @@ export async function searchArtlistPreview(term, limit, profileDir) {
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' +
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
+
+  // PR-ARTLIST-COOKIE-IMPORT (July 2026): preview path also needs session
+  // cookies so that search-result pages show licensed previews.
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  await importCookies(page, cookiePath);
 
   const searchUrl = `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`;
   try {

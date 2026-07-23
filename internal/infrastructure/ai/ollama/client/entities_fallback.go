@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -103,6 +104,7 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 	if limit > 5 {
 		limit = 5
 	}
+	profile := linguistics.DefaultLexicon().Resolve("fallback")
 	words := textutil.Tokenize(segment)
 	if len(words) < 4 {
 		return nil
@@ -129,7 +131,7 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 			continue
 		}
 		// Skip if either word is a function word (article, preposition, etc.)
-		if isFunctionWord(w1) || isFunctionWord(w2) {
+		if isFunctionWord(w1, profile) || isFunctionWord(w2, profile) {
 			continue
 		}
 		// Skip if either word has apostrophe (contraction fragments)
