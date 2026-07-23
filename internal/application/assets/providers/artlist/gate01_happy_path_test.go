@@ -146,7 +146,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
@@ -168,7 +168,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -301,7 +301,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
@@ -323,7 +323,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -386,7 +386,7 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
@@ -405,7 +405,7 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -475,7 +475,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 	a.SetMetadataString("index_state", string(asset.StateDiscovered))
 	insertTestClip(t, db, a)
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
@@ -494,7 +494,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

@@ -167,13 +167,17 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
+			Transcriber:   &stubTranscriber{},
 		},
 		ServiceDependencies: ServiceDependencies{
+			Repos: ArtlistRepoDeps{
+				TextTrackRepo: &stubTextTrackRepo{},
+			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -189,7 +193,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -294,13 +298,17 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 
 	processor := &driveFailureProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
+			Transcriber:   &stubTranscriber{},
 		},
 		ServiceDependencies: ServiceDependencies{
+			Repos: ArtlistRepoDeps{
+				TextTrackRepo: &stubTextTrackRepo{},
+			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -316,7 +324,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -422,13 +430,17 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 
 	processor := &partialDriveProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
+			Transcriber:   &stubTranscriber{},
 		},
 		ServiceDependencies: ServiceDependencies{
+			Repos: ArtlistRepoDeps{
+				TextTrackRepo: &stubTextTrackRepo{},
+			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -444,7 +456,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -576,13 +588,17 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 	// successMediaProcessor.Process in gate01_happy_path_test.go.
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
+			Transcriber:   &stubTranscriber{},
 		},
 		ServiceDependencies: ServiceDependencies{
+			Repos: ArtlistRepoDeps{
+				TextTrackRepo: &stubTextTrackRepo{},
+			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -598,7 +614,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -724,13 +740,17 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 	// (the ID-suffix check covers -ok but not -nodrive).
 	processor := &partialDriveProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
+			Transcriber:   &stubTranscriber{},
 		},
 		ServiceDependencies: ServiceDependencies{
+			Repos: ArtlistRepoDeps{
+				TextTrackRepo: &stubTextTrackRepo{},
+			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -746,7 +766,7 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
