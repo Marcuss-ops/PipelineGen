@@ -23,7 +23,7 @@ import (
 // orchestrator. It is the only version constant owned by core.go
 // because the orchestrator itself is the canonical source of truth
 // for its behaviour.
-const orchestratorVersion = "brain-v1"
+const orchestratorVersion = media.VersionBrain
 
 // CanonicalBrain is the canonical implementation of the Brain port.
 // It composes the four pure brain services and delegates candidate

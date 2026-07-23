@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // IntentResolverRegistry dispatches intent resolution to a
@@ -55,7 +56,7 @@ func (r *IntentResolverRegistry) Resolve(ctx context.Context, language, original
 
 // Version returns the canonical intent-resolver registry version.
 func (r *IntentResolverRegistry) Version() string {
-	return "intent-registry-v1"
+	return media.VersionIntentRegistry
 }
 
 func normalizeLanguageTag(language string) string {
@@ -198,13 +199,9 @@ func newEnglishResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 		name: "en",
 		config: langConfig{
 			StopWords:         lex.StopWords("en"),
-			NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "never": {}, "neither": {}},
-			VisualVerbs: map[string]struct{}{
-				"watch": {}, "observe": {}, "look": {}, "see": {}, "study": {},
-				"build": {}, "construct": {}, "walk": {}, "run": {}, "jump": {},
-				"move": {}, "push": {}, "pull": {}, "enter": {}, "leave": {},
-			},
-			VerbSuffixes: lex.VerbSuffixes("en"),
+			NegativeParticles: lex.NegativeParticles("en"),
+			VisualVerbs:       lex.VisualVerbs("en"),
+			VerbSuffixes:      lex.VerbSuffixes("en"),
 		},
 	}
 }
@@ -214,13 +211,9 @@ func newItalianResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 		name: "it",
 		config: langConfig{
 			StopWords:         lex.StopWords("it"),
-			NegativeParticles: map[string]struct{}{"non": {}, "no": {}, "mai": {}, "ne": {}},
-			VisualVerbs: map[string]struct{}{
-				"guardare": {}, "osservare": {}, "vedere": {}, "studiare": {},
-				"costruire": {}, "camminare": {}, "correre": {}, "saltare": {},
-				"muovere": {}, "spingere": {}, "tirare": {}, "entrare": {}, "uscire": {},
-			},
-			VerbSuffixes: lex.VerbSuffixes("it"),
+			NegativeParticles: lex.NegativeParticles("it"),
+			VisualVerbs:       lex.VisualVerbs("it"),
+			VerbSuffixes:      lex.VerbSuffixes("it"),
 		},
 	}
 }
@@ -230,8 +223,8 @@ func newFallbackResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver 
 		name: "fallback",
 		config: langConfig{
 			StopWords:         lex.StopWords("fallback"),
-			NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "non": {}, "never": {}, "mai": {}},
-			VisualVerbs:       map[string]struct{}{},
+			NegativeParticles: lex.NegativeParticles("fallback"),
+			VisualVerbs:       lex.VisualVerbs("fallback"),
 			VerbSuffixes:      lex.VerbSuffixes("fallback"),
 		},
 	}

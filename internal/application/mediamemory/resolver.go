@@ -951,7 +951,7 @@ func upgradeSource(current, winning string) string {
 // used by the semantic search path consumed by the cascade. The cascade
 // owns this version; the Brain reads it only for the decision fingerprint.
 func (r *VisualResolver) EmbeddingVersion() string {
-	return "multilingual-e5-v1"
+	return media.VersionEmbedding
 }
 
 // Search implements brain.MediaMemoryResolutionPort by running the

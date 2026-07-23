@@ -51,7 +51,7 @@ var _ SceneVisualPlanner = (*SlotCandidateSampler)(nil)
 
 // Version returns the canonical planner version.
 func (s *SlotCandidateSampler) Version() string {
-	return "slot-sampler-v1"
+	return media.VersionSlotSampler
 }
 
 // Plan assigns one candidate to each requested slot. Candidates are
