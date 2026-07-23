@@ -10,7 +10,14 @@
 // plan passes through the Brain.
 package brain
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+)
 
 // SlotKind identifies the visual slot a layer may occupy in a scene.
 // It is a closed set; new values require a code change.
@@ -131,23 +138,63 @@ type VisualLayer struct {
 // the scene ID.
 type ResolutionTrace struct {
 	NormalizedText string
-	Versions       ResolutionVersions
+	Versions       ResolutionVersionSet
 	BackendCalls   []BackendCall
 	Selected       []SelectedRecord
 	Excluded       []ExcludedRecord
 	Reasons        []string
 }
 
-// ResolutionVersions tracks the component versions that contributed
-// to a single resolution. Changing any of these must invalidate
-// exact-memory hits produced by an older set.
-type ResolutionVersions struct {
-	BrainVersion           string
-	NormalizerVersion      string
-	IntentResolverVersion  string
-	EmbeddingVersion       string
-	RankingPolicyVersion   string
-	DiversityPolicyVersion string
+// ResolutionVersionSet tracks every component version that contributed
+// to a single resolution. Changing any entry invalidates exact-memory
+// hits produced by an older set. The struct is serialized as a whole
+// when computing the decision fingerprint, so no version can drift
+// out of the fingerprint.
+type ResolutionVersionSet struct {
+	BrainVersion            string
+	NormalizerVersion       string
+	IntentResolverVersion   string
+	EmbeddingVersion        string
+	RankingPolicyVersion    string
+	DiversityPolicyVersion  string
+	SlotPolicyVersion       string
+	ProviderRegistryVersion string
+	LexiconVersion          string
+}
+
+// DecisionFingerprint returns a deterministic SHA-256 fingerprint that
+// uniquely identifies the (language, normalized text, version set)
+// tuple used to produce a visual plan.
+func (v ResolutionVersionSet) DecisionFingerprint(language, normalized string) string {
+	input := v.fingerprintInput(language, normalized)
+	sum := sha256.Sum256([]byte(input))
+	return hex.EncodeToString(sum[:])
+}
+
+// fingerprintPayload is the deterministic serialization envelope for
+// the decision fingerprint. It nests ResolutionVersionSet so any new
+// version field added to the set is automatically included in the
+// fingerprint without touching this struct.
+type fingerprintPayload struct {
+	Language   string
+	Normalized string
+	Versions   ResolutionVersionSet
+}
+
+func (v ResolutionVersionSet) fingerprintInput(language, normalized string) string {
+	p := fingerprintPayload{
+		Language:   language,
+		Normalized: normalized,
+		Versions:   v,
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		// fingerprintPayload only contains strings, so this cannot
+		// fail in practice; treat a marshal failure as an unrecoverable
+		// programming error rather than producing an unstable fingerprint.
+		panic(fmt.Sprintf("brain: fingerprint serialization failed: %v", err))
+	}
+	return string(b)
 }
 
 // BackendCall records one backend invocation performed by the brain.

@@ -82,6 +82,18 @@ func TestCanonicalBrain_ResolvesScene(t *testing.T) {
 	if scene.Trace.Versions.RankingPolicyVersion == "" {
 		t.Errorf("expected ranking policy version in per-scene trace")
 	}
+	if scene.Trace.Versions.DiversityPolicyVersion == "" {
+		t.Errorf("expected diversity policy version in per-scene trace")
+	}
+	if scene.Trace.Versions.SlotPolicyVersion == "" {
+		t.Errorf("expected slot policy version in per-scene trace")
+	}
+	if scene.Trace.Versions.ProviderRegistryVersion == "" {
+		t.Errorf("expected provider registry version in per-scene trace")
+	}
+	if scene.Trace.Versions.LexiconVersion == "" {
+		t.Errorf("expected lexicon version in per-scene trace")
+	}
 	if scene.DecisionFingerprint == "" {
 		t.Errorf("expected decision fingerprint on scene")
 	}
@@ -163,6 +175,67 @@ func TestCanonicalBrain_MayaVenusSceneIntent(t *testing.T) {
 
 	// Print the actual intent so the gap is explicit in test output.
 	t.Logf("actual intent: entities=%v actions=%v concepts=%v keywords=%v", intent.Entities, intent.Actions, intent.Concepts, intent.Keywords)
+}
+
+func TestResolutionVersionSet_FingerprintInvalidatedOnVersionChange(t *testing.T) {
+	base := brain.ResolutionVersionSet{
+		BrainVersion:            "brain-v1",
+		NormalizerVersion:       "v1",
+		IntentResolverVersion:   "intent-registry-v1",
+		EmbeddingVersion:        "multilingual-e5-v1",
+		RankingPolicyVersion:    "media-ranker-v2",
+		DiversityPolicyVersion:  "diversity-policy-v1",
+		SlotPolicyVersion:       "slot-sampler-v1",
+		ProviderRegistryVersion: "provider-registry-v1",
+		LexiconVersion:          "lexicon-v1",
+	}
+
+	fp := base.DecisionFingerprint("it", "i maya")
+
+	mutations := []struct {
+		name string
+		fn   func(*brain.ResolutionVersionSet)
+	}{
+		{"BrainVersion", func(v *brain.ResolutionVersionSet) { v.BrainVersion = "brain-v2" }},
+		{"NormalizerVersion", func(v *brain.ResolutionVersionSet) { v.NormalizerVersion = "v2" }},
+		{"IntentResolverVersion", func(v *brain.ResolutionVersionSet) { v.IntentResolverVersion = "intent-registry-v2" }},
+		{"EmbeddingVersion", func(v *brain.ResolutionVersionSet) { v.EmbeddingVersion = "multilingual-e5-v2" }},
+		{"RankingPolicyVersion", func(v *brain.ResolutionVersionSet) { v.RankingPolicyVersion = "media-ranker-v3" }},
+		{"DiversityPolicyVersion", func(v *brain.ResolutionVersionSet) { v.DiversityPolicyVersion = "diversity-policy-v2" }},
+		{"SlotPolicyVersion", func(v *brain.ResolutionVersionSet) { v.SlotPolicyVersion = "slot-sampler-v2" }},
+		{"ProviderRegistryVersion", func(v *brain.ResolutionVersionSet) { v.ProviderRegistryVersion = "provider-registry-v2" }},
+		{"LexiconVersion", func(v *brain.ResolutionVersionSet) { v.LexiconVersion = "lexicon-v2" }},
+	}
+
+	for _, m := range mutations {
+		mutated := base
+		m.fn(&mutated)
+		if got := mutated.DecisionFingerprint("it", "i maya"); got == fp {
+			t.Errorf("%s change did not invalidate fingerprint", m.name)
+		}
+	}
+}
+
+func TestResolutionVersionSet_FingerprintDependsOnInput(t *testing.T) {
+	set := brain.ResolutionVersionSet{
+		BrainVersion:            "brain-v1",
+		NormalizerVersion:       "v1",
+		IntentResolverVersion:   "intent-registry-v1",
+		EmbeddingVersion:        "multilingual-e5-v1",
+		RankingPolicyVersion:    "media-ranker-v2",
+		DiversityPolicyVersion:  "diversity-policy-v1",
+		SlotPolicyVersion:       "slot-sampler-v1",
+		ProviderRegistryVersion: "provider-registry-v1",
+		LexiconVersion:          "lexicon-v1",
+	}
+
+	fp := set.DecisionFingerprint("it", "i maya")
+	if set.DecisionFingerprint("en", "i maya") == fp {
+		t.Errorf("language change did not invalidate fingerprint")
+	}
+	if set.DecisionFingerprint("it", "i maya e venere") == fp {
+		t.Errorf("normalized text change did not invalidate fingerprint")
+	}
 }
 
 func TestCanonicalBrain_EmptySearchResult(t *testing.T) {

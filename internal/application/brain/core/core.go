@@ -8,9 +8,6 @@ package core
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
@@ -18,18 +15,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // CanonicalBrain is the canonical implementation of the Brain port.
 // It composes the four pure brain services and delegates search to the
 // CandidateSearcher port, which is the only place where IO happens.
 type CanonicalBrain struct {
-	normalizer   normalizer.PhraseNormalizer
-	resolver     intent.VisualIntentResolver
-	searcher     brain.CandidateSearcher
-	ranker       ranker.CandidateRanker
-	planner      planner.SceneVisualPlanner
-	brainVersion string
+	normalizer normalizer.PhraseNormalizer
+	resolver   intent.VisualIntentResolver
+	searcher   brain.CandidateSearcher
+	ranker     ranker.CandidateRanker
+	planner    planner.SceneVisualPlanner
 }
 
 // NewCanonicalBrain constructs a CanonicalBrain from the four brain
@@ -59,12 +56,11 @@ func NewCanonicalBrain(
 		panic("brain: planner is required")
 	}
 	return &CanonicalBrain{
-		normalizer:   n,
-		resolver:     res,
-		searcher:     searcher,
-		ranker:       r,
-		planner:      p,
-		brainVersion: "brain-v1",
+		normalizer: n,
+		resolver:   res,
+		searcher:   searcher,
+		ranker:     r,
+		planner:    p,
 	}
 }
 
@@ -92,13 +88,16 @@ func (b *CanonicalBrain) Resolve(ctx context.Context, req brain.BrainRequest) (b
 }
 
 func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scene brain.SceneRequest, policy brain.ResolutionPolicy) brain.SceneVisualPlan {
-	versions := brain.ResolutionVersions{
-		BrainVersion:           b.brainVersion,
-		NormalizerVersion:      b.normalizer.Version(),
-		IntentResolverVersion:  b.resolver.Version(),
-		EmbeddingVersion:       "multilingual-e5-v1",
-		RankingPolicyVersion:   b.ranker.Version(),
-		DiversityPolicyVersion: "diversity-policy-v1",
+	versions := brain.ResolutionVersionSet{
+		BrainVersion:            brain.BrainVersion,
+		NormalizerVersion:       b.normalizer.Version(),
+		IntentResolverVersion:   b.resolver.Version(),
+		EmbeddingVersion:        brain.EmbeddingVersion,
+		RankingPolicyVersion:    b.ranker.Version(),
+		DiversityPolicyVersion:  brain.DiversityPolicyVersion,
+		SlotPolicyVersion:       b.planner.Version(),
+		ProviderRegistryVersion: asset.ProviderRegistryVersion,
+		LexiconVersion:          brain.LexiconVersion,
 	}
 
 	trace := &brain.ResolutionTrace{
@@ -188,28 +187,9 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 	}
 
 	plan.Trace = *trace
-	plan.DecisionFingerprint = decisionFingerprint(language, trace.NormalizedText, versions)
+	plan.DecisionFingerprint = versions.DecisionFingerprint(language, trace.NormalizedText)
 
 	return plan
-}
-
-// decisionFingerprint deterministically identifies a decision by
-// hashing the language, normalized phrase and every version that
-// influenced the decision. Changing any input or version produces a
-// different fingerprint, invalidating exact-memory hits from an
-// incompatible brain generation.
-func decisionFingerprint(language, normalized string, versions brain.ResolutionVersions) string {
-	input := fmt.Sprintf("%s:%s:%s:%s:%s:%s:%s",
-		language,
-		normalized,
-		versions.BrainVersion,
-		versions.NormalizerVersion,
-		versions.IntentResolverVersion,
-		versions.EmbeddingVersion,
-		versions.RankingPolicyVersion,
-	)
-	sum := sha256.Sum256([]byte(input))
-	return hex.EncodeToString(sum[:])
 }
 
 func mediaTypesForSlots(slots []brain.SlotKind) []string {
