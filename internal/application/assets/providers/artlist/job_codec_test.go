@@ -342,15 +342,18 @@ func TestNormalizeRunTagRequest(t *testing.T) {
 	}
 }
 
-func TestNormalizeSearchTermLimitsToFourWords(t *testing.T) {
+func TestNormalizeSearchTermLimitsToSixWords(t *testing.T) {
 	if got := normalizeSearchTerm("  blue ocean sunset "); got != "blue ocean sunset" {
 		t.Fatalf("expected three words preserved, got %q", got)
 	}
 	if got := normalizeSearchTerm("single"); got != "single" {
 		t.Fatalf("expected single word unchanged, got %q", got)
 	}
-	if got := normalizeSearchTerm("one two three four five"); got != "one two three four" {
-		t.Fatalf("expected four words max, got %q", got)
+	if got := normalizeSearchTerm("one two three four five six"); got != "one two three four five six" {
+		t.Fatalf("expected six words preserved, got %q", got)
+	}
+	if got := normalizeSearchTerm("one two three four five six seven"); got != "one two three four five six" {
+		t.Fatalf("expected six words max, got %q", got)
 	}
 }
 

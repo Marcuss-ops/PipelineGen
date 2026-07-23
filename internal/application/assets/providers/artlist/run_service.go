@@ -144,7 +144,7 @@ type RunDefaults struct {
 }
 
 // maxSearchWords is the maximum number of words kept by normalizeSearchTerm.
-const maxSearchWords = 4
+const maxSearchWords = 6
 
 // normalizeSearchTerm trims the term and keeps at most the first [maxSearchWords] words.
 func normalizeSearchTerm(term string) string {

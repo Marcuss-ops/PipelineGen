@@ -1,6 +1,9 @@
 const CLIP_ID_KEYS = ['id', 'clipId', '_id', 'assetId'];
 const TITLE_KEYS = ['title', 'name', 'caption'];
 const PAGE_URL_KEYS = ['clipPageUrl', 'clip_page_url', 'pageUrl', 'permalink', 'url', 'link'];
+
+// Known organization/brand names that should not be used as clip titles.
+const ORG_TITLE_BLOCKLIST = /^(artlist|artgrid|video|stock footage|clip|download|license|free|search|results| browse|pricing|login|sign up|log in)$/i;
 const THUMBNAIL_KEYS = ['thumbnailUrl', 'thumbnail_url', 'coverUrl', 'image'];
 const PREVIEW_KEYS = ['previewUrl', 'preview_url', 'videoUrl', 'video', 'src'];
 const PRIMARY_KEYS = ['primary_url', 'primaryUrl', 'streamUrl', 'downloadUrl'];
@@ -29,7 +32,8 @@ function toNumber(value) {
 }
 
 function extractClipIdFromUrl(url) {
-  const match = String(url || '').match(/\/clip\/[^/]+\/(\d+)(?:[/?#]|$)/);
+  // Match /clip/<slug>/<id> (legacy format) or /clip/<id> (direct format)
+  const match = String(url || '').match(/\/clip\/(?:[^/]+\/)?(\d+)(?:[/?#]|$)/);
   return match ? match[1] : '';
 }
 
@@ -55,7 +59,14 @@ export function normalizeArtlistClip(item, fallbackPageUrl = '') {
   const clip = item && typeof item === 'object' ? item : {};
   const clipPageUrl = firstString(clip, PAGE_URL_KEYS) || String(fallbackPageUrl || '').trim();
   const clipId = firstString(clip, CLIP_ID_KEYS) || extractClipIdFromUrl(clipPageUrl);
-  const title = firstString(clip, TITLE_KEYS);
+  let title = firstString(clip, TITLE_KEYS);
+
+  // Filter out organization/brand names masquerading as clip titles.
+  // These come from JSON-LD Organization entities or page-wide elements
+  // that leak into the clip data.
+  if (title && ORG_TITLE_BLOCKLIST.test(title)) {
+    title = '';
+  }
   const thumbnailUrl = firstString(clip, THUMBNAIL_KEYS);
   const previewUrl = firstString(clip, PREVIEW_KEYS);
   const primaryUrl = firstString(clip, PRIMARY_KEYS) || previewUrl || clipPageUrl;

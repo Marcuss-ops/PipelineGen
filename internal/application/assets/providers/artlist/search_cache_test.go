@@ -268,9 +268,9 @@ func TestNormalizeSearchTerm_LimitsToFourWords(t *testing.T) {
 		{"", ""},
 		{"   ", ""},
 		{"hello world foo bar", "hello world foo bar"},
-		{"hello world foo bar baz", "hello world foo bar"},
+		{"hello world foo bar baz", "hello world foo bar baz"},
 		{"single", "single"},
-		{"one two three four five", "one two three four"},
+		{"one two three four five six", "one two three four five six"},
 		{"  mountain river sunrise extra ", "mountain river sunrise extra"},
 	}
 
@@ -290,7 +290,7 @@ func TestNormalizeSearchTermLower(t *testing.T) {
 		{"Mountain River", "mountain river"},
 		{"  BLUE OCEAN  ", "blue ocean"},
 		{"Single", "single"},
-		{"Hello World Foo Bar Baz", "hello world foo bar"},
+		{"Hello World Foo Bar Baz", "hello world foo bar baz"},
 	}
 
 	for _, tt := range tests {
