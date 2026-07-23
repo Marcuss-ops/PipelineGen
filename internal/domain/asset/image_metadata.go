@@ -1,12 +1,56 @@
-package images
+package asset
 
 import (
 	"encoding/json"
+	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
+
+// IsAIImageSource reports whether source identifies an AI/generated
+// image provider. URLs are never considered AI sources.
+func IsAIImageSource(source string) bool {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if source == "" {
+		return false
+	}
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		return false
+	}
+	d, ok := DefaultProviderRegistry().Match(source)
+	return ok && d.Origin == ImageOriginGenerated
+}
+
+// ClassifyImageOrigin returns the canonical ImageOrigin for a media
+// source/generator pair. It is the single factory for image origin
+// classification and must be used by every image metadata writer.
+func ClassifyImageOrigin(source, generator string) ImageOrigin {
+	if IsAIImageSource(source) || IsAIImageSource(generator) {
+		return ImageOriginGenerated
+	}
+	if strings.EqualFold(strings.TrimSpace(source), "upload") {
+		return ImageOriginUploaded
+	}
+	return ImageOriginRetrieved
+}
+
+// ClassifyImageProvider returns the canonical ImageProvider for a media
+// source/generator pair. It is the single factory for image provider
+// classification and must be used by every image metadata writer.
+func ClassifyImageProvider(source, generator string) ImageProvider {
+	if provider := imageProviderFromValue(source); provider != ProviderUnknown {
+		return provider
+	}
+	return imageProviderFromValue(generator)
+}
+
+func imageProviderFromValue(value string) ImageProvider {
+	d, ok := DefaultProviderRegistry().Match(value)
+	if !ok {
+		return ProviderUnknown
+	}
+	return d.ID
+}
 
 // CanonicalImageMetadataBuilder is the single place where image asset
 // metadata JSON is assembled. It guarantees that the canonical "origin"
@@ -14,15 +58,15 @@ import (
 // never silently hardcoded to "generated".
 type CanonicalImageMetadataBuilder struct {
 	data     map[string]any
-	origin   asset.ImageOrigin
-	provider asset.ImageProvider
+	origin   ImageOrigin
+	provider ImageProvider
 }
 
 // NewCanonicalImageMetadataBuilder derives canonical origin and provider
 // from the source/generator pair up front.
 func NewCanonicalImageMetadataBuilder(source, generator string) *CanonicalImageMetadataBuilder {
-	origin := classifyImageOrigin(source, generator)
-	provider := classifyImageProvider(source, generator)
+	origin := ClassifyImageOrigin(source, generator)
+	provider := ClassifyImageProvider(source, generator)
 	return &CanonicalImageMetadataBuilder{
 		data: map[string]any{
 			"origin":   string(origin),
@@ -55,54 +99,32 @@ func (b *CanonicalImageMetadataBuilder) WithGenerator(generator string) *Canonic
 	return b
 }
 
-// WithSemanticPayload merges the semantic tagger payload into the
-// metadata using the canonical snake_case key map from the semantic
-// package. Origin and provider are never allowed to be overwritten by
-// the payload; they are the single source of truth derived from the
-// source/generator classification.
-func (b *CanonicalImageMetadataBuilder) WithSemanticPayload(payload *semantic.Payload) *CanonicalImageMetadataBuilder {
-	if payload == nil {
+// WithExtra merges extra metadata keys into the canonical payload.
+// origin and provider are protected: they are derived from the
+// source/generator pair and cannot be overwritten by extra data.
+// If extra contains a "tags" slice, it is merged with the existing
+// tags.
+func (b *CanonicalImageMetadataBuilder) WithExtra(extra map[string]any) *CanonicalImageMetadataBuilder {
+	if extra == nil {
 		return b
 	}
-
-	input := semantic.AssetSemanticInput{
-		AssetID:             payload.AssetID,
-		PromptOriginal:      payload.PromptOriginal,
-		SemanticDescription: payload.SemanticDescription,
-		SearchText:          payload.SearchText,
-		Subjects:            payload.Subjects,
-		Tags:                payload.Tags,
-		Categories:          payload.Categories,
-		Mood:                payload.Mood,
-		Style:               payload.Style,
-	}
-	payloadMeta := semantic.BuildAssetMetadata(input, nil)
-	for k, v := range payloadMeta {
-		if k == "origin" || k == "provider" || k == "tags" {
+	for k, v := range extra {
+		if k == "origin" || k == "provider" {
+			continue
+		}
+		if k == "tags" {
+			switch t := v.(type) {
+			case []string:
+				b.data["tags"] = uniqueAppend(b.tags(), t...)
+			case []any:
+				b.data["tags"] = uniqueAppend(b.tags(), toStringSlice(t)...)
+			default:
+				b.data[k] = v
+			}
 			continue
 		}
 		b.data[k] = v
 	}
-
-	// Fields not yet covered by semantic.BuildAssetMetadata.
-	if len(payload.ConceptTags) > 0 {
-		b.data["concept_tags"] = payload.ConceptTags
-	}
-	if len(payload.VisualObjects) > 0 {
-		b.data["visual_objects"] = payload.VisualObjects
-	}
-	if len(payload.EmotionalTone) > 0 {
-		b.data["emotional_tone"] = payload.EmotionalTone
-	}
-	if payload.RetrievalScore != nil {
-		b.data["retrieval_score"] = *payload.RetrievalScore
-	}
-
-	if len(payload.Tags) > 0 {
-		existingTags := b.tags()
-		b.data["tags"] = uniqueAppend(existingTags, payload.Tags...)
-	}
-
 	return b
 }
 
@@ -126,7 +148,7 @@ func (b *CanonicalImageMetadataBuilder) WithProvenance(imageURL, pageURL, source
 
 // Build returns the JSON string and the canonical origin/provider that
 // should be copied onto the asset record.
-func (b *CanonicalImageMetadataBuilder) Build() (string, asset.ImageOrigin, asset.ImageProvider) {
+func (b *CanonicalImageMetadataBuilder) Build() (string, ImageOrigin, ImageProvider) {
 	bytes, _ := json.Marshal(b.data)
 	return string(bytes), b.origin, b.provider
 }
@@ -194,4 +216,33 @@ func AppendImageMetadataField(metadataJSON, key string, value any) string {
 		return metadataJSON
 	}
 	return string(out)
+}
+
+func uniqueAppend(slice []string, items ...string) []string {
+	seen := make(map[string]struct{}, len(slice))
+	for _, s := range slice {
+		seen[s] = struct{}{}
+	}
+	out := make([]string, 0, len(slice)+len(items))
+	out = append(out, slice...)
+	for _, item := range items {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; !ok {
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func toStringSlice(v []any) []string {
+	out := make([]string, 0, len(v))
+	for _, item := range v {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }

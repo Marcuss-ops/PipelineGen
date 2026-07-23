@@ -1,12 +1,9 @@
-package images
+package asset
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 )
 
 func TestCanonicalImageMetadataBuilder_RetrievedSource(t *testing.T) {
@@ -14,10 +11,10 @@ func TestCanonicalImageMetadataBuilder_RetrievedSource(t *testing.T) {
 		WithBaseInfo("A cat", "realistic", "abc123", []string{"cat"}, 100, 200)
 
 	jsonStr, origin, provider := b.Build()
-	if origin != asset.ImageOriginRetrieved {
+	if origin != ImageOriginRetrieved {
 		t.Errorf("origin = %q, want retrieved", origin)
 	}
-	if provider != asset.ProviderWikipedia {
+	if provider != ProviderWikipedia {
 		t.Errorf("provider = %q, want wikipedia", provider)
 	}
 
@@ -41,10 +38,10 @@ func TestCanonicalImageMetadataBuilder_GeneratedSource(t *testing.T) {
 		WithBaseInfo("A cat", "realistic", "abc123", []string{"cat"}, 100, 200)
 
 	jsonStr, origin, provider := b.Build()
-	if origin != asset.ImageOriginGenerated {
+	if origin != ImageOriginGenerated {
 		t.Errorf("origin = %q, want generated", origin)
 	}
-	if provider != asset.ProviderFlux {
+	if provider != ProviderFlux {
 		t.Errorf("provider = %q, want flux", provider)
 	}
 
@@ -65,10 +62,10 @@ func TestCanonicalImageMetadataBuilder_UploadSource(t *testing.T) {
 		WithBaseInfo("A cat", "realistic", "abc123", []string{"cat"}, 100, 200)
 
 	jsonStr, origin, provider := b.Build()
-	if origin != asset.ImageOriginUploaded {
+	if origin != ImageOriginUploaded {
 		t.Errorf("origin = %q, want uploaded", origin)
 	}
-	if provider != asset.ProviderUpload {
+	if provider != ProviderUpload {
 		t.Errorf("provider = %q, want upload", provider)
 	}
 
@@ -84,18 +81,19 @@ func TestCanonicalImageMetadataBuilder_UploadSource(t *testing.T) {
 	}
 }
 
-func TestCanonicalImageMetadataBuilder_SemanticPayloadPreservesClassifiedOriginProvider(t *testing.T) {
-	payload := &semantic.Payload{
-		AssetID:        "ignored",
-		PromptOriginal: "A cat",
-		Style:          []string{"realistic"},
-		Tags:           []string{"cat", "animal"},
-		SearchText:     "cat",
+func TestCanonicalImageMetadataBuilder_ExtraPreservesClassifiedOriginProvider(t *testing.T) {
+	extra := map[string]any{
+		"search_text":     "cat",
+		"prompt_original": "A cat",
+		"style":           []string{"realistic"},
+		"tags":            []string{"cat", "animal"},
+		"origin":          "generated",
+		"provider":        "flux",
 	}
 
 	b := NewCanonicalImageMetadataBuilder("wikipedia", "").
 		WithBaseInfo("A cat", "realistic", "abc123", []string{"cat"}, 100, 200).
-		WithSemanticPayload(payload)
+		WithExtra(extra)
 
 	jsonStr, _, _ := b.Build()
 	var meta map[string]any
@@ -103,24 +101,24 @@ func TestCanonicalImageMetadataBuilder_SemanticPayloadPreservesClassifiedOriginP
 		t.Fatal(err)
 	}
 	if meta["origin"] != "retrieved" {
-		t.Errorf("meta.origin = %q, want retrieved (should not be overwritten by payload)", meta["origin"])
+		t.Errorf("meta.origin = %q, want retrieved (should not be overwritten by extra)", meta["origin"])
 	}
 	if meta["provider"] != "wikipedia" {
-		t.Errorf("meta.provider = %q, want wikipedia", meta["provider"])
+		t.Errorf("meta.provider = %q, want wikipedia (should not be overwritten by extra)", meta["provider"])
 	}
 	if meta["search_text"] != "cat" {
 		t.Errorf("meta.search_text = %q, want cat", meta["search_text"])
 	}
 }
 
-func TestCanonicalImageMetadataBuilder_SemanticPayloadMergesTags(t *testing.T) {
-	payload := &semantic.Payload{
-		Tags: []string{"new"},
+func TestCanonicalImageMetadataBuilder_ExtraMergesTags(t *testing.T) {
+	extra := map[string]any{
+		"tags": []string{"new"},
 	}
 
 	b := NewCanonicalImageMetadataBuilder("wikipedia", "").
 		WithBaseInfo("A cat", "realistic", "abc123", []string{"cat"}, 100, 200).
-		WithSemanticPayload(payload)
+		WithExtra(extra)
 
 	jsonStr, _, _ := b.Build()
 	var meta map[string]any

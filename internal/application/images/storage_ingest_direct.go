@@ -69,8 +69,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	generator := imageGeneratorLabel(source)
-	provider := classifyImageProvider(source, generator)
-	origin := classifyImageOrigin(source, generator)
+	provider := asset.ClassifyImageProvider(source, generator)
+	origin := asset.ClassifyImageOrigin(source, generator)
 	width, height := decodeImageDimensions(content)
 
 	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
@@ -144,19 +144,19 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 	}
 
-	builder := NewCanonicalImageMetadataBuilder(source, generator).
+	builder := asset.NewCanonicalImageMetadataBuilder(source, generator).
 		WithBaseInfo(description, style, hash, tags, width, height).
 		WithGenerator(generator)
 	if metaResult != nil && metaResult.Payload != nil {
 		payload := *metaResult.Payload
 		payload.AssetID = hash
-		builder.WithSemanticPayload(&payload)
+		builder.WithExtra(semanticPayloadToMap(&payload))
 		tags = uniqueAppend(tags, payload.Tags...)
 	}
 	metaJSONStr, builtOrigin, builtProvider := builder.Build()
 	// Ensure the subject slug survives in metadata_json so that
 	// ListImagesBySubject can find cached images by subject_id.
-	metaJSONStr = AppendImageMetadataField(metaJSONStr, "subject_id", slug)
+	metaJSONStr = asset.AppendImageMetadataField(metaJSONStr, "subject_id", slug)
 	metaJSON := []byte(metaJSONStr)
 	// The builder is the SSOT for origin/provider; align the asset
 	// record so that MetadataJSON.origin matches asset.Origin.

@@ -139,7 +139,7 @@ func (s *ImageStorageService) aiImageDriveRootForSource(source, style string) st
 	if s == nil || s.cfg == nil {
 		return ""
 	}
-	if !IsAIImageSource(source) {
+	if !asset.IsAIImageSource(source) {
 		return ""
 	}
 	styleFolders := map[string]string{

@@ -11,23 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
-
-// IsAIImageSource reports whether source identifies an AI/generated
-// image provider. URLs are never considered AI sources.
-func IsAIImageSource(source string) bool {
-	source = strings.ToLower(strings.TrimSpace(source))
-	if source == "" {
-		return false
-	}
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		return false
-	}
-	d, ok := asset.DefaultProviderRegistry().Match(source)
-	return ok && d.Origin == asset.ImageOriginGenerated
-}
 
 // decodeImageDimensions estrae larghezza e altezza da bytes immagine.
 // Supporta JPEG, PNG, GIF. Per altri formati (webp, etc.) restituisce 0,0.

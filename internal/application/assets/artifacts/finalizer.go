@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -265,6 +266,15 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 			"embedding_ready": rec.PHash != "" || rec.VisualEmbeddingJSON != "" || firstString(existingMeta, "embedding_status", "") == "ready",
 		},
 	}, existingMeta)
+
+	// Canonical image metadata: origin and provider are derived from the
+	// source/generator pair using the single domain classification
+	// functions. This prevents the "origin=generated" drift for
+	// retrieved images when enrichment falls back or is bypassed.
+	if assetType == "image" {
+		metadata["origin"] = string(asset.ClassifyImageOrigin(rec.Source, generator))
+		metadata["provider"] = string(asset.ClassifyImageProvider(rec.Source, generator))
+	}
 	metadataJSON := semantic.MetadataMapToJSON(metadata)
 	rec.Metadata = metadataJSON
 
