@@ -414,9 +414,9 @@ verify-architecture:
 # Runs the Go packages under infrastructure/artlist, providers/artlist,
 # api/assets/artlist, plus the node-scraper JS test suite.
 verify-artlist:
-	$(GO) test -race ./internal/infrastructure/artlist/...
-	$(GO) test -race ./internal/application/assets/providers/artlist/...
-	$(GO) test -race ./internal/api/assets/artlist/...
+	$(GO) test -race ./internal/infrastructure/artlist/... && \
+	$(GO) test -race ./internal/application/assets/providers/artlist/... && \
+	$(GO) test -race ./internal/api/assets/artlist/... && \
 	cd node-scraper && npm test
 	@echo "✅ Artlist verification passed"
 
@@ -436,7 +436,7 @@ verify-artlist:
 # scripts/archcheck/main.go). Mirrors the --strict relaxation
 # already applied to cmd/archcheck above (pre-existing debt
 # accepted for the migration window per godlike/07).
-verify-main: verify-base verify-go verify-architecture
+verify-main: verify-base verify-go verify-architecture verify-artlist
 	@echo "✅ verify-main passed"
 	# bash scripts/ci-architectural-checks.sh
 
