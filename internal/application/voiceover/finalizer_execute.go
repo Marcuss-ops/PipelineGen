@@ -7,6 +7,7 @@ import (
 	"time"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
@@ -291,6 +292,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 			IsPrimary:   true,
 		})
 	}
+	_, initIndex := asset.NewIndexableAssetState()
 	return assetspersistence.CommitRequest{
 		AssetID:        cmd.ID,
 		Source:         "voiceover",
@@ -300,8 +302,8 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		ContentHash:    cmd.FileHash,
 		Description:    textPreview,
 		SearchText:     textPreview,
-		LifecycleState: "PUBLISHED",
-		IndexState:     "DISCOVERED",
+		LifecycleState: string(asset.StatePublished),
+		IndexState:     string(initIndex),
 		LocalPath:      cmd.LocalPath,
 		FolderID:       cmd.FolderID,
 		FolderPath:     cmd.FolderPath,

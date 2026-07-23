@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"go.uber.org/zap"
 )
@@ -96,6 +97,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		},
 	}
 
+	_, initIndex := asset.NewIndexableAssetState()
 	return persistence.CommitRequest{
 		AssetID:        artifact.ArtifactID,
 		Source:         source,
@@ -104,8 +106,8 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		MediaType:      mediaType,
 		ContentHash:    artifact.SHA256,
 		Description:    artifact.Description,
-		LifecycleState: "PUBLISHED",
-		IndexState:     "DISCOVERED",
+		LifecycleState: string(asset.StatePublished),
+		IndexState:     string(initIndex),
 		FolderID:       artifact.Location.FolderID,
 		FolderPath:     artifact.Location.FolderPath,
 		Metadata:       metadata,
