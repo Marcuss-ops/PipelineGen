@@ -6,8 +6,8 @@ import sys
 
 from edge_tts import Communicate
 
-from edge_tts.request import SynthesizeRequest, SynthesizeRequestError, normalize_language
-from edge_tts.voice_resolver import resolve_voice
+from edge_tts_bridge.request import normalize_language
+from edge_tts_bridge.voice_resolver import resolve_voice
 
 
 async def main():

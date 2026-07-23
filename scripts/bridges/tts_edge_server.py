@@ -8,7 +8,7 @@ legacy CLI (tts_edge.py) without duplicating code.
 
 import sys
 
-from edge_tts.server import main
+from edge_tts_bridge.server import main
 
 if __name__ == "__main__":
     sys.exit(main())
