@@ -86,6 +86,13 @@ type Options struct {
 	// The attempt number is 0-based (0 = first retry).
 	OnRetry func(attempt int, err error)
 
+	// ClassifierRegistry is the optional injected registry used by
+	// IsRetryableFromDecision to classify errors. When nil, the retry
+	// loop falls back to the global default registry. New code should
+	// build a ClassifierRegistry at bootstrap, register the required
+	// classifiers, Seal() it, and inject it here.
+	ClassifierRegistry *ClassifierRegistry
+
 	// Clock is the injectable time source for backoff sleeps.
 	// Nil → RealClock{} (production default, delegates to time.After).
 	// Tests inject a fake clock via Options{Clock: myFakeClock} for
@@ -169,12 +176,15 @@ func norm(o Options) Options {
 	}
 	if o.IsRetryable == nil {
 		// godlike/07 fail-closed (Fase 6(a), July 2026): nil predicate
-		// MUST NOT mean "retry always". The default predicates against
-		// every error (retryable = false) so the caller gets back the
-		// FIRST attempt's error verbatim without retrying. Push 6.1.x
-		// callers MUST pass an explicit IsRetryable: classifier,
-		// matching the typed-only adapter surface.
-		o.IsRetryable = neverRetry
+		// MUST NOT mean "retry always". If a ClassifierRegistry is
+		// injected, use it to decide retryability; otherwise fail-closed
+		// (retryable = false) so the caller gets back the FIRST attempt's
+		// error verbatim without retrying.
+		if o.ClassifierRegistry != nil {
+			o.IsRetryable = classifierRegistryPredicate(o.ClassifierRegistry)
+		} else {
+			o.IsRetryable = neverRetry
+		}
 	}
 	// FASE 6(a) fix (July 2026): zero-value Options MUST apply the
 	// canonical JitterFraction=0.25, not the historical JitterFraction=0
@@ -212,6 +222,16 @@ func norm(o Options) Options {
 // no retries are burned on terminal shapes. The default is a SAFETY
 // VALVE, not a feature.
 func neverRetry(error) bool { return false }
+
+// classifierRegistryPredicate returns an IsRetryable predicate backed by
+// the injected ClassifierRegistry. It is the canonical bridge between
+// the typed-only classifier chain and the retry loop.
+func classifierRegistryPredicate(reg *ClassifierRegistry) func(error) bool {
+	return func(err error) bool {
+		d, ok := reg.Decision(err)
+		return ok && d.Retryable
+	}
+}
 
 // ── exponential backoff + bounded jitter ───────────────────────────────────
 

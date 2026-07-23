@@ -237,14 +237,9 @@ func redactedURL(rawURL string) string {
 
 // ── Registration ────────────────────────────────────────────────────────────
 
-// init registers the stdlib classifier chain. Go init() serialisation
-// guarantees the chain is fully populated before main() runs; the
-// first retry.Decision(err) call finds the full chain.
-//
-// Add new stdlib classifiers here (one per shape). Do NOT register
-// the same shape twice — the Decision walker first-match-wins so a
-// later registration silently shadows the earlier one.
-func init() {
-	RegisterClassifier(classifyExecExitError)
-	RegisterClassifier(classifyURLError)
-}
+// classifyExecExitError and classifyURLError are wired into the
+// default ClassifierRegistry in decision.go at init time. Add new
+// stdlib classifiers here (one per shape) and register them in
+// defaultClassifierRegistry. Do NOT register the same shape twice —
+// the Decision walker first-match-wins so a later registration
+// silently shadows the earlier one.

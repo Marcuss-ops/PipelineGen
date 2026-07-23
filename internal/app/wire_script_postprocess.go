@@ -96,15 +96,6 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Google Docs are published through the canonical idempotent DocClient.
-	// Keep this processor best-effort: a missing Drive capability must be
-	// visible as a warning/error, never as a fabricated document link.
-	if root.Drive != nil && root.Drive.DocClient != nil {
-		if err := registerDocumentProcessor(ppReg, root, cfg, log); err != nil {
-			return err
-		}
-	}
-
 	// Inline Image generation processor (temporarily restored).
 	if root.Domains != nil && root.Domains.ImageService != nil {
 		imgGenSvc := &imageGenSvcAdapter{svc: root.Domains.ImageService}

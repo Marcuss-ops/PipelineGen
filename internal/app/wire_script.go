@@ -203,7 +203,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 	sourceReg.Freeze()
 	ppReg.Freeze()
-	if err := validateRequiredProcessors(ppReg, requiredProcessorNames); err != nil {
+	if err := validateRequiredProcessors(ppReg); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 

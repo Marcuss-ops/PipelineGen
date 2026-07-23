@@ -5,7 +5,7 @@
 // internal adapter MUST register its Classifier from a file INSIDE its
 // own package — this file. pkg/retry walks the registered chain on every
 // Decision(err) call; first-match-wins, so the order in which adapters
-// call RegisterClassifier at init() matters (Qdrant here → HTTP/SDK
+// classifier order matters (Qdrant here → HTTP/SDK
 // upstream taxonomies in the stdlib registry).
 //
 // Qdrant-specific surface:
@@ -41,17 +41,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// init registers the Qdrant typed-error classifiers with the canonical
-// retry.Classifier chain. init() runs at package-load time (Go init
-// serialisation contract); the chain is fully populated before main().
-//
-// godlike/07 fail-closed: a nil Classifier would panic in
-// RegisterClassifier — the panic is the load-bearing anti-regression
-// guard. See pkg/retry/decision.go::RegisterClassifier docs.
-func init() {
-	retry.RegisterClassifier(classifyQdrantAPIError)
-	retry.RegisterClassifier(classifyQdrantRetryableSentinel)
-}
+// RetryClassifierAPIError is the canonical Qdrant *APIError
+// typed-error Classifier. It is exported so the application composition
+// root can assemble it into a ClassifierRegistry and inject it via
+// retry.Options. pkg/retry cannot import internal/ packages, so the
+// classifier cannot be registered from inside pkg/retry.
+var RetryClassifierAPIError = classifyQdrantAPIError
+
+// RetryClassifierSentinel is the canonical Qdrant retryable-sentinel
+// Classifier. It is exported so the application composition root can
+// assemble it into a ClassifierRegistry and inject it via
+// retry.Options.
+var RetryClassifierSentinel = classifyQdrantRetryableSentinel
 
 // classifyQdrantAPIError maps *APIError to RetryDecision. The
 // APIError.Retryable field is PRESERVED verbatim (no heuristic

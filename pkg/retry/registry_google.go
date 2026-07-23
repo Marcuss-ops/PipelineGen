@@ -72,15 +72,11 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
-// init registers the Google API typed-error Classifier with the
-// canonical retry chain. init() runs at package-load time (Go init
-// serialisation contract); the chain is fully populated before
-// main(). The classifier handles the raw *googleapi.Error shape;
-// the *GoogleAPIError envelope (already-wrapped) is handled by
-// the typed-RetryableError probe in the walker fallback.
-func init() {
-	RegisterClassifier(classifyGoogleAPIError)
-}
+// classifyGoogleAPIError is wired into the default ClassifierRegistry
+// in decision.go at init time. The classifier handles the raw
+// *googleapi.Error shape; the *GoogleAPIError envelope
+// (already-wrapped) is handled by the typed-RetryableError probe in
+// the walker fallback.
 
 // classifyGoogleAPIError maps *googleapi.Error (the raw SDK exit
 // shape from Google API/Drive SDK calls) to RetryDecision. The

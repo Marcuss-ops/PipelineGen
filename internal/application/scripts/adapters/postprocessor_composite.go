@@ -1,8 +1,7 @@
 // Package adapters — postprocessor_composite.go: core registry infrastructure.
 //
 // Extracted from postprocessor_registry.go (July 2026).
-// Owns: PostProcessor interface, PostProcessorRegistry struct + all methods,
-// ProcessorPolicy, defaultPolicyByName, DefaultPolicyFor.
+// Owns: PostProcessor interface, PostProcessorRegistry struct + all methods.
 //
 // PR-COMPOSITE-SPLIT (July 2026): decomposed into 3 files per AGENTS.md
 // Pattern 5:
@@ -22,96 +21,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-// ProcessorPolicy classifies a postprocessor's failure mode for
-// composition and preflight decisions.
-//
-// PR 2 (June 2026): introduced alongside the preflight gate so the
-// pipeline reflects on which processors MUST succeed (Required) and
-// which can degrade gracefully (BestEffort). The composition root
-// reads each processor's policy via PostProcessor.Policy(plan); the
-// registry stores the mapping at Register time so missing-registered
-// cases are assessable at preflight without needing the proc itself.
-type ProcessorPolicy string
-
-const (
-	// ProcessorRequired marks a processor whose missing-registered
-	// status is a composition-level failure (composition refuses
-	// to start) AND whose runtime error or empty output causes the
-	// overall Run to return a non-nil error. Used by persistence
-	// (the canonical source of ScriptID) and document (a deliverable
-	// requested by callers).
-	ProcessorRequired ProcessorPolicy = "required"
-
-	// ProcessorBestEffort marks a processor whose missing-registered
-	// status is a non-fatal warning (composition continues) AND
-	// whose runtime error or empty output is a warning rather than
-	// a hard failure. Used by images / voiceover / entities /
-	// metadata — Callers can opt in via OutputSpec but a missing
-	// service must not abort the script generation.
-	ProcessorBestEffort ProcessorPolicy = "best_effort"
-)
-
-// defaultPolicyByName is the canonical static mapping from a
-// postprocessor name to its policy. Both ValidateRequested (for
-// missing-registered names) and validateRequiredProcessors (in
-// wire_script.go) consult this map so the runtime gate matches
-// the composition-time classification. A successful Register()
-// call overrides the default by recording the proc.Policy(nil)
-// value into `r.policies[name]` at register time.
-//
-// PR 2 (June 2026): Persistence and Document are Required —
-// the canonical script-table writer and the doc-creation
-// deliverable. Images / Voiceover are BestEffort per the user
-// spec ("configurabile").
-//
-// PR 3 (June 2026): Entities and Metadata are promoted to
-// ProcessorRequired. The PR 3 spec mandates that composition-
-// time wiring must surface a hard failure when either processor
-// is requested but the corresponding service is unavailable, and
-// that the runtime preflight must reject plans requesting them
-// without a registered adapter. The "best_effort or required
-// based on payload" future work is resolved statically for now —
-// both processors are unconditionally Required. Future PRs may
-// restore payload-conditional semantics by overriding the
-// processor's Policy(plan) method to inspect plan.OutputFmt or
-// related fields; until that lands, this map is the source of
-// truth.
-//
-// Future PRs promoting a BestEffort to Required (or vice versa)
-// MUST update both `defaultPolicyByName` and `requiredProcessorNames`
-// in wire_script.go so the two stay in sync.
-// defaultPolicyByName is the canonical static mapping from a
-// postprocessor name to its policy.
-//
-// Fase 2 Spina Dorsale (July 2026): "document", "images", and
-// "voiceover" are downgraded to BestEffort. These processors are
-// being removed from the script pipeline — they will become
-// independent downstream jobs (document.generate, images.generate,
-// voiceover.generate). Until the full CUTOVER phase, they remain
-// registered but with BestEffort policy so legacy callers that
-// still request them do not trigger a hard preflight failure.
-var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
-	ProcessorPersistence:    ProcessorRequired,
-	ProcessorImages:         ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
-	ProcessorVoiceover:      ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
-	ProcessorEntities:       ProcessorRequired,
-	ProcessorMetadata:       ProcessorRequired,
-	ProcessorClipSearch:     ProcessorBestEffort, // PR-CLIP-SEARCH-WIRING (July 2026): enrichment, not a hard gate
-	ProcessorTranslation:    ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: translation enrichment, not a hard gate; defaults to BestEffort because the canonical composition root at internal/app/wire_script_postprocess.go::registerScriptPostProcessors silently skips registration when OllamaTranslator is nil
-	ProcessorClipBindings:   ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: clip-binding enrichment, not a hard gate; same silent-skip-on-missing-wiring pattern as Translation
-	ProcessorVisualPlanning: ProcessorBestEffort, // SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-2: visual-planning lookup, not a hard gate; nil MediaMemory resolver fails-open per the canonical composition root
-	ProcessorDocument:       ProcessorBestEffort,
-	ProcessorStockBindings:  ProcessorRequired,
-}
-
-// DefaultPolicyFor returns the canonical default policy for a
-// named postprocessor. Returns empty string for unknown names —
-// callers MUST treat unknown names as a hard fail or warn per
-// their own classification logic.
-func DefaultPolicyFor(name ProcessorName) ProcessorPolicy {
-	return defaultPolicyByName[name]
-}
 
 // PostProcessor executes one post-generation phase.
 //
@@ -228,32 +137,20 @@ func (r *PostProcessorRegistry) Len() int {
 	if r == nil {
 		return 0
 	}
-	if r == nil {
-		return 0
-	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.processors)
 }
 
 // ValidateRequested checks every name in the supplied list against the registry.
-func (r *PostProcessorRegistry) ValidateRequested(names []string) error {
-	if r == nil {
-		return nil
-	}
-	if len(names) == 0 {
+func (r *PostProcessorRegistry) ValidateRequested(names []ProcessorName) error {
+	if r == nil || len(names) == 0 {
 		return nil
 	}
 
-	// Convert from plan's []string to typed ProcessorName slice.
-	typed := make([]ProcessorName, len(names))
-	for i, n := range names {
-		typed[i] = ProcessorName(n)
-	}
-
-	seen := make(map[ProcessorName]struct{}, len(typed))
-	unique := make([]ProcessorName, 0, len(typed))
-	for _, n := range typed {
+	seen := make(map[ProcessorName]struct{}, len(names))
+	unique := make([]ProcessorName, 0, len(names))
+	for _, n := range names {
 		if _, ok := seen[n]; ok {
 			continue
 		}
@@ -284,7 +181,7 @@ func (r *PostProcessorRegistry) ValidateRequested(names []string) error {
 		return nil
 	}
 	return &scriptpkg.PlanInvalidError{
-		ItemID:  names[0],
+		ItemID:  string(names[0]),
 		Details: []string{"preflight: required postprocessor(s) not registered: " + strings.Join(missing, ", ")},
 	}
 }

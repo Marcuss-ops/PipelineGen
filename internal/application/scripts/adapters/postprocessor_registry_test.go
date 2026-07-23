@@ -466,7 +466,7 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 	// rejection; "entities" remains Required.
 	r.Register(&countingProcessor{name: "persistence"})
 
-	err := r.ValidateRequested([]string{"persistence", "entities"})
+	err := r.ValidateRequested([]adapterspkg.ProcessorName{adapterspkg.ProcessorPersistence, adapterspkg.ProcessorEntities})
 	if err == nil {
 		t.Fatal("ValidateRequested should reject missing-required processor")
 	}
@@ -492,7 +492,7 @@ func TestRegistry_ValidateRequested_BestEffortMissingTolerated(t *testing.T) {
 	r.Register(&countingProcessor{name: "metadata"})
 	// "voiceover" / "metadata" not registered -> both BestEffort.
 
-	if err := r.ValidateRequested([]string{"persistence", "metadata", "voiceover", "metadata"}); err != nil {
+	if err := r.ValidateRequested([]adapterspkg.ProcessorName{adapterspkg.ProcessorPersistence, adapterspkg.ProcessorMetadata, adapterspkg.ProcessorVoiceover, adapterspkg.ProcessorMetadata}); err != nil {
 		t.Fatalf("ValidateRequested must tolerate best-effort missing: %v", err)
 	}
 }
@@ -506,7 +506,7 @@ func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
 	if err := r.ValidateRequested(nil); err != nil {
 		t.Errorf("nil list should pass: %v", err)
 	}
-	if err := r.ValidateRequested([]string{}); err != nil {
+	if err := r.ValidateRequested([]adapterspkg.ProcessorName{}); err != nil {
 		t.Errorf("empty list should pass: %v", err)
 	}
 }
@@ -520,7 +520,7 @@ func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 	// nothing is registered must produce exactly one deduplicated
 	// error entry. Note: "metadata" was downgraded to BestEffort
 	// in Fase 2 and would NOT error on missing-registered.
-	err := r.ValidateRequested([]string{"entities", "entities", "entities"})
+	err := r.ValidateRequested([]adapterspkg.ProcessorName{adapterspkg.ProcessorEntities, adapterspkg.ProcessorEntities, adapterspkg.ProcessorEntities})
 	if err == nil {
 		t.Fatal("missing entities should still error after dedup")
 	}
@@ -537,7 +537,7 @@ func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 // on that).
 func TestRegistry_ValidateRequested_NilRegistryIsSafe(t *testing.T) {
 	var r *adapterspkg.PostProcessorRegistry
-	if err := r.ValidateRequested([]string{"persistence"}); err != nil {
+	if err := r.ValidateRequested([]adapterspkg.ProcessorName{adapterspkg.ProcessorPersistence}); err != nil {
 		t.Errorf("nil registry should be no-op: %v", err)
 	}
 }

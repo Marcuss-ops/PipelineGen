@@ -15,12 +15,11 @@
 //     the typed path is robust to upstream message-format changes.
 //   - Unwrap surfaces the inner error for errors.Is / errors.As chains.
 //
-// (2) IsTransient — canonical "should I retry this?" predicate.
+// (2) IsTransient — canonical pure-typed "should I retry this?" predicate.
 //
 //   - Returns true when err is non-nil AND either:
-//     (a) err is or wraps a *TransientInfrastructureError (typed path), OR
-//     (b) err.Error() contains one of the canonical transient-substrings
-//     in (4) below (substring fallback).
+//     (a) err implements RetryableError and IsRetryable() returns true, OR
+//     (b) err is or wraps a *TransientInfrastructureError (typed path).
 //   - Pass it to retry.Do as the IsRetryable Option. This is the SINGLE
 //     canonical retry-classifier for the whole codebase.
 //
@@ -50,10 +49,9 @@
 //	preserved as a TEST-ONLY fixture in pkg/retry/transient_legacy_test.go
 //	so tests can pin the pre-FASE-6 surface (godlike/07 no-fake-availability:
 //	legacy behavior is observable in tests, not silently lost).
-//
-//	Production classifiers MUST register a typed Classifier via
-//	decision.go::RegisterClassifier at init() — see decision.go for the
-//	canonical walker + the stdlib + internal adapter registries.
+//// Production classifiers MUST be assembled into a ClassifierRegistry
+// at bootstrap and injected via retry.Options — see decision.go for the
+// canonical walker + the stdlib + internal adapter registries.
 //
 // Anything that needs a transient-classifier MUST route through this
 // file. CI gate (Check N, July 2026 audit) bans substring-match retry
@@ -115,7 +113,7 @@ func (e *TransientInfrastructureError) Unwrap() error {
 //	serviceunavailable, quotaexceeded, resource_exhausted).
 //
 // Production classifiers MUST register a typed Classifier via
-// decision.go::RegisterClassifier at init().
+// decision.go ClassifierRegistry at bootstrap.
 //
 // NOTE on youtubediscoveries.ErrStateConflict: it is a typed *logical* sentinel
 // ("row state is in conflict"). The canonical contract today is that
@@ -151,7 +149,7 @@ type RetryableError interface {
 // percorso di produzione"). The substring taxonomy is preserved in the
 // TEST-ONLY fixture pkg/retry/transient_legacy_test.go for backwards-
 // compat test fixtures; production classifiers MUST register a typed
-// Classifier via decision.go::RegisterClassifier at init().
+// Classifier via decision.go ClassifierRegistry at bootstrap.
 //
 // Decision order (typed probe, no substring):
 //  1. nil → false
@@ -191,8 +189,8 @@ func IsTransient(err error) bool {
 	// removed from production per the user spec. The substring taxonomy
 	// lives in pkg/retry/transient_legacy_test.go as a TEST-ONLY helper
 	// for tests that pin the legacy surface; production callers MUST
-	// register a typed Classifier (decision.go::RegisterClassifier)
-	// for any custom error shape.
+	// register a typed Classifier in a ClassifierRegistry for any
+	// custom error shape.
 	return false
 }
 
@@ -203,7 +201,7 @@ func IsTransient(err error) bool {
 // fallback for raw error messages is REMOVED from the retry package.
 // The canonical typed-only surface is:
 //
-//   - Registered Classifier via retry.RegisterClassifier — per-adapter
+//   - Registered Classifier in a ClassifierRegistry — per-adapter
 //     classifiers inspect typed error shapes (errors.As compares
 //     against the adapter's concrete error type).
 //   - retry.IsTransient(err) on a *typed* error (RetryableError
@@ -246,14 +244,22 @@ func IsTransient(err error) bool {
 // WrapTransient is the canonical migration target for ad-hoc inline
 // substring matchers at infra boundaries (Azione 4/8 di Step 7).
 //
-// FASE 6 Cut 6.1.C rewrite (July 2026): production IsTransient became
-// pure typed-probe in Cut 6.1.D (no substring fallback). WrapTransient
-// now routes the wrap decision through Decision() walker — registered
-// classifiers (stdlib + qdrant + sqlite + google api at init time, see
-// registry_*.go) gate the result. The new production contract is:
+// FASE 6 Cut 6.1.D rewrite (July 2026): WrapTransient consults the
+// typed classifier chain via Decision so that SDK shapes that do not
+// implement RetryableError (e.g. *googleapi.Error) are still
+// recognised as transient when a registered classifier claims them.
+// This keeps WrapTransient aligned with the canonical retry taxonomy
+// without re-introducing substring heuristics.
+//
+// The canonical classifier chain remains available for richer decisions
+// (Class + RetryAfter + SafeMessage) via an injected
+// ClassifierRegistry in retry.Options; WrapTransient only needs the
+// retry/no-retry signal.
+//
+// Production contract:
 //   - SDK-returned typed errors (*googleapi.Error, *sqlite3.Error,
-//     *url.Error, *exec.ExitError, etc.) recognised by their registered
-//     classifier → WrapTransient wraps the transient subtypes into
+//     *url.Error, *exec.ExitError, etc.) recognised by the classifier
+//     chain → WrapTransient wraps the transient subtypes into
 //     *TransientInfrastructureError.
 //   - Raw SDK strings (errors.New("timeout")) are NOT wrapped — callers
 //     must emit typed envelopes at the SDK boundary. This matches the
@@ -270,14 +276,15 @@ func WrapTransient(err error) error {
 	if errors.As(err, &te) {
 		return err
 	}
-	// FASE 6 Cut 6.1.C: route wrap decision through Decision() walker
-	// so registered classifiers gate the result. The pre-Cut 6.1.D
-	// pure-IsTransient probe lost the substring fallback in Cut 6.1.D;
-	// the Decision() chain now owns the wrap decision (classifier
-	// authoritativeness replaces substring heuristics).
-	d, ok := Decision(err)
-	if ok && d.Retryable {
+
+	// Use the typed classifier chain so that SDK shapes that do not
+	// implement RetryableError (e.g. *googleapi.Error) are still
+	// recognised as transient when a registered classifier claims them.
+	// This keeps WrapTransient aligned with the canonical retry taxonomy
+	// without re-introducing substring heuristics.
+	if d, ok := Decision(err); ok && d.Retryable {
 		return &TransientInfrastructureError{Err: err}
 	}
+
 	return err
 }

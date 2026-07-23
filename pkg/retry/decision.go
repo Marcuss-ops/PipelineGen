@@ -37,8 +37,8 @@
 //
 //   Returns the first classifier that emitted a non-zero RetryDecision
 //   AND whose Predicate returned true. Walk order is the canonical
-//   CLASSIFIER chain (the slice registered via RegisterClassifier at
-//   init time plus the in-package typed-error probes). If no classifier
+//   CLASSIFIER chain (the slice registered in a ClassifierRegistry
+//   plus the in-package typed-error probes). If no classifier
 //   matches AND the error is nil, returns (zero-value, false). If no
 //   classifier matches AND the error is non-nil, returns (zero-value,
 //   false) — godlike/07 fail-closed: unknown errors are NOT classified
@@ -61,12 +61,12 @@
 //   a typed probe would shadow later classifiers; the DD error below
 //   will surface this during build.
 //
-// (4) RegisterClassifier — the canonical classifier-registration seam.
+// (4) ClassifierRegistry — the canonical classifier registry.
 //
-// Adapters call RegisterClassifier at init time to publish their typed
-// classifier into the global CLASSIFIER chain. Tests can swap a
-// classifier (use UnregisterAll before adding test classifiers).
-// godlike/07 fail-closed: register failures panic at init.
+// The application composition root builds a ClassifierRegistry,
+// registers typed classifiers, seals it, and injects it via
+// retry.Options.ClassifierRegistry. godlike/07 fail-closed: a sealed
+// registry panics on further registration, ensuring immutability.
 //
 // ═══════════ Backward compatibility ═════════════════════════════════════════════════════════
 //
@@ -92,11 +92,14 @@
 // Adapter-side (e.g. pkg/retry/registry_driven_driveside_classifier.go
 // in Push 6.1.2):
 //
-//     func init() {
-//         retry.RegisterClassifier(classifyGoogleAPIErr)
+//     func classifyGoogleAPIErr(err error) (retry.RetryDecision, bool) {
+//         // classifier function body
 //     }
 //
-//     func classifyGoogleAPIErr(err error) (retry.RetryDecision, bool) {
+//     // At bootstrap:
+//     reg := retry.NewClassifierRegistry()
+//     reg.Register(classifyGoogleAPIErr)
+//     reg.Seal()
 //         var gerr *googleapi.Error
 //         if !errors.As(err, &gerr) { return retry.RetryDecision{}, false }
 //         code := gerr.Code
@@ -136,7 +139,6 @@ package retry
 
 import (
 	"errors"
-	"log"
 	"sync"
 	"time"
 )
@@ -199,8 +201,8 @@ type RetryDecision struct {
 // ── Classifier chain (Fase 6(a): registry-driven typed-only) ────────────────
 
 // Classifier is the canonical adapter-side classifier signature.
-// Adapters register their Classifier at init time via RegisterClassifier;
-// the walker calls each in registration order until one returns
+// Adapters register their Classifier in a ClassifierRegistry; the
+// walker calls each in registration order until one returns
 // final=true (i.e. (RetryDecision{}, true)).
 //
 // Returning (RetryDecision{}, false) means "I don't claim this err".
@@ -211,73 +213,63 @@ type RetryDecision struct {
 // Class so downstream observability can categorise the failure.
 type Classifier func(err error) (RetryDecision, bool)
 
-// classifierChain is the global Classifier registry. Registration order
-// is walk order (first-match-wins). The chain is read-only after
-// init() finishes (tests can reset via ResetClassifiersForTest).
-//
-// godlike/07 nit: the chain is a slice of pointers so registered
-// Classifier values cannot be swapped post-init via the registry
-// handle. Tests that need a fresh chain use ResetClassifiersForTest.
-var (
-	classifierChainMu sync.RWMutex
-	classifierChain   []Classifier
-)
+// ClassifierRegistry is an immutable, mutex-protected registry of
+// typed classifiers. It is built at bootstrap, sealed, and then only
+// consulted for decisions. The zero value is not usable — use
+// NewClassifierRegistry.
+type ClassifierRegistry struct {
+	mu          sync.RWMutex
+	classifiers []Classifier
+	sealed      bool
+}
 
-// RegisterClassifier appends c to the global classifier chain. Call
-// at init() from adapter packages (any package that defines a typed
-// error and wants the retry loop to recognise it via the typed-only
-// surface).
-//
-// godlike/07 fail-closed: RegisterClassifier is NOT safe to call
-// after init() finishes; the production cycle is init → register →
-// serve. Tests that need late-binding must use
-// ResetClassifiersForTest AFTER which the chain reloads at init on
-// next process restart — push 6.1.x follow-ups add reset semantics
-// if needed.
-func RegisterClassifier(c Classifier) {
-	if c == nil {
-		panic("retry.RegisterClassifier: nil Classifier (fail-closed at init)")
+// NewClassifierRegistry returns an empty registry. Register classifiers
+// and call Seal before passing it to the retry executor or calling
+// Decision.
+func NewClassifierRegistry() *ClassifierRegistry {
+	return &ClassifierRegistry{
+		classifiers: make([]Classifier, 0),
 	}
-	classifierChainMu.Lock()
-	defer classifierChainMu.Unlock()
-	classifierChain = append(classifierChain, c)
 }
 
-// ResetClassifiersForTest clears the classifier chain. TEST-ONLY;
-// production code MUST NOT call this method. The naming is
-// intentional ("ForTest") — go-lint will flag godlike/06 SSOT
-// violations for any production caller.
+// Register appends a classifier to the registry. It panics if the
+// classifier is nil or if the registry has already been sealed.
 //
-// Tests that need to swap a classifier (e.g. dual-event classifier
-// for Qdrant + Google API) call ResetClassifiersForTest at the start
-// of the test, add their classifiers, restore the chain at the end
-// via t.Cleanup.
-func ResetClassifiersForTest() {
-	classifierChainMu.Lock()
-	defer classifierChainMu.Unlock()
-	classifierChain = nil
+// godlike/07 fail-closed: registrations are only allowed during
+// bootstrap. Once Seal is called, any further registration is a
+// programming error and must fail loudly.
+func (r *ClassifierRegistry) Register(c Classifier) {
+	if c == nil {
+		panic("retry.ClassifierRegistry.Register: nil Classifier (fail-closed at init)")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sealed {
+		panic("retry.ClassifierRegistry.Register: registry is sealed (fail-closed)")
+	}
+	r.classifiers = append(r.classifiers, c)
 }
 
-// ── Decision walker (Fase 6(a): the canonical typed-only entry point) ────
+// Seal marks the registry as immutable. After Seal returns, any call
+// to Register panics.
+func (r *ClassifierRegistry) Seal() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sealed = true
+}
 
 // Decision walks the registered classifier chain and returns the
-// first matching RetryDecision (and the boolean "this classifier
-// claimed it"). Returns (zero-value, false) when no classifier
-// matches; godlike/07 fail-closed semantics: unknown errors are NOT
-// classified as retryable by default — callers MUST register a
-// typed classifier for their error shape, OR explicitly opt into
-// the legacy substring fallback via the pre-existing IsTransient.
-//
-// Order: the classifier chain is walked in registration order. A
-// classifier that emits final=true with Class=="" panics in the
-// Walker (godlike/07 — a final classifier MUST populate Class).
-func Decision(err error) (RetryDecision, bool) {
+// first matching RetryDecision. Returns (zero-value, false) when no
+// classifier matches; godlike/07 fail-closed semantics: unknown errors
+// are NOT classified as retryable by default.
+func (r *ClassifierRegistry) Decision(err error) (RetryDecision, bool) {
 	if err == nil {
 		return RetryDecision{}, false
 	}
-	classifierChainMu.RLock()
-	chain := append([]Classifier(nil), classifierChain...) // snapshot to avoid holding lock during classifier call
-	classifierChainMu.RUnlock()
+	r.mu.RLock()
+	chain := r.classifiers
+	r.mu.RUnlock()
+
 	for _, c := range chain {
 		d, final := c(err)
 		if !final {
@@ -290,42 +282,28 @@ func Decision(err error) (RetryDecision, bool) {
 		//
 		// Operational choice (FASE 6 Cut 6.1 review feedback, July 2026):
 		// a buggy classifier MUST NOT crash the production request path.
-		// We log+skip the misconfigured classifier so the walker falls
-		// through to the next classifier (or to the (zero, false) default
-		// if no other classifier matches). godlike/07 fail-closed
-		// semantics are still preserved at the typed-probe boundary —
-		// the (zero, false) return below does NOT silently classify as
-		// retryable, so retry-loop callers MUST register a correct
-		// classifier for their error shape. The classifier author who
-		// ships a misconfigured classifier sees the log line on next
-		// process restart and fixes the regression.
+		// We skip the misconfigured classifier so the walker falls through
+		// to the next classifier (or to the (zero, false) default if no
+		// other classifier matches). godlike/07 fail-closed semantics are
+		// still preserved at the typed-probe boundary — the (zero, false)
+		// return below does NOT silently classify as retryable, so
+		// retry-loop callers MUST register a correct classifier for their
+		// error shape.
 		if d.Class == "" {
-			log.Printf("retry.Decision: classifier returned final=true with empty Class — skipping (godlike/07 fail-closed, not crash-closed). err=%v", err)
 			continue
 		}
 		if d.SafeMessage == "" {
-			log.Printf("retry.Decision: classifier returned final=true with empty SafeMessage — skipping (godlike/07 fail-closed, not crash-closed). err=%v", err)
 			continue
 		}
 		return d, true
 	}
-	// Tightened typed-probe fallback (FASE 6 Cut 6.1, July 2026):
-	// if no registered Classifier claimed err, probe for the typed
-	// RetryableError interface + the *TransientInfrastructureError
-	// carrier SEPARATELY so audit logs can distinguish "a typed adapter
-	// marked this retryable" from "this is a typed-transient carrier".
-	// The Retryable field on both comes from the typed shape itself, never
-	// from a substring match — the pre-FASE-6 substring path was
-	// REMOVED from production per the user spec; the substring taxonomy
-	// is preserved in the test-only fixture pkg/retry/transient_legacy_test.go.
-	//
-	// godlike/07 fail-closed contract: an error with NO registered
-	// Classifier match + NO typed RetryableError + NO TransientInfrastructureError
-	// carrier returns (zero, false). The walker does NOT silently retry
-	// unmapped shapes. Production adapters MUST register a Classifier
-	// at init() — see registry_stdlib.go (stdlib) and the distributed
-	// adapter registries under internal/infrastructure/{qdrant/transport,
-	// database/sqlite}/ for the typed-overlay surface.
+	return r.fallback(err)
+}
+
+// fallback applies the typed-probe fallback for errors that no
+// classifier claimed. It is split out to keep Decision readable and to
+// allow tests to reason about the fallback separately.
+func (r *ClassifierRegistry) fallback(err error) (RetryDecision, bool) {
 	var re RetryableError
 	if errors.As(err, &re) {
 		return RetryDecision{
@@ -343,6 +321,34 @@ func Decision(err error) (RetryDecision, bool) {
 		}, true
 	}
 	return RetryDecision{}, false
+}
+
+// defaultClassifierRegistry is the canonical, sealed registry built at
+// init time from the built-in classifiers that live in pkg/retry
+// (stdlib + Google API). It is immutable after construction.
+//
+// Internal adapter classifiers (SQLite, Qdrant, etc.) cannot be added
+// here because pkg/retry may not import internal/ packages. Those
+// classifiers are exported by their owning packages and must be
+// assembled into a ClassifierRegistry at the application composition
+// root, then injected via retry.Options.ClassifierRegistry.
+var defaultClassifierRegistry = func() *ClassifierRegistry {
+	reg := NewClassifierRegistry()
+	reg.Register(classifyExecExitError)
+	reg.Register(classifyURLError)
+	reg.Register(classifyGoogleAPIError)
+	reg.Seal()
+	return reg
+}()
+
+// ── Decision walker (Fase 6(a): the canonical typed-only entry point) ────
+
+// Decision walks the default classifier registry and returns the first
+// matching RetryDecision. It is a convenience wrapper for callers that
+// do not yet inject a ClassifierRegistry. Prefer calling
+// registry.Decision(err) with an injected registry in new code.
+func Decision(err error) (RetryDecision, bool) {
+	return defaultClassifierRegistry.Decision(err)
 }
 
 // ── Decision Convenience: error wrapping for unwrapped typed errors ────

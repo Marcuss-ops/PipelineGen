@@ -8,7 +8,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-func TestBuildPlan_ClipsRunsTranslationVoiceoverDocumentInSameJob(t *testing.T) {
+func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{
 			Type:    scriptpkg.SourceClips,
@@ -24,7 +24,6 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverDocumentInSameJob(t *testing.T) 
 		string(adapters.ProcessorTranslation),
 		string(adapters.ProcessorClipBindings),
 		string(adapters.ProcessorVoiceover),
-		string(adapters.ProcessorDocument),
 		string(adapters.ProcessorPersistence),
 	}
 	if len(plan.Postprocessors) != len(want) {

@@ -278,6 +278,10 @@ func (h *Handler) handleReindex(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "reindex unavailable: mutation dispatcher not wired")
 		return
 	}
+	if h.assetService == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "reindex unavailable: asset service not wired")
+		return
+	}
 
 	id := c.Param("id")
 	ctx := c.Request.Context()

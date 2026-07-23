@@ -60,12 +60,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// init registers the SQLite typed-error Classifier with the canonical
-// retry chain. init() runs at package-load time (Go init serialisation
-// contract); the chain is fully populated before main().
-func init() {
-	retry.RegisterClassifier(classifySQLiteError)
-}
+// RetryClassifier is the canonical SQLite typed-error Classifier.
+// It is exported so the application composition root can assemble it
+// into a ClassifierRegistry and inject it via retry.Options. pkg/retry
+// cannot import internal/ packages, so the classifier cannot be
+// registered from inside pkg/retry.
+var RetryClassifier = classifySQLiteError
 
 // classifySQLiteError maps mattn/go-sqlite3's typed *sqlite3.Error
 // carrier to RetryDecision. The Code FIELD (not method) is the

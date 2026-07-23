@@ -3,22 +3,22 @@
 // Hermetic test for the typed-only retry-decision surface introduced
 // in decision.go. The test pins the Fase-6(a) user-spec contract:
 //
-//	(a) Decision() walks the registered Classifier chain in init order
-//	    and returns the first match. No classifier → zero-value + false.
+//	(a) ClassifierRegistry.Decision() walks the registered Classifier
+//	    chain and returns the first match. No classifier → zero-value +
+//	    false.
 //
 //	(b) norm() fail-closes IsRetryable==nil to neverRetry. The legacy
 //	    "skip the predicate entirely" semantic is GONE; pass an explicit
 //	    predicate or get no-retry default.
 //
-//	(c) RegisterClassifier panics on nil at init (godlike/07 fail-closed
-//	    at observable boundary).
+//	(c) ClassifierRegistry.Register panics on nil and after Seal
+//	    (godlike/07 fail-closed at observable boundary).
 //
-//	(d) Decision walker panics on final=true with empty Class /
-//	    SafeMessage (godlike/07 fail-closed at observable boundary).
+//	(d) Decision walker skips classifiers that emit final=true with
+//	    empty Class or SafeMessage (godlike/07 fail-closed).
 //
-//	(e) ResetClassifiersForTest isolates per-test state. Calling
-//	    ResetClassifiersForTest at test start + t.Cleanup isolates
-//	    hermetic tests from the global chain.
+//	(e) Tests use local ClassifierRegistry instances so they stay
+//	    hermetic and exercise the injected path.
 //
 // The tests register local fakeErr / typedErr helpers via the canonical
 // Classifier signature and never consult the substring-fallback path
@@ -82,11 +82,22 @@ func alwaysRetryClassifier() Classifier {
 
 // ── (a) Decision walker ─────────────────────────────────────────────────────
 
-func TestDecision_NilErr_ReturnsZero(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	RegisterClassifier(typedClassifier())
+// newTestRegistry builds a sealed ClassifierRegistry from the given
+// classifiers. Tests use this helper instead of the mutable default
+// registry so they stay hermetic and exercise the injected path.
+func newTestRegistry(classifiers ...Classifier) *ClassifierRegistry {
+	reg := NewClassifierRegistry()
+	for _, c := range classifiers {
+		reg.Register(c)
+	}
+	reg.Seal()
+	return reg
+}
 
-	d, ok := Decision(nil)
+func TestDecision_NilErr_ReturnsZero(t *testing.T) {
+	reg := newTestRegistry(typedClassifier())
+
+	d, ok := reg.Decision(nil)
 	if ok {
 		t.Fatalf("Decision(nil) must return ok=false; got ok=true, d=%+v", d)
 	}
@@ -96,9 +107,9 @@ func TestDecision_NilErr_ReturnsZero(t *testing.T) {
 }
 
 func TestDecision_NoClassifier_NoMatch(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
+	reg := newTestRegistry()
 	// No classifier registered.
-	d, ok := Decision(errors.New("unregistered err"))
+	d, ok := reg.Decision(errors.New("unregistered err"))
 	// Fail-closed: unknown err returns zero-value, false. The walker
 	// does NOT consult the legacy substring path in this test (we
 	// sanity-check that "unregistered err" has no transient marker).
@@ -108,11 +119,10 @@ func TestDecision_NoClassifier_NoMatch(t *testing.T) {
 }
 
 func TestDecision_RegisteredClassifier_Matches(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	RegisterClassifier(typedClassifier())
+	reg := newTestRegistry(typedClassifier())
 
 	err := &fakeErr{tag: "test-1"}
-	d, ok := Decision(err)
+	d, ok := reg.Decision(err)
 	if !ok {
 		t.Fatalf("Decision(typedErr) must return ok=true; got ok=false")
 	}
@@ -131,28 +141,29 @@ func TestDecision_RegisteredClassifier_Matches(t *testing.T) {
 }
 
 func TestDecision_FirstMatchWins(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
 	// Register two classifiers; the first one claims the err and the
 	// second one should never be visited.
 	firstCalled := false
-	RegisterClassifier(func(err error) (RetryDecision, bool) {
-		firstCalled = true
-		fe, ok := asAdapter[*fakeErr](err)
-		if !ok {
-			return RetryDecision{}, false
-		}
-		return RetryDecision{
-			Class:       ErrNetwork,
-			Retryable:   true,
-			SafeMessage: "first-wins(" + fe.tag + ")",
-		}, true
-	})
-	RegisterClassifier(func(err error) (RetryDecision, bool) {
-		t.Fatalf("second classifier must NOT be called (first-match-wins)")
-		return RetryDecision{}, true
-	})
+	reg := newTestRegistry(
+		func(err error) (RetryDecision, bool) {
+			firstCalled = true
+			fe, ok := asAdapter[*fakeErr](err)
+			if !ok {
+				return RetryDecision{}, false
+			}
+			return RetryDecision{
+				Class:       ErrNetwork,
+				Retryable:   true,
+				SafeMessage: "first-wins(" + fe.tag + ")",
+			}, true
+		},
+		func(err error) (RetryDecision, bool) {
+			t.Fatalf("second classifier must NOT be called (first-match-wins)")
+			return RetryDecision{}, true
+		},
+	)
 
-	d, ok := Decision(&fakeErr{tag: "first-wins"})
+	d, ok := reg.Decision(&fakeErr{tag: "first-wins"})
 	if !ok || !firstCalled {
 		t.Fatalf("Decision: want first-classifier win; got (ok=%v, firstCalled=%v, d=%+v)", ok, firstCalled, d)
 	}
@@ -162,20 +173,13 @@ func TestDecision_FirstMatchWins(t *testing.T) {
 }
 
 func TestDecision_FinalTrueEmptyClass_LogsAndSkips(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
 	// FASE 6 Cut 6.1 review feedback (July 2026): a misconfigured
 	// Classifier that emits final=true with empty Class MUST NOT
-	// crash the production request path. The walker now logs+skips
-	// the buggy classifier (godlike/07 fail-closed, NOT crash-closed)
+	// crash the production request path. The walker now skips the
+	// buggy classifier (godlike/07 fail-closed, NOT crash-closed)
 	// and falls through to the typed-probe fallback. This test pins
 	// the new contract.
-	//
-	// Pre-Cut 6.1.x: this test was named *_Panics with a recover()
-	// assertion. The original behaviour (panic) crashed production
-	// on buggy classifier registration. The Cut 6.1 change is
-	// operational-only — same fail-closed semantics, but reachable
-	// from production servers without restarting the process.
-	RegisterClassifier(func(err error) (RetryDecision, bool) {
+	reg := newTestRegistry(func(err error) (RetryDecision, bool) {
 		return RetryDecision{
 			// Class intentionally empty.
 			Retryable:   true,
@@ -183,7 +187,7 @@ func TestDecision_FinalTrueEmptyClass_LogsAndSkips(t *testing.T) {
 		}, true
 	})
 
-	d, ok := Decision(errors.New("empty-class test"))
+	d, ok := reg.Decision(errors.New("empty-class test"))
 	// Walker MUST skip the buggy classifier and fall through to the
 	// typed-probe fallback. err doesn't implement RetryableError and
 	// isn't a *TransientInfrastructureError; the walker returns
@@ -197,7 +201,6 @@ func TestDecision_FinalTrueEmptyClass_LogsAndSkips(t *testing.T) {
 }
 
 func TestDecision_FinalTrueEmptySafeMessage_LogsAndSkips(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
 	// FASE 6 Cut 6.1 review feedback (July 2026): a misconfigured
 	// Classifier that emits final=true with empty SafeMessage MUST
 	// NOT crash the production request path. Same operational
@@ -210,17 +213,19 @@ func TestDecision_FinalTrueEmptySafeMessage_LogsAndSkips(t *testing.T) {
 	// skipping on SafeMessage-and-trying-next, not skipping-on-
 	// SafeMessage-and-falling-through-silently.
 	firstCalled := false
-	RegisterClassifier(func(err error) (RetryDecision, bool) {
-		firstCalled = true
-		return RetryDecision{
-			Class:     ErrNetwork,
-			Retryable: true,
-			// SafeMessage intentionally empty.
-		}, true
-	})
-	RegisterClassifier(alwaysRetryClassifier())
+	reg := newTestRegistry(
+		func(err error) (RetryDecision, bool) {
+			firstCalled = true
+			return RetryDecision{
+				Class:     ErrNetwork,
+				Retryable: true,
+				// SafeMessage intentionally empty.
+			}, true
+		},
+		alwaysRetryClassifier(),
+	)
 
-	d, ok := Decision(errors.New("empty-safemessage test"))
+	d, ok := reg.Decision(errors.New("empty-safemessage test"))
 	if !firstCalled {
 		t.Fatalf("Decision: want first (buggy) classifier to be evaluated; was not called")
 	}
@@ -288,18 +293,42 @@ func TestDo_DoNotRetry_MaxAttemptsOne(t *testing.T) {
 	}
 }
 
-// ── (c) RegisterClassifier panic ────────────────────────────────────────────
+// ── (c) ClassifierRegistry.Register panic ─────────────────────────────────
 
-func TestRegisterClassifier_Nil_Panics(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
+func TestClassifierRegistry_Register_Nil_Panics(t *testing.T) {
+	reg := NewClassifierRegistry()
 
 	defer func() {
 		r := recover()
 		if r == nil {
-			t.Fatalf("RegisterClassifier(nil): want panic; got no panic")
+			t.Fatalf("ClassifierRegistry.Register(nil): want panic; got no panic")
 		}
 	}()
-	RegisterClassifier(nil)
+	reg.Register(nil)
+}
+
+func TestClassifierRegistry_Seal_PreventsFurtherRegistration(t *testing.T) {
+	reg := NewClassifierRegistry()
+	reg.Register(typedClassifier())
+	reg.Seal()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("ClassifierRegistry.Register after Seal: want panic; got no panic")
+		}
+	}()
+	reg.Register(typedClassifier())
+}
+
+func TestDefaultClassifierRegistry_IsSealed(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("Register on sealed default registry: want panic; got no panic")
+		}
+	}()
+	defaultClassifierRegistry.Register(func(error) (RetryDecision, bool) { return RetryDecision{}, false })
 }
 
 // ── (d) asAdapter helper ────────────────────────────────────────────────────
@@ -350,32 +379,55 @@ func (u unwrapper) Unwrap() error { return u.inner }
 
 func wrapAsUnwrap(err error) error { return unwrapper{inner: err} }
 
-// ── (e) Reset isolation across tests ────────────────────────────────────────
+// ── (e) Injected registry in retry executor ─────────────────────────────────
 
-func TestResetClassifiersForTest_ClearsChain(t *testing.T) {
-	// Pre-condition: no matcher registered, so an unknown err returns
-	// (zero, false). This pins the hermetic-isolation contract: tests
-	// can mutate and reset the chain without leaking state across
-	// test runs.
-	ResetClassifiersForTest()
-	d, ok := Decision(&fakeErr{tag: "post-reset"})
-	if ok || d != (RetryDecision{}) {
-		t.Fatalf("post-reset Decision: want (zero, false); got (%+v, %v)", d, ok)
+func TestOptions_ClassifierRegistry_InjectedIntoExecutor(t *testing.T) {
+	reg := newTestRegistry(typedClassifier())
+
+	var calls int
+	err := Do(context.Background(), func() error {
+		calls++
+		return &fakeErr{tag: "injected"}
+	}, Options{
+		MaxAttempts:        2,
+		InitialBackoff:     1 * time.Millisecond,
+		MaxBackoff:         1 * time.Millisecond,
+		ClassifierRegistry: reg,
+	})
+	if err == nil {
+		t.Fatalf("Do: want error after exhausting attempts; got nil")
+	}
+	if calls != 2 {
+		t.Fatalf("Do: want 2 calls (retryable typed error); got %d", calls)
 	}
 }
 
-// ── Sanity: Decision concurrency under Reset isolation ────────────────────
+func TestOptions_ClassifierRegistry_NilFallsBackToNeverRetry(t *testing.T) {
+	var calls int
+	err := Do(context.Background(), func() error {
+		calls++
+		return &fakeErr{tag: "no-registry"}
+	}, Options{
+		MaxAttempts:    2,
+		InitialBackoff: 1 * time.Millisecond,
+		MaxBackoff:     1 * time.Millisecond,
+		// ClassifierRegistry intentionally nil.
+	})
+	if err == nil {
+		t.Fatalf("Do: want error; got nil")
+	}
+	if calls != 1 {
+		t.Fatalf("Do: want exactly 1 call when no predicate/registry; got %d", calls)
+	}
+}
+
+// ── (f) Resilience ────────────────────────────────────────────────────────
 
 func TestDecision_AfterPanicClassifier_StillResilient(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	// A panicking classifier would terminate the test process. The
-	// walker MUST NOT amplify panics into recoverable classify calls.
-	// This test pins the sanity contract: panic in classifier is
-	// process-fatal (it bubbles through Decision). We do NOT trigger
-	// a panic here — we just sanity-check that after registering a
-	// legit classifier, Decision still works.
-	RegisterClassifier(alwaysRetryClassifier())
-	d, ok := Decision(errors.New("ok"))
+	// Use a local registry so this test does not depend on the mutable
+	// default registry state.
+	reg := newTestRegistry(alwaysRetryClassifier())
+	d, ok := reg.Decision(errors.New("ok"))
 	if !ok {
 		t.Fatalf("Decision: want ok=true; got false")
 	}

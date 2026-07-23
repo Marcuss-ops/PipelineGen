@@ -43,7 +43,8 @@ func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
 	switch name {
 	case adapterspkg.ProcessorPersistence,
 		adapterspkg.ProcessorEntities,
-		adapterspkg.ProcessorMetadata:
+		adapterspkg.ProcessorMetadata,
+		adapterspkg.ProcessorStockBindings:
 		return adapterspkg.ProcessorRequired
 	case adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorVoiceover,

@@ -20,7 +20,7 @@ import (
 //
 // If a future FASE appends a NEW substring to the pre-FASE-6 canonical
 // list, the parallel production addition belongs in a typed Classifier
-// registered via RegisterClassifier at init() — not in this fixture.
+// assembled into a ClassifierRegistry at bootstrap — not in this fixture.
 var transientSubstringsLegacy = []string{
 	"timeout",
 	"connection refused",
@@ -48,8 +48,8 @@ var transientSubstringsLegacy = []string{
 
 // classifyLegacyTransientForTest is the test-only adapter that
 // pre-FASE-6 IsTransient's substring loop. Production code MUST NOT
-// import or call this function; tests use it via ResetClassifiersForTest
-// + RegisterClassifier to verify "what did the pre-FASE-6 classifier
+// import or call this function; tests build a local ClassifierRegistry
+// and register it explicitly to verify "what did the pre-FASE-6 classifier
 // say about this error?".
 //
 // Contract (byte-stable — DO NOT modify without a FASE-level SSOT migration):
@@ -65,20 +65,10 @@ var transientSubstringsLegacy = []string{
 //     the SafeMessage shape.
 //  4. no match → (zero, false).
 //
-// This is NOT registered into the global classifier chain by default —
-// tests that want to verify "pre-FASE-6 said transient" semantics
-// register it manually:
-//
-//	func TestSomething_LegacyTransientSurface(t *testing.T) {
-//	    t.Cleanup(retry.ResetClassifiersForTest)
-//	    // first-class registrations from registry_stdlib.go + adapter
-//	    // init() functions are wiped by ResetClassifiersForTest; the
-//	    // test then registers the legacy classifier at the END of the
-//	    // chain (last-classifier-wins-by-first-match, so legacy is the
-//	    // LAST in-walk-fallback).
-//	    retry.RegisterClassifier(retry.classifyLegacyTransientForTest)
-//	    ...
-//	}
+// This is NOT registered into the default classifier chain. Tests that
+// want to verify "pre-FASE-6 said transient" semantics build a local
+// ClassifierRegistry, register the built-in classifiers plus this
+// fixture, seal it, and call registry.Decision(err).
 func classifyLegacyTransientForTest(err error) (RetryDecision, bool) {
 	if err == nil {
 		return RetryDecision{}, false
