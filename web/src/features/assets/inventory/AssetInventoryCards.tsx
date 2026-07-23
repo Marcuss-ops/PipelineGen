@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { AssetSummary } from '../../../api/assets'
 import AssetPreview from '../../../components/AssetPreview'
-import { Badge, formatDate } from './utils'
+import { Badge, AssetStatusBadge, formatDate } from './utils'
 
 interface AssetInventoryCardsProps {
   assets: AssetSummary[]
@@ -11,7 +11,7 @@ interface AssetInventoryCardsProps {
 
 export function AssetInventoryCards({ assets, selected, onToggle }: AssetInventoryCardsProps) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
       {assets.map((asset) => (
         <div
           key={asset.id}
@@ -35,6 +35,7 @@ export function AssetInventoryCards({ assets, selected, onToggle }: AssetInvento
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                 <Badge text={asset.media_type} />
                 <Badge text={asset.source} />
+                <CardStorageIndicator asset={asset} />
               </div>
             </div>
             <input
@@ -44,9 +45,36 @@ export function AssetInventoryCards({ assets, selected, onToggle }: AssetInvento
               style={{ cursor: 'pointer', width: 18, height: 18 }}
             />
           </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Lifecycle</span>
+              <AssetStatusBadge status={asset.lifecycle_state} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Journey</span>
+              <AssetStatusBadge status={asset.asset_state} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Indice</span>
+              <AssetStatusBadge status={asset.index_health} />
+            </div>
+            {asset.pending_outbox_events > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Outbox</span>
+                <span style={{ color: '#facc15', fontSize: '0.8rem' }}>{asset.pending_outbox_events}</span>
+              </div>
+            )}
+            {asset.last_error && (
+              <div style={{ color: '#f87171', fontSize: '0.75rem', wordBreak: 'break-word' }}>
+                {asset.last_error}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
-            <span style={{ color: '#94a3b8' }}>{formatDate(asset.created_at)}</span>
-            <Badge text={asset.lifecycle_state} />
+            <span style={{ color: '#94a3b8' }}>{formatDate(asset.updated_at)}</span>
+            <AssetStatusBadge status={asset.index_health} />
           </div>
           <Link
             to={`/content/${asset.id}`}
@@ -57,5 +85,28 @@ export function AssetInventoryCards({ assets, selected, onToggle }: AssetInvento
         </div>
       ))}
     </div>
+  )
+}
+
+function CardStorageIndicator({ asset }: { asset: AssetSummary }) {
+  const parts: string[] = []
+  if (asset.has_local_file) parts.push('L')
+  if (asset.has_drive_file) parts.push('D')
+  if (asset.has_embedding) parts.push('E')
+  if (parts.length === 0) return null
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        background: 'rgba(56,189,248,0.1)',
+        color: '#38bdf8',
+        padding: '0.15rem 0.4rem',
+        borderRadius: '4px',
+        fontSize: '0.7rem',
+        fontWeight: 500,
+      }}
+    >
+      {parts.join('+')}
+    </span>
   )
 }
