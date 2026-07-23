@@ -71,7 +71,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -90,13 +89,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-func remotionBaseURL() string {
-	if value := strings.TrimSpace(os.Getenv("VELOX_REMOTION_URL")); value != "" {
-		return value
-	}
-	return "http://127.0.0.1:4317"
-}
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
 // Returns an error if module registration fails on duplicate-name or
@@ -122,25 +114,64 @@ func remotionBaseURL() string {
 // depended on sectionRegen + cacheEviction (RegenerateSection +
 // EvictCache) are RETIRED in lockstep.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
-	// Phase 2 activation (June 2026) — root.AI / root.Domains required.
-	// PR-SCRIPTCONTRACT-COMPOSITION-WIRE (July 2026): root.Drive added to
-	// the canonical guard. Without this guard, a nil Drive bundle would
-	// panic with nil-pointer deref instead of failing-closed
-	// (godlike/07 fail-fast-at-input).
-	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil || root.Drive == nil {
+	_ = ctx
+	if cfg == nil {
+		return fmt.Errorf("wireScriptFlow: config is required")
+	}
+	cap := cfg.Scripts.Capability
+	if !cap.Enabled {
+		log.Info("wireScriptFlow: script capability disabled by configuration")
 		return nil
 	}
 
-	if root.AI.ScriptEngine == nil {
-		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
+	// Fail-closed dependency checks. In production a missing required
+	// dependency aborts the boot. In dev mode (DeliveryInsecureDev) the
+	// module is disabled explicitly and no route is registered.
+	aiPresent := root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptEngine != nil
+	audioPresent := root.Domains != nil && root.Domains.AudioProcessor != nil
+	if cap.RequireAI {
+		if !aiPresent {
+			if cfg.Security.DeliveryInsecureDev {
+				log.Warn("wireScriptFlow: script capability disabled in dev — missing AI bundle (ScriptEngine)")
+				return nil
+			}
+			return fmt.Errorf("wireScriptFlow: required AI bundle (ScriptEngine) is missing")
+		}
+		if !audioPresent {
+			if cfg.Security.DeliveryInsecureDev {
+				log.Warn("wireScriptFlow: script capability disabled in dev — missing audio processor")
+				return nil
+			}
+			return fmt.Errorf("wireScriptFlow: required audio processor is missing")
+		}
+	} else if !aiPresent || !audioPresent {
+		log.Warn("wireScriptFlow: AI bundle incomplete — disabling ScriptFlow without registering routes")
 		return nil
+	}
+	if cap.RequireDrive {
+		if root.Drive == nil {
+			if cfg.Security.DeliveryInsecureDev {
+				log.Warn("wireScriptFlow: script capability disabled in dev — missing Drive bundle")
+				return nil
+			}
+			return fmt.Errorf("wireScriptFlow: required Drive bundle is missing")
+		}
+	}
+	if cap.RequireDatabase {
+		if root.DB == nil {
+			if cfg.Security.DeliveryInsecureDev {
+				log.Warn("wireScriptFlow: script capability disabled in dev — missing database")
+				return nil
+			}
+			return fmt.Errorf("wireScriptFlow: required database is missing")
+		}
 	}
 
 	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
 	// Constructs the VoiceoverGenerator adapter from the TTS audio processor
 	// when available. Used by the script generation runner's Stage 4
 	// (GENERATING_VOICEOVERS).
-	if root.Domains.AudioProcessor != nil {
+	if root.Domains != nil && root.Domains.AudioProcessor != nil {
 		voPath := cfg.Storage.VoiceoversPath()
 		root.AI.ScriptVoiceoverGenerator = NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
 		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired",
@@ -204,7 +235,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 
 	// ── Set metadata model ─────────────────────────────────────────────
-	if root.AI.ScriptGen != nil {
+	if root.AI != nil && root.AI.ScriptGen != nil {
 		root.AI.ScriptGen.SetMetadataModel(metaModel)
 	}
 
@@ -230,9 +261,17 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if err != nil {
 		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
 	}
+	remotionURL := cfg.Scripts.Capability.RemotionURL
+	if remotionURL == "" {
+		remotionURL = "http://127.0.0.1:4317"
+	}
+	renderTimeoutSeconds := cfg.Scripts.Capability.RenderTimeoutSeconds
+	if renderTimeoutSeconds <= 0 {
+		renderTimeoutSeconds = 1800
+	}
 	remotionRenderer := &appvideo.HTTPRenderer{
-		BaseURL: remotionBaseURL(),
-		Client:  &http.Client{Timeout: 30 * time.Minute},
+		BaseURL: remotionURL,
+		Client:  &http.Client{Timeout: time.Duration(renderTimeoutSeconds) * time.Second},
 	}
 	var drivePublisher delivery.Publisher
 	if root.Drive != nil {

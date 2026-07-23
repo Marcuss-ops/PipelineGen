@@ -1,5 +1,34 @@
 package config
 
+// ScriptCapabilityConfig gates the ScriptFlow module wiring and the
+// Remotion shorts renderer. In production (DeliveryInsecureDev=false) a
+// required dependency that is missing aborts the boot. In development
+// mode the module is disabled explicitly and no route is registered.
+type ScriptCapabilityConfig struct {
+	// Enabled turns the ScriptFlow module on. Default true so existing
+	// deployments keep working; set to false to disable explicitly.
+	Enabled bool `yaml:"enabled" env:"VELOX_SCRIPTS_CAPABILITY_ENABLED" default:"true"`
+
+	// RequireAI makes a non-nil AI bundle (ScriptEngine) mandatory.
+	RequireAI bool `yaml:"require_ai" env:"VELOX_SCRIPTS_REQUIRE_AI" default:"true"`
+
+	// RequireDrive makes a non-nil Drive bundle mandatory.
+	RequireDrive bool `yaml:"require_drive" env:"VELOX_SCRIPTS_REQUIRE_DRIVE" default:"true"`
+
+	// RequireDatabase makes a non-nil SQLite DB mandatory. When false,
+	// the script-generation run repository is skipped, but routes that
+	// depend on it may return errors at runtime.
+	RequireDatabase bool `yaml:"require_database" env:"VELOX_SCRIPTS_REQUIRE_DATABASE" default:"true"`
+
+	// RemotionURL is the base URL of the Remotion renderer sidecar.
+	// Falls back to http://127.0.0.1:4317 when empty.
+	RemotionURL string `yaml:"remotion_url" env:"VELOX_REMOTION_URL" default:""`
+
+	// RenderTimeoutSeconds is the HTTP client timeout for Remotion render
+	// requests. Default 1800 (30 minutes).
+	RenderTimeoutSeconds int `yaml:"render_timeout_seconds" env:"VELOX_SCRIPTS_RENDER_TIMEOUT_SECONDS" default:"1800"`
+}
+
 // ScriptsConfig holds tunables for the unified script generation endpoints
 // (POST /api/script/generate and batch generation).
 //
@@ -123,6 +152,9 @@ type ScriptsConfig struct {
 	// while preventing pathological payloads from poisoning the
 	// engine prompt. PR-CS-1 / FASE 6 (DoD #8).
 	MaxSegmentsCap int `yaml:"max_segments_cap" env:"VELOX_SCRIPTS_MAX_SEGMENTS_CAP" default:"50"`
+
+	// Capability gates ScriptFlow wiring and the Remotion shorts renderer.
+	Capability ScriptCapabilityConfig `yaml:"capability"`
 }
 
 // WithDefaults returns a copy of ScriptsConfig with zero-values replaced by
@@ -198,6 +230,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.MaxSegmentsCap <= 0 {
 		s.MaxSegmentsCap = 50
+	}
+	if s.Capability.RenderTimeoutSeconds <= 0 {
+		s.Capability.RenderTimeoutSeconds = 1800
 	}
 	return s
 }
