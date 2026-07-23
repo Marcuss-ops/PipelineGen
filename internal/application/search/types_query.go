@@ -21,6 +21,8 @@
 // (godlike/06 SSOT — every sentinel in one place).
 package search
 
+import "strings"
+
 // ── Capability enum ────────────────────────────────────────────────
 //
 // Capability advertises which MediaTypes a SearchBackend serves.
@@ -44,6 +46,21 @@ const (
 	SearchModeANN    SearchMode = "ann"
 	SearchModeHybrid SearchMode = "hybrid"
 )
+
+// ParseMode maps a wire mode string to a typed SearchMode. Empty or
+// unknown values default to SearchModeHybrid. This keeps mode mapping
+// in the canonical search package so transport code does not hardcode
+// SearchModeANN.
+func ParseMode(s string) SearchMode {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case string(SearchModeANN):
+		return SearchModeANN
+	case string(SearchModeHybrid):
+		return SearchModeHybrid
+	default:
+		return SearchModeHybrid
+	}
+}
 
 // ── Filters ─────────────────────────────────────────────────────────
 //

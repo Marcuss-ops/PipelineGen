@@ -101,11 +101,8 @@ func (h *Handler) Search(c *gin.Context) {
 	}
 	limit := defaults.Int(req.Limit, search.DefaultLimit)
 
-	// Parse mode: "" / "hybrid" → hybrid; "ann" → ANN
-	mode := search.SearchModeHybrid
-	if strings.ToLower(strings.TrimSpace(req.Mode)) == "ann" {
-		mode = search.SearchModeANN
-	}
+	// Parse mode from the wire value; unknown/empty defaults to hybrid.
+	mode := search.ParseMode(req.Mode)
 
 	// PR-SEARCH-HANDLER-MOUNT (July 2026): the /api/media/search
 	// endpoint is admin-authenticated. Set IsAdmin=true so the

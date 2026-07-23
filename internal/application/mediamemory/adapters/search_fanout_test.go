@@ -29,6 +29,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // fakeSearchFanOut satisfies search.SearchFanOut (Search + Stats)
@@ -79,6 +80,9 @@ func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
 		MediaTypes: []string{"video", "image"},
 		Sources:    []string{"artlist"},
 		Limit:      25,
+		SearchPolicy: media.ResolutionSearchPolicy{
+			Mode: media.SearchModeANN,
+		},
 	})
 	require.NoError(t, err)
 
