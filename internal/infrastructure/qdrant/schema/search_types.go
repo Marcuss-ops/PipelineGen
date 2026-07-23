@@ -141,6 +141,9 @@ type ScrollResult struct {
 type ScrollPoint struct {
 	ID      string         `json:"id"`
 	Payload map[string]any `json:"payload"`
+	// Vector carries the stored vector(s) when the scroll request asks
+	// for them (with_vector=true). It is nil/empty for payload-only scrolls.
+	Vector map[string]any `json:"vector,omitempty"`
 }
 
 // ── Verifier ports (used by ReindexVerifier + SwitchReport gaps) ─────

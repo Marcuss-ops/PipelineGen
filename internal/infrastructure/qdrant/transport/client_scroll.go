@@ -27,10 +27,21 @@ import (
 // QDRANT-003 (June 2026): used by VerifyReindex to compare Qdrant point
 // IDs against SQLite assets for missing/orphan detection.
 func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int, filter map[string]any) (*schema.ScrollResult, error) {
+	return c.scroll(ctx, collection, offset, limit, filter, false)
+}
+
+// ScrollPointsWithVector is like ScrollPoints but returns the vector(s)
+// of each point alongside the payload. Used by diagnostics and the
+// operator console to verify the dimensionality of stored embeddings.
+func (c *Client) ScrollPointsWithVector(ctx context.Context, collection string, offset string, limit int, filter map[string]any) (*schema.ScrollResult, error) {
+	return c.scroll(ctx, collection, offset, limit, filter, true)
+}
+
+func (c *Client) scroll(ctx context.Context, collection string, offset string, limit int, filter map[string]any, withVector bool) (*schema.ScrollResult, error) {
 	body := map[string]any{
 		"limit":        limit,
 		"with_payload": true,
-		"with_vector":  false,
+		"with_vector":  withVector,
 	}
 	if offset != "" {
 		body["offset"] = offset
@@ -56,6 +67,7 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	type scrollPoint struct {
 		ID      string         `json:"id"`
 		Payload map[string]any `json:"payload,omitempty"`
+		Vector  map[string]any `json:"vector,omitempty"`
 	}
 	var result struct {
 		Result struct {
@@ -72,6 +84,7 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 		points[i] = schema.ScrollPoint{
 			ID:      p.ID,
 			Payload: p.Payload,
+			Vector:  p.Vector,
 		}
 	}
 
