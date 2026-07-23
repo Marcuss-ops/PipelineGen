@@ -466,19 +466,32 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 	//    gate tests present in the package. The relative target "."
 	//    resolves to the current package's directory (the test runs
 	//    with the package dir as CWD by `go test` convention).
-	//    10s timeout: `go test -list` is sub-second in normal
-	//    conditions; 10s is generous enough to survive cold caches.
-	//    Fails closed if `go` is not on PATH or the subprocess errors.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "go", "test", "-list", "^TestGate", ".")
-	// CombinedOutput (not Output) so stderr is captured: when the
-	// package has build errors, the error message lands on stderr
-	// and is essential for debugging. The `require.NoError` failure
-	// message must include both streams to be actionable.
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "failed to run 'go test -list ^TestGate .' — is 'go' on PATH? Combined output: %s", string(out))
+	//
+	//    Under heavy parallel load (e.g. `go test -race ./...`) the
+	//    subprocess can be killed by the OS/OOM killer before it gets
+	//    a chance to start. We retry a small number of times with a
+	//    generous timeout so a transient resource squeeze does not
+	//    fail the meta-test. The fallback panic message still surfaces
+	//    the combined stderr when the command ultimately fails.
+	var out []byte
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cmd := exec.CommandContext(ctx, "go", "test", "-list", "^TestGate", ".")
+		// CombinedOutput (not Output) so stderr is captured: when the
+		// package has build errors, the error message lands on stderr
+		// and is essential for debugging. The `require.NoError` failure
+		// message must include both streams to be actionable.
+		out, err = cmd.CombinedOutput()
+		cancel()
+		if err == nil {
+			break
+		}
+		if attempt < 2 {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	require.NoError(t, err, "failed to run 'go test -list ^TestGate .' after retries — is 'go' on PATH? Combined output: %s", string(out))
 
 	// 3. Parse runtime reality: extract lines starting with "TestGate"
 	//    (the "ok ... 0.001s" status line is filtered out by prefix).

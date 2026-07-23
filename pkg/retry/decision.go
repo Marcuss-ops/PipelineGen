@@ -49,8 +49,8 @@
 //
 //   type Classifier func(err error) (RetryDecision, bool)
 //
-//   Adapters register their classifiers at init via RegisterClassifier.
-//   Each classifier inspects the err via errors.As / type-assert against
+//   Adapters register their Classifier in a ClassifierRegistry. Each
+//   classifier inspects the err via errors.As / type-assert against
 //   the adapter's concrete error type and returns a populated
 //   RetryDecision + a bool indicating whether THIS classifier claims
 //   the err. The first match wins (walk order = registration order).
@@ -93,13 +93,6 @@
 // in Push 6.1.2):
 //
 //     func classifyGoogleAPIErr(err error) (retry.RetryDecision, bool) {
-//         // classifier function body
-//     }
-//
-//     // At bootstrap:
-//     reg := retry.NewClassifierRegistry()
-//     reg.Register(classifyGoogleAPIErr)
-//     reg.Seal()
 //         var gerr *googleapi.Error
 //         if !errors.As(err, &gerr) { return retry.RetryDecision{}, false }
 //         code := gerr.Code
@@ -120,6 +113,11 @@
 //         }
 //         return retry.RetryDecision{}, false
 //     }
+//
+//     // At bootstrap:
+//     reg := retry.NewClassifierRegistry()
+//     reg.Register(classifyGoogleAPIErr)
+//     reg.Seal()
 //
 // Caller-side (e.g. drive uploader):
 //
