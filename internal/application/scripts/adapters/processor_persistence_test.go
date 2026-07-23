@@ -298,8 +298,8 @@ func TestPersistence_FreshInsert(t *testing.T) {
 // a second SaveScript call. PR 3: the AlreadyPersisted flag is gone
 // — the persistence layer logs INFO on hit instead. The flag's
 // absence is enforced by compile-time: the PostProcessResult
-// struct in postprocessor_registry.go has no AlreadyPersisted
-// field, so the test cannot reference one even by accident.
+// struct has no AlreadyPersisted field, so the test cannot reference
+// one even by accident.
 //
 // PR 6: the seed record's idempotency key is set on the dedicated
 // IdempotencyKey field (not the pre-PR-6 Template slot).
@@ -417,9 +417,8 @@ func TestPersistence_PropagatesWordCountAndModelUsed(t *testing.T) {
 	assert.Equal(t, "qwen2.5:14b", repo.lastRec.ModelUsed)
 }
 
-// _ ensures the type reference stays auditable for any future
-// continuation — the AlreadyPersisted field is compile-time absent
-// from PostProcessResult (see postprocessor_registry.go).
+// _ ensures the type reference stays auditable — the AlreadyPersisted
+// field is compile-time absent from PostProcessResult.
 var _ = PostProcessResult{}
 
 func baseProcessInput() ProcessInput {

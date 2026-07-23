@@ -1,6 +1,4 @@
 // Package adapters — postprocessor_voiceover.go: voiceover-related types.
-//
-// Extracted from postprocessor_registry.go (July 2026).
 // Owns: SceneVoiceover.
 package adapters
 

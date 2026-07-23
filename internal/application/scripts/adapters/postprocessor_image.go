@@ -1,6 +1,4 @@
 // Package adapters — postprocessor_image.go: image-related types.
-//
-// Extracted from postprocessor_registry.go (July 2026).
 // Owns: SceneImage.
 package adapters
 
