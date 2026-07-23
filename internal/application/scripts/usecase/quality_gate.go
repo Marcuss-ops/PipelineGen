@@ -31,6 +31,18 @@ var qualityGateItalianSignals = map[string]struct{}{
 	"il": {}, "la": {}, "di": {}, "e": {}, "che": {}, "non": {}, "per": {}, "con": {}, "su": {}, "una": {},
 }
 
+var qualityGateSpanishSignals = map[string]struct{}{
+	"el": {}, "la": {}, "de": {}, "y": {}, "que": {}, "no": {}, "por": {}, "con": {}, "sobre": {}, "una": {},
+}
+
+var qualityGateFrenchSignals = map[string]struct{}{
+	"le": {}, "la": {}, "de": {}, "et": {}, "que": {}, "non": {}, "pour": {}, "avec": {}, "sur": {}, "une": {},
+}
+
+var qualityGateGermanSignals = map[string]struct{}{
+	"der": {}, "die": {}, "das": {}, "und": {}, "zu": {}, "in": {}, "von": {}, "mit": {}, "auf": {}, "für": {},
+}
+
 var qualityGateVerbSuffixes = []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
 
 // Quality thresholds.
@@ -370,16 +382,28 @@ func detectLanguage(text string) string {
 	if len(tokens) == 0 {
 		return ""
 	}
-	enScore := languageMatchScore(tokens, qualityGateEnglishSignals)
-	itScore := languageMatchScore(tokens, qualityGateItalianSignals)
-	switch {
-	case enScore == 0 && itScore == 0:
-		return ""
-	case itScore > enScore:
-		return "it"
-	default:
-		return "en"
+
+	scores := []struct {
+		code  string
+		score float64
+	}{
+		{"en", languageMatchScore(tokens, qualityGateEnglishSignals)},
+		{"it", languageMatchScore(tokens, qualityGateItalianSignals)},
+		{"es", languageMatchScore(tokens, qualityGateSpanishSignals)},
+		{"fr", languageMatchScore(tokens, qualityGateFrenchSignals)},
+		{"de", languageMatchScore(tokens, qualityGateGermanSignals)},
 	}
+
+	maxScore := 0.0
+	maxCode := ""
+	for _, s := range scores {
+		if s.score > maxScore {
+			maxScore = s.score
+			maxCode = s.code
+		}
+	}
+
+	return maxCode
 }
 
 // languageMatchScore returns the ratio of stop words from a language
