@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 )
 
 // IntentResolverRegistry dispatches intent resolution to a
@@ -16,16 +17,26 @@ type IntentResolverRegistry struct {
 }
 
 // NewDefaultResolver returns the canonical intent resolver: a registry
-// wired with English, Italian and a multilingual fallback. It keeps
-// the same constructor name so existing callers and tests continue to
-// work without modification.
+// wired with English, Italian and a multilingual fallback. It uses the
+// global default lexicon registry (linguistics.DefaultLexicon()) to
+// populate per-language stopwords, verb morphology and entity filters.
+//
+// When a custom lexicon is needed (e.g. in tests or when the global
+// default has not been set yet), use NewResolverWithLexicon instead.
 func NewDefaultResolver() VisualIntentResolver {
+	return NewResolverWithLexicon(linguistics.DefaultLexicon())
+}
+
+// NewResolverWithLexicon returns an intent resolver registry populated
+// with profiles from the given lexicon. This is the canonical constructor
+// used by the composition root.
+func NewResolverWithLexicon(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	return &IntentResolverRegistry{
 		resolvers: map[string]VisualIntentResolver{
-			"en": newEnglishResolver(),
-			"it": newItalianResolver(),
+			"en": newEnglishResolver(lex),
+			"it": newItalianResolver(lex),
 		},
-		fallback: newFallbackResolver(),
+		fallback: newFallbackResolver(lex),
 	}
 }
 
@@ -182,46 +193,46 @@ func looksLikeVerb(word string, visualVerbs map[string]struct{}, suffixes []stri
 	return false
 }
 
-func newEnglishResolver() VisualIntentResolver {
+func newEnglishResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	return &baseResolver{
 		name: "en",
 		config: langConfig{
-			StopWords:         englishStopWords,
+			StopWords:         lex.StopWords("en"),
 			NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "never": {}, "neither": {}},
 			VisualVerbs: map[string]struct{}{
 				"watch": {}, "observe": {}, "look": {}, "see": {}, "study": {},
 				"build": {}, "construct": {}, "walk": {}, "run": {}, "jump": {},
 				"move": {}, "push": {}, "pull": {}, "enter": {}, "leave": {},
 			},
-			VerbSuffixes: []string{"ing", "ed"},
+			VerbSuffixes: lex.VerbSuffixes("en"),
 		},
 	}
 }
 
-func newItalianResolver() VisualIntentResolver {
+func newItalianResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	return &baseResolver{
 		name: "it",
 		config: langConfig{
-			StopWords:         italianStopWords,
+			StopWords:         lex.StopWords("it"),
 			NegativeParticles: map[string]struct{}{"non": {}, "no": {}, "mai": {}, "ne": {}},
 			VisualVerbs: map[string]struct{}{
 				"guardare": {}, "osservare": {}, "vedere": {}, "studiare": {},
 				"costruire": {}, "camminare": {}, "correre": {}, "saltare": {},
 				"muovere": {}, "spingere": {}, "tirare": {}, "entrare": {}, "uscire": {},
 			},
-			VerbSuffixes: []string{"are", "ere", "ire", "ando", "endo", "ato", "uto", "ito", "avano", "evano", "ivano"},
+			VerbSuffixes: lex.VerbSuffixes("it"),
 		},
 	}
 }
 
-func newFallbackResolver() VisualIntentResolver {
+func newFallbackResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	return &baseResolver{
 		name: "fallback",
 		config: langConfig{
-			StopWords:         fallbackStopWords,
+			StopWords:         lex.StopWords("fallback"),
 			NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "non": {}, "never": {}, "mai": {}},
 			VisualVerbs:       map[string]struct{}{},
-			VerbSuffixes:      []string{"ing", "ed", "ando", "endo", "ato", "ito"},
+			VerbSuffixes:      lex.VerbSuffixes("fallback"),
 		},
 	}
 }

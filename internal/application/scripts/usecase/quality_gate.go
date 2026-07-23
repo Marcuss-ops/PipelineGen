@@ -19,8 +19,15 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+// defaultLexicon is the package-level reference to the global lexicon
+// registry. It is lazily initialised via linguistics.DefaultLexicon().
+func qualityGateLexicon() *linguistics.LexiconRegistry {
+	return linguistics.DefaultLexicon()
+}
 
 // Quality thresholds.
 const (
@@ -352,18 +359,24 @@ func countUnsupportedClaims(result *scriptpkg.GenerationResult, sourceText strin
 }
 
 // detectLanguage returns the ISO-639-1 language code with the highest
-// stop-word overlap. It uses a small static dictionary so the pipeline
-// stays lightweight and dependency-free. When no stop words match at
-// all, it returns an empty string to avoid non-deterministic map-order
-// dependence.
+// stop-word overlap. It uses the LexiconRegistry to load per-language
+// stop-word sets from config/lexicons/. When no stop words match at
+// all, it returns an empty string.
 func detectLanguage(text string) string {
 	tokens := tokenize(text)
 	if len(tokens) == 0 {
 		return ""
 	}
+	lex := qualityGateLexicon()
+	// Known language codes to probe. The registry may have more or fewer.
+	langs := []string{"it", "en", "es", "fr", "de"}
 	best := ""
 	bestScore := 0.0
-	for lang, words := range stopWords {
+	for _, lang := range langs {
+		words := lex.StopWords(lang)
+		if len(words) == 0 {
+			continue
+		}
 		score := languageMatchScore(tokens, words)
 		if score > bestScore {
 			bestScore = score
@@ -391,68 +404,17 @@ func languageMatchScore(tokens []string, stopWords map[string]struct{}) float64 
 	return float64(seen) / float64(len(tokens))
 }
 
-// filterStopWords removes common stop words from a token list.
+// filterStopWords removes common stop words from a token list. It uses
+// the LexiconRegistry's fallback stop-word set (loaded from
+// config/lexicons/) so it works for any language.
 func filterStopWords(tokens []string) []string {
+	lex := qualityGateLexicon()
+	fallback := lex.StopWords("fallback")
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
-		if !isStopWord(t) {
+		if _, ok := fallback[t]; !ok {
 			out = append(out, t)
 		}
 	}
 	return out
-}
-
-// isStopWord reports whether a token is a common stop word across the
-// supported languages.
-func isStopWord(token string) bool {
-	_, ok := allStopWords[token]
-	return ok
-}
-
-// stopWords maps ISO-639-1 language codes to a small set of common stop
-// words. The detector picks the language with the highest overlap.
-var stopWords = map[string]map[string]struct{}{
-	"it": {
-		"il": {}, "la": {}, "lo": {}, "i": {}, "le": {}, "un": {}, "una": {},
-		"di": {}, "a": {}, "da": {}, "in": {}, "con": {}, "su": {}, "per": {},
-		"tra": {}, "fra": {}, "e": {}, "o": {}, "ma": {}, "se": {}, "che": {},
-		"come": {}, "questo": {}, "questa": {}, "sono": {}, "è": {}, "del": {},
-	},
-	"en": {
-		"the": {}, "a": {}, "an": {}, "is": {}, "are": {}, "was": {}, "were": {},
-		"be": {}, "been": {}, "being": {}, "have": {}, "has": {}, "had": {},
-		"do": {}, "does": {}, "did": {}, "will": {}, "would": {}, "could": {},
-		"should": {}, "of": {}, "in": {}, "on": {}, "at": {}, "to": {}, "for": {},
-		"and": {}, "or": {}, "but": {}, "with": {}, "from": {}, "this": {},
-	},
-	"es": {
-		"el": {}, "la": {}, "los": {}, "las": {}, "un": {}, "una": {}, "unos": {},
-		"unas": {}, "de": {}, "a": {}, "en": {}, "con": {}, "por": {}, "para": {},
-		"sobre": {}, "y": {}, "o": {}, "pero": {}, "si": {}, "que": {}, "como": {},
-		"este": {}, "esta": {}, "son": {}, "es": {}, "del": {},
-	},
-	"fr": {
-		"le": {}, "la": {}, "les": {}, "un": {}, "une": {}, "des": {}, "du": {},
-		"de": {}, "à": {}, "en": {}, "par": {}, "pour": {}, "sur": {}, "et": {},
-		"ou": {}, "mais": {}, "si": {}, "que": {}, "comme": {}, "ce": {}, "cette": {},
-		"sont": {}, "est": {},
-	},
-	"de": {
-		"der": {}, "die": {}, "das": {}, "ein": {}, "eine": {}, "einen": {},
-		"von": {}, "zu": {}, "in": {}, "mit": {}, "für": {}, "auf": {}, "und": {},
-		"oder": {}, "aber": {}, "wenn": {}, "dass": {}, "wie": {}, "dieser": {},
-		"diese": {}, "sind": {}, "ist": {},
-	},
-}
-
-// allStopWords is the union of all stop words for filtering.
-var allStopWords map[string]struct{}
-
-func init() {
-	allStopWords = make(map[string]struct{})
-	for _, words := range stopWords {
-		for w := range words {
-			allStopWords[w] = struct{}{}
-		}
-	}
 }

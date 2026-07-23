@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -96,47 +97,15 @@ func filterProperNouns(segment string, items []string) []string {
 	return uniqueLocalStrings(out)
 }
 
-var sentenceStartStopWords = map[string]struct{}{
-	"the": {}, "this": {}, "that": {}, "these": {}, "those": {},
-	"when": {}, "where": {}, "why": {}, "how": {}, "what": {}, "which": {}, "who": {},
-	"yet": {}, "still": {}, "then": {}, "now": {}, "here": {}, "there": {},
-	"subsequent": {}, "subsequently": {}, "previous": {}, "previously": {},
-	"following": {}, "next": {}, "before": {}, "after": {}, "during": {},
-	"mount": {}, "mountains": {}, "river": {}, "ocean": {}, "sea": {},
-	"august": {}, "september": {}, "october": {}, "november": {}, "december": {},
-	"january": {}, "february": {}, "march": {}, "april": {}, "may": {}, "june": {}, "july": {},
-	"monday": {}, "tuesday": {}, "wednesday": {}, "thursday": {}, "friday": {}, "saturday": {}, "sunday": {},
-	"north": {}, "south": {}, "east": {}, "west": {},
-	"first": {}, "second": {}, "third": {}, "last": {},
-	"one": {}, "two": {}, "three": {}, "four": {}, "five": {},
-	"many": {}, "most": {}, "some": {}, "all": {}, "each": {}, "every": {},
-	"such": {}, "other": {}, "another": {},
-	"behind": {}, "beneath": {}, "beyond": {}, "above": {}, "below": {}, "within": {}, "outside": {},
-	"despite": {}, "although": {}, "because": {}, "since": {}, "unless": {}, "while": {},
-	"through": {}, "across": {}, "around": {}, "along": {}, "between": {},
-	"again": {}, "also": {}, "perhaps": {}, "possibly": {}, "indeed": {},
-	"though": {}, "however": {}, "moreover": {}, "furthermore": {}, "nevertheless": {},
-	"meanwhile": {}, "otherwise": {}, "instead": {}, "thus": {}, "therefore": {},
-	"hence": {}, "consequently": {}, "accordingly": {}, "similarly": {},
-	"likewise": {}, "notably": {}, "importantly": {}, "surprisingly": {},
-	"finally": {}, "ultimately": {}, "eventually": {}, "gradually": {},
-	"essentially": {}, "basically": {}, "primarily": {}, "mainly": {},
-	"particularly": {}, "especially": {}, "specifically": {}, "generally": {},
-	"typically": {}, "usually": {}, "normally": {}, "commonly": {},
-	"widely": {}, "deeply": {}, "greatly": {}, "strongly": {}, "highly": {},
-	"western": {}, "eastern": {}, "northern": {}, "southern": {},
-	"ancient": {}, "modern": {}, "new": {}, "old": {}, "young": {},
-	"great": {}, "small": {}, "large": {}, "long": {}, "short": {},
-	"law": {}, "laws": {}, "legal": {}, "religion": {}, "religions": {},
-	"culture": {}, "cultures": {}, "society": {}, "societies": {},
-	"empire": {}, "kingdom": {}, "republic": {}, "civilization": {},
-	"people": {}, "nations": {}, "peoples": {}, "world": {}, "history": {},
-}
+// sentenceStartWords is evaluated at use time via the
+// LexiconRegistry so it always reflects the current global
+// default, regardless of init ordering.
 
 func isSentenceStartCapitalizedOnly(word string, segLower string) bool {
 	lower := strings.ToLower(word)
-	_, isStop := sentenceStartStopWords[lower]
-	if !isStop {
+	lex := linguistics.DefaultLexicon()
+	fws := lex.FunctionWords("en")
+	if _, ok := fws[lower]; !ok {
 		return false
 	}
 	capCount := strings.Count(segLower, lower)
@@ -248,47 +217,42 @@ func filterArtlistKeywords(segment string, items []string) []string {
 	return candidates
 }
 
-// isFunctionWord returns true for Italian/English function words that should NOT
-// start an artlist phrase (prepositions, articles, pronouns, possessive adjectives).
+// isFunctionWord returns true when word is a grammatical function word
+// for the detected language. It delegates to the LexiconRegistry's
+// FunctionWords profile, which is populated from config/lexicons/.
+//
+// The language is inferred from the text (English by default when
+// detection is unavailable).
 func isFunctionWord(word string) bool {
-	functionWords := map[string]struct{}{
-		"il": {}, "lo": {}, "la": {}, "i": {}, "gli": {}, "le": {},
-		"un": {}, "uno": {}, "una": {},
-		"del": {}, "dello": {}, "della": {}, "dei": {}, "degli": {}, "delle": {},
-		"al": {}, "allo": {}, "alla": {}, "ai": {}, "agli": {}, "alle": {},
-		"dal": {}, "dallo": {}, "dalla": {}, "dai": {}, "dagli": {}, "dalle": {},
-		"nel": {}, "nello": {}, "nella": {}, "nei": {}, "negli": {}, "nelle": {},
-		"sul": {}, "sullo": {}, "sulla": {}, "sui": {}, "sugli": {}, "sulle": {},
-		"col": {}, "collo": {}, "colla": {}, "coi": {}, "cogli": {}, "colle": {},
-		"pel": {}, "pello": {}, "pella": {}, "pei": {}, "pegli": {}, "pelle": {},
-		"su": {}, "per": {}, "con": {}, "tra": {}, "fra": {}, "di": {}, "da": {}, "che": {}, "chi": {},
-		"questo": {}, "questa": {}, "questi": {}, "queste": {}, "quest'": {},
-		"quello": {}, "quella": {}, "quelli": {}, "quelle": {},
-		"suo": {}, "sua": {}, "suoi": {}, "sue": {},
-		"mio": {}, "mia": {}, "tuo": {}, "tua": {}, "nostro": {}, "nostra": {},
-		"the": {}, "an": {}, "of": {}, "on": {}, "at": {}, "by": {}, "for": {}, "with": {}, "from": {}, "to": {}, "its": {}, "his": {}, "her": {}, "their": {},
+	lex := linguistics.DefaultLexicon()
+	// Try English and Italian function words; in a production setting
+	// the call site would pass the detected language.
+	if _, ok := lex.FunctionWords("en")[word]; ok {
+		return true
 	}
-	_, ok := functionWords[word]
-	return ok
+	if _, ok := lex.FunctionWords("it")[word]; ok {
+		return true
+	}
+	return false
 }
 
 // looksLikeVerbBigram checks if ALL words in the phrase look like verb forms
-// (ending in common Italian verb suffixes). Verb-only bigrams from the text
+// (ending in common verb suffixes). Verb-only bigrams from the text
 // are not visual concepts and should be rejected.
+// Verb suffixes are loaded from the LexiconRegistry (config/lexicons/).
 func looksLikeVerbBigram(words []string) bool {
 	if len(words) < 2 {
 		return false
 	}
-	verbSuffixes := []string{
-		"are", "ere", "ire", "ano", "ono", "ino",
-		"ato", "uto", "ito", "ando", "endo",
-		"ava", "eva", "iva", "avo", "evo", "ivo",
-		"asse", "esse", "isse",
+	lex := linguistics.DefaultLexicon()
+	suffixes := lex.VerbSuffixes("it")
+	if len(suffixes) == 0 {
+		return false
 	}
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)
-		for _, suffix := range verbSuffixes {
+		for _, suffix := range suffixes {
 			if strings.HasSuffix(lower, suffix) {
 				verbCount++
 				break
@@ -376,6 +340,7 @@ func removeSlidingWindowChains(items []string) []string {
 
 // looksLikeTextBigram checks if a 2-word phrase looks like it was extracted
 // directly as adjacent words from text rather than being a deliberate visual concept.
+// Verb suffixes and function words are loaded from the LexiconRegistry.
 func looksLikeTextBigram(words []string) bool {
 	if len(words) != 2 {
 		return false
@@ -383,15 +348,15 @@ func looksLikeTextBigram(words []string) bool {
 	if isFunctionWord(words[0]) || isFunctionWord(words[1]) {
 		return true
 	}
-	verbSuffixes := []string{
-		"are", "ere", "ire", "ano", "ono", "ino",
-		"ato", "uto", "ito", "ando", "endo",
-		"ava", "eva", "iva", "avo", "evo", "ivo",
+	lex := linguistics.DefaultLexicon()
+	suffixes := lex.VerbSuffixes("it")
+	if len(suffixes) == 0 {
+		return false
 	}
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)
-		for _, suffix := range verbSuffixes {
+		for _, suffix := range suffixes {
 			if strings.HasSuffix(lower, suffix) {
 				verbCount++
 				break

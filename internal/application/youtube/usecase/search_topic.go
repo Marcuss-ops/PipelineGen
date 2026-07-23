@@ -23,6 +23,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -374,12 +375,19 @@ func meaningfulTokens(text string) []string {
 }
 
 // isStopWord returns true when s is a noise token that shouldn't affect
-// the similarity score.
+// the similarity score. It delegates to the LexiconRegistry's fallback
+// stop-word set (loaded from config/lexicons/).
 func isStopWord(s string) bool {
-	switch s {
-	case "the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "with", "by", "from", "at", "about", "video", "clip":
+	lex := linguistics.DefaultLexicon()
+	_, ok := lex.StopWords("fallback")[s]
+	if ok {
 		return true
-	default:
-		return false
 	}
+	// Also check known YouTube noise tokens that are not in the standard
+	// stop-word list but should be ignored for topic similarity.
+	switch s {
+	case "video", "clip":
+		return true
+	}
+	return false
 }

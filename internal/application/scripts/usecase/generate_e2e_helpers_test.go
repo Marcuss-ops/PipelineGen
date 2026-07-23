@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -145,6 +146,14 @@ func canonicalSceneJSON(numScenes int, clipIDs []string, sourceText string) stri
 	)
 }
 
+// stopWordTest reports whether a token is a common stop word, using
+// the global LexiconRegistry fallback set.
+func stopWordTest(token string) bool {
+	lex := linguistics.DefaultLexicon()
+	_, ok := lex.StopWords("fallback")[token]
+	return ok
+}
+
 // buildOverlappingText returns a short sentence whose words are drawn
 // from sourceText so the quality gate's source_text coverage stays high.
 // If sourceText is empty, a safe default is returned.
@@ -158,7 +167,7 @@ func buildOverlappingText(numScenes int, sourceText string) string {
 	tokens := tokenize(sourceText)
 	var words []string
 	for _, t := range tokens {
-		if !isStopWord(t) {
+		if !stopWordTest(t) {
 			words = append(words, t)
 		}
 	}
