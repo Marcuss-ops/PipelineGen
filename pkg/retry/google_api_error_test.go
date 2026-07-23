@@ -340,6 +340,7 @@ func TestDoWithValue_HonorsRetryAfter(t *testing.T) {
 			MaxAttempts:    3,
 			InitialBackoff: 1 * time.Second,
 			JitterFraction: 0, // deterministic for assertion
+			DisableJitter:  true,
 			IsRetryable:    isRetryableAlways,
 		})
 		require.NoError(t, err)
@@ -368,6 +369,7 @@ func TestDoWithValue_HonorsRetryAfter(t *testing.T) {
 			MaxAttempts:    3,
 			InitialBackoff: 100 * time.Millisecond, // computed would be 100ms
 			JitterFraction: 0,
+			DisableJitter:  true,
 			IsRetryable:    isRetryableAlways,
 		})
 		callElapsed := time.Since(callStart)
@@ -398,6 +400,7 @@ func TestDoWithValue_HonorsRetryAfter(t *testing.T) {
 			MaxAttempts:    3,
 			InitialBackoff: 500 * time.Millisecond, // computed backoff dominates
 			JitterFraction: 0,
+			DisableJitter:  true,
 			IsRetryable:    isRetryableAlways,
 		})
 		require.Error(t, err)
@@ -437,6 +440,7 @@ func TestDoWithValue_HonorsRetryAfter_ThroughWrappedError(t *testing.T) {
 		MaxAttempts:    3,
 		InitialBackoff: 100 * time.Millisecond,
 		JitterFraction: 0,
+		DisableJitter:  true,
 		// Fase 6(a) Push 6.1: explicit IsRetryable required (spec b:
 		// IsRetryable==nil MUST fail-closed, no retry-always default).
 		IsRetryable: isRetryableAlways,

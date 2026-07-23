@@ -154,7 +154,8 @@ func TestStock_RetryPolicy_YTDLPTimeout_RetriesWithBackoff(t *testing.T) {
 		MaxAttempts:    3,
 		InitialBackoff: 10 * time.Millisecond, // nominal backoff (fake clock fires immediately)
 		BackoffFactor:  2.0,
-		JitterFraction: 0,                    // deterministic — fake clock drains in 0 wall-clock
+		JitterFraction: 0, // deterministic — fake clock drains in 0 wall-clock
+		DisableJitter:  true,
 		IsRetryable:    pkgretry.IsTransient, // canonical typed probe
 		Clock:          clk,
 	})
@@ -224,6 +225,7 @@ func TestStock_RetryPolicy_FFMPEGInvalidInput_TerminalNoRetry(t *testing.T) {
 		InitialBackoff: 5 * time.Millisecond,
 		BackoffFactor:  2.0,
 		JitterFraction: 0,
+		DisableJitter:  true,
 		IsRetryable:    pkgretry.Retryable, // binary classify shape
 	})
 
@@ -532,6 +534,7 @@ func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {
 		InitialBackoff: 5 * time.Millisecond,
 		BackoffFactor:  2.0,
 		JitterFraction: 0,
+		DisableJitter:  true,
 		IsRetryable:    pkgretry.IsTransient,
 		Clock:          &fakeRetryClock{},
 	})

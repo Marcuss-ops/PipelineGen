@@ -9,6 +9,7 @@
 package retry
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -582,7 +583,8 @@ func TestTransientInfrastructureError_Format(t *testing.T) {
 
 // ─── BackoffFor / jitter (Azione 4/8 di Step 7) ──────────────────────────
 
-// TestSleepDuration_NoJitter_Deterministic verifies that JitterFraction=0
+// TestSleepDuration_NoJitter_Deterministic verifies that
+// DisableJitter=true (or JitterFraction=0 passed directly to BackoffFor)
 // produces the exact canonical exponential backoff sequence (no random
 // variance). This is the regression for callers that explicitly opt out
 // of jitter (e.g. CI latency assertions, deterministic-test harnesses).
@@ -595,6 +597,7 @@ func TestSleepDuration_NoJitter_Deterministic(t *testing.T) {
 		MaxBackoff:     10 * time.Second,
 		BackoffFactor:  2.0,
 		JitterFraction: 0,
+		DisableJitter:  true,
 	}
 	// Expected sequence: 100ms, 200ms, 400ms, 800ms, 1600ms (capped at 10s).
 	wantSeq := []time.Duration{
@@ -608,6 +611,51 @@ func TestSleepDuration_NoJitter_Deterministic(t *testing.T) {
 		if got := BackoffFor(i, opts); got != want {
 			t.Errorf("BackoffFor(%d) = %v, want %v", i, got, want)
 		}
+	}
+}
+
+// TestDoWithValue_DisableJitter_SleepEqualsBase verifies the end-to-end
+// contract: when DisableJitter=true the retry loop sleeps exactly the
+// computed base backoff (no random variance).
+func TestDoWithValue_DisableJitter_SleepEqualsBase(t *testing.T) {
+	t.Parallel()
+
+	clk := newFakeClock(time.Now())
+	const (
+		initialBackoff = 50 * time.Millisecond
+		maxBackoff     = 200 * time.Millisecond
+		backoffFactor  = 2.0
+	)
+
+	var calls int
+	walk := func() (struct{}, error) {
+		calls++
+		return struct{}{}, &TransientInfrastructureError{Err: errors.New("transient")}
+	}
+
+	// Advance the clock synchronously after each observed timer.
+	go func() {
+		for i := 0; i < 10; i++ {
+			time.Sleep(1 * time.Millisecond)
+			clk.Advance(250 * time.Millisecond)
+		}
+	}()
+
+	_, err := DoWithValue(context.Background(), walk, Options{
+		MaxAttempts:    4,
+		InitialBackoff: initialBackoff,
+		MaxBackoff:     maxBackoff,
+		BackoffFactor:  backoffFactor,
+		JitterFraction: 0,
+		DisableJitter:  true,
+		IsRetryable:    IsTransient,
+		Clock:          clk,
+	})
+	if err == nil {
+		t.Fatal("expected transient error after MaxAttempts; got nil")
+	}
+	if calls != 4 {
+		t.Fatalf("calls = %d; want 4 (MaxAttempts exhausted)", calls)
 	}
 }
 
@@ -796,5 +844,70 @@ func TestDefaultOptions_Jitter25Enabled(t *testing.T) {
 	}
 	if opts.BackoffFactor != 2.0 {
 		t.Errorf("DefaultOptions().BackoffFactor = %v, want 2.0", opts.BackoffFactor)
+	}
+}
+
+// TestDisableJitter_ExplicitZeroDisablesJitter verifies that setting
+// DisableJitter=true leaves JitterFraction=0 untouched through norm()
+// and that BackoffFor returns the exact base delay.
+func TestDisableJitter_ExplicitZeroDisablesJitter(t *testing.T) {
+	t.Parallel()
+
+	opts := norm(Options{
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0,
+		DisableJitter:  true,
+	})
+	if !opts.DisableJitter {
+		t.Fatal("DisableJitter must survive norm()")
+	}
+	if opts.JitterFraction != 0 {
+		t.Fatalf("norm() must leave JitterFraction=0 when DisableJitter=true; got %v", opts.JitterFraction)
+	}
+	for i := 0; i < 100; i++ {
+		got := BackoffFor(0, opts)
+		if got != 100*time.Millisecond {
+			t.Fatalf("BackoffFor with DisableJitter=true must return exact base; got %v", got)
+		}
+	}
+}
+
+// TestDisableJitter_FalseUpgradesZeroToDefault verifies the historical
+// behaviour preserved for callers that do not opt out: an explicit or
+// zero JitterFraction becomes the canonical 0.25 default.
+func TestDisableJitter_FalseUpgradesZeroToDefault(t *testing.T) {
+	t.Parallel()
+
+	opts := norm(Options{
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0,
+		// DisableJitter is false.
+	})
+	if opts.JitterFraction != 0.25 {
+		t.Fatalf("norm() must upgrade JitterFraction=0 to 0.25 when DisableJitter=false; got %v", opts.JitterFraction)
+	}
+}
+
+// TestDisableJitter_PrevailsOverNonZeroFraction verifies that the
+// explicit opt-out takes precedence over a non-zero JitterFraction.
+func TestDisableJitter_PrevailsOverNonZeroFraction(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+		JitterFraction: 0.5,
+		DisableJitter:  true,
+	}
+	for i := 0; i < 100; i++ {
+		got := BackoffFor(0, opts)
+		if got != 100*time.Millisecond {
+			t.Fatalf("DisableJitter=true must disable jitter even when JitterFraction=0.5; got %v", got)
+		}
 	}
 }

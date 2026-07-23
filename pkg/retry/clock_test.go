@@ -267,6 +267,7 @@ func TestDoWithValue_FakeClock_AdvancesThroughRetries(t *testing.T) {
 		MaxBackoff:     50 * time.Millisecond,
 		BackoffFactor:  1.0,
 		JitterFraction: 0,
+		DisableJitter:  true,
 		IsRetryable:    IsTransient,
 		Clock:          clk,
 	})

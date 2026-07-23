@@ -244,6 +244,7 @@ func preflightRetryOptions() retry.Options {
 		MaxBackoff:     preflightInterval,
 		BackoffFactor:  1.0,
 		JitterFraction: 0,
+		DisableJitter:  true,
 		MaxAttempts:    int(preflightTimeout/preflightInterval) + 2,
 	}
 }
