@@ -1,6 +1,4 @@
 // Package adapters — postprocessor_composite.go: core registry infrastructure.
-//
-// Extracted from postprocessor_registry.go (July 2026).
 // Owns: PostProcessor interface, PostProcessorRegistry struct + all methods.
 //
 // PR-COMPOSITE-SPLIT (July 2026): decomposed into 3 files per AGENTS.md

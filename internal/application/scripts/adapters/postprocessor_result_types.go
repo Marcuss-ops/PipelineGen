@@ -1,6 +1,4 @@
-// Package adapters — postprocessor_document.go: pipeline result types.
-//
-// Extracted from postprocessor_registry.go (July 2026).
+// Package adapters — postprocessor_result_types.go: pipeline result types.
 // Owns: PipelineResult, PostProcessResult, ProcessInput, IsEmpty.
 package adapters
 
