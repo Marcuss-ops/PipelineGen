@@ -5,10 +5,14 @@
 //
 //   - PhraseNormalizer         → internal/application/brain/normalizer
 //   - VisualIntentResolver     → internal/application/brain/intent
-//   - CandidateRanker           → internal/application/brain/ranker
+//   - CandidateRanker          → internal/application/brain/ranker
 //   - SceneVisualPlanner       → internal/application/brain/planner
-//   - CandidateSearcher         → internal/application/brain/search
-//   - SearchFanOut              → internal/application/search
+//   - SearchFanOut             → internal/application/search
+//
+// The MediaMemoryResolutionPort lives in internal/application/brain
+// but is implemented by the MediaMemory cascade in
+// internal/application/mediamemory; it is therefore not listed as a
+// brain-package component here.
 //
 // The gate counts production constructors in the canonical home
 // package (non-test .go files outside any adapters/ subdirectory).
@@ -44,9 +48,8 @@ type canonicalBrainComponent struct {
 var brainComponents = []canonicalBrainComponent{
 	{Name: "PhraseNormalizer", PkgPath: "internal/application/brain/normalizer", Constructors: []string{"NewDefaultNormalizer"}},
 	{Name: "VisualIntentResolver", PkgPath: "internal/application/brain/intent", Constructors: []string{"NewDefaultResolver"}},
-	{Name: "CandidateRanker", PkgPath: "internal/application/brain/ranker", Constructors: []string{"NewDefaultRanker"}},
+	{Name: "CandidateRanker", PkgPath: "internal/application/brain/ranker", Constructors: []string{"NewDefaultRanker", "NewMediaMemoryRankerAdapter"}},
 	{Name: "SceneVisualPlanner", PkgPath: "internal/application/brain/planner", Constructors: []string{"NewDefaultPlanner"}},
-	{Name: "CandidateSearcher", PkgPath: "internal/application/brain/search", Constructors: []string{"NewCandidateSearcherAdapter"}},
 	{Name: "SearchFanOut", PkgPath: "internal/application/search", Constructors: []string{"NewSearchFanOut"}},
 	// EmbeddingChannelRegistry is canonical but its production constructor
 	// has not been extracted to internal/application/search yet. Include
