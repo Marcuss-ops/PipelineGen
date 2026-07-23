@@ -241,8 +241,8 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	// ≈50ms metadata), so the gap should be approximately
 	// 45ms. Required ≥30ms margin to absorb scheduler jitter
 	// without false-positive uniform-division readings.
-	assert.Greater(t, metadataMs-entitiesMs, int64(30),
-		"Issue #3: metadata - entities wall-clock gap must exceed 30ms (per-stage variance captured, not uniform division)")
+	assert.GreaterOrEqual(t, metadataMs-entitiesMs, int64(30),
+		"Issue #3: metadata - entities wall-clock gap must be at least 30ms (per-stage variance captured, not uniform division)")
 
 	// Identity assertion: keys present in timings must be a
 	// strict subset of names the registry actually ran. The

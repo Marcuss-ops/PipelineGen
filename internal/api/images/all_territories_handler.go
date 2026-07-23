@@ -38,12 +38,12 @@ func (h *ImagesHandler) allTerritoriesAggregate(c *gin.Context) {
 	if c.Query("q") != "" {
 		lang := c.DefaultQuery("lang", "en")
 		slug := textutil.Slugify(c.Query("q"))
-		asset, err := h.service.SearchAndDownload(
+		searchResult, err := h.service.SearchAndDownloadDetailed(
 			c.Request.Context(),
 			slug, c.Query("q"), c.Query("q"), lang, nil,
 		)
-		if err == nil && asset != nil {
-			results = append(results, assetToResult(asset))
+		if err == nil && searchResult != nil && searchResult.Asset != nil {
+			results = append(results, assetToResultWithCache(searchResult.Asset, boolPtr(searchResult.CacheHit), searchResult.CacheSource, searchResult.RetrievalProvider))
 		}
 	}
 
