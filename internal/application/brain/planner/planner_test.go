@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 func candidate(id, mediaType string) brain.Candidate {
@@ -23,7 +24,7 @@ func TestDefaultPlanner_AssignsLayers(t *testing.T) {
 	scene := brain.SceneRequest{
 		ID:         "s1",
 		DurationMS: 5000,
-		Slots:      []brain.SlotKind{brain.SlotPrimaryVideo, brain.SlotSecondaryImage},
+		Slots:      []media.SlotKind{media.SlotPrimaryVideo, media.SlotSecondaryImage},
 	}
 	candidates := []brain.Candidate{
 		candidate("c1", "video"),
@@ -38,10 +39,10 @@ func TestDefaultPlanner_AssignsLayers(t *testing.T) {
 	if len(plan.Layers) != 2 {
 		t.Fatalf("expected 2 layers, got %d", len(plan.Layers))
 	}
-	if plan.Layers[0].Slot != brain.SlotPrimaryVideo || plan.Layers[0].CandidateID != "c1" {
+	if plan.Layers[0].Slot != media.SlotPrimaryVideo || plan.Layers[0].CandidateID != "c1" {
 		t.Errorf("unexpected layer[0]: %+v", plan.Layers[0])
 	}
-	if plan.Layers[1].Slot != brain.SlotSecondaryImage || plan.Layers[1].CandidateID != "c2" {
+	if plan.Layers[1].Slot != media.SlotSecondaryImage || plan.Layers[1].CandidateID != "c2" {
 		t.Errorf("unexpected layer[1]: %+v", plan.Layers[1])
 	}
 	if plan.Status != "success" {
@@ -54,7 +55,7 @@ func TestSlotCandidateSampler_MediaTypeGate(t *testing.T) {
 	scene := brain.SceneRequest{
 		ID:         "s1",
 		DurationMS: 5000,
-		Slots:      []brain.SlotKind{brain.SlotPrimaryVideo, brain.SlotSecondaryImage},
+		Slots:      []media.SlotKind{media.SlotPrimaryVideo, media.SlotSecondaryImage},
 	}
 	candidates := []brain.Candidate{
 		candidate("c1", "image"),
@@ -71,10 +72,10 @@ func TestSlotCandidateSampler_MediaTypeGate(t *testing.T) {
 	}
 	// Even though c1 is ranked first, it is an image and cannot be
 	// assigned to the primary_video slot.
-	if plan.Layers[0].Slot != brain.SlotPrimaryVideo || plan.Layers[0].CandidateID != "c2" {
+	if plan.Layers[0].Slot != media.SlotPrimaryVideo || plan.Layers[0].CandidateID != "c2" {
 		t.Errorf("expected video candidate c2 in primary_video, got %+v", plan.Layers[0])
 	}
-	if plan.Layers[1].Slot != brain.SlotSecondaryImage || plan.Layers[1].CandidateID != "c1" {
+	if plan.Layers[1].Slot != media.SlotSecondaryImage || plan.Layers[1].CandidateID != "c1" {
 		t.Errorf("expected image candidate c1 in secondary_image, got %+v", plan.Layers[1])
 	}
 }
@@ -84,7 +85,7 @@ func TestSlotCandidateSampler_Diversity(t *testing.T) {
 	scene := brain.SceneRequest{
 		ID:         "s1",
 		DurationMS: 5000,
-		Slots:      []brain.SlotKind{brain.SlotSecondaryImage, brain.SlotBackground},
+		Slots:      []media.SlotKind{media.SlotSecondaryImage, media.SlotBackground},
 	}
 	candidates := []brain.Candidate{
 		{ID: "c1", AssetID: "asset-a", MediaType: "image", Score: 0.9},
@@ -114,7 +115,7 @@ func TestSlotCandidateSampler_DiversityFallback(t *testing.T) {
 	scene := brain.SceneRequest{
 		ID:         "s1",
 		DurationMS: 5000,
-		Slots:      []brain.SlotKind{brain.SlotSecondaryImage, brain.SlotBackground},
+		Slots:      []media.SlotKind{media.SlotSecondaryImage, media.SlotBackground},
 	}
 	candidates := []brain.Candidate{
 		{ID: "c1", AssetID: "asset-a", MediaType: "image", Score: 0.9},
@@ -140,7 +141,7 @@ func TestSlotCandidateSampler_GatesRejectRightsAndMaterialization(t *testing.T) 
 	scene := brain.SceneRequest{
 		ID:         "s1",
 		DurationMS: 5000,
-		Slots:      []brain.SlotKind{brain.SlotPrimaryVideo},
+		Slots:      []media.SlotKind{media.SlotPrimaryVideo},
 	}
 	candidates := []brain.Candidate{
 		{ID: "c1", AssetID: "asset-a", MediaType: "video", Score: 0.9, RightsStatus: "expired"},
@@ -166,7 +167,7 @@ func TestDefaultPlanner_PartialWhenFewerCandidates(t *testing.T) {
 	scene := brain.SceneRequest{
 		ID:         "s2",
 		DurationMS: 3000,
-		Slots:      []brain.SlotKind{brain.SlotPrimaryVideo, brain.SlotSecondaryImage},
+		Slots:      []media.SlotKind{media.SlotPrimaryVideo, media.SlotSecondaryImage},
 	}
 	candidates := []brain.Candidate{candidate("c1", "video")}
 
@@ -187,7 +188,7 @@ func TestDefaultPlanner_EmptyPlanWhenNoCandidates(t *testing.T) {
 	p := NewDefaultPlanner()
 	scene := brain.SceneRequest{
 		ID:    "s3",
-		Slots: []brain.SlotKind{brain.SlotPrimaryVideo},
+		Slots: []media.SlotKind{media.SlotPrimaryVideo},
 	}
 
 	plan, err := p.Plan(context.Background(), scene, brain.VisualIntent{}, nil)

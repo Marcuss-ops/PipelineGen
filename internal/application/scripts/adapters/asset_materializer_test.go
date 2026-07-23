@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 type fakeCandidateRepo struct {
@@ -58,7 +59,7 @@ func TestAssetMaterializer_SkipsLocalProvider(t *testing.T) {
 	worker := &fakeMaterializeWorker{result: mediamemory.MediaCandidate{ID: "c1", AssetID: "asset-2", Provider: "drive", DurationMs: 7000}}
 	m := NewDefaultAssetMaterializer(repo, worker, nil)
 
-	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: mediamemory.SlotPrimaryVideo, AssetID: "asset-1", CandidateID: "c1", Provider: "drive"})
+	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: media.SlotPrimaryVideo, AssetID: "asset-1", CandidateID: "c1", Provider: "drive"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestAssetMaterializer_MaterializesExternalAsset(t *testing.T) {
 	worker := &fakeMaterializeWorker{result: mediamemory.MediaCandidate{ID: "c1", AssetID: "local-1", Provider: "drive", DurationMs: 5000}}
 	m := NewDefaultAssetMaterializer(repo, worker, nil)
 
-	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: mediamemory.SlotPrimaryVideo, AssetID: "ext-1", CandidateID: "c1", Provider: "artlist"})
+	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: media.SlotPrimaryVideo, AssetID: "ext-1", CandidateID: "c1", Provider: "artlist"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestAssetMaterializer_MaterializesExternalAsset(t *testing.T) {
 
 func TestAssetMaterializer_NoCandidateID_ReturnsOriginal(t *testing.T) {
 	m := NewDefaultAssetMaterializer(nil, nil, nil)
-	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: mediamemory.SlotPrimaryVideo, AssetID: "ext-1", Provider: "artlist"})
+	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: media.SlotPrimaryVideo, AssetID: "ext-1", Provider: "artlist"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestAssetMaterializer_NoCandidateID_ReturnsOriginal(t *testing.T) {
 
 func TestAssetMaterializer_NilDependencies_ReturnsOriginal(t *testing.T) {
 	m := NewDefaultAssetMaterializer(nil, nil, nil)
-	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: mediamemory.SlotPrimaryVideo, AssetID: "ext-1", CandidateID: "c1", Provider: "artlist"})
+	mat, err := m.Materialize(context.Background(), mediamemory.Layer{Slot: media.SlotPrimaryVideo, AssetID: "ext-1", CandidateID: "c1", Provider: "artlist"})
 	if err != nil {
 		t.Fatal(err)
 	}

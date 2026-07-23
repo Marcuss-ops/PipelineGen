@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // canonicalDenseDim is the canonical conceptIndex dense-vector dim.
@@ -342,13 +343,13 @@ func TestQdrantRoundTripParaphraseRecall(t *testing.T) {
 	br.bindingsByConcept[citiesConceptID] = []mediamemory.MediaBinding{
 		{ID: "binding-cities-001", ConceptID: citiesConceptID,
 			AssetID:        "asset-cities-001",
-			SlotKind:       mediamemory.SlotPrimaryVideo,
+			SlotKind:       media.SlotPrimaryVideo,
 			ApprovalStatus: mediamemory.ApprovalApproved},
 	}
 	br.bindingsByConcept[unrelatedConceptID] = []mediamemory.MediaBinding{
 		{ID: "binding-temples-001", ConceptID: unrelatedConceptID,
 			AssetID:        "asset-temples-001",
-			SlotKind:       mediamemory.SlotPrimaryVideo,
+			SlotKind:       media.SlotPrimaryVideo,
 			ApprovalStatus: mediamemory.ApprovalApproved},
 	}
 
@@ -533,14 +534,14 @@ func (f *fakeBindingRepoMulti) Upsert(_ context.Context, b mediamemory.MediaBind
 func (f *fakeBindingRepoMulti) FindByID(_ context.Context, _ string) (mediamemory.MediaBinding, error) {
 	return mediamemory.MediaBinding{}, mediamemory.ErrBindingNotFound
 }
-func (f *fakeBindingRepoMulti) ListApprovedByConcept(_ context.Context, conceptID string, _ []mediamemory.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
+func (f *fakeBindingRepoMulti) ListApprovedByConcept(_ context.Context, conceptID string, _ []media.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
 	bs := f.bindingsByConcept[conceptID]
 	if limit > 0 && len(bs) > limit {
 		bs = bs[:limit]
 	}
 	return bs, nil
 }
-func (f *fakeBindingRepoMulti) ListApprovedByConcepts(_ context.Context, conceptIDs []string, _ []mediamemory.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
+func (f *fakeBindingRepoMulti) ListApprovedByConcepts(_ context.Context, conceptIDs []string, _ []media.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
 	out := make(map[string][]mediamemory.MediaBinding, len(conceptIDs))
 	for _, id := range conceptIDs {
 		bs := f.bindingsByConcept[id]

@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // CanonicalBrain is the canonical implementation of the Brain port.
@@ -191,16 +192,16 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 	return plan
 }
 
-func mediaTypesForSlots(slots []brain.SlotKind) []string {
+func mediaTypesForSlots(slots []media.SlotKind) []string {
 	var out []string
 	seen := make(map[string]struct{})
 	for _, slot := range slots {
 		mt := ""
 		switch slot {
-		case brain.SlotPrimaryVideo:
+		case media.SlotPrimaryVideo:
 			mt = "video"
-		case brain.SlotSecondaryImage, brain.SlotEvidenceOverlay, brain.SlotMap,
-			brain.SlotPortrait, brain.SlotDocument, brain.SlotBackground:
+		case media.SlotSecondaryImage, media.SlotEvidenceOverlay, media.SlotMap,
+			media.SlotPortrait, media.SlotDocument, media.SlotBackground:
 			mt = "image"
 		}
 		if mt == "" {

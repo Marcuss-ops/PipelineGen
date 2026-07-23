@@ -23,7 +23,7 @@ func (r *countingVisualResolver) Resolve(_ context.Context, req mediamemory.Reso
 			SceneID:    s.ID,
 			SegmentID:  s.ID,
 			Text:       s.Text,
-			Layers:     []mediamemory.Layer{{Slot: mediamemory.SlotPrimaryVideo, AssetID: "resolver-winner", Provider: "drive"}},
+			Layers:     []mediamemory.Layer{{Slot: mediadomain.SlotPrimaryVideo, AssetID: "resolver-winner", Provider: "drive"}},
 			Candidates: []mediamemory.CandidateOption{{AssetID: "resolver-winner", Provider: "drive"}, {AssetID: "other", Provider: "artlist"}},
 		})
 	}

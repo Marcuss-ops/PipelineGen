@@ -47,6 +47,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Handler ports (composition-root-narrow) ────────────────────────
@@ -84,7 +85,7 @@ type BindingServicePort interface {
 	Approve(ctx context.Context, id string) error
 	Reject(ctx context.Context, id string) error
 	ListByConcept(ctx context.Context, conceptID string) ([]mediamemory.MediaBinding, error)
-	ListBySlot(ctx context.Context, conceptID string, slot mediamemory.SlotKind, limit int) ([]mediamemory.MediaBinding, error)
+	ListBySlot(ctx context.Context, conceptID string, slot media.SlotKind, limit int) ([]mediamemory.MediaBinding, error)
 }
 
 // FeedbackServicePort is the narrow feedback-service surface.

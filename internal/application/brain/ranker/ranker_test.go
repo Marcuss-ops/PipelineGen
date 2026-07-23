@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 func candidate(id string, score float64, mediaType string) brain.Candidate {
@@ -25,7 +26,7 @@ func TestDefaultRanker_OrdersByScore(t *testing.T) {
 		candidate("c-mid", 0.6, "video"),
 	}
 
-	scene := brain.SceneRequest{ID: "s1", Slots: []brain.SlotKind{brain.SlotPrimaryVideo}}
+	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
 	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
 
 	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
@@ -49,7 +50,7 @@ func TestDefaultRanker_RespectsLimit(t *testing.T) {
 		candidate("c", 0.7, "video"),
 	}
 
-	scene := brain.SceneRequest{ID: "s1", Slots: []brain.SlotKind{brain.SlotPrimaryVideo}}
+	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
 	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 2}
 
 	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
@@ -68,7 +69,7 @@ func TestDefaultRanker_MediaTypeBonus(t *testing.T) {
 		candidate("vid", 0.80, "video"),
 	}
 
-	scene := brain.SceneRequest{ID: "s1", Slots: []brain.SlotKind{brain.SlotPrimaryVideo}}
+	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
 	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
 
 	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
@@ -98,7 +99,7 @@ func TestDefaultRanker_TieBreakByID(t *testing.T) {
 		candidate("a", 0.5, "video"),
 	}
 
-	scene := brain.SceneRequest{ID: "s1", Slots: []brain.SlotKind{brain.SlotPrimaryVideo}}
+	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
 	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
 
 	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)

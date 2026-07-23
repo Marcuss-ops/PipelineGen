@@ -8,6 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // fakeConceptRepository records upserted concepts and returns a deterministic ID.
@@ -60,11 +61,11 @@ func (r *fakeBindingRepository) FindByID(ctx context.Context, id string) (mediam
 	return mediamemory.MediaBinding{}, nil
 }
 
-func (r *fakeBindingRepository) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []mediamemory.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
+func (r *fakeBindingRepository) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []media.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
 	return nil, nil
 }
 
-func (r *fakeBindingRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []mediamemory.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
+func (r *fakeBindingRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []media.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
 	return nil, nil
 }
 
@@ -86,7 +87,7 @@ func TestMediaMemoryLinker_CreatesMayaConceptsAndBindings(t *testing.T) {
 	linker := newMediaMemoryLinker(concepts, bindings, mediamemory.NewDefaultNormalizer(""), zap.NewNop())
 
 	ctx := context.Background()
-	err := linker.linkMayaConcepts(ctx, "asset-123", "it", mediamemory.SlotPrimaryVideo)
+	err := linker.linkMayaConcepts(ctx, "asset-123", "it", media.SlotPrimaryVideo)
 	assert.NoError(t, err)
 
 	// 7 concepts: topic,  entities, action, 3 concepts.
@@ -108,7 +109,7 @@ func TestMediaMemoryLinker_CreatesMayaConceptsAndBindings(t *testing.T) {
 	// Verify a binding for the topic concept points to the asset and slot.
 	found := false
 	for _, b := range bindings.bindings {
-		if b.ConceptID == topic.ID && b.AssetID == "asset-123" && b.SlotKind == mediamemory.SlotPrimaryVideo {
+		if b.ConceptID == topic.ID && b.AssetID == "asset-123" && b.SlotKind == media.SlotPrimaryVideo {
 			found = true
 			assert.Equal(t, mediamemory.OriginAutoLink, b.Origin)
 			assert.Equal(t, mediamemory.ApprovalApproved, b.ApprovalStatus)
@@ -123,6 +124,6 @@ func TestMediaMemoryLinker_DisabledWhenDepsNil(t *testing.T) {
 	assert.True(t, linker.disabled(), "linker should be disabled when dependencies are nil")
 
 	ctx := context.Background()
-	err := linker.linkMayaConcepts(ctx, "asset-123", "it", mediamemory.SlotPrimaryVideo)
+	err := linker.linkMayaConcepts(ctx, "asset-123", "it", media.SlotPrimaryVideo)
 	assert.NoError(t, err)
 }

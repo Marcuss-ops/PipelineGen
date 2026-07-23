@@ -22,7 +22,7 @@ type VisualSelectionRequest struct {
 	SegmentID    string
 	Text         string
 	VisualIntent string
-	Slot         mediamemory.SlotKind
+	Slot         mediadomain.SlotKind
 	Candidates   []mediamemory.CandidateOption
 }
 
@@ -66,7 +66,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	for i, scene := range input.SpecScene.Scenes {
 		segmentID := visualSegmentID(plan, scene, i)
 		slots := visualSlots(plan.MediaPlan, segmentID)
-		openSlots := make([]mediamemory.SlotKind, 0, len(slots))
+		openSlots := make([]mediadomain.SlotKind, 0, len(slots))
 		for _, slot := range slots {
 			if _, ok := locked[segmentID+"/"+string(slot)]; !ok {
 				openSlots = append(openSlots, slot)
@@ -85,7 +85,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			plans = append(plans, v)
 		}
 		for _, slot := range visualSlots(plan.MediaPlan, segmentID) {
-			if slot == mediamemory.SlotPrimaryVideo {
+			if slot == mediadomain.SlotPrimaryVideo {
 				continue
 			}
 			if v, ok := locked[segmentID+"/"+string(slot)]; ok {
@@ -179,11 +179,11 @@ func visualSegmentID(plan *scriptpkg.ResolvedGenerationPlan, scene scriptpkg.Spe
 	return scene.ID
 }
 
-func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediamemory.SlotKind {
-	seen := map[mediamemory.SlotKind]bool{}
+func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain.SlotKind {
+	seen := map[mediadomain.SlotKind]bool{}
 	add := func(raw string) {
-		slot := mediamemory.SlotKind(raw)
-		if mediamemory.IsKnownSlotKind(slot) {
+		slot := mediadomain.SlotKind(raw)
+		if mediadomain.IsKnownSlotKind(slot) {
 			seen[slot] = true
 		}
 	}
@@ -198,10 +198,10 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediamemory
 		}
 	}
 	if len(seen) == 0 {
-		add(string(mediamemory.SlotPrimaryVideo))
+		add(string(mediadomain.SlotPrimaryVideo))
 	}
-	ordered := []mediamemory.SlotKind{mediamemory.SlotPrimaryVideo, mediamemory.SlotSecondaryImage, mediamemory.SlotEvidenceOverlay, mediamemory.SlotPortrait, mediamemory.SlotDocument, mediamemory.SlotBackground, mediamemory.SlotMap}
-	out := make([]mediamemory.SlotKind, 0, len(seen))
+	ordered := []mediadomain.SlotKind{mediadomain.SlotPrimaryVideo, mediadomain.SlotSecondaryImage, mediadomain.SlotEvidenceOverlay, mediadomain.SlotPortrait, mediadomain.SlotDocument, mediadomain.SlotBackground, mediadomain.SlotMap}
+	out := make([]mediadomain.SlotKind, 0, len(seen))
 	for _, slot := range ordered {
 		if seen[slot] {
 			out = append(out, slot)
@@ -258,7 +258,7 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 					continue
 				}
 				scenes[i].Bindings.Media = append(scenes[i].Bindings.Media, scriptpkg.ResolvedMediaBinding{Slot: string(layer.Slot), AssetID: layer.AssetID, BindingID: layer.BindingID, Provider: layer.Provider, Score: layer.CandidateScore})
-				if layer.Slot == mediamemory.SlotPrimaryVideo {
+				if layer.Slot == mediadomain.SlotPrimaryVideo {
 					if scenes[i].Bindings.Stock == nil {
 						scenes[i].Bindings.Stock = &scriptpkg.StockBinding{}
 					}

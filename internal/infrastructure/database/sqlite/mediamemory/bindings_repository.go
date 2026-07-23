@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // bindingsRepository is the canonical concrete
@@ -78,7 +79,7 @@ func (r *bindingsRepository) UpsertBindingTx(ctx context.Context, tx *sql.Tx, b 
 }
 
 func (r *bindingsRepository) upsertWithExec(ctx context.Context, exec queryExecer, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
-	if !mediamemory.IsKnownSlotKind(b.SlotKind) {
+	if !media.IsKnownSlotKind(b.SlotKind) {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding slot_kind=%q: %w",
 			string(b.SlotKind), mediamemory.ErrInvalidSlotKind,
@@ -144,9 +145,9 @@ func (r *bindingsRepository) FindByID(ctx context.Context, id string) (mediamemo
 // If slotKinds is non-empty, the query filters by the canonical
 // closed set; if any slot kind is unknown, ErrInvalidSlotKind is
 // returned BEFORE the SQL round-trip (godlike/07).
-func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []mediamemory.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
+func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []media.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !mediamemory.IsKnownSlotKind(sk) {
+		if !media.IsKnownSlotKind(sk) {
 			return nil, fmt.Errorf(
 				"mediamemory: list approved slot_kind=%q: %w",
 				string(sk), mediamemory.ErrInvalidSlotKind,
@@ -211,9 +212,9 @@ func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptI
 // SQL round-trip. A nil result envelope (no approved
 // bindings across all input concepts) is returned as an
 // empty map, NOT nil.
-func (r *bindingsRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []mediamemory.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
+func (r *bindingsRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []media.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !mediamemory.IsKnownSlotKind(sk) {
+		if !media.IsKnownSlotKind(sk) {
 			return nil, fmt.Errorf(
 				"mediamemory: list approved (batch) slot_kind=%q: %w",
 				string(sk), mediamemory.ErrInvalidSlotKind,
@@ -373,8 +374,8 @@ func scanBindingRow(s rowScanner) (mediamemory.MediaBinding, error) {
 	); err != nil {
 		return mediamemory.MediaBinding{}, err
 	}
-	b.SlotKind = mediamemory.SlotKind(slotKind)
-	if !mediamemory.IsKnownSlotKind(b.SlotKind) {
+	b.SlotKind = media.SlotKind(slotKind)
+	if !media.IsKnownSlotKind(b.SlotKind) {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding %q has unknown slot_kind %q",
 			b.ID, slotKind,
