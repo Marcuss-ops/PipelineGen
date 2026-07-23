@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { AuthProvider, useAuth } from './context/AuthContext'
 import AdminLayout from './components/Layout'
 import Overview from './pages/Overview'
-import ContentLibrary from './pages/ContentLibrary'
+import ContentLibrary from './features/assets/inventory/ContentLibraryPage'
 import AssetInspector from './features/assets/inspection'
 import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
