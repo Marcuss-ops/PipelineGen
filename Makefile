@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-architecture verify-artlist verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-architecture verify-artlist verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -394,12 +394,42 @@ verify-no-secrets:
 verify-base: go-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Base verification passed"
 
-# verify-go — Go static analysis, race-tested unit tests, and full build.
-# Fail-closed via \-line continuation + && so the first failure aborts the
-# chain. This is the heavy pre-build step extracted from verify-main.
+# verify-go-core — domain and application logic tests. Isolates failures
+# in the core business packages so a domain test failure is immediately
+# distinguishable from an infrastructure or API failure.
+verify-go-core:
+	$(GO) test -race ./internal/domain/... ./internal/application/...
+
+# verify-go-infrastructure — concrete adapter tests. Covers everything
+# under internal/infrastructure/ (databases, clients, external SDK wraps).
+verify-go-infrastructure:
+	$(GO) test -race ./internal/infrastructure/...
+
+# verify-go-api — HTTP/API handler tests. Covers internal/api/... .
+verify-go-api:
+	$(GO) test -race ./internal/api/...
+
+# verify-go-commands — CLI entrypoints and shared packages. Covers cmd/
+# and pkg/, which are not tied to a specific delivery layer.
+verify-go-commands:
+	$(GO) test -race ./cmd/... ./pkg/...
+
+# verify-go-tests — operational, integration, and E2E tests under tests/.
+# Kept separate because some suites require external services or are slower
+# than unit tests, so they can be run (or skipped) independently.
+verify-go-tests:
+	$(GO) test -race ./tests/...
+
+# verify-go — Go static analysis, race-tested unit tests by area, and full
+# build. Orchestrates the five per-area test targets above, then runs vet
+# and build. Fail-closed: any failing target aborts the chain.
 verify-go:
-	$(GO) vet ./... && \
-	$(GO) test -race ./... && \
+	@$(MAKE) verify-go-core
+	@$(MAKE) verify-go-infrastructure
+	@$(MAKE) verify-go-api
+	@$(MAKE) verify-go-commands
+	@$(MAKE) verify-go-tests
+	$(GO) vet ./...
 	$(GO) build ./...
 	@echo "✅ Go verification passed"
 
