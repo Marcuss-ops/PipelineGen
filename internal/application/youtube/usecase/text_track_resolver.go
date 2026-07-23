@@ -137,7 +137,7 @@ type TextTrackAcquireRequest struct {
 	// filter; the port's own language detection wins). godlike/06
 	// SSOT: the list is BCP-47 normalized; the orchestrator does
 	// NOT re-normalize caller-supplied codes inline (the caller is
-	// expected to plumb cfg.Media.Multilingual.MaterializeLanguages
+	// expected to plumb cfg.Media.Multilingual.Languages
 	// already-normalized).
 	PreferredLanguages []string
 }
@@ -254,10 +254,9 @@ func (r *TextTrackResolver) ResolveLanguage(ctx context.Context, clipID, languag
 // typed lookup. No handler may re-implement the fan-out logic inline.
 //
 // Each preferred-language is normalized via asset.Normalize BEFORE
-// the DB probe (here, NOT in the leaf — the leaf receives an
-// already-canonical BCP-47 code). Malformed entries are SKIPPED
+// the DB probe (here, NOT in the leaf — the leaf receives an	// already-canonical BCP-47 code). Malformed entries are SKIPPED
 // (not failed) so a partially-valid
-// cfg.Media.Multilingual.MaterializeLanguages list doesn't break
+// cfg.Media.Multilingual.Languages list doesn't break
 // the chain.
 func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID string, preferredLanguages []string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
 	if r == nil || r.Repo == nil {

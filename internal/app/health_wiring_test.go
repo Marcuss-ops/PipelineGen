@@ -65,9 +65,9 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 		},
 		// texttracks.NewMaterializer fail-closed posture (godlike/07
 		// no-fake-availability): rejects empty SourceLanguage AND
-		// empty MaterializeLanguages. The fixture sets both to their
+		// empty Languages. The fixture sets both to their
 		// canonical defaults (matches the config yaml defaults at
-		// internal/platform/config/media.go) so WireMinimal can
+		// internal/platform/config) so WireMinimal can
 		// complete composition without triggering the fail-closed
 		// gates. The test never exercises the translation path, so
 		// these values are purely non-empty sentinels. A future
@@ -77,8 +77,10 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 		// fixture walks the canonical-default surface.
 		Media: config.MediaConfig{
 			Multilingual: config.MultilingualConfig{
-				SourceLanguage:       "en",
-				MaterializeLanguages: []string{"en"},
+				SourceLanguage: "en",
+				Languages: config.LanguageSpecSlice{
+					{Code: "en", Enabled: true, TranslateClips: true, GenerateTTS: true},
+				},
 			},
 		},
 	}

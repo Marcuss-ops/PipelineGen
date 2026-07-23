@@ -107,7 +107,7 @@ func NewMaterializer(
 //
 // targetLanguagesOverride is the optional caller override for
 // the target language set. Empty / nil means "use the configured
-// MultilingualConfig.MaterializeLanguages" (the canonical
+// registry languages (TranslateClips=true)" (the canonical
 // default). A non-empty value REPLACES the configured set
 // (operators can backfill into a single language without
 // editing config). The source_language is preserved from the
