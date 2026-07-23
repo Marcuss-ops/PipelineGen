@@ -16,7 +16,7 @@ import { AuditTab } from './components/tabs/AuditTab'
 import { useAssetInspection } from './hooks/useAssetInspection'
 import { useAssetEditor } from './hooks/useAssetEditor'
 import { TabKey } from './types'
-import { triggerClipAction } from '../../../api/client'
+import { triggerClipAction } from '../../../api/assets'
 
 export default function AssetInspectorPage() {
   const { id } = useParams<{ id: string }>()

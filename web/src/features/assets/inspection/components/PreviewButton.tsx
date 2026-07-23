@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAssetPreviewUrl } from '../../../../api/client'
+import { getAssetPreviewUrl } from '../../../../api/assets'
 import styles from '../AssetInspector.module.css'
 import { PreviewMedia } from './PreviewMedia'
 

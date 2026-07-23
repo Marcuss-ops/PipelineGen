@@ -8,7 +8,7 @@ import {
   ReindexAssetResponse,
   verifyAssetIndex,
   VerifyIndexResponse,
-} from '../../../../api/client'
+} from '../../../../api/assets'
 import { usePollingQuery } from '../../../../hooks/usePollingQuery'
 import { isAssetTransient } from '../types'
 

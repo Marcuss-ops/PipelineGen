@@ -6,7 +6,7 @@ import {
   runAdminEntityAction,
   AdminEntitySchema,
   AdminFieldDescriptor,
-} from '../api/client'
+} from '../api/operations'
 
 type EntityMeta = Pick<AdminEntitySchema, 'entity' | 'label'>
 

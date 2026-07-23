@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { AssetDetails } from '../../../../../api/client'
+import { AssetDetails } from '../../../../../api/assetTypes'
 import styles from '../../AssetInspector.module.css'
 
 interface PipelineTabProps {

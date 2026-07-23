@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listAssets, AssetSummary, AssetFilter, bulkAssets, BulkAction, BulkChange, BulkOperationResponse } from '../api/client'
+import { listAssets, getAssetFacets, AssetSummary, AssetFilter, AssetInventoryFacets, FacetGroup, bulkAssets, BulkAction, BulkChange, BulkOperationResponse } from '../api/assets'
 import AssetPreview from '../components/AssetPreview'
 
-const MEDIA_TYPES = ['', 'clip', 'image', 'audio', 'document', 'image_video', 'sound_effect', 'script']
-const SOURCES = ['', 'artlist', 'youtube_clip', 'stock', 'image', 'generated', 'sound_effect', 'ai_generated']
-const STATES = ['', 'discovered', 'downloading', 'downloaded', 'processing', 'ready', 'error', 'archived']
+const EMPTY_FACETS: AssetInventoryFacets = {
+  media_types: [],
+  lifecycle_states: [],
+  asset_states: [],
+  index_states: [],
+  sources: [],
+  providers: [],
+}
 const REVIEW_STATUSES = ['pending', 'approved', 'rejected', 'needs_review']
 const BULK_ACTIONS: { key: BulkAction; label: string; needsPayload: boolean }[] = [
   { key: 'add_tags', label: 'Aggiungi tag', needsPayload: true },
@@ -32,6 +37,8 @@ export default function ContentLibrary() {
   const [cursor, setCursor] = useState<string>('')
   const [hasMore, setHasMore] = useState(false)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [facets, setFacets] = useState<AssetInventoryFacets>(EMPTY_FACETS)
+  const [facetsError, setFacetsError] = useState<string | null>(null)
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     source: '',
@@ -74,6 +81,20 @@ export default function ContentLibrary() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    let cancelled = false
+    getAssetFacets()
+      .then((data) => {
+        if (!cancelled) setFacets(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setFacetsError(err instanceof Error ? err.message : 'Errore caricamento filtri')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -211,6 +232,22 @@ export default function ContentLibrary() {
         </p>
       </div>
 
+      {facetsError && (
+        <div
+          style={{
+            background: 'rgba(251,191,36,0.1)',
+            border: '1px solid #fbbf24',
+            color: '#fbbf24',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            fontSize: '0.85rem',
+          }}
+        >
+          Filtri non caricati: {facetsError}
+        </div>
+      )}
+
       {/* Filters */}
       <div
         style={{
@@ -239,21 +276,21 @@ export default function ContentLibrary() {
             label="Tipo media"
             value={filters.media_type}
             onChange={(v) => handleFilterChange('media_type', v)}
-            options={MEDIA_TYPES.map((t) => ({ value: t, label: t || 'Tutti' }))}
+            options={toSelectOptions(facets.media_types)}
           />
 
           <FilterSelect
             label="Sorgente"
             value={filters.source}
             onChange={(v) => handleFilterChange('source', v)}
-            options={SOURCES.map((s) => ({ value: s, label: s || 'Tutte' }))}
+            options={toSelectOptions(facets.sources)}
           />
 
           <FilterSelect
             label="Stato lifecycle"
             value={filters.lifecycle_state}
             onChange={(v) => handleFilterChange('lifecycle_state', v)}
-            options={STATES.map((s) => ({ value: s, label: s || 'Tutti' }))}
+            options={toSelectOptions(facets.lifecycle_states)}
           />
 
           <div style={{ flex: '1 1 180px', minWidth: '150px' }}>
@@ -556,6 +593,10 @@ export default function ContentLibrary() {
       )}
     </div>
   )
+}
+
+function toSelectOptions(groups: FacetGroup[]): { value: string; label: string }[] {
+  return [{ value: '', label: 'Tutti' }, ...groups.map((g) => ({ value: g.code, label: `${g.label} (${g.count})` }))]
 }
 
 function FilterSelect({

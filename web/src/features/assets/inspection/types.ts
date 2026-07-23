@@ -1,4 +1,4 @@
-import { AssetDetails } from '../../../api/client'
+import { AssetDetails } from '../../../api/assetTypes'
 
 export type TabKey =
   | 'generale'

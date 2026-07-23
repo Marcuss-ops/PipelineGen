@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getScriptJobFull, ScriptJobFull, ScriptScene } from '../api/client'
+import { getScriptJobFull, ScriptJobFull, ScriptScene } from '../api/scripts'
 
 export default function Script() {
   const { id } = useParams<{ id: string }>()

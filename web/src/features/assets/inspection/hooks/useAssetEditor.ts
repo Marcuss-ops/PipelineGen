@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AssetDetails, AssetPatchRequest, patchAsset } from '../../../../api/client'
+import { AssetDetails, AssetPatchRequest, patchAsset } from '../../../../api/assets'
 import { FormState, initialForm, parseTags } from '../types'
 
 export interface UseAssetEditorResult {

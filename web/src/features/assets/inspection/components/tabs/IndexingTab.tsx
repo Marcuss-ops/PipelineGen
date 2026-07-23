@@ -1,4 +1,4 @@
-import { AssetDetails, VerifyIndexResponse } from '../../../../../api/client'
+import { AssetDetails, VerifyIndexResponse } from '../../../../../api/assetTypes'
 import styles from '../../AssetInspector.module.css'
 import { InfoCard } from '../InfoCard'
 
