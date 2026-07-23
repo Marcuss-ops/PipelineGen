@@ -137,6 +137,7 @@ WHERE m.id = ? AND m.lifecycle_state != 'DELETED'`
 		ContentHash:         item.ContentHash,
 		IndexedContentHash:  item.IndexedContentHash,
 		PendingOutboxEvents: item.PendingOutboxEvents,
+		LastError:           item.LastError,
 	})
 	item.CreatedAt = parseTime(createdAt)
 	item.UpdatedAt = parseTime(updatedAt)
