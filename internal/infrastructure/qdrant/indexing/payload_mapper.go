@@ -39,9 +39,9 @@ type PayloadMapper struct {
 	log             *zap.Logger
 	searchTextBuild appsearchtext.SearchTextBuilder // optional; nil → fall back to asset.SearchText
 
-	// indexLanguages is the comma-separated BCP-47 language codes from
-	// config (cfg.Media.Multilingual.IndexLanguages). Injected into
-	// SearchTextInput.Additional["index_languages"] so the
+	// indexLanguages is the comma-separated BCP-47 language codes
+	// derived from cfg.Media.Multilingual.Languages (Enabled=true).
+	// Injected into SearchTextInput.Additional["index_languages"] so the
 	// youtubeStrategy can filter TextTracks by configured languages.
 	indexLanguages string
 

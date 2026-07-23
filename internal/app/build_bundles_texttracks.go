@@ -241,19 +241,15 @@ func wireTextTrackJobBindings(
 // buildLanguageRegistry constructs the canonical
 // asset.LanguageRegistry from cfg.MultilingualConfig. godlike/06
 // SSOT: this helper is the SOLE canonical owner of the
-// "YAML → registry" projection. Three-tier priority:
+// "YAML → registry" projection. Two-tier priority:
 //
 //  1. cfg.MultilingualConfig.Languages — the typed
 //     `languages:` list (PR-CATALOG-MULTILINGUA step 3
-//     SSOT) — wins when non-empty. Each entry is verified
-//     by the LangaugeSpecSlice.UnmarshalYAML hook (legacy
-//     CSV auto-promoted to defaults; struct-list preserved
+//     SSOT). Each entry is verified by the
+//     LanguageSpecSlice.UnmarshalYAML hook (legacy CSV
+//     auto-promoted to defaults; struct-list preserved
 //     verbatim).
-//  2. cfg.MultilingualConfig.MaterializeLanguages — the
-//     legacy CSV back-compat list. Auto-promoted to a
-//     registry with all-defaults (enabled=true, translate=
-//     true, tts=true). Used by pre-step-3 operator configs.
-//  3. asset.EmptyLanguageRegistry() — pipeline in disabled
+//  2. asset.EmptyLanguageRegistry() — pipeline in disabled
 //     mode. godlike/07 fail-closed; no silent fallback to
 //     "en".
 //
@@ -268,13 +264,6 @@ func buildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry
 		reg, err := asset.NewLanguageRegistry(ml.Languages)
 		if err != nil {
 			return nil, fmt.Errorf("typed Languages list rejected: %w", err)
-		}
-		return reg, nil
-	}
-	if len(ml.MaterializeLanguages) > 0 {
-		reg, err := asset.NewLanguageRegistryFromCodes(ml.MaterializeLanguages)
-		if err != nil {
-			return nil, fmt.Errorf("legacy MaterializeLanguages rejected: %w", err)
 		}
 		return reg, nil
 	}
@@ -310,9 +299,6 @@ func activeMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 	}
 	nested := cfg.Media.Multilingual
 	if len(nested.Languages) > 0 ||
-		len(nested.MaterializeLanguages) > 0 ||
-		len(nested.TranslateLanguages) > 0 ||
-		len(nested.IndexLanguages) > 0 ||
 		nested.Enabled ||
 		nested.RequireLanguageCertainty ||
 		nested.RequireTranscriptReady ||
