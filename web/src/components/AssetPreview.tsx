@@ -1,4 +1,4 @@
-import { getAssetPreviewUrl } from '../api/client'
+import { getAssetPreviewUrl } from '../api/assets'
 
 interface AssetPreviewProps {
   id: string

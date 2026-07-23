@@ -1,6 +1,6 @@
 import { usePollingQuery } from '../hooks/usePollingQuery'
 import RefreshButton from '../components/RefreshButton'
-import { getSummary } from '../api/client'
+import { getSummary } from '../api/assets'
 
 interface SummaryData {
   total_assets?: number

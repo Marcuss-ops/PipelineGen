@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { usePollingQuery } from '../hooks/usePollingQuery'
 import RefreshButton from '../components/RefreshButton'
-import { getJobFull, JobFull, cancelJob, retryJob } from '../api/client'
+import { getJobFull, JobFull, cancelJob, retryJob } from '../api/jobs'
 
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>()

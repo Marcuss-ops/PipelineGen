@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { checkAuth, login as apiLogin, logout as apiLogout } from '../api/client'
+import { checkAuth, login as apiLogin, logout as apiLogout } from '../api/auth'
 
 interface AuthContextValue {
   isAuthenticated: boolean

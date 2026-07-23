@@ -1,4 +1,4 @@
-import { AssetActionsResponse } from '../../../../../api/client'
+import { AssetActionsResponse } from '../../../../../api/assetTypes'
 import styles from '../../AssetInspector.module.css'
 import { ActionButton } from '../ActionButton'
 

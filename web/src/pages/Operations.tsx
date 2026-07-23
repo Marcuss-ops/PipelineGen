@@ -6,9 +6,9 @@ import {
   getModels,
   getQdrantReady,
   getMediaIndexHealth,
-  getOutboxStatus,
   getOperationsErrors,
-} from '../api/client'
+} from '../api/operations'
+import { getOutboxStatus } from '../api/outbox'
 
 interface SectionState {
   loading: boolean

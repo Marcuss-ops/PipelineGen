@@ -1,5 +1,5 @@
 
-import { AssetDetails } from '../../../../api/client'
+import { AssetDetails } from '../../../../api/assetTypes'
 import AssetPreview from '../../../../components/AssetPreview'
 import styles from '../AssetInspector.module.css'
 import { PreviewButton } from './PreviewButton'

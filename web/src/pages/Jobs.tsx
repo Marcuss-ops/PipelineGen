@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { usePollingQuery } from '../hooks/usePollingQuery'
 import RefreshButton from '../components/RefreshButton'
-import { listJobs, JobSummary } from '../api/client'
+import { listJobs, JobSummary } from '../api/jobs'
 
 const ACTIVE_JOB_STATUSES = ['RUNNING', 'LEASED', 'PENDING', 'QUEUED', 'FINALIZING', 'WAITING_CHILDREN']
 
