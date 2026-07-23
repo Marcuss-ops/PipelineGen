@@ -38,7 +38,7 @@ var metadataAllowlist = map[string]bool{
 	"internal/domain/asset/metadata_helpers.go":                true, // owner: platform-asset-metadata, deadline: 2026-08-15
 	"internal/domain/asset/processor.go":                       true, // owner: platform-asset-metadata, deadline: 2026-08-15
 	"internal/domain/asset/scoring.go":                         true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/types_media.go":                     true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/domain/asset/location_resolver.go":               true, // owner: platform-asset-metadata, deadline: 2026-08-15
 	"internal/domain/finalization/types_published_artifact.go": true, // owner: platform-finalization, deadline: 2026-08-15
 	"internal/domain/script/generation_errors.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
 	"internal/domain/script/generation_result.go":              true, // owner: platform-script-domain, deadline: 2026-08-15

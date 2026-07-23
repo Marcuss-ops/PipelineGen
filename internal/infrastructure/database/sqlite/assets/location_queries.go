@@ -1,5 +1,5 @@
 // Package assets — location SQL queries (Wave C: moved from
-// internal/domain/asset/types_media.go).
+// internal/domain/asset/location.go).
 //
 // The Location type itself stays in the domain package (domain/asset)
 // because callers in application/ refer to it and don't want a type
@@ -18,7 +18,7 @@ import (
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// ── SQL receivers (migrated from types_media.go) ──────────────────────
+// ── SQL receivers (migrated from location.go) ──────────────────────
 
 // UpsertLocation inserts or replaces a location record and populates loc.ID.
 func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Location) error {

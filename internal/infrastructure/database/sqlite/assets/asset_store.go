@@ -14,7 +14,7 @@
 // The local struct EMBEDS the legacy `*asset.AssetStoreSQLite` so the
 // 71+ method receivers defined in OTHER domain files (clips_core.go,
 // search_core.go, search_terms.go, search_list, tags.go, processor.go,
-// types_media.go, lifecycle_core.go, store_helpers.go) are reachable
+// lifecycle_core.go, store_helpers.go, and the split domain files) are reachable
 // via method-set promotion. Those receivers stay where they are
 // today — moving them is a follow-up Wave B+ task.
 //

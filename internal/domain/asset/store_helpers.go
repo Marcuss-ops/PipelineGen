@@ -44,6 +44,7 @@ package asset
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	"go.uber.org/zap"
 )
 
@@ -112,10 +113,10 @@ type ArtifactStore interface {
 
 // DeliveryStore manages delivery records.
 type DeliveryStore interface {
-	Create(ctx context.Context, d *Delivery) error
-	Get(ctx context.Context, id string) (*Delivery, error)
-	Update(ctx context.Context, d *Delivery) error
-	ListPending(ctx context.Context) ([]*Delivery, error)
+	Create(ctx context.Context, d *delivery.Delivery) error
+	Get(ctx context.Context, id string) (*delivery.Delivery, error)
+	Update(ctx context.Context, d *delivery.Delivery) error
+	ListPending(ctx context.Context) ([]*delivery.Delivery, error)
 }
 
 // ── AssetStoreSQLite (legacy marker for HYBRID embed promotion) ────
