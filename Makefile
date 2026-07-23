@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-architecture verify-artlist verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -388,84 +388,56 @@ ci: go-version-check fmt vet tidy-check lint test coverage-check build
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
+# verify-base — fail-closed base gate: toolchain version, secrets,
+# formatting, and module tidiness. Kept cheap so the most common failures
+# surface in seconds.
+verify-base: go-version-check verify-no-secrets verify-format tidy-check
+	@echo "✅ Base verification passed"
+
+# verify-go — Go static analysis, race-tested unit tests, and full build.
+# Fail-closed via \-line continuation + && so the first failure aborts the
+# chain. This is the heavy pre-build step extracted from verify-main.
+verify-go:
+	$(GO) vet ./... && \
+	$(GO) test -race ./... && \
+	$(GO) build ./...
+	@echo "✅ Go verification passed"
+
+# verify-architecture — governance and architecture checks. Kept separate
+# so architecture drift surfaces under its own target.
+verify-architecture:
+	$(GO) run ./cmd/architecture-aggregate --dry-run && \
+	$(GO) run ./cmd/archcheck
+	@echo "✅ Architecture verification passed"
+
+# verify-artlist — quick verification dedicated to the Artlist module.
+# Runs the Go packages under infrastructure/artlist, providers/artlist,
+# api/assets/artlist, plus the node-scraper JS test suite.
+verify-artlist:
+	$(GO) test -race ./internal/infrastructure/artlist/...
+	$(GO) test -race ./internal/application/assets/providers/artlist/...
+	$(GO) test -race ./internal/api/assets/artlist/...
+	cd node-scraper && npm test
+	@echo "✅ Artlist verification passed"
+
 # verify-main — Cleanup Plan P0-3 (June 2026): the canonical fail-closed
-# pre-push gate. Action card P0-3 wires this into the local-mirror rule
-# ("every push to `main` MUST pass locally first"). Mirrors the
-# `.github/workflows/ci.yml` chain so a green local signal is a sufficient
-# proxy for a green CI signal — same commands, same failure semantics.
+# pre-push gate, now composed of the granular targets above. Every push to
+# `main` MUST pass this target locally first. The individual steps were
+# extracted to reduce log volume and isolate failures.
 #
-# FAIL-CLOSED contract:
-#   - `&&` between commands: any failing step aborts the chain immediately.
-#   - NO `|| true`, NO `|| echo`, NO fallbacks.
-#   - exit code = the first command that failed (Go make yields the right
-#     one automatically; bash `&&` does the same).
-#
-# P0.3 fixes (June 2026):
-#   - verify-format already fail-closed via `test -z "$(gofmt -l .)"`
-#     (gofmt -l exits 0 even with unformatted files — the test -z guard
-#     catches them).
-#   - Added -race to go test (previously only in dedicated CI job).
-#   - Added tidy-check (go mod tidy + git diff --exit-code) to catch
-#     stale go.mod/go.sum before push.
-#
-# P0.3 follow-up (July 2026):
-#   - Added verify-no-secrets as the FIRST pre-check so a stray secret
-#     (a VELOX_ADMIN_TOKEN commit or a PEM header) aborts the chain in
-#     seconds before any other step that costs minutes. The canonical
-#     `scripts/ci/ci-no-secrets-audit.sh` gate runs the 3-tier
-#     auto-detect (gitleaks / trufflehog / ripgrep) over `git ls-files`
-#     with the same patterns as the workflow's secrets job, so a
-#     green local signal is sufficient proxy for green CI.
-#
-# Order rationale:
-#   1. `verify-no-secrets`    — fail-closed secrets gate (DEPENDENCY).
-#                                Catches stray credentials before costly
-#                                checks. Sub-second on small diffs.
-#   2. `verify-format`        — fail-closed gofmt gate (DEPENDENCY,
-#                                target below). Catches unformatted diffs
-#                                in seconds. MUST fail before any other
-#                                step that costs minutes.
-#   3. `tidy-check`           — go.mod/go.sum correctness; cheap.
-#   4. `go vet ./...`         — static analysis; semantically cheap.
-#   5. `go test -race ./...`  — heaviest pre-build step with race
-#                                detector enabled.
-#   6. `go build ./...`       — full project type-check.
-#   7. architecture-aggregate — schema-level cross-check on
-#                                architecture/ownership.generated.yaml.
-#   8. archcheck --strict     — gate-promoted phase-0 governance check.
-#   9. ci-architectural-checks — the long-standing legacy fallback kept
-#                                as the LAST step so an arch drift at
-#                                step 6/7 surfaces before the legacy
-#                                check masks it.
-# verify-main is gated on go-version-check per the existing pattern
-# (build, vet, tidy-check, ci all carry the same precondition). An
-# operator on a stale host Go gets the canonical "Go version mismatch"
-# error from go-version-check instead of an obscure toolchain crash
-# further along the chain.
-#
-# Fail-closed chain is folded into ONE shell invocation via \-line
-# continuation + `&&` chaining. Without the \-continuation Make runs
-# each recipe line in its own subshell, so a fast failure on line 1
-# would NOT abort lines 2-7 (the first 6 commands would still execute).
-# The \-continuation collapses them into one shell with `set -e`-like
-# `&&` semantics: first failure exits non-zero and aborts the chain.
-verify-main: go-version-check verify-no-secrets verify-format tidy-check
-	go vet ./... && \
-	go test -race ./... && \
-	go build ./... && \
-	go run ./cmd/architecture-aggregate --dry-run && \
-	go run ./cmd/archcheck
-	# TODO(pre-existing-debt, June 2026): re-enable the canonical
-	# ci-architectural-checks step once scripts/archcheck/main.go
-	# --ratchet/--future-ratchet are wired into this bash script with a
-	# populated scripts/archcheck/phase0_baseline.json. Today the script
-	# unconditionally fails on pre-existing handler->database/sql and
-	# cross-package type-alias patterns documented in the wave-tracker,
-	# even when passed the aspirational --future-ratchet flag (the
-	# script body only handles --self-check; ratchet logic lives in
-	# scripts/archcheck/main.go). Mirrors the --strict relaxation
-	# already applied to cmd/archcheck above (pre-existing debt
-	# accepted for the migration window per godlike/07).
+# TODO(pre-existing-debt, June 2026): re-enable the canonical
+# ci-architectural-checks step once scripts/archcheck/main.go
+# --ratchet/--future-ratchet are wired into this bash script with a
+# populated scripts/archcheck/phase0_baseline.json. Today the script
+# unconditionally fails on pre-existing handler->database/sql and
+# cross-package type-alias patterns documented in the wave-tracker,
+# even when passed the aspirational --future-ratchet flag (the
+# script body only handles --self-check; ratchet logic lives in
+# scripts/archcheck/main.go). Mirrors the --strict relaxation
+# already applied to cmd/archcheck above (pre-existing debt
+# accepted for the migration window per godlike/07).
+verify-main: verify-base verify-go verify-architecture
+	@echo "✅ verify-main passed"
 	# bash scripts/ci-architectural-checks.sh
 
 # Aggregate pre-flight check. Runs both toolchain guards plus two
