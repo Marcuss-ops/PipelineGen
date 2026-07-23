@@ -11,14 +11,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-type fakeSearcher struct {
+type fakeMediaMemoryPort struct {
 	candidates []brain.Candidate
 }
 
-func (f *fakeSearcher) Search(_ context.Context, _ brain.SearchQuery) (brain.SearchResult, error) {
+func (f *fakeMediaMemoryPort) Search(_ context.Context, _ brain.SearchQuery) (brain.SearchResult, error) {
 	return brain.SearchResult{Candidates: f.candidates}, nil
 }
 
@@ -26,8 +27,8 @@ func newTestBrain(candidates []brain.Candidate) brain.Brain {
 	return NewCanonicalBrain(
 		normalizer.NewDefaultNormalizer(),
 		intent.NewDefaultResolver(),
-		&fakeSearcher{candidates: candidates},
-		ranker.NewDefaultRanker(),
+		&fakeMediaMemoryPort{candidates: candidates},
+		ranker.NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil)),
 		planner.NewDefaultPlanner(),
 	)
 }

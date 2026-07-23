@@ -22,12 +22,15 @@ type mediaMemoryRankerAdapter struct {
 	inner mediamemory.Ranker
 }
 
-// NewDefaultRanker returns the canonical brain candidate ranker,
-// backed by the rich MediaMemory ranker.
-func NewDefaultRanker() CandidateRanker {
-	return &mediaMemoryRankerAdapter{
-		inner: mediamemory.NewDefaultRanker(nil, nil),
+// NewMediaMemoryRankerAdapter returns a CandidateRanker backed by the
+// provided MediaMemory ranker. This is the production constructor
+// used by the composition root so that the same ranker instance is
+// shared between the cascade and the Brain orchestrator.
+func NewMediaMemoryRankerAdapter(inner mediamemory.Ranker) CandidateRanker {
+	if inner == nil {
+		panic("brain/ranker: MediaMemory ranker is required")
 	}
+	return &mediaMemoryRankerAdapter{inner: inner}
 }
 
 // Compile-time assertion: mediaMemoryRankerAdapter satisfies CandidateRanker.

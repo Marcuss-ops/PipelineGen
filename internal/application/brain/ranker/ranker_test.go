@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
@@ -19,7 +20,7 @@ func candidate(id string, score float64, mediaType string) brain.Candidate {
 }
 
 func TestDefaultRanker_OrdersByScore(t *testing.T) {
-	r := NewDefaultRanker()
+	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
 		candidate("c-low", 0.3, "video"),
 		candidate("c-high", 0.9, "video"),
@@ -43,7 +44,7 @@ func TestDefaultRanker_OrdersByScore(t *testing.T) {
 }
 
 func TestDefaultRanker_RespectsLimit(t *testing.T) {
-	r := NewDefaultRanker()
+	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
 		candidate("a", 0.9, "video"),
 		candidate("b", 0.8, "video"),
@@ -63,7 +64,7 @@ func TestDefaultRanker_RespectsLimit(t *testing.T) {
 }
 
 func TestDefaultRanker_MediaTypeBonus(t *testing.T) {
-	r := NewDefaultRanker()
+	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
 		candidate("img", 0.85, "image"),
 		candidate("vid", 0.80, "video"),
@@ -93,7 +94,7 @@ func idsOf(in []brain.Candidate) []string {
 }
 
 func TestDefaultRanker_TieBreakByID(t *testing.T) {
-	r := NewDefaultRanker()
+	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
 	candidates := []brain.Candidate{
 		candidate("b", 0.5, "video"),
 		candidate("a", 0.5, "video"),

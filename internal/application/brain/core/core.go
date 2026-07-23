@@ -1,9 +1,9 @@
 // Package core is the canonical orchestrator of the Brain capability.
 //
 // core.go wires the four brain services (normalizer, intent
-// resolver, ranker, planner) with the CandidateSearcher port to
+// resolver, ranker, planner) with the MediaMemoryResolutionPort to
 // implement the Brain port. It performs no IO directly: every
-// backend access flows through the CandidateSearcher port.
+// backend access flows through the MediaMemoryResolutionPort.
 package core
 
 import (
@@ -20,24 +20,25 @@ import (
 )
 
 // CanonicalBrain is the canonical implementation of the Brain port.
-// It composes the four pure brain services and delegates search to the
-// CandidateSearcher port, which is the only place where IO happens.
+// It composes the four pure brain services and delegates candidate
+// search to the MediaMemoryResolutionPort, which is the only place
+// where IO happens.
 type CanonicalBrain struct {
 	normalizer normalizer.PhraseNormalizer
 	resolver   intent.VisualIntentResolver
-	searcher   brain.CandidateSearcher
+	searcher   brain.MediaMemoryResolutionPort
 	ranker     ranker.CandidateRanker
 	planner    planner.SceneVisualPlanner
 }
 
 // NewCanonicalBrain constructs a CanonicalBrain from the four brain
-// services and a CandidateSearcher. Any nil dependency triggers a
-// panic at construction time (fail-fast) so a mis-wired composition
-// is caught at boot.
+// services and a MediaMemoryResolutionPort. Any nil dependency
+// triggers a panic at construction time (fail-fast) so a mis-wired
+// composition is caught at boot.
 func NewCanonicalBrain(
 	n normalizer.PhraseNormalizer,
 	res intent.VisualIntentResolver,
-	searcher brain.CandidateSearcher,
+	searcher brain.MediaMemoryResolutionPort,
 	r ranker.CandidateRanker,
 	p planner.SceneVisualPlanner,
 ) *CanonicalBrain {
