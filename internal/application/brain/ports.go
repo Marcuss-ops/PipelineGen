@@ -36,6 +36,11 @@ type Brain interface {
 // the result through its ranker and planner.
 type MediaMemoryResolutionPort interface {
 	Search(ctx context.Context, query SearchQuery) (SearchResult, error)
+	// EmbeddingVersion returns the version of the embedding model /
+	// schema used by the semantic search path. The cascade is the
+	// canonical owner of this version; the Brain reads it only for
+	// the decision fingerprint.
+	EmbeddingVersion() string
 }
 
 // CandidateSearcher is the legacy alias for MediaMemoryResolutionPort.

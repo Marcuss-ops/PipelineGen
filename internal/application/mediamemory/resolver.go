@@ -947,6 +947,13 @@ func upgradeSource(current, winning string) string {
 	return current
 }
 
+// EmbeddingVersion returns the version of the embedding model / schema
+// used by the semantic search path consumed by the cascade. The cascade
+// owns this version; the Brain reads it only for the decision fingerprint.
+func (r *VisualResolver) EmbeddingVersion() string {
+	return "multilingual-e5-v1"
+}
+
 // Search implements brain.MediaMemoryResolutionPort by running the
 // MediaMemory cascade for the requested media types and returning the
 // raw candidate pool. Filtering, scoring and slot assignment are left

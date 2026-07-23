@@ -23,6 +23,10 @@ func (f *fakeMediaMemoryPort) Search(_ context.Context, _ brain.SearchQuery) (br
 	return brain.SearchResult{Candidates: f.candidates}, nil
 }
 
+func (f *fakeMediaMemoryPort) EmbeddingVersion() string {
+	return "test-embedding-v1"
+}
+
 func newTestBrain(candidates []brain.Candidate) brain.Brain {
 	return NewCanonicalBrain(
 		normalizer.NewDefaultNormalizer(),
