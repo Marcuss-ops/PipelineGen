@@ -58,6 +58,25 @@ func TestLexiconRegistry_LoadsStopwords(t *testing.T) {
 	}
 }
 
+func TestLexiconRegistry_ReturnsDefensiveCopies(t *testing.T) {
+	dir := t.TempDir()
+	enDir := filepath.Join(dir, "en")
+	writeLexiconFile(t, enDir, "stopwords.txt", "the")
+
+	r, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+
+	first := r.StopWords("en")
+	first["mutated"] = struct{}{}
+
+	second := r.StopWords("en")
+	if _, ok := second["mutated"]; ok {
+		t.Fatal("expected StopWords to return a defensive copy")
+	}
+}
+
 func TestLexiconRegistry_Fallback(t *testing.T) {
 	dir := t.TempDir()
 	// Only create an "it" profile, no fallback.
@@ -198,6 +217,16 @@ func TestLexiconRegistry_PhrasePolicy(t *testing.T) {
 	}
 	if !pp.RejectVerbsWhenAll {
 		t.Error("expected RejectVerbsWhenAll = true (default)")
+	}
+}
+
+func TestLexiconRegistry_PhrasePolicyStrictParsing(t *testing.T) {
+	dir := t.TempDir()
+	enDir := filepath.Join(dir, "en")
+	writeLexiconFile(t, enDir, "phrase_policy.txt", "min_words=two")
+
+	if _, err := NewLexiconRegistry(dir); err == nil {
+		t.Fatal("expected malformed phrase_policy.txt to fail")
 	}
 }
 

@@ -10,9 +10,14 @@ package linguistics
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -62,6 +67,7 @@ type LexiconRegistry struct {
 	mu       sync.RWMutex
 	profiles map[string]*LexiconProfile
 	fallback *LexiconProfile
+	version  string
 }
 
 // NewLexiconRegistry constructs a LexiconRegistry by scanning the
@@ -78,10 +84,17 @@ type LexiconRegistry struct {
 // specific profile exists. If fallback is missing, the registry
 // builds a minimal fallback from built-in defaults.
 func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
+	if rootDir == "" {
+		return newBuiltInLexicon(), nil
+	}
+
 	profiles := make(map[string]*LexiconProfile)
 
 	entries, err := os.ReadDir(rootDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return newBuiltInLexicon(), nil
+		}
 		return nil, fmt.Errorf("lexicon registry: read root %q: %w", rootDir, err)
 	}
 
@@ -99,11 +112,23 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 			PhrasePolicy:    DefaultPhraseExtractionPolicy(),
 		}
 
-		loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords)
-		loadWordSet(filepath.Join(dir, "function_words.txt"), profile.FunctionWords)
-		loadWordSet(filepath.Join(dir, "entity_blocklist.txt"), profile.EntityBlocklist)
-		profile.VerbSuffixes = loadStringList(filepath.Join(dir, "verb_morphology.txt"))
-		if p, err := loadPhrasePolicy(filepath.Join(dir, "phrase_policy.txt")); err == nil {
+		if err := loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords); err != nil {
+			return nil, err
+		}
+		if err := loadWordSet(filepath.Join(dir, "function_words.txt"), profile.FunctionWords); err != nil {
+			return nil, err
+		}
+		if err := loadWordSet(filepath.Join(dir, "entity_blocklist.txt"), profile.EntityBlocklist); err != nil {
+			return nil, err
+		}
+		if suffixes, err := loadStringList(filepath.Join(dir, "verb_morphology.txt")); err != nil {
+			return nil, err
+		} else {
+			profile.VerbSuffixes = suffixes
+		}
+		if p, ok, err := loadPhrasePolicy(filepath.Join(dir, "phrase_policy.txt")); err != nil {
+			return nil, err
+		} else if ok {
 			profile.PhrasePolicy = p
 		}
 
@@ -118,6 +143,7 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 	return &LexiconRegistry{
 		profiles: profiles,
 		fallback: fallback,
+		version:  fingerprintLexiconRegistry(profiles, fallback),
 	}, nil
 }
 
@@ -141,9 +167,9 @@ func (r *LexiconRegistry) Resolve(language string) *LexiconProfile {
 
 	lang := normalizeLang(language)
 	if p, ok := r.profiles[lang]; ok {
-		return p
+		return cloneProfile(p)
 	}
-	return r.fallback
+	return cloneProfile(r.fallback)
 }
 
 // StopWords returns the stop-word set for the given language.
@@ -172,18 +198,25 @@ func (r *LexiconRegistry) PhrasePolicy(language string) PhraseExtractionPolicy {
 }
 
 // Version returns a hash-based version string that changes when any
-// loaded profile changes. This is a placeholder until a deterministic
-// content-hash is computed at load time.
+// loaded profile changes.
 func (r *LexiconRegistry) Version() string {
-	return "lexicon-v1"
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.version != "" {
+		return r.version
+	}
+	return fingerprintLexiconRegistry(r.profiles, r.fallback)
 }
 
 // ── File-loading helpers ───────────────────────────────────────────
 
-func loadWordSet(path string, dest map[string]struct{}) {
+func loadWordSet(path string, dest map[string]struct{}) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return // file is optional; skip silently
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
 	defer f.Close()
 
@@ -195,12 +228,19 @@ func loadWordSet(path string, dest map[string]struct{}) {
 		}
 		dest[strings.ToLower(word)] = struct{}{}
 	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("lexicon registry: scan %q: %w", path, err)
+	}
+	return nil
 }
 
-func loadStringList(path string) []string {
+func loadStringList(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
 	defer f.Close()
 
@@ -213,13 +253,19 @@ func loadStringList(path string) []string {
 		}
 		out = append(out, strings.ToLower(line))
 	}
-	return out
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("lexicon registry: scan %q: %w", path, err)
+	}
+	return out, nil
 }
 
-func loadPhrasePolicy(path string) (PhraseExtractionPolicy, error) {
+func loadPhrasePolicy(path string) (PhraseExtractionPolicy, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return PhraseExtractionPolicy{}, err
+		if os.IsNotExist(err) {
+			return PhraseExtractionPolicy{}, false, nil
+		}
+		return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
 	defer f.Close()
 
@@ -232,22 +278,43 @@ func loadPhrasePolicy(path string) (PhraseExtractionPolicy, error) {
 		}
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
-			continue
+			return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: malformed phrase policy line %q in %q", line, path)
 		}
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
 		switch key {
 		case "min_words":
-			fmt.Sscanf(val, "%d", &p.MinWords)
+			n, parseErr := strconv.Atoi(val)
+			if parseErr != nil {
+				return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: parse min_words in %q: %w", path, parseErr)
+			}
+			p.MinWords = n
 		case "max_words":
-			fmt.Sscanf(val, "%d", &p.MaxWords)
+			n, parseErr := strconv.Atoi(val)
+			if parseErr != nil {
+				return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: parse max_words in %q: %w", path, parseErr)
+			}
+			p.MaxWords = n
 		case "max_results":
-			fmt.Sscanf(val, "%d", &p.MaxResults)
+			n, parseErr := strconv.Atoi(val)
+			if parseErr != nil {
+				return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: parse max_results in %q: %w", path, parseErr)
+			}
+			p.MaxResults = n
 		case "reject_verbs_when_all":
-			p.RejectVerbsWhenAll = val == "true" || val == "1"
+			b, parseErr := strconv.ParseBool(val)
+			if parseErr != nil {
+				return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: parse reject_verbs_when_all in %q: %w", path, parseErr)
+			}
+			p.RejectVerbsWhenAll = b
+		default:
+			return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: unknown phrase policy key %q in %q", key, path)
 		}
 	}
-	return p, nil
+	if err := scanner.Err(); err != nil {
+		return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: scan %q: %w", path, err)
+	}
+	return p, true, nil
 }
 
 func normalizeLang(language string) string {
@@ -429,32 +496,119 @@ func builtInEntityBlocklist() map[string]struct{} {
 
 // ── Global default ─────────────────────────────────────────────────
 
-var (
-	defaultLexicon     *LexiconRegistry
-	defaultLexiconOnce sync.Once
-)
+var defaultLexiconMu sync.RWMutex
+var defaultLexicon *LexiconRegistry
 
-// SetDefaultLexicon sets the package-level default lexicon registry.
-// It is called once at bootstrap (e.g. from the composition root or
-// from an init function). Calling it more than once is a no-op.
+// SetDefaultLexicon installs the package-level default lexicon registry.
+// The composition root calls this once at bootstrap; tests may replace
+// it to exercise file-backed fixtures.
 func SetDefaultLexicon(r *LexiconRegistry) {
-	defaultLexiconOnce.Do(func() {
-		defaultLexicon = r
-	})
+	if r == nil {
+		return
+	}
+	defaultLexiconMu.Lock()
+	defer defaultLexiconMu.Unlock()
+	defaultLexicon = r
 }
 
 // DefaultLexicon returns the global default lexicon registry. If none
-// has been set, it creates a built-in registry with per-language
-// profiles (en, it, es, fr, de) plus a union fallback. This ensures
-// that language detection and stop-word filtering work correctly even
-// before the composition root calls SetDefaultLexicon.
+// has been installed yet, it creates a built-in registry with
+// per-language profiles (en, it, es, fr, de) plus a union fallback.
+// That fallback exists only so tests and explicit dev bootstrap can
+// keep running before the composition root installs a file-backed
+// registry.
 func DefaultLexicon() *LexiconRegistry {
-	defaultLexiconOnce.Do(func() {
-		if defaultLexicon == nil {
-			defaultLexicon = newBuiltInLexicon()
-		}
-	})
+	defaultLexiconMu.RLock()
+	if defaultLexicon != nil {
+		lex := defaultLexicon
+		defaultLexiconMu.RUnlock()
+		return lex
+	}
+	defaultLexiconMu.RUnlock()
+
+	defaultLexiconMu.Lock()
+	defer defaultLexiconMu.Unlock()
+	if defaultLexicon == nil {
+		defaultLexicon = newBuiltInLexicon()
+	}
 	return defaultLexicon
+}
+
+func cloneProfile(p *LexiconProfile) *LexiconProfile {
+	if p == nil {
+		return nil
+	}
+	out := &LexiconProfile{
+		StopWords:       cloneStringSet(p.StopWords),
+		FunctionWords:   cloneStringSet(p.FunctionWords),
+		EntityBlocklist: cloneStringSet(p.EntityBlocklist),
+		VerbSuffixes:    append([]string(nil), p.VerbSuffixes...),
+		PhrasePolicy:    p.PhrasePolicy,
+	}
+	return out
+}
+
+func cloneStringSet(src map[string]struct{}) map[string]struct{} {
+	if len(src) == 0 {
+		return map[string]struct{}{}
+	}
+	dst := make(map[string]struct{}, len(src))
+	for k := range src {
+		dst[k] = struct{}{}
+	}
+	return dst
+}
+
+func fingerprintLexiconRegistry(profiles map[string]*LexiconProfile, fallback *LexiconProfile) string {
+	h := sha256.New()
+
+	keys := make([]string, 0, len(profiles))
+	for k := range profiles {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		writeLexiconFingerprint(h, key, profiles[key])
+	}
+	writeLexiconFingerprint(h, "_fallback", fallback)
+
+	return "lexicon-" + hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func writeLexiconFingerprint(h hash.Hash, key string, p *LexiconProfile) {
+	if p == nil {
+		_, _ = h.Write([]byte(key + ":nil\n"))
+		return
+	}
+	_, _ = h.Write([]byte(key + ":"))
+	writeSortedSetFingerprint(h, "stop", p.StopWords)
+	writeSortedSetFingerprint(h, "func", p.FunctionWords)
+	writeSortedSetFingerprint(h, "block", p.EntityBlocklist)
+	_, _ = h.Write([]byte("verb:"))
+	for _, suffix := range p.VerbSuffixes {
+		_, _ = h.Write([]byte(suffix))
+		_, _ = h.Write([]byte("\n"))
+	}
+	_, _ = h.Write([]byte(fmt.Sprintf("policy:%d,%d,%d,%t\n",
+		p.PhrasePolicy.MinWords,
+		p.PhrasePolicy.MaxWords,
+		p.PhrasePolicy.MaxResults,
+		p.PhrasePolicy.RejectVerbsWhenAll,
+	)))
+}
+
+func writeSortedSetFingerprint(h hash.Hash, label string, set map[string]struct{}) {
+	keys := make([]string, 0, len(set))
+	for k := range set {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	_, _ = h.Write([]byte(label + ":"))
+	for _, k := range keys {
+		_, _ = h.Write([]byte(k))
+		_, _ = h.Write([]byte("\n"))
+	}
 }
 
 // newBuiltInLexicon creates a registry pre-populated with per-language
@@ -463,7 +617,7 @@ func DefaultLexicon() *LexiconRegistry {
 // correctly. The fallback profile contains the union for
 // language-agnostic filtering (e.g. textutil.IsStopWord).
 func newBuiltInLexicon() *LexiconRegistry {
-	return &LexiconRegistry{
+	reg := &LexiconRegistry{
 		profiles: map[string]*LexiconProfile{
 			"en": englishBuiltInProfile(),
 			"it": italianBuiltInProfile(),
@@ -473,6 +627,8 @@ func newBuiltInLexicon() *LexiconRegistry {
 		},
 		fallback: builtInFallbackProfile(),
 	}
+	reg.version = fingerprintLexiconRegistry(reg.profiles, reg.fallback)
+	return reg
 }
 
 func englishBuiltInProfile() *LexiconProfile {
