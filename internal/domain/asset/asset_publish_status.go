@@ -7,7 +7,8 @@
 // registered locally". The pre-P0.2 ambiguous OK=true for both cases
 // is eliminated.
 //
-// This enum is DISTINCT from DeliveryStatus in types_media.go (which tracks
+// This enum is DISTINCT from delivery.DeliveryStatus in
+// internal/domain/delivery/status.go (which tracks
 // outbox delivery-attempt lifecycle: PENDING/LEASED/RUNNING/...).
 // AssetPublishStatus tracks the per-asset publishing outcome:
 //   - LOCAL_ONLY → PUBLISH_PENDING → PUBLISHING → PUBLISHED

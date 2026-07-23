@@ -402,7 +402,7 @@ func scanRow(row *sql.Row) (*asset.CategoryChannel, error) {
 // destination order MUST match channelSelectColumns verbatim — the
 // single source of truth is the constant in this file. Adding a column
 // means: ALTER TABLE migration + add field to CategoryChannel
-// (domain/asset/types_media.go) + append column here and in the
+// (domain/asset/category_channel.go) + append column here and in the
 // const + extend scanFields dest list in the same commit.
 func scanFields(scanner interface{ Scan(dest ...any) error }) (*asset.CategoryChannel, error) {
 	ch := &asset.CategoryChannel{}
