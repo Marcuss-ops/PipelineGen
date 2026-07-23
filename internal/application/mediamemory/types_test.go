@@ -18,16 +18,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── SlotKind ────────────────────────────────────────────────────
 
 func TestIsKnownSlotKindAcceptsCanonical(t *testing.T) {
 	for _, k := range []SlotKind{
-		SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay,
-		SlotMap, SlotPortrait, SlotDocument, SlotBackground,
+		media.SlotPrimaryVideo, media.SlotSecondaryImage, media.SlotEvidenceOverlay,
+		media.SlotMap, media.SlotPortrait, media.SlotDocument, media.SlotBackground,
 	} {
-		assert.Truef(t, IsKnownSlotKind(k),
+		assert.Truef(t, media.IsKnownSlotKind(k),
 			"canonical SlotKind %q MUST be accepted", k)
 	}
 }
@@ -37,7 +38,7 @@ func TestIsKnownSlotKindRejectsDrift(t *testing.T) {
 		"", "primaryvideo", "PRIMARY_VIDEO", "primary_video_typo",
 		"third_layer", "video_primary",
 	} {
-		assert.Falsef(t, IsKnownSlotKind(k),
+		assert.Falsef(t, media.IsKnownSlotKind(k),
 			"uncanonical SlotKind %q MUST be rejected", k)
 	}
 }
@@ -257,7 +258,7 @@ func wrap(reason string, base error) error {
 // at least once in tests. Removing an enum with no compile-time
 // "use" can silently drop it — these references are the
 // compile-time pin that catches future drift.
-var _ SlotKind = SlotPrimaryVideo // primary_video slot
+var _ SlotKind = media.SlotPrimaryVideo // primary_video slot
 var _ ConceptType = ConceptPhrase // phrase-typed concept
 var _ ApprovalStatus = ApprovalApproved
 var _ Origin = OriginManual

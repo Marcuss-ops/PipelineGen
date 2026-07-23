@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Mocks ────────────────────────────────────────────────────────
@@ -188,8 +189,8 @@ func TestMaterializeWorker_Materialize_PromotesColdToWarm(t *testing.T) {
 	res, err := w.Materialize(context.Background(), MaterializationRequest{
 		BatchID: "b1",
 		Promotes: []AcquisitionPromote{
-			{Candidate: cands.byID["c1"], Target: MaterializationWarm, TargetSlot: SlotPrimaryVideo},
-			{Candidate: cands.byID["c2"], Target: MaterializationWarm, TargetSlot: SlotPrimaryVideo},
+			{Candidate: cands.byID["c1"], Target: MaterializationWarm, TargetSlot: media.SlotPrimaryVideo},
+			{Candidate: cands.byID["c2"], Target: MaterializationWarm, TargetSlot: media.SlotPrimaryVideo},
 		},
 		HotCache: false,
 	})
@@ -219,7 +220,7 @@ func TestMaterializeWorker_Materialize_HotCachePromotesToHot(t *testing.T) {
 	_, err := w.Materialize(context.Background(), MaterializationRequest{
 		BatchID: "b1",
 		Promotes: []AcquisitionPromote{
-			{Candidate: cands.byID["h1"], Target: MaterializationHot, TargetSlot: SlotPrimaryVideo},
+			{Candidate: cands.byID["h1"], Target: MaterializationHot, TargetSlot: media.SlotPrimaryVideo},
 		},
 		HotCache: true,
 	})

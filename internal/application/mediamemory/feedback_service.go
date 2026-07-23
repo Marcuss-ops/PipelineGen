@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // FeedbackService is the canonical port for feedback ingestion.
@@ -234,7 +235,7 @@ func (s *defaultFeedbackService) Record(ctx context.Context, in FeedbackInput) (
 	// warm-up aggregate (Aggregator groups by SlotKind). Surface
 	// the canonical sentinel so the dashboard / API handler can
 	// branch via errors.Is and surface a 400 to the operator.
-	if !IsKnownSlotKind(binding.SlotKind) {
+	if !media.IsKnownSlotKind(binding.SlotKind) {
 		return UsageEvent{}, fmt.Errorf(
 			"mediamemory: feedback record binding %q slot_kind=%q: %w",
 			in.BindingID, string(binding.SlotKind), ErrInvalidSlotKind,

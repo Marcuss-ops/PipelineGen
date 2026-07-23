@@ -114,7 +114,7 @@ type ConceptRepository interface {
 type BindingRepository interface {
 	// Upsert inserts or updates a binding. SlotsKind MUST be in the
 	// canonical closed set (callers MUST pre-validate via
-	// IsKnownSlotKind); otherwise ErrInvalidSlotKind is returned.
+	// media.IsKnownSlotKind); otherwise ErrInvalidSlotKind is returned.
 	Upsert(ctx context.Context, b MediaBinding) (MediaBinding, error)
 
 	FindByID(ctx context.Context, id string) (MediaBinding, error)

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Fake UsageRepository ────────────────────────────────────────────
@@ -44,7 +45,7 @@ func newFakeUsageRepo() *fakeUsageRepo {
 }
 
 func (r *fakeUsageRepo) Append(_ context.Context, ev UsageEvent) error {
-	if !IsKnownSlotKind(ev.SlotKind) {
+	if !media.IsKnownSlotKind(ev.SlotKind) {
 		return errors.New("mediamemory: usage event slot_kind unknown")
 	}
 	r.mu.Lock()
@@ -143,7 +144,7 @@ func (r *fakeUsageRepo) ListSince(_ context.Context, since time.Time, limit int)
 const (
 	testConceptID = "concept-maya-feed"
 	testAssetID   = "asset-chichen-itza"
-	testSlotKind  = SlotPrimaryVideo
+	testSlotKind  = media.SlotPrimaryVideo
 )
 
 func seedFeedbackBinding(bindings *fakeBindingsRepo, score float64, count int) MediaBinding {
@@ -453,22 +454,22 @@ func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
 
 	b1 := seedFeedbackBinding(bindings, 0.0, 0)
 	b1.ConceptID = "concept-A"
-	b1.SlotKind = SlotPrimaryVideo
+	b1.SlotKind = media.SlotPrimaryVideo
 	bindings.byID[b1.ID] = b1
 
 	b2 := seedFeedbackBinding(bindings, 0.0, 0)
 	b2.ConceptID = "concept-A"
-	b2.SlotKind = SlotSecondaryImage
+	b2.SlotKind = media.SlotSecondaryImage
 	bindings.byID[b2.ID] = b2
 
 	b3 := seedFeedbackBinding(bindings, 0.0, 0)
 	b3.ConceptID = "concept-B"
-	b3.SlotKind = SlotPrimaryVideo
+	b3.SlotKind = media.SlotPrimaryVideo
 	bindings.byID[b3.ID] = b3
 
 	b4 := seedFeedbackBinding(bindings, 0.0, 0)
 	b4.ConceptID = "concept-B"
-	b4.SlotKind = SlotSecondaryImage
+	b4.SlotKind = media.SlotSecondaryImage
 	bindings.byID[b4.ID] = b4
 
 	now := newFixedClock().Now()
@@ -481,12 +482,12 @@ func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
 		}
 	}
 	usage.events = []UsageEvent{
-		mkEv("concept-A", SlotPrimaryVideo, b1, true, false, false),
-		mkEv("concept-A", SlotPrimaryVideo, b1, false, true, false),
-		mkEv("concept-A", SlotSecondaryImage, b2, false, false, true),
-		mkEv("concept-B", SlotPrimaryVideo, b3, true, false, false),
-		mkEv("concept-B", SlotPrimaryVideo, b3, true, false, false),
-		mkEv("concept-B", SlotSecondaryImage, b4, false, true, false),
+		mkEv("concept-A", media.SlotPrimaryVideo, b1, true, false, false),
+		mkEv("concept-A", media.SlotPrimaryVideo, b1, false, true, false),
+		mkEv("concept-A", media.SlotSecondaryImage, b2, false, false, true),
+		mkEv("concept-B", media.SlotPrimaryVideo, b3, true, false, false),
+		mkEv("concept-B", media.SlotPrimaryVideo, b3, true, false, false),
+		mkEv("concept-B", media.SlotSecondaryImage, b4, false, true, false),
 	}
 
 	agg, err := svc.AggregateSince(context.Background(), "")
@@ -514,7 +515,7 @@ func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
 		}
 		return FeedbackAggregate{}, false
 	}
-	aAPV, ok := find("concept-A", SlotPrimaryVideo)
+	aAPV, ok := find("concept-A", media.SlotPrimaryVideo)
 	if !ok {
 		t.Fatalf("missing aggregate for (concept-A, primary_video)")
 	}
@@ -525,7 +526,7 @@ func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
 		t.Fatalf("(concept-A, primary_video) AvgScore = %v, want 0.0", aAPV.AvgScore)
 	}
 
-	aASI, ok := find("concept-A", SlotSecondaryImage)
+	aASI, ok := find("concept-A", media.SlotSecondaryImage)
 	if !ok {
 		t.Fatalf("missing aggregate for (concept-A, secondary_image)")
 	}
@@ -536,7 +537,7 @@ func TestFeedbackAggregateSinceGroupsByConceptSlot(t *testing.T) {
 		t.Fatalf("(concept-A, secondary_image) AvgScore = %v, want 1.0", aASI.AvgScore)
 	}
 
-	aBPV, ok := find("concept-B", SlotPrimaryVideo)
+	aBPV, ok := find("concept-B", media.SlotPrimaryVideo)
 	if !ok {
 		t.Fatalf("missing aggregate for (concept-B, primary_video)")
 	}
@@ -559,12 +560,12 @@ func TestFeedbackAggregateSinceUsesRawEventCountForAvgScore(t *testing.T) {
 	svc, bindings, usage := defaultFeedbackSvc(t)
 	b := seedFeedbackBinding(bindings, 0.0, 0)
 	b.ConceptID = "concept-A"
-	b.SlotKind = SlotPrimaryVideo
+	b.SlotKind = media.SlotPrimaryVideo
 	bindings.byID[b.ID] = b
 
 	now := newFixedClock().Now()
 	usage.events = []UsageEvent{
-		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: media.SlotPrimaryVideo,
 			AssetID: b.AssetID, BindingID: b.ID,
 			Selected: true, RenderCompleted: true,
 			CreatedAt: now},
@@ -593,16 +594,16 @@ func TestFeedbackAggregateSinceFiltersBySinceTimestamp(t *testing.T) {
 
 	b := seedFeedbackBinding(bindings, 0.0, 0)
 	b.ConceptID = "concept-A"
-	b.SlotKind = SlotPrimaryVideo
+	b.SlotKind = media.SlotPrimaryVideo
 	bindings.byID[b.ID] = b
 
 	cutoff := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	usage.events = []UsageEvent{
-		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: media.SlotPrimaryVideo,
 			AssetID: b.AssetID, BindingID: b.ID,
 			Selected:  true,
 			CreatedAt: cutoff.Add(-48 * time.Hour)},
-		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: SlotPrimaryVideo,
+		{ProjectID: "p-1", ConceptID: "concept-A", SlotKind: media.SlotPrimaryVideo,
 			AssetID: b.AssetID, BindingID: b.ID,
 			Selected:  true,
 			CreatedAt: cutoff.Add(1 * time.Hour)},

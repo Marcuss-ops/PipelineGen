@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // MediaMemoryResolver is the canonical production implementation of
@@ -114,10 +115,10 @@ func toBrainRequest(req ResolveRequest) brain.BrainRequest {
 	}
 }
 
-func toBrainSlotKinds(in []SlotKind) []brain.SlotKind {
-	out := make([]brain.SlotKind, 0, len(in))
+func toBrainSlotKinds(in []SlotKind) []media.SlotKind {
+	out := make([]media.SlotKind, 0, len(in))
 	for _, s := range in {
-		out = append(out, brain.SlotKind(s))
+		out = append(out, media.SlotKind(s))
 	}
 	return out
 }

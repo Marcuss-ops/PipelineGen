@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -123,13 +124,13 @@ func (f *fakeBindingsRepoForGenerator) Delete(context.Context, string) error {
 
 func TestDefaultLayoutForSlot_CanonicalMapping(t *testing.T) {
 	cases := map[SlotKind]LayoutKind{
-		SlotPrimaryVideo:    LayoutFullscreen,
-		SlotSecondaryImage:  LayoutRightPanel,
-		SlotEvidenceOverlay: LayoutFullscreenFade,
-		SlotMap:             LayoutFullscreenFade,
-		SlotPortrait:        LayoutRightPanel,
-		SlotDocument:        LayoutLowerThird,
-		SlotBackground:      LayoutFullscreenFade,
+		media.SlotPrimaryVideo:    LayoutFullscreen,
+		media.SlotSecondaryImage:  LayoutRightPanel,
+		media.SlotEvidenceOverlay: LayoutFullscreenFade,
+		media.SlotMap:             LayoutFullscreenFade,
+		media.SlotPortrait:        LayoutRightPanel,
+		media.SlotDocument:        LayoutLowerThird,
+		media.SlotBackground:      LayoutFullscreenFade,
 	}
 	for slot, want := range cases {
 		if got := DefaultLayoutForSlot(slot); got != want {
@@ -142,7 +143,7 @@ func TestDefaultLayoutForSlot_CanonicalMapping(t *testing.T) {
 
 func TestFitLayerWindow_BindingFirst(t *testing.T) {
 	// 10000ms scene; binding 2000..6000 → use verbatim.
-	s, e := FitLayerWindow(SlotPrimaryVideo, 2000, 6000, 10000)
+	s, e := FitLayerWindow(media.SlotPrimaryVideo, 2000, 6000, 10000)
 	if s != 2000 || e != 6000 {
 		t.Fatalf("expected verbatim binding window (2000,6000), got (%d,%d)", s, e)
 	}
@@ -152,7 +153,7 @@ func TestFitLayerWindow_BindingFirst(t *testing.T) {
 
 func TestFitLayerWindow_ClampsWhenBindingExceedsScene(t *testing.T) {
 	// 5000ms scene; binding 1000..9000 → clamp end to 5000.
-	s, e := FitLayerWindow(SlotPrimaryVideo, 1000, 9000, 5000)
+	s, e := FitLayerWindow(media.SlotPrimaryVideo, 1000, 9000, 5000)
 	if s != 1000 || e != 5000 {
 		t.Fatalf("expected clamp (1000,5000), got (%d,%d)", s, e)
 	}
@@ -162,7 +163,7 @@ func TestFitLayerWindow_ClampsWhenBindingExceedsScene(t *testing.T) {
 
 func TestFitLayerWindow_FallbackToCanonicalFractionWhenBindingZero(t *testing.T) {
 	// 10000ms scene; secondary_image zero-zero binding → 60%→95%.
-	s, e := FitLayerWindow(SlotSecondaryImage, 0, 0, 10000)
+	s, e := FitLayerWindow(media.SlotSecondaryImage, 0, 0, 10000)
 	if s != 6000 || e != 9500 {
 		t.Fatalf("expected canonical-fraction fallback (6000,9500), got (%d,%d)", s, e)
 	}
@@ -198,9 +199,9 @@ func TestGenerator_Generate_3LayerPlan(t *testing.T) {
 		Policy: ResolvePolicy{},
 		ConceptBindings: map[string][]MediaBinding{
 			"concept-maya": {
-				approvedBinding("bind-pv", "asset-maya-temple", SlotPrimaryVideo, 0.9),
-				approvedBinding("bind-si", "asset-maya-drawing", SlotSecondaryImage, 0.7),
-				approvedBinding("bind-eo", "asset-maya-evidence", SlotEvidenceOverlay, 0.6),
+				approvedBinding("bind-pv", "asset-maya-temple", media.SlotPrimaryVideo, 0.9),
+				approvedBinding("bind-si", "asset-maya-drawing", media.SlotSecondaryImage, 0.7),
+				approvedBinding("bind-eo", "asset-maya-evidence", media.SlotEvidenceOverlay, 0.6),
 			},
 		},
 	}
@@ -215,9 +216,9 @@ func TestGenerator_Generate_3LayerPlan(t *testing.T) {
 	if len(plan.Layers) != 3 {
 		t.Fatalf("expected 3 layers, got %d", len(plan.Layers))
 	}
-	if plan.Layers[0].Slot != SlotPrimaryVideo ||
-		plan.Layers[1].Slot != SlotSecondaryImage ||
-		plan.Layers[2].Slot != SlotEvidenceOverlay {
+	if plan.Layers[0].Slot != media.SlotPrimaryVideo ||
+		plan.Layers[1].Slot != media.SlotSecondaryImage ||
+		plan.Layers[2].Slot != media.SlotEvidenceOverlay {
 		t.Fatalf("slot order drift: %v %v %v",
 			plan.Layers[0].Slot, plan.Layers[1].Slot, plan.Layers[2].Slot)
 	}
@@ -244,7 +245,7 @@ func TestGenerator_Generate_1LayerPlan(t *testing.T) {
 		},
 		ConceptBindings: map[string][]MediaBinding{
 			"concept-maya": {
-				approvedBinding("bind-pv", "asset-maya-temple", SlotPrimaryVideo, 0.9),
+				approvedBinding("bind-pv", "asset-maya-temple", media.SlotPrimaryVideo, 0.9),
 			},
 		},
 	}
@@ -301,11 +302,11 @@ func TestGenerator_Generate_DeterministicOutput(t *testing.T) {
 			},
 			ConceptBindings: map[string][]MediaBinding{
 				"c1": {
-					approvedBinding("b1", "a1", SlotPrimaryVideo, 0.9),
-					approvedBinding("b2", "a2", SlotSecondaryImage, 0.7),
+					approvedBinding("b1", "a1", media.SlotPrimaryVideo, 0.9),
+					approvedBinding("b2", "a2", media.SlotSecondaryImage, 0.7),
 				},
 				"c2": {
-					approvedBinding("b3", "a3", SlotEvidenceOverlay, 0.6),
+					approvedBinding("b3", "a3", media.SlotEvidenceOverlay, 0.6),
 				},
 			},
 		}
@@ -354,13 +355,13 @@ func TestSerializePlans_ParsePlans_Roundtrip(t *testing.T) {
 			ProjectID: "p1", SceneID: "s1", Text: "Maya", Language: "it",
 			DurationMs: 8000,
 			Layers: []Layer{
-				{Slot: SlotPrimaryVideo, AssetID: "a1", BindingID: "b1",
+				{Slot: media.SlotPrimaryVideo, AssetID: "a1", BindingID: "b1",
 					StartMs: 0, EndMs: 8000, Layout: string(LayoutFullscreen),
 					CandidateScore: 0.95, Provider: ""},
-				{Slot: SlotSecondaryImage, AssetID: "a2", BindingID: "b2",
+				{Slot: media.SlotSecondaryImage, AssetID: "a2", BindingID: "b2",
 					StartMs: 4800, EndMs: 7600, Layout: string(LayoutRightPanel),
 					CandidateScore: 0.78, Provider: ""},
-				{Slot: SlotEvidenceOverlay, AssetID: "a3", BindingID: "b3",
+				{Slot: media.SlotEvidenceOverlay, AssetID: "a3", BindingID: "b3",
 					StartMs: 3200, EndMs: 7600, Layout: string(LayoutFullscreenFade),
 					CandidateScore: 0.65, Provider: ""},
 			},
@@ -428,7 +429,7 @@ func TestParsePlans_UnknownSlotReturnsInvalidSlotKind(t *testing.T) {
 func TestParsePlans_UnknownLayoutReturnsError(t *testing.T) {
 	bad := []byte(fmt.Sprintf(
 		`{"schema_version":"v1","project_id":"p","plans":[{"project_id":"p","scene_id":"s","text":"t","language":"it","duration_ms":1000,"layers":[{"slot":"%s","asset_id":"a","binding_id":"b","start_ms":0,"end_ms":1000,"layout":"unknown_layout","candidate_score":0,"provider":""}],"source":"local"}]}`,
-		string(SlotPrimaryVideo)))
+		string(media.SlotPrimaryVideo)))
 	_, _, err := ParsePlans(bad)
 	if err == nil {
 		t.Fatal("expected error on unknown layout")
@@ -452,15 +453,15 @@ func TestGenerator_Generate_FiltersBySceneConcepts(t *testing.T) {
 		Scenes: []SceneSpec{
 			{
 				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
-				Slots: []SlotKind{SlotPrimaryVideo},
+				Slots: []SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		ConceptBindings: map[string][]MediaBinding{
 			"concept-target": {
-				approvedBinding("bind-tgt", "asset-target", SlotPrimaryVideo, 0.7),
+				approvedBinding("bind-tgt", "asset-target", media.SlotPrimaryVideo, 0.7),
 			},
 			"concept-other": {
-				approvedBinding("bind-other", "asset-other", SlotPrimaryVideo, 0.95), // higher score
+				approvedBinding("bind-other", "asset-other", media.SlotPrimaryVideo, 0.95), // higher score
 			},
 		},
 	}
@@ -490,15 +491,15 @@ func TestGenerator_Generate_NoSceneConcepts_FallsBackToAll(t *testing.T) {
 		Scenes: []SceneSpec{
 			{
 				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
-				Slots: []SlotKind{SlotPrimaryVideo},
+				Slots: []SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		ConceptBindings: map[string][]MediaBinding{
 			"concept-target": {
-				approvedBinding("bind-tgt", "asset-target", SlotPrimaryVideo, 0.7),
+				approvedBinding("bind-tgt", "asset-target", media.SlotPrimaryVideo, 0.7),
 			},
 			"concept-other": {
-				approvedBinding("bind-other", "asset-other", SlotPrimaryVideo, 0.95),
+				approvedBinding("bind-other", "asset-other", media.SlotPrimaryVideo, 0.95),
 			},
 		},
 	}
@@ -548,7 +549,7 @@ func TestGenerator_Generate_LookupPrimaryBinding_WiresToRepository(t *testing.T)
 		Scenes: []SceneSpec{
 			{
 				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
-				Slots: []SlotKind{SlotPrimaryVideo},
+				Slots: []SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		// ConceptBindings is nil → lookupPrimaryBinding is the
@@ -580,7 +581,7 @@ func TestGenerator_Generate_DeriveLayerProviderReturnsRealTag(t *testing.T) {
 	// enables the SceneVisualPlan.Source="mixed" branch
 	// the Fase 4.2 forward-pin promised.
 	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)
-	artlistBinding := approvedBinding("bind-art", "asset-artlist", SlotPrimaryVideo, 0.9)
+	artlistBinding := approvedBinding("bind-art", "asset-artlist", media.SlotPrimaryVideo, 0.9)
 	artlistBinding.Provider = ProviderArtlist
 	req := PlanGeneratorRequest{
 		ProjectID: "p1",
@@ -588,7 +589,7 @@ func TestGenerator_Generate_DeriveLayerProviderReturnsRealTag(t *testing.T) {
 		Scenes: []SceneSpec{
 			{
 				ID: "scene-1", Text: "Maya temples.", DurationMs: 10000, Language: "it",
-				Slots: []SlotKind{SlotPrimaryVideo},
+				Slots: []SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		ConceptBindings: map[string][]MediaBinding{
@@ -624,15 +625,15 @@ func TestGenerator_Generate_SceneSpecConceptsOverridesRequest(t *testing.T) {
 				DurationMs:    10000,
 				Language:      "it",
 				SceneConcepts: []string{"concept-override"},
-				Slots:         []SlotKind{SlotPrimaryVideo},
+				Slots:         []SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		ConceptBindings: map[string][]MediaBinding{
 			"concept-default": {
-				approvedBinding("bind-d", "asset-default", SlotPrimaryVideo, 0.95),
+				approvedBinding("bind-d", "asset-default", media.SlotPrimaryVideo, 0.95),
 			},
 			"concept-override": {
-				approvedBinding("bind-o", "asset-override", SlotPrimaryVideo, 0.7),
+				approvedBinding("bind-o", "asset-override", media.SlotPrimaryVideo, 0.7),
 			},
 		},
 	}
