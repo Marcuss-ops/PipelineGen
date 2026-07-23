@@ -163,5 +163,5 @@ func formatByteRangeHeader(r HLSSegmentByteRange) string {
 // "what counts as transient" decision; the FASE 6 cutover
 // deliberately centralised that decision at pkg/retry.IsTransient
 // (typed-path #1 + TransientInfrastructureError carrier). New
-// classifier shapes register at init() via retry.RegisterClassifier
+// classifier shapes are assembled into a retry.ClassifierRegistry
 // (see pkg/retry/registry_*.go).

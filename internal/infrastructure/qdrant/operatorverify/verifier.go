@@ -27,7 +27,6 @@ func NewVerifier(client *transport.Client) *Verifier {
 // dimensions when the point is present.
 func (v *Verifier) Verify(ctx context.Context, assetID, collection string) (operator.QdrantPointInfo, error) {
 	info := operator.QdrantPointInfo{
-		Checked:    true,
 		Collection: collection,
 	}
 
@@ -57,6 +56,7 @@ func (v *Verifier) Verify(ctx context.Context, assetID, collection string) (oper
 		return info, fmt.Errorf("operatorverify: scroll collection %q for asset %q: %w", collection, assetID, err)
 	}
 
+	info.Checked = true
 	info.Present = len(result.Points) > 0
 	if info.Present {
 		point := result.Points[0]

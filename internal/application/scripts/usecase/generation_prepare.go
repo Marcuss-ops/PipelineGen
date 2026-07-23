@@ -226,7 +226,7 @@ func (p *GenerationPreparer) Prepare(
 	})
 
 	if p.ppReg != nil {
-		if err := p.ppReg.ValidateRequested(plan.Postprocessors); err != nil {
+		if err := p.ppReg.ValidateRequested(adapters.ProcessorNamesFromStrings(plan.Postprocessors)); err != nil {
 			return nil, p.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err, tracker)
 		}
 	}

@@ -23,65 +23,39 @@ import (
 // legacy classifier.
 const nonTransientMessage = "validation: missing channel_id"
 
-// WithLegacyClassifier registers the pre-FASE-6 substring Classifier
-// at the END of the global Classifier chain for the duration of the
-// calling test. Used at the top of every IsTransient-substring-regression
-// test in this file. Calling Decision(err) instead of IsTransient(err)
-// then exercises the legacy taxonomy through the canonical decision
-// walker — preserving the regression evidence the pre-FASE-6 tests
-// provided.
+// legacyTestRegistry is a test-only ClassifierRegistry that wires the
+// built-in pkg/retry classifiers (exec, url, googleapi) together with
+// the pre-FASE-6 substring Classifier. It is sealed once at package
+// initialization and shared read-only by every test that wants to
+// assert "what did the pre-FASE-6 classifier say about this error?".
 //
 // godlike/06 SSOT: the chain is FIRST-MATCH-WINS, so production
-// classifiers (registered at package init() — classifyExecExitError,
-// classifyURLError, classifyGoogleAPIError) preserve authoritativeness
-// for typed-probe production shapes (errors.As for *exec.ExitError,
-// *url.Error, *googleapi.Error). The legacy classifier acts as a
-// LAST-RESORT substring fallback for the test fixtures below; the
-// walker reaches it only AFTER all production classifiers declined.
-//
-// Race-safety (FASE 6 Cut 6.1 finalization, July 2026): this helper
-// does NOT call ResetClassifiersForTest — the prior implementation
-// reset-then-restore which caused parallel tests to wipe each other's
-// chains mid-flight. The new pattern appends, never resets. The chain
-// grows monotonically during a single test process (each test's
-// RegisterClassifier appends); production classifiers auto-register
-// at init(), so the first 3 entries are stable exec/url/google; the
-// legacy classifier slots in at position N+ for N concurrent tests.
-// first-match-wins guarantees this is well-defined and not a race.
+// classifiers (classifyExecExitError, classifyURLError,
+// classifyGoogleAPIError) preserve authoritativeness for typed-probe
+// production shapes. The legacy classifier acts as a LAST-RESORT
+// substring fallback for the test fixtures below; the walker reaches it
+// only AFTER all production classifiers declined.
 //
 // godlike/07 fail-closed: the legacy classifier emits Retryable=true on
 // substring-match (ErrNetwork, SafeMessage "legacy substring
 // classification") and (zero, false) on miss — fails closed if a new
 // taxonomy case is not in transientSubstringsLegacy.
-//
-// Production cntexts NEVER see this helper. It is `package retry` so
-// only the package's tests can invoke it; the legacy classifier does
-// NOT auto-register in the global chain at init() — only
-// classifyExecExitError + classifyURLError + classifyGoogleAPIError
-// do.
-//
-// Usage:
-//
-//	WithLegacyClassifier(t)
-//	d, ok := retry.Decision(err)
-//	if ok && d.Retryable != tc.want { ... }
-//
-// The helper does not expose a t.Skip path; godlike/07 honest-limitation
-// prefers exercising the typed-Decision surface over skipping.
-func WithLegacyClassifier(t *testing.T) {
-	t.Helper()
-	RegisterClassifier(classifyLegacyTransientForTest)
-	// intentionally no Cleanup — the legacy classifier is harmless
-	// when production classifiers stay in front (first-match-wins),
-	// and removing it mid-test would race against parallel tests.
-}
+var legacyTestRegistry = func() *ClassifierRegistry {
+	reg := NewClassifierRegistry()
+	reg.Register(classifyExecExitError)
+	reg.Register(classifyURLError)
+	reg.Register(classifyGoogleAPIError)
+	reg.Register(classifyLegacyTransientForTest)
+	reg.Seal()
+	return reg
+}()
 
 // legacyDecisionRetryable is a small helper that converts the
 // canonical Decision result into a `should-retry?` bool matching the
 // pre-FASE-6 IsTransient return shape, so the table-driven tests below
 // can assert with the same `if got != tc.want` pattern.
 func legacyDecisionRetryable(err error) bool {
-	d, ok := Decision(err)
+	d, ok := legacyTestRegistry.Decision(err)
 	return ok && d.Retryable
 }
 
@@ -109,7 +83,6 @@ func legacyDecisionRetryable(err error) bool {
 // "pre-FASE-6 said X about this err shape" remains observable.
 func TestIsTransient(t *testing.T) {
 	t.Parallel()
-	WithLegacyClassifier(t)
 
 	nonTransient := errors.New(nonTransientMessage)
 	noOpTransientEmpty := &TransientInfrastructureError{} // Err == nil
@@ -188,7 +161,6 @@ func TestIsTransient(t *testing.T) {
 // reason phrase).
 func TestIsTransient_HTTPStatusMap(t *testing.T) {
 	t.Parallel()
-	WithLegacyClassifier(t)
 
 	statuses := []struct {
 		status int
@@ -230,7 +202,6 @@ func TestIsTransient_HTTPStatusMap(t *testing.T) {
 // test corpus throughout the monitor / outbox packages.
 func TestIsTransient_SQLiteMarkers(t *testing.T) {
 	t.Parallel()
-	WithLegacyClassifier(t)
 
 	cases := []struct {
 		name string
@@ -413,24 +384,14 @@ func TestTransientInfrastructureError_DoubleWrap(t *testing.T) {
 // wraps only when IsTransient is true, leaves non-transient errors alone,
 // and never double-wraps an already-typed TransientInfrastructureError.
 //
-// FASE 6 Cut 6.1.D migration: production IsTransient became a pure
-// typed-probe. WrapTransient still calls production IsTransient
-// directly (NOT the Decision walker); therefore the substring-required
-// subtests (3, 6, 7, 8) cannot pass post-Cut 6.1.D and are t.Skip-ed
-// individually with godlike/07 honest-limitation comments. Forward-pointer:
-// a follow-up cut will migrate WrapTransient to consult Decision() so
-// registered classifiers (including ad-hoc adapters and a future
-// typed-transient helper) gate the wrap decision.
+// FASE 6 Cut 6.1.D (July 2026): production IsTransient is a pure
+// typed-probe (RetryableError or *TransientInfrastructureError).
+// WrapTransient uses IsTransient directly and therefore only wraps
+// typed-transient errors; raw SDK strings are NOT wrapped. Callers
+// that need richer classification (Class + RetryAfter + SafeMessage)
+// can inject a ClassifierRegistry through retry.Options.
 func TestWrapTransient(t *testing.T) {
 	t.Parallel()
-	// FASE 6 Cut 6.1.C (July 2026): WrapTransient now routes through
-	// Decision() walker. Tests that exercise boundary wrap behavior on
-	// raw SDK strings rely on the legacy substring Classifier being
-	// registered in the chain — register it once at the parent test
-	// scope (per-test-scoped, NOT global). Production goroutines never
-	// see this registration. The pre-Cut substring surface is preserved
-	// as a regression check via the canonical typed-Decision flow.
-	WithLegacyClassifier(t)
 
 	nonTransient := errors.New("validation: missing channel_id")
 
@@ -449,22 +410,15 @@ func TestWrapTransient(t *testing.T) {
 		}
 	})
 
-	t.Run("transient substring → wrapped in TransientInfrastructureError", func(t *testing.T) {
+	t.Run("raw SDK string → unchanged (fail-closed)", func(t *testing.T) {
 		t.Parallel()
-		// FASE 6 Cut 6.1.C live regression check: WrapTransient on a raw
-		// SDK string whose substring matches the legacy taxonomy returns
-		// a *TransientInfrastructureError. The legacy Classifier is
-		// registered at the parent test scope via WithLegacyClassifier,
-		// so Decision() inside WrapTransient finds it and emits Retryable=true.
-		// Production never sees this registration.
+		// FASE 6 Cut 6.1.D: raw SDK strings are no longer classified by
+		// substring. WrapTransient must NOT wrap them; callers must emit
+		// typed envelopes at the SDK boundary.
 		raw := errors.New("503 service unavailable")
 		got := WrapTransient(raw)
-		var te *TransientInfrastructureError
-		if !errors.As(got, &te) {
-			t.Fatalf("WrapTransient(raw) did not wrap: got %T (%v)", got, got)
-		}
-		if te.Err != raw {
-			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, raw)
+		if got != raw {
+			t.Errorf("WrapTransient(raw) should return the error unchanged; got %T (%v)", got, got)
 		}
 	})
 
@@ -487,74 +441,45 @@ func TestWrapTransient(t *testing.T) {
 		}
 	})
 
-	t.Run("SQLite locked → wrapped", func(t *testing.T) {
+	t.Run("RetryableError → wrapped", func(t *testing.T) {
 		t.Parallel()
-		// FASE 6 Cut 6.1.C live regression check: WrapTransient on a
-		// raw "sqlite: database is locked" string matches the legacy
-		// taxonomy ("database is locked" substring) via Decision(), so it
-		// returns a *TransientInfrastructureError. Production callers
-		// should emit typed *sqlite3.Error at the SDK boundary (the
-		// SQLite Classifier is registered at init() and gates production
-		// shape authoritatively); this subtest pins the pre-cut boundary
-		// fallback for backward-compat through Decision's classifier
-		// chain.
-		sqliteLocked := errors.New("sqlite: database is locked")
-		got := WrapTransient(sqliteLocked)
+		typed := &fakeRetryableError{retryable: true}
+		got := WrapTransient(typed)
 		var te *TransientInfrastructureError
 		if !errors.As(got, &te) {
-			t.Fatalf("WrapTransient(sqliteLocked) did not wrap: got %T (%v)", got, got)
+			t.Fatalf("WrapTransient(RetryableError) did not wrap: got %T (%v)", got, got)
 		}
-		if te.Err != sqliteLocked {
-			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, sqliteLocked)
+		if te.Err != typed {
+			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, typed)
 		}
 	})
 
-	t.Run("sql.ErrConnDone → wrapped", func(t *testing.T) {
+	t.Run("non-retryable RetryableError → unchanged", func(t *testing.T) {
 		t.Parallel()
-		// FASE 6 Cut 6.1.C live regression check: WrapTransient on the
-		// stdlib sql.ErrConnDone sentinel (whose Error() string matches
-		// the legacy "connection is already closed" substring) returns
-		// a *TransientInfrastructureError via Decision() + legacy
-		// Classifier. Production callers should emit typed envelopes at
-		// the database/sql boundary — sql.ErrConnDone itself does NOT
-		// carry a typed RetryableError interface today; this subtest pins
-		// the pre-cut boundary fallback for backward-compat through
-		// Decision's classifier chain.
-		got := WrapTransient(sql.ErrConnDone)
-		var te *TransientInfrastructureError
-		if !errors.As(got, &te) {
-			t.Fatalf("WrapTransient(sql.ErrConnDone) did not wrap: got %T (%v)", got, got)
+		typed := &fakeRetryableError{retryable: false}
+		got := WrapTransient(typed)
+		if got != typed {
+			t.Errorf("WrapTransient(non-retryable RetryableError) returned different pointer: got %p want %p", got, typed)
 		}
 	})
 
 	t.Run("IsTransient composes after WrapTransient", func(t *testing.T) {
 		t.Parallel()
-		// FASE 6 Cut 6.1.C live regression check: after WrapTransient
-		// (which now routes through Decision+legacy Classifier when the
-		// legacy Classifier is registered in test scope), the wrapped
-		// envelope is classified as transient by production IsTransient
-		// via the typed *TransientInfrastructureError carrier (typed
-		// path #2).
-		//
-		// The pre-Cut 6.1 assertion that raw_err is also transient via
-		// substring fallback is REMOVED in production (Cut 6.1.D). The
-		// post-Cut invariant is: callers must WrapTransient at the SDK
-		// boundary (with the legacy Classifier-or-equivalent registered
-		// for backward-compat tests) so the resulting typed envelope
-		// reaches IsTransient authoritatively. Production IsTransient
-		// does NOT substring-match raw strings; raw_string alone → false.
-		raw := errors.New("sqlite: database is locked")
-		wrapped := WrapTransient(raw)
+		typed := &fakeRetryableError{retryable: true}
+		wrapped := WrapTransient(typed)
 		if !IsTransient(wrapped) {
 			t.Error("IsTransient should match wrapped envelope via typed carrier path #2")
 		}
-		// Forward-pointer: production callers must WrapTransient at the
-		// SDK boundary for the typed envelope to reach IsTransient. The
-		// pre-Cut raw-string-substring assertion is intentionally
-		// removed (see the commit-body migration note for the audit
-		// trail).
 	})
 }
+
+// fakeRetryableError is a test-only RetryableError implementation.
+type fakeRetryableError struct {
+	retryable bool
+}
+
+func (e *fakeRetryableError) Error() string     { return "fake retryable error" }
+func (e *fakeRetryableError) IsRetryable() bool { return e.retryable }
 
 // ─── Stringer / formatted output ─────────────────────────────────────────────
 

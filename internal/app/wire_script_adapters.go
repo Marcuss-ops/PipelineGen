@@ -278,36 +278,6 @@ var _ usecase.JobEnqueueService = (*jobsEnqueueServiceAdapter)(nil)
 
 // ── Composition validation: required processors MUST register ────────
 
-// requiredProcessorNames is the canonical list of postprocessor names
-// that MUST be registered for a script pipeline to be considered
-// production-ready. Composition aborts if any name below is missing.
-//
-// PR 2 (June 2026): the list mirrors the static ProcessorRequired
-// classification declared by each concrete processor. Persistence
-// is the single owner of script-table writes (PR 5); Document is
-// the canonical doc-creation deliverable. Images / Voiceover /
-// Entities / Metadata are ProcessorBestEffort (spec: "configurabile"
-// or "best_effort or required based on payload") and not part of
-// this list — if they are present at runtime, Run warns; if they
-// are absent at runtime, Run warns. Either way, composition does
-// NOT fail on them.
-//
-// PR 3 (June 2026): Entities and Metadata are promoted to
-// ProcessorRequired per the user spec. The canonical Composition-time
-// validator fails closed if they are not registered; the runtime
-// preflight fails closed if a plan requests them and the registry
-// has no adapter.
-//
-// Fase 2 Spina Dorsale (July 2026): "document" removed from
-// requiredProcessorNames. Document generation is now a downstream
-// job (document.generate), not an inline postprocessor. The
-// document processor is no longer registered in the script pipeline.
-var requiredProcessorNames = []adapters.ProcessorName{
-	adapters.ProcessorPersistence,
-	adapters.ProcessorEntities,
-	adapters.ProcessorMetadata,
-}
-
 // validateRequiredProcessors checks the post-freeze registry for
 // every required processor name. Composition fails-closed: if any
 // required name is missing, returns a typed error so the operator
@@ -323,7 +293,7 @@ var requiredProcessorNames = []adapters.ProcessorName{
 // (where composition would silently skip a Register call when the
 // underlying dep was nil, then runtime would silently skip the
 // postprocessor — leaving the script row unwritten).
-func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required []adapters.ProcessorName) *scriptpkg.PlanInvalidError {
+func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry) *scriptpkg.PlanInvalidError {
 	if ppReg == nil {
 		return &scriptpkg.PlanInvalidError{
 			ItemID:  "wireScriptFlow",
@@ -336,6 +306,7 @@ func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required 
 			Details: []string{"preflight: postprocessor registry must be frozen before required-processors validation"},
 		}
 	}
+	required := adapters.RequiredProcessorNames()
 	var missing []string
 	for _, name := range required {
 		if !ppReg.Registered(name) {
@@ -345,8 +316,7 @@ func validateRequiredProcessors(ppReg *adapters.PostProcessorRegistry, required 
 			// required list MUST have the ProcessorRequired
 			// classification. If a future PR flips a processor's
 			// policy to BestEffort, this check surfaces the
-			// dependency drift loudly — the operator MUST update
-			// requiredProcessorNames to match.
+			// dependency drift loudly.
 			missing = append(missing, string(name)+" (registered with non-required policy)")
 		}
 	}

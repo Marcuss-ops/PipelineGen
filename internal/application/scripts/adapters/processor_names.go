@@ -44,6 +44,7 @@ const (
 	ProcessorVoiceover      ProcessorName = "voiceover"
 	ProcessorImages         ProcessorName = "images"
 	ProcessorPersistence    ProcessorName = "persistence"
+	ProcessorDocument       ProcessorName = "document"
 )
 
 // ProcessorDescriptor is the single source of truth for a
@@ -69,6 +70,7 @@ var canonicalDescriptors = []ProcessorDescriptor{
 	{Name: ProcessorVoiceover, Policy: ProcessorBestEffort, Order: 7, Active: true},
 	{Name: ProcessorImages, Policy: ProcessorBestEffort, Order: 8, Active: true},
 	{Name: ProcessorPersistence, Policy: ProcessorRequired, Order: 9, Active: true},
+	{Name: ProcessorDocument, Policy: ProcessorBestEffort, Order: 10, Active: true},
 }
 
 // descriptorByName provides O(1) lookup over canonicalDescriptors.

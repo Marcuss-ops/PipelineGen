@@ -1,7 +1,7 @@
 // Package adapters_test — processor_names_test.go exercises the
 // typed ProcessorName constants and CanonicalProcessorNames().
 //
-// AZIONE 3 (July 2026): TDD test pins the 9-name closed set, the
+// AZIONE 3 (July 2026): TDD test pins the 11-name closed set, the
 // canonical execution order, and verifies no duplicates. Drift
 // here (e.g. a constant renamed but CanonicalProcessorNames() not
 // updated) surfaces as a test failure rather than a runtime
@@ -31,17 +31,18 @@ import (
 func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	names := adapterspkg.CanonicalProcessorNames()
 
-	// 1. Exactly 9 canonical names (PR-TRANSLATE-SCRIPT-SPEC FP2
+	// 1. Exactly 11 canonical names (PR-TRANSLATE-SCRIPT-SPEC FP2
 	//    added translation at index 3; PR-CLIP-SEARCH-WIRING earlier
-	//    added clip_search at index 1; see file godoc above for
-	//    EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 9 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 9: %v", len(names), names)
+	//    added clip_search at index 1; stock_bindings added at
+	//    index 5; document added at index 10; see file godoc above
+	//    for EXECUTION vs REGISTRATION order distinction).
+	if len(names) != 11 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 11: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (entities → clip_search → metadata →
-	//    translation → clip_bindings → visual_planning → voiceover →
-	//    images → persistence). See processor_names.go
+	//    translation → clip_bindings → stock_bindings → visual_planning →
+	//    voiceover → images → persistence). See processor_names.go
 	//    goddoc for why this differs from the REGISTRATION order in
 	//    internal/app/wire_script_postprocess.go.
 	expected := []adapterspkg.ProcessorName{
@@ -50,10 +51,12 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorMetadata,
 		adapterspkg.ProcessorTranslation,
 		adapterspkg.ProcessorClipBindings,
+		adapterspkg.ProcessorStockBindings,
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorPersistence,
+		adapterspkg.ProcessorDocument,
 	}
 	for i, name := range expected {
 		if names[i] != name {
@@ -94,7 +97,7 @@ func TestProcessorName_StringConversion(t *testing.T) {
 // TestCanonicalProcessorNames_IncludesClipSearch is the §2
 // forward-prevention regression-guard for the PR-CLIP-SEARCH-WIRING
 // (July 2026) addition. Pre-PR the canonical list was 8 names
-// (no clip_search slot); post-PR it is 9 with clip_search at
+// (no clip_search slot); post-PR it is 11 with clip_search at
 // index 1 (between entities and metadata per the EXECUTION order
 // documented in processor_names.go). This test pins BOTH the
 // presence AND the canonical index so a future refactor that

@@ -12,8 +12,8 @@
 // the typed-only contract.
 //
 // The Classifier chain is GLOBAL (init-time registered) — tests must
-// use ResetClassifiersForTest to isolate between registered Classifiers
-// and the walker fall-through. Without that, the new typed-only probes
+// use local ClassifierRegistry instances to isolate between registered
+// Classifiers and the walker fall-through. Without that, the new typed-only probes
 // fired in IsTransient's underlying logic might sub-classify the err
 // shape and shadow the stdlib Classifier under test.
 //
@@ -48,14 +48,8 @@ import (
 // site (git EX_TEMPFAIL=75 etc.). The stdlib Classifier does NOT
 // guess on shell semantics.
 func TestClassifyExecExitError_ConservativeTerminal(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	// We need to register the stdlib Classifier and isolate it from
-	// the global chain. The stdlib init() registers it once at package
-	// load; tests see it as part of the chain. We still call
-	// ResetClassifiersForTest + register EXPLICITLY so the test is
-	// hermetic against future package-init refactors.
-	RegisterClassifier(classifyExecExitError)
-
+	// Tests the classifier function directly; it does not depend on
+	// the global registry chain.
 	tests := []struct {
 		name string
 		err  error
@@ -88,9 +82,6 @@ func TestClassifyExecExitError_ConservativeTerminal(t *testing.T) {
 // leaves non-*exec.ExitError shapes unclaimed so the next Classifier
 // in the chain can decide.
 func TestClassifyExecExitError_NonExecError(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	RegisterClassifier(classifyExecExitError)
-
 	d, ok := classifyExecExitError(errors.New("not an exec exit error"))
 	if ok {
 		t.Fatalf("classifyExecExitError(non-exec err): want ok=false; got ok=true, d=%+v", d)
@@ -146,9 +137,6 @@ func makeExitErr(t *testing.T, exitCode int) error {
 // errno band). The SafeMessage surfaces the errno name when the
 // code is in [1,255].
 func TestClassifyExecExitError_ErrnoDecode(t *testing.T) {
-	t.Cleanup(ResetClassifiersForTest)
-	RegisterClassifier(classifyExecExitError)
-
 	// Manually construct an ExitError-like value (the stdlib does not
 	// expose a constructor; we use a fake ProcessState via cmd.Run
 	// to exercise the real path). The syscall.Errno mapping test uses
