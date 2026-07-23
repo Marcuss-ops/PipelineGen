@@ -68,8 +68,19 @@ type Options struct {
 	IsRetryable func(error) bool
 
 	// JitterFraction adds random jitter to the backoff. Values 0.0–1.0.
-	// Default: 0 (no jitter).
+	// Default: 0.25 (applied by norm unless DisableJitter is true).
+	//
+	// Setting JitterFraction to 0 alone is treated as "use the canonical
+	// default" so that callers who do not specify a fraction still get the
+	// production-safe ±25% desync. To explicitly disable jitter, set
+	// DisableJitter to true.
 	JitterFraction float64
+
+	// DisableJitter explicitly disables the canonical default jitter.
+	// Use this when deterministic timing is required (e.g. CI latency
+	// assertions). When false, JitterFraction=0 is upgraded to the
+	// canonical 0.25 default by norm.
+	DisableJitter bool
 
 	// OnRetry is an optional callback invoked before each retry attempt.
 	// The attempt number is 0-based (0 = first retry).
@@ -98,7 +109,8 @@ type RetryOptions = Options
 // when many goroutines converge on the same transient error (e.g. the
 // SQLite-locked retry storms when a hot row is enqueued from N workers
 // in lockstep). Callers that need deterministic timing (e.g. CI latency
-// assertions) can override with `JitterFraction: 0`.
+// assertions) must set `DisableJitter: true` (not merely `JitterFraction: 0`,
+// which norm() upgrades to the canonical 0.25 default).
 func DefaultOptions() Options {
 	return Options{
 		MaxAttempts:    3,
@@ -174,13 +186,16 @@ func norm(o Options) Options {
 	// the FASE 2 stock_e2e/02_poll_terminal.json fixture. Coalescing
 	// here — rather than ONLY in DefaultOptions() — means a caller
 	// passing retry.Options{IsRetryable: predicate} gets the canonical
-	// 25% desync envelope for free. Callers who genuinely want no
-	// jitter (e.g. deterministic latency assertions in CI) must pass
-	// retry.Options{JitterFraction: 0, IsRetryable: predicate}
-	// explicitly — the explicit-zero signal is preserved by the
-	// condition (zero == zero is the only escape hatch). Negative or
-	// out-of-range values are clamped by BackoffFor, not here.
-	if o.JitterFraction == 0 {
+	// 25% desync envelope for free.
+	//
+	// DisableJitter is the explicit opt-out: callers that need
+	// deterministic timing (e.g. CI latency assertions) set
+	// DisableJitter=true. When DisableJitter is true, JitterFraction=0
+	// is left untouched and BackoffFor skips the jitter step entirely.
+	// When DisableJitter is false, JitterFraction=0 is upgraded to the
+	// canonical 0.25 default. Negative or out-of-range values are
+	// clamped by BackoffFor, not here.
+	if o.JitterFraction == 0 && !o.DisableJitter {
 		o.JitterFraction = 0.25
 	}
 	return o
@@ -254,14 +269,21 @@ func BackoffFor(attemptCount int, opts Options) time.Duration {
 		delay = float64(opts.MaxBackoff)
 	}
 	// Apply bounded jitter: a uniform random factor in [1 - f, 1 + f]
-	// multiplies the (already capped) delay. JitterFraction=0 disables
-	// jitter; values outside [0, 1.0] are clamped (defensive: prevents
-	// negative or super-multiplicative delays from a typo'd option).
+	// multiplies the (already capped) delay. DisableJitter=true always
+	// disables jitter. JitterFraction=0 disables jitter here in
+	// BackoffFor, but callers passing Options through retry.Do or
+	// retry.DoWithValue should note that norm() upgrades JitterFraction=0
+	// to the canonical 0.25 default unless DisableJitter=true. Values
+	// outside [0, 1.0] are clamped (defensive: prevents negative or
+	// super-multiplicative delays from a typo'd option).
 	//
 	// math/rand global Float64 is safe for concurrent use as of Go 1.20+
 	// and is sufficient for jitter (this is not a security primitive).
 	// Thunderbolt-fleet retry storms desynchronize via this factor.
 	f := opts.JitterFraction
+	if opts.DisableJitter {
+		f = 0
+	}
 	if f < 0 {
 		f = 0
 	}

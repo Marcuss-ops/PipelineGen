@@ -250,6 +250,7 @@ func TestRetry_TransientRetrySuccess(t *testing.T) {
 		MaxBackoff:     5 * time.Millisecond,
 		MaxAttempts:    5,
 		JitterFraction: 0, // deterministic for assertion
+		DisableJitter:  true,
 	})
 	if err != nil {
 		t.Fatalf("want nil err on transient-recover; got %v", err)

@@ -131,6 +131,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			MaxBackoff:     2 * time.Second,
 			BackoffFactor:  2.0,
 			JitterFraction: 0,
+			DisableJitter:  true,
 			IsRetryable:    retry.IsTransient,
 		})
 		if err != nil {
