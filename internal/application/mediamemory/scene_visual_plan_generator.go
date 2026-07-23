@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // PlanGeneratorRequest is the canonical input to the generator.
@@ -140,9 +141,9 @@ func (g *defaultSceneVisualPlanGenerator) Generate(ctx context.Context, req Plan
 
 	// godlike/06 SSOT (canonical slot triple): only these three
 	// slots contribute layers to a per-scene plan. Other slots
-	// (SlotMap / SlotPortrait / SlotDocument / SlotBackground)
+	// (media.SlotMap / media.SlotPortrait / media.SlotDocument / media.SlotBackground)
 	// surface as Warnings so the dashboard can audit the drift.
-	canonicalSlots := []SlotKind{SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay}
+	canonicalSlots := []SlotKind{media.SlotPrimaryVideo, media.SlotSecondaryImage, media.SlotEvidenceOverlay}
 
 	for _, scene := range req.Scenes {
 		if scene.ID == "" {
@@ -291,7 +292,7 @@ func filterSceneSlots(userSlots []SlotKind, canonical []SlotKind) []SlotKind {
 	// triple (and known SlotKind for the wider set).
 	out := make([]SlotKind, 0, len(userSlots))
 	for _, s := range userSlots {
-		if !IsKnownSlotKind(s) {
+		if !media.IsKnownSlotKind(s) {
 			continue
 		}
 		found := false

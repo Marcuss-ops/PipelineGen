@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // AcquisitionPlanner is the canonical port.
@@ -130,9 +131,9 @@ func (p *defaultAcquisitionPlanner) Plan(_ context.Context, in AcquisitionInput)
 	for i := 0; i < limit; i++ {
 		c := scored[i]
 		target := MaterializationWarm
-		slot := SlotPrimaryVideo
+		slot := media.SlotPrimaryVideo
 		if c.MediaType == "image" {
-			slot = SlotSecondaryImage
+			slot = media.SlotSecondaryImage
 		}
 		out = append(out, AcquisitionPromote{
 			Candidate:  c,
@@ -160,9 +161,9 @@ func (p *defaultAcquisitionPlanner) PlanOnDemand(_ context.Context, c MediaCandi
 			c.ID, string(c.RightsStatus), ErrApprovalRequired,
 		)
 	}
-	slot := SlotPrimaryVideo
+	slot := media.SlotPrimaryVideo
 	if c.MediaType == "image" {
-		slot = SlotSecondaryImage
+		slot = media.SlotSecondaryImage
 	}
 	return AcquisitionPromote{
 		Candidate:  c,

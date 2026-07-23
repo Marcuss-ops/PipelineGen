@@ -22,6 +22,7 @@ package mediamemory
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // BindingService is the canonical port for media_bindings
@@ -141,7 +142,7 @@ func applyDefaults(b *MediaBinding, clock Clock) {
 // binding editor + the Phase-3 linker worker's first-pass writes.
 //
 // Validation chain (godlike/06 SSOT):
-//  1. SlotKind is in the canonical closed set (IsKnownSlotKind).
+//  1. SlotKind is in the canonical closed set (media.IsKnownSlotKind).
 //  2. concept_id points to an existing row (ConceptRepository.FindByID
 //     — fail-fast with typed ErrConceptNotFound; never silently
 //     accept an orphan binding).
@@ -155,7 +156,7 @@ func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (Med
 	if s.dispatcher == nil {
 		return MediaBinding{}, fmt.Errorf("mediamemory: create binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
-	if !IsKnownSlotKind(b.SlotKind) {
+	if !media.IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: create binding slot_kind=%q: %w",
 			string(b.SlotKind), ErrInvalidSlotKind,
@@ -191,7 +192,7 @@ func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (Med
 	if s.dispatcher == nil {
 		return MediaBinding{}, fmt.Errorf("mediamemory: update binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
-	if !IsKnownSlotKind(b.SlotKind) {
+	if !media.IsKnownSlotKind(b.SlotKind) {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: update binding slot_kind=%q: %w",
 			string(b.SlotKind), ErrInvalidSlotKind,
@@ -291,7 +292,7 @@ func (s *defaultBindingService) ListByConcept(ctx context.Context, conceptID str
 // ListBySlot is the ranker's resolver-hot-path pre-load.
 // ListApprovedByConcept is reused (single-slot filter via []SlotKind).
 func (s *defaultBindingService) ListBySlot(ctx context.Context, conceptID string, slot SlotKind, limit int) ([]MediaBinding, error) {
-	if !IsKnownSlotKind(slot) {
+	if !media.IsKnownSlotKind(slot) {
 		return nil, fmt.Errorf(
 			"mediamemory: list by slot slot_kind=%q: %w",
 			string(slot), ErrInvalidSlotKind,

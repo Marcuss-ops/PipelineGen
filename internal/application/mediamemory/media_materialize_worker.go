@@ -37,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // MaterializationRequest is the canonical input to the worker for
@@ -204,10 +205,10 @@ func (w *defaultMaterializeWorker) Materialize(ctx context.Context, req Material
 		// planner specifies a TargetSlot that biases the
 		// stockpipeline output (e.g., primary_video wants a
 		// higher bitrate than secondary_image). Default is
-		// SlotPrimaryVideo so backward-compat tests stay green.
+		// media.SlotPrimaryVideo so backward-compat tests stay green.
 		targetSlot := p.TargetSlot
 		if targetSlot == "" {
-			targetSlot = SlotPrimaryVideo
+			targetSlot = media.SlotPrimaryVideo
 		}
 		opts := MaterializeOptions{
 			TargetSlot:    targetSlot,
@@ -344,7 +345,7 @@ func (w *defaultMaterializeWorker) PromoteOnDemand(
 		opts.HotCache = true
 	}
 	if opts.TargetSlot == "" {
-		opts.TargetSlot = SlotPrimaryVideo
+		opts.TargetSlot = media.SlotPrimaryVideo
 	}
 
 	mat, merr := w.stock.Materialize(ctx, candidate, opts)

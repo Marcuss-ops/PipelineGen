@@ -16,6 +16,8 @@
 // boundary so the ranker's wire envelope stays clean.
 package mediamemory
 
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+
 // LayoutKind is the canonical closed-set of layer layouts.
 // The renderer reads this verbatim as `Layer.Layout`.
 type LayoutKind string
@@ -63,36 +65,34 @@ func IsKnownLayout(k LayoutKind) bool {
 // default — the renderer reads this verbatim. Per-binding
 // overrides are a forward-pin.
 //
+// The actual mapping lives in internal/domain/media/slot.go;
+// this function is a thin adapter that converts the canonical
+// string layout into the mediamemory LayoutKind type so existing
+// callers keep working while the SSOT moves to the media package.
+//
 //	default           SlotKind            LayoutKind
-//	primary_video     SlotPrimaryVideo    LayoutFullscreen
-//	secondary_image   SlotSecondaryImage  LayoutRightPanel
-//	evidence_overlay  SlotEvidenceOverlay LayoutFullscreenFade
-//	map               SlotMap             LayoutFullscreenFade
-//	portrait          SlotPortrait        LayoutRightPanel
-//	document          SlotDocument        LayoutLowerThird
-//	background        SlotBackground      LayoutFullscreenFade
+//	primary_video     media.SlotPrimaryVideo    LayoutFullscreen
+//	secondary_image   media.SlotSecondaryImage  LayoutRightPanel
+//	evidence_overlay  media.SlotEvidenceOverlay LayoutFullscreenFade
+//	map               media.SlotMap             LayoutFullscreenFade
+//	portrait          media.SlotPortrait        LayoutRightPanel
+//	document          media.SlotDocument        LayoutLowerThird
+//	background        media.SlotBackground      LayoutFullscreenFade
 //
 // Unknown SlotKind values fall through to LayoutFullscreenFade
 // (the safest default per the renderer's fallback path) and the
 // generator surfaces a Warning via PlanWithWarnings so an operator
 // can audit the drift.
 func DefaultLayoutForSlot(s SlotKind) LayoutKind {
-	switch s {
-	case SlotPrimaryVideo:
-		return LayoutFullscreen
-	case SlotSecondaryImage, SlotPortrait:
-		return LayoutRightPanel
-	case SlotEvidenceOverlay, SlotMap, SlotBackground:
-		return LayoutFullscreenFade
-	case SlotDocument:
-		return LayoutLowerThird
-	default:
+	layout := media.SlotKind(s).DefaultLayout()
+	if layout == "" {
 		// godlike/07 NO-FAKE-AVAILABILITY: an unknown slot kind
 		// never silently zero-outputs; the renderer can still
 		// play the resulting layer with the fade default, but
 		// the diagnostic is on the Warnings[] slice.
 		return LayoutFullscreenFade
 	}
+	return LayoutKind(layout)
 }
 
 // CanonicalStartEndFraction returns the canonical (startFrac,
@@ -114,13 +114,13 @@ func DefaultLayoutForSlot(s SlotKind) LayoutKind {
 // touching this SSOT.
 func CanonicalStartEndFraction(s SlotKind) (startFrac, endFrac float64) {
 	switch s {
-	case SlotPrimaryVideo:
+	case media.SlotPrimaryVideo:
 		return 0.00, 1.00
-	case SlotSecondaryImage, SlotPortrait:
+	case media.SlotSecondaryImage, media.SlotPortrait:
 		return 0.60, 0.95
-	case SlotEvidenceOverlay, SlotMap, SlotBackground:
+	case media.SlotEvidenceOverlay, media.SlotMap, media.SlotBackground:
 		return 0.40, 0.95
-	case SlotDocument:
+	case media.SlotDocument:
 		return 0.65, 0.92
 	default:
 		return 0.00, 1.00

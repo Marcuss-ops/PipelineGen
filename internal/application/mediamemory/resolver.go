@@ -42,6 +42,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // Resolver is the canonical port exposed to api/mediamemory.
@@ -298,7 +299,7 @@ func (r *VisualResolver) resolveScene(
 	// cache, secondary_image falls through to external), so
 	// per-slot orchestration is the canonical pattern.
 	for _, slot := range scene.Slots {
-		if !IsKnownSlotKind(slot) {
+		if !media.IsKnownSlotKind(slot) {
 			warnings = append(warnings, fmt.Sprintf(
 				"scene_id=%q: unknown slot_kind=%q (filtered)", scene.ID, slot,
 			))
@@ -717,10 +718,10 @@ func aspectMismatchFor(slot SlotKind, mediaType string) bool {
 		return false
 	}
 	switch slot {
-	case SlotPrimaryVideo:
+	case media.SlotPrimaryVideo:
 		return mediaType != "video"
-	case SlotSecondaryImage, SlotEvidenceOverlay, SlotMap,
-		SlotPortrait, SlotDocument, SlotBackground:
+	case media.SlotSecondaryImage, media.SlotEvidenceOverlay, media.SlotMap,
+		media.SlotPortrait, media.SlotDocument, media.SlotBackground:
 		return mediaType != "image"
 	}
 	return false
@@ -849,10 +850,10 @@ func clamp01(v float64) float64 {
 // strings it accepts. Used to scope the SearchFanOut query.
 func mediaTypesForSlot(slot SlotKind) []string {
 	switch slot {
-	case SlotPrimaryVideo:
+	case media.SlotPrimaryVideo:
 		return []string{"video"}
-	case SlotSecondaryImage, SlotEvidenceOverlay, SlotMap,
-		SlotPortrait, SlotDocument, SlotBackground:
+	case media.SlotSecondaryImage, media.SlotEvidenceOverlay, media.SlotMap,
+		media.SlotPortrait, media.SlotDocument, media.SlotBackground:
 		return []string{"image"}
 	}
 	return nil

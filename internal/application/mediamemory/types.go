@@ -40,33 +40,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-// ── Enumerations (godlike/06 closed-set SSOT) ──────────────────────
-
-// SlotKind is the canonical visual slot a binding can occupy in a
-// SceneVisualPlan. Closed set; new kinds require a godlike/06 SSOT
-// review because the ranker, resolver, and renderer all switch on
-// this value.
-//
-// This is an alias to the domain-level SSOT in
-// internal/domain/media/slot.go. MediaMemory and Brain share the same
-// canonical type so that conversions between the two subsystems are
-// identity operations.
+// SlotKind is an alias for the canonical media.SlotKind. It is kept
+// for backward compatibility until all callers are migrated to
+// media.SlotKind directly.
 type SlotKind = media.SlotKind
 
-const (
-	SlotPrimaryVideo    = media.SlotPrimaryVideo
-	SlotSecondaryImage  = media.SlotSecondaryImage
-	SlotEvidenceOverlay = media.SlotEvidenceOverlay
-	SlotMap             = media.SlotMap
-	SlotPortrait        = media.SlotPortrait
-	SlotDocument        = media.SlotDocument
-	SlotBackground      = media.SlotBackground
-)
-
-// IsKnownSlotKind reports whether k is in the canonical closed set.
-// Used by binding_service and resolver to distinguish ErrInvalidSlotKind
-// from programmatic string drift.
-func IsKnownSlotKind(k SlotKind) bool { return media.IsKnownSlotKind(k) }
+// ── Enumerations (godlike/06 closed-set SSOT) ──────────────────────
 
 // ConceptType classifies a MediaConcept so the ranker can apply
 // concept-type-aware weights. Closed set; see IsKnownConceptType.
@@ -188,7 +167,7 @@ type MediaConcept struct {
 }
 
 // MediaBinding links a MediaConcept to a canonical media asset for a
-// specific SlotKind. The binding may carry a sub-clip window via
+// specific media.SlotKind. The binding may carry a sub-clip window via
 // StartMs/EndMs; image/document bindings set both to 0.
 //
 // godlike/06 SSOT: AssetID is the canonical media_assets.id reference,
@@ -200,7 +179,7 @@ type MediaBinding struct {
 	AssetID        string
 	StartMs        int64
 	EndMs          int64
-	SlotKind       SlotKind
+	SlotKind       media.SlotKind
 	Origin         Origin
 	ApprovalStatus ApprovalStatus
 	// Provider is the canonical source tag from the candidate
@@ -279,7 +258,7 @@ type VisualIntent struct {
 	Entities       []string
 	Concepts       []string
 	VisualActions  []string
-	PreferredSlots []SlotKind
+	PreferredSlots []media.SlotKind
 }
 
 // SceneSpec is one scene from a project. The resolver merges a
@@ -289,7 +268,7 @@ type SceneSpec struct {
 	ID         string
 	Text       string
 	DurationMs int64
-	Slots      []SlotKind
+	Slots      []media.SlotKind
 	Language   string
 	// SceneConcepts is the Fase 4.3 per-scene concept_id
 	// list. godlike/06 SSOT (scene-concepts union): when
@@ -303,7 +282,7 @@ type SceneSpec struct {
 
 // Layer is one entry in a SceneVisualPlan.
 type Layer struct {
-	Slot           SlotKind
+	Slot           media.SlotKind
 	AssetID        string
 	CandidateID    string
 	BindingID      string
@@ -542,7 +521,7 @@ type UsageEvent struct {
 	ConceptID        string
 	AssetID          string
 	BindingID        string
-	SlotKind         SlotKind
+	SlotKind         media.SlotKind
 	ChannelID        string
 	VideoID          string
 	Selected         bool
@@ -649,7 +628,7 @@ var (
 		"mediamemory: duplicate (concept_id, asset_id, slot_kind) — UNIQUE(language, phrase_fingerprint) equivalent",
 	)
 	ErrInvalidSlotKind = errors.New(
-		"mediamemory: slot_kind outside canonical closed set (use IsKnownSlotKind)",
+		"mediamemory: slot_kind outside canonical closed set (use media.IsKnownSlotKind)",
 	)
 	ErrApprovalRequired = errors.New(
 		"mediamemory: binding is not approved (resolver refuses to expose unapproved binding)",

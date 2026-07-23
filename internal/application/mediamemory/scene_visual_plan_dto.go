@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ScenePlanSchemaVersion is the canonical wire schema version.
@@ -168,7 +169,7 @@ func planFromDTO(dto PlanDTO) (SceneVisualPlan, error) {
 	layers := make([]Layer, 0, len(dto.Layers))
 	for _, l := range dto.Layers {
 		slot := SlotKind(l.Slot)
-		if !IsKnownSlotKind(slot) {
+		if !media.IsKnownSlotKind(slot) {
 			return SceneVisualPlan{}, fmt.Errorf(
 				"mediamemory: planFromDTO unknown slot=%q (closed-set): %w",
 				l.Slot, ErrInvalidSlotKind)
