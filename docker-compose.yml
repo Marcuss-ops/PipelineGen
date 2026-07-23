@@ -143,11 +143,16 @@ services:
     environment:
       PORT: "9123"
       PERSISTENT: "1"
+      CHROME_EXECUTABLE: "/usr/bin/chromium"
+      CHROME_PROFILE_DIR: "/chrome-profile"
+      ARTLIST_COOKIE_FILE: "/chrome-profile/artlist_cookies.txt"
       # Per fix(scraper) PR — split connect/total timeout. Mirrors
       # docs/operations/stock-e2e-runbook.md §11.0 env contract:
       # SCROLL_TIMEOUT = scraper total budget; SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget.
       SCROLL_TIMEOUT: "120"
       SCRAPER_CONNECT_TIMEOUT_SECONDS: "5"
+    volumes:
+      - artlist-chrome-profile:/chrome-profile
     networks:
       - backend
 
@@ -188,6 +193,8 @@ volumes:
   qdrant-storage:
     driver: local
   vllm-models:
+    driver: local
+  artlist-chrome-profile:
     driver: local
 
 networks:
