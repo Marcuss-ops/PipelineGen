@@ -23,17 +23,27 @@ type Brain interface {
 	Resolve(ctx context.Context, req BrainRequest) (BrainResult, error)
 }
 
-// CandidateSearcher is the canonical port through which the brain
-// federates searches across exact memory, local catalog, semantic
-// backend and external providers. The brain does not know any
-// concrete provider (Artlist, YouTube, Pexels, Qdrant, SQLite); it
-// delegates every search to this single port.
+// MediaMemoryResolutionPort is the canonical, narrow port through
+// which the Brain consumes the MediaMemory cascade (exact memory,
+// normalized phrase, semantic lookup, local catalog and external
+// providers). The brain does not know any concrete backend
+// (Artlist, YouTube, Pexels, Qdrant, SQLite); it delegates every
+// candidate search to this single port.
 //
-// The concrete implementation is the canonical SearchFanOut, so a
-// single aggregator owns fan-out, timeout, deduplication and ranking.
-type CandidateSearcher interface {
+// The concrete implementation is the MediaMemory VisualResolver.
+// Keeping the port in the brain package (the consumer) preserves the
+// dependency rule: mediamemory implements the port, brain orchestrates
+// the result through its ranker and planner.
+type MediaMemoryResolutionPort interface {
 	Search(ctx context.Context, query SearchQuery) (SearchResult, error)
 }
+
+// CandidateSearcher is the legacy alias for MediaMemoryResolutionPort.
+// It is kept for backward compatibility while callers migrate to the
+// canonical port name.
+//
+// Deprecated: use MediaMemoryResolutionPort directly.
+type CandidateSearcher = MediaMemoryResolutionPort
 
 // SearchQuery is the narrow input shape consumed by CandidateSearcher.
 // It intentionally avoids provider-specific coordinates.
