@@ -7,9 +7,10 @@ import (
 // IndexHealthInput carries the minimal facts needed to decide what the
 // operator UI should display for the "index health" column.
 type IndexHealthInput struct {
-	IndexState         asset.IndexState
-	ContentHash        string
-	IndexedContentHash string
+	IndexState          asset.IndexState
+	ContentHash         string
+	IndexedContentHash  string
+	PendingOutboxEvents int
 }
 
 // ResolveIndexHealth is the single source of truth for translating the
@@ -57,6 +58,16 @@ func ResolveIndexHealth(input IndexHealthInput) IndexHealthView {
 			Retryable:   false,
 		}
 	case asset.StateEmbedded:
+		if input.PendingOutboxEvents > 0 {
+			return IndexHealthView{
+				Code:        string(IndexHealthPending),
+				Label:       "In attesa",
+				Severity:    "info",
+				Description: "Embedding generati ma l'evento di indicizzazione è ancora in coda.",
+				Terminal:    false,
+				Retryable:   false,
+			}
+		}
 		return IndexHealthView{
 			Code:        string(IndexHealthIndexing),
 			Label:       "Pronto per l'indicizzazione",
