@@ -67,10 +67,13 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 	}
 	r.HasHardGateHits = hasHardGate
 
-	sort.Slice(r.Violations, func(i, j int) bool {
+	sort.SliceStable(r.Violations, func(i, j int) bool {
 		a, b := r.Violations[i], r.Violations[j]
 		if a.Package != b.Package {
 			return a.Package < b.Package
+		}
+		if a.Directory != b.Directory {
+			return a.Directory < b.Directory
 		}
 		if a.File != b.File {
 			return a.File < b.File
@@ -80,6 +83,12 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 		}
 		if a.Rule != b.Rule {
 			return a.Rule < b.Rule
+		}
+		if a.MatchedRule != b.MatchedRule {
+			return a.MatchedRule < b.MatchedRule
+		}
+		if a.Severity != b.Severity {
+			return a.Severity < b.Severity
 		}
 		return a.Note < b.Note
 	})
