@@ -57,6 +57,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -68,6 +69,8 @@ import (
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
 	assetService *asset.Service
+	readModel    operator.AssetInventoryReader
+	indexVerifier operator.IndexVerifier
 	jobService   job.Service
 	jobStats     JobStatsReader
 	outboxPort   outbox.MonitorPort
@@ -81,23 +84,27 @@ type JobStatsReader = jobs.JobStatsReader
 
 // Dependencies holds the pre-built dependencies for the operator handler.
 type Dependencies struct {
-	AssetService *asset.Service
-	JobService   job.Service
-	JobStats     JobStatsReader
-	OutboxPort   outbox.MonitorPort
-	Mutator      mutations.AssetMutationDispatcher
-	AllowedRoots []string // directories allowed for file previews
+	AssetService  *asset.Service
+	ReadModel     operator.AssetInventoryReader
+	IndexVerifier operator.IndexVerifier
+	JobService    job.Service
+	JobStats      JobStatsReader
+	OutboxPort    outbox.MonitorPort
+	Mutator       mutations.AssetMutationDispatcher
+	AllowedRoots  []string // directories allowed for file previews
 }
 
 // NewHandler creates a new operator API handler.
 func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 	return &Handler{
-		assetService: deps.AssetService,
-		jobService:   deps.JobService,
-		jobStats:     deps.JobStats,
-		outboxPort:   deps.OutboxPort,
-		mutator:      deps.Mutator,
-		allowedRoots: deps.AllowedRoots,
+		assetService:  deps.AssetService,
+		readModel:     deps.ReadModel,
+		indexVerifier: deps.IndexVerifier,
+		jobService:    deps.JobService,
+		jobStats:      deps.JobStats,
+		outboxPort:    deps.OutboxPort,
+		mutator:       deps.Mutator,
+		allowedRoots:  deps.AllowedRoots,
 		log:          log,
 	}
 }
@@ -115,6 +122,7 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	h.registerSummaryRoutes(rg)
 	h.registerAssetsRoutes(rg)
+	h.registerBulkRoutes(rg)
 	h.registerOutboxRoutes(rg)
 	h.registerIndexRoutes(rg)
 	h.registerOperationsRoutes(rg)
