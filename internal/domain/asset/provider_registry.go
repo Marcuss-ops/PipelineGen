@@ -6,13 +6,15 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ProviderRegistryVersion is the canonical version of the provider
 // descriptor registry. Bump it whenever the registry shape, provider
 // set or matching rules change so downstream fingerprints can
 // invalidate stale cached decisions.
-const ProviderRegistryVersion = "provider-registry-v1"
+const ProviderRegistryVersion = media.VersionProviderRegistry
 
 // ProviderDescriptor is the canonical, data-driven description of a
 // media source/provider. It replaces scattered switch/Contains

@@ -182,14 +182,14 @@ func TestCanonicalBrain_MayaVenusSceneIntent(t *testing.T) {
 
 func TestResolutionVersionSet_FingerprintInvalidatedOnVersionChange(t *testing.T) {
 	base := brain.ResolutionVersionSet{
-		BrainVersion:            "brain-v1",
+		BrainVersion:            media.VersionBrain,
 		NormalizerVersion:       "v1",
-		IntentResolverVersion:   "intent-registry-v1",
-		EmbeddingVersion:        "multilingual-e5-v1",
-		RankingPolicyVersion:    "media-ranker-v2",
-		DiversityPolicyVersion:  "diversity-policy-v1",
-		SlotPolicyVersion:       "slot-sampler-v1",
-		ProviderRegistryVersion: "provider-registry-v1",
+		IntentResolverVersion:   media.VersionIntentRegistry,
+		EmbeddingVersion:        media.VersionEmbedding,
+		RankingPolicyVersion:    media.VersionMediaRanker,
+		DiversityPolicyVersion:  media.VersionDiversityPolicy,
+		SlotPolicyVersion:       media.VersionSlotSampler,
+		ProviderRegistryVersion: media.VersionProviderRegistry,
 	}
 
 	fp := base.DecisionFingerprint("it", "i maya")
@@ -219,14 +219,14 @@ func TestResolutionVersionSet_FingerprintInvalidatedOnVersionChange(t *testing.T
 
 func TestResolutionVersionSet_FingerprintDependsOnInput(t *testing.T) {
 	set := brain.ResolutionVersionSet{
-		BrainVersion:            "brain-v1",
+		BrainVersion:            media.VersionBrain,
 		NormalizerVersion:       "v1",
-		IntentResolverVersion:   "intent-registry-v1",
-		EmbeddingVersion:        "multilingual-e5-v1",
-		RankingPolicyVersion:    "media-ranker-v2",
-		DiversityPolicyVersion:  "diversity-policy-v1",
-		SlotPolicyVersion:       "slot-sampler-v1",
-		ProviderRegistryVersion: "provider-registry-v1",
+		IntentResolverVersion:   media.VersionIntentRegistry,
+		EmbeddingVersion:        media.VersionEmbedding,
+		RankingPolicyVersion:    media.VersionMediaRanker,
+		DiversityPolicyVersion:  media.VersionDiversityPolicy,
+		SlotPolicyVersion:       media.VersionSlotSampler,
+		ProviderRegistryVersion: media.VersionProviderRegistry,
 	}
 
 	fp := set.DecisionFingerprint("it", "i maya")

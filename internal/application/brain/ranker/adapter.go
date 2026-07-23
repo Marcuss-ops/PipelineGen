@@ -38,14 +38,14 @@ var _ CandidateRanker = (*mediaMemoryRankerAdapter)(nil)
 
 // Version returns the canonical ranking-policy version.
 func (r *mediaMemoryRankerAdapter) Version() string {
-	return "media-ranker-v2"
+	return media.VersionMediaRanker
 }
 
 // DiversityPolicyVersion returns the canonical diversity / anti-
 // repetition policy version applied by the underlying MediaMemory
 // ranker.
 func (r *mediaMemoryRankerAdapter) DiversityPolicyVersion() string {
-	return "diversity-policy-v1"
+	return media.VersionDiversityPolicy
 }
 
 // Rank orders candidates by delegating to the MediaMemory ranker.
