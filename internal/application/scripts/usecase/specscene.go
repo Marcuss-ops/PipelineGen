@@ -133,7 +133,7 @@ func extractSourceFromMeta(metaJSON string) string {
 	if metaJSON == "" || metaJSON == "{}" {
 		return "web"
 	}
-	if d := asset.DefaultProviderRegistry().Match(strings.ToLower(metaJSON)); d != nil {
+	if d, ok := asset.DefaultProviderRegistry().Match(strings.ToLower(metaJSON)); ok {
 		return string(d.ID)
 	}
 	return "web"

@@ -61,7 +61,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 	if val, ok := ctx.Value(SourceTypeKey).(string); ok {
 		sourceType = val
 	} else {
-		if d := asset.DefaultProviderRegistry().Match(generator); d != nil && d.Origin == asset.ImageOriginRetrieved {
+		if d, ok := asset.DefaultProviderRegistry().Match(generator); ok && d.Origin == asset.ImageOriginRetrieved {
 			sourceType = "retrieved"
 		}
 	}

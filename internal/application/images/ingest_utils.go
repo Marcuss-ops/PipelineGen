@@ -25,8 +25,8 @@ func IsAIImageSource(source string) bool {
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		return false
 	}
-	d := asset.DefaultProviderRegistry().Match(source)
-	return d != nil && d.Origin == asset.ImageOriginGenerated
+	d, ok := asset.DefaultProviderRegistry().Match(source)
+	return ok && d.Origin == asset.ImageOriginGenerated
 }
 
 // decodeImageDimensions estrae larghezza e altezza da bytes immagine.

@@ -1,20 +1,21 @@
 package asset
 
 import (
+	"errors"
 	"testing"
 )
 
 func TestProviderRegistry_RegisterAndByID(t *testing.T) {
 	reg := NewProviderRegistry()
-	if !reg.Register(ProviderDescriptor{ID: ProviderWikipedia}) {
-		t.Fatal("expected Register to succeed")
+	if err := reg.Register(ProviderDescriptor{ID: ProviderWikipedia}); err != nil {
+		t.Fatalf("expected Register to succeed: %v", err)
 	}
-	if reg.Register(ProviderDescriptor{ID: ProviderWikipedia}) {
+	if err := reg.Register(ProviderDescriptor{ID: ProviderWikipedia}); err == nil {
 		t.Fatal("expected duplicate registration to fail")
 	}
 
-	d := reg.ByID(ProviderWikipedia)
-	if d == nil {
+	d, ok := reg.ByID(ProviderWikipedia)
+	if !ok {
 		t.Fatal("expected descriptor by ID")
 	}
 	if d.ID != ProviderWikipedia {
@@ -22,13 +23,38 @@ func TestProviderRegistry_RegisterAndByID(t *testing.T) {
 	}
 }
 
+func TestProviderRegistry_RegisterEmptyID(t *testing.T) {
+	reg := NewProviderRegistry()
+	err := reg.Register(ProviderDescriptor{})
+	if !errors.Is(err, ErrProviderIDEmpty) {
+		t.Fatalf("expected empty ID registration to fail with ErrProviderIDEmpty, got: %v", err)
+	}
+}
+
+func TestProviderRegistry_Seal(t *testing.T) {
+	reg := NewProviderRegistry()
+	if err := reg.Register(ProviderDescriptor{ID: ProviderWikipedia}); err != nil {
+		t.Fatalf("register before seal: %v", err)
+	}
+	reg.Seal()
+	if err := reg.Register(ProviderDescriptor{ID: ProviderDuckDuckGo}); !errors.Is(err, ErrProviderRegistrySealed) {
+		t.Fatalf("expected sealed registry to reject Register, got: %v", err)
+	}
+	// Reads on a sealed registry still work.
+	if _, ok := reg.ByID(ProviderWikipedia); !ok {
+		t.Fatal("expected ByID to work after seal")
+	}
+}
+
 func TestProviderRegistry_MatchByAlias(t *testing.T) {
 	reg := NewProviderRegistry()
-	reg.Register(ProviderDescriptor{
+	if err := reg.Register(ProviderDescriptor{
 		ID:      ProviderWikipedia,
 		Aliases: []string{"wikipedia.org"},
 		Origin:  ImageOriginRetrieved,
-	})
+	}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
 
 	cases := map[string]ImageProvider{
 		"https://en.wikipedia.org/wiki/Cat": ProviderWikipedia,
@@ -36,9 +62,9 @@ func TestProviderRegistry_MatchByAlias(t *testing.T) {
 		"duckduckgo":                        ProviderUnknown,
 	}
 	for source, want := range cases {
-		d := reg.Match(source)
+		d, ok := reg.Match(source)
 		var got ImageProvider
-		if d != nil {
+		if ok {
 			got = d.ID
 		} else {
 			got = ProviderUnknown
@@ -49,27 +75,83 @@ func TestProviderRegistry_MatchByAlias(t *testing.T) {
 	}
 }
 
-func TestDefaultProviderRegistry_ContainsKnownProviders(t *testing.T) {
-	reg := DefaultProviderRegistry()
+func TestProviderRegistry_MatchExactAvoidsFalsePositives(t *testing.T) {
+	reg := NewProviderRegistry()
+	if err := reg.Register(ProviderDescriptor{
+		ID:      ProviderUpload,
+		Aliases: []string{"upload"},
+		Origin:  ImageOriginUploaded,
+	}); err != nil {
+		t.Fatalf("Register upload failed: %v", err)
+	}
+	if err := reg.Register(ProviderDescriptor{
+		ID:      ProviderDrive,
+		Aliases: []string{"drive", "drive.google.com"},
+		Origin:  ImageOriginRetrieved,
+	}); err != nil {
+		t.Fatalf("Register drive failed: %v", err)
+	}
 
-	for _, id := range []ImageProvider{ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload} {
-		if reg.ByID(id) == nil {
-			t.Errorf("default registry missing %q", id)
+	// These should not match because they are not exact aliases/IDs or hostnames.
+	noMatch := []string{
+		"uploader",
+		"mydrive",
+		"uploaded file",
+	}
+	for _, source := range noMatch {
+		if _, ok := reg.Match(source); ok {
+			t.Errorf("Match(%q) unexpectedly matched", source)
+		}
+	}
+
+	// These should match because they are exact aliases/IDs or hostnames.
+	matchCases := map[string]ImageProvider{
+		"upload": ProviderUpload,
+		"drive":  ProviderDrive,
+		"https://drive.google.com/file/d/abc123/view": ProviderDrive,
+	}
+	for source, want := range matchCases {
+		d, ok := reg.Match(source)
+		if !ok {
+			t.Fatalf("Match(%q) returned no match, want %q", source, want)
+		}
+		if d.ID != want {
+			t.Errorf("Match(%q) = %q, want %q", source, d.ID, want)
 		}
 	}
 }
 
-func TestDefaultProviderRegistry_ExactMatchAvoidsFalsePositives(t *testing.T) {
+func TestProviderRegistry_AllDefensiveCopy(t *testing.T) {
+	reg := NewProviderRegistry()
+	if err := reg.Register(ProviderDescriptor{
+		ID:      ProviderWikipedia,
+		Aliases: []string{"wikipedia"},
+		Origin:  ImageOriginRetrieved,
+	}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	all := reg.All()
+	if len(all) != 1 {
+		t.Fatalf("len(All()) = %d, want 1", len(all))
+	}
+	all[0].ID = ProviderDuckDuckGo
+
+	d, ok := reg.ByID(ProviderWikipedia)
+	if !ok {
+		t.Fatal("mutating All() slice should not affect internal registry")
+	}
+	if d.ID != ProviderWikipedia {
+		t.Errorf("internal descriptor ID = %q after mutating All() copy", d.ID)
+	}
+}
+
+func TestDefaultProviderRegistry_ContainsKnownProviders(t *testing.T) {
 	reg := DefaultProviderRegistry()
 
-	cases := []string{
-		"https://uploader.example.com/path",
-		"mydrive",
-		"https://drive.google.com/file/d/abc123/view",
-	}
-	for _, source := range cases {
-		if d := reg.Match(source); d != nil && (d.ID == ProviderUpload || d.ID == ProviderDrive) {
-			t.Errorf("Match(%q) returned %q, expected no match for upload/drive", source, d.ID)
+	for _, id := range []ImageProvider{ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload} {
+		if _, ok := reg.ByID(id); !ok {
+			t.Errorf("default registry missing %q", id)
 		}
 	}
 }
@@ -88,9 +170,9 @@ func TestDefaultProviderRegistry_ClassifiesOrigins(t *testing.T) {
 		{"upload", ImageOriginUploaded},
 	}
 	for _, tt := range tests {
-		d := reg.Match(tt.source)
-		if d == nil {
-			t.Errorf("Match(%q) returned nil", tt.source)
+		d, ok := reg.Match(tt.source)
+		if !ok {
+			t.Errorf("Match(%q) returned no match", tt.source)
 			continue
 		}
 		if d.Origin != tt.origin {
