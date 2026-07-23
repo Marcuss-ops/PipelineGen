@@ -1,0 +1,60 @@
+# PipelineGen — Policy History
+# -----------------------------------------------------------------------------
+# Human-readable archive of past policy changes. This file is NOT read by
+# cmd/archcheck; it exists only to keep the executable policy.yaml free of
+# long historical narratives. Git history remains the authoritative archive.
+
+# Package-size cap history ---------------------------------------------------
+max_files_per_package:
+  current: 65
+  history:
+    - date: "2026-07-15"
+      change: "40 → 65"
+      note: "initial raise during SQLite consolidation"
+    - date: "2026-07-22"
+      intended: "65 → 70"
+      note: |
+        The comment in policy.yaml claimed this raise happened, but the
+        executable value remained 65. The discrepancy has been corrected
+        by keeping the cap at 65 and recording the intended raise here.
+        internal/infrastructure/database/sqlite/assets reached 69 files
+        while absorbing the canonical asset committer / outbox / clips /
+        catalog / artifacts / delivery / maintenance / voiceover /
+        visual-summary surfaces. The package is the SQLite persistence
+        consolidation point; splitting it now would fracture transactional
+        cohesion. The cap will be revisited once the QDRANT-002 / asset-
+        committer consolidation wave settles.
+
+# File-size cap history ------------------------------------------------------
+max_lines_per_file:
+  current: 1000
+  history:
+    - date: "2026-07-11"
+      change: "500 → 1000"
+      note: |
+        The script.generate pipeline introduced 6 cohesive feature files
+        that manage hard transactional/cue boundaries which cannot be safely
+        split, including clip_atomic_writer.go (922 lines) and
+        text_track_resolver.go (750 lines). The raise absorbed 16 existing
+        file-size violations. Any file exceeding 1000 lines is still a
+        violation and a strong signal for a real split. Per AGENTS.md,
+        splitting remains preferred for any new file that approaches
+        1000 lines.
+
+# Debt-budget history --------------------------------------------------------
+debt_budget:
+  current:
+    max_pre_existing_open: 9
+    statuses_counted: ["open", "in_progress"]
+  history:
+    - date: "2026-07-13"
+      change: "5 → 9"
+      owner: "PipelineGen Agent (qdrant-hygiene + docs-arch waves)"
+      deadline: "2026-11-30"
+      note: |
+        Raised to accommodate the operator's "novembre" sub-commit wave:
+        PRE-EXISTING-15-LENS-MIGRATION and PRE-EXISTING-16-DOCS-MISSING.
+        The previous policy deliberately excluded `in_progress` from the
+        counter, allowing a status flip to unblock CI without a fix. That
+        bypass has been closed: `in_progress` now counts the same as `open`
+        and requires owner_capability and evidence_filename.

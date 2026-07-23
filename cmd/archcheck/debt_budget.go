@@ -12,12 +12,12 @@ import (
 )
 
 // Debt is scored in half-open units to avoid floating point arithmetic:
-// open=2 units, in_progress=1 unit. The policy's max_pre_existing_open is
-// multiplied by two, so in_progress still consumes capacity instead of
-// bypassing the gate.
+// open=2 units, in_progress=2 units. The policy's max_pre_existing_open is
+// multiplied by two, so in_progress consumes the same capacity as open
+// and cannot be used to bypass the gate.
 const (
 	debtOpenUnits       = 2
-	debtInProgressUnits = 1
+	debtInProgressUnits = 2
 )
 
 type debtEntry struct {
@@ -63,7 +63,10 @@ func validateDebtBudget(root, policyPath string) error {
 			offenders = append(offenders, entry.ID+"(open=1.0)")
 		case "in_progress":
 			units += debtInProgressUnits
-			offenders = append(offenders, entry.ID+"(in_progress=0.5)")
+			offenders = append(offenders, entry.ID+"(in_progress=1.0)")
+			if entry.OwnerCapability == "" || entry.EvidenceFilename == "" {
+				return fmt.Errorf("debt budget: %s is in_progress but missing owner_capability or evidence_filename", entry.ID)
+			}
 			if !hasConcreteImplementation(root, entry) {
 				return fmt.Errorf("debt budget: %s is in_progress without a resolvable implementation commit/evidence reference", entry.ID)
 			}
@@ -78,7 +81,7 @@ func validateDebtBudget(root, policyPath string) error {
 		return fmt.Errorf("debt budget: weighted PRE-EXISTING score %.1f exceeds cap %.1f; entries: %s",
 			float64(units)/2, float64(maxUnits)/2, strings.Join(offenders, ", "))
 	}
-	fmt.Fprintf(os.Stderr, "debt budget: weighted score %.1f / %.1f (open=1.0, in_progress=0.5)\n",
+	fmt.Fprintf(os.Stderr, "debt budget: weighted score %.1f / %.1f (open=1.0, in_progress=1.0)\n",
 		float64(units)/2, float64(maxUnits)/2)
 	return nil
 }
