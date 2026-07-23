@@ -14,7 +14,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractClipId } from '../scrape/url.js';
 import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../driver/cookies.js';
-import { fetchClipDetails } from '../scrape/detail-page.js';
 
 /**
  * Downloads a video from Artlist.
@@ -70,20 +69,6 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     }
   };
 
-  const addDetailCandidates = (detail) => {
-    if (!detail || typeof detail !== 'object') {
-      return;
-    }
-
-    addCandidateUrl(detail.primary_url);
-    addCandidateUrl(detail.preview_url);
-    if (Array.isArray(detail.stream_urls)) {
-      for (const url of detail.stream_urls) {
-        addCandidateUrl(url);
-      }
-    }
-  };
-
   const onRequest = (req) => {
     const url = req.url();
     if (url.includes('.m3u8')) {
@@ -127,17 +112,6 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     //
     // If the selectors fail (different page layout), we still fall through
     // to the existing URL capture logic (network listeners, DOM extraction).
-
-    // Prefer the structured detail extractor first. It can often see the
-    // authenticated stream URLs from API / JSON-LD without needing the
-    // player interaction to fire. When it yields a direct asset URL we can
-    // download immediately and skip the flaky play-trigger path.
-    try {
-      const detail = await fetchClipDetails(browser, clipPageUrl);
-      addDetailCandidates(detail);
-    } catch (err) {
-      console.log(`[download] detail probe failed for ${clipPageUrl}: ${err.message}`);
-    }
 
     if (mp4Urls.size === 0 && streamUrls.size === 0) {
       await new Promise((resolve) => setTimeout(resolve, 500));

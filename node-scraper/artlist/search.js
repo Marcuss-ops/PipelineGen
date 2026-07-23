@@ -315,7 +315,26 @@ export async function searchArtlistPreview(term, limit, profileDir) {
         .forEach((el) => {
           const href = el.href || el.getAttribute('href') || '';
           if (!href || seen.has(href)) return;
-          const title = (el.textContent || el.getAttribute('aria-label') || '').trim();
+
+          // Prefer the img alt text (actual clip title) over textContent
+          // which may contain the page-wide Organization name.
+          const img = el.querySelector('img');
+          const imgAlt = (img?.getAttribute('alt') || '').trim();
+
+          // Fallback: look for a heading inside the clip card
+          const heading = el.querySelector('h1, h2, h3, h4, h5, h6, [class*="title"], [class*="Title"]');
+          const headingText = (heading?.textContent || '').trim();
+
+          // Last resort: direct text content, but only if it looks like a clip title
+          const rawText = (el.textContent || '').trim();
+
+          // Pick the best candidate: imgAlt > headingText > rawText
+          // Filter out obviously wrong titles (Organization names, single words like "Artlist")
+          let title = imgAlt || headingText || '';
+          if (!title && rawText && rawText.length > 3 && !/^(artlist|video|stock|clip|download|license|free)$/i.test(rawText)) {
+            title = rawText;
+          }
+
           seen.add(href);
           found.push({
             title,

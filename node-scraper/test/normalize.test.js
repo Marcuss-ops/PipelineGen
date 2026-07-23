@@ -59,4 +59,24 @@ describe('normalize helpers', () => {
     assert.equal(clip.id, '46001');
     assert.equal(clip.page_url, 'https://artlist.io/stock-footage/clip/business-team-working/46001');
   });
+
+  test('normalizeArtlistClip filters out organization names as titles', () => {
+    const clip = normalizeArtlistClip({
+      id: '12345',
+      name: 'Artlist',
+      clipPageUrl: 'https://artlist.io/stock-footage/clip/12345',
+    });
+
+    assert.equal(clip.title, '12345');
+    assert.equal(clip.name, '12345');
+  });
+
+  test('normalizeArtlistClip accepts valid clip titles', () => {
+    const clip = normalizeArtlistClip({
+      title: 'Business Team Working In Modern Office',
+      clipPageUrl: 'https://artlist.io/stock-footage/clip/67890',
+    });
+
+    assert.equal(clip.title, 'Business Team Working In Modern Office');
+  });
 });

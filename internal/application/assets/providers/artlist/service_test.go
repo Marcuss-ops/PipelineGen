@@ -414,15 +414,18 @@ func TestSearchRequestValidation(t *testing.T) {
 	}
 }
 
-func TestSearchNormalizationLimitsToFourWords(t *testing.T) {
+func TestSearchNormalizationLimitsToSixWords(t *testing.T) {
 	if got := normalizeSearchTerm("  mountain river sunrise "); got != "mountain river sunrise" {
 		t.Fatalf("expected three words preserved, got %q", got)
 	}
 	if got := normalizeSearchTerm("  mountain river sunrise extra "); got != "mountain river sunrise extra" {
 		t.Fatalf("expected four words preserved, got %q", got)
 	}
-	if got := normalizeSearchTerm("  mountain river sunrise extra more "); got != "mountain river sunrise extra" {
-		t.Fatalf("expected four words max, got %q", got)
+	if got := normalizeSearchTerm("  mountain river sunrise extra more "); got != "mountain river sunrise extra more" {
+		t.Fatalf("expected five words preserved, got %q", got)
+	}
+	if got := normalizeSearchTerm("  one two three four five six seven "); got != "one two three four five six" {
+		t.Fatalf("expected six words max, got %q", got)
 	}
 }
 
