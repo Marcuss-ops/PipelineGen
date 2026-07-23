@@ -14,8 +14,8 @@ const (
 	SlotBackground      SlotKind = "background"
 )
 
-// IsKnownSlotKind reports whether k is a supported slot kind.
-func IsKnownSlotKind(k SlotKind) bool {
+// IsValid reports whether k is a supported slot kind.
+func (k SlotKind) IsValid() bool {
 	switch k {
 	case SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay,
 		SlotMap, SlotPortrait, SlotDocument, SlotBackground:
@@ -26,8 +26,8 @@ func IsKnownSlotKind(k SlotKind) bool {
 
 // AllowedMediaTypes returns the canonical media types that may
 // occupy the given slot. The returned slice is owned by the
-// function and must not be mutated by callers.
-func AllowedMediaTypes(k SlotKind) []string {
+// receiver and must not be mutated by callers.
+func (k SlotKind) AllowedMediaTypes() []string {
 	switch k {
 	case SlotPrimaryVideo:
 		return []string{"video"}
@@ -45,42 +45,24 @@ func AllowedMediaTypes(k SlotKind) []string {
 }
 
 // DefaultLayout returns the canonical default layout for a slot.
-func DefaultLayout(k SlotKind) string {
+func (k SlotKind) DefaultLayout() string {
 	switch k {
-	case SlotPrimaryVideo, SlotEvidenceOverlay:
+	case SlotPrimaryVideo:
 		return "fullscreen"
 	case SlotSecondaryImage, SlotPortrait:
 		return "right_panel"
-	case SlotMap:
+	case SlotEvidenceOverlay, SlotMap, SlotBackground:
 		return "fullscreen_fade"
 	case SlotDocument:
-		return "overlay"
-	case SlotBackground:
-		return "background"
+		return "lower_third"
 	default:
 		return ""
 	}
 }
 
-// IsMediaTypeAllowed reports whether the given media type is
-// compatible with the slot. It is the canonical SSOT for the
-// slot ↔ media type mapping used by the planner, ranker, and
-// renderer.
-func IsMediaTypeAllowed(k SlotKind, mediaType string) bool {
-	if mediaType == "" {
-		return false
-	}
-	for _, t := range AllowedMediaTypes(k) {
-		if t == mediaType {
-			return true
-		}
-	}
-	return false
-}
-
 // MaxLayers returns the maximum number of layers supported for a
 // single scene of the given slot kind. Most slots accept one layer.
-func MaxLayers(k SlotKind) int {
+func (k SlotKind) MaxLayers() int {
 	switch k {
 	case SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay,
 		SlotMap, SlotPortrait, SlotDocument, SlotBackground:
@@ -92,7 +74,7 @@ func MaxLayers(k SlotKind) int {
 
 // SupportsTimeRange reports whether a slot typically supports a
 // temporal window (start_ms / end_ms).
-func SupportsTimeRange(k SlotKind) bool {
+func (k SlotKind) SupportsTimeRange() bool {
 	switch k {
 	case SlotPrimaryVideo, SlotEvidenceOverlay, SlotBackground:
 		return true
@@ -102,3 +84,28 @@ func SupportsTimeRange(k SlotKind) bool {
 		return false
 	}
 }
+
+// IsKnownSlotKind reports whether k is a supported slot kind.
+//
+// Deprecated: use k.IsValid() instead. Kept for backward compatibility
+// until all callers are migrated.
+func IsKnownSlotKind(k SlotKind) bool {
+	return k.IsValid()
+}
+
+// IsMediaTypeAllowed reports whether the given media type is
+// compatible with the slot. It is the canonical SSOT for the
+// slot ↔ media type mapping used by the planner, ranker, and
+// renderer.
+func IsMediaTypeAllowed(k SlotKind, mediaType string) bool {
+	if mediaType == "" {
+		return false
+	}
+	for _, t := range k.AllowedMediaTypes() {
+		if t == mediaType {
+			return true
+		}
+	}
+	return false
+}
+

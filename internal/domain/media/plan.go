@@ -158,25 +158,7 @@ type MediaPlannerPolicy struct {
 	CandidateLimit int    `json:"candidate_limit,omitempty"`
 }
 
-// KnownMediaPlanSlots is the canonical set of supported slots. It is
-// exported for validation and is intentionally a string set so future
-// slots can be added without breaking older callers.
-//
-// Deprecated: use media.IsKnownSlotKind directly. This function is
-// kept only for backward compatibility during the SSOT migration.
-func KnownMediaPlanSlots() map[string]struct{} {
-	return map[string]struct{}{
-		string(SlotPrimaryVideo):    {},
-		string(SlotSecondaryImage):  {},
-		string(SlotEvidenceOverlay): {},
-		string(SlotPortrait):        {},
-		string(SlotDocument):        {},
-		string(SlotBackground):      {},
-		string(SlotMap):             {},
-	}
-}
-
 // IsValidMediaPlanSlot returns true when slot is a known slot.
 func IsValidMediaPlanSlot(slot string) bool {
-	return IsKnownSlotKind(SlotKind(slot))
+	return SlotKind(slot).IsValid()
 }
