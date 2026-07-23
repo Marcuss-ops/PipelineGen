@@ -133,9 +133,10 @@ WHERE m.id = ? AND m.lifecycle_state != 'DELETED'`
 	item.HasDriveFile = hasDrive == 1
 	item.HasEmbedding = hasEmbedding == 1
 	item.IndexHealth = operator.ResolveIndexHealth(operator.IndexHealthInput{
-		IndexState:         item.IndexState,
-		ContentHash:        item.ContentHash,
-		IndexedContentHash: item.IndexedContentHash,
+		IndexState:          item.IndexState,
+		ContentHash:         item.ContentHash,
+		IndexedContentHash:  item.IndexedContentHash,
+		PendingOutboxEvents: item.PendingOutboxEvents,
 	})
 	item.CreatedAt = parseTime(createdAt)
 	item.UpdatedAt = parseTime(updatedAt)

@@ -3,6 +3,7 @@ package operatorread
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
 )
@@ -68,7 +69,7 @@ func (r *InventoryReader) runFacetQuery(ctx context.Context, name, keyColumn str
 
 // mergeCanonical ensures every canonical value appears in the facet group,
 // even when the database count is zero. Labels are supplied by helpers in
-// the domain package.
+// the domain package. The returned slice is sorted by code for stable output.
 func mergeCanonical(counts map[string]int64, labels map[string]string) []operator.FacetGroup {
 	out := make([]operator.FacetGroup, 0, len(labels))
 	for code, label := range labels {
@@ -78,6 +79,7 @@ func mergeCanonical(counts map[string]int64, labels map[string]string) []operato
 			Count: counts[code],
 		})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	return out
 }
 
@@ -86,5 +88,6 @@ func fromMap(m map[string]int64) []operator.FacetGroup {
 	for code, count := range m {
 		out = append(out, operator.FacetGroup{Code: code, Label: code, Count: count})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	return out
 }
