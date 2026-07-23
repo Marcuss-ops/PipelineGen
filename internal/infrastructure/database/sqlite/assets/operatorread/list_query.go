@@ -222,6 +222,7 @@ func (r *InventoryReader) scanItems(rows *sql.Rows) ([]*operator.AssetInventoryI
 			ContentHash:         item.ContentHash,
 			IndexedContentHash:  item.IndexedContentHash,
 			PendingOutboxEvents: item.PendingOutboxEvents,
+			LastError:           item.LastError,
 		})
 
 		item.CreatedAt = parseTime(createdAt)
