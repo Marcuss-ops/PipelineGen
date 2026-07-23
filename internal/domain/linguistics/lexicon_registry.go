@@ -53,11 +53,13 @@ func DefaultPhraseExtractionPolicy() PhraseExtractionPolicy {
 // LexiconProfile is the complete set of per-language linguistic data
 // used by intent resolvers, entity filters and language detectors.
 type LexiconProfile struct {
-	StopWords       map[string]struct{}
-	FunctionWords   map[string]struct{}
-	EntityBlocklist map[string]struct{}
-	VerbSuffixes    []string
-	PhrasePolicy    PhraseExtractionPolicy
+	StopWords         map[string]struct{}
+	FunctionWords     map[string]struct{}
+	EntityBlocklist   map[string]struct{}
+	NegativeParticles map[string]struct{}
+	VisualVerbs       map[string]struct{}
+	VerbSuffixes      []string
+	PhrasePolicy      PhraseExtractionPolicy
 }
 
 // LexiconRegistry holds pre-loaded LexiconProfiles per language and
@@ -105,11 +107,13 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 		lang := entry.Name()
 		dir := filepath.Join(rootDir, lang)
 		profile := &LexiconProfile{
-			StopWords:       make(map[string]struct{}),
-			FunctionWords:   make(map[string]struct{}),
-			EntityBlocklist: make(map[string]struct{}),
-			VerbSuffixes:    nil,
-			PhrasePolicy:    DefaultPhraseExtractionPolicy(),
+			StopWords:         make(map[string]struct{}),
+			FunctionWords:     make(map[string]struct{}),
+			EntityBlocklist:   make(map[string]struct{}),
+			NegativeParticles: make(map[string]struct{}),
+			VisualVerbs:       make(map[string]struct{}),
+			VerbSuffixes:      nil,
+			PhrasePolicy:      DefaultPhraseExtractionPolicy(),
 		}
 
 		if err := loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords); err != nil {
@@ -119,6 +123,12 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 			return nil, err
 		}
 		if err := loadWordSet(filepath.Join(dir, "entity_blocklist.txt"), profile.EntityBlocklist); err != nil {
+			return nil, err
+		}
+		if err := loadWordSet(filepath.Join(dir, "negative_particles.txt"), profile.NegativeParticles); err != nil {
+			return nil, err
+		}
+		if err := loadWordSet(filepath.Join(dir, "visual_verbs.txt"), profile.VisualVerbs); err != nil {
 			return nil, err
 		}
 		if suffixes, err := loadStringList(filepath.Join(dir, "verb_morphology.txt")); err != nil {
@@ -187,6 +197,27 @@ func (r *LexiconRegistry) EntityBlocklist(language string) map[string]struct{} {
 	return r.Resolve(language).EntityBlocklist
 }
 
+// NegativeParticles returns the negative-particle set for the given
+// language.
+func (r *LexiconRegistry) NegativeParticles(language string) map[string]struct{} {
+	return r.Resolve(language).NegativeParticles
+}
+
+// VisualVerbs returns the visual-verb set for the given language.
+func (r *LexiconRegistry) VisualVerbs(language string) map[string]struct{} {
+	return r.Resolve(language).VisualVerbs
+}
+
+// HasProfile reports whether the registry has an explicit (non-fallback)
+// profile for the given language tag.
+func (r *LexiconRegistry) HasProfile(language string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	lang := normalizeLang(language)
+	_, ok := r.profiles[lang]
+	return ok
+}
+
 // VerbSuffixes returns the verb suffixes for the given language.
 func (r *LexiconRegistry) VerbSuffixes(language string) []string {
 	return r.Resolve(language).VerbSuffixes
@@ -195,6 +226,14 @@ func (r *LexiconRegistry) VerbSuffixes(language string) []string {
 // PhrasePolicy returns the phrase extraction policy for the given language.
 func (r *LexiconRegistry) PhrasePolicy(language string) PhraseExtractionPolicy {
 	return r.Resolve(language).PhrasePolicy
+}
+
+// ProfileCount returns the number of explicit (non-fallback) language
+// profiles currently loaded in the registry.
+func (r *LexiconRegistry) ProfileCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.profiles)
 }
 
 // Version returns a hash-based version string that changes when any
@@ -338,11 +377,13 @@ func addAll(m map[string]struct{}, words ...string) {
 // under config/lexicons/ and ensures tests pass without files on disk.
 func builtInFallbackProfile() *LexiconProfile {
 	return &LexiconProfile{
-		StopWords:       builtInStopWords(),
-		FunctionWords:   builtInFunctionWords(),
-		EntityBlocklist: builtInEntityBlocklist(),
-		VerbSuffixes:    []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"},
-		PhrasePolicy:    DefaultPhraseExtractionPolicy(),
+		StopWords:         builtInStopWords(),
+		FunctionWords:     builtInFunctionWords(),
+		EntityBlocklist:   builtInEntityBlocklist(),
+		NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "never": {}, "neither": {}, "non": {}, "mai": {}, "ne": {}},
+		VisualVerbs:       map[string]struct{}{},
+		VerbSuffixes:      []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"},
+		PhrasePolicy:      DefaultPhraseExtractionPolicy(),
 	}
 }
 
@@ -539,11 +580,13 @@ func cloneProfile(p *LexiconProfile) *LexiconProfile {
 		return nil
 	}
 	out := &LexiconProfile{
-		StopWords:       cloneStringSet(p.StopWords),
-		FunctionWords:   cloneStringSet(p.FunctionWords),
-		EntityBlocklist: cloneStringSet(p.EntityBlocklist),
-		VerbSuffixes:    append([]string(nil), p.VerbSuffixes...),
-		PhrasePolicy:    p.PhrasePolicy,
+		StopWords:         cloneStringSet(p.StopWords),
+		FunctionWords:     cloneStringSet(p.FunctionWords),
+		EntityBlocklist:   cloneStringSet(p.EntityBlocklist),
+		NegativeParticles: cloneStringSet(p.NegativeParticles),
+		VisualVerbs:       cloneStringSet(p.VisualVerbs),
+		VerbSuffixes:      append([]string(nil), p.VerbSuffixes...),
+		PhrasePolicy:      p.PhrasePolicy,
 	}
 	return out
 }
@@ -585,6 +628,8 @@ func writeLexiconFingerprint(h hash.Hash, key string, p *LexiconProfile) {
 	writeSortedSetFingerprint(h, "stop", p.StopWords)
 	writeSortedSetFingerprint(h, "func", p.FunctionWords)
 	writeSortedSetFingerprint(h, "block", p.EntityBlocklist)
+	writeSortedSetFingerprint(h, "neg", p.NegativeParticles)
+	writeSortedSetFingerprint(h, "visual", p.VisualVerbs)
 	_, _ = h.Write([]byte("verb:"))
 	for _, suffix := range p.VerbSuffixes {
 		_, _ = h.Write([]byte(suffix))
@@ -652,10 +697,16 @@ func englishBuiltInProfile() *LexiconProfile {
 		// built-in set (which covers sentence-start stop words, month
 		// names, day names, adverbs, etc.) so entity filters like
 		// isSentenceStartCapitalizedOnly work correctly.
-		FunctionWords:   builtInFunctionWords(),
-		EntityBlocklist: builtInEntityBlocklist(),
-		VerbSuffixes:    []string{"ing", "ed", "en", "es"},
-		PhrasePolicy:    DefaultPhraseExtractionPolicy(),
+		FunctionWords:     builtInFunctionWords(),
+		EntityBlocklist:   builtInEntityBlocklist(),
+		NegativeParticles: map[string]struct{}{"not": {}, "no": {}, "never": {}, "neither": {}},
+		VisualVerbs: map[string]struct{}{
+			"watch": {}, "observe": {}, "look": {}, "see": {}, "study": {},
+			"build": {}, "construct": {}, "walk": {}, "run": {}, "jump": {},
+			"move": {}, "push": {}, "pull": {}, "enter": {}, "leave": {},
+		},
+		VerbSuffixes: []string{"ing", "ed", "en", "es"},
+		PhrasePolicy: DefaultPhraseExtractionPolicy(),
 	}
 }
 
@@ -678,10 +729,16 @@ func italianBuiltInProfile() *LexiconProfile {
 		// Italian function words are also covered by the comprehensive
 		// builtInFunctionWords() set, which includes both English and
 		// Italian grammatical words.
-		FunctionWords:   builtInFunctionWords(),
-		EntityBlocklist: map[string]struct{}{},
-		VerbSuffixes:    []string{"are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"},
-		PhrasePolicy:    DefaultPhraseExtractionPolicy(),
+		FunctionWords:     builtInFunctionWords(),
+		EntityBlocklist:   map[string]struct{}{},
+		NegativeParticles: map[string]struct{}{"non": {}, "no": {}, "mai": {}, "ne": {}},
+		VisualVerbs: map[string]struct{}{
+			"guardare": {}, "osservare": {}, "vedere": {}, "studiare": {},
+			"costruire": {}, "camminare": {}, "correre": {}, "saltare": {},
+			"muovere": {}, "spingere": {}, "tirare": {}, "entrare": {}, "uscire": {},
+		},
+		VerbSuffixes: []string{"are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"},
+		PhrasePolicy: DefaultPhraseExtractionPolicy(),
 	}
 }
 

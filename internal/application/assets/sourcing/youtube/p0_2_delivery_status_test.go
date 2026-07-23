@@ -78,16 +78,57 @@ func (s *stubLogger) Warn(msg string, kv ...any)  {}
 func (s *stubLogger) Error(msg string, kv ...any) {}
 func (s *stubLogger) Debug(msg string, kv ...any) {}
 
+type stubTranscriber struct{}
+
+func (s *stubTranscriber) Transcribe(ctx context.Context, audioPath string) (string, string, error) {
+	return "test transcript text", "en", nil
+}
+
+type stubTextTrackRepo struct {
+	tracks []asset.TextTrack
+}
+
+func (s *stubTextTrackRepo) UpsertBatch(ctx context.Context, tracks []asset.TextTrack) error {
+	s.tracks = append(s.tracks, tracks...)
+	return nil
+}
+
+func (s *stubTextTrackRepo) Find(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+	return nil, nil
+}
+
+func (s *stubTextTrackRepo) ListByAsset(ctx context.Context, assetID string) ([]asset.TextTrack, error) {
+	return nil, nil
+}
+
+func (s *stubTextTrackRepo) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	return nil, nil, nil
+}
+
+func (s *stubTextTrackRepo) ListReadyLanguages(ctx context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+	return nil, nil
+}
+
+func (s *stubTextTrackRepo) FindCurrentForTranslation(ctx context.Context, assetID string, kind asset.TextTrackKind, sourceTextHash string, targetLanguageCode string, translationModel string, modelVersion string, promptVersion string) (*asset.TextTrack, error) {
+	return nil, nil
+}
+
+func (s *stubTextTrackRepo) InsertTranslationWithAuditPredecessor(ctx context.Context, track asset.TextTrack) error {
+	return nil
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 func newTestService(pub sourcing.PublisherPort, requireDrive bool) *Service {
 	return &Service{
-		fetcher:      &stubFetcher{},
-		publisher:    pub,
-		indexDisp:    &stubIndexDispatcher{},
-		enrichment:   &stubEnrichment{indexingEnabled: false},
-		log:          &stubLogger{},
-		requireDrive: requireDrive,
+		fetcher:       &stubFetcher{},
+		publisher:     pub,
+		transcriber:   &stubTranscriber{},
+		textTrackRepo: &stubTextTrackRepo{},
+		indexDisp:     &stubIndexDispatcher{},
+		enrichment:    &stubEnrichment{indexingEnabled: false},
+		log:           &stubLogger{},
+		requireDrive:  requireDrive,
 	}
 }
 

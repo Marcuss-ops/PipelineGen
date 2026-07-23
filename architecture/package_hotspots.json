@@ -5,7 +5,7 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 64,
+      "baseline_files": 104,
       "target_packages": [
         "cmd/admin/commands",
         "cmd/admin/backfill",
@@ -29,7 +29,7 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 127,
+      "baseline_files": 132,
       "target_packages": [
         "internal/app/workerruntime",
         "internal/app/wiring",
@@ -129,6 +129,14 @@
       "targets": [
         "internal/application/transcripts",
         "internal/infrastructure"
+      ]
+    },
+    {
+      "path": "internal/scriptgeneration",
+      "owner": "script generation domain; target home is internal/application/scripts once the mechanical migration is complete",
+      "deadline": "2026-09-30",
+      "targets": [
+        "internal/application/scripts"
       ]
     }
   ]

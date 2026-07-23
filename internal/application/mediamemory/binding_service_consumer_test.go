@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"testing"
 	"time"
 )
@@ -63,7 +64,7 @@ func TestBindingServiceFailsClosedWhenDispatcherNil(t *testing.T) {
 	svc := NewDefaultBindingService(concepts, bindings, nil, NoopLogger(), newFixedClock())
 	c := seedConcept(concepts, "concept-dispatcher-nil")
 
-	_, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-x", SlotPrimaryVideo))
+	_, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-x", media.SlotPrimaryVideo))
 	if err == nil {
 		t.Fatalf("Create succeeded with nil dispatcher; want error")
 	}
@@ -100,7 +101,7 @@ func TestBindingServiceCreateHappyPath(t *testing.T) {
 	svc := newBindingService(concepts, bindings)
 	c := seedConcept(concepts, "concept-maya")
 
-	got, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-chichen-itza", SlotPrimaryVideo))
+	got, err := svc.Create(context.Background(), makeBinding(c.ID, "asset-chichen-itza", media.SlotPrimaryVideo))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -156,7 +157,7 @@ func TestBindingServiceCreateRejectsMissingConceptID(t *testing.T) {
 	svc := newBindingService(concepts, bindings)
 
 	_, err := svc.Create(context.Background(), MediaBinding{
-		AssetID: "asset-x", SlotKind: SlotPrimaryVideo,
+		AssetID: "asset-x", SlotKind: media.SlotPrimaryVideo,
 	})
 	if err == nil {
 		t.Fatalf("Create accepted missing concept_id")
@@ -181,7 +182,7 @@ func TestBindingServiceCreateRejectsMissingAssetID(t *testing.T) {
 	c := seedConcept(concepts, "concept-maya3")
 
 	_, err := svc.Create(context.Background(), MediaBinding{
-		ConceptID: c.ID, SlotKind: SlotPrimaryVideo,
+		ConceptID: c.ID, SlotKind: media.SlotPrimaryVideo,
 	})
 	if err == nil {
 		t.Fatalf("Create accepted missing asset_id")
@@ -208,7 +209,7 @@ func TestBindingServiceCreateRejectsUnknownConcept(t *testing.T) {
 	svc := newBindingService(concepts, bindings)
 	// Concept doesn't exist — FindByID will fail.
 	_, err := svc.Create(context.Background(), MediaBinding{
-		ConceptID: "concept-unknown", AssetID: "asset-x", SlotKind: SlotPrimaryVideo,
+		ConceptID: "concept-unknown", AssetID: "asset-x", SlotKind: media.SlotPrimaryVideo,
 	})
 	if err == nil {
 		t.Fatalf("Create accepted missing concept_id")
@@ -248,7 +249,7 @@ func TestBindingServiceUpdateRejectsInvalidSlotKind(t *testing.T) {
 	// ApprovalStatus (the SQLite concrete's RETURNING-then-
 	// scanBindingRow gate enforces this).
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
-		ID: "b-1", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ID: "b-1", ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 		Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 
@@ -270,7 +271,7 @@ func TestBindingServiceUpdateRejectsEmptyID(t *testing.T) {
 	bindings := newFakeBindingsRepo()
 	svc := newBindingService(concepts, bindings)
 	_, err := svc.Update(context.Background(), MediaBinding{
-		ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 	})
 	if err == nil {
 		t.Fatalf("Update accepted empty ID")
@@ -289,13 +290,13 @@ func TestBindingServiceUpdateHappyPathPreservesUsageCount(t *testing.T) {
 	// IsKnownOrigin gate would reject the empty string and
 	// Update would receive an empty binding.ID).
 	seed, _ := bindings.Upsert(context.Background(), MediaBinding{
-		ID: "b-2", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ID: "b-2", ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 		Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 		UsageCount: 3, SuccessScore: 0.42,
 	})
 	got, err := svc.Update(context.Background(), MediaBinding{
 		ID: seed.ID, ConceptID: seed.ConceptID, AssetID: seed.AssetID,
-		SlotKind: SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
+		SlotKind: media.SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 		UsageCount: 3, SuccessScore: 0.42,
 		StartMs: 12000, EndMs: 20000,
 	})
@@ -332,7 +333,7 @@ func TestBindingServiceDeleteHappyPath(t *testing.T) {
 	// IsKnownOrigin gate doesn't reject the empty Origin (which
 	// would cascade into Delete getting an empty b.ID).
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
-		ID: "b-3", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ID: "b-3", ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 		Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 	if err := svc.Delete(context.Background(), b.ID); err != nil {
@@ -351,7 +352,7 @@ func TestBindingServiceApproveHappyPathPreservesOrigin(t *testing.T) {
 	bindings := newFakeBindingsRepo()
 	svc := newBindingService(concepts, bindings)
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
-		ID: "b-4", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ID: "b-4", ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 		Origin: OriginAutoLink, ApprovalStatus: ApprovalPending,
 	})
 
@@ -387,7 +388,7 @@ func TestBindingServiceRejectSetsRejectedAndPreservesOrigin(t *testing.T) {
 	bindings := newFakeBindingsRepo()
 	svc := newBindingService(concepts, bindings)
 	b, _ := bindings.Upsert(context.Background(), MediaBinding{
-		ID: "b-5", ConceptID: "c-1", AssetID: "a-1", SlotKind: SlotPrimaryVideo,
+		ID: "b-5", ConceptID: "c-1", AssetID: "a-1", SlotKind: media.SlotPrimaryVideo,
 		Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 	if err := svc.Reject(context.Background(), b.ID); err != nil {
@@ -438,7 +439,7 @@ func TestBindingServiceListByConceptReturnsAllStatuses(t *testing.T) {
 	for i, status := range []ApprovalStatus{ApprovalApproved, ApprovalPending, ApprovalRejected} {
 		_, _ = bindings.Upsert(context.Background(), MediaBinding{
 			ID: fmt.Sprintf("b-list-%d", i), ConceptID: "c-1", AssetID: fmt.Sprintf("a-%d", i),
-			SlotKind: SlotPrimaryVideo, Origin: OriginManual,
+			SlotKind: media.SlotPrimaryVideo, Origin: OriginManual,
 			ApprovalStatus: status,
 		})
 	}
@@ -472,21 +473,21 @@ func TestBindingServiceListBySlotFilterHappyPath(t *testing.T) {
 	svc := newBindingService(concepts, bindings)
 	_, _ = bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-slot-pv-1", ConceptID: "c-1", AssetID: "a-1",
-		SlotKind: SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
+		SlotKind: media.SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 	_, _ = bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-slot-si-1", ConceptID: "c-1", AssetID: "a-2",
-		SlotKind: SlotSecondaryImage, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
+		SlotKind: media.SlotSecondaryImage, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 
-	got, err := svc.ListBySlot(context.Background(), "c-1", SlotPrimaryVideo, 10)
+	got, err := svc.ListBySlot(context.Background(), "c-1", media.SlotPrimaryVideo, 10)
 	if err != nil {
 		t.Fatalf("ListBySlot returned error: %v", err)
 	}
 	if len(got) != 1 {
 		t.Fatalf("ListBySlot returned %d bindings (single SlotKind filter), want 1", len(got))
 	}
-	if got[0].SlotKind != SlotPrimaryVideo {
+	if got[0].SlotKind != media.SlotPrimaryVideo {
 		t.Fatalf("ListBySlot returned wrong slot kind: %q", got[0].SlotKind)
 	}
 }
@@ -498,10 +499,10 @@ func TestBindingServiceListBySlotEmptyResultWhenLimitExceedsAvailable(t *testing
 	svc := newBindingService(concepts, bindings)
 	_, _ = bindings.Upsert(context.Background(), MediaBinding{
 		ID: "b-slot-lim-1", ConceptID: "c-1", AssetID: "a-1",
-		SlotKind: SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
+		SlotKind: media.SlotPrimaryVideo, Origin: OriginManual, ApprovalStatus: ApprovalApproved,
 	})
 	// limit = 0 means "no limit"; limit = 5 above 1 available is also no problem.
-	got, err := svc.ListBySlot(context.Background(), "c-1", SlotPrimaryVideo, 5)
+	got, err := svc.ListBySlot(context.Background(), "c-1", media.SlotPrimaryVideo, 5)
 	if err != nil {
 		t.Fatalf("ListBySlot returned error: %v", err)
 	}

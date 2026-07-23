@@ -222,11 +222,9 @@ func TestArtlistServiceCreation(t *testing.T) {
 	// ("unknown field Cfg" — likely a transient platform detail), so we
 	// construct via explicit nested sub-structs. This is robust against
 	// any promotion-renaming churn in future PR2.x waves.
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -241,7 +239,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -261,11 +259,9 @@ func TestArtlistSearchRequest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -280,7 +276,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 
 	ctx := context.Background()
 
@@ -548,11 +544,9 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		err: errors.New("download failed"),
 	}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -570,7 +564,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -641,11 +635,9 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 
 	processor := &fakeMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -663,7 +655,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -750,11 +742,9 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		err: errors.New("download failed"),
 	}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -772,7 +762,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

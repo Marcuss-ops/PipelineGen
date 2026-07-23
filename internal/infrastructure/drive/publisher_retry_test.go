@@ -77,10 +77,10 @@ func TestYouTubeClipPath_CategoryBoxeSubjectPacquiaoVsBroner_DOD_9_1(t *testing.
 		"YouTubeClipPath must return canonical [{group},{subject}] segments — SafeFolderName preserves spaces and hyphens")
 }
 
-func TestYouTubeClipPath_WithRootFolderOverride_UsesSingleLeaf(t *testing.T) {
+func TestYouTubeClipPath_WithDestinationFolderID_UsesSingleLeaf(t *testing.T) {
 	req := delivery.PublishRequest{
-		RootFolderOverride: "explicit-root",
-		Subject:            "qQIsvIOQS8U",
+		DestinationFolderID: "explicit-root",
+		Subject:             "qQIsvIOQS8U",
 	}
 
 	segs, err := delivery.YouTubeClipPath(req)
@@ -88,8 +88,8 @@ func TestYouTubeClipPath_WithRootFolderOverride_UsesSingleLeaf(t *testing.T) {
 	require.Equal(t, []string{"qQIsvIOQS8U"}, segs)
 
 	req = delivery.PublishRequest{
-		RootFolderOverride: "explicit-root",
-		Group:              "boxing-channels",
+		DestinationFolderID: "explicit-root",
+		Group:               "boxing-channels",
 	}
 	segs, err = delivery.YouTubeClipPath(req)
 	require.NoError(t, err)

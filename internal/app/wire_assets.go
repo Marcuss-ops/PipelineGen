@@ -29,6 +29,7 @@ func WireAssets(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
+	textTrackRepo asset.TextTrackRepository,
 	jobs *JobsBundle,
 	lifecycle driveutil.FileLifecycle,
 	providerRegistry *providers.Registry,
@@ -151,7 +152,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
 
-	rd, err := buildRegisterBundle(cfg, log, deps, lifecycle, driveUploader, providerRegistry, clipEnricher, idemHandler, dispatcher, jobs)
+	rd, err := buildRegisterBundle(cfg, log, deps, textTrackRepo, lifecycle, driveUploader, providerRegistry, clipEnricher, idemHandler, dispatcher, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: register: %w", err)
 	}
@@ -232,6 +233,7 @@ func buildRegisterBundle(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
+	textTrackRepo asset.TextTrackRepository,
 	lifecycle driveutil.FileLifecycle,
 	driveUploader *driveutil.Uploader,
 	providerRegistry *providers.Registry,
@@ -240,7 +242,7 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.Repositories.ClipsRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.Repositories.ClipsRepo, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	driveChecker := func() error {
 		if driveUploader == nil {

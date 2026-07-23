@@ -60,22 +60,30 @@ export interface AssetInventoryFacets {
 }
 
 export interface AssetLocation {
-  kind: string
+  id: number
+  asset_id: string
+  location_kind: 'local' | 'drive' | 'object_storage'
   uri: string
   external_id?: string
-  is_primary?: boolean
+  access_url?: string
+  download_url?: string
   mime_type?: string
   file_size_bytes?: number
   file_hash?: string
+  is_primary?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export interface AssetProcessing {
+  asset_id: string
   step: string
   status: string
-  error?: string
+  error_message?: string
   started_at?: string
   completed_at?: string
   attempt_count?: number
+  metadata_json?: string
 }
 
 export interface AssetVersion {
@@ -87,13 +95,25 @@ export interface AssetVersion {
   created_at?: string
 }
 
+export interface OutboxEventProjection {
+  event_type: string
+  aggregate_id: string
+  event_key: string
+  status: string
+  attempt_count: number
+  last_error?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface AssetDetails {
   id: string
-  source: string
   name: string
   filename: string
+  source: string
+  provider: string
   media_type: string
-  category: string
+  category?: string
   group?: string
   source_url?: string
   clip_page_url?: string
@@ -103,20 +123,35 @@ export interface AssetDetails {
   tags?: string[]
   search_terms?: string[]
   search_text?: string
-  lifecycle_state?: string
-  metadata?: Record<string, unknown>
-  created_at?: string
-  updated_at?: string
-  license_basis?: string
   review_status?: string
+  license_basis?: string
+
+  lifecycle_state: string
+  asset_state: string
+  index_state: string
+  index_health: AssetStatusData
+
+  has_local_file: boolean
+  has_drive_file: boolean
+  has_embedding: boolean
+
+  content_hash?: string
+  indexed_content_hash?: string
+  embedding_version?: string
+  collection_version?: string
+
+  pending_outbox_events: number
+  last_error?: string
+
   locations?: AssetLocation[]
   processing?: AssetProcessing[]
+  outbox_events?: OutboxEventProjection[]
   versions?: AssetVersion[]
-  embedding_info?: {
-    present: boolean
-    dimensions: number
-    version: string
-  }
+  metadata?: Record<string, unknown>
+
+  created_at: string
+  updated_at: string
+
   [key: string]: unknown
 }
 

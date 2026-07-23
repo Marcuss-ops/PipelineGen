@@ -80,6 +80,11 @@ type ArtlistBundle struct {
 	MediaProcessor     asset.Processor
 	Jobs               *JobsBundle
 	CatalogSyncService *catalogsync.Service
+	// TextTrackRepo persists audio transcripts for downloaded clips.
+	// Wired into Artlist so every clip can be transcribed and the
+	// transcript stored in asset_text_tracks (PR-ARTLIST-MANDATORY-
+	// TRANSCRIPTION, July 2026).
+	TextTrackRepo asset.TextTrackRepository
 }
 
 // ArtlistWiring holds the Artlist module wiring.

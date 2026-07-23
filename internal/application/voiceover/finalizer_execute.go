@@ -7,8 +7,8 @@ import (
 	"time"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
 

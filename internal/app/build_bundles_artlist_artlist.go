@@ -193,6 +193,12 @@ func WireArtlist(
 	// Resolver's Download(artlist.DownloadRequest) method.
 	wireArtlistProcessorDownloader(log, bundle, providers.ArtlistDownloader)
 
+	// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): the transcriber is
+	// the same adapter used by the YouTube registrar. Reusing it here
+	// keeps the Whisper wiring in a single place and satisfies the
+	// artlist.Transcriber port via implicit interface satisfaction.
+	transcriber := &sourcingTranscriberAdapter{cfg: cfg, log: log}
+
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
@@ -244,6 +250,7 @@ func WireArtlist(
 			MediaMemoryConceptRepo: sqliteMediaMemory.NewConceptsRepository(bundle.DB.DB),
 			MediaMemoryBindingRepo: sqliteMediaMemory.NewBindingsRepository(bundle.DB.DB),
 			MediaMemoryNormalizer:  mediamemory.NewDefaultNormalizer(""),
+			Transcriber:            transcriber,
 		},
 		ServiceDependencies: artlist.ServiceDependencies{
 			// ServiceDependencies (10) — grouped into sub-bundles to
@@ -266,6 +273,7 @@ func WireArtlist(
 				AssetVerRepo:        repos.AssetVerRepo,
 				LocationRepository:  nil, // retired from artlist service wiring
 				RenditionRepository: repos.RenditionRepo,
+				TextTrackRepo:       bundle.TextTrackRepo,
 			},
 			Finalizer: artlist.ArtlistFinalizerDeps{
 				// PR-ARTLIST-FINALIZER (July 2026): canonical transactional

@@ -36,8 +36,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"strings"
 )
 
 // MaterializationRequest is the canonical input to the worker for

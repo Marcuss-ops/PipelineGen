@@ -21,6 +21,12 @@ type Source string
 // that don't have dedicated columns.
 type Metadata map[string]any
 
+// ImageMetadataMap is a transitional typed alias for image metadata
+// while the typed metadata-registry migration is in progress.
+// Grandfathered as the canonical map backing
+// CanonicalImageMetadataBuilder (see percheck_metadataregistry.go).
+type ImageMetadataMap = map[string]any
+
 // Asset is the canonical domain model for a media asset in PipelineGen.
 //
 // Extended properties (drive IDs, paths, quality scores, embeddings, etc.)

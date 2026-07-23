@@ -46,8 +46,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ── Handler ports (composition-root-narrow) ────────────────────────

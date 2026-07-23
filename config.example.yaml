@@ -266,3 +266,15 @@ qdrant:
   api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
 clip_indexer:
   enabled: true
+
+# Centralized linguistic lexicons (PR-LEXICON-SSOT, July 2026).
+# Each subdirectory under lexicon_root is a language tag (e.g. en, it).
+# Required files per language: stopwords.txt, function_words.txt,
+# entity_blocklist.txt, verb_morphology.txt, phrase_policy.txt,
+# negative_particles.txt, visual_verbs.txt. Missing optional files are
+# treated as empty; missing required_languages profiles make boot fail.
+linguistics:
+  lexicon_root: "config/lexicons"
+  required_languages:
+    - en
+    - it

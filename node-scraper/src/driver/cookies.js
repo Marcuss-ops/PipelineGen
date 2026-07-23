@@ -1,5 +1,128 @@
 import fs from 'node:fs';
 
+// Default path for injected Artlist session cookies.
+// Override with the ARTLIST_COOKIE_FILE env var.
+export const DEFAULT_COOKIE_FILE_PATH = '/tmp/artlist_cookies.txt';
+
+/**
+ * Imports cookies from a file into the current Puppeteer page.
+ * Supports two formats:
+ *   - JSON: array of puppeteer-style cookie objects (name, value, domain, path, ...)
+ *   - Netscape: tab-delimited cookie file (# comments + header)
+ *
+ * The file path is read from the ARTLIST_COOKIE_FILE env var
+ * (default: /tmp/artlist_cookies.txt). This lets operators inject a
+ * valid Artlist session without mounting an entire Chrome profile.
+ *
+ * @param {object} page - Puppeteer page
+ * @param {string} filePath - Path to the cookie file
+ */
+export async function importCookies(page, filePath) {
+  if (!filePath) {
+    return 0;
+  }
+
+  let stats = null;
+  try {
+    stats = fs.statSync(filePath);
+  } catch {
+    return 0;
+  }
+  if (!stats || !stats.isFile()) {
+    console.log(`[artlist] cookie file not found: ${filePath}`);
+    return 0;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8').trim();
+  if (!content) {
+    return 0;
+  }
+
+  let cookies = [];
+
+  // Try JSON first.
+  if (content.startsWith('[') || content.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(content);
+      cookies = Array.isArray(parsed) ? parsed : [parsed];
+    } catch (err) {
+      console.error(`[artlist] cookie file ${filePath} looks like JSON but failed to parse:`, err.message);
+      return 0;
+    }
+  } else {
+    // Netscape format.
+    cookies = parseNetscapeCookies(content);
+  }
+
+  if (cookies.length === 0) {
+    return 0;
+  }
+
+  // Normalize cookies to the shape page.setCookie expects.
+  // Drop `sameSite` when unknown so Puppeteer uses its default.
+  const validCookies = cookies
+    .map((c) => {
+      const normalized = {
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path || '/',
+        expires: c.expires && Number.isFinite(c.expires) && c.expires > 0 ? c.expires : undefined,
+        httpOnly: !!c.httpOnly,
+        secure: !!c.secure,
+      };
+      // Puppeteer only accepts Strict/Lax/None for sameSite.
+      if (c.sameSite === 'Strict' || c.sameSite === 'Lax' || c.sameSite === 'None') {
+        normalized.sameSite = c.sameSite;
+      }
+      return normalized;
+    })
+    .filter((c) => c.name && c.value != null && c.domain);
+
+  if (validCookies.length === 0) {
+    console.warn(`[artlist] cookie file ${filePath} contained no valid cookies`);
+    return 0;
+  }
+
+  // Puppeteer's page.setCookie accepts variadic args, not an array.
+  try {
+    await page.setCookie(...validCookies);
+  } catch (err) {
+    console.error(`[artlist] failed to set cookies from ${filePath}:`, err.message);
+    return 0;
+  }
+  console.error(`[artlist] imported ${validCookies.length} cookies from ${filePath}`);
+  return validCookies.length;
+}
+
+function parseNetscapeCookies(content) {
+  const lines = content.split(/\r?\n/);
+  const cookies = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    // Netscape format is tab-delimited with exactly 7 fields:
+    // domain\tflag\tpath\tsecure\texpires\tname\tvalue
+    // We split on literal tabs (not runs of tabs) so that empty or
+    // value-containing-tab edge cases are handled as safely as possible.
+    const parts = trimmed.split('\t');
+    if (parts.length < 7) continue;
+    const [domain, flag, path, secure, expires, name, ...valueParts] = parts;
+    const value = valueParts.join('\t');
+    if (!domain || !name) continue;
+    cookies.push({
+      name,
+      value,
+      domain,
+      path: path || '/',
+      secure: secure === 'TRUE',
+      httpOnly: false,
+      expires: Number.isFinite(Number(expires)) && Number(expires) > 0 ? Number(expires) : undefined,
+    });
+  }
+  return cookies;
+}
+
 /**
  * Exports browser cookies to Netscape format for yt-dlp/ffmpeg.
  * @param {object} page - Puppeteer page

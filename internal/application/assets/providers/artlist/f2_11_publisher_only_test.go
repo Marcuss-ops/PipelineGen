@@ -96,6 +96,8 @@ func (f *fakePublisher) ResolveFolder(ctx context.Context, req delivery.PublishR
 func TestNewService_FailClosedOnNilPublisher_F2_11(t *testing.T) {
 	t.Parallel()
 
+	// Intentionally not using baseServiceDeps: this test must keep
+	// Publisher == nil to exercise the ErrPublisherUnavailable gate.
 	svc, err := NewService(ServiceDeps{
 		// Publisher MUST be nil for the audit pin. All other fields
 		// are zero-valued: this proves the Publisher check fires

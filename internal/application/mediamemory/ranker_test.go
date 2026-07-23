@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/google/uuid"
 )
 
@@ -80,10 +81,10 @@ func TestRanker_PopulateRepetitionPenalty_CrossSceneSaturation(t *testing.T) {
 	// SameAsset penalty (cap 1.0) AND the channel-saturation
 	// (Base 0.1 × (4 - MinSightings=3) = 0.1).
 	history := []UsageEvent{
-		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
-		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
-		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
-		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, media.SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, media.SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, media.SlotPrimaryVideo),
+		makeUsageEvent(projectID, sameAsset, sameChannel, prevVideo, media.SlotPrimaryVideo),
 		// Also log a SAME-video entry to anchor the consecutive test.
 	}
 
@@ -152,10 +153,10 @@ func TestRanker_PopulateRepetitionPenalty_NilAndEmptySeams(t *testing.T) {
 	// empty prevVideoID disables the consecutive-source penalty
 	// even when candidate VideoID is shared.
 	history := []UsageEvent{
-		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-X", "channel-X", "video-X", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-X", "channel-X", "video-X", media.SlotPrimaryVideo),
 	}
 	out = PopulateRepetitionPenalty(in, history, "", time.Time{})
 	// SameAsset penalty still fires (4 sightings), but Consecutive penalty
@@ -186,10 +187,10 @@ func TestRanker_PopulateRepetitionPenalty_ImmutableInput(t *testing.T) {
 	}
 
 	history := []UsageEvent{
-		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
-		makeUsageEvent("p", "asset-A", "channel-A", "video-A", SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", media.SlotPrimaryVideo),
+		makeUsageEvent("p", "asset-A", "channel-A", "video-A", media.SlotPrimaryVideo),
 	}
 	out := PopulateRepetitionPenalty(in, history, "video-A", time.Time{})
 

@@ -54,6 +54,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		cfg,
 		log,
 		assetsDeps,
+		root.Repos.TextTrackRepo,
 		root.Jobs,
 		root.Drive.Lifecycle,
 		root.Search.ProviderRegistry,

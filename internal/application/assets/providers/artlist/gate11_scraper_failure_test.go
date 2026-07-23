@@ -107,11 +107,9 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:      artlistRepo,
-			Publisher:       &stubPublisherForArtlist{},
-			RunRepository:   &stubRunRepoForArtlist{},
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -127,7 +125,7 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -197,11 +195,9 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 		logger := zap.NewNop()
 		artlistRepo := assets.NewClipsRepository(db, logger)
 
-		svc, err := NewService(ServiceDeps{
+		svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 			ServicePorts: ServicePorts{
 				AssetStore:      artlistRepo,
-				Publisher:       &stubPublisherForArtlist{},
-				RunRepository:   &stubRunRepoForArtlist{},
 				ScraperSearcher: &failingSearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
@@ -217,7 +213,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 				},
 			},
-		})
+		}))
 		require.NoError(t, err)
 		defer svc.Close()
 
@@ -249,11 +245,9 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 
 		// emptySearcher returns []Candidate{} without error.
 		// This is a HEALTHY scraper that found nothing.
-		svc, err := NewService(ServiceDeps{
+		svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 			ServicePorts: ServicePorts{
 				AssetStore:      artlistRepo,
-				Publisher:       &stubPublisherForArtlist{},
-				RunRepository:   &stubRunRepoForArtlist{},
 				ScraperSearcher: &emptySearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
@@ -269,7 +263,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 				},
 			},
-		})
+		}))
 		require.NoError(t, err)
 		defer svc.Close()
 
@@ -309,11 +303,9 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:      artlistRepo,
-			Publisher:       &stubPublisherForArtlist{},
-			RunRepository:   &stubRunRepoForArtlist{},
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -329,7 +321,7 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

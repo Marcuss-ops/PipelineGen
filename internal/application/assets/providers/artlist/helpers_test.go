@@ -13,6 +13,13 @@ import (
 // override only the fields they care about. New mandatory ports are
 // added here, so future required dependencies only need to be updated
 // in one place.
+//
+// The helper receives a value, mutates its local copy, and returns it.
+// Callers must use the returned value; the original argument is not
+// modified. Only the fail-closed ports (Publisher, RunRepository,
+// Transcriber, TextTrackRepo) and the default logger are filled.
+// AssetStore and other optional ports are NOT defaulted here; tests
+// must supply them explicitly when they matter.
 func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	t.Helper()
 

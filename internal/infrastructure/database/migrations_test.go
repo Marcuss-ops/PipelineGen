@@ -1043,7 +1043,7 @@ func TestMigrations_Smoke(t *testing.T) {
 	// (TEXT NOT NULL DEFAULT 'DISCOVERED'). godlike/06 SSOT
 	// invariant: the column's alphabet must equal the 14
 	// canonical AssetState values declared at
-	// internal/domain/asset/asset_state.go —
+	// internal/domain/asset/asset_state_values.go —
 	// percheck_asset_state_canonical_14 enforces the
 	// count, and percheck_asset_state_no_shadow_enum
 	// enforces no shadow declarations.
@@ -1067,7 +1067,7 @@ func TestMigrations_Smoke(t *testing.T) {
 			t.Fatalf("iterate table_info: %v", err)
 		}
 		if _, ok := seen["asset_state"]; !ok {
-			t.Errorf("media_assets missing asset_state column (added by migration 157; analog to the canonical.go / asset_state.go canonical surface)")
+			t.Errorf("media_assets missing asset_state column (added by migration 157; analog to the canonical.go / asset_state_values.go canonical surface)")
 		}
 	})
 

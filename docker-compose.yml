@@ -46,6 +46,7 @@ services:
     depends_on:
       - qdrant
       - artlist-scraper
+      - searxng
     ports:
       - "8081:8000"
     volumes:
@@ -98,6 +99,8 @@ services:
     depends_on:
       pipelinegen-server:
         condition: service_healthy
+      searxng:
+        condition: service_started
     volumes:
       - pipelinegen-data:/data
       - ./config.yaml:/etc/pipelinegen/config.yaml:ro
@@ -153,6 +156,21 @@ services:
       SCRAPER_CONNECT_TIMEOUT_SECONDS: "5"
     volumes:
       - artlist-chrome-profile:/chrome-profile
+    networks:
+      - backend
+
+  # SearXNG — privacy-respecting metasearch engine used by the images and
+  # script modules. Optional for local dev, required for E2E image tests.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: pipelinegen-searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SEARXNG_BASE_URL: "http://127.0.0.1:8080/"
+      SEARXNG_INSTANCE_NAME: "pipelinegen-searxng"
+      SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"  # override via secrets/pipelinegen.env
     networks:
       - backend
 

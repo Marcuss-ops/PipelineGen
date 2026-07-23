@@ -96,8 +96,8 @@ func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
 		"success path: FolderID must equal the leaf folder returned by EnsureFolder")
 	require.NotEmpty(t, resolved.PathSegments,
 		"success path: PathSegments must be non-empty when PathBuilder succeeds")
-	require.Equal(t, []string{"abc"}, resolved.PathSegments,
-		"success path: PathSegments must collapse to a single leaf under RootFolderOverride")
+	require.Equal(t, []string{"test", "abc"}, resolved.PathSegments,
+		"success path: PathSegments must remain the canonical [{group},{subject}] shape when RootFolderOverride only changes the root folder")
 	require.Equal(t, "explicit-override-folder-id", resolved.RootFolderID,
 		"success path: RootFolderID must be the explicit override (RootFolderOverride precedence)")
 }

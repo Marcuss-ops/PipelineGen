@@ -6,7 +6,7 @@
 // the scanner:
 //
 //   - PASSES  when only the canonical SOLE owner
-//     (internal/domain/asset/asset_state.go) declares the
+//     (internal/domain/asset/asset_state_values.go) declares the
 //     StateAssetX alphabet.
 //   - FAILS   when any other .go file declares a
 //     `StateAssetX AssetState = "..."` const literal
@@ -32,7 +32,7 @@ import (
 // file declaring StateAssetX. Expect zero violations.
 func TestScanAssetStateNoShadowEnum_OnlyCanonicalPasses(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 14, "")
+	writeFakeAssetStateValues(t, tempDir, 14, "")
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
@@ -51,7 +51,7 @@ func TestScanAssetStateNoShadowEnum_OnlyCanonicalPasses(t *testing.T) {
 // shadow file's offending line.
 func TestScanAssetStateNoShadowEnum_ShadowInOtherFileFails(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 14, "")
+	writeFakeAssetStateValues(t, tempDir, 14, "")
 	// Add a shadow declaration in a different internal/ file.
 	shadowDir := filepath.Join(tempDir, "internal", "application", "images")
 	if err := os.MkdirAll(shadowDir, 0o755); err != nil {
@@ -88,7 +88,7 @@ func TestScanAssetStateNoShadowEnum_ShadowInOtherFileFails(t *testing.T) {
 // declares a shadow const; the scanner MUST NOT trip.
 func TestScanAssetStateNoShadowEnum_TestFileExempted(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 14, "")
+	writeFakeAssetStateValues(t, tempDir, 14, "")
 	testDir := filepath.Join(tempDir, "internal", "application", "images")
 	if err := os.MkdirAll(testDir, 0o755); err != nil {
 		t.Fatalf("mkdir test dir: %v", err)
@@ -117,7 +117,7 @@ func TestScanAssetStateNoShadowEnum_TestFileExempted(t *testing.T) {
 // to StateAssetX is residue-accounted (WARNed), not violated.
 func TestScanAssetStateNoShadowEnum_CommentOnlyIsResidue(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 14, "")
+	writeFakeAssetStateValues(t, tempDir, 14, "")
 	warnDir := filepath.Join(tempDir, "internal", "application", "images")
 	if err := os.MkdirAll(warnDir, 0o755); err != nil {
 		t.Fatalf("mkdir warn dir: %v", err)
@@ -125,7 +125,7 @@ func TestScanAssetStateNoShadowEnum_CommentOnlyIsResidue(t *testing.T) {
 	warnPath := filepath.Join(warnDir, "narrative_doc.go")
 	if err := os.WriteFile(warnPath, []byte(
 		"package images\n\n"+
-			"// NOTE: see internal/domain/asset/asset_state.go::StateAsset*\n"+
+			"// NOTE: see internal/domain/asset/asset_state_values.go::StateAsset*\n"+
 			"// enum for the canonical 14 states. The shadow declaration\n"+
 			"// below is intentionally commented out to exercise the\n"+
 			"// residue-accounting discipline per godlike/07.\n"+

@@ -174,10 +174,9 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 	runRepo := &recordingRunRepo{}
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: runRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -196,7 +195,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -299,10 +298,9 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 
 	runRepo := &recordingRunRepo{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:      artlistRepo,
-			Publisher:       &stubPublisherForArtlist{},
 			RunRepository:   runRepo,
 			ScraperSearcher: &failingSearcher{},
 		},
@@ -319,7 +317,7 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/google/uuid"
 )
 
@@ -73,7 +74,7 @@ func TestRanker_ThreeVideosSameChannel_MeetsThreshold(t *testing.T) {
 			AssetID:   clipAssetID,
 			ChannelID: channelID,
 			VideoID:   videoID,
-			SlotKind:  SlotPrimaryVideo,
+			SlotKind:  media.SlotPrimaryVideo,
 			CreatedAt: at,
 		}
 	}
@@ -125,10 +126,10 @@ func TestRanker_PopulateChannelRecencyPenalty_FreshWindow(t *testing.T) {
 
 	history := []UsageEvent{
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v1", SlotKind: SlotPrimaryVideo,
+			VideoID: "v1", SlotKind: media.SlotPrimaryVideo,
 			CreatedAt: now.Add(-1 * time.Hour)},
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v2", SlotKind: SlotPrimaryVideo,
+			VideoID: "v2", SlotKind: media.SlotPrimaryVideo,
 			CreatedAt: now.Add(-2 * time.Hour)},
 	}
 
@@ -165,10 +166,10 @@ func TestRanker_PopulateChannelRecencyPenalty_ExpiredWindow(t *testing.T) {
 
 	history := []UsageEvent{
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v1", SlotKind: SlotPrimaryVideo,
+			VideoID: "v1", SlotKind: media.SlotPrimaryVideo,
 			CreatedAt: now.Add(-48 * time.Hour)}, // 2 days ago → expired
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v2", SlotKind: SlotPrimaryVideo,
+			VideoID: "v2", SlotKind: media.SlotPrimaryVideo,
 			CreatedAt: now.Add(-72 * time.Hour)}, // 3 days ago → expired
 	}
 
@@ -206,7 +207,7 @@ func TestRanker_PopulateChannelRecencyPenalty_CapsAtMax(t *testing.T) {
 			ProjectID: "p", AssetID: "asset-Z",
 			ChannelID: "channel-X",
 			VideoID:   "v" + uuid.NewString()[:4],
-			SlotKind:  SlotPrimaryVideo,
+			SlotKind:  media.SlotPrimaryVideo,
 			CreatedAt: now.Add(time.Duration(-i) * time.Hour),
 		})
 	}
@@ -255,9 +256,9 @@ func TestRanker_PopulateChannelRecencyPenalty_ZeroNow_Disables(t *testing.T) {
 	t0 := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	history := []UsageEvent{
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v1", SlotKind: SlotPrimaryVideo, CreatedAt: t0},
+			VideoID: "v1", SlotKind: media.SlotPrimaryVideo, CreatedAt: t0},
 		{ProjectID: "p", AssetID: "asset-X", ChannelID: "channel-X",
-			VideoID: "v2", SlotKind: SlotPrimaryVideo, CreatedAt: t0},
+			VideoID: "v2", SlotKind: media.SlotPrimaryVideo, CreatedAt: t0},
 	}
 
 	in := []RankingInput{

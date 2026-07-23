@@ -36,7 +36,7 @@
 // percheck_clip_ingest_pipeline_canonical_1 enforces at the type level).
 //
 // State-traversal mapping (per PR-CATALOG-MULTILINGUA step 7's canonical
-// 14-state ASSET STATE MACHINES — see internal/domain/asset/asset_state.go):
+// 14-state ASSET STATE MACHINES — see internal/domain/asset):
 //
 //	DISCOVERED → DOWNLOADED → NORMALIZED → HASHED → UPLOADED →
 //	TRANSCRIBED → ENRICHED → TRANSLATED → INDEX_PENDING → INDEXED →
@@ -148,7 +148,7 @@ type ClipIngestContext struct {
 }
 
 // ClipIngestResult is the Ingest return shape. FinalState is one of the
-// 14 canonical ASSET STATE values from internal/domain/asset/asset_state.go.
+// 14 canonical ASSET STATE values from internal/domain/asset.
 type ClipIngestResult struct {
 	OK         bool
 	AssetID    string

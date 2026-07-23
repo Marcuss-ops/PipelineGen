@@ -5,14 +5,14 @@
 // scan/percheck_asset_state_canonical_14.go owns the Go
 // migration of the canonical-14 forward-prevention gate.
 // It reads ONLY the canonical SOLE owner
-// (internal/domain/asset/asset_state.go) and counts the
+// (internal/domain/asset/asset_state_values.go) and counts the
 // `StateAssetX AssetState = "..."` const declarations. The
 // count MUST equal 14 (the canonical surface declared at
 // CanonicalAssetStateValues()). A future agent who adds a
 // 15th state MUST update:
 //
-//	(a) the 14 const declarations in asset_state.go,
-//	(b) CanonicalAssetStateValues() in the same file,
+//	(a) the 14 const declarations in asset_state_values.go,
+//	(b) CanonicalAssetStateValues() in asset_state.go,
 //	(c) allAssetStates slice in asset_state_test.go,
 //	(d) the helper-methods matrix test in asset_state_test.go,
 //	(e) TestAssetState_StringLiteralValues,
@@ -51,7 +51,7 @@ import (
 
 // assetStateCanonical14Path is the canonical SOLE owner of
 // the AssetState enum (14 constants + helpers).
-const assetStateCanonical14Path = "internal/domain/asset/asset_state.go"
+const assetStateCanonical14Path = "internal/domain/asset/asset_state_values.go"
 
 // assetStateConstLineRe matches the LITERAL const-declaration
 // shape at canonical_file line-start (post-tab indentation):

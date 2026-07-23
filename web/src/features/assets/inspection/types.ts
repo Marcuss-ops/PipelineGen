@@ -1,15 +1,6 @@
 import { AssetDetails } from '../../../api/assetTypes'
 
-export type TabKey =
-  | 'generale'
-  | 'metadata'
-  | 'indicizzazione'
-  | 'files'
-  | 'processing'
-  | 'versions'
-  | 'azioni'
-  | 'raw'
-  | 'audit'
+export type TabKey = 'panoramica' | 'pipeline' | 'indicizzazione' | 'storage' | 'eventi'
 
 export interface FormState {
   name: string
@@ -25,7 +16,8 @@ export interface FormState {
 
 export const REVIEW_STATUS_OPTIONS = ['', 'none', 'pending', 'approved', 'rejected']
 
-export const TRANSIENT_LIFECYCLE_STATES = ['INDEXING', 'PROCESSING', 'REPROCESSING', 'PENDING', 'READY']
+// Lifecycle states where the asset is in flux; polling is paused when not transient.
+export const TRANSIENT_LIFECYCLE_STATES = ['PROCESSING', 'PENDING', 'STAGING', 'PREPARING']
 
 export function initialForm(asset: AssetDetails | null): FormState {
   return {
@@ -50,7 +42,5 @@ export function parseTags(value: string): string[] {
 
 export function isAssetTransient(asset: AssetDetails | null): boolean {
   if (!asset) return false
-  return asset.lifecycle_state
-    ? TRANSIENT_LIFECYCLE_STATES.includes(asset.lifecycle_state)
-    : false
+  return asset.lifecycle_state ? TRANSIENT_LIFECYCLE_STATES.includes(asset.lifecycle_state) : false
 }

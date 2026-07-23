@@ -25,6 +25,7 @@ import http from 'node:http';
 
 import { openBrowser, evaluateBrowserPreflight } from '../driver/browser.js';
 import { searchArtlist } from '../../artlist_search.js';
+import { searchArtlistGateway } from '../../artlist/gateway-search.js';
 import { downloadClipVideo } from './download.js';
 import { fetchClipDetails } from '../scrape/detail-page.js';
 import { computeHealthVerdict } from './health.js';
@@ -284,6 +285,7 @@ function createCtx() {
       get requestCount() { return requestCount; },
       incRequest() { return ++requestCount; },
       setLastSearchAt(iso) { lastSearchAt = iso; },
+      setLastLaunchError(msg) { lastLaunchError = msg; },
       get startedAt() { return startedAt; },
       get globalBrowser() { return globalBrowser; },
       get lastLaunchError() { return lastLaunchError; },
@@ -297,6 +299,7 @@ function createCtx() {
       downloadClipVideo,
       fetchClipDetails,
       computeHealthVerdict,
+      searchArtlistGateway,
     }),
   };
 }
@@ -314,7 +317,7 @@ export async function startArtlistServer() {
 
   server.listen(PORT, BIND, () => {
     console.log(`[artlist-server] Listening on http://${BIND}:${PORT} (bind via ARTLIST_SCRAPER_BIND env var)`);
-    console.log(`[artlist-server] Endpoints: POST /search, POST /detail, POST /download, GET /health`);
+    console.log(`[artlist-server] Endpoints: POST /search, POST /v1/clips/search, POST /detail, POST /download, POST /discover-api, GET /health, GET /v1/health`);
     console.log(`[artlist-server] Browser will warm up on first request`);
   });
 

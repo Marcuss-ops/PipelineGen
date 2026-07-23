@@ -3,7 +3,7 @@
 //
 // Pins the IsValidTransition table for asset.AssetState plus
 // the helper predicates. The contract is the canonical 14-
-// state machine declared at asset_state.go::IsValidTransition:
+// state machine declared at asset_state_transitions.go::IsValidTransition:
 //
 //	Happy path (11 forward edges):
 //	    DISCOVERED    → DOWNLOADED
@@ -49,18 +49,17 @@ import (
 // TestAssetState_FileConstDeclarations to pin the
 // canonical-14 count invariant at the SOURCE-FILE surface.
 //
-// godlike/06 SSOT: this file is the SOLE canonical owner of
-// the AssetState alphabet (mirrors asset_state.go's
-// package-level godoc). Embedding the file's bytes from
-// the test package keeps the test hermetic — no runtime
+// godlike/06 SSOT: asset_state_values.go is the SOLE canonical
+// owner of the AssetState alphabet. Embedding the file's bytes
+// from the test package keeps the test hermetic — no runtime
 // filesystem traversal required.
 //
-//go:embed asset_state.go
+//go:embed asset_state_values.go
 var assetStateSource string
 
 // allAssetStates is the canonical, deterministic enumeration
 // used to drive the full (from, to) Cartesian. Mirrors
-// CanonicalAssetStateValues() in asset_state.go.
+// CanonicalAssetStateValues() in asset_state.go (the canonical values live in asset_state_values.go).
 var allAssetStates = []AssetState{
 	StateAssetDiscovered,
 	StateAssetDownloaded,
@@ -79,8 +78,8 @@ var allAssetStates = []AssetState{
 }
 
 // happyPathAssetEdges is the explicit list of happy-path
-// forward edges. Mirrors asset_state.go's IsValidTransition
-// method body verbatim so a future refactor that drops an
+// forward edges. Mirrors asset_state_transitions.go's
+// IsValidTransition method body verbatim so a future refactor that drops an
 // edge is caught by the matrix test below.
 var happyPathAssetEdges = []struct{ from, to AssetState }{
 	{StateAssetDiscovered, StateAssetDownloaded},
@@ -521,7 +520,7 @@ var assetStateConstDeclRe = regexp.MustCompile(`(?m)^\tStateAsset\w+\s+AssetStat
 //
 //	(1) AssetState alphabet in the canonical file SOURCE —
 //	    via this test's regex on `assetStateSource` (the
-//	    //go:embed-d bytes of asset_state.go).
+//	    //go:embed-d bytes of asset_state_values.go).
 //	(2) CanonicalAssetStateValues() RUNTIME slice — via
 //	    TestAssetState_CanonicalValuesExhaustive.
 //	(3) percheck_asset_state_canonical_14 archcheck (CI) —
@@ -545,7 +544,7 @@ func TestAssetState_FileConstDeclarations(t *testing.T) {
 		// so the failure diagnostic surfaces the actual
 		// spelled-out IDs the file declares (matches the
 		// canonical [A-N] -> alphabet declared in
-		// asset_state.go::const ( ... ) OR the fixture
+		// asset_state_values.go::const ( ... ) OR the fixture
 		// [A-N] stubs the production-canary test injects).
 		var names []string
 		for _, m := range matches {
@@ -554,7 +553,7 @@ func TestAssetState_FileConstDeclarations(t *testing.T) {
 				names = append(names, fields[0])
 			}
 		}
-		t.Fatalf("asset_state.go source declares %d StateAssetX consts; want AssetStateAlphabetCount=%d. Matched IDs: %v. If you added/removed a state, bump AssetStateAlphabetCount in asset_state.go and update the canonical file + CanonicalAssetStateValues() + the matrix test + percheck_asset_state_canonical_14 in lockstep (godlike/06 SSOT).",
+		t.Fatalf("asset_state_values.go source declares %d StateAssetX consts; want AssetStateAlphabetCount=%d. Matched IDs: %v. If you added/removed a state, bump AssetStateAlphabetCount in asset_state.go and update the canonical file + CanonicalAssetStateValues() + the matrix test + percheck_asset_state_canonical_14 in lockstep (godlike/06 SSOT).",
 			got, AssetStateAlphabetCount, names)
 	}
 	// Lockstep cross-check (matrix-table surface alignment):

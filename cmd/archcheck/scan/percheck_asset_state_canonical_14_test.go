@@ -2,7 +2,7 @@
 // (PR-CATALOG-MULTILINGUA step 7, July 2026)
 //
 // Pins the canonical-14-count forward-prevention scanner.
-// Builds a synthetic asset_state.go inside a t.TempDir() and
+// Builds a synthetic asset_state_values.go inside a t.TempDir() and
 // verifies that the scanner:
 //
 //   - PASSES  when the canonical file declares exactly 14
@@ -28,12 +28,12 @@ import (
 )
 
 // writeFakeAssetState creates a tempDir/internal/domain/asset/
-// asset_state.go file with exactly `count` StateAssetX
+// asset_state_values.go file with exactly `count` StateAssetX
 // const declarations of the canonical literal shape. The
 // rest of the file is a minimal scaffolding the scanner
 // expects to find (package decl). Returns the absolute path
 // of the canonical file.
-func writeFakeAssetState(t *testing.T, tempDir string, count int, prefix string) string {
+func writeFakeAssetStateValues(t *testing.T, tempDir string, count int, prefix string) string {
 	t.Helper()
 	dir := filepath.Join(tempDir, "internal", "domain", "asset")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -52,9 +52,9 @@ func writeFakeAssetState(t *testing.T, tempDir string, count int, prefix string)
 			" AssetState = \"STUB\"\n")...)
 	}
 	b = append(b, []byte(")\n")...)
-	path := filepath.Join(dir, "asset_state.go")
+	path := filepath.Join(dir, "asset_state_values.go")
 	if err := os.WriteFile(path, b, 0o644); err != nil {
-		t.Fatalf("write fake asset_state.go: %v", err)
+		t.Fatalf("write fake asset_state_values.go: %v", err)
 	}
 	return path
 }
@@ -65,7 +65,7 @@ func writeFakeAssetState(t *testing.T, tempDir string, count int, prefix string)
 // violations.
 func TestScanAssetStateCanonical14_ExactlyFourteen(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 14, "")
+	writeFakeAssetStateValues(t, tempDir, 14, "")
 	// Add a comment-only reference to confirm residue accounting.
 	if err := os.WriteFile(
 		filepath.Join(tempDir, assetStateCanonical14Path),
@@ -113,7 +113,7 @@ func TestScanAssetStateCanonical14_ExactlyFourteen(t *testing.T) {
 // the literal "actual const count: 13".
 func TestScanAssetStateCanonical14_ThirteenFails(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 13, "")
+	writeFakeAssetStateValues(t, tempDir, 13, "")
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
@@ -140,7 +140,7 @@ func TestScanAssetStateCanonical14_ThirteenFails(t *testing.T) {
 // update gateways) surfaces as a CI build failure.
 func TestScanAssetStateCanonical14_FifteenFails(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeAssetState(t, tempDir, 15, "")
+	writeFakeAssetStateValues(t, tempDir, 15, "")
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
@@ -200,7 +200,7 @@ func projectRootFromTestFile(t *testing.T) string {
 // TestScanAssetStateCanonical14_ProductionCanonicalFile is the
 // END-TO-END SANITY RUN for the canonical-14 gate (PR-CATALOG-
 // MULTILINGUA step 7+, July 2026). Opens the REAL production
-// canonical file at internal/domain/asset/asset_state.go (NOT
+// canonical file at internal/domain/asset/asset_state_values.go (NOT
 // a synthetic fixture) and asserts the scanner returns ZERO
 // violations + at least one residue WARN (the descriptive
 // GodLike-07 comment-only StateAsset references inside the

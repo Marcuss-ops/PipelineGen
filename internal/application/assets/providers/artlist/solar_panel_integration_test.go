@@ -149,11 +149,9 @@ func TestSolarPanelSearch(t *testing.T) {
 	// PR2.6: ArtlistDB dropped (== MainDB post media.db.sqlite
 	// consolidation). ServiceDeps embeds ServicePorts + ServiceDependencies
 	// so flat construction via field promotion works for terse test fixtures.
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    repo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: repo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -164,7 +162,7 @@ func TestSolarPanelSearch(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{},
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

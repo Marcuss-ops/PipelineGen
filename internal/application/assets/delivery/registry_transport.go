@@ -160,7 +160,7 @@ var ErrYouTubeAssetPathMissingField = errors.New(
 // incomplete semantic metadata don't loop forever. New callers
 // SHOULD be validated at the handler boundary.
 func YouTubeClipPath(req PublishRequest) ([]string, error) {
-	if strings.TrimSpace(req.DestinationFolderID) != "" || strings.TrimSpace(req.RootFolderOverride) != "" {
+	if strings.TrimSpace(req.DestinationFolderID) != "" {
 		leaf := firstNonEmpty(
 			strings.TrimSpace(req.Subject),
 			strings.TrimSpace(req.Group),

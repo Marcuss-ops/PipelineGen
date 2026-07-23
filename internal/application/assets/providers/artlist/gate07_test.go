@@ -113,11 +113,9 @@ func TestGate07_SearchFindsIndexedClips(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -135,7 +133,7 @@ func TestGate07_SearchFindsIndexedClips(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

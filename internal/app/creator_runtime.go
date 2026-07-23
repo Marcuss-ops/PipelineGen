@@ -179,6 +179,10 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		return nil, nil, fmt.Errorf("creator runtime: logger is nil")
 	}
 
+	if err := initLinguistics(cfg, log); err != nil {
+		return nil, nil, fmt.Errorf("creator runtime: %w", err)
+	}
+
 	// Workspace ─────────────────────────────────────
 	workspaceRoot := filepath.Join(os.TempDir(), "pipelinegen", "creator")
 	ws, err := worker.NewWorkspace(workspaceRoot)
