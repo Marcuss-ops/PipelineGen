@@ -159,7 +159,6 @@ type ResolutionVersionSet struct {
 	DiversityPolicyVersion  string
 	SlotPolicyVersion       string
 	ProviderRegistryVersion string
-	LexiconVersion          string
 }
 
 // DecisionFingerprint returns a deterministic SHA-256 fingerprint that

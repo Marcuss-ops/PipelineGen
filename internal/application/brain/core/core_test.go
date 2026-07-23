@@ -91,9 +91,6 @@ func TestCanonicalBrain_ResolvesScene(t *testing.T) {
 	if scene.Trace.Versions.ProviderRegistryVersion == "" {
 		t.Errorf("expected provider registry version in per-scene trace")
 	}
-	if scene.Trace.Versions.LexiconVersion == "" {
-		t.Errorf("expected lexicon version in per-scene trace")
-	}
 	if scene.DecisionFingerprint == "" {
 		t.Errorf("expected decision fingerprint on scene")
 	}
@@ -187,7 +184,6 @@ func TestResolutionVersionSet_FingerprintInvalidatedOnVersionChange(t *testing.T
 		DiversityPolicyVersion:  "diversity-policy-v1",
 		SlotPolicyVersion:       "slot-sampler-v1",
 		ProviderRegistryVersion: "provider-registry-v1",
-		LexiconVersion:          "lexicon-v1",
 	}
 
 	fp := base.DecisionFingerprint("it", "i maya")
@@ -204,7 +200,6 @@ func TestResolutionVersionSet_FingerprintInvalidatedOnVersionChange(t *testing.T
 		{"DiversityPolicyVersion", func(v *brain.ResolutionVersionSet) { v.DiversityPolicyVersion = "diversity-policy-v2" }},
 		{"SlotPolicyVersion", func(v *brain.ResolutionVersionSet) { v.SlotPolicyVersion = "slot-sampler-v2" }},
 		{"ProviderRegistryVersion", func(v *brain.ResolutionVersionSet) { v.ProviderRegistryVersion = "provider-registry-v2" }},
-		{"LexiconVersion", func(v *brain.ResolutionVersionSet) { v.LexiconVersion = "lexicon-v2" }},
 	}
 
 	for _, m := range mutations {
@@ -226,7 +221,6 @@ func TestResolutionVersionSet_FingerprintDependsOnInput(t *testing.T) {
 		DiversityPolicyVersion:  "diversity-policy-v1",
 		SlotPolicyVersion:       "slot-sampler-v1",
 		ProviderRegistryVersion: "provider-registry-v1",
-		LexiconVersion:          "lexicon-v1",
 	}
 
 	fp := set.DecisionFingerprint("it", "i maya")

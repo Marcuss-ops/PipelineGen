@@ -97,7 +97,6 @@ func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scen
 		DiversityPolicyVersion:  brain.DiversityPolicyVersion,
 		SlotPolicyVersion:       b.planner.Version(),
 		ProviderRegistryVersion: asset.ProviderRegistryVersion,
-		LexiconVersion:          brain.LexiconVersion,
 	}
 
 	trace := &brain.ResolutionTrace{

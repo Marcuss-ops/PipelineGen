@@ -5,7 +5,6 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -97,15 +96,9 @@ func filterProperNouns(segment string, items []string) []string {
 	return uniqueLocalStrings(out)
 }
 
-// sentenceStartWords is evaluated at use time via the
-// LexiconRegistry so it always reflects the current global
-// default, regardless of init ordering.
-
 func isSentenceStartCapitalizedOnly(word string, segLower string) bool {
 	lower := strings.ToLower(word)
-	lex := linguistics.DefaultLexicon()
-	fws := lex.FunctionWords("en")
-	if _, ok := fws[lower]; !ok {
+	if !textutil.IsStopWord(lower) {
 		return false
 	}
 	capCount := strings.Count(segLower, lower)
@@ -217,38 +210,15 @@ func filterArtlistKeywords(segment string, items []string) []string {
 	return candidates
 }
 
-// isFunctionWord returns true when word is a grammatical function word
-// for the detected language. It delegates to the LexiconRegistry's
-// FunctionWords profile, which is populated from config/lexicons/.
-//
-// The language is inferred from the text (English by default when
-// detection is unavailable).
 func isFunctionWord(word string) bool {
-	lex := linguistics.DefaultLexicon()
-	// Try English and Italian function words; in a production setting
-	// the call site would pass the detected language.
-	if _, ok := lex.FunctionWords("en")[word]; ok {
-		return true
-	}
-	if _, ok := lex.FunctionWords("it")[word]; ok {
-		return true
-	}
-	return false
+	return textutil.IsStopWord(word)
 }
 
-// looksLikeVerbBigram checks if ALL words in the phrase look like verb forms
-// (ending in common verb suffixes). Verb-only bigrams from the text
-// are not visual concepts and should be rejected.
-// Verb suffixes are loaded from the LexiconRegistry (config/lexicons/).
 func looksLikeVerbBigram(words []string) bool {
 	if len(words) < 2 {
 		return false
 	}
-	lex := linguistics.DefaultLexicon()
-	suffixes := lex.VerbSuffixes("it")
-	if len(suffixes) == 0 {
-		return false
-	}
+	suffixes := []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)
@@ -338,9 +308,6 @@ func removeSlidingWindowChains(items []string) []string {
 	return out
 }
 
-// looksLikeTextBigram checks if a 2-word phrase looks like it was extracted
-// directly as adjacent words from text rather than being a deliberate visual concept.
-// Verb suffixes and function words are loaded from the LexiconRegistry.
 func looksLikeTextBigram(words []string) bool {
 	if len(words) != 2 {
 		return false
@@ -348,11 +315,7 @@ func looksLikeTextBigram(words []string) bool {
 	if isFunctionWord(words[0]) || isFunctionWord(words[1]) {
 		return true
 	}
-	lex := linguistics.DefaultLexicon()
-	suffixes := lex.VerbSuffixes("it")
-	if len(suffixes) == 0 {
-		return false
-	}
+	suffixes := []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)

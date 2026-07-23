@@ -67,6 +67,7 @@ func buildVoiceoverService(
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
+
 	driveUploader *drive.Uploader,
 	publisher delivery.Publisher,
 	assetIndexService *assetindex.Service,
@@ -75,7 +76,7 @@ func buildVoiceoverService(
 	metaWriter semantic.MetadataWriterPort,
 	translationPort translation.TranslationPort, // Fase 9 step 4 CUTOVER: *translation.OllamaTranslator satisfies this port; the bare *ollama.Generator.TranslateText direct-call closure is RETIRED.
 	outboxDispatcher *outbox.Dispatcher,
-) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {
+) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
 
 	// FASE 9 (July 2026): fail-closed gate — when cfg.Translation.Required
 	// is true, the translation port MUST be wired. A nil port is a
@@ -351,6 +352,15 @@ func buildVoiceoverService(
 	// present. The adapter uses dbs.dualPool.Writer for post-commit SELECTs.
 	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.dualPool.Writer)
 
+	// PR-CATALOG-MULTILINGUA step 3 (July 2026): build the canonical
+	// per-language capability surface used by the voiceover pipeline to
+	// resolve EdgeTTSVoice identifiers. A nil registry falls through
+	// to the bridge's emergency fallback (nil-safe in process.go).
+	languageRegistry, err := buildLanguageRegistry(activeMultilingualConfig(cfg))
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("compose voiceover: language registry: %w", err)
+	}
+
 	// P0-#3 (July 2026): wire the canonical per-item voiceover use
 	// case into the legacy Service so GeneratePromo can route
 	// through it. processItemUseCase was already constructed above
@@ -376,13 +386,14 @@ func buildVoiceoverService(
 			PostCommitVerifier: postCommitVerifier,
 			ProcessSegment:     processSeg,
 			ProcessItem:        processItemUseCase, // P0-#3 (July 2026): the canonical per-item use case the promo path routes through
+			LanguageRegistry:   languageRegistry,
 		},
 	})
 	// pylint: disable=unused
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voService, voRepo, processItemUseCase, audioProcessor
+	return voService, voRepo, processItemUseCase, audioProcessor, nil
 }
 
 // nopDestinationResolver is a nil-tolerant DestinationResolver used

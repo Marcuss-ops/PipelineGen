@@ -16,11 +16,4 @@ const (
 	// DiversityPolicyVersion is the canonical anti-repetition /
 	// diversity policy applied by the ranker and planner.
 	DiversityPolicyVersion = "diversity-policy-v1"
-
-	// LexiconVersion identifies the linguistic lexicon used by intent
-	// resolvers and entity filters. It is loaded from config/lexicons/
-	// by the linguistics.LexiconRegistry at bootstrap. Bump this
-	// constant whenever stopword lists, verb suffixes, function-word
-	// profiles or entity blocklists change in the config directory.
-	LexiconVersion = "lexicon-v1"
 )

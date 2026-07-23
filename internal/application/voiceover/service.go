@@ -91,6 +91,11 @@ type Service struct {
 	// and the media_assets projection exist. Nil-safe: when unwired,
 	// verification is skipped entirely.
 	postCommitVerifier VoiceoverPostCommitVerifier
+	// languageRegistry is the canonical per-language capability
+	// surface used to resolve the EdgeTTSVoice for a language.
+	// PR-CATALOG-MULTILINGUA step 3 (July 2026): the voiceover
+	// pipeline queries the registry rather than hardcoding voices.
+	languageRegistry asset.LanguageRegistry
 	// processSeg is the shared per-item pipeline runner (Azione #1,
 	// July 2026). The legacy batch path (process.go::processLanguage)
 	// now delegates to ProcessSegmentUseCase.Execute instead of calling
@@ -194,6 +199,10 @@ type VoiceoverIntegrationDeps struct {
 	// visible at the first promo call rather than as a hidden soft
 	// no-op.
 	ProcessItem VoiceoverItemExecutor
+	// LanguageRegistry is the canonical per-language capability
+	// surface used to resolve EdgeTTSVoice. nil-safe: a nil
+	// registry falls through to the bridge's emergency fallback.
+	LanguageRegistry asset.LanguageRegistry
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -221,6 +230,7 @@ func NewService(deps VoiceoverDeps) *Service {
 		translator:         deps.Integration.Translator,
 		finalizer:          deps.Integration.Finalizer,
 		postCommitVerifier: deps.Integration.PostCommitVerifier,
+		languageRegistry:   deps.Integration.LanguageRegistry,
 		processSeg:         deps.Integration.ProcessSegment,
 		processItem:        deps.Integration.ProcessItem,
 	}

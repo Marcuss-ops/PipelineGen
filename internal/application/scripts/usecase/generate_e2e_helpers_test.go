@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // fakeClipResolver is a thread-safe stub for typedClipResolverPort.
@@ -146,12 +146,9 @@ func canonicalSceneJSON(numScenes int, clipIDs []string, sourceText string) stri
 	)
 }
 
-// stopWordTest reports whether a token is a common stop word, using
-// the global LexiconRegistry fallback set.
+// stopWordTest reports whether a token is a common stop word.
 func stopWordTest(token string) bool {
-	lex := linguistics.DefaultLexicon()
-	_, ok := lex.StopWords("fallback")[token]
-	return ok
+	return textutil.IsStopWord(token)
 }
 
 // buildOverlappingText returns a short sentence whose words are drawn
