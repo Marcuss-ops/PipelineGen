@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -178,5 +179,59 @@ func TestDefaultProviderRegistry_ClassifiesOrigins(t *testing.T) {
 		if d.Origin != tt.origin {
 			t.Errorf("Match(%q).Origin = %q, want %q", tt.source, d.Origin, tt.origin)
 		}
+	}
+}
+
+func TestDefaultProviderRegistry_LicenseResolver(t *testing.T) {
+	reg := DefaultProviderRegistry()
+
+	cases := []struct {
+		id   ImageProvider
+		want string
+	}{
+		{ProviderWikipedia, "CC-BY-SA-4.0"},
+		{ProviderDuckDuckGo, "unknown"},
+		{ProviderGoogleSlides, "proprietary"},
+	}
+	for _, tt := range cases {
+		d, ok := reg.ByID(tt.id)
+		if !ok {
+			t.Fatalf("ByID(%q) not found", tt.id)
+		}
+		if d.LicenseResolver == nil {
+			t.Fatalf("LicenseResolver for %q is nil", tt.id)
+		}
+		got, err := d.LicenseResolver(context.Background(), nil)
+		if err != nil {
+			t.Fatalf("LicenseResolver(%q) error: %v", tt.id, err)
+		}
+		if got != tt.want {
+			t.Errorf("LicenseResolver(%q) = %q, want %q", tt.id, got, tt.want)
+		}
+	}
+}
+
+func TestDefaultProviderRegistry_MetadataMapper(t *testing.T) {
+	reg := DefaultProviderRegistry()
+
+	d, ok := reg.ByID(ProviderDuckDuckGo)
+	if !ok {
+		t.Fatal("DuckDuckGo descriptor not found")
+	}
+	if d.MetadataMapper == nil {
+		t.Fatal("MetadataMapper is nil")
+	}
+	out, err := d.MetadataMapper(Metadata{"foo": "bar"})
+	if err != nil {
+		t.Fatalf("MetadataMapper error: %v", err)
+	}
+	if out["provider"] != string(ProviderDuckDuckGo) {
+		t.Errorf("provider = %q, want %q", out["provider"], ProviderDuckDuckGo)
+	}
+	if out["origin"] != string(ImageOriginRetrieved) {
+		t.Errorf("origin = %q, want %q", out["origin"], ImageOriginRetrieved)
+	}
+	if out["foo"] != "bar" {
+		t.Errorf("existing key foo = %q, want bar", out["foo"])
 	}
 }

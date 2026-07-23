@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,6 +41,31 @@ var ErrImageTransient error = &errImageTransient{}
 var ErrImageInvalidResponse = errors.New("image: invalid or corrupt response")
 
 // ── Search & Download ─────────────────────────────────────────────────
+
+// defaultLicenseAndAuthor resolves the canonical license and author for
+// a given source through the provider descriptor registry. It removes the
+// previous hardcoded `source == "wikipedia"` special case.
+func defaultLicenseAndAuthor(ctx context.Context, source string) (license, author string) {
+	if source == "" {
+		return "Unknown", "Unknown"
+	}
+	if d, ok := asset.DefaultProviderRegistry().Match(source); ok {
+		if d.LicenseResolver != nil {
+			if l, err := d.LicenseResolver(ctx, nil); err == nil && l != "" {
+				license = l
+			}
+		}
+		if license == "" {
+			license = d.DefaultRightsStatus
+		}
+		author = d.DefaultAuthor
+		if author == "" {
+			author = "Unknown"
+		}
+		return
+	}
+	return "Unknown", "Unknown"
+}
 
 // SearchAndDownload searches for an image locally and via web APIs.
 func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
@@ -83,11 +109,20 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 					zap.Int("count", len(images)),
 					zap.Int("cache_score", score),
 				)
+				retProvider := string(cached.Provider)
+				if retProvider == "" || retProvider == "unknown" {
+					var meta map[string]any
+					if err := json.Unmarshal([]byte(cached.MetadataJSON), &meta); err == nil {
+						if src, ok := meta["source_name"].(string); ok && src != "" {
+							retProvider = src
+						}
+					}
+				}
 				return &SearchResult{
 					Asset:             cached,
 					CacheHit:          true,
 					CacheSource:       "database",
-					RetrievalProvider: string(cached.Provider),
+					RetrievalProvider: retProvider,
 				}, nil
 			}
 			s.log.Info("Images found in local database but no semantic cache hit",
@@ -150,13 +185,9 @@ func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context
 	} else {
 		provCtx = context.WithValue(provCtx, PageURLKey, imgURL)
 	}
-	if source == "wikipedia" {
-		provCtx = context.WithValue(provCtx, LicenseKey, "CC-BY-SA-4.0")
-		provCtx = context.WithValue(provCtx, AuthorKey, "Wikipedia Contributors")
-	} else {
-		provCtx = context.WithValue(provCtx, LicenseKey, "Unknown")
-		provCtx = context.WithValue(provCtx, AuthorKey, "Unknown")
-	}
+	license, author := defaultLicenseAndAuthor(ctx, source)
+	provCtx = context.WithValue(provCtx, LicenseKey, license)
+	provCtx = context.WithValue(provCtx, AuthorKey, author)
 
 	asset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
 	if err == nil && asset != nil {
