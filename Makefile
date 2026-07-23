@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-architecture verify-artlist verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -449,6 +449,19 @@ verify-artlist:
 	$(GO) test -race ./internal/api/assets/artlist/... && \
 	cd node-scraper && npm test
 	@echo "✅ Artlist verification passed"
+
+# verify-images — quick verification dedicated to the Images module.
+verify-images:
+	$(GO) test -race ./internal/domain/image/... && \
+	$(GO) test -race ./internal/application/images/... && \
+	$(GO) test -race ./internal/api/images/...
+	@echo "✅ Images verification passed"
+
+# verify-stock — quick verification dedicated to the Stock module.
+verify-stock:
+	$(GO) test -race ./internal/application/assets/providers/stock/stockpipeline/... && \
+	$(GO) test -race ./internal/api/assets/stock/...
+	@echo "✅ Stock verification passed"
 
 # verify-main — Cleanup Plan P0-3 (June 2026): the canonical fail-closed
 # pre-push gate, now composed of the granular targets above. Every push to
