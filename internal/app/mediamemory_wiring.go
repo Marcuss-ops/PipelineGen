@@ -28,6 +28,11 @@ import (
 
 	"go.uber.org/zap"
 
+	brainCore "github.com/Marcuss-ops/PipelineGen/internal/application/brain/core"
+	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/application/brain/intent"
+	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
+	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
+	brainRanker "github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	mmadapters "github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -95,11 +100,15 @@ func NewMediaMemoryQdrantStack(deps MediaMemoryQdrantWiring) (*MediaMemoryQdrant
 	}, nil
 }
 
-// WireMediaMemoryResolver builds the canonical mediamemory.Resolver
-// backed by the rich MediaMemory cascade (VisualResolver). All search
-// (exact memory, local catalog, semantic, external providers) is
-// delegated to the cascade; the hardcoded Brain orchestration is no
-// longer used for the production resolver surface.
+// WireMediaMemoryResolver builds the canonical mediamemory.Resolver.
+// It wires the MediaMemory cascade as a brain.MediaMemoryResolutionPort,
+// builds the canonical Brain orchestrator over that port, and returns
+// a MediaMemoryResolver that delegates every resolve call to the Brain.
+//
+// This makes the Brain the single orchestrator: the cascade only
+// supplies candidates, the ranker scores them, and the planner
+// assigns slots. The old VisualResolver.Resolve path is no longer
+// used for production requests.
 //
 // godlike/06 SSOT: this is the single composition site for the
 // production MediaMemory resolver. Callers that need a Resolver must
@@ -112,12 +121,36 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	logAdapter := mediamemoryZapLogger{log}
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
-	ranker := mediamemory.NewDefaultRanker(nil, logAdapter)
+	mmRanker := mediamemory.NewDefaultRanker(nil, logAdapter)
 	adapter, err := mmadapters.NewSearchFanOutAdapter(searchFanOut)
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: search fanout adapter: %w", err)
 	}
-	return mediamemory.NewVisualResolver(concepts, bindings, adapter, NoopSemanticLookup{}, ranker, logAdapter, mediamemory.RealClock(), mediamemory.NoopMetrics()), nil
+
+	// The cascade itself is the sole MediaMemoryResolutionPort
+	// implementation. It feeds raw candidates to the Brain.
+	cascade := mediamemory.NewVisualResolver(
+		concepts,
+		bindings,
+		adapter,
+		NoopSemanticLookup{},
+		mmRanker,
+		logAdapter,
+		mediamemory.RealClock(),
+		mediamemory.NoopMetrics(),
+	)
+
+	// Brain is the single orchestrator; the same MediaMemory ranker
+	// instance is reused so scoring policy is not duplicated.
+	b := brainCore.NewCanonicalBrain(
+		brainNormalizer.NewDefaultNormalizer(),
+		brainIntent.NewDefaultResolver(),
+		cascade,
+		brainRanker.NewMediaMemoryRankerAdapter(mmRanker),
+		brainPlanner.NewDefaultPlanner(),
+	)
+
+	return mediamemory.NewMediaMemoryResolver(b), nil
 }
 
 // WireBindingService builds the canonical mediamemory.BindingService
