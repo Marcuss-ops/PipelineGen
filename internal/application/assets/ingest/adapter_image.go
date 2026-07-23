@@ -99,7 +99,7 @@ func (a *imageStoreAdapter) ListWithDriveFileID(ctx context.Context, source stri
 		if strings.TrimSpace(img.DriveFileID) == "" {
 			continue
 		}
-		if source != "" && source != "image" {
+		if source != "" && source != string(asset.SourceImage) {
 			continue
 		}
 		out = append(out, mediaRecordToAssetRecord(imageAssetToMediaRecord(img, a.imagesDir)))
@@ -133,7 +133,7 @@ func imageAssetToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts
 		ID:          img.Hash,
 		Name:        img.Description,
 		Filename:    filepath.Base(img.PathRel),
-		Source:      "image",
+		Source:      string(asset.SourceImage),
 		Category:    img.SubjectID,
 		Group:       img.SubjectID,
 		MediaType:   "image",

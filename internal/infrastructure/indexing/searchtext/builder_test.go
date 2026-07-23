@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── Registry tests ──────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ func TestVoiceoverStrategy_Minimal(t *testing.T) {
 func TestImageStrategy(t *testing.T) {
 	input := appsearchtext.SearchTextInput{
 		AssetID:          "img-1",
-		Source:           "image",
+		Source:           string(asset.SourceImage),
 		Prompt:           "sunset over mountains with birds flying",
 		Caption:          "A beautiful sunset panorama",
 		DetectedEntities: []string{"mountain", "sun", "bird", "sky"},
@@ -218,7 +219,7 @@ func TestImageStrategy(t *testing.T) {
 func TestImageStrategy_PromptOnly(t *testing.T) {
 	input := appsearchtext.SearchTextInput{
 		AssetID: "img-2",
-		Source:  "image",
+		Source:  string(asset.SourceImage),
 		Prompt:  "a cat wearing a hat",
 	}
 	got := imageStrategy(input)
@@ -247,7 +248,7 @@ func TestGeneratedImageStrategy_SameAsImage(t *testing.T) {
 func TestImageStrategy_Empty(t *testing.T) {
 	input := appsearchtext.SearchTextInput{
 		AssetID: "img-3",
-		Source:  "image",
+		Source:  string(asset.SourceImage),
 	}
 	got := imageStrategy(input)
 	if got != "" {
@@ -637,7 +638,7 @@ func TestRegistryDispatch_AllSources(t *testing.T) {
 			name:   "image",
 			source: "image",
 			input: appsearchtext.SearchTextInput{
-				AssetID: "a-4", Source: "image",
+				AssetID: "a-4", Source: string(asset.SourceImage),
 				Prompt: "prompt", Caption: "caption", DetectedEntities: []string{"e1"},
 				Tags: []string{"tag"}, OriginProvider: "unsplash", Category: "photo",
 			},
@@ -698,7 +699,7 @@ func TestAllStrategies_Idempotent(t *testing.T) {
 	// Running the same input twice must produce the same output.
 	input := appsearchtext.SearchTextInput{
 		AssetID:          "idem-1",
-		Source:           "image",
+		Source:           string(asset.SourceImage),
 		Title:            "T",
 		Prompt:           "P",
 		Tags:             []string{"a", "b"},

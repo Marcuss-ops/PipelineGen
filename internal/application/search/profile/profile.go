@@ -1,6 +1,10 @@
 package profile
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
 
 // SearchProfile holds source-aware ranking preferences for a media asset class.
 // The values are intentionally lightweight: the backend uses them to decide
@@ -52,8 +56,8 @@ var profileBySource = map[string]SearchProfile{
 		RerankWeight:     0.95,
 		RerankTopK:       24,
 	},
-	"image": {
-		Source:           "image",
+	string(asset.SourceImage): {
+		Source:           string(asset.SourceImage),
 		DenseWeight:      0.20,
 		TranscriptWeight: 0.00,
 		VisualWeight:     0.45,

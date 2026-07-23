@@ -184,7 +184,7 @@ func TestVoiceoverSearchTextStrategy_HappyPath(t *testing.T) {
 
 func TestImageSearchTextStrategy_HappyPath(t *testing.T) {
 	input := SearchTextInput{
-		Source:           "image",
+		Source:           string(SourceImage),
 		Prompt:           "A boxer in the ring",
 		Caption:          "Fight night",
 		DetectedEntities: []string{"ring", "boxer"},
