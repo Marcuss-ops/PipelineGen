@@ -12,6 +12,7 @@
     "check": "npm run lint && npm test"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "puppeteer-core": "^25.2.0"
   },
   "devDependencies": {

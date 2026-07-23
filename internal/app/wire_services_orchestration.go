@@ -79,6 +79,10 @@ import (
 // glance and the gates (validateQdrantIndexerCompatibility +
 // CollectionManager-nil) are consolidated.
 func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	if err := initLinguistics(cfg, log); err != nil {
+		return nil, fmt.Errorf("wire services: %w", err)
+	}
+
 	root, jobs, coreClean, err := initCompositionMinimal(cfg, log, mode)
 	if err != nil {
 		return nil, err

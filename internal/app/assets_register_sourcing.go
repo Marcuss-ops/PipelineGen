@@ -27,6 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -53,6 +54,7 @@ func newAssetRegisterService(
 	cfg *config.Config,
 	log *zap.Logger,
 	clipsRepo *assetsrepo.ClipsRepository,
+	textTrackRepo asset.TextTrackRepository,
 	driveUploader *driveutil.Uploader,
 	lifecycle driveutil.FileLifecycle,
 	assetTreeSvc *assettree.Service,
@@ -98,10 +100,11 @@ func newAssetRegisterService(
 		Transcriber: &sourcingTranscriberAdapter{cfg: cfg, log: log},
 		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
 		// TrashFile now routes via FileLifecycle.Trash (no Admin fallback).
-		Metadata:   &sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
-		IndexDisp:  ytIndex,
-		Enrichment: ytEnrich,
-		Log:        &zapSourcingLogger{log: log},
+		Metadata:      &sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
+		IndexDisp:     ytIndex,
+		Enrichment:    ytEnrich,
+		Log:           &zapSourcingLogger{log: log},
+		TextTrackRepo: textTrackRepo,
 	}).WithRequireDrive(cfg.Features.MediaDriveRequired)
 
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).

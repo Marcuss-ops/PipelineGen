@@ -8,19 +8,14 @@ import { GeneralTab } from './components/tabs/GeneralTab'
 import { PipelineTab } from './components/tabs/PipelineTab'
 import { IndexingTab } from './components/tabs/IndexingTab'
 import { StorageTab } from './components/tabs/StorageTab'
-import { ProcessingTab } from './components/tabs/ProcessingTab'
-import { VersionsTab } from './components/tabs/VersionsTab'
 import { EventsTab } from './components/tabs/EventsTab'
-import { RawTab } from './components/tabs/RawTab'
-import { AuditTab } from './components/tabs/AuditTab'
 import { useAssetInspection } from './hooks/useAssetInspection'
 import { useAssetEditor } from './hooks/useAssetEditor'
 import { TabKey } from './types'
-import { triggerClipAction } from '../../../api/assets'
 
 export default function AssetInspectorPage() {
   const { id } = useParams<{ id: string }>()
-  const [activeTab, setActiveTab] = useState<TabKey>('generale')
+  const [activeTab, setActiveTab] = useState<TabKey>('panoramica')
   const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   const {
@@ -28,7 +23,6 @@ export default function AssetInspectorPage() {
     loading,
     error,
     refresh,
-    actions,
     verifyResult,
     verifyLoading,
     reindexLoading,
@@ -45,24 +39,6 @@ export default function AssetInspectorPage() {
   useEffect(() => {
     resetVerifyResult()
   }, [id, resetVerifyResult])
-
-  const runAction = useCallback(
-    async (url?: string) => {
-      if (!url) return
-      try {
-        const res = await triggerClipAction(url)
-        const msg =
-          typeof res === 'object' && res !== null && 'message' in res
-            ? String(res.message)
-            : 'Azione completata'
-        setSaveMsg({ type: 'ok', text: msg })
-        setTimeout(() => refresh(), 1000)
-      } catch (err) {
-        setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Errore azione' })
-      }
-    },
-    [refresh]
-  )
 
   const handleVerifyWithMessage = useCallback(async () => {
     setSaveMsg(null)
@@ -130,8 +106,8 @@ export default function AssetInspectorPage() {
       <AssetTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       <div className={styles.tabPanel}>
-        {activeTab === 'generale' && <GeneralTab form={form} updateForm={updateForm} />}
-        {activeTab === 'metadata' && <PipelineTab asset={asset} />}
+        {activeTab === 'panoramica' && <GeneralTab asset={asset} />}
+        {activeTab === 'pipeline' && <PipelineTab asset={asset} />}
         {activeTab === 'indicizzazione' && (
           <IndexingTab
             asset={asset}
@@ -142,12 +118,8 @@ export default function AssetInspectorPage() {
             reindexLoading={reindexLoading}
           />
         )}
-        {activeTab === 'files' && <StorageTab asset={asset} actions={actions} onAction={runAction} />}
-        {activeTab === 'processing' && <ProcessingTab asset={asset} />}
-        {activeTab === 'versions' && <VersionsTab asset={asset} />}
-        {activeTab === 'azioni' && <EventsTab actions={actions} onAction={runAction} onUpdate={handleSaveInternal} />}
-        {activeTab === 'raw' && <RawTab asset={asset} />}
-        {activeTab === 'audit' && <AuditTab />}
+        {activeTab === 'storage' && <StorageTab asset={asset} />}
+        {activeTab === 'eventi' && <EventsTab asset={asset} />}
       </div>
 
       {saveMsg && (

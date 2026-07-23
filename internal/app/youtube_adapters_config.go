@@ -61,7 +61,7 @@ func (a *sourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath s
 	if _, err := os.Stat(scriptPath); err != nil {
 		return "", "", err
 	}
-	res, err := executil.RunSimple(ctx, "python3", scriptPath, "--transcribe", "--model", "tiny", "--json-only", audioPath)
+	res, err := executil.Run(ctx, "python3", []string{scriptPath, "--transcribe", "--model", "tiny", "--json-only", audioPath}, executil.Options{CombinedOutput: false})
 	if err != nil {
 		return "", "", err
 	}
@@ -71,7 +71,7 @@ func (a *sourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath s
 		Error          string `json:"error"`
 	}
 	var parsed transcriptResult
-	if err := json.Unmarshal([]byte(res.Output), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(res.Stdout), &parsed); err != nil {
 		return "", "", err
 	}
 	if strings.TrimSpace(parsed.Error) != "" {

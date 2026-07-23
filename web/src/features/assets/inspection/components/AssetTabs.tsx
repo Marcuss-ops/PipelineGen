@@ -7,15 +7,11 @@ interface AssetTabsProps {
 }
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'generale', label: 'Generale' },
-  { key: 'metadata', label: 'Metadata' },
+  { key: 'panoramica', label: 'Panoramica' },
+  { key: 'pipeline', label: 'Pipeline' },
   { key: 'indicizzazione', label: 'Indicizzazione' },
-  { key: 'files', label: 'File e posizioni' },
-  { key: 'processing', label: 'Processing' },
-  { key: 'versions', label: 'Versioni' },
-  { key: 'azioni', label: 'Azioni' },
-  { key: 'raw', label: 'Raw JSON' },
-  { key: 'audit', label: 'Audit' },
+  { key: 'storage', label: 'Storage' },
+  { key: 'eventi', label: 'Eventi' },
 ]
 
 export function AssetTabs({ activeTab, onTabChange }: AssetTabsProps) {

@@ -222,9 +222,13 @@ def _iter_clips_needing_index(conn, clip_id: str = "") -> list:
 
 
 def process_clip(db_path, clip_id, clip_name="", clip_path=""):
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=60)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+    # Match the Go-side SQLite configuration so this bridge waits for
+    # transient writers instead of failing fast with "database is locked".
+    cursor.execute("PRAGMA journal_mode = WAL")
+    cursor.execute("PRAGMA busy_timeout = 60000")
 
     # SELECT boundary consolidated in _iter_clips_needing_index.
     clips = _iter_clips_needing_index(conn, clip_id)
@@ -269,6 +273,11 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
             "embedding_json = ?, transcript_embedding = ? WHERE id = ?",
             (search_text, embedding, transcript_embedding, clip_id)
         )
+        # Release the write lock before the expensive visual pass. The
+        # old code held the transaction open until the end of the whole
+        # clip, which made every other SQLite writer wait behind ffprobe
+        # and ffmpeg work. Committing here keeps the critical section tiny.
+        conn.commit()
         print(f"Updated clip {clip_id}: search_text='{search_text[:50]}...', transcript_embedding_len={len(transcript_embedding)}")
 
         # Visual Indexing - 1 frame every 2 seconds passed to CLIP
@@ -319,6 +328,7 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
                         "UPDATE media_assets SET visual_embedding = ? WHERE id = ?",
                         (json.dumps(avg_emb), clip_id)
                     )
+                    conn.commit()
                     print(f"Visual indexing success: visual_embedding averaged {len(embeddings)} frames for clip {clip_id}")
             except Exception as e:
                 print(f"Visual indexing error: {e}")

@@ -17,8 +17,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/stretchr/testify/assert"
 )
 
 // ── SlotKind ────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ func wrap(reason string, base error) error {
 // "use" can silently drop it — these references are the
 // compile-time pin that catches future drift.
 var _ SlotKind = media.SlotPrimaryVideo // primary_video slot
-var _ ConceptType = ConceptPhrase // phrase-typed concept
+var _ ConceptType = ConceptPhrase       // phrase-typed concept
 var _ ApprovalStatus = ApprovalApproved
 var _ Origin = OriginManual
 var _ DiscoveryStatus = DiscoverySearched

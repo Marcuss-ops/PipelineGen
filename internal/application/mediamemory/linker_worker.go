@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/google/uuid"
 )
 
@@ -143,7 +144,7 @@ var _ LinkerWorker = (*defaultLinker)(nil)
 //  6. Per-phrase: Normalize → ConceptRepository.Upsert (idempotent).
 //  7. Encode multicanale embedding → EmbeddingIndexer.IndexConcept
 //     (idempotent via canonical Qdrant point at concept_id key).
-//  8. Per (concept_id × SlotPrimaryVideo): BindingsRepository.Upsert
+//  8. Per (concept_id × media.SlotPrimaryVideo): BindingsRepository.Upsert
 //     (idempotent via canonical ON CONFLICT DO UPDATE).
 //  9. CandidateRepository.UpdateStatus → DiscoveryIndexed.
 //
@@ -293,7 +294,7 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 		}
 	}
 
-	// Step 8 — Binding persistence per (concept × SlotPrimaryVideo).
+	// Step 8 — Binding persistence per (concept × media.SlotPrimaryVideo).
 	bindingIDs, bindingErrs := w.persistBindings(ctx, req, concepts)
 	res.PersistedBindingIDs = append(res.PersistedBindingIDs, bindingIDs...)
 	for _, e := range bindingErrs {
@@ -604,7 +605,7 @@ func (w *defaultLinker) encodeAndIndexConcepts(ctx context.Context, req LinkerRe
 }
 
 // persistBindings writes one MediaBinding per (concept ×
-// SlotPrimaryVideo). godlike/06 SSOT (canonical slot seed):
+// media.SlotPrimaryVideo). godlike/06 SSOT (canonical slot seed):
 // for Fase 3.2 the linker produces a primary_video slot per
 // concept. Future Fase 4.4 will lift the slot set to the
 // SceneVisualPlan's preferred_slots (the linker remains the
@@ -620,7 +621,7 @@ func (w *defaultLinker) persistBindings(ctx context.Context, req LinkerRequest, 
 		binding := MediaBinding{
 			ConceptID: c.ID,
 			AssetID:   req.Candidate.AssetID,
-			SlotKind:  SlotPrimaryVideo,
+			SlotKind:  media.SlotPrimaryVideo,
 			Origin:    OriginAutoLink,
 			// godlike/06 SSOT (auto-link approval semantics): the
 			// linker writes ApprovalPending by default; the

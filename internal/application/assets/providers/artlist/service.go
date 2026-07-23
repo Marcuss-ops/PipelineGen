@@ -96,6 +96,10 @@ type ServicePorts struct {
 	MediaMemoryConceptRepo mediamemory.ConceptRepository
 	MediaMemoryBindingRepo mediamemory.BindingRepository
 	MediaMemoryNormalizer  mediamemory.Normalizer
+	// Transcriber extracts the audio transcript from a downloaded clip.
+	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
+	// July 2026); NewService rejects nil with ErrTranscriberUnavailable.
+	Transcriber Transcriber
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -143,6 +147,10 @@ type ArtlistRepoDeps struct {
 	AssetVerRepo        asset.VersionRepository
 	LocationRepository  asset.LocationRepository
 	RenditionRepository asset.RenditionRepository
+	// TextTrackRepo persists audio transcripts for downloaded clips.
+	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
+	// July 2026); NewService rejects nil with ErrTextTrackRepoUnavailable.
+	TextTrackRepo asset.TextTrackRepository
 }
 
 // ArtlistFinalizerDeps groups the transactional finalizer dependencies.
@@ -283,6 +291,16 @@ type Service struct {
 	bindingRepo mediamemory.BindingRepository
 	normalizer  mediamemory.Normalizer
 
+	// transcriber extracts the audio transcript from a downloaded clip.
+	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
+	// July 2026); nil is rejected by NewService.
+	transcriber Transcriber
+
+	// textTrackRepo persists audio transcripts for downloaded clips.
+	// Mandatory for all Artlist downloads (PR-ARTLIST-MANDATORY-TRANSCRIPTION,
+	// July 2026); nil is rejected by NewService.
+	textTrackRepo asset.TextTrackRepository
+
 	// systemProber is the canonical godlike/06 SystemProber port
 	// (Fase 2, July 2026). nil means the diagnostics endpoint reports
 	// every probe as failed via the fallback stubSystemProber
@@ -312,6 +330,14 @@ type Service struct {
 	hasConsumer bool
 }
 
+// ErrTranscriberUnavailable is returned when the mandatory Transcriber
+// port is not wired at composition time.
+var ErrTranscriberUnavailable = fmt.Errorf("artlist: transcriber is mandatory but not wired")
+
+// ErrTextTrackRepoUnavailable is returned when the mandatory
+// asset.TextTrackRepository port is not wired at composition time.
+var ErrTextTrackRepoUnavailable = fmt.Errorf("artlist: textTrackRepo is mandatory but not wired")
+
 // NewService crea una nuova istanza del servizio Artlist come facade.
 // All dependencies are reachable through ServiceDeps via field promotion
 // from ServicePorts + ServiceDependencies, so callers can construct it
@@ -340,6 +366,16 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	// noopRunRepo implementation.
 	if deps.RunRepository == nil {
 		return nil, ErrRunRepositoryUnavailable
+	}
+	// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): the transcriber
+	// and text-track repo are mandatory for all Artlist downloads.
+	// Fail-closed at construction so an unwired deployment cannot
+	// silently produce clips without transcripts.
+	if deps.Transcriber == nil {
+		return nil, ErrTranscriberUnavailable
+	}
+	if deps.Repos.TextTrackRepo == nil {
+		return nil, ErrTextTrackRepoUnavailable
 	}
 	s := &Service{
 		cfg:               deps.Infra.Cfg,
@@ -371,6 +407,8 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		normalizer:        deps.MediaMemoryNormalizer,
 		locationRepo:      deps.Repos.LocationRepository,
 		renditionRepo:     deps.Repos.RenditionRepository,
+		transcriber:       deps.Transcriber,
+		textTrackRepo:     deps.Repos.TextTrackRepo,
 	}
 
 	// Inizializza i componenti delegati

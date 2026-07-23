@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +86,7 @@ func TestResolve_ExactCacheHitShortCircuitsCascade(t *testing.T) {
 		"c-maya": {ID: "c-maya", Language: "it", PhraseFingerprint: fingerprintForNormalized("it", "i maya")},
 	}}
 	fbr := &fakeBindingsRepo{byID: map[string]MediaBinding{
-		"b-1": {ID: "b-1", ConceptID: "c-maya", AssetID: "asset-maya", SlotKind: SlotPrimaryVideo, ApprovalStatus: ApprovalApproved, Origin: OriginManual, ManualScore: 0.95, SemanticScore: 0.80, QualityScore: 0.85, SuccessScore: 0.70, StartMs: 12000, EndMs: 20000},
+		"b-1": {ID: "b-1", ConceptID: "c-maya", AssetID: "asset-maya", SlotKind: media.SlotPrimaryVideo, ApprovalStatus: ApprovalApproved, Origin: OriginManual, ManualScore: 0.95, SemanticScore: 0.80, QualityScore: 0.85, SuccessScore: 0.70, StartMs: 12000, EndMs: 20000},
 	}}
 	fbr.upserts = nil
 
@@ -112,7 +113,7 @@ func TestResolve_ExactCacheHitShortCircuitsCascade(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "scene-1", Text: "I Maya", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "scene-1", Text: "I Maya", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: true},
 	})
@@ -152,7 +153,7 @@ func TestResolve_CascadeFallsThroughToExternalWhenAllowed(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "s1", Text: "Chichén Itzá", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "s1", Text: "Chichén Itzá", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: true, MaxCandidatesPerSlot: 10},
 	})
@@ -178,7 +179,7 @@ func TestResolve_AllowExternalSearchFalseSkipsLevel9(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: false}, // <-- gating
 	})
@@ -210,7 +211,7 @@ func TestResolve_PerSceneFailureDoesntAbortBatch(t *testing.T) {
 		Language:  "it",
 		Scenes: []SceneSpec{
 			{ID: "s-bad", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{"unknown_slot_kind"}},
-			{ID: "s-ok", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "s-ok", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: true},
 	})
@@ -249,7 +250,7 @@ func TestResolve_MultiSlotHonoursRequestedSlots(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "s-multi", Text: "Maya", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo, SlotSecondaryImage, SlotEvidenceOverlay}},
+			{ID: "s-multi", Text: "Maya", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo, media.SlotSecondaryImage, media.SlotEvidenceOverlay}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: true, MaxCandidatesPerSlot: 5},
 	})
@@ -263,9 +264,9 @@ func TestResolve_MultiSlotHonoursRequestedSlots(t *testing.T) {
 	for _, l := range plan.Layers {
 		slots = append(slots, l.Slot)
 	}
-	assert.Contains(t, slots, SlotPrimaryVideo)
-	assert.Contains(t, slots, SlotSecondaryImage)
-	assert.Contains(t, slots, SlotEvidenceOverlay)
+	assert.Contains(t, slots, media.SlotPrimaryVideo)
+	assert.Contains(t, slots, media.SlotSecondaryImage)
+	assert.Contains(t, slots, media.SlotEvidenceOverlay)
 }
 
 func TestResolve_Level9ErrorSurfacesInWarnings(t *testing.T) {
@@ -280,7 +281,7 @@ func TestResolve_Level9ErrorSurfacesInWarnings(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{AllowExternalSearch: true},
 	})
@@ -321,7 +322,7 @@ func TestResolve_BindingScoresFlowThroughRanker(t *testing.T) {
 	_, _ = fcr.Upsert(context.Background(), fcr.byID["c-1"])
 	_, _ = fbr.Upsert(context.Background(), MediaBinding{
 		ID: "b-1", ConceptID: "c-1", AssetID: "asset-x",
-		SlotKind: SlotPrimaryVideo, Origin: OriginManual,
+		SlotKind: media.SlotPrimaryVideo, Origin: OriginManual,
 		ApprovalStatus: ApprovalApproved,
 		ManualScore:    0.95, SemanticScore: 0.90, QualityScore: 0.80, SuccessScore: 0.75,
 	})
@@ -335,7 +336,7 @@ func TestResolve_BindingScoresFlowThroughRanker(t *testing.T) {
 		ProjectID: "p1",
 		Language:  "it",
 		Scenes: []SceneSpec{
-			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{SlotPrimaryVideo}},
+			{ID: "s1", Text: "test", Language: "it", DurationMs: 8000, Slots: []SlotKind{media.SlotPrimaryVideo}},
 		},
 		Policy: ResolvePolicy{},
 	})
@@ -348,13 +349,13 @@ func TestResolve_BindingScoresFlowThroughRanker(t *testing.T) {
 
 func TestAspectMismatchForBinaryMapping(t *testing.T) {
 	// primary_video slot expects "video" MediaType.
-	assert.True(t, aspectMismatchFor(SlotPrimaryVideo, "image"),
+	assert.True(t, aspectMismatchFor(media.SlotPrimaryVideo, "image"),
 		"image MUST mismatch primary_video slot")
-	assert.False(t, aspectMismatchFor(SlotPrimaryVideo, "video"))
-	assert.False(t, aspectMismatchFor(SlotPrimaryVideo, ""), "empty MediaType MUST bypass (legacy rows)")
+	assert.False(t, aspectMismatchFor(media.SlotPrimaryVideo, "video"))
+	assert.False(t, aspectMismatchFor(media.SlotPrimaryVideo, ""), "empty MediaType MUST bypass (legacy rows)")
 	// image slot expects "image" MediaType.
-	assert.True(t, aspectMismatchFor(SlotSecondaryImage, "video"))
-	assert.False(t, aspectMismatchFor(SlotSecondaryImage, "image"))
+	assert.True(t, aspectMismatchFor(media.SlotSecondaryImage, "video"))
+	assert.False(t, aspectMismatchFor(media.SlotSecondaryImage, "image"))
 }
 
 func TestUpgradeSourceRankOrdering(t *testing.T) {

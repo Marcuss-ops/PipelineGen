@@ -169,15 +169,9 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 
 	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
-			Transcriber:   &stubTranscriber{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Repos: ArtlistRepoDeps{
-				TextTrackRepo: &stubTextTrackRepo{},
-			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -300,15 +294,9 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 
 	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
-			Transcriber:   &stubTranscriber{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Repos: ArtlistRepoDeps{
-				TextTrackRepo: &stubTextTrackRepo{},
-			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -432,15 +420,9 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 
 	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
-			Transcriber:   &stubTranscriber{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Repos: ArtlistRepoDeps{
-				TextTrackRepo: &stubTextTrackRepo{},
-			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -590,15 +572,9 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 
 	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
-			Transcriber:   &stubTranscriber{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Repos: ArtlistRepoDeps{
-				TextTrackRepo: &stubTextTrackRepo{},
-			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,
@@ -742,15 +718,9 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 
 	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
-			Transcriber:   &stubTranscriber{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Repos: ArtlistRepoDeps{
-				TextTrackRepo: &stubTextTrackRepo{},
-			},
 			Infra: ArtlistInfraDeps{
 				MainDB: db,
 				Cfg:    cfg,

@@ -266,9 +266,6 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 
 			result, procErr := o.svc.mediaProcessor.Process(ctx, arg.w.processInput)
 
-			mu.Lock()
-			defer mu.Unlock()
-
 			if procErr != nil {
 				// Track asset lifecycle: mark download step as failed.
 				if o.svc.assetProcessing != nil {
@@ -278,10 +275,78 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 							zap.Error(err))
 					}
 				}
+				mu.Lock()
 				arg.w.item.Status = "media_process_failed"
 				arg.w.item.Error = procErr.Error()
 				ps.resp.Failed++
 				ps.resp.Items = append(ps.resp.Items, arg.w.item)
+				mu.Unlock()
+				return
+			}
+
+			// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): every
+			// downloaded clip MUST be transcribed. The transcription is
+			// performed outside the main mutex because it is a slow I/O
+			// operation; only the per-item outcome is serialized.
+			transcriptPath := result.LocalPath
+			transcript, detectedLang, transcribeErr := o.svc.transcriber.Transcribe(ctx, transcriptPath)
+			if transcribeErr != nil {
+				o.svc.log.Warn("artlist transcription failed",
+					zap.String("clip_id", arg.w.item.ClipID),
+					zap.String("local_path", transcriptPath),
+					zap.Error(transcribeErr))
+				if o.svc.assetProcessing != nil {
+					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", transcribeErr.Error()); err != nil {
+						o.svc.log.Warn("asset_processing.Fail failed",
+							zap.String("clip_id", arg.w.item.ClipID),
+							zap.Error(err))
+					}
+				}
+				mu.Lock()
+				arg.w.item.Status = "transcription_failed"
+				arg.w.item.Error = fmt.Sprintf("transcription failed: %v", transcribeErr)
+				ps.resp.Failed++
+				ps.resp.Items = append(ps.resp.Items, arg.w.item)
+				mu.Unlock()
+				return
+			}
+
+			lang, _ := asset.Normalize(detectedLang)
+			if lang == "" {
+				lang = "und"
+			}
+			hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
+			track := asset.TextTrack{
+				AssetID:            arg.w.item.ClipID,
+				LanguageCode:       lang,
+				TextKind:           asset.TextTrackTranscript,
+				TextContent:        transcript,
+				SourceType:         asset.TextSourceWhisper,
+				SourceLanguageCode: lang,
+				IsOriginal:         true,
+				ModelName:          "tiny",
+				TextHash:           hash,
+				SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
+				IsCurrent:          true,
+				Status:             asset.TextTrackReady,
+			}
+			if err := o.svc.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+				o.svc.log.Warn("artlist transcript persist failed",
+					zap.String("clip_id", arg.w.item.ClipID),
+					zap.Error(err))
+				if o.svc.assetProcessing != nil {
+					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", err.Error()); err != nil {
+						o.svc.log.Warn("asset_processing.Fail failed",
+							zap.String("clip_id", arg.w.item.ClipID),
+							zap.Error(err))
+					}
+				}
+				mu.Lock()
+				arg.w.item.Status = "transcript_persist_failed"
+				arg.w.item.Error = fmt.Sprintf("transcript persist failed: %v", err)
+				ps.resp.Failed++
+				ps.resp.Items = append(ps.resp.Items, arg.w.item)
+				mu.Unlock()
 				return
 			}
 
@@ -294,6 +359,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 				}
 			}
 
+			mu.Lock()
 			arg.w.item.Status = defaults.String(result.Status, "processed")
 			arg.w.item.Filename = result.Filename
 			arg.w.item.LocalPath = result.LocalPath
@@ -310,6 +376,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			// BEFORE persist was attempted, producing fake-success when
 			// stagePersistResults could not write through.
 			ps.resp.Items = append(ps.resp.Items, arg.w.item)
+			mu.Unlock()
 		})
 	}
 

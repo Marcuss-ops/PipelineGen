@@ -18,6 +18,10 @@ import (
 // The caller must invoke BuildWorkerRegistry(root) afterwards to copy the
 // handlers into the remote worker.Registry and derive capabilities.
 func InitWorkerComposition(cfg *config.Config, log *zap.Logger) (*ComposeRoot, CleanupFunc, error) {
+	if err := initLinguistics(cfg, log); err != nil {
+		return nil, nil, fmt.Errorf("init worker composition: %w", err)
+	}
+
 	ctx := context.Background()
 
 	dbs, err := initDatabases(ctx, cfg, log)

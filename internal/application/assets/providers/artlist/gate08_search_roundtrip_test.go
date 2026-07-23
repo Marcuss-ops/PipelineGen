@@ -118,11 +118,9 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 	processor := &successMediaProcessor{}
 	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -140,7 +138,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -267,11 +265,9 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 	processor := &successMediaProcessor{}
 	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -289,7 +285,7 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -382,11 +378,9 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 	processor := &successMediaProcessor{}
 	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -404,7 +398,7 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

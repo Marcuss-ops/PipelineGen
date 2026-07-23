@@ -13,6 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { extractClipId } from '../scrape/url.js';
+import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../driver/cookies.js';
+import { fetchClipDetails } from '../scrape/detail-page.js';
 
 /**
  * Downloads a video from Artlist.
@@ -39,9 +41,48 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
   await page.setViewport({ width: 1440, height: 900 });
   await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
+  // PR-ARTLIST-COOKIE-IMPORT (July 2026): reuse the same session cookie
+  // file so the /download endpoint can also reach authenticated streams.
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  await importCookies(page, cookiePath);
+
   // Capture video stream URLs from network requests
   const streamUrls = new Set();
   const mp4Urls = new Set();
+
+  const addCandidateUrl = (url) => {
+    if (typeof url !== 'string') {
+      return;
+    }
+
+    const trimmed = url.trim().replace(/\\+$/, '');
+    if (!trimmed || trimmed === clipPageUrl) {
+      return;
+    }
+
+    if (trimmed.includes('.m3u8')) {
+      streamUrls.add(trimmed);
+      return;
+    }
+
+    if (trimmed.includes('.mp4')) {
+      mp4Urls.add(trimmed);
+    }
+  };
+
+  const addDetailCandidates = (detail) => {
+    if (!detail || typeof detail !== 'object') {
+      return;
+    }
+
+    addCandidateUrl(detail.primary_url);
+    addCandidateUrl(detail.preview_url);
+    if (Array.isArray(detail.stream_urls)) {
+      for (const url of detail.stream_urls) {
+        addCandidateUrl(url);
+      }
+    }
+  };
 
   const onRequest = (req) => {
     const url = req.url();
@@ -86,6 +127,22 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     //
     // If the selectors fail (different page layout), we still fall through
     // to the existing URL capture logic (network listeners, DOM extraction).
+
+    // Prefer the structured detail extractor first. It can often see the
+    // authenticated stream URLs from API / JSON-LD without needing the
+    // player interaction to fire. When it yields a direct asset URL we can
+    // download immediately and skip the flaky play-trigger path.
+    try {
+      const detail = await fetchClipDetails(browser, clipPageUrl);
+      addDetailCandidates(detail);
+    } catch (err) {
+      console.log(`[download] detail probe failed for ${clipPageUrl}: ${err.message}`);
+    }
+
+    if (mp4Urls.size === 0 && streamUrls.size === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
     await page.evaluate(() => {
       // Scroll the first video element into view
       const video = document.querySelector('video');
@@ -124,11 +181,7 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     });
 
     if (videoSrc && !streamUrls.has(videoSrc) && !mp4Urls.has(videoSrc)) {
-      if (videoSrc.includes('.m3u8')) {
-        streamUrls.add(videoSrc);
-      } else if (videoSrc.includes('.mp4')) {
-        mp4Urls.add(videoSrc);
-      }
+      addCandidateUrl(videoSrc);
     }
 
     // Get cookies from the page for authenticated download
@@ -139,7 +192,7 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
     let downloadUrl = '';
     let isM3u8 = false;
 
-    // Prefer MP4 direct links
+    // Prefer MP4 direct links.
     if (mp4Urls.size > 0) {
       downloadUrl = Array.from(mp4Urls)[0];
       isM3u8 = false;

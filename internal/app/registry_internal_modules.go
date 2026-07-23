@@ -205,6 +205,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 			MediaProcessor:     root.Process.MediaProcessor,
 			Jobs:               root.Jobs,
 			CatalogSyncService: root.Sync.CatalogSync,
+			TextTrackRepo:      root.Repos.TextTrackRepo,
 		},
 		root.Outbox.Dispatcher,
 		root.Drive.Reader,

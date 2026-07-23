@@ -157,11 +157,9 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 
 	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -179,7 +177,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -321,11 +319,9 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 
 	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
-			AssetStore:    artlistRepo,
-			Publisher:     &stubPublisherForArtlist{},
-			RunRepository: &stubRunRepoForArtlist{},
+			AssetStore: artlistRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
 			Infra: ArtlistInfraDeps{
@@ -343,7 +339,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 
@@ -433,11 +429,9 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 
 	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:      artlistRepo,
-			Publisher:       &stubPublisherForArtlist{},
-			RunRepository:   &stubRunRepoForArtlist{},
 			ScraperSearcher: &emptySearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
@@ -453,7 +447,7 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

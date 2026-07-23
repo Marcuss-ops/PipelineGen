@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -13,11 +14,16 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 		return nil
 	}
 
-	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti)
-	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali)
-	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti)
-	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali)
-	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases)
+	// Load the fallback lexicon profile once per sanitization pass so
+	// every sub-filter uses the same centralized stopwords, function
+	// words and verb suffixes instead of hardcoded maps.
+	profile := linguistics.DefaultLexicon().Resolve("fallback")
+
+	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti, profile)
+	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali, profile)
+	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti, profile)
+	result.NomiSpeciali = filterProperNouns(segment, result.NomiSpeciali, profile)
+	result.ArtlistPhrases = filterArtlistKeywords(segment, result.ArtlistPhrases, profile)
 	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
 
 	if len(result.FrasiImportanti) == 0 {
@@ -41,15 +47,15 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 	return result
 }
 
-func filterExactPhrases(segment string, items []string) []string {
-	return filterExactStrings(segment, items, false)
+func filterExactPhrases(segment string, items []string, profile *linguistics.LexiconProfile) []string {
+	return filterExactStrings(segment, items, false, profile)
 }
 
-func filterExactNames(segment string, items []string) []string {
-	return filterExactStrings(segment, items, true)
+func filterExactNames(segment string, items []string, profile *linguistics.LexiconProfile) []string {
+	return filterExactStrings(segment, items, true, profile)
 }
 
-func filterProperNouns(segment string, items []string) []string {
+func filterProperNouns(segment string, items []string, profile *linguistics.LexiconProfile) []string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -62,7 +68,7 @@ func filterProperNouns(segment string, items []string) []string {
 		}
 		words := strings.Fields(item)
 		if len(words) == 1 {
-			if isSentenceStartCapitalizedOnly(words[0], segLower) {
+			if isSentenceStartCapitalizedOnly(words[0], segLower, profile) {
 				continue
 			}
 		}
@@ -71,7 +77,7 @@ func filterProperNouns(segment string, items []string) []string {
 		}
 		functionCount := 0
 		for _, w := range words {
-			if textutil.IsStopWord(strings.ToLower(w)) {
+			if _, ok := profile.StopWords[strings.ToLower(w)]; ok {
 				functionCount++
 			}
 		}
@@ -84,7 +90,7 @@ func filterProperNouns(segment string, items []string) []string {
 		for _, w := range words {
 			if strings.HasSuffix(w, "'s") || strings.HasSuffix(w, "'") {
 				base := strings.TrimSuffix(strings.TrimSuffix(w, "'s"), "'")
-				if isGenericImportantWord(strings.ToLower(base)) || isSentenceStartCapitalizedOnly(strings.ToLower(base), segLower) {
+				if isGenericImportantWord(strings.ToLower(base)) || isSentenceStartCapitalizedOnly(strings.ToLower(base), segLower, profile) {
 					goto skipItem
 				}
 			}
@@ -96,16 +102,16 @@ func filterProperNouns(segment string, items []string) []string {
 	return uniqueLocalStrings(out)
 }
 
-func isSentenceStartCapitalizedOnly(word string, segLower string) bool {
+func isSentenceStartCapitalizedOnly(word string, segLower string, profile *linguistics.LexiconProfile) bool {
 	lower := strings.ToLower(word)
-	if !textutil.IsStopWord(lower) {
+	if _, ok := profile.StopWords[lower]; !ok {
 		return false
 	}
 	capCount := strings.Count(segLower, lower)
 	return capCount >= 1
 }
 
-func filterExactWords(segment string, items []string) []string {
+func filterExactWords(segment string, items []string, profile *linguistics.LexiconProfile) []string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -116,7 +122,11 @@ func filterExactWords(segment string, items []string) []string {
 		if item == "" {
 			continue
 		}
-		if isNoisyExtractionCandidate(item) || textutil.IsStopWord(strings.ToLower(item)) {
+		if isNoisyExtractionCandidate(item) {
+			continue
+		}
+		lower := strings.ToLower(item)
+		if _, ok := profile.StopWords[lower]; ok {
 			continue
 		}
 		tokens := textutil.Tokenize(item)
@@ -137,7 +147,7 @@ func filterExactWords(segment string, items []string) []string {
 	return uniqueLocalStrings(out)
 }
 
-func filterArtlistKeywords(segment string, items []string) []string {
+func filterArtlistKeywords(segment string, items []string, profile *linguistics.LexiconProfile) []string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -154,7 +164,7 @@ func filterArtlistKeywords(segment string, items []string) []string {
 
 		allStop := true
 		for _, w := range words {
-			if !textutil.IsStopWord(strings.ToLower(w)) && !isGenericImportantWord(strings.ToLower(w)) {
+			if _, ok := profile.StopWords[strings.ToLower(w)]; !ok && !isGenericImportantWord(strings.ToLower(w)) {
 				allStop = false
 				break
 			}
@@ -164,7 +174,7 @@ func filterArtlistKeywords(segment string, items []string) []string {
 		}
 
 		firstWord := strings.ToLower(words[0])
-		if isFunctionWord(firstWord) {
+		if isFunctionWord(firstWord, profile) {
 			continue
 		}
 
@@ -190,7 +200,7 @@ func filterArtlistKeywords(segment string, items []string) []string {
 			continue
 		}
 
-		if looksLikeVerbBigram(words) {
+		if looksLikeVerbBigram(words, profile) {
 			continue
 		}
 
@@ -201,7 +211,7 @@ func filterArtlistKeywords(segment string, items []string) []string {
 		candidates = append(candidates, item)
 	}
 	if len(candidates) > 1 {
-		candidates = removeSlidingWindowChains(candidates)
+		candidates = removeSlidingWindowChains(candidates, profile)
 		candidates = uniqueLocalStrings(candidates)
 		if len(candidates) > 5 {
 			candidates = candidates[:5]
@@ -210,15 +220,19 @@ func filterArtlistKeywords(segment string, items []string) []string {
 	return candidates
 }
 
-func isFunctionWord(word string) bool {
-	return textutil.IsStopWord(word)
+func isFunctionWord(word string, profile *linguistics.LexiconProfile) bool {
+	if word == "" {
+		return false
+	}
+	_, ok := profile.FunctionWords[strings.ToLower(word)]
+	return ok
 }
 
-func looksLikeVerbBigram(words []string) bool {
+func looksLikeVerbBigram(words []string, profile *linguistics.LexiconProfile) bool {
 	if len(words) < 2 {
 		return false
 	}
-	suffixes := []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
+	suffixes := profile.VerbSuffixes
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)
@@ -257,7 +271,7 @@ func isNumericWord(w string) bool {
 	return len(w) > 0
 }
 
-func removeSlidingWindowChains(items []string) []string {
+func removeSlidingWindowChains(items []string, profile *linguistics.LexiconProfile) []string {
 	if len(items) <= 1 {
 		return items
 	}
@@ -294,7 +308,7 @@ func removeSlidingWindowChains(items []string) []string {
 		if len(wordsA) != 2 || len(wordsB) != 2 {
 			continue
 		}
-		if looksLikeTextBigram(wordsA) && looksLikeTextBigram(wordsB) {
+		if looksLikeTextBigram(wordsA, profile) && looksLikeTextBigram(wordsB, profile) {
 			isChain[i+1] = true
 		}
 	}
@@ -308,14 +322,14 @@ func removeSlidingWindowChains(items []string) []string {
 	return out
 }
 
-func looksLikeTextBigram(words []string) bool {
+func looksLikeTextBigram(words []string, profile *linguistics.LexiconProfile) bool {
 	if len(words) != 2 {
 		return false
 	}
-	if isFunctionWord(words[0]) || isFunctionWord(words[1]) {
+	if isFunctionWord(words[0], profile) || isFunctionWord(words[1], profile) {
 		return true
 	}
-	suffixes := []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
+	suffixes := profile.VerbSuffixes
 	verbCount := 0
 	for _, w := range words {
 		lower := strings.ToLower(w)
@@ -346,7 +360,7 @@ func filterExactEntityMap(segment string, items map[string]string) map[string]st
 	return out
 }
 
-func filterExactStrings(segment string, items []string, names bool) []string {
+func filterExactStrings(segment string, items []string, names bool, profile *linguistics.LexiconProfile) []string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -356,7 +370,7 @@ func filterExactStrings(segment string, items []string, names bool) []string {
 		if item == "" || isNoisyExtractionCandidate(item) {
 			continue
 		}
-		if names && len(strings.Fields(item)) == 1 && (isGenericImportantWord(strings.ToLower(item)) || textutil.IsStopWord(strings.ToLower(item))) {
+		if names && len(strings.Fields(item)) == 1 && (isGenericImportantWord(strings.ToLower(item)) || isStopWord(strings.ToLower(item), profile)) {
 			continue
 		}
 		if textutil.ContainsCI(segment, item) {
@@ -364,4 +378,12 @@ func filterExactStrings(segment string, items []string, names bool) []string {
 		}
 	}
 	return uniqueLocalStrings(out)
+}
+
+func isStopWord(word string, profile *linguistics.LexiconProfile) bool {
+	if word == "" {
+		return false
+	}
+	_, ok := profile.StopWords[word]
+	return ok
 }

@@ -47,14 +47,15 @@ import (
 // Enrichment, Log). Publisher is the canonical Drive upload canal
 // since FASE 5.
 type Service struct {
-	fetcher     sourcing.FetchProviderPort
-	clips       sourcing.ClipStorePort
-	publisher   sourcing.PublisherPort // FASE 5: canonical Drive upload canal
-	transcriber sourcing.TranscriptionPort
-	metadata    sourcing.MetadataUploadPort
-	indexDisp   IndexDispatcherPort
-	enrichment  EnrichmentPort
-	log         sourcing.Logger
+	fetcher       sourcing.FetchProviderPort
+	clips         sourcing.ClipStorePort
+	publisher     sourcing.PublisherPort // FASE 5: canonical Drive upload canal
+	transcriber   sourcing.TranscriptionPort
+	metadata      sourcing.MetadataUploadPort
+	indexDisp     IndexDispatcherPort
+	enrichment    EnrichmentPort
+	log           sourcing.Logger
+	textTrackRepo asset.TextTrackRepository
 
 	// requireDrive, when true, causes Register to return an error if the
 	// Drive Publisher fails (P0.2, July 2026). Set at construction via
@@ -66,14 +67,15 @@ type Service struct {
 // constructor under the archcheck 8-parameter cap while preserving the
 // canonical 8-port YouTubeRegistrar surface.
 type ServiceDeps struct {
-	Fetcher     sourcing.FetchProviderPort
-	Clips       sourcing.ClipStorePort
-	Publisher   sourcing.PublisherPort
-	Transcriber sourcing.TranscriptionPort
-	Metadata    sourcing.MetadataUploadPort
-	IndexDisp   IndexDispatcherPort
-	Enrichment  EnrichmentPort
-	Log         sourcing.Logger
+	Fetcher       sourcing.FetchProviderPort
+	Clips         sourcing.ClipStorePort
+	Publisher     sourcing.PublisherPort
+	Transcriber   sourcing.TranscriptionPort
+	Metadata      sourcing.MetadataUploadPort
+	IndexDisp     IndexDispatcherPort
+	Enrichment    EnrichmentPort
+	Log           sourcing.Logger
+	TextTrackRepo asset.TextTrackRepository
 }
 
 // NewService creates a YouTubeRegistrar service. deps.IndexDisp is REQUIRED
@@ -82,14 +84,15 @@ type ServiceDeps struct {
 // sub-operation to be skipped gracefully.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		fetcher:     deps.Fetcher,
-		clips:       deps.Clips,
-		publisher:   deps.Publisher,
-		transcriber: deps.Transcriber,
-		metadata:    deps.Metadata,
-		indexDisp:   deps.IndexDisp,
-		enrichment:  deps.Enrichment,
-		log:         deps.Log,
+		fetcher:       deps.Fetcher,
+		clips:         deps.Clips,
+		publisher:     deps.Publisher,
+		transcriber:   deps.Transcriber,
+		metadata:      deps.Metadata,
+		indexDisp:     deps.IndexDisp,
+		enrichment:    deps.Enrichment,
+		log:           deps.Log,
+		textTrackRepo: deps.TextTrackRepo,
 	}
 }
 
@@ -206,10 +209,13 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 
 	clipID, fileHash := fetched.ClipID, fetched.FileHash
 
-	// ── 6. Transcribe (best-effort) ─────────────────────────────────
-	transcript, detectedLang := "", ""
-	if s.transcriber != nil {
-		transcript, detectedLang, _ = s.transcriber.Transcribe(ctx, fetched.LocalPath)
+	// ── 6. Transcribe (mandatory per user request) ──────────────────
+	if s.transcriber == nil {
+		return nil, fmt.Errorf("youtube transcription: transcriber is not wired")
+	}
+	transcript, detectedLang, err := s.transcriber.Transcribe(ctx, fetched.LocalPath)
+	if err != nil {
+		return nil, fmt.Errorf("youtube transcription failed: %w", err)
 	}
 
 	// ── 7. Upload cumulative metadata.json ──────────────────────────
@@ -218,6 +224,35 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	// ── 8. Save to DB via IndexDispatcherPort ───────────────────────
 	if err := s.saveClipToDB(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, uploadResult); err != nil {
 		return nil, err
+	}
+
+	// ── 8.5 Save transcript to DB (mandatory per user request) ──────
+	if s.textTrackRepo == nil {
+		return nil, fmt.Errorf("youtube transcription: textTrackRepo is not wired")
+	}
+	lang, _ := asset.Normalize(detectedLang)
+	if lang == "" {
+		lang = "und"
+	}
+	hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
+	track := asset.TextTrack{
+		AssetID:            clipID,
+		LanguageCode:       lang,
+		TextKind:           asset.TextTrackTranscript,
+		TextContent:        transcript,
+		SourceType:         asset.TextSourceWhisper,
+		SourceLanguageCode: lang,
+		IsOriginal:         true,
+		Provider:           "",
+		ModelName:          "tiny",
+		ModelVersion:       "",
+		TextHash:           hash,
+		SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
+		IsCurrent:          true,
+		Status:             asset.TextTrackReady,
+	}
+	if err := s.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+		return nil, fmt.Errorf("failed to save transcript to DB: %w", err)
 	}
 
 	// ── 9. Enrichment + related clips ───────────────────────────────

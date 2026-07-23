@@ -57,7 +57,7 @@ func imageProviderFromValue(value string) ImageProvider {
 // and "provider" keys always match the computed asset provenance and are
 // never silently hardcoded to "generated".
 type CanonicalImageMetadataBuilder struct {
-	data     map[string]any
+	data     ImageMetadataMap
 	origin   ImageOrigin
 	provider ImageProvider
 }
@@ -68,7 +68,7 @@ func NewCanonicalImageMetadataBuilder(source, generator string) *CanonicalImageM
 	origin := ClassifyImageOrigin(source, generator)
 	provider := ClassifyImageProvider(source, generator)
 	return &CanonicalImageMetadataBuilder{
-		data: map[string]any{
+		data: ImageMetadataMap{
 			"origin":   string(origin),
 			"provider": string(provider),
 		},
@@ -104,7 +104,7 @@ func (b *CanonicalImageMetadataBuilder) WithGenerator(generator string) *Canonic
 // source/generator pair and cannot be overwritten by extra data.
 // If extra contains a "tags" slice, it is merged with the existing
 // tags.
-func (b *CanonicalImageMetadataBuilder) WithExtra(extra map[string]any) *CanonicalImageMetadataBuilder {
+func (b *CanonicalImageMetadataBuilder) WithExtra(extra ImageMetadataMap) *CanonicalImageMetadataBuilder {
 	if extra == nil {
 		return b
 	}
@@ -171,7 +171,7 @@ func AppendImageProvenance(metadataJSON, imageURL, pageURL, sourceName, query st
 		metadataJSON = "{}"
 	}
 
-	var payload map[string]any
+	var payload ImageMetadataMap
 	if err := json.Unmarshal([]byte(metadataJSON), &payload); err != nil {
 		return metadataJSON
 	}
@@ -204,7 +204,7 @@ func AppendImageMetadataField(metadataJSON, key string, value any) string {
 		metadataJSON = "{}"
 	}
 
-	var payload map[string]any
+	var payload ImageMetadataMap
 	if err := json.Unmarshal([]byte(metadataJSON), &payload); err != nil {
 		return metadataJSON
 	}

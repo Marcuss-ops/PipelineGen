@@ -17,6 +17,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
@@ -127,6 +128,12 @@ func constructArtlistProviders(
 		// change beyond replacing nil with a real closure.
 		ProbeFolderAccess: nil,
 		ProbeFolderRootID: artlist.ResolveRootFolderID(cfg),
+		// Real Artlist queries against the Node scraper can take much
+		// longer than the 5s default (initial Chromium launch, session
+		// handshake, page navigation). Give the diagnostics battery
+		// enough budget to observe the result without masking slow but
+		// healthy scraper startup.
+		ProbeTimeout: 2 * time.Minute,
 	}
 
 	// PR-ARTLIST-SEARCHERS (2026-07-04): construct the public-stock

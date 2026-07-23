@@ -56,6 +56,23 @@ type TranslationConfig struct {
 	Required bool `yaml:"required" default:"false"`
 }
 
+// LinguisticsConfig holds the configuration for the centralized
+// LexiconRegistry (PR-LEXICON-SSOT, July 2026).
+//
+// LexiconRoot is the directory that contains per-language subdirectories
+// (e.g. config/lexicons/en, config/lexicons/it). Each subdirectory may
+// contain stopwords.txt, function_words.txt, entity_blocklist.txt,
+// verb_morphology.txt, phrase_policy.txt, negative_particles.txt and
+// visual_verbs.txt. When empty, the registry falls back to built-in data.
+//
+// RequiredLanguages lists the language codes that MUST have a profile
+// under LexiconRoot. If any required language is missing, the boot fails
+// explicitly with a clear error — no silent degradation.
+type LinguisticsConfig struct {
+	LexiconRoot       string   `yaml:"lexicon_root" env:"VELOX_LEXICON_ROOT"`
+	RequiredLanguages []string `yaml:"required_languages"`
+}
+
 // VoiceoverConcurrencyConfig holds voiceover-pipeline concurrency limits,
 // retry budgets, and per-stage timeouts (FASE 8 VO-OPERATIONAL-READINESS, July 2026).
 //
@@ -138,6 +155,7 @@ type Config struct {
 	Concurrency      ConcurrencyConfig          `yaml:"concurrency"`
 	Voiceover        VoiceoverConcurrencyConfig `yaml:"voiceover"`
 	Translation      TranslationConfig          `yaml:"translation"`
+	Linguistics      LinguisticsConfig          `yaml:"linguistics"`
 	Jobs             JobsConfig                 `yaml:"jobs"`
 	Workers          WorkersConfig              `yaml:"workers"`
 	Video            VideoConfig                `yaml:"video"`

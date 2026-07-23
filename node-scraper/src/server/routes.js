@@ -26,8 +26,12 @@
 //                   (getBrowser, searchArtlist, downloadClipVideo,
 //                    computeHealthVerdict).
 
+import { startApiDiscovery } from '../scrape/api-discovery.js';
+import { searchArtlistGateway } from '../../artlist/gateway-search.js';
+
 const MAX_SEARCH_BODY_BYTES = 8192;
 const MAX_DOWNLOAD_BODY_BYTES = 32768;
+const MAX_DISCOVERY_BODY_BYTES = 8192;
 
 async function readBody(req, maxBytes) {
   let body = '';
@@ -113,6 +117,74 @@ export async function handleDetail(req, res, ctx) {
   }
 }
 
+// ─── /discover-api ───────────────────────────────────────────────────────────
+export async function handleDiscoverApi(req, res, ctx) {
+  if (rejectIfNotMethod(req, res, 'POST', '/discover-api')) return;
+
+  let body;
+  try {
+    body = await readBody(req, MAX_DISCOVERY_BODY_BYTES);
+  } catch (err) {
+    res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.message }));
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+    return;
+  }
+
+  const term = String(payload.term || '').trim();
+  if (!term) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'term is required' }));
+    return;
+  }
+
+  const reqId = ctx.state.incRequest();
+  const t0 = Date.now();
+  const browser = await ctx.deps.getBrowser();
+  const context = await browser.createBrowserContext();
+  const page = await context.newPage();
+  const discovery = startApiDiscovery(page);
+
+  try {
+    const searchUrl = `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`;
+    await page.goto(searchUrl, {
+      waitUntil: 'networkidle2',
+      timeout: 120_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    const requests = discovery.stop();
+    const elapsed = Date.now() - t0;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      term,
+      requests,
+      _meta: { request_id: reqId, elapsed_ms: elapsed },
+    }));
+  } catch (err) {
+    const elapsed = Date.now() - t0;
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: err.message || String(err),
+      _meta: { request_id: reqId, elapsed_ms: elapsed },
+    }));
+  } finally {
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+  }
+}
+
 // ─── /search ──────────────────────────────────────────────────────────────────
 export async function handleSearch(req, res, ctx) {
   if (rejectIfNotMethod(req, res, 'POST', '/search')) return;
@@ -195,6 +267,91 @@ export async function handleSearch(req, res, ctx) {
     // finally, a failed search would keep the timer alive up to
     // scrollTimeoutSeconds (handle leak per failed request).
     if (totalBudgetTimer) clearTimeout(totalBudgetTimer);
+  }
+}
+
+// ─── /v1/clips/search ────────────────────────────────────────────────────────
+export async function handleV1ClipSearch(req, res, ctx) {
+  if (rejectIfNotMethod(req, res, 'POST', '/v1/clips/search')) return;
+
+  let body;
+  try {
+    body = await readBody(req, MAX_SEARCH_BODY_BYTES);
+  } catch (err) {
+    res.writeHead(err.statusCode || 400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.message }));
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+    return;
+  }
+
+  const query = String(payload.query || payload.term || '').trim();
+  if (!query) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'query is required' }));
+    return;
+  }
+
+  const page = Number.parseInt(payload.page || 1, 10);
+  const limit = Number.parseInt(payload.limit || ctx.config.DEFAULT_LIMIT, 10);
+  const filters = payload.filters && typeof payload.filters === 'object' ? payload.filters : {};
+  const forceRefresh = Boolean(payload.force_refresh || payload.forceRefresh);
+
+  const reqId = ctx.state.incRequest();
+  ctx.state.setLastSearchAt(new Date().toISOString());
+  const t0 = Date.now();
+
+  try {
+    const browser = await ctx.deps.getBrowser();
+    const result = await ctx.deps.searchArtlistGateway({
+      browser,
+      query,
+      page,
+      limit,
+      filters,
+      forceRefresh,
+      profileDir: ctx.config.PROFILE_DIR,
+    });
+
+    if (typeof ctx.state.setLastLaunchError === 'function') {
+      ctx.state.setLastLaunchError(null);
+    }
+
+    const elapsed = Date.now() - t0;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ...result,
+      _meta: { request_id: reqId, elapsed_ms: elapsed },
+    }));
+  } catch (err) {
+    const elapsed = Date.now() - t0;
+    if (err && err.code === 'SESSION_EXPIRED') {
+      if (typeof ctx.state.setLastLaunchError === 'function') {
+        ctx.state.setLastLaunchError(err.message || 'SESSION_EXPIRED');
+      }
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'SESSION_EXPIRED',
+        detail: err.message || String(err),
+        _meta: { request_id: reqId, elapsed_ms: elapsed },
+      }));
+      return;
+    }
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: false,
+      error: err.message || String(err),
+      _meta: { request_id: reqId, elapsed_ms: elapsed },
+    }));
   }
 }
 
@@ -313,11 +470,17 @@ export async function dispatchRequest(req, res, ctx) {
   const url = new URL(req.url, `http://localhost:${ctx.config.PORT}`);
   if (url.pathname === '/search') {
     await handleSearch(req, res, ctx);
+  } else if (url.pathname === '/v1/clips/search') {
+    await handleV1ClipSearch(req, res, ctx);
   } else if (url.pathname === '/detail') {
     await handleDetail(req, res, ctx);
   } else if (url.pathname === '/download') {
     await handleDownload(req, res, ctx);
+  } else if (url.pathname === '/discover-api') {
+    await handleDiscoverApi(req, res, ctx);
   } else if (url.pathname === '/health') {
+    handleHealth(req, res, ctx);
+  } else if (url.pathname === '/v1/health') {
     handleHealth(req, res, ctx);
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' });

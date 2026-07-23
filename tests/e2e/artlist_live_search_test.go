@@ -60,7 +60,7 @@ func TestE2E_Artlist_LiveSearch_NodeOn(t *testing.T) {
 		// Mock Node scraper: returns 2 candidates per the Response struct shape.
 		var receivedBody map[string]any
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.Equal(t, "/search", r.URL.Path, "scraper must POST to /search")
+			require.Equal(t, "/v1/clips/search", r.URL.Path, "scraper must POST to /v1/clips/search")
 			require.Equal(t, http.MethodPost, r.Method, "scraper must use POST")
 			require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 			_ = json.NewDecoder(r.Body).Decode(&receivedBody)

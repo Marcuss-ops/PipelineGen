@@ -31,7 +31,7 @@
 //     stays at its persistent value until the soft-delete stamp
 //     lands.
 //
-//   - AssetState (asset_state.go, 14-state machine) — orthogonal;
+//   - AssetState (asset_state_values.go, 14-state machine) — orthogonal;
 //     tracks the asset's journey from discovery.
 //     RightsStatus stays as the operator-declared publishing
 //     permission surface; AssetState stays as the worker's

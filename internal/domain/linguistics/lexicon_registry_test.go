@@ -322,3 +322,81 @@ func TestLexiconRegistry_CommentsAndEmptyLines(t *testing.T) {
 		t.Errorf("expected exactly 3 stopwords, got %d", len(sw))
 	}
 }
+
+func TestLexiconRegistry_NegativeParticlesAndVisualVerbs(t *testing.T) {
+	dir := t.TempDir()
+	enDir := filepath.Join(dir, "en")
+	writeLexiconFile(t, enDir, "negative_particles.txt",
+		"not", "no", "never",
+	)
+	writeLexiconFile(t, enDir, "visual_verbs.txt",
+		"watch", "observe", "look",
+	)
+
+	r, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+
+	np := r.NegativeParticles("en")
+	for _, want := range []string{"not", "no", "never"} {
+		if _, ok := np[want]; !ok {
+			t.Errorf("expected negative particle %q", want)
+		}
+	}
+
+	vv := r.VisualVerbs("en")
+	for _, want := range []string{"watch", "observe", "look"} {
+		if _, ok := vv[want]; !ok {
+			t.Errorf("expected visual verb %q", want)
+		}
+	}
+}
+
+func TestLexiconRegistry_HasProfileAndProfileCount(t *testing.T) {
+	dir := t.TempDir()
+	writeLexiconFile(t, filepath.Join(dir, "en"), "stopwords.txt", "the")
+
+	r, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+
+	if !r.HasProfile("en") {
+		t.Error("expected HasProfile(\"en\") = true")
+	}
+	if !r.HasProfile("en-US") {
+		t.Error("expected HasProfile(\"en-US\") = true (region stripped)")
+	}
+	if r.HasProfile("fr") {
+		t.Error("expected HasProfile(\"fr\") = false (only fallback available)")
+	}
+	if r.ProfileCount() != 1 {
+		t.Errorf("expected ProfileCount() = 1, got %d", r.ProfileCount())
+	}
+}
+
+func TestLexiconRegistry_FingerprintIncludesNewFields(t *testing.T) {
+	dir := t.TempDir()
+	writeLexiconFile(t, filepath.Join(dir, "en"), "stopwords.txt", "the")
+	writeLexiconFile(t, filepath.Join(dir, "en"), "negative_particles.txt", "not")
+	writeLexiconFile(t, filepath.Join(dir, "en"), "visual_verbs.txt", "watch")
+
+	r1, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+	v1 := r1.Version()
+
+	// Mutate the visual verbs file and rebuild the registry.
+	writeLexiconFile(t, filepath.Join(dir, "en"), "visual_verbs.txt", "watch", "observe")
+	r2, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatalf("NewLexiconRegistry: %v", err)
+	}
+	v2 := r2.Version()
+
+	if v1 == v2 {
+		t.Error("expected version to change when negative particles / visual verbs change")
+	}
+}

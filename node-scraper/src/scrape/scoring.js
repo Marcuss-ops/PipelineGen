@@ -32,6 +32,12 @@ export function scoreClipRelevance(term, clip) {
 
   const haystack = normalizeQuery([
     clip?.title,
+    clip?.description,
+    clip?.creator,
+    clip?.country,
+    clip?.location,
+    Array.isArray(clip?.tags) ? clip.tags.join(' ') : '',
+    Array.isArray(clip?.categories) ? clip.categories.join(' ') : '',
     clip?.clip_page_url,
     clip?.primary_url,
     clip?.stream_urls?.join(' '),
@@ -53,10 +59,14 @@ export function scoreClipRelevance(term, clip) {
 
 /**
  * Determines if a clip is relevant based on score threshold.
+ * Single-word terms require a full 100% match to avoid substring
+ * false-positives (e.g. "sun" matching "sunny"). Multi-word terms
+ * accept partial overlap.
  * @param {string} term - Search term
  * @param {object} clip - Clip object
  * @returns {boolean}
  */
 export function isRelevantClip(term, clip) {
-  return scoreClipRelevance(term, clip) >= (tokenizeQuery(term).length > 1 ? 60 : 100);
+  const tokens = tokenizeQuery(term);
+  return scoreClipRelevance(term, clip) >= (tokens.length > 1 ? 60 : 100);
 }

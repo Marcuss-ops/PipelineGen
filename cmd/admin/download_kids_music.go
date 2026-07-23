@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	ytdlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 )
 
 type MusicTrack struct {
@@ -66,21 +67,24 @@ func runDownloadKidsMusic(args []string) error {
 
 	fullAudioPath := filepath.Join(tmpDir, "full_kids_compilation.mp4")
 
-	// 1. Download full audio via yt-dlp
+	// 1. Download full audio via yt-dlp (canonical args from ytdlp package).
 	fmt.Printf("Downloading audio from %s using yt-dlp...\n", url)
-	dlCmd := exec.CommandContext(ctx, "/home/pierone/.local/bin/yt-dlp",
-		"-f", "18", "--extractor-args", "youtube:player_client=android",
-		"-o", fullAudioPath, url,
-	)
+	builder := ytdlp.NewCommandBuilder(cfg)
+	ytdlpArgs := builder.BaseArgs(url, false)
+	ytdlpArgs = append(ytdlpArgs, "-f", "18", "-o", fullAudioPath, url)
+	binPath := builder.Path
+	if binPath == "" {
+		binPath = "yt-dlp"
+	}
+	dlCmd := exec.CommandContext(ctx, binPath, ytdlpArgs...)
 	dlCmd.Stdout = os.Stdout
 	dlCmd.Stderr = os.Stderr
 	if err := dlCmd.Run(); err != nil {
 		// Try fallback if yt-dlp path is different
-		dlCmd2 := exec.CommandContext(ctx, "yt-dlp",
-			"-f", "18", "--extractor-args", "youtube:player_client=android",
-			"-o", fullAudioPath, url,
-		)
-		if err := dlCmd2.Run(); err != nil {
+		fallback := exec.CommandContext(ctx, "yt-dlp", ytdlpArgs...)
+		fallback.Stdout = os.Stdout
+		fallback.Stderr = os.Stderr
+		if err := fallback.Run(); err != nil {
 			return fmt.Errorf("yt-dlp download failed: %w", err)
 		}
 	}

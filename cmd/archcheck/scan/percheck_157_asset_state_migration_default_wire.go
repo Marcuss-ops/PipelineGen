@@ -7,7 +7,7 @@
 // owns the SQL-migration leg of the canonical-14 forward-
 // prevention gate. The canonical-14 source/file leg
 // (percheck_asset_state_canonical_14) pins the alphabet
-// COUNT inside asset_state.go; THIS gate pins the COLUMN
+// COUNT inside asset_state_values.go; THIS gate pins the COLUMN
 // DEFAULT literal inside migrations/sqlite/157_asset_state.sql
 // so that the alphabetical initial-sentinel string in
 // Go and the runtime column-default literal in SQL stay
@@ -16,7 +16,7 @@
 // godlike/06 SSOT invariant: there is exactly one
 // runtime companion for each enum value — the typed
 // initial-sentinel (string(asset.StateAssetDiscovered))
-// in internal/domain/asset/asset_state.go is mirrored by
+// in internal/domain/asset/asset_state_values.go is mirrored by
 // the column DEFAULT in
 // migrations/sqlite/157_asset_state.sql. Drift between
 // the two surfaces (a future agent renames the typed
@@ -88,7 +88,7 @@ const migration157DefaultRule = "percheck_157_asset_state_migration_default_wire
 // DEFAULT literal drift. Reference the canonical SOLE owner
 // + the migration path so the operator sees both surfaces
 // of the mismatch inline.
-const migration157DefaultNote = "migration 157 DEFAULT literal must equal string(asset.StateAssetDiscovered) (PR-CATALOG-MULTILINGUA step 7+ GAMMA, July 2026); godlike/06 SSOT requires the column DEFAULT to stay in lockstep with the typed canonical initial-sentinel in internal/domain/asset/asset_state.go; rename both surfaces together"
+const migration157DefaultNote = "migration 157 DEFAULT literal must equal string(asset.StateAssetDiscovered) (PR-CATALOG-MULTILINGUA step 7+ GAMMA, July 2026); godlike/06 SSOT requires the column DEFAULT to stay in lockstep with the typed canonical initial-sentinel in internal/domain/asset/asset_state_values.go; rename both surfaces together"
 
 // migration157DefaultWarn is the centralized WARN-bucket
 // emitter for residue-accounting. Mirrors assetStateWarn.

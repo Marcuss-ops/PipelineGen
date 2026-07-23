@@ -128,6 +128,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -135,6 +136,22 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
+)
+
+// Package-level adapter vars originally lived in module_adapters.go;
+// consolidated here to keep the composition-root surface in one place.
+var (
+	// processRunnerAdapter is a package-level adapter for the infrastructure ProcessRunner port.
+	// Used by ScraperHandler and other handlers in registry.go that need subprocess execution.
+	processRunnerAdapter = infraassets.NewProcessRunnerAdapter()
+
+	// toolCheckerAdapter is a package-level adapter for the infrastructure ToolChecker port.
+	// Used by YouTubeClipHandler and system handler to check external tool availability.
+	toolCheckerAdapter = infraassets.NewToolCheckerAdapter()
+
+	// dbHealthCheckerAdapter is a package-level adapter for the infrastructure DBHealthChecker port.
+	// Used by system handler to check database health.
+	dbHealthCheckerAdapter = infraassets.NewDBHealthCheckerAdapter(nil)
 )
 
 // RegistryWiring holds the registry and all wired modules.

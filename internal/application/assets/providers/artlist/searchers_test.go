@@ -86,12 +86,10 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 	pixabaySearcher := &mockSearcher{name: "pixabay"}
 	pexelsSearcher := &mockSearcher{name: "pexels"}
 
-	svc, err := NewService(ServiceDeps{
+	svc, err := NewService(baseServiceDeps(t, ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore: artlistRepo,
-			Publisher:  &stubPublisherForArtlist{},
 
-			RunRepository:   &stubRunRepoForArtlist{},
 			ScraperSearcher: scraperSearcher,
 			PixabaySearcher: pixabaySearcher,
 			PexelsSearcher:  pexelsSearcher,
@@ -109,7 +107,7 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
 			},
 		},
-	})
+	}))
 	require.NoError(t, err)
 	defer svc.Close()
 

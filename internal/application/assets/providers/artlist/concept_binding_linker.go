@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"go.uber.org/zap"
 )
 
 // mediaMemoryLinker creates media_concepts and media_bindings rows for a

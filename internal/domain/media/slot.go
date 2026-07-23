@@ -108,4 +108,3 @@ func IsMediaTypeAllowed(k SlotKind, mediaType string) bool {
 	}
 	return false
 }
-

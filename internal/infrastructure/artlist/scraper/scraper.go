@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -27,15 +28,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// Response mirrors the JSON shape written by artlist_search.js /
-// artlist_server.js. The application never sees this raw shape; the
+// Response mirrors the stable JSON shape written by the Artlist
+// browser gateway. The application never sees this raw shape; the
 // port adapter translates it into Candidate.
 type Response struct {
 	OK        bool   `json:"ok"`
 	Term      string `json:"term"`
 	Clips     []Clip `json:"clips"`
+	Results   []Clip `json:"results"`
 	SearchURL string `json:"search_url"`
 	Saved     int    `json:"saved"`
+	Provider  string `json:"provider"`
+	Query     string `json:"query"`
+	CacheHit  bool   `json:"cache_hit"`
+	Source    string `json:"source"`
 }
 
 // Clip is the JSON shape returned by the Node scraper. The detail endpoint
@@ -149,14 +155,25 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 
 func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) (*Response, error) {
 	type searchReq struct {
-		Term  string `json:"term"`
-		Limit int    `json:"limit"`
+		Query        string         `json:"query"`
+		Term         string         `json:"term"`
+		Page         int            `json:"page"`
+		Limit        int            `json:"limit"`
+		Filters      map[string]any `json:"filters"`
+		ForceRefresh bool           `json:"force_refresh"`
 	}
-	body, err := json.Marshal(searchReq{Term: term, Limit: limit})
+	body, err := json.Marshal(searchReq{
+		Query:        term,
+		Term:         term,
+		Page:         1,
+		Limit:        limit,
+		Filters:      map[string]any{},
+		ForceRefresh: false,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("artlist server: marshal request: %w", err)
 	}
-	reqURL := strings.TrimRight(p.cfg.ServerURL, "/") + "/search"
+	reqURL := strings.TrimRight(p.cfg.ServerURL, "/") + "/v1/clips/search"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("artlist server: build request: %w", err)
@@ -185,6 +202,9 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 	var response Response
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("%w: %v", artapp.ErrInvalidResponse, err)
+	}
+	if err := normalizeGatewayResponse(&response, term); err != nil {
+		return nil, err
 	}
 	if !response.OK {
 		// The server reports ok=false with no error string → empty result.
@@ -287,6 +307,35 @@ func clipToCandidate(c Clip) artapp.Candidate {
 	}
 	candidate.LicenseClass = c.LicenseClass
 	return candidate
+}
+
+func normalizeGatewayResponse(response *Response, fallbackTerm string) error {
+	if response == nil {
+		return nil
+	}
+	if response.Provider != "" && response.Provider != "artlist" {
+		return fmt.Errorf("%w: unexpected provider %q", artapp.ErrInvalidResponse, response.Provider)
+	}
+	if response.Query == "" {
+		response.Query = fallbackTerm
+	}
+	if response.Term == "" {
+		response.Term = response.Query
+	}
+	if response.SearchURL == "" && response.Query != "" {
+		response.SearchURL = "https://artlist.io/stock-footage/search?terms=" + url.QueryEscape(response.Query)
+	}
+	if len(response.Clips) == 0 && len(response.Results) > 0 {
+		response.Clips = response.Results
+	}
+	if response.Source == "" {
+		if response.CacheHit {
+			response.Source = "sqlite"
+		} else if len(response.Clips) > 0 {
+			response.Source = "browser_api"
+		}
+	}
+	return nil
 }
 
 // DetailResponse mirrors the Node scraper POST /detail JSON envelope.

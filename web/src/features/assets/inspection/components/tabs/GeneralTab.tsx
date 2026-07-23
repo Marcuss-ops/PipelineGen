@@ -1,52 +1,47 @@
-import { FormState, REVIEW_STATUS_OPTIONS } from '../../types'
+import { AssetDetails } from '../../../../../api/assetTypes'
 import styles from '../../AssetInspector.module.css'
-import { FormField } from '../FormField'
+import { InfoCard } from '../InfoCard'
 
-interface GeneralTabProps {
-  form: FormState
-  updateForm: (patch: Partial<FormState>) => void
+interface OverviewTabProps {
+  asset: AssetDetails
 }
 
-export function GeneralTab({ form, updateForm }: GeneralTabProps) {
+export function GeneralTab({ asset }: OverviewTabProps) {
+  const storageParts: string[] = []
+  if (asset.has_local_file) storageParts.push('Locale')
+  if (asset.has_drive_file) storageParts.push('Drive')
+  const storageLabel = storageParts.length > 0 ? storageParts.join(' + ') : 'mancante'
+
   return (
-    <div className={styles.formGrid}>
-      <div className={styles.formRow}>
-        <FormField label="Nome" value={form.name} onChange={(v) => updateForm({ name: v })} />
-        <FormField label="Categoria" value={form.category} onChange={(v) => updateForm({ category: v })} />
-      </div>
-      <div className={styles.formRow}>
-        <FormField label="Gruppo" value={form.group} onChange={(v) => updateForm({ group: v })} />
-        <div className={styles.formField}>
-          <label className={styles.formLabel}>Review status</label>
-          <select
-            value={form.review_status}
-            onChange={(e) => updateForm({ review_status: e.target.value })}
-            className={styles.formInput}
-          >
-            {REVIEW_STATUS_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt || '(nessuno)'}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <FormField label="Lingua" value={form.language} onChange={(v) => updateForm({ language: v })} />
-      <FormField label="Tags (separati da virgola)" value={form.tags} onChange={(v) => updateForm({ tags: v })} />
-      <FormField
-        label="Search terms (separati da virgola)"
-        value={form.search_terms}
-        onChange={(v) => updateForm({ search_terms: v })}
-      />
-      <div className={styles.formField}>
-        <label className={styles.formLabel}>Search text</label>
-        <textarea
-          value={form.search_text}
-          onChange={(e) => updateForm({ search_text: e.target.value })}
-          className={styles.formTextarea}
+    <div>
+      <h3 className={styles.sectionTitle}>Panoramica</h3>
+      <div className={styles.infoGrid}>
+        <InfoCard label="Nome" value={asset.name || asset.filename} />
+        <InfoCard label="ID" value={asset.id} />
+        <InfoCard label="Media type" value={asset.media_type} />
+        <InfoCard label="Source" value={asset.source} />
+        <InfoCard label="Provider" value={asset.provider} />
+        <InfoCard label="Categoria" value={asset.category || '-'} />
+        <InfoCard label="Gruppo" value={asset.group || '-'} />
+        <InfoCard label="Lifecycle" value={asset.lifecycle_state} />
+        <InfoCard label="Journey (asset_state)" value={asset.asset_state} />
+        <InfoCard label="Index state" value={asset.index_state} />
+        <InfoCard
+          label="Index health"
+          value={asset.index_health?.label ?? asset.index_state}
+        />
+        <InfoCard label="Storage" value={storageLabel} />
+        <InfoCard label="Outbox pending" value={String(asset.pending_outbox_events ?? 0)} />
+        <InfoCard label="Ultimo errore" value={asset.last_error || 'nessuno'} />
+        <InfoCard
+          label="Creato"
+          value={asset.created_at ? new Date(asset.created_at).toLocaleString('it-IT') : '-'}
+        />
+        <InfoCard
+          label="Aggiornato"
+          value={asset.updated_at ? new Date(asset.updated_at).toLocaleString('it-IT') : '-'}
         />
       </div>
-      <FormField label="Descrizione" value={form.description} onChange={(v) => updateForm({ description: v })} />
     </div>
   )
 }

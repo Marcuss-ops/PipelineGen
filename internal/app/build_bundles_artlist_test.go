@@ -35,6 +35,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -283,6 +284,33 @@ func TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil(t *testing.T) {
 
 // ---------- ART-002 P0 (July 2026): composition happy-path regression ----------
 //
+// stubTextTrackRepoForArtlistComposition is a minimal asset.TextTrackRepository
+// double that lets the Artlist wiring happy-path test pass the mandatory
+// TextTrackRepo gate without persisting real rows.
+type stubTextTrackRepoForArtlistComposition struct{}
+
+func (s *stubTextTrackRepoForArtlistComposition) UpsertBatch(_ context.Context, _ []asset.TextTrack) error {
+	return nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) Find(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, error) {
+	return nil, nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) ListByAsset(_ context.Context, _ string) ([]asset.TextTrack, error) {
+	return nil, nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) FindReady(_ context.Context, _ string, _ string, _ asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	return nil, nil, nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
+	return nil, nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _ string, _ string, _ string, _ string, _ string) (*asset.TextTrack, error) {
+	return nil, nil
+}
+func (s *stubTextTrackRepoForArtlistComposition) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+	return nil
+}
+
 // TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute: regression test for
 // the collapsed-comment bug PR-ARTLIST-PERSIST-FIX suffered before
 // (the comment swallowed `RunRepository: artlistRunsAdapter,` on the
@@ -375,6 +403,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
 		MediaProcessor:     nil,                                            // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
+		TextTrackRepo:      &stubTextTrackRepoForArtlistComposition{},
 	}
 
 	// WireArtlist mandatory call shape (8 args). The 3 ComposeRoot
