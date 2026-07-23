@@ -33,6 +33,10 @@ type ProviderDescriptor struct {
 	// is provided by the source (e.g. "unknown", "cc-by",
 	// "proprietary").
 	DefaultRightsStatus string
+	// DefaultAuthor is the canonical attribution to use when none is
+	// provided by the source. It centralises per-provider attribution
+	// (e.g. "Wikipedia Contributors") so callers do not hardcode it.
+	DefaultAuthor string
 	// LicenseResolver resolves a license string from raw metadata.
 	LicenseResolver func(ctx context.Context, rawMetadata Metadata) (string, error)
 	// Materializer materialises an asset into its canonical form.
@@ -211,31 +215,51 @@ func buildDefaultProviderRegistry() *ProviderRegistry {
 		ID:                  ProviderWikipedia,
 		Aliases:             []string{"wikipedia.org", "wikipedia"},
 		Origin:              ImageOriginRetrieved,
-		DefaultRightsStatus: "cc-by",
+		DefaultRightsStatus: "CC-BY-SA-4.0",
+		DefaultAuthor:       "Wikipedia Contributors",
+		LicenseResolver:     providerLicenseResolver("CC-BY-SA-4.0"),
+		Materializer:        providerMaterializer(ProviderWikipedia, ImageOriginRetrieved),
+		MetadataMapper:      canonicalMetadataMapper(ProviderWikipedia, ImageOriginRetrieved),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderDuckDuckGo,
 		Aliases:             []string{"duckduckgo"},
 		Origin:              ImageOriginRetrieved,
 		DefaultRightsStatus: "unknown",
+		DefaultAuthor:       "Unknown",
+		LicenseResolver:     providerLicenseResolver("unknown"),
+		Materializer:        providerMaterializer(ProviderDuckDuckGo, ImageOriginRetrieved),
+		MetadataMapper:      canonicalMetadataMapper(ProviderDuckDuckGo, ImageOriginRetrieved),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderSearXNG,
 		Aliases:             []string{"searxng"},
 		Origin:              ImageOriginRetrieved,
 		DefaultRightsStatus: "unknown",
+		DefaultAuthor:       "Unknown",
+		LicenseResolver:     providerLicenseResolver("unknown"),
+		Materializer:        providerMaterializer(ProviderSearXNG, ImageOriginRetrieved),
+		MetadataMapper:      canonicalMetadataMapper(ProviderSearXNG, ImageOriginRetrieved),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderDrive,
 		MatchSource:         exactOrAliasMatcher(string(ProviderDrive), []string{"drive", "drive.google.com"}),
 		Origin:              ImageOriginRetrieved,
 		DefaultRightsStatus: "unknown",
+		DefaultAuthor:       "Unknown",
+		LicenseResolver:     providerLicenseResolver("unknown"),
+		Materializer:        providerMaterializer(ProviderDrive, ImageOriginRetrieved),
+		MetadataMapper:      canonicalMetadataMapper(ProviderDrive, ImageOriginRetrieved),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderUpload,
 		MatchSource:         exactOrAliasMatcher(string(ProviderUpload), []string{"upload"}),
 		Origin:              ImageOriginUploaded,
 		DefaultRightsStatus: "unknown",
+		DefaultAuthor:       "Unknown",
+		LicenseResolver:     providerLicenseResolver("unknown"),
+		Materializer:        providerMaterializer(ProviderUpload, ImageOriginUploaded),
+		MetadataMapper:      canonicalMetadataMapper(ProviderUpload, ImageOriginUploaded),
 	})
 
 	// Generated providers.
@@ -244,22 +268,87 @@ func buildDefaultProviderRegistry() *ProviderRegistry {
 		Aliases:             []string{"google-slides", "google-flow", "google-vids", "google-vids-image", "google slides", "google vids"},
 		Origin:              ImageOriginGenerated,
 		DefaultRightsStatus: "proprietary",
+		DefaultAuthor:       "PipelineGen",
+		LicenseResolver:     providerLicenseResolver("proprietary"),
+		Materializer:        providerMaterializer(ProviderGoogleSlides, ImageOriginGenerated),
+		MetadataMapper:      canonicalMetadataMapper(ProviderGoogleSlides, ImageOriginGenerated),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderNVIDIA,
 		Aliases:             []string{"nvidia", "nvidia-local", "local-nim"},
 		Origin:              ImageOriginGenerated,
 		DefaultRightsStatus: "proprietary",
+		DefaultAuthor:       "PipelineGen",
+		LicenseResolver:     providerLicenseResolver("proprietary"),
+		Materializer:        providerMaterializer(ProviderNVIDIA, ImageOriginGenerated),
+		MetadataMapper:      canonicalMetadataMapper(ProviderNVIDIA, ImageOriginGenerated),
 	})
 	mustRegister(ProviderDescriptor{
 		ID:                  ProviderFlux,
 		Aliases:             []string{"flux-1-dev", "flux-1-schnell", "flux.1-schnell", "flux1-schnell", "flux-2-klein", "flux.2-klein-4b", "flux-2-klein-4b"},
 		Origin:              ImageOriginGenerated,
 		DefaultRightsStatus: "proprietary",
+		DefaultAuthor:       "PipelineGen",
+		LicenseResolver:     providerLicenseResolver("proprietary"),
+		Materializer:        providerMaterializer(ProviderFlux, ImageOriginGenerated),
+		MetadataMapper:      canonicalMetadataMapper(ProviderFlux, ImageOriginGenerated),
 	})
 
 	reg.Seal()
 	return reg
+}
+
+// providerLicenseResolver returns a LicenseResolver that honours an
+// explicit license key in the raw metadata when present and falls back
+// to the provider's canonical default license otherwise.
+func providerLicenseResolver(defaultLicense string) func(context.Context, Metadata) (string, error) {
+	return func(_ context.Context, raw Metadata) (string, error) {
+		if raw != nil {
+			if v, ok := raw["license"].(string); ok && strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v), nil
+			}
+		}
+		return defaultLicense, nil
+	}
+}
+
+// providerMaterializer materialises an asset by keeping the original
+// source URL and stamping canonical provider/origin metadata.
+func providerMaterializer(id ImageProvider, origin ImageOrigin) func(context.Context, MaterializeRequest) (MaterializeResult, error) {
+	return func(_ context.Context, req MaterializeRequest) (MaterializeResult, error) {
+		meta := Metadata{
+			"provider": string(id),
+			"origin":   string(origin),
+		}
+		if req.Metadata != nil {
+			for k, v := range req.Metadata {
+				if k != "provider" && k != "origin" {
+					meta[k] = v
+				}
+			}
+		}
+		return MaterializeResult{
+			AssetID:      req.AssetID,
+			CanonicalURL: req.SourceURL,
+			Metadata:     meta,
+		}, nil
+	}
+}
+
+// canonicalMetadataMapper normalises a raw metadata map so that the
+// canonical provider and origin keys always reflect the registry entry.
+func canonicalMetadataMapper(id ImageProvider, origin ImageOrigin) func(raw Metadata) (Metadata, error) {
+	return func(raw Metadata) (Metadata, error) {
+		out := Metadata{}
+		if raw != nil {
+			for k, v := range raw {
+				out[k] = v
+			}
+		}
+		out["provider"] = string(id)
+		out["origin"] = string(origin)
+		return out, nil
+	}
 }
 
 // exactOrAliasMatcher returns a matcher that accepts a source only when it
