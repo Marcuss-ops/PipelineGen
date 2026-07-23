@@ -2,7 +2,40 @@ package artlist
 
 import (
 	"testing"
+
+	"go.uber.org/zap"
 )
+
+// baseServiceDeps fills in the artlist ServiceDeps defaults that are
+// required by NewService but that most tests do not care about.
+//
+// Tests can pass a partially populated ServiceDeps literal and then
+// override only the fields they care about. New mandatory ports are
+// added here, so future required dependencies only need to be updated
+// in one place.
+func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
+	t.Helper()
+
+	if deps.ServiceDependencies.Infra.Log == nil {
+		deps.ServiceDependencies.Infra.Log = zap.NewNop()
+	}
+
+	// Mandatory ports that must be non-nil for NewService.
+	if deps.Publisher == nil {
+		deps.Publisher = &stubPublisherForArtlist{}
+	}
+	if deps.RunRepository == nil {
+		deps.RunRepository = &stubRunRepoForArtlist{}
+	}
+	if deps.Transcriber == nil {
+		deps.Transcriber = &stubTranscriber{}
+	}
+	if deps.ServiceDependencies.Repos.TextTrackRepo == nil {
+		deps.ServiceDependencies.Repos.TextTrackRepo = &stubTextTrackRepo{}
+	}
+
+	return deps
+}
 
 func TestGetIntFromResult(t *testing.T) {
 	tests := []struct {
