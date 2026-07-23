@@ -82,8 +82,8 @@ const (
 	StateDELETED IndexState = "DELETED"
 
 	// StateIndexPending — retained for DB backward-compat only.
-	// No production code writes this state (last writer migrated
-	// to StateDiscovered on 2026-08-10). Valid() still accepts it.
+	// No production code should write this state. Use
+	// NewIndexableAssetState() instead. Valid() still accepts it.
 	StateIndexPending IndexState = "INDEX_PENDING"
 
 	// StateIndexFailed — retained for DB backward-compat only.
@@ -146,4 +146,18 @@ func (s IndexState) IsDeletedCanonical() bool {
 // mid-loop.
 func (s IndexState) IsRetryPending() bool {
 	return s == StateIndexingSkippedNoIndexer
+}
+
+// ── Asset-state factory ───────────────────────────────────────────────
+
+// NewIndexableAssetState returns the canonical initial LifecycleState
+// and IndexState for a newly created, indexable asset. This is the
+// single factory that every asset writer must call instead of
+// hardcoding LifecycleState/IndexState literals.
+//
+// LifecycleState = StateStaging (asset row created, not yet published).
+// IndexState     = StateDiscovered (initial sentinel, never touched by
+// a worker).
+func NewIndexableAssetState() (LifecycleState, IndexState) {
+	return StateStaging, StateDiscovered
 }
