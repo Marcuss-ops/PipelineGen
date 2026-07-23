@@ -191,14 +191,15 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// so the generated outbox event keeps its legacy aggregate_id ==
 	// hash wire identity (preserves the downstream job handler's
 	// dedup contract).
+	initLifecycle, initIndex := asset.NewIndexableAssetState()
 	commitReq := persistence.CommitRequest{
 		AssetID:        hash,
 		Source:         "image",
 		Filename:       filename,
 		MediaType:      string(asset.MediaTypeImage),
 		ContentHash:    hash,
-		LifecycleState: string(asset.StateStaging),
-		IndexState:     string(asset.StateIndexPending),
+		LifecycleState: string(initLifecycle),
+		IndexState:     string(initIndex),
 		LocalPath:      localPath,
 		FolderID:       s.driveFolderID,
 		Title:          textutil.Truncate(description, 500),
