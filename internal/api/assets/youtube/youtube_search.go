@@ -117,7 +117,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 			Source:    req.Source,
 			MediaType: req.Category,
 		},
-		Mode: search.SearchModeANN,
+		Mode: search.ParseMode(""),
 	}
 	if req.Source != "" && req.Source != "all" {
 		q.Sources = []string{req.Source}

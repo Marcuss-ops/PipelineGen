@@ -78,9 +78,9 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q mediamemory.SearchFa
 
 	policy := q.SearchPolicy
 	mode := search.SearchMode(media.SearchModeToSearch(policy.Mode))
-	if mode == "" {
-		mode = search.SearchModeANN
-	}
+	// The policy resolver already applies the canonical default; the
+	// adapter forwards the resolved mode verbatim and does not invent
+	// a local default.
 	if policy.Language == "" {
 		policy.Language = q.Language
 	}
