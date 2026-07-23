@@ -71,7 +71,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		voiceoverDestResolver = resolved
 	}
-	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor := buildVoiceoverService(params.ctx, params.cfg, params.dbs, params.log,
+	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverService(params.ctx, params.cfg, params.dbs, params.log,
 		params.drive.driveUploader,
 		params.drive.Publisher,
 		params.search.AssetIndexService, params.process.ClipIndexerService,
@@ -79,6 +79,9 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		params.voMetaWriter, params.ai.OllamaTranslator,
 		params.outbox.Dispatcher,
 	)
+	if err != nil {
+		return fmt.Errorf("compose domains: voiceover service: %w", err)
+	}
 
 	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, params.drive.Publisher, params.drive.driveUploader)
 	if err != nil {

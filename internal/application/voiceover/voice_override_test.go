@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,6 +53,55 @@ func TestVoiceOverrideFor_NilReq_ReturnsEmptyNoPanic(t *testing.T) {
 	got := voiceOverrideFor(nil, "en")
 	assert.Equal(t, "", got,
 		"P0.4: nil BatchRequest must not panic (nil-safety)")
+}
+
+// ── Unit-level: resolveVoiceForLanguage pin (registry SSOT) ──
+
+func TestResolveVoiceForLanguage_VoiceOverrideWins(t *testing.T) {
+	reg, err := asset.NewLanguageRegistry([]asset.LanguageSpec{
+		{Code: "it", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "it-IT-DiegoNeural"},
+	})
+	require.NoError(t, err)
+	req := &BatchRequest{VoiceOverrides: map[string]string{"it": "it-IT-ElsaNeural"}}
+	got := resolveVoiceForLanguage(req, "it", reg, nil)
+	assert.Equal(t, "it-IT-ElsaNeural", got,
+		"explicit per-request override must win over registry voice")
+}
+
+func TestResolveVoiceForLanguage_RegistryVoiceUsed(t *testing.T) {
+	reg, err := asset.NewLanguageRegistry([]asset.LanguageSpec{
+		{Code: "it", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "it-IT-DiegoNeural"},
+	})
+	require.NoError(t, err)
+	got := resolveVoiceForLanguage(nil, "it", reg, nil)
+	assert.Equal(t, "it-IT-DiegoNeural", got,
+		"registry EdgeTTSVoice must be returned when no override is set")
+}
+
+func TestResolveVoiceForLanguage_GenerateTTSFalse_FallsBack(t *testing.T) {
+	reg, err := asset.NewLanguageRegistry([]asset.LanguageSpec{
+		{Code: "it", Enabled: true, GenerateTTS: false, EdgeTTSVoice: "it-IT-DiegoNeural"},
+	})
+	require.NoError(t, err)
+	got := resolveVoiceForLanguage(nil, "it", reg, nil)
+	assert.Equal(t, "", got,
+		"language with generate_tts=false must not use EdgeTTSVoice")
+}
+
+func TestResolveVoiceForLanguage_MissingRegistryEntry_FallsBack(t *testing.T) {
+	reg, err := asset.NewLanguageRegistry([]asset.LanguageSpec{
+		{Code: "it", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "it-IT-DiegoNeural"},
+	})
+	require.NoError(t, err)
+	got := resolveVoiceForLanguage(nil, "fr", reg, nil)
+	assert.Equal(t, "", got,
+		"missing registry entry must fall back to empty string")
+}
+
+func TestResolveVoiceForLanguage_NilRegistry_FallsBack(t *testing.T) {
+	got := resolveVoiceForLanguage(nil, "it", nil, nil)
+	assert.Equal(t, "", got,
+		"nil registry must fall back to empty string")
 }
 
 // TestTTSBridge_UsesPerLanguageVoice — SKIPPED (Azione #1, July 2026).

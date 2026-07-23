@@ -19,15 +19,19 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// defaultLexicon is the package-level reference to the global lexicon
-// registry. It is lazily initialised via linguistics.DefaultLexicon().
-func qualityGateLexicon() *linguistics.LexiconRegistry {
-	return linguistics.DefaultLexicon()
+var qualityGateEnglishSignals = map[string]struct{}{
+	"the": {}, "and": {}, "of": {}, "to": {}, "in": {}, "is": {}, "are": {}, "that": {}, "with": {}, "for": {},
 }
+
+var qualityGateItalianSignals = map[string]struct{}{
+	"il": {}, "la": {}, "di": {}, "e": {}, "che": {}, "non": {}, "per": {}, "con": {}, "su": {}, "una": {},
+}
+
+var qualityGateVerbSuffixes = []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
 
 // Quality thresholds.
 const (
@@ -359,34 +363,23 @@ func countUnsupportedClaims(result *scriptpkg.GenerationResult, sourceText strin
 }
 
 // detectLanguage returns the ISO-639-1 language code with the highest
-// stop-word overlap. It uses the LexiconRegistry to load per-language
-// stop-word sets from config/lexicons/. When no stop words match at
-// all, it returns an empty string.
+// overlap against a small built-in signal set. When no signals match,
+// it returns an empty string.
 func detectLanguage(text string) string {
 	tokens := tokenize(text)
 	if len(tokens) == 0 {
 		return ""
 	}
-	lex := qualityGateLexicon()
-	// Known language codes to probe. The registry may have more or fewer.
-	langs := []string{"it", "en", "es", "fr", "de"}
-	best := ""
-	bestScore := 0.0
-	for _, lang := range langs {
-		words := lex.StopWords(lang)
-		if len(words) == 0 {
-			continue
-		}
-		score := languageMatchScore(tokens, words)
-		if score > bestScore {
-			bestScore = score
-			best = lang
-		}
-	}
-	if bestScore == 0.0 {
+	enScore := languageMatchScore(tokens, qualityGateEnglishSignals)
+	itScore := languageMatchScore(tokens, qualityGateItalianSignals)
+	switch {
+	case enScore == 0 && itScore == 0:
 		return ""
+	case itScore > enScore:
+		return "it"
+	default:
+		return "en"
 	}
-	return best
 }
 
 // languageMatchScore returns the ratio of stop words from a language
@@ -404,17 +397,34 @@ func languageMatchScore(tokens []string, stopWords map[string]struct{}) float64 
 	return float64(seen) / float64(len(tokens))
 }
 
-// filterStopWords removes common stop words from a token list. It uses
-// the LexiconRegistry's fallback stop-word set (loaded from
-// config/lexicons/) so it works for any language.
+// filterStopWords removes common stop words from a token list.
 func filterStopWords(tokens []string) []string {
-	lex := qualityGateLexicon()
-	fallback := lex.StopWords("fallback")
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
-		if _, ok := fallback[t]; !ok {
+		if !textutil.IsStopWord(t) {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+func isFunctionWord(word string) bool {
+	return textutil.IsStopWord(word)
+}
+
+func looksLikeVerbBigram(words []string) bool {
+	if len(words) < 2 {
+		return false
+	}
+	verbCount := 0
+	for _, w := range words {
+		lower := strings.ToLower(w)
+		for _, suffix := range qualityGateVerbSuffixes {
+			if strings.HasSuffix(lower, suffix) {
+				verbCount++
+				break
+			}
+		}
+	}
+	return verbCount == len(words)
 }

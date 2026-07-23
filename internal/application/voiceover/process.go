@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
@@ -89,6 +90,46 @@ func voiceOverrideFor(req *BatchRequest, language Language) string {
 		return ""
 	}
 	return req.VoiceOverrides[string(language)]
+}
+
+// resolveVoiceForLanguage returns the canonical voice for a language.
+// Resolution order:
+//  1. Explicit per-request voice override (VoiceOverrides).
+//  2. EdgeTTSVoice from the language registry when GenerateTTS is true.
+//  3. Empty string (the bridge will use its emergency fallback map).
+//
+// nil-safe: a nil registry or a missing language entry falls through
+// to the empty-string default.
+func resolveVoiceForLanguage(req *BatchRequest, language Language, registry asset.LanguageRegistry, log *zap.Logger) string {
+	if voice := voiceOverrideFor(req, language); voice != "" {
+		return voice
+	}
+	if registry == nil {
+		return ""
+	}
+	spec, ok := registry.Resolve(string(language))
+	if !ok {
+		if log != nil {
+			log.Warn("voiceover: no language registry entry; using bridge fallback",
+				zap.String("language", string(language)))
+		}
+		return ""
+	}
+	if !spec.GenerateTTS {
+		if log != nil {
+			log.Warn("voiceover: language has generate_tts=false; using bridge fallback",
+				zap.String("language", string(language)))
+		}
+		return ""
+	}
+	if spec.EdgeTTSVoice == "" {
+		if log != nil {
+			log.Warn("voiceover: language registry has no EdgeTTSVoice; using bridge fallback",
+				zap.String("language", string(language)))
+		}
+		return ""
+	}
+	return spec.EdgeTTSVoice
 }
 
 // PR-VO-AUDIT-P02 (June 2026): the inline cfg.Drive.VoiceoverFolder()
@@ -232,8 +273,10 @@ func (s *Service) processLanguage(
 		removeSilence = *req.RemoveSilence
 	}
 
-	// Per-language voice override (moved from synthesizeStage).
-	voice := voiceOverrideFor(req, language)
+	// Resolve the canonical Edge TTS voice for this language.
+	// Per-request VoiceOverrides win, then the language registry,
+	// then the Python bridge's emergency fallback map.
+	voice := resolveVoiceForLanguage(req, language, s.languageRegistry, s.log)
 
 	jobID := ""
 	if val, ok := ctx.Value("script_job_id").(string); ok {

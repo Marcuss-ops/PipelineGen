@@ -50,6 +50,11 @@ type LanguageSpec struct {
 	// TTS-priced workloads even if other capabilities are
 	// enabled (TTS is resource-heavy).
 	GenerateTTS bool `yaml:"generate_tts" json:"generate_tts"`
+
+	// EdgeTTSVoice is the canonical Microsoft Edge TTS voice
+	// identifier for this language (e.g. "it-IT-DiegoNeural").
+	// Used by the voiceover pipeline when GenerateTTS is true.
+	EdgeTTSVoice string `yaml:"edge_tts_voice" json:"edge_tts_voice"`
 }
 
 // Validate enforces the minimal format invariants on the spec.
