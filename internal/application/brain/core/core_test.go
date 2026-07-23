@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/normalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/brain/ranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 type fakeSearcher struct {
@@ -45,7 +46,7 @@ func TestCanonicalBrain_ResolvesScene(t *testing.T) {
 				ID:         "s1",
 				Text:       "I Maya costruirono città",
 				DurationMS: 5000,
-				Slots:      []brain.SlotKind{brain.SlotPrimaryVideo},
+				Slots:      []media.SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		Policy: brain.ResolutionPolicy{MaxCandidatesPerSlot: 10},
@@ -120,7 +121,7 @@ func TestCanonicalBrain_MayaVenusSceneIntent(t *testing.T) {
 				ID:         "maya-1",
 				Text:       "I Maya osservavano Venere dai loro templi",
 				DurationMS: 5000,
-				Slots:      []brain.SlotKind{brain.SlotSecondaryImage},
+				Slots:      []media.SlotKind{media.SlotSecondaryImage},
 			},
 		},
 		Policy: brain.ResolutionPolicy{MaxCandidatesPerSlot: 10},
@@ -243,7 +244,7 @@ func TestCanonicalBrain_EmptySearchResult(t *testing.T) {
 				ID:         "s1",
 				Text:       "I Maya guardavano le stelle",
 				DurationMS: 3000,
-				Slots:      []brain.SlotKind{brain.SlotPrimaryVideo},
+				Slots:      []media.SlotKind{media.SlotPrimaryVideo},
 			},
 		},
 		Policy: brain.ResolutionPolicy{MaxCandidatesPerSlot: 10},

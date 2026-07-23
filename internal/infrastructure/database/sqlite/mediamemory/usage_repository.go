@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // usageRepository is the canonical concrete
@@ -61,7 +62,7 @@ const usageInsertColumnCount = 14
 // callers that need to read them back call ListByAsset or
 // ListByConcept (no silent side-channel return path).
 func (r *usageRepository) Append(ctx context.Context, ev mediamemory.UsageEvent) error {
-	if !mediamemory.IsKnownSlotKind(ev.SlotKind) {
+	if !media.IsKnownSlotKind(ev.SlotKind) {
 		return fmt.Errorf(
 			"mediamemory: usage event slot_kind=%q: %w",
 			string(ev.SlotKind), mediamemory.ErrInvalidSlotKind,
@@ -231,8 +232,8 @@ func scanUsageEventRow(s rowScanner) (mediamemory.UsageEvent, error) {
 	if videoID.Valid {
 		ev.VideoID = videoID.String
 	}
-	ev.SlotKind = mediamemory.SlotKind(slotKind)
-	if !mediamemory.IsKnownSlotKind(ev.SlotKind) {
+	ev.SlotKind = media.SlotKind(slotKind)
+	if !media.IsKnownSlotKind(ev.SlotKind) {
 		return mediamemory.UsageEvent{}, fmt.Errorf(
 			"mediamemory: usage event %q has unknown slot_kind %q",
 			ev.ID, slotKind,

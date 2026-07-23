@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // mediaMemoryLinker creates media_concepts and media_bindings rows for a
@@ -46,7 +47,7 @@ type conceptSpec struct {
 // provided asset. It is idempotent at the repository level: concepts are
 // upserted by (language, phrase_fingerprint) and bindings are upserted
 // by (concept_id, asset_id, slot_kind).
-func (l *mediaMemoryLinker) linkConcepts(ctx context.Context, assetID, language string, slot mediamemory.SlotKind, specs []conceptSpec) error {
+func (l *mediaMemoryLinker) linkConcepts(ctx context.Context, assetID, language string, slot media.SlotKind, specs []conceptSpec) error {
 	if l.disabled() {
 		return nil
 	}
@@ -90,7 +91,7 @@ var mayaConceptSpecs = []conceptSpec{
 // linkMayaConcepts is the legacy entry point for Maya topic runs.
 // It is a thin wrapper around the generic linkConcepts helper so the
 // topic-specific concept list can be moved to configuration later.
-func (l *mediaMemoryLinker) linkMayaConcepts(ctx context.Context, assetID, language string, slot mediamemory.SlotKind) error {
+func (l *mediaMemoryLinker) linkMayaConcepts(ctx context.Context, assetID, language string, slot media.SlotKind) error {
 	return l.linkConcepts(ctx, assetID, language, slot, mayaConceptSpecs)
 }
 
@@ -106,7 +107,7 @@ func (l *mediaMemoryLinker) ensureConcept(ctx context.Context, text, language st
 }
 
 // ensureBinding upserts a media_bindings row.
-func (l *mediaMemoryLinker) ensureBinding(ctx context.Context, conceptID, assetID string, slot mediamemory.SlotKind) error {
+func (l *mediaMemoryLinker) ensureBinding(ctx context.Context, conceptID, assetID string, slot media.SlotKind) error {
 	binding := mediamemory.MediaBinding{
 		ConceptID:      conceptID,
 		AssetID:        assetID,

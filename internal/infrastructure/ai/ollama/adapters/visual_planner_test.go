@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 type fakeVisualPlannerClient struct {
@@ -35,7 +36,7 @@ func TestOllamaVisualPlannerAdapter_Select_Valid(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.7},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.85},
@@ -64,7 +65,7 @@ func TestOllamaVisualPlannerAdapter_Select_FallbackOnUnknownID(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.7},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.9},
@@ -90,7 +91,7 @@ func TestOllamaVisualPlannerAdapter_Select_FallbackOnInvalidJSON(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.95},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.6},
@@ -115,7 +116,7 @@ func TestOllamaVisualPlannerAdapter_Select_FallbackOnLLMError(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.5},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.8},
@@ -140,7 +141,7 @@ func TestOllamaVisualPlannerAdapter_Select_FallbackOnTimeout(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.4},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.9},
@@ -164,7 +165,7 @@ func TestOllamaVisualPlannerAdapter_Select_FallbackWhenNoClient(t *testing.T) {
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.4},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.9},
@@ -191,7 +192,7 @@ func TestOllamaVisualPlannerAdapter_Select_EmptyCandidates(t *testing.T) {
 	req := scriptadapters.VisualSelectionRequest{
 		SceneID:    "scene-1",
 		Text:       "A robot arm assembling a car",
-		Slot:       mediamemory.SlotPrimaryVideo,
+		Slot:       media.SlotPrimaryVideo,
 		Candidates: nil,
 	}
 
@@ -210,7 +211,7 @@ func TestOllamaVisualPlannerAdapter_Select_StripsMarkdownCodeBlock(t *testing.T)
 		SegmentID:    "seg-1",
 		Text:         "A robot arm assembling a car",
 		VisualIntent: "Industrial robot arm working on an automotive assembly line",
-		Slot:         mediamemory.SlotPrimaryVideo,
+		Slot:         media.SlotPrimaryVideo,
 		Candidates: []mediamemory.CandidateOption{
 			{AssetID: "asset-1", Provider: "drive", Score: 0.4},
 			{AssetID: "asset-2", Provider: "artlist", Score: 0.6},

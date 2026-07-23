@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // bindingCreateRequest is the POST /api/media-memory/bindings body.
@@ -49,7 +50,7 @@ func (r bindingCreateRequest) toMediaBinding() mediamemory.MediaBinding {
 	out := mediamemory.MediaBinding{
 		ConceptID:      r.ConceptID,
 		AssetID:        r.AssetID,
-		SlotKind:       mediamemory.SlotKind(r.SlotKind),
+		SlotKind:       media.SlotKind(r.SlotKind),
 		StartMs:        r.StartMs,
 		EndMs:          r.EndMs,
 		Origin:         mediamemory.Origin(r.Origin),
@@ -264,12 +265,12 @@ func (r resolveCreateRequest) toResolveRequest(policy mediamemory.ResolvePolicy)
 		if lang == "" {
 			lang = r.Language
 		}
-		slotKinds := make([]mediamemory.SlotKind, 0, len(s.Slots))
+		slotKinds := make([]media.SlotKind, 0, len(s.Slots))
 		for _, slotStr := range s.Slots {
 			if slotStr == "" {
 				continue
 			}
-			slotKinds = append(slotKinds, mediamemory.SlotKind(slotStr))
+			slotKinds = append(slotKinds, media.SlotKind(slotStr))
 		}
 		scenes = append(scenes, mediamemory.SceneSpec{
 			ID:         s.ID,

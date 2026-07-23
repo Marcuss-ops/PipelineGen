@@ -161,7 +161,7 @@ func toFilteredCandidate(c brain.Candidate) mediamemory.FilteredCandidate {
 // media type matches one of the requested slots. This preserves the
 // slot-fitness behaviour tested by the brain/ranker tests while
 // keeping the MediaMemory ranker as the authoritative scorer.
-func slotFitnessBonus(c mediamemory.MediaCandidate, slots []brain.SlotKind) float64 {
+func slotFitnessBonus(c mediamemory.MediaCandidate, slots []media.SlotKind) float64 {
 	for _, slot := range slots {
 		if media.IsMediaTypeAllowed(slot, c.MediaType) {
 			return 0.10
