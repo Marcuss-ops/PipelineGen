@@ -2,14 +2,12 @@
 package textutil
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 )
 
 // Slugify converts a string to a lowercase slug with hyphens.
@@ -320,51 +318,27 @@ func Float64To32(in []float64) []float32 {
 	return out
 }
 
-var (
-	stopwordsMap  map[string]bool
-	stopwordsOnce sync.Once
-)
-
-func ensureStopwords() {
-	stopwordsOnce.Do(func() {
-		stopwordsMap = make(map[string]bool)
-		loadStopwordsFromDir("config/stopwords")
-	})
-}
-
-func loadStopwordsFromDir(dir string) {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, file := range files {
-		if file.IsDir() || filepath.Ext(file.Name()) != ".txt" {
-			continue
-		}
-		path := filepath.Join(dir, file.Name())
-		loadStopwordsFile(path)
-	}
-}
-
-func loadStopwordsFile(path string) {
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		word := strings.TrimSpace(scanner.Text())
-		if word != "" && !strings.HasPrefix(word, "#") {
-			stopwordsMap[strings.ToLower(word)] = true
-		}
-	}
-}
-
-// IsStopWord checks if a term is a common stop word loaded from config files.
+// IsStopWord checks if a term is a common stop word across all
+// supported languages. It delegates to the global LexiconRegistry's
+// fallback stop-word set (loaded from config/lexicons/fallback/), which
+// is a union of common stop words across English, Italian, Spanish,
+// French, German and Portuguese.
+//
+// This preserves the original cross-linguistic behavior of the old
+// IsStopWord (which loaded all files from config/stopwords/ into a
+// single union set). For language-specific checks use
+// IsStopWordForLanguage.
 func IsStopWord(term string) bool {
-	ensureStopwords()
-	return stopwordsMap[strings.ToLower(term)]
+	lex := linguistics.DefaultLexicon()
+	_, ok := lex.StopWords("fallback")[strings.ToLower(term)]
+	return ok
+}
+
+// IsStopWordForLanguage checks if a term is a stop word for a specific language.
+func IsStopWordForLanguage(term string, language string) bool {
+	lex := linguistics.DefaultLexicon()
+	_, ok := lex.StopWords(language)[strings.ToLower(term)]
+	return ok
 }
 
 // ── Script text stripping ───────────────────────────────────────────────
