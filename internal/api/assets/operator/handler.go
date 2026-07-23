@@ -68,15 +68,15 @@ import (
 // All HTTP methods hang off this struct; sub-router entry points are
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
-	assetService *asset.Service
-	readModel    operator.AssetInventoryReader
+	assetService  *asset.Service
+	readModel     operator.AssetInventoryReader
 	indexVerifier operator.IndexVerifier
-	jobService   job.Service
-	jobStats     JobStatsReader
-	outboxPort   outbox.MonitorPort
-	mutator      mutations.AssetMutationDispatcher
-	allowedRoots []string
-	log          *zap.Logger
+	jobService    job.Service
+	jobStats      JobStatsReader
+	outboxPort    outbox.MonitorPort
+	mutator       mutations.AssetMutationDispatcher
+	allowedRoots  []string
+	log           *zap.Logger
 }
 
 // JobStatsReader is the narrow port for job statistics.
@@ -105,7 +105,7 @@ func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 		outboxPort:    deps.OutboxPort,
 		mutator:       deps.Mutator,
 		allowedRoots:  deps.AllowedRoots,
-		log:          log,
+		log:           log,
 	}
 }
 
