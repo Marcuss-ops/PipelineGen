@@ -19,6 +19,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
+// orchestratorVersion is the canonical version stamp of the Brain
+// orchestrator. It is the only version constant owned by core.go
+// because the orchestrator itself is the canonical source of truth
+// for its behaviour.
+const orchestratorVersion = "brain-v1"
+
 // CanonicalBrain is the canonical implementation of the Brain port.
 // It composes the four pure brain services and delegates candidate
 // search to the MediaMemoryResolutionPort, which is the only place
@@ -91,12 +97,12 @@ func (b *CanonicalBrain) Resolve(ctx context.Context, req brain.BrainRequest) (b
 
 func (b *CanonicalBrain) resolveScene(ctx context.Context, language string, scene brain.SceneRequest, policy brain.ResolutionPolicy) brain.SceneVisualPlan {
 	versions := brain.ResolutionVersionSet{
-		BrainVersion:            brain.BrainVersion,
+		BrainVersion:            orchestratorVersion,
 		NormalizerVersion:       b.normalizer.Version(),
 		IntentResolverVersion:   b.resolver.Version(),
-		EmbeddingVersion:        brain.EmbeddingVersion,
+		EmbeddingVersion:        b.searcher.EmbeddingVersion(),
 		RankingPolicyVersion:    b.ranker.Version(),
-		DiversityPolicyVersion:  brain.DiversityPolicyVersion,
+		DiversityPolicyVersion:  b.ranker.DiversityPolicyVersion(),
 		SlotPolicyVersion:       b.planner.Version(),
 		ProviderRegistryVersion: asset.ProviderRegistryVersion,
 	}

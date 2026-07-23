@@ -41,6 +41,13 @@ func (r *mediaMemoryRankerAdapter) Version() string {
 	return "media-ranker-v2"
 }
 
+// DiversityPolicyVersion returns the canonical diversity / anti-
+// repetition policy version applied by the underlying MediaMemory
+// ranker.
+func (r *mediaMemoryRankerAdapter) DiversityPolicyVersion() string {
+	return "diversity-policy-v1"
+}
+
 // Rank orders candidates by delegating to the MediaMemory ranker.
 // The adapter converts brain.Candidate into MediaCandidate, runs the
 // mandatory Filter gates, computes the canonical score, and returns
