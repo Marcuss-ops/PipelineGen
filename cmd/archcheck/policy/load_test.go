@@ -35,6 +35,28 @@ func TestLoadRejectsUnknownTopLevelKey(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsDuplicateTopLevelKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	content := "max_files_per_package: 40\nmax_files_per_package: 50\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "duplicate architecture policy key") {
+		t.Fatalf("expected duplicate-key error, got %v", err)
+	}
+}
+
+func TestLoadRejectsDuplicateDocumentSection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policy.yaml")
+	content := "max_files_per_package: 40\nlint_gates:\nlint_gates:\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "duplicate architecture policy key") {
+		t.Fatalf("expected duplicate-key error, got %v", err)
+	}
+}
+
 func TestPolicyBindingsCoverEveryModelFieldAndConsumer(t *testing.T) {
 	covered := map[string]bool{}
 	for key, binding := range policyBindings {

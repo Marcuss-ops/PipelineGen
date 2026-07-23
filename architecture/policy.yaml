@@ -8,45 +8,11 @@
 # Phase 0 report-only (exits 0 even when violations exist). Phase N will
 # promote specific rules to hard gates via the `--strict` flag.
 
-# File size and population caps (per the proposal §"Package size limits").
-# Raised 40 → 65 on 2026-07-15, then 65 → 70 on 2026-07-22. Justification:
-# internal/infrastructure/database/sqlite/assets reached 69 files while
-# absorbing the canonical asset committer / outbox / clips / catalog /
-# artifacts / delivery / maintenance / voiceover / visual-summary surfaces.
-# The package is the SQLite persistence consolidation point; splitting it
-# now would fracture transactional cohesion. The cap will be revisited once
-# the QDRANT-002 / asset-committer consolidation wave settles.
+# File size and population caps. History and rationale live in
+# architecture/policy.history.yaml; this file keeps only executable values.
 max_files_per_package: 65
-# Raised 500 → 1000 on 2026-07-11 (script.generate wave). Justification:
-# the script.generate pipeline introduced 6 cohesive feature files that
-# manage hard transactional/cue boundaries which cannot be safely split:
-#   - internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go
-#     (922 lines; SQL super-transaction: clips + tracks + cues + outbox in
-#     one atomic unit; splitting would break the all-or-nothing invariant)
-#   - internal/application/youtube/usecase/text_track_resolver.go
-#     (750 lines; multi-language cue resolution across payload-text /
-#     DB-stored / Whisper sources; resolution graph is inherently cross-cue)
-#   - internal/infrastructure/youtube/subtitles.go (609 lines; provider
-#     dispatch + Whisper fallback + format normalization)
-#   - internal/application/assets/finalizer/asset_finalizer_tx.go
-#     (534 lines; finalizer transaction: media asset + renditions +
-#     outbox events + index_state preservation)
-#   - internal/application/jobs/worker_execution.go (540 lines)
-#   - internal/application/operations/generation_submission_service.go
-#     (501 lines; borderline)
-# These are domain/transactional adapters, not bundle wiring
-# (build_bundles_*.go carry struct_deps violations, separately tracked).
-# 1000 is the minimal headroom that absorbs all 16 file_size violations
-# (12 pre-existing + 4 new from script.generate; the remaining 2 new
-# violations are 1 struct_deps + 1 constructor_deps, separately tracked)
-# without masking future bloat: any file exceeding 1000 lines remains
-# a violation and is a strong signal for a real split. Per AGENTS.md,
-# splitting remains preferred for any new file that approaches 1000 lines.
-#
-# Cross-ref: docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md
-# §"Complexity budgets" — this is the file-size budget raise.
-# Cross-ref: architecture/current.yaml — promote to a hard gate (--strict)
-# once the script.generate wave settles (target: post-Wave 22).
+# File line cap. Files exceeding this limit are reported as violations
+# (exceptions must be named per-file in architecture/policy.history.yaml).
 max_lines_per_file: 1000
 cmd_main_max_lines: 200
 
@@ -337,75 +303,16 @@ wave_qdrant_005d_hygiene:
       §"One owner per fact" (owner registration and wave entry are
       the same fact from two views).
 
-# ── DEBT BUDGET (Commit G, July 2026) ──────────────────────────────────
-# Caps the cumulative open carry-forward surface. The DEBT BUDGET is the
-# forcing function that prevents PRE-EXISTING-{N} entries from
-# accumulating without a hard upper bound (a monotonic log of "tomorrow's
-# triage" entries is the canonical godlike/07 no-fake-availability
-# violation: every open entry IS an unresolved architectural risk).
-#
-# Threshold semantics:
-#   - max_pre_existing_open: 9 — the CELING of `status: open` entries
-#     whose id starts with `PRE-EXISTING-`. Incrementing this cap requires
-#     a deliberate SSOT-marker PR with explicit owner + deadline (godlike/06
-#     one-owner-per-fact). Catalog file: architecture/issues.yaml.
-
-#
-# CAP RAISE 2026-07-13 (PR-chore(archissues.yaml + policy.yaml): containment path):
-#   Bumped 5 -> 9 to accommodate the operator's "novembre" sub-commit wave where
-#   PRE-EXISTING-15-LENS-MIGRATION (Check-5 lens dir_path+pkg_name migration; per
-#   architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE) and
-#   PRE-EXISTING-16-DOCS-MISSING (5 godlike docs referenced by rule families
-#   data_ownership_doc/legacy_policy_doc/ci_gates_doc/agent_playbook_doc/removal_doc
-#   that are MISSING on disk) land as separate `status: open` entries.
-#   Per godlike/06 SSOT-marker discipline: this comment block IS the explicit
-#   owner + deadline for the cap raise (counterpart entries in issues.yaml).
-#   Owner: PipelineGen Agent (qdrant-hygiene + docs-arch waves).
-#   Deadline: 2026-11-30 (operator's "novembre" sub-commit window).
-#   Rollback path: post-November, decrement back to <= 5 by closing -15 and -16
-#   once their respective sub-commits land; verify via Check 64 (DEBT BUDGET ci gate).
-#
-# Counter-status semantics reminder (per counter_status_includes block above):
-#   `in_progress` is DELIBERATELY excluded from the counter; the -9 flip
-#   dropped the visible open count from 5 to 4, then the +2 ordinals bumped
-#   it back to 6 -- both transitions are within the new cap of 9.
-#
-# Counterpart CI gate: scripts/ci-architectural-checks.sh (Check 64) is
-# the executable enforcement surface; it Fails-CLOSED (Exit 1) whenever
-# the count of `status: open` PRE-EXISTING-* entries exceeds this cap.
-# The gate does NOT count `in_progress` (transitioning an entry from
-# `open` to `in_progress` unblocks the CI without a fix — this is the
-# intended incentive for the operator to start working immediately; the
-# canonical progress discipline is `godlike/06 SSOT carry-forward`).
-#
-# Operator procedure (`docs/operations/debt-budget.md`):
-#   1. CI fail? count `open` PRE-EXISTING-* via `python3 yaml.safe_load`.
-#   2. Sort by severity (p0 > p1 > p2 > p3) then by `opened_date` (older first).
-#   3. Migrate at least one of the open entries to `resolved` (preferred)
-#      or `in_progress` (valid intermediate) by fixing the root cause.
-#      The status flip MUST be coupled with the corresponding code/operational
-#      change in the same or immediately-prior commit (one fact from two
-#      views per godlike/06 one-owner-per-fact).
-#   4. Re-run the gate. Repeat until `open` count drops to ≤ max_pre_existing_open.
-#
-# Anti-patterns (FORBIDDEN):
-#   - Renaming an entry's id from PRE-EXISTING-* to something else to
-#     sidestep the gate. The id is the human-readable contract; renaming
-#     to disguise debt is godlike/07 debt-sweeping.
-#   - Closing an entry to `resolved` without an actual fix. The evidence
-#     file (`evidence_filename`) must reference the artifact showing the
-#     fix landed (commit SHA, dry-run log, operator playbook entry).
-#   - Dropping the CI gate by env flag. AGENTS.md YAGNI doctrine +
-#     godlike/07 fail-closed: NO env flag for the gate's fail mode.
+# ── DEBT BUDGET ─────────────────────────────────────────────────────────
+# Caps the cumulative open/in-progress carry-forward surface.
+# Both `open` and `in_progress` count toward the cap, and an
+# `in_progress` entry must declare an owner and evidence file.
+# History and operator procedure live in architecture/policy.history.yaml.
 debt_budget:
   max_pre_existing_open: 9
   catalog_file: architecture/issues.yaml
   counter_id_prefix: "PRE-EXISTING-"
-  counter_status_includes: ["open"]
-  # `in_progress` is DELIBERATELY excluded: transitioning an open entry
-  # to in_progress unblocks CI, incentivising operators to start work
-  # immediately rather than letting debt rot. Once work is committed,
-  # the entry flips to `resolved`.
+  counter_status_includes: ["open", "in_progress"]
   ci_gate: scripts/ci-architectural-checks.sh (Check 64)
 
 # Wave-22 hard-gate promotion (godlike/08 evolution PR2,
@@ -460,5 +367,3 @@ hard_gates:
   # brain component must have exactly one production implementation.
   - percheck_brain_infra_ban
   - percheck_brain_single_impl
-
-lint_gates:

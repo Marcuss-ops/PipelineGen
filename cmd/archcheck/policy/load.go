@@ -66,6 +66,8 @@ func Load(path string) (*Policy, error) {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	activeList := ""
+	activeListGotValue := false
+	seenKeys := make(map[string]struct{})
 	lineNo := 0
 	for sc.Scan() {
 		lineNo++
@@ -81,12 +83,14 @@ func Load(path string) (*Policy, error) {
 				if err := appendListValue(p, binding, bullet); err != nil {
 					return nil, fmt.Errorf("%s:%d: %w", path, lineNo, err)
 				}
+				activeListGotValue = true
 				continue
 			}
 			if isIndented(line) {
 				return nil, fmt.Errorf("%s:%d: expected a YAML bullet under %q", path, lineNo, activeList)
 			}
 			activeList = ""
+			activeListGotValue = false
 		}
 
 		// Nested mappings and block-scalar bodies belong to an explicitly
@@ -103,6 +107,10 @@ func Load(path string) (*Policy, error) {
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
 		if binding, ok := policyBindings[key]; ok {
+			if _, seen := seenKeys[key]; seen {
+				return nil, fmt.Errorf("%s:%d: duplicate architecture policy key %q", path, lineNo, key)
+			}
+			seenKeys[key] = struct{}{}
 			if binding.List && val == "" {
 				activeList = key
 				continue
@@ -113,6 +121,10 @@ func Load(path string) (*Policy, error) {
 			continue
 		}
 		if _, ok := acceptedDocumentSections[key]; ok {
+			if _, seen := seenKeys[key]; seen {
+				return nil, fmt.Errorf("%s:%d: duplicate architecture policy key %q", path, lineNo, key)
+			}
+			seenKeys[key] = struct{}{}
 			continue
 		}
 		return nil, fmt.Errorf("%s:%d: unknown architecture policy key %q", path, lineNo, key)
@@ -120,7 +132,7 @@ func Load(path string) (*Policy, error) {
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("scan %s: %w", path, err)
 	}
-	if activeList != "" {
+	if activeList != "" && !activeListGotValue {
 		return nil, fmt.Errorf("%s: list key %q has no values", path, activeList)
 	}
 	return p, nil
