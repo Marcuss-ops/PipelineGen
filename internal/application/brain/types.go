@@ -19,28 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-// SlotKind identifies the visual slot a layer may occupy in a scene.
-// It is a closed set; new values require a code change.
-//
-// This is an alias to the domain-level SSOT in
-// internal/domain/media/slot.go. Brain types use the same canonical
-// type as mediamemory, script and renderer so conversions between
-// subsystems are identity operations.
-type SlotKind = media.SlotKind
-
-const (
-	SlotPrimaryVideo    = media.SlotPrimaryVideo
-	SlotSecondaryImage  = media.SlotSecondaryImage
-	SlotEvidenceOverlay = media.SlotEvidenceOverlay
-	SlotMap             = media.SlotMap
-	SlotPortrait        = media.SlotPortrait
-	SlotDocument        = media.SlotDocument
-	SlotBackground      = media.SlotBackground
-)
-
-// IsKnownSlotKind reports whether k is a supported slot kind.
-func IsKnownSlotKind(k SlotKind) bool { return media.IsKnownSlotKind(k) }
-
 // BrainRequest is the canonical input to Brain.Resolve.
 type BrainRequest struct {
 	ProjectID string
@@ -54,7 +32,7 @@ type SceneRequest struct {
 	ID         string
 	Text       string
 	DurationMS int64
-	Slots      []SlotKind
+	Slots      []media.SlotKind
 }
 
 // ResolutionPolicy controls how the brain resolves candidates for a
@@ -119,7 +97,7 @@ type VisualIntent struct {
 // The brain produces only the plan; materialization happens later
 // through the stock pipeline / image pipeline.
 type VisualLayer struct {
-	Slot                 SlotKind
+	Slot                 media.SlotKind
 	CandidateID          string
 	AssetID              string
 	BindingID            string
@@ -207,7 +185,7 @@ type BackendCall struct {
 // scoped to the containing ResolutionTrace, which itself lives inside
 // a single SceneVisualPlan, so it does not repeat the scene ID.
 type SelectedRecord struct {
-	Slot        SlotKind
+	Slot        media.SlotKind
 	AssetID     string
 	CandidateID string
 	Score       float64
@@ -215,7 +193,7 @@ type SelectedRecord struct {
 
 // ExcludedRecord records a candidate excluded by the brain and why.
 type ExcludedRecord struct {
-	Slot    SlotKind
+	Slot    media.SlotKind
 	AssetID string
 	Reason  string
 }
