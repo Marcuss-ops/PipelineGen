@@ -116,6 +116,11 @@ func (h *Handler) handleGetAsset(c *gin.Context) {
 
 // handlePreview streams an asset file securely.
 func (h *Handler) handlePreview(c *gin.Context) {
+	if h.assetService == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "asset service not available")
+		return
+	}
+
 	id := c.Param("id")
 	ctx := c.Request.Context()
 
@@ -322,11 +327,6 @@ func (h *Handler) isAllowedPath(path string) bool {
 		}
 	}
 	return false
-}
-
-// maskPath hides the real filesystem path, showing only the filename.
-func maskPath(p string) string {
-	return filepath.Base(p)
 }
 
 // summariesToJSON converts domain Summary pointers to JSON-friendly
