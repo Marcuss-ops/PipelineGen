@@ -154,6 +154,9 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		tags = uniqueAppend(tags, payload.Tags...)
 	}
 	metaJSONStr, builtOrigin, builtProvider := builder.Build()
+	// Ensure the subject slug survives in metadata_json so that
+	// ListImagesBySubject can find cached images by subject_id.
+	metaJSONStr = AppendImageMetadataField(metaJSONStr, "subject_id", slug)
 	metaJSON := []byte(metaJSONStr)
 	// The builder is the SSOT for origin/provider; align the asset
 	// record so that MetadataJSON.origin matches asset.Origin.
@@ -228,6 +231,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 				"drive_file_id":            driveFileID,
 				"content_hash":             hash,
 				"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
+				"subject_id":               slug,
 			},
 		},
 		Locations:      buildImageIngestLocations(localPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
