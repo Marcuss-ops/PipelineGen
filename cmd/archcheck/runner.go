@@ -83,6 +83,9 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 		}
 		return a.Note < b.Note
 	})
+	// Warnings are appended by multiple scans; sort them to keep
+	// the JSON report deterministic across runs (TestReportContract).
+	sort.Strings(r.Warnings)
 
 	out, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
