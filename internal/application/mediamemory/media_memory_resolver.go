@@ -7,8 +7,8 @@
 // godlike/06 SSOT: this resolver does NOT call Qdrant, SQLite, Drive,
 // FFmpeg or yt-dlp directly. All search decisions (exact memory,
 // local catalog, semantic, external providers) are owned by the Brain,
-// which uses the CandidateSearcher port backed by the canonical
-// search.SearchFanOut.
+// which consumes the MediaMemory cascade through the canonical
+// brain.MediaMemoryResolutionPort.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a nil brain dependency panics at
 // construction time (fail-fast). Per-scene errors are surfaced as
@@ -111,6 +111,7 @@ func toBrainRequest(req ResolveRequest) brain.BrainRequest {
 			AllowExternalSearch:    req.Policy.AllowExternalSearch,
 			MaxCandidatesPerSlot:   req.Policy.MaxCandidatesPerSlot,
 			AvoidRecentAssets:      req.Policy.AvoidRecentAssets,
+			SearchPolicy:           req.Policy.SearchPolicy,
 		},
 	}
 }

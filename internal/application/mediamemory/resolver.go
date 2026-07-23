@@ -42,6 +42,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
@@ -148,6 +150,11 @@ func NewVisualResolverWithUsage(
 
 // Compile-time assertion: VisualResolver satisfies Resolver.
 var _ Resolver = (*VisualResolver)(nil)
+
+// Compile-time assertion: VisualResolver satisfies the Brain's
+// MediaMemoryResolutionPort. This is the single bridge that exposes
+// the 9-level cascade to the canonical Brain orchestrator.
+var _ brain.MediaMemoryResolutionPort = (*VisualResolver)(nil)
 
 // Resolve is the canonical entrypoint.
 //
@@ -938,6 +945,128 @@ func upgradeSource(current, winning string) string {
 		return winning
 	}
 	return current
+}
+
+// Search implements brain.MediaMemoryResolutionPort by running the
+// MediaMemory cascade for the requested media types and returning the
+// raw candidate pool. Filtering, scoring and slot assignment are left
+// to the Brain orchestrator, so the same ranker/planner path is used
+// for all visual plans.
+func (r *VisualResolver) Search(ctx context.Context, query brain.SearchQuery) (brain.SearchResult, error) {
+	slots := slotsForMediaTypes(query.MediaTypes)
+	if len(slots) == 0 {
+		return brain.SearchResult{}, nil
+	}
+
+	policy := resolvePolicyFromBrainQuery(query)
+	scene := SceneSpec{
+		ID:         "brain-search",
+		Text:       query.Text,
+		Language:   query.Language,
+		Slots:      slots,
+		DurationMs: 0,
+	}
+
+	candidates := make([]brain.Candidate, 0)
+	seen := make(map[string]struct{})
+	for _, slot := range slots {
+		fcs, _, _ := r.candidatesForSlot(ctx, scene, slot, policy)
+		for _, fc := range fcs {
+			c := toBrainCandidateFromFiltered(fc)
+			// Keep one candidate per (asset, provider, slot) so the
+			// Brain ranker still sees per-slot variety.
+			key := c.AssetID + ":" + c.Provider + ":" + string(slot)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			candidates = append(candidates, c)
+		}
+	}
+
+	return brain.SearchResult{Candidates: candidates}, nil
+}
+
+// slotsForMediaTypes maps the media types requested by the Brain into
+// the canonical slot kinds the cascade understands.
+func slotsForMediaTypes(mediaTypes []string) []media.SlotKind {
+	var slots []media.SlotKind
+	hasVideo, hasImage := false, false
+	for _, mt := range mediaTypes {
+		if mt == "video" {
+			hasVideo = true
+		}
+		if mt == "image" {
+			hasImage = true
+		}
+	}
+	if hasVideo {
+		slots = append(slots, media.SlotPrimaryVideo)
+	}
+	if hasImage {
+		slots = append(slots, media.SlotSecondaryImage, media.SlotEvidenceOverlay, media.SlotMap)
+	}
+	// If no media type was supplied, run the cascade over the full
+	// canonical slot set so the Brain still receives candidates.
+	if len(slots) == 0 {
+		slots = []media.SlotKind{
+			media.SlotPrimaryVideo,
+			media.SlotSecondaryImage,
+			media.SlotEvidenceOverlay,
+			media.SlotMap,
+		}
+	}
+	return slots
+}
+
+// resolvePolicyFromBrainQuery translates the brain search query into
+// the MediaMemory cascade policy. The SearchPolicy is forwarded
+// verbatim; legacy fields are backfilled for callers that have not yet
+// populated it.
+func resolvePolicyFromBrainQuery(query brain.SearchQuery) ResolvePolicy {
+	policy := ResolvePolicy{
+		PreferApprovedBindings: query.SearchPolicy.PreferApproved,
+		AllowExternalSearch:    query.SearchPolicy.AllowExternal,
+		MaxCandidatesPerSlot:   query.SearchPolicy.MaxCandidates,
+		AvoidRecentAssets:      false,
+		SearchPolicy:           query.SearchPolicy,
+	}
+	if policy.MaxCandidatesPerSlot <= 0 && query.Limit > 0 {
+		policy.MaxCandidatesPerSlot = query.Limit
+	}
+	if policy.MaxCandidatesPerSlot <= 0 {
+		policy.MaxCandidatesPerSlot = defaultResolverLimit
+	}
+	return policy
+}
+
+// toBrainCandidateFromFiltered projects a MediaMemory FilteredCandidate
+// into the brain Candidate shape. The score is the candidate's own
+// CandidateScore so the Brain ranker has a starting estimate.
+func toBrainCandidateFromFiltered(fc FilteredCandidate) brain.Candidate {
+	c := fc.Candidate
+	materialization := string(c.MaterializationStatus)
+	if materialization == "" {
+		materialization = "warm"
+	}
+	rights := string(c.RightsStatus)
+	if rights == "" {
+		rights = "unknown"
+	}
+	return brain.Candidate{
+		ID:                   c.ID,
+		AssetID:              c.AssetID,
+		Provider:             c.Provider,
+		SourceURL:            c.SourceURL,
+		ThumbnailURL:         c.ThumbnailURL,
+		Title:                c.Title,
+		Description:          c.Description,
+		MediaType:            c.MediaType,
+		DurationMs:           c.DurationMs,
+		Score:                c.CandidateScore,
+		MaterializationState: materialization,
+		RightsStatus:         rights,
+	}
 }
 
 // errInvalidPhrase is a tiny helper so Resolve can wrap the
