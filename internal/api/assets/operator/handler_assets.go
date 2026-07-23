@@ -3,11 +3,14 @@
 //
 // Split rationale (resource/handler), see handler.go header.
 //
-// This file owns the ASSETS resource (list + get + preview). 3 routes:
+// This file owns the ASSETS resource (list + get + preview). 6 routes:
 //
-//   - GET /assets               → handleListAssets
-//   - GET /assets/:id           → handleGetAsset
-//   - GET /assets/:id/preview   → handlePreview
+//   - GET  /assets               → handleListAssets
+//   - GET  /assets/:id           → handleGetAsset
+//   - GET  /assets/:id/preview   → handlePreview
+//   - GET  /facets               → handleFacets
+//   - POST /assets/:id/verify-index → handleVerifyIndex
+//   - POST /assets/:id/reindex   → handleReindex
 //
 // registers via the private registerAssetsRoutes method, called from
 // handler.go::RegisterRoutes.
@@ -27,6 +30,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -34,183 +38,80 @@ import (
 )
 
 // registerAssetsRoutes mounts assets transports on the shared
-// /api/assets/operator/* prefix. The paths "/assets", "/assets/:id",
-// "/assets/:id/preview" are RELATIVE to the parent router group.
+// /api/assets/operator/* prefix. The paths below are RELATIVE to the
+// parent router group.
 func (h *Handler) registerAssetsRoutes(rg *gin.RouterGroup) {
 	rg.GET("/assets", h.handleListAssets)
 	rg.GET("/assets/:id", h.handleGetAsset)
 	rg.GET("/assets/:id/preview", h.handlePreview)
+	rg.GET("/facets", h.handleFacets)
+	rg.POST("/assets/:id/verify-index", h.handleVerifyIndex)
+	rg.POST("/assets/:id/reindex", h.handleReindex)
 }
 
-// handleListAssets returns a filtered, cursor-paginated asset list.
+// handleListAssets returns a filtered, cursor-paginated asset list using
+// the canonical operator read model.
 func (h *Handler) handleListAssets(c *gin.Context) {
+	if h.readModel == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
+		return
+	}
+
 	ctx := c.Request.Context()
-
-	filter := asset.Filter{}
-
-	if src := c.Query("source"); src != "" {
-		filter.Source = src
-	}
-	if mt := c.Query("media_type"); mt != "" {
-		filter.MediaType = mt
-	}
-	if ls := c.Query("lifecycle_state"); ls != "" {
-		filter.States = []string{ls}
-	}
-	if cat := c.Query("category"); cat != "" {
-		filter.Category = cat
+	query := operator.AssetInventoryQuery{
+		Source:         c.Query("source"),
+		Provider:       c.Query("provider"),
+		MediaType:      c.Query("media_type"),
+		LifecycleState: c.Query("lifecycle_state"),
+		AssetState:     c.Query("asset_state"),
+		IndexState:     c.Query("index_state"),
+		Search:         c.Query("search"),
 	}
 
-	limit := 50
 	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 200 {
-			limit = parsed
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			query.Limit = parsed
 		}
 	}
-	filter.Limit = limit + 1 // fetch one extra for cursor detection
 
-	// Offset-based pagination (cursor would require schema changes)
 	if cursor := c.Query("cursor"); cursor != "" {
 		if offset, err := strconv.Atoi(cursor); err == nil {
-			filter.Offset = offset
+			query.Offset = offset
 		}
 	}
 
-	assets, err := h.assetService.List(ctx, filter)
+	page, err := h.readModel.List(ctx, query)
 	if err != nil {
 		h.log.Error("failed to list assets", zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	hasMore := len(assets) > limit
-	if hasMore {
-		assets = assets[:limit]
-	}
-
-	nextCursor := ""
-	if hasMore {
-		offset := filter.Offset + limit
-		nextCursor = strconv.Itoa(offset)
-	}
-
-	apiutil.OK(c, gin.H{
-		"assets":      h.summariesToJSON(assets),
-		"count":       len(assets),
-		"next_cursor": nextCursor,
-		"has_more":    hasMore,
-	})
+	apiutil.OK(c, page)
 }
 
-// handleGetAsset returns full asset details.
+// handleGetAsset returns the full operator inspection view for a single asset.
 func (h *Handler) handleGetAsset(c *gin.Context) {
+	if h.readModel == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
+		return
+	}
+
 	id := c.Param("id")
 	ctx := c.Request.Context()
 
-	details, err := h.assetService.Get(ctx, id)
+	inspection, err := h.readModel.Get(ctx, id)
 	if err != nil {
 		h.log.Error("failed to get asset", zap.String("id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	if inspection == nil {
 		apiutil.NotFound(c, "asset not found")
 		return
 	}
-	if details == nil || details.Asset == nil {
-		apiutil.NotFound(c, "asset not found")
-		return
-	}
 
-	a := details.Asset
-	resp := gin.H{
-		"id":              a.ID,
-		"source":          string(a.Source),
-		"name":            a.Name,
-		"filename":        a.Filename,
-		"media_type":      string(a.MediaType),
-		"category":        a.Category,
-		"group":           a.Group,
-		"source_url":      a.SourceURL,
-		"clip_page_url":   a.ClipPageURL,
-		"thumbnail_url":   a.ThumbnailURL,
-		"duration":        a.Duration.String(),
-		"duration_secs":   a.Duration.Seconds(),
-		"tags":            a.Tags,
-		"search_terms":    a.SearchTerms,
-		"search_text":     a.SearchText,
-		"lifecycle_state": string(a.LifecycleState),
-		"metadata":        a.Metadata,
-		"created_at":      a.CreatedAt,
-		"updated_at":      a.UpdatedAt,
-		"license_basis":   a.LicenseBasis,
-		"review_status":   string(a.ReviewStatus),
-	}
-
-	// Locations
-	locs := make([]gin.H, 0, len(details.Locations))
-	for _, loc := range details.Locations {
-		if loc == nil {
-			continue
-		}
-		displayURI := loc.URI
-		// Mask local paths for security
-		if loc.LocationKind == asset.LocationKindLocal {
-			displayURI = maskPath(loc.URI)
-		}
-		locs = append(locs, gin.H{
-			"kind":            string(loc.LocationKind),
-			"uri":             displayURI,
-			"external_id":     loc.ExternalID,
-			"is_primary":      loc.IsPrimary,
-			"mime_type":       loc.MimeType,
-			"file_size_bytes": loc.FileSizeBytes,
-			"file_hash":       loc.FileHash,
-		})
-	}
-	resp["locations"] = locs
-
-	// Processing
-	procs := make([]gin.H, 0, len(details.Processing))
-	for _, p := range details.Processing {
-		if p == nil {
-			continue
-		}
-		procs = append(procs, gin.H{
-			"step":          p.Step,
-			"status":        string(p.Status),
-			"error":         p.ErrorMessage,
-			"started_at":    p.StartedAt,
-			"completed_at":  p.CompletedAt,
-			"attempt_count": p.AttemptCount,
-		})
-	}
-	resp["processing"] = procs
-
-	// Versions (file version history — no raw vectors exposed)
-	vers := make([]gin.H, 0, len(details.Versions))
-	for _, v := range details.Versions {
-		vers = append(vers, gin.H{
-			"version_number": v.VersionNumber,
-			"source_uri":     v.SourceURI,
-			"file_hash":      v.FileHash,
-			"file_size":      v.FileSizeBytes,
-			"mime_type":      v.MimeType,
-			"created_at":     v.CreatedAt,
-		})
-	}
-	resp["versions"] = vers
-
-	// Embedding info from metadata (safe subset — no raw vectors)
-	embeddingInfo := gin.H{"present": false, "dimensions": 0, "version": ""}
-	if a.Metadata != nil {
-		if dim, ok := a.Metadata["visual_embedding_dimensions"]; ok {
-			embeddingInfo["present"] = true
-			embeddingInfo["dimensions"] = dim
-		}
-		if ver, ok := a.Metadata["embedding_version_visual"]; ok {
-			embeddingInfo["version"] = ver
-		}
-	}
-	resp["embedding_info"] = embeddingInfo
-
-	apiutil.OK(c, resp)
+	apiutil.OK(c, inspection)
 }
 
 // handlePreview streams an asset file securely.
@@ -274,13 +175,138 @@ func (h *Handler) handlePreview(c *gin.Context) {
 	io.Copy(c.Writer, file)
 }
 
+// handleFacets returns server-driven facet counts derived from canonical
+// enum values and live DB rows.
+func (h *Handler) handleFacets(c *gin.Context) {
+	if h.readModel == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
+		return
+	}
+
+	ctx := c.Request.Context()
+	facets, err := h.readModel.Facets(ctx)
+	if err != nil {
+		h.log.Error("failed to list facets", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, facets)
+}
+
+// handleVerifyIndex performs a live Qdrant check for the asset and
+// compares it with the persisted SQLite read-model projection.
+func (h *Handler) handleVerifyIndex(c *gin.Context) {
+	if h.readModel == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
+		return
+	}
+	if h.indexVerifier == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "index verifier not available")
+		return
+	}
+
+	id := c.Param("id")
+	ctx := c.Request.Context()
+
+	inspection, err := h.readModel.Get(ctx, id)
+	if err != nil {
+		h.log.Error("failed to get asset for verify", zap.String("id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	if inspection == nil {
+		apiutil.NotFound(c, "asset not found")
+		return
+	}
+
+	collection := inspection.CollectionVersion
+	if collection == "" {
+		collection = "media_assets_current"
+	}
+
+	qdrantInfo, err := h.indexVerifier.Verify(ctx, id, collection)
+	if err != nil {
+		h.log.Error("failed to verify asset index", zap.String("id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	consistent := true
+	if qdrantInfo.Present {
+		if qdrantInfo.PayloadAssetID != "" && qdrantInfo.PayloadAssetID != id {
+			consistent = false
+		}
+		if inspection.ContentHash != "" && inspection.IndexedContentHash != "" &&
+			inspection.ContentHash != inspection.IndexedContentHash {
+			consistent = false
+		}
+	} else {
+		consistent = false
+	}
+
+	apiutil.OK(c, gin.H{
+		"asset_id": id,
+		"sqlite": gin.H{
+			"index_state":             string(inspection.IndexState),
+			"embedding_present":       inspection.HasEmbedding,
+			"content_hash":            inspection.ContentHash,
+			"indexed_content_hash":    inspection.IndexedContentHash,
+		},
+		"outbox": gin.H{
+			"pending": inspection.PendingOutboxEvents,
+		},
+		"qdrant": gin.H{
+			"checked":                 qdrantInfo.Checked,
+			"point_present":           qdrantInfo.Present,
+			"collection":              qdrantInfo.Collection,
+			"vector_dimensions":       qdrantInfo.VectorDimensions,
+			"payload_lifecycle_state": qdrantInfo.PayloadLifecycleState,
+		},
+		"consistent": consistent,
+	})
+}
+
+// handleReindex enqueues a re-index outbox event for the asset.
+func (h *Handler) handleReindex(c *gin.Context) {
+	if h.mutator == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "reindex unavailable: mutation dispatcher not wired")
+		return
+	}
+
+	id := c.Param("id")
+	ctx := c.Request.Context()
+
+	details, err := h.assetService.Get(ctx, id)
+	if err != nil {
+		h.log.Error("failed to get asset for reindex", zap.String("id", id), zap.Error(err))
+		apiutil.NotFound(c, "asset not found")
+		return
+	}
+	if details == nil || details.Asset == nil {
+		apiutil.NotFound(c, "asset not found")
+		return
+	}
+
+	a := details.Asset
+	contentHash := a.FileHash()
+	if contentHash == "" {
+		contentHash = a.ID
+	}
+
+	if err := h.mutator.EnqueueAndIndex(ctx, a, contentHash); err != nil {
+		h.log.Error("failed to enqueue reindex", zap.String("id", id), zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"asset_id": id,
+		"queued":   true,
+	})
+}
+
 // isAllowedPath checks if a file path is under one of the allowed roots.
-// Used only by handlePreview (path-safety guard for arbitrary file
-// resolution). Lives on *Handler receiver for naming-convention
-// symmetry with the other path/handler helpers in this file.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: filepath.Abs failure short-circuits
-// to "not allowed" (no panic, no false-positive).
 func (h *Handler) isAllowedPath(path string) bool {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -299,19 +325,12 @@ func (h *Handler) isAllowedPath(path string) bool {
 }
 
 // maskPath hides the real filesystem path, showing only the filename.
-// Used only by handleGetAsset for location.URI when LocationKindLocal
-// (preventing the admin UI from leaking server-internal paths).
 func maskPath(p string) string {
 	return filepath.Base(p)
 }
 
 // summariesToJSON converts domain Summary pointers to JSON-friendly
-// maps. Used by both summary (handleSummary inside the dashboard
-// payload) and assets (handleListAssets response). Lives in handler_
-// assets.go because its semantic owner is asset.Summary → JSON.
-//
-// On *Handler receiver for naming-convention symmetry with
-// jobsToJSON (in handler_summary.go). Does NOT mutate h.
+// maps. Used by handleSummary (the dashboard payload).
 func (h *Handler) summariesToJSON(items []*asset.Summary) []gin.H {
 	result := make([]gin.H, 0, len(items))
 	for _, s := range items {
