@@ -56,7 +56,7 @@ export function useAssetInventory(): UseAssetInventoryResult {
         limit: 25,
       }
       const data = await listAssets(apiFilters)
-      setAssets((prev) => (nextCursor ? [...prev, ...data.assets] : data.assets))
+      setAssets((prev) => (nextCursor ? [...prev, ...data.items] : data.items))
       setCursor(data.next_cursor)
       setHasMore(data.has_more)
     } catch (err) {

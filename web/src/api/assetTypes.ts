@@ -1,18 +1,45 @@
+export interface AssetStatusData {
+  code: string
+  label: string
+  severity: string
+  description?: string
+  terminal: boolean
+  retryable: boolean
+}
+
 export interface AssetSummary {
   id: string
-  source: string
   name: string
   filename: string
+  source: string
+  provider: string
   media_type: string
-  category: string
+
   lifecycle_state: string
+  asset_state: string
+  index_state: string
+
+  index_health: AssetStatusData
+
+  has_local_file: boolean
+  has_drive_file: boolean
+  has_embedding: boolean
+
+  content_hash?: string
+  indexed_content_hash?: string
+  embedding_version?: string
+  collection_version?: string
+
+  pending_outbox_events: number
+  last_error?: string
+
   created_at: string
   updated_at: string
 }
 
 export interface AssetListResponse {
-  assets: AssetSummary[]
-  count: number
+  items: AssetSummary[]
+  total: number
   next_cursor: string
   has_more: boolean
 }
