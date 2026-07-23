@@ -60,6 +60,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
@@ -135,13 +136,14 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		sourceStr = string(a.Location.Action)
 	}
 
+	_, initIndex := asset.NewIndexableAssetState()
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
 			file_hash, drive_file_id, drive_link, download_link,
 			folder_id, folder_path, lifecycle_state, index_state,
 			metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', 'DISCOVERED', ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		filename = excluded.filename,
 		media_type = excluded.media_type,
@@ -163,20 +165,21 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		metadata_json = excluded.metadata_json,
 		updated_at = excluded.updated_at
 	`,
-		a.ArtifactID,
-		sourceStr,
-		a.Filename,
-		a.Filename,
-		mediaType,
-		a.SHA256,
-		a.Location.FileID,
-		a.Location.WebViewLink,
-		a.Location.DownloadLink,
-		a.Location.FolderID,
-		a.Location.FolderPath,
-		string(metadataJSON),
-		nowStr,
-		nowStr,
+	a.ArtifactID,
+	sourceStr,
+	a.Filename,
+	a.Filename,
+	mediaType,
+	a.SHA256,
+	a.Location.FileID,
+	a.Location.WebViewLink,
+	a.Location.DownloadLink,
+	a.Location.FolderID,
+	a.Location.FolderPath,		string(asset.StatePublished),
+		string(initIndex),
+	string(metadataJSON),
+	nowStr,
+	nowStr,
 	)
 	// ── PR-FINALIZER-METRICS (July 2026) ──────────────────────────
 	// Increment FinalizerMediaAssetsInsertTotal per SQLite
