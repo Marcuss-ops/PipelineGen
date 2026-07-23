@@ -172,5 +172,5 @@ func isAIImageIngestSource(req *ingest.Request) bool {
 	if req == nil {
 		return false
 	}
-	return imgapp.IsAIImageSource(req.Source)
+	return asset.IsAIImageSource(req.Source)
 }

@@ -212,8 +212,24 @@ func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath str
 	if relPath != "" {
 		payload["local_path"] = relPath
 	}
-	if out, err := json.Marshal(payload); err == nil {
-		return string(out)
+
+	// The canonical image metadata builder is the single factory for
+	// origin and provider. It protects those keys from accidental
+	// overrides and derives them from the source/generator pair.
+	source := ""
+	if rec != nil {
+		source = rec.Source
 	}
-	return "{}"
+	// If the record only carries the generic "image" source tag, use the
+	// source value already present in the metadata (e.g. "wikipedia").
+	if source == "" || source == string(asset.SourceImage) {
+		if s, ok := payload["source"].(string); ok && s != "" {
+			source = s
+		}
+	}
+	metaJSON, _, _ := asset.NewCanonicalImageMetadataBuilder(source, source).
+		WithExtra(payload).
+		WithProvenance("", "", source, "").
+		Build()
+	return metaJSON
 }

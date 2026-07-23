@@ -189,33 +189,33 @@ func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context
 	provCtx = context.WithValue(provCtx, LicenseKey, license)
 	provCtx = context.WithValue(provCtx, AuthorKey, author)
 
-	asset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
-	if err == nil && asset != nil {
+	imgAsset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
+	if err == nil && imgAsset != nil {
 		pageURL := ""
 		if wikiURL != "" {
 			pageURL = wikiURL
 		}
-		updatedJSON := AppendImageProvenance(asset.MetadataJSON, imgURL, pageURL, source, query)
+		updatedJSON := asset.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, pageURL, source, query)
 		if finalQuery != "" && finalQuery != query {
-			updatedJSON = AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
+			updatedJSON = asset.AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
 		}
-		if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, updatedJSON); updateErr != nil {
+		if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
 			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))
 			return &SearchResult{
-				Asset:             asset,
+				Asset:             imgAsset,
 				CacheHit:          false,
 				CacheSource:       "provider",
 				RetrievalProvider: source,
 			}, fmt.Errorf("update image metadata: %w", updateErr)
 		}
-		asset.MetadataJSON = updatedJSON
+		imgAsset.MetadataJSON = updatedJSON
 	}
-	if err != nil || asset == nil {
+	if err != nil || imgAsset == nil {
 		return nil, err
 	}
 
 	return &SearchResult{
-		Asset:             asset,
+		Asset:             imgAsset,
 		CacheHit:          false,
 		CacheSource:       "provider",
 		RetrievalProvider: source,

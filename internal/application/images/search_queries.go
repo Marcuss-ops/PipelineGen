@@ -98,7 +98,7 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 	}
 
 	// Metadata enrichment — surface failure rather than silently ignoring it.
-	updatedJSON := AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
+	updatedJSON := asset.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
 	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
 		s.log.Error("SearchWebImage: UpdateImageMetadata failed", zap.Error(updateErr))
 		return imgAsset, fmt.Errorf("update image metadata: %w", updateErr)

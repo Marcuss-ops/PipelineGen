@@ -57,13 +57,14 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 		}
 	}
 
-	sourceType := "generated"
-	if val, ok := ctx.Value(SourceTypeKey).(string); ok {
+	// Use the canonical image origin classification. The context key
+	// still allows callers to override (e.g. ingestion paths that already
+	// know the source type), but the default must never be "generated"
+	// for retrieved images because that produces metadata_json.origin
+	// = "generated" and diverges from asset.Origin.
+	sourceType := string(asset.ClassifyImageOrigin(generator, ""))
+	if val, ok := ctx.Value(SourceTypeKey).(string); ok && val != "" {
 		sourceType = val
-	} else {
-		if d, ok := asset.DefaultProviderRegistry().Match(generator); ok && d.Origin == asset.ImageOriginRetrieved {
-			sourceType = "retrieved"
-		}
 	}
 
 	retriever := ""
@@ -208,7 +209,8 @@ func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, 
 		AssetID:    genID,
 		AssetType:  "image_group",
 		MediaType:  "image",
-		Source:     "generated",
+		Source:     generator,
+		SourceType: "generated",
 		Generator:  generator,
 		Style:      style,
 		Prompt:     prompt,
