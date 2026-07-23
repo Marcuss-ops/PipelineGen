@@ -253,10 +253,10 @@ func (h *Handler) handleVerifyIndex(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"asset_id": id,
 		"sqlite": gin.H{
-			"index_state":             string(inspection.IndexState),
-			"embedding_present":       inspection.HasEmbedding,
-			"content_hash":            inspection.ContentHash,
-			"indexed_content_hash":    inspection.IndexedContentHash,
+			"index_state":          string(inspection.IndexState),
+			"embedding_present":    inspection.HasEmbedding,
+			"content_hash":         inspection.ContentHash,
+			"indexed_content_hash": inspection.IndexedContentHash,
 		},
 		"outbox": gin.H{
 			"pending": inspection.PendingOutboxEvents,
