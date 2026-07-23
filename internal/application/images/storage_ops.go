@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"go.uber.org/zap"
@@ -44,6 +43,19 @@ var ErrImageInvalidResponse = errors.New("image: invalid or corrupt response")
 
 // SearchAndDownload searches for an image locally and via web APIs.
 func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*asset.ImageAsset, error) {
+	out, err := s.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return nil, nil
+	}
+	return out.Asset, nil
+}
+
+// SearchAndDownloadDetailed searches for an image locally and via web APIs
+// and returns the canonical asset plus the trace needed for HTTP callers.
+func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*SearchResult, error) {
 	slug := textutil.Slugify(subjectSlug)
 	if slug == "" {
 		slug = textutil.Slugify(query)
@@ -51,6 +63,7 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 	if lang == "" {
 		lang = "it"
 	}
+	policySignature := s.retrievalPolicySignature()
 
 	qLower := strings.ToLower(query)
 	if qLower == "name" || qLower == "titolo" || len(query) < 2 {
@@ -59,20 +72,29 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err == nil && subject != nil {
-		if images, err := s.repo.ListImagesBySubject(ctx, subject.Slug); err == nil && len(images) > 0 {
-			s.log.Info("Images found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
-			if len(images) > 1 {
-				// Retrieval is a reproducible resolver: a repeated query with
-				// the same catalog must not select a random asset.
-				sort.SliceStable(images, func(i, j int) bool {
-					if images[i].Hash != images[j].Hash {
-						return images[i].Hash < images[j].Hash
-					}
-					return images[i].Provider < images[j].Provider
-				})
-				s.log.Info("Picking deterministic image from database", zap.String("asset_id", images[0].Hash), zap.Int("total", len(images)))
+		if images, err := s.repo.ListImagesBySubject(ctx, slug); err == nil && len(images) > 0 {
+			if cached, score := selectBestCachedImageAsset(query, images); cached != nil {
+				s.log.Info("Image cache hit from local database",
+					zap.String("subject", slug),
+					zap.String("cache_key", imageSearchCacheKey(query, lang, policySignature)),
+					zap.String("cache_source", "database"),
+					zap.String("retrieval_provider", string(cached.Provider)),
+					zap.String("asset_id", cached.Hash),
+					zap.Int("count", len(images)),
+					zap.Int("cache_score", score),
+				)
+				return &SearchResult{
+					Asset:             cached,
+					CacheHit:          true,
+					CacheSource:       "database",
+					RetrievalProvider: string(cached.Provider),
+				}, nil
 			}
-			return &images[0], nil
+			s.log.Info("Images found in local database but no semantic cache hit",
+				zap.String("subject", slug),
+				zap.String("cache_key", imageSearchCacheKey(query, lang, policySignature)),
+				zap.Int("count", len(images)),
+			)
 		}
 	}
 
@@ -84,20 +106,20 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 		}
 	}
 
-	key := "search:" + slug + ":" + lang
+	key := imageSearchCacheKey(query, lang, policySignature)
 	result, err, _ := s.dedup.Do(key, func() (any, error) {
-		return s.searchAndDownloadInner(ctx, slug, displayName, query, lang, tags, subject)
+		return s.searchAndDownloadInnerDetailed(ctx, slug, displayName, query, lang, tags, subject)
 	})
 	if err != nil {
 		return nil, err
 	}
-	if asset, ok := result.(*asset.ImageAsset); ok {
-		return asset, nil
+	if traced, ok := result.(*SearchResult); ok {
+		return traced, nil
 	}
 	return nil, fmt.Errorf("singleflight: unexpected result type")
 }
 
-func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject) (*asset.ImageAsset, error) {
+func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject) (*SearchResult, error) {
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query), zap.String("lang", lang))
 	wikiTitle, qid, _ := s.searchWikidata(query, lang)
 	finalQuery := query
@@ -121,7 +143,7 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 
 	provCtx := context.WithValue(ctx, SourceTypeKey, "retrieved")
 	provCtx = context.WithValue(provCtx, RetrieverKey, source)
-	provCtx = context.WithValue(provCtx, SearchQueryKey, finalQuery)
+	provCtx = context.WithValue(provCtx, SearchQueryKey, query)
 	provCtx = context.WithValue(provCtx, ImageURLKey, imgURL)
 	if wikiURL != "" {
 		provCtx = context.WithValue(provCtx, PageURLKey, wikiURL)
@@ -142,12 +164,29 @@ func (s *ImageStorageService) searchAndDownloadInner(ctx context.Context, slug, 
 		if wikiURL != "" {
 			pageURL = wikiURL
 		}
-		updatedJSON := AppendImageProvenance(asset.MetadataJSON, imgURL, pageURL, source, finalQuery)
+		updatedJSON := AppendImageProvenance(asset.MetadataJSON, imgURL, pageURL, source, query)
+		if finalQuery != "" && finalQuery != query {
+			updatedJSON = AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
+		}
 		if updateErr := s.repo.UpdateImageMetadata(ctx, asset.Hash, updatedJSON); updateErr != nil {
 			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))
-			return asset, fmt.Errorf("update image metadata: %w", updateErr)
+			return &SearchResult{
+				Asset:             asset,
+				CacheHit:          false,
+				CacheSource:       "provider",
+				RetrievalProvider: source,
+			}, fmt.Errorf("update image metadata: %w", updateErr)
 		}
 		asset.MetadataJSON = updatedJSON
 	}
-	return asset, err
+	if err != nil || asset == nil {
+		return nil, err
+	}
+
+	return &SearchResult{
+		Asset:             asset,
+		CacheHit:          false,
+		CacheSource:       "provider",
+		RetrievalProvider: source,
+	}, nil
 }

@@ -35,7 +35,7 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 		slug = textutil.Slugify(query)
 	}
 
-	asset, err := h.service.SearchAndDownload(
+	searchResult, err := h.service.SearchAndDownloadDetailed(
 		c.Request.Context(),
 		slug, query, query, lang, nil,
 	)
@@ -43,7 +43,7 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 		apiutil.InternalError(c, err)
 		return
 	}
-	if asset == nil {
+	if searchResult == nil || searchResult.Asset == nil {
 		apiutil.OK(c, ImageSearchResults{
 			Results: []ImageSearchResult{},
 			Count:   0,
@@ -51,7 +51,7 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 		return
 	}
 
-	res := assetToResult(asset)
+	res := assetToResultWithCache(searchResult.Asset, boolPtr(searchResult.CacheHit), searchResult.CacheSource, searchResult.RetrievalProvider)
 	apiutil.OK(c, ImageSearchResults{
 		Results: []ImageSearchResult{res},
 		Count:   1,
@@ -70,7 +70,7 @@ func (h *ImagesHandler) retrievedAggregate(c *gin.Context) {
 	lang := c.DefaultQuery("lang", "en")
 	slug := textutil.Slugify(query)
 
-	asset, err := h.service.SearchAndDownload(
+	searchResult, err := h.service.SearchAndDownloadDetailed(
 		c.Request.Context(),
 		slug, query, query, lang, nil,
 	)
@@ -78,10 +78,10 @@ func (h *ImagesHandler) retrievedAggregate(c *gin.Context) {
 		apiutil.InternalError(c, err)
 		return
 	}
-	out := ImageSearchResults{Results: []ImageSearchResult{}, Count: 0}
-	if asset != nil {
-		out.Results = append(out.Results, assetToResult(asset))
-		out.Count = 1
+	response := ImageSearchResults{Results: []ImageSearchResult{}, Count: 0}
+	if searchResult != nil && searchResult.Asset != nil {
+		response.Results = append(response.Results, assetToResultWithCache(searchResult.Asset, boolPtr(searchResult.CacheHit), searchResult.CacheSource, searchResult.RetrievalProvider))
+		response.Count = 1
 	}
-	apiutil.OK(c, out)
+	apiutil.OK(c, response)
 }

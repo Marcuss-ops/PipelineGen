@@ -29,18 +29,29 @@ import (
 // SearchAndDownload / ListImagesBySubject methods return
 // pointers; nil is handled by callers (returns empty DTO list).
 func assetToResult(a *domain.ImageAsset) ImageSearchResult {
+	return assetToResultWithCache(a, nil, "", "")
+}
+
+func assetToResultWithCache(a *domain.ImageAsset, cacheHit *bool, cacheSource, retrievalProvider string) ImageSearchResult {
 	if a == nil {
 		return ImageSearchResult{}
 	}
 	return ImageSearchResult{
-		AssetID:    a.Hash,
-		Origin:     string(a.Origin),
-		Provider:   string(a.Provider),
-		PreviewURL: previewURLForAsset(*a),
-		StyleID:    "", // ImageAsset has no Style field today; future migration
-		License:    a.License,
-		Author:     "", // MetadataJSON carries author today
+		AssetID:           a.Hash,
+		Origin:            string(a.Origin),
+		Provider:          string(a.Provider),
+		PreviewURL:        previewURLForAsset(*a),
+		StyleID:           "", // ImageAsset has no Style field today; future migration
+		License:           a.License,
+		Author:            "", // MetadataJSON carries author today
+		CacheHit:          cacheHit,
+		CacheSource:       cacheSource,
+		RetrievalProvider: retrievalProvider,
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 // previewURLForAsset picks the best URL for an asset: prefer

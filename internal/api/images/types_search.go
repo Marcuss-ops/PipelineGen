@@ -40,13 +40,16 @@ package images
 // separated search. Same shape for retrieved, generated, and
 // the aggregated /search?territory=all endpoints.
 type ImageSearchResult struct {
-	AssetID    string `json:"asset_id"`
-	Origin     string `json:"origin"`
-	Provider   string `json:"provider"`
-	PreviewURL string `json:"preview_url"`
-	StyleID    string `json:"style_id,omitempty"`
-	License    string `json:"license,omitempty"`
-	Author     string `json:"author,omitempty"`
+	AssetID           string `json:"asset_id"`
+	Origin            string `json:"origin"`
+	Provider          string `json:"provider"`
+	PreviewURL        string `json:"preview_url"`
+	StyleID           string `json:"style_id,omitempty"`
+	License           string `json:"license,omitempty"`
+	Author            string `json:"author,omitempty"`
+	CacheHit          *bool  `json:"cache_hit,omitempty"`
+	CacheSource       string `json:"cache_source,omitempty"`
+	RetrievalProvider string `json:"retrieval_provider,omitempty"`
 }
 
 // ImageSearchResults is the canonical response envelope — an

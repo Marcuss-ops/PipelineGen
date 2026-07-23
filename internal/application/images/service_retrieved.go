@@ -20,6 +20,12 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 	return s.Store.SearchAndDownload(ctx, subjectSlug, displayName, query, lang, tags)
 }
 
+// SearchAndDownloadDetailed searches for and downloads an image and
+// returns the canonical asset plus cache provenance for transport layers.
+func (s *Service) SearchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*SearchResult, error) {
+	return s.Store.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
+}
+
 // SearchWebImage performs a web image search (retrieved territory)
 // for a given prompt and slug. Delegates to the Store sub-service.
 func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {

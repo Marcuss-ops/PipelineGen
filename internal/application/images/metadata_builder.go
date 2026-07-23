@@ -173,3 +173,25 @@ func AppendImageProvenance(metadataJSON, imageURL, pageURL, sourceName, query st
 	}
 	return string(out)
 }
+
+// AppendImageMetadataField merges a single metadata field into an existing
+// metadata JSON payload. It is used for orthogonal provenance fields that
+// are not part of the canonical AppendImageProvenance signature.
+func AppendImageMetadataField(metadataJSON, key string, value any) string {
+	if metadataJSON == "" || metadataJSON == "{}" {
+		metadataJSON = "{}"
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &payload); err != nil {
+		return metadataJSON
+	}
+
+	payload[key] = value
+
+	out, err := json.Marshal(payload)
+	if err != nil {
+		return metadataJSON
+	}
+	return string(out)
+}
