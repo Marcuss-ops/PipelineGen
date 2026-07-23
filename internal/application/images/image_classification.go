@@ -24,8 +24,8 @@ func classifyImageProvider(source, generator string) asset.ImageProvider {
 }
 
 func imageProviderFromValue(value string) asset.ImageProvider {
-	d := asset.DefaultProviderRegistry().Match(value)
-	if d == nil {
+	d, ok := asset.DefaultProviderRegistry().Match(value)
+	if !ok {
 		return asset.ProviderUnknown
 	}
 	return d.ID

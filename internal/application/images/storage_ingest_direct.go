@@ -278,7 +278,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 }
 
 func imageGeneratorLabel(source string) string {
-	if d := asset.DefaultProviderRegistry().Match(source); d != nil {
+	if d, ok := asset.DefaultProviderRegistry().Match(source); ok {
 		return string(d.ID)
 	}
 	lower := strings.ToLower(strings.TrimSpace(source))

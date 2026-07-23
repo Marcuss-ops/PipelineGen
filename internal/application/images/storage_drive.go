@@ -43,9 +43,9 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 
 	prompt := imgAsset.Description
 	generator := string(asset.ProviderNVIDIA)
-	if d := asset.DefaultProviderRegistry().Match(imgAsset.SourceURL); d != nil && d.Origin == asset.ImageOriginGenerated {
+	if d, ok := asset.DefaultProviderRegistry().Match(imgAsset.SourceURL); ok && d.Origin == asset.ImageOriginGenerated {
 		generator = string(d.ID)
-	} else if d := asset.DefaultProviderRegistry().Match(prompt); d != nil && d.Origin == asset.ImageOriginGenerated {
+	} else if d, ok := asset.DefaultProviderRegistry().Match(prompt); ok && d.Origin == asset.ImageOriginGenerated {
 		generator = string(d.ID)
 	} else if imgAsset.MetadataJSON != "" && imgAsset.MetadataJSON != "{}" {
 		var meta map[string]any
