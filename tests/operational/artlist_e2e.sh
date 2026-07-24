@@ -115,8 +115,39 @@ if [[ -n "${LIVE_QUERIES:-}" ]]; then
        || -z "${LIVE_QUERIES[0]:-}" \
        || -z "${LIVE_QUERIES[1]:-}" \
        || -z "${LIVE_QUERIES[2]:-}" ]]; then
-        printf >&2 '[FAIL]  LIVE_QUERIES env override must yield exactly 3 non-empty pipe-delimited terms; got %d slot(s): "%s"\n' \
-            "${#LIVE_QUERIES[@]}" "${LIVE_QUERIES[*]}"
+        # ISO 8601 local time. Out-of-band artifact is read days later
+        # for post-mortem, so explicit date attribution beats HH:MM:SS.
+        # Gates keep HH:MM:SS because they are in-band within a single run.
+        ts="$(date '+%Y-%m-%dT%H:%M:%S')"
+        printf >&2 '[FAIL]  %s  LIVE_QUERIES env override must yield exactly 3 non-empty pipe-delimited terms; got %d slot(s): "%s"\n' \
+            "$ts" "${#LIVE_QUERIES[@]}" "${LIVE_QUERIES[*]}"
+        # JSON artifact (matches $WORK_DIR/gateN_*.json pattern from the
+        # live gates; jq-safe, no shell-injection via re-source path).
+        # value is a JSON array via per-slot args so consumers can read
+        # slot boundaries faithfully regardless of override shape (the
+        # previous round used ${LIVE_QUERIES[*]} which joins with default
+        # IFS-space and lost slot structure for operators to inspect).
+        # Honors $TMPDIR so macOS / systemd-private-tmp / CI sandboxes
+        # land the artifact under the operator's tmpdir. mkdir is
+        # fail-safe so a read-only /tmp does not mask the canonical
+        # exit-2 code (under set -e, mkdir failure would otherwise
+        # abort with exit 1 and lose the setup-error classification).
+        : "${WORK_DIR:=${TMPDIR:-/tmp}/artlist_e2e_validation}"
+        if ! mkdir -p "$WORK_DIR" 2>/dev/null; then
+            printf >&2 '[WARN]  %s  could not mkdir %s (validation artifact skipped)\n' \
+                "$ts" "$WORK_DIR"
+            exit 2
+        fi
+        jq -nc --arg ts "$ts" --argjson slots "${#LIVE_QUERIES[@]}" \
+            --arg v0 "${LIVE_QUERIES[0]:-}" --arg v1 "${LIVE_QUERIES[1]:-}" --arg v2 "${LIVE_QUERIES[2]:-}" \
+            '[ $v0, $v1, $v2 ] | map(if . == "" then null else . end) as $v
+            | {event:"live_queries_validation_failed",ts:$ts,slots:$slots,value:$v}' \
+            > "$WORK_DIR/live_queries_validation_failed.json"
+        # exit 2 (canonical setup-error exit code per file header) hard-
+        # terminates the run. Do NOT source this file unless you intend
+        # to use only the helper functions in lib/common.sh and
+        # lib/velox_domain.sh — the LIVE_QUERIES block will tear down
+        # the sourcee shell.
         exit 2
     fi
 elif [[ -n "${LIVE_QUERY_1:-}" && -n "${LIVE_QUERY_2:-}" && -n "${LIVE_QUERY_3:-}" ]]; then
