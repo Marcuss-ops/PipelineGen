@@ -48,6 +48,14 @@
 
 .PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
+# Suffix convention (binding, July 2026):
+#   verify-<area>          Go unit tests for the area (HEADLESS, part of verify-main)
+#   verify-<area>-live     Operational battery for the area (BROWSER+DRIVE+QDRANT,
+#                          NOT part of verify-main — run only post-deploy)
+# Examples: verify-images (Go tests) vs verify-images-live (images_e2e.sh battery).
+# Mixing the two surfaces in a single target is forbidden: keep the headless
+# pre-push chain (verify-main) free of any `-live` battery by design.
+
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
@@ -765,8 +773,16 @@ verify-vidrush-live:
 
 # verify-live — composite: all 4 live batteries in sequence. Fail-closed:
 # any single battery failure aborts the chain.
+#
+# verify-artlist-live is ALSO runnable standalone (it wraps
+# tests/operational/artlist/run_all.sh) for an artlist-only post-deploy
+# validation that does not pay the full battery cost. verify-live itself
+# composes it alongside the 3 sibling batteries (images + script +
+# vidrush) so a single `make verify-live` runs the full operational
+# suite.
 verify-live: verify-images-live verify-artlist-live verify-script-live verify-vidrush-live
 	@echo "✅ verify-live passed"
+# ─── end Post-deploy live batteries ─────────────────────────────────────
 
 # verify-images — quick verification dedicated to the Images module.
 verify-images:
