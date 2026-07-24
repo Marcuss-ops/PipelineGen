@@ -70,6 +70,30 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 
 	generator := imageGeneratorLabel(source)
 	provider := asset.ClassifyImageProvider(source, generator)
+	// PR-IMG-RETRIEVER-PROVIDER-FIX (July 2026): when source is a
+	// URL (imageGeneratorLabel returns "web-download") the canonical
+	// classifier cannot resolve a concrete provider (provider =
+	// ProviderUnknown). The retrieval-chain orchestrator
+	// (searchAndDownloadInnerDetailed) sets provCtx[RetrieverKey]
+	// to the canonical provider name ("wikipedia" | "duckduckgo" |
+	// "searxng" | ...) on the URL it routes through. Honouring that
+	// canonical provenance here closes the silent-fallback signature
+	// godlike/07 forbids (would otherwise land
+	// retrieved_image_details.provider = "unknown" for every retrieved
+	// row whose source URL does not match the provider-name table).
+	// Scope is intentionally narrow: only override when the
+	// classifier returned Unknown AND RetrieverKey is set to a
+	// canonical non-"unknown" provider. AI-generated, upload-origin,
+	// and Drive short-circuit callers are unaffected because their
+	// initial classification already returns a concrete provider.
+	if provider == asset.ProviderUnknown {
+		if v, ok := ctx.Value(RetrieverKey).(string); ok {
+			retriever := strings.TrimSpace(v)
+			if retriever != "" && retriever != string(asset.ProviderUnknown) {
+				provider = asset.ClassifyImageProvider(retriever, imageGeneratorLabel(retriever))
+			}
+		}
+	}
 	origin := asset.ClassifyImageOrigin(source, generator)
 	width, height := decodeImageDimensions(content)
 
