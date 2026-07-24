@@ -58,10 +58,17 @@ export HOST BASE_URL DB_PATH SCRAPER_URL \
 export WORK_DIR
 
 # ── Per-battery counters + log_* helpers (verbatim-identical per battery)
-# Counters stay unexported on purpose: bumping inside $(…) subshells would not
-# propagate to the parent shell anyway, and keeping them script-local matches
-# the original inline definition. log_* functions inherit PASS/WARN/FAIL via
-# sourcing scope (the lib's body is injected into the sub-script at source).
+# Latent footguards (read carefully before refactoring):
+#   (a) do NOT declare PASS/WARN/FAIL local inside any sub-script or log_*
+#       writes silently break — log_pass/log_warn/log_fail increment the
+#       globally-sourced counters, NOT a captured local; `local PASS=0`
+#       in a sub-script shadows the lib's PASS and the log_* helpers
+#       would still bump the shadowed one (visible, silently divergent).
+#   (b) PASS/WARN/FAIL are NOT exported on purpose; bumps inside $(…)
+#       subshells wouldn't propagate to the parent shell anyway, so
+#       exporting would be dead noise. Keep them script-local; this
+#       matches the original inline definition every sub-script
+#       copy-pasted before the runtime.sh refactor.
 PASS=0; WARN=0; FAIL=0
 
 log_pass() { printf '[PASS]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; PASS=$((PASS + 1)); }
