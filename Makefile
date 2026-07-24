@@ -1,17 +1,48 @@
-# ─── PipelineGen verify-main (Cleanup Plan P0-3, June 2026) ────────────
+# ─── PipelineGen verification matrix (July 2026 refactor, STEP 3/4) ─
 #
-# Every push to `main` MUST pass `make verify-main` locally first. CI runs
-# the same chain — local must match CI exactly. The chain is fail-closed:
-# any failing step exits non-zero, no `|| true`, no fallbacks, no
-# continue-on-error. If `make verify-main` is RED locally, the push MUST
-# be blocked until the next agent lands the fix.
+# Four-tier fail-closed verification chain. Every push to `main` MUST
+# pass `make verify-main` locally first; CI runs the same chain, so
+# local must match CI exactly. Every tier is composed of pre-existing
+# granular targets via Make prereqs.
 #
-# P0-3 closes the gap surfaced by the 29 June P0-2 RED zones: prior to
-# the make gate, broken imports + redeclarations were pushed to `main`
-# and only caught at the next CI run. With verify-main in place, every
-# commit lands-green-or-not-all.
+#   verify-fast        dev loop (<1min on a clean tree)
+#                      verify-foundation + verify-static
+#                      (toolchain + secrets + format + vet + build)
+#
+#   verify-main        pre-push gate (few minutes, HEADLESS)
+#                      verify-fast + verify-unit + verify-node +
+#                      verify-architecture
+#                      NO browser, NO session, NO Drive, NO Qdrant.
+#                      Run before every push; cheap enough that the
+#                      dev loop can also call it directly.
+#
+#   verify-release     pre-deploy gate (slow, includes integration)
+#                      verify-main + verify-integration
+#                      ./tests/... suite — may take several minutes
+#                      and may depend on external services.
+#
+#   verify-live        post-deploy gate (NOT YET IMPLEMENTED — STEP 4/4)
+#                      Will compose the live batteries:
+#                      verify-images-live + verify-artlist-live +
+#                      verify-script-live + verify-vidrush-live
+#                      (each touches browser/Drive/Qdrant/scraper).
+#
+# The pre-push verify-main is HEADLESS by design: it must work on a CI
+# runner without Chrome, without an Artlist session, without Drive
+# credentials, without a Qdrant endpoint. The pre-STEP-3 verify-artlist
+# target is REMOVED from verify-main because the Artlist battery
+# (artlist_e2e) requires Chrome + scraper + Drive + Qdrant projections
+# that the headless gate must not touch. verify-go (which transitively
+# pulled verify-go-tests -> ./tests/...) is REPLACED by verify-unit
+# (which excludes ./tests/... and is composed of pure unit-test
+# sub-targets).
+#
+# Fail-closed contract: any failing step exits non-zero. No `|| true`,
+# no fallbacks, no continue-on-error. If `make verify-main` is RED
+# locally, the push MUST be blocked until the next agent lands the
+# fix.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -591,6 +622,12 @@ verify-architecture:
 # verify-artlist — quick verification dedicated to the Artlist module.
 # Runs the Go packages under infrastructure/artlist, providers/artlist,
 # api/assets/artlist, plus the node-scraper JS test suite.
+#
+# NOTE (July 2026, STEP 3/4): this target is REMOVED from verify-main
+# because the Artlist battery (artlist_e2e) requires Chrome + scraper +
+# Drive + Qdrant projections — all of which the headless pre-push gate
+# must NOT depend on. Use `make verify-artlist` as a developer
+# diagnostic, NOT as a pre-push gate.
 verify-artlist:
 	$(GO) test -race ./internal/infrastructure/artlist/... && \
 	$(GO) test -race ./internal/application/assets/providers/artlist/... && \
@@ -611,10 +648,26 @@ verify-stock:
 	$(GO) test -race ./internal/api/assets/stock/...
 	@echo "✅ Stock verification passed"
 
-# verify-main — Cleanup Plan P0-3 (June 2026): the canonical fail-closed
-# pre-push gate, now composed of the granular targets above. Every push to
-# `main` MUST pass this target locally first. The individual steps were
-# extracted to reduce log volume and isolate failures.
+# verify-main — pre-push gate (STEP 3/4 of the verify-main refactor,
+# July 2026): the canonical fail-closed chain that runs before every
+# push to `main`. Composed of headless granular gates:
+#   verify-fast        foundation + static (toolchain + format + vet)
+#   verify-unit        Go unit tests (EXCLUDES ./tests/... integration)
+#   verify-node        Node toolchain (probe + Mocha)
+#   verify-architecture governance checks (in-process AST + archcheck)
+# No browser, no Artlist session, no Drive, no Qdrant. The pre-existing
+# verify-artlist and verify-go targets are INTENTIONALLY EXCLUDED:
+# verify-artlist touches the heavy artlist_e2e battery (browser +
+# session), verify-go transitively includes the slow ./tests/...
+# integration suite via verify-go-tests. Use verify-artlist /
+# verify-integration as developer-tool diagnostics, NOT as pre-push
+# gates.
+#
+# CI runs the same chain, so local must match CI exactly. The chain
+# is fail-closed: any failing step exits non-zero, no `|| true`, no
+# fallbacks, no continue-on-error. If `make verify-main` is RED
+# locally, the push MUST be blocked until the next agent lands the
+# fix.
 #
 # TODO(pre-existing-debt, June 2026): re-enable the canonical
 # ci-architectural-checks step once scripts/archcheck/main.go
@@ -627,9 +680,18 @@ verify-stock:
 # scripts/archcheck/main.go). Mirrors the --strict relaxation
 # already applied to cmd/archcheck above (pre-existing debt
 # accepted for the migration window per godlike/07).
-verify-main: verify-base verify-go verify-architecture verify-artlist
+verify-main: verify-fast verify-unit verify-node verify-architecture
 	@echo "✅ verify-main passed"
 	# bash scripts/ci-architectural-checks.sh
+
+# verify-release — pre-deploy gate (STEP 3/4 of the verify-main
+# refactor): verify-main + verify-integration. Adds the slow
+# ./tests/... integration suite which may depend on external services
+# (Drive, Qdrant, scraper). Run before deploy, NOT on every push
+# (too slow for the pre-push gate). verify-fast / verify-main remain
+# the dev-loop / pre-push gates.
+verify-release: verify-main verify-integration
+	@echo "✅ Release verification passed"
 
 # Aggregate pre-flight check. Runs both toolchain guards plus two
 # sanity contracts that have historically drifted silently:
