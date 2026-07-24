@@ -270,6 +270,24 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		// the caller can decide whether to retry. The previous
 		// GetImageByHash fallback path was retired because the new
 		// canonical writer handles dedup atomically.
+		//
+		// PR-IMAGES-OUTBOX-TERMINAL-FALLBACK (July 2026): when the
+		// outbox event is suppressed by an existing terminal row
+		// (e.g. superseded by a newer aggregate version), the asset
+		// write has already succeeded inside the transaction. Recover
+		// the already-persisted asset by hash so the caller can treat
+		// the ingest as an idempotent cache hit rather than a 500.
+		if errors.Is(err, persistence.ErrAssetCommitOutboxTerminal) {
+			if existing, getErr := s.repo.GetImageByHash(ctx, hash); getErr == nil && existing != nil {
+				if s.log != nil {
+					s.log.Info("image ingest: recovered existing asset after outbox terminal conflict",
+						zap.String("hash", hash),
+						zap.String("source", source),
+						zap.Error(err))
+				}
+				return existing, nil
+			}
+		}
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
 	}
 	if result.Origin == asset.ImageOriginRetrieved && s.repo != nil {
