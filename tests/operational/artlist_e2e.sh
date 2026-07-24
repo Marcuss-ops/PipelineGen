@@ -91,26 +91,34 @@ ARTLIST_LIMIT="${ARTLIST_LIMIT:-3}"
 
 # LIVE_QUERIES — env-driven, no hardcoded terms in code. Every gate that
 # needs a real Artlist URL uses Phase 1 of /search/live on this 3-element
-# list (Gate 1 /detail / Gate 2 /download / Gate 3 itself).
+# list (Gate 1 /detail, Gate 2 /download, Gate 3 itself).
 #
-# Italian-language queries are intentionally NOT promoted in code because
-# Artlist's catalog is English-only — Italian terms would return zero hits
-# against the live search and would fail the live-search gate by design.
-# The DoD spec phrased the 3 semantics in Italian ("business team in
-# ufficio moderno", "pugile pesante in palestra", "arena boxe folla in
-# festa") precisely to scope the discussion; the actual English terms
-# used at runtime live below as a canonical fallback for reproducibility.
+# Italian-language queries are intentionally not promoted in code: the
+# DoD spec phrases the 3 semantics only to scope the discussion, but
+# Artlist's catalog is English-only, so Italian queries would return zero
+# hits against /search/live and would trip the "ok=true with zero results"
+# prohibition the Gate 3 contract enforces.
 #
-# Override shapes (env precedence high→low):
+# Override shapes (env precedence high->low):
 #   1. LIVE_QUERIES="termA|termB|termC" bash artlist_e2e.sh
-#      (pipe-delimited; the only place a literal "|" may appear in the env)
+#      (pipe-delimited; literal "|" inside an individual term is reserved)
 #   2. LIVE_QUERY_1=termA LIVE_QUERY_2=termB LIVE_QUERY_3=termC bash artlist_e2e.sh
-#   3. (omit both) → canonical English fallback below
+#   3. (omit both) -> canonical English fallback below
 #
-# No Italian literal lives anywhere in this file. All in-code text on
-# these semantics is English or operator-supplied via env.
+# Validation: the LIVE_QUERIES pipe-delimited override MUST yield exactly 3
+# non-empty slots, otherwise the run exits 2 (canonical setup-error code).
+# LIVE_QUERY_1/2/3 individual override is gated on all three being non-empty
+# at the elif site, so no extra validation is needed there.
 if [[ -n "${LIVE_QUERIES:-}" ]]; then
     IFS='|' read -ra LIVE_QUERIES <<<"${LIVE_QUERIES}"
+    if [[ ${#LIVE_QUERIES[@]} -ne 3 \
+       || -z "${LIVE_QUERIES[0]:-}" \
+       || -z "${LIVE_QUERIES[1]:-}" \
+       || -z "${LIVE_QUERIES[2]:-}" ]]; then
+        printf >&2 '[FAIL]  LIVE_QUERIES env override must yield exactly 3 non-empty pipe-delimited terms; got %d slot(s): "%s"\n' \
+            "${#LIVE_QUERIES[@]}" "${LIVE_QUERIES[*]}"
+        exit 2
+    fi
 elif [[ -n "${LIVE_QUERY_1:-}" && -n "${LIVE_QUERY_2:-}" && -n "${LIVE_QUERY_3:-}" ]]; then
     LIVE_QUERIES=("${LIVE_QUERY_1}" "${LIVE_QUERY_2}" "${LIVE_QUERY_3}")
 else
