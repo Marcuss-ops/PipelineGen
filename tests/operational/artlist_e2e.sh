@@ -154,11 +154,41 @@ gate_preflight() {
         log_pass "single node artlist_server.js process"
     fi
 
+    # Single browser/Chrome profile (Puppeteer-launched under node-scraper).
+    # Threshold ≤3 because headless Chrome forks 1 main + ~2 helpers per active
+    # profile. > 3 = orphaned profiles / parallel browser instances.
+    local chrome_total
+    chrome_total=$(pgrep -ac 'chrome|chromium' 2>/dev/null || echo 0)
+    if [[ "${chrome_total}" -gt 3 ]]; then
+        log_fail "expected ≤3 chrome/chromium processes, found ${chrome_total} (multiple headless instances?)"
+        failures=$((failures + 1))
+    else
+        log_pass "chrome/chromium within bounds (${chrome_total})"
+    fi
+
     if [[ ! -f "$DB_PATH" ]]; then
         log_fail "SQLite DB missing: $DB_PATH"
         failures=$((failures + 1))
     else
         log_pass "SQLite readable at $DB_PATH"
+    fi
+
+    # No pending Artlist jobs in {QUEUED,LEASED,RUNNING,FINALIZING,RETRY_WAIT}.
+    # Catches leftover state from interrupted runs without manual DB intervention.
+    # Scoped to type LIKE 'media.artlist%' so unrelated voiceover/stock jobs
+    # don't gate the Artlist DoD.
+    local pending_jobs
+    pending_jobs=$(sqlite3 -readonly "$DB_PATH" \
+        "SELECT COUNT(*) FROM jobs WHERE type LIKE 'media.artlist%' \
+         AND status IN ('QUEUED','LEASED','RUNNING','FINALIZING','RETRY_WAIT')" \
+        2>/dev/null | tr -d ' \n' || echo "?")
+    if [[ "${pending_jobs}" == "0" ]]; then
+        log_pass "no pending Artlist jobs"
+    elif [[ -z "$DB_PATH" || ! -f "$DB_PATH" ]]; then
+        log_warn "skipped pending-jobs check: SQLite DB absent"
+    else
+        log_fail "expected ZERO pending Artlist jobs, found ${pending_jobs}"
+        failures=$((failures + 1))
     fi
 
     if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
@@ -181,6 +211,18 @@ gate_preflight() {
         failures=$((failures + 1))
     else
         log_pass "Artlist Drive root configured"
+    fi
+
+    # Artlist session is authenticated iff /api/artlist/diagnostics.scraper.ok == true.
+    # The `scraper` probe inside /api/artlist/diagnostics already validates the
+    # node-scraper ↔ artlist.io session (per system_prober_http.go::stage_2_session_valid).
+    smoke_curl GET "/api/artlist/diagnostics?term=$(printf '%s' "$ARTLIST_TERM" | jq -sRr @uri)" >/dev/null
+    if [[ "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]] \
+        && jq -e '.scraper.ok == true' "${SMOKE_LAST_BODY:-/dev/null}" >/dev/null 2>&1; then
+        log_pass "Artlist session authenticated (/api/artlist/diagnostics scraper probe green)"
+    else
+        log_fail "Artlist session NOT authenticated (scraper probe not green; HTTP=${SMOKE_LAST_HTTP:-empty})"
+        failures=$((failures + 1))
     fi
 
     if (( failures > 0 )); then
