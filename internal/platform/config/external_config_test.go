@@ -194,3 +194,36 @@ func TestConfigOverride_ArtlistAcquisitionMode_ManualImport(t *testing.T) {
 	assert.Equal(t, "manual_import", cfg.External.ArtlistAcquisitionMode,
 		"operator opt-out via ARTLIST_ACQUISITION_MODE=manual_import MUST take precedence over the P1 default")
 }
+
+// ---------- PR-ARTLIST-SKIP-TRANSCRIPTION-OPT-IN (July 2026) ----------
+//
+// TestConfigDefaults_ArtlistSkipTranscriptionIsFalse pins the loader
+// default for cfg.External.ArtlistSkipTranscription. The godlike/07
+// fail-closed default MUST be false so the mandatory transcription
+// (PR-ARTLIST-MANDATORY-TRANSCRIPTION) survives when the operator does
+// not opt in. Without this pin, a future regression that flips the
+// default OR removes the env/yaml binding would silently re-enable
+// the deterministic RETRY_WAIT loop that motivated this PR.
+//
+// The test mirrors the ArtlistDailyDownloadLimit pattern: fresh
+// Config{}, applyDefaults() only — no env, no yaml.
+func TestConfigDefaults_ArtlistSkipTranscriptionIsFalse(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	assert.False(t, cfg.External.ArtlistSkipTranscription,
+		"PR-ARTLIST-SKIP-TRANSCRIPTION-OPT-IN: loader default for ArtlistSkipTranscription MUST be false (mandatory transcription preserved)")
+}
+
+// TestConfigOverride_ArtlistSkipTranscription_True pins the env override
+// path: when the operator sets ARTLIST_SKIP_TRANSCRIPTION=true
+// explicitly, the loader MUST bind it. This is the canonical escape
+// hatch for environments where the `whisper` binary is unavailable
+// (the deterministic RETRY_WAIT root cause this PR fixes).
+func TestConfigOverride_ArtlistSkipTranscription_True(t *testing.T) {
+	t.Setenv("ARTLIST_SKIP_TRANSCRIPTION", "true")
+	cfg := &Config{}
+	applyDefaults(cfg)
+	applyEnvVars(cfg)
+	assert.True(t, cfg.External.ArtlistSkipTranscription,
+		"operator opt-in via ARTLIST_SKIP_TRANSCRIPTION=true MUST bind (escape hatch for non-whisper environments)")
+}

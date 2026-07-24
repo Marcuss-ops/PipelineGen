@@ -288,66 +288,90 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			// downloaded clip MUST be transcribed. The transcription is
 			// performed outside the main mutex because it is a slow I/O
 			// operation; only the per-item outcome is serialized.
-			transcriptPath := result.LocalPath
-			transcript, detectedLang, transcribeErr := o.svc.transcriber.Transcribe(ctx, transcriptPath)
-			if transcribeErr != nil {
-				o.svc.log.Warn("artlist transcription failed",
+			//
+			// PR-ARTLIST-SKIP-TRANSCRIPTION-OPT-IN (July 2026): when
+			// `cfg.External.ArtlistSkipTranscription=true` is set by
+			// the operator, the orchestrator SKIPS this entire block
+			// (Transcribe call + text_track row write). The skip is the
+			// canonical escape hatch for environments where the
+			// `whisper` binary is unavailable — without it every clip
+			// failed at Transcribe, EvaluateRunOutcome fired the "all
+			// artlist items failed" verdict, and ScheduleRetry bounced
+			// every job deterministically.
+			//
+			// godlike/07: the skip is an EXPLICIT operator opt-in
+			// (default false). The visible per-item Status histogram
+			// (logged at WARN by run_service.go::logFailedItemBreakdown
+			// when resp.Failed > 0) keeps the gap auditable instead of
+			// silent. The clip still lands on Drive with the canonical
+			// finalizer writes; ONLY the transcript + text_track path
+			// is skipped.
+			if o.svc.cfg != nil && o.svc.cfg.External.ArtlistSkipTranscription {
+				o.svc.log.Info("artlist transcription skipped (operator opt-in via artlist_skip_transcription)",
 					zap.String("clip_id", arg.w.item.ClipID),
-					zap.String("local_path", transcriptPath),
-					zap.Error(transcribeErr))
-				if o.svc.assetProcessing != nil {
-					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", transcribeErr.Error()); err != nil {
-						o.svc.log.Warn("asset_processing.Fail failed",
-							zap.String("clip_id", arg.w.item.ClipID),
-							zap.Error(err))
+					zap.String("local_path", result.LocalPath))
+			} else {
+				transcriptPath := result.LocalPath
+				transcript, detectedLang, transcribeErr := o.svc.transcriber.Transcribe(ctx, transcriptPath)
+				if transcribeErr != nil {
+					o.svc.log.Warn("artlist transcription failed",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.String("local_path", transcriptPath),
+						zap.Error(transcribeErr))
+					if o.svc.assetProcessing != nil {
+						if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", transcribeErr.Error()); err != nil {
+							o.svc.log.Warn("asset_processing.Fail failed",
+								zap.String("clip_id", arg.w.item.ClipID),
+								zap.Error(err))
+						}
 					}
+					mu.Lock()
+					arg.w.item.Status = "transcription_failed"
+					arg.w.item.Error = fmt.Sprintf("transcription failed: %v", transcribeErr)
+					ps.resp.Failed++
+					ps.resp.Items = append(ps.resp.Items, arg.w.item)
+					mu.Unlock()
+					return
 				}
-				mu.Lock()
-				arg.w.item.Status = "transcription_failed"
-				arg.w.item.Error = fmt.Sprintf("transcription failed: %v", transcribeErr)
-				ps.resp.Failed++
-				ps.resp.Items = append(ps.resp.Items, arg.w.item)
-				mu.Unlock()
-				return
-			}
 
-			lang, _ := asset.Normalize(detectedLang)
-			if lang == "" {
-				lang = "und"
-			}
-			hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
-			track := asset.TextTrack{
-				AssetID:            arg.w.item.ClipID,
-				LanguageCode:       lang,
-				TextKind:           asset.TextTrackTranscript,
-				TextContent:        transcript,
-				SourceType:         asset.TextSourceWhisper,
-				SourceLanguageCode: lang,
-				IsOriginal:         true,
-				ModelName:          "tiny",
-				TextHash:           hash,
-				SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
-				IsCurrent:          true,
-				Status:             asset.TextTrackReady,
-			}
-			if err := o.svc.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
-				o.svc.log.Warn("artlist transcript persist failed",
-					zap.String("clip_id", arg.w.item.ClipID),
-					zap.Error(err))
-				if o.svc.assetProcessing != nil {
-					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", err.Error()); err != nil {
-						o.svc.log.Warn("asset_processing.Fail failed",
-							zap.String("clip_id", arg.w.item.ClipID),
-							zap.Error(err))
-					}
+				lang, _ := asset.Normalize(detectedLang)
+				if lang == "" {
+					lang = "und"
 				}
-				mu.Lock()
-				arg.w.item.Status = "transcript_persist_failed"
-				arg.w.item.Error = fmt.Sprintf("transcript persist failed: %v", err)
-				ps.resp.Failed++
-				ps.resp.Items = append(ps.resp.Items, arg.w.item)
-				mu.Unlock()
-				return
+				hash := asset.TextHash(transcript, lang, asset.TextTrackTranscript)
+				track := asset.TextTrack{
+					AssetID:            arg.w.item.ClipID,
+					LanguageCode:       lang,
+					TextKind:           asset.TextTrackTranscript,
+					TextContent:        transcript,
+					SourceType:         asset.TextSourceWhisper,
+					SourceLanguageCode: lang,
+					IsOriginal:         true,
+					ModelName:          "tiny",
+					TextHash:           hash,
+					SourceVersion:      asset.SourceVersion(hash, lang, lang, "", "tiny", "", ""),
+					IsCurrent:          true,
+					Status:             asset.TextTrackReady,
+				}
+				if err := o.svc.textTrackRepo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
+					o.svc.log.Warn("artlist transcript persist failed",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.Error(err))
+					if o.svc.assetProcessing != nil {
+						if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "transcription", err.Error()); err != nil {
+							o.svc.log.Warn("asset_processing.Fail failed",
+								zap.String("clip_id", arg.w.item.ClipID),
+								zap.Error(err))
+						}
+					}
+					mu.Lock()
+					arg.w.item.Status = "transcript_persist_failed"
+					arg.w.item.Error = fmt.Sprintf("transcript persist failed: %v", err)
+					ps.resp.Failed++
+					ps.resp.Items = append(ps.resp.Items, arg.w.item)
+					mu.Unlock()
+					return
+				}
 			}
 
 			// Track asset lifecycle: mark download step as completed.

@@ -108,12 +108,38 @@ func (a *JobAdapter) HandleJob(
 		if errMsg == "" {
 			errMsg = "unknown error"
 		}
-		eventFn("error", "artlist run failed", map[string]any{"error": errMsg})
+		// PR-ARTLIST-RETRY-WAIT-DIAGNOSTIC (July 2026): attach the same
+		// per-item Status histogram that logFailedItemBreakdown emits
+		// to stdout so the failure breakdown is durable in
+		// job_events.data_json (operators can audit future
+		// RETRY_WAIT jobs WITHOUT re-running the search).
+		counts, samples := failedItemBreakdown(resp)
+		found, processed, skipped, failed := respCounters(resp)
+		eventFn("error", "artlist run failed", map[string]any{
+			"error":          errMsg,
+			"found":          found,
+			"processed":      processed,
+			"skipped":        skipped,
+			"failed":         failed,
+			"status_counts":  counts,
+			"status_samples": samples,
+		})
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	if failed, errMsg := EvaluateRunOutcome(resp); failed {
-		eventFn("error", errMsg, map[string]any{"failed": resp.Failed})
+		// Mirror the histogram into the EvaluateRunOutcome error path
+		// (Policy B: undercounted / silent-loss signature).
+		counts, samples := failedItemBreakdown(resp)
+		found, processed, skipped, _ := respCounters(resp)
+		eventFn("error", errMsg, map[string]any{
+			"failed":         resp.Failed,
+			"found":          found,
+			"processed":      processed,
+			"skipped":        skipped,
+			"status_counts":  counts,
+			"status_samples": samples,
+		})
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 

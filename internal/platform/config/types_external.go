@@ -165,6 +165,37 @@ type ExternalConfig struct {
 	// becomes irrelevant (the resolver gate fires before the limit check).
 	ArtlistDailyDownloadLimit int `yaml:"artlist_daily_download_limit" env:"ARTLIST_DAILY_DOWNLOAD_LIMIT" default:"10"`
 
+	// ArtlistSkipTranscription gates the PR-ARTLIST-MANDATORY-TRANSCRIPTION
+	// step (whisper call + text_track write) per operator opt-in. When
+	// true, the orchestrator treats each clip as processed after
+	// mediaProcessor.Process succeeds WITHOUT calling Transcribe and
+	// WITHOUT writing a text_track row — the clip lands on Drive with
+	// no transcript.
+	//
+	// This is a deliberate escape hatch for environments where the
+	// `whisper` binary (or the `openai-whisper` Python package + model
+	// weights) is unavailable. The mandatory transcription contract
+	// was the deterministic-cause root of a RETRY_WAIT loop on hosts
+	// without whisper: Transcribe failed on every clip,
+	// EvaluateRunOutcome fired the "all artlist items failed" verdict,
+	// and ScheduleRetry bounced every job.
+	//
+	// Default: false (godlike/07 fail-closed — preservation of the
+	// mandatory semantics). Operators who cannot install whisper in
+	// production MUST set
+	//   ARTLIST_SKIP_TRANSCRIPTION=true
+	// in their env. This is an explicit, audited operator intent:
+	// every skipped transcript is a documented data-quality gap, not a
+	// silent failure.
+	//
+	// NOTE: this flag is NOT a fix for "transcription is broken" — it
+	// is the operator-side escape hatch. The canonical fix is to
+	// install `whisper` and leave the flag at false. The operator
+	// decision matrix:
+	//   - production with transcripts:    false (default)
+	//   - staging / CI / air-gapped env:  true (explicit opt-in)
+	ArtlistSkipTranscription bool `yaml:"artlist_skip_transcription" env:"ARTLIST_SKIP_TRANSCRIPTION" default:"false"`
+
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
 	// StockEnrichmentEnabled gates the canonical enrichment pipeline
