@@ -233,7 +233,8 @@ smoke_gen_uuid() {
     printf 'smoke-%d-%d-%d\n' "$(date +%s)" "$RANDOM" "$RANDOM"
 }
 
-# curl wrapper — adds the bearer token silently (never via -H printed by shell).
+# curl wrapper — adds the bearer token and an Idempotency-Key header for
+# non-GET requests (never via -H printed by shell).
 # Always captures the body in $WORK_DIR/last.body and stores the HTTP code in $SMOKE_LAST_HTTP.
 # Diagnostics are routed through smoke_log_response (redacted) when SMOKE_LOG_DIR is set.
 smoke_curl() {
@@ -242,10 +243,15 @@ smoke_curl() {
     local out_file="$WORK_DIR/last.body"
     local code_file="$WORK_DIR/last.code"
     local code
+    local idem_headers=()
+    if [[ "$method" != "GET" ]]; then
+        idem_headers=(-H "Idempotency-Key: $(smoke_gen_uuid)")
+    fi
     code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
         -X "$method" \
         -o "$out_file" -w '%{http_code}' \
         -H "Authorization: Bearer $SMOKE_TOKEN" \
+        "${idem_headers[@]}" \
         -H 'Content-Type: application/json' \
         "$@" \
         "http://${SMOKE_API_BASE}${url_path}")

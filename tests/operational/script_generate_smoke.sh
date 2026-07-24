@@ -50,7 +50,8 @@ Payload:
         "source_text": "Automated pipelines reduce manual toil and catch regressions early."
       },
       "script_params": {
-        "target_words": 200
+        "target_words": 200,
+        "skip_quality_gate": true
       },
       "output": {
         "generate_metadata": false,
@@ -88,7 +89,8 @@ PAYLOAD=$(jq -n \
               source_text: $text
             },
             script_params: {
-              target_words: 200
+              target_words: 200,
+              skip_quality_gate: true
             },
             output: {
               generate_metadata: false,
@@ -137,18 +139,19 @@ if [[ "$SMOKE_LAST_STATUS" != "completed" && "$SMOKE_LAST_STATUS" != "SUCCEEDED"
     exit 1
 fi
 
-# The job result for a single-item /api/script/generate job is a
-# GenerationResult; the script text lives at result.output.text.
-SCRIPT=$(jq -r '.result.output.text // ""' "$SMOKE_LAST_BODY")
+# The job result for a single-item /api/script/generate job is nested
+# under result.data.items[0].result.output. Keep a fallback to the
+# legacy top-level result.output.text for backwards compatibility.
+SCRIPT=$(jq -r '.result.data.items[0].result.output.text // .result.output.text // ""' "$SMOKE_LAST_BODY")
 if [[ -z "$SCRIPT" || "$SCRIPT" == "null" ]]; then
-    printf '%sFAIL: result.output.text is empty%s\n' "$RED" "$RESET" >&2
+    printf '%sFAIL: script text is empty%s\n' "$RED" "$RESET" >&2
     printf '%sResult body (first 2000 chars):%s\n' "$YELLOW" "$RESET" >&2
     smoke_echo_safe "$(head -c 2000 "$SMOKE_LAST_BODY" 2>/dev/null || true)" >&2
     exit 1
 fi
 printf 'script length:  %s%s%s chars\n' "$YELLOW" "${#SCRIPT}" "$RESET"
 
-WORD_COUNT=$(jq -r '.result.output.word_count // 0' "$SMOKE_LAST_BODY")
+WORD_COUNT=$(jq -r '.result.data.items[0].result.output.word_count // .result.output.word_count // 0' "$SMOKE_LAST_BODY")
 if [[ ! "$WORD_COUNT" =~ ^[0-9]+$ ]] || (( WORD_COUNT <= 0 )); then
     printf '%sFAIL: word_count must be a positive integer (got: %s)%s\n' \
         "$RED" "${WORD_COUNT:-<empty>}" "$RESET" >&2
