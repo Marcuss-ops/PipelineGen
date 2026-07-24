@@ -89,6 +89,8 @@ or a full Google Drive folder URL to upload automatically after rendering.
 make verify-main
 ```
 
+`make verify-main` is the canonical fail-closed pre-push gate. It is composed of smaller targets so you can run only the checks relevant to the area you are working on and get faster, isolated failure signals. See [`docs/operations/verify-main-workflow.md`](docs/operations/verify-main-workflow.md) for the full workflow.
+
 ## Operational testing
 
 For the Stock 9-phase battery, the Artlist clean test (`tests/operational/artlist_live_e2e_verify.sh`), and the **RETRY_WAIT / `CANCELLED` per-job diagnostic recipe** (API + SQLite fallback), see:
