@@ -21,22 +21,15 @@ source "$DIR/../lib/common.sh"
 # shellcheck disable=SC1091
 source "$DIR/../lib/artlist.sh"
 # shellcheck disable=SC1091
+source "$DIR/../lib/artlist_runtime.sh"
+# shellcheck disable=SC1091
 source "$DIR/../lib/drive.sh"
 
-# Per-battery runtime configuration.
-HOST="${VELOX_HOST:-127.0.0.1}"
-PIPELINE_PORT="${PIPELINE_PORT:-${VELOX_PORT:-8000}}"
-BASE_URL="http://${HOST}:${PIPELINE_PORT}"
-ARTLIST_ROOT_FOLDER="${VELOX_DRIVE_ARTLIST_ROOT:-${ROOT_FOLDER_ID:-}}"
+
 
 smoke_require curl jq
 
-# Per-battery counters
-PASS=0; WARN=0; FAIL=0
-log_pass() { printf '[PASS]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; PASS=$((PASS + 1)); }
-log_warn() { printf '[WARN]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; WARN=$((WARN + 1)); }
-log_fail() { printf '[FAIL]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; FAIL=$((FAIL + 1)); }
-log_info() { printf '[INFO]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
 
 # ── Gate 6 — Drive resolve-by-id hard gate ──────────────────────────────
 # Spec (July 2026 DoD):

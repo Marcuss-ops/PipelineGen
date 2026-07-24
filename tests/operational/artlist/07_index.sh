@@ -20,27 +20,17 @@ source "$DIR/../lib/common.sh"
 # shellcheck disable=SC1091
 source "$DIR/../lib/artlist.sh"
 # shellcheck disable=SC1091
+source "$DIR/../lib/artlist_runtime.sh"
+# shellcheck disable=SC1091
 source "$DIR/../lib/sqlite.sh"
 # shellcheck disable=SC1091
 source "$DIR/../lib/qdrant.sh"
 
-# Per-battery runtime configuration.
-HOST="${VELOX_HOST:-127.0.0.1}"
-PIPELINE_PORT="${PIPELINE_PORT:-${VELOX_PORT:-8000}}"
-BASE_URL="http://${HOST}:${PIPELINE_PORT}"
-DB_PATH="${VELOX_DATA_DIR:-./data}/media/media.db.sqlite"
-QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
-QDRANT_API_KEY="${QDRANT_API_KEY:-${VELOX_QDRANT_API_KEY:-}}"
-COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"
+
 
 smoke_require curl jq sqlite3
 
-# Per-battery counters
-PASS=0; WARN=0; FAIL=0
-log_pass() { printf '[PASS]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; PASS=$((PASS + 1)); }
-log_warn() { printf '[WARN]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; WARN=$((WARN + 1)); }
-log_fail() { printf '[FAIL]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; FAIL=$((FAIL + 1)); }
-log_info() { printf '[INFO]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
 
 # ── Gate 7 — SQLite + outbox integrity ──────────────────────────────────
 # Spec (July 2026 DoD):
