@@ -138,10 +138,32 @@ if [[ -n "${LIVE_QUERIES:-}" ]]; then
                 "$ts" "$WORK_DIR"
             exit 2
         fi
+        # Build the value array length-N faithfully: pipe the bash array
+        # via NUL separator (the canonical CSV null-record delimiter per
+        # IEEE Std 1003.1), slurp + split + map empty-to-null + slice
+        # to ${#LIVE_QUERIES[@]} so the trailing empty from printf's
+        # terminal NUL does NOT inflate the count. --argjson value
+        # carries the full JSON array regardless of operator-supplied N,
+        # so the artifact faithfully reports {slots:N, value:[s0, ..., sN-1]}.
+        # Fail-safe wrapper around the jq pipeline: under set -euo
+        # pipefail the value_json=$(...) compound would otherwise mask
+        # the canonical exit-2 classification if jq exits non-zero
+        # (same fail-mode as round-4 mkdir).
+        if ! value_json=$(printf '%s\0' "${LIVE_QUERIES[@]}" | jq -Rs --argjson n "${#LIVE_QUERIES[@]}" \
+            'split("\u0000") | map(if . == "" then null else . end) | .[:$n]'); then
+            printf >&2 '[WARN]  %s  jq pipeline failed producing the value array (artifact dropped, exit 2 still enforced)\n' \
+                "$ts"
+            exit 2
+        fi
+        # Note asymmetry: the stderr FAIL line above uses
+        # ${LIVE_QUERIES[*]} (space-joined) for human-readable
+        # display; the JSON artifact carries the faithful length-N
+        # array so consumers can read slot boundaries. The slot
+        # count (${#LIVE_QUERIES[@]}) is the operator's primary
+        # signal in either shape.
         jq -nc --arg ts "$ts" --argjson slots "${#LIVE_QUERIES[@]}" \
-            --arg v0 "${LIVE_QUERIES[0]:-}" --arg v1 "${LIVE_QUERIES[1]:-}" --arg v2 "${LIVE_QUERIES[2]:-}" \
-            '[ $v0, $v1, $v2 ] | map(if . == "" then null else . end) as $v
-            | {event:"live_queries_validation_failed",ts:$ts,slots:$slots,value:$v}' \
+            --argjson value "$value_json" \
+            '{event:"live_queries_validation_failed",ts:$ts,slots:$slots,value:$value}' \
             > "$WORK_DIR/live_queries_validation_failed.json"
         # exit 2 (canonical setup-error exit code per file header) hard-
         # terminates the run. Do NOT source this file unless you intend
