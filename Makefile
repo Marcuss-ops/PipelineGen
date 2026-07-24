@@ -21,11 +21,13 @@
 #                      ./tests/... suite — may take several minutes
 #                      and may depend on external services.
 #
-#   verify-live        post-deploy gate (NOT YET IMPLEMENTED — STEP 4/4)
-#                      Will compose the live batteries:
+#   verify-live        post-deploy gate (live batteries — STEP 4/4 complete).
+#                      Composes the four operational batteries:
 #                      verify-images-live + verify-artlist-live +
 #                      verify-script-live + verify-vidrush-live
 #                      (each touches browser/Drive/Qdrant/scraper).
+#                      NOT pulled by verify-main or verify-release — the
+#                      post-deploy surface stays outside the pre-push gate.
 #
 # The pre-push verify-main is HEADLESS by design: it must work on a CI
 # runner without Chrome, without an Artlist session, without Drive
