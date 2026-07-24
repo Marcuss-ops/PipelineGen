@@ -383,6 +383,20 @@ describe('fetchClipDetails', () => {
           if (body.includes('documentElement')) {
             return resultOverrides.outerHtml || '<html></html>';
           }
+          // Mock-fragility fix (closes the regression surfaced by the
+          // verify-artlist-live smoke on commit 2443a633c): the
+          // streamsFromPerf evaluate in detail-page.js fetches an iterable
+          // (performance.getEntriesByType(...)) that is later consumed via
+          // [...streamsFromPerf, videoSrc] array spread. Returning a plain
+          // `{}` default would TypeError ("object is not iterable") under
+          // the spread operator, which bubbles up to fetchClipDetails'
+          // outer catch and produces a null return. Returning [] here keeps
+          // the spread iterable for any test that exercises the no-stream
+          // branch (STREAM_NOT_FOUND contract test plus any future
+          // regression net that mocks performance entries to [] each).
+          if (body.includes('getEntriesByType')) {
+            return resultOverrides.performanceEntries || [];
+          }
           // DOM metadata extraction.
           return resultOverrides.domMetadata || {};
         }
