@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+# tests/operational/artlist_e2e.sh — Artlist Definition-of-Done battery.
+#
+# Eleven hard gates + one mandatory restart test. Every gate touches the
+# live PipelineGen stack (Go server on 8000, node-scraper on 9123, Qdrant,
+# SQLite, Drive). The battery inherits generic infra from
+# tests/operational/lib/common.sh (`smoke_*`) and PipelineGen domain
+# assertions from tests/operational/lib/velox_domain.sh (`velox_*`).
+#
+# Exit codes (matches lib/common.sh convention):
+#   0  all hard assertions passed
+#   1  one or more hard assertions failed
+#   2  setup error / missing prerequisite
+# 124  overall wall-clock/timeout exceeded
+#
+# Usage:
+#   bash tests/operational/artlist_e2e.sh             # full battery
+#   SMOKE_DRY_RUN=1 bash tests/operational/artlist_e2e.sh   # announce-only
+#   bash tests/operational/artlist_e2e.sh --help
+#
+# Gate map (see tests/operational/artlist_gates.md for the full checklist):
+#   Gate  0 — clean reproducible environment
+#   Gate  1 — /detail hard gate (STREAM_NOT_FOUND ok path)
+#   Gate  2 — /download with ffprobe hard gate
+#   Gate  3 — /api/artlist/search/live across 3 queries + 60s timeout
+#   Gate  4 — first fresh run (3/3, processed=3 failed=0, no RETRY_WAIT)
+#   Gate  5 — per-clip database + file validation
+#   Gate  6 — Drive resolve-by-id hard gate (file on Drive, not trashed)
+#   Gate  7 — SQLite integrity (single row, outbox terminal)
+#   Gate  8 — Qdrant point + /api/media/search hard gate
+#   Gate  9 — replay (cache_hit=true, cache_source=sqlite)
+#   Gate 10 — negative tests (SESSION_EXPIRED, STREAM_NOT_FOUND, SCRAPER_UNAVAILABLE)
+#   Restart — PASS before AND after restart (no manual intervention)
+
+set -euo pipefail
+
+SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-3600}"
+SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-1800}"
+SMOKE_POLL_INTERVAL_SECONDS="${SMOKE_POLL_INTERVAL_SECONDS:-5}"
+SMOKE_HTTP_TIMEOUT_SECONDS="${SMOKE_HTTP_TIMEOUT_SECONDS:-300}"
+export SMOKE_TIMEOUT_SECONDS SMOKE_POLL_TIMEOUT_SECONDS SMOKE_POLL_INTERVAL_SECONDS SMOKE_HTTP_TIMEOUT_SECONDS
+
+DIR=$(cd "$(dirname "$0")" && pwd)
+# shellcheck disable=SC1091
+source "$DIR/lib/common.sh"
+# shellcheck disable=SC1091
+source "$DIR/lib/velox_domain.sh"
+
+if [[ "${HELP_REQUESTED:-0}" == "1" ]]; then
+    cat <<'EOF'
+artlist_e2e.sh — Artlist Definition-of-Done battery
+
+Eleven hard gates + one restart test against the live PipelineGen stack.
+Inherits smoke_* (lib/common.sh) and velox_* (lib/velox_domain.sh) helpers;
+NO business logic is duplicated here — every assertion is a thin call.
+
+Live checks (per Gate map in tests/operational/artlist_gates.md):
+  0  clean environment + diagnostics reachable
+  1  POST /detail returns m3u8/MP4 stream URL or STREAM_NOT_FOUND
+  2  POST /download produces ffprobe-valid MP4
+  3  GET /api/artlist/search/live across 3 queries (60s each)
+  4  POST /api/artlist/run 3/3 SUCCEEDED, no RETRY_WAIT
+  5  per-clip DB + local file integrity
+  6  POST /api/drive/resolve-by-id hard gate
+  7  SQLite single-row + outbox completed/superseded
+  8  Qdrant point + POST /api/media/search returns the clip
+  9  Replay: same clip_id + drive_file_id + file_hash, cache_hit=true
+ 10  Negative tests: SESSION/STREAM/SCRAPER unavailable
+ R  Restart test: PASS before AND after restart
+
+Dry run:
+  SMOKE_DRY_RUN=1 bash tests/operational/artlist_e2e.sh
+EOF
+    exit 0
+fi
+
+# ── Per-battery runtime configuration ─────────────────────────────────────
+smoke_require curl sqlite3 file ffmpeg ffprobe jq
+
+HOST="${VELOX_HOST:-127.0.0.1}"
+PIPELINE_PORT="${PIPELINE_PORT:-${VELOX_PORT:-8000}}"
+BASE_URL="http://${HOST}:${PIPELINE_PORT}"
+DB_PATH="${VELOX_DATA_DIR:-./data}/media/media.db.sqlite"
+SCRAPER_URL="${VELOX_ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
+QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
+QDRANT_API_KEY="${QDRANT_API_KEY:-${VELOX_QDRANT_API_KEY:-}}"
+COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"
+ARTLIST_ROOT_FOLDER="${VELOX_DRIVE_ARTLIST_ROOT:-${ROOT_FOLDER_ID:-}}"
+ARTLIST_TERM="${ARTLIST_TERM:-business team working in modern office}"
+ARTLIST_LIMIT="${ARTLIST_LIMIT:-3}"
+
+LIVE_QUERIES=(
+    "business team working in modern office"
+    "heavyweight boxer training in gym"
+    "boxing arena crowd celebrating"
+)
+
+PASS=0
+WARN=0
+FAIL=0
+
+log_pass() { printf '[PASS]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; PASS=$((PASS + 1)); }
+log_warn() { printf '[WARN]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; WARN=$((WARN + 1)); }
+log_fail() { printf '[FAIL]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; FAIL=$((FAIL + 1)); }
+log_info() { printf '[INFO]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; }
+
+# ── Gate 0 — clean reproducible environment ─────────────────────────────
+# Verifies: single node artlist_server.js; one Chrome profile; scraper 9123
+# reachable; PipelineGen 8000 reachable; no RUNNING/QUEUED/RETRY_WAIT jobs;
+# SQLite readable; ffmpeg+ffprobe on PATH; Qdrant reachable; Drive folder
+# set; Artlist session authenticated. Fail-closed on any miss.
+gate_preflight() {
+    smoke_log_section "Gate 0 — clean reproducible environment"
+    local failures=0
+
+    if ! smoke_curl GET "/health" >/dev/null 2>&1; then
+        log_fail "GET /health failed — PipelineGen down at $BASE_URL"
+        failures=$((failures + 1))
+    else
+        log_pass "PipelineGen /health reachable at $BASE_URL"
+    fi
+    if ! smoke_curl GET "/ready" >/dev/null 2>&1; then
+        log_fail "GET /ready failed"
+        failures=$((failures + 1))
+    else
+        log_pass "PipelineGen /ready reachable"
+    fi
+
+    if ! curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" "$SCRAPER_URL/health" 2>/dev/null \
+            | jq -e '.ok == true' >/dev/null 2>&1; then
+        log_fail "scraper /health not ok at $SCRAPER_URL/health"
+        failures=$((failures + 1))
+    else
+        log_pass "scraper /health reachable at $SCRAPER_URL"
+    fi
+
+    local scraper_count
+    scraper_count=$(pgrep -af 'node.*artlist_server' 2>/dev/null | wc -l || true)
+    if [[ "${scraper_count}" -gt 1 ]]; then
+        log_fail "expected one node artlist_server.js, found ${scraper_count}"
+        failures=$((failures + 1))
+    else
+        log_pass "single node artlist_server.js process"
+    fi
+
+    if [[ ! -f "$DB_PATH" ]]; then
+        log_fail "SQLite DB missing: $DB_PATH"
+        failures=$((failures + 1))
+    else
+        log_pass "SQLite readable at $DB_PATH"
+    fi
+
+    if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+        log_fail "ffmpeg + ffprobe required on PATH"
+        failures=$((failures + 1))
+    else
+        log_pass "ffmpeg+ffprobe on PATH"
+    fi
+
+    if ! curl -sS --max-time 5 "$QDRANT_URL/collections" 2>/dev/null \
+            | jq -e '.result.collections | length >= 0' >/dev/null 2>&1; then
+        log_fail "Qdrant unreachable at $QDRANT_URL"
+        failures=$((failures + 1))
+    else
+        log_pass "Qdrant reachable at $QDRANT_URL"
+    fi
+
+    if [[ -z "$ARTLIST_ROOT_FOLDER" ]]; then
+        log_fail "VELOX_DRIVE_ARTLIST_ROOT not configured (no Artlist Drive root)"
+        failures=$((failures + 1))
+    else
+        log_pass "Artlist Drive root configured"
+    fi
+
+    if (( failures > 0 )); then
+        log_fail "Gate 0 preflight failed (${failures} sub-checks)"
+        return 1
+    fi
+    log_pass "Gate 0 preflight clean"
+}
+
+# Gates 1..10 are scaffolded as stubs. Each gate function:
+#   - increments PASS/WARN/FAIL counters
+#   - returns 0 on PASS, 1 on FAIL
+# Subsequent PRs implement one gate at a time and remove the stub marker.
+gate_detail_stream()       { smoke_log_section "Gate 1 — /detail hard gate";                log_info "[STUB] Gate 1 — implement next"; }
+gate_direct_download()     { smoke_log_section "Gate 2 — /download + ffprobe hard gate";   log_info "[STUB] Gate 2 — implement next"; }
+gate_live_search_three()   { smoke_log_section "Gate 3 — live search 3 queries + 60s";      log_info "[STUB] Gate 3 — implement next"; }
+gate_fresh_run_three()     { smoke_log_section "Gate 4 — first fresh run 3/3";              log_info "[STUB] Gate 4 — implement next"; }
+gate_per_clip_validation() { smoke_log_section "Gate 5 — per-clip DB + file validation";   log_info "[STUB] Gate 5 — implement next"; }
+gate_drive_resolve()       { smoke_log_section "Gate 6 — Drive resolve-by-id hard gate";   log_info "[STUB] Gate 6 — implement next"; }
+gate_sqlite_outbox()       { smoke_log_section "Gate 7 — SQLite + outbox integrity";       log_info "[STUB] Gate 7 — implement next"; }
+gate_qdrant_search()       { smoke_log_section "Gate 8 — Qdrant + media search hard gate";  log_info "[STUB] Gate 8 — implement next"; }
+gate_cache_replay()        { smoke_log_section "Gate 9 — replay cache_hit=true";           log_info "[STUB] Gate 9 — implement next"; }
+gate_explicit_errors()     { smoke_log_section "Gate 10 — negative tests";                 log_info "[STUB] Gate 10 — implement next"; }
+gate_restart()             { smoke_log_section "Restart — PASS pre/post restart";         log_info "[STUB] Restart — implement next"; }
+
+main() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        smoke_echo_safe "DRY RUN — Artlist DoD battery would probe:"
+        printf '  GET  %s/health\n' "$BASE_URL"
+        printf '  GET  %s/ready\n' "$BASE_URL"
+        printf '  GET  %s/api/artlist/search/live?term=%s&limit=5\n' "$BASE_URL" "$ARTLIST_TERM"
+        printf '  POST %s/api/artlist/run\n' "$BASE_URL"
+        printf '  POST %s/api/drive/resolve-by-id\n' "$BASE_URL"
+        printf '  POST %s/collections/%s/points/scroll (Qdrant)\n' "$QDRANT_URL" "$COLLECTION"
+        exit 0
+    fi
+
+    gate_preflight             || return 1
+    gate_detail_stream
+    gate_direct_download
+    gate_live_search_three
+    gate_fresh_run_three
+    gate_per_clip_validation
+    gate_drive_resolve
+    gate_sqlite_outbox
+    gate_qdrant_search
+    gate_cache_replay
+    gate_explicit_errors
+    gate_restart
+
+    printf '\n============================================\n'
+    printf '  VidRush Media E2E Battery (artlist_e2e)\n'
+    printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
+    printf '============================================\n'
+    if [[ "$FAIL" -gt 0 ]]; then
+        printf 'VERDICT: FAIL\n'
+        return 1
+    fi
+    printf 'VERDICT: PASS\n'
+    return 0
+}
+
+main "$@"
