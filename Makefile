@@ -35,7 +35,11 @@
 # that the headless gate must not touch. verify-go (which transitively
 # pulled verify-go-tests -> ./tests/...) is REPLACED by verify-unit
 # (which excludes ./tests/... and is composed of pure unit-test
-# sub-targets).
+# sub-targets). Note: verify-go itself is INTENTIONALLY RETAINED as a
+# standalone target (it's still in .PHONY) for backward compatibility
+# with operators and CI scripts that invoke `make verify-go` directly.
+# Do NOT re-add verify-go to verify-main — it transitively pulls the
+# slow ./tests/... integration suite and defeats the headless goal.
 #
 # Fail-closed contract: any failing step exits non-zero. No `|| true`,
 # no fallbacks, no continue-on-error. If `make verify-main` is RED
@@ -533,7 +537,7 @@ verify-go:
 # are pure unit tests (domain, application, infrastructure, api, commands,
 # pkg). NOTE: verify-main still routes through `verify-go` (which transitively
 # includes verify-go-tests) until STEP 3/4 lands.
-verify-unit:
+verify-unit: go-version-check
 	@$(MAKE) verify-go-core
 	@$(MAKE) verify-go-infrastructure
 	@$(MAKE) verify-go-api
