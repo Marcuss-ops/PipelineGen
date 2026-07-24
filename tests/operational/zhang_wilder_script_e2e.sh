@@ -119,6 +119,7 @@ HTTP="$(
     -X POST \
     "$BASE/api/script/generate" \
     -H "Authorization: Bearer $TOKEN" \
+    -H "Idempotency-Key: zhang-wilder-${RUN_ID}" \
     -H "Content-Type: application/json" \
     --data "$PAYLOAD"
 )"
