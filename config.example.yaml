@@ -80,6 +80,7 @@ external:
   # value or override via ARTLIST_DAILY_DOWNLOAD_LIMIT env var. Set to
   # 0 to disable automatic downloads entirely (ErrAutomaticDownloadsDisabled).
   artlist_daily_download_limit: 10           # PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: was 0 (disabled)
+  # artlist_skip_transcription: false         # operator opt-in escape hatch for environments without `whisper` binary; default false (mandatory transcription preserved); see internal/platform/config/types_external.go::ArtlistSkipTranscription
 
 paths:
   python_scripts_dir: "scripts"

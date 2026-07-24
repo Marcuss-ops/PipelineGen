@@ -107,14 +107,17 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 	if err := o.stageProcessBatch(ctx, ps); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()
+		logFailedItemBreakdown(o.svc.log, resp, labelStageProcessBatchError)
 		return resp, err
 	}
+	logFailedItemBreakdown(o.svc.log, resp, labelStageProcessBatchComplete)
 
 	// Stage 5: Post-processing (persist). Stage 6 is a documented no-op
 	// kept for sequence continuity — the canonical dispatcher took over
 	// indexing inside stagePersistResults (see stageIndexAsync for the
 	// no-op contract).
 	o.stagePersistResults(ctx, resp)
+	logFailedItemBreakdown(o.svc.log, resp, labelStagePersistComplete)
 	o.stageIndexAsync(ctx, resp)
 
 	processedCount := resp.Processed
@@ -141,6 +144,89 @@ type RunDefaults struct {
 	DefaultRootFolderID string
 	DefaultLimit        int
 	MaxLimit            int
+}
+
+// Canonical breakdown labels (grep-able surface). PR-ARTLIST-RETRY-
+// WAIT-DIAGNOSTIC keeps the labels stable so operators can query the
+// outcome-acounting timeline without diffing commit history.
+const (
+	labelStageProcessBatchError    = "stage_process_batch_error"
+	labelStageProcessBatchComplete = "stage_process_batch_complete"
+	labelStagePersistComplete      = "stage_persist_complete"
+)
+
+// failedItemBreakdown returns the per-item Status histogram + a sample
+// Error per Status. Pure function reused by both logFailedItemBreakdown
+// (stdout WARN) and job_types.go::HandleJob (eventFn persisted into
+// job_events.data_json) so the diagnostic surface is identical across
+// the two emission sites.
+//
+// godlike/06 SSOT: this is the SINGLE canonical source of the
+// (Status → count, Status → sample error) breakdown. Adding a new
+// emission site MUST call this helper, NOT re-roll the histogram
+// loop, to keep operator-visible surfaces identical.
+func failedItemBreakdown(resp *RunTagResponse) (counts map[string]int, samples map[string]string) {
+	counts = make(map[string]int)
+	samples = make(map[string]string)
+	if resp == nil {
+		return
+	}
+	for _, it := range resp.Items {
+		if it.Status == "" {
+			continue
+		}
+		counts[it.Status]++
+		if samples[it.Status] == "" && it.Error != "" {
+			samples[it.Status] = it.Error
+		}
+	}
+	return counts, samples
+}
+
+// respCounters returns the (Found, Processed, Skipped, Failed) tuple
+// from a possibly-nil *RunTagResponse. Used by job_types.go::HandleJob
+// error eventFn to surface per-job counters in job_events.data_json
+// WITHOUT dereferencing a nil pointer when RunTag returned a transport
+// error before producing a resp. All-zero on nil resp (matches the
+// pre-PIN default behaviour for missing data).
+func respCounters(resp *RunTagResponse) (found, processed, skipped, failed int) {
+	if resp == nil {
+		return 0, 0, 0, 0
+	}
+	return resp.Found, resp.Processed, resp.Skipped, resp.Failed
+}
+
+// logFailedItemBreakdown emits a single WARN with the per-item Status
+// histogram plus a sample Error per Status when resp.Failed > 0.
+//
+// PR-ARTLIST-RETRY-WAIT-DIAGNOSTIC (July 2026): the legacy
+// fail-closed RunTag only surfaced aggregate counters
+// (Failed=N, Processed=0). When ScheduleRetry bounced the job to
+// RETRY_WAIT, the operator had to re-run the search and speculate
+// which stage failed. This helper makes the failing stage visible
+// at WARN (snapshotted after Stage 4 and Stage 5) without altering
+// the verdict policy — EvaluateRunOutcome stays the single
+// canonical owner of the pass/fail decision.
+//
+// godlike/07: the diagnostic surfaces FACT (per-item Status + one
+// Error sample per Status) without making any rendered outcome
+// available. A passing run after a flag flip will see this helper
+// emit ZERO entries because resp.Failed == 0 short-circuits.
+func logFailedItemBreakdown(log *zap.Logger, resp *RunTagResponse, label string) {
+	if log == nil || resp == nil || resp.Failed == 0 {
+		return
+	}
+	counts, samples := failedItemBreakdown(resp)
+	log.Warn("artlist run: failed-item breakdown",
+		zap.String("label", label),
+		zap.String("term", resp.Term),
+		zap.Int("found", resp.Found),
+		zap.Int("processed", resp.Processed),
+		zap.Int("skipped", resp.Skipped),
+		zap.Int("failed", resp.Failed),
+		zap.Any("status_counts", counts),
+		zap.Any("status_samples", samples),
+	)
 }
 
 // maxSearchWords is the maximum number of words kept by normalizeSearchTerm.
