@@ -453,10 +453,10 @@ ORDER BY aggregate_id;"
 #   PATH    : path appended to http://${SMOKE_API_BASE}
 #   OUT     : absolute path of the response body file (always written)
 #   DATA    : optional inline JSON body (used when METHOD != GET)
-# Returns the HTTP code on stdout. SMOKE_LAST_HTTP / SMOKE_LAST_BODY are
-# also set for callers that want the legacy interface. Body is always
-# redacted to the caller-supplied file even when -o would have been shadowed
-# by smoke_curl's default $WORK_DIR/last.body.
+# Returns the HTTP code on stdout. The OUT file is the canonical handoff:
+# if the caller wraps this helper in `$(...)`, the smoke_curl side-effects
+# (SMOKE_LAST_HTTP / SMOKE_LAST_BODY env exports) are LOST to the parent
+# shell — always read OUT to inspect the body in those paths.
 smoke_http_call() {
     local method="$1" path="$2" out="$3" data="${4:-}"
     [[ -n "$out" ]] || { printf '0\n'; return 1; }
