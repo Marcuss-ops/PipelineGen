@@ -49,6 +49,14 @@ export HOST BASE_URL DB_PATH SCRAPER_URL \
        QDRANT_URL QDRANT_COLLECTION \
        ARTLIST_ROOT_FOLDER ARTLIST_TERM PIPELINE_PORT
 
+# ── WORK_DIR defensive default (exported for downstream stub libs) ───────
+# DRY_RUN path + stub paths in artlist.sh / sqlite.sh / drive.sh /
+# qdrant.sh read $WORK_DIR for last.body / artifact paths. Defaulting
+# here keeps the stub bodies small (no per-call ${WORK_DIR:-/tmp} guard)
+# while still letting an operator-supplied WORK_DIR take precedence.
+: "${WORK_DIR:=$PWD/.tmp}"
+export WORK_DIR
+
 # ── Per-battery counters + log_* helpers (verbatim-identical per battery)
 # Counters stay unexported on purpose: bumping inside $(…) subshells would not
 # propagate to the parent shell anyway, and keeping them script-local matches
