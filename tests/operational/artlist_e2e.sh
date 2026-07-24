@@ -113,17 +113,28 @@ gate_preflight() {
     smoke_log_section "Gate 0 — clean reproducible environment"
     local failures=0
 
-    if ! smoke_curl GET "/health" >/dev/null 2>&1; then
-        log_fail "GET /health failed — PipelineGen down at $BASE_URL"
-        failures=$((failures + 1))
-    else
+    smoke_curl GET "/health" >/dev/null
+    if [[ "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]]; then
         log_pass "PipelineGen /health reachable at $BASE_URL"
-    fi
-    if ! smoke_curl GET "/ready" >/dev/null 2>&1; then
-        log_fail "GET /ready failed"
-        failures=$((failures + 1))
     else
+        log_fail "GET /health failed (HTTP=${SMOKE_LAST_HTTP:-empty})"
+        failures=$((failures + 1))
+    fi
+    smoke_curl GET "/ready" >/dev/null
+    if [[ "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]]; then
         log_pass "PipelineGen /ready reachable"
+    else
+        log_fail "GET /ready failed (HTTP=${SMOKE_LAST_HTTP:-empty})"
+        failures=$((failures + 1))
+    fi
+    smoke_curl GET "/api/artlist/job-consumer" >/dev/null
+    if [[ "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]] \
+        && jq -e '.active == true and .consumer_type == "media.artlist"' \
+            "${SMOKE_LAST_BODY:-/dev/null}" >/dev/null 2>&1; then
+        log_pass "artlist job-consumer active"
+    else
+        log_fail "/api/artlist/job-consumer not active (HTTP=${SMOKE_LAST_HTTP:-empty})"
+        failures=$((failures + 1))
     fi
 
     if ! curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" "$SCRAPER_URL/health" 2>/dev/null \
@@ -135,7 +146,7 @@ gate_preflight() {
     fi
 
     local scraper_count
-    scraper_count=$(pgrep -af 'node.*artlist_server' 2>/dev/null | wc -l || true)
+    scraper_count=$(pgrep -af 'node.*artlist_server\.js' 2>/dev/null | wc -l || true)
     if [[ "${scraper_count}" -gt 1 ]]; then
         log_fail "expected one node artlist_server.js, found ${scraper_count}"
         failures=$((failures + 1))

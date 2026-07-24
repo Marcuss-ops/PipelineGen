@@ -22,13 +22,29 @@
 # its response file under ${WORK_DIR:-/tmp}; it does NOT touch PASS/WARN/FAIL
 # counters — the host battery owns those.
 
-# ── velox_qdrant_assert — at least one PUBLISHED artlist point for clip_id
-# Args: <clip_id> <collection> <qdrant_url> [qdrant_api_key]
+# ── velox_qdrant_assert — at least one PUBLISHED point for clip_id
+# Args:
+#   clip_id           asset_id to look up (positional 1, mandatory)
+#   collection        qdrant collection name (positional 2, mandatory)
+#   qdrant_url        base URL (positional 3, mandatory)
+#   expected_source   payload.source filter (positional 4, mandatory for
+#                     cross-source reuse: 'artlist', 'google-flow', ...)
+#   expected_media_type
+#                     payload.media_type filter (positional 5, mandatory:
+#                     'video', 'image', 'audio')
+#   expected_lifecycle
+#                     payload.lifecycle_state (positional 6,
+#                     default 'PUBLISHED')
+#   api_key           optional QDRANT_API_KEY header (positional 7)
 # Returns: 0 → point found with shape match
 #          1 → shape contract failed
-#          2 → transport / HTTP failure (caller should crash)
+#          2 → transport / HTTP failure
 velox_qdrant_assert() {
-    local clip_id="$1" collection="$2" qdrant_url="$3" api_key="${4:-}"
+    local clip_id="$1" collection="$2" qdrant_url="$3"
+    local expected_source="$4" expected_media="$5"
+    local expected_lifecycle="${6:-PUBLISHED}" api_key="${7:-}"
+    [[ -n "$clip_id" && -n "$collection" && -n "$qdrant_url" \
+        && -n "$expected_source" && -n "$expected_media" ]] || return 1
     local out="${WORK_DIR:-/tmp}/velox_qdrant_${clip_id}.json"
     local hdrs=()
     [[ -n "$api_key" ]] && hdrs+=( -H "api-key: $api_key" )
@@ -38,15 +54,17 @@ velox_qdrant_assert() {
         "${hdrs[@]}" -H 'Content-Type: application/json' \
         -d "$(jq -nc --arg id "$clip_id" '{
             filter: { must: [ { key: "asset_id", match: { value: $id } } ] },
-            limit: 5, with_payload: true, with_vector: false
+            limit: 1, with_payload: true, with_vector: false
         }')" \
         "$qdrant_url/collections/$collection/points/scroll")
     [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
-    jq -e '.result.points | length >= 1
-        and .[0].payload.source == "artlist"
-        and .[0].payload.media_type == "video"
-        and .[0].payload.lifecycle_state == "PUBLISHED"' \
-        <<<"$(cat "$out" 2>/dev/null || true)" >/dev/null 2>&1
+    jq -e --arg src "$expected_source" \
+        --arg media "$expected_media" \
+        --arg lc "$expected_lifecycle" '
+        .result.points[0].payload.source == $src
+        and .result.points[0].payload.media_type == $media
+        and .result.points[0].payload.lifecycle_state == $lc' \
+        "$out" >/dev/null 2>&1
 }
 
 # ── velox_drive_resolve — confirm Drive file id exists, not trashed, size > 0
@@ -54,20 +72,30 @@ velox_qdrant_assert() {
 # Returns: 0 → file resolved with size > 0 and trashed=false
 #          1 → HTTP 2xx but contract failed
 #          2 → transport / HTTP non-2xx
+# The body is written to a deterministic file under ${WORK_DIR:-/tmp} using
+# curl directly (no smoke_curl subshell) so callers inspecting the response
+# from outside the function can guarantee $WORK_DIR/velox_drive_${id}.json is
+# populated. SMOKE_LAST_BODY side-effects from smoke_curl do NOT survive a
+# $(...) subshell wrapping and were the source of Bug 3 in the first wave
+# review.
 velox_drive_resolve() {
     local file_id="$1"
     [[ -n "$file_id" ]] || return 1
     local out="${WORK_DIR:-/tmp}/velox_drive_${file_id}.json"
     local code
-    code=$(smoke_curl POST "/api/drive/resolve-by-id" \
-        -d "$(jq -nc --arg id "$file_id" '{ids: [$id]}')" 2>/dev/null || echo "")
+    code=$(curl -sS --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" -w '%{http_code}' \
+        -X POST -o "$out" \
+        -H "Authorization: Bearer ${SMOKE_TOKEN:-}" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg id "$file_id" '{ids: [$id]}')" \
+        "http://${SMOKE_API_BASE}/api/drive/resolve-by-id")
     [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
-    [[ -s "$SMOKE_LAST_BODY" ]] || return 1
+    [[ -s "$out" ]] || return 1
     jq -e '.ok == true
         and (.resolved_count // 0) >= 1
         and (.resolved[0].trashed == false)
         and ((.resolved[0].size // 0) > 0)' \
-        "$SMOKE_LAST_BODY" >/dev/null 2>&1
+        "$out" >/dev/null 2>&1
 }
 
 # ── velox_artlist_pipeline_run — POST /api/artlist/run with canonical DoD payload
