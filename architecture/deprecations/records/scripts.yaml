@@ -70,3 +70,31 @@ deprecations:
       migration_phase: CONTRACT
       status: removed
       notes: 'PR-COMMIT3 (July 2026): the field is physically REMOVED from OutputSpec; the preflight module is physically deleted; the test surface is deleted. Architecture/deprecations.yaml record retained with status: removed + migration_phase: CONTRACT per the canonical godlike/07 lifecycle audit-pin. The 3 downstream jobs (TypeVoiceoverGenerate / TypeImagesGenerate / TypeDocumentGenerate in internal/domain/job/job.go) are the canonical owners of the artifact surfaces; callers who previously set these flags now emit asset-requirement spec surfaces (sceneplan.AssetRequirements) on a different downstream job type.'
+    - id: MAKE-SMOKE-LEGACY
+      owner_capability: internal/application/scripts/smoke
+      exact_symbol: 'Makefile target smoke (legacy dev-loop preflight alias for verify-fast compose)'
+      file: Makefile
+      file_line: "0"
+      replacement: 'verify-fast tier (tests/operational/README.md §Verification matrix) replaces make smoke as the canonical dev-loop preflight; make smoke survives as a one-release-cycle alias and is NOT pulled by verify-main.'
+      introduction_date: "2026-07-01"
+      removal_date: "2026-Q4 (gated on verify-artlist-live green)"
+      tracking_issue: tests/operational/README.md §Verification matrix §Migration note + build(make): split verify-main into fast/main/release/live gates (commit d27cb7e63).
+      compatibility_test: 'make -n verify-fast exits 0; make smoke remains operational; verify-fast prereq list excludes any tests/operational/* script (validated dry-run + absence grep). The legacy make smoke target is NOT pulled by verify-main or any other verify-* tier.'
+      usage_metric: 'Pre-refactor: make smoke was the canonical dev-loop preflight. Post-refactor: verify-fast is the canonical, make smoke survives for one verification-refactor release cycle.'
+      migration_phase: EXPAND
+      status: in_progress
+      notes: 'make smoke is operational pending verify-artlist-live green; the verify-* tier gates are the canonical surface per tests/operational/README.md §Verification matrix. Removal fires when the artlist DoD sub-scripts (05..09) reach green status, so an operator auditing this entry can trace the dependency back to tests/operational/artlist/ sub-script marker notes + the godlike/07 ZERO_LEGACY_POLICY cross-reference.'
+    - id: MAKE-SMOKE-SCRIPT-LEGACY
+      owner_capability: internal/application/scripts/smoke
+      exact_symbol: 'Makefile target smoke-script (legacy slow text-only script-generation battery)'
+      file: Makefile
+      file_line: "0"
+      replacement: 'make verify-artlist-* (granular gates) and verify-artlist-live (full DoD battery via tests/operational/artlist/run_all.sh) replace make smoke-script as the canonical pre-push artlist surface. Survival contract: pending the next architecture/deprecations.yaml review cycle (tests/operational/README.md §Migration note, post verify-artlist-live green).'
+      introduction_date: "2026-07-01"
+      removal_date: "2026-Q4 (gated on verify-artlist-live green)"
+      tracking_issue: tests/operational/README.md §Verification matrix §Migration note + test(operational): split artlist_e2e.sh into 9 sub-scripts + run_all.sh (commit aec816ea0) + build(make): split verify-main into fast/main/release/live gates (commit d27cb7e63).
+      compatibility_test: 'make -n verify-artlist-live exits 0; make verify-artlist-stream routes to bash tests/operational/artlist/03_detail_stream.sh single-gate debug. Verifies the gate isolation contract from tests/operational/README.md §Verification matrix §Failure isolation: verify-main references no tests/operational/* script; only verify-live pulls the four live batteries including smoke-script via the verify-artlist-live prereq chain.'
+      usage_metric: 'Pre-refactor: make smoke-script was the slow text-only script-generation battery. Post-refactor: make verify-artlist-* is the canonical surface; the stub gates in tests/operational/artlist/{05..09}*.sh still emit the [STUB] marker and drive the removal date.'
+      migration_phase: EXPAND
+      status: in_progress
+      notes: 'Removal target tied to verify-artlist-live being GREEN (all 9 artlist sub-scripts implemented + artlist/run_all.sh passes the 5 acceptance invariants). Audit-pin field is tests/operational/README.md §Verification matrix §Migration note, which already binds the deprecation to this register. Survives as a one-release-cycle alias; not pulled by verify-main or any other verify-* tier.'
