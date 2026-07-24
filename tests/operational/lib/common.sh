@@ -88,6 +88,13 @@ WORK_DIR=$(mktemp -d "/tmp/smoke.XXXXXX")
 trap 'smoke_cleanup' EXIT INT TERM
 
 smoke_cleanup() {
+    # `artlist_run` and similar helpers are invoked through command
+    # substitution in the smoke scripts. Bash inherits EXIT traps into
+    # those subshells, so the cleanup must no-op there or the child shell
+    # would delete the parent shell's WORK_DIR mid-run.
+    if [[ "${BASHPID:-$$}" != "$$" ]]; then
+        return 0
+    fi
     if [[ -n "${WORK_DIR:-}" && -d "$WORK_DIR" ]]; then
         rm -rf "$WORK_DIR"
     fi
@@ -432,4 +439,97 @@ ORDER BY aggregate_id;"
             "$GREEN" "$completed_count" "$total_input" "$RESET"
     fi
     return $fail
+}
+
+# ── Domain-portable helpers — generic across PipelineGen ops batteries ──
+# Naming rule (July 2026 DoD refactor): `smoke_*` for infrastructure helpers
+# (HTTP, SQLite, ffprobe, jq-assert, dry-run); `velox_*` for PipelineGen
+# domain assertions live in tests/operational/lib/velox_domain.sh. The two
+# libraries are independent sources — callers `source` both.
+
+# ── HTTP call wrapper that preserves a caller-supplied output file ──────
+# smoke_http_call METHOD PATH OUT [DATA]
+#   METHOD  : GET / POST / PUT / DELETE
+#   PATH    : path appended to http://${SMOKE_API_BASE}
+#   OUT     : absolute path of the response body file (always written)
+#   DATA    : optional inline JSON body (used when METHOD != GET)
+# Returns the HTTP code on stdout. SMOKE_LAST_HTTP / SMOKE_LAST_BODY are
+# also set for callers that want the legacy interface. Body is always
+# redacted to the caller-supplied file even when -o would have been shadowed
+# by smoke_curl's default $WORK_DIR/last.body.
+smoke_http_call() {
+    local method="$1" path="$2" out="$3" data="${4:-}"
+    [[ -n "$out" ]] || { printf '0\n'; return 1; }
+    local args=()
+    if [[ -n "$data" ]]; then
+        args+=( -d "$data" )
+    fi
+    local code
+    code=$(smoke_curl "$method" "$path" "${args[@]}" 2>/dev/null)
+    if [[ -n "$SMOKE_LAST_BODY" && -s "$SMOKE_LAST_BODY" && "$SMOKE_LAST_BODY" != "$out" ]]; then
+        cp "$SMOKE_LAST_BODY" "$out" 2>/dev/null || true
+    fi
+    printf '%s' "$code"
+}
+
+# ── Read-only SQLite query with optional JSON output ──────────────────
+# smoke_sqlite_query DB_PATH [-json] [--] QUERY
+# Examples:
+#   smoke_sqlite_query "$DB" "SELECT COUNT(*) FROM media_assets"
+#   smoke_sqlite_query "$DB" -json "SELECT id,file_hash FROM media_assets"
+# Returns 0 on success, 1 on missing db / sqlite error. Output is on stdout.
+smoke_sqlite_query() {
+    local db="" fmt="" q=""
+    while (( $# > 0 )); do
+        case "$1" in
+            -json|--json) fmt="-json" ;;
+            --) shift; q="$1"; break ;;
+            -*) ;; # ignore unknown flag for forward-compat
+            *)  if [[ -z "$db" ]]; then db="$1"; else q="$1"; fi ;;
+        esac
+        shift
+    done
+    [[ -n "${db:-}" ]] || return 1
+    [[ -f "$db" ]] || { printf '\n'; return 1; }
+    [[ -n "$q" ]] || { printf '\n'; return 1; }
+    sqlite3 -readonly $fmt "$db" "$q" 2>/dev/null
+}
+
+# ── ffprobe structural check on a local media file ───────────────────
+# smoke_ffprobe_check FILE [MIN_DURATION_SECONDS]
+# PASS if: file exists; ffprobe produced JSON; duration >= MIN_DURATION_SECONDS;
+#          has at least one video stream with width>0 and height>0.
+# Returns 0 on PASS, 1 on FAIL. Logs are written through the battery's
+# log_pass/log_fail; this helper stays pure (no stdout/stderr noise).
+smoke_ffprobe_check() {
+    local path="$1" min_dur="${2:-0}"
+    [[ -f "$path" ]] || return 1
+    command -v ffprobe >/dev/null 2>&1 || return 1
+    local probe_json
+    probe_json=$(ffprobe -v error -show_entries format=duration,size \
+        -show_entries stream=codec_type,codec_name,width,height \
+        -of json "$path" 2>/dev/null || true)
+    [[ -n "$probe_json" ]] || return 1
+    jq -e --argjson min "$min_dur" '
+        (.format.duration // 0 | tonumber) >= $min
+        and (.format.size // 0 | tonumber) > 0
+        and ([.streams[]? | select(.codec_type=="video")
+              | select((.width // 0 | tonumber) > 0
+                       and (.height // 0 | tonumber) > 0)] | length) >= 1
+    ' <<<"$probe_json" >/dev/null 2>&1
+}
+
+# ── Dry-run announcement gate ─────────────────────────────────────────
+# smoke_dry_run DESCRIPTION
+# If SMOKE_DRY_RUN=1 (or --dry was passed): prints DESCRIPTION on stdoud and
+# returns 0. Otherwise: returns 1 so the caller can short-circuit.
+# Used by every battery's `main` to early-exit before any state-mutating
+# HTTP / SQLite / Drive call fires.
+smoke_dry_run() {
+    local desc="$1"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        printf '%s\n' "$desc"
+        return 0
+    fi
+    return 1
 }
