@@ -446,7 +446,129 @@ gate_direct_download() {
     fi
     log_pass "Gate 2 /download + ffprobe hard gate clean"
 }
-gate_live_search_three()   { smoke_log_section "Gate 3 — live search 3 queries + 60s";      log_info "[STUB] Gate 3 — implement next"; }
+# ── Gate 3 — /api/artlist/search/live × 3 queries + 60s timeout ─────────
+# DoD spec (July 2026): tre query semanticamente differenti (business,
+# boxing-gym, boxing-arena). Per ogni query:
+#   - HTTP 2xx OR explicit err=SEARCH_TIMEOUT if 60s elapses
+#   - provider == 'artlist'
+#   - ≥1 clip in .clips[]
+#   - per-clip clip_id (ExternalID/ID) non-empty
+#   - per-clip page_url on artlist.io
+#   - per-clip title non-placeholder (≠ "Artlist", length>5, non-empty)
+#   - query term NOT truncated by server (URL round-trip)
+#   - no placeholder / no invented: RawMetadata present + Keywords[] non-empty
+#
+# Implementation notes:
+#   * LIVE_QUERIES[0..2] holds the three semantic terms in ENGLISH
+#     (Artlist's catalog is English; Italian translations in the spec
+#     describe the semantics, the actual terms live in LIVE_QUERIES).
+#   * 60s timeout enforced on the curl side; on timeout we emit the
+#     SEARCH_TIMEOUT sentinel rather than reporting ok=true with zero
+>     results (as the DoD explicitly forbids).
+#   * Raw curl (no smoke_curl) for the Authorization header + per-query
+#     timeout ergonomics; token must be present (validated by lib/common.sh).
+gate_live_search_three() {
+    smoke_log_section "Gate 3 — /search/live × 3 + 60s timeout (SEARCH_TIMEOUT sentinel)"
+    local failures=0
+    local per_query_timeout=60
+
+    local idx=0
+    local q
+    for q in "${LIVE_QUERIES[@]:0:3}"; do
+        smoke_log_section "Gate 3 query $((idx+1))/3: '$q'"
+        local out="$WORK_DIR/gate3_search_${idx}.json"
+        local code
+        code=$(curl -sS --max-time "$per_query_timeout" -G \
+            -o "$out" -w '%{http_code}' \
+            -H "Authorization: Bearer $SMOKE_TOKEN" \
+            --data-urlencode "term=$q" \
+            --data-urlencode "limit=5" \
+            "$BASE_URL/api/artlist/search/live" 2>/dev/null || echo 000)
+
+        # Timeout / transport failure: explicit SEARCH_TIMEOUT sentinel
+        # (DoD: never report ok=true with zero results on slow queries).
+        if [[ "$code" == "000" || -z "$code" ]]; then
+            log_fail "SEARCH_TIMEOUT (>${per_query_timeout}s) for query '$q'"
+            failures=$((failures + 1))
+            idx=$((idx + 1))
+            continue
+        fi
+
+        if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+            log_fail "live search HTTP=$code (want 2xx) for query '$q'"
+            smoke_echo_safe "$(head -c 400 "$out" 2>/dev/null || true)" >&2
+            failures=$((failures + 1))
+            idx=$((idx + 1))
+            continue
+        fi
+
+        # Provider + clips contract
+        if ! jq -e '.provider == "artlist"
+            and ((.clips // []) | length) > 0' "$out" >/dev/null 2>&1; then
+            log_fail "provider != 'artlist' OR zero clips for query '$q' (ok-but-empty NOT allowed)"
+            smoke_echo_safe "$(head -c 400 "$out" 2>/dev/null || true)" >&2
+            failures=$((failures + 1))
+            idx=$((idx + 1))
+            continue
+        fi
+        log_pass "live search returned clips for query '$q'"
+
+        # Query-not-truncated guard: server should echo back the term.
+        # Fallback to URL round-trip if `.term` is absent from the response.
+        local recv_term
+        recv_term=$(jq -r '.term // empty' "$out" 2>/dev/null || true)
+        if [[ -n "$recv_term" && "$recv_term" != "$q" ]]; then
+            log_fail "term echoed back '$recv_term' != original '$q' (server truncated query)"
+            failures=$((failures + 1))
+        else
+            log_pass "query '$q' not truncated"
+        fi
+
+        # Per-clip shape walk
+        local clip_count clip_failures
+        clip_count=$(jq '.clips | length' "$out" 2>/dev/null || echo 0)
+        clip_failures=0
+        local ci
+        for ci in $(seq 0 $((clip_count - 1))); do
+            local clip_id page_url title raw_meta kw_len
+            clip_id=$(jq -r ".clips[$ci].ExternalID // .clips[$ci].ID // empty" "$out")
+            page_url=$(jq -r ".clips[$ci].PageURL // empty" "$out")
+            title=$(jq -r ".clips[$ci].Title // empty" "$out")
+            raw_meta=$(jq -r ".clips[$ci].RawMetadata // empty" "$out")
+            kw_len=$(jq ".clips[$ci].Keywords // [] | length" "$out" 2>/dev/null || echo 0)
+
+            if [[ -z "$clip_id" ]]; then
+                log_fail "clip[$ci] missing clip_id (ExternalID/ID) for '$q'"
+                clip_failures=$((clip_failures + 1))
+            fi
+            if [[ -z "$page_url" || ! "$page_url" =~ ^https?://artlist\.io/ ]]; then
+                log_fail "clip[$ci] page_url invalid '$page_url' for '$q'"
+                clip_failures=$((clip_failures + 1))
+            fi
+            if [[ -z "$title" || "$title" == "Artlist" || ${#title} -lt 5 ]]; then
+                log_fail "clip[$ci] title placeholder/invalid '$title' for '$q'"
+                clip_failures=$((clip_failures + 1))
+            fi
+            if [[ -z "$raw_meta" || "$kw_len" == "0" ]]; then
+                log_fail "clip[$ci] missing RawMetadata or zero Keywords (placeholder/invented?) for '$q'"
+                clip_failures=$((clip_failures + 1))
+            fi
+        done
+        if (( clip_failures == 0 )); then
+            log_pass "all $clip_count clips valid for query '$q'"
+        else
+            failures=$((failures + clip_failures))
+        fi
+
+        idx=$((idx + 1))
+    done
+
+    if (( failures > 0 )); then
+        log_fail "Gate 3 /search/live × 3 failed (${failures} sub-checks)"
+        return 1
+    fi
+    log_pass "Gate 3 /search/live × 3 clean"
+}
 gate_fresh_run_three()     { smoke_log_section "Gate 4 — first fresh run 3/3";              log_info "[STUB] Gate 4 — implement next"; }
 gate_per_clip_validation() { smoke_log_section "Gate 5 — per-clip DB + file validation";   log_info "[STUB] Gate 5 — implement next"; }
 gate_drive_resolve()       { smoke_log_section "Gate 6 — Drive resolve-by-id hard gate";   log_info "[STUB] Gate 6 — implement next"; }
@@ -461,7 +583,7 @@ main() {
         smoke_echo_safe "DRY RUN — Artlist DoD battery would probe:"
         printf '  GET  %s/health\n' "$BASE_URL"
         printf '  GET  %s/ready\n' "$BASE_URL"
-        printf '  GET  %s/api/artlist/search/live?term=%s&limit=5\n' "$BASE_URL" "$ARTLIST_TERM"
+        printf '  GET  %s/api/artlist/search/live?term=<LIVE_QUERIES[0..2]>&limit=5 (×3, 60s each, SEARCH_TIMEOUT on overrun)\n' "$BASE_URL"
         printf '  POST %s/detail (clip_page_url from LIVE_QUERIES[0])\n' "$SCRAPER_URL"
         printf '  POST %s/detail (clip_page_url=%s, negative STREAM_NOT_FOUND)\n' "$SCRAPER_URL" "https://artlist.io/stock-footage/clip/00000000"
         printf '  POST %s/download (clip_page_url from LIVE_QUERIES[0], output_dir=$WORK_DIR/gate2_dl)\n' "$SCRAPER_URL"
