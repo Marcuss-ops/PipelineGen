@@ -46,7 +46,7 @@
 # locally, the push MUST be blocked until the next agent lands the
 # fix.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -638,6 +638,135 @@ verify-artlist:
 	$(GO) test -race ./internal/api/assets/artlist/... && \
 	cd node-scraper && npm test
 	@echo "✅ Artlist verification passed"
+
+# ─── Artlist operational batteries (granular, July 2026) ────────────────
+#
+# The legacy monolithic tests/operational/artlist_e2e.sh is split into
+# 9 granular sub-scripts under tests/operational/artlist/, each gated
+# by its own Make target so a developer debugging one phase can iterate
+# in seconds instead of waiting for the full battery. The 9 sub-targets
+# are NOT part of verify-main (the pre-push headless gate) — they all
+# require the live stack (Chrome + scraper + Drive + Qdrant).
+#
+# Library surface (single canonical owner per fact): every sub-script
+# imports helpers from tests/operational/lib/ — no curl/jq/SQLite/ffprobe
+# is duplicated across the 9 files. See tests/operational/lib/{common,
+# artlist, drive, qdrant, sqlite}.sh for the canonical surface.
+#
+# Debug pattern:
+#   make verify-artlist-stream   # while iterating on /detail streaming
+#   make verify-artlist-download # while iterating on /download + ffprobe
+#   make verify-artlist-live     # only after all 9 green
+#
+# No go-version-check prereq (the sub-scripts are bash + node-scraper,
+# Go-unaware). No node-version-check prereq either: each sub-script
+# does its own runtime assertion at the top (the lib helpers fail
+# closed when node-scraper is unreachable).
+
+# verify-artlist-startup — Phase 1: server / scraper readiness + admin
+# auth probe. Catches cold-start failures (port in use, scraper not
+# running, token mismatch) before any downstream phase touches an
+# endpoint that depends on those surfaces.
+verify-artlist-startup:
+	@bash tests/operational/artlist/01_startup.sh
+
+# verify-artlist-search — Phase 2: POST /api/artlist/search/live.
+# Confirms the live search endpoint resolves terms via the scraper and
+# persists discovered candidates. Cheap gate (~30s) once startup is green.
+verify-artlist-search:
+	@bash tests/operational/artlist/02_search_live.sh
+
+# verify-artlist-stream — Phase 3: POST /api/artlist/detail + ffprobe
+# hard gate. Confirms the canonical stream probe rejects silent clips
+# (audio_probe MUST surface HasAudio=false) and accepts clips with an
+# audio track. The most common debug target when stream resolution
+# regresses.
+verify-artlist-stream:
+	@bash tests/operational/artlist/03_detail_stream.sh
+
+# verify-artlist-download — Phase 4: POST /api/artlist/download +
+# ffprobe hard gate. Confirms the download endpoint returns a file
+# whose ffprobe metadata matches the canonical expectations (codec,
+# duration, container). Debug target for download-pipeline regressions.
+verify-artlist-download:
+	@bash tests/operational/artlist/04_download.sh
+
+# verify-artlist-pipeline — Phase 5: end-to-end pipeline on a FRESH
+# fixture (no cache replay). Drives search → detail → download →
+# drive upload → index, asserting each stage's canonical surface.
+verify-artlist-pipeline:
+	@bash tests/operational/artlist/05_pipeline_fresh.sh
+
+# verify-artlist-drive — Phase 6: Drive upload + folder routing.
+# Confirms the canonical Publisher routes Artlist clips through the
+# shared Drive surface and that the destination folder resolver picks
+# the right root for the search term.
+verify-artlist-drive:
+	@bash tests/operational/artlist/06_drive.sh
+
+# verify-artlist-index — Phase 7: Qdrant projection. Confirms the clip
+# appears in the v3 collection with the expected payload (source_url,
+# text_hash, source_version). Fails fast when the SQLite→Qdrant
+# rebuild contract is broken.
+verify-artlist-index:
+	@bash tests/operational/artlist/07_index.sh
+
+# verify-artlist-cache — Phase 8: cache-replay path. Re-runs the
+# pipeline on a cached fixture and asserts the cache-hit surface (no
+# re-download, no re-transcription, but full Drive + Qdrant surface
+# still validated).
+verify-artlist-cache:
+	@bash tests/operational/artlist/08_cache_replay.sh
+
+# verify-artlist-errors — Phase 9: failure-mode catalogue. Exercises
+# the typed error surface: STREAM_NOT_FOUND, missing Drive fields,
+# transcription failure, transcript persist failure, audio-probe
+# miss. Asserts each error path surfaces the canonical typed sentinel
+# rather than a generic no-op success.
+verify-artlist-errors:
+	@bash tests/operational/artlist/09_failure_modes.sh
+
+# verify-artlist-live — composite: runs ALL 9 granular sub-scripts in
+# order via tests/operational/artlist/run_all.sh. Run AFTER all 9
+# individual gates are green; this is the post-deploy / pre-certification
+# battery. NOT part of verify-main (it requires the live stack).
+verify-artlist-live:
+	@bash tests/operational/artlist/run_all.sh
+
+# ─── Post-deploy live batteries (STEP 4/4, July 2026) ─────────────────
+#
+# verify-live — top-level post-deploy gate. Composes the live batteries
+# (images + artlist + script + vidrush) so a single `make verify-live`
+# runs the full operational suite. NOT part of verify-main or
+# verify-release: these batteries all require Chrome + scraper + Drive
+# + Qdrant and must never be wired into the pre-push chain.
+#
+# Individual live targets are also exposed so a post-deploy operator
+# can validate ONE surface without paying the full battery cost
+# (e.g. `make verify-images-live` after a Drive-side change).
+#
+# verify-images-live — tests/operational/images_e2e.sh — image
+# ingestion + Drive upload + Qdrant projection for the image surface.
+verify-images-live:
+	@bash tests/operational/images_e2e.sh
+
+# verify-script-live — tests/operational/script_generate_smoke.sh —
+# end-to-end script.generate dispatch + worker pull + finalizer,
+# without the full Vid Rush media path.
+verify-script-live:
+	@bash tests/operational/script_generate_smoke.sh
+
+# verify-vidrush-live — tests/operational/vidrush_media_e2e.sh — the
+# full Vid Rush battery: server + scraper + SQLite + FFmpeg + Drive +
+# Qdrant. Heavy (10-30min) and server-stateful; run only on dedicated
+# operational hosts.
+verify-vidrush-live:
+	@bash tests/operational/vidrush_media_e2e.sh
+
+# verify-live — composite: all 4 live batteries in sequence. Fail-closed:
+# any single battery failure aborts the chain.
+verify-live: verify-images-live verify-artlist-live verify-script-live verify-vidrush-live
+	@echo "✅ verify-live passed"
 
 # verify-images — quick verification dedicated to the Images module.
 verify-images:
