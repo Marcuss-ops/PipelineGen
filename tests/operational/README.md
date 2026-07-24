@@ -140,11 +140,19 @@ The Makefile gates that journal commits + deployments have been split into a
 into fast/main/release/live gates`). Each tier runs sequentially; an earlier
 failure halts the chain.
 
+> **Migration note.** The `verify-*` tier gates are the **canonical pre-push
+> / pre-deploy / post-deploy surface** for the artlist DoD battery. The
+> legacy `make smoke` / `make smoke-script` targets documented in the "How
+> to run" section below remain operational for one release cycle but are
+> not pulled by `verify-main` or any other tier — operators iterating on
+> artlist must use `make verify-artlist-*` granular targets or
+> `make verify-artlist-live` for the full chain.
+
 | Tier             | Make target          | When to run                       | Browser / Drive / Qdrant live? | Headless? | Typical runtime |
 |------------------|----------------------|-----------------------------------|--------------------------------|-----------|-----------------|
 | dev loop         | `verify-fast`        | During active development         | No                             | Yes       | ~30 s           |
 | **pre-push gate**| `verify-main`        | Before every `git push` to `main` | **No**                         | Yes       | ~5 min          |
-| pre-deploy gate  | `verify-release`     | Before every release              | No (adds `verify-integration`) | Yes       | ~5 min          |
+| pre-deploy gate  | `verify-release`     | Before every release              | No (adds `verify-integration`) | Yes       | ~10 min         |
 | post-deploy gate | `verify-live`        | After deploy / on operational hosts | **Yes** (scraper + Drive + Qdrant + browser) | No (full stack) | 10–30 min |
 
 **Failure isolation.** None of `verify-fast`, `verify-main`, or
@@ -184,6 +192,29 @@ where applicable) and can be run standalone via `bash`:
 Stubs are intentionally declared (rather than absent) so the Makefile
 targets parse and operators can dry-run the wiring. They will be filled
 out gate-by-gate after this commit lands.
+
+#### Per-step artifacts
+
+Each non-stub sub-script emits durable per-run files under `$WORK_DIR`
+(sourced from `lib/common.sh`'s `mktemp -d /tmp/smoke.…`). Operators
+debugging failures should look at these before re-running the gate:
+
+| Gate(s)                   | Sub-script               | Artifacts emitted                                                        |
+|---------------------------|--------------------------|---------------------------------------------------------------------------|
+| Gate 0                    | `01_startup.sh`          | Announce-only; PASS/WARN/FAIL counters in stdout (no JSON dump).        |
+| Gate 1 (happy + negative) | `03_detail_stream.sh`    | `gate1_detail_ok.json` (happy), `gate1_detail_snf.json` (STREAM_NOT_FOUND). |
+| Gate 2                    | `04_download.sh`         | `gate2_download.json` (scraper response) + `gate2_dl/<mp4>` (consumes Artlist quota). |
+| Gate 3 (× 3 queries)      | `02_search_live.sh`      | `gate3_search_<idx>.json` per query (idx 0, 1, 2).                       |
+| Gates 4 + 5               | `05_pipeline_fresh.sh`   | *(stub — no artifacts yet; will land with implementation)*               |
+| Gate 6                    | `06_drive.sh`            | *(stub — will land with implementation)*                                |
+| Gates 7 + 8               | `07_index.sh`            | *(stub — will land with implementation)*                                |
+| Gate 9                    | `08_cache_replay.sh`     | *(stub — will land with implementation)*                                |
+| Gate 10 + Restart         | `09_failure_modes.sh`    | *(stub — will land with implementation)*                                |
+
+The full battery's `run_all.sh` orchestrates the chain but emits no global
+artifact baseline yet; per-sub-script stdout verdicts (PASS/WARN/FAIL
+counters + VERDICT line) are the live-readable source of truth during a
+run.
 
 ### Surgical debug via granular targets
 
