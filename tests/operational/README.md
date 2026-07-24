@@ -143,8 +143,9 @@ failure halts the chain.
 > **Migration note.** The `verify-*` tier gates are the **canonical pre-push
 > / pre-deploy / post-deploy surface** for the artlist DoD battery. The
 > legacy `make smoke` / `make smoke-script` targets documented in the "How
-> to run" section below remain operational for one release cycle but are
-> not pulled by `verify-main` or any other tier — operators iterating on
+> to run" section below remain operational pending the next
+> `architecture/deprecations.yaml` cycle but are not pulled by
+> `verify-main` or any other tier — operators iterating on
 > artlist must use `make verify-artlist-*` granular targets or
 > `make verify-artlist-live` for the full chain.
 
