@@ -33,6 +33,13 @@ describe('extractClipId', () => {
     );
   });
 
+  test('extracts id from bare /clip/<id> URLs', () => {
+    assert.equal(
+      extractClipId('https://artlist.io/stock-footage/clip/987654321'),
+      '987654321'
+    );
+  });
+
   test('returns last numeric group for additional trailing segments', () => {
     assert.equal(
       extractClipId('https://artlist.io/stock-footage/clip/foo/42/extra'),
