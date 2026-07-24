@@ -32,14 +32,54 @@ func assetToResult(a *domain.ImageAsset) ImageSearchResult {
 	return assetToResultWithCache(a, nil, "", "")
 }
 
+// assetToResultWithCache projects an asset.ImageAsset (plus cache-
+// provenance fields) into the unified ImageSearchResult DTO.
+// Shared by RetrievedSearch + TerritorySearch (territory=all).
+//
+// Provider fallback policy (PR-IMG-PROVIDER-FALLBACK, July 2026):
+//   - Primary: Asset.Provider when it carries a canonical
+//     non-"unknown" ImageProvider value (set by the ingest path
+//     via ClassifyImageProvider or by the provider registry).
+//   - Fallback: retrievalProvider when Asset.Provider is empty
+//     or "unknown" — the latter is the explicit godlike/07
+//     fail-closed sentinel the ingest layer stamps when no URL
+//     pattern could be classified. RetrievalProvider is the
+//     faithful ground-truth for "which RetrievalProvider served
+//     this row"; preferring it over the stale Asset.Provider
+//     closes the silent-fallback signature at the response
+//     boundary.
+//   - Last resort: "unknown" (coerced from empty Asset.Provider OR
+//     when retrievalProvider is also empty / "unknown"; fail-closed).
+//     Operators can grep the response for "unknown" to find rows
+//     whose origin pipeline could not be identified — silent
+//     fake-availability forbidden per godlike/07.
+//
+// godlike/06 SSOT: this mapper is the SINGLE canonical site
+// that materialises ImageSearchResult.Provider. Adding a new
+// territory surface MUST reuse this mapper (not re-roll the
+// projection loop) so the response shape stays byte-stable.
 func assetToResultWithCache(a *domain.ImageAsset, cacheHit *bool, cacheSource, retrievalProvider string) ImageSearchResult {
 	if a == nil {
 		return ImageSearchResult{}
 	}
+	provider := string(a.Provider)
+	if provider == "" {
+		// godlike/07 fail-closed: empty Asset.Provider MUST NOT leak
+		// through the response — coerce to the canonical sentinel so
+		// callers see a stable string literal they can grep.
+		provider = string(domain.ProviderUnknown)
+	}
+	if provider == string(domain.ProviderUnknown) && retrievalProvider != "" && retrievalProvider != string(domain.ProviderUnknown) {
+		// Faithful ground-truth fallback: the service layer stamped
+		// a known Retrieval Provider for this row (e.g. "duckduckgo").
+		// Prefer it over the stale "unknown" so the response identifies
+		// which provider actually served the row.
+		provider = retrievalProvider
+	}
 	return ImageSearchResult{
 		AssetID:           a.Hash,
 		Origin:            string(a.Origin),
-		Provider:          string(a.Provider),
+		Provider:          provider,
 		PreviewURL:        previewURLForAsset(*a),
 		StyleID:           "", // ImageAsset has no Style field today; future migration
 		License:           a.License,
