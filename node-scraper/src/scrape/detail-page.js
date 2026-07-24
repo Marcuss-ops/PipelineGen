@@ -27,7 +27,10 @@ const DEFAULT_NAV_TIMEOUT = 60000;
 /** Default wait after navigation for dynamic content. */
 const DEFAULT_SETTLE_MS = 300;
 
-function looksLikeStreamUrl(url) {
+// exported so the unit-test net (detail-page.test.js) can probe the
+// happy-path matcher in isolation; otherwise it would be unreachable
+// from outside the IIFE-shaped fetchClipDetails function body.
+export function looksLikeStreamUrl(url) {
   const trimmed = toString(url);
   if (!trimmed) return false;
   return (

@@ -14,6 +14,7 @@ import {
   extractFromDom,
   mergeMetadata,
   fetchClipDetails,
+  looksLikeStreamUrl,
 } from '../src/scrape/detail-page.js';
 
 const CLIP_PAGE_URL = 'https://artlist.io/stock-footage/clip/skyline-at-sundown/123456';
@@ -267,8 +268,76 @@ describe('mergeMetadata', () => {
 
 // ── fetchClipDetails (mocked) ───────────────────────────────────────────
 
+// ── looksLikeStreamUrl (close reviewer's coverage gap on commit 6358d0c40) ─
+describe('looksLikeStreamUrl', () => {
+  test('matches .m3u8 URLs (with and without query string)', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/hls/123456/master.m3u8'),
+      true
+    );
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/hls/123456/master.m3u8?token=xyz'),
+      true
+    );
+  });
+
+  test('matches .mp4 URLs (with and without query string)', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.mp4'),
+      true
+    );
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.mp4?session=abc'),
+      true
+    );
+  });
+
+  test('matches /manifest and /playlist HLS-style paths', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/hls/123456/manifest.mpd'),
+      true
+    );
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/hls/123456/playlist'),
+      true
+    );
+  });
+
+  test('does NOT match .webm URLs', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.webm'),
+      false
+    );
+  });
+
+  test('does NOT match .avi URLs', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.avi'),
+      false
+    );
+  });
+
+  test('does NOT match .mov /.mkv URLs (defensive)', () => {
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.mov'),
+      false
+    );
+    assert.equal(
+      looksLikeStreamUrl('https://cdn.artlist.io/preview/123456.mkv'),
+      false
+    );
+  });
+
+  test('returns false for empty / null / undefined / non-string', () => {
+    assert.equal(looksLikeStreamUrl(''), false);
+    assert.equal(looksLikeStreamUrl(null), false);
+    assert.equal(looksLikeStreamUrl(undefined), false);
+    assert.equal(looksLikeStreamUrl(42), false);
+  });
+});
+
 describe('fetchClipDetails', () => {
-  function createMockBrowser(resultOverrides = {}) {
+  function createMockBrowser(resultOverrides = {}, { streamEmissions = ['https://cdn.artlist.io/123456.m3u8'] } = {}) {
     const listeners = { request: [], response: [] };
     const emittedRequests = [];
 
@@ -284,9 +353,13 @@ describe('fetchClipDetails', () => {
         listeners[event] = listeners[event].filter((h) => h !== handler);
       },
       async goto() {
-        // Simulate request events for m3u8 URLs.
+        // Simulate request events for stream URLs (default emits one
+        // .m3u8 to exercise the happy path; pass {} to force the
+        // STREAM_NOT_FOUND branch).
         for (const h of listeners.request) {
-          h({ url: () => 'https://cdn.artlist.io/123456.m3u8' });
+          for (const url of streamEmissions) {
+            h({ url: () => url });
+          }
         }
       },
       async waitForSelector() {
@@ -360,6 +433,44 @@ describe('fetchClipDetails', () => {
     };
     const result = await fetchClipDetails(browser, CLIP_PAGE_URL);
     assert.equal(result, null);
+  });
+
+  // closes the reviewer's coverage gap on commit 6358d0c40 (second
+  // half): the STREAM_NOT_FOUND clip.ok=false path MUST emit the exact
+  // contract that tests/operational/artlist/03_detail_stream.sh Gate 1
+  // Phase 3 probes (jq asserted shape: .ok==false and .error=='STREAM_NOT_FOUND'
+  // and (.clip_id|length>0) and (.stream_urls|length==0)). Without
+  // stream candidates scraped from the page (no m3u8, no mp4, no
+  // /manifest, no /playlist), buildResult falls through to the
+  // STREAM_NOT_FOUND branch — verify the JSON shape is exactly what
+  // the smoke test asserts.
+  test('STREAM_NOT_FOUND clip.ok=false path matches Gate 1 Phase 3 contract', async () => {
+    const browser = createMockBrowser(
+      {
+        // No .m3u8/.mp4/manifest/playlist emissions anywhere —
+        // outerHtml is empty, perf entries are empty, video is absent,
+        // and goto() emits nothing via {streamEmissions: []} below.
+        nextData: { props: { pageProps: {} } },
+        jsonLd: [],
+        domMetadata: {},
+        outerHtml: '<html><body><div>no streams here</div></body></html>',
+      },
+      { streamEmissions: [] }
+    );
+    const result = await fetchClipDetails(browser, CLIP_PAGE_URL);
+    // Sanity — the function returned a body, not a Cloudflare-null.
+    assert.ok(result, 'fetchClipDetails returned null (Cloudflare block?)');
+    // Gate 1 Phase 3 jq assertions, ported verbatim:
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'STREAM_NOT_FOUND');
+    assert.ok((result.clip_id || '').length > 0, 'clip_id must be non-empty');
+    assert.equal((result.stream_urls || []).length, 0);
+    // Additional contract fields documented in
+    // node-scraper/README.md §2.2:
+    assert.equal(result.provider, 'artlist');
+    assert.equal(result.page_url, CLIP_PAGE_URL);
+    assert.equal(result.clip_page_url, CLIP_PAGE_URL);
+    assert.ok(result.raw_metadata, 'raw_metadata must be present for operator debug');
   });
 
   test('builds a full result from all metadata sources', async () => {
