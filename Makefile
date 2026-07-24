@@ -408,26 +408,37 @@ verify-no-secrets:
 
 # verify-base — fail-closed base gate: toolchain version, secrets,
 # formatting, and module tidiness. Kept cheap so the most common failures
-# surface in seconds.
+# surface in seconds. GO-ONLY (no node-version-check); use verify-foundation
+# below for the Node-aware chain. NOTE: verify-base and verify-foundation
+# share 4 of 5 prereqs by design (the "non sostitutivi" constraint of the
+# refactor). When adding/removing a prereq here, mirror it in
+# verify-foundation below to prevent drift between the two chains.
 verify-base: go-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Base verification passed"
 
 # verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
-# Node), secrets, formatting, module tidiness. Runs in seconds. ADDITIVE
-# on top of verify-base: the only behavioural difference is the addition
-# of node-version-check, which is required by test-js / verify-node / the
-# artlist gate since July 2026. Callers that do not run Node (legacy CI
-# images, Go-only runners) keep using verify-base; new code paths and
+# Node), secrets, formatting, and module tidiness. Runs in seconds.
+# ADDITIVE on top of verify-base: the only behavioural difference is the
+# addition of node-version-check, which test-js / verify-node / the artlist
+# gate have required since July 2026. Callers that do not run Node (legacy
+# CI images, Go-only runners) keep using verify-base; new code paths and
 # the dev-loop should prefer verify-foundation.
+#
+# NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
+# (the "non sostitutivi" constraint of the refactor). When adding/removing
+# a prereq here, mirror it in verify-base above to prevent drift between
+# the two chains.
 verify-foundation: go-version-check node-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Foundation verification passed"
 
 # verify-static — Go static analysis + full build. No tests, no
 # integration, no Node. Catches vet regressions and compile errors in
-# <1min on a warm cache. Predecessor to verify-go (which adds the
-# per-area race-tested suites). Independent of verify-foundation so it
-# can be run in isolation during hot-iteration on a single package.
-verify-static:
+# <1min on a warm cache. Complementary to verify-go (which adds the
+# per-area race-tested suites); use it as a fail-fast smoke between full
+# builds. go-version-check is a hard prereq so a stale host Go fails
+# fast with the canonical version mismatch message rather than late and
+# opaquely inside `go vet` / `go build`.
+verify-static: go-version-check
 	$(GO) vet ./...
 	$(GO) build ./...
 	@echo "✅ Static verification passed"
