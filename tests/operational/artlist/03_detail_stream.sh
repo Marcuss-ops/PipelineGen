@@ -33,43 +33,7 @@ source "$DIR/../lib/artlist_runtime.sh"
 
 
 
-if [[ -n "${LIVE_QUERIES:-}" ]]; then
-    IFS='|' read -ra LIVE_QUERIES <<<"${LIVE_QUERIES}"
-    if [[ ${#LIVE_QUERIES[@]} -ne 3 \
-       || -z "${LIVE_QUERIES[0]:-}" \
-       || -z "${LIVE_QUERIES[1]:-}" \
-       || -z "${LIVE_QUERIES[2]:-}" ]]; then
-        ts="$(date '+%Y-%m-%dT%H:%M:%S')"
-        printf >&2 '[FAIL]  %s  LIVE_QUERIES env override must yield exactly 3 non-empty pipe-delimited terms; got %d slot(s): "%s"\n' \
-            "$ts" "${#LIVE_QUERIES[@]}" "${LIVE_QUERIES[*]}"
-        : "${WORK_DIR:=${TMPDIR:-/tmp}/artlist_e2e_validation}"
-        if ! mkdir -p "$WORK_DIR" 2>/dev/null; then
-            printf >&2 '[WARN]  %s  could not mkdir %s (validation artifact skipped)\n' \
-                "$ts" "$WORK_DIR"
-            exit 2
-        fi
-        if ! value_json=$(printf '%s\0' "${LIVE_QUERIES[@]}" | jq -Rs --argjson n "${#LIVE_QUERIES[@]}" \
-            'split("\u0000") | map(if . == "" then null else . end) | .[:$n]'); then
-            printf >&2 '[WARN]  %s  jq pipeline failed producing the value array (artifact dropped, exit 2 still enforced)\n' \
-                "$ts"
-            exit 2
-        fi
-        jq -nc --arg ts "$ts" --argjson slots "${#LIVE_QUERIES[@]}" \
-            --argjson value "$value_json" \
-            '{event:"live_queries_validation_failed",ts:$ts,slots:$slots,value:$value}' \
-            > "$WORK_DIR/live_queries_validation_failed.json"
-        exit 2
-    fi
-elif [[ -n "${LIVE_QUERY_1:-}" && -n "${LIVE_QUERY_2:-}" && -n "${LIVE_QUERY_3:-}" ]]; then
-    LIVE_QUERIES=("${LIVE_QUERY_1}" "${LIVE_QUERY_2}" "${LIVE_QUERY_3}")
-else
-    LIVE_QUERIES=(
-        "business team working in modern office"
-        "heavyweight boxer training in gym"
-        "boxing arena crowd celebrating"
-    )
-fi
-unset LIVE_QUERY_1 LIVE_QUERY_2 LIVE_QUERY_3
+artlist_live_queries_validate && artlist_live_queries_default
 
 smoke_require curl jq
 
