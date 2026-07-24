@@ -52,32 +52,50 @@ go-version-check:
 	fi
 
 # Node toolchain guard. The single source of truth is the
-# `engines.node` field in node-scraper/package.json (parsing that via
-# `node -p require(...)` keeps the contract in code, not in comments),
-# and the host version comes from `node --version`. Mirrors the Go
-# guard so CI and Dependabot npm updates cannot silently drift from
-# the runtime the operators actually execute.
+# `engines.node` field in node-scraper/package.json, and the host version
+# comes from `node --version`. Mirrors the Go guard so CI and Dependabot
+# npm updates cannot silently drift from the runtime the operators
+# actually execute.
+#
+# Implementation notes (the three pitfalls wired into this gate):
+#
+#  1. awk vs node -p JSON.parse — awk is used because the latter
+#     suffered from a subtle Make variable-expansion issue (2026-07-03
+#     incident) where the second `[ -z ]` check saw REQ_RAW as empty
+#     even though the first saw it as populated. awk is a single-line
+#     field splitter with no module-system dependencies, agnostic to
+#     the `"type"` field of node-scraper/package.json (ESM or CJS,
+#     both work).
+#
+#  2. Anchored numeric extraction — REQ_MAJOR is derived via
+#     `sed -E 's/^[^0-9]*([0-9]+).*/\1/'` so operators like ^, >=,
+#     ranges, or pre-release tags degrade into a clear "unsupported
+#     format" error instead of a silent numeric-vs-string mismatch.
+#
+#  3. NO INLINE `#` COMMENTS in the recipe below. Make joins
+#     `\<newline>`-continued lines into a single physical shell line
+#     (with `<space>` between), and an inline `#` starts a shell
+#     comment that swallows the REST of the line — including the
+#     REQ_RAW / REQ_MAJOR / HOST / HOST_MAJOR assignments that this
+#     recipe depends on. All explanatory comments live in the header
+#     block above this target, never inside the recipe. (Bug-fix
+#     2026-07-21: this was the root cause of the verify-node regression
+#     surfaced by `make verify-node` post-STEP-2/4 wire-up.)
 node-version-check:
 	@if ! command -v node >/dev/null 2>&1; then \
 	    echo "❌ Node binary not found on PATH — install Node 22.x (nvm, fnm, asdf, or distro packages)"; \
 	    exit 1; \
 	fi; \
-	# Read engines.node directly via awk (more reliable under Make's
-	# subshell than `node -p JSON.parse(...)`, which suffered from a
-	# subtle Make variable-expansion issue that surfaced on 2026-07-03:
-	# the second `[ -z ]` check saw REQ_RAW as empty even though the
-	# first saw it as populated. awk is a single-line field splitter
-	# with no module-system dependencies, agnostic to the `"type"` field
-	# of node-scraper/package.json (ESM or CJS, both work).
 	REQ_RAW=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' node-scraper/package.json); \
 	HOST=$$(node --version 2>/dev/null | sed 's/^v//'); \
+	if [ -z "$$HOST" ]; then \
+	    echo "❌ node binary present but 'node --version' returned empty (broken install?)"; \
+	    exit 1; \
+	fi; \
 	if [ -z "$$REQ_RAW" ]; then \
 	    echo "❌ node-scraper/package.json has no 'engines.node' field — set e.g. \"engines\": { \"node\": \"22.x\" }"; \
 	    exit 1; \
 	fi; \
-	# Anchored numeric extraction so operators like ^, >=, ranges, or
-	# pre-release tags degrade into a clear "unsupported format" error
-	# instead of a silent numeric-vs-string mismatch.
 	REQ_MAJOR=$$(echo "$$REQ_RAW" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
 	HOST_MAJOR=$$(echo "$$HOST" | cut -d. -f1); \
 	if ! echo "$$REQ_MAJOR" | grep -qE '^[0-9]+$$'; then \
