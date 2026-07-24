@@ -102,6 +102,22 @@ export async function handleDetail(req, res, ctx) {
       return;
     }
 
+    if (clip.ok === false) {
+      console.log(`[${new Date().toISOString()}] #${reqId} DETAIL no stream for clip_id=${clip.clip_id || 'unknown'} in ${elapsed}ms`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: clip.error || 'STREAM_NOT_FOUND',
+        clip_id: clip.clip_id || '',
+        page_url: clip.page_url || clip.clip_page_url || clipPageUrl,
+        clip_page_url: clip.clip_page_url || clip.page_url || clipPageUrl,
+        stream_urls: Array.isArray(clip.stream_urls) ? clip.stream_urls : [],
+        raw_metadata: clip.raw_metadata || {},
+        _meta: { request_id: reqId, elapsed_ms: elapsed },
+      }));
+      return;
+    }
+
     console.log(`[${new Date().toISOString()}] #${reqId} DONE detail clip_id=${clip.clip_id || 'unknown'} in ${elapsed}ms`);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({

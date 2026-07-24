@@ -1,4 +1,5 @@
 import { normalizeLinks, extractClipId } from './url.js';
+import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../driver/cookies.js';
 
 /**
  * ArtlistDetailHydrator — extracts structured metadata from an Artlist
@@ -25,6 +26,26 @@ const DEFAULT_NAV_TIMEOUT = 60000;
 
 /** Default wait after navigation for dynamic content. */
 const DEFAULT_SETTLE_MS = 300;
+
+function looksLikeStreamUrl(url) {
+  const trimmed = toString(url);
+  if (!trimmed) return false;
+  return (
+    /\.m3u8(?:\?|$)/i.test(trimmed) ||
+    /\.mp4(?:\?|$)/i.test(trimmed) ||
+    /manifest/i.test(trimmed) ||
+    /playlist/i.test(trimmed)
+  );
+}
+
+function addCandidateStream(streamSet, url, clipPageUrl) {
+  if (typeof url !== 'string') return;
+  const trimmed = url.trim().replace(/\\+$/, '');
+  if (!trimmed || trimmed === clipPageUrl) return;
+  if (looksLikeStreamUrl(trimmed)) {
+    streamSet.add(trimmed);
+  }
+}
 
 // ── Pure helper: array/string normalization ─────────────────────────────
 
@@ -319,9 +340,14 @@ function buildResult({
   videoSrc,
   metadata,
 }) {
-  const primaryUrl = metadata.preview_url || metadata.primary_url || streams[0] || videoSrc || clipPageUrl;
+  const preferredStream = streams.find((u) => looksLikeStreamUrl(u)) || '';
+  const preferredVideoSrc = looksLikeStreamUrl(videoSrc) ? videoSrc : '';
+  const preferredPreview = looksLikeStreamUrl(metadata.preview_url) ? metadata.preview_url : '';
+  const preferredPrimary = looksLikeStreamUrl(metadata.primary_url) ? metadata.primary_url : '';
+  const primaryUrl = preferredStream || preferredVideoSrc || preferredPreview || preferredPrimary || clipPageUrl;
 
   return {
+    ok: true,
     provider: PROVIDER,
     clip_id: clipId,
     title: title || metadata.title || clipPageUrl,
@@ -331,9 +357,10 @@ function buildResult({
     location: metadata.location || metadata.country || '',
     tags: toStringArray(metadata.tags),
     categories: toStringArray(metadata.categories),
+    page_url: clipPageUrl,
     clip_page_url: clipPageUrl,
     thumbnail_url: metadata.thumbnail_url || '',
-    preview_url: metadata.preview_url || primaryUrl,
+    preview_url: preferredPreview || preferredPrimary || preferredStream || preferredVideoSrc || metadata.preview_url || primaryUrl,
     primary_url: primaryUrl,
     stream_urls: streams,
     raw_metadata: metadata.raw_metadata || {},
@@ -355,6 +382,9 @@ export async function fetchClipDetails(browser, clipPageUrl) {
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' +
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
+
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  await importCookies(detailPage, cookiePath);
 
   const streamSet = new Set();
   const apiResponses = [];
@@ -402,6 +432,28 @@ export async function fetchClipDetails(browser, clipPageUrl) {
       .waitForSelector('video, [class*="player"], [class*="video"]', { timeout: 10000 })
       .catch(() => {});
     await new Promise((resolve) => setTimeout(resolve, DEFAULT_SETTLE_MS));
+
+    // Artlist loads its HLS stream lazily. Trigger the player before we
+    // read back the network/resource hints so the .m3u8 request is emitted.
+    await detailPage
+      .evaluate(() => {
+        const video = document.querySelector('video');
+        if (video) {
+          try {
+            video.scrollIntoView({ behavior: 'instant', block: 'center' });
+          } catch {
+            video.scrollIntoView();
+          }
+          video.play().catch(() => {
+            const player = video.closest('[class*="player"]') || video.parentElement;
+            if (player && typeof player.click === 'function') player.click();
+          });
+        }
+        const playBtn = document.querySelector('[class*="play"], [class*="Play"], [aria-label*="play"], [aria-label*="Play"]');
+        if (playBtn && typeof playBtn.click === 'function') playBtn.click();
+      })
+      .catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     const title = await detailPage.title();
     if (title.includes('Just a moment')) {
@@ -533,19 +585,29 @@ export async function fetchClipDetails(browser, clipPageUrl) {
     const html = (await detailPage.evaluate(() => document.documentElement.outerHTML))
       .replace(/\\\//g, '/')
       .replace(/\\u0026/g, '&');
+    const streamsFromPerf = await detailPage
+      .evaluate(() =>
+        performance
+          .getEntriesByType('resource')
+          .map((entry) => entry?.name || '')
+          .filter(Boolean)
+      )
+      .catch(() => []);
+    const videoSrc = await detailPage.evaluate(() => {
+      const video = document.querySelector('video');
+      if (!video) return '';
+      const source = document.querySelector('video source[src]');
+      return video.src || video.currentSrc || source?.src || '';
+    });
+    for (const url of [...streamsFromPerf, videoSrc]) {
+      addCandidateStream(streamSet, url, clipPageUrl);
+    }
     const streamsFromHtml = normalizeLinks([
       ...streamSet,
       ...((html.match(/https?:\/\/[^"'\\s>]+\.m3u8[^"'\\s>]*/g) || [])),
       ...((html.match(/https?:\/\/[^"'\\s>]+\.mp4[^"'\\s>]*/g) || [])),
-      ...((html.match(/https?:\/\/[^"'\\s>]+cdn[^"'\\s>]*/g) || [])),
-    ]);
-    const videoSrc = await detailPage.evaluate(() => {
-      const video = document.querySelector('video');
-      return video ? video.src || video.currentSrc || '' : '';
-    });
-    if (videoSrc && !streamsFromHtml.includes(videoSrc)) {
-      streamsFromHtml.push(videoSrc);
-    }
+      ...((html.match(/https?:\/\/[^"'\\s>]+(?:manifest|playlist)[^"'\\s>]*/g) || [])),
+    ]).filter((url) => looksLikeStreamUrl(url) && url !== clipPageUrl);
 
     // Merge sources in priority order (lowest → highest):
     // textual page title < DOM < JSON-LD < __NEXT_DATA__ < API/GraphQL.
@@ -570,7 +632,7 @@ export async function fetchClipDetails(browser, clipPageUrl) {
       },
     };
 
-    return buildResult({
+    const result = buildResult({
       clipPageUrl,
       clipId,
       title: merged.title || title,
@@ -578,6 +640,21 @@ export async function fetchClipDetails(browser, clipPageUrl) {
       videoSrc,
       metadata: { ...merged, raw_metadata: rawMetadata },
     });
+
+    if (result.stream_urls.length === 0 || result.primary_url === clipPageUrl || !looksLikeStreamUrl(result.primary_url)) {
+      return {
+        ok: false,
+        error: 'STREAM_NOT_FOUND',
+        provider: PROVIDER,
+        clip_id: clipId,
+        page_url: clipPageUrl,
+        clip_page_url: clipPageUrl,
+        stream_urls: result.stream_urls || [],
+        raw_metadata: rawMetadata,
+      };
+    }
+
+    return result;
   } catch (e) {
     console.error(`[artlist] failed to fetch detail for ${clipPageUrl}:`, e.message);
     return null;

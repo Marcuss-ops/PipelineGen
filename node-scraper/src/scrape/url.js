@@ -4,7 +4,7 @@
  * @returns {string} Clip ID
  */
 export function extractClipId(url) {
-  const match = String(url || '').match(/\/clip\/[^/]+\/(\d+)/);
+  const match = String(url || '').match(/\/clip\/(?:[^/]+\/)?(\d+)(?:[/?#]|$)/);
   return match ? match[1] : '';
 }
 
