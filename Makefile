@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -411,6 +411,35 @@ verify-no-secrets:
 # surface in seconds.
 verify-base: go-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Base verification passed"
+
+# verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
+# Node), secrets, formatting, module tidiness. Runs in seconds. ADDITIVE
+# on top of verify-base: the only behavioural difference is the addition
+# of node-version-check, which is required by test-js / verify-node / the
+# artlist gate since July 2026. Callers that do not run Node (legacy CI
+# images, Go-only runners) keep using verify-base; new code paths and
+# the dev-loop should prefer verify-foundation.
+verify-foundation: go-version-check node-version-check verify-no-secrets verify-format tidy-check
+	@echo "✅ Foundation verification passed"
+
+# verify-static — Go static analysis + full build. No tests, no
+# integration, no Node. Catches vet regressions and compile errors in
+# <1min on a warm cache. Predecessor to verify-go (which adds the
+# per-area race-tested suites). Independent of verify-foundation so it
+# can be run in isolation during hot-iteration on a single package.
+verify-static:
+	$(GO) vet ./...
+	$(GO) build ./...
+	@echo "✅ Static verification passed"
+
+# verify-fast — dev-loop gate: foundation + static. Runs in <1min on a
+# clean tree and is the cheapest fail-closed chain that catches the
+# most common errors (toolchain mismatch, leaked secrets, formatting
+# drift, vet/build break). Used during active development. verify-main
+# and verify-release add the heavier gates (unit, node, integration,
+# architecture, artlist).
+verify-fast: verify-foundation verify-static
+	@echo "✅ verify-fast passed"
 
 # verify-go-core — domain and application logic tests. Isolates failures
 # in the core business packages so a domain test failure is immediately
