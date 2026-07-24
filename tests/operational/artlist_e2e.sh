@@ -464,7 +464,7 @@ gate_direct_download() {
 #     describe the semantics, the actual terms live in LIVE_QUERIES).
 #   * 60s timeout enforced on the curl side; on timeout we emit the
 #     SEARCH_TIMEOUT sentinel rather than reporting ok=true with zero
->     results (as the DoD explicitly forbids).
+#     results (as the DoD explicitly forbids).
 #   * Raw curl (no smoke_curl) for the Authorization header + per-query
 #     timeout ergonomics; token must be present (validated by lib/common.sh).
 gate_live_search_three() {
