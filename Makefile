@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-architecture verify-artlist verify-images verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -432,6 +432,96 @@ verify-go:
 	$(GO) vet ./...
 	$(GO) build ./...
 	@echo "✅ Go verification passed"
+
+# verify-unit — race-tested Go unit tests by area, EXCLUDING the slow
+# operational/integration suite under ./tests/.... This is the canonical
+# "fast Go" gate for the dev loop. ./tests/... is moved to verify-integration
+# so a slow E2E never blocks `make verify-unit`; ops batteries there are
+# also free to depend on external services (Drive, Qdrant, scraper).
+#
+# Composition rule (July 2026 verify-main refactor — STEP 2/4 WIP):
+# verify-unit MUST NOT trigger any ./tests/... run. The four sub-targets
+# are pure unit tests (domain, application, infrastructure, api, commands,
+# pkg). NOTE: verify-main still routes through `verify-go` (which transitively
+# includes verify-go-tests) until STEP 3/4 lands.
+verify-unit:
+	@$(MAKE) verify-go-core
+	@$(MAKE) verify-go-infrastructure
+	@$(MAKE) verify-go-api
+	@$(MAKE) verify-go-commands
+	@echo "✅ Unit verification passed"
+
+# verify-node-native — probe better-sqlite3 by loading it against an
+# in-memory database. Designed to surface the "Module did not self-register"
+# failure mode in SECONDS rather than minutes: when better-sqlite3's native
+# binding is built against the wrong Node ABI (typically after a Node major
+# upgrade that runs `npm test` before `npm rebuild`), the very first
+# `new Database(':memory:')` throws synchronously, and `node -e` exits
+# non-zero — failing this gate fast.
+#
+# Install-guard semantics (IMPORTANT):
+#   - The `[ -d node_modules/better-sqlite3 ]` check is a PERF OPTIMISATION
+#     (skip the 30s npm install on subsequent runs), NOT a correctness gate.
+#   - The probe IS the correctness gate: it catches stale-ABI cases where
+#     the directory exists but the .node binding is built against the wrong
+#     Node version (the directory check would pass and the require() would
+#     still throw). Do NOT trust a green directory check.
+#   - When the probe fails, the fix is `cd node-scraper && npm rebuild
+#     better-sqlite3` (or `npm install` for first-time installs).
+#
+# CAUTION on the recipe below: `node -e '...'` is single-quoted to keep the
+# JS as one shell argument. Do NOT introduce literal single quotes inside
+# the JS (e.g. for a different probe message) without migrating to a
+# heredoc or a dedicated probe script under node-scraper/scripts/.
+#
+# Runs BEFORE verify-node-tests so a native-binding mismatch fails the chain
+# in seconds, BEFORE the slower `npm install` / `npm test` round-trip.
+verify-node-native:
+	@if [ ! -d node-scraper/node_modules/better-sqlite3 ]; then \
+	    echo "→ Installing node-scraper devDependencies (better-sqlite3 native build)..."; \
+	    cd node-scraper && npm install --silent; \
+	fi
+	@echo "→ Probing better-sqlite3 native binding (catches 'Module did not self-register')..."
+	@cd node-scraper && node -e 'const Database = require("better-sqlite3"); const db = new Database(":memory:"); db.exec("CREATE TABLE probe(id INTEGER)"); db.close(); console.log("✅ better-sqlite3 loaded");'
+	@echo "✅ verify-node-native passed"
+
+# verify-node-tests — Mocha + ESLint over node-scraper/test/*.test.js.
+# Thin alias of `make test-js`: same install guard, same node-version-check,
+# same npm test invocation. Kept separate from verify-node-native so the
+# native-binding probe can fail fast without paying the npm-install cost
+# and so verify-node-native can be run in isolation during Node upgrades.
+verify-node-tests: test-js
+
+# verify-node — Node toolchain gate. Composes the fast native-binding
+# probe (verify-node-native, <1s once installed) and the Mocha test suite
+# (verify-node-tests, npm install + npm test).
+#
+# Order is meaningful: verify-node-native runs first so an ABI mismatch
+# surfaces immediately and the operator does not wait through a 30s+ npm
+# install only to hit the same failure mode inside npm test.
+verify-node: verify-node-native verify-node-tests
+	@echo "✅ Node verification passed"
+
+# verify-integration — operational, integration, and E2E tests under
+# ./tests/... . Kept ISOLATED from verify-unit and verify-node because:
+#   (a) some suites require external services (Drive, Qdrant, scraper) and
+#       are slower than unit tests, so they can be run or skipped
+#       independently;
+#   (b) the gate is intentionally NOT part of verify-main (the pre-push
+#       gate); it sits one level up under verify-release.
+#
+# Wraps verify-go-tests (which already runs `go test -race ./tests/...`)
+# so a future migration to a different runner (e.g. go-test-integration
+# with a build tag) can be wired at this target without touching the
+# individual suites.
+#
+# go-version-check is a hard prereq (not just an opportunistic check):
+# verify-go-tests calls `$(GO) test -race ./tests/...` directly, which
+# fails late and opaquely on a stale host Go (vs. fail-fast via the
+# canonical version mismatch message from go-version-check).
+verify-integration: go-version-check
+	@$(MAKE) verify-go-tests
+	@echo "✅ Integration verification passed"
 
 # verify-architecture — governance and architecture checks. Kept separate
 # so architecture drift surfaces under its own target.
