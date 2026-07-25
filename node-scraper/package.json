@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "mocha test/*.test.js",
+    "test": "node --test test/*.test.js",
     "test:fallback": "node --test test/*.test.js",
     "lint": "eslint .",
     "check": "npm run lint && npm test"
