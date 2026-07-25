@@ -131,7 +131,18 @@ sqlite_clip_row() {
         return 1
     fi
     local escaped="${clip_id//\'/\'\'}"
-    sqlite3 -readonly "$db" \
+    local result
+    result=$(sqlite3 -readonly "$db" \
         "SELECT drive_file_id FROM media_assets WHERE id = '${escaped}'" \
-        2>/dev/null | tr -d ' \n'
+        2>/dev/null | tr -d ' \n')
+    # Symmetric miss-signaling (per AGENTS.md fail-closed + mirrors
+    # sqlite_pending_jobs in the same file): empty SELECT result means
+    # the clip_id is absent from media_assets. Surface rc=1 + canonical
+    # "?" sentinel so the gate's downstream `[[ -z "$drive_file_id" ]]`
+    # check AND the lib's own rc semantics align (no silent PASS on miss).
+    if [[ -z "$result" ]]; then
+        printf '%s\n' "?"
+        return 1
+    fi
+    printf '%s\n' "$result"
 }
