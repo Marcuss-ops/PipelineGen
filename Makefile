@@ -105,6 +105,16 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Use: make build GO=/opt/go-1.25/bin/go
 GO ?= go
 
+# Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
+# Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
+# belt-and-braces bootstrap so any Make recipe that needs VELOX_ADMIN_TOKEN can
+# source it from the canonical file without re-running the wrapper. The
+# variables VELOX_ADMIN_TOKEN / VELOX_WORKER_TOKEN / VELOX_PORT are the only
+# tokens this project reads; placeholders (e.g. test-admin-token-12345) are
+# forbidden — see AGENTS.md.
+TOKEN_FILE ?= /etc/pipelinegen/pipelinegen.env
+export TOKEN_FILE
+
 # Default target
 all: build
 
@@ -310,23 +320,29 @@ run: build
 	./bin/pipelinegen --mode all
 
 # Run system doctor check. Port/port override same as artlist target.
-# Admin token is read from $ADMIN_TOKEN (default matches config.yaml).
-# Fails explicitly if the server is not running.
+# Admin token is read from $VELOX_ADMIN_TOKEN (canonical SSOT). The forbidden
+# legacy `ADMIN_TOKEN ?= test-admin-token-12345` placeholder has been removed;
+# callers must export VELOX_ADMIN_TOKEN (= `scripts/with-velox-auth` wrapped) or
+# the recipe fails closed at the env-presence guard (AGENTS.md no-fake-availability).
 doctor:
-	@curl -sS -f -H "Authorization: Bearer $(ADMIN_TOKEN)" http://127.0.0.1:$${VELOX_PORT:-8000}/api/system/doctor | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
+	@[ -n "$$VELOX_ADMIN_TOKEN" ] || { echo "❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth or export manually."; exit 1; }
+	@curl -sS -f -H "Authorization: Bearer $(VELOX_ADMIN_TOKEN)" http://127.0.0.1:$${VELOX_PORT:-8000}/api/system/doctor | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
 
 # Run artlist pipeline via POST /api/artlist/run.
 # Usage: make artlist TERM=technology LIMIT=10 STRATEGY=default
 # Port is read from $VELOX_PORT (canonical default 8000).
-# Admin token is read from $ADMIN_TOKEN (default matches config.yaml).
+# Admin token is read from $VELOX_ADMIN_TOKEN (canonical SSOT). The forbidden
+# legacy `ADMIN_TOKEN ?= test-admin-token-12345` placeholder has been removed;
+# callers must export VELOX_ADMIN_TOKEN (= `scripts/with-velox-auth` wrapped) or
+# the recipe fails closed at the curl layer.
 TERM ?= technology
 LIMIT ?= 10
 STRATEGY ?= default
-ADMIN_TOKEN ?= test-admin-token-12345
 artlist:
+	@[ -n "$$VELOX_ADMIN_TOKEN" ] || { echo "❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth or export manually."; exit 1; }
 	@curl -sS -f -X POST http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/run \
 		-H "Content-Type: application/json" \
-		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
+		-H "Authorization: Bearer $(VELOX_ADMIN_TOKEN)" \
 		-d '{"term":"$(TERM)","limit":$(LIMIT),"strategy":"$(STRATEGY)"}' | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
 
 # Development mode with hot reload (requires air)
