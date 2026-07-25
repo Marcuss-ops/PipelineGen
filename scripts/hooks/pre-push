@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# scripts/hooks/pre-push — canonical version-controlled pre-push gate.
+#
+# Single source of truth for the pre-push discipline declared in
+# AGENTS.md ("Run make verify-main before pushing"). Wire-in is
+# `make install-hooks`, which sets `git config core.hooksPath
+# scripts/hooks` so this file IS the active pre-push hook on every
+# clone (no per-clone installation required).
+#
+# The legacy per-clone mirror (.git/hooks/pre-push) is a verbatim copy
+# of this file: if a clone happens to have it AND core.hooksPath is
+# left unset (the default), git picks it up automatically — both
+# surfaces delegate to the same `make verify-main` recipe, so the
+# behaviour is identical. Once `make install-hooks` runs, the canonical
+# path at scripts/hooks wins and the per-clone mirror becomes ignored.
+# Do NOT edit .git/hooks/pre-push in isolation: any divergence must be
+# resolved by editing scripts/hooks/pre-push and then mirroring.
+#
+# HONOUR-RULE (binding, July 2026):
+#   - DO NOT use `git push --no-verify` to bypass this hook. `--no-verify`
+#     skips hooks entirely by git design; the only valid uses are
+#     unblocking CI emergencies (the underlying failure is environmental,
+#     not a real test regression). Normal pushes MUST funnel through
+#     this gate. A push that lands with `--no-verify` MUST be paired
+#     with a follow-up `fixup!` + `git rebase --autosquash` once the
+#     underlying red gate is fixed.
+#   - DO NOT use `SKIP_FORMAT=1` to bypass the gofmt sub-gate for
+#     normal pre-push runs. SKIP_FORMAT is a one-off diagnostic only;
+#     a green verify-main with SKIP_FORMAT=1 is NOT a proxy for a
+#     green CI signal (CI does not pass that flag).
+#
+# Why a hook (not just operator discipline): the AGENTS.md rule is
+# trivially bypassed by --no-verify on the operator CLI, by a shell
+# alias, or by an external tool that invokes `git push` directly.
+# Wiring the gate as a pre-push hook means the discipline is enforced
+# by git itself, not by the operator. Any push path — direct CLI,
+# GUI client, automation script — funnels through the same
+# fail-closed gate as long as the operator does not pass --no-verify.
+#
+# Invariants (binding):
+#   - Fail-closed: any failing sub-step exits non-zero and BLOCKS the
+#     push. No `|| true`, no fallbacks, no continue-on-error.
+#   - Mirrors the verify-main recipe order: secrets → format → tidy →
+#     vet → go test -race → build → arch-aggregate → archcheck.
+#   - The same Makefile target CI runs (per AGENTS.md "CI runs the
+#     same chain, so local must match CI exactly"). A green local
+#     signal is a sufficient proxy for a green CI signal — CI does
+#     not set any diagnostic flags.
+#
+# DO NOT add features to this hook unless explicitly requested. The
+# AGENTS.md "Do not add features to production code unless the user
+# explicitly requested them" rule applies here.
+
+set -euo pipefail
+
+# Print a visible banner so the operator sees the gate running, not
+# silent network/auth latency.
+echo
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  pre-push gate: make verify-main (AGENTS.md fail-closed)"
+echo "  source: scripts/hooks/pre-push (canonical version-controlled)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo
+
+if make verify-main; then
+    echo
+    echo "✅ verify-main passed — proceeding with push."
+    exit 0
+else
+    rc=$?
+    echo
+    echo "❌ verify-main FAILED (exit $rc) — push BLOCKED."
+    echo
+    echo "   Fix the failing step and retry. Diagnostic bypass (gofmt only):"
+    echo "     SKIP_FORMAT=1 make verify-main"
+    echo
+    echo "   Bypass-of-last-resort (skips this hook entirely; HONOUR-RULE:"
+    echo "   reserved for unblocking CI emergencies, NOT normal workflow):"
+    echo "     git push --no-verify"
+    echo
+    echo "   A push that lands with --no-verify MUST be paired with a"
+    echo "   follow-up fixup! commit + git rebase --autosquash once the"
+    echo "   underlying test failure is fixed."
+    echo
+    echo "   The pre-push gate is make verify-main without any bypass; do"
+    echo "   not push if the unflagged gate is red."
+    exit 1
+fi

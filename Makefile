@@ -1,3 +1,40 @@
+# ─── HONOUR-RULE for git push (binding, July 2026) ─────────────────────
+#
+# This is the operator-facing contract that closes the gap exposed on
+# commit 2443a633c (node-scraper test coverage gap that landed with a
+# real test failure because the local pre-push hook was skipped via
+# `git push --no-verify`). Three layers wire the rule in:
+#
+#   (1) scripts/hooks/pre-push is the canonical version-controlled
+#       pre-push gate (mirrors the legacy per-clone
+#       .git/hooks/pre-push). Every push to `main` runs
+#       `make verify-main`; a RED gate BLOCKS the push atomically.
+#       Install once per clone via `make install-hooks` (sets
+#       `git config core.hooksPath scripts/hooks`).
+#
+#   (2) `make verify-main` (the gate the hook invokes) is fail-closed
+#       by AGENTS.md and is the EXACT chain CI runs. Local must match
+#       CI (no diagnostic flags). The chain is documented immediately
+#       below: verify-fast + verify-unit + verify-node +
+#       verify-architecture.
+#
+#   (3) DO NOT use `git push --no-verify` to bypass the hook on
+#       NORMAL pushes. `--no-verify` skips hooks entirely by git
+#       design — there is no layer we can add to retroactively block
+#       it. The bypass is reserved for unblocking CI emergencies
+#       (where the red gate is environmental, not a real test
+#       regression). A push that lands with `--no-verify` MUST be
+#       paired with a follow-up `fixup!` commit + `git rebase
+#       --autosquash` once the underlying red gate is fixed. The
+#       commit that establishes THIS hook (i.e. the one that creates
+#       scripts/hooks/pre-push itself) is the one canonical exception
+#       and is fully documented in its commit body.
+#
+# Same SKIP_FORMAT=1 caveat applies: a green `make verify-main`
+# with `SKIP_FORMAT=1` is NOT a proxy for a green CI signal —
+# CI does not pass that flag. The pre-push gate is `make verify-main`
+# without any bypass; do not push if the unflagged gate is red.
+
 # ─── PipelineGen verification matrix (July 2026 refactor, STEP 3/4) ─
 #
 # Four-tier fail-closed verification chain. Every push to `main` MUST
@@ -1103,17 +1140,24 @@ test-imports:
 # land-in (paired with a follow-up fixup! commit + autosquash). The
 # hook asserts this loud-on-stdout so the bypass is never silent.
 install-hooks:
-	@if [ ! -f scripts/hooks/pre-commit ]; then \
-		echo "❌ scripts/hooks/pre-commit not found — cannot install"; \
+	@if [ ! -f scripts/hooks/pre-commit ] || [ ! -f scripts/hooks/pre-push ]; then \
+		echo "❌ scripts/hooks/{pre-commit,pre-push} not found — cannot install"; \
+		echo "   Expected canonical hooks (must both exist) at scripts/hooks/."; \
 		exit 1; \
 	fi
 	@if [ ! -x scripts/hooks/pre-commit ]; then \
 		echo "→ chmod +x scripts/hooks/pre-commit"; \
 		chmod +x scripts/hooks/pre-commit; \
 	fi
+	@if [ ! -x scripts/hooks/pre-push ]; then \
+		echo "→ chmod +x scripts/hooks/pre-push"; \
+		chmod +x scripts/hooks/pre-push; \
+	fi
 	@git config core.hooksPath scripts/hooks
 	@echo "✅ core.hooksPath = $(shell git config --get core.hooksPath)"
-	@echo "→ Dry-run the hook once to confirm wiring:"
+	@echo "→ pre-commit gate: scripts/hooks/pre-commit    (touched-pkg Go build+vet, test-prefix)"
+	@echo "→ pre-push   gate: scripts/hooks/pre-push      (fails the push on red make verify-main)"
+	@echo "→ Dry-run pre-commit once to confirm wiring:"
 	@bash scripts/hooks/pre-commit --dry-run | head -10 || true
 
 # ─── Governance regeneration targets (Fase 7, Push 7, July 2026) ──────
