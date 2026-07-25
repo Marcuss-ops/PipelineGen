@@ -6,7 +6,10 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from velox_client import VeloxClient
 
-token = os.getenv("VELOX_ADMIN_TOKEN", "test-admin-token-12345")
+token = os.getenv("VELOX_ADMIN_TOKEN", "")
+if not token:
+    sys.stderr.write("❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth (or export manually) before running this script.\n")
+    sys.exit(2)
 image_style = os.getenv("SCRIPT_IMAGE_STYLE", "cinematic")
 
 base_url = os.getenv("VELOX_MASTER_URL")

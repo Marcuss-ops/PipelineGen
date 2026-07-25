@@ -103,9 +103,19 @@
 
 set -euo pipefail
 
+
+# ─── Fail-closed auth gate (AGENTS.md "no-fake-availability") ───────────
+# If VELOX_ADMIN_TOKEN is unset or empty, refuse to run. The canonical
+# loader is `scripts/with-velox-auth`; the Makefile-level auth-check
+# target runs the same loader against /api/artlist/job-consumer as a
+# pre-flight gate. The historical placeholder `test-admin-token-12345`
+# is forbidden by AGENTS.md and must never appear in this script or any
+# other operational surface again — see AGENTS.md "Authentication SSOT".
+: "${VELOX_ADMIN_TOKEN:?❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth (or export manually before rerunning).}"
+
 # ─── Configuration (canonical coiled env surface) ────────────────────────
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
 POLL_MAX="${POLL_MAX:-240}"
 POLL_INTERVAL="${POLL_INTERVAL:-15}"

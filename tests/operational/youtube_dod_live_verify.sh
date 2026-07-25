@@ -52,7 +52,7 @@ TEST_VIDEO_ID="${TEST_VIDEO_ID:-vdC5GXxS-qU}"
 if [ -z "${VELOX_ADMIN_TOKEN:-}" ] && [ -f "$ENV_FILE" ]; then
     VELOX_ADMIN_TOKEN=$(grep -E '^VELOX_ADMIN_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs)
 fi
-VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-test-admin-token-12345}"
+VELOX_ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
 if [ -z "$VELOX_ADMIN_TOKEN" ]; then
     echo "FAIL: VELOX_ADMIN_TOKEN not set and $ENV_FILE missing or empty (exit 2)" >&2
     exit 2

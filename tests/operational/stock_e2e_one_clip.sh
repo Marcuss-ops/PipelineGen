@@ -19,7 +19,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 POLL_MAX="${POLL_MAX:-30}"
 POLL_INTERVAL="${POLL_INTERVAL:-10}"
 

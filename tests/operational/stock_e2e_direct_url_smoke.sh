@@ -35,7 +35,7 @@
 #
 # Overridable env vars:
 #   BASE          = http://127.0.0.1:8000  (PipelineGen API root)
-#   AUTH          = "Authorization: Bearer <VELOX_ADMIN_TOKEN or test-admin-token-12345>"
+#   AUTH          = "Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}"
 #   FOLDER_ID     = ${FOLDERS[0]}        (9 Drive folder fixtures from
 #                                          architecture/action-plans/
 #                                          2026-07-05-stock-e2e-battery.md)
@@ -46,9 +46,19 @@
 
 set -euo pipefail
 
+
+# ─── Fail-closed auth gate (AGENTS.md "no-fake-availability") ───────────
+# If VELOX_ADMIN_TOKEN is unset or empty, refuse to run. The canonical
+# loader is `scripts/with-velox-auth`; the Makefile-level auth-check
+# target runs the same loader against /api/artlist/job-consumer as a
+# pre-flight gate. The historical placeholder `test-admin-token-12345`
+# is forbidden by AGENTS.md and must never appear in this script or any
+# other operational surface again — see AGENTS.md "Authentication SSOT".
+: "${VELOX_ADMIN_TOKEN:?❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth (or export manually before rerunning).}"
+
 # ---- Configuration --------------------------------------------------------
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 
 # 9 Drive folder fixtures from architecture/action-plans/
 # 2026-07-05-stock-e2e-battery.md §1 (canonical test scope-limit).
