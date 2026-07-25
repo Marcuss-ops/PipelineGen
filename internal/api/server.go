@@ -168,6 +168,12 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		if readyChecker != nil {
 			router.SetReadyChecker(readyChecker)
 		}
+		// Mirror the QdrantHealth wiring from the cfg=nil fallback
+		// branch below so production cfg-shaped servers register
+		// /qdrant/live and /qdrant/ready when Qdrant is enabled.
+		if deps.QdrantHealth != nil {
+			router.SetQdrantHealthHandler(deps.QdrantHealth)
+		}
 		// Task 10: /models endpoint — wire ModelsHandler from sidecar URL.
 		if deps.ModelsSidecarURL != "" {
 			router.SetModelsHandler(transport.NewModelsHandler(deps.ModelsSidecarURL))

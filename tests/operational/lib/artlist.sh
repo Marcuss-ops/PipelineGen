@@ -331,3 +331,40 @@ artlist_replay_run() {
     jid=$(jq -r '.run_id // empty' "$body" 2>/dev/null || true)
     printf '%s\t%s\t%s\n' "$code" "$jid" "$body"
 }
+
+# ── artlist_media_search — POST /api/media/search contract probe ─────────
+# artlist_media_search CLIP_ID [LIMIT]
+#   CLIP_ID   asset id to look up via the media-search endpoint (typically
+#             the canonical asset.id emitted by Register-Batch).
+#   LIMIT     (optional positional, default 10) max results to request.
+# Returns: 0 → clip_id present in response.results[]
+#          1 → contract violation (HTTP 2xx but .ok=false OR .results[]
+#              absent/empty OR clip_id absent from .results[].id)
+#          2 → transport / HTTP non-2xx
+# Body written to deterministic ${WORK_DIR:-/tmp}/artlist_media_search_${clip_id}.json
+# for downstream forensics. Honest fail-closed per AGENTS.md: dry-run emits
+# a deterministic 1-result body that passes the assertion; live non-dry-run
+# with the Go endpoint absent cleanly returns rc=2 (RED gap, not silent PASS).
+# Deferred to gate_8_per_clip_index (07_index.sh) for per-clip walk + clustering.
+artlist_media_search() {
+    artlist_required_args 1 "$@"
+    local clip_id="$1" limit="${2:-10}"
+    local out="${WORK_DIR:-/tmp}/artlist_media_search_${clip_id}.json"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        jq -nc --arg id "$clip_id" --argjson lim "$limit" \
+            '{ok:true, query:$id, limit:$lim, results:[{id:$id, score:1.0, snippet:"dry-run"}]}' > "$out"
+        return 0
+    fi
+    local code
+    code=$(smoke_curl POST "/api/media/search" \
+        -d "$(jq -nc --arg id "$clip_id" --argjson lim "$limit" '{query:$id, limit:$lim}')" \
+        2>/dev/null || echo "")
+    code="${code:-${SMOKE_LAST_HTTP:-}}"
+    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
+    [[ -s "$out" ]] || return 1
+    jq -e --arg id "$clip_id" \
+        '.ok == true
+         and ((.results // []) | map(.id) | index($id) != null)' \
+        "$out" >/dev/null 2>&1 || return 1
+    return 0
+}

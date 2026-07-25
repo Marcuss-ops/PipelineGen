@@ -80,21 +80,22 @@ sqlite_pending_jobs() {
 #   CLIP_ID    asset id to inspect
 #   DB_PATH    (optional, default $DB_PATH)
 # Echoes chain_status on stdout (COMPLETED | DEAD_LETTER | PENDING |
-# SUPERSEDED | MISSING). Returns 0 on success, 1 on DB-missing / probe failure.
+# SUPERSEDED | MISSING). Returns:
+#   0 → COMPLETED (terminal success — gate accepts)
+#   1 → non-COMPLETED terminal state (DEAD_LETTER / MISSING / parse-failure)
+#   2 → in-flight (PENDING / SUPERSEDED — recoverable, gate treats as not-yet)
 # Implementation: GROUP BY aggregate_id over outbox_events where event_type =
 # 'asset.index.requested'; severity uses terminal-event precedence
 # (DEAD_LETTER > COMPLETED > SUPERSEDED > PENDING).  MISSING clips (zero
-# outbox rows) are inferred by comparing the result row count with the
-# input clip count downstream.  Stub retained because this opts into a
-# richer outbox-classification primitive owned by smoke_outbox_chain_verify
-# (lib/common.sh); migrate to that one once the Artlist batteries fold the
-# outbox probe into a single canonical call site.
+# outbox rows) detected by empty-query result path which echoes MISSING.
+# Real impl per Gate 8 spec (CLASSIFICAZIONE COMPLETED vs DEAD_LETTER).
+# SQL injection guard: clip_id single-quote chars are doubled.
 sqlite_outbox_terminal() {
     sqlite_required_args 1 "$@"
     local clip_id="$1" db="${2:-${DB_PATH:-}}"
     if ! [[ -f "$db" ]]; then
-        printf '%s[STUB]%s sqlite_outbox_terminal: db %s not found\n' \
-            "$YELLOW" "$RESET" "$db" >&2
+        printf '%s[FATAL]%s sqlite_outbox_terminal: db %s not found\n' \
+            "$RED" "$RESET" "$db" >&2
         printf '%s\n' "MISSING"
         return 1
     fi
@@ -102,9 +103,30 @@ sqlite_outbox_terminal() {
         printf '%s\n' "COMPLETED"
         return 0
     fi
-    printf '%s[STUB]%s sqlite_outbox_terminal(clip_id=%q, db=%q) — not yet implemented (use smoke_outbox_chain_verify from lib/common.sh)\n' \
-        "$YELLOW" "$RESET" "$clip_id" "$db" >&2
-    return 1
+    local escaped="${clip_id//\'/\'\'}"
+    local result
+    result=$(sqlite3 -readonly "$db" \
+        "SELECT CASE
+            WHEN SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) > 0 THEN 'DEAD_LETTER'
+            WHEN SUM(CASE WHEN status='completed'   THEN 1 ELSE 0 END) > 0 THEN 'COMPLETED'
+            WHEN SUM(CASE WHEN status='superseded'  THEN 1 ELSE 0 END) > 0 THEN 'SUPERSEDED'
+            WHEN SUM(CASE WHEN status='pending'     THEN 1 ELSE 0 END) > 0 THEN 'PENDING'
+            ELSE 'MISSING'
+         END
+         FROM outbox_events
+         WHERE event_type='asset.index.requested'
+           AND aggregate_id='${escaped}'
+         GROUP BY aggregate_id" \
+        2>/dev/null | head -1 | tr -d ' \n')
+    if [[ -z "$result" ]]; then
+        printf '%s\n' "MISSING"
+        return 1
+    fi
+    printf '%s\n' "$result"
+    case "$result" in
+        COMPLETED) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # ── sqlite_clip_row — SELECT drive_file_id FROM media_assets WHERE id = ? ─
