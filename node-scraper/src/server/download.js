@@ -311,13 +311,26 @@ async function downloadHLSWithCookies(m3u8Url, cookieHeader, outputPath) {
   const writeStream = fs.createWriteStream(outputPath);
   
   try {
-    for (let i = 0; i < segmentUrls.length; i++) {
-      const segmentData = await fetchWithCookies(segmentUrls[i], cookieHeader, true);
-      writeStream.write(segmentData);
-      
-      if ((i + 1) % 10 === 0) {
-        console.log(`[download] Downloaded ${i + 1}/${segmentUrls.length} segments`);
+    const segments = new Array(segmentUrls.length);
+    const concurrency = 5; // 5 concurrent segment downloads
+    let nextIdx = 0;
+
+    async function worker() {
+      while (true) {
+        const idx = nextIdx++;
+        if (idx >= segmentUrls.length) break;
+        segments[idx] = await fetchWithCookies(segmentUrls[idx], cookieHeader, true);
       }
+    }
+
+    const workers = [];
+    for (let w = 0; w < Math.min(concurrency, segmentUrls.length); w++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+
+    for (let i = 0; i < segments.length; i++) {
+      writeStream.write(segments[i]);
     }
   } finally {
     writeStream.end();
