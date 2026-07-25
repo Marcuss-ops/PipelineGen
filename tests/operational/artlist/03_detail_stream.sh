@@ -13,13 +13,20 @@
 #
 # Anything else → fail-closed (gate returns 1, battery aborts).
 #
-# Implementation choice (DoD refactor July 2026): POST goes directly to
-# the node-scraper endpoint $SCRAPER_URL/detail because:
-#   (a) the scraper is the source-of-truth for STREAM_NOT_FOUND semantics, and
-#   (b) hitting the Go server's forwarding layer would mask scraper errors.
+# Implementation choice (DoD refactor July 2026): POST goes through the
+# lib helper `velox_artlist_detail` (lib/velox_domain.sh) because:
+#   (a) the helper is the single source of truth for the /detail contract,
+#   (b) sharing lets Gate 10 Probe B reuse the same miss-phase probe without
+#       duplicating jq constraints.
 # Test clip_page_url for the happy path is sampled live: first hit from
 # GET /api/artlist/search/live with LIVE_QUERIES[0] so the test always
 # exercises a real, currently-routable Artlist URL.
+#
+# Collision-safe miss-path URL (fixup! July 2026): bad_page_url is 15
+# digits long (000000999999999) — real Artlist clip ids run 6–9 digits;
+# a 15-digit id is geometrically guaranteed to be a miss, defeating the
+# "real clip id happens to be 00000000" false-positive risk identified
+# in the first reviewer pass.
 
 set -euo pipefail
 
@@ -48,90 +55,95 @@ smoke_require curl jq
 # Anything else → fail-closed (gate returns 1, battery aborts).
 #
 # Implementation choice (DoD refactor July 2026):
-# POST goes directly to the node-scraper endpoint $SCRAPER_URL/detail because:
-#   (a) the scraper is the source-of-truth for STREAM_NOT_FOUND semantics, and
-#   (b) hitting the Go server's forwarding layer would mask scraper errors.
-# Test clip_page_url for the happy path is sampled live: first hit from
-# GET /api/artlist/search/live with LIVE_QUERIES[0] so the test always
-# exercises a real, currently-routable Artlist URL.
-# Future refactor (post-reorg): happy-path probe delegates to
-# lib/artlist.sh::artlist_detail; negative-path probe stays inline (lib has no
-# STREAM_NOT_FOUND helper yet).
+# Phase 1 (live search) stays inline (search-domain, not /detail-domain).
+# Phase 2 (happy) + Phase 3 (miss) delegate to
+# tests/operational/lib/velox_domain.sh::velox_artlist_detail which
+# encodes both contracts in jq -e and is the single source of truth.
+# Gate 10 Probe B reuses the miss contract via a separate sub-battery call.
 gate_detail_stream() {
     smoke_log_section "Gate 1 — POST /detail hard gate (STREAM_NOT_FOUND ok path)"
-    local failures=0
+    local failures=0 transport_fail=0 contract_fail=0
     local real_page_url bad_page_url
-    bad_page_url="https://artlist.io/stock-footage/clip/00000000"
+    # fixup! July 2026: 15-digit id guaranteed non-existent; pre-fix 8-digit
+    # 00000000 was colliding with a possible real clip id.
+    bad_page_url="https://artlist.io/stock-footage/clip/000000999999999"
 
-    # ── Phase 1: source a real clip_page_url from the live-search surface
+    # ── Phase 1: source a real clip_page_url from the live-search surface.
+    # Live-search stays inline (NOT delegated to velox_*) because it is the
+    # /search-domain surface; the lib-level extract was specifically for the
+    # /detail POST probes below.
     smoke_curl GET "/api/artlist/search/live?term=${LIVE_QUERIES[0]}&limit=5" >/dev/null
     if [[ ! "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]] \
        || ! jq -e '.clips // [] | length > 0' "${SMOKE_LAST_BODY:-/dev/null}" >/dev/null 2>&1; then
         log_fail "live search probe for /detail failed (HTTP=${SMOKE_LAST_HTTP:-empty})"
         return 1
     fi
-    real_page_url=$(jq -r '.clips[0].PageURL // empty' "${SMOKE_LAST_BODY:-/dev/null}")
+    real_page_url=$(jq -r '.clips[0].page_url // empty' "${SMOKE_LAST_BODY:-/dev/null}")
     if [[ -z "$real_page_url" || "$real_page_url" == "null" ]] \
        || ! [[ "$real_page_url" =~ ^https://artlist\.io/ ]]; then
-        log_fail "first live clip PageURL invalid: '$real_page_url'"
+        log_fail "first live clip page_url invalid: '$real_page_url'"
         return 1
     fi
 
-    # ── Phase 2: happy-path POST /detail
+    # ── Phase 2: happy-path — delegate to velox_artlist_detail.
+    # Lib contract enforces: ok=true + .clip.ok==true + page_url startswith
+    # artlist.io + playlist-shaped primary_url (\\.m3u8(\\?|$)|\\.mp4(\\?|$)
+    # |/manifest|/playlist) + primary_url != "" + primary_url != page_url +
+    # stream_urls[] non-empty + clip_id non-empty. Body saved to a
+    # deterministic WORK_DIR file so forensic inspection after a mismatch
+    # exposes the raw scraper response (smoke_echo_safe redacts tokens).
     local detail_ok="$WORK_DIR/gate1_detail_ok.json"
-    local code
-    code=$(curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
-        -X POST -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg u "$real_page_url" '{clip_page_url:$u}')" \
-        "$SCRAPER_URL/detail" -o "$detail_ok" -w '%{http_code}' 2>/dev/null || echo 000)
+    local rc=0
+    velox_artlist_detail --phase happy --clip-page-url "$real_page_url" \
+        --scraper-url "$SCRAPER_URL" --save-body "$detail_ok" || rc=$?
+    case "$rc" in
+        0)
+            log_pass "/detail happy-path ok=true for $real_page_url"
+            ;;
+        2)
+            log_fail "/detail transport/HTTP error (rc=2) for $real_page_url (see $detail_ok)"
+            smoke_echo_safe "$(head -c 600 "$detail_ok" 2>/dev/null || true)" >&2
+            transport_fail=$((transport_fail + 1))
+            failures=$((failures + 1))
+            ;;
+        *)
+            log_fail "/detail happy-path contract failed for $real_page_url"
+            smoke_echo_safe "$(head -c 800 "$detail_ok" 2>/dev/null || true)" >&2
+            contract_fail=$((contract_fail + 1))
+            failures=$((failures + 1))
+            ;;
+    esac
 
-    if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
-        log_fail "POST /detail HTTP=$code (expected 2xx) for $real_page_url"
-        smoke_echo_safe "$(head -c 600 "$detail_ok" 2>/dev/null || true)" >&2
-        failures=$((failures + 1))
-    elif ! jq -e '.ok == true
-        and (.clip.ok // false) == true
-        and ((.clip.page_url // .page_url // "") | startswith("https://artlist.io/"))
-        and ((.clip.primary_url // .primary_url // "") | test("\\.m3u8(\\?|$)|\\.mp4(\\?|$)|/manifest|/playlist"))
-        and ((.clip.primary_url // .primary_url // "") != "")
-        and ((.clip.primary_url // .primary_url // "") != (.clip.page_url // .page_url // ""))
-        and ((.clip.stream_urls // .stream_urls // []) | length) > 0' \
-        "$detail_ok" >/dev/null 2>&1; then
-        log_fail "/detail happy-path contract failed for $real_page_url"
-        smoke_echo_safe "$(head -c 800 "$detail_ok" 2>/dev/null || true)" >&2
-        failures=$((failures + 1))
-    else
-        log_pass "/detail happy-path ok=true for $real_page_url"
-    fi
-
-    # ── Phase 3: negative POST /detail with a known-invalid clip_page_url
+    # ── Phase 3: miss-path STREAM_NOT_FOUND — delegate to velox_artlist_detail.
+    # Lib enforces: ok=false + .error=="STREAM_NOT_FOUND" + clip_id non-empty
+    # + stream_urls[] EMPTY (the "no HTML saved as MP4" guard).
     local detail_snf="$WORK_DIR/gate1_detail_snf.json"
-    code=$(curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
-        -X POST -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg u "$bad_page_url" '{clip_page_url:$u}')" \
-        "$SCRAPER_URL/detail" -o "$detail_snf" -w '%{http_code}' 2>/dev/null || echo 000)
-
-    if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
-        log_fail "POST /detail (negative) HTTP=$code (expected 2xx with STREAM_NOT_FOUND) for $bad_page_url"
-        smoke_echo_safe "$(head -c 600 "$detail_snf" 2>/dev/null || true)" >&2
-        failures=$((failures + 1))
-    elif ! jq -e '.ok == false
-        and .error == "STREAM_NOT_FOUND"
-        and ((.clip_id // "") | length) > 0
-        and ((.stream_urls // []) | length) == 0' \
-        "$detail_snf" >/dev/null 2>&1; then
-        log_fail "/detail STREAM_NOT_FOUND contract failed for $bad_page_url"
-        smoke_echo_safe "$(head -c 800 "$detail_snf" 2>/dev/null || true)" >&2
-        failures=$((failures + 1))
-    else
-        log_pass "/detail STREAM_NOT_FOUND ok=false for $bad_page_url"
-    fi
+    rc=0
+    velox_artlist_detail --phase miss --clip-page-url "$bad_page_url" \
+        --scraper-url "$SCRAPER_URL" --save-body "$detail_snf" || rc=$?
+    case "$rc" in
+        0)
+            log_pass "/detail STREAM_NOT_FOUND ok=false for $bad_page_url"
+            ;;
+        2)
+            log_fail "/detail transport/HTTP error (rc=2) for $bad_page_url (see $detail_snf)"
+            smoke_echo_safe "$(head -c 600 "$detail_snf" 2>/dev/null || true)" >&2
+            transport_fail=$((transport_fail + 1))
+            failures=$((failures + 1))
+            ;;
+        *)
+            log_fail "/detail STREAM_NOT_FOUND contract failed for $bad_page_url"
+            smoke_echo_safe "$(head -c 800 "$detail_snf" 2>/dev/null || true)" >&2
+            contract_fail=$((contract_fail + 1))
+            failures=$((failures + 1))
+            ;;
+    esac
 
     if (( failures > 0 )); then
-        log_fail "Gate 1 /detail hard gate failed (${failures} sub-checks)"
+        log_fail "Gate 1 /detail hard gate failed (failures=${failures} transport=${transport_fail} contract=${contract_fail})"
         return 1
     fi
-    log_pass "Gate 1 /detail hard gate clean"
+    log_pass "Gate 1 /detail hard gate clean (transport=0 contract=0)"
 }
 
 main() {
@@ -139,7 +151,7 @@ main() {
         smoke_echo_safe "DRY RUN — /detail probes (Gate 1):"
         printf '  POST %s/detail (clip_page_url from LIVE_QUERIES[0], happy path)\n' "$SCRAPER_URL"
         printf '  POST %s/detail (clip_page_url=%s, negative STREAM_NOT_FOUND)\n' \
-            "$SCRAPER_URL" "https://artlist.io/stock-footage/clip/00000000"
+            "$SCRAPER_URL" "https://artlist.io/stock-footage/clip/000000999999999"
         exit 0
     fi
     gate_detail_stream || return 1

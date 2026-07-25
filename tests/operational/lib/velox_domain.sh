@@ -15,8 +15,9 @@
 #   - `smoke_*` lives in lib/common.sh and is generic infra (HTTP/SQLite/ffprobe/dry-run)
 #   - `velox_*` lives here and is PipelineGen-specific domain logic
 #     (Qdrant payload assertions, Drive resolve-by-id wrapper, Artlist /run
-#      pipeline call). The split keeps `common.sh` reusable by side-car
-#      services that don't run on the PipelineGen stack.
+#      pipeline call, Artlist /detail contract probe). The split keeps
+#      `common.sh` reusable by side-car services that don't run on the
+#      PipelineGen stack.
 #
 # Helpers stay pure: every velox_* function returns a status code and writes
 # its response file under ${WORK_DIR:-/tmp}; it does NOT touch PASS/WARN/FAIL
@@ -117,6 +118,78 @@ velox_drive_resolve() {
         and (.resolved[0].trashed == false)
         and ((.resolved[0].size // 0) > 0)' \
         "$out" >/dev/null 2>&1
+}
+
+# ── velox_artlist_detail — POST $scraper/detail contract probe + assertion
+# Args: --phase <happy|miss> --clip-page-url <url> --scraper-url <url> [--save-body <path>]
+# Returns: 0 → contract pass
+#          1 → contract violation (response body parsed but didn't match phase contract)
+#          2 → transport / HTTP non-2xx / empty body
+# Writes the raw response to $save_body_path (or $WORK_DIR/velox_artlist_detail_<ns>.json
+# with %N timestamp suffix) so callers can forensic-inspect after a mismatch.
+#
+# Two polar contracts, fail-closed on either:
+#   happy: ok=true AND .clip.ok==true AND page_url startswith("https://artlist.io/")
+#          AND primary_url matches (\\.m3u8(\\?|$)|\\.mp4(\\?|$)|/manifest|/playlist)
+#          AND primary_url != page_url
+#          AND stream_urls[] non-empty
+#          AND clip_id (or .clip.clip_id) non-empty
+#   miss : ok=false AND error=="STREAM_NOT_FOUND" AND clip_id non-empty
+#          AND stream_urls[] EMPTY
+#
+# The /manifest|/playlist fallback matters because some CDN playlist tokens
+# don't carry a literal .m3u8 extension — the contract is "playlist-shaped
+# URL" not "literal extension matches". Tighter contracts here will fail
+# live probes on real Artlist clips that 03_detail_stream.sh already passes
+# (matches the proven inline pattern).
+#
+# Field-path tolerates both flat and nested clip envelopes
+# (`.clip_id` vs `.clip.clip_id`) because the scraper's response shape has
+# drifted across versions; `//` fallback chain keeps Gate 1 robust under
+# either shape active on the running build.
+velox_artlist_detail() {
+    local phase="" clip_page_url="" scraper_url="" save_body_path=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --phase) phase="$2"; shift 2 ;;
+            --clip-page-url) clip_page_url="$2"; shift 2 ;;
+            --scraper-url) scraper_url="$2"; shift 2 ;;
+            --save-body) save_body_path="$2"; shift 2 ;;
+            *) return 1 ;;
+        esac
+    done
+    [[ -n "$phase" && -n "$clip_page_url" && -n "$scraper_url" ]] || return 1
+    case "$phase" in
+        happy|miss) ;;
+        *) return 1 ;;
+    esac
+    local out="${save_body_path:-${WORK_DIR:-/tmp}/velox_artlist_detail_$(date +%s%N).json}"
+    local code
+    code=$(curl -sS --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" -w '%{http_code}' \
+        -X POST -o "$out" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg u "$clip_page_url" '{clip_page_url:$u}')" \
+        "${scraper_url}/detail" 2>/dev/null || echo 000)
+    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
+    [[ -s "$out" ]] || return 1
+    if [[ "$phase" == "happy" ]]; then
+        jq -e '.ok == true
+            and (.clip.ok // false) == true
+            and ((.clip.page_url // .page_url // "") | startswith("https://artlist.io/"))
+            and ((.clip.primary_url // .primary_url // "") | test("\\.m3u8(\\?|$)|\\.mp4(\\?|$)|/manifest|/playlist"))
+            and ((.clip.primary_url // .primary_url // "") != "")
+            and ((.clip.primary_url // .primary_url // "") != (.clip.page_url // .page_url // ""))
+            and (((.clip.stream_urls // .stream_urls // []) | length) > 0)
+            and (((.clip.clip_id // .clip_id // "") | length) > 0)' \
+            "$out" >/dev/null 2>&1 || return 1
+    else
+        jq -e '.ok == false
+            and .error == "STREAM_NOT_FOUND"
+            and (((.clip_id // .clip.clip_id // "") | length) > 0)
+            and (((.stream_urls // .clip.stream_urls // []) | length) == 0)' \
+            "$out" >/dev/null 2>&1 || return 1
+    fi
+    return 0
 }
 
 # ── velox_artlist_pipeline_run — POST /api/artlist/run with canonical DoD payload
