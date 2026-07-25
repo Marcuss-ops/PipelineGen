@@ -36,9 +36,23 @@
 #                     payload.lifecycle_state (positional 6,
 #                     default 'PUBLISHED')
 #   api_key           optional QDRANT_API_KEY header (positional 7)
-# Returns: 0 → point found with shape match
-#          1 → shape contract failed
+# Returns: 0 → point found with shape match + asset_id round-trip OK
+#          1 → shape contract failed (including asset_id round-trip drift:
+#                e.g. must: [{key: asset_id}] filter silently bypassed and
+#                a different point came back)
 #          2 → transport / HTTP failure
+#
+# Hardening note (July 2026): the original implementation checked
+# payload.source / media_type / lifecycle_state only. If Qdrant's
+# must-filter were ever silently bypassed (reindex mid-flight, index
+# drift, schema mismatch on the asset_id field), a wrong point with
+# `source=artlist media_type=video lifecycle_state=PUBLISHED` would still
+# match the SHAPE contract. The point's payload.asset_id is now also
+# asserted to round-trip back to the queried clip_id — DoD Gate 8
+# "asset_id corretto" — so a stray-point return fails closed with rc=1.
+# Lib-level fix migrates the guarantee into every caller (Gate 8 today;
+# any future gate that reuses velox_qdrant_assert inherits the round-
+# trip automatically per AGENTS.md single-focus rule).
 velox_qdrant_assert() {
     local clip_id="$1" collection="$2" qdrant_url="$3"
     local expected_source="$4" expected_media="$5"
@@ -58,10 +72,17 @@ velox_qdrant_assert() {
         }')" \
         "$qdrant_url/collections/$collection/points/scroll")
     [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
-    jq -e --arg src "$expected_source" \
+    # Round-trip asset_id first so a filter bypass bug surfaces BEFORE
+    # the canonical SHAPE checks. Order matters: rc=1 with the round-trip
+    # assertion failing produces a clear "asset_id drift" log line in
+    # Gate 8's rc=1 SHAPE branch (vs. an opaque source/media/lc mismatch
+    # that would mean Qdrant returned a completely different point).
+    jq -e --arg id "$clip_id" \
+        --arg src "$expected_source" \
         --arg media "$expected_media" \
         --arg lc "$expected_lifecycle" '
-        .result.points[0].payload.source == $src
+        .result.points[0].payload.asset_id == $id
+        and .result.points[0].payload.source == $src
         and .result.points[0].payload.media_type == $media
         and .result.points[0].payload.lifecycle_state == $lc' \
         "$out" >/dev/null 2>&1
