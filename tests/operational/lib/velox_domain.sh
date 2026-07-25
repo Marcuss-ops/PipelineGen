@@ -15,9 +15,10 @@
 #   - `smoke_*` lives in lib/common.sh and is generic infra (HTTP/SQLite/ffprobe/dry-run)
 #   - `velox_*` lives here and is PipelineGen-specific domain logic
 #     (Qdrant payload assertions, Drive resolve-by-id wrapper, Artlist /run
-#      pipeline call, Artlist /detail contract probe). The split keeps
-#      `common.sh` reusable by side-car services that don't run on the
-#      PipelineGen stack.
+#      pipeline call, Artlist /detail contract probe, Artlist /download
+#      contract probe, Artlist /search/live contract probe). The split
+#      keeps `common.sh` reusable by side-car services that don't run on
+#      the PipelineGen stack.
 #
 # Helpers stay pure: every velox_* function returns a status code and writes
 # its response file under ${WORK_DIR:-/tmp}; it does NOT touch PASS/WARN/FAIL
@@ -189,6 +190,167 @@ velox_artlist_detail() {
             and (((.stream_urls // .clip.stream_urls // []) | length) == 0)' \
             "$out" >/dev/null 2>&1 || return 1
     fi
+    return 0
+}
+
+# ── velox_artlist_download — POST $scraper/download contract probe + path harvest
+# Args: --clip-page-url <url> --scraper-url <url> --output-dir <dir> [--save-body <path>]
+# Returns: 0 → contract pass (response body parsed + ok=true + clip_id non-empty +
+#                        local_path non-empty)
+#          1 → contract violation (2xx response body parsed but didn't match
+#                the canonical jq filter; OR local_path was empty)
+#          2 → transport / HTTP non-2xx / empty body
+# Writes the raw response to $save_body_path (or $WORK_DIR/velox_artlist_dl_<ns>.json
+# with %N timestamp suffix) so callers can forensic-inspect after a mismatch.
+#
+# Scope (binding): this helper strictly owns the /download response contract
+# + path harvest — the /download-domain service. File-existence, MIME,
+# and the DoD ffprobe contract (smoke_ffprobe_check $local_path 6.5) are
+# orchestrated by 04_download.sh::gate_direct_download because they
+# operationalise the downloaded artefact and produce richer diagnostic
+# logging at the gate layer (per the Gate 1 split: lib owns the contract,
+# gate owns the diagnostic logging + the rich failure-mode counter that
+# the verdict banner surfaces).
+#
+# Roundtrip-style callers can read $WORK_DIR/velox_artlist_dl_<ns>.json to
+# pull local_path; the body is preserved under --save-body so the gate
+# can re-parse without re-firing the (real-quota-consuming) /download.
+velox_artlist_download() {
+    local clip_page_url="" scraper_url="" output_dir="" save_body_path=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --clip-page-url) clip_page_url="$2"; shift 2 ;;
+            --scraper-url) scraper_url="$2"; shift 2 ;;
+            --output-dir) output_dir="$2"; shift 2 ;;
+            --save-body) save_body_path="$2"; shift 2 ;;
+            *) return 1 ;;
+        esac
+    done
+    [[ -n "$clip_page_url" && -n "$scraper_url" && -n "$output_dir" ]] || return 1
+    local out="${save_body_path:-${WORK_DIR:-/tmp}/velox_artlist_dl_$(date +%s%N).json}"
+    local code
+    code=$(curl -sS --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" -w '%{http_code}' \
+        -X POST -o "$out" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg u "$clip_page_url" --arg o "$output_dir" \
+                '{clip_page_url:$u, output_dir:$o}')" \
+        "${scraper_url}/download" 2>/dev/null || echo 000)
+    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
+    [[ -s "$out" ]] || return 1
+    jq -e '.ok == true
+        and ((.clip_id // "") | length) > 0
+        and ((.local_path // "") | length) > 0' \
+        "$out" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+# ── velox_artlist_search_live — GET /api/artlist/search/live contract probe
+# Args: --term <query> [--limit <n>] [--timeout-seconds <n>] [--save-body <path>]
+# Returns: 0 → contract pass
+#          1 → contract violation (response parsed but didn't match the
+#                per-clip shape tuple OR provider/clips-count failed)
+#          2 → transport / HTTP non-2xx / empty body / curl --max-time
+#                triggered (gate labels this path with the SEARCH_TIMEOUT
+#                sentinel — helper does NOT emit SEARCH_TIMEOUT itself;
+#                the gate owns the row-level label so the lib stays
+#                search-domain-neutral)
+# Writes the raw response to $save_body_path (or
+# $WORK_DIR/velox_artlist_search_<ns>.json with %N timestamp suffix).
+#
+# Scope (binding): this helper strictly owns the /search/live response
+# contract — the /search domain service for Artlist. The relevance gate
+# (per-query Title/Tags/Categories/Keywords token-overlap) is a
+# per-query semantic decision and stays at the gate layer;
+# 02_search_live.sh::gate_live_search_three runs it inline so the
+# same body can be inspected at gate-level with the original tokens
+# in scope (the lib can't see ${LIVE_QUERIES[i]} at runtime).
+#
+# Contract (DoD Gate 3 spec, July 2026):
+#   * response.provider == "artlist"
+#   * response.clips[] is non-empty (forbidden: ok=true with zero clips)
+#   * term round-trip: server may echo `.term`; if echoed it MUST equal
+#     the input. If absent, jq `(.term // $term) == $term` collapses to
+#     a self-comparison and passes (matches 02_search_live.sh pre-
+#     extract semantic where "absent echo" is treated as not-truncated).
+#   * every clip passes the per-clip shape tuple:
+#       - (ExternalID // ID) non-empty
+#       - PageURL startswith artlist.io
+#       - Title non-empty AND != "Artlist" (placeholder reject)
+#       - RawMetadata non-empty (no invented clips)
+#       - Keywords[] non-empty (no placeholder clips)
+# Field-path `.clips[i].foo` tolerates both flat (.ExternalID) and nested
+# (.clip.ExternalID) layout if the server reshapes.
+#
+# Default --timeout-seconds=60 matches the DoD Gate 3 spec literal "60s";
+# override only for non-canonical probe variants.
+velox_artlist_search_live() {
+    local term="" limit="5" timeout_seconds="60" save_body_path=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --term) term="$2"; shift 2 ;;
+            --limit) limit="$2"; shift 2 ;;
+            --timeout-seconds) timeout_seconds="$2"; shift 2 ;;
+            --save-body) save_body_path="$2"; shift 2 ;;
+            *) return 1 ;;
+        esac
+    done
+    [[ -n "$term" ]] || return 1
+    [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || return 1
+    local out="${save_body_path:-${WORK_DIR:-/tmp}/velox_artlist_search_$(date +%s%N).json}"
+    local code rc_curl
+    # Capture curl exit code separately (was previously swallowed by
+    # `|| echo 000`) so we can disambiguate a real --max-time overrun
+    # (curl exit 28 = "Operation timeout") from connect-refused / empty
+    # body / HTTP 5xx.  The DoD spec says SEARCH_TIMEOUT is timeout-
+    # SPECIFIC; other transport failures belong to SCRAPER_UNAVAILABLE.
+    # We synthesize a typed-sentinel body for each branch so the gate
+    # doesn't have to re-probe and the forensic record lands on disk.
+    code=$(curl -sS --max-time "${timeout_seconds}" -G \
+        -o "$out" -w '%{http_code}' \
+        -H "Authorization: Bearer ${SMOKE_TOKEN:-}" \
+        --data-urlencode "term=${term}" \
+        --data-urlencode "limit=${limit}" \
+        "http://${SMOKE_API_BASE}/api/artlist/search/live" 2>/dev/null)
+    rc_curl=$?
+    if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+        if [[ $rc_curl -eq 28 ]]; then
+            # Real timeout — --max-time exceeded.
+            jq -nc --arg term "$term" --argjson timeout "$timeout_seconds" \
+                '{_transport_kind:"SEARCH_TIMEOUT",_timeout_seconds:$timeout,term:$term,clips:[]}' \
+                > "$out"
+        elif [[ "$code" == "401" || "$code" == "403" ]]; then
+            # HTTP auth reject — distinct from "scraper down" semantics.
+            jq -nc --arg term "$term" --arg code "$code" \
+                '{"_transport_kind":"AUTH_REQUIRED",_transport_http:$code,term:$term,clips:[]}' > "$out"
+        else
+            # Connect refused / couldn't resolve / HTTP 5xx / empty body —
+            # collapse to SCRAPER_UNAVAILABLE per the Gate 10 vocabulary.
+            jq -nc --arg term "$term" --arg code "$code" --argjson rc "$rc_curl" \
+                '{"_transport_kind":"SCRAPER_UNAVAILABLE",_transport_http:$code,_curl_rc:$rc,term:$term,clips:[]}' > "$out"
+        fi
+        return 2
+    fi
+    [[ -s "$out" ]] || return 1
+    jq -e --arg term "$term" '
+        .provider == "artlist"
+        and ((.clips // []) | length) > 0
+        # term round-trip: if server echoes .term it MUST equal input;
+        # if absent the `//` fallback makes the comparison identical
+        # (= no truncation). This matches the pre-extract semantic
+        # where the gate silently skipped the check on absent echo.
+        and ((.term // $term) == $term)
+        # Every clip must pass the shape tuple (length-equal
+        # post-filter vs total). Mismatch → some clip has missing
+        # field → entire response is contract-fail (rc=1).
+        and ([.clips // [] | .[] | select(
+            ((.ExternalID // .ID // "") | length) > 0
+            and ((.PageURL // "") | test("^https?://artlist\\.io/"))
+            and ((.Title // "") | length) > 0
+            and (.Title // "") != "Artlist"
+            and ((.RawMetadata // "") | length) > 0
+            and ((.Keywords // []) | length) > 0
+        )] | length) == (.clips // [] | length)
+    ' "$out" >/dev/null 2>&1 || return 1
     return 0
 }
 
