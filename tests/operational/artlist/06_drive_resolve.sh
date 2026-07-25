@@ -14,7 +14,7 @@
 #
 # Per-clip sub-invariants (DoD spec verbatim, July 2026):
 #   step-1  smoke_sqlite_query → drive_file_id MUST be non-empty
-#   step-2  velox_drive_resolve (lib/velox_domain.sh)
+#   step-2  artlist_drive_resolve (lib/artlist.sh, the canonical SSOT)
 #           → rc=0 only on .ok AND .resolved_count>=1
 #                                AND .resolved[0].trashed==false
 #                                AND .resolved[0].size>0
@@ -94,7 +94,11 @@ gate_drive_resolve() {
         fi
         log_pass "step-1 ${clip_id}: drive_file_id=${drive_file_id}"
 
-        # ── step-2: velox_drive_resolve (DoD canonical envelope) ─────
+        # ── step-2: artlist_drive_resolve (DoD canonical envelope) ────
+        # The function has been moved from lib/velox_domain.sh to
+        # lib/artlist.sh (DoD "estrazione futura" consolidation). The
+        # velox_drive_resolve name remains as a thin delegator for
+        # backward-compat; new code should call artlist_drive_resolve.
         # Helper's RC semantics (matches Gates 1+2 typed-helper contract):
         #   rc=0 → contract pass (HTTP 2xx + jq contract).
         #   rc=1 → HTTP 2xx but jq shape violated (e.g. trashed=true,
@@ -104,22 +108,22 @@ gate_drive_resolve() {
         # for forensic inspection by step-3 (parent-membership jq reads
         # the same body — no extra HTTP per sub-invariant).
         local drive_rc
-        velox_drive_resolve "$drive_file_id"
+        artlist_drive_resolve "$drive_file_id"
         drive_rc=$?
         case "$drive_rc" in
             0)
-                log_pass "step-2 ${clip_id}: velox_drive_resolve contract pass (ok=true resolved_count>=1 trashed=false size>0)"
+                log_pass "step-2 ${clip_id}: artlist_drive_resolve contract pass (ok=true resolved_count>=1 trashed=false size>0)"
                 ;;
             1)
-                log_fail "step-2 ${clip_id}: velox_drive_resolve contract violated (HTTP 2xx but canonical shape failed); body in ${WORK_DIR:-/tmp}/velox_drive_${drive_file_id}.json"
+                log_fail "step-2 ${clip_id}: artlist_drive_resolve contract violated (HTTP 2xx but canonical shape failed); body in ${WORK_DIR:-/tmp}/artlist_drive_${drive_file_id}.json"
                 clip_ok=0
                 ;;
             2)
-                log_fail "step-2 ${clip_id}: velox_drive_resolve transport/HTTP failure (rc=2; verify PipelineGen + Drive API reachability)"
+                log_fail "step-2 ${clip_id}: artlist_drive_resolve transport/HTTP failure (rc=2; verify PipelineGen + Drive API reachability)"
                 clip_ok=0
                 ;;
             *)
-                log_fail "step-2 ${clip_id}: velox_drive_resolve unexpected rc=${drive_rc}"
+                log_fail "step-2 ${clip_id}: artlist_drive_resolve unexpected rc=${drive_rc}"
                 clip_ok=0
                 ;;
         esac
@@ -127,13 +131,13 @@ gate_drive_resolve() {
         # Read body for steps 3+4 even on rc=1 — the body still exists
         # (the contract failure is in jq, not curl). On rc=2 (transport)
         # the body may be empty; skip steps 3+4 with a marker log.
-        body="${WORK_DIR:-/tmp}/velox_drive_${drive_file_id}.json"
+        body="${WORK_DIR:-/tmp}/artlist_drive_${drive_file_id}.json"
         if [[ "$drive_rc" != "0" ]]; then
             fail_clips=$((fail_clips + 1))
             continue
         fi
         [[ -s "$body" ]] || {
-            log_fail "step-3/4 ${clip_id}: body file $body empty after velox_drive_resolve rc=0"
+            log_fail "step-3/4 ${clip_id}: body file $body empty after artlist_drive_resolve rc=0"
             fail_clips=$((fail_clips + 1))
             continue
         }
@@ -197,7 +201,7 @@ main() {
         printf '  consume hand-off %s/clip_ids.txt from Gate 4\n' "$WORK_DIR"
         printf '  per clip_id:\n'
         printf '    step-1  smoke_sqlite_query → drive_file_id (non-empty)\n'
-        printf '    step-2  velox_drive_resolve (ok + resolved_count>=1 + trashed=false + size>0)\n'
+        printf '    step-2  artlist_drive_resolve (ok + resolved_count>=1 + trashed=false + size>0)\n'
         printf '    step-3  INLINE jq -e parents[] ⊇ ARTLIST_ROOT_FOLDER\n'
         printf '    step-4  INLINE curl -I webViewLink probe (HTTP 2xx OR 3xx accepted)\n'
         printf '  ALL clips MUST pass.\n'

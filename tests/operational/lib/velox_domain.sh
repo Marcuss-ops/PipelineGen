@@ -55,40 +55,7 @@
 # Lib-level fix migrates the guarantee into every caller (Gate 8 today;
 # any future gate that reuses velox_qdrant_assert inherits the round-
 # trip automatically per AGENTS.md single-focus rule).
-velox_qdrant_assert() {
-    local clip_id="$1" collection="$2" qdrant_url="$3"
-    local expected_source="$4" expected_media="$5"
-    local expected_lifecycle="${6:-PUBLISHED}" api_key="${7:-}"
-    [[ -n "$clip_id" && -n "$collection" && -n "$qdrant_url" \
-        && -n "$expected_source" && -n "$expected_media" ]] || return 1
-    local out="${WORK_DIR:-/tmp}/velox_qdrant_${clip_id}.json"
-    local hdrs=()
-    [[ -n "$api_key" ]] && hdrs+=( -H "api-key: $api_key" )
-    local code
-    code=$(curl -sS --connect-timeout 5 --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" \
-        -X POST -o "$out" -w '%{http_code}' \
-        "${hdrs[@]}" -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg id "$clip_id" '{
-            filter: { must: [ { key: "asset_id", match: { value: $id } } ] },
-            limit: 1, with_payload: true, with_vector: false
-        }')" \
-        "$qdrant_url/collections/$collection/points/scroll")
-    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
-    # Round-trip asset_id first so a filter bypass bug surfaces BEFORE
-    # the canonical SHAPE checks. Order matters: rc=1 with the round-trip
-    # assertion failing produces a clear "asset_id drift" log line in
-    # Gate 8's rc=1 SHAPE branch (vs. an opaque source/media/lc mismatch
-    # that would mean Qdrant returned a completely different point).
-    jq -e --arg id "$clip_id" \
-        --arg src "$expected_source" \
-        --arg media "$expected_media" \
-        --arg lc "$expected_lifecycle" '
-        .result.points[0].payload.asset_id == $id
-        and .result.points[0].payload.source == $src
-        and .result.points[0].payload.media_type == $media
-        and .result.points[0].payload.lifecycle_state == $lc' \
-        "$out" >/dev/null 2>&1
-}
+velox_qdrant_assert() { artlist_qdrant_assert "$@"; }
 
 # ── velox_drive_resolve — confirm Drive file id exists, not trashed, size > 0
 # Args: <drive_file_id>
@@ -101,25 +68,7 @@ velox_qdrant_assert() {
 # populated. SMOKE_LAST_BODY side-effects from smoke_curl do NOT survive a
 # $(...) subshell wrapping and were the source of Bug 3 in the first wave
 # review.
-velox_drive_resolve() {
-    local file_id="$1"
-    [[ -n "$file_id" ]] || return 1
-    local out="${WORK_DIR:-/tmp}/velox_drive_${file_id}.json"
-    local code
-    code=$(curl -sS --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" -w '%{http_code}' \
-        -X POST -o "$out" \
-        -H "Authorization: Bearer ${SMOKE_TOKEN:-}" \
-        -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg id "$file_id" '{ids: [$id]}')" \
-        "http://${SMOKE_API_BASE}/api/drive/resolve-by-id")
-    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
-    [[ -s "$out" ]] || return 1
-    jq -e '.ok == true
-        and (.resolved_count // 0) >= 1
-        and (.resolved[0].trashed == false)
-        and ((.resolved[0].size // 0) > 0)' \
-        "$out" >/dev/null 2>&1
-}
+velox_drive_resolve() { artlist_drive_resolve "$@"; }
 
 # ── velox_artlist_detail — POST $scraper/detail contract probe + assertion
 # Args: --phase <happy|miss> --clip-page-url <url> --scraper-url <url> [--save-body <path>]
@@ -359,40 +308,4 @@ velox_artlist_search_live() {
 # Emits: <HTTP_code>\t<run_id>\t<body_path>
 # Strategy default "replace" matches the VidRush battery; callers can pass
 # "merge" / "skip" to alter behaviour without leaving the canonical surface.
-velox_artlist_pipeline_run() {
-    local term="$1" limit="$2"
-    local strategy="${3:-replace}"
-    local clip_duration="${4:-7}"
-    local width="${5:-1920}" height="${6:-1080}" fps="${7:-30}"
-    local concurrency="${8:-1}"
-    local root="${9:-${VELOX_DRIVE_ARTLIST_ROOT:-}}"
-    local out="${WORK_DIR:-/tmp}/velox_artlist_run_$$.json"
-    local payload
-    if [[ -n "$root" ]]; then
-        payload=$(jq -nc \
-            --arg term "$term" --argjson limit "$limit" \
-            --arg rid "$root" --arg strategy "$strategy" \
-            --argjson cd "$clip_duration" --argjson w "$width" --argjson h "$height" \
-            --argjson fg "$fps" --argjson cc "$concurrency" '{
-                term:$term, limit:$limit, strategy:$strategy,
-                clip_duration:$cd, width:$w, height:$h, fps:$fg,
-                concurrency:$cc, dry_run:false, root_folder_id:$rid
-            }')
-    else
-        payload=$(jq -nc \
-            --arg term "$term" --argjson limit "$limit" --arg strategy "$strategy" \
-            --argjson cd "$clip_duration" --argjson w "$width" --argjson h "$height" \
-            --argjson fg "$fps" --argjson cc "$concurrency" '{
-                term:$term, limit:$limit, strategy:$strategy,
-                clip_duration:$cd, width:$w, height:$h, fps:$fg,
-                concurrency:$cc, dry_run:false
-            }')
-    fi
-    local code
-    code=$(smoke_curl POST "/api/artlist/run" -d "$payload" 2>/dev/null || echo "")
-    local body="$SMOKE_LAST_BODY"
-    [[ -n "$body" && -s "$body" ]] || body="$WORK_DIR/last.body"
-    local jid
-    jid=$(jq -r '.run_id // empty' "$body" 2>/dev/null || true)
-    printf '%s\t%s\t%s\n' "$code" "$jid" "$body"
-}
+velox_artlist_pipeline_run() { artlist_replay_run "$@"; }
