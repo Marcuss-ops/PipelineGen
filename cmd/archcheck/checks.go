@@ -26,6 +26,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"agent_playbook_doc", scan.ScanAgentPlaybookDoc},
 		{"removal_doc", scan.ScanRemovalDoc},
 		{"stale_prose_paths", scan.ScanStaleProsePaths},
+		{"percheck_canon_index_drift", scan.ScanCanonIndexDrift},
 		{"percheck_type_redecl", scan.ScanTypeRedeclarations},
 		{"percheck_txcontext_ban", scan.ScanTxContextBan},
 		{"percheck_monitor_infra_import", scan.ScanMonitorInfraImport},
