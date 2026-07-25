@@ -315,9 +315,18 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-	// Prometheus metrics endpoint — protected if METRICS_AUTH_TOKEN is set
+	// Prometheus metrics endpoint — FAIL-CLOSED in release mode (PR-METRICS-FAILCLOSED).
+	// In release mode, METRICS_AUTH_TOKEN MUST be set; otherwise the route
+	// is NOT registered and the server emits a startup WARN. In dev/local
+	// modes the route is mounted as before (with token if set, without
+	// if not) so local dev workflows don't break.
 	metricsHandler := gin.WrapH(promhttp.Handler())
-	if token := os.Getenv("METRICS_AUTH_TOKEN"); token != "" {
+	token := os.Getenv("METRICS_AUTH_TOKEN")
+	isRelease := r.cfg.ServerGinMode == gin.ReleaseMode
+
+	switch {
+	case token != "":
+		// Authenticated regardless of mode.
 		engine.GET("/metrics", func(c *gin.Context) {
 			if c.GetHeader("Authorization") != "Bearer "+token {
 				c.AbortWithStatus(http.StatusUnauthorized)
@@ -325,7 +334,11 @@ func (r *Router) Setup() *gin.Engine {
 			}
 			metricsHandler(c)
 		})
-	} else {
+	case isRelease:
+		// FAIL-CLOSED: token MUST be set in release mode. Route not mounted.
+		log.Warn("/metrics not mounted: METRICS_AUTH_TOKEN is required in release mode (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart to enable.")
+	default:
+		// Dev/local (non-release): permissive default preserved.
 		engine.GET("/metrics", metricsHandler)
 	}
 
