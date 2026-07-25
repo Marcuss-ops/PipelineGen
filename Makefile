@@ -85,7 +85,7 @@
 # locally, the push MUST be blocked until the next agent lands the
 # fix.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist auth-check dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist auth-check dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict scraper-up install-hooks
 
 # Suffix convention (binding, July 2026):
 #   verify-<area>          Go unit tests for the area (HEADLESS, part of verify-main)
@@ -1294,3 +1294,34 @@ regen-routes-yaml:
 # applied (any violation = non-zero exit).
 archcheck-strict:
 	@$(GO) run ./cmd/archcheck --strict
+
+# ─── Sidecar Node scraper (PR-LIVE-VERIFY-1, P0) ───────────────────────────
+#
+# scraper-up — launches the Node.js artlist scraper sidecar as a background
+# process for live-verify runs. Per architecture/issues.yaml::PR-LIVE-VERIFY-1
+# follow_up: brings up the sidecar via `node node-scraper/artlist_server.js`
+# with CHROME_EXECUTABLE=/usr/bin/google-chrome +
+# ARTLIST_SCRAPER_BIND=127.0.0.1 + ARTLIST_SCRAPER_PORT=9123, then
+# confirms /health responds healthy=true (the dry-run preflight contract).
+#
+# This is a thin operator-convenience target (binding, July 2026). The
+# canonical long-running path is via systemd unit OR the docker-compose
+# `scraper` service entry (see docker-compose.yml); system service is
+# the prod path, this target is dev-loop / quickstart.
+# NOT part of verify-main — the sidecar requires Chrome + a non-trivial
+# Node startup; live-verify batteries (verify-artlist-live) invoke it
+# externally. Sidecar logs at /tmp/velox-scraper.log.
+# Operator stop: `pkill -f artlist_server.js` or systemd stop.
+# NOT idempotent — invoke once, then `pkill -f artlist_server.js` before
+# retrying (a second invocation will hit EADDRINUSE on bind, but the
+# surviving first sidecar's /health will report green and mask the
+# EADDRINUSE).
+scraper-up:
+	@echo "→ Starting Node artlist scraper sidecar on $${ARTLIST_SCRAPER_BIND:-127.0.0.1}:$${ARTLIST_SCRAPER_PORT:-9123}..."
+	@CHROME_EXECUTABLE=$${CHROME_EXECUTABLE:-/usr/bin/google-chrome} \
+	ARTLIST_SCRAPER_BIND=$${ARTLIST_SCRAPER_BIND:-127.0.0.1} \
+	ARTLIST_SCRAPER_PORT=$${ARTLIST_SCRAPER_PORT:-9123} \
+	node node-scraper/artlist_server.js > /tmp/velox-scraper.log 2>&1 &
+	@sleep 2 && curl -sf -m 3 "http://$${ARTLIST_SCRAPER_BIND:-127.0.0.1}:$${ARTLIST_SCRAPER_PORT:-9123}/health" >/dev/null && \
+		echo "✅ scraper-up: sidecar /health green" || \
+		{ echo "❌ scraper-up: sidecar /health did not respond — check /tmp/velox-scraper.log"; exit 1; }
