@@ -41,9 +41,35 @@
 # Invariants (binding):
 #   - Fail-closed: any failing sub-step exits non-zero and BLOCKS the
 #     push. No `|| true`, no fallbacks, no continue-on-error.
-#   - Mirrors the verify-main recipe order: secrets → format → tidy →
-#     vet → go test -race → build → arch-aggregate → archcheck.
-#   - The same Makefile target CI runs (per AGENTS.md "CI runs the
+#   - Mirrors the verify-main transitive composition (the canonical
+#     pre-push gate per AGENTS.md "Run `make verify-main` before
+#     pushing" and the HONOUR-RULE block above):
+#
+#         verify-main                                            (Make L932)
+#         ├── verify-fast       = foundation + static            (Make L595)
+#         │     ├── verify-foundation   go/node version + secrets +
+#         │     │                     format + tidy + hook syntax lint
+#         │     └── verify-static       go vet ./... + go build ./...
+#         ├── verify-unit       = race-tested Go unit tests      (no L;
+#         │                       see `grep -nE '^verify-unit:' Makefile`)
+#         │                       (4 sub-areas: verify-go-{core,
+#         │                       infrastructure,api,commands};
+#         │                       EXCLUDES ./tests/... per AGENTS.md
+#         │                       pre-push headless contract)
+#         ├── verify-node       = verify-node-native (better-sqlite3
+#         │                       binding probe, <1s after install) +
+#         │                       verify-node-tests (npm test in
+#         │                       node-scraper/)
+#         └── verify-architecture = cmd/architecture-aggregate
+#                                   + cmd/archcheck (governance + AST
+#                                   cross-package invariant scan)
+#
+#     This hook invokes ONLY the umbrella recipe `make verify-main`;
+#     the transitive composition above is what the Makefile SSOT
+#     (line numbers in the table above) actually executes on every
+#     push. CI runs the same recipe, so a green local signal is a
+#     sufficient proxy for a green CI signal.
+#   - The same Makefile recipe CI runs (per AGENTS.md "CI runs the
 #     same chain, so local must match CI exactly"). A green local
 #     signal is a sufficient proxy for a green CI signal — CI does
 #     not set any diagnostic flags.

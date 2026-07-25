@@ -22,8 +22,22 @@ SMOKE_HTTP_TIMEOUT_SECONDS="${SMOKE_HTTP_TIMEOUT_SECONDS:-300}"
 export SMOKE_TIMEOUT_SECONDS SMOKE_POLL_TIMEOUT_SECONDS SMOKE_POLL_INTERVAL_SECONDS SMOKE_HTTP_TIMEOUT_SECONDS
 
 DIR=$(cd "$(dirname "$0")" && pwd)
+# Source the canonical Artlist DoD lib umbrella (July 2026 refactor).
+# vidrush_media_e2e.sh touches the Artlist surface in:
+#   * Step 1: server/scraper/DB readiness probes (Gate 0 ancestors)
+#   * Step 2: /api/artlist/run dispatch + polling
+#   * Step 3: per-clip API/parity assertions (a subset of Gate 5/6/7/8)
+# All of those touchpoints now share the SAME canonical helpers as
+# artlist_e2e.sh / run_all.sh / 05_pipeline_fresh.sh / restart_verification.sh
+# via the umbrella `_artlist_common.sh`. The umbrella's
+# `artlist_dod_assert_helpers_loaded` guard fires fail-closed at import
+# if any expected helper is missing — operator can bypass with
+# `ARTLIST_DOD_LIB_SKIP_ASSERT=1 bash vidrush_media_e2e.sh` only for
+# emergency debugging of the umbrella itself.
 # shellcheck disable=SC1091
-source "$DIR/lib/common.sh"
+source "$DIR/lib/_artlist_common.sh" || exit 1
+
+log_info "Vidrush E2E: Artlist DoD umbrella loaded (version=${ARTLIST_DOD_LIB_VERSION})"
 
 if [[ "${HELP_REQUESTED:-0}" == "1" ]]; then
     cat <<'EOF'
@@ -71,14 +85,18 @@ ANTI_COLLISION_A="jaguar animal in rainforest"
 ANTI_COLLISION_B="jaguar luxury car"
 ARTLIST_TERM="business team working in modern office"
 
-PASS=0
-WARN=0
-FAIL=0
-
-log_pass() { printf '[PASS]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; PASS=$((PASS + 1)); }
-log_warn() { printf '[WARN]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; WARN=$((WARN + 1)); }
-log_fail() { printf '[FAIL]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; FAIL=$((FAIL + 1)); }
-log_info() { printf '[INFO]  %s %s\n' "$(date '+%H:%M:%S')" "$*"; }
+# NOTE (July 2026 refactor): The previous inline log_pass/log_warn/log_fail/
+# log_info family + PASS/WARN/FAIL counter initialization has been DELETED.
+# These definitions are now sourced from `lib/_artlist_common.sh` (which
+# transitively sources `lib/artlist_runtime.sh` — the canonical owner of
+# the log_* family per godlike/06 SSOT). This eliminates the prior
+# cross-script duplication: 8+ inline definitions existed in
+# vidrush_media_e2e.sh, artlist_live_env.sh, test3_artlist.sh,
+# artlist_drive_failure_smoke.sh, artlist_preflight_smoke.sh,
+# test2_images.sh, artlist_scraper_failure_smoke.sh, etc. A refactor
+# that changes log_* semantics now propagates from a single edit in
+# lib/artlist_runtime.sh. Counters PASS/WARN/FAIL live in the same
+# file and are initialized at lib import time.
 
 sql_escape() {
     local s="$1"
