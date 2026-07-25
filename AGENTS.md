@@ -33,6 +33,20 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
 - Run `make verify-main` before pushing.
 - DO NOT use `git push --no-verify` to bypass the pre-push gate — bypass is reserved for unblocking CI emergencies and must be paired with a fixup! followup.
 
+## Authentication SSOT (Velox admin token)
+
+PipelineGen has exactly one canonical source for admin credentials. New code and scripts MUST honor this contract.
+
+- **Canonical secret file**: `/etc/pipelinegen/pipelinegen.env` (mode `0640`, owner `root:pipelinegen-agents`).
+- **Required contents**: at minimum `VELOX_ADMIN_TOKEN=<64-char-hex>`; optionally `VELOX_WORKER_TOKEN=<64-char-hex>` and `VELOX_PORT=8000`.
+- **Canonical variable name**: always `VELOX_ADMIN_TOKEN`. Do not introduce `ADMIN_TOKEN`, `X-Admin-Token`, hard-coded literals (`test-admin-token-12345` is forbidden), or alternate env-file locations.
+- **Loader convention**: agents never read the file directly. Use `scripts/with-velox-auth` (loads, validates `^[a-fA-F0-9]{64}$`, exports, and `exec`s) or set `TOKEN_FILE=/etc/pipelinegen/pipelinegen.env` (exported by the top-level Makefile).
+- **Pre-flight gate**: `make auth-check` runs `scripts/with-velox-auth` against `/api/artlist/job-consumer` and fails closed on non-200 — no token is ever printed.
+- **Live verification gates**: `make verify-artlist-live`, `verify-images-live`, `verify-script-live`, `verify-vidrush-live` each depend on `auth-check` and route through `scripts/with-velox-auth`.
+- **Hygiene**: token values must be redacted as `REDACTED` or `<64-hex>` in any captured output; raw tokens must never appear in shell history, log files, commit messages, transcripts, or CI logs.
+- **Rotation**: use `scripts/rotate_token.sh` (regenerates 64-hex, replaces the file, restarts the service via the systemd `EnvironmentFile`, and verifies the post-rotate PID environment).
+- **One-off setup** (run once on the deploy host with `sudo`): `groupadd -f pipelinegen-agents`, add the running user to it, then `chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env && chmod 0640 /etc/pipelinegen/pipelinegen.env`. Never use `0644`.
+
 ## Git workflow
 
 - Work directly on `main`.
