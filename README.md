@@ -24,8 +24,21 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
 
 ## Run
 
+For local development / bootstrap (minimal — Qdrant OFF, clip_indexer OFF, artlist auto_download OFF):
+
 ```bash
 cp config.example.yaml config.yaml
+```
+
+For production deployments (full surface — Qdrant ON, clip_indexer ON, artlist auto_download ON):
+
+```bash
+cp config.production.example.yaml config.yaml
+```
+
+Then build + run:
+
+```bash
 go build -o pipelinegen ./cmd/server
 go build -o pipelinegen-worker ./cmd/worker
 go build -o admin ./cmd/admin

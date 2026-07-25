@@ -196,6 +196,16 @@ type ExternalConfig struct {
 	//   - staging / CI / air-gapped env:  true (explicit opt-in)
 	ArtlistSkipTranscription bool `yaml:"artlist_skip_transcription" env:"ARTLIST_SKIP_TRANSCRIPTION" default:"false"`
 
+	// Artlist (PR-CONFIG-SPLIT, July 2026): nested config-grouping of
+	// the artlist-related keys. The flat fields above (ArtlistAcquisitionMode,
+	// ArtlistDailyDownloadLimit) remain for backward compatibility with
+	// pre-split configs; the YAML loader prefers the nested shape when
+	// both are present. Operators that adopt the nested shape get the
+	// acquisition_mode / auto_download policy split (orthogonal concerns:
+	// auto_download.enabled=false still allows authorized_api search
+	// but blocks automatic downloads for manual curation).
+	Artlist ArtlistConfig `yaml:"artlist"`
+
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
 	// StockEnrichmentEnabled gates the canonical enrichment pipeline
@@ -227,6 +237,30 @@ type ExternalConfig struct {
 	// (Italian). Empty falls back to "v1" per godlike/07 fail-closed
 	// (selectSystemPrompt in llm_client.go).
 	EnrichmentPromptVersion string `yaml:"enrichment_prompt_version" env:"ENRICHMENT_PROMPT_VERSION" default:""`
+}
+
+// ArtlistConfig groups Artlist-related configuration under a single
+// nested struct (PR-CONFIG-SPLIT, July 2026). The acquisition_mode +
+// auto_download separation makes the two policies orthogonal: an
+// operator can choose authorized_api for search while keeping
+// auto_download.enabled=false for manual curation.
+type ArtlistConfig struct {
+	// AcquisitionMode is one of "" (manual_import per Normalize) or
+	// "authorized_api". The loader default is authorized_api.
+	AcquisitionMode string `yaml:"acquisition_mode"`
+	// AutoDownload controls whether successful searches trigger
+	// automatic downloads. Operators that want manual curation set
+	// AutoDownload.Enabled=false; the resolver returns
+	// ErrAutomaticDownloadsDisabled.
+	AutoDownload ArtlistAutoDownload `yaml:"auto_download"`
+}
+
+// ArtlistAutoDownload is the per-account automatic-download policy.
+type ArtlistAutoDownload struct {
+	// Enabled gates automatic downloads. Default: false (safe local).
+	Enabled bool `yaml:"enabled"`
+	// DailyLimit caps the per-account per-day download count. 0 disables.
+	DailyLimit int `yaml:"daily_limit"`
 }
 
 // ResolvedYtdlpPath returns the configured yt-dlp path, falling back to "yt-dlp" if empty.
