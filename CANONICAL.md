@@ -9,6 +9,7 @@ Only current, executable information belongs in the working tree. Historical pla
 | Build and startup | `README.md` |
 | Live HTTP routes | `docs/api/ACTIVE_API_GENERATED.md` |
 | Architecture policy | `architecture/policy.yaml` |
+| Architecture policy navigation | `docs/architecture/godlike/INDEX.md` |
 | Capability ownership | `architecture/ownership.generated.yaml` |
 | Active exceptions only | `architecture/current.yaml` and `architecture/issues.yaml` |
 | Compatibility removals | `architecture/deprecations.yaml` |
