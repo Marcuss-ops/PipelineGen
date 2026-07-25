@@ -931,7 +931,11 @@ verify-stock:
 # accepted for the migration window per godlike/07).
 verify-main: verify-fast verify-unit verify-node verify-architecture
 	@echo "✅ verify-main passed"
-	# bash scripts/ci-architectural-checks.sh
+	# bash scripts/ci-architectural-checks.sh  (intentionally disabled:
+	# Phase 0 shell checks currently fail locally on Check 3 — see
+	# internal/app/adapters_scenetext.go:89 + generation_engine.go:67.
+	# Promoting ci-architectural-checks.sh into the pre-push gate is
+	# an open question deferred until those violations are resolved.)
 
 # verify-release — pre-deploy gate (STEP 3/4 of the verify-main
 # refactor): verify-main + verify-integration. Adds the slow

@@ -62,17 +62,55 @@
 #         │                       node-scraper/)
 #         └── verify-architecture = cmd/architecture-aggregate
 #                                   + cmd/archcheck (governance + AST
-#                                   cross-package invariant scan)
+#                                   cross-package invariant scan;
+#                                   cmd/archcheck runs WITHOUT --strict
+#                                   here — see archcheck-strict note
+#                                   below).
 #
+# Sibling of verify-main (NOT a child of verify-architecture):
+#   `make archcheck-strict` — same cmd/archcheck binary with the
+#   --strict flag (debt-budget ratchet, NOT the Phase 0 scan
+#   baseline). Intentionally NOT pulled into verify-main; runs
+#   out-of-band on .github/workflows/architecture-p1-finalize.yml
+#   as a separate ratchet-verification job.
+
 #     This hook invokes ONLY the umbrella recipe `make verify-main`;
 #     the transitive composition above is what the Makefile SSOT
 #     (line numbers in the table above) actually executes on every
-#     push. CI runs the same recipe, so a green local signal is a
-#     sufficient proxy for a green CI signal.
-#   - The same Makefile recipe CI runs (per AGENTS.md "CI runs the
-#     same chain, so local must match CI exactly"). A green local
-#     signal is a sufficient proxy for a green CI signal — CI does
-#     not set any diagnostic flags.
+#     push.
+#
+# CI-parity caveat (binding): ci.yml runs `make verify-main` in the
+# blocking job, THEN runs `bash scripts/ci-architectural-checks.sh`
+# as a follow-up step in the `build` job. The follow-up step is
+# INTENTIONALLY NOT pulled into verify-main today (Makefile L933
+# keeps the line commented) because Phase-0 shell Check 3 currently
+# fails on the canonical main with real violations in
+# internal/app/adapters_scenetext.go:89 +
+# internal/application/scripts/usecase/generation_engine.go:67.
+# Promoting ci-architectural-checks.sh into the pre-push gate is an
+# open question deferred until those violations are resolved (the
+# right work is a "P2 architecture enforcement" issue (cross-
+# package engine-call enforcement is a P2-class item), NOT a
+# "make verify-main CI-parity" gate flip. Until those fixes land:
+#   - locally green `make verify-main` IS a sufficient proxy for the
+#     ci.yml `verify-main` job (the umbrella runs the same recipe),
+#   - but is NOT yet a sufficient proxy for the ci.yml `build` job,
+#     which additionally runs the Phase 0 shell checks separately.
+# Operators who want full ci.yml blocking-parity pre-push can
+# chain the two manually (expect red on Check 3 until resolved):
+#
+#     make verify-architecture && bash scripts/ci-architectural-checks.sh
+#
+# Expect red on Check 3 until these two listed violations are resolved
+# (the same file:line refs are mirrored in the Makefile's verify-main
+# recipe comment for grep-ability):
+#   - internal/app/adapters_scenetext.go:89
+#     (`engine.Generate(ctx, plan)` from the adapter layer)
+#   - internal/application/scripts/usecase/generation_engine.go:67
+#     (`engine.Generate(ctx, &plan)` from the use-case layer; should
+#     route through GenerateOneUseCase, not call the engine directly)
+# This is diagnostic-only; the pre-push hook itself still calls ONLY
+# `make verify-main`. CI does not set any diagnostic flags.
 #
 # DO NOT add features to this hook unless explicitly requested. The
 # AGENTS.md "Do not add features to production code unless the user
