@@ -1,109 +1,165 @@
 #!/usr/bin/env bash
-# tests/operational/artlist/06_drive.sh — Artlist DoD Gate 6 (Drive resolve per clip).
+# tests/operational/artlist/06_drive.sh — Artlist DoD Gate 6 (Drive resolve × N).
 #
-# NOTE (July 2026): the prior canonical Door-6 owner was 06_drive_resolve.sh
-# (per the gate6 commit). This file (06_drive.sh) is the OPERATOR-FACING
-# alias requested in the operator-flow spec; it sources the canonical
-# lib helper velox_drive_resolve via _artlist_common.sh umbrella and serves
-# the same gate, retained here so the Makefile target `verify-artlist-drive`
-# has a script that matches its canonical name. Future refactor waves may
-# consolidate back to 06_drive_resolve.sh; until then both surface the same
-# gate via the canonical lib helper.
+# Reorg (July 2026, Gate 6 lib/ migration): replaces the prior operator-facing
+# folder-routing placeholder with the per-clip_id /api/drive/resolve-by-id
+# 4-assertion gate, sourced per the lib/ reorg directive (sqlite_clip_row +
+# drive_resolve_by_id as canonical lib helpers). The previous 6a (folder
+# routing via velox_drive_resolve + ARTLIST_ROOT_FOLDER match) and 6b
+# (drive.google.com URL round-trip) surface was a DIFFERENT contract and is
+# replaced wholesale; the legacy gate_drive_resolve surface is removed.
 #
-# Library: tests/operational/lib/_artlist_common.sh — the canonical umbrella.
+# Workflow (matches the per-clip 4-assertion spec):
+#   1. Read clip_id list from $CLIP_IDS_FILE (default
+#      $WORK_DIR/expected_clip_ids.txt — the Gate 4 output convention).
+#      Under DRY_RUN=1 the file is auto-seeded with a synthetic clip id
+#      so the loop iterates reproducibly without a live Gate 4.
+#   2. Per clip_id:
+#      a. sqlite_clip_row   → SELECT drive_file_id FROM media_assets
+#          (fail-closed if no drive_file_id present in the row).
+#      b. drive_resolve_by_id → POST /api/drive/resolve-by-id
+#          (forwarder to artlist_drive_resolve; body written to canonical
+#          $WORK_DIR/artlist_drive_<file_id>.json.  DRY_RUN shape-
+#          passthrough emits a synthetic body that PASSES the 4-assertion
+#          contract so dev dry-runs gate without touching the network).
+#      c. Assert the 4 DoD Gate 6 invariants on the response body:
+#          (i)   id round-trip       .resolved[0].id == drive_file_id
+#          (ii)  trashed=false       .resolved[0].trashed  eq literal false
+#          (iii) mimeType non-void   .resolved[0].mimeType || .MimeType != ""
+#          (iv)  size > 0            .resolved[0].size    > 0 (pure integer)
+#
+# Library: tests/operational/lib/_artlist_common.sh — canonical umbrella
+# import (sources 7 lib files including the new real sqlite_clip_row +
+# drive_resolve_by_id helpers, plus artlist.sh::artlist_drive_resolve
+# which is the canonical SSOT for the curl chain).
 #
 # Fail-closed: any failing sub-step exits non-zero and aborts the gate.
-#
-# Tier: NOT in `verify-main` (headless). Live-stack at
-# `make verify-artlist-live` (or surgical `make verify-artlist-drive`).
-#
-# Status (July 2026): RED on `make verify-artlist-live` — relies on a live
-# PipelineGen server reachable on $BASE_URL with VELOX_ADMIN_TOKEN sourced
-# via scripts/with-velox-auth. Lib helper velox_drive_resolve short-circuits
-# under DRY_RUN so this script is harmless in CI; real assertions gate on
-# VELOX_ADMIN_TOKEN presence + $BASE_URL reachability.
+# Tier: NOT in `make verify-main` (requires live PipelineGen + Drive +
+# SQLite + populated media_assets table).  Live-stack at
+# `make verify-artlist-drive` (this surgical gate) or
+# `make verify-artlist-live` (all 10 gates via run_all.sh).
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 source "$DIR/../lib/_artlist_common.sh"
 
-smoke_require curl jq
+smoke_require curl jq sqlite3
 
-# gate_drive_resolve — assert Drive folder routing for a clip uploaded
-# via the Artlist pipeline. The canonical helper velox_drive_resolve (in
-# lib/artlist.sh, surfaced via lib/velox_domain.sh delegator) returns the
-# Drive parent-folder ID for a given clip_id; this gate asserts that the
-# resolved folder matches ARTlist_ROOT_FOLDER (no cross-contamination with
-# voiceover/stock/image folders).
-#
-# Also asserts (when live): the clip's media_assets.drive_file_id round-trips
-# back from the Qdrant payload.source_url to the canonical Drive URL (no
-# orphan writes).
-gate_drive_resolve() {
-    smoke_log_section "Gate 6 — Drive resolve (folder routing + URL round-trip)"
-
-    local clip_id="${ARTLIST_TEST_CLIP_ID:-test-clip-$$}"
+# gate_drive_resolve_per_clip — per-clip 4-assertion chain described above.
+gatedrive_resolve_per_clip() {
+    smoke_log_section "Gate 6 — Drive resolve-by-id × N (id round-trip + trashed + mimeType + size)"
     local failures=0
+    local clip_ids_file="${CLIP_IDS_FILE:-${WORK_DIR:-/tmp}/expected_clip_ids.txt}"
 
-    smoke_log_section "Phase 6a: resolve Drive parent folder for clip_id=${clip_id}"
-    local resolved_folder
-    if ! resolved_folder=$(velox_drive_resolve "$clip_id" 2>/dev/null); then
-        log_warn "Phase 6a velox_drive_resolve short-circuited (live Drive adapter absent)"
-    else
-        if [[ "$resolved_folder" == "$ARTLIST_ROOT_FOLDER" ]]; then
-            log_pass "Phase 6a resolved folder matches ARTlist_ROOT_FOLDER"
+    # Phase 6.0: source-prepared `clip_ids_file` may be empty under DRY_RUN.
+    # Auto-seed with a synthetic placeholder so dev dry-runs of
+    # `make verify-artlist-drive` exercise the gate verdict determination
+    # path without a live Gate 4 output.
+    if [[ ! -s "$clip_ids_file" ]]; then
+        if [[ "${DRY_RUN:-0}" == "1" ]]; then
+            mkdir -p "$(dirname "$clip_ids_file")"
+            printf 'dry-run-clip\n' > "$clip_ids_file"
+            log_info "Gate 6 DRY_RUN: seeded $clip_ids_file with 'dry-run-clip'"
         else
-            log_fail "Phase 6a resolved folder ($resolved_folder) does NOT match ARTlist_ROOT_FOLDER ($ARTLIST_ROOT_FOLDER)"
-            failures=$((failures + 1))
+            log_fail "Gate 6 cannot find clip_ids at $clip_ids_file (run Gate 4 first or set CLIP_IDS_FILE)"
+            return 1
         fi
     fi
+    local total
+    total=$(wc -l < "$clip_ids_file" | tr -d ' ')
 
-    smoke_log_section "Phase 6b: Drive URL round-trip (no orphan writes)"
-    local drive_url
-    if ! drive_url=$(smoke_curl GET "/api/artlist/clip/${clip_id}/drive_url" 2>/dev/null); then
-        log_warn "Phase 6b smoke_curl short-circuited (server absent)"
-    elif [[ "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]]; then
-        if [[ -n "$drive_url" ]] && [[ "$drive_url" == https://drive.google.com/* ]]; then
-            log_pass "Phase 6b Drive URL round-trip OK (canonical drive.google.com URL)"
-        else
-            log_fail "Phase 6b Drive URL not in drive.google.com canonical domain: $drive_url"
+    local idx=0
+    local clip_id drive_file_id rc asset_id trashed mime_type size body
+    while IFS= read -r clip_id; do
+        [[ -n "$clip_id" ]] || continue
+
+        # Phase 6.1: extract drive_file_id from media_assets via sqlite_clip_row.
+        # Fail-closed on empty result: a clip without a drive_file_id row is a
+        # DoD Gate 6 violation (media_assets must have drive_file_id populated
+        # for every clip that Gate 4 enqueued).
+        drive_file_id=$(sqlite_clip_row "$clip_id" 2>/dev/null || true)
+        if [[ -z "$drive_file_id" ]]; then
+            log_fail "clip $clip_id → no drive_file_id from media_assets (sqlite_clip_row)"
             failures=$((failures + 1))
+            idx=$((idx + 1))
+            continue
         fi
-    else
-        log_warn "Phase 6b server returned non-2xx (HTTP=${SMOKE_LAST_HTTP:-empty})"
-    fi
+
+        # Phase 6.2: drive_resolve_by_id POST + body written to canonical path.
+        body="${WORK_DIR:-/tmp}/artlist_drive_${drive_file_id}.json"
+        rc=0
+        drive_resolve_by_id "$drive_file_id" 2>/dev/null || rc=$?
+        if (( rc != 0 )); then
+            case "$rc" in
+                1) log_fail "clip $clip_id → drive_resolve_by_id contract violated (rc=1; see $body)" ;;
+                2) log_fail "clip $clip_id → drive_resolve_by_id transport/HTTP failure (rc=2; see $body)" ;;
+                *) log_fail "clip $clip_id → drive_resolve_by_id returned rc=$rc (see $body)" ;;
+            esac
+            failures=$((failures + 1))
+            idx=$((idx + 1))
+            continue
+        fi
+
+        # Phase 6.3: 4 DoD Gate 6 assertions on the resolved body.
+        # Strict string eq on trashed (literal JSON false, not "false" wrapped);
+        # tolerant field-name fallback for mimeType (Drive API uses both
+        # `mimeType` canonical + `MimeType` legacy shape).
+        asset_id=$(jq -r '.resolved[0].id // empty' "$body" 2>/dev/null || echo "")
+        trashed=$(jq -r '.resolved[0].trashed // "?"' "$body" 2>/dev/null || echo "?")
+        mime_type=$(jq -r '.resolved[0].mimeType // .resolved[0].MimeType // empty' "$body" 2>/dev/null || echo "")
+        size=$(jq -r '.resolved[0].size // 0' "$body" 2>/dev/null || echo "0")
+        if [[ -z "$asset_id" || "$asset_id" != "$drive_file_id" ]]; then
+            log_fail "clip $clip_id → id round-trip violated: response=${asset_id:-empty} query=${drive_file_id}"
+            failures=$((failures + 1))
+        elif [[ "$trashed" != "false" ]]; then
+            log_fail "clip $clip_id → trashed=${trashed} (want literal JSON false)"
+            failures=$((failures + 1))
+        elif [[ -z "$mime_type" || "$mime_type" == "null" ]]; then
+            log_fail "clip $clip_id → mimeType empty/null (response.mimeType or response.MimeType required)"
+            failures=$((failures + 1))
+        elif ! [[ "$size" =~ ^[0-9]+$ ]] || (( size <= 0 )); then
+            log_fail "clip $clip_id → size=${size} (want pure integer > 0)"
+            failures=$((failures + 1))
+        else
+            log_pass "clip $clip_id → id=${asset_id} trashed=false mimeType=${mime_type} size=${size}B"
+        fi
+        idx=$((idx + 1))
+    done < "$clip_ids_file"
 
     if (( failures > 0 )); then
-        log_fail "06_drive gate failed (${failures} canonical sub-checks missed)"
+        log_fail "Gate 6 /drive/resolve-by-id × ${total} failed (${failures} sub-checks missed)"
         return 1
     fi
-    log_pass "06_drive gate ready (live-assertion sub-checks marked WARN when live stack absent)"
+    log_pass "Gate 6 /drive/resolve-by-id × ${total} clean (id round-trip + trashed + mimeType + size all green)"
 }
 
 main() {
-    if [[ "$DRY_RUN" == "1" ]]; then
-        smoke_echo_safe "DRY RUN — 06_drive would probe:"
-        printf '  velox_drive_resolve <clip_id>     -- expects %s\n' "$ARTLIST_ROOT_FOLDER"
-        printf '  smoke_curl GET /api/artlist/clip/<clip_id>/drive_url\n'
-        printf '  asserts URL starts with https://drive.google.com/ (canonical Drive domain)\n'
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "DRY RUN — Gate 6 (per-clip 4-assertion chain):"
+        printf '  clip_ids_file=%s (auto-seeded with "dry-run-clip" if empty under DRY_RUN)\n' "${CLIP_IDS_FILE:-${WORK_DIR:-/tmp}/expected_clip_ids.txt}"
+        printf '  for clip_id in <file>:\n'
+        printf '    6.1  sqlite_clip_row       SELECT drive_file_id FROM media_assets WHERE id=?\n'
+        printf '    6.2  drive_resolve_by_id   POST /api/drive/resolve-by-id (forwarder to artlist_drive_resolve; DRY_RUN shape-passthrough)\n'
+        printf '    6.3  assertions: id round-trip, trashed=false, mimeType non-void, size>0\n'
         printf '\nLib helpers exercised:\n'
-        printf '  velox_drive_resolve  (artlist.sh canonical; velox_domain.sh delegator)\n'
-        printf '  smoke_curl           (common.sh) for the round-trip probe\n'
+        printf '  sqlite_clip_row       (lib/sqlite.sh :: SELECT single column drive_file_id)\n'
+        printf '  drive_resolve_by_id   (lib/drive.sh :: forwarder + DRY_RUN shape)\n'
+        printf '  artlist_drive_resolve (lib/artlist.sh canonical impl; do not edit)\n'
         exit 0
     fi
 
-    gate_drive_resolve || return 1
+    gatedrive_resolve_per_clip || return 1
 
     printf '\n============================================\n'
-    printf '  06_drive\n'
+    printf '  06_drive (per-clip 4-assertion chain)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
-    if [[ "$FAIL" -gt 0 ]]; then
+    if [[ "${FAIL:-0}" -gt 0 ]]; then
         printf 'VERDICT: FAIL\n'
         return 1
     fi
-    printf 'VERDICT: PASS (live-assertion sub-checks marked WARN when live stack absent)\n'
+    printf 'VERDICT: PASS\n'
     return 0
 }
 
