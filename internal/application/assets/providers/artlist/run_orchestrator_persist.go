@@ -74,7 +74,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 
 	for i := range resp.Items {
 		item := &resp.Items[i]
-		if item.Status == "media_process_failed" || item.Status == "dry_run" {
+		if item.Status == "media_process_failed" || item.Status == "dry_run" || item.Status == "skipped_existing" {
 			continue
 		}
 
@@ -89,12 +89,6 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("drive_link", item.DriveLink))
 			item.Status = "drive_upload_failed"
 			item.Error = "Drive upload failed: missing Drive fields after processing"
-			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026):
-			// pre-PR the Failed counter was only bumped on media_processor
-			// failures (stageProcessBatch). Persistence-layer failures
-			// surfaced as silent drops: resp.Items held the clip but
-			// resp.Failed stayed at zero, so EvaluateRunOutcome saw a
-			// healthy run and the operator never noticed the gap.
 			resp.Failed++
 			continue
 		}
@@ -107,9 +101,6 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("clip_id", item.ClipID))
 			item.Status = "hash_missing"
 			item.Error = "SHA-256 missing after processing"
-			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): see note on
-			// the Drive field gate above. Without this bump, hash
-			// rejection is also a silent drop.
 			resp.Failed++
 			continue
 		}
@@ -130,10 +121,6 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("clip_id", item.ClipID), zap.Error(err))
 			item.Status = "persist_failed"
 			item.Error = err.Error()
-			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): finalizer
-			// (Ledger writes) is part of persist, so a failure here is a
-			// persistence failure and MUST bump the Failed tally the same
-			// way the Drive field gate and hash gate do.
 			resp.Failed++
 			continue
 		}
@@ -143,10 +130,6 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("clip_id", item.ClipID), zap.Error(err))
 			item.Status = "persist_failed"
 			item.Error = err.Error()
-			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): mirror the
-			// finalizer-failed branch above — a commit failure means the
-			// transaction could not be sealed, so the clip is accounted
-			// as a persistence failure, not a partial success.
 			resp.Failed++
 			continue
 		}
