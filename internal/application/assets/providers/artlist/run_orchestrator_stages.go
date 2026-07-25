@@ -68,6 +68,13 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		item.Name = defaults.String(item.Name, clip.Name)
 		item.Name = defaults.String(item.Name, item.ClipID)
 
+		if req.DryRun {
+			item.Status = "dry_run"
+			resp.Skipped++
+			resp.Items = append(resp.Items, item)
+			continue
+		}
+
 		decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
 			DriveFileID: item.DriveFileID,
 			DriveLink:   item.DriveLink,
@@ -115,12 +122,6 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		}
 		if o.svc.cfg != nil {
 			processInput.Duration = defaults.Int(processInput.Duration, o.svc.cfg.Video.Duration)
-		}
-		if req.DryRun {
-			item.Status = "dry_run"
-			resp.Skipped++
-			resp.Items = append(resp.Items, item)
-			continue
 		}
 		workItems = append(workItems, clipWork{item: item, processInput: processInput})
 	}
