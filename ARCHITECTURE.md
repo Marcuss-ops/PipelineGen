@@ -107,5 +107,6 @@ Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifa
 - `architecture/issues.yaml` contains unresolved cross-package issues.
 - `architecture/deprecations.yaml` contains live compatibility removals only.
 - `docs/api/ACTIVE_API_GENERATED.md` is the generated route surface.
+- `docs/architecture/godlike/INDEX.md` is the central navigation map for the 5 godlike governance docs (ownership, zero-legacy, CI gates, agent playbook, feature removal).
 
 Completed work, historical decisions, plans, evidence, and snapshots are not part of the working tree.
