@@ -10,8 +10,8 @@
 #   - file size > 0
 #   - MIME == video/mp4
 #   - ffprobe reads the file with the canonical DoD command and produces
-#     format.duration > 0, format.size > 0, at least one stream with
-#     width > 0 and height > 0.
+#     format.duration > 0, format.size > 0, .streams[0].width > 0 and
+#     .streams[0].height > 0 (DoD-exact jq contract on the FIRST stream).
 #
 # Implementation notes:
 #   * /download consumes real Artlist quota. We isolate the artifact under
@@ -21,8 +21,12 @@
 #     pattern as Gate 1) so the test always exercises a real Artlist URL.
 #   * Raw curl against $SCRAPER_URL (node-scraper does not speak the
 #     PipelineGen bearer token / Idempotency-Key contract).
-#   * Future refactor (post-reorg): /download probe delegates to
-#     lib/artlist.sh::artlist_download once the helper wraps the ffprobe check.
+#   * DoD-exact ffprobe command (verbatim from `tests/operational/artlist_gates.md`):
+#         ffprobe -v error \
+#           -show_entries format=duration,size \
+#           -show_entries stream=codec_name,width,height \
+#           -of json "$LOCAL_PATH"
+#   * shellcheck disable=SC1091 is consumed by the lib/ sources below.
 
 set -euo pipefail
 
@@ -36,43 +40,13 @@ source "$DIR/../lib/artlist_runtime.sh"
 
 
 
-if [[ -n "${LIVE_QUERIES:-}" ]]; then
-    IFS='|' read -ra LIVE_QUERIES <<<"${LIVE_QUERIES}"
-    if [[ ${#LIVE_QUERIES[@]} -ne 3 \
-       || -z "${LIVE_QUERIES[0]:-}" \
-       || -z "${LIVE_QUERIES[1]:-}" \
-       || -z "${LIVE_QUERIES[2]:-}" ]]; then
-        ts="$(date '+%Y-%m-%dT%H:%M:%S')"
-        printf >&2 '[FAIL]  %s  LIVE_QUERIES env override must yield exactly 3 non-empty pipe-delimited terms; got %d slot(s): "%s"\n' \
-            "$ts" "${#LIVE_QUERIES[@]}" "${LIVE_QUERIES[*]}"
-        : "${WORK_DIR:=${TMPDIR:-/tmp}/artlist_e2e_validation}"
-        if ! mkdir -p "$WORK_DIR" 2>/dev/null; then
-            printf >&2 '[WARN]  %s  could not mkdir %s (validation artifact skipped)\n' \
-                "$ts" "$WORK_DIR"
-            exit 2
-        fi
-        if ! value_json=$(printf '%s\0' "${LIVE_QUERIES[@]}" | jq -Rs --argjson n "${#LIVE_QUERIES[@]}" \
-            'split("\u0000") | map(if . == "" then null else . end) | .[:$n]'); then
-            printf >&2 '[WARN]  %s  jq pipeline failed producing the value array (artifact dropped, exit 2 still enforced)\n' \
-                "$ts"
-            exit 2
-        fi
-        jq -nc --arg ts "$ts" --argjson slots "${#LIVE_QUERIES[@]}" \
-            --argjson value "$value_json" \
-            '{event:"live_queries_validation_failed",ts:$ts,slots:$slots,value:$value}' \
-            > "$WORK_DIR/live_queries_validation_failed.json"
-        exit 2
-    fi
-elif [[ -n "${LIVE_QUERY_1:-}" && -n "${LIVE_QUERY_2:-}" && -n "${LIVE_QUERY_3:-}" ]]; then
-    LIVE_QUERIES=("${LIVE_QUERY_1}" "${LIVE_QUERY_2}" "${LIVE_QUERY_3}")
-else
-    LIVE_QUERIES=(
-        "business team working in modern office"
-        "heavyweight boxer training in gym"
-        "boxing arena crowd celebrating"
-    )
-fi
-unset LIVE_QUERY_1 LIVE_QUERY_2 LIVE_QUERY_3
+# Canonical LIVE_QUERIES resolution (lib/artlist_runtime.sh). The helpers
+# below replace ~40 lines of inline validation copy-pasted from
+# artlist_live_queries_validate — reusing them keeps the failure-mode
+# semantics, the WORK_DIR artifact, and the canonical 3-term defaults
+# from drifting between sub-scripts. Fail-closed on malformed override.
+artlist_live_queries_validate
+artlist_live_queries_default
 
 smoke_require curl jq file ffprobe
 
@@ -167,27 +141,33 @@ gate_direct_download() {
 
         # DoD-exact ffprobe command: produces JSON with format.duration,
         # format.size, and streams[] each carrying codec_name/width/height.
+        # jq contract matches the Definition-of-Done snippet verbatim
+        # (.streams[0].width > 0 AND .streams[0].height > 0 — the FIRST
+        # stream must be a valid video stream, not just any stream).
+        # `// 0 | tonumber` guards against null width/height so a missing
+        # video stream at index 0 becomes a clean FAIL rather than jq's
+        # "null has no field 'X'" error envelope.
         local ffprobe_json
         ffprobe_json=$(ffprobe -v error \
             -show_entries format=duration,size \
             -show_entries stream=codec_name,width,height \
             -of json "$local_path" 2>/dev/null || true)
-        if [[ -z "$ffprobe_json" ]] || ! jq -e '
-            (.format.duration // 0 | tonumber) > 0
-            and (.format.size // 0 | tonumber) > 0
-            and ([.streams[]?
-                  | select((.width // 0 | tonumber) > 0 and (.height // 0 | tonumber) > 0)]
-                 | length) >= 1' <<<"$ffprobe_json" >/dev/null 2>&1; then
-            log_fail "ffprobe did not return duration>0+size>0+width>0+height>0 for $local_path"
+        if [[ -z "$ffprobe_json" ]] || ! jq -e 'def q(x): (x // 0 | tonumber);
+            q(.format.duration) > 0
+            and q(.format.size) > 0
+            and (.streams | length) > 0
+            and q(.streams[0].width) > 0
+            and q(.streams[0].height) > 0' <<<"$ffprobe_json" >/dev/null 2>&1; then
+            log_fail "ffprobe did not return duration>0+size>0+streams[0].width>0+streams[0].height>0 for $local_path"
             smoke_echo_safe "$(head -c 800 <<<"$ffprobe_json" 2>/dev/null || true)" >&2
             failures=$((failures + 1))
         else
             local duration size width height
             duration=$(jq -r '.format.duration // 0' <<<"$ffprobe_json")
             size=$(jq -r '.format.size // 0' <<<"$ffprobe_json")
-            width=$(jq -r '[.streams[]?.width // 0 | tonumber] | max' <<<"$ffprobe_json")
-            height=$(jq -r '[.streams[]?.height // 0 | tonumber] | max' <<<"$ffprobe_json")
-            log_pass "ffprobe OK: duration=${duration}s size=${size}B largestStream=${width}x${height}"
+            width=$(jq -r '.streams[0].width // 0' <<<"$ffprobe_json")
+            height=$(jq -r '.streams[0].height // 0' <<<"$ffprobe_json")
+            log_pass "ffprobe OK: duration=${duration}s size=${size}B streams[0]=${width}x${height}"
         fi
     fi
 
