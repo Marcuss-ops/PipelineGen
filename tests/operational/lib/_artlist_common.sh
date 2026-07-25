@@ -153,6 +153,7 @@ artlist_dod_assert_helpers_loaded() {
         velox_artlist_detail \
         velox_artlist_download \
         velox_artlist_search_live \
+        smoke_outbox_chain_verify \
     ; do
         # Prefer `declare -F` for bash 4+ native function introspection
         # (returns 0 if defined as function, 1 otherwise) — doesn't
@@ -191,8 +192,17 @@ artlist_dod_assert_helpers_loaded() {
 # 1.0.0-mvb-july-2026                       — initial umbrella (July 2026 reorg)
 # 1.1.0-gate1-detail-helper-july-2026       — added velox_artlist_detail (post Gate 1 commit 20c1b3112)
 # 1.2.0-gate2-download-helper-july-2026     — added velox_artlist_download (Gate 2 commit)
-# 1.3.0-gate3-search-live-helper-july-2026   — added velox_artlist_search_live (Gate 3; this commit)
-readonly ARTLIST_DOD_LIB_VERSION="1.3.0-gate3-search-live-helper-july-2026"
+# 1.3.0-gate3-search-live-helper-july-2026   — added velox_artlist_search_live (Gate 3 commit)
+# 1.3.1-gate7-outbox-integrity-july-2026    — added smoke_outbox_chain_verify to the SSOT guard
+#                                              list so 07_outbox_integrity.sh fails closed at
+#                                              import time if a future refactor removes the
+#                                              helper from lib/common.sh. No new velox_*
+#                                              helper added (DoD spec preserves smoke_outbox_
+#                                              chain_verify as the canonical classification
+#                                              primitive); per the semver convention this is a
+#                                              PATCH bump because the helper-list widening
+#                                              only tightens the guard, no API surface change.
+readonly ARTLIST_DOD_LIB_VERSION="1.3.1-gate7-outbox-integrity-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug

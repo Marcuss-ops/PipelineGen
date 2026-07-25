@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# tests/operational/artlist/07_index.sh — Artlist DoD Gates 7 + 8 (SQLite outbox + Qdrant indexing).
+# tests/operational/artlist/07_index.sh — Artlist DoD Gate 8
+# (Qdrant + media-search hard gate).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
-# Bundles two gates that probe the SQLite → Qdrant indexing pipeline, since
-# they share the same per-clip row surface:
-#   Gate 7 — SQLite single-row + outbox completed/superseded
-#   Gate 8 — Qdrant point + POST /api/media/search returns the clip
+# Reorg (July 2026): Gate 7 was split out to tests/operational/artlist/
+# 07_outbox_integrity.sh (canonical Gate 7 owner). This file now owns
+# Gate 8 only.
 #
-# Implementation (next PR) delegates to lib/sqlite.sh::sqlite_outbox_terminal
-# and lib/sqlite.sh::sqlite_clip_row for Gate 7, and lib/qdrant.sh::qdrant_point_exists
-# for Gate 8. This sub-script just declares the surface so make verify-artlist-index
+# Future implementation will delegate to lib/qdrant.sh::qdrant_point_exists.
+# This sub-script just declares the Gate 8 surface so make verify-artlist-index
 # has a parseable target.
 
 set -euo pipefail
@@ -22,27 +20,13 @@ source "$DIR/../lib/artlist.sh"
 # shellcheck disable=SC1091
 source "$DIR/../lib/artlist_runtime.sh"
 # shellcheck disable=SC1091
-source "$DIR/../lib/sqlite.sh"
-# shellcheck disable=SC1091
 source "$DIR/../lib/qdrant.sh"
 
 
 
-smoke_require curl jq sqlite3
+smoke_require curl jq
 
 
-
-# ── Gate 7 — SQLite + outbox integrity ──────────────────────────────────
-# Spec (July 2026 DoD):
-#   - per clip_id from Gate 4:
-#       sqlite_clip_row (lib/sqlite.sh) returns a non-empty assets row
-#   - per clip_id:
-#       sqlite_outbox_terminal classifies the outbox chain as COMPLETED
-#       (no DEAD_LETTER, no SUPERSEDED waiting on reindex)
-gate_sqlite_outbox() {
-    smoke_log_section "Gate 7 — SQLite + outbox integrity"
-    log_info "[STUB] Gate 7 — implement next (will use lib/sqlite.sh::sqlite_outbox_terminal + sqlite_clip_row)"
-}
 
 # ── Gate 8 — Qdrant + media search hard gate ────────────────────────────
 # Spec (July 2026 DoD):
@@ -57,17 +41,15 @@ gate_qdrant_search() {
 
 main() {
     if [[ "$DRY_RUN" == "1" ]]; then
-        smoke_echo_safe "DRY RUN — index probes (Gates 7 + 8):"
-        printf '  sqlite3 %s (assets row + outbox chain)\n' "$DB_PATH"
+        smoke_echo_safe "DRY RUN — index probe (Gate 8):"
         printf '  POST %s/collections/%s/points/<clip_id> (Qdrant)\n' "$QDRANT_URL" "$COLLECTION"
         printf '  POST %s/api/media/search (returns clip_id in .results[])\n' "$BASE_URL"
         exit 0
     fi
-    gate_sqlite_outbox || return 1
     gate_qdrant_search || return 1
 
     printf '\n============================================\n'
-    printf '  07_index (Gates 7 + 8)\n'
+    printf '  07_index (Gate 8)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
     if [[ "$FAIL" -gt 0 ]]; then
