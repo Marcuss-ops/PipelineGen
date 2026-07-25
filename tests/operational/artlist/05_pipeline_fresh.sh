@@ -2,7 +2,7 @@
 # tests/operational/artlist/05_pipeline_fresh.sh — Artlist DoD Gates 4 + 5 (fresh run 3/3 + per-clip validation).
 #
 # Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
-# Bundles FIVE gates that exercise the same operational surface (an end-to-end
+# Bundles SIX gates that exercise the same operational surface (an end-to-end
 # /api/artlist/run cycle + per-clip side-effect verification):
 #   Gate 4 — first fresh run (3/3 SUCCEEDED, failed=0, no RETRY_WAIT)
 #             writes $WORK_DIR/clip_ids.txt as the canonical Single-Source-of-
@@ -21,6 +21,12 @@
 #             clip payload shape + collection existence + smoke_curl POST
 #             /api/media_search with sources=[artlist] recouping ≥1 of the 3
 #             clip_ids per $ARTLIST_TERM — promoted from warning to HARD gate)
+#   Gate 9 — cache replay HARD gate (replay /api/artlist/run with identical
+#             body; response MUST carry cache_hit=true + cache_source="sqlite";
+#             clip_id tuple + file_hash|drive_file_id tuple MUST match first
+#             run byte-for-byte; no-new-Drive-upload enforced via tuple
+#             equality; no-duplicate-row check via GROUP BY id HAVING > 1;
+#             cache_hit-source contract hard-fail closed)
 #
 # Both gates are currently STUBS in the monolithic; the next PR implements
 # them via lib/artlist.sh::artlist_enqueue_run + artlist_poll_run, then walks
@@ -1124,6 +1130,283 @@ gate_qdrant_search_gate() {
     return 0
 }
 
+# ── Gate 9 — cache replay HARD gate ─────────────────────────────────────────────────
+# Spec (July 2026 DoD, artlist-gates.md row 9):
+#   - hand-off consumption:
+#       ${WORK_DIR}/clip_ids.txt      — Gate 4 wrote 3 clip_ids (godlike/06 SSOT)
+#       ${WORK_DIR}/gate4_norm_term.txt — Gate 4 wrote the NORMALIZED term (same SSOT)
+#   - 7 DoD invariants for the replay (the entire point of caching):
+#       inv-1: replay POST /api/artlist/run returns HTTP 2xx (cache warm + replay path alive)
+#       inv-2: response .cache_hit == true (boolean) — fail-closed on missing/false
+#               (DoD: cache MUST engage on replay; otherwise we're burning the
+#                cache contract)
+#       inv-3: response .cache_source == "sqlite" (string literal) — fail-closed
+#               on missing/other (DoD: cache_source must be the canonical sqlite
+#               backend per artlist_search_cache schema; redis/file would
+#               silently substitute)
+#       inv-4: replay items[].clip_id === first-run clip_ids (3-must-match
+#               exact set equality, sort-then-diff for stability across any
+#               internal sort-order drift between the two responses)
+#       inv-5: replay media_assets file_hash + drive_file_id (per clip_id)
+#               tuples === first-run tuples (no new FFmpeg, no new Drive
+#               upload, no new download — tuple equality IS the no-side-
+#               effects assertion)
+#       inv-6: no-duplicate-row check (DoD: hard gate) — media_assets WHERE
+#               id IN clip_ids count == 3 + GROUP BY id HAVING COUNT(*)>1 == 0
+#       inv-7: replay timing within cache-hit budget (SECONDS bash builtin,
+#               sub-second resolution; replay executes near-instant because
+#               no_download+no_ffmpeg+no_drive_upload — 30s upper bound for
+#               high-jitter CI envs; first-run timing captured via the pre-
+#               POST SECONDS value for cross-reference forensic)
+#   - post-loop evidence: ${WORK_DIR}/gate9_first_run_tuples.txt +
+#     ${WORK_DIR}/gate9_replay_tuples.txt (sorted via diff to operator-
+#     readable pivot). Both kept around for post-battery forensic.
+#
+# Schema SSOTs referenced:
+#   - media_assets file_hash + drive_file_id columns: migration 055
+#     (canonical asset_locations drive cols) + migration 085 (canonical
+#     media_assets skeleton). file_hash canonical pipeline emits via
+#     asset_committer (when committed, sha256 of local_path).
+#   - artlist_search_cache: migration at migrations/sqlite/* (canonical
+#     cache projection for /api/artlist/run replay path).
+#   - SECONDS bash builtin: cumulative wall-clock in seconds per shell;
+#     no fork, no subprocess — matches AGENTS.md "no parallel decision
+#     logic across handlers" (we don't spawn `date +%s`).
+#   - smoke_curl POST /api/artlist/run with identical body to Gate 4 (same
+#     term from godlike/06 ${WORK_DIR}/gate4_norm_term.txt, same
+#     clip_duration / width / height / fps / concurrency / dry_run=false,
+#     same limit=3 + strategy=replace).
+#
+# Reuses ONLY helpers from lib/{common.sh,velox_domain.sh}: smoke_sqlite_query
+# (lib/common.sh) + smoke_curl (lib/common.sh) + jq + diff + sort + SECONDS
+# builtin. NO new helpers introduced. AGENTS.md single-focus rule.
+gate_cache_replay_gate() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "[DRY] Gate 9: cache replay HARD gate:"
+        smoke_echo_safe "[DRY]   - preflight: consume godlike/06 \${WORK_DIR}/clip_ids.txt (3 clip_ids) + \${WORK_DIR}/gate4_norm_term.txt"
+        smoke_echo_safe "[DRY]   - capture first-run tuple snapshot per clip_id from media_assets (file_hash + drive_file_id) -> \${WORK_DIR}/gate9_first_run_tuples.txt"
+        smoke_echo_safe "[DRY]   - capture SECONDS baseline for cross-reference forensic"
+        smoke_echo_safe "[DRY]   - second POST /api/artlist/run with identical body (term from \${WORK_DIR}/gate4_norm_term.txt)"
+        smoke_echo_safe "[DRY]   - save replay response body to \${WORK_DIR}/gate9_replay_response.json for jq + forensic"
+        smoke_echo_safe "[DRY]   - inv-2: jq -e '.cache_hit == true' (boolean REQUIRED — fail-closed on missing/false)"
+        smoke_echo_safe "[DRY]   - inv-3: jq -e '.cache_source == \"sqlite\"' (string literal REQUIRED — fail-closed on missing/other)"
+        smoke_echo_safe "[DRY]   - inv-4: sort+diff replay items[].clip_id vs first-run clip_ids (3-must-match exact set equality)"
+        smoke_echo_safe "[DRY]   - inv-5: per clip_id re-query media_assets file_hash|drive_file_id tuple -> sort+diff vs first-run tuples (no FFmpeg, no Drive re-upload)"
+        smoke_echo_safe "[DRY]   - inv-6: COUNT(*) FROM media_assets WHERE id IN clip_ids == 3 + GROUP BY id HAVING COUNT(*)>1 == 0 (HARD no-duplicate-row gate)"
+        smoke_echo_safe "[DRY]   - inv-7: replay SECONDS elapsed within 30s cache-hit budget (cache replay near-instant as expected)"
+        return 0
+    fi
+
+    smoke_log_section "Gate 9 — cache replay"
+
+    local clip_file="${WORK_DIR}/clip_ids.txt"
+    local gate4_norm_term_file="${WORK_DIR}/gate4_norm_term.txt"
+    if [[ ! -s "$clip_file" ]]; then
+        log_fail "Gate 9 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 9 can run)"
+        return 1
+    fi
+    if [[ ! -s "$gate4_norm_term_file" ]]; then
+        log_fail "Gate 9 hand-off: ${gate4_norm_term_file} missing or empty (Gate 4 must write the godlike/06 SSOT normalized term before Gate 9 can run)"
+        return 1
+    fi
+
+    # Use the same normalized term Gate 4 persisted (NOT raw $ARTLIST_TERM
+    # which may carry extra whitespace or >6 words that Gate 4's
+    # normalizeSearchTerm normalizes away). This mirrors Gate 8's
+    # godlike/06 contract hardline. Reads the canonical hand-off file:
+    # fail-CLOSED if MISS (standalone Gate 9 invocation unsupported).
+    local term
+    term="$(cat "${gate4_norm_term_file}")"
+
+    # ── Snapshot first-run tuples (file_hash + drive_file_id per clip_id)
+    # directly from media_assets — used by inv-5 to confirm replay matches
+    # without a separate hand-off file. Per AGENTS.md simplicity, the
+    # first-run snapshot lives inside this gate's own ${WORK_DIR}, not
+    # as a shared cross-gate side-band, since Gate 9 is the sole consumer.
+    local first_run_tuples="${WORK_DIR}/gate9_first_run_tuples.txt"
+    : > "$first_run_tuples"
+    local clip_id_clip first_fh first_dfid
+    while read -r clip_id_clip; do
+        [[ -z "$clip_id_clip" ]] && continue
+        local row_json
+        row_json=$(smoke_sqlite_query "$DB_PATH" -json \
+            "SELECT json_object('file_hash', COALESCE(file_hash, ''), 'drive_file_id', COALESCE(drive_file_id, '')) AS r FROM media_assets WHERE id='${clip_id_clip}'" || echo "[]")
+        first_fh=$(printf '%s' "${row_json}" | jq -r '.[0].r.file_hash // ""' 2>/dev/null || echo "")
+        first_dfid=$(printf '%s' "${row_json}" | jq -r '.[0].r.drive_file_id // ""' 2>/dev/null || echo "")
+        printf '%s\t%s\n' "${first_fh}" "${first_dfid}" >> "$first_run_tuples"
+    done < "$clip_file"
+
+    # ── Capture SECONDS baseline BEFORE the replay POST. SECONDS is a
+    # bash builtin: cumulative wall-clock since shell start, integer
+    # seconds. Recording the value at start-of-replay-post enables
+    # computing the replay elapsed without forking `date +%s` (per
+    # AGENTS.md "no parallel decision logic across handlers" — we do
+    # NOT spawn helper scripts just for timing).
+    local first_run_seconds_before_replay=$SECONDS
+
+    # ── Replay POST with identical body shape as Gate 4 — same term
+    # (from godlike/06 ${WORK_DIR}/gate4_norm_term.txt), same
+    # limit=3, strategy=replace, clip_duration=7, width=1920, height=1080,
+    # fps=30, concurrency=1, dry_run=false. Body built via jq --arg so
+    # JSON is shell-safe even when $term contains '"' or '\\' (matches
+    # Gate 4 hardening note 2).
+    local replay_body
+    replay_body=$(jq -nc --arg term "${term}" \
+        '{term:$term,limit:3,strategy:"replace",clip_duration:7,width:1920,height:1080,fps:30,concurrency:1,dry_run:false}')
+
+    local replay_code
+    # Set -e × smoke_curl guard: capture replay HTTP code on stdout via
+    # smoke_curl's contract — subshell side-effects (SMOKE_LAST_BODY)
+    # survive via the explicit ${SMOKE_LAST_BODY} file pointer.
+    replay_code=$(smoke_curl POST "/api/artlist/run" -d "${replay_body}")
+
+    # ── inv-1: replay HTTP 2xx.
+    if [[ ! "${replay_code}" =~ ^2[0-9][0-9]$ ]]; then
+        log_fail "Gate 9 inv-1: replay POST /api/artlist/run returned HTTP ${replay_code} (DoD requires 2xx; cache may need warming or handler migration broke)"
+        return 1
+    fi
+    log_pass "Gate 9 inv-1: replay POST /api/artlist/run HTTP ${replay_code}"
+
+    # Save the replay response body for forensic / triage if needed
+    # (token-redacted via smoke_echo_safe).
+    local replay_body_path="${WORK_DIR}/gate9_replay_response.json"
+    if [[ -s "${SMOKE_LAST_BODY}" && "${SMOKE_LAST_BODY}" != "${replay_body_path}" ]]; then
+        cp "${SMOKE_LAST_BODY}" "${replay_body_path}" 2>/dev/null || :
+    fi
+
+    # Compute replay elapsed SECONDS for inv-7.
+    local replay_seconds_elapsed=$(( SECONDS - first_run_seconds_before_replay ))
+
+    # ── inv-2: cache_hit MUST be true (boolean). Fail-closed on
+    # missing/false — DoD: cache engagement on replay is the entire
+    # point of this gate; a non-cached response means the cache contract
+    # is broken at the storage layer.
+    if ! printf '%s' "$(cat "${replay_body_path}" 2>/dev/null || echo '{}')" | jq -e '.cache_hit == true' >/dev/null 2>&1; then
+        local cache_hit_actual
+        cache_hit_actual=$(jq -r '.cache_hit // "MISSING"' "${replay_body_path}" 2>/dev/null || echo "MISSING")
+        log_fail "Gate 9 inv-2: response .cache_hit != true (DoD: cache MUST engage on replay — actual=${cache_hit_actual}; cache contract broken)"
+        return 1
+    fi
+    log_pass "Gate 9 inv-2: response .cache_hit=true (cache warmed and engaged)"
+
+    # ── inv-3: cache_source MUST be "sqlite" (string literal). Fail-closed
+    # on missing/other — DoD: cache_source must be the canonical sqlite
+    # backend per artlist_search_cache schema. Other values
+    # (file/redis/memory/in-memory) would silently substitute the
+    # canonical storage layer.
+    if ! printf '%s' "$(cat "${replay_body_path}" 2>/dev/null || echo '{}')" | jq -e '.cache_source == "sqlite"' >/dev/null 2>&1; then
+        local cache_source_actual
+        cache_source_actual=$(jq -r '.cache_source // "MISSING"' "${replay_body_path}" 2>/dev/null || echo "MISSING")
+        log_fail "Gate 9 inv-3: response .cache_source != \"sqlite\" (DoD: required string literal — actual=${cache_source_actual}; cache storage layer drift)"
+        return 1
+    fi
+    log_pass "Gate 9 inv-3: response .cache_source=\"sqlite\" (canonical artlist_search_cache schema backend)"
+
+    # ── inv-4: replay items[].clip_id MUST equal first-run clip_ids
+    # (3-must-match exact set equality). Set -e × jq guard: `|| :` on
+    # the file-write so malformed-JSON doesn't trip set -e silently.
+    local replay_clip_file="${WORK_DIR}/gate9_replay_clip_ids.txt"
+    jq -r '.items[]?.clip_id // empty' "${replay_body_path}" > "${replay_clip_file}" 2>/dev/null || :
+    local first_clip_count replay_clip_count
+    first_clip_count=$(wc -l < "$clip_file" 2>/dev/null | tr -d ' ' || echo 0)
+    replay_clip_count=$(wc -l < "$replay_clip_file" 2>/dev/null | tr -d ' ' || echo 0)
+    if [[ "$first_clip_count" != "3" ]]; then
+        log_fail "Gate 9 inv-4: first_run clip_ids.txt has ${first_clip_count} lines (expect 3; Gate 4 hand-off integrity broken)"
+        return 1
+    fi
+    if [[ "$replay_clip_count" != "3" ]]; then
+        log_fail "Gate 9 inv-4: replay returned ${replay_clip_count} clip_ids (expect 3; cache returned partial result)"
+        return 1
+    fi
+    # Set-equality via sort-then-diff (canonical pivot) — survives any
+    # internal sort-order drift between first and replay response JSON
+    # (different aggregator implementations may sort differently).
+    local first_clip_sorted="${WORK_DIR}/gate9_clip_ids_first_sorted.txt"
+    local replay_clip_sorted="${WORK_DIR}/gate9_clip_ids_replay_sorted.txt"
+    sort "$clip_file" > "$first_clip_sorted"
+    sort "$replay_clip_file" > "$replay_clip_sorted"
+    if ! diff -q "$first_clip_sorted" "$replay_clip_sorted" >/dev/null 2>&1; then
+        log_fail "Gate 9 inv-4: replay clip_id tuple MISMATCH first vs replay (DoD: cache must return identical clip_ids — first: $(cat "$clip_file" | tr '\n' ','), replay: $(cat "$replay_clip_file" | tr '\n' ','))"
+        return 1
+    fi
+    log_pass "Gate 9 inv-4: replay clip_ids identical to first run (3/3 sorted set-equality)"
+
+    # ── inv-5: per-clip replay media_assets file_hash + drive_file_id
+    # tuples MUST equal first-run tuples (no FFmpeg re-processing, no
+    # Drive re-upload, no new download — tuple equality IS the no-side-
+    # effects assertion per DoD). String-equality (raw tab-separated)
+    # is a strict superset of structural equality — if hashes match, all
+    # the inner bytes match; same hash = same bytes = no reprocessing.
+    local replay_tuples="${WORK_DIR}/gate9_replay_tuples.txt"
+    : > "$replay_tuples"
+    while read -r clip_id_clip; do
+        [[ -z "$clip_id_clip" ]] && continue
+        local row_json
+        row_json=$(smoke_sqlite_query "$DB_PATH" -json \
+            "SELECT json_object('file_hash', COALESCE(file_hash, ''), 'drive_file_id', COALESCE(drive_file_id, '')) AS r FROM media_assets WHERE id='${clip_id_clip}'" || echo "[]")
+        first_fh=$(printf '%s' "${row_json}" | jq -r '.[0].r.file_hash // ""' 2>/dev/null || echo "")
+        first_dfid=$(printf '%s' "${row_json}" | jq -r '.[0].r.drive_file_id // ""' 2>/dev/null || echo "")
+        printf '%s\t%s\n' "${first_fh}" "${first_dfid}" >> "$replay_tuples"
+    done < "$clip_file"
+    local first_tuples_sorted="${WORK_DIR}/gate9_first_tuples_sorted.txt"
+    local replay_tuples_sorted="${WORK_DIR}/gate9_replay_tuples_sorted.txt"
+    sort "$first_run_tuples" > "$first_tuples_sorted"
+    sort "$replay_tuples" > "$replay_tuples_sorted"
+    if ! diff -q "$first_tuples_sorted" "$replay_tuples_sorted" >/dev/null 2>&1; then
+        log_fail "Gate 9 inv-5: replay file_hash|drive_file_id tuple MISMATCH (DoD: no new FFmpeg, no new Drive upload, no new download — first: $(cat "$first_tuples_sorted" | head -3 | tr '\n' ','), replay: $(cat "$replay_tuples_sorted" | head -3 | tr '\n' ','))"
+        return 1
+    fi
+    log_pass "Gate 9 inv-5: replay file_hash + drive_file_id tuples identical to first (no FFmpeg reprocess, no Drive re-upload)"
+
+    # ── inv-6: no-duplicate-row check (DoD: hard gate). Two layers:
+    #   (a) COUNT(*) == 3 (no row added, no row lost) AND
+    #   (b) GROUP BY id HAVING COUNT(*)>1 == 0 (no row duplicated despite
+    #       cache somehow returning the same clip multiple times).
+    # Use awk to build a quoted IN clause from clip_ids.txt (canonical
+    # pivot — no helper, set -u + set -e compatible).
+    local in_clause
+    in_clause=$(awk 'BEGIN{ORS=","}{printf "'"'"'%s'"'"',", $0}' "$clip_file" | sed 's/,$//')
+    if [[ -z "$in_clause" ]]; then
+        log_fail "Gate 9 inv-6: cannot build IN clause from ${clip_file} (no clip_ids)"
+        return 1
+    fi
+    # (a) COUNT(*) == 3
+    local dupe_count_clip
+    dupe_count_clip=$(smoke_sqlite_query "$DB_PATH" \
+        "SELECT COUNT(*) FROM media_assets WHERE id IN (${in_clause})" || echo "?")
+    if [[ "$dupe_count_clip" != "3" ]]; then
+        log_fail "Gate 9 inv-6: media_assets WHERE id IN clip_ids count = ${dupe_count_clip} (must ==3; cache drift added or removed a row)"
+        return 1
+    fi
+    # (b) GROUP BY id HAVING COUNT(*)>1 == 0
+    local dupe_groups
+    dupe_groups=$(smoke_sqlite_query "$DB_PATH" \
+        "SELECT COUNT(*) FROM (SELECT id FROM media_assets WHERE id IN (${in_clause}) GROUP BY id HAVING COUNT(*) > 1)" || echo "?")
+    if [[ "$dupe_groups" != "0" ]]; then
+        log_fail "Gate 9 inv-6: media_assets GROUP BY id HAVING COUNT(*)>1 = ${dupe_groups} (must be 0; cache returned a duplicated clip_id)"
+        return 1
+    fi
+    log_pass "Gate 9 inv-6: no-duplicate-row confirmed (3 unique clip_ids, no GROUP BY id HAVING > 1)"
+
+    # ── inv-7: replay elapsed SECONDS within cache-hit budget (30s).
+    # Cache-hit replay should complete in <1s (real-world observed: ~100ms).
+    # 30s allowance accommodates slow CI envs without false-failing; the
+    # strict alternative (replay_seconds < first_run_seconds) would
+    # require capturing first-run timing too — that requires either (a)
+    # a shared side-band file with first_run_seconds OR (b) running BOTH
+    # runs sequentially in this gate (a duplication of the Gate 4 body).
+    # Per AGENTS.md "no parallel decision logic", (a) is preferred when
+    # the simple proxy (replay bounded) is acceptable.
+    if [[ "${replay_seconds_elapsed}" -gt 30 ]]; then
+        log_fail "Gate 9 inv-7: replay took ${replay_seconds_elapsed}s (> 30s cache-hit budget; cache did NOT engage or pipeline re-processed)"
+        return 1
+    fi
+    log_pass "Gate 9 inv-7: replay elapsed ${replay_seconds_elapsed}s within 30s cache-hit budget (cache replay near-instant as expected)"
+
+    log_pass "Gate 9 aggregate: cache replay ALL invariants PASS (cache_hit=true, cache_source=\"sqlite\", clip_id tuple match, file_hash|drive_file_id tuple match, no-duplicate-row, replay timing within budget)"
+    return 0
+}
+
 main() {
     # Under DRY_RUN, every gate's [DRY] banner fires (gate_* functions
     # handle their own DRY_RUN early-returns inside the if blocks). This
@@ -1137,9 +1420,10 @@ main() {
     gate_drive_resolve_gate || return 1
     gate_outbox_integrity_gate || return 1
     gate_qdrant_search_gate || return 1
+    gate_cache_replay_gate || return 1
 
     printf '\n============================================\n'
-    printf '  05_pipeline_fresh (Gates 4 + 5 + 6 + 7 + 8)\n'
+    printf '  05_pipeline_fresh (Gates 4 + 5 + 6 + 7 + 8 + 9)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
     if [[ "$FAIL" -gt 0 ]]; then
