@@ -85,7 +85,7 @@
 # locally, the push MUST be blocked until the next agent lands the
 # fix.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist auth-check dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-base verify-foundation verify-static verify-fast verify-go verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-unit verify-node verify-node-native verify-node-tests verify-integration verify-release verify-architecture verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index verify-artlist-cache verify-artlist-errors verify-artlist-live verify-images verify-images-live verify-script-live verify-vidrush-live verify-live verify-stock verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Suffix convention (binding, July 2026):
 #   verify-<area>          Go unit tests for the area (HEADLESS, part of verify-main)
@@ -344,6 +344,26 @@ artlist:
 		-H "Content-Type: application/json" \
 		-H "Authorization: Bearer $(VELOX_ADMIN_TOKEN)" \
 		-d '{"term":"$(TERM)","limit":$(LIMIT),"strategy":"$(STRATEGY)"}' | jq . || { echo "Server not running? Try: make run (override port via VELOX_PORT)"; exit 1; }
+
+# auth-check — operator pre-flight against the canonical auth-gated
+# endpoint. scripts/with-velox-auth loads + validates VELOX_ADMIN_TOKEN
+# (canonical SSOT) and exports it; the recipe probes
+# /api/artlist/job-consumer with `Authorization: Bearer $$VELOX_ADMIN_TOKEN`
+# and fails closed (exit 1) on any non-200 response, printing the actual
+# HTTP code on failure. NOT part of `verify-main` (which is headless):
+# this gate requires a running server, so it's operator-only and should
+# be invoked pre-deploy or post-deploy to verify the live auth surface.
+# See AGENTS.md "Authentication SSOT (Velox admin token)" for the SSOT
+# contract and scripts/with-velox-auth for the wrapper.
+auth-check:
+	@scripts/with-velox-auth bash -c 'code=$$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 \
+		-H "Authorization: Bearer $$VELOX_ADMIN_TOKEN" \
+		http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/job-consumer); \
+	if [ "$$code" != "200" ]; then \
+	    echo "❌ Velox authentication failed: HTTP $$code"; \
+	    exit 1; \
+	fi; \
+	echo "✅ Velox authentication available: HTTP 200"'
 
 # Development mode with hot reload (requires air)
 dev:
