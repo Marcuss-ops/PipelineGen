@@ -2,10 +2,17 @@
 # tests/operational/artlist/05_pipeline_fresh.sh — Artlist DoD Gates 4 + 5 (fresh run 3/3 + per-clip validation).
 #
 # Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
-# Bundles two gates that exercise the same operational surface (an end-to-end
-# /api/artlist/run cycle):
+# Bundles THREE gates that exercise the same operational surface (an end-to-end
+# /api/artlist/run cycle + per-clip side-effect verification):
 #   Gate 4 — first fresh run (3/3 SUCCEEDED, failed=0, no RETRY_WAIT)
-#   Gate 5 — per-clip DB + local file validation
+#             writes $WORK_DIR/clip_ids.txt as the canonical Single-Source-of-
+#             Truth hand-off for downstream gates within the same script
+#             invocation.
+#   Gate 5 — per-clip DB + local file validation (smoke_sqlite_query -json +
+#             smoke_ffprobe_check + inline ffprobe for codec/container)
+#   Gate 6 — Drive resolve per clip (velox_drive_resolve for canonical shape
+#             contract + INLINE jq parent-folder membership + INLINE curl HEAD
+#             probe for the "link apribile" requirement)
 #
 # Both gates are currently STUBS in the monolithic; the next PR implements
 # them via lib/artlist.sh::artlist_enqueue_run + artlist_poll_run, then walks
@@ -500,19 +507,186 @@ gate_per_clip_validation() {
     return 0
 }
 
-main() {
-    if [[ "$DRY_RUN" == "1" ]]; then
-        smoke_echo_safe "DRY RUN — pipeline fresh probes (Gates 4 + 5):"
-        printf '  POST %s/api/artlist/run term=<ARTLIST_TERM> limit=3 (Gate 4)\n' "$BASE_URL"
-        printf '  poll run_id until terminal (Gate 4)\n'
-        printf '  SELECT * FROM assets WHERE id IN (Gate 5)\n'
-        exit 0
+# ── Gate 6 — Drive resolve per clip ──────────────────────────────────────────────
+# Spec (July 2026 DoD, artlist-gates.md row 6):
+#   - hand-off consumption: ${WORK_DIR}/clip_ids.txt (Gate 4 wrote it on success)
+#     — same-file shared $WORK_DIR inside one 05_pipeline_fresh.sh invocation.
+#   - preflight: $ARTLIST_ROOT_FOLDER MUST be set (canonical configured Artlist
+#     Drive root folder, sourced via lib/artlist_runtime.sh::ARTLIST_ROOT_FOLDER
+#     with $VELOX_DRIVE_ARTLIST_ROOT env-override); fail-closed with the same
+#     "artlist root folder not configured" typed sentinel the handler emits at
+#     apiutil.BadRequest (matches handler at artlist_handlers.go::RunTagPipeline).
+#   - per clip_id in ${WORK_DIR}/clip_ids.txt:
+#       (1) read media_assets.drive_file_id via smoke_sqlite_query -json
+#           (cross-gate contract from Gate 5 — must be non-empty)
+#       (2) velox_drive_resolve "$drive_file_id" (lib/velox_domain.sh)
+#           → 0 on the canonical shape contract pass (.ok AND
+#             .resolved_count>=1 AND .resolved[0].trashed==false AND
+#             .resolved[0].size>0); writes the body to
+#             $WORK_DIR/velox_drive_${drive_file_id}.json for downstream
+#             INLINE checks; 1 on contract fail; 2 on transport / HTTP non-2xx.
+#       (3) INLINE jq -e check on $WORK_DIR/velox_drive_${id}.json:
+#             `.resolved[0].parents // [] | any(. == $ARTLIST_ROOT_FOLDER)`
+#           → file MUST live in the configured Artlist root folder.
+#       (4) INLINE curl HEAD probe on `.resolved[0].webViewLink`
+#           → HTTP 2xx OR 3xx (Drive often returns 302 -> accounts.google.com
+#             for the public-share view; both are valid PASS per the spec's
+#             "link apribile" intent). 4xx / 5xx / timeout → FAIL.
+#   - ALL clips must pass (DoD forbids partial-pass — mirrors Gate 4 inv-6/7
+#     spirit and Gate 5 aggregate contract).
+#
+# Schema SSOTs referenced:
+#   - GET /api/drive/resolve-by-id : internal/api/system/handler_drive.go:106
+#     (canonical response shape mirrors drive.FileMeta from
+#      internal/infrastructure/drive/uploader_file.go:98 — id, name, mimeType,
+#      size, webViewLink, parents[], trashed)
+#   - $ARTLIST_ROOT_FOLDER : $VELOX_DRIVE_ARTLIST_ROOT (env) || ${ROOT_FOLDER_ID}
+#     || '' — sourced from lib/artlist_runtime.sh.
+#
+# Reuses only: smoke_sqlite_query -json (lib/common.sh) + velox_drive_resolve
+# (lib/velox_domain.sh) + log_pass/log_fail (lib/artlist_runtime.sh) + jq
+# parent-+-link-probe inline. NO new helpers introduced. AGENTS.md single-
+# focus rule honoured.
+gate_drive_resolve_gate() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "[DRY] Gate 6: drive resolve per clip:"
+        smoke_echo_safe "[DRY]   - hand-off consumed from ${WORK_DIR}/clip_ids.txt (3 clip_ids from Gate 4)"
+        smoke_echo_safe "[DRY]   - preflight ARTLIST_ROOT_FOLDER non-empty (fail-closed otherwise)"
+        smoke_echo_safe "[DRY]   - per clip_id: smoke_sqlite_query read media_assets.drive_file_id (Gate 5 cross-check)"
+        smoke_echo_safe "[DRY]   - velox_drive_resolve (lib/velox_domain.sh) covers trashed/size shape contract"
+        smoke_echo_safe "[DRY]   - INLINE jq -e .resolved[0].parents|any(. == \$ARTLIST_ROOT_FOLDER) for folder membership"
+        smoke_echo_safe "[DRY]   - INLINE curl HEAD probe on .resolved[0].webViewLink (2xx OR 3xx = PASS)"
+        return 0
     fi
+
+    smoke_log_section "Gate 6 — Drive resolve per clip"
+
+    # ── preflight: ARTLIST_ROOT_FOLDER must be configured (matches handler
+    # typed sentinel at artlist_handlers.go::RunTagPipeline).
+    if [[ -z "${ARTLIST_ROOT_FOLDER:-}" ]]; then
+        log_fail "Gate 6 preflight failed: ARTLIST_ROOT_FOLDER is unset (set VELOX_DRIVE_ARTLIST_ROOT=<artlist_drive_root_id>)"
+        return 1
+    fi
+
+    local clip_file="${WORK_DIR}/clip_ids.txt"
+    if [[ ! -s "$clip_file" ]]; then
+        log_fail "Gate 6 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 5/6 can run)"
+        return 1
+    fi
+
+    local clip_id drive_file_id drive_json web_view_link probe_code failures=0 clip_count=0
+    while read -r clip_id; do
+        [[ -z "$clip_id" ]] && continue
+        clip_count=$((clip_count + 1))
+
+        # ── Step 1: read media_assets.drive_file_id (Gate 5 cross-check:
+        # non-empty IS the canonical invariant — if it's empty, Gate 5's
+        # inv-4 'drive_file_id present' should have failed already).
+        drive_file_id=$(smoke_sqlite_query "$DB_PATH" -json "
+            SELECT drive_file_id FROM media_assets ma WHERE ma.id='${clip_id}'
+        " 2>/dev/null | jq -r '.[0].drive_file_id // .drive_file_id // ""' 2>/dev/null || echo "")
+        if [[ -z "$drive_file_id" ]]; then
+            log_fail "Gate 6 step-1: clip_id=${clip_id} has NO drive_file_id in media_assets (Gate 5 inv-4 should have failed — cross-gate contract drift)"
+            failures=$((failures + 1))
+            continue
+        fi
+
+        # ── Step 2: velox_drive_resolve (lib/velox_domain.sh) covers the
+        # canonical shape contract (ok/resolved_count/trashed/size).
+        # Returns 3 distinct values that map to 3 different operator
+        # actions — the diagnostic line splits them so an operator sees
+        # immediately whether to chase the API contract drift (rc=1)
+        # vs the auth/quota/transport layer (rc=2) vs an unexpected
+        # intermediate state (rc=1+, default branch).
+        if ! velox_drive_resolve "${drive_file_id}"; then
+            local velox_rc=$?
+            case "${velox_rc}" in
+                1)
+                    # Shape-jq contract fail: curl wrote the response body
+                    # to ${drive_json}, the .ok/.resolved_count/.trashed/
+                    # .size check returned false. Inspect ${drive_json}
+                    # for the failing field. (velox_drive_resolve writes
+                    # ${drive_json} BEFORE the jq check per
+                    # lib/velox_domain.sh::velox_drive_resolve impl.)
+                    log_fail "Gate 6 step-2: clip_id=${clip_id} (drive=${drive_file_id}) Drive SHAPE contract drift (rc=1) - jq contract returned false on .ok/.resolved_count/.trashed/.size inside ${drive_json}"
+                    ;;
+                2)
+                    # Transport / HTTP non-2xx: curl itself failed or
+                    # returned non-2xx; ${drive_json} is empty. Likely
+                    # VELOX_ADMIN_TOKEN expired, Drive API quota exceeded,
+                    # or curl transport error (DNS, network, SSL).
+                    log_fail "Gate 6 step-2: clip_id=${clip_id} (drive=${drive_file_id}) Drive TRANSPORT/HTTP non-2xx (rc=2) - bearer expired, Drive API quota exceeded, or curl transport error - verify VELOX_ADMIN_TOKEN freshness and Drive quotas"
+                    ;;
+                *)
+                    log_fail "Gate 6 step-2: clip_id=${clip_id} (drive=${drive_file_id}) velox_drive_resolve failed (rc=${velox_rc}) - unexpected return code from lib/velox_domain.sh"
+                    ;;
+            esac
+            failures=$((failures + 1))
+            continue
+        fi
+
+        drive_json="${WORK_DIR}/velox_drive_${drive_file_id}.json"
+        if [[ ! -s "$drive_json" ]]; then
+            log_fail "Gate 6 step-2: velox_drive_resolve did NOT write expected response file at ${drive_json} (lib/velox_domain.sh contract drift)"
+            failures=$((failures + 1))
+            continue
+        fi
+
+        # ── Step 3: parent-folder membership. ARTLIST_ROOT_FOLDER is the
+        # raw Drive folder ID (NOT a URL — string exact match only). parents[]
+        # MUST contain this folder ID; empty/missing parents[] fails closed.
+        if ! jq -e --arg root "${ARTLIST_ROOT_FOLDER}" '
+            .resolved[0].parents // [] | any(. == $root)
+        ' "${drive_json}" >/dev/null 2>&1; then
+            log_fail "Gate 6 step-3: clip_id=${clip_id} (drive=${drive_file_id}) NOT inside ARTLIST_ROOT_FOLDER=${ARTLIST_ROOT_FOLDER} (parents[] doesn't contain it)"
+            failures=$((failures + 1))
+            continue
+        fi
+
+        # ── Step 4: link-probe (link apribile). HEAD on webViewLink; 2xx OR
+        # 3xx (Drive commonly returns 302 → accounts.google.com for the
+        # public-share view; both are valid per DoD 'link apribile' intent).
+        # 4xx / 5xx / timeout (000) → FAIL.
+        web_view_link=$(jq -r '.resolved[0].webViewLink // empty' "${drive_json}" 2>/dev/null || echo "")
+        if [[ -z "$web_view_link" ]]; then
+            log_fail "Gate 6 step-4: clip_id=${clip_id} (drive=${drive_file_id}) missing webViewLink in Drive response"
+            failures=$((failures + 1))
+            continue
+        fi
+        probe_code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' -I "${web_view_link}" 2>/dev/null || echo 000)
+        if [[ ! "$probe_code" =~ ^2[0-9][0-9]$ && ! "$probe_code" =~ ^3[0-9][0-9]$ ]]; then
+            log_fail "Gate 6 step-4: clip_id=${clip_id} (drive=${drive_file_id}) link probe FAILED (webViewLink HTTP ${probe_code}, expected 2xx or 3xx)"
+            failures=$((failures + 1))
+            continue
+        fi
+
+        log_pass "Gate 6: clip_id=${clip_id} (drive=${drive_file_id}) resolved OK (parents contains ${ARTLIST_ROOT_FOLDER}, webViewLink HTTP ${probe_code})"
+    done < "${clip_file}"
+
+    # ── Aggregate verdict. DoD: ALL clips must pass — partial-pass is a
+    # hard fail (mirrors Gate 4 inv-6/7 + Gate 5 aggregate contract).
+    if [[ "$failures" -gt 0 ]]; then
+        log_fail "Gate 6 aggregate: ${failures} clip(s) failed validation (validated ${clip_count} total — DoD requires ALL pass)"
+        return 1
+    fi
+    log_pass "Gate 6 aggregate: all ${clip_count} clip(s) passed Drive resolve (parents in Artlist folder + webViewLink 2xx/3xx probe)"
+    return 0
+}
+
+main() {
+    # Under DRY_RUN, every gate's [DRY] banner fires (gate_* functions
+    # handle their own DRY_RUN early-returns inside the if blocks). This
+    # is the canonical "describe probe surface" pattern — main() is a
+    # thin orchestration shell, the gates own their own probe listing per
+    # AGENTS.md single-focus rule (avoids duplicating the per-gate probe
+    # enumeration in main()'s printf summary that was the previous
+    # design).
     gate_fresh_run_three || return 1
     gate_per_clip_validation || return 1
+    gate_drive_resolve_gate || return 1
 
     printf '\n============================================\n'
-    printf '  05_pipeline_fresh (Gates 4 + 5)\n'
+    printf '  05_pipeline_fresh (Gates 4 + 5 + 6)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
     if [[ "$FAIL" -gt 0 ]]; then
