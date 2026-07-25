@@ -8,4 +8,4 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$SCRIPT_DIR/artlist_scale_e2e.py" "$@"
+exec python3 "$SCRIPT_DIR/artlist_scale_e2e_entry.py" "$@"
