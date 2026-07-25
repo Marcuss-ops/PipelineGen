@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+TOKEN_FILE="${TOKEN_FILE:-/etc/pipelinegen/pipelinegen.env}"
+
+if [[ -z "${VELOX_ADMIN_TOKEN:-}" ]]; then
+    if [[ ! -r "$TOKEN_FILE" ]]; then
+        echo "❌ Auth PipelineGen non disponibile."
+        echo "File atteso: $TOKEN_FILE"
+        echo "Verifica gruppo pipelinegen-agents e permessi 0640."
+        exit 2
+    fi
+
+    VELOX_ADMIN_TOKEN="$(
+        sed -n 's/^VELOX_ADMIN_TOKEN=//p' "$TOKEN_FILE" |
+        tail -n 1
+    )"
+
+    export VELOX_ADMIN_TOKEN
+fi
+
+if [[ ! "$VELOX_ADMIN_TOKEN" =~ ^[a-fA-F0-9]{64}$ ]]; then
+    echo "❌ VELOX_ADMIN_TOKEN assente o non valido."
+    exit 2
+fi
+
+exec "$@"
