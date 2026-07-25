@@ -1,7 +1,7 @@
 # Makefile - invocation entry only.
 #
 # Per AGENTS.md max_lines_per_file: 1000 plus the P2 Manutenibilita
-# directive (July 2026), the canonical build chain is split into 7
+# directive (July 2026), the canonical build chain is split into
 # thematic includes under make/. The root holds ONLY include make/*.mk
 # plus the default all: build target. Per-bucket targets, comments,
 # and recipes live in their include.
@@ -14,7 +14,7 @@
 # with a fixup! commit plus git rebase --autosquash once the red gate is
 # fixed). The split-refactor preserves this contract byte-equivalent.
 
-# Consolidated .PHONY declaration for the 7-include split. Declaring
+# Consolidated .PHONY declaration for the make/*.mk split. Declaring
 # every public target up-front prevents a stray file in cwd named `build`,
 # `test`, `clean`, etc. from silently winning the target-name race and
 # masking the recipe (the canonical failure mode that motivates this
@@ -36,13 +36,12 @@
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
 	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
-	doctor artlist auth-check deps tidy-check vuln bench ci preflight \
-	smoke smoke-script smoke-pipeline operate-script-generate smoke-run-all \
-	smoke-voiceover smoke-dry regenerate-token \
-	verify-format test-imports install-hooks regen-current-yaml scraper-up
+	doctor artlist auth-check regenerate-token scraper-up \
+	smoke smoke-script smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
+	deps tidy-check vuln bench ci preflight verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
-# the high-traffic targets; for the FULL 88-target catalog see the
+# the high-traffic targets; for the FULL ~90-target catalog see the
 # .PHONY block above. Each line below is a real TAB-indented @echo
 # recipe step (NOT a heredoc body) because GNU Make 3.82+'s default
 # per-line invocation runs each TAB-indented recipe line in a separate
@@ -88,6 +87,9 @@ include make/verify.mk
 include make/artlist.mk
 include make/live.mk
 include make/docker.mk
-include make/operations.mk
+include make/operations.auth.mk
+include make/operations.smoke.mk
+include make/operations.smoke-voiceover.mk
+include make/operations.tidy.mk
 
 all: build
