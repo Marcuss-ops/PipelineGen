@@ -10,7 +10,7 @@
 # distributed across 3 separate files (`lib/common.sh` for HTTP/SQLite/curl
 # primitives, `lib/artlist_runtime.sh` for ARTLIST_-prefixed env vars +
 # the canonical log_pass/log_warn/log_fail/log_info family, `lib/velox_domain.sh`
-# for the Qdrant/Drive/PipelineRun typed helpers like `velox_qdrant_assert`).
+# for the Qdrant/Drive/PipelineRun/Download/Search typed helpers).
 #
 # The user's DoD refactor directive (replayable single-source-of-truth with
 # no duplicated logic) makes this distribution fragile: every script that
@@ -24,9 +24,9 @@
 # AGENTS.md single-focus rule honoured
 # ============================================================================
 # This umbrella does NOT introduce any new helper. It is a pure import
-# surface: 7 `. $DIR/<lib>.sh` lines followed by one self-validation block.
-# All actual business logic stays in the underlying lib files where it
-# already lives. The only NEW content is `artlist_dod_assert_helpers_loaded`
+# surface: 7 `. ${THIS_DIR}/<lib>.sh` lines followed by one self-validation
+# block. All actual business logic stays in the underlying lib files where
+# it already lives. The only NEW content is `artlist_dod_assert_helpers_loaded`
 # which fails closed if any expected helper is missing (so a future
 # refactor that removes `velox_qdrant_assert` from `velox_domain.sh` will
 # surface immediately at import time instead of silently breaking
@@ -69,7 +69,8 @@
 # Source order matters. The empirical dependency chain (verified by the
 # lib-file inspection at the time this umbrella was last touched) is:
 #   * common.sh       — base primitives (smoke_curl / smoke_require /
-#                       BASE_URL / DB_PATH / SCRAPER_URL)
+#                       BASE_URL / DB_PATH / SCRAPER_URL /
+#                       smoke_ffprobe_check)
 #   * drive.sh / qdrant.sh / sqlite.sh — pure leaf libs with NO inter-
 #                       dependencies (no overlapping helper names).
 #                       Sourced BEFORE artlist.sh / artlist_runtime.sh so
@@ -80,6 +81,8 @@
 #                       names; sourced BEFORE artlist_runtime.sh so the
 #                       canonical log_* family wins via later override.
 #   * velox_domain.sh — velox_qdrant_assert / velox_drive_resolve /
+#                       velox_artlist_detail / velox_artlist_download /
+#                       velox_artlist_search_live /
 #                       velox_artlist_pipeline_run. Depends on common
 #                       primitives only; sourced BEFORE artlist_runtime
 #                       for the same override-safety reason.
@@ -148,6 +151,8 @@ artlist_dod_assert_helpers_loaded() {
         velox_drive_resolve \
         velox_artlist_pipeline_run \
         velox_artlist_detail \
+        velox_artlist_download \
+        velox_artlist_search_live \
     ; do
         # Prefer `declare -F` for bash 4+ native function introspection
         # (returns 0 if defined as function, 1 otherwise) — doesn't
@@ -175,7 +180,19 @@ artlist_dod_assert_helpers_loaded() {
 #       primitive extraction)
 #   (b) a helper is REMOVED from the chain
 #   (c) a helper's signature changes (parameter count or semantics)
-readonly ARTLIST_DOD_LIB_VERSION="1.1.0-gate1-detail-helper-july-2026"
+#
+# Semver convention:
+#   * MAJOR.x → a helper signature changes (c) — fail-closed for
+#     consumers that depend on positional args.
+#   * 0.MINOR.0 → a NEW helper is added (a); backward-compat: existing
+#     consumers keep working because the SSOT guard just widened.
+#   * 0.0.PATCH → internal refactor / comment fix only (no API change).
+#
+# 1.0.0-mvb-july-2026                       — initial umbrella (July 2026 reorg)
+# 1.1.0-gate1-detail-helper-july-2026       — added velox_artlist_detail (post Gate 1 commit 20c1b3112)
+# 1.2.0-gate2-download-helper-july-2026     — added velox_artlist_download (Gate 2 commit)
+# 1.3.0-gate3-search-live-helper-july-2026   — added velox_artlist_search_live (Gate 3; this commit)
+readonly ARTLIST_DOD_LIB_VERSION="1.3.0-gate3-search-live-helper-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug
