@@ -22,7 +22,8 @@ source "$DIR/../lib/common.sh"
 source "$DIR/../lib/artlist.sh"
 # shellcheck disable=SC1091
 source "$DIR/../lib/artlist_runtime.sh"
-# Future: source lib/velox_domain.sh once Gate 5 implementation lands.
+# shellcheck disable=SC1091
+source "$DIR/../lib/velox_domain.sh"  # velox_qdrant_assert + velox_drive_resolve + velox_artlist_pipeline_run
 
 
 
@@ -274,19 +275,229 @@ gate_fresh_run_three() {
     fi
     log_pass "Gate 4 inv-8 jobs ledger clean (zero RETRY_WAIT for run id=${run_id})"
 
+    # ── Hand-off (Gate 4 → Gate 5): write 3 clip_ids to ${WORK_DIR}/clip_ids.txt
+    # as the canonical Single Source of Truth at the gate boundary. At this
+    # point ${SMOKE_LAST_BODY} holds the finalized ${BASE_URL}/api/artlist/
+    # runs/${run_id} response body, which carries the .items[].clip_id[] array.
+    # Per AGENTS.md godlike/06 SSOT (one canonical owner per fact at any
+    # boundary) — this file is consumed ONLY by gate_per_clip_validation; never
+    # re-derived via a second HTTP round-trip.
+    #
+    # Reviewer hard-nit 1 (set -e × jq guard) reapplied under the '|| :' form:
+    # jq exits non-zero under malformed JSON; the '|| :' swallows any exit
+    # code so the bash side can fail-closed on clip_ids.txt emptiness via
+    # the explicit `[[ -s … ]]` check below (also matches AGENTS.md "fail
+    # closed" — never let the script abort silently).
+    jq -r '.items[]?.clip_id // empty' "$SMOKE_LAST_BODY" \
+        > "$WORK_DIR/clip_ids.txt" 2>/dev/null || :
+    local clip_count
+    clip_count=$(wc -l < "$WORK_DIR/clip_ids.txt" 2>/dev/null | tr -d ' ' || echo 0)
+    if [[ "$clip_count" -lt 1 ]]; then
+        # The response was 2xx + items.length=3 + no retry_wait, yet
+        # clip_id extraction produced zero rows. Treat that as a contract
+        # drift in /api/artlist/runs/<run_id> rather than silently passing
+        # through to Gate 5.
+        log_fail "Gate 4 hand-off: ${WORK_DIR}/clip_ids.txt empty — /api/artlist/runs/${run_id} returned items.length=3 but clip_id extraction produced 0 rows (response contract drift)"
+        return 1
+    fi
+    log_info "Gate 4 hand-off: ${WORK_DIR}/clip_ids.txt written with ${clip_count} clip_id(s) for Gate 5 consumption"
+
     return 0
 }
 
 # ── Gate 5 — per-clip DB + file validation ──────────────────────────────
-# Spec (July 2026 DoD):
-#   - for each clip_id from Gate 4:
-#       sqlite3 read on $DB_PATH for SELECT * FROM assets WHERE id = clip_id
-#       file exists at the assets.local_path
-#       file size > 0
-#       local file MIME == video/mp4 (sample first clip, optional)
+# Spec (July 2026 DoD, artlist-gates.md row 5):
+#   - hand-off: Gate 4 wrote ${WORK_DIR}/clip_ids.txt with 3 clip_ids
+#     following godlike/06 SSOT (one canonical owner per fact at any
+#     boundary). Gate 5 reads that file — no second HTTP round-trip
+#     to /api/artlist/runs/<run_id>.
+#   - per clip_id, the **14 canonical media_assets fields** must satisfy:
+#       source=artlist                            media_type=video
+#       lifecycle_state=PUBLISHED                 index_state=INDEXED
+#       ((end_ms - start_ms) / 1000.0) ∈ [6.5, 8.5]  width=1920  height=1080
+#       file_hash     present    source_provider present    source_version present
+#       metadata_origin=artlist
+#       provider_tags       non-empty []   provider_categories   non-empty []
+#       discovered_by_queries non-empty []
+#   - per clip_id, the **4 canonical drive-side columns** must be present:
+#       drive_file_id  present
+#       drive_link     present
+#       download_link  present
+#       local_path     present  (file-validation anchor)
+#   - per clip_id, the **local file** at media_assets.local_path must:
+#       exist + size > 0 + ffprobe-readable with duration > 0, video
+#         stream width > 0, height > 0 (smoke_ffprobe_check DoD-exact
+#         contract, reused verbatim from Gate 2 — AGENTS.md no duplicate
+#         decision logic across handlers)
+#       container = mp4 family (.format.format_name matches mp4|mov|m4a)
+#       first video stream codec_name = 'h264' (DoD MIME video/mp4 mapped
+#         to the canonical ffprobe fields)
+#
+# Schema SSOT (verify in migrations/sqlite/*.sql):
+#   - lifecycle_state : migrations 094/101 (canonical column, NOT lifecycle_status)
+#   - index_state      : migration 094 (canonical column)
+#   - width/height     : migration 068 (canonical direct columns)
+#   - source_provider  : migration 152 (canonical column)
+#   - source_version   : canonical Asset.struct field per
+#                        tests/e2e/canonical_surfaces_e2e_test.go L478
+#   - start_ms/end_ms  : migrations 152 (duration math = end_ms − start_ms)
+#   - drive_file_id / drive_link / download_link / local_path :
+#                       legacy per migration 055 comment ("remain for
+#                       backward compatibility") — still populated today
+#   - metadata_json.$.{metadata_origin, provider_tags, provider_categories,
+#                       discovered_by_queries} :
+#                       INSIDE metadata_json per migration 173 + search_core.go
+#                       pre-cutover (the cutover is a future followup PR,
+#                       not in Gate 5 scope)
+#
+# Reuses ONLY helpers from lib/{common.sh,artlist.sh,artlist_runtime.sh,
+# velox_domain.sh} (smoke_sqlite_query -json + smoke_ffprobe_check +
+# log_pass/log_fail/log_info + jq -e composite check + inline ffprobe
+# mirroring Gate 2 flag set). No new helpers introduced. AGENTS.md
+# single-focus rule.
 gate_per_clip_validation() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "[DRY] Gate 5 per-clip DB + file validation:"
+        smoke_echo_safe "[DRY]   - hand-off consumed from ${WORK_DIR}/clip_ids.txt (3 clip_ids)"
+        smoke_echo_safe "[DRY]   - per clip_id: smoke_sqlite_query -json SELECT (14 canonical fields + 3 metadata_json keys + 4 legacy drive cols)"
+        smoke_echo_safe "[DRY]   - jq -e composite check (Source=artlist MediaType=video Life=PUBLISHED Index=INDEXED Duration 6.5-8.5s 1920x1080 ProviderFieldsPresent MetadataOrigin=artlist ProviderTags+Cats+DQs non-empty DriveColumnsPresent)"
+        smoke_echo_safe "[DRY]   - smoke_ffprobe_check on local_path (size+dur+w+h)"
+        smoke_echo_safe "[DRY]   - inline ffprobe: codec_name=='h264' AND format.format_name matches mp4|mov|m4a"
+        return 0
+    fi
+
     smoke_log_section "Gate 5 — per-clip DB + file validation"
-    log_info "[STUB] Gate 5 — implement next"
+
+    local clip_file="${WORK_DIR}/clip_ids.txt"
+    if [[ ! -s "$clip_file" ]]; then
+        log_fail "Gate 5 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 5 can run)"
+        return 1
+    fi
+
+    local clip_id clip_count=0 failures=0 row_json local_path codec_json
+    while read -r clip_id; do
+        [[ -z "$clip_id" ]] && continue
+        clip_count=$((clip_count + 1))
+
+        # ── 1. SQLite SELECT — 14 canonical DB fields + 3 metadata_json keys +
+        # 4 legacy drive cols. SQLite -json outputs ONE bare object for a
+        # single-row WHERE id=? query (vs an ARRAY for multi-row). The jq
+        # composite check below handles BOTH shapes via the `if type ==
+        # "array"` defensive branch (handle no-row `[]` response too —
+        # `$r != null` line catches that with no false-positive).
+        row_json=$(smoke_sqlite_query "$DB_PATH" -json "
+            SELECT
+                ma.source,
+                ma.media_type,
+                ma.lifecycle_state,
+                ma.index_state,
+                ma.start_ms,
+                ma.end_ms,
+                ma.width,
+                ma.height,
+                ma.file_hash,
+                ma.source_provider,
+                ma.source_version,
+                json_extract(ma.metadata_json, '\$.metadata_origin') AS metadata_origin,
+                json_extract(ma.metadata_json, '\$.provider_tags') AS provider_tags_json,
+                json_extract(ma.metadata_json, '\$.provider_categories') AS provider_categories_json,
+                json_extract(ma.metadata_json, '\$.discovered_by_queries') AS discovered_by_queries_json,
+                ma.drive_file_id,
+                ma.drive_link,
+                ma.download_link,
+                ma.local_path
+            FROM media_assets ma
+            WHERE ma.id = '${clip_id}'
+        " || echo "{}")
+
+        # ── 2. Composite shape check (18 invariants in ONE jq expression).
+        # Set -e × jq guard (reviewer hard-nit 1): if jq exits non-zero the
+        # entire match fails closed by surrounding the success path with
+        # `if ! jq -e …; then log_fail … fi`.
+        if ! printf '%s' "${row_json}" | jq -e '
+            . as $raw |
+            (if ($raw | type) == "array" then ($raw[0] // null) else ($raw // null) end) as $r |
+            ($r != null)
+            and ($r.source == "artlist")
+            and ($r.media_type == "video")
+            and ($r.lifecycle_state == "PUBLISHED")
+            and ($r.index_state == "INDEXED")
+            and (((($r.end_ms // 0) - ($r.start_ms // 0)) / 1000.0 | (. >= 6.5 and . <= 8.5)))
+            and ($r.width == 1920 and $r.height == 1080)
+            and (($r.file_hash // "") | length > 0)
+            and (($r.source_provider // "") | length > 0)
+            and (($r.source_version // "") | length > 0)
+            and ($r.metadata_origin == "artlist")
+            and (($r.provider_tags_json | fromjson? // []) | length >= 1)
+            and (($r.provider_categories_json | fromjson? // []) | length >= 1)
+            and (($r.discovered_by_queries_json | fromjson? // []) | length >= 1)
+            and (($r.drive_file_id // "") | length > 0)
+            and (($r.drive_link // "") | length > 0)
+            and (($r.download_link // "") | length > 0)
+            and (($r.local_path // "") | length > 0)
+        ' >/dev/null; then
+            log_fail "Gate 5 DB-fields contract failed for clip_id=${clip_id} (18 invariants must all match; row_json dumped for triage)"
+            # Forensic dump (token-redacted via smoke_echo_safe) for operator triage.
+            smoke_echo_safe "$(printf '%s' "${row_json}" | jq -c '.' 2>/dev/null || echo '{}')" >&2
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 5 DB-fields: all 18 invariants OK for clip_id=${clip_id}"
+
+        # ── 3. Local file validation. smoke_ffprobe_check covers the DoD-exact
+        # contract from Gate 2 verbatim: ffprobe with the canonical flag set
+        # (format.duration+size, streams.codec_type+codec_name+width+height),
+        # then jq -e that .format.size > 0 + .format.duration >= 0 + first
+        # video stream width > 0 AND height > 0. AGENTS.md "do not duplicate
+        # the same decision logic across handlers" — existing helper IS
+        # reused, NOT duplicated inline.
+        local_path=$(printf '%s' "${row_json}" | jq -r '.[0].local_path // .local_path // ""' 2>/dev/null || echo "")
+        if [[ -z "$local_path" ]]; then
+            log_fail "Gate 5 file validation: clip_id=${clip_id} has empty local_path"
+            failures=$((failures + 1))
+            continue
+        fi
+        if ! smoke_ffprobe_check "${local_path}" 0; then
+            log_fail "Gate 5 file validation: smoke_ffprobe_check failed for clip_id=${clip_id} (path=${local_path})"
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 5 file validation: smoke_ffprobe_check (size+dur+w+h) OK for clip_id=${clip_id}"
+
+        # ── 4. Codec & container check (inline ffprobe mirroring Gate 2's
+        # flag set, plus .format.format_name + .streams[].codec_name
+        # assertions the DoD requires): "MIME video/mp4" mapped to:
+        #   .format.format_name matches mp4|mov|m4a (ffprobe canonical
+        #     container family representation)
+        #   first video stream .codec_name == "h264" (DoD canonical codec)
+        # Inline (no new helper) per AGENTS.md "Simplicity & Minimalism".
+        codec_json="${WORK_DIR}/codec_${clip_id}.json"
+        if ! ffprobe -v error -show_entries format=duration,size,format_name \
+                -show_entries stream=codec_type,codec_name,width,height \
+                -of json "${local_path}" > "${codec_json}" 2>/dev/null; then
+            log_fail "Gate 5 inline ffprobe non-zero exit for clip_id=${clip_id} (path=${local_path})"
+            failures=$((failures + 1))
+            continue
+        fi
+        if ! jq -e '
+            ((.format.format_name // "") | test("mp4|mov|m4a"))
+            and ([.streams[]? | select(.codec_type=="video") | .codec_name] | any(. == "h264"))
+        ' "${codec_json}" >/dev/null; then
+            log_fail "Gate 5 codec/container check failed for clip_id=${clip_id} (h264 + mp4 family required by DoD)"
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 5 codec/container: codec_name=h264 + container=mp4 family OK for clip_id=${clip_id}"
+    done < "${clip_file}"
+
+    # ── 5. Final aggregate verdict. The DoD requires ALL clips to pass —
+    # partial-pass is treated as a hard fail (mirrors Gate 4 inv-6/7 spirit).
+    if [[ "$failures" -gt 0 ]]; then
+        log_fail "Gate 5 aggregate: ${failures} clip(s) failed validation (validated ${clip_count} clip(s) total — DoD requires ALL pass)"
+        return 1
+    fi
+    log_pass "Gate 5 aggregate: all ${clip_count} clip(s) passed (14 DB-fields + 4 legacy drive cols + ffprobe + h264/mp4)"
+    return 0
 }
 
 main() {
