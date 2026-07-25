@@ -1,0 +1,217 @@
+# PipelineGen production configuration template (PR-CONFIG-SPLIT, July 2026).
+#
+# This file is the canonical deployment template. For local development
+# use config.example.yaml instead (minimal — Qdrant OFF, clip_indexer OFF,
+# artlist auto_download OFF). Operators in production environments should:
+#   1. cp config.production.example.yaml config.yaml
+#   2. Tweak the credentials, Drive folder IDs, and Velox URLs
+#   3. Provide VELOX_ADMIN_TOKEN (64-hex) via /etc/pipelinegen/pipelinegen.env
+#   4. Boot
+#
+# KEY DIVERGENCES from config.example.yaml (the minimal file):
+#   - qdrant.enabled: true (external vector store connected)
+#   - clip_indexer.enabled: true (semantic indexer active)
+#   - artlist.auto_download.enabled: true (10/day cap on non-Enterprise quota)
+
+server:
+  # 0.0.0.0 binds all interfaces. Production deployments should sit behind
+  # a reverse-proxy with HTTPS and bind on 127.0.0.1 instead.
+  host: "0.0.0.0"
+  port: 8000
+  gin_mode: "release"
+
+logging:
+  level: "info"
+  format: "json"
+
+storage:
+  data_dir: "/var/lib/pipelinegen/data"
+  temp_dir: "/var/lib/pipelinegen/tmp"
+
+security:
+  enable_auth: true
+  admin_token: "***REDACTED***"      # Use scripts/rotate_token.sh to generate 64-hex
+  worker_token: "***REDACTED***"
+  delivery_hmac_secret: "***REDACTED***"
+  cors_origins: []
+  rate_limit_enabled: true
+  rate_limit_requests: 100
+  allowed_download_hosts:
+    - "youtube.com"
+    - "www.youtube.com"
+    - "youtu.be"
+    - "artlist.com"
+    - "www.artlist.com"
+    - "artlist.io"
+    - "cdn.artlist.io"
+
+external:
+  ollama_url: "http://localhost:11434"
+  ollama_model: "gemma4:e4b"
+  ollama_timeout_seconds: 120
+  searxng_url: "http://127.0.0.1:8080"
+  ytdlp_path: "yt-dlp"
+  ffmpeg_path: "ffmpeg"
+  nvidia_api_key: ""
+  nvidia_model: "stabilityai/sdxl-turbo"
+  nvidia_local_nim_url: "http://localhost:8000/v1/infer"
+  pixabay_api_key: ""
+  pixabay_base_url: "https://pixabay.com/api"
+  pexels_api_key: ""
+  pexels_base_url: "https://api.pexels.com/v1"
+  artlist_live_search_cache_ttl_hours: 24
+  artlist_scraper_server_url: "http://127.0.0.1:9123"
+  # Artlist provider configuration (PR-CONFIG-SPLIT, July 2026).
+  # Production: authorized_api + auto_download ON.
+  artlist:
+    acquisition_mode: "authorized_api"
+    auto_download:
+      enabled: true
+      daily_limit: 10
+
+paths:
+  python_scripts_dir: "scripts"
+  credentials_file: "credentials.json"
+  token_file: "token.json"
+
+drive:
+  strict_startup_validation: true
+  stock_root_folder: ""
+  ai_clips_root_folder: ""
+  normal_clips_source_folder: ""
+  clips_root_folder: ""
+  voiceover_root_folder: ""
+  artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"
+  images_root_folder: "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X"
+  books_root_folder: ""
+  scripts_root_folder: ""
+  video_ai_root_folder: ""
+  copertine_root_folder: ""
+  sound_effects_root_folder: "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
+  outro_root_folder: "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
+
+media:
+  multilingual:
+    enabled: true
+    source_language: "en"
+    languages:
+      - { code: it, enabled: true, translate_clips: true }
+      - { code: en, enabled: true, translate_clips: true }
+      - { code: pl, enabled: true, translate_clips: true }
+      - { code: ru, enabled: true, translate_clips: true }
+      - { code: de, enabled: true, translate_clips: true }
+      - { code: es, enabled: true, translate_clips: true }
+      - { code: pt-BR, enabled: true, translate_clips: true }
+      - { code: fr, enabled: true, translate_clips: true }
+      - { code: tr, enabled: true, translate_clips: true }
+      - { code: id, enabled: true, translate_clips: true }
+    translation_policy: "auto"
+    require_language_certainty: true
+    require_transcript_ready: false
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  codec: "libx264"
+  preset: "veryfast"
+  crf: 23
+  duration: 7
+  keyframe_interval: 48
+  audio_codec: "aac"
+  audio_bitrate: "128k"
+  clip_duration: 5
+  chunk_duration: 25
+  max_clips_per_source: 30
+  search_count: 25
+  overlay_opacity: 0.25
+  effect_interval: 4
+  transition_interval: 4
+  transition_presets:
+    - "fade"
+    - "fadeblack"
+    - "fadewhite"
+    - "slideleft"
+    - "slideright"
+    - "slideup"
+    - "slidedown"
+    - "circleclose"
+    - "circleopen"
+    - "horzclose"
+    - "horzopen"
+    - "vertclose"
+    - "vertopen"
+    - "dissolve"
+    - "pixelize"
+    - "wipeleft"
+    - "wiperight"
+    - "wipeup"
+    - "wipedown"
+    - "smoothleft"
+    - "smoothright"
+    - "smoothup"
+    - "smoothdown"
+    - "radial"
+    - "hblur"
+    - "fadegrays"
+    - "squeezeh"
+    - "squeezev"
+
+jobs:
+  catalog_sync_interval: "6h"
+  maintenance_interval: "24h"
+  backup_interval: "6h"
+  indexing_interval: "15m"
+
+scripts:
+  capability:
+    enabled: true
+    require_ai: true
+    require_drive: true
+    require_database: true
+    remotion_url: ""
+    render_timeout_seconds: 1800
+  batch_web_search_concurrency: 4
+  batch_chapter_concurrency: 3
+
+concurrency:
+  max_concurrent_video_extracts: 2
+  max_concurrent_script_generations: 2
+  max_concurrent_nvidia_generations: 10
+  max_concurrent_ollama_calls: 1
+  max_concurrent_google_slides_generations: 2
+  google_slides_profile_id: 0
+  max_concurrent_channel_checks: 20
+
+features:
+  artlist_enabled: true
+  youtube_enabled: false
+  drive_enabled: true
+  script_docs_enabled: false
+  script_clips_enabled: false
+  images_enabled: true
+  stock_pipeline_enabled: true
+  voiceover_enabled: false
+  catalog_script_vector_search: false
+
+google_accounting:
+  enabled: false
+  server_url: "http://localhost:8000"
+  download_dir: "./data/google_vids"
+  sessions_path: "./google-accounting/sessions"
+  schedule_cron: "0 2 * * *"
+
+# QDRANT-005A canonical configuration. PRODUCTION: both ON.
+qdrant:
+  enabled: true
+  base_url: "http://127.0.0.1:6333"
+  api_key: ""
+
+clip_indexer:
+  enabled: true
+
+linguistics:
+  lexicon_root: "config/lexicons"
+  required_languages:
+    - en
+    - it

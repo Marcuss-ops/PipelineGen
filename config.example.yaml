@@ -67,19 +67,18 @@ external:
   # Artlist scraper optimizations
   artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
   artlist_scraper_server_url: "http://127.0.0.1:9123"             # Level 3: scraper server on host (PR-ARTLIST-CONFIG-PREFIX July 2026: bound from env VELOX_ARTLIST_SCRAPER_SERVER_URL; canonical IPv4 loopback 127.0.0.1, port 9123)
-  # PR-ARTLIST-AUTHORIZED-BY-DEFAULT (P1, July 2026): the historical
-  # godlike/07 fail-closed default `manual_import` was FLIPPED to
-  # `authorized_api` so a fresh deploy of PipelineGen is immediately
-  # useful for the Artlist-driven stock pipeline. Operators that need
-  # to OPT OUT of automatic downloads set this field to "manual_import"
-  # explicitly OR set ARTLIST_ACQUISITION_MODE=manual_import in
-  # secrets/pipelinegen.env (overrides the YAML value at runtime).
-  artlist_acquisition_mode: "authorized_api"  # PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: was "manual_import"
-  # 10/day cap aligns with Artlist's per-account quota for non-Enterprise
-  # plans; operators with Enterprise agreements set this to a higher
-  # value or override via ARTLIST_DAILY_DOWNLOAD_LIMIT env var. Set to
-  # 0 to disable automatic downloads entirely (ErrAutomaticDownloadsDisabled).
-  artlist_daily_download_limit: 10           # PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: was 0 (disabled)
+  # Artlist provider configuration (PR-CONFIG-SPLIT, July 2026).
+  # acquisition_mode controls HOW assets are discovered + how the
+  # pipeline talks to Artlist (manual_import | authorized_api).
+  # auto_download is an ORTHOGONAL policy: whether successful searches
+  # trigger automatic downloads. An operator can keep authorized_api
+  # for search but set auto_download.enabled=false to enforce manual
+  # curation. The two are now separate keys so the policy is explicit.
+  artlist:
+    acquisition_mode: "authorized_api"   # "" -> manual_import per Normalize()
+    auto_download:
+      enabled: false                      # OFF by default for safe local bootstrap
+      daily_limit: 10                     # 10/day cap aligns with non-Enterprise quota
   # artlist_skip_transcription: false         # operator opt-in escape hatch for environments without `whisper` binary; default false (mandatory transcription preserved); see internal/platform/config/types_external.go::ArtlistSkipTranscription
 
 paths:
@@ -258,15 +257,15 @@ google_accounting:
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
 # QDRANT-005A canonical configuration (AGENTS.md "Qdrant Entity Associations").
-# Local/dev default: keep Qdrant and the clip indexer off so the server
-# can boot and serve /api/script/generate without external vector-store
-# readiness. Production deployments can flip both back on via env.
+# MINIMAL config (this file): both OFF so the server boots without
+# external vector-store readiness. Production deployments use
+# config.production.example.yaml which has both enabled: true.
 qdrant:
-  enabled: true
+  enabled: false
   base_url: "http://127.0.0.1:6333"
   api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
 clip_indexer:
-  enabled: true
+  enabled: false
 
 # Centralized linguistic lexicons (PR-LEXICON-SSOT, July 2026).
 # Each subdirectory under lexicon_root is a language tag (e.g. en, it).
