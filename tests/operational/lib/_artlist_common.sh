@@ -90,18 +90,29 @@
 #                       Also initializes PASS=0/WARN=0/FAIL=0 at top
 #                       level so the canonical counters reset on every
 #                       top-of-file import.
+#
 # Belt-and-braces idempotency: bash `source` of an already-loaded file is
 # a no-op for functions but RE-RUNS top-level non-function statements
 # (e.g., PASS=0 reset). The umbrella is intended to be sourced EXACTLY
 # ONCE per top-level script invocation so the PASS=0/WARN=0/FAIL=0
 # reset happens at canonical-script-start (the desired semantics).
-source "$DIR/common.sh"
-source "$DIR/drive.sh"
-source "$DIR/qdrant.sh"
-source "$DIR/sqlite.sh"
-source "$DIR/artlist.sh"
-source "$DIR/velox_domain.sh"
-source "$DIR/artlist_runtime.sh"
+
+# Resolve this umbrella's own directory via BASH_SOURCE rather than
+# inheriting the caller's `$DIR`. Multiple consumers source us:
+#   * artlist_e2e.sh            — sets $DIR=/…/tests/operational
+#   * vidrush_media_e2e.sh      — sets $DIR=/…/tests/operational
+#   * artlist/{01..09}/*.sh     — may set $DIR=/…/tests/operational/artlist
+# In all cases the lib files live next to THIS file, not next to the
+# caller. BASH_SOURCE[0] is the canonical bash idiom for "where am I" and
+# is unaffected by caller state — it makes the umbrella path-invariant.
+THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${THIS_DIR}/common.sh"
+source "${THIS_DIR}/drive.sh"
+source "${THIS_DIR}/qdrant.sh"
+source "${THIS_DIR}/sqlite.sh"
+source "${THIS_DIR}/artlist.sh"
+source "${THIS_DIR}/velox_domain.sh"
+source "${THIS_DIR}/artlist_runtime.sh"
 
 # ── artlist_dod_assert_helpers_loaded — defensive self-validation ──
 # Pure-function check (no side-effects on caller state) that fires
@@ -136,6 +147,7 @@ artlist_dod_assert_helpers_loaded() {
         velox_qdrant_assert \
         velox_drive_resolve \
         velox_artlist_pipeline_run \
+        velox_artlist_detail \
     ; do
         # Prefer `declare -F` for bash 4+ native function introspection
         # (returns 0 if defined as function, 1 otherwise) — doesn't
@@ -163,7 +175,7 @@ artlist_dod_assert_helpers_loaded() {
 #       primitive extraction)
 #   (b) a helper is REMOVED from the chain
 #   (c) a helper's signature changes (parameter count or semantics)
-readonly ARTLIST_DOD_LIB_VERSION="1.0.0-mvb-july-2026"
+readonly ARTLIST_DOD_LIB_VERSION="1.1.0-gate1-detail-helper-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug
