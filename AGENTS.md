@@ -31,6 +31,7 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
 - Never commit credentials, tokens, cookies, or private keys.
 - Generated API documentation must match registered routes.
 - Run `make verify-main` before pushing.
+- DO NOT use `git push --no-verify` to bypass the pre-push gate — bypass is reserved for unblocking CI emergencies and must be paired with a fixup! followup.
 
 ## Git workflow
 

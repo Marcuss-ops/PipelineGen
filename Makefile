@@ -510,7 +510,32 @@ verify-base: go-version-check verify-no-secrets verify-format tidy-check
 # (the "non sostitutivi" constraint of the refactor). When adding/removing
 # a prereq here, mirror it in verify-base above to prevent drift between
 # the two chains.
+# verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
+# Node), secrets, formatting, module tidiness, AND hook syntax. Runs in
+# seconds. ADDITIVE on top of verify-base: the only behavioural
+# differences are the addition of node-version-check (required by
+# test-js / verify-node / the artlist gate since July 2026) and the
+# hook-syntax lint below (added after commit 8459c5d4f wired pre-push).
+# Callers that do not run Node (legacy CI images, Go-only runners) keep
+# using verify-base; new code paths and the dev-loop should prefer
+# verify-foundation.
+#
+# bash -n lint on the canonical hooks (scripts/hooks/pre-push +
+# scripts/hooks/pre-commit): catches a syntactic break in any hook
+# BEFORE the pre-push gate can be invoked, mirroring the
+# go-build/go-vet pre-flight pattern ("validate the gate itself
+# before letting the gate run"). Cheap (<100ms) and fail-fast: a
+# red bash -n short-circuits the rest of the chain and gets surfaced
+# to the operator while still in the dev loop. Replaces the
+# fragile-yet-permissive default of "hook is invoked once per
+# `git push`; a syntax error there is opaque to the dev".
+#
+# NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
+# (the "non sostitutivi" constraint of the refactor). When adding/removing
+# a prereq here, mirror it in verify-base above to prevent drift between
+# the two chains.
 verify-foundation: go-version-check node-version-check verify-no-secrets verify-format tidy-check
+	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
 # verify-static — Go static analysis + full build. No tests, no
@@ -1154,6 +1179,12 @@ install-hooks:
 		chmod +x scripts/hooks/pre-push; \
 	fi
 	@git config core.hooksPath scripts/hooks
+	@[ "$$(git config --get core.hooksPath)" = "scripts/hooks" ] || { \
+	    echo "❌ core.hooksPath assertion FAILED: expected 'scripts/hooks', got '$$(git config --get core.hooksPath)'"; \
+	    echo "   A user-level override (git config --global core.hooksPath=...) is shadowing the per-repo setting."; \
+	    echo "   Remove with: git config --unset --global core.hooksPath  (or rerun without the global flag)"; \
+	    exit 1; \
+	}
 	@echo "✅ core.hooksPath = $(shell git config --get core.hooksPath)"
 	@echo "→ pre-commit gate: scripts/hooks/pre-commit    (touched-pkg Go build+vet, test-prefix)"
 	@echo "→ pre-push   gate: scripts/hooks/pre-push      (fails the push on red make verify-main)"
