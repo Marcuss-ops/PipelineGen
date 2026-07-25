@@ -40,12 +40,17 @@ smoke_require curl jq
 # boxing-gym, boxing-arena). Per ogni query:
 #   - HTTP 2xx OR explicit err=SEARCH_TIMEOUT if 60s elapses
 #   - provider == 'artlist'
-#   - ≥1 clip in .clips[]
+#   - ≥1 clip in .clips[]  (ok=true with zero results is FORBIDDEN)
 #   - per-clip clip_id (ExternalID/ID) non-empty
 #   - per-clip page_url on artlist.io
 #   - per-clip title non-placeholder (≠ "Artlist", length>5, non-empty)
 #   - query term NOT truncated by server (URL round-trip)
 #   - no placeholder / no invented: RawMetadata present + Keywords[] non-empty
+#   - HARD GATE 3.relevance  (promoted from warning July 2026): at least
+#     one returned clip has ≥1 query-token overlap with the clip's
+#     Title / Tags / Categories / Keywords corpus. Catches a server
+#     returning unrelated/filler results that happen to satisfy the
+#     structural contract above.
 #
 # Implementation notes:
 #   * LIVE_QUERIES[0..2] is env-driven (see runtime config block above);
@@ -59,6 +64,13 @@ smoke_require curl jq
 #     results (as the DoD explicitly forbids).
 #   * Raw curl (no smoke_curl) for the Authorization header + per-query
 #     timeout ergonomics; token must be present (validated by lib/common.sh).
+#   * jq relevance pipeline (added July 2026): per-clip corpus =
+#     Title + Keywords + Tags + Categories (lower-cased). Query tokens =
+#     whitespace-split lower-cased, stopword-filtered, length>2. A clip
+#     is "relevant" iff any token appears verbatim in its corpus. The
+#     per-query gate fires only if ZERO of .clips[] is relevant — one
+#     matching clip satisfies the hard gate. Bumping the threshold to
+#     ≥50% would be a separate PR per godlike/06 SSOT avoid-creep rule.
 #   * Future refactor (post-reorg): delegate to lib/artlist.sh::artlist_search_live
 #     once the helper is wired to expose per-clip assertions externally.
 gate_live_search_three() {
@@ -152,6 +164,51 @@ gate_live_search_three() {
             log_pass "all $clip_count clips valid for query '$q'"
         else
             failures=$((failures + clip_failures))
+        fi
+
+        # ── Hard Gate 3.relevance (promoted from warning July 2026) ────
+        # Per-clip corpus = lower-cased concat of Title + Keywords[] +
+        # Tags[] + Categories[]. Query tokens = lower-cased
+        # whitespace-split, stopword-filtered, length>2. A clip is
+        # relevant if ≥1 token appears verbatim in its corpus. The
+        # DoD rejects any query whose .clips[] contains ZERO
+        # relevant clips (would indicate the server is returning
+        # unrelated / placeholder / invented results). One match is
+        # enough; tightening to ≥50% is left to a followup PR.
+        local relevant_count
+        relevant_count=$(jq -r --arg q "$q" '
+            def stopwords: ["in","the","a","an","of","at","on","to","for","with","and","or","but","is","are","by","as","be"];
+            # Tokenize: lowercase, split on whitespace, drop short tokens
+            # (len<=2) and English stopwords. NOTE: stopword membership uses
+            # `index($t) == null` rather than `contains($t)` — jq `contains`
+            # rejects cross-type checks (array vs string) with
+            # "array ... and string ... cannot have their containment
+            # checked"; `index` returns integer-or-null and compares safely.
+            def tokens: $q | ascii_downcase | split(" ")
+                | map(select(length > 2))
+                | map(select(. as $t | (stopwords | index($t)) == null));
+            def clip_corpus: ([
+                (.Title // ""),
+                (.Keywords // [] | join(" ")),
+                (.Tags // [] | join(" ")),
+                (.Categories // [] | join(" "))
+            ] | join(" ") | ascii_downcase);
+            # `clip_relevant` accumulates via `reduce` over tokens[] — avoids
+            # the map/`contains` binding ambiguity that bit the original
+            # attempt. `false` seeds, `or` flips to `true` on first match.
+            def clip_relevant:
+                clip_corpus as $c
+                | if (tokens | length) == 0 then false
+                  else reduce tokens[] as $t (false; . or ($c | contains($t)))
+                  end;
+            [.clips // [] | .[] | clip_relevant]
+                | map(select(. == true))
+                | length' "$out" 2>/dev/null || echo 0)
+        if [[ "${relevant_count:-0}" -lt 1 ]]; then
+            log_fail "relevance HARD GATE violated for '$q' (0 clips had ≥1 query-token match in Title/Tags/Categories/Keywords corpus)"
+            failures=$((failures + 1))
+        else
+            log_pass "relevance: ${relevant_count}/${clip_count} clips had ≥1 token match for '$q'"
         fi
 
         idx=$((idx + 1))
