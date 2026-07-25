@@ -141,7 +141,19 @@ sqlite_clip_row() {
     # "?" sentinel so the gate's downstream `[[ -z "$drive_file_id" ]]`
     # check AND the lib's own rc semantics align (no silent PASS on miss).
     if [[ -z "$result" ]]; then
-        printf '%s\n' "?"
+        # Symmetric miss-signaling (per AGENTS.md fail-closed): empty
+        # SELECT result means the clip_id is absent from media_assets.
+        # Return rc=1 with empty stdout so the gate's downstream
+        # `[[ -z "$drive_file_id" ]]` check fires correctly. We do NOT
+        # echo the canonical "?" sentinel used by sqlite_pending_jobs
+        # two functions up — that helper's consumer parses the count
+        # and explicitly checks `[[ "..." == "?" ]]`, while our
+        # gate-level consumer at 06_drive.sh parses the ID string and
+        # uses `[[ -z "..." ]]`. A "?" sentinel here would BREAK the
+        # gate by transforming rc=1 into a non-empty drive_file_id
+        # that silently passes phase 6.1 (code-reviewer feedback on the
+        # Gate 6 lib/ refactor; SHA-cite intentionally avoided per
+        # AGENTS.md "Documentation rule" — comments stay evergreen).
         return 1
     fi
     printf '%s\n' "$result"
