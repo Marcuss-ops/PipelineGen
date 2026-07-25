@@ -11,6 +11,8 @@
 #
 # This is intentionally NOT part of verify-live: the default run may consume
 # up to 200 authorized Artlist downloads and can trigger a full VLM/Qdrant pass.
+# Replay starts with a one-clip canary; if dedup is broken the full replay is
+# aborted, limiting accidental duplicate quota consumption.
 
 set -Eeuo pipefail
 
@@ -42,7 +44,7 @@ VLM_TIMEOUT="${ARTLIST_SCALE_VLM_TIMEOUT:-120}"
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${ARTLIST_SCALE_REPORT_DIR:-/tmp/artlist_scale_${STAMP}}"
-mkdir -p "$REPORT_DIR"/{first,replay,drive,qdrant}
+mkdir -p "$REPORT_DIR"/{first,replay,replay_canary,drive,qdrant}
 SUMMARY_JSON="$REPORT_DIR/summary.json"
 FAILURES_FILE="$REPORT_DIR/failures.txt"
 : > "$FAILURES_FILE"
@@ -195,13 +197,13 @@ audit_count() {
 }
 
 submit_run() {
-    local phase="$1" idx="$2" term="$3"
+    local phase="$1" idx="$2" term="$3" limit="${4:-$CLIPS_PER_KEYWORD}"
     local out="$REPORT_DIR/$phase/submit_$(printf '%02d' "$idx").json"
     local payload code jid
     payload="$(jq -nc \
         --arg term "$term" \
         --arg root "$ROOT_FOLDER_ID" \
-        --argjson limit "$CLIPS_PER_KEYWORD" \
+        --argjson limit "$limit" \
         --argjson concurrency "$CLIP_CONCURRENCY" \
         '{
             term:$term,
@@ -276,10 +278,19 @@ run_phase() {
     done
 
     log "$phase: polling all jobs concurrently"
+    if [[ ! -s "$runs" ]]; then
+        printf '[]\n' > "$REPORT_DIR/$phase/statuses.json"
+        fail "$phase has no submitted jobs to poll"
+        return
+    fi
+    local pids=() pid
     while IFS=$'\t' read -r idx term jid; do
         poll_one "$phase" "$idx" "$term" "$jid" &
+        pids+=("$!")
     done < "$runs"
-    wait
+    for pid in "${pids[@]}"; do
+        wait "$pid" || fail "$phase poll worker pid=$pid failed"
+    done
 
     jq -s '.' "$REPORT_DIR/$phase"/status_*.json > "$REPORT_DIR/$phase/statuses.json"
     local succeeded submitted
@@ -323,7 +334,7 @@ extract_items() {
 
 build_target_report() {
     local items="$REPORT_DIR/first/items.tsv"
-    tail -n +2 "$items" | cut -f3 | grep -v '^$' | sort -u > "$REPORT_DIR/target_ids.txt"
+    awk -F'\t' 'NR > 1 && $3 != "" {print $3}' "$items" | sort -u > "$REPORT_DIR/target_ids.txt"
     python3 - "$DB_PATH" "$REPORT_DIR/target_ids.txt" "$REPORT_DIR/db_assets.json" <<'PY'
 import json, sqlite3, sys
 db_path, ids_path, out_path = sys.argv[1:]
@@ -539,6 +550,29 @@ snapshot_identity() {
         "$REPORT_DIR/db_assets.json" > "$out"
 }
 
+run_replay_canary() {
+    local term="${KEYWORDS[0]}"
+    local line idx jid before after delta
+    before="$(audit_count)"
+    if ! line="$(submit_run replay_canary 1 "$term" 1)"; then
+        fail "replay canary submission failed"
+        return 1
+    fi
+    printf '%s\n' "$line" > "$REPORT_DIR/replay_canary/runs.tsv"
+    IFS=$'\t' read -r idx _ jid <<<"$line"
+    poll_one replay_canary "$idx" "$term" "$jid"
+    after="$(audit_count)"
+    delta=$((after-before))
+    jq -n --arg term "$term" --arg run_id "$jid" --argjson audit_delta "$delta" \
+        '{term:$term,run_id:$run_id,successful_download_audit_delta:$audit_delta}' \
+        > "$REPORT_DIR/replay_canary/result.json"
+    if (( delta != 0 )); then
+        fail "replay canary created $delta successful download-audit rows; full replay aborted to protect quota"
+        return 1
+    fi
+    return 0
+}
+
 validate_replay() {
     local audit_before="$1" audit_after="$2"
     extract_items replay
@@ -663,9 +697,13 @@ main() {
     audit_replay_before="$audit_first_after"
     audit_replay_after="$audit_replay_before"
     if (( RUN_REPLAY == 1 )); then
-        run_phase replay
-        audit_replay_after="$(audit_count)"
-        validate_replay "$audit_replay_before" "$audit_replay_after"
+        if run_replay_canary; then
+            run_phase replay
+            audit_replay_after="$(audit_count)"
+            validate_replay "$audit_replay_before" "$audit_replay_after"
+        else
+            audit_replay_after="$(audit_count)"
+        fi
     fi
 
     end_ms="$(now_ms)"
