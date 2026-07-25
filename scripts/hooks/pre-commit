@@ -50,8 +50,15 @@
 #     file-scope orphan → syntax error caught only when commit
 #     attempted.
 #
-# godlike/07 fail-closed: any non-zero exit code from any gate
-# aborts the commit. No fallbacks, no `|| true`, no skip-without-env.
+# godlike/07 fail-closed at the GATE LEVEL: any non-zero exit code from
+# any gate (a)/(b)/(c)/(d) aborts the commit. The single allowed
+# exception is the staging derivation below, where each `grep -E`
+# appends `|| true` so an unmatched filter on a non-Go-only commit
+# (doc, scripts, markdown, yaml, test bash) returns rc=0 instead of
+# propagating through `set -euo pipefail` and aborting a harmless
+# doc-only commit. Canonical pattern (July 2026) — collect the gitops
+# collective goal: a non-Go-only commit must exit pre-commit at the
+# deliberate empty-stdout branch below, not on the bypass env.
 
 set -euo pipefail
 
@@ -87,14 +94,17 @@ cd "$(git rev-parse --show-toplevel)"
 # File paths are repo-relative; convert to Go package paths by taking
 # the directory of each file. For files at repo root, skip (build
 # performance: ./... is fine but expensive on full diffs).
+# Per-grep `|| true` per the header-comment exception: an unmatched
+# filter must NOT propagate pipefail to the assignment; empty stdout
+# is the explicit non-Go-only commit signal handled below.
 TOUCHED_PKGS="$(git diff --cached --name-only --diff-filter=ACMR \
-    | grep -E '\.go$' \
-    | grep -E '^internal/|^pkg/|^cmd/' \
+    | grep -E '\.go$' || true \
+    | grep -E '^internal/|^pkg/|^cmd/' || true \
     | xargs -I{} dirname {} \
     | sort -u)"
 
 TOUCHED_TEST_FILES="$(git diff --cached --name-only --diff-filter=ACMR \
-    | grep -E '_test\.go$')"
+    | grep -E '_test\.go$' || true)"
 
 # ── Exit early if no Go-touching commit (e.g., doc-only commit)
 if [ -z "$TOUCHED_PKGS" ] && [ -z "$TOUCHED_TEST_FILES" ]; then
