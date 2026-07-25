@@ -71,91 +71,141 @@ artlist_required_args() {
 }
 
 # ════════════════════════════════════════════════════════════════════════
-# Artlist API helpers (scraper-side verbs) — STUBS
+# Artlist API helpers (scraper-side verbs) — REAL IMPLS (July 2026 DoD)
 # ════════════════════════════════════════════════════════════════════════
 # These handle the scraper-side verbs (search / detail / download / enqueue /
-# poll). They remain stubs because operational-battery call paths for these
-# verbs use the typed velox_artlist_* helpers (lib/velox_domain.sh) which
-# encode the contract envelopes. The stubs serve as a future hook for direct
-# scraper API integration without going through velox_artlist_*.
+# poll) per the canonical, flag-based API surface.  Implementation strategy:
+# artlist_* are SSOT-canonical names for the user's 5 named helpers per the
+# DoD lib/ reorg directive.  Where velox_artlist_* already owns the proven
+# impl (search_live / detail / download), artlist_* is a one-line delegator
+# forwarding $@ to the velox_* impl — single-direction dependency; no
+# recursion risk.  Where user-named helpers have NO velox_* sibling
+# (enqueue_run / poll_run), the implementation lives directly in this file.
+#
+# Source-order contract (godlike/06 SSOT): this file MUST be sourced AFTER
+# lib/common.sh (for smoke_curl/polling helpers WORK_DIR / SMOKE_TOKEN) and
+# BEFORE lib/velox_domain.sh (which may re-define deltas over these names).
+# The umbrella _artlist_common.sh enforces this order globally.
 
-# ── artlist_search_live — GET /api/artlist/search/live wrapper ──────────
-# artlist_search_live TERM [LIMIT] OUT
-#   TERM    search term to POST against /api/artlist/search/live
-#   LIMIT   (optional) max-clip count (default 5)
-#   OUT     absolute path of the response body file (always written)
-# Returns HTTP code on stdout (canonical smoke_curl contract).
-artlist_search_live() {
-    artlist_required_args 2 "$@"
-    local term="$1" limit="${2:-5}" out="${3:-${WORK_DIR:-/tmp}/last.body}"
-    if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        : > "$out"
-        printf '%s\n' "0"
-        return 0
-    fi
-    printf '%s[STUB]%s artlist_search_live(term=%q, limit=%s, out=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$term" "$limit" "$out" >&2
-    : > "$out"
-    return 1
-}
+# ── artlist_search_live — GET /api/artlist/search/live contract probe ──
+# artlist_search_live --term <query> [--limit <n>] [--timeout-seconds <n>] [--save-body <path>]
+# Returns: 0 → contract pass (provider=artlist, ≥1 clip, per-clip shape tuple OK)
+#          1 → contract violation
+#          2 → transport failure (--max-time overrun, 401/403, 5xx, …)
+# Synthesizes typed transport sentinels (SEARCH_TIMEOUT / AUTH_REQUIRED /
+# SCRAPER_UNAVAILABLE) into the body when transport fails — mirrors the
+# velox_artlist_search_live behaviour exactly so callers can use either
+# prefix interchangeably.
+artlist_search_live() { velox_artlist_search_live "$@"; }
 
-# ── artlist_detail — POST /detail (or scraper /detail) wrapper ──────────
-# artlist_detail CLIP_PAGE_URL [OUT]
-artlist_detail() {
-    artlist_required_args 1 "$@"
-    local url="$1" out="${2:-${WORK_DIR:-/tmp}/last.body}"
-    if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        : > "$out"
-        printf '%s\n' "0"
-        return 0
-    fi
-    printf '%s[STUB]%s artlist_detail(url=%q, out=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$url" "$out" >&2
-    : > "$out"
-    return 1
-}
+# ── artlist_detail — POST $scraper/detail contract probe ───────────────
+# artlist_detail --phase <happy|miss> --clip-page-url <url> \
+#                 --scraper-url <url> [--save-body <path>]
+# Returns: 0 → contract pass; 1 → contract violation; 2 → transport failure.
+# Happy phase validates ok=true + page_url startswith artlist.io + primary
+# URL is m3u8/MP4/manifest/playlist + stream_urls[] non-empty.  Miss phase
+# validates ok=false + error=="STREAM_NOT_FOUND" + stream_urls[] EMPTY.
+artlist_detail() { velox_artlist_detail "$@"; }
 
-# ── artlist_download — POST /download (or scraper /download) wrapper ────
-artlist_download() {
-    artlist_required_args 3 "$@"
-    local url="$1" out_dir="$2" out="$3"
-    if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        : > "$out"
-        printf '%s\n' "0"
-        return 0
-    fi
-    printf '%s[STUB]%s artlist_download(url=%q, out_dir=%q, out=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$url" "$out_dir" "$out" >&2
-    : > "$out"
-    return 1
-}
+# ── artlist_download — POST $scraper/download contract probe ───────────
+# artlist_download --clip-page-url <url> --scraper-url <url> --output-dir <dir> \
+#                  [--save-body <path>]
+# Returns: 0 → contract pass (ok=true + clip_id non-empty + local_path non-empty)
+#          1 → contract violation
+#          2 → transport / HTTP failure
+# File-existence, MIME, and the DoD ffprobe contract are ownered by the
+# gate layer (04_download.sh::gate_direct_download) — keeps the lib focused
+# on JSON-response contract + path harvest, not local-file probing.
+artlist_download() { velox_artlist_download "$@"; }
 
 # ── artlist_enqueue_run — POST /api/artlist/run (returns run_id) ─────────
+# artlist_enqueue_run TERM LIMIT [ROOT_FOLDER_ID]
+# Args: TERM search term, LIMIT clip count, [ROOT_FOLDER_ID] optional Drive root.
+# Default behaviour matches the DoD Gate 5 spec: strategy=replace, dry_run=false.
+# Echoes run_id on stdout; writes raw body to WORK_DIR/last.body for forensic.
+# Returns: 0 → enqueued, run_id echoed
+#          1 → contract violation (HTTP 2xx but no run_id in response)
+#          2 → transport failure
+# Implementation re-uses the canonical artlist_replay_run helper (this file)
+# which already owns the canonical /api/artlist/run envelope + Idempotency-Key
+# + token headers per smoke_curl.  The three-arg positional signature
+# (TERM, LIMIT, [ROOT_FOLDER_ID]) is the documented DoD Gate-5 minimum; richer
+# payloads route through artlist_replay_run directly.
 artlist_enqueue_run() {
+    local term="$1" limit="$2" root="${3:-}"
     artlist_required_args 2 "$@"
-    local term="$1" limit="${2:-3}" idem="${3:-$(smoke_gen_uuid 2>/dev/null || echo stub-key)}"
-    local out="${WORK_DIR:-/tmp}/last.body"
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        : > "$out"
-        printf '%s\n' "stub-run-id"
+        : > "${WORK_DIR:-/tmp}/last.body"
+        printf '%s\n' "stub-run-id-dry"
         return 0
     fi
-    printf '%s[STUB]%s artlist_enqueue_run(term=%q, limit=%s, idem=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$term" "$limit" "$idem" >&2
-    : > "$out"
-    return 1
+    local tabbed
+    tabbed=$(artlist_replay_run "$term" "$limit" replace 7 1920 1080 30 1 "$root" 2>/dev/null || true)
+    local code jid body
+    code=$(printf '%s' "$tabbed" | cut -f1)
+    jid=$(printf '%s' "$tabbed" | cut -f2)
+    body=$(printf '%s' "$tabbed" | cut -f3)
+    if ! [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
+        printf '%s[FATAL]%s artlist_enqueue_run: HTTP=%s for term=%q\n' \
+            "$RED" "$RESET" "$code" "$term" >&2
+        return 2
+    fi
+    [[ -n "$jid" ]] || {
+        printf '%s[FATAL]%s artlist_enqueue_run: empty run_id for term=%q\n' \
+            "$RED" "$RESET" "$term" >&2
+        return 1
+    }
+    printf '%s\n' "$jid"
 }
 
 # ── artlist_poll_run — poll RUN_ID until terminal ───────────────────────
+# artlist_poll_run RUN_ID
+# Echo: 0 → terminal (completed/SUCCEEDED/failed/FAILED/cancelled/dead_letter)
+#       124 → wall-clock / poll timeout exceeded
+#       1   → transport failure non-recoverable within the timeout window.
+# Pattern mirrors smoke_poll_terminal (lib/common.sh) but targets the
+# /api/artlist/run/{id} surface instead of /api/jobs/{id}/full and uses
+# the artlist-terminal-status vocabulary verbatim.  Consumer contract:
+# callers can use either smoke_poll_terminal (job-surface) OR artlist_poll_run
+# (artlist-run surface); this implementation does NOT import from common.sh
+# for the poll loop body to keep this file self-contained when sourced in
+# isolation (e.g. by a future regression net).
 artlist_poll_run() {
     artlist_required_args 1 "$@"
     local run_id="$1"
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         return 0
     fi
-    printf '%s[STUB]%s artlist_poll_run(run_id=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$run_id" >&2
-    return 1
+    local deadline=$(( $(date +%s) + ${SMOKE_POLL_TIMEOUT_SECONDS:-120} ))
+    while (( $(date +%s) < deadline )); do
+        if declare -F smoke_curl >/dev/null 2>&1; then
+            smoke_curl GET "/api/artlist/run/${run_id}" >/dev/null
+            if [[ "${SMOKE_LAST_HTTP:-}" == "200" ]]; then
+                local status
+                status=$(jq -r '.status // "?"' "${SMOKE_LAST_BODY:-/dev/null}" 2>/dev/null || echo "?")
+                case "$status" in
+                    completed|SUCCEEDED|failed|FAILED|cancelled|dead_letter) return 0 ;;
+                esac
+            fi
+        else
+            # Defensive fallback: curl directly when smoke_curl not sourced.
+            local out="${WORK_DIR:-/tmp}/artlist_poll_${run_id}.json"
+            local code
+            code=$(curl -sS --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" \
+                -o "$out" -w '%{http_code}' \
+                -H "Authorization: Bearer ${SMOKE_TOKEN:-}" \
+                "http://${SMOKE_API_BASE}/api/artlist/run/${run_id}" 2>/dev/null || echo 000)
+            if [[ "$code" == "200" ]]; then
+                local status
+                status=$(jq -r '.status // "?"' "$out" 2>/dev/null || echo "?")
+                case "$status" in
+                    completed|SUCCEEDED|failed|FAILED|cancelled|dead_letter) return 0 ;;
+                esac
+            fi
+        fi
+        sleep "${SMOKE_POLL_INTERVAL_SECONDS:-2}"
+    done
+    return 124
 }
 
 # ════════════════════════════════════════════════════════════════════════

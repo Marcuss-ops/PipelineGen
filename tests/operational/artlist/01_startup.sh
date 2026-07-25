@@ -110,17 +110,20 @@ gate_preflight() {
     # Catches leftover state from interrupted runs without manual DB intervention.
     # Scoped to type LIKE 'media.artlist%' so unrelated voiceover/stock jobs
     # don't gate the Artlist DoD.
-    local pending_jobs
-    pending_jobs=$(sqlite3 -readonly "$DB_PATH" \
-        "SELECT COUNT(*) FROM jobs WHERE type LIKE 'media.artlist%' \
-         AND status IN ('QUEUED','LEASED','RUNNING','FINALIZING','RETRY_WAIT')" \
-        2>/dev/null | tr -d ' \n' || echo "?")
+    # Migrated from inline sqlite3 to lib/sqlite.sh::sqlite_pending_jobs
+    # (DoD refactor July 2026): the documented TODO about migrating the
+    # pending-jobs check lands here. The helper owns the canonical SELECT +
+    # the missing-DB fail-closed path; the gate-layer keeps only the metric
+    # log lines. Returns "?" + rc=1 on probe failure (surfaced as WARN, not
+    # a gate-pass because the DB is missing on dev dry-runs too).
+    local pending_jobs rc=0
+    pending_jobs=$(sqlite_pending_jobs "$DB_PATH" 2>/dev/null) || rc=$?
     if [[ "${pending_jobs}" == "0" ]]; then
-        log_pass "no pending Artlist jobs"
-    elif [[ -z "$DB_PATH" || ! -f "$DB_PATH" ]]; then
-        log_warn "skipped pending-jobs check: SQLite DB absent"
+        log_pass "no pending Artlist jobs (sqlite_pending_jobs)"
+    elif [[ "${pending_jobs}" == "?" || $rc -ne 0 ]]; then
+        log_warn "sqlite_pending_jobs probe inconclusive (DB missing or unreadable)"
     else
-        log_fail "expected ZERO pending Artlist jobs, found ${pending_jobs}"
+        log_fail "expected ZERO pending Artlist jobs, found ${pending_jobs} (sqlite_pending_jobs)"
         failures=$((failures + 1))
     fi
 

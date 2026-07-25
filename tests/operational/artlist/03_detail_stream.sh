@@ -14,7 +14,7 @@
 # Anything else → fail-closed (gate returns 1, battery aborts).
 #
 # Implementation choice (DoD refactor July 2026): POST goes through the
-# lib helper `velox_artlist_detail` (lib/velox_domain.sh) because:
+# lib helper `artlist_detail` (lib/velox_domain.sh) because:
 #   (a) the helper is the single source of truth for the /detail contract,
 #   (b) sharing lets Gate 10 Probe B reuse the same miss-phase probe without
 #       duplicating jq constraints.
@@ -57,7 +57,7 @@ smoke_require curl jq
 # Implementation choice (DoD refactor July 2026):
 # Phase 1 (live search) stays inline (search-domain, not /detail-domain).
 # Phase 2 (happy) + Phase 3 (miss) delegate to
-# tests/operational/lib/velox_domain.sh::velox_artlist_detail which
+# tests/operational/lib/velox_domain.sh::artlist_detail which
 # encodes both contracts in jq -e and is the single source of truth.
 # Gate 10 Probe B reuses the miss contract via a separate sub-battery call.
 gate_detail_stream() {
@@ -69,23 +69,28 @@ gate_detail_stream() {
     bad_page_url="https://artlist.io/stock-footage/clip/000000999999999"
 
     # ── Phase 1: source a real clip_page_url from the live-search surface.
-    # Live-search stays inline (NOT delegated to velox_*) because it is the
-    # /search-domain surface; the lib-level extract was specifically for the
-    # /detail POST probes below.
-    smoke_curl GET "/api/artlist/search/live?term=${LIVE_QUERIES[0]}&limit=5" >/dev/null
-    if [[ ! "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]] \
-       || ! jq -e '.clips // [] | length > 0' "${SMOKE_LAST_BODY:-/dev/null}" >/dev/null 2>&1; then
-        log_fail "live search probe for /detail failed (HTTP=${SMOKE_LAST_HTTP:-empty})"
+    # Migrated from inline smoke_curl to lib/artlist.sh::artlist_search_live
+    # (DoD refactor July 2026). The helper applies the canonical /search/live
+    # contract (provider + shape tuple + term round-trip) so the gate gets a
+    # free filter against stub responses. On contract violation rc=1; on
+    # transport failure rc=2. Body saved for forensic inspection.
+    local probe_out="$WORK_DIR/gate1_probe.json"
+    local rc=0
+    artlist_search_live --term "${LIVE_QUERIES[0]}" --limit 5 \
+        --save-body "$probe_out" || rc=$?
+    if (( rc != 0 )); then
+        log_fail "live search probe for /detail failed (rc=$rc; transport or contract violation; see $probe_out)"
+        smoke_echo_safe "$(head -c 400 "$probe_out" 2>/dev/null || true)" >&2
         return 1
     fi
-    real_page_url=$(jq -r '.clips[0].page_url // empty' "${SMOKE_LAST_BODY:-/dev/null}")
+    real_page_url=$(jq -r '.clips[0].page_url // empty' "$probe_out")
     if [[ -z "$real_page_url" || "$real_page_url" == "null" ]] \
        || ! [[ "$real_page_url" =~ ^https://artlist\.io/ ]]; then
         log_fail "first live clip page_url invalid: '$real_page_url'"
         return 1
     fi
 
-    # ── Phase 2: happy-path — delegate to velox_artlist_detail.
+    # ── Phase 2: happy-path — delegate to artlist_detail.
     # Lib contract enforces: ok=true + .clip.ok==true + page_url startswith
     # artlist.io + playlist-shaped primary_url (\\.m3u8(\\?|$)|\\.mp4(\\?|$)
     # |/manifest|/playlist) + primary_url != "" + primary_url != page_url +
@@ -94,7 +99,7 @@ gate_detail_stream() {
     # exposes the raw scraper response (smoke_echo_safe redacts tokens).
     local detail_ok="$WORK_DIR/gate1_detail_ok.json"
     local rc=0
-    velox_artlist_detail --phase happy --clip-page-url "$real_page_url" \
+    artlist_detail --phase happy --clip-page-url "$real_page_url" \
         --scraper-url "$SCRAPER_URL" --save-body "$detail_ok" || rc=$?
     case "$rc" in
         0)
@@ -114,12 +119,12 @@ gate_detail_stream() {
             ;;
     esac
 
-    # ── Phase 3: miss-path STREAM_NOT_FOUND — delegate to velox_artlist_detail.
+    # ── Phase 3: miss-path STREAM_NOT_FOUND — delegate to artlist_detail.
     # Lib enforces: ok=false + .error=="STREAM_NOT_FOUND" + clip_id non-empty
     # + stream_urls[] EMPTY (the "no HTML saved as MP4" guard).
     local detail_snf="$WORK_DIR/gate1_detail_snf.json"
     rc=0
-    velox_artlist_detail --phase miss --clip-page-url "$bad_page_url" \
+    artlist_detail --phase miss --clip-page-url "$bad_page_url" \
         --scraper-url "$SCRAPER_URL" --save-body "$detail_snf" || rc=$?
     case "$rc" in
         0)
