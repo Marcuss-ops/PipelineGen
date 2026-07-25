@@ -327,6 +327,51 @@ func (testFeatureFlagsAdapter) ArtlistEnabled() bool     { return false }
 func (testFeatureFlagsAdapter) ScriptDocsEnabled() bool  { return false }
 func (testFeatureFlagsAdapter) ScriptClipsEnabled() bool { return false }
 
+// TestMetricsRouteReleaseMode is the fail-closed matrix for /metrics
+// (PR-METRICS-FAILCLOSED). In release mode METRICS_AUTH_TOKEN MUST be
+// set; otherwise the route is NOT registered. In dev/local modes the
+// route is mounted as before (with token if set, without if not) so
+// local dev workflows don't break. The 4-case matrix covers every
+// (mode, token_set) combination.
+func TestMetricsRouteReleaseMode(t *testing.T) {
+	cases := []struct {
+		name        string
+		ginMode     string
+		token       string
+		wantMounted bool
+	}{
+		{"release + token set", gin.ReleaseMode, "secret", true},
+		{"release + token unset (fail-closed)", gin.ReleaseMode, "", false},
+		{"dev (TestMode) + token set", gin.TestMode, "secret", true},
+		{"dev (TestMode) + token unset (preserved)", gin.TestMode, "", true},
+		{"dev (DebugMode) + token set", gin.DebugMode, "secret", true},
+		{"dev (DebugMode) + token unset (preserved)", gin.DebugMode, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("METRICS_AUTH_TOKEN", tc.token)
+
+			router := NewRouter(&RouterConfig{
+				ServerGinMode: tc.ginMode,
+				Log:           zap.NewNop(),
+				Rate:          testRateLimitAdapter{},
+				Features:      testFeatureFlagsAdapter{},
+			})
+			engine := router.Setup()
+			mounted := false
+			for _, route := range engine.Routes() {
+				if route.Path == "/metrics" {
+					mounted = true
+					break
+				}
+			}
+			if mounted != tc.wantMounted {
+				t.Errorf("got mounted=%v, want mounted=%v", mounted, tc.wantMounted)
+			}
+		})
+	}
+}
+
 // Compile-time assertion: test adapters satisfy the typed-port interfaces
 // expected by internal/api::RouterConfig. Drift is caught at compile, not
 // at runtime when Router.Setup() is invoked.
