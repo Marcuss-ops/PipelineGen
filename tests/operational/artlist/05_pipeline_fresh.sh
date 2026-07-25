@@ -2,7 +2,7 @@
 # tests/operational/artlist/05_pipeline_fresh.sh — Artlist DoD Gates 4 + 5 (fresh run 3/3 + per-clip validation).
 #
 # Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
-# Bundles THREE gates that exercise the same operational surface (an end-to-end
+# Bundles FOUR gates that exercise the same operational surface (an end-to-end
 # /api/artlist/run cycle + per-clip side-effect verification):
 #   Gate 4 — first fresh run (3/3 SUCCEEDED, failed=0, no RETRY_WAIT)
 #             writes $WORK_DIR/clip_ids.txt as the canonical Single-Source-of-
@@ -13,6 +13,10 @@
 #   Gate 6 — Drive resolve per clip (velox_drive_resolve for canonical shape
 #             contract + INLINE jq parent-folder membership + INLINE curl HEAD
 #             probe for the "link apribile" requirement)
+#   Gate 7 — SQLite + outbox integrity per clip (smoke_sqlite_query for
+#             media_assets count + file_hash coherence + asset_locations
+#             dual-presence + outbox COMPLETED+SUPERSEDED with no DEAD_LETTER;
+#             smoke_outbox_chain_verify diagnostic table at end)
 #
 # Both gates are currently STUBS in the monolithic; the next PR implements
 # them via lib/artlist.sh::artlist_enqueue_run + artlist_poll_run, then walks
@@ -673,6 +677,207 @@ gate_drive_resolve_gate() {
     return 0
 }
 
+# ── Gate 7 — SQLite + outbox integrity per clip ────────────────────────
+# Spec (July 2026 DoD, artlist-gates.md row 7):
+#   - hand-off: Gate 4 wrote ${WORK_DIR}/clip_ids.txt (3 clip_ids);
+#     Gates 5/6 already read it; Gate 7 reads it once more (same-file
+#     shared ${WORK_DIR} across all 4 gates in this script invocation).
+#   - 5 DoD invariants per clip_id (verdict checklist point 7):
+#       inv-1: media_assets row count for clip_id == 1
+#              (PROMOTED from warning to HARD gate per DoD refactor —
+#               "una sola riga canonica in media_assets, no duplicati")
+#       inv-2: media_assets.file_hash == sha256(local_path on disk)
+#       inv-3: asset_locations row WHERE asset_id=clip_id AND
+#              location_kind='local' >= 1
+#       inv-4: asset_locations row WHERE asset_id=clip_id AND
+#              location_kind='drive' >= 1
+#       inv-5: outbox_events WHERE event_type='asset.index.requested'
+#              AND aggregate_id=clip_id:
+#                COMPLETED + SUPERSEDED >= 1  (terminal chain)
+#                DEAD_LETTER == 0            ("nessun evento bloccato")
+#                total >= 1                  (chain EXISTS at all)
+#   - post-loop forensic: smoke_outbox_chain_verify called ONCE at end
+#     with `|| true` to print the per-clip classification table for
+#     operator triage. The helper's internal rc=1 on SUPERSEDED/PENDING
+#     is STRICTER than Gate 7's DoD spec (which accepts SUPERSEDED);
+#     `|| true` makes the call diagnostic-only so it never false-fails
+#     the gate when our PASS surface is broader.
+#
+# Schema SSOT (canonical, verify in migrations/sqlite/*.sql):
+#   - media_assets.id    : PRIMARY KEY (canonical per migration 085)
+#                          → COUNT(*)>1 per id is catastrophic corruption.
+#                          COUNT(*)==0 means Gate 4 inv-3 should have
+#                          failed already; either way fail-closed.
+#   - asset_locations    : (asset_id, location_kind, uri, is_primary)
+#                          migration 055_ASSET_LOCATIONS.SQL — schema
+#                          verified via code-searcher (migrations/sqlite)
+#   - outbox_events      : (aggregate_id, event_type, status, ...)
+#                          migration 092_create_outbox_events.sql —
+#                          status enum: completed|pending|superseded|
+#                          dead_letter (verified via code-searcher
+#                          matching internal/infrastructure/database/
+#                          sqlite/outboxevents/repository_write.go lines
+#                          158/191/205/234 — the canonical writers).
+#
+# Reuses ONLY helpers from lib/common.sh + sha256sum coreutil + jq -e
+# composite check + log_pass/log_fail/log_info. NO new helpers, NO
+# duplicated per-clip classification logic — AGENTS.md single-focus rule.
+gate_outbox_integrity_gate() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "[DRY] Gate 7: SQLite rows + asset_locations + outbox chain integrity per clip:"
+        smoke_echo_safe "[DRY]   - hand-off consumed from ${WORK_DIR}/clip_ids.txt (3 clip_ids)"
+        smoke_echo_safe "[DRY]   - inv-1: smoke_sqlite_query 'SELECT COUNT(*) FROM media_assets WHERE id=clip_id' -> must == 1 (promoted to hard gate)"
+        smoke_echo_safe "[DRY]   - inv-2: media_assets.file_hash == sha256(local_path on disk) (sha256sum + awk '{print \$1}')"
+        smoke_echo_safe "[DRY]   - inv-3: smoke_sqlite_query asset_locations COUNT WHERE asset_id=? AND location_kind='local' >= 1"
+        smoke_echo_safe "[DRY]   - inv-4: smoke_sqlite_query asset_locations COUNT WHERE asset_id=? AND location_kind='drive' >= 1"
+        smoke_echo_safe "[DRY]   - inv-5: per-clip inline outbox SUM aggregation -> completed+superseded>=1 AND dead_letter==0 AND total>=1 (jq -e composite)"
+        smoke_echo_safe "[DRY]   - post-loop: smoke_outbox_chain_verify \$DB_PATH \$clip_file || true (forensic table only)"
+        return 0
+    fi
+
+    smoke_log_section "Gate 7 — SQLite + outbox integrity per clip"
+
+    local clip_file="${WORK_DIR}/clip_ids.txt"
+    if [[ ! -s "$clip_file" ]]; then
+        log_fail "Gate 7 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 5/6/7 can run)"
+        return 1
+    fi
+
+    local clip_id failures=0 clip_count=0 dupe_count row file_hash local_path sha_disk loc_local loc_drive chain_row
+    while read -r clip_id; do
+        [[ -z "$clip_id" ]] && continue
+        clip_count=$((clip_count + 1))
+
+        # ── inv-1: media_assets row count == 1 (PROMOTED to hard gate).
+        # Schema: media_assets.id is PRIMARY KEY — >1 row per id is a
+        # catastrophic corruption. <1 means the clip row was never
+        # committed (Gate 4/5 path fragmented). Either way fail-closed.
+        # Reviewer hard-nit 1 (set -e × sqlite guard): the `|| echo "?"`
+        # suffix guarantees the outer `local var=$(…)` always completes
+        # so the explicit `[[ != "1" ]]` fail-closed branch below fires
+        # with the canonical [FAIL] line — never a silent script abort
+        # under bash strict mode.
+        dupe_count=$(smoke_sqlite_query "$DB_PATH" \
+            "SELECT COUNT(*) FROM media_assets WHERE id='${clip_id}'" || echo "?")
+        if [[ "$dupe_count" != "1" ]]; then
+            log_fail "Gate 7 inv-1: clip_id=${clip_id} media_assets row count=${dupe_count} (must ==1; no-duplicate is now HARD gate per DoD refactor)"
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 7 inv-1: clip_id=${clip_id} media_assets row count=1"
+
+        # ── inv-2: file_hash == sha256(local_path). One SELECT for both
+        # columns (avoid the second sqlite hit). Use smoke_sqlite_query
+        # -json + json_object() so local_path with any character (incl.
+        # '|', newlines, embedded quotes) won't be mis-split during awk
+        # column extraction (reviewer hard-nit #3 — column-`|` brittleness).
+        local row_json
+        row_json=$(smoke_sqlite_query "$DB_PATH" -json \
+            "SELECT json_object('file_hash', COALESCE(file_hash, ''), 'local_path', COALESCE(local_path, '')) AS r FROM media_assets WHERE id='${clip_id}'" || echo "[]")
+        file_hash=$(printf '%s' "${row_json}" | jq -r '.[0].r.file_hash // ""' 2>/dev/null || echo "")
+        local_path=$(printf '%s' "${row_json}" | jq -r '.[0].r.local_path // ""' 2>/dev/null || echo "")
+        if [[ -z "$file_hash" || "$file_hash" == "null" ]]; then
+            log_fail "Gate 7 inv-2: clip_id=${clip_id} file_hash is empty/null in media_assets"
+            failures=$((failures + 1))
+            continue
+        fi
+        if [[ -z "$local_path" || "$local_path" == "null" || ! -f "$local_path" ]]; then
+            log_fail "Gate 7 inv-2: clip_id=${clip_id} local_path='${local_path:-empty}' missing or file absent on disk (Gate 5 file validation should have failed)"
+            failures=$((failures + 1))
+            continue
+        fi
+        sha_disk=$(sha256sum "$local_path" 2>/dev/null | awk '{print $1}' || echo "")
+        if [[ -z "$sha_disk" ]]; then
+            log_fail "Gate 7 inv-2: clip_id=${clip_id} sha256sum failed on local_path=${local_path} (read error / I/O)"
+            failures=$((failures + 1))
+            continue
+        fi
+        if [[ "$sha_disk" != "$file_hash" ]]; then
+            log_fail "Gate 7 inv-2: clip_id=${clip_id} hash drift (media_assets.file_hash=${file_hash} != sha256(local_path)=${sha_disk}); re-pipeline needed"
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 7 inv-2: clip_id=${clip_id} file_hash matches sha256(local_path)"
+
+        # ── inv-3 + inv-4: asset_locations dual presence. SELECT COUNT(*)
+        # per location_kind (sqlite outputs a bare scalar, not JSON).
+        loc_local=$(smoke_sqlite_query "$DB_PATH" \
+            "SELECT COUNT(*) FROM asset_locations WHERE asset_id='${clip_id}' AND location_kind='local'" || echo 0)
+        loc_drive=$(smoke_sqlite_query "$DB_PATH" \
+            "SELECT COUNT(*) FROM asset_locations WHERE asset_id='${clip_id}' AND location_kind='drive'" || echo 0)
+        # Reviewer hard-nit fix: inv-3 fail NO LONGER short-circuits the
+        # remaining invariants — inv-4 + inv-5 still run so the operator
+        # gets the FULL diagnostic picture per clip. asset_locations and
+        # outbox_events are independent surfaces: a dead_letter outbox
+        # event MUST surface even when asset_locations is also malformed.
+        # Only inv-4's `continue` skips inv-5 (the location structural
+        # anomaly is the gate's most downstream "this row is incomplete"
+        # signal — once seen, probing the outbox for the same row just
+        # buries the real cause under chained logs).
+        if [[ "$loc_local" -lt 1 ]] || [[ -z "$loc_local" ]]; then
+            log_fail "Gate 7 inv-3: clip_id=${clip_id} asset_locations has NO row with location_kind='local' (local file anchor missing)"
+            failures=$((failures + 1))
+            # NO continue — fall through to inv-4 + inv-5 per reviewer hard-nit
+        fi
+        if [[ "$loc_drive" -lt 1 ]] || [[ -z "$loc_drive" ]]; then
+            log_fail "Gate 7 inv-4: clip_id=${clip_id} asset_locations has NO row with location_kind='drive' (Drive mirror missing)"
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 7 inv-3+4: clip_id=${clip_id} asset_locations has BOTH location_kind='local' (n=${loc_local}) AND location_kind='drive' (n=${loc_drive})"
+
+        # ── inv-5: outbox chain COMPLETED+SUPERSEDED accepted, DEAD_LETTER
+        # rejected, chain must exist. Per-clip inline aggregation (NOT
+        # reusing smoke_outbox_chain_verify here because its rc=1 on
+        # SUPERSEDED/PENDING is stricter than Gate 7's DoD spec — the
+        # helper is correct for the "happy chain" reporting case but
+        # not appropriate for the DoD-supersede acceptance surface).
+        chain_row=$(smoke_sqlite_query "$DB_PATH" \
+            "SELECT
+                SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END) AS superseded,
+                SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) AS dead_letter,
+                COUNT(*) AS total
+            FROM outbox_events
+            WHERE event_type='asset.index.requested' AND aggregate_id='${clip_id}'" || echo "")
+
+        # Reviewer hard-nit 1 (set -e × jq guard): the `if ! jq -e …; then`
+        # wrapper guarantees the explicit [FAIL] marker fires on jq exit
+        # non-zero before any potential set -e abort — never silent.
+        if ! printf '%s' "${chain_row}" | jq -e '
+            (.completed // 0 | tonumber) + (.superseded // 0 | tonumber) >= 1
+            and ((.dead_letter // 0 | tonumber)) == 0
+            and ((.total // 0 | tonumber)) >= 1
+        ' >/dev/null 2>&1; then
+            log_fail "Gate 7 inv-5: clip_id=${clip_id} outbox chain rejected (need COMPLETED+SUPERSEDED>=1 AND DEAD_LETTER==0 AND chain exists; per-clip row dumped for triage)"
+            smoke_echo_safe "$(printf '%s' "${chain_row}" | jq -c '.' 2>/dev/null || echo '{}')" >&2
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 7 inv-5: clip_id=${clip_id} outbox chain healthy (event_type='asset.index.requested' COMPLETED+SUPERSEDED ok, no DEAD_LETTER)"
+    done < "${clip_file}"
+
+    # ── Aggregate verdict. DoD: ALL clips must pass — partial-pass is a
+    # hard fail (mirrors Gates 4/5/6 contract).
+    if [[ "$failures" -gt 0 ]]; then
+        log_fail "Gate 7 aggregate: ${failures} clip(s) failed validation (validated ${clip_count} total — DoD requires ALL pass)"
+        return 1
+    fi
+
+    # ── Forensic diagnostic: smoke_outbox_chain_verify prints a beautiful
+    # classification table at end. Called with `|| true` because the
+    # helper's internal rc=1 on SUPERSEDED/PENDING is STRICTER than Gate
+    # 7's DoD spec — SUPERSEDED is terminal per DoD (migration 092 +
+    # outboxevents.MarkSuperseded writer at repository_write.go:234).
+    # We invoke AFTER per-clip PASS has been verified, so the table
+    # reflects a healthy chain on Gate 7's surface; the `|| true` only
+    # protects us from the helper's stricter COMPLETED-only terminology.
+    smoke_outbox_chain_verify "$DB_PATH" "$clip_file" || true
+
+    log_pass "Gate 7 aggregate: all ${clip_count} clip(s) passed (1 media_assets row + sha256 coherence + 2 asset_locations rows + outbox COMPLETED+SUPERSEDED+no DEAD_LETTER)"
+    return 0
+}
+
 main() {
     # Under DRY_RUN, every gate's [DRY] banner fires (gate_* functions
     # handle their own DRY_RUN early-returns inside the if blocks). This
@@ -684,9 +889,10 @@ main() {
     gate_fresh_run_three || return 1
     gate_per_clip_validation || return 1
     gate_drive_resolve_gate || return 1
+    gate_outbox_integrity_gate || return 1
 
     printf '\n============================================\n'
-    printf '  05_pipeline_fresh (Gates 4 + 5 + 6)\n'
+    printf '  05_pipeline_fresh (Gates 4 + 5 + 6 + 7)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
     if [[ "$FAIL" -gt 0 ]]; then
