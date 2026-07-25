@@ -2,7 +2,7 @@
 # tests/operational/artlist/05_pipeline_fresh.sh — Artlist DoD Gates 4 + 5 (fresh run 3/3 + per-clip validation).
 #
 # Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
-# Bundles FOUR gates that exercise the same operational surface (an end-to-end
+# Bundles FIVE gates that exercise the same operational surface (an end-to-end
 # /api/artlist/run cycle + per-clip side-effect verification):
 #   Gate 4 — first fresh run (3/3 SUCCEEDED, failed=0, no RETRY_WAIT)
 #             writes $WORK_DIR/clip_ids.txt as the canonical Single-Source-of-
@@ -17,6 +17,10 @@
 #             media_assets count + file_hash coherence + asset_locations
 #             dual-presence + outbox COMPLETED+SUPERSEDED with no DEAD_LETTER;
 #             smoke_outbox_chain_verify diagnostic table at end)
+#   Gate 8 — Qdrant + media search hard gate (velox_qdrant_assert for per-
+#             clip payload shape + collection existence + smoke_curl POST
+#             /api/media_search with sources=[artlist] recouping ≥1 of the 3
+#             clip_ids per $ARTLIST_TERM — promoted from warning to HARD gate)
 #
 # Both gates are currently STUBS in the monolithic; the next PR implements
 # them via lib/artlist.sh::artlist_enqueue_run + artlist_poll_run, then walks
@@ -312,6 +316,20 @@ gate_fresh_run_three() {
         return 1
     fi
     log_info "Gate 4 hand-off: ${WORK_DIR}/clip_ids.txt written with ${clip_count} clip_id(s) for Gate 5 consumption"
+
+    # ── Hand-off (Gate 4 → Gate 8): also write the NORMALIZED term used
+    # to surface the 3 clips. Gate 8's semantic reconciliation
+    # (/api/media/search with sources=[artlist]) MUST query the SAME
+    # term that the orchestrator indexed against — otherwise raw
+    # $ARTLIST_TERM with extra whitespace or >6 words (which Gate 4
+    # normalizes via artlist.NormalizeRunTagRequest →
+    # normalizeSearchTerm: trim + collapse whitespace + cap at 6 words)
+    # would search for an un-normalized variant and fail recoup for an
+    # unrelated reason. godlike/06 SSOT (one canonical hand-off per
+    # boundary) — parallels the existing ${WORK_DIR}/clip_ids.txt
+    # pattern above for downstream gates within the same script.
+    printf '%s' "${term_norm}" > "${WORK_DIR}/gate4_norm_term.txt" 2>/dev/null || :
+    log_info "Gate 4 hand-off: ${WORK_DIR}/gate4_norm_term.txt written with normalized term='${term_norm}' for Gate 8 semantic recovery reuse"
 
     return 0
 }
@@ -748,6 +766,19 @@ gate_outbox_integrity_gate() {
         [[ -z "$clip_id" ]] && continue
         clip_count=$((clip_count + 1))
 
+        # ── clip_id integrity guard (SQL-injection defense — re-applies
+        # lib/sqlite.sh::sqlite_clip_id_validate regex locally because
+        # Gate 7 issues raw smoke_sqlite_query calls, NOT routed through
+        # lib/sqlite.sh helpers. clip_id is consumer-supplied via
+        # Gate 4's response body and lands in ${WORK_DIR}/clip_ids.txt;
+        # without this regex check, a clip_id containing ' OR '1'='1
+        # could escape the WHERE clause in the COUNT/MEDIAS query below.
+        if ! [[ "$clip_id" =~ ^[a-zA-Z0-9_:.-]+$ ]]; then
+            log_fail "Gate 7 inv-pre: clip_id='${clip_id}' fails regex ^[a-zA-Z0-9_:.-]+$ (rejecting for SQL-injection defense before any sqlite query)"
+            failures=$((failures + 1))
+            continue
+        fi
+
         # ── inv-1: media_assets row count == 1 (PROMOTED to hard gate).
         # Schema: media_assets.id is PRIMARY KEY — >1 row per id is a
         # catastrophic corruption. <1 means the clip row was never
@@ -864,17 +895,232 @@ gate_outbox_integrity_gate() {
         return 1
     fi
 
-    # ── Forensic diagnostic: smoke_outbox_chain_verify prints a beautiful
-    # classification table at end. Called with `|| true` because the
-    # helper's internal rc=1 on SUPERSEDED/PENDING is STRICTER than Gate
-    # 7's DoD spec — SUPERSEDED is terminal per DoD (migration 092 +
-    # outboxevents.MarkSuperseded writer at repository_write.go:234).
-    # We invoke AFTER per-clip PASS has been verified, so the table
-    # reflects a healthy chain on Gate 7's surface; the `|| true` only
-    # protects us from the helper's stricter COMPLETED-only terminology.
-    smoke_outbox_chain_verify "$DB_PATH" "$clip_file" || true
+    # ── Forensic diagnostic: smoke_outbox_chain_verify prints the
+    # classification table at end. The helper's internal rc semantics
+    # are STRICTER than Gate 7's DoD spec (helper returns rc=1 on
+    # SUPERSEDED-only / PENDING / MISSING / DEAD_LETTER — Gate 7 per-clip
+    # inv-5 above already accepted SUPERSEDED as terminal per DoD).
+    # Reaching this branch implies per-clip inv-5 already verified the
+    # chain surface; we capture rc into a local var so a stricter-than-
+    # DoD surface degrades to log_warn instead of a silent `|| true`
+    # swallow that could mask a real DEAD_LETTER violation per AGENTS.md
+    # "Never represent an unavailable backend as a successful no-op.
+    # Fail closed." (The previous `|| true` was borderline — it masked
+    # nothing in practice because per-clip inv-5 already gates DEAD_LETTER,
+    # but it's the wrong tool to reach for; the rc-capture pattern is the
+    # canonical way to express a diagnostic-only call.)
+    local chain_rc=0
+    smoke_outbox_chain_verify "$DB_PATH" "$clip_file" || chain_rc=$?
+    if [[ "$chain_rc" -ne 0 ]]; then
+        log_warn "Gate 7 forensic: outbox helper returned rc=${chain_rc} — note: helper is stricter than Gate 7 DoD (SUPERSEDED-only chains also return rc=1); per-clip inv-5 already verified the chain surface above; rc=${chain_rc} is informational, not a gate failure"
+    fi
 
     log_pass "Gate 7 aggregate: all ${clip_count} clip(s) passed (1 media_assets row + sha256 coherence + 2 asset_locations rows + outbox COMPLETED+SUPERSEDED+no DEAD_LETTER)"
+    return 0
+}
+
+# ── Gate 8 — Qdrant + media search hard gate ───────────────────────────
+# Spec (July 2026 DoD, artlist-gates.md row 8):
+#   - preflight: QDRANT_COLLECTION defaults to "media_assets_current"
+#     (operational SSOT across tests/operational/*.sh scripts — verified
+#      via code-searcher across qdrant_indexing_smoke.sh + yt_clip_register_*
+#      + youtube_dod_live_verify.sh); $QDRANT_URL defaults to
+#     "http://127.0.0.1:6333" (matches artlist_runtime.sh exports).
+#   - per clip_id (3 from $WORK_DIR/clip_ids.txt hand-off shared with
+#     Gates 4–7):
+#       inv-1+2+3: velox_qdrant_assert (lib/velox_domain.sh) covers
+#                   canonical Qdrant shape contract in one call:
+#                   /points/scroll filter asset_id=clip_id returns ≥1 point;
+#                   payload.source == "artlist", payload.media_type ==
+#                   "video", payload.lifecycle_state == "PUBLISHED";
+#                   rc=0 PASS, rc=1 SHAPE drift, rc=2 transport/HTTP
+#                   non-2xx (mirrors Gate 6's 3-way case split).
+#   - aggregate semantic recovery (promoted from warning to HARD gate per
+#     DoD refactor):
+#       inv-4:  POST /api/media/search with body
+#                 {"query": "$ARTLIST_TERM", "sources": ["artlist"], "limit": 3}
+#               (reuses $SMOKE_TOKEN + Idempotency-Key via smoke_curl).
+#               Response items[].asset_id must contain AT LEAST ONE of the
+#               3 clip_ids — failure to recoup is a HARD fail, not a
+#               warning, per DoD operator contract.
+#     Implementation: jq extracts returned asset_ids to $WORK_DIR/search_assets.txt,
+#     then `grep -Fxcf $clip_file $search_assets_file` counts the
+#     intersection (fail-closed: returns 0 sets rc, 1 false).
+#   - ALL inv-clips must pass for Qdrant phase; recoupment count >= 1.
+#
+# Schema SSOTs:
+#   - $QDRANT_COLLECTION default "media_assets_current" — matches the
+#     operational tests' household default established in
+#     tests/operational/{qdrant_indexing_smoke.sh,yt_clip_register_*}.
+#     Hard-fail closed if absent AND no override env var.
+#   - /api/media/search request/response shape :
+#     internal/api/assets/search/handler.go:Search (200 → items[] +
+#     next_cursor + partial + provider_errors).
+#   - $ARTLIST_TERM source: tests/operational/lib/artlist_runtime.sh
+#     ("business team working in modern office" default).
+#
+# Reuses ONLY helpers from lib/{common.sh,velox_domain.sh,artlist_runtime.sh}:
+# velox_qdrant_assert (lib/velox_domain.sh) + smoke_sqlite_query (lib/common.sh)
+# + smoke_curl (lib/common.sh) + jq -r asset_id extraction + grep -Fxcf
+# intersection. NO new helpers introduced. AGENTS.md single-focus rule honoured.
+gate_qdrant_search_gate() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        smoke_echo_safe "[DRY] Gate 8: Qdrant per-clip payload shape + Media Search semantic recovery:"
+        smoke_echo_safe "[DRY]   - preflight QDRANT_COLLECTION default 'media_assets_current' + QDRANT_URL default 'http://127.0.0.1:6333'"
+        smoke_echo_safe "[DRY]   - hand-off consumed from ${WORK_DIR}/clip_ids.txt (3 clip_ids from Gate 4, shared with Gates 5–7)"
+        smoke_echo_safe "[DRY]   - per clip_id: velox_qdrant_assert <clip_id> media_assets_current <QDRANT_URL> artlist video PUBLISHED (covers inv-1…3 in one call; 3-way case on rc)"
+        smoke_echo_safe "[DRY]   - aggregate semantic recovery: POST /api/media/search {query: \$ARTLIST_TERM, sources:[\"artlist\"], limit:3} → grep -Fxcf recoupment count >= 1 (PROMOTED warning → HARD gate)"
+        return 0
+    fi
+
+    smoke_log_section "Gate 8 — Qdrant + Media Search hard gate"
+
+    local clip_file="${WORK_DIR}/clip_ids.txt"
+    if [[ ! -s "$clip_file" ]]; then
+        log_fail "Gate 8 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 5/6/7/8 can run)"
+        return 1
+    fi
+
+    # Preflight: assign QDRANT_COLLECTION + QDRANT_URL from overrides
+    # matched to the operational suite's household defaults.
+    local q_coll="${QDRANT_COLLECTION:-media_assets_current}"
+    local q_url="${QDRANT_URL:-http://127.0.0.1:6333}"
+
+    # ── inv-1+2+3: Per-clip Qdrant Assertion (existence + collection +
+    # payload shape). velox_qdrant_assert returns 3 distinct rc values
+    # that map to 3 different operator actions — 3-way case statement
+    # mirrors Gate 6's velox_drive_resolve diagnostic split for parallel
+    # operator UX.
+    local clip_id qa_rc failures=0 clip_count=0
+    while read -r clip_id; do
+        [[ -z "$clip_id" ]] && continue
+        clip_count=$((clip_count + 1))
+
+        # Set -e × velox_qdrant_assert guard: capture rc via case-statement
+        # immediately after the if-condition so the [FAIL] log line fires
+        # with the canonical rc-mapped operator action (rather than a
+        # silent set -e abort). AGENTS.md fail-closed + reviewer hard-nit
+        # pattern from Gates 6/7.
+        # Reviewer hard-nit fix: rc-capture happens BEFORE the if-test.
+        # In bash, `if ! cmd; then BODY; fi` sets $? to 0 inside BODY (since
+        # the negation test was true). To recover cmd's actual rc you must
+        # run cmd in its own statement, capture $? immediately, THEN branch
+        # on the captured value. The original `qa_rc=$?` inside the then-
+        # branch captured 0 unconditionally, masking the SHAPE-vs-TRANSPORT
+        # distinction and forcing every failure into the `*` default branch.
+        velox_qdrant_assert "${clip_id}" "${q_coll}" "${q_url}" "artlist" "video" "PUBLISHED" "${QDRANT_API_KEY:-}"
+        qa_rc=$?
+        if [[ "${qa_rc}" -ne 0 ]]; then
+            case "${qa_rc}" in
+                1)
+                    # SHAPE contract drift: HTTP 2xx but payload.source /
+                    # media_type / lifecycle_state mismatch — the Qdrant
+                    # projection is alive but its contents don't match the
+                    # canonical contract.
+                    log_fail "Gate 8 inv-1: clip_id=${clip_id} Qdrant SHAPE drift (rc=1) inside ${WORK_DIR}/velox_qdrant_${clip_id}.json — payload.source/media_type/lifecycle_state mismatch on collection=${q_coll}"
+                    ;;
+                2)
+                    # HTTP / transport non-2xx: bearer expired, QDRANT_API_KEY
+                    # wrong, Qdrant service down, network/DNS/SSL error.
+                    log_fail "Gate 8 inv-1: clip_id=${clip_id} Qdrant TRANSPORT/HTTP non-2xx (rc=2) — verify QDRANT_URL=${q_url} and QDRANT_API_KEY freshness"
+                    ;;
+                *)
+                    log_fail "Gate 8 inv-1: clip_id=${clip_id} velox_qdrant_assert unexpected rc=${qa_rc}"
+                    ;;
+            esac
+            failures=$((failures + 1))
+            continue
+        fi
+        log_pass "Gate 8 inv-1: clip_id=${clip_id} Qdrant point exists in collection=${q_coll} with payload source=artlist media_type=video lifecycle_state=PUBLISHED"
+    done < "${clip_file}"
+
+    # Qdrant-phase aggregate: ALL clips must pass (DoD forbids partial-pass
+    # — mirrors Gate 4 inv-6/7 + Gates 5/6/7 aggregate contracts).
+    if [[ "$failures" -gt 0 ]]; then
+        log_fail "Gate 8 Qdrant phase aggregate: ${failures}/${clip_count} clip(s) failed Qdrant validation (DoD requires ALL pass before semantic search)"
+        return 1
+    fi
+    log_pass "Gate 8 Qdrant phase aggregate: all ${clip_count}/${clip_count} clip(s) have Qdrant point + canonical payload shape"
+
+    # ── inv-4: Semantic recovery hard gate (PROMOTED from warning to
+    # hard per DoD refactor). POST /api/media/search with the EXACT same
+    # $ARTLIST_TERM that surfaced the 3 clips in Gate 4 — semantic
+    # recovery uses the canonical Artlist seed term (sourced from
+    # lib/artlist_runtime.sh, default 'business team working in modern
+    # office'). The handler contract is in
+    # internal/api/assets/search/handler.go:Search (200 → items[] +
+    # next_cursor + partial + provider_errors).
+    local search_body term
+    # Reviewer hard-nit fix: use the SAME normalized term that Gate 4
+    # persisted to artlist_runs (and stashed into godlike/06
+    # ${WORK_DIR}/gate4_norm_term.txt) — NOT the raw $ARTLIST_TERM
+    # which may carry trailing whitespace or >6 words (which Gate 4's
+    # NormalizeRunTagRequest normalizes away via trim + collapse +
+    # cap-at-6). Reading from the hand-off file guarantees the
+    # semantic-recovery search queries the canonical indexed variant
+    # and recoupment won't fail closed for an unrelated reason.
+    #
+    # Fail-CLOSED on MISS: godlike/06 SSOT strictly. If
+    # ${WORK_DIR}/gate4_norm_term.txt is absent, the Gate 4 hand-off
+    # contract is broken — bundle integrity violated. Standalone Gate 8
+    # invocation (outside the 4-gate SSOT chain) is unsupported; we fail
+    # fast with `log_fail` + `return 1` rather than silently retrying
+    # under raw $ARTLIST_TERM with a misleading [FAIL] stamp that lets
+    # the bundle continue and produce a confusing "PASS-after-FAIL"
+    # outcome in the operator audit log. Mirrors Gate 4's own pattern
+    # (`if [[ ! -s "$WORK_DIR/clip_ids.txt" ]]; then log_fail; return 1; fi`).
+    if [[ -s "${WORK_DIR}/gate4_norm_term.txt" ]]; then
+        term="$(cat "${WORK_DIR}/gate4_norm_term.txt}")"
+    else
+        log_fail "Gate 8 hand-off MISS: ${WORK_DIR}/gate4_norm_term.txt absent (Gate 4 must write the godlike/06 SSOT hand-off; standalone Gate 8 invocation is unsupported — run via 05_pipeline_fresh.sh::main so all 5 gates execute in order)"
+        return 1
+    fi
+    search_body=$(jq -nc --arg q "${term}" '{query:$q, sources:["artlist"], limit:3}')
+
+    local http_code
+    # Reviewer hard-nit pattern: capture $? via smoke_curl stdout to
+    # avoid subshell rc drift (smoke_curl writes SMOKE_LAST_HTTP/BODY as
+    # side-effects which get lost in $(…) — the printed HTTP code on
+    # stdout is the canonical return path).
+    http_code=$(smoke_curl POST "/api/media/search" -d "${search_body}")
+    if [[ ! "${http_code}" =~ ^2[0-9][0-9]$ ]]; then
+        log_fail "Gate 8 inv-4: POST /api/media/search returned HTTP ${http_code} (DoD requires 2xx for semantic recovery)"
+        return 1
+    fi
+    log_pass "Gate 8 inv-4-1: POST /api/media_search HTTP ${http_code} (term='${term}', filter sources=[artlist])"
+
+    # Extract returned asset_ids to a side band and intersect against
+    # Gate 4's hand-off clip_ids.txt. `grep -Fxcf <needle-file> <haystack
+    # -file>` counts the count of lines in needle-file that appear as
+    # full-line matches in haystack-file. -F (fixed string), -x (full
+    # line), -c (count), -f (read patterns from file). Returns 0 when ≥1
+    # match found, 1 when 0 matches (fail-closed semantics).
+    local search_assets_file="${WORK_DIR}/search_assets.txt"
+    # Set -e × jq guard: `|| :` swallows non-zero exit so the bash side
+    # never aborts the script silently on malformed JSON (matches Gate 4
+    # /api/artlist/runs hand-off `|| :` pattern).
+    jq -r '.items[]?.asset_id // empty' "${SMOKE_LAST_BODY}" \
+        > "${search_assets_file}" 2>/dev/null || :
+
+    # Set -e × grep -Fxcf guard: an empty haystack file would produce rc=1
+    # (no matches). Redirect stderr to /dev/null + `|| echo 0` keeps the
+    # fail-closed contract even when ${search_assets_file} is empty.
+    local found_count
+    found_count=$(grep -Fxcf "${clip_file}" "${search_assets_file}" 2>/dev/null || echo 0)
+
+    if [[ "${found_count}" -lt 1 ]]; then
+        log_fail "Gate 8 inv-4-2: semantic recovery FAILED HARD (previously warning) — recouped 0/${clip_count} clip_ids for term='${term}' (DoD: GA08 hard gate requires ≥1 recouped clip)"
+        # Forensic dump: every item the search returned (source + asset_id),
+        # routed through smoke_echo_safe (token redacted) for triage without
+        # exposing the bearer token in logs.
+        smoke_echo_safe "Search response items (first 10):" >&2
+        jq -c '.items // [] | .[0:10] | map({asset_id: (.asset_id // null), source: (.source // null)})' \
+            "${SMOKE_LAST_BODY}" 2>/dev/null >&2 || :
+        return 1
+    fi
+    log_pass "Gate 8 inv-4-2: semantic recovery recouped ${found_count}/${clip_count} clip_id(s) for term='${term}' (HARD gate satisfied)"
+
+    log_pass "Gate 8 aggregate: Qdrant per-clip ALL PASS + semantic recovery >= 1/${clip_count}; collection=${q_coll} verified end-to-end"
     return 0
 }
 
@@ -890,9 +1136,10 @@ main() {
     gate_per_clip_validation || return 1
     gate_drive_resolve_gate || return 1
     gate_outbox_integrity_gate || return 1
+    gate_qdrant_search_gate || return 1
 
     printf '\n============================================\n'
-    printf '  05_pipeline_fresh (Gates 4 + 5 + 6 + 7)\n'
+    printf '  05_pipeline_fresh (Gates 4 + 5 + 6 + 7 + 8)\n'
     printf '  PASS=%d  WARN=%d  FAIL=%d\n' "$PASS" "$WARN" "$FAIL"
     printf '============================================\n'
     if [[ "$FAIL" -gt 0 ]]; then
