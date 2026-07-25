@@ -62,9 +62,13 @@ export async function spoolSegmentsToFile({
       }
     }
 
-    await Promise.all(
+    const workerResults = await Promise.allSettled(
       Array.from({ length: effectiveConcurrency }, () => worker()),
     );
+    const failedWorker = workerResults.find((result) => result.status === 'rejected');
+    if (failedWorker) {
+      throw failedWorker.reason;
+    }
 
     for (let index = 0; index < segmentUrls.length; index += 1) {
       await pipeline(
