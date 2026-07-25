@@ -74,13 +74,13 @@ cd "$(git rev-parse --show-toplevel)"
 # filter must NOT propagate pipefail to the assignment; empty stdout
 # is the explicit non-Go-only commit signal handled below.
 TOUCHED_PKGS="$(git diff --cached --name-only --diff-filter=ACMR \
-    | grep -E '\.go$' || true \
-    | grep -E '^internal/|^pkg/|^cmd/' || true \
+    | { grep -E '\.go$' || true; } \
+    | { grep -E '^internal/|^pkg/|^cmd/' || true; } \
     | xargs -I{} dirname {} \
     | sort -u)"
 
 TOUCHED_TEST_FILES="$(git diff --cached --name-only --diff-filter=ACMR \
-    | grep -E '_test\.go$' || true)"
+    | { grep -E '_test\.go$' || true; })"
 
 # ── Exit early if no Go-touching commit (e.g., doc-only commit)
 if [ -z "$TOUCHED_PKGS" ] && [ -z "$TOUCHED_TEST_FILES" ]; then
