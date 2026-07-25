@@ -76,16 +76,31 @@
 #                       Sourced BEFORE artlist.sh / artlist_runtime.sh so
 #                       an aggregator cannot accidentally trigger an
 #                       override on a leaf helper.
-#   * artlist.sh      — Artlist API helpers (search/detail/download/run).
+#   * artlist.sh      — Artlist API helpers (search/detail/download/run)
+#                       AND the CANONICAL SSOT for the 3 helpers whose
+#                       thin-delegator names live in velox_domain.sh:
+#                         artlist_qdrant_assert / artlist_drive_resolve /
+#                         artlist_replay_run. A future refactor that drops
+#                         the canonical impl from artlist.sh will fail-
+#                         closed at umbrella-import-time via the SSOT guard.
 #                       Can override common.sh if it defines overlapping
 #                       names; sourced BEFORE artlist_runtime.sh so the
 #                       canonical log_* family wins via later override.
 #   * velox_domain.sh — velox_qdrant_assert / velox_drive_resolve /
-#                       velox_artlist_detail / velox_artlist_download /
-#                       velox_artlist_search_live /
-#                       velox_artlist_pipeline_run. Depends on common
-#                       primitives only; sourced BEFORE artlist_runtime
-#                       for the same override-safety reason.
+#                       velox_artlist_pipeline_run are kept as THIN
+#                       DELEGATORS that forward to artlist_* (July 2026
+#                       DoD refactor: SSOT moved to lib/artlist.sh; the
+#                       velox_* names remain for the 28 backward-compat
+#                       callers in vidrush_media_e2e.sh and should NOT be
+#                       migrated in this turn — per AGENTS.md Simplicity,
+#                       a future refactor followup handles migration).
+#                       Other velox_* helpers (velox_artlist_detail /
+#                       velox_artlist_download / velox_artlist_search_live)
+#                       are REAL impls here — they were not in the
+#                       extraction scope and stay where they were.
+#                       Depends on common primitives only; sourced BEFORE
+#                       artlist_runtime for the same override-safety
+#                       reason.
 #   * artlist_runtime.sh — LAST. Canonical owner of log_pass/log_warn/
 #                       log_fail/log_info family per godlike/06 SSOT.
 #                       Must come AFTER all other libs so its log_*
@@ -150,6 +165,9 @@ artlist_dod_assert_helpers_loaded() {
         velox_qdrant_assert \
         velox_drive_resolve \
         velox_artlist_pipeline_run \
+        artlist_qdrant_assert \
+        artlist_drive_resolve \
+        artlist_replay_run \
         velox_artlist_detail \
         velox_artlist_download \
         velox_artlist_search_live \
@@ -209,7 +227,7 @@ artlist_dod_assert_helpers_loaded() {
 #                                              addition is needed; PATCH bump (no API change, only
 #                                              the sub-battery file name + co-existence note in
 #                                              artlist_gates.md are new).
-readonly ARTLIST_DOD_LIB_VERSION="1.3.2-gate6-drive-resolve-sub-battery-july-2026"
+readonly ARTLIST_DOD_LIB_VERSION="1.4.0-rename-velox-artlist-helpers-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug
