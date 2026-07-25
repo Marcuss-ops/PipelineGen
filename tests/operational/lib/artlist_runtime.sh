@@ -49,6 +49,17 @@ export HOST BASE_URL DB_PATH SCRAPER_URL \
        QDRANT_URL QDRANT_COLLECTION \
        ARTLIST_ROOT_FOLDER ARTLIST_TERM PIPELINE_PORT
 
+# ── Artlist DoD fingerprint run-id (Gate 0 no-manual-intervention) ─────
+# UTC timestamp that fingerprints a single battery run. Exported so
+# 01_startup.sh (save) and run_all.sh (verify) anchor under the same
+# per-run directory keyed by this id. Anchor path:
+#   ${VELOX_DATA_DIR:-./data}/.artlist_dod_fingerprint/${ARTLIST_DOD_RUN_ID}/
+# Smoke_no_tampering_save + smoke_no_tampering_verify in lib/common.sh
+# honour ${ARTLIST_DOD_FP_DIR} if already exported (test harness override);
+# fall back to the canonical computed path otherwise.
+ARTLIST_DOD_RUN_ID="${ARTLIST_DOD_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || date -u +%Y%m%dT%H%M%S)}"
+export ARTLIST_DOD_RUN_ID
+
 # ── WORK_DIR defensive default (exported for downstream stub libs) ───────
 # DRY_RUN path + stub paths in artlist.sh / sqlite.sh / drive.sh /
 # qdrant.sh read $WORK_DIR for last.body / artifact paths. Defaulting
@@ -164,7 +175,13 @@ artlist_live_queries_validate() {
 # upstream caller). Also unsets LIVE_QUERY_1..3 to prevent downstream
 # leakage into unrelated env-dump operations.
 artlist_live_queries_default() {
-    if [[ "${#LIVE_QUERIES[@]:-0}" -gt 0 ]]; then
+    # Bash-compatible array-length check. `${#LIVE_QUERIES[@]:-0}` would
+    # be terser but bash rejects it with `bad substitution` (only
+    # ksh93/zsh honour `:-` after array-length expansion). The
+    # unset-guard + explicit count dance is the canonical replacement
+    # and tolerates LIVE_QUERIES never being populated (e.g. when the
+    # caller never exported it nor invoked validate first).
+    if [[ -n "${LIVE_QUERIES+x}" && ${#LIVE_QUERIES[@]} -gt 0 ]]; then
         return 0
     fi
     if [[ -n "${LIVE_QUERY_1:-}" && -n "${LIVE_QUERY_2:-}" && -n "${LIVE_QUERY_3:-}" ]]; then

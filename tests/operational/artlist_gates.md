@@ -12,9 +12,9 @@
 
 | # | Gate                           | Status    | Helper / call                                                                                     | Verdict checklist point |
 |---|--------------------------------|-----------|---------------------------------------------------------------------------------------------------|--------------------------|
-| 0 | Clean reproducible environment | hard PASS | `smoke_curl GET /health`, `/ready`, scraper `/health`, `pgrep -af node.*artlist_server`, `command -v ffmpeg/ffprobe/jq` | 0 |
+| 0 | Clean reproducible environment | hard PASS | `smoke_curl GET /health`, `/ready`, scraper `/health`, `pgrep -af node.*artlist_server`, `command -v ffmpeg/ffprobe/jq`, `smoke_no_tampering_save` (PRE) + `smoke_no_tampering_verify` (POST) inside `run_all.sh` | 0, 11–15 |
 | 1 | `/detail` stream hard gate      | hard PASS | future `velox_artlist_detail` (returns `STREAM_NOT_FOUND` on miss)                                | 1 |
-| 2 | `/download` direct with ffprobe | hard PASS | `smoke_ffprobe_check $local_path 6.5` after `POST /detail`+`/download`                            | 2 |
+| 2 | `/download` direct with ffprobe | hard PASS | DoD-exact `ffprobe -show_entries format=duration,size:stream=codec_name,width,height -of json` + jq contract on `.streams[0].width` and `.streams[0].height` (FIRST stream must be a valid video stream); fail-closed on HTTP non-2xx, missing/zero-byte local_path, MIME != video/mp4, or any ffprobe field <= 0. | 2 |
 | 3 | `/api/artlist/search/live` × 3  | hard PASS | 3 queries (office/gym/arena); timeout 60s with `SEARCH_TIMEOUT` sentinel                          | 3 |
 | 4 | First fresh run 3/3             | hard PASS | `velox_artlist_pipeline_run $ARTLIST_TERM 3` → poll terminal via `smoke_poll_terminal` (no `RETRY_WAIT`) | 4 |
 | 5 | Per-clip DB + file validation   | hard PASS | `smoke_sqlite_query $DB -json "SELECT … WHERE id='…'"` + `smoke_ffprobe_check`                    | 5 |
@@ -55,7 +55,39 @@ Each verdict point must be checked off before Artlist is **DONE**:
 | sqlite_query        | `smoke_sqlite_query` in `lib/common.sh` | **No** (reused)                 |
 | qdrant_assert       | `velox_qdrant_assert` in `lib/velox_domain.sh` | **No** (reused)         |
 | drive_resolve       | `velox_drive_resolve` in `lib/velox_domain.sh` | **No** (reused)         |
+| no_tampering_save   | `smoke_no_tampering_save` in `lib/common.sh` | **No** (reused) — Gate 0 PRE-snapshot at `01_startup.sh::main`         |
+| no_tampering_verify | `smoke_no_tampering_verify` in `lib/common.sh` | **No** (reused) — Gate 0 POST-snapshot diff at `run_all.sh` post-chain |
 | dry_run             | `DRY_RUN` flag from `lib/common.sh`     | **No** (reused)                 |
+
+## Gate 0 anti-tampering snapshot contract
+
+Gate 0 also captures / verifies a per-run "no manual intervention"
+fingerprint so the DoD can disqualify any run during which the operator
+or a flaky CI layer performed one of:
+
+| # | Disqualifying action                            | Verdict point | Fingerprint field                                |
+|---|--------------------------------------------------|----------------|--------------------------------------------------|
+| 11| `npm rebuild better-sqlite3` mid-run             | 11             | `better_sqlite3.module_sha256`                  |
+| 12| manual `kill` of Chrome / scraper                | 12             | `chrome.pid_set`, `scraper.pid_set`             |
+| 13| manual `sqlite3` / `rm` writes against live DB   | 13             | `sqlite.head1m_sha256`, `sqlite.size_bytes`, `sqlite.mtime_epoch` |
+| 14| restart improvvisato of PipelineGen              | 14             | `pipelinegen.pid_set`                            |
+| 15| restart improvvisato or cookie / session edit    | 15             | `scraper.starttime_set`, `profile.mtime_epoch`  |
+
+Call sequence (auto-wired):
+
+1. `run_all.sh` exports `ARTLIST_DOD_RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)`
+2. `01_startup.sh::main` calls `smoke_no_tampering_save` after `gate_preflight` PASS — writes `${VELOX_DATA_DIR:-./data}/.artlist_dod_fingerprint/${ARTLIST_DOD_RUN_ID}/pre.json`
+3. Each sub-script in the chain runs as its own bash sub-shell (per-run `WORK_DIR` is fresh each time — no leakage).
+4. After the chain passes, `run_all.sh` calls `smoke_no_tampering_verify 'run_all.post_chain'` — writes `post.json` + `diff.json`. Any drift field triggers a fail-closed `[FAIL]` line and exit 1.
+
+The verify step is robust to:
+- DB absent at pre OR post (records `"?"` sentinel → eq-treated).
+- `$VELOX_DATA_DIR` read-only (fallback path under `/tmp/artlist_dod_fingerprint/...`).
+- macOS + Linux (`stat -c %s` GNU + `stat -f %z` BSD are both probed).
+- DRY_RUN=1 (no-ops in both save and verify).
+- 01_startup.sh run standalone outside `run_all.sh` (verify emits a `[WARN]` and returns 0 so the standalone run isn't a confusing failure).
+
+Operators can `rm -rf ./data/.artlist_dod_fingerprint/` to clean history; the directory is rotated per run.
 
 ## How to extend
 
