@@ -227,7 +227,8 @@ artlist_dod_assert_helpers_loaded() {
 #                                              addition is needed; PATCH bump (no API change, only
 #                                              the sub-battery file name + co-existence note in
 #                                              artlist_gates.md are new).
-readonly ARTLIST_DOD_LIB_VERSION="1.4.0-rename-velox-artlist-helpers-july-2026"
+# 1.4.1-gate10-negative-path-sub-battery-july-2026 — created tests/operational/artlist/10_negative_path.sh as the canonical Gate 10 owner (3 hard probes: SESSION_EXPIRED / STREAM_NOT_FOUND / SCRAPER_UNAVAILABLE). The prior tests/operational/artlist/10_negative_tests.sh STUB is DELETED in the same reorg (no duplicate logic per AGENTS.md Simplicity; mirrors Gate 6 pattern). NO new helper added — PATCH bump mirrors Gate 6's 1.3.1 → 1.3.2 pattern (only sub-battery file extraction, no SSOT guard widening, no API surface change).
+readonly ARTLIST_DOD_LIB_VERSION="1.4.1-gate10-negative-path-sub-battery-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug
