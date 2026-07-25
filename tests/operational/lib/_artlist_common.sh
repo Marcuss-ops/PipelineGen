@@ -202,7 +202,14 @@ artlist_dod_assert_helpers_loaded() {
 #                                              primitive); per the semver convention this is a
 #                                              PATCH bump because the helper-list widening
 #                                              only tightens the guard, no API surface change.
-readonly ARTLIST_DOD_LIB_VERSION="1.3.1-gate7-outbox-integrity-july-2026"
+# 1.3.2-gate6-drive-resolve-sub-battery-july-2026 — created 06_drive_resolve.sh as the
+#                                              canonical Gate 6 owner; the prior 06_drive.sh STUB
+#                                              is deleted. velox_drive_resolve was already in the
+#                                              SSOT guard list from the Gate 5 wave, so no helper
+#                                              addition is needed; PATCH bump (no API change, only
+#                                              the sub-battery file name + co-existence note in
+#                                              artlist_gates.md are new).
+readonly ARTLIST_DOD_LIB_VERSION="1.3.2-gate6-drive-resolve-sub-battery-july-2026"
 
 # ── auto-validate at import time unless explicitly skipped ──
 # The env var ARTLIST_DOD_LIB_SKIP_ASSERT=1 lets an operator debug

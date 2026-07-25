@@ -41,7 +41,7 @@
 #
 # Overridable env vars:
 #   BASE         = http://127.0.0.1:8000
-#   AUTH         = "Authorization: Bearer <VELOX_ADMIN_TOKEN or test-admin-token-12345>"
+#   AUTH         = "Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}"
 #   OUT_DIR      = /tmp/stock-tests
 #   MAX_POLL_ITERATIONS  = 60
 #   POLL_INTERVAL_SECONDS = 3
@@ -73,9 +73,19 @@ if [ "${#FOLDERS[@]}" -eq 0 ]; then
     exit 1
 fi
 
+
+# ─── Fail-closed auth gate (AGENTS.md "no-fake-availability") ───────────
+# If VELOX_ADMIN_TOKEN is unset or empty, refuse to run. The canonical
+# loader is `scripts/with-velox-auth`; the Makefile-level auth-check
+# target runs the same loader against /api/artlist/job-consumer as a
+# pre-flight gate. The historical placeholder `test-admin-token-12345`
+# is forbidden by AGENTS.md and must never appear in this script or any
+# other operational surface again — see AGENTS.md "Authentication SSOT".
+: "${VELOX_ADMIN_TOKEN:?❌ VELOX_ADMIN_TOKEN unset — source scripts/with-velox-auth (or export manually before rerunning).}"
+
 # ---- Configuration --------------------------------------------------------
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 OUT_DIR="${OUT_DIR:-/tmp/stock-tests}"
 MAX_POLL_ITERATIONS="${MAX_POLL_ITERATIONS:-60}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-3}"

@@ -48,7 +48,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8000}"
-AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-test-admin-token-12345}}"
+AUTH="${AUTH:-Authorization: Bearer ${VELOX_ADMIN_TOKEN:-}}"
 DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
 POLL_MAX="${POLL_MAX:-90}"
 POLL_INTERVAL="${POLL_INTERVAL:-15}"
