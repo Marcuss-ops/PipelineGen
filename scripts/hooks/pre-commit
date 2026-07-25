@@ -2,20 +2,12 @@
 # scripts/hooks/pre-commit (godlike/06 SSOT canonical owner of pre-commit gating).
 #
 # FAIL-CLOSED pre-commit hook for the PipelineGen codebase. Blocks the
-# git commit on any of the 4 documented gates:
-#   (a) `go build ./<touched_pkg>/...` failure (catch orphan imports,
-#       redeclarations, syntax errors, type errors — ALL classes that
-#       have surfaced 6+ times in Step 4 voiceover + Step 5 voiceover +
-#       Step 2 qdrant + Step 3 qdrant broken commits).
+# git commit on any of the 3 gates:
+#   (a) `go build ./<touched_pkg>/...` failure (catches orphan imports,
+#       redeclarations, syntax errors, type errors).
 #   (b) `go vet ./<touched_pkg>/...` failure (canonical static analysis).
-#   (c) `_test.go` files with top-level `func NAME(t *testing.T)` that
-#       don't start with `Test` (Go testing framework SKIPS these funcs;
-#       they contribute zero coverage while inflating the func count
-#       audit — surfaced in Step 4 voiceover with 3 missing Test prefixes).
-#   (d) `func N(t *testing.T)` (or related) declarations inside a
-#       touched _test.go file that DRIFT in test-prefix discipline
-#       (every `func` declared at top of _test.go file MUST start with
-#       `Test`; any drift indicates the author missed the prefix).
+#   (c) `_test.go` top-level funcs missing the `Test` prefix (Go testing
+#       framework SKIPS these; silent coverage hole).
 #
 # SCOPE: scoped to TOUCHED packages only (`git diff --cached` derivation)
 # so a commit touching 1 file costs ~1s of scan, NOT a full project
@@ -34,24 +26,8 @@
 #   default    blocks commit on any failure (exit non-zero)
 #   --dry-run  prints the would-be checks without blocking (exit 0)
 #
-# HISTORY (godlike/06 SSOT documentation discipline — pinned here so
-# future operators can grep-find the rationale):
-#   - voiceover/jobs Step 4 (commit 831a5e43): 3 funcs without Test
-#     prefix → 0 runnable → silent coverage hole caught only on next
-#     CI run.
-#   - voiceover/jobs Step 5 (commit 7aaf354) + amend
-#     (fix-up): orphan imports left after str_replace → build break
-#     caught only when push attempted.
-#   - qdrant/indexing Step 2 (commit 98e14343): 0 of
-#     payload_mapper_validation_test.go funcs hitting green initially
-#     because go test was not run pre-push.
-#   - qdrant/indexing Step 3 (commit 1f9be3a0):
-#     Python-based trim script removed signatures but left bodies →
-#     file-scope orphan → syntax error caught only when commit
-#     attempted.
-#
 # godlike/07 fail-closed at the GATE LEVEL: any non-zero exit code from
-# any gate (a)/(b)/(c)/(d) aborts the commit. The single allowed
+# any gate (a)/(b)/(c) aborts the commit. The single allowed
 # exception is the staging derivation below, where each `grep -E`
 # appends `|| true` so an unmatched filter on a non-Go-only commit
 # (doc, scripts, markdown, yaml, test bash) returns rc=0 instead of
@@ -129,7 +105,16 @@ fi
 GATE_FAILURES=0
 
 # ── Gate (a)+(b): go build + go vet on touched packages
+# Fail-loud if TOUCHED_PKGS leaks a file path — that signals a
+# regression in the derivation above. See `git log -p scripts/hooks/pre-commit`
+# for the historical failure mode that this guard was added to catch.
 for pkg in $TOUCHED_PKGS; do
+    case "$pkg" in
+        *.go)
+            echo "❌ GATE (a) pre-condition: TOUCHED_PKGS leaked file path '$pkg' — fix the derivation above."
+            exit 1 ;;
+        *) ;;  # directory path; proceed
+    esac
     if [ "$DRY_RUN" = "1" ]; then
         echo "  [dry-run] would run: $GO build ./$pkg/..."
         echo "  [dry-run] would run: $GO vet ./$pkg/..."
