@@ -88,29 +88,14 @@ gate_cache_replay() {
     fi
     log_info "Gate 9 pre-flight: ARTLIST_TERM=${ARTLIST_TERM}; ${clip_file} clip_count=$(wc -l < "$clip_file" | tr -d ' ')"
 
-    # ── Snapshot BEFORE counters (canonical DB fact) ────────────────
-    # media_assets COUNT — "no new download" verification.
-    local m_before a_before
-    m_before=$(smoke_sqlite_query "$DB_PATH" \
-        "SELECT COUNT(*) FROM media_assets WHERE id IN (SELECT id FROM media_assets WHERE id IS NOT NULL) \
-         AND source='artlist' AND id IN (SELECT id FROM media_assets WHERE id IS NOT NULL AND json_extract(metadata_json, '\$.search_term') = '${ARTLIST_TERM}')" \
-        2>/dev/null | tr -d ' \n' || echo "?")
-    # Conservative fallback for SQLite versions lacking JSON-extract on metadata_json:
-    # count all media_assets rows initially; replay must not introduce new ones
-    # for clips already in the canonical set (the per-clip tuple check is the
-    # primary evidence — this aggregate is belt-and-braces).
-    if [[ "$m_before" == "?" || ! "$m_before" =~ ^[0-9]+$ ]]; then
-        m_before=$(smoke_sqlite_query "$DB_PATH" \
-            "SELECT COUNT(*) FROM media_assets WHERE source='artlist'" 2>/dev/null | tr -d ' \n' || echo "?")
-    fi
-    log_info "Gate 9 BEFORE snapshot: media_assets_count=${m_before}"
-
-    # We use the per-clip tuple comparison (computed below) as the PRIMARY
-    # evidence for "no new download" / "no new upload" — the aggregate
-    # count delta is belt-and-braces. The per-clip loop executes SELECTs
-    # against media_assets.id + asset_locations.location_kind in lockstep
-    # against the response.items[] cross-check; any row-level drift fails
-    # the gate.
+    # The canonical "no new download" / "no new upload" evidence is the
+    # per-clip loop below: media_assets COUNT(*) WHERE id=<clip> must equal
+    # exactly 1 (canonical row preserved), AND asset_locations drive
+    # COUNT for the clip must be >=1 (Gate 7 contract — Drive mirror row).
+    # Any drift on EITHER check fails the gate (sentinels NEW_DOWNLOAD_DETECTED
+    # + ASSET_LOCATION_DRIVE_MISSING). Per AGENTS.md Simplicity & Minimalism,
+    # the prior AGGREGATE m_before snapshot was removed — dead-weight with no
+    # binding downstream use.
 
     # ── Read original duration from jobs table (relative speed heuristic) ──
     local orig_elapsed_ms=0
