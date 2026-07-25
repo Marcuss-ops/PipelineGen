@@ -12,8 +12,8 @@ import (
 
 func existingArtlistAsset() asset.Asset {
 	return asset.Asset{
-		ID:       "artlist-existing-1",
-		Name:     "Existing clip",
+		ID:        "artlist-existing-1",
+		Name:      "Existing clip",
 		SourceURL: "https://cdn.example.com/existing.m3u8",
 		Metadata: asset.Metadata{
 			"_download_link": "https://cdn.example.com/existing.m3u8",

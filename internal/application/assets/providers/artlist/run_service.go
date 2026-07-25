@@ -99,10 +99,14 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 	}
 
 	// Stage 4: Process clips (parallel with bounded concurrency)
+	concurrency := req.Concurrency
+	if concurrency <= 0 {
+		concurrency = 3
+	}
 	ps := &pipelineState{
 		resp:        resp,
 		workItems:   workItems,
-		concurrency: concurrencyFromRequest(req),
+		concurrency: concurrency,
 	}
 	if err := o.stageProcessBatch(ctx, ps); err != nil {
 		resp.OK = false
