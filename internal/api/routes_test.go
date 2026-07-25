@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -369,6 +371,81 @@ func TestMetricsRouteReleaseMode(t *testing.T) {
 				t.Errorf("got mounted=%v, want mounted=%v", mounted, tc.wantMounted)
 			}
 		})
+	}
+}
+
+// TestMetricsDevModeLoopbackRestriction verifies that in dev mode,
+// /metrics is mounted but rejects non-loopback clients. The loopback
+// restriction is a middleware check on each request's RemoteAddr —
+// requests from 127.0.0.0/8 or ::1 succeed; all others return 403
+// Forbidden (PR-METRICS-FAILCLOSED loopback addendum, July 2026).
+func TestMetricsDevModeLoopbackRestriction(t *testing.T) {
+	cases := []struct {
+		name       string
+		remoteAddr string
+		wantStatus int
+	}{
+		{"loopback IPv4", "127.0.0.1:54321", http.StatusOK},
+		{"loopback IPv6", "[::1]:54321", http.StatusOK},
+		{"non-loopback", "192.168.1.1:54321", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			t.Setenv("METRICS_AUTH_TOKEN", "")
+
+			router := NewRouter(&RouterConfig{
+				ServerGinMode: gin.DebugMode,
+				Log:           zap.NewNop(),
+				Rate:          testRateLimitAdapter{},
+				Features:      testFeatureFlagsAdapter{},
+			})
+			engine := router.Setup()
+
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			req.RemoteAddr = tc.remoteAddr
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("%s: got status %d, want %d", tc.name, w.Code, tc.wantStatus)
+			}
+		})
+	}
+}
+
+// TestMetricsDevModeTokenSetIgnoresLoopbackCheck verifies that when
+// METRICS_AUTH_TOKEN is set in dev mode, the loopback check is not
+// applied (the bearer token check supersedes IP restriction).
+func TestMetricsDevModeTokenSetIgnoresLoopbackCheck(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("METRICS_AUTH_TOKEN", "my-token")
+
+	router := NewRouter(&RouterConfig{
+		ServerGinMode: gin.DebugMode,
+		Log:           zap.NewNop(),
+		Rate:          testRateLimitAdapter{},
+		Features:      testFeatureFlagsAdapter{},
+	})
+	engine := router.Setup()
+
+	// Non-loopback, no bearer → 401 (not 403)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 (no bearer) for non-loopback+token-env set, got %d", w.Code)
+	}
+
+	// Non-loopback, with bearer → 200
+	req2 := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req2.RemoteAddr = "10.0.0.1:54321"
+	req2.Header.Set("Authorization", "Bearer my-token")
+	w2 := httptest.NewRecorder()
+	engine.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected 200 (with bearer) for non-loopback+token-env set, got %d", w2.Code)
 	}
 }
 

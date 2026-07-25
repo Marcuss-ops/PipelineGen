@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -338,8 +339,23 @@ func (r *Router) Setup() *gin.Engine {
 		// FAIL-CLOSED: token MUST be set in release mode. Route not mounted.
 		log.Warn("/metrics not mounted: METRICS_AUTH_TOKEN is required in release mode (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart to enable.")
 	default:
-		// Dev/local (non-release): permissive default preserved.
-		engine.GET("/metrics", metricsHandler)
+		// Dev/local (non-release): loopback-only restriction.
+		// Uses c.Request.RemoteAddr (NOT c.ClientIP()) because ClientIP
+		// respects X-Forwarded-For / X-Real-Ip headers that a non-loopback
+		// client could spoof to bypass the restriction. RemoteAddr is the
+		// raw TCP peer address and cannot be header-spoofed.
+		engine.GET("/metrics", func(c *gin.Context) {
+			host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+			var ip net.IP
+			if err == nil {
+				ip = net.ParseIP(host)
+			}
+			if ip != nil && ip.IsLoopback() {
+				metricsHandler(c)
+				return
+			}
+			c.AbortWithStatus(http.StatusForbidden)
+		})
 	}
 
 	// Serve static assets (images, etc.)
