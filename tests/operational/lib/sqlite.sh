@@ -107,27 +107,31 @@ sqlite_outbox_terminal() {
     return 1
 }
 
-# ── sqlite_clip_row — SELECT * FROM assets WHERE id = CLIP_ID ─────────────
+# ── sqlite_clip_row — SELECT drive_file_id FROM media_assets WHERE id = ? ─
 # sqlite_clip_row CLIP_ID [DB_PATH]
-#   CLIP_ID    asset id to fetch
+#   CLIP_ID    asset id (canonical asset.id, populated by Register-Batch)
 #   DB_PATH    (optional, default $DB_PATH)
-# Echoes the assets row as a stream on stdout (one tab-separated row).
-# Returns 0 on hit, 1 on miss / not yet implemented.  STUB per the same
-# rationale as sqlite_outbox_terminal (defer to smoke_sqlite_query in
-# lib/common.sh for now).
+# Echoes ONE column on stdout (the drive_file_id value, raw). Returns 0
+# on hit (drive_file_id present), 1 on miss (empty result). Fail-closed on
+# missing DB / SQL error.
+# Single-purpose helper per Gate 6 spec: wider asset-row queries route
+# through smoke_sqlite_query (lib/common.sh). SQL injection guard: clip_id
+# single-quote characters are doubled (the SQLite-standard escape) before
+# being interpolated into the literal query.
 sqlite_clip_row() {
     sqlite_required_args 1 "$@"
     local clip_id="$1" db="${2:-${DB_PATH:-}}"
-    if ! [[ -f "$db" ]]; then
-        printf '%s[STUB]%s sqlite_clip_row: db %s not found\n' \
-            "$YELLOW" "$RESET" "$db" >&2
-        return 1
-    fi
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
-        printf '%s\n' "stub-clip-id|stub-name|stub-local-path="
+        printf '%s\n' "stub-drive-file-id-dry-run"
         return 0
     fi
-    printf '%s[STUB]%s sqlite_clip_row(clip_id=%q, db=%q) — not yet implemented (use smoke_sqlite_query from lib/common.sh)\n' \
-        "$YELLOW" "$RESET" "$clip_id" "$db" >&2
-    return 1
+    if ! [[ -f "$db" ]]; then
+        printf '%s[FATAL]%s sqlite_clip_row: db %s not found\n' \
+            "$RED" "$RESET" "$db" >&2
+        return 1
+    fi
+    local escaped="${clip_id//\'/\'\'}"
+    sqlite3 -readonly "$db" \
+        "SELECT drive_file_id FROM media_assets WHERE id = '${escaped}'" \
+        2>/dev/null | tr -d ' \n'
 }
