@@ -37,6 +37,13 @@ verify-script-live: auth-check
 verify-vidrush-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/vidrush_media_e2e.sh
 
+# verify-artlist-scale-live — quota-expensive 20x10 Artlist/VidRush battery.
+# It validates continuous API health, Drive persistence, VLM/Qdrant payloads,
+# throughput and replay no-redownload. Kept OUT of verify-live deliberately:
+# the default matrix may consume up to 200 authorized Artlist downloads.
+verify-artlist-scale-live: auth-check
+	@scripts/with-velox-auth bash tests/operational/artlist_scale_e2e.sh
+
 # verify-live — composite: all 4 live batteries in sequence. Fail-closed:
 # any single battery failure aborts the chain.
 #
