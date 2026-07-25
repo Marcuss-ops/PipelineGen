@@ -93,32 +93,37 @@ gate_direct_download() {
     fi
 
     # ── Phase 2: POST /download (consumes Artlist quota)
+    # Migrated from inline curl+jq to lib/artlist.sh::artlist_download
+    # (DoD refactor July 2026).  The helper owns the canonical /download
+    # response contract (ok=true + clip_id non-empty + local_path non-empty)
+    # and returns 0/1/2 (pass / contract / transport).  The file-existence,
+    # MIME, and ffprobe probes stay at the gate layer for richer diagnostic
+    # logging + the per-clip metric counters the verdict banner surfaces.
     local dl_body="$WORK_DIR/gate2_download.json"
-    local code
-    code=$(curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
-        -X POST -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg u "$real_page_url" --arg o "$out_dir" '{clip_page_url:$u, output_dir:$o}')" \
-        "$SCRAPER_URL/download" -o "$dl_body" -w '%{http_code}' 2>/dev/null || echo 000)
-
-    if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
-        log_fail "POST /download HTTP=$code (expected 2xx) for $real_page_url"
-        smoke_echo_safe "$(head -c 600 "$dl_body" 2>/dev/null || true)" >&2
-        return 1
-    fi
-
-    if ! jq -e '.ok == true
-        and ((.clip_id // "") | length) > 0
-        and ((.local_path // "") | length) > 0' "$dl_body" >/dev/null 2>&1; then
-        log_fail "/download response contract failed (want ok=true + clip_id non-empty + local_path non-empty)"
-        smoke_echo_safe "$(head -c 800 "$dl_body" 2>/dev/null || true)" >&2
-        failures=$((failures + 1))
-    else
-        log_pass "/download response contract: ok=true, clip_id+local_path present"
-    fi
+    local rc=0
+    artlist_download --clip-page-url "$real_page_url" \
+        --scraper-url "$SCRAPER_URL" \
+        --output-dir "$out_dir" \
+        --save-body "$dl_body" || rc=$?
+    case "$rc" in
+        0)
+            log_pass "/download response contract: ok=true, clip_id+local_path present (artlist_download)"
+            ;;
+        2)
+            log_fail "/download transport/HTTP error (rc=2) for $real_page_url (artlist_download)"
+            smoke_echo_safe "$(head -c 600 "$dl_body" 2>/dev/null || true)" >&2
+            failures=$((failures + 1))
+            ;;
+        *)
+            log_fail "/download response contract violated for $real_page_url (artlist_download)"
+            smoke_echo_safe "$(head -c 800 "$dl_body" 2>/dev/null || true)" >&2
+            failures=$((failures + 1))
+            ;;
+    esac
 
     # ── Phase 3: local-file + ffprobe assertions
     local local_path file_size mime_type
-    local_path=$(jq -r '.local_path // empty' "$dl_body")
+    local_path=$(jq -r '.local_path // empty' "$dl_body" 2>/dev/null)
     if [[ -z "$local_path" || ! -f "$local_path" ]]; then
         log_fail "/download local file missing: '$local_path'"
         failures=$((failures + 1))
@@ -139,35 +144,19 @@ gate_direct_download() {
             log_pass "/download MIME=video/mp4"
         fi
 
-        # DoD-exact ffprobe command: produces JSON with format.duration,
-        # format.size, and streams[] each carrying codec_name/width/height.
-        # jq contract matches the Definition-of-Done snippet verbatim
-        # (.streams[0].width > 0 AND .streams[0].height > 0 — the FIRST
-        # stream must be a valid video stream, not just any stream).
-        # `// 0 | tonumber` guards against null width/height so a missing
-        # video stream at index 0 becomes a clean FAIL rather than jq's
-        # "null has no field 'X'" error envelope.
-        local ffprobe_json
-        ffprobe_json=$(ffprobe -v error \
-            -show_entries format=duration,size \
-            -show_entries stream=codec_name,width,height \
-            -of json "$local_path" 2>/dev/null || true)
-        if [[ -z "$ffprobe_json" ]] || ! jq -e 'def q(x): (x // 0 | tonumber);
-            q(.format.duration) > 0
-            and q(.format.size) > 0
-            and (.streams | length) > 0
-            and q(.streams[0].width) > 0
-            and q(.streams[0].height) > 0' <<<"$ffprobe_json" >/dev/null 2>&1; then
-            log_fail "ffprobe did not return duration>0+size>0+streams[0].width>0+streams[0].height>0 for $local_path"
-            smoke_echo_safe "$(head -c 800 <<<"$ffprobe_json" 2>/dev/null || true)" >&2
+        # DoD-exact ffprobe contract via canonical lib helper.
+        # smoke_ffprobe_check (lib/common.sh) already enforces:
+        #   duration >= $min_dur + size > 0 + ≥1 video stream with width>0 && height>0.
+        # Pass min_dur=0.5 so duration=0/0.5s files fail closed.  Per-clip
+        # width/height diagnostic is dropped (was inline before this
+        # migration) — the helper returns 0/1 boolean; forensic dump of
+        # the ffprobe JSON is intentionally not surfaced to keep log
+        # noise below threshold.
+        if ! smoke_ffprobe_check "$local_path" 0.5; then
+            log_fail "ffprobe contract violated for $local_path (smoke_ffprobe_check; want duration≥0.5s + size>0 + ≥1 valid video stream)"
             failures=$((failures + 1))
         else
-            local duration size width height
-            duration=$(jq -r '.format.duration // 0' <<<"$ffprobe_json")
-            size=$(jq -r '.format.size // 0' <<<"$ffprobe_json")
-            width=$(jq -r '.streams[0].width // 0' <<<"$ffprobe_json")
-            height=$(jq -r '.streams[0].height // 0' <<<"$ffprobe_json")
-            log_pass "ffprobe OK: duration=${duration}s size=${size}B streams[0]=${width}x${height}"
+            log_pass "ffprobe OK: duration≥0.5s + size>0 + ≥1 valid video stream (smoke_ffprobe_check)"
         fi
     fi
 

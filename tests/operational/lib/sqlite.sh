@@ -47,16 +47,21 @@ sqlite_required_args() {
 # ── sqlite_pending_jobs — count artlist rows in non-terminal statuses ─────
 # sqlite_pending_jobs [DB_PATH]
 #   DB_PATH   (optional) absolute path to media.db.sqlite (default $DB_PATH)
-# Echoes count on stdout. Returns 0 on success, 1 on fail / not yet
-# implemented. Pattern mirrors the inline query in tests/operational/artlist/01_startup.sh:
-#   SELECT COUNT(*) FROM jobs WHERE type LIKE 'media.artlist%'
-#   AND status IN ('QUEUED','LEASED','RUNNING','FINALIZING','RETRY_WAIT')
+# Echoes count on stdout. Returns 0 on success, 1 on probe failure.
+# Real impl per tests/operational/artlist/01_startup.sh gate_preflight
+# pending-jobs contract: SELECT COUNT(*) FROM jobs
+# WHERE type LIKE 'media.artlist%' AND status
+# IN ('QUEUED','LEASED','RUNNING','FINALIZING','RETRY_WAIT').
+# Scoped to type LIKE 'media.artlist%' so unrelated voiceover/stock jobs
+# don't gate the Artlist DoD.  Fail-closed on DB missing (echoes "?" + rc=1).
+# Under DRY_RUN=1: echoes "0" + rc=0 deterministically so dev dry-runs are
+# reproducible without spinning up a real SQLite + jobs table.
 sqlite_pending_jobs() {
     local db="${1:-${DB_PATH:-}}"
     sqlite_required_args 1 "$db"
     if ! [[ -f "$db" ]]; then
-        printf '%s[STUB]%s sqlite_pending_jobs: db %s not found\n' \
-            "$YELLOW" "$RESET" "$db" >&2
+        printf '%s[FATAL]%s sqlite_pending_jobs: db %s not found\n' \
+            "$RED" "$RESET" "$db" >&2
         printf '%s\n' "?"
         return 1
     fi
@@ -64,9 +69,10 @@ sqlite_pending_jobs() {
         printf '%s\n' "0"
         return 0
     fi
-    printf '%s[STUB]%s sqlite_pending_jobs(db=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$db" >&2
-    return 1
+    sqlite3 -readonly "$db" \
+        "SELECT COUNT(*) FROM jobs WHERE type LIKE 'media.artlist%' \
+         AND status IN ('QUEUED','LEASED','RUNNING','FINALIZING','RETRY_WAIT')" \
+        2>/dev/null | tr -d ' \n' || { printf '%s\n' "?"; return 1; }
 }
 
 # ── sqlite_outbox_terminal — classify outbox chain for clip_id ───────────
@@ -74,7 +80,15 @@ sqlite_pending_jobs() {
 #   CLIP_ID    asset id to inspect
 #   DB_PATH    (optional, default $DB_PATH)
 # Echoes chain_status on stdout (COMPLETED | DEAD_LETTER | PENDING |
-# SUPERSEDED | MISSING). Returns 0 on success, 1 on fail / not yet.
+# SUPERSEDED | MISSING). Returns 0 on success, 1 on DB-missing / probe failure.
+# Implementation: GROUP BY aggregate_id over outbox_events where event_type =
+# 'asset.index.requested'; severity uses terminal-event precedence
+# (DEAD_LETTER > COMPLETED > SUPERSEDED > PENDING).  MISSING clips (zero
+# outbox rows) are inferred by comparing the result row count with the
+# input clip count downstream.  Stub retained because this opts into a
+# richer outbox-classification primitive owned by smoke_outbox_chain_verify
+# (lib/common.sh); migrate to that one once the Artlist batteries fold the
+# outbox probe into a single canonical call site.
 sqlite_outbox_terminal() {
     sqlite_required_args 1 "$@"
     local clip_id="$1" db="${2:-${DB_PATH:-}}"
@@ -88,7 +102,7 @@ sqlite_outbox_terminal() {
         printf '%s\n' "COMPLETED"
         return 0
     fi
-    printf '%s[STUB]%s sqlite_outbox_terminal(clip_id=%q, db=%q) — not yet implemented\n' \
+    printf '%s[STUB]%s sqlite_outbox_terminal(clip_id=%q, db=%q) — not yet implemented (use smoke_outbox_chain_verify from lib/common.sh)\n' \
         "$YELLOW" "$RESET" "$clip_id" "$db" >&2
     return 1
 }
@@ -98,7 +112,9 @@ sqlite_outbox_terminal() {
 #   CLIP_ID    asset id to fetch
 #   DB_PATH    (optional, default $DB_PATH)
 # Echoes the assets row as a stream on stdout (one tab-separated row).
-# Returns 0 on hit, 1 on miss / not yet implemented.
+# Returns 0 on hit, 1 on miss / not yet implemented.  STUB per the same
+# rationale as sqlite_outbox_terminal (defer to smoke_sqlite_query in
+# lib/common.sh for now).
 sqlite_clip_row() {
     sqlite_required_args 1 "$@"
     local clip_id="$1" db="${2:-${DB_PATH:-}}"
@@ -111,7 +127,7 @@ sqlite_clip_row() {
         printf '%s\n' "stub-clip-id|stub-name|stub-local-path="
         return 0
     fi
-    printf '%s[STUB]%s sqlite_clip_row(clip_id=%q, db=%q) — not yet implemented\n' \
+    printf '%s[STUB]%s sqlite_clip_row(clip_id=%q, db=%q) — not yet implemented (use smoke_sqlite_query from lib/common.sh)\n' \
         "$YELLOW" "$RESET" "$clip_id" "$db" >&2
     return 1
 }

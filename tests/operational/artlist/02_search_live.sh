@@ -16,7 +16,7 @@
 #   - (otherwise) English fallback (canonical DoD default)
 #
 # Transport sentinel split (fixup! July 2026): the helper
-# velox_artlist_search_live now synthesizes a typed _transport_kind in
+# artlist_search_live now synthesizes a typed _transport_kind in
 # the response body when transport fails, so the gate can disambiguate:
 #   * curl exit 28 (--max-time exceeded) → _transport_kind:"SEARCH_TIMEOUT"
 #   * HTTP 401/403 (auth reject)        → _transport_kind:"AUTH_REQUIRED"
@@ -51,7 +51,7 @@ smoke_require curl jq
 # boxing-gym, boxing-arena). Per ogni query:
 #   - HTTP 2xx OR explicit SEARCH_TIMEOUT sentinel on >60s wall-clock
 #     (the gate labels this specifically — curl exit 28 path)
-#   - provider == 'artlist' (encoded in velox_artlist_search_live's jq)
+#   - provider == 'artlist' (encoded in artlist_search_live's jq)
 #   - ≥1 clip in .clips[] (ok=true with zero results is FORBIDDEN;
 #                                encoded in the helper)
 #   - per-clip shape tuple: ExternalID/ID, page_url on artlist.io,
@@ -95,7 +95,7 @@ gate_live_search_three() {
         smoke_log_section "Gate 3 query $((idx+1))/3: '$q'"
         local out="$WORK_DIR/gate3_search_${idx}.json"
         local rc=0
-        velox_artlist_search_live --term "$q" \
+        artlist_search_live --term "$q" \
             --timeout-seconds "$per_query_timeout" \
             --save-body "$out" || rc=$?
         case "$rc" in
@@ -195,7 +195,7 @@ gate_live_search_three() {
 main() {
     if [[ "$DRY_RUN" == "1" ]]; then
         smoke_echo_safe "DRY RUN — /search/live probes (Gate 3):"
-        printf '  GET  %s/api/artlist/search/live?term=<LIVE_QUERIES[0..2]>&limit=5 (via velox_artlist_search_live)\n' "$BASE_URL"
+        printf '  GET  %s/api/artlist/search/live?term=<LIVE_QUERIES[0..2]>&limit=5 (via artlist_search_live)\n' "$BASE_URL"
         printf '        ×3 queries, 60s each, typed transport sentinels (SEARCH_TIMEOUT | AUTH_REQUIRED | SCRAPER_UNAVAILABLE)\n'
         printf '        relevance HARD GATE inline (Title/Tags/Categories/Keywords token overlap)\n'
         exit 0
