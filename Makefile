@@ -838,8 +838,8 @@ verify-artlist-errors:
 # order via tests/operational/artlist/run_all.sh. Run AFTER all 9
 # individual gates are green; this is the post-deploy / pre-certification
 # battery. NOT part of verify-main (it requires the live stack).
-verify-artlist-live:
-	@bash tests/operational/artlist/run_all.sh
+verify-artlist-live: auth-check
+	@scripts/with-velox-auth bash tests/operational/artlist/run_all.sh
 
 # ─── Post-deploy live batteries (STEP 4/4, July 2026) ─────────────────
 #
@@ -855,21 +855,21 @@ verify-artlist-live:
 #
 # verify-images-live — tests/operational/images_e2e.sh — image
 # ingestion + Drive upload + Qdrant projection for the image surface.
-verify-images-live:
-	@bash tests/operational/images_e2e.sh
+verify-images-live: auth-check
+	@scripts/with-velox-auth bash tests/operational/images_e2e.sh
 
 # verify-script-live — tests/operational/script_generate_smoke.sh —
 # end-to-end script.generate dispatch + worker pull + finalizer,
 # without the full Vid Rush media path.
-verify-script-live:
-	@bash tests/operational/script_generate_smoke.sh
+verify-script-live: auth-check
+	@scripts/with-velox-auth bash tests/operational/script_generate_smoke.sh
 
 # verify-vidrush-live — tests/operational/vidrush_media_e2e.sh — the
 # full Vid Rush battery: server + scraper + SQLite + FFmpeg + Drive +
 # Qdrant. Heavy (10-30min) and server-stateful; run only on dedicated
 # operational hosts.
-verify-vidrush-live:
-	@bash tests/operational/vidrush_media_e2e.sh
+verify-vidrush-live: auth-check
+	@scripts/with-velox-auth bash tests/operational/vidrush_media_e2e.sh
 
 # verify-live — composite: all 4 live batteries in sequence. Fail-closed:
 # any single battery failure aborts the chain.
@@ -880,7 +880,7 @@ verify-vidrush-live:
 # composes it alongside the 3 sibling batteries (images + script +
 # vidrush) so a single `make verify-live` runs the full operational
 # suite.
-verify-live: verify-images-live verify-artlist-live verify-script-live verify-vidrush-live
+verify-live: auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live
 	@echo "✅ verify-live passed"
 # ─── end Post-deploy live batteries ─────────────────────────────────────
 
