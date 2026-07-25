@@ -16,7 +16,6 @@
     "puppeteer-core": "^25.2.0"
   },
   "devDependencies": {
-    "eslint": "^8.57.1",
-    "mocha": "^11.7.6"
+    "eslint": "^8.57.1"
   }
 }
