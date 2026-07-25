@@ -48,6 +48,7 @@ import (
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
@@ -296,6 +297,16 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		qdrantHealth = transport.NewQdrantHealthHandler(qdrantEndpointPort)
 	}
 
+	// FASE 7 image-search routing singleton: nil-safe extraction from
+	// the composition root. Inline pattern matches the qdrantHealth
+	// handling above; nil root or nil root.Domains keeps
+	// AppImage.ImageSearchResolver as a nil-typed-port so BuildServer’s
+	// pass-through carries nil to api.ServerDeps.ImageSearchResolver.
+	var imageRouting routing.ImageSearchResolver
+	if root != nil && root.Domains != nil {
+		imageRouting = root.Domains.ImageSearchResolver
+	}
+
 	return &AppDeps{
 		Handlers: AppHandlers{
 			Registry:             registryWiring.Registry,
@@ -312,6 +323,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			QdrantHealth:  qdrantHealth,
 			HealthService: healthSvc,
 			ReadyChecker:  readyChecker,
+		},
+		Images: AppImage{
+			ImageSearchResolver: imageRouting,
 		},
 	}, nil
 }

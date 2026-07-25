@@ -126,6 +126,14 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 		Health:       deps.Health.HealthService,
 		Ready:        deps.Health.ReadyChecker,
 		QdrantHealth: deps.Health.QdrantHealth,
+		// Drive /models via the cfg.ClipIndexer.ServerURL sidecar URL.
+		// api.NewServerWithHealth gates this on non-empty; when set, the
+		// ModelsHandler probes the sidecar at request time; when empty the
+		// canonical "models sidecar not configured" 200 JSON is returned.
+		ModelsSidecarURL: cfg.ClipIndexer.ServerURL,
+		// FASE 7 routing singleton from app.DomainBundle; held on the
+		// server for downstream handlers. nil-typed-port safe.
+		ImageSearchResolver: deps.Images.ImageSearchResolver,
 	})
 	return &ServerRuntime{Server: server, Deps: deps}, nil
 }

@@ -80,6 +80,7 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 		Runtime: AppRuntime{
 			Lifecycle: &minimalLifecycle{stop: coreClean},
 		},
+		Images: AppImage{},
 	}, nil
 }
 

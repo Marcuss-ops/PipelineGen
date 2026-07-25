@@ -44,6 +44,7 @@ import (
 	"context"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
 	"github.com/gin-gonic/gin"
@@ -118,6 +119,8 @@ type HealthProber interface {
 //   - Health.QdrantHealth: HIGH #7 handler for /qdrant/live and
 //     /qdrant/ready.
 //   - Health.HealthService: *systemhealth.Service.
+//   - Images.ImageSearchResolver: FASE 7 routing singleton reached from
+//     app.DomainBundle.ImageSearchResolver. nil-typed-port safe.
 //
 // Migration note: callers that previously read field names like
 // `deps.WorkerHandler` now read `deps.Handlers.WorkerHandler`,
@@ -129,6 +132,7 @@ type AppDeps struct {
 	Handlers AppHandlers
 	Runtime  AppRuntime
 	Health   AppHealth
+	Images   AppImage
 }
 
 // AppHandlers groups the HTTP route registrars exposed by the
@@ -165,4 +169,14 @@ type AppHealth struct {
 	QdrantHealth  any
 	HealthService any
 	ReadyChecker  *systemhealth.ReadyChecker
+}
+
+// AppImage groups the image-domain routing surface (FASE 7, July 2026).
+// Exposes the canonical ImageSearchResolver — held on Server.imageSearchResolver
+// via ServerDeps.ImageSearchResolver for future /api/images/search handler
+// consumption. Kept as a typed sub-bundle (not a single AppDeps field) so
+// future image-domain ports land in the same purpose-grouped slot without
+// bumping AppDeps past the 8-field cap.
+type AppImage struct {
+	ImageSearchResolver routing.ImageSearchResolver
 }
