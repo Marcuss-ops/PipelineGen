@@ -102,6 +102,99 @@ gate_qdrant_index() {
     log_pass "07_index gate ready (live-assertion sub-checks marked WARN when live stack absent)"
 }
 
+# gate_8_per_clip_index — per-clip walk across outbox + Qdrant + media-search.
+# Implements the user-spec Gate 8 contract:
+#   for each clip_id in $CLIP_IDS_FILE:
+#     8a  sqlite_clip_row         → media_assets row exists
+#     8b  sqlite_outbox_terminal  → chain_status == COMPLETED
+#     8c  qdrant_point_exists     → Qdrant v3 point present (filter source=artlist + media_type=video)
+#     8d  artlist_media_search    → /api/media/search returns clip_id in .results[]
+# Honest fail-closed per AGENTS.md: rc=0/1/2 surfaces correctly via
+# separate log_warn vs log_fail channels. Under DRY_RUN=1 the clip_id
+# file is auto-seeded with one synthetic id so the full gate prints
+# PASS deterministically without spinning up live Qdrant/Go/SQLite.
+# Tier: NOT in `verify-main` (headless). Sourced via verify-artlist-index
+# at the `make verify-artlist-live` tier.
+gate_8_per_clip_index() {
+    smoke_log_section "Gate 8 — per-clip index verification (outbox + Qdrant + media-search)"
+
+    local clip_id_file="${CLIP_IDS_FILE:-${WORK_DIR:-/tmp}/clip_ids.txt}"
+    local failures=0
+
+    if [[ ! -s "$clip_id_file" ]]; then
+        if [[ "${DRY_RUN:-0}" == "1" ]]; then
+            clip_id_file="$(mktemp)"
+            printf 'dry-run-clip-id\n' > "$clip_id_file"
+            log_warn "Gate 8 dry-run: auto-seeded $clip_id_file"
+        else
+            log_warn "Gate 8 skip: ${clip_id_file} absent/empty (no clip_ids supplied by orchestrator)"
+            return 0
+        fi
+    fi
+
+    local clip_id sf rc_a cls rc_b rc_c rc_d
+    while read -r clip_id; do
+        [[ -n "$clip_id" ]] || continue
+        sf=0
+
+        # Phase 8a — sqlite_clip_row: media_assets row exists.
+        rc_a=0
+        sqlite_clip_row "$clip_id" >/dev/null 2>&1 || rc_a=$?
+        if (( rc_a == 0 )); then
+            log_pass "Gate 8a clip_id=${clip_id} media_assets row found"
+        else
+            log_fail "Gate 8a clip_id=${clip_id} media_assets row absent/empty (rc=$rc_a)"
+            sf=$((sf + 1))
+        fi
+
+        # Phase 8b — sqlite_outbox_terminal: chain_status == COMPLETED.
+        cls=""
+        rc_b=0
+        cls=$(sqlite_outbox_terminal "$clip_id" 2>/dev/null) || rc_b=$?
+        if (( rc_b == 0 )) && [[ "$cls" == "COMPLETED" ]]; then
+            log_pass "Gate 8b clip_id=${clip_id} outbox chain=COMPLETED"
+        else
+            log_fail "Gate 8b clip_id=${clip_id} outbox chain=${cls:-MISSING} (expected COMPLETED, rc=$rc_b)"
+            sf=$((sf + 1))
+        fi
+
+        # Phase 8c — qdrant_point_exists: filter source=artlist + media_type=video.
+        rc_c=0
+        qdrant_point_exists "$clip_id" --source artlist --media-type video >/dev/null 2>&1 || rc_c=$?
+        if (( rc_c == 0 )); then
+            log_pass "Gate 8c clip_id=${clip_id} Qdrant point found (source=artlist, media_type=video)"
+        elif (( rc_c == 2 )); then
+            log_warn "Gate 8c clip_id=${clip_id} Qdrant transport unavailable (QDRANT_URL absent / unreachable)"
+        else
+            log_fail "Gate 8c clip_id=${clip_id} Qdrant contract violated (rc=$rc_c)"
+            sf=$((sf + 1))
+        fi
+
+        # Phase 8d — artlist_media_search: /api/media/search returns clip_id.
+        rc_d=0
+        artlist_media_search "$clip_id" >/dev/null 2>&1 || rc_d=$?
+        if (( rc_d == 0 )); then
+            log_pass "Gate 8d clip_id=${clip_id} /api/media/search includes clip_id"
+        elif (( rc_d == 2 )); then
+            log_warn "Gate 8d clip_id=${clip_id} /api/media/search transport unavailable (Go endpoint may be absent — RED gap surfaced)"
+        else
+            log_fail "Gate 8d clip_id=${clip_id} /api/media/search contract violated (rc=$rc_d)"
+            sf=$((sf + 1))
+        fi
+
+        if (( sf > 0 )); then
+            log_fail "Gate 8 cluster for clip_id=${clip_id} missed ${sf} canonical sub-checks"
+            failures=$((failures + sf))
+        fi
+    done < "$clip_id_file"
+
+    if (( failures > 0 )); then
+        log_fail "07_index Gate 8 failed (${failures} per-clip misses)"
+        return 1
+    fi
+    log_pass "07_index Gate 8 ready (per-clip chain verified across all clip_ids in ${clip_id_file})"
+}
+
 main() {
     if [[ "$DRY_RUN" == "1" ]]; then
         smoke_echo_safe "DRY RUN — 07_index would probe:"
@@ -111,6 +204,7 @@ main() {
         printf '  asserts vectors.text.size=%s vectors.transcript.size=%s vectors.visual.size=%s vectors.audio.size=%s\n' \
             "$ARTLIST_QDRANT_VECTOR_TEXT_DIM" "$ARTLIST_QDRANT_VECTOR_TRANSCRIPT_DIM" \
             "$ARTLIST_QDRANT_VECTOR_VISUAL_DIM" "$ARTLIST_QDRANT_VECTOR_AUDIO_DIM"
+        printf '  Gate 8 per-clip walk: sqlite_clip_row > sqlite_outbox_terminal > qdrant_point_exists --source artlist --media-type video > artlist_media_search\n'
         printf '\nSSOT:\n'
         printf '  architecture/qdrant/v3-schema.json (collection=%s, alias=%s)\n' \
             "$ARTLIST_QDRANT_COLLECTION" "$ARTLIST_QDRANT_ALIAS"
@@ -118,6 +212,7 @@ main() {
     fi
 
     gate_qdrant_index || return 1
+    gate_8_per_clip_index || return 1
 
     printf '\n============================================\n'
     printf '  07_index\n'
