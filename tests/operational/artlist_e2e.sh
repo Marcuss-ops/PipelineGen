@@ -33,4 +33,14 @@
 
 set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
+# Source the canonical Artlist DoD lib umbrella (July 2026 refactor).
+# Fail-closed at import time: if any expected helper (smoke_curl,
+# velox_qdrant_assert, log_*) is missing from the lib chain, the umbrella
+# call returns non-zero and we exit 1 BEFORE exec — preventing a chain
+# of misleading sub-battery failures down the line. Operator can bypass
+# with `ARTLIST_DOD_LIB_SKIP_ASSERT=1 bash artlist_e2e.sh` for
+# emergency debugging of the umbrella itself.
+source "$DIR/lib/_artlist_common.sh" || exit 1
+
+log_info "Artlist DoD umbrella loaded (version=${ARTLIST_DOD_LIB_VERSION}); forwarding to run_all.sh"
 exec bash "$DIR/artlist/run_all.sh"
