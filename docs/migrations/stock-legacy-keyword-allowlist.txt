@@ -1,5 +1,5 @@
 # =============================================================================
-# Stock Cutover — grandfathered legacy-keyword files (Commit 3, July 2026)
+# Stock legacy-keyword allowlist — PARTIAL RETIREMENT (Commit 1 of cutover)
 # =============================================================================
 #
 # Check 54 in scripts/ci-architectural-checks.sh bans the following keywords
@@ -7,17 +7,28 @@
 #   assetIndex  media_assets  EnqueueAndIndex  UploadFile
 #   Publisher.Publish  YTDLPDownloader  youtube.Service
 #
-# Commits 5-8 of the Stock Cutover Cleanup Plan retire each file listed
-# below. Remove the matching entry at the SAME commit that deletes the file
-# so this allowlist shrinks to empty by Commit 8. (Commit 4 retired
-# run_upload.go + run_upload_indexing_test.go + types_status.go; those
-# entries are no longer grandfathered.)
+# STATUS (2026-07-25): This file is in PARTIAL RETIREMENT as the Stock
+# Cutover surface removal is in progress. The 4 entries below are
+# grandfathered ONLY because their retirement commits (Commit 5/6/7 of
+# the Stock Cutover Cleanup Plan) have not yet landed. NO NEW ENTRIES
+# will be added to this file — godlike/07 ZERO_LEGACY_POLICY §"Default
+# rule" binds. The file MUST heal to empty (then DELETE) when the 4
+# retirements complete.
+#
+# The architectural policy decision to choose `target_internal_roots` as
+# THE canonical layout landed today (2026-07-25) producing the
+# partial-retirement state above. See architecture/policy.history.yaml
+# §"Layout-cutover history" for the cutover record.
 #
 # Each line below is a repo-relative .go file path. Comments (lines starting
-# with `#`) and blank lines are ignored by Check 54.
+# with `#`) and blank lines are ignored by Check 54. To empty this file
+# without triggering the `missing-allowlist` hard gate, removes must be
+# paired with the corresponding file-retirement commits in the same PR.
 #
 # Owner: codebuff-agent@pipelinegen.local
-# Deadline: 2026-08-15 (commit-land of Commit 8)
+# Deadline: 2026-08-15 (commit-land of Commit 8 — the full retirement)
+# Forward-pointer: any new keyword entanglement MUST go to
+# architecture/issues.yaml as PR-STOCK-LEGACY-REMAINING, NOT here.
 # =============================================================================
 
 # Commit 5: legacy Service wiring — removes assetIndex / clipsRepo /

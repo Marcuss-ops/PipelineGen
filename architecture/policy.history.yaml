@@ -58,3 +58,27 @@ debt_budget:
         counter, allowing a status flip to unblock CI without a fix. That
         bypass has been closed: `in_progress` now counts the same as `open`
         and requires owner_capability and evidence_filename.
+
+# Layout-cutover history -----------------------------------------------------
+target_internal_roots:
+  current: {chosen-as-canonical: "2026-07-25", retired: legacy_internal_roots}
+  history:
+    - date: "2026-07-25"
+      change: "legacy_internal_roots RETIRED; target_internal_roots is THE canonical layout"
+      note: |
+        PipelineGen carried a two-layout mode (legacy_internal_roots +
+        target_internal_roots) that accumulated transitional layers,
+        allowlists, and ratchets. The legacy zone list (api, app,
+        application, domain, infrastructure, transcription, youtube)
+        accumulated because no single direction had policy cover. This
+        commit retires legacy_internal_roots; target_internal_roots is
+        THE canonical layout per godlike/07 ZERO_LEGACY_POLICY §"Default
+        rule". The legacy zones still exist on disk but no longer receive
+        policy cover — each retirement is a follow-up commit. The
+        stock-legacy-keyword allowlist (docs/migrations/) survives this
+        commit ONLY as a forward-pointer tombstone for the 4 still-
+        retirement-pending files (service.go, run.go, usecase.go,
+        ../adapter.go) — NO NEW entries per ZERO_LEGACY_POLICY §"Default
+        rule". The stockpipeline package itself is NOT retired in this
+        commit; the 5-subzone structural split is the next commit
+        (PR-STOCKPIPELINE-PHASE-SPLIT forward-pointer).
