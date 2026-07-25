@@ -47,7 +47,7 @@ source "$DIR/../lib/_artlist_common.sh"
 smoke_require curl jq sqlite3
 
 # gate_drive_resolve_per_clip — per-clip 4-assertion chain described above.
-gatedrive_resolve_per_clip() {
+gate_drive_resolve_per_clip() {
     smoke_log_section "Gate 6 — Drive resolve-by-id × N (id round-trip + trashed + mimeType + size)"
     local failures=0
     local clip_ids_file="${CLIP_IDS_FILE:-${WORK_DIR:-/tmp}/expected_clip_ids.txt}"
@@ -149,7 +149,7 @@ main() {
         exit 0
     fi
 
-    gatedrive_resolve_per_clip || return 1
+    gate_drive_resolve_per_clip || return 1
 
     printf '\n============================================\n'
     printf '  06_drive (per-clip 4-assertion chain)\n'
