@@ -262,6 +262,142 @@ func ScanStaleProsePaths(root string, pol *policy.Policy, r *report.Report) {
 // it in sync with the canonical doc's H2 headings; the helper
 // does not validate this.
 //
+// canonIndexSSOTAnchor is the exact H2 heading the rule anchors to.
+// Drift between INDEX.md's SSOT map and the on-disk file set is what
+// this rule catches: if a godlike doc gets renamed/moved without
+// updating INDEX.md's SSOT table, the navigation aid silently
+// desyncs. The H2 anchor pins the regex over ONE section so we don't
+// pollute the violation list with paths from other INDEX.md tables
+// (e.g. "The ownership surface", "Cross-references").
+const canonIndexSSOTAnchor = "## The 5 godlike docs (SSOT map)"
+
+// canonIndexDocRel is the canonical repo-relative path to the index.
+// Hardcoded to keep policy.yaml untouched in this commit — the path
+// appears in the INDEX.md self-link header + in godlike/08 as the
+// SSOT and is unlikely to relocate. Future Phase 1+ lift moves this
+// to pol.CanonIndexDoc + a pol.HardGates entry promoting the rule
+// to error severity per the hard-gate promotion cadence.
+const canonIndexDocRel = "docs/architecture/godlike/INDEX.md"
+
+// canonIndexMdPathRe captures backtick-quoted relative paths that
+// end in `.md` from SSOT map table rows. Anchored to the `.md` suffix
+// so we don't match the Hard-gated-by field which contains backticked
+// identifier names without `.md` (e.g. `data_ownership_doc_missing`).
+var canonIndexMdPathRe = regexp.MustCompile("`([a-zA-Z0-9_./-]+\\.md)`")
+
+// ScanCanonIndexDrift reads `docs/architecture/godlike/INDEX.md`,
+// anchors to the "## The 5 godlike docs (SSOT map)" H2 section, and
+// extracts every backtick-quoted `.md` path from the table rows that
+// follow. For each such path, the rule confirms the file exists on
+// disk; missing files emit one warn-severity violation under the
+// percheck_canon_index_drift rule family.
+//
+// Failure modes (each emits one warn-severity violation):
+//
+//   - INDEX.md missing or unreadable → rule
+//     percheck_canon_index_drift_missing (file = canonIndexDocRel).
+//   - SSOT-map H2 section missing entirely → rule
+//     percheck_canon_index_drift_section_missing
+//     (file = canonIndexDocRel).
+//   - A path listed in the table but absent on disk → emits 1+
+//     violations with rule percheck_canon_index_drift + matched_rule
+//     `canon_index_path_missing`; file = the missing path; line =
+//     the INDEX.md table row that referenced it.
+//
+// Phase 0 emits `warn` severity per the user-contract on the
+// doc-pointer family. Phase 2 promotes to `error` via pol.HardGates
+// per the godlike/08 hard-gate promotion cadence — add the rule id
+// (percheck_canon_index_drift) to pol.HardGates when the binary
+// enforcement is ready to surface drift as a CI build failure. The
+// runner.Run() HardGates promotion loop scans r.Violations[*].Rule,
+// not .MatchedRule, so the percheck_canon_index_drift family wide id
+// promotes all 3 variants (missing / section_missing / path_missing)
+// in one entry.
+func ScanCanonIndexDrift(root string, _ *policy.Policy, r *report.Report) {
+	indexRel := filepath.ToSlash(filepath.Clean(canonIndexDocRel))
+	indexPath := filepath.Join(root, canonIndexDocRel)
+	f, err := os.Open(indexPath)
+	if err != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        indexRel,
+			Rule:        "percheck_canon_index_drift",
+			MatchedRule: "canon_index_drift_doc_missing",
+			Severity:    string(report.SeverityWarn),
+			Note:        "canonical documentation index (docs/architecture/godlike/INDEX.md) is missing or unreadable; recreate per the SSOT map definition in godlike/08",
+		})
+		return
+	}
+	defer f.Close()
+
+	if !scanCanonIndexSSOTTable(f, indexRel, root, r) {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        indexRel,
+			Rule:        "percheck_canon_index_drift",
+			MatchedRule: "canon_index_drift_section_missing",
+			Severity:    string(report.SeverityWarn),
+			Note:        "INDEX.md is missing the canonical \"## The 5 godlike docs (SSOT map)\" H2 heading that this rule anchors to; restore the section header before any drift can be detected",
+		})
+	}
+}
+
+// scanCanonIndexSSOTTable walks INDEX.md line by line. Once we see
+// the canonical H2 anchor, we look for table rows until the next H2
+// heading. For each data row, we extract backtick-quoted `.md` paths
+// and verify each exists on disk. Returns true if the anchor was
+// seen (whether or not violations were emitted), so the caller can
+// detect the missing-section case (anchor never appeared → return false).
+//
+// Unexported helper. Anchored to ONE table to keep the rule's blast
+// radius minimal: paths from "The ownership surface" / "Cross-references"
+// (other INDEX.md tables) are deliberately not validated here — those
+// surface different concerns (shard ownership + cross-doc reference
+// integrity) and any future rule for them would be a separate scan.
+func scanCanonIndexSSOTTable(f *os.File, indexRel, root string, r *report.Report) bool {
+	sc := bufio.NewScanner(f)
+	anchorSeen := false
+	lineNum := 0
+	for sc.Scan() {
+		lineNum++
+		trimmed := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(trimmed, "## ") {
+			if trimmed == canonIndexSSOTAnchor {
+				anchorSeen = true
+			} else if anchorSeen {
+				// We've left the SSOT map section; stop processing so
+				// paths from subsequent sections don't pollute the drift list.
+				return true
+			}
+			continue
+		}
+		if !anchorSeen {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		// Skip the table separator row (|---|---|---|) and the header row
+		// (| # | Doc | Purpose | Hard-gated by |).
+		if strings.Contains(trimmed, "---") || strings.Contains(trimmed, "Doc | Purpose") {
+			continue
+		}
+		matches := canonIndexMdPathRe.FindAllStringSubmatch(trimmed, -1)
+		for _, m := range matches {
+			pathRel := m[1]
+			if _, err := os.Stat(filepath.Join(root, pathRel)); err != nil {
+				r.Violations = append(r.Violations, report.Violation{
+					File:        pathRel,
+					Line:        lineNum,
+					MatchedRule: "canon_index_drift_path_missing",
+					Rule:        "percheck_canon_index_drift",
+					Severity:    string(report.SeverityWarn),
+					Note:        fmt.Sprintf("docs/architecture/godlike/INDEX.md SSOT-map row references %q but no file exists at that path; if the godlike doc was renamed or moved, update BOTH the on-disk path AND the INDEX.md table row — silent drift is the failure mode this rule exists to catch (godlike/08 INDEX.md forward-pointer)", pathRel),
+				})
+			}
+		}
+	}
+	return anchorSeen
+}
+
 // Unexported (lowercase) because it's an internal helper, not a
 // public API. If a second consumer outside `package scan` ever
 // needs it (e.g. for a hypothetical `pkg/scanutil` shared lib),
