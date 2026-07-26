@@ -93,3 +93,65 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 		t.Fatalf("FetchAsset source_version = %q, want src-v1", asset.SourceVersion)
 	}
 }
+
+func TestSQLiteAssetStore_ReindexableIDsSkipEmptyEmbeddings(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "media.sqlite")
+	migrationsDir, err := filepath.Abs("../../../../migrations/sqlite")
+	if err != nil {
+		t.Fatalf("resolve migrations dir: %v", err)
+	}
+
+	if err := storage.RunMigrationsOnDB(dbPath, nil, migrationsDir, "primary"); err != nil {
+		t.Fatalf("RunMigrationsOnDB: %v", err)
+	}
+
+	db, err := storage.OpenSQLiteDB(dbPath, nil)
+	if err != nil {
+		t.Fatalf("OpenSQLiteDB: %v", err)
+	}
+	defer db.Close()
+
+	seed := func(id, embeddingJSON string) {
+		t.Helper()
+		metadataJSON := `{"content_hash":"hash-` + id + `"}`
+		_, err := db.Exec(`
+			INSERT INTO media_assets (
+				id, source, name, media_type, lifecycle_state,
+				search_text, embedding_json, metadata_json,
+				created_at, updated_at
+			) VALUES (
+				?, 'artlist', ?, 'video', 'ACTIVE',
+				'search text', ?, ?,
+				datetime('now'), datetime('now')
+			)
+		`, id, id, embeddingJSON, metadataJSON)
+		if err != nil {
+			t.Fatalf("seed asset %s: %v", id, err)
+		}
+	}
+
+	seed("asset-indexed", "[1,2,3]")
+	seed("asset-empty", "[]")
+
+	store := NewSQLiteAssetStore(db.DB)
+
+	ids, err := store.ListAllAssetIDs(context.Background())
+	if err != nil {
+		t.Fatalf("ListAllAssetIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "asset-indexed" {
+		t.Fatalf("ListAllAssetIDs = %v, want only asset-indexed", ids)
+	}
+
+	batch, err := store.FetchAssetBatch(context.Background(), "", 10)
+	if err != nil {
+		t.Fatalf("FetchAssetBatch: %v", err)
+	}
+	if len(batch) != 1 {
+		t.Fatalf("FetchAssetBatch len = %d, want 1", len(batch))
+	}
+	if batch[0].ID != "asset-indexed" {
+		t.Fatalf("FetchAssetBatch[0].ID = %q, want asset-indexed", batch[0].ID)
+	}
+}

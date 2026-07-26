@@ -67,6 +67,19 @@ import (
 	"encoding/json"
 )
 
+// indexableAssetWhereClause is the canonical SQLite predicate for rows that
+// can be reconstructed into Qdrant points.
+//
+// ReindexAll and verifier_counts must stay aligned on the same eligibility
+// boundary, so this clause excludes folders, soft-deleted rows, and rows
+// without a populated text embedding. Legacy rows with embedding_json = '[]'
+// or '{}' are treated the same as empty.
+const indexableAssetWhereClause = `
+	media_type != 'folder'
+	AND (deleted_at IS NULL OR deleted_at = '')
+	AND COALESCE(embedding_json, '') NOT IN ('', '[]', '{}')
+`
+
 // SQLiteAssetStore implements AssetStore backed by the media_assets table.
 type SQLiteAssetStore struct {
 	db *sql.DB

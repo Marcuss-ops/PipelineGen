@@ -2,53 +2,18 @@ package artlist
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
-
-// fakeDetailFetcher is a test-only implementation of the DetailFetcher port.
-type fakeDetailFetcher struct {
-	candidate *Candidate
-	err       error
-	calledURL string
-}
-
-func (f *fakeDetailFetcher) FetchDetails(_ context.Context, clipPageURL string) (*Candidate, error) {
-	f.calledURL = clipPageURL
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.candidate, nil
-}
-
-// fakeDispatcherForImport records SaveDiscoveredAsset calls.
-type fakeDispatcherForImport struct {
-	mu                  sync.Mutex
-	saved               *asset.Asset
-	saveDiscoveredCalls int
-	saveDiscoveredErr   error
-}
-
-func (f *fakeDispatcherForImport) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
-	return nil
-}
-
-func (f *fakeDispatcherForImport) SaveDiscoveredAsset(_ context.Context, clip *asset.Asset, _ asset.LifecycleState, _ asset.IndexState) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.saved = clip
-	f.saveDiscoveredCalls++
-	return f.saveDiscoveredErr
-}
-
-func (f *fakeDispatcherForImport) EnqueueAndRestore(_ context.Context, _ string) error { return nil }
-func (f *fakeDispatcherForImport) EnqueueAndDelete(_ context.Context, _ string) error  { return nil }
 
 func TestCandidateToAsset_MapsProviderMetadata(t *testing.T) {
 	candidate := &Candidate{
@@ -147,4 +112,70 @@ func TestStringSliceFromMetadata(t *testing.T) {
 	assert.Nil(t, stringSliceFromMetadata(map[string]any{"k": "not-a-slice"}, "k"))
 	assert.Nil(t, stringSliceFromMetadata(map[string]any{}, "missing"))
 	assert.Nil(t, stringSliceFromMetadata(nil, "missing"))
+}
+
+func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
+	ctx := context.Background()
+	db := createTestDB(t)
+	defer db.Close()
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{DataDir: t.TempDir()},
+		Video:   config.VideoConfig{Duration: 15},
+		Drive: config.DriveConfig{
+			ArtlistRootFolder: "artlist-root-folder",
+		},
+	}
+
+	logger := zap.NewNop()
+	committer := assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), logger)
+	finalizer := assetfinalizer.NewAssetTxFinalizer(logger).WithCommitter(committer)
+	publisher := &stubPublisherForArtlist{}
+
+	svc := &Service{
+		cfg:                cfg,
+		log:                logger,
+		publisher:          publisher,
+		detailFetcher:      &fakeDetailFetcher{candidate: &Candidate{ID: "346928", Title: "Maya Ruins", PageURL: "https://artlist.io/stock-footage/clip/mayan-ruins/346928", SourceRef: "https://cdn.artlist.io/346928.mp4"}},
+		mediaProcessor:     &successMediaProcessor{},
+		transcriber:        &stubTranscriber{},
+		textTrackRepo:      &stubTextTrackRepo{},
+		assetFinalizer:     finalizer,
+		mainDB:             db,
+		destinationService: &DestinationService{publisher: publisher, cfg: cfg},
+	}
+	svc.runOrchestrator = NewRunOrchestratorService(svc)
+
+	resp, err := svc.ImportClip(ctx, &ImportClipRequest{
+		ClipPageURL: "https://artlist.io/stock-footage/clip/mayan-ruins/346928",
+		Download:    true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.True(t, resp.OK)
+	assert.Equal(t, "processed", resp.Status)
+	assert.Equal(t, "346928", resp.ClipID)
+	assert.NotEmpty(t, resp.DriveFileID)
+	assert.NotEmpty(t, resp.DriveLink)
+	assert.NotEmpty(t, resp.FileHash)
+
+	var rowCount int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM media_assets WHERE id = ?`, "346928").Scan(&rowCount))
+	assert.Equal(t, 1, rowCount)
+
+	var source, driveFileID, driveLink, fileHash string
+	require.NoError(t, db.QueryRow(`
+		SELECT source, COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(file_hash, '')
+		FROM media_assets WHERE id = ?
+	`, "346928").Scan(&source, &driveFileID, &driveLink, &fileHash))
+	assert.Equal(t, "artlist", source)
+	assert.NotEmpty(t, driveFileID)
+	assert.NotEmpty(t, driveLink)
+	assert.NotEmpty(t, fileHash)
+
+	var outboxCount int
+	require.NoError(t, db.QueryRow(`
+		SELECT COUNT(*) FROM outbox_events WHERE event_type = 'asset.index.requested' AND aggregate_id = ?
+	`, "346928").Scan(&outboxCount))
+	assert.Equal(t, 1, outboxCount)
 }

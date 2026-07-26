@@ -3,6 +3,7 @@ package artlist_phrase
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -34,15 +35,19 @@ func (s *stubTranslator) Translate(_ context.Context, phrase string) (string, er
 type stubSearcher struct {
 	hits      map[string][]ports.AssetSearchHit
 	errStub   error
-	callCount int
+	callCount int64
 }
 
 func (s *stubSearcher) SearchAssets(_ context.Context, q ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
-	s.callCount++
+	atomic.AddInt64(&s.callCount, 1)
 	if s.errStub != nil {
 		return nil, s.errStub
 	}
 	return s.hits[q.Query], nil
+}
+
+func (s *stubSearcher) CallCount() int {
+	return int(atomic.LoadInt64(&s.callCount))
 }
 
 // delayedTranslator exercises the ParallelMap path without relying on

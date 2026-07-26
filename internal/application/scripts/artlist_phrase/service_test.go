@@ -280,8 +280,8 @@ func TestService_TranslationFailure(t *testing.T) {
 	// stub's callCount tracks total invocations; the assertion below
 	// fails if the service ever delegates to the searcher on the
 	// untranslated-phrase code path.
-	if sr.callCount != 0 {
-		t.Errorf("searcher was called %d times for untranslated phrase — NO-FAKE-AVAILABILITY violation (godlike/07: caller MUST see the error, search MUST be skipped)", sr.callCount)
+	if got := sr.CallCount(); got != 0 {
+		t.Errorf("searcher was called %d times for untranslated phrase — NO-FAKE-AVAILABILITY violation (godlike/07: caller MUST see the error, search MUST be skipped)", got)
 	}
 }
 

@@ -60,8 +60,12 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	return a, nil
 }
 
-// ListAllAssetIDs returns all media_asset IDs suitable for reindexing.
-// Excludes folders and already-deleted rows to keep the index lean.
+// ListAllAssetIDs returns the media_asset IDs suitable for reindexing.
+//
+// The reindex/verifier contract only covers assets that can actually be
+// reconstructed into Qdrant points, so the shared eligibility predicate
+// excludes folders, soft-deleted rows, and rows without a populated text
+// embedding.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: an empty result slice (not nil)
 // survives a clean catalog rescan; rows.Err() surfaces typed error if
@@ -69,8 +73,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id FROM media_assets
-		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')
+		WHERE `+indexableAssetWhereClause+`
 		ORDER BY id
 	`)
 	if err != nil {
