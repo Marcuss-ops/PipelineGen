@@ -83,7 +83,7 @@ describe('handleDetail', () => {
 
   test('returns rich clip metadata on success', async () => {
     const clip = {
-      clip_id: '123456',
+      clip_id: '555555',
       title: 'Skyline at Sundown',
       description: 'City skyline during sunset',
       creator: 'John Richter',
@@ -91,11 +91,11 @@ describe('handleDetail', () => {
       location: 'Barcelona',
       tags: ['Skyline', 'Evening'],
       categories: ['Cities'],
-      clip_page_url: 'https://artlist.io/stock-footage/clip/skyline/123456',
-      thumbnail_url: 'https://cdn.artlist.io/123456/thumb.jpg',
-      preview_url: 'https://cdn.artlist.io/123456/preview.mp4',
-      primary_url: 'https://cdn.artlist.io/123456/master.mp4',
-      stream_urls: ['https://cdn.artlist.io/123456/stream.m3u8'],
+      clip_page_url: 'https://artlist.io/stock-footage/clip/skyline/555555',
+      thumbnail_url: 'https://cdn.artlist.io/555555/thumb.jpg',
+      preview_url: 'https://cdn.artlist.io/555555/preview.mp4',
+      primary_url: 'https://cdn.artlist.io/555555/master.mp4',
+      stream_urls: ['https://cdn.artlist.io/555555/stream.m3u8'],
       raw_metadata: { extra: 'value' },
     };
 
@@ -108,7 +108,7 @@ describe('handleDetail', () => {
     assert.equal(res.statusCode, 200);
     const payload = JSON.parse(res.body);
     assert.equal(payload.ok, true);
-    assert.equal(payload.clip.clip_id, '123456');
+    assert.equal(payload.clip.clip_id, '555555');
     assert.equal(payload.clip.title, 'Skyline at Sundown');
     assert.equal(payload.clip.country, 'Spain');
     assert.ok(payload._meta.elapsed_ms >= 0);

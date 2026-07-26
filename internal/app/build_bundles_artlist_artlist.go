@@ -119,6 +119,9 @@ func WireArtlist(
 	// sentinel pins the invariant; `Field: "finalizerTx"` so the
 	// diagnostic surfaces the source-path beside the well-known Kind.
 	finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)
+	if bundle.Committer != nil {
+		finalizerTx.WithCommitter(bundle.Committer)
+	}
 	if len(textTrackFanOut) > 0 && textTrackFanOut[0] != nil {
 		finalizerTx.WithFanOut(textTrackFanOut[0])
 	}

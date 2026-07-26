@@ -30,8 +30,17 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
 - Keep services headless and CPU-first unless a GPU path is explicitly requested.
 - Never commit credentials, tokens, cookies, or private keys.
 - Generated API documentation must match registered routes.
-- Run `make verify-main` before pushing.
+- Run `make verify-main` before pushing (the pre-push hook runs `make verify-push` automatically).
 - DO NOT use `git push --no-verify` to bypass the pre-push gate — bypass is reserved for unblocking CI emergencies and must be paired with a fixup! followup.
+- **Agent constraints during development**:
+  - Durante lo sviluppo non eseguire `make verify-main` ripetutamente.
+  - Dopo una modifica:
+    1. Esegui il test del package modificato.
+    2. Esegui `make verify-fast` (o `verify-dev`).
+    3. Quando tutte le modifiche sono concluse, esegui una sola volta `make verify-main`.
+    4. Non eseguire `auth-check`, `make dev` o `make run` salvo richiesta esplicita.
+    5. Non scartare modifiche locali non correlate.
+    6. Non ripetere `verify-main` se il commit e la working tree non sono cambiati.
 
 ## Authentication SSOT (Velox admin token)
 

@@ -121,11 +121,22 @@ verify-go:
 # are pure unit tests (domain, application, infrastructure, api, commands,
 # pkg). NOTE: verify-main still routes through `verify-go` (which transitively
 # includes verify-go-tests) until STEP 3/4 lands.
+VERIFY_JOBS ?= 2
+
+verify-unit-fast:
+	$(GO) test ./internal/domain/... \
+		./internal/application/... \
+		./internal/infrastructure/... \
+		./internal/api/... \
+		./cmd/... \
+		./pkg/...
+
 verify-unit: go-version-check
-	@$(MAKE) verify-go-core
-	@$(MAKE) verify-go-infrastructure
-	@$(MAKE) verify-go-api
-	@$(MAKE) verify-go-commands
+	@$(MAKE) -j$(VERIFY_JOBS) \
+		verify-go-core \
+		verify-go-infrastructure \
+		verify-go-api \
+		verify-go-commands
 	@echo "✅ Unit verification passed"
 
 # verify-node-native — probe better-sqlite3 by loading it against an

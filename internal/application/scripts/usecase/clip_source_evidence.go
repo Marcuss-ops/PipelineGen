@@ -162,8 +162,10 @@ func buildClipEvidence(
 	// inherits the per-clip fingerprint only when at least
 	// one clip has a READY track).
 	var lang, version, hash string
+	clipTranscriptHashes := make([]string, 0, len(canonicalIDs))
 	for _, id := range canonicalIDs {
 		if t, ok := resolvedTracks[id]; ok && t != nil {
+			clipTranscriptHashes = append(clipTranscriptHashes, t.TextHash)
 			lang = t.LanguageCode
 			version = t.SourceVersion
 			hash = t.TextHash
@@ -172,19 +174,20 @@ func buildClipEvidence(
 	}
 
 	ev := &scriptpkg.ClipEvidence{
-		AcceptedClipIDs:   canonicalIDs,
-		RenderableClipIDs: renderableIDs,
-		ClipCount:         len(canonicalIDs),
-		AssembledText:     sourceText,
-		NarrativeText:     narrativeText,
-		DriveLinks:        clipDriveLinks,
-		ClipNames:         clipNameMap,
-		Excluded:          excludedClips,
-		MissingClipIDs:    missingClipIDs,
-		ClipDetails:       clipDetails,
-		LanguageCode:      lang,
-		TextTrackVersion:  version,
-		TranscriptHash:    hash,
+		AcceptedClipIDs:      canonicalIDs,
+		RenderableClipIDs:    renderableIDs,
+		ClipCount:            len(canonicalIDs),
+		AssembledText:        sourceText,
+		NarrativeText:        narrativeText,
+		DriveLinks:           clipDriveLinks,
+		ClipNames:            clipNameMap,
+		Excluded:             excludedClips,
+		MissingClipIDs:       missingClipIDs,
+		ClipTranscriptHashes: clipTranscriptHashes,
+		ClipDetails:          clipDetails,
+		LanguageCode:         lang,
+		TextTrackVersion:     version,
+		TranscriptHash:       hash,
 	}
 	if len(ev.MissingClipIDs) == 0 {
 		ev.MissingClipIDs = nil

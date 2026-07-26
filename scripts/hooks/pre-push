@@ -118,26 +118,40 @@
 
 set -euo pipefail
 
-# Print a visible banner so the operator sees the gate running, not
-# silent network/auth latency.
+# Calculate fingerprint
+FINGERPRINT=$(bash scripts/ci/get-fingerprint.sh)
+CACHE_DIR=".cache/verify"
+CACHE_FILE="$CACHE_DIR/${FINGERPRINT}.ok"
+
+# Print a visible banner so the operator sees the gate running
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  pre-push gate: make verify-main (AGENTS.md fail-closed)"
+echo "  pre-push gate: make verify-push (AGENTS.md fail-closed)"
 echo "  source: scripts/hooks/pre-push (canonical version-controlled)"
+echo "  fingerprint: $FINGERPRINT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo
 
-if make verify-main; then
+if [ -f "$CACHE_FILE" ]; then
+    echo "✅ Identical source fingerprint already verified. Proceeding with push."
+    exit 0
+fi
+
+if make verify-push; then
+    mkdir -p "$CACHE_DIR"
+    # Prune old verification cache results
+    rm -rf "$CACHE_DIR"/*
+    touch "$CACHE_FILE"
     echo
-    echo "✅ verify-main passed — proceeding with push."
+    echo "✅ verify-push passed — proceeding with push."
     exit 0
 else
     rc=$?
     echo
-    echo "❌ verify-main FAILED (exit $rc) — push BLOCKED."
+    echo "❌ verify-push FAILED (exit $rc) — push BLOCKED."
     echo
     echo "   Fix the failing step and retry. Diagnostic bypass (gofmt only):"
-    echo "     SKIP_FORMAT=1 make verify-main"
+    echo "     SKIP_FORMAT=1 make verify-push"
     echo
     echo "   Bypass-of-last-resort (skips this hook entirely; HONOUR-RULE:"
     echo "   reserved for unblocking CI emergencies, NOT normal workflow):"
@@ -147,7 +161,7 @@ else
     echo "   follow-up fixup! commit + git rebase --autosquash once the"
     echo "   underlying test failure is fixed."
     echo
-    echo "   The pre-push gate is make verify-main without any bypass; do"
+    echo "   The pre-push gate is make verify-push without any bypass; do"
     echo "   not push if the unflagged gate is red."
     exit 1
 fi

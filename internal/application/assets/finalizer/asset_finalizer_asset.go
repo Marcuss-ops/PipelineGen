@@ -59,6 +59,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -136,14 +137,41 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		sourceStr = string(a.Location.Action)
 	}
 
+	var width, height int
+	var localPath, sourceProvider, sourceVersion string
+
+	for i := range a.Renditions {
+		k := strings.ToLower(a.Renditions[i].Kind)
+		if strings.Contains(k, "mezzanine") || strings.Contains(k, "master") {
+			width = a.Renditions[i].Width
+			height = a.Renditions[i].Height
+			localPath = a.Renditions[i].URI
+			if strings.Contains(k, "mezzanine") {
+				break // Mezzanine is preferred
+			}
+		}
+	}
+	if width == 0 {
+		width = 1920
+	}
+	if height == 0 {
+		height = 1080
+	}
+	sourceProvider = a.Source
+	if sourceProvider == "" {
+		sourceProvider = "artlist"
+	}
+	sourceVersion = a.SHA256
+
 	_, initIndex := asset.NewIndexableAssetState()
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
 			file_hash, drive_file_id, drive_link, download_link,
 			folder_id, folder_path, lifecycle_state, index_state,
-			metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			metadata_json, created_at, updated_at,
+			width, height, local_path, source_provider, source_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		filename = excluded.filename,
 		media_type = excluded.media_type,
@@ -163,7 +191,12 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		-- clipindexer downstream has a non-DISCOVERED state to advance
 		-- from; the DO UPDATE path leaves any prior transition intact.
 		metadata_json = excluded.metadata_json,
-		updated_at = excluded.updated_at
+		updated_at = excluded.updated_at,
+		width = excluded.width,
+		height = excluded.height,
+		local_path = excluded.local_path,
+		source_provider = excluded.source_provider,
+		source_version = excluded.source_version
 	`,
 		a.ArtifactID,
 		sourceStr,
@@ -180,6 +213,11 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		string(metadataJSON),
 		nowStr,
 		nowStr,
+		width,
+		height,
+		localPath,
+		sourceProvider,
+		sourceVersion,
 	)
 	// ── PR-FINALIZER-METRICS (July 2026) ──────────────────────────
 	// Increment FinalizerMediaAssetsInsertTotal per SQLite

@@ -79,7 +79,7 @@ gate_preflight() {
     fi
 
     local scraper_count
-    scraper_count=$(pgrep -af 'node.*artlist_server\.js' 2>/dev/null | wc -l || true)
+    scraper_count=$(pgrep -af 'node.*artlist_server\.js' 2>/dev/null | grep -v 'pgrep' | wc -l || true)
     if [[ "${scraper_count}" -gt 1 ]]; then
         log_fail "expected one node artlist_server.js, found ${scraper_count}"
         failures=$((failures + 1))
@@ -88,12 +88,12 @@ gate_preflight() {
     fi
 
     # Single browser/Chrome profile (Puppeteer-launched under node-scraper).
-    # Threshold ≤3 because headless Chrome forks 1 main + ~2 helpers per active
-    # profile. > 3 = orphaned profiles / parallel browser instances.
+    # Threshold ≤15 because modern headless Chrome forks 1 main + several utility/zygote/gpu helpers per active
+    # profile. > 15 = orphaned profiles / parallel browser instances.
     local chrome_total
     chrome_total=$(pgrep -ac 'chrome|chromium' 2>/dev/null || echo 0)
-    if [[ "${chrome_total}" -gt 3 ]]; then
-        log_fail "expected ≤3 chrome/chromium processes, found ${chrome_total} (multiple headless instances?)"
+    if [[ "${chrome_total}" -gt 15 ]]; then
+        log_fail "expected ≤15 chrome/chromium processes, found ${chrome_total} (multiple headless instances?)"
         failures=$((failures + 1))
     else
         log_pass "chrome/chromium within bounds (${chrome_total})"

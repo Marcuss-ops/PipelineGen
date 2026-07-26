@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
@@ -194,6 +195,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		log,
 		cfg,
 		&ArtlistBundle{
+			Committer:          sqassets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
 			DB:                 root.DB,
 			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,

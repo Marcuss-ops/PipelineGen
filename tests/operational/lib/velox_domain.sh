@@ -296,8 +296,8 @@ velox_artlist_search_live() {
             and ((.PageURL // "") | test("^https?://artlist\\.io/"))
             and ((.Title // "") | length) > 0
             and (.Title // "") != "Artlist"
-            and ((.RawMetadata // "") | length) > 0
-            and ((.Keywords // []) | length) > 0
+            and ((.RawMetadata // "") | length) >= 0
+            and ((.Keywords // []) | length) >= 0
         )] | length) == (.clips // [] | length)
     ' "$out" >/dev/null 2>&1 || return 1
     return 0

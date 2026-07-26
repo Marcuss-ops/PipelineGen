@@ -32,11 +32,7 @@ set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
-source "$DIR/../lib/common.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist_runtime.sh"
+source "$DIR/../lib/_artlist_common.sh"
 
 
 
@@ -83,10 +79,10 @@ gate_detail_stream() {
         smoke_echo_safe "$(head -c 400 "$probe_out" 2>/dev/null || true)" >&2
         return 1
     fi
-    real_page_url=$(jq -r '.clips[0].page_url // empty' "$probe_out")
+    real_page_url=$(jq -r '.clips[0].PageURL // .clips[0].page_url // empty' "$probe_out")
     if [[ -z "$real_page_url" || "$real_page_url" == "null" ]] \
        || ! [[ "$real_page_url" =~ ^https://artlist\.io/ ]]; then
-        log_fail "first live clip page_url invalid: '$real_page_url'"
+        log_fail "first live clip PageURL invalid: '$real_page_url'"
         return 1
     fi
 

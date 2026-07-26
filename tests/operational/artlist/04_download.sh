@@ -32,11 +32,7 @@ set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
-source "$DIR/../lib/common.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist_runtime.sh"
+source "$DIR/../lib/_artlist_common.sh"
 
 
 
@@ -79,14 +75,16 @@ gate_direct_download() {
     mkdir -p "$out_dir"
 
     # ── Phase 1: source a real clip_page_url from the live-search surface
-    smoke_curl GET "/api/artlist/search/live?term=${LIVE_QUERIES[0]}&limit=5" >/dev/null
-    if [[ ! "${SMOKE_LAST_HTTP:-}" =~ ^2[0-9][0-9]$ ]] \
-       || ! jq -e '.clips // [] | length > 0' "${SMOKE_LAST_BODY:-/dev/null}" >/dev/null 2>&1; then
-        log_fail "live search probe for /download failed (HTTP=${SMOKE_LAST_HTTP:-empty})"
+    local probe_out="$WORK_DIR/gate2_probe.json"
+    local rc=0
+    artlist_search_live --term "${LIVE_QUERIES[0]}" --limit 5 \
+        --save-body "$probe_out" || rc=$?
+    if (( rc != 0 )); then
+        log_fail "live search probe for /download failed (rc=$rc; transport or contract violation; see $probe_out)"
         return 1
     fi
     local real_page_url
-    real_page_url=$(jq -r '.clips[0].PageURL // empty' "${SMOKE_LAST_BODY:-/dev/null}")
+    real_page_url=$(jq -r '.clips[0].PageURL // .clips[0].page_url // empty' "$probe_out")
     if [[ -z "$real_page_url" || ! "$real_page_url" =~ ^https://artlist\.io/ ]]; then
         log_fail "first live clip PageURL invalid: '$real_page_url'"
         return 1

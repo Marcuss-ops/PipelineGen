@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
 	index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
 	metadata_json TEXT NOT NULL DEFAULT '{}',
+	width INTEGER NOT NULL DEFAULT 0,
+	height INTEGER NOT NULL DEFAULT 0,
+	local_path TEXT NOT NULL DEFAULT '',
+	source_provider TEXT NOT NULL DEFAULT '',
+	source_version TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL DEFAULT ''
 );
@@ -244,7 +249,7 @@ func finalizeChunkStock(t *testing.T, db *sql.DB, fx *finalizer.AssetTxFinalizer
 	_, events, ferr := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), art)
 	if ferr != nil {
 		_ = tx.Rollback()
-		t.Fatalf("FinalizeAsset(%s): %v", art.ArtifactID, err)
+		t.Fatalf("FinalizeAsset(%s): %v", art.ArtifactID, ferr)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit tx(%s): %v", art.ArtifactID, err)

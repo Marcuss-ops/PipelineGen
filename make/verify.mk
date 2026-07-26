@@ -79,6 +79,22 @@ verify-static: go-version-check
 verify-fast: verify-foundation verify-static
 	@echo "✅ verify-fast passed"
 
+verify-dev: verify-foundation verify-static
+	@echo "✅ verify-dev passed"
+
+verify-changed:
+	@bash scripts/ci/verify-changed.sh
+
+verify-push: verify-fast verify-unit-fast verify-changed
+	@echo "✅ verify-push passed"
+
+verify-unit-race: verify-unit
+
+# verify-main — pre-push gate (STEP 3/4 of the verify-main refactor,
+# July 2026): the canonical fail-closed chain that runs before every
+verify-main: verify-push verify-unit-race verify-node verify-architecture
+	@echo "✅ verify-main passed"
+
 # verify-go-core — domain and application logic tests. Isolates failures
 # in the core business packages so a domain test failure is immediately
 verify-node-native:
@@ -141,16 +157,6 @@ verify-stock:
 	$(GO) test -race ./internal/application/assets/providers/stock/stockpipeline/... && \
 	$(GO) test -race ./internal/api/assets/stock/...
 	@echo "✅ Stock verification passed"
-
-# verify-main — pre-push gate (STEP 3/4 of the verify-main refactor,
-# July 2026): the canonical fail-closed chain that runs before every
-verify-main: verify-fast verify-unit verify-node verify-architecture
-	@echo "✅ verify-main passed"
-	# bash scripts/ci-architectural-checks.sh  (intentionally disabled:
-	# Phase 0 shell checks currently fail locally on Check 3 — see
-	# internal/app/adapters_scenetext.go:89 + generation_engine.go:67.
-	# Promoting ci-architectural-checks.sh into the pre-push gate is
-	# an open question deferred until those violations are resolved.)
 
 # verify-release — pre-deploy gate (STEP 3/4 of the verify-main
 # refactor): verify-main + verify-integration. Adds the slow

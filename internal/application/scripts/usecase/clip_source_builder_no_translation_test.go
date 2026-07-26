@@ -117,6 +117,12 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 	if ev.TranscriptHash == "" {
 		t.Fatalf("happy path: TranscriptHash is empty; the Fase 4 fingerprint field MUST be populated from the resolved TextTrack.TextHash")
 	}
+	if len(ev.ClipTranscriptHashes) != 1 {
+		t.Fatalf("happy path: ClipTranscriptHashes = %v, want 1 hash", ev.ClipTranscriptHashes)
+	}
+	if ev.ClipTranscriptHashes[0] != "hash-clip-A-en" {
+		t.Fatalf("happy path: ClipTranscriptHashes[0] = %q, want %q", ev.ClipTranscriptHashes[0], "hash-clip-A-en")
+	}
 
 	// Path 2: missing-track path (textTrackReader returns nil).
 	readerEmpty := &stubTextTrackReader{
