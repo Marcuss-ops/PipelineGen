@@ -13,8 +13,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
@@ -30,7 +30,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	seenFolderIDs := make(map[string]struct{})
 	markFolderSeen(seenFolderIDs, target.RootFolderID)
 
-	rootMeta, err := s.uploader.GetFileMeta(ctx, target.RootFolderID)
+	rootMeta, err := s.reader.GetFileMeta(ctx, target.RootFolderID)
 	if err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
@@ -217,7 +217,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 // Google Drive's MD5 is the strongest available value; the metadata fallback
 // remains deterministic across retries and is explicitly not presented as a
 // content hash.
-func remoteFileFingerprint(file uploaddrive.DriveFileInfo) string {
+func remoteFileFingerprint(file drive.DriveFileInfo) string {
 	if strings.TrimSpace(file.MD5Checksum) != "" {
 		return "drive-md5:" + strings.TrimSpace(file.MD5Checksum)
 	}
@@ -229,6 +229,6 @@ func remoteFileFingerprint(file uploaddrive.DriveFileInfo) string {
 // listChildren lists the direct children of a Drive folder. Kept in this file
 // so the recursive walker can swap it in tests without touching higher-level
 // sync orchestration.
-func (s *Service) listChildren(ctx context.Context, folderID string) ([]uploaddrive.DriveFileInfo, error) {
-	return s.uploader.ListFiles(ctx, folderID)
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]drive.DriveFileInfo, error) {
+	return s.reader.ListFiles(ctx, folderID)
 }

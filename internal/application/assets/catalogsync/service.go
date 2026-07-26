@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 type Target struct {
@@ -52,7 +52,7 @@ type Summary struct {
 // (s.assetTree in sync_prune.go::pruneMissingFolders +
 // sync_recursive.go:79,175) are ACCEPTED as nil at ctor time — the
 // optionality is part of the contract.
-// Required at ctor: Uploader, Dispatcher, Log.
+// Required at ctor: Reader, Dispatcher, Log.
 // Optional at ctor: AssetTree, Targets.
 //
 // Wave G (June 2026) DECOUPLING — three legacy fields removed:
@@ -70,7 +70,7 @@ type Summary struct {
 //     async drive.folder.sync job now errors on unknown source
 //     instead of silently falling back to a guessed repo.
 var (
-	ErrCatalogSyncNilUploader   = errors.New("catalogsync.NewService: uploader is required (Drive uploader for canonical sync — sync_targets.go:23 + sync_recursive.go dereference unconditionally)")
+	ErrCatalogSyncNilReader     = errors.New("catalogsync.NewService: reader is required (read-only Drive port — sync_targets.go:23 + sync_recursive.go dereference unconditionally)")
 	ErrCatalogSyncNilDispatcher = errors.New("catalogsync.NewService: dispatcher is required (QDRANT-002 PR7 — production canonical ingest; sync_persist.go::upsertPreservingExisting dereferences unconditionally)")
 	ErrCatalogSyncNilLog        = errors.New("catalogsync.NewService: log is required (zap.Logger dereferenced by every warn/error path in sync_persist.go + sync_targets.go + sync_prune.go)")
 )
@@ -100,9 +100,8 @@ var (
 // nil-safe guards, post review):
 //
 //	REQUIRED (ctor rejects nil with typed sentinel):
-//	  - Uploader    : sync_targets.go:23 + sync_recursive.go dereference
-//	                  unconditionally (Drive uploader is the canonical
-//	                  transport integration point).
+//	  - Reader      : sync_targets.go:23 + sync_recursive.go dereference
+//	                  unconditionally (read-only Drive port).
 //	  - Dispatcher  : sync_persist.go::upsertPreservingExisting calls
 //	                  s.dispatcher.EnqueueAndIndex unconditionally
 //	                  (QDRANT-002 PR7 — production canonical ingest).
@@ -124,7 +123,7 @@ var (
 // a false-positive: composition wiring that legitimately wants a
 // minimal-Deps Service (e.g. test fixtures) could not pass.
 type Deps struct {
-	Uploader   *uploaddrive.Uploader
+	Reader     drive.Reader
 	Targets    []Target
 	AssetTree  *assettree.Service
 	Dispatcher *outbox.Dispatcher
@@ -132,7 +131,7 @@ type Deps struct {
 }
 
 type Service struct {
-	uploader  *uploaddrive.Uploader
+	reader    drive.Reader
 	log       *zap.Logger
 	targets   []Target
 	assetTree *assettree.Service
@@ -164,7 +163,7 @@ type Service struct {
 // late-bind SetDispatcher ordering hazard is gone because the dispatcher is
 // captured at construction time.
 //
-// Validation order: transport (Uploader) → storage (Dispatcher) → Log.
+// Validation order: Drive reader → storage (Dispatcher) → Log.
 // Targets is NOT validated at ctor time — an empty slice is allowed
 // (ad-hoc SyncFolderID still works because the explicit repo arg is
 // supplied by the caller; the async drive.folder.sync job requires
@@ -178,8 +177,8 @@ type Service struct {
 // NewService is the second line of defence so accidental misuse from
 // tests still fails loud.
 func NewService(deps Deps) (*Service, error) {
-	if deps.Uploader == nil {
-		return nil, ErrCatalogSyncNilUploader
+	if deps.Reader == nil {
+		return nil, ErrCatalogSyncNilReader
 	}
 	if deps.Dispatcher == nil {
 		return nil, ErrCatalogSyncNilDispatcher
@@ -189,7 +188,7 @@ func NewService(deps Deps) (*Service, error) {
 	}
 
 	return &Service{
-		uploader:   deps.Uploader,
+		reader:     deps.Reader,
 		log:        deps.Log,
 		targets:    deps.Targets,
 		assetTree:  deps.AssetTree,

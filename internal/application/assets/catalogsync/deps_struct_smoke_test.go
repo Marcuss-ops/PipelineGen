@@ -25,7 +25,7 @@ func TestDeps_FieldCountCap(t *testing.T) {
 	// were never read by any catalogsync method). The hard cap stays
 	// at 8; today we are at 5, well below the cap.
 	want := []string{
-		"Uploader",
+		"Reader",
 		"Targets",
 		"AssetTree",
 		"Dispatcher",

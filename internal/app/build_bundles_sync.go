@@ -38,20 +38,20 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 
 	// PR-D composition-root pre-rejection is relaxed for the no-Drive
 	// test path: when Drive is disabled the sync bundle still builds
-	// with a nil-service uploader so the bootstrap tests can complete.
+	// with a nil-service reader so the bootstrap tests can complete.
 	// The catalogsync service itself remains fail-closed if it is ever
 	// invoked without a real Drive client.
-	uploader := drive.driveUploader
-	if uploader == nil {
-		uploader = &driveutil.Uploader{Log: log}
-		log.Warn("BuildSyncBundle: drive uploader missing; using nil-service placeholder for disabled-drive bootstrap")
+	reader := drive.driveUploader
+	if reader == nil {
+		reader = &driveutil.Uploader{Log: log}
+		log.Warn("BuildSyncBundle: drive reader missing; using nil-service placeholder for disabled-drive bootstrap")
 	}
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("BuildSyncBundle: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
 	catalogSync, err := catalogsync.NewService(catalogsync.Deps{
-		Uploader:   uploader,
+		Reader:     reader,
 		Targets:    syncTargets,
 		AssetTree:  search.AssetTreeService,
 		Dispatcher: outbox.Dispatcher,
