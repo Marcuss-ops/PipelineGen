@@ -31,13 +31,18 @@ import (
 // without a registered adapter.
 type EntitiesProcessor struct {
 	extractor EntityExtractor
+	metrics   VidRushMetrics
 }
 
 // NewEntitiesProcessor creates an EntitiesProcessor. extractor must
 // be non-nil at composition time (composition-side validation
 // enforces this via validateRequiredProcessors).
-func NewEntitiesProcessor(extractor EntityExtractor) *EntitiesProcessor {
-	return &EntitiesProcessor{extractor: extractor}
+func NewEntitiesProcessor(extractor EntityExtractor, metrics ...VidRushMetrics) *EntitiesProcessor {
+	var m VidRushMetrics
+	if len(metrics) > 0 {
+		m = metrics[0]
+	}
+	return &EntitiesProcessor{extractor: extractor, metrics: m}
 }
 
 func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
@@ -113,6 +118,9 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(canonical))
 
 	for _, canonicalSeg := range canonical {
+		if p.metrics != nil {
+			p.metrics.IncSegments()
+		}
 		cacheKey := segmentCacheKey(
 			"extraction",
 			canonicalSeg.TextHash,
@@ -132,6 +140,9 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 					seg.Cache.Extraction = "HIT_EXACT"
 					segments = append(segments, seg)
 					mergeVidRushAggregate(agg, seg)
+					if p.metrics != nil {
+						p.metrics.IncExtractionCache(true)
+					}
 					continue
 				}
 			}
@@ -160,6 +171,9 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 
 		seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit)
 		seg.Cache.Extraction = "MISS"
+		if p.metrics != nil {
+			p.metrics.IncExtractionCache(false)
+		}
 		segments = append(segments, seg)
 		mergeVidRushAggregate(agg, seg)
 		cacheStore(&vidrushExtractionCache, cacheKey, seg)

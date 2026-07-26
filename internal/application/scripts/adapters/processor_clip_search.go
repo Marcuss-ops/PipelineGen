@@ -38,13 +38,18 @@ import (
 // upstream EntitiesProcessor.
 type ClipSearchProcessor struct {
 	searcher ArtlistClipSearcher
+	metrics  VidRushMetrics
 }
 
 // NewClipSearchProcessor creates a ClipSearchProcessor. searcher
 // may be nil at construction time — Process() returns empty results
 // (no error) when the searcher is nil (BestEffort semantics).
-func NewClipSearchProcessor(searcher ArtlistClipSearcher) *ClipSearchProcessor {
-	return &ClipSearchProcessor{searcher: searcher}
+func NewClipSearchProcessor(searcher ArtlistClipSearcher, metrics ...VidRushMetrics) *ClipSearchProcessor {
+	var m VidRushMetrics
+	if len(metrics) > 0 {
+		m = metrics[0]
+	}
+	return &ClipSearchProcessor{searcher: searcher, metrics: m}
 }
 
 // Name returns the canonical processor name.
@@ -109,12 +114,19 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 					cachedSeg.Cache.Artlist = "HIT_EXACT"
 					segments = append(segments, cachedSeg)
 					aggregated = append(aggregated, matchesFromSegment(cachedSeg)...)
+					if p.metrics != nil {
+						p.metrics.IncAssetCache("artlist", true)
+					}
 					continue
 				}
 			}
 		}
 
 		var segmentMatches []ArtlistClipMatch
+		if p.metrics != nil {
+			p.metrics.IncAssetCache("artlist", false)
+			p.metrics.IncProviderRequest("artlist")
+		}
 		for _, query := range updated.Insights.ArtlistQueries {
 			matches := p.searcher.SearchClips(ctx, plan.Title, []string{query})
 			if len(matches) == 0 {
