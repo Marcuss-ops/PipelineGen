@@ -52,9 +52,11 @@ type SegmentAssetCandidate struct {
 
 // SegmentAssetSelection is the winning asset bundle for a segment.
 type SegmentAssetSelection struct {
-	PrimaryVideo    *SegmentAssetCandidate  `json:"primary_video,omitempty"`
-	SecondaryImages []SegmentAssetCandidate `json:"secondary_images,omitempty"`
-	Candidates      []SegmentAssetCandidate `json:"candidates,omitempty"`
+	PrimaryVideo     *SegmentAssetCandidate  `json:"primary_video,omitempty"`
+	SecondaryImages  []SegmentAssetCandidate `json:"secondary_images,omitempty"`
+	Candidates       []SegmentAssetCandidate `json:"candidates,omitempty"`
+	CandidateSetHash string                  `json:"candidate_set_hash,omitempty"`
+	SelectionReason  string                  `json:"selection_reason,omitempty"`
 }
 
 // SegmentCacheState stores the per-segment cache status across the
