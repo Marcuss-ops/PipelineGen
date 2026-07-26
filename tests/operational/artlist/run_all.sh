@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/run_all.sh — Artlist DoD battery orchestrator.
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
+# Canonical Artlist operational battery. The granular gates run in order.
 # Sequences 9 sub-scripts (01_startup … 09_failure_modes) in order with a
 # fail-closed chain — matches the monolithic behavior where Gate 0 → R must
 # pass in order, otherwise the battery halts.
@@ -34,8 +34,8 @@ export GATE4_CLIP_IDS_FILE="$CLIP_IDS_FILE"
 touch "$CLIP_IDS_FILE"
 trap 'rm -f "$CLIP_IDS_FILE"' EXIT
 
-# Sub-script table — every gate in the monolithic artlist_e2e.sh maps to
-# exactly one entry here. Order is the DoD execution order (preflight →
+# Sub-script table — every gate maps to exactly one entry here. Order is
+# the DoD execution order (preflight →
 # search → detail → download → pipeline → drive → index → cache → failure).
 declare -a SUB_SCRIPTS=(
     "$DIR/01_startup.sh"
@@ -70,8 +70,8 @@ for ss in "${SUB_SCRIPTS[@]}"; do
     printf '    - %s\n' "$(basename "$ss")"
 done
 
-# Sequential fail-closed chain — matches the monolithic artlist_e2e.sh
-# behavior where Gate 0 → R must pass in order, otherwise the battery halts.
+# Sequential fail-closed chain: every gate must pass in order, otherwise
+# the battery halts.
 # each sub-script runs in its own bash subshell (separate WORK_DIR, separate
 # counters), so failures here are caught via the explicit exit-code capture
 # below. We do NOT aggregate PASS/WARN/FAIL across sub-scripts — each
@@ -85,8 +85,7 @@ for ss in "${SUB_SCRIPTS[@]}"; do
         rc=$?
         echo "[$(date '+%H:%M:%S')]   $(basename "$ss") FAIL (exit $rc)"
         FAILED+=("$(basename "$ss")")
-        # Fail-closed: stop the chain. Matches monolithic artlist_e2e.sh
-        # behavior (also ran `gate_xxx || return 1` per gate).
+        # Fail-closed: stop the chain when a gate fails.
         exit $rc
     fi
 done

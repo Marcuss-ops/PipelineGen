@@ -7,7 +7,7 @@
 # "estrazione futura" consolidation. This file is the canonical Gate 8
 # owner.
 #
-# Per-clip invariants per artlist_gates.md|Gate 8 verbatim:
+# Per-clip invariants per the Artlist operational contract|Gate 8 verbatim:
 #   - artlist_qdrant_assert (lib/artlist.sh, local SSOT): single call
 #     covers /points/scroll existence + payload.source=artlist +
 #     payload.media_type=video + payload.lifecycle_state=PUBLISHED +

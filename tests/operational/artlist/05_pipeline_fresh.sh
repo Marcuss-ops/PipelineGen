@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/05_pipeline_fresh.sh — Artlist DoD Gate 4/5/6/7/8 (fresh end-to-end pipeline + per-clip validation).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh. Replaces
+# Reorg (July 2026): split out of tests/operational/artlist/run_all.sh. Replaces
 # prior self-aware stub with a real end-to-end pipeline harness that drives
 # the canonical fresh-run sequence on a SEARCH TERM that has NEVER been
 # processed before (so cache-replay path is OFF and every stage is forced
@@ -140,7 +140,7 @@ gate_pipeline_fresh() {
 }
 
 # ── Gate 5 — per-clip DB + local file validation ─────────────────────
-# Spec verbatim (artlist_gates.md Gate-5 row):
+# Spec verbatim (the Artlist operational contract Gate-5 row):
 #   - Hand-off: ${WORK_DIR}/clip_ids.txt written by an upstream orchestrator
 #     (run_all.sh Gate 4 dispatcher OR a sibling fresh-run script that has
 #     the 3-clip RunTagResponse). One file per scenario at the gate boundary

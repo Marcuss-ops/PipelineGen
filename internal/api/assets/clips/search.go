@@ -1,16 +1,15 @@
 // Package clips — Search sub-handler (Step 5 Split 1, June 2026).
 //
 // OVERRIDE ADR 0009 (clips.Handler capability-split) — user override
-// recorded in commit message; this commit extracts the 4 search routes
-// (ListClips + GetClip + ClipStatus + AdvancedSearch) into a dedicated
-// *SearchHandler receiver. SearchDeps carries only the 5 deps these
+// recorded in commit message; this commit extracts the 3 search routes
+// (ListClips + GetClip + ClipStatus) into a dedicated *SearchHandler
+// receiver. SearchDeps carries only the 4 deps these
 // routes actually consume (cluster × deps matrix §4):
 //
 //   - ClipsRepo (ListClips text-search branch via repoForSource)
 //   - AssetRepo      (GetClip / ClipStatus / ListClips default branch)
 //   - VoiceoverRepo  (GetClip + ListClips voiceover source branch; nil-tolerated)
 //   - ImagesRepo     (ListClips images source branch; nil-tolerated)
-//   - SearchSvc      (AdvancedSearch via canonical search.Aggregator)
 //
 // Pattern B (per-cluster RegisterRoutes with idem fn as parameter):
 // the orchestrator Handler.RegisterRoutes single-calls
@@ -26,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
@@ -34,8 +32,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SearchDeps is the constructor bag for SearchHandler. The 5 fields
-// below are exactly the deps the 7 moved methods touch — no more, no
+// SearchDeps is the constructor bag for SearchHandler. The 4 fields
+// below are exactly the deps the 3 routes touch — no more, no
 // less. Cluster ownership follows the matrix in the Step 5 discovery
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
@@ -43,10 +41,9 @@ type SearchDeps struct {
 	AssetRepo     asset.Repository
 	VoiceoverRepo *assets.VoiceoversRepository
 	ImagesRepo    *imagesrepo.ImagesRepository
-	SearchSvc     *search.Aggregator
 }
 
-// SearchHandler owns the 4 clip-search routes. Receiver-on-pattern-B:
+// SearchHandler owns the 3 clip-search routes. Receiver-on-pattern-B:
 // constructed in NewHandler from a SearchDeps shape extracted from
 // the orchestrator Deps.
 type SearchHandler struct {
@@ -54,19 +51,16 @@ type SearchHandler struct {
 	assetRepo     asset.Repository
 	voiceoverRepo *assets.VoiceoversRepository
 	imagesRepo    *imagesrepo.ImagesRepository
-	searchSvc     *search.Aggregator
 }
 
 // NewSearchHandler constructs a SearchHandler with the supplied
-// SearchDeps. Nil fields are tolerated for test fixtures; production
-// wiring supplies all 5 via the SearchDeps shape.
+// SearchDeps. Nil fields are tolerated for test fixtures.
 func NewSearchHandler(d SearchDeps) *SearchHandler {
 	return &SearchHandler{
 		clipsRepo:     d.ClipsRepo,
 		assetRepo:     d.AssetRepo,
 		voiceoverRepo: d.VoiceoverRepo,
 		imagesRepo:    d.ImagesRepo,
-		searchSvc:     d.SearchSvc,
 	}
 }
 
@@ -84,7 +78,7 @@ func (sh *SearchHandler) repoForSource(source string) *assets.ClipsRepository {
 	return sh.clipsRepo
 }
 
-// RegisterRoutes installs the 4 Search routes on the supplied gin
+// RegisterRoutes installs the 3 Search routes on the supplied gin
 // router group. Read routes install no idem middleware; write routes
 // install it before the handler per AGENTS.md Pattern 8.
 //
@@ -93,7 +87,6 @@ func (sh *SearchHandler) repoForSource(source string) *assets.ClipsRepository {
 //	GET  /:source/clips                  -> ListClips       (read)
 //	GET  /:source/clips/:id              -> GetClip         (read)
 //	POST /:source/clips/:id/status       -> ClipStatus      (write+idem)
-//	POST /search/advanced                -> AdvancedSearch  (write+idem)
 func (sh *SearchHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
 	// Read-only routes (no idempotency)
 	r.GET("/:source/clips", sh.ListClips)
@@ -101,116 +94,7 @@ func (sh *SearchHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc
 
 	// Write routes (idempotency-protected per PR8, June 2026)
 	r.POST("/:source/clips/:id/status", idem, sh.ClipStatus)
-	// POST /search/advanced removed — Blocco A2 consolidation (June 2026).
-	// Unified search is now at POST /api/media/search.
 }
-
-// ─── MOVED FROM clip_search.go (deleted in this commit) ───
-
-// AdvancedSearch performs a multi-source clip search with structured filters.
-//
-//	@Summary		Advanced clip search with filters
-//	@Description	Search media assets with structured filters (category, date range,
-//	@Description	duration, transcript, source, Drive link).
-//	@Tags			search
-//	@Accept			json
-//	@Produce		json
-//	@Success		200  {object} object
-//	@Header			200  {string}  X-Deprecation    "true (Wave 21 PR 10 cutover)"
-//	@Router			/api/media/search/advanced [post]
-func (sh *SearchHandler) AdvancedSearch(c *gin.Context) {
-	if sh.searchSvc == nil {
-		sh.setDeprecationHeader(c)
-		apiutil.InternalError(c, fmt.Errorf("advanced search aggregator not available"))
-		return
-	}
-
-	var req asset.AdvancedSearchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		sh.setDeprecationHeader(c)
-		apiutil.BadRequest(c, "invalid request: "+err.Error())
-		return
-	}
-
-	q := translateAdvanceRequestToQuery(req)
-	res, err := sh.searchSvc.Search(c.Request.Context(), q)
-	if err != nil {
-		sh.setDeprecationHeader(c)
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	sh.setDeprecationHeader(c)
-	apiutil.OK(c, gin.H{
-		"ok":     true,
-		"total":  len(res.Items),
-		"count":  len(res.Items),
-		"limit":  req.Limit,
-		"offset": req.Offset,
-		"clips":  toAssetResults(res),
-	})
-}
-
-// setDeprecationHeader installs the Wave 21 PR 10 cutover sentinel
-// header on every response from this route. Dashboards and migration
-// tooling grep for X-Deprecation: true to find legacy consumers.
-func (sh *SearchHandler) setDeprecationHeader(c *gin.Context) {
-	c.Header("X-Deprecation", "true")
-	c.Header("X-Deprecation-Migration", "aggregator")
-	c.Header("Link", `</api/v2/search>; rel="successor-version"`)
-}
-
-// translateAdvanceRequestToQuery converts the legacy
-// asset.AdvancedSearchRequest into the canonical search.Query the
-// Aggregator consumes. Kept as a package-local function so the
-// Wave 19 cross-capability import rule is preserved (search package
-// is stdlib-only; the api layer owns the bridge).
-func translateAdvanceRequestToQuery(req asset.AdvancedSearchRequest) search.Query {
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 50 // legacy default
-	}
-	var mediaTypes []string
-	if req.Source != "" && req.Source != "all" && req.Source != "unified" {
-		mediaTypes = []string{req.Source}
-	}
-	return search.Query{
-		Text:  req.Q,
-		Limit: limit,
-		Mode:  search.SearchModeHybrid,
-		Filters: search.Filters{
-			Source:        req.Source,
-			MediaType:     req.Source,
-			Tags:          nil, // legacy AdvancedSearchRequest does not expose Tags
-			DurationMsMin: req.MinDuration * 1000,
-		},
-		MediaTypes: mediaTypes,
-	}
-}
-
-// toAssetResults converts the Aggregator's canonical search.Result
-// back into []*asset.Asset for the legacy envelope shape
-// ({ok,total,count,limit,offset,clips}). Uses typed-string conversions
-// because asset.Asset's Source/MediaType fields are typed names
-// (`type Source string`, `type MediaType string`) per the asset
-// domain — not plain strings.
-func toAssetResults(r *search.Result) []*asset.Asset {
-	if r == nil {
-		return nil
-	}
-	out := make([]*asset.Asset, 0, len(r.Items))
-	for _, c := range r.Items {
-		out = append(out, &asset.Asset{
-			ID:        c.AssetID,
-			Name:      c.Title,
-			Source:    asset.Source(c.Source),
-			MediaType: asset.MediaType(c.MediaType),
-		})
-	}
-	return out
-}
-
-// ─── MOVED FROM clip_read.go (deleted in this commit) ───
 
 // GetClip returns a single clip.
 func (sh *SearchHandler) GetClip(c *gin.Context) {

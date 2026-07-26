@@ -11,9 +11,6 @@
 // Body: { "query": "text", "sources": ["youtube","artlist"], "mode": "hybrid",
 //
 //	"filters": { "source": "...", "media_type": "video", ... }, "limit": 20 }
-//
-// X-Deprecation header is set on every response so dashboards and
-// migration tooling can spot callers still using the legacy shape.
 package search
 
 import (

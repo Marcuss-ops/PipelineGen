@@ -112,7 +112,6 @@ func buildScriptSourceResolvers(
 			// Fase 4 strict cutover: there is no legacy
 			// metadata_json[\"transcript\"] fallback; the
 			// TextTrackReader is the SOLE read surface. The
-			// MigrationFallbackLegacyMetadata config knob is
 			// removed (see internal/platform/config/media.go).
 			if root.Repos.TextTrackRepo != nil {
 				clipSourceBuilder.ConfigureTextTrackReader(root.Repos.TextTrackRepo)

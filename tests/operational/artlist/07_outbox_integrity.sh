@@ -4,7 +4,7 @@
 #
 # Reorg (July 2026): split out of tests/operational/artlist/07_index.sh
 # (which now owns only Gate 8 = Qdrant + media-search). This sub-battery
-# enforces the 5 hard invariants from tests/operational/artlist_gates.md
+# enforces the 5 hard invariants from tests/operational/the Artlist operational contract
 # Gate-7 row verbatim, plus the post-loop forensic probe via the
 # canonical `smoke_outbox_chain_verify` (lib/common.sh) DoD-exact helper.
 #
@@ -35,7 +35,7 @@ source "$DIR/../lib/_artlist_common.sh"
 smoke_require curl jq sqlite3 sha256sum
 
 # ── Gate 7 — SQLite + outbox integrity ──────────────────────────────────
-# Spec (tests/operational/artlist_gates.md Gate-7 row, July 2026 DoD):
+# Spec (tests/operational/the Artlist operational contract Gate-7 row, July 2026 DoD):
 #   - consume hand-off ${WORK_DIR}/clip_ids.txt (Gate 4 wrote it).
 #   - per clip_id, 5 HARD invariants (signature: set -u + smoke_sqlite_query):
 #       inv-1: media_assets COUNT(*) WHERE id='<clip_id>' MUST be exactly 1
@@ -88,7 +88,7 @@ gate_outbox_integrity() {
 
         # ── inv-2: file_hash coherent with local_path on disk ──────
         # One-shot SELECT for file_hash + local_path; default sqlite3
-        # pipe-delimited split per DoD spec matching artlist_gates.md Gate-7.
+        # pipe-delimited split per DoD spec matching the Artlist operational contract Gate-7.
         local hash_row
         hash_row=$(smoke_sqlite_query "$DB_PATH" \
             "SELECT file_hash, local_path FROM media_assets WHERE id='${clip_id}'" \
@@ -133,7 +133,7 @@ gate_outbox_integrity() {
 
         # ── inv-5: outbox chain terminal with no dead_letter ──────
         # Inline SUM(CASE...) is the DoD-verbatim inv-5 contract (per
-        # artlist_gates.md). smoke_outbox_chain_verify below is forensic
+        # the Artlist operational contract). smoke_outbox_chain_verify below is forensic
         # only and runs post-loop; this inline query is the per-clip hard gate
         # so per-clip failures surface inline, not only via aggregate chain.
         local outbox_row

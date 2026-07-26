@@ -137,7 +137,7 @@
 # ── Wave 14 grandfathered: api/script orchestrator (PR3 — CLEANED, June 2026) ─
 # Internal cleanup wave, June 24 2026: api/script/{flow.go, handler_flow.go,
 # handler_jobs.go} no longer import internal/infrastructure — the handlers
-# were already wired via port abstractions (DriveFolderClient,
+# were already wired via canonical application ports (DocumentCreator,
 # DocumentCreator) defined in handler_flow.go itself, mirroring the
 # Wave 14 PR3 migration plan. Removed from allowlist at PR3-cleanup.
 # (helpers.go was already removed earlier — see the inline note below.)

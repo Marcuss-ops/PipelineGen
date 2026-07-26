@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/03_detail_stream.sh — Artlist DoD Gate 1 (POST /detail hard gate).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
+# Reorg (July 2026): split out of tests/operational/artlist/run_all.sh (now a thin shim).
 # Two-phase acceptance probe (DoD, July 2026):
 #
 #   Happy path: ok=true + clip_id non-empty + page_url starts with

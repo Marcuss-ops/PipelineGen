@@ -11,7 +11,7 @@
 # the verification chain stays focused on restart semantics. No duplicate
 # per-gate logic (AGENTS.md single-focus rule honoured).
 #
-# Spec (July 2026 DoD, artlist_gates.md Restart-Verification row):
+# Spec (July 2026 DoD, the Artlist operational contract Restart-Verification row):
 #   - preflight: capture vitals fingerprint (PIDs, /api/health hash,
 #     DB row count sentinel, Qdrant count sentinel, ARTLIST_COOKIE_FILE
 #     mtime+sha256, better-sqlite3 native binary sha256). Any drift on
