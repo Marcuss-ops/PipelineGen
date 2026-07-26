@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// mockTranslatorFailingTranslate is a MetadataTranslator stub that
+// mockTranslatorFailingTranslate is a MetadataGenerator stub that
 // fails every TranslateTextWithModel call but succeeds on the
 // English metadata LLM call. Used by tests that want a successful
 // English-metadata path and failing translations for non-English
@@ -31,7 +31,7 @@ func (m *mockTranslatorFailingTranslate) TranslateTextWithModel(_ context.Contex
 	return "", errors.New("forced translation failure (P0.6 test)")
 }
 
-// mockTranslatorEmptyPayload is a MetadataTranslator stub that
+// mockTranslatorEmptyPayload is a MetadataGenerator stub that
 // "succeeds" at all calls but returns an empty payload from the
 // English LLM metadata call. This locks the P0.6 godlike/07
 // regression for the silent empty-payload success case.
@@ -226,7 +226,7 @@ func TestGenerateVideoMetadata_EnglishLLMEmptyPayloadMarksUntranslated(t *testin
 	}
 }
 
-// mockTranslatorSuccess is a happy-path MetadataTranslator stub.
+// mockTranslatorSuccess is a happy-path MetadataGenerator stub.
 type mockTranslatorSuccess struct {
 	enDesc string
 	enTags []string
@@ -254,10 +254,10 @@ func (m *mockTranslatorFailingAll) TranslateTextWithModel(_ context.Context, _, 
 }
 
 // Compile-time assertion: the ollama.Generator concrete satisfies the
-// MetadataTranslator port. Production wiring depends on this implicit
+// MetadataGenerator port. Production wiring depends on this implicit
 // interface satisfaction; we surface the contract here so a future
 // port shape change raises a build error rather than a runtime drift.
-var _ MetadataTranslator = (*mockTranslatorFailingTranslate)(nil)
-var _ MetadataTranslator = (*mockTranslatorSuccess)(nil)
-var _ MetadataTranslator = (*mockTranslatorFailingAll)(nil)
-var _ MetadataTranslator = (*mockTranslatorEmptyPayload)(nil)
+var _ MetadataGenerator = (*mockTranslatorFailingTranslate)(nil)
+var _ MetadataGenerator = (*mockTranslatorSuccess)(nil)
+var _ MetadataGenerator = (*mockTranslatorFailingAll)(nil)
+var _ MetadataGenerator = (*mockTranslatorEmptyPayload)(nil)

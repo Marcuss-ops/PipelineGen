@@ -1,55 +1,4 @@
-// Package translation — OllamaTranslator concrete adapter (Fase 9
-// step 2 of the Spina Dorsale, July 2026).
-//
-// OllamaTranslator is the canonical single-source-of-truth concrete
-// for the translation + metadata-generation surface. It satisfies:
-//  1. translation.TranslationPort           — the new canonical port
-//     (Translate(ctx, cmd TranslationCommand) (TranslationResult, error))
-//  2. translation.LegacyTextTranslationService — the 3-arg straggler
-//     (TranslateText(ctx, text, lang) (string, error))
-//  3. translation.LegacyTranslatorService — the 4-arg straggler
-//     (TranslateTextWithModel(ctx, text, lang, model) (string, error))
-//  4. translation.LegacyMetadataTranslator — the dto-level combined
-//     port (GenerateVideoMetadataWithModel + TranslateTextWithModel)
-//
-// Why one concrete satisfies four interfaces: godlike/07 EXPAND phase.
-// New canonical surface lands first (TranslationPort) + the legacy
-// surfaces stay (3 of them) so callers migrate gradually. The single
-// concrete adapter makes the composition root swap-out trivial:
-// instead of two concrete constructions (oGen.TranslateText for
-// legacy calls + oGen.TranslateVideoMetadataWithModel for metadata),
-// composition root instantiates one OllamaTranslator that flows into
-// every consumer field (svc.Translation, svc.Translator, plus the new
-// svc.TranslationPort). Per godlike/06, one canonical owner of the
-// ollama-translation fact.
-//
-// Internal logic (BACKFILL phase, today):
-//   - Translate(ctx, cmd): reads cmd.ModelPolicy to resolve the effective
-//     model, calls gen.TranslateTextWithModel(..., resolvedModel),
-//     hydrates TranslationResult. Cache lookup is delegated to the
-//     underlying gen (which exposes the same SetTranslationCache hook
-//     at composition time). ModelHints are honored at the typed-errors
-//     layer (no_cache hint skips cache by passing nil-cache in cmd;
-//     preserve_* are reserved for future Fase 9 step-3 wiring).
-//   - TranslateText / TranslateTextWithModel: thin delegations to
-//     gen.TranslateTextWithModel Preserve the legacy 3-arg / 4-arg
-//     shape so callers using the legacy ports compile unchanged.
-//   - GenerateVideoMetadataWithModel: delegates to
-//     gen.GenerateVideoMetadataWithModel unchanged (the underlying
-//     prompt + parsing logic is provider-specific).
-//
-// Forward-pointer (canonical tracker entry, godlike/07 EXPAND →
-// BACKFILL → CUTOVER → CONTRACT sequence):
-//   - architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION
-//     (status: in_progress, removal_date: 2026-Q4)
-//   - Internal consumers: flow_helpers.go::artlistSearchPhrase
-//     migrated to svc.TranslationPort.Translate in this commit;
-//     dto/metadata.go::GenerateVideoMetadata continues to use the
-//     legacy MetadataTranslator port (still satisfied via the alias
-//     `type MetadataTranslator = translation.LegacyMetadataTranslator`)
-//     for the BACKFILL phase. CUTOVER = signature change to take
-//     TranslationPort; CONTRACT = physical removal of the legacy
-//     interfaces.
+// Package translation contains the Ollama-backed TranslationPort adapter.
 package translation
 
 import (
@@ -60,11 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// OllamaTranslator is the canonical concrete adapter that satisfies
-// the translation.TranslationPort (new canonical) + the three legacy
-// port surfaces declared in legacy.go (godlike/07 EXPAND-window
-// back-compat). Construction is via NewOllamaTranslator; composition
-// root wires one instance per service graph (sender + creator).
+// OllamaTranslator is the concrete adapter for TranslationPort.
 //
 // Field contract:
 //   - gen: the canonical ollama chat client wrapper. *NOT* nil in
