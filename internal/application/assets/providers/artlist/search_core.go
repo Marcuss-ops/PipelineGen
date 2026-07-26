@@ -8,6 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
 )
@@ -83,86 +84,20 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		return nil, err
 	}
 
+	hydratedClips := ss.hydrateDiscoveredClips(ctx, originalTerm, candidates)
+
 	resp := &SearchResponse{
 		OK:     true,
 		Term:   originalTerm,
 		Source: "live",
-		Clips:  make([]asset.Asset, 0, len(candidates)),
+		Clips:  make([]asset.Asset, 0, len(hydratedClips)),
 	}
-	for _, candidate := range candidates {
-		if candidate.ID == "" {
-			s.log.Warn("skipping candidate with missing id", zap.String("title", candidate.Title))
+	hasHydratedClip := false
+	for _, clip := range hydratedClips {
+		if clip == nil {
 			continue
 		}
-
-		pageURL := candidate.PageURL
-		if pageURL == "" && candidate.ID != "" {
-			pageURL = "https://artlist.io/stock-footage/clip/" + candidate.ID
-		}
-
-		// Hydrate search metadata with the full clip detail page before
-		// persisting the discovered asset. The detail fetcher enriches the
-		// synthetic search result with creator, categories, duration,
-		// dimensions, license, collection, and raw metadata.
-		hydrated := &candidate
-		if s.detailFetcher != nil {
-			detailed, detailErr := s.detailFetcher.FetchDetails(ctx, pageURL)
-			if detailErr != nil {
-				s.log.Warn("failed to hydrate Artlist clip details, using search metadata",
-					zap.String("clip_id", candidate.ID),
-					zap.String("page_url", pageURL),
-					zap.Error(detailErr))
-			} else if detailed != nil {
-				hydrated = detailed
-			}
-		}
-
-		clip := candidateToAsset(hydrated, pageURL)
-		clip.SetDownloadLink(candidate.SourceRef)
-
-		// Keep provider-side tags pure; the search term that discovered the
-		// clip lives in SearchTerms and Metadata["discovered_by_queries"].
-		providerTags := make([]string, len(hydrated.Keywords))
-		copy(providerTags, hydrated.Keywords)
-
-		clip.ProviderTags = providerTags
-		clip.RebuildTags()
-
-		clip.SearchTerms = deduplicateStrings(
-			append([]string{originalTerm}, providerTags...),
-		)
-
-		if clip.Metadata == nil {
-			clip.Metadata = map[string]any{}
-		}
-		clip.Metadata["provider_tags"] = providerTags
-		clip.Metadata["discovered_by_queries"] = []string{originalTerm}
-		clip.Metadata["provider_categories"] = hydrated.Categories
-		clip.Metadata["metadata_origin"] = "artlist"
-
-		if s.assetStore != nil {
-			if existing, getErr := s.assetStore.Get(ctx, clip.ID); getErr == nil && existing != nil {
-				if existing.LocalPath() != "" {
-					clip.SetLocalPath(existing.LocalPath())
-				}
-				if existing.FileHash() != "" {
-					clip.SetFileHash(existing.FileHash())
-				}
-				if existing.DriveLink() != "" {
-					clip.SetDriveLink(existing.DriveLink())
-				}
-				if existing.DriveFileID() != "" {
-					clip.SetDriveFileID(existing.DriveFileID())
-				}
-				if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
-					clip.SetDownloadLink(existing.DownloadLink())
-				}
-				if existing.ClipPageURL != "" {
-					clip.ClipPageURL = existing.ClipPageURL
-				}
-			}
-		}
-
+		hasHydratedClip = true
 		if ss.dispatcher == nil {
 			return nil, ErrAssetMutationDispatcherUnavailable
 		}
@@ -179,7 +114,120 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 	}
+	if !hasHydratedClip {
+		return resp, nil
+	}
 	return resp, nil
+}
+
+func (ss *SearchService) hydrateDiscoveredClips(ctx context.Context, originalTerm string, candidates []Candidate) []*asset.Asset {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	workers := searchHydrationConcurrency(len(candidates))
+	clips, err := concurrent.Map(ctx, candidates, workers, func(ctx context.Context, idx int, candidate Candidate) (*asset.Asset, error) {
+		_ = idx
+		return ss.hydrateDiscoveredClip(ctx, originalTerm, candidate), nil
+	})
+	if err != nil {
+		if ss.service != nil && ss.service.log != nil {
+			ss.service.log.Warn("artlist hydration batch failed; falling back to partial results", zap.Error(err))
+		}
+		return nil
+	}
+	return clips
+}
+
+func (ss *SearchService) hydrateDiscoveredClip(ctx context.Context, originalTerm string, candidate Candidate) *asset.Asset {
+	s := ss.service
+	if candidate.ID == "" {
+		if s != nil && s.log != nil {
+			s.log.Warn("skipping candidate with missing id", zap.String("title", candidate.Title))
+		}
+		return nil
+	}
+
+	pageURL := candidate.PageURL
+	if pageURL == "" {
+		pageURL = "https://artlist.io/stock-footage/clip/" + candidate.ID
+	}
+
+	// Hydrate search metadata with the full clip detail page before
+	// persisting the discovered asset. The detail fetcher enriches the
+	// synthetic search result with creator, categories, duration,
+	// dimensions, license, collection, and raw metadata.
+	hydrated := &candidate
+	if s != nil && s.detailFetcher != nil {
+		detailed, detailErr := s.detailFetcher.FetchDetails(ctx, pageURL)
+		if detailErr != nil && s.log != nil {
+			s.log.Warn("failed to hydrate Artlist clip details, using search metadata",
+				zap.String("clip_id", candidate.ID),
+				zap.String("page_url", pageURL),
+				zap.Error(detailErr))
+		} else if detailed != nil {
+			hydrated = detailed
+		}
+	}
+
+	clip := candidateToAsset(hydrated, pageURL)
+	clip.SetDownloadLink(candidate.SourceRef)
+
+	// Keep provider-side tags pure; the search term that discovered the
+	// clip lives in SearchTerms and Metadata["discovered_by_queries"].
+	providerTags := make([]string, len(hydrated.Keywords))
+	copy(providerTags, hydrated.Keywords)
+
+	clip.ProviderTags = providerTags
+	clip.RebuildTags()
+
+	clip.SearchTerms = deduplicateStrings(
+		append([]string{originalTerm}, providerTags...),
+	)
+
+	if clip.Metadata == nil {
+		clip.Metadata = map[string]any{}
+	}
+	clip.Metadata["provider_tags"] = providerTags
+	clip.Metadata["discovered_by_queries"] = []string{originalTerm}
+	clip.Metadata["provider_categories"] = hydrated.Categories
+	clip.Metadata["metadata_origin"] = "artlist"
+
+	if s != nil && s.assetStore != nil {
+		if existing, getErr := s.assetStore.Get(ctx, clip.ID); getErr == nil && existing != nil {
+			if existing.LocalPath() != "" {
+				clip.SetLocalPath(existing.LocalPath())
+			}
+			if existing.FileHash() != "" {
+				clip.SetFileHash(existing.FileHash())
+			}
+			if existing.DriveLink() != "" {
+				clip.SetDriveLink(existing.DriveLink())
+			}
+			if existing.DriveFileID() != "" {
+				clip.SetDriveFileID(existing.DriveFileID())
+			}
+			if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
+				clip.SetDownloadLink(existing.DownloadLink())
+			}
+			if existing.ClipPageURL != "" {
+				clip.ClipPageURL = existing.ClipPageURL
+			}
+		}
+	}
+
+	return clip
+}
+
+func searchHydrationConcurrency(candidateCount int) int {
+	if candidateCount <= 1 {
+		return 1
+	}
+	const maxHydrationWorkers = 4
+	if candidateCount < maxHydrationWorkers {
+		return candidateCount
+	}
+	return maxHydrationWorkers
 }
 
 func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm string, limit int) (*SearchResponse, *RunTagResponse, error) {
