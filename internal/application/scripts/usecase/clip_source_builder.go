@@ -42,6 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )
@@ -132,6 +133,7 @@ func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 }
 
 const excerptMaxRunes = 500
+const defaultClipParallelism = 4
 
 // truncateExcerpt returns s if its rune count is at most maxRunes;
 // otherwise it returns s truncated to exactly maxRunes runes followed by
@@ -192,64 +194,21 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	var (
 		missingClipIDs []scriptpkg.MissingClipID
 		excludedClips  []scriptpkg.ExcludedClip
-		records        = make([]clipContextRecord, 0, len(uniqueIDs))
 	)
-	for _, id := range uniqueIDs {
-		clip, reason := c.resolveOneClip(ctx, id)
-		switch reason {
-		case clipResolveOK:
-			// fall through to enrich + append below
-		case clipResolveNotFound:
-			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
-				ClipID: id,
-				Reason: scriptpkg.MissingClipReasonNotFound,
-			})
-			continue
-		default:
-			return nil, "", "", fmt.Errorf("clip source builder: unknown resolve reason %q for id %q", reason, id)
-		}
+	results := concurrent.ParallelMap(uniqueIDs, clipParallelism(len(uniqueIDs)), func(_ int, id string) clipContextResult {
+		return c.resolveClipContextResult(ctx, id, language, requireDriveLink)
+	})
 
-		if requireDriveLink && clip.DriveLink() == "" {
-			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
-				ClipID: id,
-				Reason: scriptpkg.MissingClipReasonDriveNotFound,
-			})
-			if c.log != nil {
-				c.log.Warn("clip source builder: clip lacks drive link (missing — Issue #2 bucket)",
-					zap.String("clip_id", id))
-			}
+	records := make([]clipContextRecord, 0, len(results))
+	for _, result := range results {
+		if result.missing != nil {
+			missingClipIDs = append(missingClipIDs, *result.missing)
 			continue
 		}
-
-		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
-		// resolveTranscript is called EXACTLY ONCE per clip.
-		// The signature is (string, *asset.TextTrack, error) —
-		// transcript string first, resolved track second,
-		// error third. The resolved transcript feeds both
-		// the assembled source text (via appendClipSourceText)
-		// and the per-clip ClipDetail.Transcript (via
-		// appendClipDetail). The resolved *asset.TextTrack
-		// feeds the 3 new fingerprint fields (via the
-		// resolvedTracks accumulator + buildClipEvidence).
-		transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
-		if resolveErr != nil && c.log != nil {
-			// godlike/07 minimum-blast-radius: the typed
-			// error is logged but NOT propagated (the
-			// existing BuildClipContext signature is
-			// preserved; strict-error surfacing lands in
-			// a follow-up PR that threads the error up
-			// to the HTTP handler).
-			c.log.Warn("clip source builder: text track resolve returned error (continuing with empty transcript)",
-				zap.String("clip_id", id),
-				zap.String("language", language),
-				zap.Error(resolveErr))
+		if result.record.id == "" || result.record.clip == nil {
+			continue
 		}
-		records = append(records, clipContextRecord{
-			id:         id,
-			clip:       clip,
-			transcript: transcript,
-			track:      track,
-		})
+		records = append(records, result.record)
 	}
 
 	if len(records) == 0 && len(excludedClips) > 0 {
@@ -337,6 +296,11 @@ type clipContextRecord struct {
 	track      *asset.TextTrack
 }
 
+type clipContextResult struct {
+	record  clipContextRecord
+	missing *scriptpkg.MissingClipID
+}
+
 func chronologicalSortKey(clip *asset.Asset, id string) int64 {
 	if clip != nil {
 		startMs, _ := clipTimeline(clip)
@@ -417,6 +381,80 @@ func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*ass
 	return clip, clipResolveOK
 }
 
+func (c *ClipSourceBuilder) resolveClipContextResult(
+	ctx context.Context,
+	id string,
+	language string,
+	requireDriveLink bool,
+) clipContextResult {
+	clip, reason := c.resolveOneClip(ctx, id)
+	switch reason {
+	case clipResolveOK:
+		// fall through to the drive-link / transcript checks below.
+	case clipResolveNotFound:
+		return clipContextResult{
+			missing: &scriptpkg.MissingClipID{
+				ClipID: id,
+				Reason: scriptpkg.MissingClipReasonNotFound,
+			},
+		}
+	default:
+		if c.log != nil {
+			c.log.Warn("clip source builder: unknown resolve reason", zap.String("clip_id", id), zap.String("reason", string(reason)))
+		}
+		return clipContextResult{
+			missing: &scriptpkg.MissingClipID{
+				ClipID: id,
+				Reason: scriptpkg.MissingClipReasonNotFound,
+			},
+		}
+	}
+
+	if requireDriveLink && clip.DriveLink() == "" {
+		if c.log != nil {
+			c.log.Warn("clip source builder: clip lacks drive link (missing — Issue #2 bucket)",
+				zap.String("clip_id", id))
+		}
+		return clipContextResult{
+			missing: &scriptpkg.MissingClipID{
+				ClipID: id,
+				Reason: scriptpkg.MissingClipReasonDriveNotFound,
+			},
+		}
+	}
+
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+	// resolveTranscript is called EXACTLY ONCE per clip.
+	// The signature is (string, *asset.TextTrack, error) —
+	// transcript string first, resolved track second,
+	// error third. The resolved transcript feeds both
+	// the assembled source text (via appendClipSourceText)
+	// and the per-clip ClipDetail.Transcript (via
+	// appendClipDetail). The resolved *asset.TextTrack
+	// feeds the 3 new fingerprint fields (via the
+	// resolvedTracks accumulator + buildClipEvidence).
+	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
+	if resolveErr != nil && c.log != nil {
+		// godlike/07 minimum-blast-radius: the typed error is
+		// logged but NOT propagated (the existing BuildClipContext
+		// signature is preserved; strict-error surfacing lands in a
+		// follow-up PR that threads the error up to the HTTP handler).
+		c.log.Warn("clip source builder: text track resolve returned error (continuing with empty transcript)",
+			zap.String("clip_id", id),
+			zap.String("language", language),
+			zap.Error(resolveErr))
+	}
+
+	return clipContextResult{
+		record: clipContextRecord{
+			id:         id,
+			clip:       clip,
+			transcript: transcript,
+			track:      track,
+		},
+	}
+}
+
 func clipDisplayName(clip *asset.Asset, id string) string {
 	if name := strings.TrimSpace(clip.Name); name != "" {
 		return name
@@ -471,4 +509,14 @@ func optsResolveLanguage(opts *ClipGenerationOptions) string {
 		return ""
 	}
 	return strings.TrimSpace(opts.Language)
+}
+
+func clipParallelism(count int) int {
+	if count <= 0 {
+		return 1
+	}
+	if count < defaultClipParallelism {
+		return count
+	}
+	return defaultClipParallelism
 }
