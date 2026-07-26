@@ -56,7 +56,7 @@ ARTLIST_QDRANT_ALIAS="${ARTLIST_QDRANT_ALIAS:-media_assets_current}"
 # Drives: enqueue (POST /api/artlist/run) → poll → assert outbox →
 # assert Qdrant v3 payload → assert Drive folder routing.
 #
-# Uses canonical lib helpers (artlist_qdrant_assert, velox_artlist_pipeline_run,
+# Uses canonical lib helpers (artlist_qdrant_assert, artlist_replay_run,
 # smoke_sqlite_query, smoke_outbox_chain_verify). Each helper itself
 # short-circuits via DRY_RUN + handles HTTP failures fail-closed.
 gate_pipeline_fresh() {
@@ -69,7 +69,7 @@ gate_pipeline_fresh() {
     # Phase 4: enqueue via canonical pipeline helper (DRY_RUN-aware).
     smoke_log_section "Phase 4: enqueue fresh run term=${term}"
     local run_result
-    run_result=$(velox_artlist_pipeline_run "$term" "$limit" 2>/dev/null || true)
+    run_result=$(artlist_replay_run "$term" "$limit" 2>/dev/null || true)
     local code
     code=$(echo "$run_result" | cut -f1)
     local job_id
@@ -298,7 +298,7 @@ main() {
         printf '  per clip_id: smoke_ffprobe_check <local_path> 6.5 (DoD-exact ffprobe flag set; width>0, height>0, duration >= 6.5s cap)\n'
         printf '  per clip_id: inline ffprobe codec/container check (.format.format_name matches mp4|mov|m4a AND .streams[].codec_name contains "h264")\n'
         printf '\nLib helpers exercised:\n'
-        printf '  velox_artlist_pipeline_run  (lib/artlist.sh canonical) for enqueue\n'
+        printf '  artlist_replay_run  (lib/artlist.sh canonical) for enqueue\n'
         printf '  smoke_poll_terminal         (lib/common.sh) for terminal-state poll\n'
         printf '  smoke_outbox_chain_verify   (lib/common.sh) for delivery durability\n'
         printf '  artlist_qdrant_assert       (lib/artlist.sh canonical) for v3 payload SSOT\n'

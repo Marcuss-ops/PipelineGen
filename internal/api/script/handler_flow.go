@@ -31,27 +31,9 @@
 package script
 
 import (
-	"context"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-// DriveFolderClient abstracts folder creation for Drive resolution.
-//
-// DEPRECATED (FASE A5, July 2026): the sole consumer (FacadeHandler)
-// now uses delivery.Publisher.ResolveFolder instead. This interface
-// and its concrete adapter (driveFolderAdapterImpl in
-// wire_script_adapters.go) are dead code. Retained to avoid
-// godlike/07 minimum-blast-radius cross-package churn until a future
-// dead-code purge wave retires them.
-//
-// godlike/06 SSOT: orchestrator owns the contract type — STAYS here
-// even though the canonical field reference lives on FacadeHandler
-// (the canonical owner of the 4 facade method impls).
-type DriveFolderClient interface {
-	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
-}
 
 // ScriptFlowHandler is the slim struct-literal-friendly HTTP
 // orchestrator. Fields are partitioned into 3 groups:

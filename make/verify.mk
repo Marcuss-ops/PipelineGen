@@ -106,7 +106,7 @@ verify-node-native:
 	@cd node-scraper && node -e 'const Database = require("better-sqlite3"); const db = new Database(":memory:"); db.exec("CREATE TABLE probe(id INTEGER)"); db.close(); console.log("✅ better-sqlite3 loaded");'
 	@echo "✅ verify-node-native passed"
 
-# verify-node-tests — Mocha + ESLint over node-scraper/test/*.test.js.
+# verify-node-tests — Node test runner over node-scraper/test/*.test.js.
 # Thin alias of `make test-js`: same install guard, same node-version-check,
 # same npm test invocation. Kept separate from verify-node-native so the
 # native-binding probe can fail fast without paying the npm-install cost
@@ -114,7 +114,7 @@ verify-node-native:
 verify-node-tests: test-js
 
 # verify-node — Node toolchain gate. Composes the fast native-binding
-# probe (verify-node-native, <1s once installed) and the Mocha test suite
+# probe (verify-node-native, <1s once installed) and the Node test suite
 # (verify-node-tests, npm install + npm test).
 #
 # Order is meaningful: verify-node-native runs first so an ABI mismatch
@@ -142,7 +142,7 @@ verify-architecture:
 # api/assets/artlist, plus the node-scraper JS test suite.
 #
 # NOTE (July 2026, STEP 3/4): this target is REMOVED from verify-main
-# because the Artlist battery (artlist_e2e) requires Chrome + scraper +
+# because the Artlist live battery requires Chrome + scraper +
 # Drive + Qdrant projections — all of which the headless pre-push gate
 # must NOT depend on. Use `make verify-artlist` as a developer
 # diagnostic, NOT as a pre-push gate.

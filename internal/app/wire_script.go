@@ -30,9 +30,8 @@
 // wire_script_curation.go. Wire_script.go stays purely orchestration.
 //
 // FASE 2.A PR3 (June 2026): post-processor registration block extracted
-// to wire_script_postprocess.go; infrastructure
-// adapter types (driveFolderAdapterImpl, docCreatorImpl) +
-// composition validators (validateScriptGenerateWiring,
+// to wire_script_postprocess.go; composition validators
+// (validateScriptGenerateWiring,
 // validateRequiredProcessors, requiredProcessorNames) extracted to
 // wire_script_adapters.go. wireScriptFlow is now a pure-routing
 // orchestrator (wiring → use cases → job handler → handler →
@@ -60,10 +59,8 @@
 // ClipServices) are RETIRED. The corresponding local-variable
 // construction in wireScriptFlow (engine, harvestSvc, clipServices,
 // ollamaTranslator, driveFolderClient, documentCreator) is
-// dropped in lockstep. The adapter types (driveFolderAdapterImpl,
-// docCreatorImpl) are RETAINED in wire_script_adapters.go for
-// the canonical FacadeHandler (future typed-port consumers per
-// PR-SCRIPT-FACADE-EXTRACT).
+// dropped in lockstep. Retired handler adapters are no longer part of
+// composition.
 
 package app
 

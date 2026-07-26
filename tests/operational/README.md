@@ -141,13 +141,9 @@ into fast/main/release/live gates`). Each tier runs sequentially; an earlier
 failure halts the chain.
 
 > **Migration note.** The `verify-*` tier gates are the **canonical pre-push
-> / pre-deploy / post-deploy surface** for the artlist DoD battery. The
-> legacy `make smoke` / `make smoke-script` targets documented in the "How
-> to run" section below remain operational pending the next
-> `architecture/deprecations.yaml` cycle but are not pulled by
-> `verify-main` or any other tier — operators iterating on
-> artlist must use `make verify-artlist-*` granular targets or
-> `make verify-artlist-live` for the full chain.
+> / pre-deploy / post-deploy surface** for the Artlist and script batteries.
+> Operators must use `make verify-artlist-*`, `make verify-script-live`, or
+> `make verify-vidrush-live`; removed smoke aliases are not supported.
 
 | Tier             | Make target          | When to run                       | Browser / Drive / Qdrant live? | Headless? | Typical runtime |
 |------------------|----------------------|-----------------------------------|--------------------------------|-----------|-----------------|
@@ -163,16 +159,13 @@ composes the four live batteries:
 
 - `tests/operational/images_e2e.sh`
 - `tests/operational/script_generate_smoke.sh`
-- `tests/operational/vidrush_media_e2e.sh`
+- `tests/operational/vidrush_script_generate_e2e.sh`
 - `tests/operational/artlist/run_all.sh`
-
-(`artlist_e2e.sh` is retained as a backward-compat `exec` shim that
-forwards to `artlist/run_all.sh`.)
 
 ### Artlist DoD sub-scripts
 
 The Artlist DoD battery has been **split out of the monolithic
-`artlist_e2e.sh`** (July 2026) into nine fail-closed sub-scripts under
+the former monolithic Artlist battery (July 2026) into nine fail-closed sub-scripts under
 `tests/operational/artlist/`, plus an orchestrator wrapper. Each sub-script
 sources `../lib/common.sh` + `../lib/artlist.sh` (and the relevant area-lib
 where applicable) and can be run standalone via `bash`:
@@ -263,12 +256,7 @@ for s in tests/operational/lib/common.sh \
     bash -n "$s" || exit 1
 done
 
-# Lightweight path (build + startup + error-path probes):
-make smoke
-
-# Heavy path (text-only script generation — slow, depends on worker health):
-make smoke-script
-
-# Dry-run (prints the would-be requests, ignores token, never touches the server):
-SMOKE_DRY_RUN=1 make smoke-script
+# Canonical live paths:
+make verify-script-live
+make verify-vidrush-live
 ```

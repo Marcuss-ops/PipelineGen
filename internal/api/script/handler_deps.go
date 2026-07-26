@@ -1,8 +1,7 @@
 // Package script (api/script) — handler_deps.go owns the construction
 // seam for ScriptFlowHandler: 3 typed-narrow dep bags
 // (GenerateDeps / ShortsDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
-// the optional auto-harvest port interface
-// (AutoHarvestService) + the canonical constructor
+// and the canonical constructor
 // (NewScriptFlowHandler).
 //
 // PR-SCRIPT-DEPENDENCIES-EXTRACT (July 2026): extracted from
@@ -52,15 +51,6 @@ type ShortsDeps struct {
 		Enqueue(context.Context, remotionjob.RenderJob) (*jobs.Job, error)
 	}
 	Log *zap.Logger
-}
-
-// AutoHarvestService is the auto-harvest trigger surface. Optional; nil
-// disables the corresponding endpoint with a 503-equivalent sentinel.
-// Moved from handler_flow.go with PR-SCRIPT-DEPENDENCIES-EXTRACT — the
-// surface contract (EnqueueHarvest term+limit+preset → enqueued job
-// id) is preserved byte-stable.
-type AutoHarvestService interface {
-	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
 // GenerateDeps groups the canonical constructor inputs for the

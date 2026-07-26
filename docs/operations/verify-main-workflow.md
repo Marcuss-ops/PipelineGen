@@ -62,7 +62,7 @@ recipe with `grep -nE '^verify-main:' Makefile`.
    verify-fast                   verify-unit                  verify-node
         │                              │                              │
    foundation + static          core + infrastructure       native probe + npm test
-        │                       + api + commands              (better-sqlite3 + Mocha)
+        │                       + api + commands              (better-sqlite3 + Node tests)
         │                       (race-tested;
         │                        EXCLUDES ./tests/...)
         │
@@ -148,7 +148,7 @@ make verify-artlist-live    # composite certification (post-deploy)
 make verify-main   # the ONLY pre-push gate, runs on every push
                    # = verify-fast + verify-unit + verify-node + verify-architecture
                    # = HEADLESS (no browser, no scraper, no Drive, no Qdrant)
-                   # = fail-cfosed (any non-zero step BLOCKS the push)
+                   # = fail-closed (any non-zero step BLOCKS the push)
                    # = CI parity (CI runs the same recipe, no diagnostic flags)
 ```
 
@@ -171,7 +171,8 @@ July 2026 refactor:
 - `verify-go` transitively pulled `verify-go-tests` → the slow
   `./tests/...` surface (now moves to tier 3 via
   `verify-integration`).
-- `verify-artlist` referenced the heavy `artlist_e2e.sh` battery
+- `verify-artlist` is a package-level Artlist diagnostic; the live battery is
+  `artlist/run_all.sh` under `verify-artlist-live`
   which requires Chrome + scraper — not headless.
 
 These legacy targets are **STILL PRESENT in the Makefile** for

@@ -9,17 +9,7 @@
 // wire_script_postprocess.go), and the two responsibilities
 // collected here — concrete port adapters + composition invariants.
 //
-//  1. driveFolderAdapterImpl — the ONLY adapter struct that bridges
-//     *drive.Uploader into scriptapi.DriveFolderClient port used by
-//     the script handler. Sprint 1.0 (July 2026): docCreatorImpl
-//     was RETIRED — script.generate no longer creates Google Docs
-//     inline. The canonical downstream document.generate job
-//     (internal/application/document/usecase.go) owns Doc creation.
-//     DocumentCreator interface + MaybeCreateGoogleDoc facade method
-//     are removed from internal/api/script. The drive.DocClient
-//     dependency also retires from this composition-root.
-//
-//  2. validateScriptGenerateWiring + validateRequiredProcessors +
+//  1. validateScriptGenerateWiring + validateRequiredProcessors +
 //     requiredProcessorNames — these are composition-time invariants
 //     that gate fail-closed on missing components. Issue 7 / P1
 //     (June 2026) replaced the pre-Issue-7 log.Warn with explicit
@@ -38,16 +28,10 @@
 // use across the composition root.
 //
 // Cross-references:
-//   - internal/app/wire_script.go: the caller (wireScriptFlow uses
-//     driveFolderAdapterImpl + docCreatorImpl in the handler-deps
-//     block and invokes validateScriptGenerateWiring after job
-//     registration).
+//   - internal/app/wire_script.go: the caller (wireScriptFlow invokes
+//     validateScriptGenerateWiring after job registration).
 //   - internal/app/wire_script_postprocess.go: registerScriptPostProcessors
 //     populates the ppReg that validateRequiredProcessors scans.
-//   - internal/api/script: ScriptFlowDeps.DriveFolderClient
-//     (the typed-port shape driveFolderAdapterImpl implements).
-//   - internal/infrastructure/drive: *drive.Uploader (the concrete
-//     service the adapter wraps). DocClient retired with Sprint 1.0.
 //   - internal/application/jobs: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
 //   - internal/domain/job: job.TypeScriptGenerate (the canonical
@@ -73,33 +57,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-
 	"go.uber.org/zap"
 )
-
-// driveFolderAdapterImpl wraps drive.Admin as scriptapi.DriveFolderClient.
-// FASE 9 Step 3 (June 2026): migrated from *drive.Uploader to drive.Admin
-// (Pattern 0 port). GetOrCreateFolder is an Admin operation; the concrete
-// *drive.Uploader satisfies drive.Admin structurally.
-//
-// Lives in this file (composition-root-local infra bridge) per PR3 split;
-// wire_script.go consumes it via the *ScriptFlowHandler ScriptFlowDeps.DriveFolderClient
-// field at the bottom of the wireScriptFlow orchestrator.
-type driveFolderAdapterImpl struct {
-	admin drive.Admin
-}
-
-// GetOrCreateFolder implements scriptapi.DriveFolderClient. Receiver is
-// pointer-nil-tolerant so a missing admin (test fixture / partial
-// composition) returns ("", nil) without panicking, matching the pre-PR3
-// gating contract in wireScriptFlow.
-func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	if a == nil || a.admin == nil {
-		return "", nil
-	}
-	return a.admin.GetOrCreateFolder(ctx, name, parentID)
-}
 
 // ── Composition validation: script.generate wiring must be complete ───
 
