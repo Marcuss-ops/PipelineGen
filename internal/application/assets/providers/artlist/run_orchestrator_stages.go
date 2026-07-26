@@ -38,6 +38,20 @@ func (o *RunOrchestratorService) stageResolveDestination(ctx context.Context, re
 }
 
 func (o *RunOrchestratorService) stageDiscoverClips(ctx context.Context, req *RunTagRequest, resp *RunTagResponse) (*SearchResponse, error) {
+	// First check local DB search to allow offline dry-runs and bypass scraper timeouts on replay.
+	// Only bypass if the strategy is NOT "replace" (which explicitly demands fresh live search + acquisition).
+	if req.Strategy != "replace" {
+		localSearchReq := &SearchRequest{Term: resp.Term, Limit: req.Limit}
+		dbResp, err := o.svc.searchService.Search(ctx, localSearchReq)
+		if err == nil && dbResp != nil && len(dbResp.Clips) > 0 {
+			o.svc.log.Info("artlist discovery: cache-hit via local DB (bypassing live scraper)",
+				zap.String("term", resp.Term),
+				zap.Int("clips_found", len(dbResp.Clips)))
+			resp.Found = len(dbResp.Clips)
+			return dbResp, nil
+		}
+	}
+
 	discoveryResp, err := o.svc.searchService.SearchLiveAndSave(ctx, resp.Term, req.Limit)
 	if err != nil {
 		return nil, fmt.Errorf("discovery failed: %w", err)
@@ -114,6 +128,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			Height:          req.Height,
 			DriveFileID:     item.DriveFileID,
 			RenditionLayout: true,
+			KeepAudio:       true,
 			Metadata: map[string]any{
 				"source":         "artlist",
 				"strategy":       req.Strategy,

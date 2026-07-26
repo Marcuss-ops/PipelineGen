@@ -738,6 +738,8 @@ func TestEngineGenerate_FeedsCacheKeyToMemoryGate(t *testing.T) {
 	assert.Equal(t, "CacheKey Wiring", captured.Title)
 	assert.Equal(t, "en", captured.Language)
 	assert.Equal(t, "text", captured.Mode)
+	assert.True(t, captured.UseMemory, "UseMemory from plan must propagate to memoryGateRequest")
+	assert.False(t, captured.ForceRefresh, "ForceRefresh must remain false on the normal cache-read path")
 }
 
 // TestEngineGenerate_ForceRefreshBypassesMemoryWithCacheKey is a

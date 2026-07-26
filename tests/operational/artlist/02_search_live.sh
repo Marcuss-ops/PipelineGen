@@ -31,12 +31,7 @@
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
-# shellcheck disable=SC1091
-source "$DIR/../lib/common.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist_runtime.sh"
+source "${DIR}/../lib/_artlist_common.sh"
 
 
 

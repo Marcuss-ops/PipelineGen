@@ -183,6 +183,7 @@ NEGATIVE_CASES=(
     'X-prefixed AKIA (X breaks \b boundary; canonical FP in process.go:375)|XAKIAIOSFODNN7EXAMPLE'
     'Runtime-concat-split AKIA (Go compile-time constant fold; canonical FP in process_test.go:273-279)|awsKey := "AKIAIOSFODNN7" + "EXAMPLE"'
     'Short hex (40 chars, not 64 — VELOX regex requires {64})|VELOX_ADMIN_TOKEN=abcdef0123456789abcdef0123456789abcdef01'
+    'Historical forbidden placeholder (regression canary — AGENTS.md "Authentication SSOT")|VELOX_ADMIN_TOKEN=test-admin-token-12345'
     'PEM PUBLIC key header (PUBLIC, not PRIVATE)|-----BEGIN RSA PUBLIC KEY-----'
     'Bearer reference (no value after = or :- adjacent to hex)|Authorization: Bearer ${VELOX_ADMIN_TOKEN}'
     '***REDACTED*** sentinel via env-var default-value (post-redaction canonical sentinel; not hex-shaped)|${VELOX_ADMIN_TOKEN:-***REDACTED***}'

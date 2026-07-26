@@ -1,54 +1,15 @@
-// Package app — BuildServer entry point for the cmd/server runtime.
+// Package app — BuildServer wires the composition root + HTTP server
+// and returns a ServerRuntime consumed by (*ServerRuntime).Run(ctx).
 //
-// P2-1 (June 2026): this file holds the canonical server-side
-// `BuildServer(cfg, mode, log) (*ServerRuntime, error)` entry point
-// that lets `cmd/server/main.go` do ONLY:
+// Caller-side prerequisites (NOT enforced here):
+//   - cfg has been loaded via config.GetFromPath + cfg.Validate
+//   - log has been initialized via logging.Init
+//   - mode has been validated against the allowed set
 //
-//  1. flag parsing (--config + --mode)
-//  2. fail-fast mode validation against the allowed set
-//  3. config load (`config.GetFromPath` — NOT `config.Get` so typos don't
-//     silently fall back to defaults) + `cfg.Validate`
-//  4. logging.Init + defer logging.Sync
-//  5. log.Info("server starting", ...)
-//  6. `runtime, err := app.BuildServer(cfg, mode, log)`
-//  7. signal.NotifyContext ctx
-//  8. `runtime.Run(sigCtx)`
-//
-// The heavy composition-root work (WireServices + NewServerWithHealth
-// + qdrantProbe wiring) moves UP from main into this layer.
-//
-// Pattern parallels `cmd/worker` → `internal/app/workerruntime/` (P1-3,
-// June 2026): the slim `cmd/<binary>/main.go` becomes a pure transport
-// shell; orchestration lives in a dedicated composition-root file with
-// a `Run(ctx)` entry. The matching pair for `cmd/server` is
-// `internal/app/build_server.go::BuildServer` + `(*ServerRuntime).Run`.
-//
-// Steps performed here (mirror the pre-P2-1 cmd/server/main.go pipeline):
-//
-//  1. WireServices(cfg, log, mode) — composition root (DBs, repos,
-//     services, in-process job runner). Pre-P2-1 step 6.
-//  2. Qdrant-probe → Lifecycle.AddProbe("qdrant", QdrantProbe.Probe)
-//     — readiness-barrier extension. nil-safe when Qdrant is disabled.
-//     Pre-P2-1 step 7.
-//  3. api.NewServerWithHealth with ALL 9 typed-port dependencies
-//     (construct-time wiring — never post-Setup setters, see QDRANT-002
-//     failure mode documented in api/server.go). Pre-P2-1 step 8.
-//
-// What this file does NOT do (left to the slim main):
-//   - --mode fail-fast validation
-//   - cfg == config.GetFromPath(...) + cfg.Validate fail-fast
-//   - logging.Init + defer logging.Sync (caller-side resource lifecycle)
-//   - signal.NotifyContext (caller-side signal ownership — mirrors
-//     worker pattern where main.go owns signal handling and hands
-//     the resulting sigCtx into Run)
-//
-// 9-dep note: NewServerWithHealth takes 9 parameters (1 over the
-// canonical 8-dep constructor cap from `architecture/policy.yaml`).
-// The overage is accepted by the QDRANT-route-constructor PR (June
-// 2026) because the alternative (re-introducing post-Setup setters)
-// re-introduces the silent-404 bug. BuildServer collapses these 9
-// arguments into a single composition-root call so cmd/server/main.go
-// doesn't have to thread them through itself.
+// BuildServer collapses 9 NewServerWithHealth dependencies into one
+// composition-root call so cmd/server/main.go stays a slim transport
+// shell. Run drives the HTTP server + lifecycle until ctx is done;
+// OS signal ownership lives in the caller (mirrors workerruntime.Run).
 package app
 
 import (

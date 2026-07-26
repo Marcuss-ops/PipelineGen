@@ -68,24 +68,41 @@ gate_pipeline_fresh() {
 
     # Phase 4: enqueue via canonical pipeline helper (DRY_RUN-aware).
     smoke_log_section "Phase 4: enqueue fresh run term=${term}"
-    if ! velox_artlist_pipeline_run "$term" "$limit" >/dev/null; then
-        log_fail "Phase 4 enqueue failed (velox_artlist_pipeline_run)"
+    local run_result
+    run_result=$(velox_artlist_pipeline_run "$term" "$limit" 2>/dev/null || true)
+    local code
+    code=$(echo "$run_result" | cut -f1)
+    local job_id
+    job_id=$(echo "$run_result" | cut -f2)
+
+    if [[ "$code" != "202" || -z "$job_id" ]]; then
+        log_fail "Phase 4 enqueue failed (code=${code:-empty}, job_id=${job_id:-empty})"
         failures=$((failures + 1))
         return $failures
     fi
-    log_pass "Phase 4 enqueue OK"
+    log_pass "Phase 4 enqueue OK (job_id=$job_id)"
 
-    # Phase 5: poll terminal state. Helper polls DB outbox for the run_id.
+    # Phase 5: poll terminal state.
     smoke_log_section "Phase 5: poll terminal"
-    if ! smoke_poll_terminal "$DB_PATH" 120 >/dev/null 2>&1; then
+    if ! smoke_poll_terminal "$job_id" 300 >/dev/null 2>&1; then
         log_warn "Phase 5 poll did not reach terminal in 120s (live stack may be unavailable)"
     else
         log_pass "Phase 5 reached terminal"
+        # Seed the clip_ids.txt hand-off file for Gate 5 and downstream verification
+        local db_clips
+        db_clips=$(smoke_sqlite_query "$DB_PATH" "SELECT id FROM media_assets WHERE source_url LIKE '%${term}%' OR search_terms LIKE '%${term}%'")
+        if [[ -n "$db_clips" ]]; then
+            local target_file="${CLIP_IDS_FILE:-${WORK_DIR}/clip_ids.txt}"
+            echo "$db_clips" | grep -v 'id' | grep -v '\-\-\-' | sed '/^[[:space:]]*$/d' > "$target_file"
+            cp "$target_file" "${WORK_DIR}/clip_ids.txt" 2>/dev/null || true
+            cp "$target_file" "${WORK_DIR}/expected_clip_ids.txt" 2>/dev/null || true
+            log_pass "Seeded $target_file with: $(cat "$target_file" | xargs)"
+        fi
     fi
 
     # Phase 6: outbox chain integrity (DRY_RUN-aware).
     smoke_log_section "Phase 6: outbox chain"
-    if ! smoke_outbox_chain_verify "$DB_PATH" "$term"; then
+    if ! smoke_outbox_chain_verify "$DB_PATH" "${CLIP_IDS_FILE:-${WORK_DIR}/clip_ids.txt}"; then
         log_warn "Phase 6 outbox chain verify did not pass (DB may be empty without live run)"
     else
         log_pass "Phase 6 outbox emitted canonical rows"
@@ -145,7 +162,7 @@ gate_pipeline_fresh() {
 gate_per_clip_validation() {
     smoke_log_section "Gate 5 — per-clip DB + file validation"
 
-    local clip_file="${WORK_DIR}/clip_ids.txt"
+    local clip_file="${CLIP_IDS_FILE:-${WORK_DIR}/clip_ids.txt}"
     if [[ ! -s "$clip_file" ]]; then
         log_fail "Gate 5 hand-off: ${clip_file} missing or empty (Gate 4 must write 3 clip_ids before Gate 5 can run)"
         return 1

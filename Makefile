@@ -24,8 +24,8 @@
 	help all \
 	go-version-guard go-version-check node-version-check build clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
-	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit \
-	verify-no-secrets verify-base verify-foundation verify-static verify-fast \
+	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
+	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-unit-race \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
 	verify-images verify-stock verify-main verify-release \
 	regen-routes-yaml archcheck-strict \

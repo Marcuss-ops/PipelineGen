@@ -39,6 +39,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
@@ -61,6 +62,7 @@ import (
 // PR4d-chunk2 (June 2026): wraps the 25 cross-bundle reads of WireArtlist
 // into 10 typed fields.
 type ArtlistBundle struct {
+	Committer     assetspersistence.AssetCommitter
 	DB            *storage.SQLiteDB
 	Assets        *asset.Service
 	ClipsRepo     *assets.ClipsRepository

@@ -105,9 +105,14 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// no type assertion needed — the compiler enforces the contract.
 	if useMemory && !skipMemory && e.memorySvc != nil {
 		memoryReq := memoryGateRequest{
-			Title:    title,
-			Language: language,
-			Mode:     mode,
+			ChannelID: "default",
+			Title:     title,
+			Language:  language,
+			Mode:      mode,
+			UseMemory: useMemory,
+			// ForceRefresh must reach the adapter so the lower layer
+			// can apply the same bypass semantics as the use case.
+			ForceRefresh: skipMemory,
 			// PR 2: feed the canonical cache key alongside the
 			// legacy Title/Language/Mode lookup. The gemmamemory
 			// stub still returns nil; production wiring uses

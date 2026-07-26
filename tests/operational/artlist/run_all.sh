@@ -19,12 +19,20 @@
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
-# shellcheck disable=SC1091
-source "$DIR/../lib/common.sh"
-# shellcheck disable=SC1091
-source "$DIR/../lib/artlist_runtime.sh"
+source "${DIR}/../lib/_artlist_common.sh"
 
 smoke_require bash
+
+# Generate single shared search term and clip IDs hand-off file for all sub-scripts to share
+export FRESH_FIXTURE_TERM="pipelinegen-artlist-$$-$(date +%s)"
+export ARTLIST_TERM="$FRESH_FIXTURE_TERM"
+export CLIP_IDS_FILE="/tmp/artlist_shared_clip_ids_$$.txt"
+export CACHE_CLIP_IDS_FILE="$CLIP_IDS_FILE"
+export DRIVE_CLIP_IDS_FILE="$CLIP_IDS_FILE"
+export INDEX_CLIP_IDS_FILE="$CLIP_IDS_FILE"
+export GATE4_CLIP_IDS_FILE="$CLIP_IDS_FILE"
+touch "$CLIP_IDS_FILE"
+trap 'rm -f "$CLIP_IDS_FILE"' EXIT
 
 # Sub-script table — every gate in the monolithic artlist_e2e.sh maps to
 # exactly one entry here. Order is the DoD execution order (preflight →

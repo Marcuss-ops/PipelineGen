@@ -448,6 +448,7 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	// where a future refactor accidentally re-introduces a cache
 	// layer.
 	apiutil.OK(c, gin.H{
+		"provider":                    "artlist",
 		"clips":                       clips,
 		"live_enforced":               true,
 		"cache_strategy":              "bypassed",

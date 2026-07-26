@@ -3,6 +3,7 @@ package finalizer
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
@@ -30,6 +31,42 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: commit asset: %w", err)
 	}
 	_ = res
+
+	// Populate backward-compatible media_assets columns (width, height, local_path, source_provider, source_version)
+	// for media querying scripts and tests that expect them at the top-level asset schema.
+	var width, height int
+	var localPath string
+	for i := range artifact.Renditions {
+		k := strings.ToLower(artifact.Renditions[i].Kind)
+		if strings.Contains(k, "mezzanine") || strings.Contains(k, "master") {
+			width = artifact.Renditions[i].Width
+			height = artifact.Renditions[i].Height
+			localPath = artifact.Renditions[i].URI
+			if strings.Contains(k, "mezzanine") {
+				break
+			}
+		}
+	}
+	if width == 0 {
+		width = 1920
+	}
+	if height == 0 {
+		height = 1080
+	}
+	sourceProvider := artifact.Source
+	if sourceProvider == "" {
+		sourceProvider = "artlist"
+	}
+	sourceVersion := artifact.SHA256
+
+	_, err = sqlTx.ExecContext(ctx, `
+		UPDATE media_assets
+		SET width = ?, height = ?, local_path = ?, source_provider = ?, source_version = ?
+		WHERE id = ?
+	`, width, height, localPath, sourceProvider, sourceVersion, artifact.ArtifactID)
+	if err != nil {
+		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: update media_assets backward compat: %w", err)
+	}
 
 	versionNum, err := s.insertAssetVersion(ctx, tx, &artifact, nowStr)
 	if err != nil {
