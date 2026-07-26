@@ -18,6 +18,7 @@ type PipelineResult struct {
 	DocLink          string
 	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
+	VidRushSegments  []scriptpkg.VidRushSegmentResult
 	VideoMetadata    []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
 	Scenes           []SceneImage
@@ -79,6 +80,7 @@ type PostProcessResult struct {
 	DocLink          string
 	VisualPlans      []mediamemory.SceneVisualPlan
 	Entities         *scriptpkg.EntityResult
+	VidRushSegments  []scriptpkg.VidRushSegmentResult
 	Metadata         []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
 	SceneImages      []SceneImage
@@ -142,6 +144,9 @@ func (r *PostProcessResult) IsEmpty() bool {
 		if len(r.Entities.Persons) > 0 || len(r.Entities.Places) > 0 || len(r.Entities.Concepts) > 0 {
 			return false
 		}
+	}
+	if len(r.VidRushSegments) > 0 {
+		return false
 	}
 	if len(r.Metadata) > 0 {
 		return false
@@ -210,6 +215,10 @@ type ProcessInput struct {
 	// non-empty. Nil until the entities processor runs.
 	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
 	Entities *scriptpkg.EntityResult
+
+	// VidRushSegments carries the per-segment VidRush output that
+	// downstream processors reuse for query fan-out and binding.
+	VidRushSegments []scriptpkg.VidRushSegmentResult
 
 	// Metadata carries the video-metadata result, populated by
 	// mergePostProcessResult when the metadata processor produces

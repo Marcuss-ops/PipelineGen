@@ -39,18 +39,19 @@ func (s *retrievedSearcher) Search(ctx context.Context, filter ImageFilter) ([]I
 		// doesn't carry style versioning); hard-set Score=1.0 to signal
 		// the row is exact-match of the upstream-sourced candidate.
 		out = append(out, ImageSearchResult{
-			AssetID:      "",
-			Origin:       asset.ImageOriginRetrieved,
-			Provider:     string(h.Provider),
-			Name:         h.Title,
-			PreviewURL:   h.PreviewURL,
-			Width:        0,
-			Height:       0,
-			Score:        1.0,
-			StyleID:      h.StyleID,
-			StyleVersion: "",
-			License:      h.License,
-			Author:       h.Author,
+			AssetID:       "",
+			Origin:        asset.ImageOriginRetrieved,
+			Provider:      string(h.Provider),
+			Name:          h.Title,
+			PreviewURL:    h.PreviewURL,
+			SourcePageURL: h.PageURL,
+			Width:         0,
+			Height:        0,
+			Score:         1.0,
+			StyleID:       h.StyleID,
+			StyleVersion:  "",
+			License:       h.License,
+			Author:        h.Author,
 		})
 	}
 	return out, nil

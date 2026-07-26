@@ -79,6 +79,25 @@ type ArtlistClipSearcher interface {
 	SearchClips(ctx context.Context, title string, phrases []string) []ArtlistClipMatch
 }
 
+// InternetImageSearchRequest carries the canonical per-segment query
+// for web-image retrieval.
+type InternetImageSearchRequest struct {
+	SegmentID string
+	Query     string
+	Entity    string
+	TextHash  string
+	Language  string
+	Limit     int
+	Provider  string
+}
+
+// InternetImageSearcher is the canonical port for internet-image
+// retrieval. The processor consumes this interface and never knows
+// about HTTP APIs or routing internals.
+type InternetImageSearcher interface {
+	SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error)
+}
+
 // ── Typed ports (PR 3 — June 2026) ────────────────────────────────────────
 
 // EntityExtractor is the canonical port for entity extraction.

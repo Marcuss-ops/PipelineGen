@@ -6,6 +6,11 @@
 // No durable field uses any, any, or map[string]any.
 package media
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 const (
 	// MediaPlanModeDisabled skips media resolution entirely.
 	MediaPlanModeDisabled string = "disabled"
@@ -52,6 +57,12 @@ type MediaPlanSpec struct {
 	// uses the default set (drive, artlist, pexels, youtube).
 	Providers []string `json:"providers,omitempty"`
 
+	// ProviderPolicy toggles the canonical visual providers that the
+	// VidRush pipeline may consult. Empty/zero values mean "caller did
+	// not opt in" and the processor must fail closed on unavailable
+	// providers rather than silently assuming support.
+	ProviderPolicy MediaProviderPolicy `json:"provider_policy,omitempty"`
+
 	// Assignments are caller-supplied locked media assignments for
 	// specific segment/slot combinations. Locked assignments always win.
 	Assignments []SegmentMediaAssignment `json:"assignments,omitempty"`
@@ -61,6 +72,17 @@ type MediaPlanSpec struct {
 
 	// Cache controls read/write behavior for media resolution.
 	Cache MediaCachePolicy `json:"cache,omitempty"`
+
+	// Extraction controls the semantic extraction stage that feeds
+	// query generation and asset search.
+	Extraction MediaExtractionPolicy `json:"extraction,omitempty"`
+
+	// ForceRefresh toggles allow a caller to re-run extraction,
+	// asset search, or binding independently without invalidating
+	// the whole generation job.
+	ForceRefreshExtraction bool `json:"force_refresh_extraction,omitempty"`
+	ForceRefreshAssets     bool `json:"force_refresh_assets,omitempty"`
+	ForceRefreshBindings   bool `json:"force_refresh_bindings,omitempty"`
 
 	// Planner controls the ranking/planner strategy.
 	Planner         MediaPlannerPolicy         `json:"planner,omitempty"`
@@ -78,6 +100,74 @@ type MediaMaterializationPolicy struct {
 	UploadToDrive bool   `json:"upload_to_drive,omitempty"`
 	EnrichVLM     bool   `json:"enrich_vlm,omitempty"`
 	WaitForReady  bool   `json:"wait_for_ready,omitempty"`
+}
+
+// MediaExtractionPolicy controls per-segment semantic extraction.
+type MediaExtractionPolicy struct {
+	Enabled                       bool `json:"enabled,omitempty"`
+	MaxEntitiesPerSegment         int  `json:"max_entities_per_segment,omitempty"`
+	MaxImportantPhrasesPerSegment int  `json:"max_important_phrases_per_segment,omitempty"`
+	MaxImportantWordsPerSegment   int  `json:"max_important_words_per_segment,omitempty"`
+	MaxArtlistQueriesPerSegment   int  `json:"max_artlist_queries_per_segment,omitempty"`
+	MaxImageQueriesPerSegment     int  `json:"max_image_queries_per_segment,omitempty"`
+}
+
+// MediaToggle is the local tri-state wire type used by MediaPlanSpec
+// so this package does not need to import the script domain package.
+type MediaToggle string
+
+const (
+	MediaToggleDefault  MediaToggle = "default"
+	MediaToggleEnabled  MediaToggle = "enabled"
+	MediaToggleDisabled MediaToggle = "disabled"
+)
+
+func (t *MediaToggle) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*t = MediaToggleDefault
+		return nil
+	}
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		switch MediaToggle(asString) {
+		case MediaToggleDefault, MediaToggleEnabled, MediaToggleDisabled:
+			*t = MediaToggle(asString)
+			return nil
+		}
+		return fmt.Errorf("invalid media toggle %q", asString)
+	}
+	var asBool bool
+	if err := json.Unmarshal(data, &asBool); err == nil {
+		if asBool {
+			*t = MediaToggleEnabled
+		} else {
+			*t = MediaToggleDisabled
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid media toggle value")
+}
+
+func (t MediaToggle) MarshalJSON() ([]byte, error) {
+	switch t {
+	case MediaToggleDefault, MediaToggleEnabled, MediaToggleDisabled:
+		return json.Marshal(string(t))
+	default:
+		return json.Marshal(string(MediaToggleDefault))
+	}
+}
+
+// AsBool reports whether the toggle is enabled. Default and disabled
+// both map to false so omitted inputs fail closed.
+func (t MediaToggle) AsBool() bool {
+	return t == MediaToggleEnabled
+}
+
+// MediaProviderPolicy controls which visual providers may be used by
+// the VidRush pipeline.
+type MediaProviderPolicy struct {
+	Artlist        MediaToggle `json:"artlist,omitempty"`
+	InternetImages MediaToggle `json:"internet_images,omitempty"`
 }
 
 // Clone returns a deep copy of MediaPlanSpec. Slice fields are
