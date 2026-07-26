@@ -22,6 +22,49 @@ func (f *fakeDetailFetcher) FetchDetails(_ context.Context, clipPageURL string) 
 	return f.candidate, nil
 }
 
+// blockingDetailFetcher is a test helper that blocks each fetch until the
+// release channel is closed. It lets tests assert that multiple fetches are
+// started concurrently.
+type blockingDetailFetcher struct {
+	mu             sync.Mutex
+	candidateByURL map[string]*Candidate
+	started        chan string
+	release        <-chan struct{}
+	active         int
+	maxActive      int
+}
+
+func (f *blockingDetailFetcher) FetchDetails(_ context.Context, clipPageURL string) (*Candidate, error) {
+	f.mu.Lock()
+	f.active++
+	if f.active > f.maxActive {
+		f.maxActive = f.active
+	}
+	started := f.started
+	release := f.release
+	candidate := f.candidateByURL[clipPageURL]
+	f.mu.Unlock()
+
+	if started != nil {
+		select {
+		case started <- clipPageURL:
+		default:
+		}
+	}
+	if release != nil {
+		<-release
+	}
+
+	f.mu.Lock()
+	f.active--
+	f.mu.Unlock()
+
+	if candidate != nil {
+		return candidate, nil
+	}
+	return &Candidate{ID: clipPageURL, Title: clipPageURL}, nil
+}
+
 // fakeDispatcherForImport records SaveDiscoveredAsset calls.
 type fakeDispatcherForImport struct {
 	mu                  sync.Mutex

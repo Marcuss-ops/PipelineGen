@@ -128,3 +128,97 @@ func TestSearchLiveAndSave_FallsBackWhenDetailFetcherFails(t *testing.T) {
 	assert.Equal(t, []string{"search", "keyword"}, clip.ProviderTags)
 	assert.Equal(t, []string{"maya temple"}, clip.Metadata["discovered_by_queries"])
 }
+
+// TestSearchLiveAndSave_HydratesCandidatesInParallel verifies that the
+// hydration phase fans out multiple detail fetches concurrently while still
+// preserving the original candidate order in the returned clips.
+func TestSearchLiveAndSave_HydratesCandidatesInParallel(t *testing.T) {
+	rec := &recordingDispatcher{}
+	release := make(chan struct{})
+	started := make(chan string, 2)
+
+	url1 := "https://artlist.io/stock-footage/clip/parallel-001"
+	url2 := "https://artlist.io/stock-footage/clip/parallel-002"
+	detailFetcher := &blockingDetailFetcher{
+		candidateByURL: map[string]*Candidate{
+			url1: {
+				ID:         "parallel-001",
+				Title:      "Parallel One",
+				PageURL:    url1,
+				SourceRef:  "https://cdn.artlist.io/parallel-001.mp4",
+				Keywords:   []string{"one"},
+				Categories: []string{"first"},
+			},
+			url2: {
+				ID:         "parallel-002",
+				Title:      "Parallel Two",
+				PageURL:    url2,
+				SourceRef:  "https://cdn.artlist.io/parallel-002.mp4",
+				Keywords:   []string{"two"},
+				Categories: []string{"second"},
+			},
+		},
+		started: started,
+		release: release,
+	}
+
+	svc := &Service{
+		log:           zap.NewNop(),
+		assetStore:    nil,
+		detailFetcher: detailFetcher,
+		scraperSearcher: &staticSearcher{cands: []Candidate{
+			{
+				ID:         "parallel-001",
+				Title:      "Search One",
+				SourceRef:  "https://cdn.artlist.io/parallel-001.mp4",
+				PageURL:    url1,
+				SourceName: "artlist",
+			},
+			{
+				ID:         "parallel-002",
+				Title:      "Search Two",
+				SourceRef:  "https://cdn.artlist.io/parallel-002.mp4",
+				PageURL:    url2,
+				SourceName: "artlist",
+			},
+		}},
+	}
+	ss, err := NewSearchService(svc, rec)
+	require.NoError(t, err)
+
+	resultCh := make(chan struct {
+		resp *SearchResponse
+		err  error
+	}, 1)
+	go func() {
+		resp, err := ss.SearchLiveAndSave(context.Background(), "maya temple", 2)
+		resultCh <- struct {
+			resp *SearchResponse
+			err  error
+		}{resp: resp, err: err}
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first detail fetch did not start")
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second detail fetch did not start concurrently")
+	}
+
+	close(release)
+	result := <-resultCh
+	require.NoError(t, result.err)
+	require.NotNil(t, result.resp)
+	require.Len(t, result.resp.Clips, 2)
+	assert.Equal(t, "parallel-001", result.resp.Clips[0].ID)
+	assert.Equal(t, "parallel-002", result.resp.Clips[1].ID)
+
+	detailFetcher.mu.Lock()
+	maxActive := detailFetcher.maxActive
+	detailFetcher.mu.Unlock()
+	assert.GreaterOrEqual(t, maxActive, 2, "detail fetches should overlap")
+}
