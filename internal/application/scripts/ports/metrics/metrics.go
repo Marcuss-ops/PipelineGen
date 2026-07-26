@@ -118,6 +118,18 @@ type TranslationMetricsRecorder interface {
 	IncTranslationWarning(targetLang string, reason TranslationWarningReason)
 }
 
+// VidRushMetrics records bounded per-segment pipeline events. Dynamic
+// identifiers belong in structured logs, not metric labels.
+type VidRushMetrics interface {
+	IncSegments()
+	IncExtractionCache(hit bool)
+	IncAssetCache(provider string, hit bool)
+	IncProviderRequest(provider string)
+	IncProviderFailure(provider string)
+	IncBinding()
+	IncUnresolvedSegment()
+}
+
 // NormalizeTargetLang applies the canonical godlike/07
 // NO-FAKE-AVAILABILITY cardinality guard to a target language
 // string before it reaches the Prometheus target_lang label. The

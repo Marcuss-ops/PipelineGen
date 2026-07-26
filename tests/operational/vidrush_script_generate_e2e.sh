@@ -132,7 +132,10 @@ warm_result=$(extract_result "$result_file")
 jq -e --argjson ids "$first_ids" --argjson assets "$first_assets" '
   ([.segments[].segment_id] == $ids)
   and ([.segments[].assets.candidates[]?.asset_id] | sort == $assets)
-  and (all(.segments[]; (.cache.extraction == "HIT_EXACT" or .cache.extraction == "MISS")))
+  and (all(.segments[]; .cache.extraction == "HIT_EXACT"))
+  and (all(.segments[]; (.cache.artlist == "HIT_EXACT" or .cache.artlist == "BYPASSED")))
+  and (all(.segments[]; (.cache.internet_images == "HIT_EXACT" or .cache.internet_images == "BYPASSED")))
+  and (all(.segments[]; (.cache.binding == "HIT_EXACT" or .cache.binding == "BYPASSED")))
 ' <<<"$warm_result" >/dev/null
 
 # Toggle matrix: each request still goes through script.generate. Disabled
@@ -155,7 +158,7 @@ done
 # exposes the canonical media_assets table. A missing row is a hard failure:
 # provider metadata alone is not a materialized asset.
 result=$(extract_result "$result_file")
-candidate_ids=$(jq -r '.segments[].assets.candidates[]?.asset_id // empty' <<<"$result" | sort -u)
+candidate_ids=$(jq -r '.segments[].assets.candidates[]?.asset_id // empty' <<<"$first_result" | sort -u)
 if [[ -n "$candidate_ids" && -f "$DB_PATH" ]]; then
     while IFS= read -r asset_id; do
         [[ -n "$asset_id" ]] || continue

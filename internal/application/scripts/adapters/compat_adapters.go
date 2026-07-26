@@ -29,6 +29,7 @@ import (
 	"context"
 	"errors"
 
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -97,6 +98,10 @@ type InternetImageSearchRequest struct {
 type InternetImageSearcher interface {
 	SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error)
 }
+
+// VidRushMetrics is the bounded observability port for the per-segment
+// pipeline. Job/item/text values stay in structured logs, not metric labels.
+type VidRushMetrics = scriptmetrics.VidRushMetrics
 
 // ── Typed ports (PR 3 — June 2026) ────────────────────────────────────────
 

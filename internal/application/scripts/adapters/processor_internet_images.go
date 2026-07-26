@@ -12,11 +12,16 @@ import (
 // and attaches the resulting candidates to the VidRush payload.
 type InternetImagesProcessor struct {
 	searcher InternetImageSearcher
+	metrics  VidRushMetrics
 }
 
 // NewInternetImagesProcessor creates an InternetImagesProcessor.
-func NewInternetImagesProcessor(searcher InternetImageSearcher) *InternetImagesProcessor {
-	return &InternetImagesProcessor{searcher: searcher}
+func NewInternetImagesProcessor(searcher InternetImageSearcher, metrics ...VidRushMetrics) *InternetImagesProcessor {
+	var m VidRushMetrics
+	if len(metrics) > 0 {
+		m = metrics[0]
+	}
+	return &InternetImagesProcessor{searcher: searcher, metrics: m}
 }
 
 func (p *InternetImagesProcessor) Name() ProcessorName { return ProcessorInternetImages }
@@ -64,12 +69,19 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					cachedSeg = cloneVidRushSegmentResult(cachedSeg)
 					cachedSeg.Cache.InternetImages = "HIT_EXACT"
 					updatedSegments = append(updatedSegments, cachedSeg)
+					if p.metrics != nil {
+						p.metrics.IncAssetCache("internet_images", true)
+					}
 					continue
 				}
 			}
 		}
 
 		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, 5)
+		if p.metrics != nil {
+			p.metrics.IncAssetCache("internet_images", false)
+			p.metrics.IncProviderRequest("internet_images")
+		}
 		seen := make(map[string]struct{}, 8)
 		firstEntity := ""
 		if len(updated.Insights.Entities) > 0 {
@@ -86,6 +98,9 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				Provider:  "internet_images",
 			})
 			if err != nil {
+				if p.metrics != nil {
+					p.metrics.IncProviderFailure("internet_images")
+				}
 				warnings = append(warnings, fmt.Sprintf("internet_images: search failed for segment %s: %v", updated.SegmentID, err))
 				continue
 			}

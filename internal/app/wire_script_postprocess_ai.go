@@ -58,6 +58,7 @@ func registerAIBackedProcessors(
 	cfg *config.Config,
 	log *zap.Logger,
 ) error {
+	vidrushMetrics := observability.NewVidRushMetricsAdapter()
 	// ── Entities ──────────────────────────────────────────────────────
 	var entityAdapter adapters.EntityExtractor
 	if root.AI != nil && root.AI.ScriptGen != nil {
@@ -69,7 +70,7 @@ func registerAIBackedProcessors(
 	if entityAdapter == nil {
 		log.Warn("EntitiesProcessor: Ollama backend not available; postprocessor not registered (entities will be skipped)")
 	} else {
-		if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
+		if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter, vidrushMetrics)) {
 			return fmt.Errorf("register entities processor: composition bug")
 		}
 	}
@@ -148,14 +149,14 @@ func registerAIBackedProcessors(
 	if clipSearchAdapter == nil {
 		log.Warn("ClipSearchProcessor: OllamaTranslator not available; postprocessor not registered (clip_search will be skipped)")
 	} else {
-		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
+		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter, vidrushMetrics)) {
 			return fmt.Errorf("register clip_search processor: composition bug")
 		}
 	}
 
 	// ── Internet images ─────────────────────────────────────────────
 	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
-		if !ppReg.Register(adapters.NewInternetImagesProcessor(&internetImageSearchAdapter{resolver: root.Domains.ImageSearchResolver})) {
+		if !ppReg.Register(adapters.NewInternetImagesProcessor(&internetImageSearchAdapter{resolver: root.Domains.ImageSearchResolver}, vidrushMetrics)) {
 			return fmt.Errorf("register internet_images processor: composition bug")
 		}
 		log.Info("InternetImagesProcessor wired with canonical ImageSearchResolver")
