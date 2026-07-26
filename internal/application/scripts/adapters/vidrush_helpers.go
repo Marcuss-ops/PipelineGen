@@ -249,3 +249,106 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	}
 	return out
 }
+
+// FinalizeVidRushBindings is the single binding finalization step for the
+// per-segment result. It accepts only provider candidates with provenance,
+// computes a stable candidate-set hash, and records binding cache state.
+// Provider processors remain responsible for searching; this function only
+// normalizes and selects from their closed candidate set.
+func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRefresh bool) []scriptpkg.VidRushSegmentResult {
+	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
+	lastAssetByProvider := make(map[string]string)
+	for _, original := range segments {
+		seg := cloneVidRushSegmentResult(original)
+		valid := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.Candidates))
+		seen := make(map[string]struct{}, len(seg.Assets.Candidates))
+		for _, candidate := range seg.Assets.Candidates {
+			if !validVidRushCandidate(candidate) {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(candidate.Provider)) + "\x00" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			valid = append(valid, candidate)
+		}
+		seg.Assets.Candidates = valid
+		seg.Assets.SecondaryImages = filterVidRushImages(valid)
+		if primary := chooseVidRushPrimary(valid, lastAssetByProvider); primary != nil {
+			primary.SelectionReason = "highest scored provenance-valid candidate for segment"
+			seg.Assets.PrimaryVideo = primary
+			lastAssetByProvider[primary.Provider] = primary.AssetID
+			seg.Assets.SelectionReason = primary.SelectionReason
+		} else {
+			seg.Assets.PrimaryVideo = nil
+			seg.Assets.SelectionReason = "no provenance-valid candidate available"
+		}
+		seg.Assets.CandidateSetHash = candidateSetHash(valid)
+		for i := range seg.Assets.Candidates {
+			seg.Assets.Candidates[i].CandidateSetHash = seg.Assets.CandidateSetHash
+		}
+		bindingKey := segmentCacheKey("binding", seg.SegmentID, seg.TextHash, seg.Assets.CandidateSetHash, "vidrush-binding-v1")
+		if len(valid) == 0 {
+			seg.Cache.Binding = "BYPASSED"
+		} else if !forceRefresh {
+			if _, ok := cacheLoad(&vidrushBindingCache, bindingKey); ok {
+				seg.Cache.Binding = "HIT_EXACT"
+			} else {
+				seg.Cache.Binding = "MISS"
+				cacheStore(&vidrushBindingCache, bindingKey, true)
+			}
+		} else {
+			seg.Cache.Binding = "REFRESHED"
+			cacheStore(&vidrushBindingCache, bindingKey, true)
+		}
+		out = append(out, seg)
+	}
+	return out
+}
+
+func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
+	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(candidate.Provider) == "" || candidate.Score < 0 {
+		return false
+	}
+	if strings.TrimSpace(candidate.Provider) == "artlist" {
+		return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.DriveLink) != ""
+	}
+	return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
+}
+
+func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
+	var best *scriptpkg.SegmentAssetCandidate
+	for i := range candidates {
+		candidate := candidates[i]
+		if candidate.Provider != "artlist" {
+			continue
+		}
+		if previous[candidate.Provider] == candidate.AssetID && len(candidates) > 1 {
+			continue
+		}
+		if best == nil || candidate.Score > best.Score {
+			selected := candidate
+			best = &selected
+		}
+	}
+	return best
+}
+
+func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Provider != "artlist" {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func candidateSetHash(candidates []scriptpkg.SegmentAssetCandidate) string {
+	parts := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		parts = append(parts, strings.Join([]string{candidate.AssetID, candidate.Provider, candidate.Query, candidate.SourceURL, candidate.PreviewURL}, "\x00"))
+	}
+	return segmentCacheKey(parts...)
+}

@@ -101,9 +101,9 @@ func buildGenerationResult(
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
 		if len(postResult.VidRushSegments) > 0 {
-			result.Segments = append([]scriptpkg.VidRushSegmentResult(nil), postResult.VidRushSegments...)
-			result.Cache.Segments = make(map[string]scriptpkg.SegmentCacheState, len(postResult.VidRushSegments))
-			for _, seg := range postResult.VidRushSegments {
+			result.Segments = adapters.FinalizeVidRushBindings(postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings)
+			result.Cache.Segments = make(map[string]scriptpkg.SegmentCacheState, len(result.Segments))
+			for _, seg := range result.Segments {
 				if strings.TrimSpace(seg.SegmentID) == "" {
 					continue
 				}
