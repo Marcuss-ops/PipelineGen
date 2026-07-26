@@ -61,8 +61,8 @@
 #   - delete the lib/{common,artlist_runtime,velox_domain}.sh no-op
 #     re-exports once every caller sources the umbrella instead.
 # Until those waves land, this file is the canonical import surface for
-# the TWO consumers named in the user's directive (artlist_e2e.sh,
-# vidrush_media_e2e.sh); subsequent consumers migrate as the gate_*
+# the TWO consumers named in the user's directive (artlist/run_all.sh,
+# vidrush_script_generate_e2e.sh); subsequent consumers migrate as the gate_*
 # primitives migrate.
 
 # Source order matters. The empirical dependency chain (verified by the
@@ -77,7 +77,7 @@
 #                       override on a leaf helper.
 #   * artlist.sh      — Artlist API helpers (search/detail/download/run)
 #                       AND the CANONICAL SSOT for the 3 helpers whose
-#                       thin-delegator names live in velox_domain.sh:
+#                       canonical helper names live in velox_domain.sh:
 #                         artlist_qdrant_assert / artlist_drive_resolve /
 #                         artlist_replay_run. A future refactor that drops
 #                         the canonical impl from artlist.sh will fail-
@@ -85,12 +85,12 @@
 #                       Can override common.sh if it defines overlapping
 #                       names; sourced BEFORE artlist_runtime.sh so the
 #                       canonical log_* family wins via later override.
-#   * velox_domain.sh — velox_qdrant_assert / velox_drive_resolve /
-#                       velox_artlist_pipeline_run are kept as THIN
+#   * velox_domain.sh — artlist_qdrant_assert / artlist_drive_resolve /
+#                       artlist_replay_run are kept as THIN
 #                       DELEGATORS that forward to artlist_* (July 2026
 #                       DoD refactor: SSOT moved to lib/artlist.sh; the
-#                       velox_* names remain for the 28 backward-compat
-#                       callers in vidrush_media_e2e.sh and should NOT be
+#                       velox_* names remain for the 28 shared operational
+#                       callers in vidrush_script_generate_e2e.sh and should NOT be
 #                       migrated in this turn — per AGENTS.md Simplicity,
 #                       a future refactor followup handles migration).
 #                       Other velox_* helpers (velox_artlist_detail /
@@ -116,8 +116,8 @@
 
 # Resolve this umbrella's own directory via BASH_SOURCE rather than
 # inheriting the caller's `$DIR`. Multiple consumers source us:
-#   * artlist_e2e.sh            — sets $DIR=/…/tests/operational
-#   * vidrush_media_e2e.sh      — sets $DIR=/…/tests/operational
+#   * artlist/run_all.sh            — sets $DIR=/…/tests/operational
+#   * vidrush_script_generate_e2e.sh      — sets $DIR=/…/tests/operational
 #   * artlist/{01..09}/*.sh     — may set $DIR=/…/tests/operational/artlist
 # In all cases the lib files live next to THIS file, not next to the
 # caller. BASH_SOURCE[0] is the canonical bash idiom for "where am I" and
@@ -199,7 +199,7 @@ artlist_dod_assert_helpers_loaded() {
 # Semver convention:
 #   * MAJOR.x → a helper signature changes (c) — fail-closed for
 #     consumers that depend on positional args.
-#   * 0.MINOR.0 → a NEW helper is added (a); backward-compat: existing
+#   * 0.MINOR.0 → a NEW helper is added (a); shared operational: existing
 #     consumers keep working because the SSOT guard just widened.
 #   * 0.0.PATCH → internal refactor / comment fix only (no API change).
 #
@@ -218,11 +218,11 @@ artlist_dod_assert_helpers_loaded() {
 #                                              only tightens the guard, no API surface change.
 # 1.3.2-gate6-drive-resolve-sub-battery-july-2026 — created 06_drive_resolve.sh as the
 #                                              canonical Gate 6 owner; the prior 06_drive.sh STUB
-#                                              is deleted. velox_drive_resolve was already in the
+#                                              is deleted. artlist_drive_resolve was already in the
 #                                              SSOT guard list from the Gate 5 wave, so no helper
 #                                              addition is needed; PATCH bump (no API change, only
 #                                              the sub-battery file name + co-existence note in
-#                                              artlist_gates.md are new).
+#                                              the Artlist operational contract are new).
 # 1.4.1-gate10-negative-path-sub-battery-july-2026 — created tests/operational/artlist/10_negative_path.sh as the canonical Gate 10 owner (3 hard probes: SESSION_EXPIRED / STREAM_NOT_FOUND / SCRAPER_UNAVAILABLE). The prior tests/operational/artlist/10_negative_tests.sh STUB is DELETED in the same reorg (no duplicate logic per AGENTS.md Simplicity; mirrors Gate 6 pattern). NO new helper added — PATCH bump mirrors Gate 6's 1.3.1 → 1.3.2 pattern (only sub-battery file extraction, no SSOT guard widening, no API surface change).
 readonly ARTLIST_DOD_LIB_VERSION="1.4.1-gate10-negative-path-sub-battery-july-2026"
 

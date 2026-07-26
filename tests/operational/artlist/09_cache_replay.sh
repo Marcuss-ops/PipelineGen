@@ -11,7 +11,7 @@
 # the godlike/06 SSOT hand-off (one canonical owner per fact at any
 # boundary, written by Gate 4 / 05_pipeline_fresh.sh::gate_fresh_run_three).
 #
-# Spec (artlist_gates.md|Gate 9 verbatim, July 2026 DoD):
+# Spec (the Artlist operational contract|Gate 9 verbatim, July 2026 DoD):
 #   1. Replay the same /api/artlist/run body verbatim (term=NORMALIZED,
 #      limit=3, strategy=replace, clip_duration=7, width=1920, height=1080,
 #      fps=30, concurrency=1, dry_run=false — mirror Gate 4 byte-for-byte).

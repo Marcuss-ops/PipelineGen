@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/04_download.sh — Artlist DoD Gate 2 (POST /download + ffprobe hard gate).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
+# Reorg (July 2026): split out of tests/operational/artlist/run_all.sh (now a thin shim).
 # DoD spec (July 2026): `Finché detail e download diretto non passano, non si
 # lancia /api/artlist/run`. Hard-gate checks (fail-closed on miss):
 #   - HTTP 2xx
@@ -21,7 +21,7 @@
 #     pattern as Gate 1) so the test always exercises a real Artlist URL.
 #   * Raw curl against $SCRAPER_URL (node-scraper does not speak the
 #     PipelineGen bearer token / Idempotency-Key contract).
-#   * DoD-exact ffprobe command (verbatim from `tests/operational/artlist_gates.md`):
+#   * DoD-exact ffprobe command (verbatim from `tests/operational/the Artlist operational contract`):
 #         ffprobe -v error \
 #           -show_entries format=duration,size \
 #           -show_entries stream=codec_name,width,height \

@@ -8,7 +8,7 @@
 # this same reorg (no duplicate logic per AGENTS.md Simplicity). This file
 # is the CANONICAL Gate 10 owner.
 #
-# Spec (artlist_gates.md|Gate 10 verbatim, July 2026 DoD):
+# Spec (the Artlist operational contract|Gate 10 verbatim, July 2026 DoD):
 #   Three proven-negative probes (each is a HARD gate):
 #   (1) SESSION_EXPIRED: scraper session cookie expired → SESSION_EXPIRED
 #       or AUTH_REQUIRED sentinel + no false results + no jobs SUCCEEDED.

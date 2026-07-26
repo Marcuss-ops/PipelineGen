@@ -24,7 +24,7 @@
 # its response file under ${WORK_DIR:-/tmp}; it does NOT touch PASS/WARN/FAIL
 # counters — the host battery owns those.
 
-# ── velox_qdrant_assert — at least one PUBLISHED point for clip_id
+# ── artlist_qdrant_assert — at least one PUBLISHED point for clip_id
 # Args:
 #   clip_id           asset_id to look up (positional 1, mandatory)
 #   collection        qdrant collection name (positional 2, mandatory)
@@ -53,10 +53,10 @@
 # asserted to round-trip back to the queried clip_id — DoD Gate 8
 # "asset_id corretto" — so a stray-point return fails closed with rc=1.
 # Lib-level fix migrates the guarantee into every caller (Gate 8 today;
-# any future gate that reuses velox_qdrant_assert inherits the round-
+# any future gate that reuses artlist_qdrant_assert inherits the round-
 # trip automatically per AGENTS.md single-focus rule).
 
-# ── velox_drive_resolve — confirm Drive file id exists, not trashed, size > 0
+# ── artlist_drive_resolve — confirm Drive file id exists, not trashed, size > 0
 # Args: <drive_file_id>
 # Returns: 0 → file resolved with size > 0 and trashed=false
 #          1 → HTTP 2xx but contract failed

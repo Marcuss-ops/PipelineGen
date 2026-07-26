@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/01_startup.sh — Artlist DoD Gate 0 (clean reproducible environment).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
+# Reorg (July 2026): split out of tests/operational/artlist/run_all.sh (now a thin shim).
 # Implements gate_preflight that probes the live PipelineGen stack:
 #   - PipelineGen server reachable on /health and /ready
 #   - artlist job-consumer active

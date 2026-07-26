@@ -142,7 +142,7 @@ gate_drive_resolve() {
         }
 
         # ── step-3: INLINE jq parent-membership check ───────────────
-        # DoD-exact contract (artlist_gates.md Gate-6 verbatim):
+        # DoD-exact contract (the Artlist operational contract Gate-6 verbatim):
         # `.resolved[0].parents // [] | any(. == $ARTLIST_ROOT_FOLDER)`.
         # Empty parents[] fails closed (raw Drive folder ID string-equal
         # match — numeric/string drift triggers rc rather than silent

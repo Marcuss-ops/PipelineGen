@@ -1,19 +1,4 @@
 deprecations:
-    - id: ARTIFACT_RESULT_DOCUMENT_FIELD
-      owner_capability: internal/domain/script
-      exact_symbol: 'ArtifactResult.Document (*DocumentArtifact field, json: document)'
-      file: internal/domain/script/generation_result.go
-      file_line: "110"
-      replacement: Google Doc metadata is now returned by the document.generate downstream job result, not by the script.generate envelope.
-      introduction_date: "2026-07-01"
-      removal_date: "2026-07-20"
-      tracking_issue: Sprint 1.0 — Spina Dorsale Fase 2 § DocumentArtifact retirement
-      compatibility_test: |
-        PHYSICALLY REMOVED (Sprint 1.0, July 2026): the struct declaration is gone from internal/domain/script/generation_result.go; the field declaration is gone from ArtifactResult; the postResult.DocLink mapping in persistence.go is gone; the document.created event in generate_one_usecase.go is gone; the inline DocumentProcessor + DocumentsService + wire_script_postprocess_document.go are physically deleted; the document-pdf artifact slot in artifacts_persistence.go is gone; the ProcessorDocument constant + registrations + plan/manifest builder branches are removed. The canonical document.generate pipeline (internal/application/document/usecase.go + internal/api/assets/document/document_handler.go + internal/kernel/job/canonical_definitions.go::canonicalTypeDocumentGenerate) is the SOLE owner of Google Doc creation post-retirement.
-      usage_metric: 'Pre-removal: field populated by DocumentProcessor within script.generate postprocessor chain. Post-Sprint 1.0: field declaration gone; DocumentArtifact type gone; result.Artifacts.Document reference gone. The canonical document.generate downstream job owns doc_id/doc_link persistence via the typed GenerationResult envelope (internal/application/document/types.go).'
-      migration_phase: CONTRACT
-      status: removed
-      notes: 'Sprint 1.0 (July 2026): the field declaration is physically REMOVED from ArtifactResult; the DocumentArtifact struct is deleted; the 5 surfaces (DocumentArtifact, postResult.DocLink mapping, document.created event, inline processor, compat branch) are all retired. Matches the OUTPUT_SPEC_DOCUMENT_FLAG retirement pattern (PR-COMMIT3, July 2026). The architecture/deprecations.yaml record is retained with status: removed + migration_phase: CONTRACT per the canonical godlike/07 lifecycle audit-pin. Future periodic catalog sweeps can physically delete the YAML entry per the godlike/07 "resolved entries should be removed from the active catalog after closure" rule.'
     - id: DL-SCRIPT-BRANCH-B-001
       owner_capability: internal/application/scripts/usecase/buildClipGroundingInstructions+SegmentTopics
       exact_symbol: buildClipGroundingInstructions SegmentTopics block (internal/application/scripts/usecase/engine_prompt.go)
@@ -28,48 +13,6 @@ deprecations:
       migration_phase: CONTRACT
       status: in_progress
       notes: PR-CS-1 FASE 14 cutover activation. Branch A (ScriptSegment) is the canonical default; Branch B (legacy SegmentTopics) retained as a flag-controlled fallback ONLY (VELOX_SCRIPTS_SEGMENT_DEFAULT=false). Removal scheduled for 2026-09-15 in WAVE-22. Dashboard alert ScriptLegacyBranchBResidual enforces fail-closed no-fake-availability on the residual.
-    - id: OUTPUT_SPEC_DOCUMENT_FLAG
-      owner_capability: internal/domain/script
-      exact_symbol: 'OutputSpec.GenerateDocument (Toggle flag, json: generate_document)'
-      file: internal/domain/script/output_spec.go
-      file_line: "301"
-      replacement: Google Doc creation is now produced by a separate document.generate downstream job (internal/domain/job/job.go TypeDocumentGenerate). Set document requirements via sceneplan.AssetRequirements instead.
-      introduction_date: "2026-07-01"
-      removal_date: "2026-07-13"
-      tracking_issue: Spina Dorsale Fase 2 — Piano d'Azione § Fase 2
-      compatibility_test: 'PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone; the test surface is removed; bindGenerateEnvelope returns HTTP 400 UNKNOWN_FIELD on wire-shape ingress.'
-      usage_metric: 'Pre-removal: flag read by preset_resolver, generation_normalizer, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code. Callers receive HTTP 400 UNKNOWN_FIELD.'
-      migration_phase: CONTRACT
-      status: removed
-      notes: 'PR-COMMIT3 (July 2026): the field is physically REMOVED. See OUTPUT_SPEC_VOICEOVER_FLAG for the canonical migration pattern.'
-    - id: OUTPUT_SPEC_IMAGES_FLAG
-      owner_capability: internal/domain/script
-      exact_symbol: 'OutputSpec.GenerateSceneImages (Toggle flag, json: generate_scene_images)'
-      file: internal/domain/script/output_spec.go
-      file_line: "291"
-      replacement: Scene images are now produced by a separate images.generate downstream job (internal/domain/job/job.go TypeImagesGenerate). Set image requirements via sceneplan.AssetRequirements instead.
-      introduction_date: "2026-07-01"
-      removal_date: "2026-07-13"
-      tracking_issue: Spina Dorsale Fase 2 — Piano d'Azione § Fase 2
-      compatibility_test: 'PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone from internal/domain/script/output_spec.go; the test surface that exercised the field is removed; bindGenerateEnvelope returns HTTP 400 UNKNOWN_FIELD on wire-shape ingress. The architecture/deprecations.yaml record is retained as the canonical godlike/07 audit-pin.'
-      usage_metric: 'Pre-removal: flag read by preset_resolver, generation_normalizer, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code. Callers receive HTTP 400 UNKNOWN_FIELD.'
-      migration_phase: CONTRACT
-      status: removed
-      notes: 'PR-COMMIT3 (July 2026): the field is physically REMOVED. See OUTPUT_SPEC_VOICEOVER_FLAG for the canonical migration pattern (3 fields removed in lockstep per the user directive ''rimuovi ogni riferimento in normalizer, validator, plan builder, cache key, preflight, preset, test di compatibilità, deprecations.yaml, documentazione API'').'
-    - id: OUTPUT_SPEC_VOICEOVER_FLAG
-      owner_capability: internal/domain/script
-      exact_symbol: 'OutputSpec.GenerateVoiceover (Toggle flag, json: generate_voiceover)'
-      file: internal/domain/script/output_spec.go
-      file_line: "281"
-      replacement: Voiceover is now produced by a separate voiceover.generate downstream job (internal/domain/job/job.go TypeVoiceoverGenerate). Set voiceover requirements via sceneplan.AssetRequirements instead.
-      introduction_date: "2026-07-01"
-      removal_date: "2026-07-13"
-      tracking_issue: Spina Dorsale Fase 2 — Piano d'Azione § Fase 2
-      compatibility_test: 'PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone from internal/domain/script/output_spec.go; the test surface that exercised the field is removed (output_spec_test.go cases + drift-fix scenarios in normalizer_plan_tests_test.go). The wire shape is enforced to return 400 UNKNOWN_FIELD by bindGenerateEnvelope (json.Decoder.DisallowUnknownFields) per the user directive ''miglior 400 Unknown Field che campo accettato e ignorato''. Architecture/architecture/deprecations.yaml record retained as the canonical godlike/07 audit-pin for the physical-removal commit.'
-      usage_metric: 'Pre-removal: flag read by preset_resolver, generation_normalizer, handler_legacy_adapters, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code (the field is physically gone from the struct); the preflight module is physically removed; all drift-fix test cases deleted. Callers sending the field receive HTTP 400 UNKNOWN_FIELD at the wire boundary.'
-      migration_phase: CONTRACT
-      status: removed
-      notes: 'PR-COMMIT3 (July 2026): the field is physically REMOVED from OutputSpec; the preflight module is physically deleted; the test surface is deleted. Architecture/deprecations.yaml record retained with status: removed + migration_phase: CONTRACT per the canonical godlike/07 lifecycle audit-pin. The 3 downstream jobs (TypeVoiceoverGenerate / TypeImagesGenerate / TypeDocumentGenerate in internal/domain/job/job.go) are the canonical owners of the artifact surfaces; callers who previously set these flags now emit asset-requirement spec surfaces (sceneplan.AssetRequirements) on a different downstream job type.'
     - id: MAKE-SMOKE-LEGACY
       owner_capability: internal/application/scripts/smoke
       exact_symbol: 'Makefile target smoke (legacy dev-loop preflight alias for verify-fast compose)'

@@ -5,7 +5,7 @@
 # folder-routing placeholder with the per-clip_id /api/drive/resolve-by-id
 # 4-assertion gate, sourced per the lib/ reorg directive (sqlite_clip_row +
 # drive_resolve_by_id as canonical lib helpers). The previous 6a (folder
-# routing via velox_drive_resolve + ARTLIST_ROOT_FOLDER match) and 6b
+# routing via artlist_drive_resolve + ARTLIST_ROOT_FOLDER match) and 6b
 # (drive.google.com URL round-trip) surface was a DIFFERENT contract and is
 # replaced wholesale; the legacy gate_drive_resolve surface is removed.
 #

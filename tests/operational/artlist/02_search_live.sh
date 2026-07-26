@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/artlist/02_search_live.sh — Artlist DoD Gate 3 (/search/live × 3 + 60s timeout).
 #
-# Reorg (July 2026): split out of tests/operational/artlist_e2e.sh (now a thin shim).
+# Reorg (July 2026): split out of tests/operational/artlist/run_all.sh (now a thin shim).
 # Hard-gate check (DoD, July 2026) per LIVE_QUERIES[i]:
 #   - HTTP 2xx OR explicit err=SEARCH_TIMEOUT if 60s elapses
 #   - provider == 'artlist'

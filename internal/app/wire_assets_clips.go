@@ -157,7 +157,6 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				AssetRepo:     params.AssetRepo,
 				VoiceoverRepo: params.Deps.Core.Repositories.VoiceoverRepo,
 				ImagesRepo:    params.Deps.Core.Repositories.ImageRepo,
-				SearchSvc:     params.SearchAggregator,
 			},
 			Ingest: clipsapi.IngestDeps{
 				Dispatcher:   clipsDispatcherPort,
