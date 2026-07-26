@@ -30,47 +30,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 )
-
-// ── Test doubles ─────────────────────────────────────────────────────────
-
-// stubTranslator is a hermetic PhraseTranslator for tests.
-// Per-phrase translation is configured via the `translations` map.
-// Phrases not in the map return `errStub` (default: nil).
-type stubTranslator struct {
-	translations map[string]string
-	errStub      error
-}
-
-func (s *stubTranslator) Translate(_ context.Context, phrase string) (string, error) {
-	if s.errStub != nil {
-		return "", s.errStub
-	}
-	t, ok := s.translations[phrase]
-	if !ok {
-		return "", nil
-	}
-	return t, nil
-} // stubSearcher is a hermetic PhraseAssetSearcher for tests.
-// Per-query hit lists are configured via the `hits` map. Queries
-// not in the map return nil. `callCount` tracks total invocations
-// so tests can assert the searcher was/wasn't called for a
-// given phrase (godlike/07 NO-FAKE-AVAILABILITY regression guard).
-type stubSearcher struct {
-	hits      map[string][]ports.AssetSearchHit
-	errStub   error
-	callCount int
-}
-
-func (s *stubSearcher) SearchAssets(_ context.Context, q ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
-	s.callCount++
-	if s.errStub != nil {
-		return nil, s.errStub
-	}
-	return s.hits[q.Query], nil
-}
 
 // Compile-time pins (godlike/06 SSOT — port signature drift surfaces
 // as build failure, not runtime panic).
@@ -240,6 +203,49 @@ func TestService_HappyPath(t *testing.T) {
 	}
 	if len(got[1].Clips) < 1 || got[1].Clips[0].AssetID != "yt_ccc" {
 		t.Errorf("match[1].Clips = %+v, want yt_ccc", got[1].Clips)
+	}
+}
+
+func TestService_PreservesInputOrderUnderParallelWork(t *testing.T) {
+	tr := &delayedTranslator{
+		translations: map[string]string{
+			"alpha":   "alpha translated",
+			"bravo":   "bravo translated",
+			"charlie": "charlie translated",
+		},
+		delays: map[string]time.Duration{
+			"alpha":   60 * time.Millisecond,
+			"bravo":   10 * time.Millisecond,
+			"charlie": 0,
+		},
+	}
+	sr := &orderedHitSearcher{
+		hits: map[string][]ports.AssetSearchHit{
+			"alpha translated":   {{AssetID: "clip_alpha", Source: "artlist"}},
+			"bravo translated":   {{AssetID: "clip_bravo", Source: "artlist"}},
+			"charlie translated": {{AssetID: "clip_charlie", Source: "artlist"}},
+		},
+	}
+	svc := NewService(tr, sr)
+
+	got := svc.SearchPhrases(context.Background(), "", []string{"alpha", "bravo", "charlie"})
+	if len(got) != 3 {
+		t.Fatalf("PreservesInputOrder: got %d matches, want 3 (got=%+v)", len(got), got)
+	}
+
+	wantPhrases := []string{"alpha", "bravo", "charlie"}
+	wantTranslations := []string{"alpha translated", "bravo translated", "charlie translated"}
+	wantAssets := []string{"clip_alpha", "clip_bravo", "clip_charlie"}
+	for i := range wantPhrases {
+		if got[i].Phrase != wantPhrases[i] {
+			t.Fatalf("match[%d].Phrase = %q, want %q (out=%+v)", i, got[i].Phrase, wantPhrases[i], got)
+		}
+		if got[i].TranslatedPhrase != wantTranslations[i] {
+			t.Fatalf("match[%d].TranslatedPhrase = %q, want %q (out=%+v)", i, got[i].TranslatedPhrase, wantTranslations[i], got)
+		}
+		if len(got[i].Clips) != 1 || got[i].Clips[0].AssetID != wantAssets[i] {
+			t.Fatalf("match[%d].Clips = %+v, want asset %q", i, got[i].Clips, wantAssets[i])
+		}
 	}
 }
 

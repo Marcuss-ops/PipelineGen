@@ -16,7 +16,10 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
+
+const defaultPhraseParallelism = 4
 
 // DedupeEmpty returns a new slice with empty/whitespace-only strings
 // removed and duplicates suppressed by first-occurrence. Preserves
@@ -105,24 +108,31 @@ func (translatorNilSentinel) Is(target error) bool {
 func TranslateEach(ctx context.Context, translator PhraseTranslator, phrases []string) map[string]TranslationResult {
 	deduped := DedupeEmpty(phrases)
 	out := make(map[string]TranslationResult, len(deduped))
-	for _, phrase := range deduped {
-		if translator == nil {
-			out[phrase] = TranslationResult{Err: ErrTranslatorNil}
-			continue
-		}
-		translated, err := translator.Translate(ctx, phrase)
-		if err != nil {
-			out[phrase] = TranslationResult{Err: err}
-			continue
-		}
-		translated = strings.TrimSpace(translated)
-		if translated == "" {
-			out[phrase] = TranslationResult{Err: ErrEmptyTranslation}
-			continue
-		}
-		out[phrase] = TranslationResult{Translated: translated}
+	if len(deduped) == 0 {
+		return out
+	}
+	results := concurrent.ParallelMap(deduped, phraseParallelism(len(deduped)), func(_ int, phrase string) TranslationResult {
+		return translatePhrase(ctx, translator, phrase)
+	})
+	for i, phrase := range deduped {
+		out[phrase] = results[i]
 	}
 	return out
+}
+
+func translatePhrase(ctx context.Context, translator PhraseTranslator, phrase string) TranslationResult {
+	if translator == nil {
+		return TranslationResult{Err: ErrTranslatorNil}
+	}
+	translated, err := translator.Translate(ctx, phrase)
+	if err != nil {
+		return TranslationResult{Err: err}
+	}
+	translated = strings.TrimSpace(translated)
+	if translated == "" {
+		return TranslationResult{Err: ErrEmptyTranslation}
+	}
+	return TranslationResult{Translated: translated}
 }
 
 // contextualQuery builds the secondary search query that the legacy
@@ -178,4 +188,14 @@ func mergeHits(h1, h2 []ports.AssetSearchHit, maxLen int) []ports.AssetSearchHit
 		}
 	}
 	return out
+}
+
+func phraseParallelism(count int) int {
+	if count <= 0 {
+		return 1
+	}
+	if count < defaultPhraseParallelism {
+		return count
+	}
+	return defaultPhraseParallelism
 }

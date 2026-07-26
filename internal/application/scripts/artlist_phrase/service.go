@@ -11,8 +11,10 @@ package artlist_phrase
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // SearchMaxHits is the canonical cap on per-phrase search results.
@@ -97,38 +99,32 @@ func (s *PhraseAssetSearchService) SearchPhrases(ctx context.Context, title stri
 	if len(deduped) == 0 {
 		return nil
 	}
-
-	// 1. Translate each phrase (failures captured per-phrase).
-	translations := TranslateEach(ctx, s.translator, deduped)
-
-	// 2 + 3. For each successfully translated phrase, search +
-	// compose PhraseMatch. Preserves deduped order.
-	out := make([]PhraseMatch, 0, len(deduped))
-	for _, phrase := range deduped {
-		match := PhraseMatch{Phrase: phrase}
-		tr, ok := translations[phrase]
-		if !ok {
-			// Defensive: TranslateEvery populates every deduped phrase.
-			// If a key is missing, treat as an empty-translation error
-			// so the caller sees a typed diagnostic.
-			match.TranslationError = ErrEmptyTranslation.Error()
-			out = append(out, match)
-			continue
-		}
-		if tr.Err != nil {
-			match.TranslationError = tr.Err.Error()
-			out = append(out, match)
-			continue
-		}
-		match.TranslatedPhrase = tr.Translated
-
-		if s.searcher != nil {
-			hits := s.searchPhrasePair(ctx, title, tr.Translated)
-			match.Clips = hits
-		}
-		out = append(out, match)
-	}
+	results := concurrent.ParallelMap(deduped, phraseParallelism(len(deduped)), func(_ int, phrase string) PhraseMatch {
+		return s.searchPhrase(ctx, title, phrase)
+	})
+	out := make([]PhraseMatch, 0, len(results))
+	out = append(out, results...)
 	return out
+}
+
+func (s *PhraseAssetSearchService) searchPhrase(ctx context.Context, title, phrase string) PhraseMatch {
+	match := PhraseMatch{Phrase: phrase}
+	if ctx.Err() != nil {
+		match.TranslationError = ctx.Err().Error()
+		return match
+	}
+
+	tr := translatePhrase(ctx, s.translator, phrase)
+	if tr.Err != nil {
+		match.TranslationError = tr.Err.Error()
+		return match
+	}
+	match.TranslatedPhrase = tr.Translated
+
+	if s.searcher != nil {
+		match.Clips = s.searchPhrasePair(ctx, title, tr.Translated)
+	}
+	return match
 }
 
 // searchPhrasePair issues the two-query search (translated +
@@ -140,25 +136,31 @@ func (s *PhraseAssetSearchService) SearchPhrases(ctx context.Context, title stri
 // TranslationError field by the caller; this helper returns the
 // raw hit slice.
 func (s *PhraseAssetSearchService) searchPhrasePair(ctx context.Context, title, translated string) []ports.AssetSearchHit {
-	query := ports.AssetSearchQuery{
-		Source:    "artlist",
-		MediaType: "video",
-		Limit:     SearchMaxHits,
-	}
-
-	query.Query = translated
-	h1, _ := s.searcher.SearchAssets(ctx, query)
-
+	queries := []string{translated}
 	contextual := contextualQuery(title, translated)
-	if contextual == "" || contextual == translated {
-		// Title was empty (or identical to translated) — no point
-		// in a duplicate search. Return h1 directly (already
-		// capped at SearchMaxHits by the adapter).
-		return h1
+	if contextual != "" && contextual != translated {
+		queries = append(queries, contextual)
 	}
 
-	query.Query = contextual
-	h2, _ := s.searcher.SearchAssets(ctx, query)
-
-	return mergeHits(h1, h2, SearchMaxHits)
+	results := concurrent.ParallelMap(queries, phraseParallelism(len(queries)), func(_ int, query string) []ports.AssetSearchHit {
+		query = strings.TrimSpace(query)
+		if query == "" {
+			return nil
+		}
+		searchQuery := ports.AssetSearchQuery{
+			Source:    "artlist",
+			MediaType: "video",
+			Limit:     SearchMaxHits,
+			Query:     query,
+		}
+		hits, _ := s.searcher.SearchAssets(ctx, searchQuery)
+		return hits
+	})
+	if len(results) == 0 {
+		return nil
+	}
+	if len(results) == 1 {
+		return results[0]
+	}
+	return mergeHits(results[0], results[1], SearchMaxHits)
 }
