@@ -20,10 +20,10 @@ func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
 		Roots:     make([]RootSummary, 0, len(s.targets)),
 	}
 
-	if s.uploader == nil {
+	if s.reader == nil {
 		summary.OK = false
-		summary.Error = "drive uploader not configured"
-		return summary, fmt.Errorf("drive uploader not configured")
+		summary.Error = "drive reader not configured"
+		return summary, fmt.Errorf("drive reader not configured")
 	}
 
 	for _, target := range s.targets {

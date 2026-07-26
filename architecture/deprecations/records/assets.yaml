@@ -43,47 +43,6 @@ deprecations:
           - CONTRACT: physical removal of assets.SourceStager from ports.go.
         Cross-refs: godlike/06 §"One owner per fact", godlike/07 §"No fake
         availability", AGENTS.md Pattern 0.
-    - id: CATALOGSYNC-DRIVE-PORT-MIGRATION
-      owner_capability: internal/application/assets/catalogsync
-      exact_symbol: |
-        uploaddrive.Uploader fields on catalogsync.Subscriber + the recursive
-        walk that downloads assets via the legacy concrete. Currently routed
-        through the low-level drive package directly.
-      file: internal/application/assets/catalogsync/service.go
-      file_line: Subscriber struct (import alias `uploaddrive`) + recursive-walk helper
-      replacement: |
-        delivery.Publisher for uploads + drive.Reader-port (or its typed successor)
-        for downloads. Composition-root wired. Catalogsync package drops the
-        `uploaddrive` import alias entirely after the migration ships.
-      introduction_date: 2026-07
-      removal_date: 2026-Q3
-      tracking_issue: TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (forward-pointer from PR-DRIVE-CLEANUP)
-      compatibility_test: |
-        Post-migration:
-          (a) rg 'uploaddrive' internal/application/assets/catalogsync/ returns 0 hits.
-          (b) The scanner's `internal/application/assets/catalogsync/` allowlist prefix is removed
-              from percheck_driveaccess.go (the uploaddrive.Uploader + uploaddrive.Admin patterns
-              revert to FORBID-ANYWHERE).
-          (c) This deprecation record flips migration_phase: EXPAND → CUTOVER → CONTRACT.
-          (d) go test ./cmd/archcheck/scan/... -run TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows
-              flips from PASS to FAIL (the catalogsync fixture now triggers a violation because
-              the allowlist is gone).
-      usage_metric: |
-        Today: 1 production callsite (Subscriber struct field) + 0 test cases
-        (the dispatcher_test.go fixture is _test.go exempt).
-        Post-migration: 0 references to uploaddrive.* in production code.
-      migration_phase: EXPAND
-      status: in_progress
-      notes: |
-        Forward-pointer only. The catalogsync Subscriber's uploaddrive.Uploader field is
-        NOT removed in PR-DRIVE-CLEANUP because the typed-port migration (delivery.Publisher
-        + drive.Reader-port) intersects with the sync-target resolution logic + the recursive
-        Sibling-walk that artlist/stock pipelines reuse; the change is non-trivial enough
-        to warrant a dedicated ticket in Q3 2026. The scanner allowlist pin
-        (`internal/application/assets/catalogsync/`) is the load-bearing forward-pointer: it
-        marks the EXACT location where the migration must yield zero surface when it ships.
-        When this ticket lands, this record is amended (migration_phase flips to CUTOVER +
-        CONTRACT) and the catalogsync allowlist entry is removed from percheck_driveaccess.go.
     - id: MONITOR-YOUTUBE-DIRECT-IMPORT
       owner_capability: internal/application/assets/monitor
       exact_symbol: |

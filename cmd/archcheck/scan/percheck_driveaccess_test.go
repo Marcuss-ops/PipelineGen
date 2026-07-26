@@ -228,29 +228,23 @@ func TestScanDriveAccessSSOT_UploaddriveAliasOutsideCatalogsyncForbids(t *testin
 	}
 }
 
-// TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows —
-// uploaddrive.Uploader reference INSIDE the catalogsync
-// subscriber directory emits ZERO violations. Pins the
-// forward-pointer allowlist: catalogsync is pending the
-// typed-port migration (delivery.Publisher + drive.Reader)
-// documented in architecture/deprecations.yaml
-// (TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION, forward-pointer
-// Q3 2026).
-func TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows(t *testing.T) {
+// TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncForbidden —
+// application packages, including catalogsync, cannot reference the
+// concrete Drive uploader after migration to drive.Reader.
+func TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncForbidden(t *testing.T) {
 	tempDir := t.TempDir()
 	rel := "internal/application/assets/catalogsync/subscriber_uploaddrive.go"
 	makeFixture(t, tempDir, rel,
 		"package catalogsync\n\n"+
 			"import uploaddrive \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n\n"+
-			"// ALLOWED: forward-pointer to typed-port migration (delivery.Publisher + drive.Reader).\n"+
-			"// See architecture/deprecations.yaml TODO entry for the Q3 2026 removal.\n"+
+			"// FORBIDDEN: application code must use the typed Drive reader port.\n"+
+			"// Concrete Drive implementations are infrastructure-only.\n"+
 			"type Subscriber struct {\n"+
 			"\tuploader *uploaddrive.Uploader\n"+
 			"}\n")
 	r := runScan(t, tempDir)
-	if got := countViolationsOnFile(r, rel); got != 0 {
-		t.Errorf("catalogsync allowlist must emit 0 violations; got %d:\n%s", got,
-			joinViolations(r.Violations))
+	if got := countViolationsOnFile(r, rel); got == 0 {
+		t.Errorf("catalogsync concrete Drive reference must be rejected")
 	}
 }
 

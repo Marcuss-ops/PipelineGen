@@ -79,7 +79,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// time, mirroring the production wiring in BuildSyncBundle.
 	//
 	// Required-by-ctor fields that are NOT exercised by the dispatcher
-	// path are passed as zero-valued struct pointers (Uploader, AssetTree)
+	// path are passed as zero-valued struct pointers (Reader, AssetTree)
 	// to satisfy NewService's nil-checks without invoking any method on
 	// them.
 	//
@@ -89,7 +89,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// continues to pass the AssetTree zero-struct because the recursive
 	// walker dereferences it (the dispatcher path itself does not).
 	svc, err := NewService(Deps{
-		Uploader:   &uploaddrive.Uploader{},
+		Reader:     &uploaddrive.Uploader{},
 		Targets:    nil, // no pre-configured targets
 		AssetTree:  &assettree.Service{},
 		Dispatcher: dispatcher,
@@ -148,7 +148,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc, err := NewService(Deps{
-		Uploader:   &uploaddrive.Uploader{},
+		Reader:     &uploaddrive.Uploader{},
 		Targets:    nil,
 		AssetTree:  &assettree.Service{},
 		Dispatcher: dispatcher,
@@ -217,7 +217,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 }
 
 // TestNewService_NilDepsRejected verifies the PR-D ctor validation surface:
-// every REQUIRED dep (Uploader / Dispatcher / Log) is rejected with its own
+// every REQUIRED dep (Reader / Dispatcher / Log) is rejected with its own
 // typed sentinel error so composition wiring + tests can assert the precise
 // missing dep. The single OPTIONAL dep (AssetTree) is accepted as nil at
 // ctor time because every catalogsync call site nil-safe-guards it
@@ -229,32 +229,32 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 //
 // Mirrors the stockpipeline sentinel matrix in deps_struct_smoke_test.go;
 // this file holds the catalogsync half. Subtests mirror the ctor
-// validation order: Uploader first, then Dispatcher, then Log.
+// validation order: Reader first, then Dispatcher, then Log.
 func TestNewService_NilDepsRejected(t *testing.T) {
 	log := zap.NewNop() // shared fixture: every subtest constructs Deps{Log: log}
 
-	t.Run("nil uploader returns ErrCatalogSyncNilUploader", func(t *testing.T) {
+	t.Run("nil reader returns ErrCatalogSyncNilReader", func(t *testing.T) {
 		_, err := NewService(Deps{Log: log, Dispatcher: &outbox.Dispatcher{}})
-		require.ErrorIs(t, err, ErrCatalogSyncNilUploader)
+		require.ErrorIs(t, err, ErrCatalogSyncNilReader)
 	})
 	t.Run("nil dispatcher returns ErrCatalogSyncNilDispatcher", func(t *testing.T) {
 		// AssetTree is accepted as nil here: it is optional per the
 		// post-review right-sizing (nil-safe guards in
 		// sync_prune.go::pruneMissingFolders + sync_recursive.go:79,175).
-		// Only the absence of Uploader / Dispatcher / Log triggers a sentinel.
-		_, err := NewService(Deps{Uploader: &uploaddrive.Uploader{}, Log: log})
+		// Only the absence of Reader / Dispatcher / Log triggers a sentinel.
+		_, err := NewService(Deps{Reader: &uploaddrive.Uploader{}, Log: log})
 		require.ErrorIs(t, err, ErrCatalogSyncNilDispatcher)
 	})
 	t.Run("nil log returns ErrCatalogSyncNilLog", func(t *testing.T) {
 		_, err := NewService(Deps{
-			Uploader:   &uploaddrive.Uploader{},
+			Reader:     &uploaddrive.Uploader{},
 			Dispatcher: &outbox.Dispatcher{},
 		})
 		require.ErrorIs(t, err, ErrCatalogSyncNilLog)
 	})
 	t.Run("all-non-nil happy path", func(t *testing.T) {
 		_, err := NewService(Deps{
-			Uploader:   &uploaddrive.Uploader{},
+			Reader:     &uploaddrive.Uploader{},
 			Targets:    nil,
 			AssetTree:  nil, // optional, nil-safe guarded
 			Dispatcher: &outbox.Dispatcher{},
@@ -267,7 +267,7 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		// at every catalogsync call site. Documenting this explicitly
 		// so future maintainers see the optionality contract.
 		_, err := NewService(Deps{
-			Uploader:   &uploaddrive.Uploader{},
+			Reader:     &uploaddrive.Uploader{},
 			Dispatcher: &outbox.Dispatcher{},
 			Log:        log,
 		})

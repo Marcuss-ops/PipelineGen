@@ -20,15 +20,6 @@
 //   - internal/infrastructure/drive/**              : the Drive infrastructure implementation.
 //   - internal/app/**                               : composition-root wiring.
 //   - internal/application/assets/delivery/**       : the application-layer delivery port.
-//   - internal/application/assets/catalogsync/**    : TEMPORARY allowlist — uploaddrive.Uploader
-//     field on Subscriber (1 callsite) is
-//     pending typed-port migration (see
-//     TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION
-//     in architecture/deprecations.yaml,
-//     deadline Q3 2026). The allowlist prefix
-//     is attached per-pattern to the
-//     substring-overlapping subset so the
-//     catalogsync file is uniformly exempt.
 //   - *_test.go                                     : tests may construct fakes directly.
 //   - cmd/archcheck/scan/**                         : the scanner's own package is exempt
 //     (out of the walk scope: ScanDriveAccessSSOT
@@ -63,34 +54,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// catalogsyncAllowPath is the path prefix that scopes the
-// per-pattern catalogsync allowlist (TODO-CATALOGSYNC-DRIVE-PORT-
-// MIGRATION forward-pointer, Q3 2026). All drive.* and uploaddrive.*
-// patterns with substring-overlap with the catalogsync subscriber's
-// aliased imports carry this prefix as their per-pattern allowInPath.
-//
-// Why per-pattern (not file-level allowlist): `drive.Uploader` and
-// `drive.Admin` are SUBSTRINGS of `uploaddrive.Uploader` and
-// `uploaddrive.Admin` respectively. A single aliased-import line
-// matches BOTH the general `drive.*` pattern AND the aliased
-// `uploaddrive.*` pattern. Attaching the allowlist to ALL of them
-// (not just the aliased rows) ensures the loop uniformly skips the
-// violating emit on catalogsync lines.
-const catalogsyncAllowPath = "internal/application/assets/catalogsync/"
-
-// catalogsyncAllowRationale documents the architecture/deprecations
-// forward-pointer that this allowlist is anchored on. The string is
-// attached to every per-pattern allowInPath so a future agent can
-// grep `TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION` and find the exact
-// removal criterion (forward-pointer + Q3 2026 deadline + the
-// TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows pin)
-// without having to cross-reference the godlike/07 manifest.
-const catalogsyncAllowRationale = "TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (architecture/deprecations.yaml CATALOGSYNC-DRIVE-PORT-MIGRATION, Q3 2026): the catalogsync Subscriber is the SOLE pending caller of drive-package concrete references (uploaddrive.* aliased imports). The typed-port migration (delivery.Publisher + drive.Reader-port) is non-trivial. When the migration ships, this allowlist prefix is REMOVED from every per-pattern entry below + the test pin TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows flips from PASS to FAIL-ON-COMMIT per the documented removal criterion."
-
 // driveAccessPattern is the per-row schema of the forbidden-pattern
-// matrix. `allowInPath` is the per-pattern catalogsync subtree
-// allowlist (empty = no exemption); `allowRationale` documents the
-// forward-pointer for human/agent review.
+// matrix. `allowInPath` is reserved for explicit composition-root
+// exceptions; application packages have no concrete Drive exemption.
 type driveAccessPattern struct {
 	pattern        string
 	desc           string
@@ -106,12 +72,6 @@ type driveAccessPattern struct {
 // drive.NewDriveServiceFromFiles( + drive.NewFileLifecycleAdapter(
 // added to the matrix alongside the pre-existing drive.Uploader +
 // drive.FolderManager bans.
-//
-// Catalogsync-allowlist scope: see the catalogsyncAllowPath +
-// catalogsyncAllowRationale consts at the top of this file. The
-// substring-overlapping subset of the matrix carries the prefix on
-// the GENERAL `drive.X` patterns AND the ALIASED `uploaddrive.*`
-// patterns uniformly so a single allowlist emits a uniform skip.
 //
 // Constructor patterns (drive.NewUploader( + drive.NewFolderManager(
 // + drive.NewDriveServiceFromFiles( + drive.NewFileLifecycleAdapter()
@@ -130,9 +90,9 @@ var driveAccessForbiddenPatterns = []driveAccessPattern{
 	// file-level allowlist).
 	{"drive.NewUploader(", "direct drive.NewUploader construction", "", ""},
 	{"drive.NewFolderManager(", "direct drive.NewFolderManager construction", "", ""},
-	{"drive.Uploader", "direct drive.Uploader type reference", catalogsyncAllowPath, catalogsyncAllowRationale},
+	{"drive.Uploader", "direct drive.Uploader type reference", "", ""},
 	{"drive.FolderManager", "direct drive.FolderManager type reference", "", ""},
-	{"*drive.Uploader", "pointer to concrete drive.Uploader", catalogsyncAllowPath, catalogsyncAllowRationale},
+	{"*drive.Uploader", "pointer to concrete drive.Uploader", "", ""},
 	{"*drive.FolderManager", "pointer to concrete drive.FolderManager", "", ""},
 
 	// PR-DRIVE-CLEANUP additions: drive.Admin surface + direct
@@ -142,8 +102,8 @@ var driveAccessForbiddenPatterns = []driveAccessPattern{
 	// uploaddrive.* and rely on the global file-level allowlist).
 	{"drive.NewDriveServiceFromFiles(", "direct drive.NewDriveServiceFromFiles construction (creates *drive.Uploader with Admin methods)", "", ""},
 	{"drive.NewFileLifecycleAdapter(", "direct drive.NewFileLifecycleAdapter construction (composition root wraps this; outside root, route through internal/app/)", "", ""},
-	{"drive.Admin", "direct drive.Admin type reference", catalogsyncAllowPath, catalogsyncAllowRationale},
-	{"*drive.Admin", "pointer to concrete drive.Admin", catalogsyncAllowPath, catalogsyncAllowRationale},
+	{"drive.Admin", "direct drive.Admin type reference", "", ""},
+	{"*drive.Admin", "pointer to concrete drive.Admin", "", ""},
 
 	// PR-DRIVE-CLEANUP aliased-import coverage: uploaddrive alias
 	// (used by catalogsync subscriber; forward-pointer to the
@@ -151,20 +111,18 @@ var driveAccessForbiddenPatterns = []driveAccessPattern{
 	// on these rows so the loadbearing surface is uniform across
 	// the matrix; the general `drive.*` patterns above already
 	// carry the same prefix so this rowset is belt-and-braces.
-	{"uploaddrive.Uploader", "aliased drive.Uploader type reference (catalogsync only; follow-up typed-port migration)", catalogsyncAllowPath, catalogsyncAllowRationale},
-	{"uploaddrive.Admin", "aliased drive.Admin type reference (catalogsync only; follow-up typed-port migration)", catalogsyncAllowPath, catalogsyncAllowRationale},
-	{"*uploaddrive.Uploader", "pointer to aliased drive.Uploader (catalogsync only; follow-up typed-port migration)", catalogsyncAllowPath, catalogsyncAllowRationale},
-	{"*uploaddrive.Admin", "pointer to aliased drive.Admin (catalogsync only; follow-up typed-port migration)", catalogsyncAllowPath, catalogsyncAllowRationale},
+	{"uploaddrive.Uploader", "aliased drive.Uploader type reference", "", ""},
+	{"uploaddrive.Admin", "aliased drive.Admin type reference", "", ""},
+	{"*uploaddrive.Uploader", "pointer to aliased drive.Uploader", "", ""},
+	{"*uploaddrive.Admin", "pointer to aliased drive.Admin", "", ""},
 }
 
 // ScanDriveAccessSSOT walks <root>/internal/application/** and
 // <root>/internal/api/** for non-test .go files, scanning each line
 // for low-level Drive concrete references. The Drive infrastructure
 // package, the delivery port package, and the composition root are
-// globally allowlisted. The catalogsync subtree is per-pattern
-// allowlisted for the substring-overlapping subset (forward-pointer
-// to Q3 2026 typed-port migration; see catalogsyncAllowPath +
-// catalogsyncAllowRationale).
+// globally allowlisted; application packages have no concrete Drive
+// exemption.
 func ScanDriveAccessSSOT(root string, pol *policy.Policy, r *report.Report) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,

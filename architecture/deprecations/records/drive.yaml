@@ -8,9 +8,7 @@ deprecations:
         when FileLifecycle is nil (no graceful Admin fallback remains). The scanner
         `percheck_driveaccess.go` enforces NO direct `drive.Admin` / `*drive.Admin` /
         `drive.NewDriveServiceFromFiles(` references in internal/application/** or
-        internal/api/** (allowlisted: internal/app/, internal/infrastructure/drive/,
-        internal/application/assets/delivery/, internal/application/assets/catalogsync/
-        for the forward-pointer uploaddrive.Uploader alias only).
+        internal/api/** (allowlisted only at internal/app/ and infrastructure/drive/).
       file: |
         internal/app/clips_adapters_drive.go + internal/app/adapters_voiceover_publisher.go +
         internal/app/adapters_infra.go + internal/app/module_media_ingest.go +
@@ -43,9 +41,8 @@ deprecations:
         Post-CUTOVER (PR-DRIVE-CLEANUP, July 2026): 4 adapters calling FileLifecycle.{Trash,Delete,Rename}
         with HARD-ERROR fail-closed (no nil→Admin fallback); scanner ensures no future drift.
         voiceoverDriveAdapter removed entirely by upstream ce0c6396.
-        Forward-pointer: catalogsync.Subscriber still uses uploaddrive.Uploader (1 production callsite;
-        typed-port migration to delivery.Publisher + drive.Reader-port is non-trivial — see
-        TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION, Q3 2026).
+        Catalogsync now consumes the canonical drive.Reader port; no application concrete
+        Drive exception remains.
       migration_phase: CUTOVER
       status: in_progress
       notes: |
@@ -59,14 +56,11 @@ deprecations:
             uploaddrive.Uploader / uploaddrive.Admin (aliased-import coverage).
           - allowlist precedence: internal/infrastructure/drive/** > internal/app/**
             > internal/application/assets/delivery/** > internal/application/assets/
-            catalogsync/** (uploaddrive alias forward-pointer only).
+            no application subtree.
           - _test.go files are exempt.
         Forward-pointers:
-          (1) TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (Q3 2026): migrate the catalogsync
-              Subscriber's 1 uploaddrive.Uploader production callsite to delivery.Publisher
-              (writes) + drive.Reader-port (reads). When this ships, the catalogsync
-              allowlist entry is removed from percheck_driveaccess.go + this deprecation
-              record is amended.
+          (1) Catalogsync uses drive.Reader directly; the concrete Drive allowlist was
+              removed from percheck_driveaccess.go.
         Cross-refs: CHANGELOG.md P1-3-BACKFILL + P1-3-CUTOVER (new) + AGENTS.md
         §"Simplicity & Minimalism" + godlike/07 §"Migration sequence" + §"No fake
         availability".
