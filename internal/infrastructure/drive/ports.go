@@ -24,7 +24,7 @@ import (
 //
 // Consumers: driveAdminAdapter, storageDriveAdapter, clipsDriveAdapter,
 // sfxDriveUploaderAdapter, sourcingDriveAdapter,
-// driveFolderMgrAdapter (YouTube), driveFolderAdapterImpl (Script).
+// driveFolderMgrAdapter (YouTube).
 type Admin interface {
 	// Folder operations
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)

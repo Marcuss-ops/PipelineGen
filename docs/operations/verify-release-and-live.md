@@ -143,7 +143,7 @@ part of `verify-main` or `verify-release`**.
 
 | | |
 |---|---|
-| **Script** | `tests/operational/vidrush_media_e2e.sh` |
+| **Script** | `tests/operational/vidrush_script_generate_e2e.sh` |
 | **Locate Makefile target** | `grep -nE '^verify-vidrush-live:' Makefile` |
 | **Cost** | ~10–30 min (heavy, server-stateful, end-to-end) |
 | **Surface** | full Vid Rush battery — server + scraper + SQLite + FFmpeg + Drive + Qdrant, covering every stage from intake to projection |
@@ -239,7 +239,7 @@ make verify-script-live
 
 ```bash
 # Dry-run only — heavy battery:
-SMOKE_DRY_RUN=1 bash tests/operational/vidrush_media_e2e.sh
+SMOKE_DRY_RUN=1 bash tests/operational/vidrush_script_generate_e2e.sh
 
 # Real run on operational host ONLY:
 make verify-vidrush-live
@@ -310,7 +310,7 @@ This doc intentionally does NOT repeat:
   - `grep -nE '^verify-live:' Makefile`
   - `grep -nE '^verify-(images|artlist|script|vidrush)-live:' Makefile`
   - `grep -nE '^verify-artlist-[a-z]+:' Makefile`
-- `tests/operational/{images_e2e.sh,artlist/run_all.sh,script_generate_smoke.sh,vidrush_media_e2e.sh}` — canonical battery scripts.
+- `tests/operational/{images_e2e.sh,artlist/run_all.sh,script_generate_smoke.sh,vidrush_script_generate_e2e.sh}` — canonical battery scripts.
 - `tests/operational/artlist/{01..09}_*.sh` — the 9 Artlist sub-gates.
 - `tests/operational/lib/{common,artlist,drive,sqlite,qdrant,velox_domain}.sh` — shared lib (curl/jq/sqlite dispatch).
 

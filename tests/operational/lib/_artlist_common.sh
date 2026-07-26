@@ -28,9 +28,8 @@
 # block. All actual business logic stays in the underlying lib files where
 # it already lives. The only NEW content is `artlist_dod_assert_helpers_loaded`
 # which fails closed if any expected helper is missing (so a future
-# refactor that removes `velox_qdrant_assert` from `velox_domain.sh` will
-# surface immediately at import time instead of silently breaking
-# artlist_e2e.sh or vidrush_media_e2e.sh at first call site).
+# refactors that remove canonical helpers will surface immediately at import
+# time instead of silently breaking a gate at its first call site).
 #
 # ============================================================================
 # godlike/06 SSOT canonical chain
@@ -162,9 +161,6 @@ artlist_dod_assert_helpers_loaded() {
         log_fail \
         log_info \
         log_warn \
-        velox_qdrant_assert \
-        velox_drive_resolve \
-        velox_artlist_pipeline_run \
         artlist_qdrant_assert \
         artlist_drive_resolve \
         artlist_replay_run \

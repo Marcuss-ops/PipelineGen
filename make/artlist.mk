@@ -16,7 +16,7 @@ verify-artlist:
 
 # ─── Artlist operational batteries (granular, July 2026) ────────────────
 #
-# The legacy monolithic tests/operational/artlist_e2e.sh is split into
+# The Artlist battery is split into
 # 9 granular sub-scripts under tests/operational/artlist/, each gated
 # by its own Make target so a developer debugging one phase can iterate
 # in seconds instead of waiting for the full battery. The 9 sub-targets
@@ -107,4 +107,3 @@ verify-artlist-errors:
 # battery. NOT part of verify-main (it requires the live stack).
 verify-artlist-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/artlist/run_all.sh
-

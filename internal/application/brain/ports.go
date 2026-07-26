@@ -43,14 +43,7 @@ type MediaMemoryResolutionPort interface {
 	EmbeddingVersion() string
 }
 
-// CandidateSearcher is the legacy alias for MediaMemoryResolutionPort.
-// It is kept for backward compatibility while callers migrate to the
-// canonical port name.
-//
-// Deprecated: use MediaMemoryResolutionPort directly.
-type CandidateSearcher = MediaMemoryResolutionPort
-
-// SearchQuery is the narrow input shape consumed by CandidateSearcher.
+// SearchQuery is the narrow input shape consumed by MediaMemoryResolutionPort.
 // It intentionally avoids provider-specific coordinates.
 type SearchQuery struct {
 	Text         string
@@ -61,7 +54,7 @@ type SearchQuery struct {
 	SearchPolicy media.ResolutionSearchPolicy
 }
 
-// SearchResult is the narrow output shape produced by CandidateSearcher.
+// SearchResult is the narrow output shape produced by MediaMemoryResolutionPort.
 type SearchResult struct {
 	Candidates    []Candidate
 	Partial       bool

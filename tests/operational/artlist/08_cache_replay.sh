@@ -5,8 +5,7 @@
 # a cached fixture and asserts the cache-hit surface (no re-download,
 # no re-transcription, but full Drive + Qdrant + outbox surface still
 # validated). The canonical helper (lib/artlist.sh::artlist_replay_run,
-# surfaced via lib/velox_domain.sh delegator `velox_artlist_pipeline_run`
-# second-arg semantics) drives the cache-hit probe.
+# from lib/artlist.sh drives the cache-hit probe.
 #
 # Cache invariants asserted (DRY_RUN-aware):
 #   (a) Re-run with the SAME term returns the SAME clip_ids without
@@ -41,7 +40,7 @@ smoke_require curl sqlite3 jq
 # CACHE HIT invariants (no re-download, no re-transcription, no new rows)
 # instead of CACHE MISS behaviour. The lib helper `artlist_replay_run`
 # (canonical impl in lib/artlist.sh) is the SSOT for the replay exec;
-# velox_artlist_pipeline_run delegates to it for the second invocation.
+# artlist_replay_run is the canonical replay entry point.
 gate_cache_replay() {
     smoke_log_section "Gate 8 — cache replay (HIT invariants)"
 

@@ -97,8 +97,7 @@ gate_drive_resolve() {
         # ── step-2: artlist_drive_resolve (DoD canonical envelope) ────
         # The function has been moved from lib/velox_domain.sh to
         # lib/artlist.sh (DoD "estrazione futura" consolidation). The
-        # velox_drive_resolve name remains as a thin delegator for
-        # backward-compat; new code should call artlist_drive_resolve.
+        # artlist_drive_resolve is the canonical Drive resolver.
         # Helper's RC semantics (matches Gates 1+2 typed-helper contract):
         #   rc=0 → contract pass (HTTP 2xx + jq contract).
         #   rc=1 → HTTP 2xx but jq shape violated (e.g. trashed=true,

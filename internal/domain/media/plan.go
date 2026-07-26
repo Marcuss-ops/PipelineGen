@@ -38,8 +38,9 @@ func IsValidMediaPlanMode(mode string) bool {
 	return false
 }
 
-// IsActiveMediaPlanMode returns true when mode is a non-empty, valid media
-// plan mode that is not disabled. Active modes trigger visual planning.
+// IsActiveMediaPlanMode returns true when mode is a valid, explicitly
+// selected media plan mode that is not disabled. Empty mode means that the
+// caller did not request visual planning.
 func IsActiveMediaPlanMode(mode string) bool {
 	return mode != "" && mode != MediaPlanModeDisabled && IsValidMediaPlanMode(mode)
 }
@@ -50,12 +51,8 @@ func IsActiveMediaPlanMode(mode string) bool {
 // from, while MediaPlanSpec describes which media should accompany
 // the generated script.
 type MediaPlanSpec struct {
-	// Mode is the resolution strategy. Empty defaults to "hybrid".
+	// Mode is the resolution strategy. Empty means visual planning is off.
 	Mode string `json:"mode,omitempty"`
-
-	// Providers is the ordered list of providers to consider. Empty
-	// uses the default set (drive, artlist, pexels, youtube).
-	Providers []string `json:"providers,omitempty"`
 
 	// ProviderPolicy toggles the canonical visual providers that the
 	// VidRush pipeline may consult. Empty/zero values mean "caller did
@@ -88,6 +85,47 @@ type MediaPlanSpec struct {
 	Planner         MediaPlannerPolicy         `json:"planner,omitempty"`
 	Materialization MediaMaterializationPolicy `json:"materialization,omitempty"`
 	IncludeTrace    bool                       `json:"include_trace,omitempty"`
+}
+
+// UnmarshalJSON accepts the retired providers wire shape only at the JSON
+// boundary, then folds it into the single canonical ProviderPolicy field.
+func (m *MediaPlanSpec) UnmarshalJSON(data []byte) error {
+	type mediaPlanAlias MediaPlanSpec
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	legacyProviders := fields["providers"]
+	delete(fields, "providers")
+	canonical, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	*m = MediaPlanSpec{}
+	if err := json.Unmarshal(canonical, (*mediaPlanAlias)(m)); err != nil {
+		return err
+	}
+	if len(legacyProviders) == 0 || len(m.ProviderPolicy.Artlist) > 0 || len(m.ProviderPolicy.InternetImages) > 0 {
+		return nil
+	}
+	var policy MediaProviderPolicy
+	if json.Unmarshal(legacyProviders, &policy) == nil {
+		m.ProviderPolicy = policy
+		return nil
+	}
+	var names []string
+	if json.Unmarshal(legacyProviders, &names) != nil {
+		return fmt.Errorf("invalid legacy media providers")
+	}
+	for _, name := range names {
+		switch name {
+		case "artlist":
+			m.ProviderPolicy.Artlist = MediaToggleEnabled
+		case "internet_images", "images":
+			m.ProviderPolicy.InternetImages = MediaToggleEnabled
+		}
+	}
+	return nil
 }
 
 const (
@@ -153,7 +191,7 @@ func (t MediaToggle) MarshalJSON() ([]byte, error) {
 	case MediaToggleDefault, MediaToggleEnabled, MediaToggleDisabled:
 		return json.Marshal(string(t))
 	default:
-		return json.Marshal(string(MediaToggleDefault))
+		return nil, fmt.Errorf("invalid media toggle %q", t)
 	}
 }
 
@@ -174,7 +212,6 @@ type MediaProviderPolicy struct {
 // copied so mutations to the returned instance do not affect the
 // original.
 func (m MediaPlanSpec) Clone() MediaPlanSpec {
-	m.Providers = append([]string(nil), m.Providers...)
 	m.Assignments = append([]SegmentMediaAssignment(nil), m.Assignments...)
 	m.Searches = append([]SegmentMediaSearch(nil), m.Searches...)
 	return m

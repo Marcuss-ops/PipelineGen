@@ -1,30 +1,12 @@
 # make/operations.smoke.mk - thematic include (P2 Manutenibilita, July 2026).
 # Sub-bucket of the former make/operations.mk (414 lines → 4 sub-files).
-# Holds black-box smoke test targets: smoke, smoke-script, smoke-pipeline,
-# operate-script-generate, smoke-run-all, smoke-dry.
+# Holds the remaining black-box smoke test targets.
 # Root Makefile contains include make/*.mk plus all: build.
 
 # ─── Black-box smoke tests ──────────────────────────────────────────────────
 # Per operator policy (AGENTS.md): never modify internal/application/scripts,
 # internal/api/script, internal/app/wire_script.go, or production business
 # logic for tests. Hammer the live HTTP surface under tests/operational/.
-
-smoke:
-	@set -e; \
-	for s in tests/operational/startup_smoke.sh tests/operational/failed_job_smoke.sh tests/operational/fase_b_clip_pipeline_smoke.sh; do \
-	    echo "----- $$s -----"; \
-	    bash $$s; \
-	done
-	@echo "✅ smoke OK"
-
-# Heavy path — drives a text-only script job end-to-end (dispatch + poll).
-# Will FAIL initially on the broken worker (AGENT-2 Extract residue).
-smoke-script:
-	@echo "----- tests/operational/text_script_smoke.sh -----"
-	@bash tests/operational/text_script_smoke.sh
-	@echo "----- tests/operational/failed_job_smoke.sh -----"
-	@bash tests/operational/failed_job_smoke.sh
-	@echo "✅ smoke-script completed (check individual script exit codes above)"
 
 # FASE B clip-pipeline regression smoke — 4 tests covering
 # strategy=replace / folder_id pre-riso / PathBuilder canonical / duplicate.

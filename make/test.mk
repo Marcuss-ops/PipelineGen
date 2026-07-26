@@ -13,7 +13,7 @@ test: test-unit
 # to keep the cheap default CI chain (go-version-check + Go test + build)
 # independent from Node toolchain state. CI environments that don't have
 # Node installed can still run `make test`; `make test-all` adds the JS
-# gate for environments where Node 22 + mocha are wired.
+# gate for environments where Node 22 is wired.
 test-all: test-unit test-js
 
 # Run unit tests with race detector
@@ -22,21 +22,16 @@ test-unit:
 
 # Run JavaScript test suite (node-scraper).
 # Equivalent: cd node-scraper && npm install --silent && npm test.
-# Uses Mocha (devDependency) as the canonical runner; the project also
-# keeps `npm run test:fallback` as the node --test runner for operators
-# who prefer the Node built-in. Auto-installs deps on first run
-# (idempotent: skips install when mocha is already wired — uses `-e`
-# rather than `-x` so the skip works whether mocha is a real file OR a
-# symlink under node_modules/.bin/, which is the npm v7+ default).
+# Uses Node's built-in test runner and installs dependencies on first run.
 # Exits non-zero on any failing test — same fail-closed contract as
 # test-unit. Gated on node-version-check so a stale host Node aborts
 # BEFORE npm install (a 30s install vs an immediate ✓/❌ toggle on the
 test-js: node-version-check
-	@if [ ! -e node-scraper/node_modules/.bin/mocha ]; then \
-	    echo "→ Installing node-scraper devDependencies (Mocha + ESLint)..."; \
+	@if [ ! -d node-scraper/node_modules ]; then \
+	    echo "→ Installing node-scraper devDependencies..."; \
 	    cd node-scraper && npm install --silent; \
 	fi
-	@echo "→ Running Mocha test suite on node-scraper/test/*.test.js..."
+	@echo "→ Running Node test suite on node-scraper/test/*.test.js..."
 	cd node-scraper && npm test
 
 coverage: test-unit

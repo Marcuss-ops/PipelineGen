@@ -46,7 +46,7 @@ var _ Resolver = (*MediaMemoryResolver)(nil)
 // Resolve converts the mediamemory request into the canonical
 // brain.BrainRequest, delegates to the brain, and projects the result
 // back into mediamemory.ResolveResult. Every search is performed by
-// the brain through its CandidateSearcher port; no additional search
+// the brain through its MediaMemoryResolutionPort; no additional search
 // path exists in this resolver.
 func (r *MediaMemoryResolver) Resolve(ctx context.Context, req ResolveRequest) (ResolveResult, error) {
 	brainReq := toBrainRequest(req)

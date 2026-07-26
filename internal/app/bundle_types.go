@@ -99,7 +99,7 @@ type ArtlistBundle struct {
 // The harvest service was constructed locally in WireRegistry from
 // root.Jobs.Facade (the same path used pre-PR4d); the carve-out was
 // deliberate because the then-existing clipresolver.Service did not
-// implement script.AutoHarvestService (no EnqueueHarvest method), not
+// implement the script harvest port (no EnqueueHarvest method), not
 // a side-effect.
 //
 // Blocco C1-Step 3 (June 2026): Handler field removed. The HTTP Handler

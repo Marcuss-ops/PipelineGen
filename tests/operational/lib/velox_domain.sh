@@ -55,7 +55,6 @@
 # Lib-level fix migrates the guarantee into every caller (Gate 8 today;
 # any future gate that reuses velox_qdrant_assert inherits the round-
 # trip automatically per AGENTS.md single-focus rule).
-velox_qdrant_assert() { artlist_qdrant_assert "$@"; }
 
 # ── velox_drive_resolve — confirm Drive file id exists, not trashed, size > 0
 # Args: <drive_file_id>
@@ -68,7 +67,6 @@ velox_qdrant_assert() { artlist_qdrant_assert "$@"; }
 # populated. SMOKE_LAST_BODY side-effects from smoke_curl do NOT survive a
 # $(...) subshell wrapping and were the source of Bug 3 in the first wave
 # review.
-velox_drive_resolve() { artlist_drive_resolve "$@"; }
 
 # ── velox_artlist_detail — POST $scraper/detail contract probe + assertion
 # Args: --phase <happy|miss> --clip-page-url <url> --scraper-url <url> [--save-body <path>]
@@ -302,10 +300,3 @@ velox_artlist_search_live() {
     ' "$out" >/dev/null 2>&1 || return 1
     return 0
 }
-
-# ── velox_artlist_pipeline_run — POST /api/artlist/run with canonical DoD payload
-# Args: <term> <limit> [strategy] [clip_duration] [width] [height] [fps] [concurrency] [root_folder_id]
-# Emits: <HTTP_code>\t<run_id>\t<body_path>
-# Strategy default "replace" matches the VidRush battery; callers can pass
-# "merge" / "skip" to alter behaviour without leaving the canonical surface.
-velox_artlist_pipeline_run() { artlist_replay_run "$@"; }

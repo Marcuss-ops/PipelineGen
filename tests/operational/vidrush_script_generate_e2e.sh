@@ -45,7 +45,7 @@ PAYLOAD=$(jq -n '{
     output: { extract_entities: true, generate_metadata: false, save_to_db: true },
     media_plan: {
       mode: "search",
-      providers: { artlist: true, internet_images: true },
+      provider_policy: { artlist: "enabled", internet_images: "enabled" },
       extraction: { enabled: true }
     }
   }]
@@ -148,7 +148,7 @@ for mode in none artlist_only images_only both; do
         both) artlist=true; images=true ;;
     esac
     case_payload=$(jq --argjson artlist "$artlist" --argjson images "$images" \
-      '.items[0].id = ("vidrush-e2e-" + $mode) | .items[0].media_plan.providers.artlist = $artlist | .items[0].media_plan.providers.internet_images = $images' \
+      '.items[0].id = ("vidrush-e2e-" + $mode) | .items[0].media_plan.provider_policy.artlist = (if $artlist then "enabled" else "disabled" end) | .items[0].media_plan.provider_policy.internet_images = (if $images then "enabled" else "disabled" end)' \
       --arg mode "$mode" <<<"$PAYLOAD")
     run_generation "toggle_${mode}" "$case_payload" "$CASE_PREFIX-$mode"
     assert_segments "$result_file" "$artlist" "$images"

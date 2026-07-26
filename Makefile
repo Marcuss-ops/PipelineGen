@@ -37,7 +37,7 @@
 	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	doctor artlist auth-check regenerate-token scraper-up \
-	smoke smoke-script smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
+	smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
 	deps tidy-check vuln bench ci preflight verify-format test-imports install-hooks regen-current-yaml
 
 # help - discoverability for the split Makefile. Curated cheat sheet of
@@ -60,7 +60,7 @@ help:
 	@echo ""
 	@echo "TEST (unit, headless)"
 	@echo "  make test             Go unit tests with race detector (fast)"
-	@echo "  make test-all         Go unit tests + node-scraper Mocha suite"
+	@echo "  make test-all         Go unit tests + node-scraper Node test suite"
 	@echo "  make lint             golangci-lint run --timeout=5m"
 	@echo "  make fmt              go fmt ./..."
 	@echo "  make vet              go vet ./..."
@@ -71,7 +71,7 @@ help:
 	@echo "  make verify-release   Pre-deploy gate: verify-main + integration"
 	@echo "  make verify-live      Post-deploy operational battery (needs live external stack)"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
-	@echo "  make verify-node      Node toolchain gate (native probe + Mocha)"
+	@echo "  make verify-node      Node toolchain gate (native probe + Node tests)"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
