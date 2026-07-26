@@ -82,27 +82,16 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
-	// Fase 9 step 2 (Spina Dorsale, July 2026): construct the
-	// canonical OllamaTranslator — the single application-layer
-	// concrete that satisfies translation.TranslationPort + the
-	// three legacy port surfaces (LegacyTextTranslationService +
-	// LegacyTranslatorService + LegacyMetadataTranslator). The
-	// composition root constructs ONE OllamaTranslator per process
-	// (godlike/06 SSOT for the translation logic); every consumer
-	// field on ClipServices (Translation, Translator,
-	// TranslationPort + any future metadata-translator dependency)
-	// routes through this instance. Wrap the scriptGen (a
+	// Construct the single application-layer OllamaTranslator per
+	// process and route the canonical TranslationPort through it. Wrap
+	// the scriptGen (a
 	// *ollama.Generator) — the canonical `TranslationCache` is
 	// already wired into scriptGen by the SetTranslationCache call
-	// above, so the OllamaTranslator's underlying gen.TranslateTextWithModel
-	// call respects the same SQLite-backed cache lookup as the
-	// legacy direct-call path. Per godlike/06 "one owner per fact",
-	// the *ollama.Generator translation logic is owned by ONE
-	// canonical Pyt-path (translation.ollama_translator.go) reachable
-	// via all 4 ports. Tracking entry:
-	// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION
+	// above, so its underlying translation call respects the same
+	// SQLite-backed cache lookup. The translation logic has one owner in
+	// translation.ollama_translator.go.
 	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
-	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
+	log.Info("OllamaTranslator wired", zap.String("port", "translation.TranslationPort"))
 
 	// PR-2 GemmaMemory wiring: construct the real SQLite-backed cache
 	// service and inject it into the engine. The engine uses it for

@@ -28,10 +28,6 @@ type MetadataGenerator interface {
 	TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error)
 }
 
-// MetadataTranslator is retained only for existing package tests; production
-// code uses MetadataGenerator directly.
-type MetadataTranslator = MetadataGenerator
-
 // BuildMetadataLanguages normalizes the requested metadata languages.
 //
 // Canonical invariants:
