@@ -37,20 +37,68 @@ func (p *Processor) processStep(ctx context.Context, input *asset.ProcessInput, 
 	}
 
 	p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath), zap.Bool("disable_duration", opts.DisableDuration), zap.Int("duration", opts.Duration))
-	if err := p.ffmpeg.Normalize(ctx, rawPath, processedPath, opts); err != nil {
+	tmpOutput, cleanup, err := p.atomicOutputPath(processedPath)
+	if err != nil {
+		return "", err
+	}
+	if err := p.ffmpeg.Normalize(ctx, rawPath, tmpOutput, opts); err != nil {
+		cleanup()
+		return "", err
+	}
+	if err := os.Rename(tmpOutput, processedPath); err != nil {
+		cleanup()
 		return "", err
 	}
 
 	return processedPath, nil
 }
 
+func (p *Processor) atomicOutputPath(finalPath string) (string, func(), error) {
+	dir := filepath.Dir(finalPath)
+	base := filepath.Base(finalPath)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	pattern := fmt.Sprintf(".%s-*%s", stem, ext)
+	if ext == "" {
+		pattern = fmt.Sprintf(".%s-*", stem)
+	}
+
+	tmpFile, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp output for %q: %w", finalPath, err)
+	}
+	tmpPath := tmpFile.Name()
+	if closeErr := tmpFile.Close(); closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", func() {}, fmt.Errorf("close temp output for %q: %w", finalPath, closeErr)
+	}
+	// Remove the placeholder so ffmpeg can create the target path itself.
+	// The CreateTemp call still gives us a collision-resistant sibling path.
+	_ = os.Remove(tmpPath)
+
+	cleanup := func() {
+		_ = os.Remove(tmpPath)
+	}
+	return tmpPath, cleanup, nil
+}
+
 func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, error) {
-	if err := os.Rename(rawPath, processedPath); err != nil {
-		// If rename fails (cross-device), try copy.
+	tmpOutput, cleanup, err := p.atomicOutputPath(processedPath)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Rename(rawPath, tmpOutput); err != nil {
+		// If rename fails (cross-device), try copy into the temp sibling first,
+		// then promote atomically to the final path.
 		p.log.Warn("rename failed, attempting copy", zap.Error(err))
-		if err := fileutil.CopyFile(rawPath, processedPath); err != nil {
+		if err := fileutil.CopyFile(rawPath, tmpOutput); err != nil {
+			cleanup()
 			return "", fmt.Errorf("failed to move raw file to processed path: %w", err)
 		}
+	}
+	if err := os.Rename(tmpOutput, processedPath); err != nil {
+		cleanup()
+		return "", fmt.Errorf("failed to promote raw file to processed path: %w", err)
 	}
 	return processedPath, nil
 }

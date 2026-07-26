@@ -63,6 +63,25 @@ def extract_audio(video_path: str) -> str:
     return out_path
 
 
+def has_audio_stream(media_path: str) -> bool:
+    """Return True when the media file exposes at least one audio stream."""
+    proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            media_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return False
+    return bool(proc.stdout.strip())
+
+
 def detect_language(audio_path: str, model_size: str = "tiny") -> dict:
     """Quick language detection only (fast, no full transcript).
     
@@ -149,6 +168,19 @@ if __name__ == "__main__":
     cleanup_path = None
     ext = os.path.splitext(file_path)[1].lower()
     if ext in (".mp4", ".avi", ".mov", ".mkv", ".webm"):
+        if not has_audio_stream(file_path):
+            result = {
+                "language": "und",
+                "probability": 0.0,
+                "duration_seconds": 0.0,
+                "transcription_time_seconds": 0.0,
+                "num_segments": 0,
+                "transcript_length": 0,
+                "transcript_preview": "",
+                "transcript_full": "",
+            }
+            print(json.dumps(result))
+            sys.exit(0)
         _log(f"Extracting audio from video...", args.json_only)
         audio_path = extract_audio(file_path)
         cleanup_path = audio_path

@@ -13,117 +13,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
-
-// ── Remote stubs (fakeYTDLP / fakeHTTPDownloader / fakeFFmpeg) ──
-
-type fakeYTDLP struct {
-	err error
-}
-
-func (f *fakeYTDLP) Download(ctx context.Context, req *downloader.DownloadRequest) error {
-	if f.err != nil {
-		return f.err
-	}
-	return os.WriteFile(req.OutputPath, []byte("fake-video"), 0o644)
-}
-
-type fakeHTTPDownloader struct{}
-
-func (f *fakeHTTPDownloader) Download(ctx context.Context, req *downloader.HTTPDownloadRequest) error {
-	return os.WriteFile(req.OutputPath, []byte("fake-http-video"), 0o644)
-}
-
-type fakeFFmpeg struct {
-	normalizeErr    error
-	normalizeCalled bool
-	// normalizeAsDir — when true, MkdirAll at outputPath instead of
-	// WriteFile. Forces hashutil.MD5File to fail with "is a directory"
-	// at the Step 3 hashStep call site. The Step 9/12 PR-LOCALPATH-OSREMOVE-TEST-PIN
-	// test pins the gateway contract at hashStep failure. Empty by
-	// default; existing fakeFFmpeg users (TestProcessorE2E_*, etc.)
-	// keep the WriteFile behaviour.
-	normalizeAsDir bool
-}
-
-func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string, opts ffmpeg.NormalizeOptions) error {
-	f.normalizeCalled = true
-	if f.normalizeErr != nil {
-		return f.normalizeErr
-	}
-	if f.normalizeAsDir {
-		// Test-only forcing site for Step 3 hashStep failure:
-		// create a directory at processedPath so the subsequent
-		// hashutil.MD5File returns "is a directory" error. In
-		// production this has no analogue - real ffmpeg writes a
-		// real file. PR-LOCALPATH-OSREMOVE-TEST-PIN: the LocalPath
-		// gateway contract must preserve the caller-provided staged
-		// file even when hashStep errors out.
-		return os.MkdirAll(outputPath, 0o755)
-	}
-	return os.WriteFile(outputPath, []byte("processed-video"), 0o644)
-}
-
-func (f *fakeFFmpeg) RemuxHLS(ctx context.Context, sourceURL, outputPath string) error {
-	return os.WriteFile(outputPath, []byte("hls-video"), 0o644)
-}
-
-func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
-	return &ffmpeg.MediaInfo{
-		Width:      1920,
-		Height:     1080,
-		FPS:        30,
-		VideoCodec: "h264",
-	}, nil
-}
-
-func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
-	return os.WriteFile(output, []byte("fake-frame"), 0o644)
-}
-
-func (f *fakeFFmpeg) GenerateProxy(ctx context.Context, input, output string) error {
-	return os.WriteFile(output, []byte("fake-proxy"), 0o644)
-}
-
-func (f *fakeFFmpeg) GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error {
-	return os.WriteFile(output, []byte("fake-storyboard"), 0o644)
-}
-
-// ── fakePublisher (F2.8 stub for delivery.Publisher) ──
-//
-// Returns a PublishResult populating all 5 fields the assertion
-// targets (FileID/WebViewLink/DownloadLink/MD5Checksum/Action). lastReq
-// captures the most recent PublishRequest so E2E tests can assert the
-// canonical request surface (Destination, LocalPath, Filename, etc.).
-type fakePublisher struct {
-	err     error
-	lastReq delivery.PublishRequest
-}
-
-func (f *fakePublisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
-	f.lastReq = req
-	if f.err != nil {
-		return nil, f.err
-	}
-	return &delivery.PublishResult{
-		FileID:       "fake-file-id",
-		WebViewLink:  "https://drive.google.com/file/d/fake-file-id/view",
-		DownloadLink: "https://drive.google.com/uc?id=fake-file-id&export=download",
-		MD5Checksum:  "fake-md5-checksum",
-		Action:       delivery.PublishActionCreated,
-	}, nil
-}
-
-func (f *fakePublisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
-	return "fake-folder-id", nil
-}
-
-// Compile-time assertion: if a future method is added to
-// delivery.Publisher, fakePublisher must satisfy it (AGENTS.md
-// Pattern 0 convention).
-var _ delivery.Publisher = (*fakePublisher)(nil)
 
 // ── Pre-F2.8 failing-path tests (now require Publisher via fakePublisher; nil would panic in NewProcessor) ──
 
@@ -430,43 +322,6 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 // LocalPath. Zero-copy's os.Rename would physically MOVE (not copy) the
 // staged file to processedPath, defeating the gateway-preservation test.
 
-// writeStagedFile creates the caller-owned local file at a temp dir and
-// returns its path. Mirrors the SourceStager's responsibility: download
-// to a known path, hand it off, defer cleanup.
-func writeStagedFileForTest(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "staged.mp4")
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
-	return path
-}
-
-// newProcessorForLocalPathTest constructs a Processor with the
-// canonical test-side stub wiring + an empty VideoCfg (intentional:
-// forces ffmpeg.Normalize path so LocalPath is read, not Renamed).
-func newProcessorForLocalPathTest(t *testing.T, ff *fakeFFmpeg) *Processor {
-	t.Helper()
-	tmp := t.TempDir()
-	// fakeYTDLP / fakeHTTPDownloader MUST be wired even though they're
-	// bypassed by LocalPath: NewProcessor's only nil-guard fires on
-	// Publisher (per F2.8 fail-closed) — YTDLP nil is tolerated when
-	// LocalPath is set (processor.go Step 1 validator relaxed in
-	// Step 9/12). We pass them anyway so the test surface mirrors
-	// production wiring.
-	return NewProcessor(
-		&fakeYTDLP{},
-		&fakeHTTPDownloader{},
-		ff,
-		zap.NewNop(),
-		ProcessorConfig{
-			DataDir:  tmp,
-			TempDir:  "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{}, // EMPTY on purpose (see header note)
-		},
-		nil,
-		&fakePublisher{},
-	)
-}
-
 // TestProcess_LocalPathPreservedOnProcessStepFailure — pin Step 2 cleanup guard.
 //
 // Forces ffmpeg.Normalize to fail (fakeFFmpeg.normalizeErr) and asserts
@@ -570,4 +425,40 @@ func TestProcess_LocalPathPreservedOnHappyPath(t *testing.T) {
 	_, statErr := os.Stat(localPath)
 	require.NoError(t, statErr,
 		"PR-LOCALPATH-OSREMOVE-TEST-PIN: Processor.Process deleted caller-provided LocalPath after success (post-success cleanup guard violated)")
+}
+
+// TestProcess_AtomicNormalize_ReplacesReadOnlyOutput pins the retry-safe
+// normalization path: when the final output already exists and is read-only,
+// Processor.Process MUST normalize to a sibling temp file and promote it
+// atomically instead of writing in place.
+func TestProcess_AtomicNormalize_ReplacesReadOnlyOutput(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+	outputDir := filepath.Join(tmp, "out")
+	require.NoError(t, os.MkdirAll(outputDir, 0o755))
+
+	name := "test clip"
+	id := "clip-atomic"
+	finalPath := filepath.Join(outputDir, textutil.SafeName(name)+" "+id+".mp4")
+	require.NoError(t, os.WriteFile(finalPath, []byte("old-bytes"), 0o444))
+	require.NoError(t, os.Chmod(finalPath, 0o444))
+
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	p := newProcessorForLocalPathTest(t, &fakeFFmpeg{})
+
+	result, err := p.Process(ctx, &asset.ProcessInput{
+		ID:        id,
+		Name:      name,
+		LocalPath: localPath,
+		OutputDir: outputDir,
+		FolderID:  "test-folder",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "processed", result.Status)
+
+	data, readErr := os.ReadFile(finalPath)
+	require.NoError(t, readErr)
+	assert.Equal(t, "processed-video", string(data))
 }

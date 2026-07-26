@@ -34,7 +34,8 @@ import (
 // pagination (WHERE id > ? ORDER BY id LIMIT ?).
 //
 // Same filter as ListAllAssetIDs (in asset_store_fetch.go): excludes
-// folders and soft-deleted rows.
+// folders, soft-deleted rows, and rows without a populated text
+// embedding.
 //
 // PR-CATALOG-MULTILINGUA step 6 (July 2026): after the main scan loop,
 // ONE additional SQL query fetches the per-page transcripts in batch
@@ -50,8 +51,7 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 	}
 
 	query := `SELECT ` + canonicalQuery + `
-		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')`
+		WHERE ` + indexableAssetWhereClause
 
 	var args []any
 	if afterID != "" {

@@ -291,54 +291,67 @@ func TestRetry_PermanentBail(t *testing.T) {
 }
 
 // (d) parallel-Do jitter-not-synced: N=50 parallel retry.Do calls with
-// JitterFraction=0.25 wake at independent times. The original 2-sample
-// test had a 28µs delta problem (statistical anomaly on slow CI:
-// goroutine spawn latency + near-correlated start timestamps defeated
-// the desync assertion at p > 0.05). Per post-push flakiness fix:
-// use N=50 samples with a range-based spread assertion
-// (max - min elapsed >= 15ms). The full jitter envelope is 25ms
-// (50ms × ±0.25), so a 15ms spread across 50 samples rules out
-// the synchronised-wake failure mode — the thundering-herd
-// mitigation holds if and only if Do's internal jitter sampling
-// produces independent draws (which is its only correctness
-// invariant for the desync property).
+// JitterFraction=0.25 should sample independent sleep durations. The
+// original wall-clock variant of this test was flaky because goroutine
+// start latency can compress the observed completion spread even when
+// the chosen backoffs differ. This version reads the actual sleep
+// durations captured by the injected fake clock, then asserts the
+// spread (max - min) is >= 15ms.
 //
 // FASE 6 Cut 6.1.D migration: production IsTransient became pure
 // typed-probe. The walk closure returns a typed envelope so the
 // retry loop sees retryable=true and applies the jittered backoff.
 func TestRetry_JitterDesync(t *testing.T) {
 	walk := func() error { return &TransientInfrastructureError{Err: errors.New("transient: connection refused")} }
+	clk := newFakeClock(time.Now())
 	opts := Options{
 		IsRetryable:    IsTransient,
 		InitialBackoff: 50 * time.Millisecond,
 		MaxBackoff:     50 * time.Millisecond,
 		BackoffFactor:  1.0,
 		JitterFraction: 0.25,
+		Clock:          clk,
 		MaxAttempts:    2, // 1 sleep between attempts → total ≈ 50ms × (1±0.25) ∈ [37.5ms, 62.5ms]
 	}
 
 	const N = 50
-	elapsed := make([]time.Duration, N)
-
 	var wg sync.WaitGroup
 	wg.Add(N)
+
 	for i := 0; i < N; i++ {
-		idx := i
 		go func() {
 			defer wg.Done()
-			t0 := time.Now()
 			_ = Do(context.Background(), walk, opts)
-			elapsed[idx] = time.Since(t0)
 		}()
 	}
-	wg.Wait()
 
-	// Envelope check: each sample must complete within the jitter
-	// envelope. Canonical envelope is [37.5ms, 62.5ms]; test bounds
-	// tightened to [38ms, 65ms] per code-review NIT-1 (the original
-	// [35ms, 70ms] range included envelope-flake territory below
-	// the canonical 37.5ms floor).
-	minEnv, maxEnv := 30*time.Millisecond, 500*time.Millisecond
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		clk.mu.Lock()
+		timerCount := len(clk.timers)
+		clk.mu.Unlock()
+		if timerCount >= N {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %d jitter samples; got %d", N, timerCount)
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	clk.mu.Lock()
+	base := clk.now
+	elapsed := make([]time.Duration, 0, len(clk.timers))
+	for _, timer := range clk.timers {
+		elapsed = append(elapsed, timer.fireAt.Sub(base))
+	}
+	clk.mu.Unlock()
+
+	// Envelope check: each selected sleep must fall inside the jitter
+	// envelope. Canonical envelope is [37.5ms, 62.5ms]; we keep a small
+	// tolerance for timer rounding while still catching "jitter disabled"
+	// regressions.
+	minEnv, maxEnv := 35*time.Millisecond, 70*time.Millisecond
 	for i, e := range elapsed {
 		if e < minEnv || e > maxEnv {
 			t.Errorf("elapsed[%d] = %v; want within [%v, %v]", i, e, minEnv, maxEnv)
@@ -366,4 +379,7 @@ func TestRetry_JitterDesync(t *testing.T) {
 	if spread < 15*time.Millisecond {
 		t.Errorf("jitter desync spread (max-min) = %v across %d samples; want >= 15ms (parallel wakes must NOT synchronise to a single envelope point)", spread, N)
 	}
+
+	clk.Advance(time.Hour)
+	wg.Wait()
 }

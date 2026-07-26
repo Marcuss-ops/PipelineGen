@@ -380,6 +380,8 @@ func (o *RunOrchestratorService) ImportSingleClip(ctx context.Context, req *Impo
 	if err := o.stageProcessBatch(ctx, ps); err != nil {
 		return nil, err
 	}
+	o.stagePersistResults(ctx, resp)
+	o.stageIndexAsync(ctx, resp)
 	if len(resp.Items) == 0 {
 		return nil, fmt.Errorf("no item produced by single-clip import")
 	}
