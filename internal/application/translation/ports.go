@@ -85,6 +85,13 @@ type TranslationPort interface {
 	Translate(ctx context.Context, cmd TranslationCommand) (TranslationResult, error)
 }
 
+// MetadataGenerator is the canonical application port for generating and
+// translating video metadata.
+type MetadataGenerator interface {
+	GenerateVideoMetadataWithModel(ctx context.Context, title, model string) (string, []string, error)
+	TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error)
+}
+
 // ── TranslationCommand ────────────────────────────────────────────────────
 
 // TranslationCommand is the application-layer DTO sent through

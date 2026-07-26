@@ -80,18 +80,6 @@ type ImageSearchService interface {
 	Search(ctx context.Context, query string, limit int) ([]any, error)
 }
 
-// TextTranslationService is now a Go type alias for the canonical
-// Fase 9 godlike/06 SSOT declaration in
-// internal/application/translation/legacy.go (byte-stable
-// signature; legacy 3-arg straggler renamed method from Translate
-// to TranslateText to match *ollama.Generator.TranslateText and
-// avoid name-collision with translation.TranslationPort.Translate).
-//
-// Reference path: composition root constructs *OllamaTranslator and
-// populates svc.Translation on ClipServices. Existing 3-arg callers
-// compile unchanged via alias.
-type TextTranslationService = translation.LegacyTextTranslationService
-
 // JobEnqueueService narrows job enqueue operations.
 type JobEnqueueService interface {
 	Enqueue(ctx context.Context, req any) (any, error)
@@ -106,19 +94,6 @@ type HarvestService interface {
 type RealtimeSearchService interface {
 	SearchClips(ctx context.Context, query, source, mediaType string, limit int, minScore float64) ([]RealtimeMatchAsset, error)
 }
-
-// TranslatorService is now a Go type alias for the canonical
-// Fase 9 godlike/06 SSOT declaration in
-// internal/application/translation/legacy.go (byte-stable 4-arg
-// signature; matches *ollama.Generator.TranslateTextWithModel
-// and *OllamaTranslator.TranslateTextWithModel shapes).
-//
-// Deprecated in the godlike/07 EXPAND-window sense: new consumers
-// migrate to translation.TranslationPort. The legacy field stays
-// populated on ClipServices and the alias stays in place until the
-// CUTOVER-phase removal (tracking entry
-// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION).
-type TranslatorService = translation.LegacyTranslatorService
 
 // AssocSearchService narrows association search operations with typed request/response.
 type AssocSearchService interface {
