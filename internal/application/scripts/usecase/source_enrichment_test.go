@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -11,31 +10,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-// fakeTopicSourceCache is a test double for scriptports.TopicSourceCache.
-type fakeTopicSourceCache struct {
-	data map[string]scriptpkg.ResearchCacheRecord
-}
-
-func newFakeTopicSourceCache() *fakeTopicSourceCache {
-	return &fakeTopicSourceCache{data: make(map[string]scriptpkg.ResearchCacheRecord)}
-}
-
-func (f *fakeTopicSourceCache) GetResearchCache(_ context.Context, key string) (string, error) {
-	rec, ok := f.data[key]
-	if !ok {
-		return "", nil
-	}
-	if !rec.ExpiresAt.IsZero() && rec.ExpiresAt.Before(time.Now().UTC()) {
-		return "", nil
-	}
-	return rec.SourceText, nil
-}
-
-func (f *fakeTopicSourceCache) SaveResearchCache(_ context.Context, rec scriptpkg.ResearchCacheRecord) error {
-	f.data[rec.Key] = rec
-	return nil
-}
 
 func TestSourceEnricher_Enrich_Disabled(t *testing.T) {
 	cache := newFakeTopicSourceCache()
@@ -158,6 +132,42 @@ func TestSourceEnricher_Enrich_ForceRefresh(t *testing.T) {
 	}
 }
 
+func TestSourceEnricher_Enrich_ClipsBypassCache(t *testing.T) {
+	cache := newFakeTopicSourceCache()
+	e := NewSourceTextEnricher(cache, zap.NewNop())
+
+	item := scriptpkg.GenerationItemV2{
+		ID:       "item-clip",
+		Title:    "Clip Topic",
+		Language: "en",
+		Source: scriptpkg.SourceSpec{
+			Type:        scriptpkg.SourceClips,
+			Topic:       "Clip Topic",
+			CachePolicy: scriptpkg.SourceCachePolicy{Mode: scriptpkg.SourceCacheModePreferCache, TTLHours: 24},
+		},
+	}
+
+	key := computeSourceCacheKey(&item)
+	cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
+		Key:        key,
+		Topic:      "Clip Topic",
+		Language:   "en",
+		SourceText: "cached clip source text",
+		ExpiresAt:  time.Now().UTC().Add(time.Hour),
+	})
+
+	res, err := e.Enrich(context.Background(), &item)
+	if err != nil {
+		t.Fatalf("clip enrich bypass: %v", err)
+	}
+	if res != scriptports.EnrichBypass {
+		t.Fatalf("expected bypass for clip source, got %v", res)
+	}
+	if item.Source.SourceText != "" {
+		t.Fatalf("clip source text must not be populated from topic cache, got %q", item.Source.SourceText)
+	}
+}
+
 func TestSourceEnricher_Save(t *testing.T) {
 	cache := newFakeTopicSourceCache()
 	e := NewSourceTextEnricher(cache, zap.NewNop())
@@ -196,6 +206,28 @@ func TestSourceEnricher_Save(t *testing.T) {
 	rec = cache.data[key]
 	if rec.SourceText != "resolved text v2" {
 		t.Fatalf("expected overwritten text, got %q", rec.SourceText)
+	}
+}
+
+func TestSourceEnricher_Save_ClipsBypassCache(t *testing.T) {
+	cache := newFakeTopicSourceCache()
+	e := NewSourceTextEnricher(cache, zap.NewNop())
+
+	item := scriptpkg.GenerationItemV2{
+		ID:    "item-clip",
+		Title: "Clip Topic",
+		Source: scriptpkg.SourceSpec{
+			Type:        scriptpkg.SourceClips,
+			Topic:       "Clip Topic",
+			CachePolicy: scriptpkg.SourceCachePolicy{Mode: scriptpkg.SourceCacheModePreferCache, TTLHours: 12},
+		},
+	}
+
+	if err := e.Save(context.Background(), item, "resolved clip text"); err != nil {
+		t.Fatalf("clip save bypass: %v", err)
+	}
+	if len(cache.data) != 0 {
+		t.Fatalf("expected no cache writes for clip sources, got %d", len(cache.data))
 	}
 }
 
@@ -239,15 +271,4 @@ func TestSourceEnricher_Save_PropagatesError(t *testing.T) {
 	if err := e.Save(context.Background(), item, "resolved text"); err == nil {
 		t.Fatal("expected error from failing cache")
 	}
-}
-
-// failingTopicSourceCache always returns an error.
-type failingTopicSourceCache struct{}
-
-func (f *failingTopicSourceCache) GetResearchCache(context.Context, string) (string, error) {
-	return "", errors.New("get failure")
-}
-
-func (f *failingTopicSourceCache) SaveResearchCache(context.Context, scriptpkg.ResearchCacheRecord) error {
-	return errors.New("save failure")
 }

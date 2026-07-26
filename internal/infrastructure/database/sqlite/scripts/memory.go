@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -24,6 +25,7 @@ func NewMemoryRepository(db *sql.DB) *MemoryRepository {
 // FindExactOutput looks up a previously generated output by channel + mode + hash.
 func (r *MemoryRepository) FindExactOutput(ctx context.Context, channelID, mode, inputHash string) (*GenerationOutput, error) {
 	var out GenerationOutput
+	var createdAtRaw string
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, channel_id, mode, language, title, prompt, normalized_input, input_hash,
 		        output_text, output_json, model, job_id, word_count, created_at
@@ -33,12 +35,19 @@ func (r *MemoryRepository) FindExactOutput(ctx context.Context, channelID, mode,
 	).Scan(&out.ID, &out.ChannelID, &out.Mode, &out.Language, &out.Title,
 		&out.Prompt, &out.NormalizedInput, &out.InputHash,
 		&out.OutputText, &out.OutputJSON, &out.Model, &out.JobID,
-		&out.WordCount, &out.CreatedAt)
+		&out.WordCount, &createdAtRaw)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
+	}
+	if createdAtRaw != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339Nano, createdAtRaw); parseErr == nil {
+			out.CreatedAt = parsed
+		} else if parsed, parseErr := time.Parse("2006-01-02 15:04:05", createdAtRaw); parseErr == nil {
+			out.CreatedAt = parsed
+		}
 	}
 	return &out, nil
 }

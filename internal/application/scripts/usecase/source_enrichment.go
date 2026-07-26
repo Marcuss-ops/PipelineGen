@@ -48,6 +48,12 @@ func (e *sourceTextEnricher) Enrich(ctx context.Context, item *scriptpkg.Generat
 	if e.cache == nil || item == nil {
 		return scriptports.EnrichBypass, nil
 	}
+	if item.Source.Type == scriptpkg.SourceClips {
+		// Clip-based generation depends on ClipEvidence, not just a cached
+		// source-text blob. Bypassing here preserves the resolved clip
+		// fingerprint and keeps output-cache replay stable.
+		return scriptports.EnrichBypass, nil
+	}
 
 	mode := normalizeCacheMode(item.Source.CachePolicy.Mode)
 	if mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh {
@@ -85,6 +91,9 @@ func (e *sourceTextEnricher) Enrich(ctx context.Context, item *scriptpkg.Generat
 // allows writes. It is called after source resolution succeeds.
 func (e *sourceTextEnricher) Save(ctx context.Context, item scriptpkg.GenerationItemV2, text string) error {
 	if e.cache == nil || text == "" {
+		return nil
+	}
+	if item.Source.Type == scriptpkg.SourceClips {
 		return nil
 	}
 
