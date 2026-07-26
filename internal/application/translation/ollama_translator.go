@@ -145,46 +145,4 @@ func (o *OllamaTranslator) Translate(ctx context.Context, cmd TranslationCommand
 	}, nil
 }
 
-// ── LegacyTextTranslationService impl (3-arg straggler) ─────────────────
-
-// TranslateText implements translation.LegacyTextTranslationService.
-// Thin delegation to gen.TranslateTextWithModel with an empty model
-// arg (let the underlying resolver pick the right model). Preserves
-// the byte-stable 3-arg signature so callers using the legacy port
-// compile unchanged during the godlike/07 EXPAND-window back-compat.
-func (o *OllamaTranslator) TranslateText(ctx context.Context, text, lang string) (string, error) {
-	return o.gen.TranslateTextWithModel(ctx, text, lang, "")
-}
-
-// ── LegacyTranslatorService impl (4-arg straggler) ──────────────────────
-
-// TranslateTextWithModel implements translation.LegacyTranslatorService.
-// Also satisfies translation.LegacyMetadataTranslator's per-language
-// translation semantic. Thin delegation to gen.TranslateTextWithModel.
-// Byte-stable 4-arg signature; the underlying gen method has the
-// same shape so the delegation is a direct call.
-func (o *OllamaTranslator) TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error) {
-	return o.gen.TranslateTextWithModel(ctx, text, lang, model)
-}
-
-// ── LegacyMetadataTranslator impl (dto combined port) ───────────────────
-
-// GenerateVideoMetadataWithModel implements translation.LegacyMetadataTranslator.
-// Thin delegation to gen.GenerateVideoMetadataWithModel. The
-// underlying gen method handles the prompt rendering + JSON parsing
-// (provider-specific; not refactored at this step).
-func (o *OllamaTranslator) GenerateVideoMetadataWithModel(ctx context.Context, title, model string) (string, []string, error) {
-	return o.gen.GenerateVideoMetadataWithModel(ctx, title, model)
-}
-
-// ── compile-time assertions (AGENTS.md Pattern 0 invariant) ─────────────
-
-// Pin the structural contract at the inheritance boundary. Future
-// drift in any of the 4 port signatures → build failure at the
-// canonical concrete site, NOT a runtime panic at the first caller.
-var (
-	_ TranslationPort              = (*OllamaTranslator)(nil)
-	_ LegacyTextTranslationService = (*OllamaTranslator)(nil)
-	_ LegacyTranslatorService      = (*OllamaTranslator)(nil)
-	_ LegacyMetadataTranslator     = (*OllamaTranslator)(nil)
-)
+var _ TranslationPort = (*OllamaTranslator)(nil)

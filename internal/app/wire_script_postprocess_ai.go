@@ -25,11 +25,13 @@
 package app
 
 import (
+	"context"
 	"fmt"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -91,7 +93,16 @@ func registerAIBackedProcessors(
 
 	// ── Translation ──────────────────────────────────────────────────
 	if root.AI != nil && root.AI.OllamaTranslator != nil {
-		translatorPort := ports.NewScriptTranslatorFromFunc(root.AI.OllamaTranslator.TranslateText)
+		translatorPort := ports.NewScriptTranslatorFromFunc(func(ctx context.Context, text, targetLanguage string) (string, error) {
+			result, err := root.AI.OllamaTranslator.Translate(ctx, translation.TranslationCommand{
+				Text:       text,
+				TargetLang: targetLanguage,
+			})
+			if err != nil {
+				return "", err
+			}
+			return result.TranslatedText, nil
+		})
 		metricsPort, mErr := observability.NewTranslationMetricsAdapter(prometheus.DefaultRegisterer)
 		if mErr != nil {
 			return fmt.Errorf("register translation processor: metrics adapter: %w", mErr)

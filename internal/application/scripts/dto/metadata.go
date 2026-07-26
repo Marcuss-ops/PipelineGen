@@ -18,28 +18,19 @@ import (
 	"strings"
 	"sync"
 
-	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// MetadataTranslator is the narrow port dto.GenerateVideoMetadata
-// consumes. PR-VO-A6-style Pattern 0 (June 2026): *ollama.Generator
-// satisfies this interface implicitly so existing production wiring
-// compiles unchanged, while tests can inject a deterministic stub.
-//
-// Fase 9 step 2 (Spina Dorsale, July 2026): MetadataTranslator is now a
-// Go type alias for the canonical godlike/06 SSOT declaration in
-// `internal/application/translation/legacy.go::LegacyMetadataTranslator`.
-// Method set is byte-stable (Go 1.9+ type aliases are structurally
-// transparent), so the existing compile-time assertions at
-// internal/application/scripts/dto/metadata_test.go (var _ MetadataTranslator
-// = (*mockTranslatorFailingTranslate)(nil) etc.) compile unchanged
-// because the alias and the canonical declaration share identical
-// method sets. The legacy in-package interface declaration is removed;
-// the alias is the EXPAND-window canonical surface per
-// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
-type MetadataTranslator = translation.LegacyMetadataTranslator
+// MetadataGenerator is the narrow port consumed by GenerateVideoMetadata.
+type MetadataGenerator interface {
+	GenerateVideoMetadataWithModel(ctx context.Context, title, model string) (string, []string, error)
+	TranslateTextWithModel(ctx context.Context, text, lang, model string) (string, error)
+}
+
+// MetadataTranslator is retained only for existing package tests; production
+// code uses MetadataGenerator directly.
+type MetadataTranslator = MetadataGenerator
 
 // BuildMetadataLanguages normalizes the requested metadata languages.
 //
@@ -98,7 +89,7 @@ func BuildMetadataLanguages(languages []string) []string {
 // are EXPLICITLY cleared (empty string / nil) so callers cannot
 // mistakenly surface the original `Title` or `enDesc` text as a fake
 // translation. Per godlike/07 no-fake-availability.
-func GenerateVideoMetadata(ctx context.Context, generator MetadataTranslator, title string, languages []string, model string) []scriptpkg.VideoMetadata {
+func GenerateVideoMetadata(ctx context.Context, generator MetadataGenerator, title string, languages []string, model string) []scriptpkg.VideoMetadata {
 	var mu sync.Mutex
 	metadata := make([]scriptpkg.VideoMetadata, 0, len(languages))
 
