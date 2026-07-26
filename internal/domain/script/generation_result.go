@@ -70,10 +70,18 @@ type GenerationResult struct {
 	Language string `json:"language,omitempty"`
 	Model    string `json:"model,omitempty"`
 
+	// Script is the compact script surface requested by VidRush
+	// consumers. Output remains the canonical historical surface.
+	Script ScriptSummary `json:"script,omitempty"`
+
 	// Canonical output (PR 9):
 	//   ScriptOutput carries the canonical script text, word count,
 	//   and structured specscene.
 	Output ScriptOutput `json:"output"`
+
+	// VidRushSegments carries the per-segment semantic extraction
+	// and media resolution results used by the VidRush payload.
+	Segments []VidRushSegmentResult `json:"segments,omitempty"`
 
 	// Canonical source trace (PR 9):
 	//   Source records where the generation input came from.
@@ -232,6 +240,20 @@ type SourceTrace struct {
 type CacheResult struct {
 	Status string `json:"status,omitempty"` // "exact_hit", "generated"
 	Hit    bool   `json:"hit"`
+
+	// Script mirrors Status using the cache vocabulary expected by
+	// VidRush consumers ("HIT_EXACT", "MISS", ...). The historical
+	// Status/Hit pair stays for compatibility.
+	Script string `json:"script,omitempty"`
+
+	// Segments exposes per-segment cache state keyed by segment_id.
+	Segments map[string]SegmentCacheState `json:"segments,omitempty"`
+}
+
+// ScriptSummary is the compact script envelope surfaced by VidRush.
+type ScriptSummary struct {
+	Text      string `json:"text"`
+	WordCount int    `json:"word_count"`
 }
 
 // ArtifactResult holds all postprocessor outputs in one typed bundle.

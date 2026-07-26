@@ -34,34 +34,6 @@ import (
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 )
 
-// wantPolicyFor is the canonical function that maps a processor
-// name to its expected policy per the godlike/06 SSOT contract.
-// The canonical source of truth is the comment block above
-// defaultPolicyByName at internal/application/scripts/adapters/postprocessor_composite.go
-// — this map mirrors that block 1:1.
-func wantPolicyFor(name adapterspkg.ProcessorName) adapterspkg.ProcessorPolicy {
-	switch name {
-	case adapterspkg.ProcessorPersistence,
-		adapterspkg.ProcessorEntities,
-		adapterspkg.ProcessorMetadata,
-		adapterspkg.ProcessorStockBindings:
-		return adapterspkg.ProcessorRequired
-	case adapterspkg.ProcessorImages,
-		adapterspkg.ProcessorVoiceover,
-		adapterspkg.ProcessorClipSearch,
-		adapterspkg.ProcessorVisualPlanning,
-		adapterspkg.ProcessorClipBindings,
-		adapterspkg.ProcessorTranslation,
-		adapterspkg.ProcessorDocument:
-		return adapterspkg.ProcessorBestEffort
-	}
-	// A processor name not in our classifier map is an audit-pin
-	// alert: the canonical ProcessorName set grew but this test
-	// did not. Return empty so the caller can fail-safe via the
-	// "fully classified" assertion.
-	return ""
-}
-
 // TestDefaultPolicy_CoversAllCanonicalProcessorNames is the
 // forward-prevention regression-guard for PR-2. It fails whenever
 // the canonical ProcessorName set adds a name without a
@@ -75,7 +47,23 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 
 	for _, name := range canonical {
 		got := adapterspkg.DefaultPolicyFor(name)
-		want := wantPolicyFor(name)
+		want := adapterspkg.ProcessorPolicy("")
+		switch name {
+		case adapterspkg.ProcessorPersistence,
+			adapterspkg.ProcessorEntities,
+			adapterspkg.ProcessorMetadata,
+			adapterspkg.ProcessorStockBindings:
+			want = adapterspkg.ProcessorRequired
+		case adapterspkg.ProcessorImages,
+			adapterspkg.ProcessorInternetImages,
+			adapterspkg.ProcessorVoiceover,
+			adapterspkg.ProcessorClipSearch,
+			adapterspkg.ProcessorVisualPlanning,
+			adapterspkg.ProcessorClipBindings,
+			adapterspkg.ProcessorTranslation,
+			adapterspkg.ProcessorDocument:
+			want = adapterspkg.ProcessorBestEffort
+		}
 
 		// Surface a clear diagnostic for any name NOT yet covered.
 		// This is the load-bearing assertion: the test FAILS the
@@ -83,9 +71,9 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 		// without registering a policy — exactly the audit gap
 		// PR-2 addresses for ProcessorTranslation.
 		if want == "" {
-			t.Errorf("canonical name %q is not classified in wantPolicyFor — "+
+			t.Errorf("canonical name %q is not classified in the test policy map — "+
 				"the test guard was NOT updated for the new canonical name; "+
-				"audit-pin: extend wantPolicyFor + this test when adding a new processor",
+				"audit-pin: extend the switch + this test when adding a new processor",
 				name)
 			continue
 		}

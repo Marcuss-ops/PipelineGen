@@ -126,7 +126,11 @@ func insertProcessorAfterClipBindings(processors []adapters.ProcessorName, proc 
 // this job. The unified POST /api/v1/script/generate endpoint with
 // source.type: clips is the SOLE entry point for clip-based generation.
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
-	processors := buildPostprocessorList(item.Output)
+	out := item.Output
+	if !out.ExtractEntities.AsBool() && item.MediaPlan.Extraction.Enabled {
+		out.ExtractEntities = scriptpkg.ToggleEnabled
+	}
+	processors := buildPostprocessorList(out)
 	if mediaPlanRequested(item) {
 		// Active media plan: route through the new visual_planning processor
 		// right after clip_bindings so it sees the final clip-bound scenes.
@@ -144,8 +148,15 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 // buildPostprocessorList builds the normal output-driven processor list.
 func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	var processors []adapters.ProcessorName
-	if out.ExtractEntities.AsBool() {
+	extractEntities := out.ExtractEntities.AsBool()
+	if extractEntities {
 		processors = append(processors, adapters.ProcessorEntities, adapters.ProcessorClipSearch)
+	}
+	if extractEntities {
+		// Internet images reuse the same per-segment extraction surface
+		// as clip_search, so keep them in the same branch and let the
+		// processor enforce its own provider toggle.
+		processors = append(processors, adapters.ProcessorInternetImages)
 	}
 	if out.GenerateMetadata.AsBool() {
 		processors = append(processors, adapters.ProcessorMetadata)

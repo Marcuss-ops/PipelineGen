@@ -30,12 +30,13 @@ verify-images-live: auth-check
 verify-script-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/script_generate_smoke.sh
 
-# verify-vidrush-live — tests/operational/vidrush_media_e2e.sh — the
-# full Vid Rush battery: server + scraper + SQLite + FFmpeg + Drive +
-# Qdrant. Heavy (10-30min) and server-stateful; run only on dedicated
-# operational hosts.
+# verify-vidrush-live — tests/operational/vidrush_script_generate_e2e.sh —
+# the canonical VidRush battery. It uses one POST /api/script/generate per
+# case, polls the canonical job result, and validates per-segment extraction,
+# provider policy, replay cache, and SQLite provenance. The older provider
+# route battery remains available as a separate operator script.
 verify-vidrush-live: auth-check
-	@scripts/with-velox-auth bash tests/operational/vidrush_media_e2e.sh
+	@scripts/with-velox-auth bash tests/operational/vidrush_script_generate_e2e.sh
 
 # verify-artlist-scale-live — quota-expensive 20x10 Artlist/VidRush battery.
 # It validates continuous API health, Drive persistence, VLM/Qdrant payloads,

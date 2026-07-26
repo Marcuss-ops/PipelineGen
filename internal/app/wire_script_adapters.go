@@ -61,9 +61,12 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
+	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -220,6 +223,57 @@ func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string
 }
 
 var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
+
+// internetImageSearchAdapter wraps the canonical ImageSearchResolver
+// into the adapters.InternetImageSearcher port.
+type internetImageSearchAdapter struct {
+	resolver imagesrouting.ImageSearchResolver
+}
+
+func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if a == nil || a.resolver == nil {
+		return nil, fmt.Errorf("internetImageSearchAdapter: resolver not wired")
+	}
+	searcher, err := a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
+	if err != nil {
+		return nil, err
+	}
+	filter := imagesrouting.ImageFilter{
+		SubjectID: strings.TrimSpace(req.Query),
+		Limit:     req.Limit,
+	}
+	results, err := searcher.Search(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
+	for _, r := range results {
+		assetID := strings.TrimSpace(r.AssetID)
+		if assetID == "" {
+			assetID = strings.TrimSpace(r.Name)
+		}
+		if assetID == "" {
+			sum := sha256.Sum256([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
+			assetID = hex.EncodeToString(sum[:])
+		}
+		out = append(out, scriptpkg.SegmentAssetCandidate{
+			AssetID:       assetID,
+			Provider:      "internet_images",
+			Query:         strings.TrimSpace(req.Query),
+			Entity:        strings.TrimSpace(req.Entity),
+			SourceURL:     strings.TrimSpace(r.PreviewURL),
+			SourcePageURL: strings.TrimSpace(r.SourcePageURL),
+			PreviewURL:    strings.TrimSpace(r.PreviewURL),
+			Score:         r.Score,
+			Width:         r.Width,
+			Height:        r.Height,
+			RightsStatus:  "unknown",
+		})
+	}
+	return out, nil
+}
+
+var _ adapters.InternetImageSearcher = (*internetImageSearchAdapter)(nil)
 
 // ── ClipServices adapter structs (composition-root-local) ─────────────────
 

@@ -61,6 +61,10 @@ func buildGenerationResult(
 		Title:    plan.Title,
 		Language: plan.Language,
 		Model:    engineResult.Model,
+		Script: scriptpkg.ScriptSummary{
+			Text:      outputText,
+			WordCount: engineResult.WordCount,
+		},
 		// Sprint 1.3 (godlike/08): Status is the canonical per-item
 		// outcome enum. It is NOT set here — the orchestrator's
 		// classify phase (ClassifyGenerationStatus in status_classifier.go)
@@ -76,6 +80,7 @@ func buildGenerationResult(
 		Cache: scriptpkg.CacheResult{
 			Status: engineResult.CacheStatus,
 			Hit:    cacheHit,
+			Script: scriptCacheStatus(engineResult.CacheStatus),
 		},
 		Timings: timings,
 	}
@@ -95,6 +100,16 @@ func buildGenerationResult(
 
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
+		if len(postResult.VidRushSegments) > 0 {
+			result.Segments = append([]scriptpkg.VidRushSegmentResult(nil), postResult.VidRushSegments...)
+			result.Cache.Segments = make(map[string]scriptpkg.SegmentCacheState, len(postResult.VidRushSegments))
+			for _, seg := range postResult.VidRushSegments {
+				if strings.TrimSpace(seg.SegmentID) == "" {
+					continue
+				}
+				result.Cache.Segments[seg.SegmentID] = seg.Cache
+			}
+		}
 		if strings.TrimSpace(postResult.DocID) != "" || strings.TrimSpace(postResult.DocLink) != "" {
 			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
 				DocID: postResult.DocID, DocLink: postResult.DocLink,
@@ -162,6 +177,17 @@ func buildGenerationResult(
 
 	result.Source = sourceTrace
 	return result
+}
+
+func scriptCacheStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case "exact_hit":
+		return "HIT_EXACT"
+	case "generated", "":
+		return "MISS"
+	default:
+		return strings.ToUpper(strings.TrimSpace(status))
+	}
 }
 
 // ── Entity-result serializer (PR-LEGACY-CLEANUP-2026-07-10 Item 2) ──

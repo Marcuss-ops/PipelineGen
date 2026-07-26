@@ -65,6 +65,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			currentInput.Entities = src.Entities
 		}
 	}
+	if len(src.VidRushSegments) > 0 {
+		dst.VidRushSegments = mergeVidRushSegments(dst.VidRushSegments, src.VidRushSegments)
+		if currentInput != nil {
+			currentInput.VidRushSegments = mergeVidRushSegments(currentInput.VidRushSegments, src.VidRushSegments)
+		}
+	}
 	if len(src.Metadata) > 0 {
 		dst.VideoMetadata = append(dst.VideoMetadata, src.Metadata...)
 		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):
@@ -262,6 +268,33 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			currentInput.EffectiveLanguage = strings.TrimSpace(src.EffectiveLanguage)
 		}
 	}
+}
+
+func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	if len(src) == 0 {
+		return dst
+	}
+	index := make(map[string]int, len(dst))
+	out := append([]scriptpkg.VidRushSegmentResult(nil), dst...)
+	for i, seg := range out {
+		if seg.SegmentID == "" {
+			continue
+		}
+		index[seg.SegmentID] = i
+	}
+	for _, seg := range src {
+		if seg.SegmentID == "" {
+			out = append(out, seg)
+			continue
+		}
+		if i, ok := index[seg.SegmentID]; ok {
+			out[i] = seg
+			continue
+		}
+		index[seg.SegmentID] = len(out)
+		out = append(out, seg)
+	}
+	return out
 }
 
 // cloneSpecSceneSlice returns a shallow copy of the scene slice.

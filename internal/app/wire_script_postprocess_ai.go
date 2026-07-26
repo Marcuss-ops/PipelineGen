@@ -38,8 +38,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// registerAIBackedProcessors registers the 4 AI-backed postprocessors:
-// entities, metadata, translation, and clip_search.
+// registerAIBackedProcessors registers the AI-backed postprocessors:
+// entities, metadata, translation, clip_search, and internet_images.
 // Each processor is gated on its required infrastructure dependency
 // (Ollama client for entities/metadata/translation, OllamaTranslator
 // for clip_search) — when the dep
@@ -47,7 +47,7 @@ import (
 //
 // Canonical ordering (per CanonicalProcessorNames):
 //
-//	Entities → Metadata → Translation → ClipBindings → ClipSearch
+//	Entities → ClipSearch → Metadata → Translation → ClipBindings → InternetImages
 //
 // ClipBindings is registered BEFORE this function is called (in the
 // orchestrator), so this function handles the remaining 4 processors
@@ -151,6 +151,16 @@ func registerAIBackedProcessors(
 		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
 			return fmt.Errorf("register clip_search processor: composition bug")
 		}
+	}
+
+	// ── Internet images ─────────────────────────────────────────────
+	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
+		if !ppReg.Register(adapters.NewInternetImagesProcessor(&internetImageSearchAdapter{resolver: root.Domains.ImageSearchResolver})) {
+			return fmt.Errorf("register internet_images processor: composition bug")
+		}
+		log.Info("InternetImagesProcessor wired with canonical ImageSearchResolver")
+	} else {
+		log.Warn("InternetImagesProcessor: ImageSearchResolver not available; postprocessor not registered (internet_images will be skipped)")
 	}
 
 	// ── Visual planning ──────────────────────────────────────────────

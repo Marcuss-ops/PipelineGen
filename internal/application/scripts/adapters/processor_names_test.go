@@ -20,6 +20,11 @@
 // OPTIONAL enrichment (BestEffort); when a plan does not request
 // TranslateTo the registry's run-path skips it, but the closed-set
 // slot is reserved so the slice is deterministic.
+//
+// PR-VIDRUSH-SEGMENT-IMAGES (2026-07-26): added ProcessorInternetImages
+// at index 9 — after images and before persistence — to keep the web
+// image provider in the canonical execution set without reusing the
+// inline scene-image slot.
 package adapters_test
 
 import (
@@ -31,18 +36,19 @@ import (
 func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	names := adapterspkg.CanonicalProcessorNames()
 
-	// 1. Exactly 11 canonical names (PR-TRANSLATE-SCRIPT-SPEC FP2
+	// 1. Exactly 12 canonical names (PR-TRANSLATE-SCRIPT-SPEC FP2
 	//    added translation at index 3; PR-CLIP-SEARCH-WIRING earlier
 	//    added clip_search at index 1; stock_bindings added at
-	//    index 5; document added at index 10; see file godoc above
+	//    index 5; internet_images added at index 9; document added
+	//    at index 11; see file godoc above
 	//    for EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 11 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 11: %v", len(names), names)
+	if len(names) != 12 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 12: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (entities → clip_search → metadata →
 	//    translation → clip_bindings → stock_bindings → visual_planning →
-	//    voiceover → images → persistence). See processor_names.go
+	//    voiceover → images → internet_images → persistence). See processor_names.go
 	//    goddoc for why this differs from the REGISTRATION order in
 	//    internal/app/wire_script_postprocess.go.
 	expected := []adapterspkg.ProcessorName{
@@ -55,6 +61,7 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorImages,
+		adapterspkg.ProcessorInternetImages,
 		adapterspkg.ProcessorPersistence,
 		adapterspkg.ProcessorDocument,
 	}

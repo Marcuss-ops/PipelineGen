@@ -55,18 +55,19 @@ type ImageOrigin = asset.ImageOrigin
 
 // ImageSearchResult is the common DTO returned by every searcher.
 type ImageSearchResult struct {
-	AssetID      string
-	Origin       ImageOrigin
-	Provider     string
-	Name         string
-	PreviewURL   string
-	Width        int
-	Height       int
-	Score        float64
-	StyleID      string
-	StyleVersion string
-	License      string
-	Author       string
+	AssetID       string
+	Origin        ImageOrigin
+	Provider      string
+	Name          string
+	PreviewURL    string
+	SourcePageURL string
+	Width         int
+	Height        int
+	Score         float64
+	StyleID       string
+	StyleVersion  string
+	License       string
+	Author        string
 }
 
 // ImageFilter is the cross-territory filter for ImageSearcher.Search.
