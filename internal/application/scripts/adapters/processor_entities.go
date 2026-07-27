@@ -1,15 +1,3 @@
-// Package scripts — processor_entities.go (PR 3, June 2026).
-//
-// Rewritten to drop the legacy PostGenFunc callback + GenerationSpec
-// bridge. The processor now consumes the typed EntityExtractor port
-// from ports_entity_metadata.go, building a typed
-// `scriptpkg.EntityExtractionRequest` from `ProcessInput.Text` (the
-// canonical V1 `output.text`) plus the ResolvedGenerationPlan identity
-// fields.
-//
-// Policy is ProcessorRequired per the PR 3 spec — composition must
-// wire a backend extractor and the runtime preflight rejects plans
-// that request "entities" without one.
 package adapters
 
 import (
@@ -21,22 +9,13 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// EntitiesProcessor extracts named entities (Persons / Places /
-// Concepts) from the generated script via the typed EntityExtractor
-// port. Enabled as "entities" in the plan's Postprocessors list.
-//
-// PR 3 (June 2026): promoted to ProcessorRequired (was BestEffort
-// in PR 2). Composition root fails closed without a wired backend;
-// the runtime preflight rejects plans that request "entities"
-// without a registered adapter.
+// EntitiesProcessor extracts entities and visual search terms for each
+// canonical VidRush segment. Extraction is required when registered.
 type EntitiesProcessor struct {
 	extractor EntityExtractor
 	metrics   VidRushMetrics
 }
 
-// NewEntitiesProcessor creates an EntitiesProcessor. extractor must
-// be non-nil at composition time (composition-side validation
-// enforces this via validateRequiredProcessors).
 func NewEntitiesProcessor(extractor EntityExtractor, metrics ...VidRushMetrics) *EntitiesProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
@@ -47,29 +26,10 @@ func NewEntitiesProcessor(extractor EntityExtractor, metrics ...VidRushMetrics) 
 
 func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
 
-// Policy classifies entities as ProcessorRequired. The plan arg is
-// accepted for interface uniformity but ignored for now — a future
-// PR can read plan.OutputSpec.ExtractEntities (or similar payload)
-// and conditionally resolve. Until then, the static Required
-// classification is the canonical source.
 func (p *EntitiesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorRequired
 }
 
-// Process executes entity extraction via the typed port. The
-// processor does NOT depend on GenerationSpec or share state
-// with the metadata path; the EntityExtractor port encapsulates
-// the backend (production adapter wraps EntityScriptExtractor;
-// tests inject a fake extractor returning a hand-crafted
-// EntityResult).
-//
-// Returns (*PostProcessResult{Entities: result}, nil) on success.
-// Returns an empty PostProcessResult (no error) when the input Text
-// is empty — defensive short-circuit so the processor does not
-// waste a backend call.
-//
-// Returns a typed error wrapping scriptpkg.ErrPostprocessFailed on
-// backend failure.
 func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.extractor == nil {
 		return nil, fmt.Errorf("%w: entities processor: EntityExtractor not configured", scriptpkg.ErrPostprocessFailed)
@@ -122,7 +82,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			p.metrics.IncSegments()
 		}
 		cacheKey := segmentCacheKey(
-			"extraction",
+			"extraction-v2",
 			canonicalSeg.TextHash,
 			plan.Language,
 			plan.Model,
@@ -149,11 +109,12 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		}
 
 		req := scriptpkg.EntityExtractionRequest{
-			Text:      canonicalSeg.Text,
-			Title:     plan.Title,
-			Language:  plan.Language,
-			Model:     plan.Model,
-			SpecScene: input.SpecScene,
+			Text:        canonicalSeg.Text,
+			Title:       plan.Title,
+			Language:    plan.Language,
+			Model:       plan.Model,
+			EntityCount: extractionLimit,
+			SpecScene:   input.SpecScene,
 		}
 		res, err := p.extractor.ExtractEntities(ctx, req)
 		if err != nil {
@@ -171,6 +132,9 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 
 		seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit)
 		seg.Cache.Extraction = "MISS"
+		if plan.MediaPlan.ForceRefreshExtraction {
+			seg.Cache.Extraction = "REFRESHED"
+		}
 		if p.metrics != nil {
 			p.metrics.IncExtractionCache(false)
 		}
@@ -194,7 +158,7 @@ func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSeg
 		switch strings.ToUpper(strings.TrimSpace(ent.Type)) {
 		case "PERSON":
 			dst.Persons = append(dst.Persons, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
-		case "LOCATION", "COUNTRY", "CITY":
+		case "LOCATION", "PLACE", "COUNTRY", "CITY":
 			dst.Places = append(dst.Places, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
 		default:
 			dst.Concepts = append(dst.Concepts, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
@@ -238,9 +202,17 @@ func buildVidRushSegmentResult(
 	insights.Entities = uniqueLimitedEntities(entities, entitiesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(res.ImportantPhrases, phrasesLimit)
 	insights.ImportantWords = uniqueLimitedStrings(res.ImportantWords, wordsLimit)
-	insights.ArtlistQueries = buildArtlistQueries(canonicalSeg.Text, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-	insights.ArtlistQueries = uniqueLimitedStrings(insights.ArtlistQueries, artlistLimit)
-	insights.ImageQueries = buildImageQueries(canonicalSeg.Text, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
+
+	// The LLM-generated Artlist phrases are already segment-scoped and
+	// visually validated by the extraction prompt, so they are the primary
+	// search keywords. Deterministic fallbacks only fill missing slots.
+	llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
+	fallbackArtlistQueries := buildArtlistQueries(canonicalSeg.Text, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
+	insights.ArtlistQueries = uniqueLimitedStrings(append(llmArtlistQueries, fallbackArtlistQueries...), artlistLimit)
+
+	imagePhrases := append([]string(nil), res.ArtlistPhrases...)
+	imagePhrases = append(imagePhrases, insights.ImportantPhrases...)
+	insights.ImageQueries = buildImageQueries(canonicalSeg.Text, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
 	insights.ImageQueries = uniqueLimitedStrings(insights.ImageQueries, imageLimit)
 
 	return scriptpkg.VidRushSegmentResult{
