@@ -121,7 +121,8 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			}
 			segments = append(segments, updated)
 			warnings = append(warnings, fmt.Sprintf("clip_search: no matching Artlist clips found for segment %s", updated.SegmentID))
-			cacheStore(&vidrushArtlistCache, cacheKey, artlistSegmentCachePayload{Matches: cloneArtlistMatches(segmentMatches)})
+			// Do not cache provider misses without a TTL: a transient empty
+			// result must remain discoverable on the next request.
 			continue
 		}
 
@@ -225,7 +226,7 @@ func appendProviderCandidatesUnique(base, additions []scriptpkg.SegmentAssetCand
 
 func vidRushCandidateIdentity(candidate scriptpkg.SegmentAssetCandidate) string {
 	provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
-	for _, value := range []string{candidate.AssetID, candidate.DriveLink, candidate.SourceURL, candidate.PreviewURL} {
+	for _, value := range []string{candidate.DriveLink, candidate.SourceURL, candidate.PreviewURL, candidate.AssetID} {
 		if value = strings.TrimSpace(value); value != "" {
 			return provider + "\x00" + strings.ToLower(value)
 		}
