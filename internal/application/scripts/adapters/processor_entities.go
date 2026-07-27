@@ -82,7 +82,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			p.metrics.IncSegments()
 		}
 		cacheKey := segmentCacheKey(
-			"extraction-v2",
+			"extraction-v3",
 			canonicalSeg.TextHash,
 			plan.Language,
 			plan.Model,
@@ -114,7 +114,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			Language:    plan.Language,
 			Model:       plan.Model,
 			EntityCount: extractionLimit,
-			SpecScene:   input.SpecScene,
+			SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
 		}
 		res, err := p.extractor.ExtractEntities(ctx, req)
 		if err != nil {
@@ -150,18 +150,41 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}, nil
 }
 
+// segmentSpecSceneContext prevents cross-segment contamination when an
+// extractor starts using structured scene context. The selected scene is
+// re-indexed to zero because it becomes a valid one-scene local envelope.
+func segmentSpecSceneContext(input scriptpkg.SpecSceneOutput, segment scriptpkg.CanonicalSegment) scriptpkg.SpecSceneOutput {
+	version := input.Version
+	if version == 0 {
+		version = 1
+	}
+	for _, scene := range input.Scenes {
+		matchesScene := segment.SceneID != "" && strings.TrimSpace(scene.ID) == strings.TrimSpace(segment.SceneID)
+		matchesSegment := strings.TrimSpace(scene.SegmentID) != "" && strings.TrimSpace(scene.SegmentID) == strings.TrimSpace(segment.ID)
+		matchesPosition := segment.SceneID == "" && strings.TrimSpace(scene.SegmentID) == "" && scene.Index == segment.Position
+		if !matchesScene && !matchesSegment && !matchesPosition {
+			continue
+		}
+		localScene := scene
+		localScene.Index = 0
+		return scriptpkg.SpecSceneOutput{Version: version, Scenes: []scriptpkg.SpecScene{localScene}}
+	}
+	return scriptpkg.SpecSceneOutput{Version: version, Scenes: []scriptpkg.SpecScene{}}
+}
+
 func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSegmentResult) {
 	if dst == nil {
 		return
 	}
 	for _, ent := range seg.Insights.Entities {
+		entity := scriptpkg.Entity{Value: ent.Value, Type: ent.Type, Score: float32(ent.Confidence)}
 		switch strings.ToUpper(strings.TrimSpace(ent.Type)) {
 		case "PERSON":
-			dst.Persons = append(dst.Persons, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
+			dst.Persons = append(dst.Persons, entity)
 		case "LOCATION", "PLACE", "COUNTRY", "CITY":
-			dst.Places = append(dst.Places, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
+			dst.Places = append(dst.Places, entity)
 		default:
-			dst.Concepts = append(dst.Concepts, scriptpkg.Entity{Value: ent.Value, Score: float32(ent.Confidence)})
+			dst.Concepts = append(dst.Concepts, entity)
 		}
 	}
 	dst.ImportantPhrases = uniqueLimitedStrings(append(dst.ImportantPhrases, seg.Insights.ImportantPhrases...), 5)
@@ -186,26 +209,37 @@ func buildVidRushSegmentResult(
 	entities := make([]scriptpkg.ExtractedEntity, 0, entitiesLimit)
 	for _, person := range res.Persons {
 		if v := strings.TrimSpace(person.Value); v != "" {
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: "PERSON", Confidence: float64(person.Score)})
+			kind := strings.ToUpper(strings.TrimSpace(person.Type))
+			if kind == "" {
+				kind = "PERSON"
+			}
+			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(person.Score)})
 		}
 	}
 	for _, place := range res.Places {
 		if v := strings.TrimSpace(place.Value); v != "" {
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: "LOCATION", Confidence: float64(place.Score)})
+			kind := strings.ToUpper(strings.TrimSpace(place.Type))
+			if kind == "" {
+				kind = "LOCATION"
+			}
+			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(place.Score)})
 		}
 	}
 	for _, concept := range res.Concepts {
 		if v := strings.TrimSpace(concept.Value); v != "" {
-			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: "CONCEPT", Confidence: float64(concept.Score)})
+			kind := strings.ToUpper(strings.TrimSpace(concept.Type))
+			if kind == "" {
+				kind = "CONCEPT"
+			}
+			entities = append(entities, scriptpkg.ExtractedEntity{Value: v, Type: kind, Confidence: float64(concept.Score)})
 		}
 	}
 	insights.Entities = uniqueLimitedEntities(entities, entitiesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(res.ImportantPhrases, phrasesLimit)
 	insights.ImportantWords = uniqueLimitedStrings(res.ImportantWords, wordsLimit)
 
-	// The LLM-generated Artlist phrases are already segment-scoped and
-	// visually validated by the extraction prompt, so they are the primary
-	// search keywords. Deterministic fallbacks only fill missing slots.
+	// LLM-generated Artlist phrases are segment-scoped and visually validated;
+	// deterministic fallbacks only fill missing query slots.
 	llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
 	fallbackArtlistQueries := buildArtlistQueries(canonicalSeg.Text, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
 	insights.ArtlistQueries = uniqueLimitedStrings(append(llmArtlistQueries, fallbackArtlistQueries...), artlistLimit)
