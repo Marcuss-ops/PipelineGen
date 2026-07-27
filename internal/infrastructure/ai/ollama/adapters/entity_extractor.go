@@ -158,16 +158,17 @@ func normalizeEntityKind(raw string) string {
 }
 
 func appendUniqueEntity(dst *[]script.Entity, seen map[string]struct{}, kind, value string, score float32) {
+	kind = strings.ToUpper(strings.TrimSpace(kind))
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return
 	}
-	key := strings.ToUpper(strings.TrimSpace(kind)) + "\x00" + strings.ToLower(value)
+	key := kind + "\x00" + strings.ToLower(value)
 	if _, ok := seen[key]; ok {
 		return
 	}
 	seen[key] = struct{}{}
-	*dst = append(*dst, script.Entity{Value: value, Score: score})
+	*dst = append(*dst, script.Entity{Value: value, Type: kind, Score: score})
 }
 
 func splitIntoSegments(text string) []string {
