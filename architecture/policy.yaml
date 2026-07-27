@@ -387,3 +387,16 @@ hard_gates:
   # brain component must have exactly one production implementation.
   - percheck_brain_infra_ban
   - percheck_brain_single_impl
+  # Wave-24 forward-prevention: max_lines_per_file_strict promoted
+  # from soft-warning (godlike/08 §"Mandatory checks" — Phase 0
+  # report-only) to hard gate (Wave-24 evolution, see
+  # architecture/policy.history.yaml::max_lines_per_file_strict).
+  # Distinct from the legacy max_lines_per_file=1000 hard cap: the
+  # 600-LOC threshold fires BEFORE files cross the 1000 hard line,
+  # giving operators a 400-LOC safety margin to split cohesively.
+  # Allowlist path = docs/migrations/max-lines-strict-allowlist.txt
+  # (the canonical escape hatch per godlike/07 §"Temporary
+  # deprecation record" + godlike/08 §"Zero-baseline rule").
+  # Setting pol.MaxLinesPerFileStrict=0 opts the rule family out;
+  # default 600 enforces a fail-closed forward-prevention gate.
+  - max_lines_per_file_strict

@@ -110,3 +110,34 @@ max_lines_per_file_strict:
         gate (i.e. `max_lines_per_file_strict` added to architecture/
         policy.yaml::hard_gates) is a separate, future PR — Phase 0
         default is `warn` severity (report-only).
+    - date: "2026-07-27"
+      change: "promoted from soft-warning to hard gate (Wave-24)"
+      note: |
+        Wave-24 promotion: `max_lines_per_file_strict` added to
+        architecture/policy.yaml::hard_gates so violations exit
+        ExitViolations unconditionally (mirrors cmd/archcheck/runner.go
+        hard-gate escalation logic — every violation whose Rule
+        matches is severity-escalated to SeverityError and the exit
+        decision is widened to `hasHardGate || (strict && len>0)`).
+        The cap value remains 600 LOC; the legacy max_lines_per_file=
+        1000 hard ceiling is unaffected.
+
+        Three newly-discovered offenders ship in the allowlist under
+        the Wave-24 Bucket 5 header with a TIGHTER 2026-08-15 deadline
+        (vs. the 2026-09-15 baseline) so the next wave MUST split them:
+          - internal/application/assets/providers/stock/stockpipeline/
+            stager_adapter.go (714 LOC; @stock-pipeline-team)
+          - internal/application/assets/providers/stock/stockpipeline/
+            step_extract_clips.go (634 LOC; @stock-pipeline-team)
+          - internal/application/mediamemory/linker_worker.go
+            (680 LOC; @mediamemory-team)
+
+        NO new grandfathered entries are intended beyond these 3 —
+        every future PR must split cohesively BEFORE crossing the
+        600-LOC mark or surface as a hard CI build failure on push.
+        Per godlike/07 NO-FAKE-AVAILABILITY, the allowlist is the
+        canonical escape hatch with explicit owner + deadline +
+        removal_trigger per entry (godlike/08 zero-baseline rule);
+        removing an entry is always safe (the file will now fail-
+        closed at the strict cap, surfacing the regression to the
+        assigned workstream).

@@ -103,3 +103,25 @@ internal/app/module_sources.go
 # the post-FASE-X canonical asset-state surface.
 # owner=@assets-team; deadline=2026-09-15; FASE-X asset-state finalizer consolidation; removal_trigger=file-deleted
 internal/app/assets_register_sourcing.go
+
+# ── Bucket 5: Wave-24 promotion-surface (max_lines_per_file_strict gate promotion) ──
+# These files entered the allowlist when the strict 600-LOC cap was
+# promoted from soft-warning to hard gate (Wave-24 evolution, see
+# architecture/policy.history.yaml::max_lines_per_file_strict and
+# architecture/policy.yaml::hard_gates). Per godlike/08 zero-baseline
+# rule + the Wave-24 tighten clause (deadline=2026-08-15, NOT 2026-09-15
+# like Buckets 1-4), each entry MUST be split before 2026-08-15 or
+# fail-closed at the next architecture re-scan. Replacement plan per
+# entry is a 2-file per-concern split preserving the canonical
+# public-API surface (godlike/07 minimum-blast-radius: zero new
+# exported symbols, same package scope).
+#
+# NO new grandfathered entries are accepted beyond this Bucket. Every
+# future PR must split cohesively before crossing the 600-LOC mark or
+# surface as a hard CI build failure on push.
+# owner=@stock-pipeline-team; deadline=2026-08-15; Wave-24 stager-adapter-split; removal_trigger=file-deleted
+internal/application/assets/providers/stock/stockpipeline/stager_adapter.go
+# owner=@stock-pipeline-team; deadline=2026-08-15; Wave-24 step-extract-clips-split; removal_trigger=file-deleted
+internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go
+# owner=@mediamemory-team; deadline=2026-08-15; Wave-24 linker-worker-split; removal_trigger=file-deleted
+internal/application/mediamemory/linker_worker.go
