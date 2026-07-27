@@ -78,6 +78,8 @@ def _run_helper(local_path: str) -> dict:
         "text": transcript,
         "detected_language": payload.get("language", "und"),
         "confidence": payload.get("probability", 0.0),
+        "duration_ms": int((payload.get("duration_seconds") or 0.0) * 1000),
+        "cues": payload.get("cues") or []
     }
 
 

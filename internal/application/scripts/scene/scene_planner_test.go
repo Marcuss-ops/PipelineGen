@@ -314,10 +314,12 @@ func TestScenePlanner_PlanFromClipEvidence_BindingsPopulated(t *testing.T) {
 			AcceptedClipIDs: []string{"clip-a"},
 			ClipDetails: map[string]scriptpkg.ClipDetail{
 				"clip-a": {
-					Name:      "name a",
-					StartMs:   0,
-					EndMs:     1000,
-					DriveLink: "https://drive/a",
+					Name:           "name a",
+					StartMs:        0,
+					EndMs:          1000,
+					DriveLink:      "https://drive/a",
+					SubtitleLink:   "https://drive/subtitle-a",
+					SubtitleFileID: "subtitle-a",
 				},
 			},
 		},
@@ -330,6 +332,8 @@ func TestScenePlanner_PlanFromClipEvidence_BindingsPopulated(t *testing.T) {
 	assert.Equal(t, "clip-a", binding.ClipID)
 	assert.Equal(t, "name a", binding.ClipTitle)
 	assert.Equal(t, "https://drive/a", binding.DriveLink)
+	assert.Equal(t, "https://drive/subtitle-a", binding.SubtitleLink)
+	assert.Equal(t, "subtitle-a", binding.SubtitleFileID)
 	assert.Equal(t, int64(0), binding.StartMs)
 	assert.Equal(t, int64(1000), binding.EndMs)
 	assert.Equal(t, int64(1000), binding.DurationMs)

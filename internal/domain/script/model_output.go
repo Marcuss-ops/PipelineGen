@@ -358,6 +358,13 @@ type ClipBinding struct {
 	// layer from resolved clip evidence.
 	DriveLink string `json:"drive_link,omitempty"`
 
+	// SubtitleLink is the canonical Google Drive URL of the ASS artifact
+	// associated with this clip.
+	SubtitleLink string `json:"subtitle_link,omitempty"`
+
+	// SubtitleFileID is the Drive file ID of the associated ASS artifact.
+	SubtitleFileID string `json:"subtitle_file_id,omitempty"`
+
 	// StartMs is the optional clip start offset in milliseconds.
 	// Together with EndMs it bounds the selected segment within
 	// the underlying clip asset.

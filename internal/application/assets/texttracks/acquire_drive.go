@@ -38,10 +38,12 @@ func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireComman
 	return &AcquireResult{
 		AssetID:      cmd.AssetID,
 		PlainText:    transcript.Text,
+		Cues:         transcript.Cues,
 		LanguageCode: transcript.DetectedLanguage,
 		SourceType:   asset.TextSourceWhisper,
 		SourcePath:   path,
 		Confidence:   transcript.Confidence,
 		Priority:     25,
+		DurationMs:   transcript.DurationMs,
 	}, nil
 }

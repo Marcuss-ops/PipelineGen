@@ -171,7 +171,8 @@ type RepoBundle struct {
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): added
 	// so the cutover wiring
 	// (`root.Repos.TextTrackRepo`) compiles.
-	TextTrackRepo asset.TextTrackRepository
+	TextTrackRepo        asset.TextTrackRepository
+	SubtitleArtifactRepo asset.SubtitleArtifactRepository
 }
 
 // SearchBundle holds the asset metadata search/index pair and resolver.

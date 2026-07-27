@@ -105,8 +105,9 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Subtitles: domains.SubtitleFetcher,
 		Whisper:   ai.WhisperTranscriber,
 		Drive:     driveBundle.Reader,
+		CueWriter: domains.CueWriter,
 	}
-	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, log)
+	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, driveBundle.Publisher, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: %w", err)
 	}

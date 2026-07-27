@@ -79,13 +79,15 @@ func NewClipEvidence(e ClipEvidence) *ClipEvidence {
 
 // ClipDetail carries the primary evidence for one accepted clip.
 type ClipDetail struct {
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Transcript  string   `json:"transcript,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	StartMs     int64    `json:"start_ms,omitempty"`
-	EndMs       int64    `json:"end_ms,omitempty"`
-	DriveLink   string   `json:"drive_link,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	Description    string   `json:"description,omitempty"`
+	Transcript     string   `json:"transcript,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	StartMs        int64    `json:"start_ms,omitempty"`
+	EndMs          int64    `json:"end_ms,omitempty"`
+	DriveLink      string   `json:"drive_link,omitempty"`
+	SubtitleLink   string   `json:"subtitle_link,omitempty"`
+	SubtitleFileID string   `json:"subtitle_file_id,omitempty"`
 }
 
 // ModelClipView is the model-facing projection of one clip.

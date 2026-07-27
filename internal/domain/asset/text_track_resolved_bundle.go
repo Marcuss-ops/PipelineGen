@@ -99,9 +99,9 @@ type ResolvedTextBundle struct {
 // index of the in-memory bundle, so reordering at the resolver layer
 // (e.g. duplicate-stripped cues) does not destabilize the FK.
 type TimedCue struct {
-	StartMs int64
-	EndMs   int64
-	Text    string
+	StartMs int64  `json:"start_ms"`
+	EndMs   int64  `json:"end_ms"`
+	Text    string `json:"text"`
 }
 
 // IsEmpty reports whether the bundle carries no usable content.

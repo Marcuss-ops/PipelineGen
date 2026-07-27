@@ -57,6 +57,11 @@ func (p *DocumentsProcessor) Process(
 	}
 
 	var firstID, firstLink string
+	// Existing documents are normally reused by the idempotent publisher.
+	// Subtitle links are a versioned document surface, however: when ASS
+	// artifacts become available, refresh the existing doc so operators do
+	// not keep seeing the pre-subtitle HTML.
+	refreshDocument := plan.ForceRefresh || specSceneHasSubtitleLinks(input.SpecScene)
 	for _, language := range languages {
 		language = strings.TrimSpace(language)
 		if language == "" {
@@ -69,7 +74,7 @@ func (p *DocumentsProcessor) Process(
 			nil,
 			plan.DocsFolderID,
 			plan.ID+"-"+language,
-			plan.ForceRefresh,
+			refreshDocument,
 		)
 		if strings.TrimSpace(link) == "" || strings.TrimSpace(id) == "" {
 			return nil, fmt.Errorf("document publisher returned an empty reference for language %s", language)
@@ -82,4 +87,13 @@ func (p *DocumentsProcessor) Process(
 		return nil, fmt.Errorf("document publishing languages are empty")
 	}
 	return &PostProcessResult{DocID: firstID, DocLink: firstLink}, nil
+}
+
+func specSceneHasSubtitleLinks(spec scriptpkg.SpecSceneOutput) bool {
+	for _, scene := range spec.Scenes {
+		if scene.Bindings.Clip != nil && strings.TrimSpace(scene.Bindings.Clip.SubtitleLink) != "" {
+			return true
+		}
+	}
+	return false
 }

@@ -161,6 +161,15 @@ func (p *ClipBindingsProcessor) Process(
 		clipCount := len(candidates)
 		for i := range scenes {
 			if binding, ok := res.Bindings[scenes[i].ID]; ok {
+				// The binder owns clip selection, while subtitle provenance
+				// comes from the resolved clip evidence. Preserve that
+				// association when the model emitted its own scene list.
+				if plan.ClipEvidence != nil && binding != nil {
+					if detail, exists := plan.ClipEvidence.ClipDetails[binding.ClipID]; exists {
+						binding.SubtitleLink = detail.SubtitleLink
+						binding.SubtitleFileID = detail.SubtitleFileID
+					}
+				}
 				scenes[i].Bindings.Clip = binding
 			} else if i < clipCount {
 				// Safety: a scene within the clip range should always

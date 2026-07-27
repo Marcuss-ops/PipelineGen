@@ -3,6 +3,9 @@ package shorts
 import (
 	"errors"
 	"testing"
+
+	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 func TestBuildShortsPlan(t *testing.T) {
@@ -21,6 +24,42 @@ func TestBuildShortsPlan(t *testing.T) {
 	if got.SoundEffects[0].Volume != 0.5 {
 		t.Fatalf("default volume = %v", got.SoundEffects[0].Volume)
 	}
+}
+
+func TestBuildRenderJobAssociatesEachClipSubtitleDriveURL(t *testing.T) {
+	oldRepo := subtitleArtifacts
+	SetSubtitleArtifactRepository(subtitleArtifactRepoFake{artifacts: map[string][]asset.SubtitleArtifact{
+		"clip-a": {{DriveFileID: "drive-a", DriveURL: "https://drive.google.com/file/d/drive-a/view", LocalPath: "/tmp/a.ass", FileHash: "hash-a", Format: asset.SubtitleFormatASS, Status: asset.SubtitleStatusReady, IsCurrent: true}},
+		"clip-b": {{DriveFileID: "drive-b", DriveURL: "https://drive.google.com/file/d/drive-b/view", LocalPath: "/tmp/b.ass", FileHash: "hash-b", Format: asset.SubtitleFormatASS, Status: asset.SubtitleStatusReady, IsCurrent: true}},
+	}})
+	defer SetSubtitleArtifactRepository(oldRepo)
+
+	req := Request{ID: "short-subtitles", Text: "one", DurationMs: 1000,
+		Clips: []Clip{{ID: "clip-a"}, {ID: "clip-b"}}}
+	plan, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := BuildRenderJob(req, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips := job.Props["clips"].([]map[string]any)
+	if clips[0]["subtitlesURL"] != "https://drive.google.com/file/d/drive-a/view" || clips[1]["subtitlesURL"] != "https://drive.google.com/file/d/drive-b/view" {
+		t.Fatalf("subtitle URLs were not kept per clip: %#v", clips)
+	}
+}
+
+type subtitleArtifactRepoFake struct {
+	artifacts map[string][]asset.SubtitleArtifact
+}
+
+func (f subtitleArtifactRepoFake) Upsert(context.Context, *asset.SubtitleArtifact) error { return nil }
+func (f subtitleArtifactRepoFake) FindCurrent(context.Context, string, string, asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
+	return nil, nil
+}
+func (f subtitleArtifactRepoFake) ListByAsset(_ context.Context, id string) ([]asset.SubtitleArtifact, error) {
+	return f.artifacts[id], nil
 }
 
 func TestBuildShortsPlanCanDisableSoundEffects(t *testing.T) {

@@ -40,6 +40,16 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 	}()
 
 	nowStr := time.Now().UTC().Format(time.RFC3339)
+	// Resolve the current natural-key row before deciding between UPDATE and
+	// INSERT. Callers commonly build a fresh artifact value for a retry; using
+	// the natural key keeps the Drive metadata update on that same row.
+	if art.ID == 0 {
+		_ = tx.QueryRowContext(ctx, `
+			SELECT id FROM asset_subtitle_artifacts
+			WHERE asset_id = ? AND language_code = ? AND format = ? AND is_current = 1
+			ORDER BY id DESC LIMIT 1`,
+			art.AssetID, art.LanguageCode, string(art.Format)).Scan(&art.ID)
+	}
 
 	// If is_current is 1, we must set other rows with same (asset_id, language_code, format) to is_current = 0
 	if art.IsCurrent {
@@ -58,31 +68,34 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 		_, err = tx.ExecContext(ctx, `
 			UPDATE asset_subtitle_artifacts SET 
 				asset_id = ?, text_track_id = ?, language_code = ?, format = ?,
-				local_path = ?, drive_file_id = ?, file_hash = ?, text_hash = ?,
+				local_path = ?, drive_file_id = ?, drive_url = ?, file_hash = ?, text_hash = ?,
 				cues_hash = ?, clip_content_hash = ?, cue_count = ?,
 				clip_duration_ms = ?, last_cue_end_ms = ?, style_version = ?,
 				generator_version = ?, status = ?, is_current = ?,
 				validation_error = ?, updated_at = ?
 			WHERE id = ?`,
 			art.AssetID, art.TextTrackID, art.LanguageCode, string(art.Format),
-			art.LocalPath, art.DriveFileID, art.FileHash, art.TextHash,
+			art.LocalPath, art.DriveFileID, art.DriveURL, art.FileHash, art.TextHash,
 			art.CuesHash, art.ClipContentHash, art.CueCount,
 			art.ClipDurationMs, art.LastCueEndMs, art.StyleVersion,
 			art.GeneratorVersion, string(art.Status), checkBoolInt(art.IsCurrent),
 			art.ValidationError, nowStr, art.ID)
+		if err != nil {
+			return err
+		}
 	} else {
 		// Insert new
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO asset_subtitle_artifacts (
 				asset_id, text_track_id, language_code, format,
-				local_path, drive_file_id, file_hash, text_hash,
+				local_path, drive_file_id, drive_url, file_hash, text_hash,
 				cues_hash, clip_content_hash, cue_count,
 				clip_duration_ms, last_cue_end_ms, style_version,
 				generator_version, status, is_current,
 				validation_error, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			art.AssetID, art.TextTrackID, art.LanguageCode, string(art.Format),
-			art.LocalPath, art.DriveFileID, art.FileHash, art.TextHash,
+			art.LocalPath, art.DriveFileID, art.DriveURL, art.FileHash, art.TextHash,
 			art.CuesHash, art.ClipContentHash, art.CueCount,
 			art.ClipDurationMs, art.LastCueEndMs, art.StyleVersion,
 			art.GeneratorVersion, string(art.Status), checkBoolInt(art.IsCurrent),
@@ -93,6 +106,20 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 		id, err := res.LastInsertId()
 		if err == nil {
 			art.ID = id
+		}
+		// Some SQLite driver/build combinations do not expose LastInsertId
+		// reliably. Resolve the just-created current row by its natural key
+		// so the follow-up publish update cannot accidentally insert a second
+		// READY row without Drive metadata.
+		if art.ID == 0 {
+			err = tx.QueryRowContext(ctx, `
+				SELECT id FROM asset_subtitle_artifacts
+				WHERE asset_id = ? AND language_code = ? AND format = ? AND is_current = 1
+				ORDER BY id DESC LIMIT 1`,
+				art.AssetID, art.LanguageCode, string(art.Format)).Scan(&art.ID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -106,7 +133,7 @@ func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *asse
 func (r *SubtitleArtifactRepositorySQLite) FindCurrent(ctx context.Context, assetID string, languageCode string, format asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, asset_id, text_track_id, language_code, format,
-		       local_path, drive_file_id, file_hash, text_hash,
+		       local_path, drive_file_id, drive_url, file_hash, text_hash,
 		       cues_hash, clip_content_hash, cue_count,
 		       clip_duration_ms, last_cue_end_ms, style_version,
 		       generator_version, status, is_current, validation_error,
@@ -121,7 +148,7 @@ func (r *SubtitleArtifactRepositorySQLite) FindCurrent(ctx context.Context, asse
 func (r *SubtitleArtifactRepositorySQLite) ListByAsset(ctx context.Context, assetID string) ([]asset.SubtitleArtifact, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, asset_id, text_track_id, language_code, format,
-		       local_path, drive_file_id, file_hash, text_hash,
+		       local_path, drive_file_id, drive_url, file_hash, text_hash,
 		       cues_hash, clip_content_hash, cue_count,
 		       clip_duration_ms, last_cue_end_ms, style_version,
 		       generator_version, status, is_current, validation_error,
@@ -170,7 +197,7 @@ func scanSubtitleArtifact(s subtitleScanner) (*asset.SubtitleArtifact, error) {
 	)
 	err := s.Scan(
 		&art.ID, &art.AssetID, &art.TextTrackID, &art.LanguageCode, &formatStr,
-		&art.LocalPath, &art.DriveFileID, &art.FileHash, &art.TextHash,
+		&art.LocalPath, &art.DriveFileID, &art.DriveURL, &art.FileHash, &art.TextHash,
 		&art.CuesHash, &art.ClipContentHash, &art.CueCount,
 		&art.ClipDurationMs, &art.LastCueEndMs, &art.StyleVersion,
 		&art.GeneratorVersion, &statusStr, &isCurrentInt, &art.ValidationError,

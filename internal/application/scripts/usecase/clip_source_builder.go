@@ -66,7 +66,8 @@ type ClipSourceBuilder struct {
 	// test fixture. A nil reader surfaces ErrTextTrackNotReady
 	// — there is no `metadata_json[\"transcript\"]` /
 	// `metadata_json[\"clean_transcript\"]` fallback path.
-	textTrackReader ports.TextTrackReader
+	textTrackReader   ports.TextTrackReader
+	subtitleArtifacts asset.SubtitleArtifactRepository
 }
 
 type ClipGenerationOptions struct {
@@ -130,6 +131,12 @@ func (c *ClipSourceBuilder) SetReranker(r any) { c.reranker = r }
 // mode explicitly.
 func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 	c.textTrackReader = r
+}
+
+// ConfigureSubtitleArtifactRepository wires the canonical READY ASS lookup
+// used to enrich clip evidence before the Google Doc is rendered.
+func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r asset.SubtitleArtifactRepository) {
+	c.subtitleArtifacts = r
 }
 
 const excerptMaxRunes = 500
@@ -253,6 +260,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript)
 		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript)
 		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript)
+		c.enrichClipSubtitle(ctx, clipDetails, record.id)
 		if record.track != nil {
 			resolvedTracks[record.id] = record.track
 		}
@@ -287,6 +295,37 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	return ev, title, sourceTextWriter.String(), nil
+}
+
+func (c *ClipSourceBuilder) enrichClipSubtitle(ctx context.Context, details map[string]scriptpkg.ClipDetail, clipID string) {
+	if c == nil || c.subtitleArtifacts == nil || details == nil || clipID == "" {
+		return
+	}
+	artifacts, err := c.subtitleArtifacts.ListByAsset(ctx, clipID)
+	if err != nil {
+		if c.log != nil {
+			c.log.Warn("clip source builder: subtitle artifact lookup failed", zap.String("asset_id", clipID), zap.Error(err))
+		}
+		return
+	}
+	if c.log != nil {
+		c.log.Debug("clip source builder: subtitle artifacts loaded",
+			zap.String("asset_id", clipID),
+			zap.Int("artifact_count", len(artifacts)))
+	}
+	for _, artifact := range artifacts {
+		if artifact.Format != asset.SubtitleFormatASS || artifact.Status != asset.SubtitleStatusReady || !artifact.IsCurrent {
+			continue
+		}
+		if strings.TrimSpace(artifact.DriveURL) == "" || strings.TrimSpace(artifact.DriveFileID) == "" {
+			continue
+		}
+		detail := details[clipID]
+		detail.SubtitleLink = artifact.DriveURL
+		detail.SubtitleFileID = artifact.DriveFileID
+		details[clipID] = detail
+		return
+	}
 }
 
 type clipContextRecord struct {

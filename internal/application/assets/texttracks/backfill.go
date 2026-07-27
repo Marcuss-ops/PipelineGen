@@ -45,6 +45,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -73,11 +74,16 @@ type MediaAssetLister interface {
 // they're the package's composition root entry point — the
 // leaf files compose deps that declare here.
 type BackfillService struct {
-	clips        MediaAssetLister
-	repo         asset.TextTrackRepository // Fase 5: used by tryAcquire to save acquired source tracks
-	materializer *Materializer
-	acquirer     *AcquireService // Fase 5: optional source-text acquisition
-	log          *zap.Logger
+	clips           MediaAssetLister
+	repo            asset.TextTrackRepository // Fase 5: used by tryAcquire to save acquired source tracks
+	cues            TimedCueWriter            // new field to save cues/segments to DB
+	subArtRepo      asset.SubtitleArtifactRepository
+	subMaterializer *SubtitleArtifactMaterializer
+	materializer    *Materializer
+	acquirer        *AcquireService // Fase 5: optional source-text acquisition
+	publisher       delivery.Publisher
+	driveFolderID   string
+	log             *zap.Logger
 }
 
 // NewBackfillService constructs the canonical orchestrator.
@@ -91,8 +97,12 @@ type BackfillService struct {
 func NewBackfillService(
 	clips MediaAssetLister,
 	repo asset.TextTrackRepository,
+	cues TimedCueWriter,
+	subArtRepo asset.SubtitleArtifactRepository,
 	materializer *Materializer,
 	acquirer *AcquireService,
+	publisher delivery.Publisher,
+	driveFolderID string,
 	log *zap.Logger,
 ) (*BackfillService, error) {
 	if clips == nil {
@@ -101,18 +111,32 @@ func NewBackfillService(
 	if repo == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: repo is required (used by tryAcquire to save acquired source tracks)")
 	}
+	if cues == nil {
+		return nil, fmt.Errorf("texttracks.NewBackfillService: cues writer is required")
+	}
+	if subArtRepo == nil {
+		return nil, fmt.Errorf("texttracks.NewBackfillService: subArtRepo is required")
+	}
 	if materializer == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: materializer is nil")
+	}
+	if publisher == nil {
+		return nil, fmt.Errorf("texttracks.NewBackfillService: Drive publisher is required")
 	}
 	if log == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: log is nil")
 	}
 	return &BackfillService{
-		clips:        clips,
-		repo:         repo,
-		materializer: materializer,
-		acquirer:     acquirer,
-		log:          log,
+		clips:           clips,
+		repo:            repo,
+		cues:            cues,
+		subArtRepo:      subArtRepo,
+		subMaterializer: NewSubtitleArtifactMaterializer(subArtRepo, "data/media/subtitles", publisher),
+		materializer:    materializer,
+		acquirer:        acquirer,
+		publisher:       publisher,
+		driveFolderID:   driveFolderID,
+		log:             log,
 	}, nil
 }
 

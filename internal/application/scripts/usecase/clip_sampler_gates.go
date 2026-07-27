@@ -32,11 +32,14 @@
 package usecase
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -361,7 +364,47 @@ func (formatCompatibleGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
 	return true, ""
 }
 
-// defaultGates returns the canonical 10-gate list in evaluation
+var SamplerDB *sql.DB
+
+func SetSamplerDB(db *sql.DB) {
+	SamplerDB = db
+}
+
+// 11. subtitleReadyGate fails when the asset requires subtitles but does not have a READY ASS artifact.
+type subtitleReadyGate struct{}
+
+func (subtitleReadyGate) Name() string { return "subtitle_ready" }
+
+func (subtitleReadyGate) Evaluate(in ClipSamplerGateInput) (bool, string) {
+	if SamplerDB == nil {
+		return true, ""
+	}
+	var source string
+	var hasReadySubtitle int
+	err := SamplerDB.QueryRowContext(context.Background(), `
+		SELECT COALESCE(source, '') AS source,
+		       (SELECT COUNT(*) FROM asset_subtitle_artifacts
+				WHERE asset_id = media_assets.id
+				  AND format = 'ass'
+				  AND status = 'READY'
+				  AND drive_file_id <> ''
+				  AND drive_url <> ''
+				  AND is_current = 1)
+		FROM media_assets
+		WHERE id = ?`, in.Candidate.ClipID).Scan(&source, &hasReadySubtitle)
+	if err != nil {
+		return false, fmt.Sprintf("database lookup failed for %s: %v", in.Candidate.ClipID, err)
+	}
+
+	if asset.RequiresSubtitles(source) {
+		if hasReadySubtitle == 0 {
+			return false, fmt.Sprintf("clip source %q requires subtitles but no READY ASS artifact exists", source)
+		}
+	}
+	return true, ""
+}
+
+// defaultGates returns the canonical 11-gate list in evaluation
 // order. The order is itself part of the audit contract: every
 // sampler run evaluates gates in this sequence (deterministic).
 func defaultGates() []SamplerGate {
@@ -376,5 +419,6 @@ func defaultGates() []SamplerGate {
 		noDuplicatesAcrossSlotsGate{},
 		transcriptVisualSummaryPresentGate{},
 		formatCompatibleGate{},
+		subtitleReadyGate{},
 	}
 }

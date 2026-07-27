@@ -217,8 +217,12 @@ func runTextTracksBackfill(args []string) error {
 	svc, err := texttracks.NewBackfillService(
 		root.Repos.ClipsRepo,
 		root.Repos.TextTrackRepo, // Fase 5: canonical SSOT for save
+		root.Domains.CueWriter,
+		root.Repos.SubtitleArtifactRepo,
 		root.TextTracks.Materializer,
 		root.TextTracks.AcquireService, // Fase 5
+		root.Drive.Publisher,
+		cfg.Drive.ClipsFolder(),
 		log,
 	)
 	if err != nil {

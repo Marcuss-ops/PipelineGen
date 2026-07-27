@@ -77,11 +77,15 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	if err != nil {
 		return nil, fmt.Errorf("init text track repository: %w", err)
 	}
+	subArtRepo, err := texttracks.NewSubtitleArtifactRepository(dbs.dualPool.Writer, log)
+	if err != nil {
+		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
+	}
 	return &RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, SQRepo: sqRepo, IdempotencyStore: idempotencyStore,
-		TextTrackRepo: textTrackRepo,
+		TextTrackRepo: textTrackRepo, SubtitleArtifactRepo: subArtRepo,
 	}, nil
 }
 

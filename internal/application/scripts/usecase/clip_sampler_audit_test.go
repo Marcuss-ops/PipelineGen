@@ -63,15 +63,15 @@ func TestAudit_AllGatesPass_AccumulatesCleanly(t *testing.T) {
 	if len(res.ClipIDs) != 1 || res.ClipIDs[0] != "clip-audit-1" {
 		t.Fatalf("expected [clip-audit-1], got %v", res.ClipIDs)
 	}
-	if len(res.Provenance.Records) != 10 {
-		t.Fatalf("expected 10 Provenance records (one per gate), got %d", len(res.Provenance.Records))
+	if len(res.Provenance.Records) != 11 {
+		t.Fatalf("expected 11 Provenance records (one per gate), got %d", len(res.Provenance.Records))
 	}
-	// Verify all 10 gate names appear in canonical order.
+	// Verify all 11 gate names appear in canonical order.
 	expectedGateNames := []string{
 		"topic_relevance", "source_anchor_coverage", "duration",
 		"diversity", "chronological_order", "quality",
 		"availability", "no_duplicates", "transcript_visual_summary_present",
-		"format_compatible",
+		"format_compatible", "subtitle_ready",
 	}
 	for i, rec := range res.Provenance.Records {
 		if rec.GateName != expectedGateNames[i] {
@@ -106,7 +106,7 @@ func TestDefaultGatesCanonicalOrder(t *testing.T) {
 		"topic_relevance", "source_anchor_coverage", "duration",
 		"diversity", "chronological_order", "quality",
 		"availability", "no_duplicates", "transcript_visual_summary_present",
-		"format_compatible",
+		"format_compatible", "subtitle_ready",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("defaultGates count: want %d got %d", len(want), len(got))
@@ -146,8 +146,8 @@ func TestAudit_AnyGateFails_RecordsButDrops(t *testing.T) {
 	if len(res.ClipIDs) != 0 {
 		t.Fatalf("candidate failing gates should be dropped, got %v", res.ClipIDs)
 	}
-	if len(res.Provenance.Records) != 10 {
-		t.Fatalf("expected 10 records (full audit trail even on fail), got %d", len(res.Provenance.Records))
+	if len(res.Provenance.Records) != 11 {
+		t.Fatalf("expected 11 records (full audit trail even on fail), got %d", len(res.Provenance.Records))
 	}
 	// Spot-check the negative outcomes: at least 2 gates failed.
 	failed := 0
