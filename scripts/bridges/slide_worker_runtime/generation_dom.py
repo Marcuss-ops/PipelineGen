@@ -53,7 +53,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from .diagnostics import _log, _log_diag
 from .dom_actions import SlidesDOM
-from .generation import GenerationContext
+from .generation_types import GenerationContext
 from .session import BrowserSession
 
 

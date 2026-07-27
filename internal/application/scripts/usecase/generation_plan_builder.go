@@ -51,6 +51,9 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		UseMemory:           item.ScriptParams.UseMemory,
 		ForceRefresh:        item.ScriptParams.ForceRefresh,
 		DriveFolderID:       item.Output.DriveFolderID,
+		DocsEnabled:         item.Docs.Enabled,
+		DocsLanguages:       append([]string(nil), item.Docs.Languages...),
+		DocsFolderID:        item.Docs.FolderID,
 		VoiceoverGroup:      item.Output.VoiceoverGroup,
 		VoiceoverFolderID:   item.Output.VoiceoverFolderID,
 		MaxChars:            item.Output.MaxChars,
@@ -131,9 +134,13 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		out.ExtractEntities = scriptpkg.ToggleEnabled
 	}
 	processors := buildPostprocessorList(out)
+	if item.Docs.Enabled {
+		processors = append(processors, adapters.ProcessorDocument)
+	}
 	if mediaPlanRequested(item) {
 		// Active media plan: route through the new visual_planning processor
 		// right after clip_bindings so it sees the final clip-bound scenes.
+		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualSlots)
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
 	}
 	if item.Source.Type != scriptpkg.SourceClips &&
@@ -170,6 +177,9 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	processors = append(processors, adapters.ProcessorClipBindings)
 	if out.StockEnabled == scriptpkg.ToggleEnabled || out.StockEnabled == scriptpkg.ToggleDisabled || len(out.StockBindings) > 0 {
 		processors = append(processors, adapters.ProcessorStockBindings)
+	}
+	if out.GenerateSceneImages.AsBool() {
+		processors = append(processors, adapters.ProcessorImages)
 	}
 
 	if strings.TrimSpace(out.VoiceoverGroup) != "" || strings.TrimSpace(out.VoiceoverFolderID) != "" {

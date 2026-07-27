@@ -248,6 +248,23 @@ func validateMediaPlan(mp media.MediaPlanSpec, segments []scriptpkg.ScriptSegmen
 	}
 
 	seenAssignment := make(map[string]struct{})
+	if mp.Intro != nil {
+		d = append(d, validateVisualSlotPlan(*mp.Intro, ref+": media_plan.intro")...)
+	}
+	seenPost := make(map[string]struct{})
+	for i, post := range mp.PostSegments {
+		prefix := fmt.Sprintf("%s: media_plan.post_segments[%d]", ref, i)
+		if strings.TrimSpace(post.SegmentID) == "" {
+			d = append(d, prefix+": segment_id is required")
+		} else if _, ok := segmentIDs[post.SegmentID]; !ok && len(segments) > 0 {
+			d = append(d, fmt.Sprintf("%s: segment_id %q does not match any segment", prefix, post.SegmentID))
+		}
+		if _, exists := seenPost[post.SegmentID]; exists {
+			d = append(d, prefix+": duplicate segment_id")
+		}
+		seenPost[post.SegmentID] = struct{}{}
+		d = append(d, validateVisualSlotPlan(post.VisualSlotPlan, prefix)...)
+	}
 	for i, a := range mp.Assignments {
 		prefix := fmt.Sprintf("%s: media_plan.assignments[%d]", ref, i)
 		segID := strings.TrimSpace(a.SegmentID)
@@ -301,6 +318,41 @@ func validateMediaPlan(mp media.MediaPlanSpec, segments []scriptpkg.ScriptSegmen
 		}
 	}
 
+	return d
+}
+
+func validateVisualSlotPlan(p media.VisualSlotPlan, prefix string) []string {
+	var d []string
+	switch p.Mode {
+	case media.VisualSelectionManual, media.VisualSelectionAssisted, media.VisualSelectionHybrid, media.VisualSelectionGemma, media.VisualSelectionAutomatic, media.VisualSelectionAuto:
+	default:
+		d = append(d, fmt.Sprintf("%s: mode %q is not valid", prefix, p.Mode))
+	}
+	if p.MaxClips < 0 {
+		d = append(d, prefix+": max_clips cannot be negative")
+	}
+	seen := map[string]struct{}{}
+	for i, clip := range p.Clips {
+		cp := fmt.Sprintf("%s.clips[%d]", prefix, i)
+		if strings.TrimSpace(clip.AssetID) == "" {
+			d = append(d, cp+": asset_id is required")
+		}
+		if clip.DurationMs < 0 || clip.StartMs < 0 {
+			d = append(d, cp+": duration_ms and start_ms cannot be negative")
+		}
+		if clip.Position != nil && *clip.Position < 0 {
+			d = append(d, cp+": position cannot be negative")
+		}
+		if _, ok := seen[clip.AssetID]; ok {
+			d = append(d, cp+": duplicate asset_id")
+		}
+		seen[clip.AssetID] = struct{}{}
+	}
+	for i, id := range p.CandidateAssetIDs {
+		if strings.TrimSpace(id) == "" {
+			d = append(d, fmt.Sprintf("%s.candidate_asset_ids[%d]: id is required", prefix, i))
+		}
+	}
 	return d
 }
 

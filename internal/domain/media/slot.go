@@ -4,6 +4,15 @@ package media
 // It is a closed set; new values require a code change.
 type SlotKind string
 
+// VisualSlot aliases for timeline slots that share the canonical SlotKind
+// values. Keeping these declarations beside SlotKind prevents duplicate
+// string literals across the media slot registries.
+const (
+	VisualSlotPrimaryVideo   VisualSlot = VisualSlot(SlotPrimaryVideo)
+	VisualSlotSecondaryImage VisualSlot = VisualSlot(SlotSecondaryImage)
+	VisualSlotEvidence       VisualSlot = VisualSlot(SlotEvidenceOverlay)
+)
+
 const (
 	SlotPrimaryVideo    SlotKind = "primary_video"
 	SlotSecondaryImage  SlotKind = "secondary_image"

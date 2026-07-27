@@ -320,7 +320,6 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			Log: deps.Runtime.Log,
 			DB:  deps.Runtime.DB,
 		},
-		Publisher: deps.Delivery.Publisher,
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:       deps.Acquisition.ClipsRepo,
 			AssetIndex:      deps.Acquisition.AssetIndex,
@@ -336,14 +335,17 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			SourceStager:  deps.Acquisition.SourceStager,
 			ChannelLister: deps.Orchestration.ChannelLister,
 		},
-		DriveReader: chooseDriveReader(deps.Acquisition),
 		SourceCache: stockpipeline.SourceCacheDeps{
 			Reader:  deps.SourceCache.Reader,
 			Writer:  deps.SourceCache.Writer,
 			LocalFS: deps.SourceCache.LocalFS,
 		},
-		Finalizer:     deps.Delivery.Finalizer,
-		FolderCreator: deps.Orchestration.FolderCreator,
+		Delivery: stockpipeline.DeliveryDeps{
+			Publisher:     deps.Delivery.Publisher,
+			FolderCreator: deps.Orchestration.FolderCreator,
+			DriveReader:   chooseDriveReader(deps.Acquisition),
+			Finalizer:     deps.Delivery.Finalizer,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)

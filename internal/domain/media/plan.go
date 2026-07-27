@@ -64,6 +64,12 @@ type MediaPlanSpec struct {
 	// specific segment/slot combinations. Locked assignments always win.
 	Assignments []SegmentMediaAssignment `json:"assignments,omitempty"`
 
+	// Intro and PostSegments describe independent timeline clips. They are
+	// resolved by the same closed-candidate resolver as normal media slots.
+	Intro        *VisualSlotPlan         `json:"intro,omitempty"`
+	PostSegments []PostSegmentVisualPlan `json:"post_segments,omitempty"`
+	Variation    *VisualVariationPolicy  `json:"variation_policy,omitempty"`
+
 	// Searches override the default per-segment/slot search behavior.
 	Searches []SegmentMediaSearch `json:"searches,omitempty"`
 
@@ -214,6 +220,15 @@ type MediaProviderPolicy struct {
 func (m MediaPlanSpec) Clone() MediaPlanSpec {
 	m.Assignments = append([]SegmentMediaAssignment(nil), m.Assignments...)
 	m.Searches = append([]SegmentMediaSearch(nil), m.Searches...)
+	m.PostSegments = append([]PostSegmentVisualPlan(nil), m.PostSegments...)
+	if m.Intro != nil {
+		intro := m.Intro.Clone()
+		m.Intro = &intro
+	}
+	if m.Variation != nil {
+		variation := *m.Variation
+		m.Variation = &variation
+	}
 	return m
 }
 

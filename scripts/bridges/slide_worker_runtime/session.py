@@ -135,9 +135,12 @@ class BrowserSession:
                 ],
             )
 
+        # The master snapshot is the login helper's canonical output and is
+        # shared by every pool worker. Prefer it over per-profile snapshots,
+        # which may be stale after the operator refreshes authentication.
         cookie_path, sdata = choose_storage_candidate(
-            f"{MASTER_STORAGE}.profile_{self.profile_id}",
             MASTER_STORAGE,
+            f"{MASTER_STORAGE}.profile_{self.profile_id}",
             f"{MASTER_STORAGE}.profile_{self.profile_id}.backup",
             f"{MASTER_STORAGE}.backup",
         )

@@ -68,9 +68,6 @@ func (p *ClipBindingsProcessor) Process(
 	_ = ctx
 
 	clipIDs, driveLinks := acceptedClipIDs(plan)
-	if len(clipIDs) == 0 {
-		return &PostProcessResult{}, nil
-	}
 
 	// P0 (July 2026): if the engine produced no scenes (plain-text
 	// output mode), build them deterministically.
@@ -100,6 +97,18 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	scenes := input.SpecScene.Scenes
+	// A text generation may legitimately have no accepted media clips.
+	// Preserve the narrative scene structure for persistence and downstream
+	// planning even in that case; clip binding is optional enrichment.
+	if len(clipIDs) == 0 {
+		if !hasSynthesized || len(scenes) == 0 {
+			return &PostProcessResult{}, nil
+		}
+		return &PostProcessResult{
+			Changed:           true,
+			SynthesizedScenes: scenes,
+		}, nil
+	}
 
 	// P0 (July 2026): when scenes were synthesized from clip evidence,
 	// they already carry fully populated ClipBinding structs. Running

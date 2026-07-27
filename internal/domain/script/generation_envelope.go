@@ -89,11 +89,23 @@ type GenerationItemV2 struct {
 	// Every postprocessor is opt-in.
 	Output OutputSpec `json:"output,omitempty"`
 
+	// Docs explicitly requests publication of one Google Doc per language.
+	// It is kept separate from Output so document creation is never inferred
+	// from unrelated output options.
+	Docs DocumentsSpec `json:"docs,omitempty"`
+
 	// ── Media plan ────────────────────────────────────────────────────
 	// MediaPlan declares which visual media should accompany the
 	// generated script. It is separate from SourceSpec because it
 	// describes media assets, not narrative content.
 	MediaPlan media.MediaPlanSpec `json:"media_plan,omitempty"`
+}
+
+// DocumentsSpec is the transport-level document publication configuration.
+type DocumentsSpec struct {
+	Enabled   bool     `json:"enabled"`
+	Languages []string `json:"languages,omitempty"`
+	FolderID  string   `json:"folder_id,omitempty"`
 }
 
 // knownSourceTypes is the canonical set of script-side SourceType

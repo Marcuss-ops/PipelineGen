@@ -243,6 +243,10 @@ type OutputSpec struct {
 	// (ProcessorMetadata). See ExtractEntities comment for
 	// Toggle semantics.
 	GenerateMetadata Toggle `json:"generate_metadata,omitempty"`
+	// GenerateSceneImages enables the canonical per-scene AI image
+	// postprocessor. It is opt-in; omitted and disabled both leave the
+	// image processor out of the plan.
+	GenerateSceneImages Toggle `json:"generate_scene_images,omitempty"`
 
 	StockEnabled  Toggle              `json:"stock_enabled,omitempty"`
 	StockBindings []StockBindingInput `json:"stock_bindings,omitempty"`
@@ -299,7 +303,8 @@ type OutputSpec struct {
 // ToggleDisabled resolves to false). SaveToDB is intentionally out of scope.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities.AsBool() ||
-		o.GenerateMetadata.AsBool()
+		o.GenerateMetadata.AsBool() ||
+		o.GenerateSceneImages.AsBool()
 }
 
 // UnmarshalJSON decodes OutputSpec with Toggle tri-state support.
@@ -337,6 +342,9 @@ func (o *OutputSpec) UnmarshalJSON(data []byte) error {
 		if _, ok := raw["generate_metadata"]; !ok {
 			o.GenerateMetadata = ToggleDefault
 		}
+		if _, ok := raw["generate_scene_images"]; !ok {
+			o.GenerateSceneImages = ToggleDefault
+		}
 		if _, ok := raw["stock_enabled"]; !ok {
 			o.StockEnabled = ToggleDefault
 		}
@@ -370,6 +378,7 @@ func (o OutputSpec) MarshalJSON() ([]byte, error) {
 
 	hideIfDefault(&tmp.ExtractEntities)
 	hideIfDefault(&tmp.GenerateMetadata)
+	hideIfDefault(&tmp.GenerateSceneImages)
 	hideIfDefault(&tmp.StockEnabled)
 
 	return json.Marshal(tmp)

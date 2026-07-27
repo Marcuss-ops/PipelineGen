@@ -134,6 +134,9 @@ func registerAIBackedProcessors(
 			Logger:          log,
 			ArtlistFolder:   cfg.Drive.ArtlistFolder(),
 		}
+		if root.Repos != nil && root.Repos.ClipsRepo != nil {
+			clipSvc.RealtimeSvc = &sqliteRealtimeSearchAdapter{repo: root.Repos.ClipsRepo}
+		}
 		if root.Drive != nil && root.Drive.driveUploader != nil {
 			clipSvc.DriveSvc = &driveCheckServiceAdapter{
 				up: root.Drive.driveUploader,
@@ -154,6 +157,7 @@ func registerAIBackedProcessors(
 			zap.Bool("drive_svc", clipSvc.DriveSvc != nil),
 			zap.Bool("jobs_svc", clipSvc.JobsSvc != nil),
 			zap.Bool("assoc_svc", clipSvc.AssocSvc != nil),
+			zap.Bool("realtime_svc", clipSvc.RealtimeSvc != nil),
 			zap.Bool("artlist_folder", clipSvc.ArtlistFolder != ""),
 		)
 	}
@@ -182,24 +186,29 @@ func registerAIBackedProcessors(
 	// Gemma is used as a ranking strategy to choose among the closed
 	// candidate list returned by the resolver; on LLM failure the
 	// adapter deterministically falls back to the top-scoring candidate.
+	var visualPlanner adapters.VisualCandidatePlanner
 	if root.Search != nil && root.Search.SearchFanOut != nil && root.DB != nil {
 		resolver, err := WireMediaMemoryResolver(root.Search.SearchFanOut, root.DB.DB, log)
 		if err != nil {
 			return fmt.Errorf("register visual_planning: wire resolver: %w", err)
 		}
-		var planner adapters.VisualCandidatePlanner
 		if root.AI != nil && root.AI.ScriptGen != nil {
 			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-				planner = ollamaadapters.NewOllamaVisualPlannerAdapter(ollamaClient, log)
+				visualPlanner = ollamaadapters.NewOllamaVisualPlannerAdapter(ollamaClient, log)
 				log.Info("VisualCandidatePlanner wired with real Ollama backend")
 			}
 		}
-		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, planner, nil, log)) {
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, visualPlanner, nil, log)) {
 			return fmt.Errorf("register visual_planning processor: composition bug")
 		}
 		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
 	} else {
 		log.Warn("VisualPlanningProcessor: SearchFanOut or DB not available; postprocessor not registered")
+	}
+	// Timeline slots are resolver-local and must remain available for manual
+	// plans even when the external MediaMemory resolver is unavailable.
+	if !ppReg.Register(adapters.NewVisualSlotsProcessor(adapters.NewClosedVisualPlanner(visualPlanner))) {
+		return fmt.Errorf("register visual_slots processor: composition bug")
 	}
 
 	return nil

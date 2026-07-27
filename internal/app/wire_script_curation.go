@@ -94,6 +94,17 @@ type imageGenSvcAdapter struct {
 	}
 }
 
+// GenerateSmartImage preserves the optional smart-image capability across
+// the composition boundary. Without this forwarding method the adapter was
+// seen only as the generic SearchAndDownload port, so scene generation
+// bypassed the visual-prompt path in the ImageProcessor.
+func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+	if a == nil || a.svc == nil {
+		return nil, fmt.Errorf("image generation service is not configured")
+	}
+	return a.svc.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive)
+}
+
 // SearchAndDownload bridges the concrete *imgservice.Service
 // signature (returns *asset.ImageAsset) to the canonical
 // adapters.ImageGenService interface (returns

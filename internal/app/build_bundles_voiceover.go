@@ -378,15 +378,17 @@ func buildVoiceoverService(
 			SemanticTagger: semanticTagger,
 		},
 		Integration: voiceover.VoiceoverIntegrationDeps{
-			LifecycleService:   voLifecycle, // voiceover's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
-			AssetDestResolver:  destResolver,
-			OutboxEnqueuer:     outboxEnqueuer,
-			Translator:         translator,
+			LifecycleService:  voLifecycle, // voiceover's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
+			AssetDestResolver: destResolver,
+			OutboxEnqueuer:    outboxEnqueuer,
+			Translator:        translator,
+			LanguageRegistry:  languageRegistry,
+		},
+		Execution: voiceover.VoiceoverExecutionDeps{
 			Finalizer:          finalizer,
 			PostCommitVerifier: postCommitVerifier,
 			ProcessSegment:     processSeg,
 			ProcessItem:        processItemUseCase, // P0-#3 (July 2026): the canonical per-item use case the promo path routes through
-			LanguageRegistry:   languageRegistry,
 		},
 	})
 	// pylint: disable=unused

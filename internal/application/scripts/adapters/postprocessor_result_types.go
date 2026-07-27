@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -14,16 +15,17 @@ import (
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
-	DocID            string
-	DocLink          string
-	VisualPlans      []mediamemory.SceneVisualPlan
-	Entities         *scriptpkg.EntityResult
-	VidRushSegments  []scriptpkg.VidRushSegmentResult
-	VideoMetadata    []scriptpkg.VideoMetadata
-	Voiceovers       []SceneVoiceover
-	Scenes           []SceneImage
-	ScriptID         int64
-	AlreadyPersisted bool
+	DocID             string
+	DocLink           string
+	VisualPlans       []mediamemory.SceneVisualPlan
+	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities          *scriptpkg.EntityResult
+	VidRushSegments   []scriptpkg.VidRushSegmentResult
+	VideoMetadata     []scriptpkg.VideoMetadata
+	Voiceovers        []SceneVoiceover
+	Scenes            []SceneImage
+	ScriptID          int64
+	AlreadyPersisted  bool
 	// StageDurations maps processor name → wall-clock milliseconds
 	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
 	StageDurations map[string]int64 `json:"stage_durations,omitempty"`
@@ -76,16 +78,17 @@ type PipelineResult struct {
 
 // PostProcessResult carries the output of a single processor.
 type PostProcessResult struct {
-	DocID            string
-	DocLink          string
-	VisualPlans      []mediamemory.SceneVisualPlan
-	Entities         *scriptpkg.EntityResult
-	VidRushSegments  []scriptpkg.VidRushSegmentResult
-	Metadata         []scriptpkg.VideoMetadata
-	Voiceovers       []SceneVoiceover
-	SceneImages      []SceneImage
-	ScriptID         int64
-	AlreadyPersisted bool
+	DocID             string
+	DocLink           string
+	VisualPlans       []mediamemory.SceneVisualPlan
+	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities          *scriptpkg.EntityResult
+	VidRushSegments   []scriptpkg.VidRushSegmentResult
+	Metadata          []scriptpkg.VideoMetadata
+	Voiceovers        []SceneVoiceover
+	SceneImages       []SceneImage
+	ScriptID          int64
+	AlreadyPersisted  bool
 	// Changed is set by mutative processors (e.g. ClipBindingsProcessor)
 	// that modify input state but don't produce canonical output fields.
 	// When true, IsEmpty() returns false even if all output fields
@@ -133,6 +136,11 @@ func (r *PostProcessResult) IsEmpty() bool {
 	if r == nil {
 		return true
 	}
+	// A published document is observable output even when it does not
+	// mutate the SpecScene or populate another artifact collection.
+	if strings.TrimSpace(r.DocID) != "" || strings.TrimSpace(r.DocLink) != "" {
+		return false
+	}
 	// P1 #10 (June 2026): Changed flag lets mutative processors
 	// (e.g. ClipBindingsProcessor) signal "I did real work" without
 	// populating canonical output fields. Prevents false "empty
@@ -144,6 +152,9 @@ func (r *PostProcessResult) IsEmpty() bool {
 		if len(r.Entities.Persons) > 0 || len(r.Entities.Places) > 0 || len(r.Entities.Concepts) > 0 {
 			return false
 		}
+	}
+	if len(r.VisualAssignments) > 0 {
+		return false
 	}
 	if len(r.VidRushSegments) > 0 {
 		return false

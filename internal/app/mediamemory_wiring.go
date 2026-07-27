@@ -130,14 +130,11 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	// The cascade itself is the sole MediaMemoryResolutionPort
 	// implementation. It feeds raw candidates to the Brain.
 	cascade := mediamemory.NewVisualResolver(
-		concepts,
-		bindings,
-		adapter,
-		NoopSemanticLookup{},
-		mmRanker,
-		logAdapter,
-		mediamemory.RealClock(),
-		mediamemory.NoopMetrics(),
+		mediamemory.ResolverDeps{
+			Concepts: concepts, Bindings: bindings, External: adapter,
+			Semantic: NoopSemanticLookup{}, Ranker: mmRanker,
+			Log: logAdapter, Clock: mediamemory.RealClock(), Metrics: mediamemory.NoopMetrics(),
+		},
 	)
 
 	// Brain is the single orchestrator; the same MediaMemory ranker

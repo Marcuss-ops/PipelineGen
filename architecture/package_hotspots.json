@@ -138,6 +138,41 @@
       "targets": [
         "internal/application/scripts"
       ]
+    },
+    {
+      "path": "internal/api",
+      "owner": "transport boundary migration to internal/capabilities and internal/platform/httpserver",
+      "deadline": "2026-12-31",
+      "targets": [
+        "internal/capabilities",
+        "internal/platform/httpserver"
+      ]
+    },
+    {
+      "path": "internal/application",
+      "owner": "use-case migration to internal/capabilities while preserving typed application ports",
+      "deadline": "2026-12-31",
+      "targets": [
+        "internal/capabilities"
+      ]
+    },
+    {
+      "path": "internal/domain",
+      "owner": "domain contract migration to internal/kernel and capability-owned packages",
+      "deadline": "2026-12-31",
+      "targets": [
+        "internal/kernel",
+        "internal/capabilities"
+      ]
+    },
+    {
+      "path": "internal/infrastructure",
+      "owner": "adapter migration to internal/platform and capability-owned infrastructure packages",
+      "deadline": "2026-12-31",
+      "targets": [
+        "internal/platform",
+        "internal/capabilities"
+      ]
     }
   ]
 }

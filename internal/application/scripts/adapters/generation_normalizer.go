@@ -162,12 +162,11 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		item.ScriptParams.ImagesPerScene = cfg.DefaultImagesPerScene
 	}
 
-	// Voiceover group default. Populate to cfg.ChannelID when
-	// caller left it empty; the downstream voiceover.generate job
-	// reads VoiceoverGroup regardless of any inline toggle.
-	if strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
-		item.Output.VoiceoverGroup = cfg.ChannelID
-	}
+	// Voiceover is opt-in. Do not synthesize a voiceover_group from the
+	// memory channel: that legacy default enabled the inline voiceover
+	// processor for image/script-only requests and then failed with
+	// missing_folder_id. An explicit voiceover_group or
+	// voiceover_folder_id remains untouched and is resolved normally.
 
 	// Source defaults: NumClips derives from MaxClips.
 	if item.Source.NumClips <= 0 && item.Source.MaxClips > 0 {

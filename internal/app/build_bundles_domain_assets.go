@@ -143,18 +143,15 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		frameIndexer = qdrantmm.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
 	}
 
-	autotagSvc := autotag.NewService(
-		params.dbs.dualPool.Writer,
-		params.repos.Assets.Repository(),
-		params.process.VLMClient,
-		params.mutationsDisp,
-		enrichState,
-		params.log,
-		videoSampler,
-		visualVLM,
-		imageEmbedder,
-		frameIndexer,
-	)
+	autotagSvc := autotag.NewService(autotag.ServiceDeps{
+		DB: params.dbs.dualPool.Writer, Repo: params.repos.Assets.Repository(),
+		VLMClient: params.process.VLMClient, Dispatcher: params.mutationsDisp,
+		EnrichState: enrichState, Log: params.log,
+		VideoAnalysis: autotag.VideoAnalysisDeps{
+			Sampler: videoSampler, VLM: visualVLM,
+			ImageEmbedder: imageEmbedder, FrameIndexer: frameIndexer,
+		},
+	})
 
 	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(

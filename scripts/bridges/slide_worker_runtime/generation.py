@@ -60,7 +60,6 @@ from __future__ import annotations
 import os
 import time
 import traceback
-from dataclasses import dataclass, field
 from typing import Optional
 
 from playwright.sync_api import (
@@ -84,79 +83,7 @@ from .generation_persist import (
     step_refresh_baseline,
 )
 from .generation_template import build_context
-
-
-# ── GenerationContext (typed per-request state bundle) ────────────────────
-
-
-@dataclass
-class GenerationContext:
-    """Per-request mutable state bundle passed through the 7 step methods.
-
-    Field semantics are preserved byte-byte from the prior
-    `_GenerationContext` (private-leading-underscore) dataclass in
-    slide_worker.py. The public name removes the underscore so the
-    ProfileWorker slim thread + the wire-side consumers can reference
-    it without import-time scoping surprises.
-    """
-    request_id: str
-    prompt: str
-    original_prompt: str
-    prompt_text: str
-    output_path: str
-    style_id: str
-    generation_id: str
-    req_width: int
-    req_height: int
-    ratio: str
-    # Mutable fields set by steps:
-    image_mode_active: bool = False
-    ratio_selected: str = ""
-    baseline_candidates: list = field(default_factory=list)
-    baseline_src_set: set = field(default_factory=set)
-    matched_candidate_meta: Optional[dict] = None
-    natural_w: int = 0
-    natural_h: int = 0
-    complete: bool = False
-    image_bytes: bytes = b""
-    fetch_method: str = ""
-    saved: bool = False
-    saved_format: str = ""
-    candidate_records: list = field(default_factory=list)
-    pixel_stats: dict = field(default_factory=dict)
-    t0: float = 0.0
-
-
-# ── StepError (typed orchestrator failure surface) ─────────────────────────
-
-
-class StepError(Exception):
-    """Raised by a step method to surface a typed error to the orchestrator.
-
-    The orchestrator catches it once and returns the canonical typed
-    error response. `diag_extra` is merged into both the `error`
-    JSONL emission and the response dict so each error code path
-    preserves its specific forensic context.
-
-    `screenshot_path`, when passed as an empty string (""), suppresses
-    the helper's `_screenshot_on_failure` fallback (Fix D): original
-    `ErrNoImageCandidate` paths did NOT capture screenshots.
-    """
-    def __init__(
-        self,
-        code: str,
-        *,
-        screenshot_path=None,
-        diag_extra: Optional[dict] = None,
-        error_message: str = "",
-        **legacy_kwargs,
-    ):
-        super().__init__(f"{code}: {error_message}" if error_message else code)
-        self.code = code
-        self.screenshot_path = screenshot_path
-        self.error_message = error_message
-        self.diag_extra = dict(diag_extra or {})
-        self.diag_extra.update(legacy_kwargs)
+from .generation_types import GenerationContext, StepError
 
 
 # ── GenerationRunner (thin orchestrator) ───────────────────────────────────
@@ -344,10 +271,15 @@ class GenerationRunner:
             step_extract_image(self.session, ctx, self.profile_id)
         except StepError as e:
             extra = dict(e.diag_extra)
+            # Step layers historically put the human-readable error in
+            # diag_extra. Do not pass that key twice to the typed helper:
+            # timeout/error paths must remain serializable even when the
+            # layer supplied no separate StepError.error_message.
+            step_error_message = e.error_message or str(extra.pop("error_message", ""))
             if e.screenshot_path is not None:
                 extra.setdefault("screenshot_path", e.screenshot_path)
             return self._emit_failed_response(
-                ctx, e.code, error_message=e.error_message, **extra,
+                ctx, e.code, error_message=step_error_message, **extra,
             )
         except PlaywrightTimeout as e:
             return self._emit_failed_response(

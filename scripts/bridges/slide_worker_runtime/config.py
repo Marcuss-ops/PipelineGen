@@ -4,17 +4,19 @@ Per godlike/06 SSOT, every selector/limit/timeout lives here — never
 redeclare them inline at call sites. Operators override most limits
 via environment variables (see individual constant docstrings).
 
-Only the 6 constants that CURRENTLY EXIST in slide_worker.py are
-moved here in this commit. Scaffolding placeholders for
-DEFAULT_RATIO / GENERATION_TIMEOUT_SECONDS / POLL_INTERVAL_SECONDS /
-MIN_CANDIDATE_WIDTH / MIN_CANDIDATE_HEIGHT / MAX_GENERATIONS_BEFORE_RECYCLE
-are DELIBERATELY OMITTED — AGENTS.md forbids adding production
-features without an explicit user request backed by an existing
-reader. They will land in a future commit when an actual caller
-materialises that needs to consult the canonical value.
+The generation timeout is configurable because Google Slides AI generation
+can legitimately take longer than the old 60-second polling window.
 """
 
 import os
+
+
+# Google Slides may leave the panel in "Creazione in corso" for more than a
+# minute. Keep the timeout in the worker config so the polling contract has a
+# single operational owner and can be tuned without changing the selector.
+GENERATION_TIMEOUT_SECONDS = max(
+    60, int(os.environ.get("SLIDE_WORKER_GENERATION_TIMEOUT_SECONDS") or "180")
+)
 
 
 # ── Storage paths ──────────────────────────────────────────────────────────

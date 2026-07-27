@@ -76,13 +76,11 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		sourceLang = "en"
 	}
 
-	// Determine if Docs are enabled: when the caller explicitly
-	// provided languages and a drive_folder_id (or when
-	// output.languages is non-empty and docs are enabled via
-	// config), we consider docs enabled. The explicit contract
-	// is: docs are enabled when at least one language is
-	// specified for document output.
-	docsEnabled := len(languages) > 0
+	// Documents are opt-in through the canonical docs object. The output
+	// languages remain available for translation and are not a docs trigger.
+	docsEnabled := item.Docs.Enabled
+	docsLanguages := item.Docs.Languages
+	docsFolderID := item.Docs.FolderID
 
 	// Determine if rendering is enabled: render_video maps to
 	// the output.generate_timeline or a future render flag.
@@ -95,11 +93,29 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		SourceLanguage: sourceLang,
 		Languages:      languages,
 		RenderVideo:    renderVideo,
-		DocsEnabled:    docsEnabled,
-		DriveFolderID:  item.Output.DriveFolderID,
-		Title:          item.Title,
-		OutputName:     item.Title, // fallback: output name defaults to title
+		Docs: DocumentsConfig{
+			Enabled:   docsEnabled,
+			Languages: toLanguages(docsLanguages),
+			FolderID:  docsFolderID,
+		},
+		DocsEnabled:   docsEnabled,
+		DriveFolderID: docsFolderID,
+		Title:         item.Title,
+		OutputName:    item.Title, // fallback: output name defaults to title
 	}, nil
+}
+
+func toLanguages(src []string) []Language {
+	if src == nil {
+		return nil
+	}
+	dst := make([]Language, 0, len(src))
+	for _, lang := range src {
+		if lang != "" {
+			dst = append(dst, Language(lang))
+		}
+	}
+	return dst
 }
 
 // copyStrings returns a copy of the string slice (nil-safe).

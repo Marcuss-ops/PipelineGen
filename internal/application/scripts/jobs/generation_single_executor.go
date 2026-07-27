@@ -78,6 +78,13 @@ func (e *singleGenerationExecutor) Execute(
 	}
 
 	item := env.Items[0]
+	// The envelope-level control applies to every item. Carry it into the
+	// item plan consumed by the engine; otherwise the HTTP idempotency layer
+	// bypasses replay while the application generation cache still returns an
+	// exact hit.
+	if env.ForceRefresh {
+		item.ScriptParams.ForceRefresh = true
+	}
 
 	progressFn := appjobs.SafeProgressFn(tools)
 	eventFn := appjobs.SafeEventFn(tools)

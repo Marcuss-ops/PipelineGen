@@ -78,6 +78,9 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 			env.Items[i].ID = itemID
 			item.ID = itemID
 		}
+		if env.ForceRefresh {
+			item.ScriptParams.ForceRefresh = true
+		}
 		if ctx.Err() != nil {
 			childJobIDs[i] = ""
 			enqueueErrors++

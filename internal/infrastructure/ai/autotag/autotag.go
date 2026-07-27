@@ -46,6 +46,25 @@ type Service struct {
 	frameIndexer  mediamemory.KeyframeVisualIndexer
 }
 
+// ServiceDeps groups the persistence, inference and video-analysis ports
+// required by the auto-tagging workflow.
+type ServiceDeps struct {
+	DB            *sql.DB
+	Repo          asset.Repository
+	VLMClient     *vlm.Client
+	Dispatcher    mutations.AssetMutationDispatcher
+	EnrichState   enrichment.EnrichStateMachinePort
+	Log           *zap.Logger
+	VideoAnalysis VideoAnalysisDeps
+}
+
+type VideoAnalysisDeps struct {
+	Sampler       indexing.PercentageFrameSampler
+	VLM           indexing.VLMClient
+	ImageEmbedder qdrantsearch.ImageEmbedder
+	FrameIndexer  mediamemory.KeyframeVisualIndexer
+}
+
 // NewService constructs an autotag.Service. The dispatcher is the
 // canonical AssetMutationDispatcher (atomic media_assets UPSERT +
 // asset.index.requested outbox event) used to persist VLM metadata
@@ -57,29 +76,18 @@ type Service struct {
 // imageEmbedder, frameIndexer) enable the multi-frame VLM pipeline
 // for video assets. Pass nil to all four to keep the legacy
 // single-shot behaviour.
-func NewService(
-	db *sql.DB,
-	repo asset.Repository,
-	vlmClient *vlm.Client,
-	dispatcher mutations.AssetMutationDispatcher,
-	enrichState enrichment.EnrichStateMachinePort,
-	log *zap.Logger,
-	videoSampler indexing.PercentageFrameSampler,
-	visualVLM indexing.VLMClient,
-	imageEmbedder qdrantsearch.ImageEmbedder,
-	frameIndexer mediamemory.KeyframeVisualIndexer,
-) *Service {
+func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		db:            db,
-		repo:          repo,
-		vlmClient:     vlmClient,
-		dispatcher:    dispatcher,
-		enrichState:   enrichState,
-		log:           log,
-		videoSampler:  videoSampler,
-		visualVLM:     visualVLM,
-		imageEmbedder: imageEmbedder,
-		frameIndexer:  frameIndexer,
+		db:            deps.DB,
+		repo:          deps.Repo,
+		vlmClient:     deps.VLMClient,
+		dispatcher:    deps.Dispatcher,
+		enrichState:   deps.EnrichState,
+		log:           deps.Log,
+		videoSampler:  deps.VideoAnalysis.Sampler,
+		visualVLM:     deps.VideoAnalysis.VLM,
+		imageEmbedder: deps.VideoAnalysis.ImageEmbedder,
+		frameIndexer:  deps.VideoAnalysis.FrameIndexer,
 	}
 }
 

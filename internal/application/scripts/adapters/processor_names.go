@@ -41,6 +41,7 @@ const (
 	ProcessorClipBindings   ProcessorName = "clip_bindings"
 	ProcessorStockBindings  ProcessorName = "stock_bindings"
 	ProcessorVisualPlanning ProcessorName = "visual_planning"
+	ProcessorVisualSlots    ProcessorName = "visual_slots"
 	ProcessorVoiceover      ProcessorName = "voiceover"
 	ProcessorImages         ProcessorName = "images"
 	ProcessorInternetImages ProcessorName = "internet_images"
@@ -68,6 +69,7 @@ var canonicalDescriptors = []ProcessorDescriptor{
 	{Name: ProcessorClipBindings, Policy: ProcessorBestEffort, Order: 4, Active: true},
 	{Name: ProcessorStockBindings, Policy: ProcessorRequired, Order: 5, Active: true},
 	{Name: ProcessorVisualPlanning, Policy: ProcessorBestEffort, Order: 6, Active: true},
+	{Name: ProcessorVisualSlots, Policy: ProcessorBestEffort, Order: 7, Active: true},
 	{Name: ProcessorVoiceover, Policy: ProcessorBestEffort, Order: 7, Active: true},
 	{Name: ProcessorImages, Policy: ProcessorBestEffort, Order: 8, Active: true},
 	{Name: ProcessorInternetImages, Policy: ProcessorBestEffort, Order: 9, Active: true},
