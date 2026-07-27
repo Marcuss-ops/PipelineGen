@@ -4,6 +4,7 @@ package script
 // Entity is one item extracted by the entities processor.
 type Entity struct {
 	Value string  `json:"value"`
+	Type  string  `json:"type,omitempty"`
 	Score float32 `json:"score,omitempty"`
 }
 
