@@ -1,9 +1,9 @@
 audit:
     manifest_version: sharded-migration-v1
-    total_records: 15
+    total_records: 13
     by_status:
         removed: 0
-        in_progress: 12
+        in_progress: 10
         keep: 2
         other: 1
     by_migration_phase:

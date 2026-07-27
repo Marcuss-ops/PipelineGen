@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -254,8 +253,9 @@ func TestGenerate_ActiveKeyDerivedFromFingerprint(t *testing.T) {
 
 	var env scriptpkg.GenerationEnvelopeV2
 	require.NoError(t, json.Unmarshal([]byte(body), &env))
-	wantFingerprint := adapters.BuildEnvelopeIdentity(&env)
-	sum := sha256.Sum256([]byte(wantFingerprint))
+	wantPayload, err := json.Marshal(env)
+	require.NoError(t, err)
+	sum := sha256.Sum256(wantPayload)
 	wantHash := hex.EncodeToString(sum[:])
 	require.NotNil(t, submit.lastReq)
 	assert.Equal(t, wantHash, submit.lastReq.RequestHash)

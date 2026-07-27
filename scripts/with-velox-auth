@@ -24,4 +24,12 @@ if [[ ! "$VELOX_ADMIN_TOKEN" =~ ^[a-fA-F0-9]{64}$ ]]; then
     exit 2
 fi
 
+if [[ -z "${METRICS_AUTH_TOKEN:-}" && -r "$TOKEN_FILE" ]]; then
+    METRICS_AUTH_TOKEN="$(
+        sed -n 's/^METRICS_AUTH_TOKEN=//p' "$TOKEN_FILE" |
+        tail -n 1
+    )"
+    export METRICS_AUTH_TOKEN
+fi
+
 exec "$@"

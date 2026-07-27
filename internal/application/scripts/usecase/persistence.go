@@ -102,6 +102,9 @@ func buildGenerationResult(
 	if postResult != nil {
 		if len(postResult.VidRushSegments) > 0 {
 			result.Segments = adapters.FinalizeVidRushBindings(postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings)
+			if cacheHit {
+				promoteCachedVidRushStates(result.Segments)
+			}
 			result.Cache.Segments = make(map[string]scriptpkg.SegmentCacheState, len(result.Segments))
 			for _, seg := range result.Segments {
 				if strings.TrimSpace(seg.SegmentID) == "" {
@@ -177,6 +180,27 @@ func buildGenerationResult(
 
 	result.Source = sourceTrace
 	return result
+}
+
+// promoteCachedVidRushStates marks derived VidRush data as an exact cache hit
+// when the canonical script cache returned the complete postprocessed result.
+// BYPASSED is deliberately preserved: it records an explicit provider policy,
+// not a cache miss.
+func promoteCachedVidRushStates(segments []scriptpkg.VidRushSegmentResult) {
+	for i := range segments {
+		if segments[i].Cache.Extraction != "BYPASSED" {
+			segments[i].Cache.Extraction = "HIT_EXACT"
+		}
+		if segments[i].Cache.Artlist != "BYPASSED" {
+			segments[i].Cache.Artlist = "HIT_EXACT"
+		}
+		if segments[i].Cache.InternetImages != "BYPASSED" {
+			segments[i].Cache.InternetImages = "HIT_EXACT"
+		}
+		if segments[i].Cache.Binding != "BYPASSED" {
+			segments[i].Cache.Binding = "HIT_EXACT"
+		}
+	}
 }
 
 func scriptCacheStatus(status string) string {

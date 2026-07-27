@@ -12,9 +12,7 @@
 // that NewScriptFlowHandler never read (Engine / Image / Realtime /
 // Association / Voiceover / AssetTree / ClipSourceBuilder /
 // MediaCurator / Harvest / ScriptsRepo / DriveScriptsGenFolder /
-// ClipServices) + removed the 4 facade delegator methods on
-// ScriptFlowHandler (GetVoiceoverService + GetGroupsResolver +
-// ResolveDriveFolderID + MaybeCreateGoogleDoc) + removed the
+// ClipServices) + removed the former facade delegator methods and
 // ScriptDescriptor.Handler field (defensive — the 6 non-HTTP
 // methods have ZERO external callers at HEAD).
 //
@@ -145,10 +143,8 @@ type ScriptFlowDeps struct {
 //     routes that always 503 are fake-availability).
 //   - voService + groupsResolver + driveFolderClient + documentCreator:
 //     the 4 facade delegator methods on ScriptFlowHandler had
-//     ZERO external callers per audit-pin (flow.go:88); the
-//     FacadeHandler type is preserved as the canonical owner
-//     of the 4 real impls (godlike/06 SSOT) — only the
-//     ScriptFlowHandler delegators are removed.
+//     ZERO external callers; the compatibility facade was removed
+//     together with the delegators.
 func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	log := deps.Jobs.Log
 	if log == nil {

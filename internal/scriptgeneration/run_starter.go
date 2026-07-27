@@ -32,6 +32,7 @@ import (
 // then returns 202 with current_stage.
 type GenerationRunStarter struct {
 	runner *Runner
+	repo   RunRepository
 }
 
 // NewGenerationRunStarter constructs the starter with a runner for
@@ -43,6 +44,16 @@ func NewGenerationRunStarter(runner *Runner) *GenerationRunStarter {
 	}
 }
 
+// NewGenerationRunStarterWithRepo constructs the transport-side starter with
+// durable run persistence. The runner is optional because the canonical job
+// worker may own execution; the run must still be created before submission.
+func NewGenerationRunStarterWithRepo(runner *Runner, repo RunRepository) *GenerationRunStarter {
+	if repo == nil {
+		panic("scriptgeneration: RunRepository is required")
+	}
+	return &GenerationRunStarter{runner: runner, repo: repo}
+}
+
 // Start creates a GenerationRun with the pipeline's initial stage
 // and launches the Runner.Execute() in a background goroutine.
 // The run is created in-memory (no DB write); the runner persist
@@ -50,7 +61,7 @@ func NewGenerationRunStarter(runner *Runner) *GenerationRunStarter {
 //
 // Returns the run so the handler can include current_stage in the
 // 202 Accepted response.
-func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) *GenerationRun {
+func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) (*GenerationRun, error) {
 	now := time.Now().UTC()
 	run := &GenerationRun{
 		ID:           "run_" + uuid.New().String(),
@@ -60,6 +71,11 @@ func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) *
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+	if s.repo != nil {
+		if err := s.repo.Create(ctx, run); err != nil {
+			return nil, err
+		}
+	}
 
 	// Launch the runner in a background goroutine.
 	// The runner reads the run from repo, sets RUNNING status,
@@ -68,5 +84,19 @@ func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) *
 		go s.runner.Execute(context.Background(), run.ID, req)
 	}
 
-	return run
+	return run, nil
+}
+
+// SetJobID persists the worker-assigned job identity after submission.
+func (s *GenerationRunStarter) SetJobID(ctx context.Context, runID, jobID string) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	setter, ok := s.repo.(interface {
+		SetJobID(context.Context, string, string) error
+	})
+	if !ok {
+		return nil
+	}
+	return setter.SetJobID(ctx, runID, jobID)
 }

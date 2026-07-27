@@ -63,8 +63,7 @@ type PhraseTranslator interface {
 // PhraseAssetSearcher embeds the canonical Phase 3 AssetSearchPort.
 // The service uses SearchAssets per-phrase with Source="artlist" +
 // MediaType="video" to match the legacy realtime-search contract
-// (SearchScriptAssets in internal/api/script/flow.go, which the
-// pre-PR artlistClipSearchAdapter delegated to).
+// (SearchScriptAssets in the canonical scripts/usecase package).
 //
 // godlike/06 SSOT: the embed preserves the Phase 3 migration
 // discipline — the artlist_phrase package does NOT redefine the

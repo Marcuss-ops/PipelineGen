@@ -74,8 +74,21 @@ func (p *ClipSearchProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Proces
 // VidRush payload. On searcher error (unavailable adapter), returns
 // a warning.
 func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+	if plan == nil {
 		return &PostProcessResult{}, nil
+	}
+	if !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
+		for _, segment := range input.VidRushSegments {
+			segments = append(segments, cloneVidRushSegmentResult(segment))
+		}
+		for i := range segments {
+			segments[i].Cache.Artlist = "BYPASSED"
+		}
+		if len(segments) == 0 {
+			return &PostProcessResult{}, nil
+		}
+		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
 	if p.searcher == nil {
 		return &PostProcessResult{

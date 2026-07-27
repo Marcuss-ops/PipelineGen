@@ -7,7 +7,7 @@
 // composition root with feature flags and a prebuilt feature guard,
 // so this transport file has no concrete configuration imports.
 // Forwarding type aliases for application-side services were deleted:
-// callers in flow.go / handler_flow.go use usecase.* directly.
+// callers in handler_flow.go use usecase.* directly.
 package script
 
 import (

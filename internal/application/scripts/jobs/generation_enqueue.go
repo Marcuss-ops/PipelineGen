@@ -95,7 +95,7 @@ func EnqueueGenerationJob(
 
 	// Issue 5 (P1): trim ActiveKey defensively so the helper-side
 	// Match remains deterministic regardless of caller path (HTTP header
-	// driven from handler_generate.go::Generate, internal RPC, or future
+	// driven from the canonical generate handler or internal RPC.
 	// CLI smoke). Whitespace in ActiveKey would cause JobsService.Enqueue's
 	// FindActiveByKey dedup lookup to silently miss a real matching
 	// active key, breaking the idempotency contract.

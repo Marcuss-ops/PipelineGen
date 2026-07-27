@@ -12,11 +12,8 @@
 //     populated by NewScriptFlowHandler so the routes always
 //     returned 503; godlike/07 no-fake-availability: routes that
 //     always 503 are fake-availability).
-//   - 4 facade delegator methods (GetVoiceoverService +
-//     GetGroupsResolver + ResolveDriveFolderID + MaybeCreateGoogleDoc)
-//     + facade field (ZERO external callers per audit-pin in
-//     flow.go:88; the FacadeHandler type remains as the canonical
-//     owner of the 4 real impls).
+//   - the former facade delegators and facade field (they had no
+//     external callers and were removed with the compatibility layer).
 //
 // Construction seam (`*ScriptFlowHandler` from `ScriptFlowDeps`) +
 // ScriptFlowDeps itself live in handler_deps.go
