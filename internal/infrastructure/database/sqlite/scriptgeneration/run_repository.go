@@ -107,6 +107,21 @@ func (r *SQLiteRunRepository) Create(ctx context.Context, run *scriptgen.Generat
 	return nil
 }
 
+// SetJobID binds the worker-assigned job to the already-created generation
+// run. The run is created before submission, so this is a separate update.
+func (r *SQLiteRunRepository) SetJobID(ctx context.Context, runID, jobID string) error {
+	if runID == "" || jobID == "" {
+		return errors.New("scriptgeneration: SetJobID: runID and jobID are required")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE pipeline_runs SET job_id = ?, updated_at = ? WHERE id = ?
+	`, jobID, time.Now().UTC().Format(time.RFC3339), runID)
+	if err != nil {
+		return fmt.Errorf("scriptgeneration: SetJobID(run_id=%q): %w", runID, err)
+	}
+	return nil
+}
+
 // Get retrieves a GenerationRun by its run ID.
 func (r *SQLiteRunRepository) Get(ctx context.Context, runID string) (*scriptgen.GenerationRun, error) {
 	if runID == "" {

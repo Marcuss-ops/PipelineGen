@@ -31,8 +31,21 @@ func (p *InternetImagesProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Pr
 }
 
 func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+	if plan == nil {
 		return &PostProcessResult{}, nil
+	}
+	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
+		for _, segment := range input.VidRushSegments {
+			segments = append(segments, cloneVidRushSegmentResult(segment))
+		}
+		for i := range segments {
+			segments[i].Cache.InternetImages = "BYPASSED"
+		}
+		if len(segments) == 0 {
+			return &PostProcessResult{}, nil
+		}
+		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
 	if p.searcher == nil {
 		return &PostProcessResult{

@@ -13,7 +13,7 @@ deprecations:
         internal/app/clips_adapters_drive.go + internal/app/adapters_voiceover_publisher.go +
         internal/app/adapters_infra.go + internal/app/module_media_ingest.go +
         cmd/archcheck/scan/percheck_driveaccess.go (scanner enforcement) +
-        architecture/deprecations.yaml (this entry).
+        architecture/deprecations/records/drive.yaml (this entry).
       file_line: various (4 adapters + 3 construction sites + scanner + manifest)
       replacement: |
         drive.FileLifecycle.{Trash,Delete,Rename} — the canonical Pattern 0 port for

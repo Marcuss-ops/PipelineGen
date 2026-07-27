@@ -111,11 +111,10 @@ verify-go:
 # so a slow E2E never blocks `make verify-unit`; ops batteries there are
 # also free to depend on external services (Drive, Qdrant, scraper).
 #
-# Composition rule (July 2026 verify-main refactor — STEP 2/4 WIP):
-# verify-unit MUST NOT trigger any ./tests/... run. The four sub-targets
+# Composition rule: verify-unit MUST NOT trigger any ./tests/... run. The
+# four sub-targets
 # are pure unit tests (domain, application, infrastructure, api, commands,
-# pkg). NOTE: verify-main still routes through `verify-go` (which transitively
-# includes verify-go-tests) until STEP 3/4 lands.
+# pkg). Operational tests are owned by verify-integration.
 VERIFY_JOBS ?= 2
 
 verify-unit-fast:

@@ -18,8 +18,7 @@ import (
 )
 
 // SearchMaxHits is the canonical cap on per-phrase search results.
-// Matches the legacy SearchScriptAssets(ctx, svc, queries, targets, 2)
-// limit argument (internal/api/script/flow.go::SearchScriptAssets).
+// Matches the canonical SearchScriptAssets limit of two results.
 const SearchMaxHits = 2
 
 // PhraseAssetSearchService folds the artlist-phrase preprocessing

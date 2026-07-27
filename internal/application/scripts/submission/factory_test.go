@@ -7,7 +7,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	scriptdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -80,19 +79,18 @@ func TestSubmitRequestFactory_Build(t *testing.T) {
 		t.Fatalf("expected max retries 3, got %d", req.JobMaxRetries)
 	}
 
-	// Request hash must equal sha256(BuildEnvelopeIdentity(env)) in hex.
-	fingerprint := adapters.BuildEnvelopeIdentity(env)
-	sum := sha256.Sum256([]byte(fingerprint))
+	// Request hash must cover the complete canonical JSON payload.
+	wantPayload, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	sum := sha256.Sum256(wantPayload)
 	wantHash := hex.EncodeToString(sum[:])
 	if req.RequestHash != wantHash {
 		t.Fatalf("expected request hash %s, got %s", wantHash, req.RequestHash)
 	}
 
 	// JobPayload must be the marshalled envelope.
-	wantPayload, err := json.Marshal(env)
-	if err != nil {
-		t.Fatalf("marshal envelope: %v", err)
-	}
 	if string(req.JobPayload) != string(wantPayload) {
 		t.Fatalf("expected job payload %s, got %s", string(wantPayload), string(req.JobPayload))
 	}

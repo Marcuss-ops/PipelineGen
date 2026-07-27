@@ -1,4 +1,4 @@
-// Package scripts — ScriptInsightBuilder extracted from api/script/flow.go (PR2, June 2026).
+// Package scripts — ScriptInsightBuilder owns the canonical script insight flow.
 //
 // PG-029 (June 2026): ScriptInsights struct consolidated here from the
 // now-deleted types.go.

@@ -105,7 +105,7 @@ Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifa
 - `architecture/ownership.generated.yaml` is the generated capability ownership view.
 - `architecture/current.yaml` contains active exceptions only.
 - `architecture/issues.yaml` contains unresolved cross-package issues.
-- `architecture/deprecations.yaml` contains live compatibility removals only.
+- `architecture/deprecations/` contains live compatibility removals only.
 - `docs/api/ACTIVE_API_GENERATED.md` is the generated route surface.
 - `docs/architecture/godlike/INDEX.md` is the central navigation map for the 5 godlike governance docs (ownership, zero-legacy, CI gates, agent playbook, feature removal).
 

@@ -292,11 +292,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	} else {
 		log.Warn("wireScriptFlow: root.DB is nil — script generation run repository not wired")
 	}
+	if runRepo == nil {
+		return fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
+	}
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
 			Submission:    submissionSvc,
-			GenRunStarter: nil, // wired below when runRepo is available
+			GenRunStarter: scriptgen.NewGenerationRunStarterWithRepo(nil, runRepo),
 			Factory:       submission.NewSubmitRequestFactory(),
 			Log:           log,
 			Validator:     usecase.NewPayloadValidator(cfg.Scripts),

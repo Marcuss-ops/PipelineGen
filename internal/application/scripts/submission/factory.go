@@ -75,11 +75,14 @@ func (f *SubmitRequestFactory) Build(cmd GenerateCommand) (opsapp.SubmitRequest,
 		return opsapp.SubmitRequest{}, fmt.Errorf("%w: %v", ErrMarshalEnvelope, err)
 	}
 
-	fingerprint := adapters.BuildEnvelopeIdentity(cmd.Envelope)
-	if fingerprint == "" {
+	if adapters.BuildEnvelopeIdentity(cmd.Envelope) == "" {
 		return opsapp.SubmitRequest{}, ErrInvalidEnvelopeIdentity
 	}
-	sum := sha256.Sum256([]byte(fingerprint))
+	// Idempotency compares the complete request payload. The generation
+	// fingerprint intentionally omits transport/editorial fields such as
+	// title, but a reused key with a changed title is still a different
+	// HTTP payload and must conflict.
+	sum := sha256.Sum256(payload)
 	requestHash := hex.EncodeToString(sum[:])
 
 	policy, err := f.policy.Resolve(scriptpkg.TypeGenerate)

@@ -101,7 +101,7 @@ smoke_cleanup() {
 }
 
 # ── Effective API base + tunables ─────────────────────────────────────────
-SMOKE_API_BASE="${API_BASE:-127.0.0.1:${VELOX_PORT:-8080}}"
+SMOKE_API_BASE="${API_BASE:-127.0.0.1:${VELOX_PORT:-8000}}"
 SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-180}"
 SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-120}"
 SMOKE_POLL_INTERVAL_SECONDS="${SMOKE_POLL_INTERVAL_SECONDS:-2}"
@@ -252,7 +252,7 @@ smoke_curl() {
     local code
     local idem_headers=()
     if [[ "$method" != "GET" ]]; then
-        idem_headers=(-H "Idempotency-Key: $(smoke_gen_uuid)")
+        idem_headers=(-H "Idempotency-Key: ${SMOKE_IDEMPOTENCY_KEY:-$(smoke_gen_uuid)}")
     fi
     code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
         -X "$method" \
@@ -290,7 +290,7 @@ smoke_poll_terminal() {
             return 1
         fi
         local status
-        status=$(jq -r '.status // "?"' "$SMOKE_LAST_BODY")
+        status=$(jq -r '.status // .job.status // "?"' "$SMOKE_LAST_BODY")
         SMOKE_LAST_STATUS="$status"
         case "$status" in
             completed|SUCCEEDED|failed|FAILED|cancelled|dead_letter) return 0 ;;

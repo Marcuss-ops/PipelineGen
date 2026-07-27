@@ -20,26 +20,10 @@ verify-base: go-version-check verify-no-secrets verify-format tidy-check
 	@echo "✅ Base verification passed"
 
 # verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
-# Node), secrets, formatting, and module tidiness. Runs in seconds.
-# ADDITIVE on top of verify-base: the only behavioural difference is the
-# addition of node-version-check, which test-js / verify-node / the artlist
-# gate have required since July 2026. Callers that do not run Node (legacy
-# CI images, Go-only runners) keep using verify-base; new code paths and
-# the dev-loop should prefer verify-foundation.
-#
-# NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
-# (the "non sostitutivi" constraint of the refactor). When adding/removing
-# a prereq here, mirror it in verify-base above to prevent drift between
-# the two chains.
-# verify-foundation — cheapest pre-flight gate: toolchain versions (Go +
 # Node), secrets, formatting, module tidiness, AND hook syntax. Runs in
-# seconds. ADDITIVE on top of verify-base: the only behavioural
-# differences are the addition of node-version-check (required by
-# test-js / verify-node / the artlist gate since July 2026) and the
-# hook-syntax lint below (added after commit 8459c5d4f wired pre-push).
-# Callers that do not run Node (legacy CI images, Go-only runners) keep
-# using verify-base; new code paths and the dev-loop should prefer
-# verify-foundation.
+# seconds. It is the Node-aware foundation used by verify-fast and the
+# pre-push chain; verify-base remains the Go-only foundation for callers
+# that deliberately do not require Node.
 #
 # bash -n lint on the canonical hooks (scripts/hooks/pre-push +
 # scripts/hooks/pre-commit): catches a syntactic break in any hook
@@ -90,8 +74,7 @@ verify-push: verify-fast verify-unit-fast verify-changed
 
 verify-unit-race: verify-unit
 
-# verify-main — pre-push gate (STEP 3/4 of the verify-main refactor,
-# July 2026): the canonical fail-closed chain that runs before every
+# verify-main — canonical fail-closed pre-push chain.
 verify-main: verify-push verify-unit-race verify-node verify-architecture
 	@echo "✅ verify-main passed"
 

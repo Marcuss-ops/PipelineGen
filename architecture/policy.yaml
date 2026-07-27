@@ -178,7 +178,7 @@ prometheus_boundary:
 
     Historical case the rule was extracted from: pkg/workerstats
     (eliminated 2026-06-30, Blocco 2.B, deprecation record
-    `architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL`)
+    `architecture/deprecations/`)
     was the FIRST detailed entry under leaf pkg governance because Option
     A (aliasing metric vars into the sampler pkg) was a tempting shim.
     The Option B decision codified here forecloses Option A permanently.
@@ -189,7 +189,7 @@ prometheus_boundary:
     equivalent in scripts/ci-architectural-checks.sh) is a future wave
     entry to be tracked via architecture/current.yaml#follow_up_tickets.
   cross_refs:
-    origin_record: architecture/deprecations.yaml#PR-WORKERSTATS-ELIMINATE-FAKE-AVAIL
+    origin_record: architecture/deprecations/
     metrics_home: internal/infrastructure/observability/worker_metrics.go
     pkg_layer:    pkg/ (the leaf-utility gate per `pkg:` rule above)
 

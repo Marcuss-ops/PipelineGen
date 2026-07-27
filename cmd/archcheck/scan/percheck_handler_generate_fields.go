@@ -38,9 +38,7 @@ import (
 
 // handlerGenerateFieldScanScope is the SINGLE file we audit
 // (godlike/06 SSOT: one owner per fact). The canonical
-// script.generate handler struct lives in handler_generate_handler.go;
-// the handler_generate.go file in the same package is a
-// package-doc sentinel (zero declarations).
+// script.generate handler struct lives in handler_generate_handler.go.
 const handlerGenerateFieldScanScope = "internal/api/script/handler_generate_handler.go"
 
 // handlerGenerateFieldRule is the rule-family id.

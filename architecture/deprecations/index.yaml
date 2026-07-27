@@ -1,6 +1,6 @@
 schema_version: 1
 source_directory: architecture/deprecations
-total_records: 15
+total_records: 13
 records:
     - bucket: assets
       file: records/assets.yaml
@@ -16,7 +16,7 @@ records:
       count: 1
     - bucket: scripts
       file: records/scripts.yaml
-      count: 3
+      count: 1
     - bucket: translation
       file: records/translation.yaml
       count: 0
