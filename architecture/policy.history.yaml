@@ -82,3 +82,31 @@ target_internal_roots:
         rule". The stockpipeline package itself is NOT retired in this
         commit; the 5-subzone structural split is the next commit
         (PR-STOCKPIPELINE-PHASE-SPLIT forward-pointer).
+
+# Strict-file-line cap history -----------------------------------------------
+# Forward-prevention gate introduced alongside the legacy hard-cap gate.
+# Walks the same surface (internal/ + cmd/) but at a stricter 600-LOC soft
+# threshold so files reach the "please split" signal before crossing the
+# 1000-LOC hard ceiling. Allowlisted via docs/migrations/max-lines-strict-
+# allowlist.txt (the canonical escape hatch per godlike/07 §"Temporary
+# deprecation record"). Initial population = 15 files >600 LOC from the
+# JSON baseline (cmd/admin/qdrant_readiness.go 1466 down to
+# internal/app/assets_register_sourcing.go 607); whole-block deadline
+# 2026-09-15 (Wave-23 cleanup cadence).
+max_lines_per_file_strict:
+  current: 600
+  history:
+    - date: "2026-07-27"
+      change: "introduced"
+      note: |
+        New soft-warning guardrail introduced July 2026 per godlike/08
+        §"Mandatory checks" forward-prevention gate. Distinct from the
+        legacy max_lines_per_file=1000 hard cap: the 600-LOC threshold
+        fires BEFORE files cross the 1000 hard line, giving operators a
+        400-LOC safety margin to split cohesively. Initial population =
+        15 .go files >600 LOC documented in
+        docs/migrations/max-lines-strict-allowlist.txt with per-entry
+        owner + 2026-09-15 deadline annotations. Promotion to a hard
+        gate (i.e. `max_lines_per_file_strict` added to architecture/
+        policy.yaml::hard_gates) is a separate, future PR — Phase 0
+        default is `warn` severity (report-only).

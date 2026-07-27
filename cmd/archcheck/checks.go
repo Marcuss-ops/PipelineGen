@@ -52,6 +52,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			scan.ScanPackagesForMode(root, pol, r, fileLines, productionOnly)
 			scan.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
+		{"file_size_strict", scan.ScanFileLinesStrict},
 		{"percheck_asset_state_canonical_14", scan.ScanAssetStateCanonical14},
 		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
 		{"percheck_157_asset_state_migration_default_wire", scan.ScanAssetStateMigration157DefaultWire},

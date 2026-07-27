@@ -20,6 +20,8 @@ type fieldBinding struct {
 var policyBindings = map[string]fieldBinding{
 	"max_files_per_package":           intBinding("MaxFilesPerPackage", "scan.ScanPackages", func(p *Policy, n int) { p.MaxFilesPerPackage = n }),
 	"max_lines_per_file":              intBinding("MaxLinesPerFile", "scan.ScanPackages", func(p *Policy, n int) { p.MaxLinesPerFile = n }),
+	"max_lines_per_file_strict":       intBinding("MaxLinesPerFileStrict", "scan.ScanFileLinesStrict", func(p *Policy, n int) { p.MaxLinesPerFileStrict = n }),
+	"max_lines_strict_allowlist":      stringBinding("MaxLinesStrictAllowlist", "scan.ScanFileLinesStrict", func(p *Policy, v string) { p.MaxLinesStrictAllowlist = v }),
 	"cmd_main_max_lines":              intBinding("CmdMainMaxLines", "scan.ScanCommandBinaries", func(p *Policy, n int) { p.CmdMainMaxLines = n }),
 	"max_constructor_deps":            intBinding("MaxConstructorDeps", "scan.ScanConstructors", func(p *Policy, n int) { p.MaxConstructorDeps = n }),
 	"max_struct_deps":                 intBinding("MaxStructDeps", "scan.ScanStructDeps", func(p *Policy, n int) { p.MaxStructDeps = n }),
