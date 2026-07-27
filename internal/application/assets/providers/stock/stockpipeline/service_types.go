@@ -146,6 +146,16 @@ type SourceCacheDeps struct {
 	LocalFS LocalFSPort
 }
 
+// DeliveryDeps groups the ports that complete and publish a stock run.
+// Keeping this boundary explicit prevents the service constructor from
+// growing a flat list of cross-cutting delivery concerns.
+type DeliveryDeps struct {
+	Publisher     delivery.Publisher
+	FolderCreator StockFolderCreator
+	DriveReader   DriveReaderPort
+	Finalizer     finalization.JobFinalizer
+}
+
 // DriveReaderPort is the Google Drive read-side port used by the
 // stock pipeline to download a single file and to list the contents
 // of a Drive folder (so a folder URL can be expanded to the first
@@ -162,25 +172,10 @@ type Deps struct {
 	// Delete etc.) was retired (override brutal). Folder resolution
 	// inside the pipeline run uses publisher.ResolveFolder
 	// (DestinationStock policy) instead of driveutil.EnsureFolderPath.
-	Runtime       RuntimeDeps
-	Publisher     delivery.Publisher
-	FolderCreator StockFolderCreator
-	Storage       StorageDeps
-	Media         MediaDeps
-	Execution     ExecutionDeps
-	SourceCache   SourceCacheDeps
-
-	// DriveReader provides file download + folder listing for Google
-	// Drive source URLs. OPTIONAL — when nil, Drive source URLs fail
-	// closed at staging time.
-	DriveReader DriveReaderPort
-
-	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
-	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes
-	// it OPTIONAL — nil routing keeps the legacy return-map path
-	// alive for un-wired composition roots. §F.2 follow-up makes
-	// it REQUIRED + wires the *finalizer.Finalizer concrete at
-	// the composition root (currently routed via imageSvc per
-	// registry_internal_modules.go::registerInternalModules).
-	Finalizer finalization.JobFinalizer
+	Runtime     RuntimeDeps
+	Storage     StorageDeps
+	Media       MediaDeps
+	Execution   ExecutionDeps
+	SourceCache SourceCacheDeps
+	Delivery    DeliveryDeps
 }

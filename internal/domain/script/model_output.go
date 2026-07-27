@@ -17,6 +17,8 @@ package script
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Scene kind ─────────────────────────────────────────────────────
@@ -158,6 +160,10 @@ type SpecSceneOutput struct {
 	// Scenes is the ordered list of scenes. May be empty for pure
 	// prose generation where no scene breakdown is expected.
 	Scenes []SpecScene `json:"scenes"`
+
+	// VisualAssignments contains independent intro/post-segment timeline
+	// selections alongside the per-scene bindings.
+	VisualAssignments []media.VisualAssignment `json:"visual_assignments,omitempty"`
 }
 
 // Validate checks structural invariants on the specscene block.

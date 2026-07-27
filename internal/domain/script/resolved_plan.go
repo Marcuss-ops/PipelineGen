@@ -135,6 +135,9 @@ type ResolvedGenerationPlan struct {
 
 	// ── Output ────────────────────────────────────────────────────────
 	DriveFolderID     string              `json:"drive_folder_id,omitempty"`
+	DocsEnabled       bool                `json:"docs_enabled,omitempty"`
+	DocsLanguages     []string            `json:"docs_languages,omitempty"`
+	DocsFolderID      string              `json:"docs_folder_id,omitempty"`
 	VoiceoverGroup    string              `json:"voiceover_group,omitempty"`
 	VoiceoverFolderID string              `json:"voiceover_folder_id,omitempty"`
 	MaxChars          int                 `json:"max_chars,omitempty"`

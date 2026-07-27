@@ -309,10 +309,11 @@ func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
 	require.Len(t, result.SceneImages, 1)
 	assert.Equal(t, int32(1), gen.genCalls.Load(), "GenerateSmartImage should be preferred when available")
 	assert.Equal(t, int32(0), gen.searchCalls.Load(), "SearchAndDownload should not be used when generation is available")
-	assert.Equal(t, "https://drive.google.com/file/d/drive-Ancient Rome at dawn/view", result.SceneImages[0].URL)
-	require.Len(t, gen.lastPrompts, 2)
-	assert.Equal(t, "Ancient Rome at dawn", gen.lastPrompts[0], "scene title should lead the prompt list")
-	assert.Equal(t, "Long narrative about the early Republic and the Roman hills.", gen.lastPrompts[1], "full scene text should remain available as secondary context")
+	assert.Equal(t, "https://drive.google.com/file/d/drive-Create a cinematic documentary image depicting: Ancient Rome at dawn/view", result.SceneImages[0].URL)
+	require.Len(t, gen.lastPrompts, 3)
+	assert.Equal(t, "Create a cinematic documentary image depicting: Ancient Rome at dawn", gen.lastPrompts[0], "the primary prompt should be an explicit visual instruction")
+	assert.Equal(t, "Ancient Rome at dawn", gen.lastPrompts[1], "scene title should remain available as context")
+	assert.Equal(t, "Long narrative about the early Republic and the Roman hills.", gen.lastPrompts[2], "full scene text should remain available as secondary context")
 }
 
 func TestImageProcessorPartialFailure(t *testing.T) {

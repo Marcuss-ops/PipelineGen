@@ -3,6 +3,7 @@ package adapters
 import (
 	"strings"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -39,6 +40,13 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	}
 	if len(src.VisualPlans) > 0 {
 		dst.VisualPlans = append(dst.VisualPlans, src.VisualPlans...)
+	}
+	if len(src.VisualAssignments) > 0 {
+		dst.VisualAssignments = append(dst.VisualAssignments, src.VisualAssignments...)
+		if currentInput != nil {
+			currentInput.SpecScene.VisualAssignments = append([]mediadomain.VisualAssignment(nil), src.VisualAssignments...)
+			dst.FinalSpecScene = currentInput.SpecScene
+		}
 	}
 	// P1 #10 (June 2026): record per-processor wall-clock timing.
 	if dst.StageDurations == nil {

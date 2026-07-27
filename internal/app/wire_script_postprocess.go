@@ -29,6 +29,7 @@ import (
 	"fmt"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -94,6 +95,17 @@ func registerScriptPostProcessors(
 		if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
 			return fmt.Errorf("register persistence processor: composition bug or duplicate name")
 		}
+	}
+
+	// Documents are opt-in per request. Register the processor only when
+	// Drive exposes the document client; requests that explicitly enable
+	// docs then receive the canonical best-effort warning if unavailable.
+	if root != nil && root.Drive != nil && root.Drive.DocClient != nil {
+		docService := usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.DocumentsFolder())
+		if !ppReg.Register(adapters.NewDocumentsProcessor(docService)) {
+			return fmt.Errorf("register document processor: composition bug or duplicate name")
+		}
+		log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
 	}
 
 	// Inline Image generation processor (temporarily restored).

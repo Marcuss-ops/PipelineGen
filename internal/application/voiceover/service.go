@@ -131,6 +131,7 @@ type VoiceoverDeps struct {
 	Persistence VoiceoverPersistenceDeps
 	Generation  VoiceoverGenerationDeps
 	Integration VoiceoverIntegrationDeps
+	Execution   VoiceoverExecutionDeps
 }
 
 // VoiceoverCoreDeps — config, logger, output directory.
@@ -179,17 +180,14 @@ type VoiceoverIntegrationDeps struct {
 	// a partially-wired composition root fails at the per-language boundary
 	// rather than mid-tx. Production wiring in build_bundles_voiceover.go
 	// always supplies a non-nil finalizer.
-	Finalizer VoiceoverFinalizer
 	// PostCommitVerifier is the optional post-commit SQL verification
 	// port (P0.4 Fase 4a, July 2026). After tx commit, finalizeStage
 	// calls Verify to confirm durability. Nil-safe: skip verification.
-	PostCommitVerifier VoiceoverPostCommitVerifier
 	// ProcessSegment is the shared per-item pipeline runner (Azione #1,
 	// July 2026). Wired in build_bundles_voiceover.go from the same
 	// deps used by the per-item use case path. MANDATORY — the legacy
 	// batch path delegates to ProcessSegmentUseCase.Execute instead of
 	// calling synthesizeStage/destinationStage/finalizeStage inline.
-	ProcessSegment *ProcessSegmentUseCase
 	// ProcessItem is the canonical per-item voiceover use case that
 	// the promo workflow routes through (P0-#3, July 2026). Wired in
 	// build_bundles_voiceover.go from the same adapter surface the
@@ -198,11 +196,19 @@ type VoiceoverIntegrationDeps struct {
 	// GeneratePromo surfaces a typed error so the missing wire-up is
 	// visible at the first promo call rather than as a hidden soft
 	// no-op.
-	ProcessItem VoiceoverItemExecutor
 	// LanguageRegistry is the canonical per-language capability
 	// surface used to resolve EdgeTTSVoice. nil-safe: a nil
 	// registry falls through to the bridge's emergency fallback.
 	LanguageRegistry asset.LanguageRegistry
+}
+
+// VoiceoverExecutionDeps groups the shared execution and durable-finalization
+// ports used by both batch and promo voiceover flows.
+type VoiceoverExecutionDeps struct {
+	Finalizer          VoiceoverFinalizer
+	PostCommitVerifier VoiceoverPostCommitVerifier
+	ProcessSegment     *ProcessSegmentUseCase
+	ProcessItem        VoiceoverItemExecutor
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -215,7 +221,7 @@ type VoiceoverIntegrationDeps struct {
 // (godlike/07 NO-FAKE-AVAILABILITY) so the missing wire-up is fixed
 // at boot rather than at first promo call.
 func NewService(deps VoiceoverDeps) *Service {
-	if deps.Integration.ProcessItem == nil {
+	if deps.Execution.ProcessItem == nil {
 		panic("voiceover.NewService: ProcessItem is required (P0-#3 — the canonical per-item use case ProcessVoiceoverItemUseCase must be wired via build_bundles_voiceover.go)")
 	}
 	return &Service{
@@ -228,11 +234,11 @@ func NewService(deps VoiceoverDeps) *Service {
 		semanticTagger:     deps.Generation.SemanticTagger,
 		outboxEnqueuer:     deps.Integration.OutboxEnqueuer,
 		translator:         deps.Integration.Translator,
-		finalizer:          deps.Integration.Finalizer,
-		postCommitVerifier: deps.Integration.PostCommitVerifier,
+		finalizer:          deps.Execution.Finalizer,
+		postCommitVerifier: deps.Execution.PostCommitVerifier,
 		languageRegistry:   deps.Integration.LanguageRegistry,
-		processSeg:         deps.Integration.ProcessSegment,
-		processItem:        deps.Integration.ProcessItem,
+		processSeg:         deps.Execution.ProcessSegment,
+		processItem:        deps.Execution.ProcessItem,
 	}
 }
 

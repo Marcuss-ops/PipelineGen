@@ -217,8 +217,8 @@ func NewService(deps Deps) (*Service, error) {
 	return &Service{
 		cfg:           deps.Runtime.Cfg,
 		log:           deps.Runtime.Log,
-		publisher:     deps.Publisher,
-		folderCreator: deps.FolderCreator,
+		publisher:     deps.Delivery.Publisher,
+		folderCreator: deps.Delivery.FolderCreator,
 		cutter:        deps.Media.Cutter,
 		renderer:      deps.Media.Renderer,
 		pcfg: PipelineConfig{
@@ -232,10 +232,10 @@ func NewService(deps Deps) (*Service, error) {
 		clipsRepo:         deps.Storage.ClipsRepo,
 		batchRepo:         deps.Storage.BatchRepository,
 		dispatcher:        deps.Storage.Dispatcher,
-		finalizer:         deps.Finalizer,
+		finalizer:         deps.Delivery.Finalizer,
 		sourceStager:      deps.Execution.SourceStager,
 		channelLister:     deps.Execution.ChannelLister,
-		driveReader:       deps.DriveReader,
+		driveReader:       deps.Delivery.DriveReader,
 		db:                deps.Runtime.DB,
 		sourceCacheReader: deps.SourceCache.Reader,
 		sourceCacheWriter: deps.SourceCache.Writer,

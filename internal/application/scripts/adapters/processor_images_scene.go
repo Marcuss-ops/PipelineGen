@@ -118,12 +118,20 @@ func generateSceneImage(
 	if smartGen, ok := any(gen).(smartImageGenService); ok {
 		// Prefer the AI-generated image path so the scene
 		// binding ends up with the Drive-backed asset link.
+		// The provider needs an explicit visual instruction. Passing the
+		// raw narration alone can leave Gemini's image surface in a
+		// perpetual "understood"/"creating" state; the scene subject is
+		// already bounded to the first sentence by cleanPromptForSubject.
+		visualPrompt := fmt.Sprintf(
+			"Create a cinematic documentary image depicting: %s",
+			cleanedSubject,
+		)
 		asset, err = smartGen.GenerateSmartImage(
 			ctx,
-			cleanedSubject,
+			visualPrompt,
 			query,
 			plan.Style,
-			[]string{query, sceneText},
+			[]string{visualPrompt, query, sceneText},
 			[]string{sceneName, plan.ID},
 			defaultImageWidth,
 			defaultImageHeight,

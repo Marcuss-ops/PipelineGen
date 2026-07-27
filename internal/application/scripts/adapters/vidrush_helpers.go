@@ -153,6 +153,11 @@ func uniqueLimitedStrings(values []string, limit int) []string {
 
 func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
 	candidates := make([]string, 0, 12)
+	if topic = strings.TrimSpace(topic); topic != "" {
+		// Keep one query grounded in the plan context before the per-segment
+		// enrichment terms consume the provider query limit.
+		candidates = append(candidates, topic+" cinematic scene")
+	}
 	for _, entity := range entities {
 		v := strings.TrimSpace(entity.Value)
 		if v == "" {
@@ -171,9 +176,6 @@ func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntit
 			continue
 		}
 		candidates = append(candidates, word+" visual scene")
-	}
-	if topic = strings.TrimSpace(topic); topic != "" {
-		candidates = append(candidates, topic+" cinematic scene")
 	}
 	if segmentText != "" {
 		candidates = append(candidates, segmentText)

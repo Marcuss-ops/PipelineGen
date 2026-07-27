@@ -87,6 +87,8 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			plan.Language,
 			plan.Model,
 			plan.PromptVersion,
+			plan.Title,
+			plan.Topic,
 			fmt.Sprintf("%d", extractionLimit),
 			fmt.Sprintf("%d", phrasesLimit),
 			fmt.Sprintf("%d", wordsLimit),
@@ -236,6 +238,12 @@ func buildVidRushSegmentResult(
 	}
 	insights.Entities = uniqueLimitedEntities(entities, entitiesLimit)
 	insights.ImportantPhrases = uniqueLimitedStrings(res.ImportantPhrases, phrasesLimit)
+	// Keep the per-segment insight contract total for short canonical
+	// segments (for example a one-word section heading). The fallback is
+	// the segment text itself, never a model-generated or hardcoded value.
+	if len(insights.ImportantPhrases) == 0 && strings.TrimSpace(canonicalSeg.Text) != "" && phrasesLimit > 0 {
+		insights.ImportantPhrases = []string{strings.TrimSpace(canonicalSeg.Text)}
+	}
 	insights.ImportantWords = uniqueLimitedStrings(res.ImportantWords, wordsLimit)
 
 	// LLM-generated Artlist phrases are segment-scoped and visually validated;

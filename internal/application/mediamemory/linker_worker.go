@@ -65,16 +65,19 @@ import (
 // Composition root wires concrete adapters (transcriber /
 // keyframe-puller / visual-describer / entity-ner / text-encoder /
 // sqlite repos / qdrant-indexer / canonical normalizer).
-type LinkerDeps struct {
+type LinkerExtractionDeps struct {
 	Transcript   TranscriptExtractor
 	Keyframe     KeyframeExtractor
 	VisualGen    VisualDescriptionGenerator
 	EntityDetect EntityDetector
-	Encoder      EmbeddingEncoder
-	Concepts     ConceptRepository
-	Bindings     BindingRepository
-	Candidates   CandidateRepository
-	Indexer      EmbeddingIndexer
+}
+
+type LinkerStorageDeps struct {
+	Encoder    EmbeddingEncoder
+	Concepts   ConceptRepository
+	Bindings   BindingRepository
+	Candidates CandidateRepository
+	Indexer    EmbeddingIndexer
 	// FrameIndexer (Fase 4.1) is the canonical seam that writes
 	// per-keyframe 768d SigLIP vectors to pipelinegen_media_frames.
 	// nil = the linker degrades to concepts-only (forward-pin to
@@ -88,6 +91,11 @@ type LinkerDeps struct {
 	// non-empty AND the FrameIndexer is wired, the linker generates
 	// a 768d vector per keyframe via search.ChannelVisual; when
 	// empty, frame indexing is skipped (no fallback required).
+}
+
+type LinkerDeps struct {
+	LinkerExtractionDeps
+	LinkerStorageDeps
 	KeyframeEmbeddingText string
 	Normalizer            Normalizer
 	Log                   Logger

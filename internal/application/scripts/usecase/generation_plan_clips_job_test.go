@@ -47,6 +47,23 @@ func TestBuildPlan_TextDoesNotImplicitlyCreateClipArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_ExplicitSceneImagesAddsImageProcessor(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		Output: scriptpkg.OutputSpec{GenerateSceneImages: scriptpkg.ToggleEnabled},
+	})
+	for i, processor := range plan.Postprocessors {
+		if processor != string(adapters.ProcessorImages) {
+			continue
+		}
+		if i == 0 || plan.Postprocessors[i-1] != string(adapters.ProcessorClipBindings) {
+			t.Fatalf("images must follow clip_bindings; got %v", plan.Postprocessors)
+		}
+		return
+	}
+	t.Fatalf("explicit generate_scene_images missing from plan: %v", plan.Postprocessors)
+}
+
 func TestBuildPlan_TextWithoutMediaPlanSkipsVisualPlanning(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"}})
 	for _, processor := range plan.Postprocessors {

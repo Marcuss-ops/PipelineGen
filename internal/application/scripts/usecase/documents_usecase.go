@@ -76,6 +76,17 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 		doc, err = client.CreateDoc(ctx, title, content, folderID)
 	}
 	if err != nil {
+		// CreateDocIdempotent may return a valid document together with an
+		// error when the document was created but its idempotency property
+		// could not be written. Preserve the usable publication result;
+		// discarding it would report a false document failure and could cause
+		// a retry to create a duplicate document.
+		if doc != nil && strings.TrimSpace(doc.URL) != "" && strings.TrimSpace(doc.ID) != "" {
+			if d.log != nil {
+				d.log.Warn("CreateDoc: document created but idempotency tagging failed; preserving document reference", zap.Error(err))
+			}
+			return doc.URL, doc.ID
+		}
 		if d.log != nil {
 			d.log.Warn("CreateDoc: DocClient doc creation error", zap.Error(err))
 		}

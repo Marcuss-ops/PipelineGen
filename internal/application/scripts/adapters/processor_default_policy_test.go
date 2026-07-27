@@ -63,6 +63,8 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 			adapterspkg.ProcessorTranslation,
 			adapterspkg.ProcessorDocument:
 			want = adapterspkg.ProcessorBestEffort
+		case adapterspkg.ProcessorVisualSlots:
+			want = adapterspkg.ProcessorBestEffort
 		}
 
 		// Surface a clear diagnostic for any name NOT yet covered.

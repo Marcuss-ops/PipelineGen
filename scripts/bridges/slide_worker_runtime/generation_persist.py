@@ -11,7 +11,7 @@ Step mapping (`run()` call site → layer function):
                                         sidebar expansion + optional
                                         panel-clear (gated by
                                         `SLIDE_WORKER_REFRESH_EVERY`).
-  Run Step 6 → step_poll_for_candidate — 60s poll loop with the P0.4
+  Run Step 6 → step_poll_for_candidate — configurable poll loop with the P0.4
                                         filter (src-not-in-baseline +
                                         complete=True + dims >= 64x64).
                                         On timeout → raises
@@ -55,9 +55,13 @@ import os
 import time
 
 from .candidates import _extract_candidates as _runtime_extract_candidates
-from .config import CANDIDATE_LOCATOR_SELECTOR, SLIDE_WORKER_REFRESH_EVERY
+from .config import (
+    CANDIDATE_LOCATOR_SELECTOR,
+    GENERATION_TIMEOUT_SECONDS,
+    SLIDE_WORKER_REFRESH_EVERY,
+)
 from .diagnostics import _log, _log_diag, _screenshot_on_failure
-from .generation import GenerationContext, StepError
+from .generation_types import GenerationContext, StepError
 from .image_quality import _compute_pixel_stats, _save_image_bytes
 from .session import BrowserSession
 
@@ -92,7 +96,7 @@ def step_refresh_baseline(session: BrowserSession, ctx: GenerationContext,
 
 def step_poll_for_candidate(session: BrowserSession, ctx: GenerationContext,
                             profile_id: int) -> None:
-    """Step 6: 60s poll loop. P0.4 filter rejects src-in-baseline +
+    """Step 6: configurable poll loop. P0.4 filter rejects src-in-baseline +
     incomplete (loading) + thumbnail (dims<64x64) candidates.
 
     On timeout raises StepError("ErrGenerationTimeout").
@@ -106,7 +110,7 @@ def step_poll_for_candidate(session: BrowserSession, ctx: GenerationContext,
     )
     _log_diag(ctx.request_id, profile_id, "polling_start", url=page.url)
 
-    max_wait = 60
+    max_wait = GENERATION_TIMEOUT_SECONDS
     poll_interval = 3
     waited = 0
     total_filtered_out = 0

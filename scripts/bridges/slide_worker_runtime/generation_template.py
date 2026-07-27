@@ -31,7 +31,7 @@ and skips the worker-side composition to avoid double-affix.
 from __future__ import annotations
 
 from .diagnostics import _log, _log_diag
-from .generation import GenerationContext
+from .generation_types import GenerationContext
 from .session import BrowserSession
 
 

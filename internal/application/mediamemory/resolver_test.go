@@ -107,7 +107,7 @@ func TestResolve_ExactCacheHitShortCircuitsCascade(t *testing.T) {
 	sem := &fakeSemanticLookup{}
 	sfo := &fakeSearchFanOut{}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",
@@ -147,7 +147,7 @@ func TestResolve_CascadeFallsThroughToExternalWhenAllowed(t *testing.T) {
 		}},
 	}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",
@@ -173,7 +173,7 @@ func TestResolve_AllowExternalSearchFalseSkipsLevel9(t *testing.T) {
 		results: []SearchFanOutResult{{Candidates: []MediaCandidate{{AssetID: "asset-x", Provider: "yt", DurationMs: 8000, RightsStatus: RightsVerified, MaterializationStatus: MaterializationHot, DiscoveryStatus: DiscoverySearched}}}},
 	}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",
@@ -201,7 +201,7 @@ func TestResolve_PerSceneFailureDoesntAbortBatch(t *testing.T) {
 		},
 	}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	// First scene references an unrecognized SlotKind — MUST be
 	// dropped with a warning, NOT abort the batch. Second scene
@@ -244,7 +244,7 @@ func TestResolve_MultiSlotHonoursRequestedSlots(t *testing.T) {
 		},
 	}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",
@@ -275,7 +275,7 @@ func TestResolve_Level9ErrorSurfacesInWarnings(t *testing.T) {
 	sem := &fakeSemanticLookup{}
 	sfo := &fakeSearchFanOut{err: errors.New("backend provider down")}
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",
@@ -302,7 +302,7 @@ func TestResolve_Level9ErrorSurfacesInWarnings(t *testing.T) {
 }
 
 func TestResolve_EmptyScenesReturnsTypedFailure(t *testing.T) {
-	r := NewVisualResolver(newFakeConceptRepo(), newFakeBindingsRepo(), nil, &fakeSemanticLookup{}, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: newFakeConceptRepo(), Bindings: newFakeBindingsRepo(), Semantic: &fakeSemanticLookup{}, Ranker: NewDefaultRanker(nil, nil)})
 	_, err := r.Resolve(context.Background(), ResolveRequest{ProjectID: "p1", Language: "it"})
 	assert.Error(t, err, "empty scenes MUST be a typed failure (godlike/07)")
 	assert.True(t, errors.Is(err, ErrInvalidPhrase),
@@ -330,7 +330,7 @@ func TestResolve_BindingScoresFlowThroughRanker(t *testing.T) {
 	b, _ := fbr.FindByID(context.Background(), "b-1")
 	_ = b // already there
 
-	r := NewVisualResolver(fcr, fbr, sfo, sem, NewDefaultRanker(nil, nil), nil, nil, nil)
+	r := NewVisualResolver(ResolverDeps{Concepts: fcr, Bindings: fbr, External: sfo, Semantic: sem, Ranker: NewDefaultRanker(nil, nil)})
 
 	res, err := r.Resolve(context.Background(), ResolveRequest{
 		ProjectID: "p1",

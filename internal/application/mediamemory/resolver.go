@@ -81,6 +81,20 @@ type VisualResolver struct {
 	metrics    MetricsSink
 }
 
+// ResolverDeps keeps the resolver composition boundary typed and stable as
+// optional anti-repetition and observability ports evolve.
+type ResolverDeps struct {
+	Concepts ConceptRepository
+	Bindings BindingRepository
+	External SearchFanOut
+	Semantic SemanticLookup
+	Usage    UsageRepository
+	Ranker   Ranker
+	Log      Logger
+	Clock    Clock
+	Metrics  MetricsSink
+}
+
 // NewVisualResolver constructs the resolver with the canonical
 // dependency set. Composition root wires concrete adapters.
 //
@@ -98,53 +112,35 @@ type VisualResolver struct {
 // ranker still scores candidates normally. Composition root wires
 // the canonical concrete UsageRepository (sqlite-backed) unless
 // the caller explicitly opts out (e.g. test harnesses).
-func NewVisualResolver(
-	concepts ConceptRepository,
-	bindings BindingRepository,
-	external SearchFanOut,
-	semantic SemanticLookup,
-	ranker Ranker,
-	log Logger,
-	clock Clock,
-	metrics MetricsSink,
-) *VisualResolver {
-	return NewVisualResolverWithUsage(concepts, bindings, external, semantic, nil, ranker, log, clock, metrics)
+func NewVisualResolver(deps ResolverDeps) *VisualResolver {
+	deps.Usage = nil
+	return NewVisualResolverWithUsage(deps)
 }
 
 // NewVisualResolverWithUsage is the canonical Fase 2.3
 // constructor. Composition root uses this form when wiring the
 // concrete UsageRepository so repetition_penalty has identity.
-func NewVisualResolverWithUsage(
-	concepts ConceptRepository,
-	bindings BindingRepository,
-	external SearchFanOut,
-	semantic SemanticLookup,
-	usage UsageRepository,
-	ranker Ranker,
-	log Logger,
-	clock Clock,
-	metrics MetricsSink,
-) *VisualResolver {
-	if log == nil {
-		log = NoopLogger()
+func NewVisualResolverWithUsage(deps ResolverDeps) *VisualResolver {
+	if deps.Log == nil {
+		deps.Log = NoopLogger()
 	}
-	if clock == nil {
-		clock = RealClock()
+	if deps.Clock == nil {
+		deps.Clock = RealClock()
 	}
-	if metrics == nil {
-		metrics = NoopMetrics()
+	if deps.Metrics == nil {
+		deps.Metrics = NoopMetrics()
 	}
 	return &VisualResolver{
-		concepts:   concepts,
-		bindings:   bindings,
-		external:   external,
-		semantic:   semantic,
-		usage:      usage,
-		ranker:     ranker,
+		concepts:   deps.Concepts,
+		bindings:   deps.Bindings,
+		external:   deps.External,
+		semantic:   deps.Semantic,
+		usage:      deps.Usage,
+		ranker:     deps.Ranker,
 		normalizer: NewDefaultNormalizer(""), // godlike/06 SSOT: canonical SHA256 surface
-		log:        log,
-		clock:      clock,
-		metrics:    metrics,
+		log:        deps.Log,
+		clock:      deps.Clock,
+		metrics:    deps.Metrics,
 	}
 }
 
@@ -952,132 +948,4 @@ func upgradeSource(current, winning string) string {
 // owns this version; the Brain reads it only for the decision fingerprint.
 func (r *VisualResolver) EmbeddingVersion() string {
 	return media.VersionEmbedding
-}
-
-// Search implements brain.MediaMemoryResolutionPort by running the
-// MediaMemory cascade for the requested media types and returning the
-// raw candidate pool. Filtering, scoring and slot assignment are left
-// to the Brain orchestrator, so the same ranker/planner path is used
-// for all visual plans.
-func (r *VisualResolver) Search(ctx context.Context, query brain.SearchQuery) (brain.SearchResult, error) {
-	slots := slotsForMediaTypes(query.MediaTypes)
-	if len(slots) == 0 {
-		return brain.SearchResult{}, nil
-	}
-
-	policy := resolvePolicyFromBrainQuery(query)
-	scene := SceneSpec{
-		ID:         "brain-search",
-		Text:       query.Text,
-		Language:   query.Language,
-		Slots:      slots,
-		DurationMs: 0,
-	}
-
-	candidates := make([]brain.Candidate, 0)
-	seen := make(map[string]struct{})
-	for _, slot := range slots {
-		fcs, _, _ := r.candidatesForSlot(ctx, scene, slot, policy)
-		for _, fc := range fcs {
-			c := toBrainCandidateFromFiltered(fc)
-			// Keep one candidate per (asset, provider, slot) so the
-			// Brain ranker still sees per-slot variety.
-			key := c.AssetID + ":" + c.Provider + ":" + string(slot)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			candidates = append(candidates, c)
-		}
-	}
-
-	return brain.SearchResult{Candidates: candidates}, nil
-}
-
-// slotsForMediaTypes maps the media types requested by the Brain into
-// the canonical slot kinds the cascade understands.
-func slotsForMediaTypes(mediaTypes []string) []media.SlotKind {
-	var slots []media.SlotKind
-	hasVideo, hasImage := false, false
-	for _, mt := range mediaTypes {
-		if mt == "video" {
-			hasVideo = true
-		}
-		if mt == "image" {
-			hasImage = true
-		}
-	}
-	if hasVideo {
-		slots = append(slots, media.SlotPrimaryVideo)
-	}
-	if hasImage {
-		slots = append(slots, media.SlotSecondaryImage, media.SlotEvidenceOverlay, media.SlotMap)
-	}
-	// If no media type was supplied, run the cascade over the full
-	// canonical slot set so the Brain still receives candidates.
-	if len(slots) == 0 {
-		slots = []media.SlotKind{
-			media.SlotPrimaryVideo,
-			media.SlotSecondaryImage,
-			media.SlotEvidenceOverlay,
-			media.SlotMap,
-		}
-	}
-	return slots
-}
-
-// resolvePolicyFromBrainQuery translates the brain search query into
-// the MediaMemory cascade policy. The SearchPolicy is forwarded
-// verbatim; legacy fields are backfilled for callers that have not yet
-// populated it.
-func resolvePolicyFromBrainQuery(query brain.SearchQuery) ResolvePolicy {
-	policy := ResolvePolicy{
-		PreferApprovedBindings: query.SearchPolicy.PreferApproved,
-		AllowExternalSearch:    query.SearchPolicy.AllowExternal,
-		MaxCandidatesPerSlot:   query.SearchPolicy.MaxCandidates,
-		AvoidRecentAssets:      false,
-		SearchPolicy:           query.SearchPolicy,
-	}
-	if policy.MaxCandidatesPerSlot <= 0 && query.Limit > 0 {
-		policy.MaxCandidatesPerSlot = query.Limit
-	}
-	if policy.MaxCandidatesPerSlot <= 0 {
-		policy.MaxCandidatesPerSlot = defaultResolverLimit
-	}
-	return policy
-}
-
-// toBrainCandidateFromFiltered projects a MediaMemory FilteredCandidate
-// into the brain Candidate shape. The score is the candidate's own
-// CandidateScore so the Brain ranker has a starting estimate.
-func toBrainCandidateFromFiltered(fc FilteredCandidate) brain.Candidate {
-	c := fc.Candidate
-	materialization := string(c.MaterializationStatus)
-	if materialization == "" {
-		materialization = "warm"
-	}
-	rights := string(c.RightsStatus)
-	if rights == "" {
-		rights = "unknown"
-	}
-	return brain.Candidate{
-		ID:                   c.ID,
-		AssetID:              c.AssetID,
-		Provider:             c.Provider,
-		SourceURL:            c.SourceURL,
-		ThumbnailURL:         c.ThumbnailURL,
-		Title:                c.Title,
-		Description:          c.Description,
-		MediaType:            c.MediaType,
-		DurationMs:           c.DurationMs,
-		Score:                c.CandidateScore,
-		MaterializationState: materialization,
-		RightsStatus:         rights,
-	}
-}
-
-// errInvalidPhrase is a tiny helper so Resolve can wrap the
-// per-package sentinel cleanly.
-func errInvalidPhrase(reason string) error {
-	return errors.Join(ErrInvalidPhrase, errors.New(reason))
 }
