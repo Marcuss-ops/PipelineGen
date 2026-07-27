@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// BuildEntityExtractionPrompt builds the prompt for entity extraction.
+// BuildEntityExtractionPrompt builds the canonical per-segment extraction prompt.
 func BuildEntityExtractionPrompt(text string, entityCount int) string {
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderEntityExtraction(text, entityCount)
@@ -17,88 +17,49 @@ func BuildEntityExtractionPrompt(text string, entityCount int) string {
 }
 
 func buildEntityExtractionFallback(text string, entityCount int) string {
-	return fmt.Sprintf(`You are extracting structured metadata from a documentary script fragment for a visual production pipeline.
+	return fmt.Sprintf(`You are extracting structured metadata from ONE documentary script segment for a visual production pipeline.
 
-DO NOT output JSON, JSON objects, or JSON arrays.
-DO NOT output markdown fences, code blocks, or backticks.
-DO NOT output metadata labels, scene IDs, indexes, or bindings.
-
-Instead, output EXACTLY five labeled sections using "## SectionName" headers.
-Each section MUST have bullet-point items starting with "- ".
-
-The required structure:
+DO NOT output JSON, markdown fences, code blocks, scene IDs, indexes, or bindings.
+Output EXACTLY five labeled sections. Every item must start with "- ".
 
 ## frasi_importanti
-- [first evocative sentence verbatim from the text]
-- [second evocative sentence verbatim from the text]
+- [evocative verbatim fragment from the segment]
 
 ## entity_senza_testo
-- VisualSubject1: Description of search term 1
-- VisualSubject2: Description of search term 2
+- VisualSubject: precise visual search description
 
 ## nomi_speciali
-- [specific named entity]
+- PERSON: [full person name]
+- PLACE: [specific location]
+- ORGANIZATION: [specific organization]
 
 ## parole_importanti
-- [key technical term or specific ingredient]
+- [specific concrete keyword]
 
 ## artlist_phrases
 - [short visual concept phrase]
 
-RULES FOR VISUAL ENTITIES:
-1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, organizations, works, or clearly identifiable unique things.
-   - STRICT LIMIT: Do NOT extract more than %d names under any circumstance. Only take the most important ones.
-   - ONLY include real named entities, not descriptions, scene labels, titles, dialogue, sentence fragments, or discourse markers.
-   - AVOID abstract or generic nouns, common nouns, adjectives, verbs, and category labels.
-   - AVOID ambiguous common words unless qualified (e.g., AVOID "Campana" alone, PREFER "Mozzarella di bufala campana").
-   - PREFER concrete entities that have a dedicated Wikipedia page.
-   - Do not include the topic itself unless it is a real named entity that needs a visual reference.
-2. "parole_importanti": Extract a MAXIMUM of %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
-3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences or sentence fragments that appear in the TEXT.
-4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query using the format "- Subject: Description of search term".
-5. "artlist_phrases": Extract EXACTLY 3 to 5 SHORT VISUAL CONCEPT PHRASES (2-3 words each) suitable for stock footage search.
+ENTITY RULES:
+1. Extract at most %d real named entities in nomi_speciali.
+2. Every named entity MUST use "TYPE: Value".
+3. Allowed TYPE values: PERSON, PLACE, ORGANIZATION, EVENT, WORK, PRODUCT, OTHER.
+4. Never type generic nouns, adjectives, verbs, titles, or sentence fragments as entities.
+5. Omit uncertain names instead of guessing.
+6. Extract at most %d concrete, segment-specific keywords in parole_importanti.
 
-CRITICAL — What artlist_phrases ARE:
-  ✅ Concrete, filmable visual concepts: "Roman forum ruins", "Lava flowing down mountain", "Archaeological dig site"
-  ✅ Noun phrases that describe a thing, place, action, or scene a CAMERA can record
-  ✅ Paraphrased concepts — you can rephrase the text to describe what would appear on screen
-  ✅ Topic-specific: "Pompeii volcanic eruption" not generic "volcanic eruption"
+VISUAL SEARCH RULES:
+1. entity_senza_testo uses "Subject: Description" and must describe a filmable visual.
+2. artlist_phrases must contain EXACTLY 3 to 5 natural visual concepts, ideally 2-4 words each.
+3. Every phrase must be concrete, camera-recordable, specific to this segment, and useful in Artlist search.
+4. Reject adjacent word pairs copied mechanically from the text, dangling articles, isolated dates, apostrophe fragments, generic abstractions, and verb-only sequences.
 
-CRITICAL — What artlist_phrases are NOT:
-  ❌ NOT sequential word-pairs from the text: "pompei prosperò", "secoli diventando", "città più", "sua posizione"
-  ❌ NOT sliding-window bigrams: do NOT take word 1+2 from the text, then word 2+3, then word 3+4
-  ❌ NOT sentence fragments or verb phrases: "l eruzione", "vulcano distrusse", "alimentavano contribuì"
-  ❌ NOT numbered dates: "79 d", "1748"
-  ❌ NOT phrases with apostrophe fragments: "l'eruzione", "dell'epoca"
-  ❌ NOT phrases starting with function words: "sua", "questo", "della", "degli"
-  ❌ NOT single-letter abbreviations: "d" in "79 d.C."
-  ❌ NOT verb-only sequences: "prosperò diventando", "lasciando un"
+GOOD: "Vesuvio erupting", "Roman ruins excavation", "Ancient city streets".
+BAD: "pompei prosperò", "sua posizione", "79 d".
 
-SELF-CHECK — Before writing each phrase, verify:
-  1. Is this a VISUAL concept that a camera operator could film? → If NO, discard.
-  2. Is this phrase just 2 adjacent words copied from the text? → If YES, discard and find a real visual concept.
-  3. Would searching Artlist for this phrase return relevant stock footage? → If NO, discard.
-  4. Is this phrase SPECIFIC to THIS script topic? → If it could match any random video, make it more specific.
-
-GOOD examples for a script about Pompeii:
-  ✅ "Vesuvio erupting" — visual, topic-specific, filmable
-  ✅ "Roman ruins excavation" — visual, concrete
-  ✅ "Ancient city streets" — visual, specific to Pompeii
-  ✅ "Volcanic ash layer" — visual, topic-specific
-
-BAD examples for the SAME script:
-  ❌ "pompei prosperò" — NOT visual, just sequential text words
-  ❌ "sua posizione" — NOT visual, starts with function word
-  ❌ "alimentavano contribuì" — NOT visual, two verbs, nonsense
-  ❌ "79 d" — NOT visual, truncated date
-
-STRICT CONSTRAINTS:
-- Output EXACTLY 3 to 5 artlist_phrases. Never more than 5.
-- Each phrase MUST pass ALL 4 self-check questions above.
-- Output ONLY the labeled sections, no JSON, no markdown fences.
+Output ONLY the five labeled sections.
 
 TEXT:
-"%s"`, entityCount, entityCount, entityCount, text)
+"%s"`, entityCount, entityCount, text)
 }
 
 // BuildTimelineAssetRoutingPrompt asks the model to choose the best asset source for a timeline segment.
@@ -120,24 +81,16 @@ func buildTimelineRoutingFallback(topic, openingSentence, closingSentence string
 	return fmt.Sprintf(`You are choosing the best asset source for one documentary timeline segment.
 
 Pick exactly one source:
-- "stock_drive" (only if a stock folder name clearly and directly matches the segment topic)
-- "artlist_folder" (only if an Artlist folder name clearly and directly matches the segment topic)
-- "none" (if NO folder is relevant to the segment - this is the correct choice when folders don't match)
+- "stock_drive" only when a stock folder directly matches the segment topic
+- "artlist_folder" only when an Artlist folder directly matches the segment topic
+- "none" when no folder is relevant
 
-TIMESTAMP POLICY:
-- Keep the smallest possible number of timeline blocks.
-- Add a new timestamp only when the segment introduces a clearly different argument, scene, subject, location, or time shift.
-- If the content stays on the same subject, keep using the current block.
+Keep the smallest possible number of timeline blocks. Add a timestamp only for a clear argument, scene, subject, location, or time shift.
+Prefer "none" over an unrelated folder. Do not invent folders.
 
-STRICT RULES:
-- ONLY pick a folder if its name is DIRECTLY about the same topic as the segment.
-- "none" is PREFERRED over a poor or unrelated match.
-- Do not invent new folders.
+Return only valid JSON:
+{"source":"stock_drive","folder":"Exact folder name from the list","reason":"why this folder directly matches the segment topic"}
 
-Return only valid JSON with this exact shape:
-  {"source":"stock_drive","folder":"Exact folder name from the list","reason":"why this folder directly matches the segment topic"}
-
-CONTEXT:
 TOPIC: %s
 OPENING: %s
 CLOSING: %s
@@ -149,7 +102,7 @@ AVAILABLE STOCK FOLDERS:
 AVAILABLE ARTLIST FOLDERS:
 %s
 
-	JSON:`,
+JSON:`,
 		topic,
 		openingSentence,
 		closingSentence,
