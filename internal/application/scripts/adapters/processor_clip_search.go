@@ -1,24 +1,3 @@
-// Package adapters — processor_clip_search.go (PR-CLIP-SEARCH-WIRING, July 2026).
-//
-// ClipSearchProcessor searches for Artlist clips per canonical
-// segment using the per-segment queries produced by the entities
-// processor.
-//
-// Policy is ProcessorBestEffort — clip search is an enrichment,
-// NOT a hard gate. A missing or failing backend produces a warning
-// but does not abort the pipeline.
-//
-// ORDERING DEPENDENCY: this processor MUST run AFTER the
-// EntitiesProcessor in the plan's Postprocessors list. The
-// EntitiesProcessor populates input.Entities.ArtlistPhrases via
-// mergePostProcessResult write-back; without it, this processor
-// sees nil Entities and short-circuits. The postprocessor pipeline
-// runs in list-order, so ensure "entities" appears before
-// "clip_search" in the plan.
-//
-// godlike/06 SSOT: ArtlistClipSearcher is the sole canonical port;
-// declared in compat_adapters.go. The ClipSearchProcessor is the
-// sole canonical consumer.
 package adapters
 
 import (
@@ -29,21 +8,19 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// ProcessorClipSearch is declared in processor_names.go (canonical
-// SOLE home per godlike/06 SSOT). This file consumes the constant via
-// package-scope visibility; do NOT redeclare it here.
+// artlistSegmentCachePayload stores only the Artlist provider delta. Caching
+// the entire segment would overwrite newer image/provider results on a hit.
+type artlistSegmentCachePayload struct {
+	Candidates []scriptpkg.SegmentAssetCandidate
+	Matches    []ArtlistClipMatch
+}
 
-// ClipSearchProcessor queries the ArtlistClipSearcher port for
-// matching clips, using the artlist_phrases extracted by the
-// upstream EntitiesProcessor.
+// ClipSearchProcessor searches Artlist per canonical VidRush segment.
 type ClipSearchProcessor struct {
 	searcher ArtlistClipSearcher
 	metrics  VidRushMetrics
 }
 
-// NewClipSearchProcessor creates a ClipSearchProcessor. searcher
-// may be nil at construction time — Process() returns empty results
-// (no error) when the searcher is nil (BestEffort semantics).
 func NewClipSearchProcessor(searcher ArtlistClipSearcher, metrics ...VidRushMetrics) *ClipSearchProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
@@ -52,27 +29,12 @@ func NewClipSearchProcessor(searcher ArtlistClipSearcher, metrics ...VidRushMetr
 	return &ClipSearchProcessor{searcher: searcher, metrics: m}
 }
 
-// Name returns the canonical processor name.
 func (p *ClipSearchProcessor) Name() ProcessorName { return ProcessorClipSearch }
 
-// Policy classifies clip_search as BestEffort. The plan arg is
-// accepted for interface uniformity; the policy is static.
 func (p *ClipSearchProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
-// Process searches for Artlist clips matching the canonical
-// per-segment Artlist queries.
-//
-// Short-circuits (returns empty PostProcessResult, no error) when:
-//   - The searcher is nil (backend not wired)
-//   - the artlist provider toggle is disabled
-//   - no VidRush segments are available
-//
-// On searcher success, stores the matched clips in
-// PostProcessResult.ArtlistClipSuggestions and the per-segment
-// VidRush payload. On searcher error (unavailable adapter), returns
-// a warning.
 func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if plan == nil {
 		return &PostProcessResult{}, nil
@@ -80,10 +42,9 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	if !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
-			segments = append(segments, cloneVidRushSegmentResult(segment))
-		}
-		for i := range segments {
-			segments[i].Cache.Artlist = "BYPASSED"
+			cloned := cloneVidRushSegmentResult(segment)
+			cloned.Cache.Artlist = "BYPASSED"
+			segments = append(segments, cloned)
 		}
 		if len(segments) == 0 {
 			return &PostProcessResult{}, nil
@@ -103,6 +64,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	aggregated := make([]ArtlistClipMatch, 0)
 	var warnings []string
+
 	for _, seg := range input.VidRushSegments {
 		updated := cloneVidRushSegmentResult(seg)
 		if len(updated.Insights.ArtlistQueries) == 0 {
@@ -112,7 +74,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		cacheKey := segmentCacheKey(
-			"artlist",
+			"artlist-assets-v2",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
@@ -122,11 +84,16 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		)
 		if !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
-				if cachedSeg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
-					cachedSeg = cloneVidRushSegmentResult(cachedSeg)
-					cachedSeg.Cache.Artlist = "HIT_EXACT"
-					segments = append(segments, cachedSeg)
-					aggregated = append(aggregated, matchesFromSegment(cachedSeg)...)
+				if payload, ok := cached.(artlistSegmentCachePayload); ok {
+					payload = cloneArtlistSegmentCachePayload(payload)
+					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
+					if len(payload.Candidates) > 0 {
+						primary := payload.Candidates[0]
+						updated.Assets.PrimaryVideo = &primary
+					}
+					updated.Cache.Artlist = "HIT_EXACT"
+					segments = append(segments, updated)
+					aggregated = append(aggregated, payload.Matches...)
 					if p.metrics != nil {
 						p.metrics.IncAssetCache("artlist", true)
 					}
@@ -135,92 +102,173 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			}
 		}
 
-		var segmentMatches []ArtlistClipMatch
 		if p.metrics != nil {
 			p.metrics.IncAssetCache("artlist", false)
 			p.metrics.IncProviderRequest("artlist")
 		}
+
+		segmentMatches := make([]ArtlistClipMatch, 0)
 		for _, query := range updated.Insights.ArtlistQueries {
-			matches := p.searcher.SearchClips(ctx, plan.Title, []string{query})
-			if len(matches) == 0 {
-				continue
-			}
-			segmentMatches = append(segmentMatches, matches...)
+			segmentMatches = append(segmentMatches, p.searcher.SearchClips(ctx, plan.Title, []string{query})...)
 		}
-		if len(segmentMatches) == 0 {
+		segmentMatches = dedupeArtlistMatches(segmentMatches)
+		candidates := artlistMatchesToCandidates(updated, segmentMatches)
+
+		if len(candidates) == 0 {
 			updated.Cache.Artlist = "MISS"
+			if plan.MediaPlan.ForceRefreshAssets {
+				updated.Cache.Artlist = "REFRESHED"
+			}
 			segments = append(segments, updated)
 			warnings = append(warnings, fmt.Sprintf("clip_search: no matching Artlist clips found for segment %s", updated.SegmentID))
-			cacheStore(&vidrushArtlistCache, cacheKey, updated)
+			cacheStore(&vidrushArtlistCache, cacheKey, artlistSegmentCachePayload{Matches: cloneArtlistMatches(segmentMatches)})
 			continue
 		}
 
-		candidates := artlistMatchesToCandidates(updated, segmentMatches)
-		updated.Assets.Candidates = append(updated.Assets.Candidates, candidates...)
-		if len(candidates) > 0 {
-			primary := candidates[0]
-			updated.Assets.PrimaryVideo = &primary
-		}
+		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+		primary := candidates[0]
+		updated.Assets.PrimaryVideo = &primary
 		updated.Cache.Artlist = "MISS"
+		if plan.MediaPlan.ForceRefreshAssets {
+			updated.Cache.Artlist = "REFRESHED"
+		}
 		segments = append(segments, updated)
 		aggregated = append(aggregated, segmentMatches...)
-		cacheStore(&vidrushArtlistCache, cacheKey, updated)
+		cacheStore(&vidrushArtlistCache, cacheKey, artlistSegmentCachePayload{
+			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+			Matches:    cloneArtlistMatches(segmentMatches),
+		})
 	}
 
-	if len(segments) == 0 {
-		return &PostProcessResult{}, nil
-	}
 	return &PostProcessResult{
 		VidRushSegments:        segments,
-		ArtlistClipSuggestions: aggregated,
+		ArtlistClipSuggestions: dedupeArtlistMatches(aggregated),
 		Warnings:               warnings,
-		Changed:                true,
+		Changed:                len(segments) > 0,
 	}, nil
 }
 
-func matchesFromSegment(seg scriptpkg.VidRushSegmentResult) []ArtlistClipMatch {
-	if len(seg.Assets.Candidates) == 0 {
-		return nil
-	}
-	out := make([]ArtlistClipMatch, 0, len(seg.Assets.Candidates))
-	for _, cand := range seg.Assets.Candidates {
-		if strings.TrimSpace(cand.Provider) != "artlist" {
-			continue
+// artlistMatchesToCandidates expands every clip in every match. The previous
+// implementation kept only the first name/link and silently dropped the rest.
+func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []ArtlistClipMatch) []scriptpkg.SegmentAssetCandidate {
+	out := make([]scriptpkg.SegmentAssetCandidate, 0)
+	seen := make(map[string]struct{})
+	rank := 0
+	for _, match := range matches {
+		count := len(match.ClipNames)
+		if len(match.ClipDriveLinks) > count {
+			count = len(match.ClipDriveLinks)
 		}
-		out = append(out, ArtlistClipMatch{
-			Phrase:         cand.Query,
-			ClipNames:      []string{strings.TrimSpace(cand.Entity)},
-			ClipDriveLinks: []string{cand.DriveLink},
-		})
+		for i := 0; i < count; i++ {
+			name := ""
+			if i < len(match.ClipNames) {
+				name = strings.TrimSpace(match.ClipNames[i])
+			}
+			link := ""
+			if i < len(match.ClipDriveLinks) {
+				link = strings.TrimSpace(match.ClipDriveLinks[i])
+			}
+			if link == "" {
+				continue
+			}
+			identity := strings.ToLower(link)
+			if _, ok := seen[identity]; ok {
+				continue
+			}
+			seen[identity] = struct{}{}
+
+			score := 1.0 - float64(rank)*0.02
+			if score < 0.1 {
+				score = 0.1
+			}
+			rank++
+			assetID := segmentCacheKey(seg.SegmentID, match.Phrase, name, link)
+			out = append(out, scriptpkg.SegmentAssetCandidate{
+				AssetID:         "artlist-" + assetID[:12],
+				Provider:        "artlist",
+				Query:           strings.TrimSpace(match.Phrase),
+				Entity:          name,
+				Score:           score,
+				SourceURL:       link,
+				SourcePageURL:   strings.TrimSpace(match.FolderLink),
+				PreviewURL:      link,
+				DriveLink:       link,
+				RightsStatus:    "unknown",
+				SelectionReason: "ranked Artlist clip matching a segment visual query",
+			})
+		}
 	}
 	return out
 }
 
-func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []ArtlistClipMatch) []scriptpkg.SegmentAssetCandidate {
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(matches))
-	for i, match := range matches {
-		score := 1.0 - float64(i)*0.05
-		if score < 0.1 {
-			score = 0.1
+func appendProviderCandidatesUnique(base, additions []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	out := append([]scriptpkg.SegmentAssetCandidate(nil), base...)
+	seen := make(map[string]struct{}, len(out)+len(additions))
+	for _, candidate := range out {
+		if key := vidRushCandidateIdentity(candidate); key != "" {
+			seen[key] = struct{}{}
 		}
-		assetID := segmentCacheKey(seg.SegmentID, match.Phrase, strings.Join(match.ClipNames, "\u0000"), strings.Join(match.ClipDriveLinks, "\u0000"))
-		candidate := scriptpkg.SegmentAssetCandidate{
-			AssetID:         "artlist-" + assetID[:12],
-			Provider:        "artlist",
-			Query:           strings.TrimSpace(match.Phrase),
-			Score:           score,
-			RightsStatus:    "unknown",
-			SelectionReason: "highest ranked Artlist candidate for segment query",
+	}
+	for _, candidate := range additions {
+		key := vidRushCandidateIdentity(candidate)
+		if key == "" {
+			continue
 		}
-		if len(match.ClipDriveLinks) > 0 {
-			candidate.SourceURL = strings.TrimSpace(match.ClipDriveLinks[0])
-			candidate.PreviewURL = candidate.SourceURL
-			candidate.DriveLink = candidate.SourceURL
+		if _, ok := seen[key]; ok {
+			continue
 		}
-		if len(match.ClipNames) > 0 {
-			candidate.Entity = strings.TrimSpace(match.ClipNames[0])
-		}
+		seen[key] = struct{}{}
 		out = append(out, candidate)
 	}
+	return out
+}
+
+func vidRushCandidateIdentity(candidate scriptpkg.SegmentAssetCandidate) string {
+	provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+	for _, value := range []string{candidate.AssetID, candidate.DriveLink, candidate.SourceURL, candidate.PreviewURL} {
+		if value = strings.TrimSpace(value); value != "" {
+			return provider + "\x00" + strings.ToLower(value)
+		}
+	}
+	return ""
+}
+
+func dedupeArtlistMatches(matches []ArtlistClipMatch) []ArtlistClipMatch {
+	seen := make(map[string]struct{}, len(matches))
+	out := make([]ArtlistClipMatch, 0, len(matches))
+	for _, match := range matches {
+		key := strings.Join([]string{
+			strings.ToLower(strings.TrimSpace(match.Phrase)),
+			strings.ToLower(strings.TrimSpace(match.FolderID)),
+			strings.Join(match.ClipDriveLinks, "\x00"),
+		}, "\x01")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, cloneArtlistMatch(match))
+	}
+	return out
+}
+
+func cloneArtlistSegmentCachePayload(in artlistSegmentCachePayload) artlistSegmentCachePayload {
+	return artlistSegmentCachePayload{
+		Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), in.Candidates...),
+		Matches:    cloneArtlistMatches(in.Matches),
+	}
+}
+
+func cloneArtlistMatches(in []ArtlistClipMatch) []ArtlistClipMatch {
+	out := make([]ArtlistClipMatch, 0, len(in))
+	for _, match := range in {
+		out = append(out, cloneArtlistMatch(match))
+	}
+	return out
+}
+
+func cloneArtlistMatch(in ArtlistClipMatch) ArtlistClipMatch {
+	out := in
+	out.ClipNames = append([]string(nil), in.ClipNames...)
+	out.ClipDriveLinks = append([]string(nil), in.ClipDriveLinks...)
 	return out
 }
