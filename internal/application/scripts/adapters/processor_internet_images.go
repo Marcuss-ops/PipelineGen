@@ -8,14 +8,19 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// InternetImagesProcessor searches web images per canonical segment
-// and attaches the resulting candidates to the VidRush payload.
+// internetImageCachePayload stores only the image-provider delta so a cache
+// hit cannot replace Artlist candidates or other upstream segment state.
+type internetImageCachePayload struct {
+	Candidates []scriptpkg.SegmentAssetCandidate
+}
+
+// InternetImagesProcessor searches web images per canonical segment and
+// attaches every unique result returned for the segment queries.
 type InternetImagesProcessor struct {
 	searcher InternetImageSearcher
 	metrics  VidRushMetrics
 }
 
-// NewInternetImagesProcessor creates an InternetImagesProcessor.
 func NewInternetImagesProcessor(searcher InternetImageSearcher, metrics ...VidRushMetrics) *InternetImagesProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
@@ -37,10 +42,9 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
-			segments = append(segments, cloneVidRushSegmentResult(segment))
-		}
-		for i := range segments {
-			segments[i].Cache.InternetImages = "BYPASSED"
+			cloned := cloneVidRushSegmentResult(segment)
+			cloned.Cache.InternetImages = "BYPASSED"
+			segments = append(segments, cloned)
 		}
 		if len(segments) == 0 {
 			return &PostProcessResult{}, nil
@@ -57,6 +61,14 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		return &PostProcessResult{}, nil
 	}
 
+	perQueryLimit := 10
+	if plan.MediaPlan.Planner.CandidateLimit > 0 {
+		perQueryLimit = plan.MediaPlan.Planner.CandidateLimit
+	}
+	if perQueryLimit > 50 {
+		perQueryLimit = 50
+	}
+
 	updatedSegments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
@@ -68,20 +80,23 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 
 		cacheKey := segmentCacheKey(
-			"internet_images",
+			"internet-images-assets-v2",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
 			plan.Model,
 			plan.PromptVersion,
+			fmt.Sprintf("%d", perQueryLimit),
 			strings.Join(updated.Insights.ImageQueries, "\u0000"),
 		)
 		if !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
-				if cachedSeg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
-					cachedSeg = cloneVidRushSegmentResult(cachedSeg)
-					cachedSeg.Cache.InternetImages = "HIT_EXACT"
-					updatedSegments = append(updatedSegments, cachedSeg)
+				if payload, ok := cached.(internetImageCachePayload); ok {
+					candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
+					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+					updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
+					updated.Cache.InternetImages = "HIT_EXACT"
+					updatedSegments = append(updatedSegments, updated)
 					if p.metrics != nil {
 						p.metrics.IncAssetCache("internet_images", true)
 					}
@@ -90,12 +105,13 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			}
 		}
 
-		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, 5)
 		if p.metrics != nil {
 			p.metrics.IncAssetCache("internet_images", false)
 			p.metrics.IncProviderRequest("internet_images")
 		}
-		seen := make(map[string]struct{}, 8)
+
+		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, perQueryLimit*len(updated.Insights.ImageQueries))
+		seen := make(map[string]struct{}, cap(candidates))
 		firstEntity := ""
 		if len(updated.Insights.Entities) > 0 {
 			firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
@@ -107,7 +123,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				Entity:    firstEntity,
 				TextHash:  updated.TextHash,
 				Language:  plan.Language,
-				Limit:     5,
+				Limit:     perQueryLimit,
 				Provider:  "internet_images",
 			})
 			if err != nil {
@@ -118,20 +134,6 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				continue
 			}
 			for _, cand := range results {
-				key := strings.ToLower(strings.TrimSpace(cand.AssetID))
-				if key == "" {
-					key = strings.ToLower(strings.TrimSpace(cand.SourceURL))
-				}
-				if key == "" {
-					key = strings.ToLower(strings.TrimSpace(cand.PreviewURL))
-				}
-				if key == "" {
-					continue
-				}
-				if _, ok := seen[key]; ok {
-					continue
-				}
-				seen[key] = struct{}{}
 				if cand.Provider == "" {
 					cand.Provider = "internet_images"
 				}
@@ -139,30 +141,32 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					cand.RightsStatus = "unknown"
 				}
 				if cand.SelectionReason == "" {
-					cand.SelectionReason = "retrieved image candidate matching segment entity/query"
+					cand.SelectionReason = "retrieved image candidate matching a segment entity/query"
 				}
+				key := vidRushCandidateIdentity(cand)
+				if key == "" {
+					continue
+				}
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
 				candidates = append(candidates, cand)
-				if len(candidates) >= 5 {
-					break
-				}
-			}
-			if len(candidates) >= 5 {
-				break
 			}
 		}
 
-		if len(candidates) == 0 {
-			updated.Cache.InternetImages = "MISS"
-			updatedSegments = append(updatedSegments, updated)
-			cacheStore(&vidrushImageCache, cacheKey, updated)
-			continue
-		}
-
-		updated.Assets.Candidates = append(updated.Assets.Candidates, candidates...)
-		updated.Assets.SecondaryImages = append(updated.Assets.SecondaryImages, candidates...)
 		updated.Cache.InternetImages = "MISS"
+		if plan.MediaPlan.ForceRefreshAssets {
+			updated.Cache.InternetImages = "REFRESHED"
+		}
+		if len(candidates) > 0 {
+			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
+			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
+		}
 		updatedSegments = append(updatedSegments, updated)
-		cacheStore(&vidrushImageCache, cacheKey, updated)
+		cacheStore(&vidrushImageCache, cacheKey, internetImageCachePayload{
+			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+		})
 	}
 
 	return &PostProcessResult{
