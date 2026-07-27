@@ -158,7 +158,7 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	}
 	metadataProc := &stubPostProcessor{
 		name:    "metadata",
-		sleepMs: 50,
+		sleepMs: 80,
 		// Metadata is a populated-but-tiny VideoMetadata
 		// slice; IsEmpty() returns false because
 		// len(Metadata) > 0.
