@@ -3,6 +3,7 @@ package clips
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
@@ -20,9 +21,10 @@ import (
 // asset row that would orphan Qdrant. See
 // internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
-	assetRepo  asset.Repository
-	processor  asset.Processor
-	dispatcher mutations.AssetMutationDispatcher
+	assetRepo     asset.Repository
+	processor     asset.Processor
+	dispatcher    mutations.AssetMutationDispatcher
+	clipsFolderID string
 }
 
 // NewReprocessUseCase constructs the use case.
@@ -32,8 +34,8 @@ type ReprocessUseCase struct {
 // path. Composition-root pre-rejection lives in the wiring site
 // (internal/api/assets/clips/handler.go NewHandler) which surfaces
 // a configure-time error if dispatcher is nil.
-func NewReprocessUseCase(repo asset.Repository, proc asset.Processor, dispatcher mutations.AssetMutationDispatcher) *ReprocessUseCase {
-	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher}
+func NewReprocessUseCase(repo asset.Repository, proc asset.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
+	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}
 }
 
 // ReprocessRequest contains the input for reprocessing a clip.
@@ -75,12 +77,18 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 
 	// Build ProcessInput from clip data
+	sourceURL := reprocessSourceURL(clip, req.Source)
+	folderID := clip.FolderID()
+	if folderID == "" && (req.Source == "youtube" || req.Source == "youtube-manual") {
+		folderID = uc.clipsFolderID
+	}
 	processInput := &asset.ProcessInput{
 		ID:        clip.ID,
 		Name:      clip.Name,
-		SourceURL: clip.SourceURL,
-		FolderID:  clip.FolderID(),
+		SourceURL: sourceURL,
+		FolderID:  folderID,
 		Duration:  int(clip.Duration.Milliseconds()),
+		KeepAudio: true,
 		Metadata: map[string]any{
 			"source": req.Source,
 			"tags":   clip.Tags,
@@ -130,4 +138,47 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		DownloadLink: result.DownloadLink,
 		ProcessedAt:  timeutil.FormatRFC3339(time.Now()),
 	}, nil
+}
+
+// reprocessSourceURL prefers the canonical source URL, then derives the
+// YouTube URL from legacy asset IDs that predate source_url persistence.
+// The old Drive URL is intentionally not used as a reprocess source: it can
+// point at the corrupted derived clip that this operation is repairing.
+func reprocessSourceURL(clip *asset.Asset, source string) string {
+	if clip == nil {
+		return ""
+	}
+	if v := strings.TrimSpace(clip.SourceURL); v != "" && !isDerivedDriveURL(v, source) {
+		return v
+	}
+	for _, key := range []string{"source_url", "youtube_url", "url"} {
+		if v := strings.TrimSpace(clip.GetMetadataString(key)); v != "" && !isDerivedDriveURL(v, source) {
+			return v
+		}
+	}
+	if source == "youtube" || source == "youtube-manual" {
+		id := strings.TrimPrefix(strings.TrimSpace(clip.ID), "yt_")
+		if cut := strings.LastIndexByte(id, '_'); cut > 0 && isAssetHashSuffix(id[cut+1:]) {
+			videoID := id[:cut]
+			return "https://www.youtube.com/watch?v=" + videoID
+		}
+	}
+	return ""
+}
+
+func isAssetHashSuffix(value string) bool {
+	if len(value) != 8 {
+		return false
+	}
+	for _, r := range value {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isDerivedDriveURL(raw, source string) bool {
+	return (source == "youtube" || source == "youtube-manual") &&
+		strings.Contains(strings.ToLower(raw), "drive.google.com")
 }

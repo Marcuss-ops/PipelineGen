@@ -114,11 +114,17 @@ func (s *BackfillService) tryAcquire(
 	if err := s.repo.UpsertBatch(ctx, []asset.TextTrack{track}); err != nil {
 		return acqResult, fmt.Errorf("backfill: save acquired source track: %w", err)
 	}
-	s.log.Info("backfill: acquired source track saved",
+	if len(acqResult.Cues) > 0 && s.cues != nil {
+		if err := s.cues.ReplaceTranscriptCues(ctx, assetItem.ID, map[string][]asset.TimedCue{lang: acqResult.Cues}); err != nil {
+			return acqResult, fmt.Errorf("backfill: save acquired cues: %w", err)
+		}
+	}
+	s.log.Info("backfill: acquired source track and cues saved",
 		zap.String("asset_id", assetItem.ID),
 		zap.String("language", lang),
 		zap.String("source_type", string(acqResult.SourceType)),
-		zap.Int("priority", acqResult.Priority))
+		zap.Int("priority", acqResult.Priority),
+		zap.Int("cues_count", len(acqResult.Cues)))
 	return acqResult, nil
 }
 

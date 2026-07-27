@@ -50,6 +50,30 @@ func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {
 	}
 }
 
+func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T) {
+	stub := &documentServiceStub{}
+	processor := NewDocumentsProcessor(stub)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID: "run-2", Title: "With subtitles", DocsEnabled: true,
+		DocsLanguages: []string{"en"},
+	}
+
+	_, err := processor.Process(context.Background(), plan, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{
+				Clip: &scriptpkg.ClipBinding{SubtitleLink: "https://drive.google.com/file/d/ass/view"},
+			}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.titles) != 2 || stub.titles[1] != "refresh" {
+		t.Fatalf("ASS-bearing document must force refresh, calls=%v", stub.titles)
+	}
+}
+
 func TestPostProcessResult_IsEmptyFalseForDocumentReference(t *testing.T) {
 	if (&PostProcessResult{DocID: "doc-1", DocLink: "https://docs.google.com/document/d/doc-1/edit"}).IsEmpty() {
 		t.Fatal("document reference must count as observable postprocessor output")

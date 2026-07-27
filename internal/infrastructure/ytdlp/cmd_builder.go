@@ -16,13 +16,15 @@ import (
 
 // DefaultYouTubeFormatSelectors is the canonical yt-dlp `-f` selector — the
 // single source of truth (godlike/06 SSOT) for every YouTube download path.
-// Combined-first fall-through matches YouTube videos that expose only format
-// 18 (640x360 mp4). Do NOT re-declare this literal elsewhere; both
+// Combined-first selection ensures downloaded clips contain an audio stream
+// for transcription and subtitle generation. The progressive MP4 fallbacks
+// cover videos that expose no separate audio format. Do NOT re-declare this
+// literal elsewhere; both
 // FormatArg and the processor downloader reference this constant so yt-dlp's
 // "last -f wins" rule stays in lockstep. Verified against dtpF3BrSOto
 // (2026-07-06) — previous bv*+ba-first order failed with "Requested format
 // is not available".
-const DefaultYouTubeFormatSelectors = "b[height<=1080][ext=mp4]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
+const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
 // CommandBuilder centralizes yt-dlp CLI argument construction. The builder
 // owns the resolved binary path plus the cookie and JS-runtime locations;

@@ -118,6 +118,13 @@ def transcribe(audio_path: str, model_size: str = "base") -> dict:
     elapsed = time.time() - start
 
     transcript = " ".join(seg.text.strip() for seg in segments)
+    cues = []
+    for seg in segments:
+        cues.append({
+            "start_ms": int(seg.start * 1000),
+            "end_ms": int(seg.end * 1000),
+            "text": seg.text.strip()
+        })
 
     return {
         "language": info.language,
@@ -128,6 +135,7 @@ def transcribe(audio_path: str, model_size: str = "base") -> dict:
         "transcript_length": len(transcript),
         "transcript_preview": transcript[:500],
         "transcript_full": transcript,
+        "cues": cues,
     }
 
 

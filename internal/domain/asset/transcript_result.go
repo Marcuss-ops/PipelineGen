@@ -43,4 +43,8 @@ type TranscriptResult struct {
 	// does NOT consume this field today; future Fase 3 + Fase 4
 	// materializer workers may surface it as a quality-gate input.
 	Confidence *float64
+	// DurationMs is the duration of the audio in milliseconds.
+	DurationMs int64
+	// Cues is the list of timestamped subtitle segments.
+	Cues []TimedCue
 }

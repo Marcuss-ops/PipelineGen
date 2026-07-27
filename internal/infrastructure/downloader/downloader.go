@@ -200,8 +200,15 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	if req.Format != "" {
 		args = append(args, "-f", req.Format)
 	}
-	if req.MergeFormat != "" {
-		args = append(args, "--merge-output-format", req.MergeFormat)
+	mergeFormat := req.MergeFormat
+	// YouTube's best format is commonly a separate video+audio pair. Always
+	// merge that pair into one deterministic file; otherwise the resolver can
+	// return the video-only .mp4 member before the audio merge completes.
+	if mergeFormat == "" && (strings.Contains(req.URL, "youtube.com") || strings.Contains(req.URL, "youtu.be")) {
+		mergeFormat = "mp4"
+	}
+	if mergeFormat != "" {
+		args = append(args, "--merge-output-format", mergeFormat)
 	}
 
 	outputTemplate := req.OutputPath

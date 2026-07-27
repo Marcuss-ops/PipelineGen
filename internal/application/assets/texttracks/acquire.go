@@ -197,7 +197,15 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 				zap.String("asset_id", cmd.AssetID),
 				zap.String("drive_file_id", cmd.DriveFileID),
 				zap.Int("priority", result.Priority))
-			return result, nil
+			// A repaired local clip is authoritative for timed subtitles. If
+			// the historical Drive copy has text but no cues, continue through
+			// YouTube/Whisper so ASS is built from the current local media.
+			if len(result.Cues) > 0 || cmd.LocalPath == "" {
+				return result, nil
+			}
+			s.log.Warn("acquire: Drive transcript has no timed cues; trying current local clip",
+				zap.String("asset_id", cmd.AssetID),
+				zap.String("local_path", cmd.LocalPath))
 		}
 		if err != nil {
 			s.log.Warn("acquire: Drive fallback failed; falling through", zap.String("asset_id", cmd.AssetID), zap.Error(err))
@@ -271,7 +279,7 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 			return &AcquireResult{
 				AssetID:      cmd.AssetID,
 				PlainText:    det.Text,
-				Cues:         nil, // Whisper returns plain text only (no per-segment timing)
+				Cues:         det.Cues, // Whisper now returns per-segment timing!
 				LanguageCode: lang,
 				SourceType:   asset.TextSourceWhisper,
 				Confidence:   det.Confidence,

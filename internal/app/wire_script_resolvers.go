@@ -86,6 +86,9 @@ func buildScriptSourceResolvers(
 	// caller-tagged audit context. godlike/06 SSOT forbids per-
 	// resolver sampler impls.
 	samplerReg := usecase.NewClipSamplerRegistry()
+	if root != nil && root.DB != nil {
+		usecase.SetSamplerDB(root.DB.DB)
+	}
 
 	// ── Clip source builder ────────────────────────────────────────
 	var clipSourceBuilder *usecase.ClipSourceBuilder
@@ -115,6 +118,9 @@ func buildScriptSourceResolvers(
 			// removed (see internal/platform/config/media.go).
 			if root.Repos.TextTrackRepo != nil {
 				clipSourceBuilder.ConfigureTextTrackReader(root.Repos.TextTrackRepo)
+			}
+			if root.Repos.SubtitleArtifactRepo != nil {
+				clipSourceBuilder.ConfigureSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
 			}
 		}
 	} // ── Normalization config ───────────────────────────────────────

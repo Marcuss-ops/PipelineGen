@@ -4,14 +4,22 @@
 package shorts
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 )
+
+var subtitleArtifacts asset.SubtitleArtifactRepository
+
+func SetSubtitleArtifactRepository(repo asset.SubtitleArtifactRepository) {
+	subtitleArtifacts = repo
+}
 
 const SchemaVersion = "remotion.shorts.v1"
 
@@ -92,14 +100,36 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 		if c.Volume != nil {
 			vol = *c.Volume
 		}
+		var subDriveFileID string
+		var subDriveURL string
+		var subLocalPath string
+		var subFileHash string
+		if subtitleArtifacts != nil {
+			artifacts, err := subtitleArtifacts.ListByAsset(context.Background(), c.ID)
+			if err == nil {
+				for _, artifact := range artifacts {
+					if artifact.Format == asset.SubtitleFormatASS && artifact.Status == asset.SubtitleStatusReady && artifact.IsCurrent {
+						subDriveFileID = artifact.DriveFileID
+						subDriveURL = artifact.DriveURL
+						subLocalPath = artifact.LocalPath
+						subFileHash = artifact.FileHash
+						break
+					}
+				}
+			}
+		}
 		clipProps = append(clipProps, map[string]any{
-			"id":          c.ID,
-			"path":        assetURL(c.Path),
-			"startMs":     c.StartMs,
-			"endMs":       c.EndMs,
-			"clipStartMs": c.ClipStartMs,
-			"clipEndMs":   c.ClipEndMs,
-			"volume":      vol,
+			"id":                 c.ID,
+			"path":               assetURL(c.Path),
+			"startMs":            c.StartMs,
+			"endMs":              c.EndMs,
+			"clipStartMs":        c.ClipStartMs,
+			"clipEndMs":          c.ClipEndMs,
+			"volume":             vol,
+			"subtitlesDriveID":   subDriveFileID,
+			"subtitlesURL":       subDriveURL,
+			"subtitlesLocalPath": subLocalPath,
+			"subtitlesHash":      subFileHash,
 		})
 	}
 	return remotionjob.RenderJob{

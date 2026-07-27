@@ -76,6 +76,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
@@ -283,6 +284,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// This repository backs GET /jobs/:id/full and the durable runner.
 	var runRepo scriptgen.RunRepository
 	if root.DB != nil {
+		shorts.SetSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
 		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.DB.DB, log)
 		if err != nil {
 			return fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)

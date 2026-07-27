@@ -139,7 +139,8 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	reprocessUC := appclips.NewReprocessUseCase(
 		params.AssetRepo,
 		params.Deps.Core.Services.MediaProcessor,
-		nil,
+		mutationsDisp,
+		params.Cfg.Drive.ClipsFolder(),
 	)
 
 	clipsDrive := newClipsDriveAdapter(params.DriveUploader, params.DriveUploader, nil)

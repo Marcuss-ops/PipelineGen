@@ -12,6 +12,7 @@ package app
 import (
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -50,6 +51,7 @@ type AcquirePorts struct {
 	Subtitles youtubeports.SubtitleFetcherPort
 	Whisper   youtubeports.WhisperTranscriberPort
 	Drive     drivepkg.Reader
+	CueWriter texttracks.TimedCueWriter
 }
 
 // BuildTextTrackBundle constructs the canonical bundle.
@@ -72,6 +74,7 @@ func BuildTextTrackBundle(
 	ai *AIBundle,
 	outbox *OutboxBundle,
 	acquirePorts *AcquirePorts,
+	publisher delivery.Publisher,
 	log *zap.Logger,
 ) (*TextTrackBundle, error) {
 	if repos == nil || repos.TextTrackRepo == nil {
@@ -155,14 +158,15 @@ func BuildTextTrackBundle(
 			acquireService.WithDrive(acquirePorts.Drive)
 		}
 	}
-	if repos.ClipsRepo == nil {
-		return nil, fmt.Errorf("compose texttracks: RepoBundle.ClipsRepo is required for automatic transcript acquisition")
-	}
 	backfill, err := texttracks.NewBackfillService(
 		repos.ClipsRepo,
 		repos.TextTrackRepo,
+		acquirePorts.CueWriter,
+		repos.SubtitleArtifactRepo,
 		materializer,
 		acquireService,
+		publisher,
+		cfg.Drive.ClipsFolder(),
 		log,
 	)
 	if err != nil {

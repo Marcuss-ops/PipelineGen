@@ -183,20 +183,24 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 		return asset.TranscriptResult{}, fmt.Errorf("whisper subprocess: %w (stderr: %s)", err, stderr.String())
 	}
 
-	// Parse the JSON output. The script returns
-	// {"text": "...", "detected_language": "...", "confidence": 0.0}
-	// on success, or {"error": "..."} on failure.
-	var raw map[string]any
-	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+	var res struct {
+		Text             string  `json:"text"`
+		DetectedLanguage string  `json:"detected_language"`
+		Confidence       float64 `json:"confidence"`
+		DurationMs       int64   `json:"duration_ms"`
+		Cues             []struct {
+			StartMs int64  `json:"start_ms"`
+			EndMs   int64  `json:"end_ms"`
+			Text    string `json:"text"`
+		} `json:"cues"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		return asset.TranscriptResult{}, fmt.Errorf("whisper: parse JSON output: %w (raw: %s)", err, stdout.String())
 	}
-	if errStr, ok := raw["error"].(string); ok && errStr != "" {
-		return asset.TranscriptResult{}, fmt.Errorf("whisper: script error: %s", errStr)
+	if res.Error != "" {
+		return asset.TranscriptResult{}, fmt.Errorf("whisper: script error: %s", res.Error)
 	}
-
-	text, _ := raw["text"].(string)
-	detectedLang, _ := raw["detected_language"].(string)
-	confidence, _ := raw["confidence"].(float64)
 
 	// godlike/07 no-fake-availability: reject stub-prefixed
 	// transcripts BEFORE normalization. The stub marker is a
@@ -204,32 +208,43 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 	// wired (Fase 5.c). The AcquireService surfaces
 	// ErrNoSourceAcquired, the chain falls through cleanly,
 	// and no placeholder data pollutes asset_text_tracks.
-	if stubTranscriptPattern.MatchString(text) {
+	if stubTranscriptPattern.MatchString(res.Text) {
 		a.log.Warn("whisper: stub transcript rejected (Fase 5.c real model not yet wired)",
 			zap.String("local_path", localPath),
-			zap.String("stub_text", text))
-		return asset.TranscriptResult{}, fmt.Errorf("%w: %s", ErrStubTranscript, text)
+			zap.String("stub_text", res.Text))
+		return asset.TranscriptResult{}, fmt.Errorf("%w: %s", ErrStubTranscript, res.Text)
 	}
 
 	// Normalize the detected language. Empty input collapses
 	// to "und" via the canonical bcp47.Normalize helper
 	// (godlike/07 no-fake-availability: never silently
 	// substitute "en").
-	lang, nErr := asset.Normalize(detectedLang)
+	lang, nErr := asset.Normalize(res.DetectedLanguage)
 	if nErr != nil {
 		lang = "und"
 	}
 
 	var confPtr *float64
-	if confidence > 0 {
-		c := confidence
+	if res.Confidence > 0 {
+		c := res.Confidence
 		confPtr = &c
 	}
 
+	cues := make([]asset.TimedCue, len(res.Cues))
+	for i, c := range res.Cues {
+		cues[i] = asset.TimedCue{
+			StartMs: c.StartMs,
+			EndMs:   c.EndMs,
+			Text:    c.Text,
+		}
+	}
+
 	return asset.TranscriptResult{
-		Text:             text,
+		Text:             res.Text,
 		DetectedLanguage: lang,
 		Confidence:       confPtr,
+		DurationMs:       res.DurationMs,
+		Cues:             cues,
 	}, nil
 }
 
