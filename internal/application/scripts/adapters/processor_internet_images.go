@@ -162,11 +162,13 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		if len(candidates) > 0 {
 			updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
 			updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, candidates)
+			cacheStore(&vidrushImageCache, cacheKey, internetImageCachePayload{
+				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+			})
 		}
+		// Empty provider results are deliberately not cached because these
+		// in-memory entries have no TTL and would otherwise become permanent.
 		updatedSegments = append(updatedSegments, updated)
-		cacheStore(&vidrushImageCache, cacheKey, internetImageCachePayload{
-			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
-		})
 	}
 
 	return &PostProcessResult{
