@@ -14,6 +14,24 @@ max_files_per_package: 65
 # File line cap. Files exceeding this limit are reported as violations
 # (exceptions must be named per-file in architecture/policy.history.yaml).
 max_lines_per_file: 1000
+
+# Strict per-file LOC soft-warning cap (godlike/08 §"Forward-prevention gates").
+# Distinct from the legacy max_lines_per_file=1000 hard cap: this fires BEFORE
+# files cross the 1000-LOC hard line, giving operators a chance to split
+# proactively. Files in the corresponding allowlist are exempt (per godlike/07
+# §"Temporary deprecation record" — each allowlist entry must carry
+# owner + deadline + removal_trigger per godlike/08 zero-baseline rule).
+# Setting this to 0 opts the rule family out. The default (600) gives a
+# 400-LOC safety margin between the soft warning and the hard ceiling.
+max_lines_per_file_strict: 600
+# Path (relative to root) of the per-file allowlist for the strict cap.
+# Format: same plain-text convention as admin-sql-allowlist.txt and
+# duplicate-types-allowlist.txt — one repo-root-relative forward-slashed path
+# per line; `#`-prefixed comments + blank lines are ignored. Inline
+# `# owner=...` annotations document per-entry governance metadata (parser
+# does not consume them but operators must keep them in sync with the
+# canonical baselined metadata in docs/migrations/archcheck-strict-baseline.json).
+max_lines_strict_allowlist: docs/migrations/max-lines-strict-allowlist.txt
 cmd_main_max_lines: 200
 
 # Constructor dependency cap (per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md

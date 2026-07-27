@@ -43,8 +43,26 @@ type Policy struct {
 	MaxFilesPerPackage int
 	MaxLinesPerFile    int
 	CmdMainMaxLines    int
-	MaxConstructorDeps int
-	MaxStructDeps      int
+	// MaxLinesPerFileStrict is the soft-warning cap on per-file LOC
+	// (forward-prevention gate, godlike/08 §"Mandatory checks").
+	// Distinct from MaxLinesPerFile=1000: this is a "pre-flight"
+	// check that signals overload before crossing the 1000-LOC
+	// hard line, giving operators a chance to split proactively.
+	// Files in pol.MaxLinesStrictAllowlist are exempt (per godlike/07
+	// §"Temporary deprecation record" — each allowlist entry must
+	// carry owner + deadline + removal_trigger per godlike/08
+	// zero-baseline rule). Setting this to 0 opts the rule family out.
+	MaxLinesPerFileStrict int
+	// MaxLinesStrictAllowlist is the policy path (relative to root)
+	// of the plain-text allowlist for MaxLinesPerFileStrict. Format:
+	// one repo-root-relative forward-slashed path per line; `#` comments
+	// and blank lines are ignored. Empty string opts out (the rule
+	// is unenforced for the un-allowlisted population). Forward-
+	// compatible with the existing permit-only model used by
+	// admin-sql-allowlist.txt and duplicate-types-allowlist.txt.
+	MaxLinesStrictAllowlist string
+	MaxConstructorDeps      int
+	MaxStructDeps           int
 
 	// MaxClipIngestPipelineFields is the per-struct exception to the global
 	// MaxStructDeps=8 cap, lifted to 9 for the canonical 9-component
