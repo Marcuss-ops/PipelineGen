@@ -416,17 +416,40 @@ if [[ "$SKIP_VELOX" == "0" ]]; then
         exit 1
     fi
 
-    VOICEOVER_ROWS_JSON=$(sqlite3 -json "$SMOKE_DB" "
-        SELECT
-            COALESCE(NULLIF(drive_link,''), NULLIF(download_link,''), NULLIF(local_path,'')) AS ref,
-            local_path,
-            duration_seconds
-        FROM voiceovers
-        WHERE request_id LIKE '${VO_REQUEST_PREFIX}-scene-%'
-          AND lower(status) IN ('ready','generated')
-        ORDER BY CAST(substr(request_id, length('${VO_REQUEST_PREFIX}-scene-') + 1) AS INTEGER),
-                 created_at,
-                 filename;" 2>/dev/null || echo "[]")
+    VOICEOVER_ROWS_JSON="[]"
+    VO_META_DEADLINE=$(( $(date +%s) + 300 ))
+    while (( $(date +%s) < VO_META_DEADLINE )); do
+        VOICEOVER_ROWS_JSON=$(sqlite3 -json "$SMOKE_DB" "
+            SELECT
+                COALESCE(NULLIF(drive_link,''), NULLIF(download_link,''), NULLIF(local_path,'')) AS ref,
+                local_path,
+                duration_seconds
+            FROM voiceovers
+            WHERE request_id LIKE '${VO_REQUEST_PREFIX}-scene-%'
+              AND lower(status) IN ('ready','generated')
+            ORDER BY CAST(substr(request_id, length('${VO_REQUEST_PREFIX}-scene-') + 1) AS INTEGER),
+                     created_at,
+                     filename;" 2>/dev/null || echo "[]")
+        VO_ROW_CT=$(jq -r 'length' <<<"$VOICEOVER_ROWS_JSON" 2>/dev/null || echo 0)
+        if (( VO_ROW_CT < SCENE_COUNT )); then
+            VOICEOVER_ROWS_JSON=$(sqlite3 -json "$SMOKE_DB" "
+                SELECT
+                    json_extract(result_json, '$.drive_link') AS ref,
+                    json_extract(result_json, '$.local_path') AS local_path,
+                    0 AS duration_seconds
+                FROM jobs
+                WHERE type = 'voiceover.generate_item'
+                  AND status = 'SUCCEEDED'
+                  AND json_extract(payload_json, '$.request_id') LIKE '${VO_REQUEST_PREFIX}-scene-%'
+                  AND COALESCE(json_extract(result_json, '$.local_path'), '') != ''
+                ORDER BY CAST(substr(json_extract(payload_json, '$.request_id'), length('${VO_REQUEST_PREFIX}-scene-') + 1) AS INTEGER),
+                         created_at;" 2>/dev/null || echo "[]")
+            VO_ROW_CT=$(jq -r 'length' <<<"$VOICEOVER_ROWS_JSON" 2>/dev/null || echo 0)
+        fi
+        (( VO_ROW_CT >= SCENE_COUNT )) && break
+        printf '  waiting voiceover metadata: %d/%d\n' "$VO_ROW_CT" "$SCENE_COUNT"
+        sleep 5
+    done
     VOICEOVER_META="${VEL_E2E_WORK}/voiceover-meta.json"
     VOICEOVER_ROWS_JSON="$VOICEOVER_ROWS_JSON" SCENE_COUNT="$SCENE_COUNT" ROOT_DIR="$ROOT_DIR" VOICEOVER_META="$VOICEOVER_META" python3 - <<'PY'
 import json
