@@ -131,13 +131,9 @@ type DispatcherShim interface {
 }
 
 // NewEmitter constructs a SceneImageJobEmitter backed by the
-// canonical Dispatcher. Returns nil if dispatcher is nil
-// (godlike/07 fail-closed — composition root must wire the
-// dispatcher before constructing the Emitter).
+// canonical Dispatcher. A nil dispatcher is retained as an invalid instance
+// so the first emit returns a typed error instead of silently dropping a job.
 func NewEmitter(dispatcher DispatcherShim) *Emitter {
-	if dispatcher == nil {
-		return nil
-	}
 	return &Emitter{dispatcher: dispatcher}
 }
 
@@ -156,6 +152,9 @@ func (e *Emitter) EmitSceneImageJob(ctx context.Context, cmd EmitSceneImageComma
 	// Nil-receiver guard (godlike/07 fail-closed).
 	if e == nil {
 		return "", fmt.Errorf("scene orchestrator: Emitter is nil (composition bug — must wire via NewEmitter)")
+	}
+	if e.dispatcher == nil {
+		return "", fmt.Errorf("scene orchestrator: dispatcher is not configured")
 	}
 
 	// Validate required fields.

@@ -51,26 +51,14 @@ func checkRoutesReal(_ context.Context, deps readinessDeps) checkStatus {
 // instances from root.
 func buildRouterWithProductionWiring(deps readinessDeps) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	authPort := &cfgAuthPort{Cfg: deps.Cfg}
-	ratePort := &cfgRatePort{Cfg: deps.Cfg}
-	featPort := &cfgFeaturesPort{Cfg: deps.Cfg}
-	router := api.NewRouter(&api.RouterConfig{
-		Auth:          authPort,
-		Rate:          ratePort,
-		Features:      featPort,
-		Log:           deps.Log,
-		ServerGinMode: gin.TestMode,
-		DataDir:       ".",
-		DownloadDir:   ".",
-		CORSOrigins:   []string{},
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config: deps.Cfg,
+		Handlers: api.InternalHandlers{
+			Outbox:      deps.Root.OutboxHandler,
+			MediaSearch: deps.Root.MediasearchHandler,
+		},
 	})
-	if deps.Root != nil && deps.Root.OutboxHandler != nil {
-		router.SetOutboxHandler(deps.Root.OutboxHandler)
-	}
-	if deps.Root != nil && deps.Root.MediasearchHandler != nil {
-		router.SetMediasearchHandler(deps.Root.MediasearchHandler)
-	}
-	return router.Setup()
+	return server.GetRouter()
 }
 
 // ── cfg-derived ports (no stubs) ──────────────────────────────────────
