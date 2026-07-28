@@ -1,18 +1,5 @@
 # Code generated from architecture/catalog.yaml by cmd/admin/regen-current-yaml. DO NOT EDIT.
 # Active statuses only: pending | in_progress. Completed work belongs in Git history.
-- id: "PRE-EXISTING-BUILD-ISSUES-2026-07-04"
-  status: "in_progress"
-  owner: "architecture-governance"
-  deadline: "2026-09-15T00:00:00Z"
-  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); PRE-EXISTING-13 closed July 2026 via Option A fixture-overlap applied on disk (clip_plaintext_output_p0f_test.go); PRE-EXISTING-15 closed July 2026 — AWK lens migration from package_name-only filter to the canonical (directory_path, package_name) Go-package identity tuple landed on origin/main in commits b74fdb788 (shell+AWK tuple), 0fb9027df (docs/duplicate-types-allowlist.txt key format), 1bb787a66 (cmd/archcheck TypeRedecl scanner alignment); check_05 lens produces '0 same-package type-redeclarations detected across internal/' on direct run of scripts/ci/architecture/checks/lib/09_check_5_part1.sh (closes architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE rationale point c); PRE-EXISTING-16 retired July 2026 — all five policy.yaml-referenced godlike docs (06/07/08/11/13) are canonical on disk with 40/40 required-H2 sections present per cmd/archcheck documents.go validator; discoverable in git history pre-retirement."
-  count:
-    baseline_initial: 9
-    current: 0
-    target_zero: 0
-  cross_refs:
-    ci_gate: "scripts/ci-architectural-checks.sh#Check-64"
-    issues_catalog: "architecture/issues.yaml"
-    source: "architecture/catalog.yaml"
 - id: "WAVE-21-PR-G-SCRIPTS-SUBPKG"
   status: "in_progress"
   owner: "scripts-capability"
