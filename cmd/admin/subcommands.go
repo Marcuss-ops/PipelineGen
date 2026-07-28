@@ -59,7 +59,7 @@ var subcommandRegistry = []subcommandEntry{
 	{name: "download-kids-music", run: runDownloadKidsMusic},
 	{name: "upload-drive-file", run: runUploadDriveFile},
 	{name: "index-kids-music-metadata", run: runIndexKidsMusicMetadata},
-	{name: "check-indexed-ids", run: runCheckIndexedIDs},
+	{name: "check-indexed-ids", run: runCheckIndexedIds},
 	{name: "reorganize-and-index-sfx", run: runReorganizeAndIndexSFX},
 	{name: "check-drive-names", run: runCheckDriveNames},
 	{name: "list-cartoon-files", run: runListCartoonFiles},
