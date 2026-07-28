@@ -39,12 +39,15 @@ var (
 	// methods) was dropped entirely (override brutal). Every Drive
 	// write from the stock pipeline now routes through
 	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
-	ErrStockPipelineNilClipsRepo  = errors.New("stockpipeline.NewService: storage.ClipsRepo is required (production path)")
-	ErrStockPipelineNilAssetIndex = errors.New("stockpipeline.NewService: storage.AssetIndex is required (production path)")
-	ErrStockPipelineNilDispatcher = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
-	ErrStockPipelineNilCutter     = errors.New("stockpipeline.NewService: media.Cutter is required (PR6 port)")
-	ErrStockPipelineNilRenderer   = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
-	ErrStockPipelineNilJobs       = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+	ErrStockPipelineNilClipsRepo     = errors.New("stockpipeline.NewService: storage.ClipsRepo is required (production path)")
+	ErrStockPipelineNilAssetIndex    = errors.New("stockpipeline.NewService: storage.AssetIndex is required (production path)")
+	ErrStockPipelineNilDispatcher    = errors.New("stockpipeline.NewService: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
+	ErrStockPipelineNilCutter        = errors.New("stockpipeline.NewService: media.Cutter is required (PR6 port)")
+	ErrStockPipelineNilRenderer      = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
+	ErrStockPipelineNilJobs          = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
+	ErrStockPipelineNilPublisher     = errors.New("stockpipeline.NewService: delivery.Publisher is required")
+	ErrStockPipelineNilFolderCreator = errors.New("stockpipeline.NewService: delivery.FolderCreator is required")
+	ErrStockPipelineNilStepStore     = errors.New("stockpipeline.NewService: Runtime.StepStore is required for durable stock state")
 
 	// P8 (July 2026): ErrStockPipelineNilYouTube + ErrStockPipelineNilClipIndexer +
 	// ErrStockPipelineNilMetadataWriter RETIRED. YouTube was never wired at
@@ -79,23 +82,6 @@ var (
 	// is currently stubbed.
 	ErrStockPipelineNilDB = errors.New("stockpipeline.NewService: DB is nil — step store will fall back to in-memory (production should wire media.db.sqlite)")
 
-	// ErrStockPipelineNilFinalizer is NOT a fail-fast sentinel — the
-	// stock Service tolerates a nil Finalizer at ctor time (§12-1
-	// §F.1 governance, July 2026) so existing composition-root
-	// wiring (which doesn't yet inject the Spina Dorsale finalizer)
-	// does not break. When nil:
-	//   - Service.HandleJob STILL runs the gates via
-	//     BuildFinalizationRequest (the gates fail-closed today
-	//     on ErrStockNoChunksFinalized until Commit 4-7 wires
-	//     the chunk-rendering ladder).
-	//   - When gates pass, HandleJob logs a Warn + skips the
-	//     finalizer.CompleteWithArtifacts call (legacy
-	//     return-map path remains active).
-	//
-	// §F.2 follow-up: make Finalizer REQUIRED at ctor time +
-	// wire the *finalizer.Finalizer concrete at the composition
-	// root (currently routed via imageSvc per
-	// registry_internal_modules.go::registerInternalModules).
 	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
 
 	// ErrStockPipelineAllQueriesFailed surfaces when every text

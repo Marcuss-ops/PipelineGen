@@ -130,7 +130,7 @@ func TestGate06_QdrantIndexStateAfterRun(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -268,7 +268,7 @@ func TestGate06_QdrantIndexStatePerClip(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

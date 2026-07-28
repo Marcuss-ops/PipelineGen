@@ -22,13 +22,9 @@ type AssetTxFinalizer struct {
 	committer persistence.AssetCommitter
 }
 
-func NewAssetTxFinalizer(log *zap.Logger, committers ...persistence.AssetCommitter) *AssetTxFinalizer {
+func NewAssetTxFinalizer(log *zap.Logger, committer persistence.AssetCommitter) *AssetTxFinalizer {
 	if log == nil {
 		log = zap.NewNop()
-	}
-	var committer persistence.AssetCommitter
-	if len(committers) > 0 {
-		committer = committers[0]
 	}
 	return &AssetTxFinalizer{log: log, committer: committer}
 }

@@ -24,3 +24,23 @@ func TestDeriveRunCountsUsesCompletedStages(t *testing.T) {
 		t.Fatalf("clip counts = %+v", got)
 	}
 }
+
+func TestValidateRunCountsRejectsPartialSuccess(t *testing.T) {
+	if err := ValidateRunCounts(RunCounts{
+		SelectedVideoCount: 10, DownloadedVideoCount: 10,
+		PlannedClipCount: 150, CreatedClipCount: 150,
+		PublishedClipCount: 149, PersistedClipCount: 149, IndexedClipCount: 149,
+	}); err == nil {
+		t.Fatal("expected partial publication to prevent SUCCEEDED")
+	}
+}
+
+func TestValidateRunCountsAcceptsCompleteRun(t *testing.T) {
+	if err := ValidateRunCounts(RunCounts{
+		SelectedVideoCount: 10, DownloadedVideoCount: 10,
+		PlannedClipCount: 150, CreatedClipCount: 150,
+		PublishedClipCount: 150, PersistedClipCount: 150, IndexedClipCount: 150,
+	}); err != nil {
+		t.Fatalf("complete run rejected: %v", err)
+	}
+}

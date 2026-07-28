@@ -672,7 +672,7 @@ func TestFinalizerE2E_RejectsStaleLease(t *testing.T) {
 		t.Fatalf("insert expired job: %v", err)
 	}
 
-	assetTx := assetfinalizer.NewAssetTxFinalizer(nil)
+	assetTx := assetfinalizer.NewAssetTxFinalizer(nil, nil)
 	outboxRepo := outboxevents.NewRepository(db)
 	fx := New(db, outboxRepo, assetTx, nil)
 
