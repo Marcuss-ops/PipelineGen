@@ -38,7 +38,7 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	// Step 1: CommitAsset (FinalizeAsset in the same tx as the

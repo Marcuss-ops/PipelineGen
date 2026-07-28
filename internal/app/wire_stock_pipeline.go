@@ -28,8 +28,10 @@ import (
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stocksourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -135,7 +137,8 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// Finalizer: single-TX spine for SUCCEEDED state + artifact writes.
 	var stockFinalizer finalization.JobFinalizer
 	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		assetTx := assetfinalizer.NewAssetTxFinalizer(log)
+		assetCommitter := sqassets.NewSQLiteAssetCommitter(stockDB, root.Outbox.EventsRepo, log)
+		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
 		}
@@ -194,6 +197,12 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			Cfg: cfg,
 			Log: log,
 			DB:  stockDB,
+			StepStore: func() steps.Store {
+				if stockDB == nil {
+					return nil
+				}
+				return steps.NewSQLiteStore(stockDB)
+			}(),
 		},
 		Delivery: StockDeliveryDeps{
 			Publisher: root.Drive.Publisher,

@@ -30,6 +30,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -95,9 +96,10 @@ type MediaDeps struct {
 // RuntimeDeps groups the pure data / runtime knobs so Deps stays
 // under the archcheck 8-field cap.
 type RuntimeDeps struct {
-	Cfg *config.Config
-	Log *zap.Logger
-	DB  *sql.DB
+	Cfg       *config.Config
+	Log       *zap.Logger
+	DB        *sql.DB
+	StepStore steps.Store
 }
 
 // ExecutionDeps groups the job + source-staging ports so Deps stays

@@ -33,6 +33,7 @@ type AdvancedSearchRequest struct {
 	Q             string   `json:"q"`
 	Source        string   `json:"source"`
 	Category      string   `json:"category"`
+	MediaType     string   `json:"media_type"`
 	Language      string   `json:"language"`
 	Tags          []string `json:"tags,omitempty"`
 	MinDuration   int      `json:"min_duration"`

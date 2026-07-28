@@ -45,6 +45,7 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -147,7 +148,8 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// finalization spine. root.Outbox.EventsRepo is available because
 	// NewComposition already ran BuildProcessBundle which populated it.
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil && root.DB != nil && root.DB.DB != nil {
-		assetTx := assetfinalizer.NewAssetTxFinalizer(log)
+		assetCommitter := sqassets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log)
+		assetTx := assetfinalizer.NewAssetTxFinalizer(log, assetCommitter)
 		if root.TextTracks != nil {
 			assetTx.WithFanOut(root.TextTracks.FanOut)
 		}
