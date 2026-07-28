@@ -227,17 +227,8 @@ func (c *Catalog) RenderIssues() ([]byte, error) {
 		fmt.Fprintf(&b, "    title: %s\n", yamlString(e.Title))
 		fmt.Fprintf(&b, "    status: %s\n", yamlString(e.Status))
 		fmt.Fprintf(&b, "    severity: %s\n", yamlString(e.Severity))
-		fmt.Fprintf(&b, "    category: %s\n", yamlString(e.Category))
-		fmt.Fprintf(&b, "    owner_capability: %s\n", yamlString(e.OwnerCapability))
-		b.WriteString("    follow_up:\n")
-		for _, followUp := range e.FollowUp {
-			fmt.Fprintf(&b, "      - %s\n", yamlString(followUp))
-		}
-		if e.EvidenceFilename != "" {
-			fmt.Fprintf(&b, "    evidence_filename: %s\n", yamlString(e.EvidenceFilename))
-		}
-		fmt.Fprintf(&b, "    opened_date: %s\n", yamlString(e.OpenedDate))
-		fmt.Fprintf(&b, "    tracking_issue: %s\n", yamlString(e.TrackingIssue))
+		owner := strings.TrimSpace(strings.SplitN(e.OwnerCapability, " (", 2)[0])
+		fmt.Fprintf(&b, "    owner: %s\n", yamlString(owner))
 	}
 	return []byte(b.String()), nil
 }
