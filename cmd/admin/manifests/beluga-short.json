@@ -1,0 +1,9 @@
+{
+  "input": "data/media/viral_videos/source.mp4",
+  "output": "data/media/viral_videos/rendered-short.mp4",
+  "font": "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf",
+  "effects": [],
+  "overlays": [
+    {"text": "JUST A CALM DAY AT THE AQUARIUM...", "start": "0", "end": "4.5", "size": "32", "y": "h*0.50", "color": "white"}
+  ]
+}
