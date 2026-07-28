@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	mwapp "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
@@ -152,5 +153,67 @@ func TestRateLimit_VoiceoverBurstBypass_DoesNotMatchLookalikeRoute(t *testing.T)
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("lookalike #1: code=%d want 429 (segment-aware match MUST reject /api/media/voiceovers-archive)", w2.Code)
+	}
+}
+
+// TestRateLimit_EmitsRetryAfter_On429: godlike/07 fail-closed +
+// RFC 7231 §7.1.3 contract — every 429 from the rate-limit middleware
+// MUST emit a delta-seconds `Retry-After` header in [1, window]
+// seconds. A 200 response MUST NOT carry the header.
+//
+// Remote workers (e.g. pkg/veloxclient::Client.SubmitAsync) consume
+// this header to throttle their retry budget to the actual refill
+// window; see pkg/retry/registry_google.go for the canonical parser
+// (client-side) and internal/application/jobs/completion/map_error.go
+// for the canonical upstream sibling (server-side, rate_limited kind).
+//
+// We assert RANGE membership rather than exact value because the time
+// between the two httptest.NewRequest calls varies per host; pinning
+// the integer second would yield flakes (forward-pointer: an isolated
+// clock-stub would let us assert the exact mid-window case, but it is
+// not worth the test complexity for this single regression lock).
+func TestRateLimit_EmitsRetryAfter_On429(t *testing.T) {
+	t.Setenv(voiceoverBurstBypassEnvKey, "")
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	// limit=1 → first request consumes the only token, second hits it.
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	r.Use(rl.Handler)
+	r.GET("/probe", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	// 1) First call: 200, no Retry-After.
+	req1 := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("first request: code=%d want 200", w1.Code)
+	}
+	if h := w1.Header().Get("Retry-After"); h != "" {
+		t.Fatalf("first request (200): Retry-After MUST be absent; got %q", h)
+	}
+
+	// 2) Second call: 429, MUST carry Retry-After.
+	req2 := httptest.NewRequest(http.MethodGet, "/probe", nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: code=%d want 429", w2.Code)
+	}
+	h := w2.Header().Get("Retry-After")
+	if h == "" {
+		t.Fatalf("429 MUST emit Retry-After (godlike/07 honest hint + RFC 7231 §7.1.3); got empty header")
+	}
+	n, err := strconv.Atoi(h)
+	if err != nil {
+		t.Fatalf("Retry-After MUST be a delta-seconds INTEGER per RFC 7231 §7.1.3; got %q (parse err: %v)", h, err)
+	}
+	// Per-token bucket window is `window/limit` = 60s/1 = full window
+	// here. The integer-window refill scheme guarantees retryAfter in
+	// (0, 60] s for any denied request after exhaustion.
+	if n < 1 || n > 60 {
+		t.Fatalf("Retry-After MUST be in [1, 60] seconds (one window); got %d", n)
 	}
 }
