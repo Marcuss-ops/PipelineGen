@@ -630,8 +630,6 @@ if [[ -s "$SPEC_FILE" ]]; then
                 subtitles: {
                     url: ($subtitle_tracks[0].source // ""),
                     format: "srt",
-                    preset: ($subtitle_tracks[0].preset // "active_word_pop"),
-                    font: ($subtitle_tracks[0].font // "Inter"),
                     language: "it-IT"
                 },
                 duration_seconds: $duration
