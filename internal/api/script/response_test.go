@@ -173,7 +173,7 @@ func TestGenerateResponse_AsyncHelper_ValuesReceiver_NoNilPanic(t *testing.T) {
 	if !resp.OK {
 		t.Fatalf("async() should set OK=true; resp.OK=%v", resp.OK)
 	}
-	if resp.JobID != "job-z" {
+	if string(resp.JobID) != "job-z" {
 		t.Fatalf("async() should set JobID=%q; got %q", "job-z", resp.JobID)
 	}
 }

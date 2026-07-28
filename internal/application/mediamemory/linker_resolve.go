@@ -7,13 +7,13 @@
 // together form the "resolve" phase of the linker pipeline that
 // EnrichCandidate (linker_worker.go) composes:
 //
-//   1. extractTranscript — canonical transcript text extraction
-//      (skip-on-nil extractor; Fase 3.2 fallback path).
-//   2. extractVisualDescriptions — canonical visual-desc text
-//      extraction (per-keyframe caption join + best-effort
-//      partial-success envelope).
-//   3. normalizedEntities — canonical case-insensitive entity
-//      dedupe (deterministic seed list, godlike/06 SSOT).
+//  1. extractTranscript — canonical transcript text extraction
+//     (skip-on-nil extractor; Fase 3.2 fallback path).
+//  2. extractVisualDescriptions — canonical visual-desc text
+//     extraction (per-keyframe caption join + best-effort
+//     partial-success envelope).
+//  3. normalizedEntities — canonical case-insensitive entity
+//     dedupe (deterministic seed list, godlike/06 SSOT).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a nil extractor is the canonical
 // Fase 3.2 fallback path (no transcriber / visual-describer wiring

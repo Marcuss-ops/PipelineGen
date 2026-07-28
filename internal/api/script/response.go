@@ -30,6 +30,10 @@
 // audit on the new field set.
 package script
 
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
+)
+
 // GenerateResponse is the canonical typed output shape that the
 // HTTP handler serialises to JSON for POST /api/script/generate.
 //
@@ -38,11 +42,17 @@ type GenerateResponse struct {
 	OK bool `json:"ok"`
 
 	// Async fields — populated by the async() helper below.
-	JobID        string `json:"job_id,omitempty"`
-	Status       string `json:"status,omitempty"`
-	StatusURL    string `json:"status_url,omitempty"`
-	DocTitle     string `json:"doc_title,omitempty"`
-	CurrentStage string `json:"current_stage,omitempty"`
+	// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): JobID is the canonical
+	// nominal type (zero-cost on the wire — Go's `type X string` emits
+	// the underlying string in JSON unchanged). Boundary code (HTTP
+	// handler) wraps raw input via primitives.NewJobID; the helper
+	// methods below accept `string` for backward-compat and wrap
+	// internally so callers don't need to change.
+	JobID        primitives.JobID `json:"job_id,omitempty"`
+	Status       string           `json:"status,omitempty"`
+	StatusURL    string           `json:"status_url,omitempty"`
+	DocTitle     string           `json:"doc_title,omitempty"`
+	CurrentStage string           `json:"current_stage,omitempty"`
 }
 
 // async populates the response for the async (job-enqueued) branch,
@@ -52,7 +62,7 @@ type GenerateResponse struct {
 // signature IS the contract — every field has exactly one source).
 func (r *GenerateResponse) async(jobID, status, statusURL, docTitle string) {
 	r.OK = true
-	r.JobID = jobID
+	r.JobID = primitives.NewJobID(jobID)
 	r.Status = status
 	r.StatusURL = statusURL
 	r.DocTitle = docTitle

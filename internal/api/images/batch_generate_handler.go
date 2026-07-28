@@ -16,16 +16,21 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
 
 // batchJobResponse is the per-job entry in the 202 response.
+//
+// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): JobID is the canonical
+// nominal type (zero-cost on the wire — Go's `type X string` emits
+// the underlying string in JSON unchanged).
 type batchJobResponse struct {
-	JobID    string `json:"job_id"`
-	Position int    `json:"position"`
-	Status   string `json:"status"`
+	JobID    primitives.JobID `json:"job_id"`
+	Position int              `json:"position"`
+	Status   string           `json:"status"`
 }
 
 // generateBatchID creates a short unique batch identifier.
@@ -100,7 +105,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 		}
 
 		jobs[i] = batchJobResponse{
-			JobID:    enqueued.ID,
+			JobID:    primitives.NewJobID(enqueued.ID),
 			Position: position,
 			Status:   string(enqueued.Status),
 		}

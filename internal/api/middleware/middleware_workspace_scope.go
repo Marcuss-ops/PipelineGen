@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
 	"github.com/gin-gonic/gin"
 )
@@ -12,15 +13,24 @@ import (
 //   - Admin principals may request any workspace (the header indicates a choice).
 //   - Worker principals are restricted to the default workspace (no multi-tenant escape).
 //   - Unauthenticated users cannot override the workspace at all.
+//
+// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): the local workspaceID
+// variable is typed as primitives.WorkspaceID at the boundary so
+// the empty/reserved-sentinel checks use the canonical .IsEmpty()
+// method and the NewWorkspaceID reserved-sentinel comparator. The
+// downstream workspace.NewScope call is converted back to string
+// via .String() so the kernel.Scope API stays untouched (deep
+// package change is intentionally out of scope for this gradual
+// PR — kernel.Scope will migrate in a followup).
 func WorkspaceScopeMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		isAdmin, _ := c.Get("is_admin")
 
-		workspaceID := c.GetHeader("X-Workspace-ID")
+		workspaceID := primitives.NewWorkspaceID(c.GetHeader("X-Workspace-ID"))
 		projectID := c.GetHeader("X-Project-ID")
 
-		if workspaceID == "" {
-			workspaceID = c.Query("workspace_id")
+		if workspaceID.IsEmpty() {
+			workspaceID = primitives.NewWorkspaceID(c.Query("workspace_id"))
 		}
 		if projectID == "" {
 			projectID = c.Query("project_id")
@@ -30,16 +40,16 @@ func WorkspaceScopeMiddleware() gin.HandlerFunc {
 		if isAdmin != true {
 			// Workers and anonymous users are NOT allowed to select arbitrary workspaces.
 			// They get the default scope regardless of what the request says.
-			if workspaceID != "" && workspaceID != "default" {
+			if !workspaceID.IsEmpty() && workspaceID != primitives.NewWorkspaceID("default") {
 				c.JSON(http.StatusForbidden, gin.H{"error": "workspace selection not permitted for this principal"})
 				c.Abort()
 				return
 			}
-			workspaceID = "default"
+			workspaceID = primitives.NewWorkspaceID("default")
 			projectID = "default"
 		}
 
-		scope := workspace.NewScope(workspaceID, projectID)
+		scope := workspace.NewScope(workspaceID.String(), projectID)
 		c.Set("workspace_scope", scope)
 
 		c.Next()

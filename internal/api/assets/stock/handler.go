@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 )
 
 // StockHandler is the HTTP projection of the stock pipeline UseCase.
@@ -204,8 +205,12 @@ func (h *StockHandler) Run(c *gin.Context) {
 	}
 
 	// (4) URL validation (scheme + private IP rejection).
+	// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): boundary wraps raw
+	// string fields via primitives.NewURL so the validator signature
+	// is typed end-to-end. Error messages keep the raw string for
+	// operator readability.
 	for _, u := range req.DirectURLs {
-		if !isValidURL(u) {
+		if !isValidURL(primitives.NewURL(u)) {
 			c.JSON(http.StatusBadRequest, runResponse{
 				Status:    StatusError,
 				Error:     "invalid or insecure direct_url: " + u,
@@ -215,7 +220,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 		}
 	}
 	for _, u := range req.DriveURLs {
-		if !isValidURL(u) {
+		if !isValidURL(primitives.NewURL(u)) {
 			c.JSON(http.StatusBadRequest, runResponse{
 				Status:    StatusError,
 				Error:     "invalid or insecure drive_url: " + u,
@@ -229,7 +234,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	// Variable named `clip` (not `c`) to avoid shadowing the gin
 	// context `c *gin.Context` used for the response.
 	for _, clip := range req.Clips {
-		if clip.URL != "" && !isValidURL(clip.URL) {
+		if clip.URL != "" && !isValidURL(primitives.NewURL(clip.URL)) {
 			c.JSON(http.StatusBadRequest, runResponse{
 				Status:    StatusError,
 				Error:     "invalid or insecure clip url: " + clip.URL,
@@ -326,19 +331,27 @@ func (h *StockHandler) Run(c *gin.Context) {
 // validation at the HTTP boundary. The orchestrator's downstream
 // path uses different rules (yt-dlp accepts http on some sources)
 // but those are application-layer concerns.
-func isValidURL(u string) bool {
-	if u == "" {
+//
+// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): signature accepts
+// primitives.URL (canonical nominal type) so the compiler catches
+// accidental swaps with other raw-string identifiers. The internal
+// lexical/HTTP validation is unchanged — the primitive is a pure
+// view of the underlying string. Callers pass primitives.NewURL(s)
+// at the HTTP boundary.
+func isValidURL(u primitives.URL) bool {
+	if u.IsEmpty() {
 		return false
 	}
+	raw := u.String()
 	// Length cap — defense in depth against URL-flood DoS (10MB URLs).
-	if len(u) > MaxURLLength {
+	if len(raw) > MaxURLLength {
 		return false
 	}
 	// Null-byte rejection — some libraries truncate at NUL.
-	if strings.ContainsRune(u, '\x00') {
+	if strings.ContainsRune(raw, '\x00') {
 		return false
 	}
-	parsed, err := url.ParseRequestURI(u)
+	parsed, err := url.ParseRequestURI(raw)
 	if err != nil {
 		return false
 	}
