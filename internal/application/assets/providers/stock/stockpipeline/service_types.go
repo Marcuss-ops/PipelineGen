@@ -23,7 +23,6 @@ package stockpipeline
 
 import (
 	"context"
-	"database/sql"
 	"io"
 
 	"go.uber.org/zap"
@@ -34,6 +33,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -96,10 +96,17 @@ type MediaDeps struct {
 // RuntimeDeps groups the pure data / runtime knobs so Deps stays
 // under the archcheck 8-field cap.
 type RuntimeDeps struct {
-	Cfg       *config.Config
-	Log       *zap.Logger
-	DB        *sql.DB
-	StepStore steps.Store
+	Cfg        *config.Config
+	Log        *zap.Logger
+	JobCreator JobCreator
+	StepStore  steps.Store
+}
+
+// JobCreator is the minimal durable port needed by sync-mode stock runs.
+// SQLite and other brokers implement it in the composition root; the
+// application service never reaches into a database handle.
+type JobCreator interface {
+	Create(ctx context.Context, j *job.Job) error
 }
 
 // ExecutionDeps groups the job + source-staging ports so Deps stays

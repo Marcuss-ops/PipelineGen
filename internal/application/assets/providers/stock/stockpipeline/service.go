@@ -51,8 +51,6 @@
 package stockpipeline
 
 import (
-	"database/sql"
-
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
@@ -132,8 +130,8 @@ type Service struct {
 
 	// db is the SQLite handle for the step store (Phase 2, July 2026).
 	// nil-tolerant — when nil, the orchestrator falls back to in-memory.
-	db        *sql.DB
-	stepStore steps.Store
+	jobCreator JobCreator
+	stepStore  steps.Store
 
 	// sourceCacheReader + sourceCacheWriter are the cross-run source
 	// download cache ports. When both are non-nil, the StockStager
@@ -238,7 +236,7 @@ func NewService(deps Deps) (*Service, error) {
 		sourceStager:      deps.Execution.SourceStager,
 		channelLister:     deps.Execution.ChannelLister,
 		driveReader:       deps.Delivery.DriveReader,
-		db:                deps.Runtime.DB,
+		jobCreator:        deps.Runtime.JobCreator,
 		stepStore:         deps.Runtime.StepStore,
 		sourceCacheReader: deps.SourceCache.Reader,
 		sourceCacheWriter: deps.SourceCache.Writer,

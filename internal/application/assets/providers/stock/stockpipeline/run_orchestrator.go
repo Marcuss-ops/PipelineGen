@@ -168,18 +168,18 @@ func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*Pipelin
 		ExpiresAt: time.Now().Add(1 * time.Hour),
 	}
 
-	if s.db != nil {
-		_, err := s.db.ExecContext(ctx,
-			`INSERT INTO jobs (id, type, status, worker_id, lease_id, lease_expiry, created_at, updated_at)
-			 VALUES (?, 'media.stock', 'RUNNING', ?, ?, ?, datetime('now'), datetime('now'))`,
-			jobID,
-			input.FinalizationLease.WorkerID,
-			input.FinalizationLease.LeaseID,
-			input.FinalizationLease.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: insert synthetic job: %w", err)
-		}
+	if s.jobCreator == nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: durable job creator is not wired")
+	}
+	now := time.Now().UTC()
+	if err := s.jobCreator.Create(ctx, &job.Job{
+		ID: jobID, Type: "media.stock", Status: job.StatusRunning,
+		WorkerID:    input.FinalizationLease.WorkerID,
+		LeaseID:     input.FinalizationLease.LeaseID,
+		LeaseExpiry: &input.FinalizationLease.ExpiresAt,
+		CreatedAt:   now, UpdatedAt: now, Revision: 1,
+	}); err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: insert synthetic job: %w", err)
 	}
 
 	// Delegate to the canonical resilient path — runOrchestratorResilient

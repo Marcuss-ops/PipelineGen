@@ -197,6 +197,12 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			Cfg: cfg,
 			Log: log,
 			DB:  stockDB,
+			JobCreator: func() stockpipeline.JobCreator {
+				if root.Jobs == nil {
+					return nil
+				}
+				return root.Jobs.Repo
+			}(),
 			StepStore: func() steps.Store {
 				if stockDB == nil {
 					return nil

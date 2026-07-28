@@ -119,10 +119,11 @@ type StockSourceCacheDeps struct {
 // StockRuntimeDeps groups the runtime environment the stock bundle
 // needs (Cfg, Log, DB). Field count: 3.
 type StockRuntimeDeps struct {
-	Cfg       *config.Config
-	Log       *zap.Logger
-	DB        *sql.DB // optional (nil → in-memory)
-	StepStore stocksteps.Store
+	Cfg        *config.Config
+	Log        *zap.Logger
+	DB         *sql.DB // optional (nil → in-memory)
+	JobCreator stockpipeline.JobCreator
+	StepStore  stocksteps.Store
 }
 
 // StockDeliveryDeps groups the asymmetric production-pair surface
@@ -318,10 +319,10 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
-			Cfg:       deps.Runtime.Cfg,
-			Log:       deps.Runtime.Log,
-			DB:        deps.Runtime.DB,
-			StepStore: deps.Runtime.StepStore,
+			Cfg:        deps.Runtime.Cfg,
+			Log:        deps.Runtime.Log,
+			JobCreator: deps.Runtime.JobCreator,
+			StepStore:  deps.Runtime.StepStore,
 		},
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:       deps.Acquisition.ClipsRepo,
