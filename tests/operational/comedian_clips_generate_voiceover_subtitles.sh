@@ -36,7 +36,7 @@ set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
-smoke_require sqlite3 jq curl ffmpeg ffprobe
+smoke_require sqlite3 jq curl ffmpeg ffprobe python3
 
 ROOT_DIR=$(cd "$DIR/../.." && pwd)
 SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
@@ -407,7 +407,71 @@ fi
 
 VELOX_CLIP_LINKS_JSON="[]"
 VELOX_CLIP_DURATIONS_JSON="[]"
+VELOX_SUBTITLE_TRACKS_JSON="[]"
+VOICEOVER_PATHS="[]"
+VOICEOVER_DURATIONS_JSON="[]"
 if [[ "$SKIP_VELOX" == "0" ]]; then
+    if [[ -z "${VO_REQUEST_PREFIX:-}" ]]; then
+        printf '%sFAIL step 8: missing voiceover request prefix%s\n' "$RED" "$RESET" >&2
+        exit 1
+    fi
+
+    VOICEOVER_ROWS_JSON=$(sqlite3 -json "$SMOKE_DB" "
+        SELECT
+            COALESCE(NULLIF(drive_link,''), NULLIF(download_link,''), NULLIF(local_path,'')) AS ref,
+            local_path,
+            duration_seconds
+        FROM voiceovers
+        WHERE request_id LIKE '${VO_REQUEST_PREFIX}-scene-%'
+          AND lower(status) IN ('ready','generated')
+        ORDER BY CAST(substr(request_id, length('${VO_REQUEST_PREFIX}-scene-') + 1) AS INTEGER),
+                 created_at,
+                 filename;" 2>/dev/null || echo "[]")
+    VOICEOVER_META="${VEL_E2E_WORK}/voiceover-meta.json"
+    VOICEOVER_ROWS_JSON="$VOICEOVER_ROWS_JSON" SCENE_COUNT="$SCENE_COUNT" ROOT_DIR="$ROOT_DIR" VOICEOVER_META="$VOICEOVER_META" python3 - <<'PY'
+import json
+import os
+import subprocess
+import sys
+
+rows = json.loads(os.environ.get("VOICEOVER_ROWS_JSON") or "[]")
+scene_count = int(os.environ["SCENE_COUNT"])
+root = os.environ["ROOT_DIR"]
+out_path = os.environ["VOICEOVER_META"]
+meta = []
+for row in rows:
+    ref = (row.get("ref") or "").strip()
+    local_path = (row.get("local_path") or "").strip()
+    if local_path and not os.path.isabs(local_path):
+        local_path = os.path.join(root, local_path)
+    duration = float(row.get("duration_seconds") or 0)
+    if duration <= 0 and local_path and os.path.isfile(local_path):
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", local_path],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            duration = float(probe.stdout.strip() or "0")
+        except ValueError:
+            duration = 0
+    if ref and duration > 0:
+        meta.append({"ref": ref, "local_path": local_path, "duration_seconds": round(duration, 3)})
+with open(out_path, "w", encoding="utf-8") as fh:
+    json.dump(meta[:scene_count], fh, ensure_ascii=False)
+if len(meta) < scene_count:
+    print(f"voiceover metadata incomplete: {len(meta)}/{scene_count}", file=sys.stderr)
+    sys.exit(1)
+PY
+
+    VOICEOVER_PATHS=$(jq -c '[.[].ref]' "$VOICEOVER_META")
+    VOICEOVER_DURATIONS_JSON=$(jq -c '[.[].duration_seconds]' "$VOICEOVER_META")
+    VO_DURATION_SUM=$(jq -r 'add' <<<"$VOICEOVER_DURATIONS_JSON")
+    printf '  voiceover assets: %s%d paths, total %.3fs%s\n' \
+        "$GREEN" "$(jq -r 'length' <<<"$VOICEOVER_PATHS")" "$VO_DURATION_SUM" "$RESET"
+
     VEL_CLIP_ASSETS_TSV="${VEL_E2E_WORK}/velox-clip-assets.tsv"
     VEL_CLIP_DURATIONS_TSV="${VEL_E2E_WORK}/velox-clip-durations.tsv"
     VEL_CLEAN_CLIP_DIR="${VEL_E2E_WORK}/velox-clean-clips"
@@ -425,8 +489,9 @@ if [[ "$SKIP_VELOX" == "0" ]]; then
             printf '%sFAIL step 8: clip source not readable: %s%s\n' "$RED" "$clip_path" "$RESET" >&2
             exit 1
         fi
+        TARGET_DURATION=$(jq -r --argjson idx "$((CLIP_UPLOAD_INDEX - 1))" '.[$idx] // 5' <<<"$VOICEOVER_DURATIONS_JSON")
         CLEAN_CLIP="${VEL_CLEAN_CLIP_DIR}/scene-${CLIP_UPLOAD_INDEX}.clean.mp4"
-        ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -i "$clip_path" -t 5 \
+        ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -stream_loop -1 -i "$clip_path" -t "$TARGET_DURATION" \
             -vf "scale=1280:-2,fps=30,format=yuv420p" \
             -c:v libx264 -preset veryfast -crf 23 \
             -an -movflags +faststart "$CLEAN_CLIP" >"${VEL_E2E_WORK}/ffmpeg-clean.log" 2>&1
@@ -455,51 +520,92 @@ if [[ "$SKIP_VELOX" == "0" ]]; then
     done < <(jq -r '.[]' <<<"$CLIP_SOURCE_PATHS_JSON")
     VELOX_CLIP_LINKS_JSON=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$VEL_CLIP_ASSETS_TSV")
     VELOX_CLIP_DURATIONS_JSON=$(jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)' "$VEL_CLIP_DURATIONS_TSV")
+
+    VOICEOVER_SRT="${VEL_E2E_WORK}/voiceover-subtitles.srt"
+    SPEC_FILE="$SPEC_FILE" VOICEOVER_DURATIONS_JSON="$VOICEOVER_DURATIONS_JSON" VOICEOVER_SRT="$VOICEOVER_SRT" python3 - <<'PY'
+import json
+import os
+import re
+
+def ts(seconds):
+    ms_total = int(round(seconds * 1000))
+    h, rem = divmod(ms_total, 3600000)
+    m, rem = divmod(rem, 60000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+with open(os.environ["SPEC_FILE"], encoding="utf-8") as fh:
+    spec = json.load(fh)
+durations = json.loads(os.environ["VOICEOVER_DURATIONS_JSON"])
+offset = 0.0
+blocks = []
+for idx, scene in enumerate((spec.get("scenes") or [])[:len(durations)], start=1):
+    duration = float(durations[idx - 1])
+    text = re.sub(r"\s+", " ", (scene.get("text") or "").strip())
+    end = offset + duration
+    blocks.append(f"{idx}\n{ts(offset)} --> {ts(end)}\n{text}\n")
+    offset = end
+with open(os.environ["VOICEOVER_SRT"], "w", encoding="utf-8") as fh:
+    fh.write("\n".join(blocks))
+PY
+    if [[ ! -s "$VOICEOVER_SRT" ]]; then
+        printf '%sFAIL step 8: generated voiceover subtitles are empty%s\n' "$RED" "$RESET" >&2
+        exit 1
+    fi
+    SUB_UPLOAD_BODY="${VEL_E2E_WORK}/velox-subtitle-upload.json"
+    SUB_UPLOAD_HTTP=$(curl -s --max-time 60 \
+        -o "$SUB_UPLOAD_BODY" -w '%{http_code}' \
+        -X POST \
+        -H "Authorization: Bearer $VELOX_MASTER_ASSET_TOKEN" \
+        -F kind=subtitle \
+        -F "file=@${VOICEOVER_SRT};type=application/x-subrip" \
+        "${VELOX_MASTER_URL}/api/v1/creator/assets")
+    if [[ "$SUB_UPLOAD_HTTP" != "201" ]]; then
+        printf '%sFAIL step 8: subtitle asset upload failed HTTP %s%s\n' "$RED" "$SUB_UPLOAD_HTTP" "$RESET" >&2
+        if [[ -s "$SUB_UPLOAD_BODY" ]]; then
+            smoke_echo_safe "$(head -c 400 "$SUB_UPLOAD_BODY")" >&2
+        fi
+        exit 1
+    fi
+    SUBTITLE_REF=$(jq -er .reference "$SUB_UPLOAD_BODY")
+    VELOX_SUBTITLE_TRACKS_JSON=$(jq -cn --arg source "$SUBTITLE_REF" '[{source: $source, preset: "active_word_pop", font: "Inter"}]')
 fi
 
-# Extract specscene-based scenes for the Velox payload. Keep only the strict
-# Velox v1 job contract fields accepted by /api/v1/jobs.
 VELOX_SCENES="[]"
-VOICEOVER_PATHS="[]"
 if [[ -s "$SPEC_FILE" ]]; then
     VELOX_SCENES=$(jq -c \
         --argjson default_duration "${VELOX_DEFAULT_SCENE_DURATION_SECONDS:-4}" \
         --argjson fallback_clip_links "$VELOX_CLIP_LINKS_JSON" \
-        --argjson fallback_durations "$VELOX_CLIP_DURATIONS_JSON" '
+        --argjson fallback_durations "$VELOX_CLIP_DURATIONS_JSON" \
+        --argjson voiceover_paths "$VOICEOVER_PATHS" \
+        --argjson voiceover_durations "$VOICEOVER_DURATIONS_JSON" '
         def nonempty($v): if (($v // "") | tostring | length) > 0 then $v else empty end;
-        [.scenes | to_entries[]? | {
-            text: (.value.text // ""),
-            clip_link: (
-                nonempty(.value.clip_link) //
-                nonempty(.value.bindings.clip.link) //
-                nonempty(.value.source.clip_link) //
-                nonempty($fallback_clip_links[.key]) //
-                ""
-            ),
-            duration_seconds: (($fallback_durations[.key] // .value.duration_seconds // .value.duration // $default_duration) | tonumber)
-        }]
+        [.scenes | to_entries[]? |
+            (($fallback_durations[.key] // .value.duration_seconds // .value.duration // $default_duration) | tonumber) as $clip_duration |
+            (($voiceover_durations[.key] // $clip_duration) | tonumber) as $voice_duration |
+            (if $voice_duration > $clip_duration then $voice_duration else $clip_duration end) as $duration |
+            (nonempty(.value.clip_link) //
+             nonempty(.value.bindings.clip.link) //
+             nonempty(.value.source.clip_link) //
+             nonempty($fallback_clip_links[.key]) //
+             "") as $clip_link |
+            {
+                scene_id: ("scene-" + ((.key + 1) | tostring)),
+                index: (.key + 1),
+                text: (.value.text // ""),
+                clip_link: $clip_link,
+                clip: {
+                    url: $clip_link,
+                    duration_ms: (($clip_duration * 1000 + 0.5) | floor)
+                },
+                voiceover: {
+                    url: ($voiceover_paths[.key] // ""),
+                    duration_ms: (($voice_duration * 1000 + 0.5) | floor),
+                    language: "it-IT"
+                },
+                duration_seconds: $duration
+            }]
     ' "$SPEC_FILE" 2>/dev/null || echo "[]")
-    VOICEOVER_PATHS=$(jq -c '[.scenes[]?.bindings.voiceover.link // empty | select(. != "")]' "$SPEC_FILE" 2>/dev/null || echo "[]")
-fi
-
-if [[ "$VOICEOVER_PATHS" == "[]" && -n "${VO_REQUEST_PREFIX:-}" ]]; then
-    VO_DB_DEADLINE=$(( $(date +%s) + 120 ))
-    while (( $(date +%s) < VO_DB_DEADLINE )); do
-        VOICEOVER_PATHS=$(sqlite3 "$SMOKE_DB" \
-            "SELECT drive_link FROM voiceovers WHERE request_id LIKE '${VO_REQUEST_PREFIX}%' AND lower(status) IN ('ready','generated') AND drive_link != '' ORDER BY created_at, filename;" 2>/dev/null \
-            | jq -Rsc 'split("\n") | map(select(length > 0))')
-        VO_LINK_CT=$(jq -r 'length' <<<"$VOICEOVER_PATHS" 2>/dev/null || echo 0)
-        (( VO_LINK_CT >= SCENE_COUNT )) && break
-        printf '  waiting voiceover links: %d/%d\n' "$VO_LINK_CT" "$SCENE_COUNT"
-        sleep 5
-    done
-    VO_LINK_CT=$(jq -r 'length' <<<"$VOICEOVER_PATHS" 2>/dev/null || echo 0)
-    if (( VO_LINK_CT < SCENE_COUNT )); then
-        printf '  voiceover prefix incomplete: %d/%d, using latest generated Drive links\n' "$VO_LINK_CT" "$SCENE_COUNT"
-        VOICEOVER_PATHS=$(sqlite3 "$SMOKE_DB" \
-            "SELECT drive_link FROM (SELECT drive_link, created_at, filename FROM voiceovers WHERE lower(status) IN ('ready','generated') AND drive_link != '' ORDER BY created_at DESC, filename DESC LIMIT ${SCENE_COUNT}) ORDER BY created_at ASC, filename ASC;" 2>/dev/null \
-            | jq -Rsc 'split("\n") | map(select(length > 0))')
-    fi
 fi
 
 CORRELATION_ID="comedian-clips-${PG_JOB_ID}"
@@ -512,12 +618,14 @@ jq -n \
     --arg script_text "$SCRIPT_TEXT" \
     --argjson scenes "$VELOX_SCENES" \
     --argjson voiceover_paths "$VOICEOVER_PATHS" \
+    --argjson subtitle_tracks "$VELOX_SUBTITLE_TRACKS_JSON" \
     '{
         idempotency_key: $idempotency_key,
         video_name: $title,
         script_text: $script_text,
         scenes: $scenes,
         voiceover_paths: $voiceover_paths,
+        subtitle_tracks: $subtitle_tracks,
         delivery_plan: [{
             destination_id: "comedy_test",
             priority: 1,
@@ -527,12 +635,17 @@ jq -n \
 
 SCENE_CT=$(jq -r '.scenes | length' "$VELOX_PAYLOAD" 2>/dev/null || echo 0)
 VO_CT=$(jq -r '.voiceover_paths | length' "$VELOX_PAYLOAD" 2>/dev/null || echo 0)
-printf '  payload: %s%d scenes, %d voiceover paths, %d chars script%s\n' \
-    "$YELLOW" "$SCENE_CT" "$VO_CT" "${#SCRIPT_TEXT}" "$RESET"
-if (( SCENE_CT == 0 || VO_CT != SCENE_CT )); then
+SUBTRACK_CT=$(jq -r '.subtitle_tracks | length' "$VELOX_PAYLOAD" 2>/dev/null || echo 0)
+printf '  payload: %s%d scenes, %d voiceover paths, %d subtitle tracks, %d chars script%s\n' \
+    "$YELLOW" "$SCENE_CT" "$VO_CT" "$SUBTRACK_CT" "${#SCRIPT_TEXT}" "$RESET"
+if (( SCENE_CT == 0 || VO_CT != SCENE_CT || SUBTRACK_CT == 0 )); then
     printf '%sFAIL step 8: invalid scene/voiceover cardinality (%d/%d)%s\n' "$RED" "$SCENE_CT" "$VO_CT" "$RESET" >&2
     exit 1
 fi
+PAYLOAD_SHA256=$(sha256sum "$VELOX_PAYLOAD" | awk '{print $1}')
+IMMUTABLE_PAYLOAD="${VEL_E2E_WORK}/velox-render-request.${PAYLOAD_SHA256}.json"
+cp "$VELOX_PAYLOAD" "$IMMUTABLE_PAYLOAD"
+printf '  payload_sha256: %s\n' "$PAYLOAD_SHA256"
 
 # ══════════════════════════════════════════════════════════════════════
 # STEP 9: SUBMIT TO VELOX MASTER
@@ -557,16 +670,34 @@ if [[ "$SKIP_VELOX" == "0" ]]; then
         VELOX_JOB_ID=$(jq -r '.job_id // .enqueue.job_id // .job.id // ""' "$VELOX_SUBMIT")
         if [[ -n "$VELOX_JOB_ID" ]]; then
             printf '  Velox job_id: %s%s%s\n' "$YELLOW" "$VELOX_JOB_ID" "$RESET"
+            VELOX_IDEMPOTENCY_SUBMIT="$VEL_E2E_WORK/velox-submit-idempotency.json"
+            VELOX_IDEMPOTENCY_HTTP=$(curl -s --max-time 30 \
+                -o "$VELOX_IDEMPOTENCY_SUBMIT" -w '%{http_code}' \
+                -X POST \
+                -H "Authorization: Bearer $VELOX_M2M_TOKEN" \
+                -H "Content-Type: application/json" \
+                -H "X-Request-ID: $MANIFEST_IDEM" \
+                --data-binary "@${VELOX_PAYLOAD}" \
+                "${VELOX_MASTER_URL}/api/v1/jobs")
+            IDEMPOTENCY_JOB_ID=$(jq -r '.job_id // .enqueue.job_id // .job.id // ""' "$VELOX_IDEMPOTENCY_SUBMIT" 2>/dev/null || echo "")
+            if [[ "$VELOX_IDEMPOTENCY_HTTP" != "202" && "$VELOX_IDEMPOTENCY_HTTP" != "200" ]] || [[ "$IDEMPOTENCY_JOB_ID" != "$VELOX_JOB_ID" ]]; then
+                printf '%sFAIL step 9: idempotency replay returned HTTP %s job_id=%s, want %s%s\n' \
+                    "$RED" "$VELOX_IDEMPOTENCY_HTTP" "$IDEMPOTENCY_JOB_ID" "$VELOX_JOB_ID" "$RESET" >&2
+                exit 1
+            fi
+            printf '  idempotency replay: %sOK same job_id%s\n' "$GREEN" "$RESET"
             # Save tracking info
             jq -n \
                 --arg pg "$PG_JOB_ID" \
                 --arg vx "$VELOX_JOB_ID" \
                 --arg idem "$MANIFEST_IDEM" \
+                --arg payload_sha256 "$PAYLOAD_SHA256" \
                 --arg status "PENDING" \
                 '{
                     pipelinegen_job_id: $pg,
                     velox_job_id: $vx,
                     idempotency_key: $idem,
+                    payload_sha256: $payload_sha256,
                     velox_status: $status,
                     submitted_at: (now | todate)
                 }' > "${VEL_E2E_WORK}/tracking.json"
