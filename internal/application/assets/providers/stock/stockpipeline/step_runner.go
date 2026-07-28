@@ -59,6 +59,7 @@ type runState struct {
 	Manifest           *job.ArtifactManifest
 	FinalStatus        job.Status
 	FinalizationResult *finalization.FinalizationResult
+	Counts             RunCounts
 }
 
 // orchestratorRunner is the canonical StepRunner implementation.

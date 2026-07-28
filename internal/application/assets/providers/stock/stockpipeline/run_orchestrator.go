@@ -54,6 +54,10 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		}
 		input.DriveFolderID = folderID
 		input.DriveFolderResolved = true
+	} else if strings.TrimSpace(input.DriveFolderID) != "" {
+		// An already-resolved destination ID is authoritative. Per-clip
+		// naming must not create nested folders below it.
+		input.DriveFolderResolved = true
 	}
 
 	// Resolve text search queries to YouTube URLs before passing to

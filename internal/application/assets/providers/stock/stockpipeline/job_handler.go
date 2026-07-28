@@ -25,6 +25,7 @@ type StockJobResult struct {
 	MetadataFileID          string                `json:"metadata_file_id"`
 	FinalizationStatus      string                `json:"__finalization_status,omitempty"`
 	FinalizationCompletedAt time.Time             `json:"__finalization_completed_at,omitempty"`
+	Counts                  RunCounts             `json:"counts"`
 }
 
 func (r StockJobResult) ToResultMap() map[string]any {
@@ -36,6 +37,9 @@ func (r StockJobResult) ToResultMap() map[string]any {
 		"chunks":           r.Chunks,
 		"metadata_link":    r.MetadataLink,
 		"metadata_file_id": r.MetadataFileID,
+	}
+	if r.Counts != (RunCounts{}) {
+		result["counts"] = r.Counts
 	}
 	if r.FinalizationStatus != "" {
 		result["__finalization_status"] = r.FinalizationStatus
@@ -137,6 +141,7 @@ func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *
 		Chunks:         projected.Chunks,
 		MetadataLink:   projected.MetadataLink,
 		MetadataFileID: projected.MetadataFileID,
+		Counts:         summary.Counts,
 	}).ToResultMap(), nil
 }
 
