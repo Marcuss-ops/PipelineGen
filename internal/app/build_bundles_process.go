@@ -35,7 +35,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -54,6 +53,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -151,7 +151,12 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the outbox http.Client
+	// construction through internal/infrastructure/httpclient.NewDefaultClient
+	// (the canonical owner of *http.Client construction for the application
+	// port surface). The result satisfies ports.Client, which is the
+	// field type of InfraDeps.HTTPClient (consumed by the DeliveryHandler).
+	httpClient := httpclient.NewDefaultClient(30 * time.Second)
 
 	var hmacSecrets [][]byte
 	if cur := strings.TrimSpace(cfg.Security.DeliveryHMACSecret); cur != "" {

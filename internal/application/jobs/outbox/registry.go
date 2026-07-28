@@ -25,11 +25,11 @@ package outbox
 import (
 	"database/sql"
 	"fmt"
-	"net/http"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
@@ -47,8 +47,12 @@ import (
 // metadataexport), then passes the pre-built handler to
 // RegisterOptionalHandlers via the metadataExportHandler arg.
 //
-// HTTPClient: *http.Client used by DeliveryHandler for outbound POSTs.
-// Defaults to 30s-timeout client if nil.
+// HTTPClient: ports.Client used by DeliveryHandler for outbound POSTs.
+// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): the field is now the
+// canonical narrow port (Do/Post/Get) rather than a direct *http.Client
+// so the application layer no longer depends on net/http directly.
+// Production concrete is *httpclient.DefaultClient; defaults to a
+// 30s-timeout default client when nil.
 //
 // MetadataDir: REMOVED (Step 2, June 2026). override MetadataDir via
 // the pre-built handler's HandlerDeps.OutputDir; the composition root
@@ -102,7 +106,7 @@ import (
 // stays under the archcheck 8-field cap.
 type InfraDeps struct {
 	DB          *sql.DB
-	HTTPClient  *http.Client
+	HTTPClient  ports.Client
 	HMACSecrets [][]byte
 	InsecureDev bool
 }

@@ -60,7 +60,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hmacsign"
 )
 
@@ -163,9 +165,16 @@ type deliveryRequest struct {
 // secret keys. When len(hmacSecrets) == 0 the handler refuses unless
 // insecureDev is true. Credentials are read at construction time (NOT
 // per-call) so the per-event latency is just signing + POST.
+//
+// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): the client field is now
+// ports.Client (the canonical narrow port for outbound HTTP) rather
+// than a direct *http.Client. The default constructor routes through
+// internal/infrastructure/httpclient.NewDefaultClient so the
+// application layer no longer touches *http.Client directly. Tests
+// inject a roundtripper-backed fake that satisfies ports.Client.
 type DeliveryHandler struct {
 	log         *zap.Logger
-	client      *http.Client
+	client      ports.Client
 	db          *sql.DB
 	hmacSecrets [][]byte
 	insecureDev bool
@@ -174,7 +183,11 @@ type DeliveryHandler struct {
 // NewDeliveryHandler builds a DeliveryHandler.
 //
 //   - log         nil → nop.
-//   - client      nil → 30s timeout default.
+//   - client      nil → default 30s-timeout http.Client adapter
+//     (httpclient.NewDefaultClient). When non-nil the caller must pass
+//     a ports.Client-compatible value (production concrete is
+//     *httpclient.DefaultClient; tests inject a roundtripper-backed
+//     fake).
 //   - db          nil → no delivery_log writes (handler still POSTs and
 //     signs).
 //   - hmacSecrets rotated secret keys; current secret FIRST, then the
@@ -186,12 +199,12 @@ type DeliveryHandler struct {
 //     handler logs a structured warn on every signed-or-not
 //     POST so the dev escape hatch is impossible to mistake
 //     for production behaviour.
-func NewDeliveryHandler(log *zap.Logger, client *http.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
+func NewDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	if client == nil {
-		client = &http.Client{Timeout: defaultDeliveryTimeout}
+		client = httpclient.NewDefaultClient(defaultDeliveryTimeout)
 	}
 	if len(hmacSecrets) == 0 && !insecureDev {
 		log.Warn("delivery.requested constructed WITHOUT HMAC secrets and WITHOUT insecureDev — every event will be refused with a terminal error. Check VELOX_DELIVERY_HMAC_SECRET.")
