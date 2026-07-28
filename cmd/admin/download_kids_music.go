@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -19,12 +21,37 @@ import (
 )
 
 type MusicTrack struct {
-	Timestamp string
-	Title     string
-	Slug      string
+	Timestamp string `json:"timestamp"`
+	Title     string `json:"title"`
+	Slug      string `json:"slug"`
 }
 
-func runDownloadKidsMusic(args []string) error {
+type audioTracksManifest struct {
+	URL                 string       `json:"url"`
+	DestinationFolderID string       `json:"destination_folder_id"`
+	Tracks              []MusicTrack `json:"tracks"`
+}
+
+func runDownloadAudioTracks(args []string) error {
+	fs := flag.NewFlagSet("download-audio-tracks", flag.ContinueOnError)
+	manifestPath := fs.String("manifest", "", "JSON audio tracks manifest (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*manifestPath) == "" {
+		return fmt.Errorf("--manifest is required")
+	}
+	manifestData, err := os.ReadFile(*manifestPath)
+	if err != nil {
+		return fmt.Errorf("read manifest: %w", err)
+	}
+	var manifest audioTracksManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return fmt.Errorf("decode manifest: %w", err)
+	}
+	if strings.TrimSpace(manifest.URL) == "" || strings.TrimSpace(manifest.DestinationFolderID) == "" || len(manifest.Tracks) == 0 {
+		return fmt.Errorf("manifest url, destination_folder_id and tracks are required")
+	}
 	cfg, log, cleanup, err := appLogger()
 	if err != nil {
 		return err
@@ -39,39 +66,16 @@ func runDownloadKidsMusic(args []string) error {
 
 	ctx := context.Background()
 
-	url := "https://www.youtube.com/watch?v=FNXjuu1OTZ8"
-	if len(args) > 0 {
-		url = args[0]
-	}
-
-	tracks := []MusicTrack{
-		{"0:00", "Sneaky Snitch", "sneaky_snitch"},
-		{"2:14", "Fluffing A Duck", "fluffing_a_duck"},
-		{"3:17", "Old MacDonald", "old_macdonald"},
-		{"5:36", "Twirly Tops", "twirly_tops"},
-		{"7:44", "Sneaky Business", "sneaky_business"},
-		{"9:18", "Itsy Bitsy Spider", "itsy_bitsy_spider"},
-		{"11:24", "After School Jamboree", "after_school_jamboree"},
-		{"13:46", "Claudio The Worm", "claudio_the_worm"},
-		{"15:48", "Bunny Hop", "bunny_hop"},
-		{"18:42", "Monkeys Spinning Monkeys", "monkeys_spinning_monkeys"},
-		{"20:47", "Bike Rides", "bike_rides"},
-		{"22:40", "Lovable Clown Sit Com", "lovable_clown_sit_com"},
-		{"24:39", "Mr. Turtle", "mr_turtle"},
-		{"26:43", "Rainy Day Games", "rainy_day_games"},
-		{"28:46", "Splashing Around", "splashing_around"},
-	}
-
 	tmpDir := filepath.Join(cfg.Storage.DataDir, "tmp")
 	_ = os.MkdirAll(tmpDir, 0755)
 
 	fullAudioPath := filepath.Join(tmpDir, "full_kids_compilation.mp4")
 
 	// 1. Download full audio via yt-dlp (canonical args from ytdlp package).
-	fmt.Printf("Downloading audio from %s using yt-dlp...\n", url)
+	fmt.Printf("Downloading audio from %s using yt-dlp...\n", manifest.URL)
 	builder := ytdlp.NewCommandBuilder(cfg)
-	ytdlpArgs := builder.BaseArgs(url, false)
-	ytdlpArgs = append(ytdlpArgs, "-f", "18", "-o", fullAudioPath, url)
+	ytdlpArgs := builder.BaseArgs(manifest.URL, false)
+	ytdlpArgs = append(ytdlpArgs, "-f", "18", "-o", fullAudioPath, manifest.URL)
 	binPath := builder.Path
 	if binPath == "" {
 		binPath = "yt-dlp"
@@ -92,10 +96,10 @@ func runDownloadKidsMusic(args []string) error {
 	sfxDir := filepath.Join(cfg.Storage.DataDir, "media", "sound_effects")
 	_ = os.MkdirAll(sfxDir, 0755)
 
-	destFolderID := "17GkTNuqlt1RKSso8lTaLKElIi75xXaWO" // Background Music Drive folder
+	destFolderID := manifest.DestinationFolderID
 
 	fmt.Println("--- Processing and Uploading Tracks (5 seconds each) ---")
-	for i, t := range tracks {
+	for i, t := range manifest.Tracks {
 		startSecs, err := parseTimestampToSeconds(t.Timestamp)
 		if err != nil {
 			fmt.Printf("Error parsing timestamp %s for %s: %v\n", t.Timestamp, t.Title, err)
@@ -106,7 +110,7 @@ func runDownloadKidsMusic(args []string) error {
 		localPath := filepath.Join(sfxDir, filename)
 
 		// Slice 5 seconds starting from timestamp
-		fmt.Printf("[%d/%d] Extracting %q starting at %s (%ds)...\n", i+1, len(tracks), t.Title, t.Timestamp, startSecs)
+		fmt.Printf("[%d/%d] Extracting %q starting at %s (%ds)...\n", i+1, len(manifest.Tracks), t.Title, t.Timestamp, startSecs)
 		sliceCmd := exec.CommandContext(ctx, "ffmpeg", "-y",
 			"-ss", strconv.Itoa(startSecs),
 			"-t", "5",

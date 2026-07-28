@@ -1,0 +1,11 @@
+{
+  "default_group": "Other Whoosh",
+  "rules": [
+    {"group":"Suction & Reverse","keywords":["suction","reverse","rewind"]},
+    {"group":"Electronic & Sci-Fi","keywords":["electronic","synth","scifi","space"]},
+    {"group":"Swish & Swings","keywords":["arrow","whistle","swish","swing","swipe"]},
+    {"group":"Transitions & Sweeps","keywords":["fire","transition","sweep"]},
+    {"group":"Low & Sub","keywords":["low","sub","atmospheric","deep"]},
+    {"group":"Fast Whooshes","keywords":["fast","quick","broadband"]}
+  ]
+}
