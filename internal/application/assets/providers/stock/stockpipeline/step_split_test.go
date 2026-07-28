@@ -78,10 +78,11 @@ func TestSplit_SentinelsLiveInOrchestratorStepErrors(t *testing.T) {
 		ErrStockFinalizeLeaseMissing,
 		ErrStockFnRequired,
 		ErrStockStageSourcesAllFailed,
+		ErrStockStageSourcesIncomplete,
 		ErrStockExtractClipsCutterRequired,
 		ErrStockComposeChunksAllFailed,
 	}
-	if got, want := len(sentinels), 7; got != want {
+	if got, want := len(sentinels), 8; got != want {
 		t.Fatalf("step-level sentinel count: got %d, want %d", got, want)
 	}
 	// Every sentinel's message MUST name its step (godlike/07

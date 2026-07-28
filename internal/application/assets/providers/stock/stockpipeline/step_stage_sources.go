@@ -26,6 +26,7 @@ package stockpipeline
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"go.uber.org/zap"
@@ -137,6 +138,13 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 	// the all-failed case surfaces this sentinel.
 	if len(staged) == 0 {
 		return ErrStockStageSourcesAllFailed
+	}
+	// A multi-source stock request is only successful when every planned
+	// source is available. Previously the step treated partial staging as
+	// graceful degradation, allowing a 10-video request with one usable
+	// video to publish successfully while silently dropping the other nine.
+	if len(staged) < len(seen) {
+		return fmt.Errorf("%w: staged=%d requested=%d", ErrStockStageSourcesIncomplete, len(staged), len(seen))
 	}
 
 	runner.State().StagedAssets = staged

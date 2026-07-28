@@ -51,6 +51,16 @@ func (p *DocumentsProcessor) Process(
 		WordCount:     input.WordCount,
 		ModelUsed:     input.ModelUsed,
 	}
+	if plan.SingleScene {
+		var bindings scriptpkg.SceneBindings
+		if len(model.SpecScene.Scenes) > 0 {
+			bindings = model.SpecScene.Scenes[0].Bindings
+		}
+		model.SpecScene.Scenes = []scriptpkg.SpecScene{{
+			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
+			Text: input.Text, Bindings: bindings,
+		}}
+	}
 	content := BuildSpecSceneDocumentHTML(model, plan.Title, input.Provenance)
 	if strings.TrimSpace(content) == "" {
 		return nil, fmt.Errorf("document content is empty")

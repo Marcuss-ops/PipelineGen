@@ -166,6 +166,15 @@ func (a *ArtifactPublisherAdapter) Publish(
 		Provider:           provider,
 		Tags:               nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
 		RootFolderOverride: artifact.RootFolderOverride,
+		// A stock run resolves its named Drive folder before publishing.
+		// Pin the canonical destination explicitly so the YouTube path
+		// builder cannot recreate its legacy category/video subfolders.
+		DestinationFolderID: func() string {
+			if artifact.RootFolderResolved {
+				return strings.TrimSpace(artifact.RootFolderOverride)
+			}
+			return ""
+		}(),
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.
@@ -212,7 +221,7 @@ func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subj
 	// both return folder_name, causing double nesting and extra
 	// subfolders under the already-resolved root.
 	if artifact.RootFolderResolved {
-		return "", stockFolderLeafName(artifact.PathLeafName), ""
+		return "", "", ""
 	}
 	parts := strings.Split(artifact.ArtifactID, ":")
 	group = stockRunFolderName(artifact.RootFolderName)

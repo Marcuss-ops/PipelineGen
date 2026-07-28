@@ -16,6 +16,7 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,10 @@ func (s *serverE2EYouTubeService) Config() yttypes.RuntimeConfig {
 
 func (s *serverE2EYouTubeService) GetVideoInfo(_ context.Context, _ string) (*ytports.DownloaderMetadata, error) {
 	return &ytports.DownloaderMetadata{}, nil
+}
+
+func (s *serverE2EYouTubeService) SearchByTopicWithFilter(_ context.Context, _ string, _ int, _, _ string) (*youtube.TopicSearchResponse, error) {
+	return &youtube.TopicSearchResponse{OK: true}, nil
 }
 
 func (s *serverE2EYouTubeService) Extract(_ context.Context, _ *yttypes.ExtractRequest) (*yttypes.ExtractResponse, error) {

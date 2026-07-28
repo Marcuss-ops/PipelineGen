@@ -15,6 +15,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -72,6 +73,9 @@ func (r *GenerationEngineRunner) Generate(
 			Inner:  fmt.Errorf("ollama generation failed: %w", engineErr),
 		}
 	}
+	if item.ScriptParams.SingleScene {
+		collapseToSingleScene(engineResult)
+	}
 
 	engineMs := time.Since(engineStart).Milliseconds()
 	tracker.PhaseGenerateDone()
@@ -92,4 +96,30 @@ func (r *GenerationEngineRunner) Generate(
 		EngineResult: engineResult,
 		EngineMs:     engineMs,
 	}, nil
+}
+
+// collapseToSingleScene preserves the generated prose while making the
+// structured scene surface match an explicit single-scene request. Bindings
+// are intentionally left for the postprocessor chain, which is the canonical
+// owner of stock/clip assignment.
+func collapseToSingleScene(result *EngineResult) {
+	if result == nil {
+		return
+	}
+	text := strings.TrimSpace(result.Output.Text)
+	if text == "" {
+		parts := make([]string, 0, len(result.Output.SpecScene.Scenes))
+		for _, scene := range result.Output.SpecScene.Scenes {
+			if value := strings.TrimSpace(scene.Text); value != "" {
+				parts = append(parts, value)
+			}
+		}
+		text = strings.Join(parts, "\n\n")
+	}
+	result.Output.SpecScene.Scenes = []scriptpkg.SpecScene{{
+		ID:    "scene-0",
+		Index: 0,
+		Kind:  scriptpkg.SceneNarration,
+		Text:  text,
+	}}
 }

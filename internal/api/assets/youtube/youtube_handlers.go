@@ -32,6 +32,7 @@ import (
 type YouTubeClipService interface {
 	Config() yttypes.RuntimeConfig
 	GetVideoInfo(ctx context.Context, url string) (*ytports.DownloaderMetadata, error)
+	SearchByTopicWithFilter(ctx context.Context, query string, limit int, sortMode, publishedAfter string) (*youtube.TopicSearchResponse, error)
 	Extract(ctx context.Context, req *yttypes.ExtractRequest) (*yttypes.ExtractResponse, error)
 	GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error)
 }
@@ -46,7 +47,7 @@ type YouTubeClipService interface {
 var _ YouTubeClipService = (*youtube.Service)(nil)
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
-// download, info, advanced search, diagnostics, and stats. Construction
+// download, info, topic search, advanced search, diagnostics, and stats. Construction
 // mirrors the legacy api/sources package, but lives here (in package
 // youtube) so sub-handlers can be tested in isolation.
 //
@@ -114,6 +115,8 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Idempotency, h.Extract)
 	r.POST("/extract-important", h.Idempotency, h.ExtractImportant) // PR-GEMMA-EXTRACT-IMPORTANT Step 5
 	r.GET("/info", h.GetVideoInfo)
+	r.GET("/search", h.SearchByTopic)
+	r.POST("/search", h.SearchByTopic)
 	r.GET("/diagnostics", h.Diagnostics)
 	r.GET("/stats", h.Stats)
 }

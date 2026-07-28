@@ -4,8 +4,8 @@
 // SOLE owner of StockPlanStep — the canonical implementation of
 // the stock.plan step (Step 1 of the 6-step pipeline) per
 // godlike/06 SSOT (one canonical owner per fact). The step
-// exercises the deterministic ClipPlanner.Plan round-trip on
-// the first source, populating runState.Plan for downstream
+// exercises the deterministic ClipPlanner.Plan round-trip for
+// every concrete source, populating runState.Plan for downstream
 // steps.
 //
 // godlike/07 fail-closed contracts:
@@ -14,7 +14,7 @@
 //   - planner.Plan returns error → typed wrap via %w preserving
 //     the planner's underlying typed sentinel for errors.Is traversal.
 //   - Successful path → runState.Plan populated with the
-//     planner's []ClipPlan output for downstream consumption.
+//     concatenated planner output for downstream consumption.
 //
 // PR-STOCK-ORCHESTRATOR-SPLIT extracted this from
 // orchestrator_steps.go on 2026-07-04. Pre-split: 874 LoC
@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -117,8 +118,8 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 		return nil
 	}
 
-	src, ok := firstSource(in)
-	if !ok {
+	sources := concreteSources(in)
+	if len(sources) == 0 {
 		return errors.New("orchestrator: stock.plan: no sources to plan (DirectURLs, DriveURLs, and SearchQueries are empty)")
 	}
 
@@ -126,19 +127,72 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	if planBudget <= 0 {
 		planBudget = runner.Cfg().ChunkDurationSec
 	}
-	plans, err := runner.Planner().Plan(
-		ctx, src, planBudget,
-		runner.Cfg().ClipDurationSec, runner.Cfg().PolicyVersion,
-	)
-	if err != nil {
-		return fmt.Errorf("orchestrator: stock.plan: planner.Plan: %w", err)
+	allPlans := make([]ClipPlan, 0, len(sources))
+	for _, src := range sources {
+		plans, err := runner.Planner().Plan(
+			ctx, src, planBudget,
+			runner.Cfg().ClipDurationSec, runner.Cfg().PolicyVersion,
+		)
+		if err != nil {
+			return fmt.Errorf("orchestrator: stock.plan: planner.Plan source %q: %w", src.URL, err)
+		}
+		allPlans = append(allPlans, plans...)
 	}
-	runner.State().Plan = plans
+	applyRunMetadataToPlans(allPlans, in.Metadata)
+	runner.State().Plan = allPlans
 
 	if runner.Log() != nil {
 		runner.Log().Info("orchestrator: stock.plan: SUCCEEDED",
-			zap.Int("plan_count", len(plans)),
-			zap.String("source_url", src.URL))
+			zap.Int("plan_count", len(allPlans)),
+			zap.Int("source_count", len(sources)))
+	}
+	return nil
+}
+
+// applyRunMetadataToPlans carries the operator's stock identity into every
+// planned clip. Direct YouTube URLs do not have ClipSpec metadata, but the
+// resulting assets still need searchable title/category/tags so a query such
+// as "Mike Tyson" does not see anonymous clip_### rows.
+func applyRunMetadataToPlans(plans []ClipPlan, metadata *ChunkMetadataInput) {
+	if metadata == nil {
+		return
+	}
+	for i := range plans {
+		if strings.TrimSpace(plans[i].Title) == "" {
+			plans[i].Title = metadata.Title
+		}
+		if strings.TrimSpace(plans[i].Description) == "" {
+			plans[i].Description = metadata.Description
+		}
+		if len(plans[i].Tags) == 0 {
+			plans[i].Tags = append([]string(nil), metadata.Tags...)
+		}
+		if strings.TrimSpace(plans[i].Category) == "" {
+			plans[i].Category = metadata.Category
+		}
+	}
+}
+
+// concreteSources returns every source that can be planned independently.
+// DirectURLs are the canonical multi-source path after search queries have
+// been resolved. DriveURLs and raw SearchQueries remain single-source legacy
+// fallbacks until their acquisition adapters project concrete URLs.
+func concreteSources(input *RunInput) []VideoSource {
+	if input == nil {
+		return nil
+	}
+	if len(input.DirectURLs) > 0 {
+		sources := make([]VideoSource, 0, len(input.DirectURLs))
+		for _, raw := range input.DirectURLs {
+			if raw == "" {
+				continue
+			}
+			sources = append(sources, VideoSource{URL: raw, Title: raw, Source: raw})
+		}
+		return sources
+	}
+	if src, ok := firstSource(input); ok {
+		return []VideoSource{src}
 	}
 	return nil
 }

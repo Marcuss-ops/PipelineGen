@@ -52,6 +52,7 @@ type ResolvedGenerationPlan struct {
 
 	// ── Sizing ────────────────────────────────────────────────────────
 	TargetWords       int             `json:"target_words,omitempty"`
+	SingleScene       bool            `json:"single_scene,omitempty"`
 	Duration          int             `json:"duration,omitempty"`
 	MinWords          int             `json:"min_words,omitempty"`
 	NumClips          int             `json:"num_clips,omitempty"`

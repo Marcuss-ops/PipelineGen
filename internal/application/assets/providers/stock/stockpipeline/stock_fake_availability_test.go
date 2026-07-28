@@ -34,6 +34,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -215,6 +216,30 @@ func TestStockStageSourcesStep_AllSourcesSucceed_NoError(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("all-sources success should not fail, got %v (fail-closed gate must NOT fire when len(staged) > 0)", err)
+	}
+}
+
+// TestStockStageSourcesStep_PartialFailure_ReturnsTypedError prevents a
+// multi-video request from being reported as successful when only a subset
+// of its sources could be downloaded.
+func TestStockStageSourcesStep_PartialFailure_ReturnsTypedError(t *testing.T) {
+	stager := &mapStager{handler: func(ref assets.SourceRef) (*assets.StagedAsset, error) {
+		if strings.Contains(ref.URL, "/b.mp4") {
+			return nil, errors.New("simulated yt-dlp bot challenge")
+		}
+		return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", SourceID: ref.URL, Bytes: 1024}, nil
+	}}
+	o := newFakeAvailOrchestrator(stager, nil, successNoopRenderer())
+
+	_, err := o.RunResilient(context.Background(), &RunInput{
+		DirectURLs:    []string{"https://example.com/a.mp4", "https://example.com/b.mp4"},
+		FolderID:      "wf-partial-fail",
+		ClipDuration:  5,
+		ChunkDuration: 5,
+	})
+
+	if !errors.Is(err, ErrStockStageSourcesIncomplete) {
+		t.Fatalf("expected ErrStockStageSourcesIncomplete, got %v", err)
 	}
 }
 
