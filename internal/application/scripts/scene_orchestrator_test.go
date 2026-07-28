@@ -176,11 +176,15 @@ func TestSceneImageJobEmitter_CustomCorrelationID(t *testing.T) {
 	}
 }
 
-// ── Test 7: NewEmitter nil dispatcher returns nil ─────────────────────
+// ── Test 7: NewEmitter nil dispatcher fails closed on emit ────────────
 
 func TestSceneImageJobEmitter_NewEmitterNilDispatcher(t *testing.T) {
 	emitter := NewEmitter(nil)
-	if emitter != nil {
-		t.Error("expected NewEmitter(nil) to return nil")
+	if emitter == nil {
+		t.Fatal("expected an invalid emitter instance for typed error reporting")
+	}
+	_, err := emitter.EmitSceneImageJob(context.Background(), EmitSceneImageCommand{ParentJobID: "parent", Prompt: "prompt"})
+	if err == nil {
+		t.Fatal("expected nil dispatcher to return an error")
 	}
 }

@@ -19,7 +19,7 @@
 #     (REPO_ROOT cwd is the user's responsibility — historically
 #     invoked from CI where cwd=REPO_ROOT).
 #   - `source` from scripts/ci/architecture/checks/all_checks.sh; the
-#     `for sub in "${SUBCHECKS[@]}"; do bash "${SCRIPT_DIR}/${sub}"; done`
+#     `for sub in "${SUBCHECKS[@]}"; do bash "${SCRIPT_DIR}/../${sub}"; done`
 #     loop runs each sub-check in its own subshell, exit codes
 #     propagate via `|| exit 1`, and all_checks.sh's `set -e` aborts
 #     the dispatcher on first failure (mirrors original behaviour).
@@ -69,7 +69,7 @@ export LC_ALL="C" LANG="C" LC_COLLATE="C"
 
 # ── Source the lib: SUBCHECKS registry + extracted helpers ─────────
 # shellcheck source=/dev/null
-source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
+source "${SCRIPT_DIR}/../lib/50_jobs_lib.sh"
 
 # ── Iterate the registry: run each sub-check in canonical order ────
 # Fail-fast on the first non-zero exit. Sub-shells isolate per-check
@@ -77,5 +77,5 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 # (e.g. SHELLOPTS, command-line accumulator) that could mask a
 # subsequent failure as a false-pass.
 for sub in "${SUBCHECKS[@]}"; do
-    bash "${SCRIPT_DIR}/${sub}" || exit 1
+		bash "${SCRIPT_DIR}/../${sub}" || exit 1
 done

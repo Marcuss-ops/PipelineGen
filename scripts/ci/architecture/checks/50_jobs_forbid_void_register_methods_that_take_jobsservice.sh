@@ -85,13 +85,13 @@ all_void_registers=$(rg -nU --type go \
     internal/application internal/infrastructure 2>/dev/null \
     || true)
 # Drop lines preceded by the ARCH-ALLOWLIST marker (25-line window).
-literal_void_registers=$(printf '%s\\n' "$all_void_registers" \
+literal_void_registers=$(printf '%s\n' "$all_void_registers" \
     | awk -F: '
         BEGIN { prev_marker = 0 }
         {
             rest = ""
             for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
-            if (rest ~ /^[[:space:]]*\\/\\/.*ARCH-ALLOWLIST:[[:space:]]*register-void-allowed/) {
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*register-void-allowed/) {
                 markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
                 next
             }

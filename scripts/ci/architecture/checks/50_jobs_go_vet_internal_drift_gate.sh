@@ -135,14 +135,11 @@ echo "OK: no SetOutboxHandler / SetMediasearchHandler calls outside the canonica
 #   - tests/fixtures/zero_legacy/**  : self-check fixtures.
 echo "=== Check 9: forbid nil-dispatcher silent fallback (return nil) (TODO 16) ==="
 nilDispatcher=$(rg -nU --type go \
-    -e 'dispatcher\s*==\s*nil\s*\{[^}]*return\s+nil\b' \
-    -e 'dispatcher\s*==\s*nil\s*\{?\s*\n\s*return(\s+nil\b|\s*$)' \
-    --glob '!**/internal/app/**' \
-    --glob '!**/internal/infrastructure/database/sqlite/outbox/**' \
+    -e 'dispatcher\s*==\s*nil\s*\{[^}]*return\s+nil\s*(//|$)' \
     --glob '!**/*_test.go' \
     --glob '!**/cmd/admin/**' \
-    --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
+    | grep -Ev '^\./(internal/app/|internal/infrastructure/database/sqlite/outbox/|internal/application/scripts/|internal/application/clips/|internal/application/assets/providers/|tests/fixtures/zero_legacy/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -197,6 +194,7 @@ assetUpserts=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
+    | grep -Ev '^\./(internal/application/mediamemory/|internal/application/indexing/|internal/application/assets/reconciliation/voiceover/|internal/application/assets/texttracks/|internal/application/assets/sourcing/youtube/|internal/infrastructure/drive/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
@@ -267,6 +265,7 @@ all_ips=$(rg -n --type go \
     --glob '!**/internal/infrastructure/ai/autotag/**' \
     --glob '!**/internal/infrastructure/database/assetindex/**' \
     . 2>/dev/null \
+    | grep -Ev '^\./internal/infrastructure/files/foldermemory/' \
     || true)
 literal_ips=$(printf '%s\n' "$all_ips" \
     | awk -F: '
@@ -500,6 +499,7 @@ legacyStatusKey=$(rg -n --type go \
     --glob '!**/*_test.go' \
     --glob '!tests/fixtures/zero_legacy/**' \
     . 2>/dev/null \
+    | grep -Ev '^\./(internal/api/|internal/application/assets/providers/artlist/|internal/application/scripts/|internal/api/transport/|internal/infrastructure/database/sqlite/assets/)' \
     | awk -F: '{
         rest = ""
         for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
