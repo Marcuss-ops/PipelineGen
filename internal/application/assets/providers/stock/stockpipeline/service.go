@@ -95,7 +95,6 @@ type Service struct {
 	assetIndex    stockAssetIndexUpserter
 	clipsRepo     stockClipsSearchTermUpdater
 	// batchRepo is the durable stock batch/group/artifact repository.
-	// nil means the pipeline runs in-memory/test mode (back-compat).
 	batchRepo StockBatchRepository
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
@@ -104,12 +103,8 @@ type Service struct {
 	// `stockChunkDispatcher` interface so test fakes can wire the
 	// shape without dragging in the full infra surface.
 	dispatcher stockChunkDispatcher
-	// finalizer is the Spina Dorsale JobFinalizer (§12-1 §F.1
-	// governance, July 2026). OPTIONAL in this commit (no fail-fast
-	// on nil — see ErrStockPipelineNilFinalizer doc-comment). §F.2
-	// follow-up promotes it to a REQUIRED dep + wires production
-	// finalizer.New(...) at the composition root (currently routed
-	// via imageSvc per registry_internal_modules.go).
+	// finalizer is the mandatory Spina Dorsale JobFinalizer for production
+	// completion and the single durable finalization path.
 	finalizer finalization.JobFinalizer
 	// sourceStager is the canonical acquisition.SourceStager port
 	// (Stock Cutover §12-4, July 2026). REQUIRED at ctor time — the
@@ -128,8 +123,9 @@ type Service struct {
 	// error.
 	driveReader DriveReaderPort
 
-	// db is the SQLite handle for the step store (Phase 2, July 2026).
-	// nil-tolerant — when nil, the orchestrator falls back to in-memory.
+	// stepStore is the durable SQLite-backed step store supplied by the
+	// composition root; in-memory state is test-only and is not registered
+	// as a production capability.
 	jobCreator JobCreator
 	stepStore  steps.Store
 
@@ -187,11 +183,23 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Storage.Dispatcher == nil {
 		return nil, ErrStockPipelineNilDispatcher
 	}
+	if deps.Storage.BatchRepository == nil {
+		return nil, ErrStockProductionBatchRepositoryMissing
+	}
 	if deps.Media.Cutter == nil {
 		return nil, ErrStockPipelineNilCutter
 	}
 	if deps.Media.Renderer == nil {
 		return nil, ErrStockPipelineNilRenderer
+	}
+	if deps.Delivery.Publisher == nil {
+		return nil, ErrStockPipelineNilPublisher
+	}
+	if deps.Delivery.FolderCreator == nil {
+		return nil, ErrStockPipelineNilFolderCreator
+	}
+	if deps.Delivery.Finalizer == nil {
+		return nil, ErrStockPipelineNilFinalizer
 	}
 	// P8 (July 2026): ClipIndexer + MetaWriter + YouTube validation RETIRED
 	// — dead code (zero call sites in the stockpipeline package).
@@ -211,6 +219,9 @@ func NewService(deps Deps) (*Service, error) {
 	// boot — no silent-degrade to the old ytdlp field.
 	if deps.Execution.SourceStager == nil {
 		return nil, ErrStockPipelineNilSourceStager
+	}
+	if deps.Runtime.StepStore == nil {
+		return nil, ErrStockPipelineNilStepStore
 	}
 
 	v := deps.Runtime.Cfg.Video.WithDefaults()

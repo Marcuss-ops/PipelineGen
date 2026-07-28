@@ -104,7 +104,7 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

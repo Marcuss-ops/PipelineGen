@@ -122,7 +122,7 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -210,7 +210,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 					Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 				},
 				Finalizer: ArtlistFinalizerDeps{
-					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 				},
 			},
 		}))
@@ -260,7 +260,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 					Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 				},
 				Finalizer: ArtlistFinalizerDeps{
-					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 				},
 			},
 		}))
@@ -318,7 +318,7 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

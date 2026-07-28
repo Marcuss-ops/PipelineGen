@@ -184,7 +184,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -309,7 +309,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -435,7 +435,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -587,7 +587,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -733,7 +733,7 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

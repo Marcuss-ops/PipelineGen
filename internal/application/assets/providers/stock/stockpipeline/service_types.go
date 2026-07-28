@@ -61,9 +61,8 @@ func DefaultPipelineConfig() PipelineConfig {
 // *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
 // structurally at the composition root.
 //
-// Fase 2 (July 2026): BatchRepository is OPTIONAL — when nil the stock
-// pipeline keeps the in-memory/test path. Production wiring MUST supply
-// the SQLite-backed adapter; BuildStockBundle enforces DB presence.
+// BatchRepository is required by the production composition root so batch,
+// group and artifact state is durable.
 type StorageDeps struct {
 	ClipsRepo       stockClipsSearchTermUpdater
 	AssetIndex      stockAssetIndexUpserter
@@ -115,7 +114,7 @@ type ExecutionDeps struct {
 	Jobs         *appjobs.Service
 	SourceStager acquisition.SourceStager
 	// ChannelLister is the YouTube channel listing port (P4, July 2026).
-	// OPTIONAL at ctor time (nil-tolerant per §F.1 governance) — the
+	// Optional because direct URL requests do not need channel listing — the
 	// composition root (currently retired/stubbed) wires the concrete
 	// `*downloader.YTDLPDownloader` which satisfies ChannelLister
 	// structurally. When nil, query.go's resolveQuery fails-closed with

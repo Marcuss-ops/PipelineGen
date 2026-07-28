@@ -130,7 +130,7 @@ func TestGate07_SearchFindsIndexedClips(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

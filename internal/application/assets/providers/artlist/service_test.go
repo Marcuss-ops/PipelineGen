@@ -236,7 +236,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -273,7 +273,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -564,7 +564,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -655,7 +655,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -762,7 +762,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))

@@ -335,6 +335,11 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// StockRunMetadata (orchestrator_metadata.go) so the step body
 	// implementations do not need to change.
 	state.Counts = deriveRunCounts(input, state)
+	if state.FinalStatus == job.StatusSucceeded && (state.Counts.PlannedClipCount > 0 || state.Counts.SelectedVideoCount > 0) {
+		if err := ValidateRunCounts(state.Counts); err != nil {
+			return nil, fmt.Errorf("stock run cannot be SUCCEEDED: %w", err)
+		}
+	}
 	summary = &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus, Counts: state.Counts}
 
 	// §12-1 P0 #1 gate: enforce manifest-completeness BEFORE

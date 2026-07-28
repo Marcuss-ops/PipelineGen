@@ -163,7 +163,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -316,7 +316,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 				MediaProcessor: processor,
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -396,7 +396,7 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
@@ -483,7 +483,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 			Finalizer: ArtlistFinalizerDeps{
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger, nil),
 			},
 		},
 	}))
