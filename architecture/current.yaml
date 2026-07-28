@@ -4,14 +4,11 @@
   status: "in_progress"
   owner: "architecture-governance"
   deadline: "2026-09-15T00:00:00Z"
-  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); the remaining tracked ticket in THIS umbrella is PRE-EXISTING-13. PRE-EXISTING-15 and PRE-EXISTING-16 are tracked as STANDALONE active issues (not under any current umbrella); their umbrella-level blocking relationship lives in architecture policy.yaml (wave_qdrant_005d_hygiene.blocked_by for -15) and the godlike doc recreation surface (for -16) respectively."
+  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); PRE-EXISTING-13 closed July 2026 via Option A fixture-overlap applied on disk (clip_plaintext_output_p0f_test.go); PRE-EXISTING-15 is the sole remaining STANDALONE active issue (not under any current umbrella); its umbrella-level blocking relationship lives in architecture policy.yaml (wave_qdrant_005d_hygiene.blocked_by). PRE-EXISTING-16 retired July 2026 — all five policy.yaml-referenced godlike docs (06/07/08/11/13) are canonical on disk with 40/40 required-H2 sections present per cmd/archcheck documents.go validator; discoverable in git history pre-retirement."
   count:
     baseline_initial: 9
-    current: 1
+    current: 0
     target_zero: 0
-  follow_up_tickets:
-    - id: "PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT"
-      note: "Close the plaintext source-enrichment regression."
   cross_refs:
     ci_gate: "scripts/ci-architectural-checks.sh#Check-64"
     issues_catalog: "architecture/issues.yaml"
