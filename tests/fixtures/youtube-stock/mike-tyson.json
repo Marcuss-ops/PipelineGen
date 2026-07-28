@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "name": "mike-tyson",
+  "endpoint": "/api/stock-pipeline/run",
+  "defaults": {
+    "clip_duration": 4,
+    "no_audio": false,
+    "no_effects": true,
+    "no_transitions": true
+  },
+  "requests": [
+    {
+      "name": "mike-tyson-sample",
+      "source_url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
+      "destination_folder_name": "Mike Tyson",
+      "clips": [
+        {"title": "sample-01", "start_sec": 10, "end_sec": 14},
+        {"title": "sample-02", "start_sec": 20, "end_sec": 24},
+        {"title": "sample-03", "start_sec": 30, "end_sec": 34}
+      ],
+      "metadata": {"title": "Mike Tyson stock sample", "category": "sport", "tags": ["boxing", "mike-tyson"]},
+      "expected_counts": {"planned_clip_count": 3, "created_clip_count": 3}
+    }
+  ]
+}

@@ -57,7 +57,7 @@ import (
 
 // pacquiaoBronerRounds is the canonical 8-round Pacquiao/Broner fight
 // fixture used by DoD 8 (extracted from the 12-round Pacquiao/Broner
-// canonical source at tests/operational/stock_pacquiao_broner_test.json).
+// canonical source at tests/fixtures/youtube-stock/pacquiao-broner.json).
 // Each round is 5s long, starting at distinct offsets within the 1769s
 // synthetic source. The Round field carries the boxing round number for
 // the Qdrant semantic-payload enrichment path; Slug cascades into
