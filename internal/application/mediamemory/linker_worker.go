@@ -10,6 +10,18 @@
 // in one logical pass) or it stays at DiscoverySearched so a
 // Resume retries the pipeline naturally on the next pull.
 //
+// Phase decomposition (godlike/06 SSOT, Pattern 5 single-purpose
+// slice): the per-candidate pipeline is split across 3 phase
+// files in this package; this file owns ONLY the orchestrator
+// (EnrichCandidate) and the shared dependency bundle + struct:
+//
+//   - linker_resolve.go — resolve phase (extractTranscript +
+//     extractVisualDescriptions + normalizedEntities).
+//   - linker_link.go    — link phase (normalizeAndUpsertConcepts
+//     + persistBindings).
+//   - linker_emit.go    — emit phase (encodeAndIndexConcepts +
+//     indexKeyframes).
+//
 // godlike/06 SSOT (idempotency + resumability contract, enforced
 // at this worker boundary):
 //
@@ -52,9 +64,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/google/uuid"
 )
 
 // ── Dependency bundle ────────────────────────────────────────
@@ -159,6 +168,11 @@ var _ LinkerWorker = (*defaultLinker)(nil)
 // godlike/07 NO-FAKE-AVAILABILITY: any non-Recoverable failure
 // flips DiscoveryStatus to DiscoveryFailed via UpdateStatus so
 // the canonical dashboard state surface is always accurate.
+//
+// Phase dispatch: the per-step helpers live in 3 phase files
+// (linker_resolve.go for resolve, linker_link.go for link,
+// linker_emit.go for emit); this method is the canonical
+// orchestrator that composes them in canonical order.
 func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) (LinkerResult, error) {
 	// Always return a non-nil Failures slice so callers can range
 	// over it safely.
@@ -193,7 +207,7 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 		return res, nil
 	}
 
-	// Step 2 — Extraction.
+	// Step 2 — Extraction (linker_resolve.go).
 	transcriptText, err := w.extractTranscript(ctx, req)
 	if err != nil {
 		// ErrLinkerExtractFailed is the transient sentinel — leave
@@ -253,7 +267,7 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 			req.Candidate.ID, ErrLinkerUnmappableConcept)
 	}
 
-	// Step 5+6 — Normalize → upsert per phrase.
+	// Step 5+6 — Normalize → upsert per phrase (linker_link.go).
 	concepts, normalizationErrs := w.normalizeAndUpsertConcepts(ctx, req, phrases)
 	for _, e := range normalizationErrs {
 		res.Failures = append(res.Failures, e)
@@ -273,7 +287,8 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 			req.Candidate.ID, ErrLinkerConceptAssignmentFailed)
 	}
 
-	// Step 7 — Multicanale encoding + Qdrant indexing (per concept).
+	// Step 7 — Multicanale encoding + Qdrant indexing (per concept)
+	// (linker_emit.go).
 	if encErr := w.encodeAndIndexConcepts(ctx, req, concepts, transcriptText, visualDesc); encErr != nil {
 		// godlike/07 NO-FAKE-AVAILABILITY: any encoder / indexer /
 		// concept-reupsert failure propagates a wrapped
@@ -295,14 +310,15 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 	// SigLIP vectors into pipelinegen_media_frames. Best-effort
 	// envelope over the canonical resolver hot path; transient
 	// per-keyframe failures land in res.Failures[] without
-	// flipping the candidate's DiscoveryStatus.
+	// flipping the candidate's DiscoveryStatus (linker_emit.go).
 	if len(keyframes) > 0 && w.deps.FrameIndexer != nil && w.deps.Encoder != nil {
 		if frameErrs := w.indexKeyframes(ctx, req, keyframes); len(frameErrs) > 0 {
 			res.Failures = append(res.Failures, frameErrs...)
 		}
 	}
 
-	// Step 8 — Binding persistence per (concept × media.SlotPrimaryVideo).
+	// Step 8 — Binding persistence per (concept × media.SlotPrimaryVideo)
+	// (linker_link.go).
 	bindingIDs, bindingErrs := w.persistBindings(ctx, req, concepts)
 	res.PersistedBindingIDs = append(res.PersistedBindingIDs, bindingIDs...)
 	for _, e := range bindingErrs {
@@ -349,332 +365,4 @@ func (w *defaultLinker) EnrichCandidate(ctx context.Context, req LinkerRequest) 
 		"binding_count", len(res.PersistedBindingIDs),
 	)
 	return res, nil
-}
-
-// ── Step helpers ──────────────────────────────────────────
-
-// extractTranscript walks the TranscriptExtractor and joins
-// segments into a canonical text envelope. godlike/06 SSOT
-// (skip-on-nil): a nil extractor is the canonical fallback for
-// Fase 3.2 (no transcriber wiring yet) — the linker degrades
-// to "no transcript input" without spurious failures.
-func (w *defaultLinker) extractTranscript(ctx context.Context, req LinkerRequest) (string, error) {
-	if w.deps.Transcript == nil {
-		return "", nil
-	}
-	segments, err := w.deps.Transcript.Extract(ctx, req.Candidate.SourceURL, req.Candidate.MediaType)
-	if err != nil {
-		return "", fmt.Errorf("mediamemory: linker transcript for %q: %w",
-			req.Candidate.ID, errors.Join(ErrLinkerExtractFailed, err))
-	}
-	var sb strings.Builder
-	for _, seg := range segments {
-		sb.WriteString(seg.Text)
-		sb.WriteString(" ")
-	}
-	return strings.TrimSpace(sb.String()), nil
-}
-
-// extractVisualDescriptions walks (KeyframeExtractor,
-// VisualDescriptionGenerator) and joins per-keyframe strings
-// into a canonical visual-desc envelope. Returns (text, errs)
-// so a partial-extraction success can still proceed (e.g. some
-// keyframes fail to caption — the linker uses the survivors).
-// godlike/06 SSOT: a nil extractor pair short-circuits to
-// ("", nil) so the linker degrades gracefully.
-//
-// Fase 4.1 (visual-channel completion): when w.deps.FrameIndexer
-// is wired AND w.deps.KeyframeEmbeddingText is non-empty, the
-// linker ALSO generates one 768d SigLIP vector per keyframe
-// (via the canonical EmbeddingChannelRegistry.ChannelVisual
-// path) and writes it to pipelinegen_media_frames. Transient
-// errors during frame indexing append to res.Failures[] but do
-// NOT short-circuit concept/binding persistence — the visual
-// channel is best-effort envelope over the canonical resolver
-// hot path.
-func (w *defaultLinker) extractVisualDescriptions(ctx context.Context, req LinkerRequest) (string, []Keyframe, []string) {
-	if w.deps.Keyframe == nil || w.deps.VisualGen == nil {
-		return "", nil, nil
-	}
-	keyframes, err := w.deps.Keyframe.Extract(ctx, req.Candidate.SourceURL, req.Candidate.MediaType)
-	if err != nil {
-		return "", nil, []string{fmt.Sprintf(
-			"candidate=%q keyframe extract failed: %s", req.Candidate.ID, err.Error(),
-		)}
-	}
-	var (
-		sb          strings.Builder
-		extractErrs []string
-	)
-	for _, kf := range keyframes {
-		d, derr := w.deps.VisualGen.Generate(ctx, kf)
-		if derr != nil {
-			extractErrs = append(extractErrs, fmt.Sprintf(
-				"candidate=%q keyframe_ms=%d visual-describe failed: %s",
-				req.Candidate.ID, kf.Ms, derr.Error(),
-			))
-			continue
-		}
-		sb.WriteString(d)
-		sb.WriteString(" ")
-	}
-	return strings.TrimSpace(sb.String()), keyframes, extractErrs
-}
-
-// indexKeyframes runs the Fase 4.1 visual-channel frame-index
-// path. It is invoked AFTER concept persistence (step 5+6) and
-// AFTER the multichannel concept embedding (step 7) so a
-// transient frame-index failure cannot poison the canonical
-// resolver hot path (godlike/06 SSOT best-effort envelope).
-//
-// godlike/07 NO-FAKE-AVAILABILITY (typed envelopes): per-keyframe
-// failures are accumulated in the returned []string so the
-// caller merges them into res.Failures[]. Transient failures
-// (encoder / indexer) do NOT short-circuit subsequent keyframes.
-//
-// The text passed to the SigLIP encoder is the canonical
-// KeyframeEmbeddingText (typically the candidate's title /
-// description / visual-desc envelope). When the port is nil
-// or text is empty the function short-circuits to nil.
-//
-// Each keyframe becomes a Qdrant point at
-// pipelinegen_media_frames with the canonical `frame-{videoID}-{tsMs}`
-// ID so re-extract is idempotent. Errors wrap
-// ErrLinkerEmbeddingFailed; transient failures are appended to
-// the returned slice, and the orchestrator proceeds.
-func (w *defaultLinker) indexKeyframes(ctx context.Context, req LinkerRequest, keyframes []Keyframe) []string {
-	var failures []string
-	if w.deps.FrameIndexer == nil || w.deps.Encoder == nil {
-		return failures
-	}
-	embedText := strings.TrimSpace(w.deps.KeyframeEmbeddingText)
-	if embedText == "" {
-		return failures
-	}
-	if len(keyframes) == 0 {
-		return failures
-	}
-	videoID := strings.TrimSpace(req.Candidate.AssetID)
-	if videoID == "" {
-		videoID = strings.TrimSpace(req.Candidate.ProviderAssetID)
-	}
-	if videoID == "" {
-		// Without a canonical asset/assetID the deterministic
-		// point ID derivation falls back to candidate ID —
-		// still unique per linker call, just not stable across
-		// recovery passes.
-		videoID = strings.TrimSpace(req.Candidate.ID)
-	}
-	language := strings.TrimSpace(req.Language)
-	for _, kf := range keyframes {
-		if kf.Ms < 0 {
-			continue
-		}
-		channels := EncodingChannels{
-			Text:       embedText,
-			Transcript: "",
-			VisualDesc: "",
-		}
-		embedding, eerr := w.deps.Encoder.Encode(ctx, channels)
-		if eerr != nil {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q frame ts=%d encode failed: %s",
-				req.Candidate.ID, kf.Ms, eerr.Error()))
-			continue
-		}
-		if len(embedding.Vector) == 0 {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q frame ts=%d encoder returned empty vector",
-				req.Candidate.ID, kf.Ms))
-			continue
-		}
-		if ierr := w.deps.FrameIndexer.IndexKeyframe(
-			ctx,
-			videoID,
-			kf.Ms,
-			req.Candidate.AssetID,
-			language,
-			embedding.Vector,
-			embedding.Model,
-		); ierr != nil {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q frame ts=%d index failed: %s",
-				req.Candidate.ID, kf.Ms, ierr.Error()))
-		}
-	}
-	return failures
-}
-
-// normalizeAndUpsertConcepts loops over phrases, runs the
-// canonical Normalizer, upserts the resulting MediaConcept.
-// Tracks but does NOT short-circuit on per-phrase normalization
-// failure (godlike/06 SSOT partial-success: at least one
-// surviving concept is enough to proceed). Returns
-// (concepts, failures).
-func (w *defaultLinker) normalizeAndUpsertConcepts(ctx context.Context, req LinkerRequest, phrases []string) ([]MediaConcept, []string) {
-	concepts := make([]MediaConcept, 0, len(phrases))
-	failures := make([]string, 0)
-	for _, phrase := range phrases {
-		if phrase == "" {
-			continue
-		}
-		concept, err := w.deps.Normalizer.Normalize(ctx, phrase, req.Language)
-		if err != nil {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q phrase=%q normalize failed: %s",
-				req.Candidate.ID, phrase, err.Error(),
-			))
-			continue
-		}
-		// godlike/06 SSOT (default ConceptType): catalog_only
-		// enrichment without an explicit entity classifier
-		// assigns ConceptPhrase. Future Fase 4.1 visual channel
-		// wires EntityDetector to override to ConceptEntity / etc.
-		if concept.ConceptType == "" {
-			concept.ConceptType = ConceptPhrase
-		}
-		if concept.ID == "" {
-			concept.ID = uuid.NewString()
-		}
-		persisted, perr := w.deps.Concepts.Upsert(ctx, concept)
-		if perr != nil {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q concept (phrase=%q lang=%q) upsert failed: %s",
-				req.Candidate.ID, phrase, req.Language, perr.Error(),
-			))
-			continue
-		}
-		concepts = append(concepts, persisted)
-	}
-	return concepts, failures
-}
-
-// encodeAndIndexConcepts runs the multichannel encoder + Qdrant
-// indexer per concept. godlike/06 SSOT: a nil encoding pipeline
-// is the canonical "Phase 3.5 forward-pin" state — the linker
-// degrades to concepts-without-vectors (still valid because
-// the (phrase_fingerprint → concept_id) pointer is the SSOT,
-// and Fase 2's indexer can backfill vectors per Fase 2.1).
-//
-// godlike/06 SSOT (EmbeddingVersion SSOT): the canonical
-// concepts.Upsert in normalizeAndUpsertConcepts wrote the
-// concept row BEFORE the encoder chose the version, so the
-// media_concepts.embedding_version row was stamped with empty.
-// To keep media_concepts.embedding_version in sync with the
-// Qdrant point's embedding_version field, the linker re-upserts
-// the concept with EmbeddingVersion set after Encode succeeds.
-// ConceptRepository.Upsert is ON CONFLICT DO UPDATE so the
-// re-upsert is canonical idempotent (no row churn for repeat
-// ConceptID + same version).
-// godlike/07 NO-FAKE-AVAILABILITY (transient propagation):
-// this helper returns a single `error` (NOT a []string failures
-// slice) so ANY encoder-call / zero-vector / concept-reupsert /
-// Qdrant-index failure bubbles up to EnrichCandidate as a wrapped
-// ErrLinkerEmbeddingFailed. The candidate's DiscoveryStatus stays
-// at DiscoverySearched (Resume re-attempt contract). The
-// orchestrator's failedCount logic counts ONLY
-// ErrLinkerUnmappableConcept and ErrLinkerInvariantBroken as
-// hard-fail signals; ErrLinkerEmbeddingFailed preserves the
-// Reconciling state so a subsequent EnrichLinker call retries
-// naturally.
-func (w *defaultLinker) encodeAndIndexConcepts(ctx context.Context, req LinkerRequest, concepts []MediaConcept, transcriptText, visualDesc string) error {
-	if w.deps.Encoder == nil || w.deps.Indexer == nil {
-		return nil
-	}
-	for _, c := range concepts {
-		channels := EncodingChannels{
-			Text:       c.CanonicalText,
-			Transcript: transcriptText,
-			VisualDesc: visualDesc,
-		}
-		embedding, eerr := w.deps.Encoder.Encode(ctx, channels)
-		if eerr != nil {
-			return fmt.Errorf("candidate=%q concept=%q encode failed: %w",
-				req.Candidate.ID, c.ID, errors.Join(ErrLinkerEmbeddingFailed, eerr))
-		}
-		if len(embedding.Vector) == 0 {
-			return fmt.Errorf("candidate=%q concept=%q encoder returned zero-vector: %w",
-				req.Candidate.ID, c.ID, ErrLinkerEmbeddingFailed)
-		}
-		c.EmbeddingVersion = embedding.Model
-		// Re-upsert so media_concepts.embedding_version stays in
-		// sync with the Qdrant payload's embedding_version
-		// (canonical godlike/06 SSOT sync).
-		if _, uerr := w.deps.Concepts.Upsert(ctx, c); uerr != nil {
-			return fmt.Errorf("candidate=%q concept=%q re-upsert with EmbeddingVersion failed: %w",
-				req.Candidate.ID, c.ID, errors.Join(ErrLinkerEmbeddingFailed, uerr))
-		}
-		if ierr := w.deps.Indexer.IndexConcept(ctx, c); ierr != nil {
-			return fmt.Errorf("candidate=%q concept=%q qdrant index failed: %w",
-				req.Candidate.ID, c.ID, errors.Join(ErrLinkerEmbeddingFailed, ierr))
-		}
-	}
-	return nil
-}
-
-// persistBindings writes one MediaBinding per (concept ×
-// media.SlotPrimaryVideo). godlike/06 SSOT (canonical slot seed):
-// for Fase 3.2 the linker produces a primary_video slot per
-// concept. Future Fase 4.4 will lift the slot set to the
-// SceneVisualPlan's preferred_slots (the linker remains the
-// slot-agnostic writer; the ranker / resolver select the
-// canonical slot at render time).
-func (w *defaultLinker) persistBindings(ctx context.Context, req LinkerRequest, concepts []MediaConcept) ([]string, []string) {
-	ids := make([]string, 0, len(concepts))
-	failures := make([]string, 0)
-	if w.deps.Bindings == nil {
-		return ids, []string{"mediamemory: linker BindingRepository is nil (composition root must wire sqlite repo)"}
-	}
-	for _, c := range concepts {
-		binding := MediaBinding{
-			ConceptID: c.ID,
-			AssetID:   req.Candidate.AssetID,
-			SlotKind:  media.SlotPrimaryVideo,
-			Origin:    OriginAutoLink,
-			// godlike/06 SSOT (auto-link approval semantics): the
-			// linker writes ApprovalPending by default; the
-			// dashboard's "Visual Memory" page is the canonical
-			// approval surface for promotion to ApprovalApproved.
-			ApprovalStatus: ApprovalPending,
-			ManualScore:    0,
-			SemanticScore:  0,
-			QualityScore:   1, // linker-pass n/a; baseline 1 keeps dashboards sensible
-		}
-		persisted, perr := w.deps.Bindings.Upsert(ctx, binding)
-		if perr != nil {
-			failures = append(failures, fmt.Sprintf(
-				"candidate=%q concept=%q persist binding failed: %s",
-				req.Candidate.ID, c.ID, perr.Error(),
-			))
-			continue
-		}
-		ids = append(ids, persisted.ID)
-	}
-	return ids, failures
-}
-
-// normalizedEntities trims and dedupes an entity list. godlike/06
-// SSOT (deterministic seed list): the canonical pre-upsert
-// pipeline MUST be deterministic — a re-run with the same input
-// produces the same (dedupe-d) entity sequence. De-dupe is
-// case-insensitive to ensure that "Maya" / "maya" / "MAYA"
-// collapse to a single seed phrase.
-func normalizedEntities(raw []string) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(raw))
-	out := make([]string, 0, len(raw))
-	for _, e := range raw {
-		k := strings.ToLower(strings.TrimSpace(e))
-		if k == "" {
-			continue
-		}
-		if _, ok := seen[k]; ok {
-			continue
-		}
-		seen[k] = struct{}{}
-		out = append(out, strings.TrimSpace(e))
-	}
-	return out
 }
