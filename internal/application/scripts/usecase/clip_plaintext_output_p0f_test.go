@@ -57,10 +57,14 @@
 package usecase
 
 import (
+	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -371,15 +375,103 @@ func TestPlaintextOutput_P0F_SignatureIndex_AllReported(t *testing.T) {
 // surfaces the inner "text" field as
 // engineResult.Output.Text → result.Output.Text.
 
-// PRE-EXISTING-7 / FASE 13 PART 4: set SourceText empty so Fix B's
-// "tolerance observational when no source anchor" engages. The
-// TestPlaintextOutput contract is PURE PROSE free-form; the
-// editorial gate has no source anchor to compare against, so the
-// +/- 20% target-word tolerance is informational (logs only).
-
+// PRE-EXISTING-13 Option A (applied on disk, July 2026) replaces the
+// PRE-EXISTING-7 / FASE 13 PART 4 empty-SourceText design below:
+// the orchestrator-level test is integrated end-to-end via a literal
+// SourceText on the fixture side AND CachePolicy.Mode="disabled"
+// so the source_enrichment.go cache layer is bypassed per godlike/07
+// fail-closed doctrine (test isolation MUST be a hard-wired decision
+// by the test author, not a runtime inference). The fixture's literal
+// SourceText is a canonical-fake anchor — it is NOT exercised for
+// editorial comparison; the orchestrator's Output.Text assertion
+// below is the load-bearing contract check. The literal anchor
+// exists purely to keep FASE 13 PART 4's double-trips tolerance gate
+// from engaging WHEN SourceText is empty (TOLERANCE-OBSERVATIONAL).
+//
 // Sanity: the orchestrator propagated the prose (a stable
 // substring is enough — strict byte-equality is too tight
 // if a future engine tweak adds a trailing newline or
 // normalises unicode quotes; the contract check above is
 // the load-bearing assertion, this Contains check is just
 // a smoke-test that the prose survived the pipeline).
+
+// TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse is the
+// integration-level lock:
+//   - helper-level tests verify the regex;
+//   - this test verifies the regex applies to the real model-emitted
+//     output end-to-end (through the engine + postprocessor pipeline),
+//     not just hand-crafted strings.
+//
+// PRE-EXISTING-13 Option A (architecture/issues.yaml follow_up):
+//   - literal SourceText on the fixture anchors the editorial gate,
+//   - CachePolicy.Mode=disabled hardwires source-enrichment bypass,
+//   - t.Log surfaces the override in test logs (the recommended
+//     log-trace emission from the follow_up Option-A guidance).
+func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
+	t.Parallel()
+
+	t.Log("Option A test-only fixture override: assigning explicit " +
+		"SourceText + CachePolicy.Mode=disabled — anchors FASE 13 PART 4 " +
+		"word-count gate and bypasses source_enrichment.go per " +
+		"PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT follow_up Option A")
+
+	prose := "The bell rings and the fighters touch gloves before round one begins."
+	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"scenes":[]}`, prose)
+
+	uc := buildUsecaseWithClipResolver(
+		&fakeOllamaGen{result: &ollamatypes.GenerationResult{
+			Script:      cleanJSON,
+			WordCount:   10,
+			EstDuration: 3,
+			Model:       "llama3:8b",
+			Prompt:      "p0f-orchestrator-test-prompt",
+		}},
+		nil, // text-only path: no clip resolver engaged.
+	)
+
+	item := scriptpkg.GenerationItemV2{
+		ID:       "p0f-text-only-orchestrator",
+		Title:    "Plain prose contract — text-only anchor",
+		Language: "en",
+		Source: scriptpkg.SourceSpec{
+			Type:       scriptpkg.SourceText,
+			Topic:      "clean prose contract",
+			SourceText: "test anchor",
+			CachePolicy: scriptpkg.SourceCachePolicy{
+				Mode: scriptpkg.SourceCacheModeDisabled,
+			},
+		},
+		ScriptParams: scriptpkg.ScriptSpec{
+			TargetWords: 10,
+			MinWords:    8,
+			// SkipQualityGate isolates this test from the editorial gate
+			// so the load-bearing assertion stays the plaintext contract.
+			SkipQualityGate: true,
+		},
+	}
+
+	// No-op ProgressFn avoids nil-call hazard in tracker.TrackEvent /
+	// tracker.PhaseComplete when called from generate_one_usecase.go
+	// during the Execute path. The closure signature matches
+	// ProgressFn (see progress.go); handlers that fire during this
+	// test are silently absorbed so contract assertions below stay
+	// green without operator UI coupling.
+	tracker := NewProgressTracker(func(int, string) {}, item.ID)
+	result, err := uc.Execute(context.Background(), item, scriptpkg.PresetCustom, tracker)
+	require.NoErrorf(t, err,
+		"orchestrator-level execution MUST NOT error under Option A fixture-overlap fix (PRE-EXISTING-13 follow_up)")
+	require.NotNilf(t, result,
+		"orchestrator MUST return a non-nil generation result")
+	// godlike/07 fail-closed: catch silent-empty-body (engine decoding
+	// failure) so the contract check below does not pass vacuously
+	// when Output.Text=="".
+	require.NotEmptyf(t, result.Output.Text,
+		"orchestrator MUST propagate non-empty Output.Text end-to-end; got %q",
+		result.Output.Text)
+
+	matches := runPlaintextContract(t, result.Output.Text, "orchestrator-level prose")
+	assert.Equalf(t, 0, matches,
+		"orchestrator-emitted Output.Text MUST pass the plaintext contract; "+
+			"got %d forbidden-signature matches in Output.Text=%q",
+		matches, result.Output.Text)
+}
