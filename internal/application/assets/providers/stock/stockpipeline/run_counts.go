@@ -18,7 +18,7 @@ func deriveRunCounts(input *RunInput, state *runState) RunCounts {
 	c.CreatedClipCount = len(state.CutPaths)
 	c.PublishedClipCount = len(state.Published)
 	c.PersistedClipCount = len(state.CutPaths)
-	if state.FinalStatus == job.StatusSucceeded || state.FinalStatus == job.StatusIndexPending {
+	if state.FinalStatus == job.StatusSucceeded {
 		c.IndexedClipCount = len(state.Published)
 	}
 	if c.SelectedVideoCount > c.DownloadedVideoCount {
