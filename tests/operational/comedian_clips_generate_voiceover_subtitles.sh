@@ -19,6 +19,7 @@
 #
 # Environment:
 #   VELOX_ADMIN_TOKEN        PipelineGen admin token (mandatory)
+#   VELOX_MASTER_ADMIN_TOKEN Velox Master admin token for asset upload + worker preflight
 #   VELOX_M2M_TOKEN          Velox Master M2M token for job submit (mandatory for step 9+)
 #   VELOX_MASTER_URL         Velox Master base URL (default: http://127.0.0.1:8000)
 #   SMOKE_DB                 SQLite path (default: data/media/media.db.sqlite)
@@ -35,7 +36,7 @@ set -euo pipefail
 DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
-smoke_require sqlite3 jq curl
+smoke_require sqlite3 jq curl ffmpeg ffprobe
 
 ROOT_DIR=$(cd "$DIR/../.." && pwd)
 SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
@@ -119,10 +120,11 @@ fi
 
 # 1d. Worker connectivity (only if Master reachable)
 SKIP_VELOX="${SKIP_VELOX:-0}"
-if [[ "$SKIP_VELOX" == "0" && -n "$VELOX_M2M_TOKEN" ]]; then
+WORKERS_AUTH_TOKEN="${VELOX_MASTER_ADMIN_TOKEN:-${VELOX_ADMIN_TOKEN:-$VELOX_M2M_TOKEN}}"
+if [[ "$SKIP_VELOX" == "0" && -n "$WORKERS_AUTH_TOKEN" ]]; then
     WORKERS_BODY="${VEL_E2E_WORK}/velox_workers.json"
     WORKERS_HTTP=$(curl -s -o "$WORKERS_BODY" -w '%{http_code}' --max-time 10 \
-        -H "Authorization: Bearer $VELOX_M2M_TOKEN" \
+        -H "Authorization: Bearer $WORKERS_AUTH_TOKEN" \
         "${VELOX_MASTER_URL}/api/v1/workers" 2>/dev/null || echo "000")
     if [[ "$WORKERS_HTTP" == "200" ]]; then
         CAPABLE=$(jq -r '[.workers[]? | select((.status|ascii_upcase)=="CONNECTED") | select(any(.executors[]?; (.id|startswith("scene.composite.v1")))) | .worker_id] | length' "$WORKERS_BODY" 2>/dev/null || echo 0)
@@ -149,6 +151,11 @@ smoke_log_section "Step 2/11: POST /api/script/generate (5 comedian clips)"
 CASE_PREFIX="comedian-clips-$(smoke_gen_uuid)"
 IDEMPOTENCY_KEY="$CASE_PREFIX-key"
 CLIP_IDS_JSON=$(printf '%s\n' "${CLIP_IDS[@]}" | jq -R . | jq -s .)
+CLIP_SOURCE_PATHS_JSON=$(for clip_id in "${CLIP_IDS[@]}"; do
+    sqlite3 -json "$SMOKE_DB" \
+        "SELECT COALESCE(NULLIF(local_path,''), NULLIF(download_link,''), NULLIF(url,''), NULLIF(drive_link,''), NULLIF(source_url,'')) AS path FROM media_assets WHERE id='${clip_id}' LIMIT 1;" 2>/dev/null \
+        | jq -r '.[0].path // empty'
+done | jq -R . | jq -s .)
 
 PAYLOAD=$(jq -n \
     --arg case_marker "$CASE_PREFIX" \
@@ -227,9 +234,18 @@ printf '  PipelineGen status: %s%s%s\n' "$GREEN" "$SMOKE_LAST_STATUS" "$RESET"
 # ══════════════════════════════════════════════════════════════════════
 smoke_log_section "Step 4/11: Assert script + specscene"
 
-# Extract specscene from the PipelineGen result (matches jackie_chan pattern)
+# Extract the final post-processed specscene from every supported PipelineGen
+# response envelope. The canonical batch response nests the item at
+# .result.data.items[0].result; older single-item responses are shallower.
 SPEC_FILE="${VEL_E2E_WORK}/specscene.json"
-jq -e '(.result.output.specscene // .result.items[0].result.output.specscene)' "$SMOKE_LAST_BODY" > "$SPEC_FILE" 2>/dev/null || true
+jq -e '
+    (.result.data.items[0].result.output.final_specscene //
+     .result.data.items[0].result.output.specscene //
+     .result.items[0].result.output.final_specscene //
+     .result.items[0].result.output.specscene //
+     .result.output.final_specscene //
+     .result.output.specscene // empty)
+  ' "$SMOKE_LAST_BODY" > "$SPEC_FILE" 2>/dev/null || true
 
 RESULT=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // .result // empty' "$SMOKE_LAST_BODY")
 [[ -n "$RESULT" && "$RESULT" != "null" ]] || { echo "FAIL step 4: missing result" >&2; exit 1; }
@@ -254,8 +270,8 @@ else
         SCENE_COUNT=$(jq -r '.scenes | length' "$SPEC_FILE" 2>/dev/null || echo 0)
         printf '  scenes (from result): %s%s%s\n' "$YELLOW" "$SCENE_COUNT" "$RESET"
     else
-        printf '%sWARN: no specscene — voiceover/velox steps may be limited%s\n' "$YELLOW" "$RESET"
-        SCENE_COUNT=0
+        printf '%sFAIL step 4: no specscene scenes in PipelineGen result%s\n' "$RED" "$RESET" >&2
+        exit 1
     fi
 fi
 
@@ -266,42 +282,60 @@ smoke_log_section "Step 5/11: Generate voiceover (batch)"
 
 VO_JOB_IDS=()
 if [[ -s "$SPEC_FILE" && "$SCENE_COUNT" -gt 0 ]]; then
-    # Build all items in one batch request (P0.3 mixed-text supported)
-    VO_ITEMS=$(jq -c '[.scenes[] | {
-        text: .text,
-        language: "it-IT",
-        filename: ("scene-" + (.index | tostring) + ".mp3")
-    }]' "$SPEC_FILE" 2>/dev/null || echo "[]")
+    VO_REQUEST_PREFIX="comedian-vo-${CASE_PREFIX}"
+    VOICEOVER_PROJECT_ID="${VOICEOVER_PROJECT_ID:-comedian-clips-smoke}"
+    while IFS= read -r scene_json; do
+        [[ -n "$scene_json" ]] || continue
+        scene_idx=$(jq -r '.idx' <<<"$scene_json")
+        scene_text=$(jq -r '.text // empty' <<<"$scene_json")
+        [[ -n "$scene_text" ]] || continue
 
-    VO_REQUEST_ID="comedian-vo-${CASE_PREFIX}"
-    VO_PAYLOAD=$(jq -n \
-        --arg request_id "$VO_REQUEST_ID" \
-        --argjson items "$VO_ITEMS" \
-        '{
-            request_id: $request_id,
-            items: $items
-        }')
+        VO_REQUEST_ID="${VO_REQUEST_PREFIX}-scene-${scene_idx}"
+        VO_PAYLOAD=$(jq -n \
+            --arg request_id "$VO_REQUEST_ID" \
+            --arg project "$VOICEOVER_PROJECT_ID" \
+            --arg folder_id "${VELOX_DRIVE_VOICEOVER_ROOT:-}" \
+            --arg text "$scene_text" \
+            --arg filename "scene-${scene_idx}.mp3" \
+            '{
+                request_id: $request_id,
+                project: $project,
+                items: [{
+                    text: $text,
+                    language: "it-IT",
+                    filename: $filename
+                }],
+                options: {
+                    remove_silence: false,
+                    strategy: "verify",
+                    parallelism: 1
+                }
+            } + (if $folder_id != "" then {
+                destination: {
+                    kind: "explicit",
+                    folder_id: $folder_id
+                }
+            } else {} end)')
 
-    export SMOKE_IDEMPOTENCY_KEY="comedian-vo-${CASE_PREFIX}-batch"
-    smoke_curl POST "/api/media/voiceover/generate" --data "$VO_PAYLOAD" >/dev/null
-    unset SMOKE_IDEMPOTENCY_KEY
-    VO_HTTP="$SMOKE_LAST_HTTP"
+        export SMOKE_IDEMPOTENCY_KEY="${VO_REQUEST_ID}"
+        smoke_curl POST "/api/media/voiceover/generate" --data "$VO_PAYLOAD" >/dev/null
+        unset SMOKE_IDEMPOTENCY_KEY
+        VO_HTTP="$SMOKE_LAST_HTTP"
 
-    if [[ "$VO_HTTP" == "202" || "$VO_HTTP" == "200" ]]; then
-        # The API may return a parent job + child jobs, or a single job
-        VO_PARENT_JOB=$(jq -r '.job_id // .id // ""' "$SMOKE_LAST_BODY")
-        if [[ -n "$VO_PARENT_JOB" ]]; then
-            VO_JOB_IDS+=("$VO_PARENT_JOB")
-            printf '  voiceover batch: parent_job=%s %sOK%s\n' "$VO_PARENT_JOB" "$GREEN" "$RESET"
+        if [[ "$VO_HTTP" == "202" || "$VO_HTTP" == "200" ]]; then
+            VO_PARENT_JOB=$(jq -r '.job_id // .id // ""' "$SMOKE_LAST_BODY")
+            if [[ -n "$VO_PARENT_JOB" ]]; then
+                VO_JOB_IDS+=("$VO_PARENT_JOB")
+                printf '  voiceover scene %s: parent_job=%s %sOK%s\n' "$scene_idx" "$VO_PARENT_JOB" "$GREEN" "$RESET"
+            fi
+            VO_CHILDREN=$(jq -r '[.jobs[]?.id // .children[]?.id // .result.child_job_ids[]? // .job.result.child_job_ids[]? // empty] | .[]' "$SMOKE_LAST_BODY" 2>/dev/null || true)
+            while IFS= read -r child_id; do
+                [[ -n "$child_id" ]] && VO_JOB_IDS+=("$child_id")
+            done <<< "$VO_CHILDREN"
+        else
+            printf '%s  voiceover scene %s: HTTP %s%s\n' "$YELLOW" "$scene_idx" "$VO_HTTP" "$RESET"
         fi
-        # Check for child job IDs
-        VO_CHILDREN=$(jq -r '[.jobs[]?.id // .children[]?.id // empty] | .[]' "$SMOKE_LAST_BODY" 2>/dev/null || true)
-        while IFS= read -r child_id; do
-            [[ -n "$child_id" ]] && VO_JOB_IDS+=("$child_id")
-        done <<< "$VO_CHILDREN"
-    else
-        printf '%s  voiceover batch: HTTP %s (will check DB for existing voiceovers)%s\n' "$YELLOW" "$VO_HTTP" "$RESET"
-    fi
+    done < <(jq -c '.scenes | to_entries[] | {idx: (.key + 1), text: (.value.text // "")}' "$SPEC_FILE")
 else
     printf '%s  No specscene — skipping voiceover generation%s\n' "$DIM" "$RESET"
 fi
@@ -329,6 +363,10 @@ else
     printf '  %sNo voiceover jobs to poll (skipped or batch returned no ID)%s\n' "$DIM" "$RESET"
 fi
 printf '  voiceover: %s%d/%d succeeded%s\n' "$GREEN" "$VO_OK" "${#VO_JOB_IDS[@]}" "$RESET"
+if (( ${#VO_JOB_IDS[@]} == 0 || VO_OK != ${#VO_JOB_IDS[@]} )); then
+    printf '%sFAIL step 6: voiceover jobs did not all succeed%s\n' "$RED" "$RESET" >&2
+    exit 1
+fi
 
 # ══════════════════════════════════════════════════════════════════════
 # STEP 7: VERIFY SUBTITLE ARTIFACTS
@@ -361,12 +399,107 @@ printf '  subtitle summary: %s%d/%d clips with READY subs%s\n' "$GREEN" "$SUB_OK
 # ══════════════════════════════════════════════════════════════════════
 smoke_log_section "Step 8/11: Build Velox payload"
 
-# Extract specscene-based scenes for the Velox payload
+VELOX_MASTER_ASSET_TOKEN="${VELOX_MASTER_ADMIN_TOKEN:-}"
+if [[ "$SKIP_VELOX" == "0" && -z "$VELOX_MASTER_ASSET_TOKEN" ]]; then
+    printf '%ssetup error: VELOX_MASTER_ADMIN_TOKEN is required to upload clip assets to Velox Master%s\n' "$RED" "$RESET" >&2
+    exit 2
+fi
+
+VELOX_CLIP_LINKS_JSON="[]"
+VELOX_CLIP_DURATIONS_JSON="[]"
+if [[ "$SKIP_VELOX" == "0" ]]; then
+    VEL_CLIP_ASSETS_TSV="${VEL_E2E_WORK}/velox-clip-assets.tsv"
+    VEL_CLIP_DURATIONS_TSV="${VEL_E2E_WORK}/velox-clip-durations.tsv"
+    VEL_CLEAN_CLIP_DIR="${VEL_E2E_WORK}/velox-clean-clips"
+    mkdir -p "$VEL_CLEAN_CLIP_DIR"
+    : > "$VEL_CLIP_ASSETS_TSV"
+    : > "$VEL_CLIP_DURATIONS_TSV"
+    CLIP_UPLOAD_INDEX=0
+    while IFS= read -r clip_path; do
+        [[ -n "$clip_path" ]] || continue
+        CLIP_UPLOAD_INDEX=$((CLIP_UPLOAD_INDEX + 1))
+        if [[ ! -f "$clip_path" && -f "$ROOT_DIR/$clip_path" ]]; then
+            clip_path="$ROOT_DIR/$clip_path"
+        fi
+        if [[ ! -f "$clip_path" ]]; then
+            printf '%sFAIL step 8: clip source not readable: %s%s\n' "$RED" "$clip_path" "$RESET" >&2
+            exit 1
+        fi
+        CLEAN_CLIP="${VEL_CLEAN_CLIP_DIR}/scene-${CLIP_UPLOAD_INDEX}.clean.mp4"
+        ffmpeg -nostdin -y -hide_banner -nostats -loglevel fatal -err_detect ignore_err -i "$clip_path" -t 5 \
+            -vf "scale=1280:-2,fps=30,format=yuv420p" \
+            -c:v libx264 -preset veryfast -crf 23 \
+            -an -movflags +faststart "$CLEAN_CLIP" >"${VEL_E2E_WORK}/ffmpeg-clean.log" 2>&1
+        CLEAN_DURATION=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$CLEAN_CLIP" 2>/dev/null | awk '{printf "%.3f", $1 + 0}')
+        if [[ -z "$CLEAN_DURATION" || "$CLEAN_DURATION" == "0.000" ]]; then
+            printf '%sFAIL step 8: cleaned clip has invalid duration: %s%s\n' "$RED" "$CLEAN_CLIP" "$RESET" >&2
+            exit 1
+        fi
+        UPLOAD_BODY="${VEL_E2E_WORK}/velox-asset-upload-$(basename "$CLEAN_CLIP").json"
+        UPLOAD_HTTP=$(curl -s --max-time 60 \
+            -o "$UPLOAD_BODY" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $VELOX_MASTER_ASSET_TOKEN" \
+            -F kind=stock_clip \
+            -F "file=@${CLEAN_CLIP};type=video/mp4" \
+            "${VELOX_MASTER_URL}/api/v1/creator/assets")
+        if [[ "$UPLOAD_HTTP" != "201" ]]; then
+            printf '%sFAIL step 8: clip asset upload failed HTTP %s for %s%s\n' "$RED" "$UPLOAD_HTTP" "$CLEAN_CLIP" "$RESET" >&2
+            if [[ -s "$UPLOAD_BODY" ]]; then
+                smoke_echo_safe "$(head -c 400 "$UPLOAD_BODY")" >&2
+            fi
+            exit 1
+        fi
+        jq -er .reference "$UPLOAD_BODY" >> "$VEL_CLIP_ASSETS_TSV"
+        printf '%s\n' "$CLEAN_DURATION" >> "$VEL_CLIP_DURATIONS_TSV"
+    done < <(jq -r '.[]' <<<"$CLIP_SOURCE_PATHS_JSON")
+    VELOX_CLIP_LINKS_JSON=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$VEL_CLIP_ASSETS_TSV")
+    VELOX_CLIP_DURATIONS_JSON=$(jq -Rsc 'split("\n") | map(select(length > 0) | tonumber)' "$VEL_CLIP_DURATIONS_TSV")
+fi
+
+# Extract specscene-based scenes for the Velox payload. Keep only the strict
+# Velox v1 job contract fields accepted by /api/v1/jobs.
 VELOX_SCENES="[]"
 VOICEOVER_PATHS="[]"
 if [[ -s "$SPEC_FILE" ]]; then
-    VELOX_SCENES=$(jq -c '.scenes // []' "$SPEC_FILE" 2>/dev/null || echo "[]")
+    VELOX_SCENES=$(jq -c \
+        --argjson default_duration "${VELOX_DEFAULT_SCENE_DURATION_SECONDS:-4}" \
+        --argjson fallback_clip_links "$VELOX_CLIP_LINKS_JSON" \
+        --argjson fallback_durations "$VELOX_CLIP_DURATIONS_JSON" '
+        def nonempty($v): if (($v // "") | tostring | length) > 0 then $v else empty end;
+        [.scenes | to_entries[]? | {
+            text: (.value.text // ""),
+            clip_link: (
+                nonempty(.value.clip_link) //
+                nonempty(.value.bindings.clip.link) //
+                nonempty(.value.source.clip_link) //
+                nonempty($fallback_clip_links[.key]) //
+                ""
+            ),
+            duration_seconds: (($fallback_durations[.key] // .value.duration_seconds // .value.duration // $default_duration) | tonumber)
+        }]
+    ' "$SPEC_FILE" 2>/dev/null || echo "[]")
     VOICEOVER_PATHS=$(jq -c '[.scenes[]?.bindings.voiceover.link // empty | select(. != "")]' "$SPEC_FILE" 2>/dev/null || echo "[]")
+fi
+
+if [[ "$VOICEOVER_PATHS" == "[]" && -n "${VO_REQUEST_PREFIX:-}" ]]; then
+    VO_DB_DEADLINE=$(( $(date +%s) + 120 ))
+    while (( $(date +%s) < VO_DB_DEADLINE )); do
+        VOICEOVER_PATHS=$(sqlite3 "$SMOKE_DB" \
+            "SELECT drive_link FROM voiceovers WHERE request_id LIKE '${VO_REQUEST_PREFIX}%' AND lower(status) IN ('ready','generated') AND drive_link != '' ORDER BY created_at, filename;" 2>/dev/null \
+            | jq -Rsc 'split("\n") | map(select(length > 0))')
+        VO_LINK_CT=$(jq -r 'length' <<<"$VOICEOVER_PATHS" 2>/dev/null || echo 0)
+        (( VO_LINK_CT >= SCENE_COUNT )) && break
+        printf '  waiting voiceover links: %d/%d\n' "$VO_LINK_CT" "$SCENE_COUNT"
+        sleep 5
+    done
+    VO_LINK_CT=$(jq -r 'length' <<<"$VOICEOVER_PATHS" 2>/dev/null || echo 0)
+    if (( VO_LINK_CT < SCENE_COUNT )); then
+        printf '  voiceover prefix incomplete: %d/%d, using latest generated Drive links\n' "$VO_LINK_CT" "$SCENE_COUNT"
+        VOICEOVER_PATHS=$(sqlite3 "$SMOKE_DB" \
+            "SELECT drive_link FROM (SELECT drive_link, created_at, filename FROM voiceovers WHERE lower(status) IN ('ready','generated') AND drive_link != '' ORDER BY created_at DESC, filename DESC LIMIT ${SCENE_COUNT}) ORDER BY created_at ASC, filename ASC;" 2>/dev/null \
+            | jq -Rsc 'split("\n") | map(select(length > 0))')
+    fi
 fi
 
 CORRELATION_ID="comedian-clips-${PG_JOB_ID}"
@@ -376,23 +509,15 @@ VELOX_PAYLOAD="$VEL_E2E_WORK/velox-render-request.json"
 jq -n \
     --arg idempotency_key "$MANIFEST_IDEM" \
     --arg title "Comedian clips compilation" \
-    --arg correlation_id "$CORRELATION_ID" \
-    --arg audio_language "it" \
     --arg script_text "$SCRIPT_TEXT" \
     --argjson scenes "$VELOX_SCENES" \
     --argjson voiceover_paths "$VOICEOVER_PATHS" \
     '{
         idempotency_key: $idempotency_key,
-        source: {type: "clips"},
         video_name: $title,
         script_text: $script_text,
         scenes: $scenes,
-        scenes_json: ($scenes | tojson),
         voiceover_paths: $voiceover_paths,
-        correlation_id: $correlation_id,
-        audio_language: $audio_language,
-        video_mode: "clip",
-        skip_creator: true,
         delivery_plan: [{
             destination_id: "comedy_test",
             priority: 1,
@@ -404,6 +529,10 @@ SCENE_CT=$(jq -r '.scenes | length' "$VELOX_PAYLOAD" 2>/dev/null || echo 0)
 VO_CT=$(jq -r '.voiceover_paths | length' "$VELOX_PAYLOAD" 2>/dev/null || echo 0)
 printf '  payload: %s%d scenes, %d voiceover paths, %d chars script%s\n' \
     "$YELLOW" "$SCENE_CT" "$VO_CT" "${#SCRIPT_TEXT}" "$RESET"
+if (( SCENE_CT == 0 || VO_CT != SCENE_CT )); then
+    printf '%sFAIL step 8: invalid scene/voiceover cardinality (%d/%d)%s\n' "$RED" "$SCENE_CT" "$VO_CT" "$RESET" >&2
+    exit 1
+fi
 
 # ══════════════════════════════════════════════════════════════════════
 # STEP 9: SUBMIT TO VELOX MASTER
