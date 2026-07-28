@@ -1,0 +1,15 @@
+{
+  "clip_id": "1YnVrMXHYLC69iV_LqiFLf6nBCbGlm57Q",
+  "name": "Giant Crab Encounter",
+  "metadata": {
+    "commentary_language": "en-US",
+    "commentary_index_version": "giant-crab-encounter.v1",
+    "commentary_index_json": [
+      {"clip_name":"Giant Crab Encounter","timestamp":"00:00","moment_description":"A massive spider crab looms over the diver on the sandy seabed.","text":"Faced with a literal ocean monster... 🦀💨","suggested_sound":{"id":"1AKBfSAXLCT2fuXPsrEQQygETvZshBlcs","name":"sfx_ambient_sub_bass_drone_01.wav","reason":"Deep, low-frequency rumble that immediately builds tension and fits the scale of the giant crab."}},
+      {"clip_name":"Giant Crab Encounter","timestamp":"00:02","moment_description":"The crab plants its long, glowing leg directly into the sand right in front of the camera.","text":"DON'T MOVE. 😳🛑","suggested_sound":{"id":"1yL87psoGX0ULtknzodcnWkCn8jxP4IIh","name":"sfx_ambient_evolve_feedback_01.wav","reason":"Cinematic resonance modulations elevate the sci-fi, tense feel as the leg drops."}},
+      {"clip_name":"Giant Crab Encounter","timestamp":"00:04","moment_description":"The crab shifts its weight and steps over the diver, its leg glowing intensely.","text":"It's stepping right over me! 🤯🔥","suggested_sound":{"id":"16Ykb6V8mX69vqhruEMw0oOKv-IZzG4Nd","name":"sfx_ambient_cave_echo_01.mp3","reason":"Adds an eerie, suspended atmospheric echo as the massive creature passes above."}},
+      {"clip_name":"Giant Crab Encounter","timestamp":"00:07","moment_description":"The giant leg lifts back up into the blue water, leaving a small cloud of sand behind.","text":"New phobia unlocked. 💀🌊","suggested_sound":{"id":"1mzBxdV7BVoZm4C9S4AQe-hAYqth1OB_3","name":"sfx_ambient_spooky_wind_01.wav","reason":"A haunting cinematic drone fade-out that seals the ominous mood."}}
+    ],
+    "sound_design_plan": "00:00 sub-bass; 00:02 evolving feedback; 00:04 cave echo; 00:07 spooky wind"
+  }
+}
