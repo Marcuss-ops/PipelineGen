@@ -427,7 +427,11 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
-		UseCookies: true,
+		// Public stock videos must use the Android-capable path. Passing
+		// browser cookies forces yt-dlp onto the web client and can trigger
+		// YouTube's n-challenge/bot gate; cookies remain available for
+		// authenticated metadata/subtitle flows that explicitly opt in.
+		UseCookies: false,
 	}
 	if ref.DownloadSection != "" {
 		dlReq.DownloadSections = []string{ref.DownloadSection}

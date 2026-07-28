@@ -36,6 +36,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		SourceText:          item.Source.SourceText,
 		Guidelines:          item.Source.Guidelines,
 		TargetWords:         item.ScriptParams.TargetWords,
+		SingleScene:         item.ScriptParams.SingleScene,
 		Duration:            item.ScriptParams.Duration,
 		MinWords:            item.ScriptParams.MinWords,
 		NumClips:            item.Source.NumClips,

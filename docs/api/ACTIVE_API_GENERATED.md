@@ -67,8 +67,10 @@
 |--------|------|-------------|
 | GET | `/api/clips/diagnostics` | Clips diagnostics |
 | GET | `/api/clips/info` | Get YouTube video metadata |
+| GET | `/api/clips/search` | Discover and rank YouTube videos for a keyword |
 | GET | `/api/clips/stats` | Get clips statistics |
 | POST | `/api/clips/extract-important` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/clips/search` | Discover and rank YouTube videos for a keyword |
 | POST | `/api/clips/process` | Download and process clips |
 
 ## /api/drive
@@ -221,4 +223,3 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/vlm/autotag/analyze-file` | ⚠️ MISSING DESCRIPTION |
-

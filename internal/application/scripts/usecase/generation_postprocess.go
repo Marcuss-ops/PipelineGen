@@ -104,6 +104,9 @@ func (p *GenerationPostprocessor) Process(
 			Inner:     err,
 		}
 	}
+	if item.ScriptParams.SingleScene && postResult != nil {
+		postResult.FinalSpecScene = collapseSpecSceneOutput(engineResult.Output.Text, postResult.FinalSpecScene)
+	}
 
 	postprocessMs := make(map[string]int64)
 	if postResult != nil && len(postResult.StageDurations) > 0 {
@@ -122,4 +125,18 @@ func (p *GenerationPostprocessor) Process(
 		Provenance:    provenance,
 		PostprocessMs: postprocessMs,
 	}, nil
+}
+
+func collapseSpecSceneOutput(text string, current scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
+	var bindings scriptpkg.SceneBindings
+	if len(current.Scenes) > 0 {
+		bindings = current.Scenes[0].Bindings
+	}
+	return scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
+			Text: strings.TrimSpace(text), Bindings: bindings,
+		}},
+	}
 }

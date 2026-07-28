@@ -196,7 +196,11 @@ type ScriptSegment struct {
 // SegmentTopics remains the legacy alias — used when caller omits
 // Segments.
 type ScriptSpec struct {
-	TargetWords         int             `json:"target_words,omitempty"`
+	TargetWords int `json:"target_words,omitempty"`
+	// SingleScene requests one consolidated SpecScene in the generated
+	// output. It is useful for short single-segment documents where the
+	// narrative must remain one continuous scene.
+	SingleScene         bool            `json:"single_scene,omitempty"`
 	Duration            int             `json:"duration,omitempty"`
 	MinWords            int             `json:"min_words,omitempty"`
 	SegmentWords        int             `json:"segment_words,omitempty"`

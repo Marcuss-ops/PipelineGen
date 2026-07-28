@@ -102,6 +102,14 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
 	}
 	o.WithJobFinalizer(s.finalizer)
+	// Production stock runs must persist each extracted clip through the
+	// canonical SQLite asset/outbox dispatcher. Leaving the resilient
+	// writer at its test-only noop default publishes Drive artifacts but
+	// drops the searchable media_assets row, so script source resolution
+	// cannot find the stock clips.
+	if s.dispatcher != nil {
+		o.writer = stockDispatcherWriter{dispatcher: s.dispatcher, termUpdater: s.clipsRepo}
+	}
 	// Fase 2: wire durable batch state (nil-safe for tests/backcompat).
 	if s.batchRepo != nil {
 		o.WithBatchRepository(s.batchRepo)

@@ -145,9 +145,18 @@ func extractLease(queuedJob *appjobs.Job) finalization.Lease {
 	if queuedJob == nil {
 		return finalization.Lease{}
 	}
-	expiresAt := time.Now().UTC().Add(5 * time.Minute)
+	now := time.Now().UTC()
+	// Stock extraction/rendering can legitimately outlive the broker's
+	// initial five-minute lease (large multi-source batches). The worker
+	// renews the broker lease while the handler runs, so extend only a
+	// near-term claimed expiry; preserve far-future and expired values so
+	// the lease contract and its fail-closed tests remain meaningful.
+	expiresAt := now.Add(5 * time.Minute)
 	if queuedJob.LeaseExpiry != nil && !queuedJob.LeaseExpiry.IsZero() {
 		expiresAt = *queuedJob.LeaseExpiry
+		if expiresAt.After(now) && expiresAt.Before(now.Add(10*time.Minute)) {
+			expiresAt = now.Add(1 * time.Hour)
+		}
 	}
 	return finalization.Lease{
 		LeaseID:   queuedJob.LeaseID,

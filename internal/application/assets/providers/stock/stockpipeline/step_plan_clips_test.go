@@ -102,6 +102,31 @@ func TestStockPlanStep_ClipsURLOnly_NormalisesToClipDuration(t *testing.T) {
 	}
 }
 
+func TestStockPlanStep_PlansEveryDirectURL(t *testing.T) {
+	runner := newFakeRunner(nil, 4, "")
+	runner.runInput.DirectURLs = []string{
+		"https://www.youtube.com/watch?v=source-a",
+		"https://www.youtube.com/watch?v=source-b",
+	}
+	runner.runInput.TotalMinutes = 1
+	runner.cfg.ClipDurationSec = 4
+
+	if err := (StockPlanStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	plans := runner.State().Plan
+	if len(plans) != 30 {
+		t.Fatalf("expected 30 plans (15 per source), got %d", len(plans))
+	}
+	seen := map[string]int{}
+	for _, plan := range plans {
+		seen[plan.SourceID]++
+	}
+	if seen[runner.runInput.DirectURLs[0]] != 15 || seen[runner.runInput.DirectURLs[1]] != 15 {
+		t.Fatalf("expected 15 plans per source, got %#v", seen)
+	}
+}
+
 func TestStockPlanStep_ClipsURLOnly_ClipDurationZero_FallbackTo10(t *testing.T) {
 	// URL-only clip with ClipDuration=0 (handler not set).
 	// Expected: EndSec falls back to 10 (defensive default).

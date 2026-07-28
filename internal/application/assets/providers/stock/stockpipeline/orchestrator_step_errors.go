@@ -72,6 +72,11 @@ var (
 	// case surfaces this sentinel. PR-STOCK-FAKE-AVAILABILITY-REMOVAL
 	// (Wave 1 P0 #2, deadline 2026-07-15).
 	ErrStockStageSourcesAllFailed = errors.New("stock.stage_sources: all sources failed to stage") // ErrStockExtractClipsCutterRequired is raised when StockExtractClipsStep.Run
+	// ErrStockStageSourcesIncomplete is raised when at least one source
+	// stages successfully but one or more planned sources fail. A stock
+	// batch that requested multiple sources must not report SUCCEEDED with
+	// silently missing videos.
+	ErrStockStageSourcesIncomplete = errors.New("stock.stage_sources: one or more sources failed to stage")
 	// detects a nil VideoCutter AND non-empty plans — the step has work to do
 	// but no cutter to do it with. This closes the godlike/07 no-fake-availability
 	// class where a nil cutter silently produced CutPaths=nil, cascading through

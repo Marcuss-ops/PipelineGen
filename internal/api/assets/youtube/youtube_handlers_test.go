@@ -16,12 +16,16 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type recordingYouTubeClipService struct {
 	folderCalls []folderCall
+	searchQuery string
+	searchLimit int
+	searchSort  string
 }
 
 type folderCall struct {
@@ -35,6 +39,13 @@ func (s *recordingYouTubeClipService) Config() yttypes.RuntimeConfig {
 
 func (s *recordingYouTubeClipService) GetVideoInfo(_ context.Context, _ string) (*ytports.DownloaderMetadata, error) {
 	return &ytports.DownloaderMetadata{}, nil
+}
+
+func (s *recordingYouTubeClipService) SearchByTopicWithFilter(_ context.Context, query string, limit int, sort, _ string) (*youtube.TopicSearchResponse, error) {
+	s.searchQuery = query
+	s.searchLimit = limit
+	s.searchSort = sort
+	return &youtube.TopicSearchResponse{OK: true}, nil
 }
 
 func (s *recordingYouTubeClipService) Extract(_ context.Context, _ *yttypes.ExtractRequest) (*yttypes.ExtractResponse, error) {
@@ -79,6 +90,41 @@ func TestNormalizeExtractionDestination_DefaultsVideoSubfolder(t *testing.T) {
 	require.Equal(t, "vdC5GXxS-qU", subfolder)
 	require.Equal(t, path.Join("Pacquiao Vs Broner", "vdC5GXxS-qU"), folderPath)
 	require.True(t, createSubfolder)
+}
+
+func TestYouTubeClipHandler_SearchByTopic_PostDelegatesKeywordAndOptions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &recordingYouTubeClipService{}
+	handler := NewYouTubeClipHandler(svc, zap.NewNop(), nil, nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clips/search", bytes.NewBufferString(`{"q":"Muhammad Ali boxing","limit":12,"sort":"views"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.SearchByTopic(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "Muhammad Ali boxing", svc.searchQuery)
+	require.Equal(t, 12, svc.searchLimit)
+	require.Equal(t, "views", svc.searchSort)
+	require.JSONEq(t, `{"ok":true,"query":"","limit":0,"count":0,"source":"","results":null}`, rec.Body.String())
+}
+
+func TestYouTubeClipHandler_SearchByTopic_RejectsMissingQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewYouTubeClipHandler(&recordingYouTubeClipService{}, zap.NewNop(), nil, nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clips/search", nil)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.SearchByTopic(ctx)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "q is required")
 }
 
 func TestNormalizeExtractionDestination_DefaultsVideoSubfolderWithoutGroup(t *testing.T) {
