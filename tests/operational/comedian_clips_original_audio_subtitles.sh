@@ -23,7 +23,7 @@ trap 'rm -rf "$VEL_E2E_WORK"' EXIT INT TERM
 [[ -n "$VELOX_MASTER_ADMIN_TOKEN" ]] || { echo "setup error: VELOX_MASTER_ADMIN_TOKEN required" >&2; exit 2; }
 
 smoke_log_section "Step 1/9: Select 5 clips with READY subtitles"
-mapfile -t CLIP_IDS < <(sqlite3 "$SMOKE_DB" "
+mapfile -t CANDIDATE_CLIP_IDS < <(sqlite3 "$SMOKE_DB" "
 WITH preferred_subs AS (
   SELECT asset_id
   FROM asset_subtitle_artifacts
@@ -41,7 +41,23 @@ ORDER BY CASE ma.id
   WHEN 'yt_vdC5GXxS-qU_146_155_v1' THEN 2
   ELSE 10 END,
   ma.updated_at DESC
-LIMIT 5;")
+LIMIT 50;")
+CLIP_IDS=()
+for CANDIDATE_ID in "${CANDIDATE_CLIP_IDS[@]}"; do
+  CANDIDATE_SQL_ID=${CANDIDATE_ID//\'/\'\'}
+  CANDIDATE_PATH=$(sqlite3 "$SMOKE_DB" "SELECT COALESCE(NULLIF(local_path,''), NULLIF(download_link,''), NULLIF(url,''), NULLIF(drive_link,''), NULLIF(source_url,'')) FROM media_assets WHERE id='$CANDIDATE_SQL_ID'" 2>/dev/null || true)
+  [[ -n "$CANDIDATE_PATH" ]] || continue
+  [[ "$CANDIDATE_PATH" = /* ]] || CANDIDATE_PATH="$ROOT_DIR/$CANDIDATE_PATH"
+  [[ -f "$CANDIDATE_PATH" ]] || continue
+  VIDEO_CODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$CANDIDATE_PATH" 2>/dev/null || true)
+  AUDIO_CODEC=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$CANDIDATE_PATH" 2>/dev/null || true)
+  if [[ -n "$VIDEO_CODEC" && -n "$AUDIO_CODEC" ]]; then
+    CLIP_IDS+=("$CANDIDATE_ID")
+  else
+    printf '  skip undecodable clip: %s\n' "$CANDIDATE_ID" >&2
+  fi
+  (( ${#CLIP_IDS[@]} >= 5 )) && break
+done
 (( ${#CLIP_IDS[@]} == 5 )) || { echo "setup error: need 5 clips with READY subtitles, got ${#CLIP_IDS[@]}" >&2; exit 2; }
 printf '  clips: %s\n' "${CLIP_IDS[*]}"
 
