@@ -9,6 +9,12 @@
 // Capability-specific Type* string constants are owned by their respective
 // domain packages (godlike/02). They are re-exported here for back-compat
 // during the Wave 5 contraction window.
+//
+// PR-RENAME-DOMAIN-JOB (July 2026): renamed from job.go to job_types.go
+// to match the codebase's godlike/06 SSOT convention (the file that
+// owns a per-fact topic MUST carry the topic name in its filename).
+// The 14 per-domain job_types.go files remain the canonical SSOT
+// per godlike/02.
 package job
 
 import (
