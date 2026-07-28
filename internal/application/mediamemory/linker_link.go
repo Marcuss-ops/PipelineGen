@@ -8,14 +8,14 @@
 // "link" phase of the linker pipeline that EnrichCandidate
 // (linker_worker.go) composes:
 //
-//   1. normalizeAndUpsertConcepts — canonical phrase→concept
-//      pipeline (Normalize → ConceptRepository.Upsert, idempotent
-//      via ON CONFLICT DO UPDATE).
-//   2. persistBindings — canonical binding-write pipeline (one
-//      MediaBinding per concept × media.SlotPrimaryVideo; default
-//      ApprovalPending for Fase 3.2 — the dashboard's "Visual
-//      Memory" page is the canonical approval surface for
-//      promotion to ApprovalApproved).
+//  1. normalizeAndUpsertConcepts — canonical phrase→concept
+//     pipeline (Normalize → ConceptRepository.Upsert, idempotent
+//     via ON CONFLICT DO UPDATE).
+//  2. persistBindings — canonical binding-write pipeline (one
+//     MediaBinding per concept × media.SlotPrimaryVideo; default
+//     ApprovalPending for Fase 3.2 — the dashboard's "Visual
+//     Memory" page is the canonical approval surface for
+//     promotion to ApprovalApproved).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the helpers here NEVER swallow
 // failures silently. Each helper returns a (success, failures)

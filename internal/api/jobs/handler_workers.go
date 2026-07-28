@@ -30,6 +30,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -251,10 +252,15 @@ type CompleteArtifactsRequest struct {
 // canonical-server-side ack surface). For now the slice is
 // always empty — godlike/07 no-fake-availability: never invent
 // IDs that did not come from the typed return.
+// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): JobID is the canonical
+// nominal type (zero-cost on the wire — Go's `type X string` emits
+// the underlying string in JSON unchanged). The handler wraps the
+// URL :id with primitives.NewJobID at the boundary so the response
+// DTO carries a typed value.
 type CompleteArtifactsResponse struct {
-	JobID    string   `json:"job_id"`
-	Status   string   `json:"status"`
-	AssetIDs []string `json:"asset_ids"`
+	JobID    primitives.JobID `json:"job_id"`
+	Status   string           `json:"status"`
+	AssetIDs []string         `json:"asset_ids"`
 }
 
 // CompleteWithArtifacts forwards a successful artifact-producing
@@ -327,7 +333,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		assetIDs = []string{}
 	}
 	apiutil.OK(c, CompleteArtifactsResponse{
-		JobID:    cmd.JobID,
+		JobID:    primitives.NewJobID(cmd.JobID),
 		Status:   string(jobs.StatusSucceeded),
 		AssetIDs: assetIDs,
 	})

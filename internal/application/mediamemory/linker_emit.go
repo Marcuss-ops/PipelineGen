@@ -8,14 +8,14 @@
 // form the "emit" phase of the linker pipeline that
 // EnrichCandidate (linker_worker.go) composes:
 //
-//   1. encodeAndIndexConcepts — canonical multicanale encoder +
-//      Qdrant concept indexer (per concept; idempotent via the
-//      canonical Qdrant point at concept_id key).
-//   2. indexKeyframes — canonical Fase 4.1 per-keyframe SigLIP
-//      encoder + pipelinegen_media_frames indexer (best-effort
-//      envelope over the canonical resolver hot path; per-keyframe
-//      failures land in res.Failures[] without flipping the
-//      candidate's DiscoveryStatus).
+//  1. encodeAndIndexConcepts — canonical multicanale encoder +
+//     Qdrant concept indexer (per concept; idempotent via the
+//     canonical Qdrant point at concept_id key).
+//  2. indexKeyframes — canonical Fase 4.1 per-keyframe SigLIP
+//     encoder + pipelinegen_media_frames indexer (best-effort
+//     envelope over the canonical resolver hot path; per-keyframe
+//     failures land in res.Failures[] without flipping the
+//     candidate's DiscoveryStatus).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: encodeAndIndexConcepts returns
 // a single `error` (NOT a []string failures slice) so ANY encoder-

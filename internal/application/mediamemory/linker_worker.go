@@ -18,7 +18,7 @@
 //   - linker_resolve.go — resolve phase (extractTranscript +
 //     extractVisualDescriptions + normalizedEntities).
 //   - linker_link.go    — link phase (normalizeAndUpsertConcepts
-//     + persistBindings).
+//   - persistBindings).
 //   - linker_emit.go    — emit phase (encodeAndIndexConcepts +
 //     indexKeyframes).
 //

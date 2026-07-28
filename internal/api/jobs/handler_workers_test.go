@@ -155,7 +155,7 @@ func TestWorkersBrokerHandler_CompleteWithArtifacts_HappyPath(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v body=%s", err, w.Body.String())
 	}
-	if resp.JobID != "job-42" {
+	if string(resp.JobID) != "job-42" {
 		t.Errorf("expected job_id=job-42 (from URL param), got %q", resp.JobID)
 	}
 	if resp.Status != "SUCCEEDED" {
