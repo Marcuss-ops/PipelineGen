@@ -182,11 +182,10 @@ SUB_HTTP=$(curl -s --max-time 60 -o "$SUB_BODY" -w '%{http_code}' -X POST -H "Au
 SUB_REF=$(jq -er .reference "$SUB_BODY")
 
 smoke_log_section "Step 5/9: Build Velox payload"
-SCENES_JSON=$(jq -cn --argjson clips "$CLIP_REFS_JSON" --argjson durs "$CLIP_DURS_JSON" '[range(0; $clips|length) as $i | {scene_id:("scene-"+($i+1|tostring)), index:($i+1), text:("Original clip scene "+($i+1|tostring)), clip_link:$clips[$i], duration_seconds:($durs[$i]//5), subtitles:{url:env.SUB_REF,format:"srt",language:"original"}}]')
-ITEMS_JSON=$(jq -cn --argjson clips "$CLIP_REFS_JSON" --argjson durs "$CLIP_DURS_JSON" '[range(0; $clips|length) as $i | {type:"video", url:$clips[$i], duration:($durs[$i]//5), fit:"contain", include_audio:true}]')
+SCENES_JSON=$(jq -cn --argjson clips "$CLIP_REFS_JSON" --argjson durs "$CLIP_DURS_JSON" --arg sub "$SUB_REF" '[range(0; $clips|length) as $i | {scene_id:("scene-"+($i+1|tostring)), index:($i+1), text:("Original clip scene "+($i+1|tostring)), clip:{url:$clips[$i],duration_ms:(($durs[$i]//5)*1000|floor)}, duration_seconds:($durs[$i]//5), subtitles:{url:$sub,format:"srt",language:"original"}}]')
 IDEM="pipelinegen-${PG_JOB_ID}-clip-original-$(date +%s)"
 VELOX_PAYLOAD="$VEL_E2E_WORK/velox-render-request.json"
-jq -n --arg idem "$IDEM" --arg title "Comedian clips original audio" --arg script_text "$SCRIPT_TEXT" --argjson scenes "$SCENES_JSON" --argjson items "$ITEMS_JSON" --arg sub "$SUB_REF" --arg dest "$VELOX_DESTINATION_ID" '{idempotency_key:$idem,video_name:$title,script_text:$script_text,scenes:$scenes,items:$items,clips:($items|map(.url)),voiceover_paths:[],subtitle_tracks:[{source:$sub,preset:"clip_original_subtitles",font:"Inter"}],delivery_plan:[{destination_id:$dest,priority:1,retry_budget:3}]}' > "$VELOX_PAYLOAD"
+jq -n --arg idem "$IDEM" --arg title "Comedian clips original audio" --arg script_text "$SCRIPT_TEXT" --argjson scenes "$SCENES_JSON" --arg sub "$SUB_REF" --arg dest "$VELOX_DESTINATION_ID" '{idempotency_key:$idem,video_name:$title,script_text:$script_text,scenes:$scenes,voiceover_paths:[],subtitle_tracks:[{source:$sub,preset:"clip_original_subtitles",font:"Inter"}],delivery_plan:[{destination_id:$dest,priority:1,retry_budget:3}]}' > "$VELOX_PAYLOAD"
 PAYLOAD_SHA256=$(sha256sum "$VELOX_PAYLOAD" | awk '{print $1}')
 printf '  payload: scenes=%s items=%s voiceovers=%s subtitle_tracks=%s sha=%s\n' "$(jq '.scenes|length' "$VELOX_PAYLOAD")" "$(jq '.items|length' "$VELOX_PAYLOAD")" "$(jq '.voiceover_paths|length' "$VELOX_PAYLOAD")" "$(jq '.subtitle_tracks|length' "$VELOX_PAYLOAD")" "$PAYLOAD_SHA256"
 
