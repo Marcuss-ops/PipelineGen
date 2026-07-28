@@ -51,7 +51,7 @@ for CANDIDATE_ID in "${CANDIDATE_CLIP_IDS[@]}"; do
   [[ -f "$CANDIDATE_PATH" ]] || continue
   VIDEO_CODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$CANDIDATE_PATH" 2>/dev/null || true)
   AUDIO_CODEC=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$CANDIDATE_PATH" 2>/dev/null || true)
-  if [[ -n "$VIDEO_CODEC" && -n "$AUDIO_CODEC" ]]; then
+  if [[ -n "$VIDEO_CODEC" && -n "$AUDIO_CODEC" ]] && ffmpeg -nostdin -v error -xerror -t 2 -i "$CANDIDATE_PATH" -map 0:v:0 -map 0:a:0 -f null - >/dev/null 2>&1; then
     CLIP_IDS+=("$CANDIDATE_ID")
   else
     printf '  skip undecodable clip: %s\n' "$CANDIDATE_ID" >&2
