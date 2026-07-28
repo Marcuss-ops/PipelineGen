@@ -13,7 +13,7 @@ import (
 
 // resolveQuery converts a query string into a list of VideoSource entries.
 // If the query is a YouTube URL, it returns it directly. Otherwise it searches
-// YouTube using yt-dlp. The result count is read from cfg.Video.SearchCount.
+// YouTube using the minimal runtime result limit.
 func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource, error) {
 	query = strings.TrimSpace(query)
 
@@ -38,15 +38,14 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 		}}, nil
 	}
 
-	vCfg := s.cfg.Video.WithDefaults()
-	numVideos := vCfg.SearchCount
+	numVideos := s.runtime.MaxResults
 	searchTerm := query
 
 	if idx := strings.LastIndex(query, " -"); idx > 0 {
 		searchTerm = strings.TrimSpace(query[:idx])
 		countStr := strings.TrimSpace(query[idx+2:])
 		if c, err := fmt.Sscanf(countStr, "%d", &numVideos); err != nil || c == 0 {
-			numVideos = vCfg.SearchCount
+			numVideos = s.runtime.MaxResults
 		}
 	}
 	if numVideos < 1 {

@@ -20,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // testFS is the canonical LocalFSPort used across the source cache
@@ -402,16 +401,10 @@ func (l *loggerCapture) HasMatch(needle string) bool {
 func setupTestEnv(t *testing.T, downloader DownloaderPort) (*StockStager, *fakeSourceCache, *loggerCapture) {
 	t.Helper()
 	tmpRoot := t.TempDir()
-	cfg := &config.Config{
-		Storage: config.StorageConfig{
-			DataDir: tmpRoot,
-			TempDir: tmpRoot, // absolute → FullPath("tmpRoot") returns tmpRoot verbatim
-		},
-	}
 	cap := newLoggerCapture()
 	log := zap.New(cap)
 	svc := &Service{
-		cfg:     cfg,
+		runtime: &RuntimeConfig{WorkDir: tmpRoot, ClipDurationSec: 5, ChunkDurationSec: 25, MaxResults: 25, PolicyVersion: "test"},
 		log:     log,
 		localFS: testFS,
 	}

@@ -116,14 +116,13 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		)
 	}
 
-	v := s.cfg.Video.CanonicalClip()
-	clipDur := v.ClipDuration
+	clipDur := s.runtime.ClipDurationSec
 	if clipDurOverride > 0 {
 		clipDur = clipDurOverride
 	}
 	s.log.Info("stock pipeline clip duration resolved", zap.Int("clip_duration", clipDur))
 
-	maxClipsPerSource := v.MaxClipsPerSource
+	maxClipsPerSource := s.pcfg.MaxResults
 
 	numClips := secsPerVideo / clipDur
 	if numClips < 1 {
@@ -182,9 +181,9 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	batch, cutErr := s.cutter.Cut(ctx, CutRequest{
 		SourcePath: actualPath,
 		Jobs:       jobs,
-		Codec:      v.Codec,
-		Preset:     v.Preset,
-		CRF:        v.CRF,
+		Codec:      s.pcfg.Codec,
+		Preset:     s.pcfg.Preset,
+		CRF:        s.pcfg.CRF,
 		NoAudio:    noAudio,
 		Logger:     s.log,
 		SourceIdx:  idx,

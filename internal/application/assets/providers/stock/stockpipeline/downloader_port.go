@@ -12,7 +12,7 @@
 //     internal/infrastructure/downloader/ytdlp_downloader.go
 //     and is injected via WithDownloader at composition time
 //     (asset default: NewStockStager constructs the concrete from
-//     svc.cfg; tests override via WithDownloader(fake)).
+//     the composition root; tests override via WithDownloader(fake)).
 //
 // godlike/07 fail-closed:
 //   - When StockStager.s.downloader is nil and a download path is
