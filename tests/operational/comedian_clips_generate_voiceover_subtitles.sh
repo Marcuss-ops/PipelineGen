@@ -601,7 +601,8 @@ if [[ -s "$SPEC_FILE" ]]; then
         --argjson fallback_clip_links "$VELOX_CLIP_LINKS_JSON" \
         --argjson fallback_durations "$VELOX_CLIP_DURATIONS_JSON" \
         --argjson voiceover_paths "$VOICEOVER_PATHS" \
-        --argjson voiceover_durations "$VOICEOVER_DURATIONS_JSON" '
+        --argjson voiceover_durations "$VOICEOVER_DURATIONS_JSON" \
+        --argjson subtitle_tracks "$VELOX_SUBTITLE_TRACKS_JSON" '
         def nonempty($v): if (($v // "") | tostring | length) > 0 then $v else empty end;
         [.scenes | to_entries[]? |
             (($fallback_durations[.key] // .value.duration_seconds // .value.duration // $default_duration) | tonumber) as $clip_duration |
@@ -624,6 +625,13 @@ if [[ -s "$SPEC_FILE" ]]; then
                 voiceover: {
                     url: ($voiceover_paths[.key] // ""),
                     duration_ms: (($voice_duration * 1000 + 0.5) | floor),
+                    language: "it-IT"
+                },
+                subtitles: {
+                    url: ($subtitle_tracks[0].source // ""),
+                    format: "srt",
+                    preset: ($subtitle_tracks[0].preset // "active_word_pop"),
+                    font: ($subtitle_tracks[0].font // "Inter"),
                     language: "it-IT"
                 },
                 duration_seconds: $duration
