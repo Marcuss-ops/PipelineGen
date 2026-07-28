@@ -124,7 +124,6 @@ var commandRegistry = map[string]commandHandler{
 	"unify-catalogs":                 runUnifyCatalogs,
 	"update-sound-effect-metadata":   runUpdateSoundEffectMetadata,
 	"upload-drive-file":              runUploadDriveFile,
-	"upload-fish-clip":               runUploadFishClip,
 	"verify-artlist-pipeline":        runVerifyArtlistPipeline,
 	"zombie-sweep":                   runZombieSweep,
 }
