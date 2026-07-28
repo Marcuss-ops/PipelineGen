@@ -4,7 +4,7 @@ current:
   status: in_progress
   owner: architecture-governance
   deadline: '2026-09-15T00:00:00Z'
-  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); PRE-EXISTING-13 closed July 2026 via Option A fixture-overlap applied on disk (clip_plaintext_output_p0f_test.go); PRE-EXISTING-15 is the sole remaining STANDALONE active issue (not under any current umbrella); its umbrella-level blocking relationship lives in architecture policy.yaml (wave_qdrant_005d_hygiene.blocked_by). PRE-EXISTING-16 retired July 2026 — all five policy.yaml-referenced godlike docs (06/07/08/11/13) are canonical on disk with 40/40 required-H2 sections present per cmd/archcheck documents.go validator; discoverable in git history pre-retirement."
+  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history. As of Sprint 4.1 reconciliation: PRE-EXISTING-1, -2, -7, -8, -9 are closed (verified GREEN, removed from the active catalog; discoverable via git log); PRE-EXISTING-13 closed July 2026 via Option A fixture-overlap applied on disk (clip_plaintext_output_p0f_test.go); PRE-EXISTING-15 closed July 2026 — AWK lens migration from package_name-only filter to the canonical (directory_path, package_name) Go-package identity tuple landed on origin/main in commits b74fdb788 (shell+AWK tuple), 0fb9027df (docs/duplicate-types-allowlist.txt key format), 1bb787a66 (cmd/archcheck TypeRedecl scanner alignment); check_05 lens produces '0 same-package type-redeclarations detected across internal/' on direct run of scripts/ci/architecture/checks/lib/09_check_5_part1.sh (closes architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE rationale point c); PRE-EXISTING-16 retired July 2026 — all five policy.yaml-referenced godlike docs (06/07/08/11/13) are canonical on disk with 40/40 required-H2 sections present per cmd/archcheck documents.go validator; discoverable in git history pre-retirement."
   count:
     baseline_initial: 9
     current: 0
@@ -216,19 +216,5 @@ issues:
   tracking_issue: "godlike/07 no-fake-availability (no assumed behavioural restoration); AGENTS.md Documentation rule (forward-pointers in commit message body, no new archived files); AGENTS.md Operational rules (no source edits without explicit user request; pre-push verify-main gate RED blocks push)"
 
 
-- id: "PRE-EXISTING-15-LENS-MIGRATION"
-  title: "Check 5 mutation-primitive lens: migrate from package_name-only filter to canonical (directory_path, package_name) Go-package identity tuple"
-  status: open
-  severity: p2
-  category: code_defect
-  owner_capability: "scripts/ci/architecture/checks/check_05_mutation_primitives.sh (AWK lens + ARCH-ALLOWLISTED rg post-pass)"
-  follow_up:
-    - "Migrate check_05_mutation_primitives.sh's rg_window_allowlist from package_name-only filter to the (dir_path, pkg_name) canonical Go-package identity tuple (architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE::rationale point c)."
-    - "Clear the ~14 cross-directory same-package-NAME false-positives (the lens currently treats `package qdrant` in internal/infrastructure/qdrant/types.go and `package qdrant` in internal/infrastructure/qdrant/types_dr.go as identical when they are distinct from the application-layer dr.SnapshotDescription mirror at internal/application/qdrant/dr/types.go)."
-    - "Verify the lens on internal/infrastructure/qdrant/types*.go + the canonical dr.SnapshotDescription mirror: zero false-positive hits post-migration."
-    - "Promote to resolved in the November sub-commit that lands the migration (the container's 'five or fewer entries stay under cap' guarantee becomes observable once -15 resolves)."
-  evidence_filename: "tests/operational/check5_lens_migration_2026-11.md"
-  opened_date: "2026-07-13"
-  tracking_issue: "godlike/06 SSOT carry-forward discipline; architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE; WAVE-ARCHCHECK-MIGRATION follow_up_ticket::ARCHCHECK-GO-MIGRATION-PHASE-1"
 
 
