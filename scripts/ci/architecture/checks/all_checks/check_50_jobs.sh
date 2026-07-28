@@ -48,7 +48,7 @@ fi
 # monolithic 50_jobs.sh inherited this same value from its caller
 # (all_checks.sh) — the export restores the same fixity without
 # depending on the source-call framing.
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 export REPO_ROOT
 
 # ── Locale pinning for deterministic ripgrep output ordering ───────

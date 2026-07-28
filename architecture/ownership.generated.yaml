@@ -38,7 +38,7 @@ module_route_map:
       - GET  /jobs/:id
   - module: Assets
     prefix: /api/media + /api/assets
-    owner: internal/app/module_media.go
+    owner: internal/app/assets_core.go
     routes:
       - POST /media/search
       - POST /media/upload
@@ -59,7 +59,7 @@ module_route_map:
       - POST /ingest/bulk
   - module: Artlist
     prefix: /api/artlist
-    owner: internal/app/module_sources.go
+    owner: internal/app/build_bundles_artlist_artlist.go
     routes:
       - POST /run
       - GET  /runs/:run_id
@@ -236,10 +236,10 @@ canonical_services:
     location: internal/app/build_bundles_voiceover.go
   - service: BooksService
     constructor: buildBooksService
-    location: internal/app/build_bundles_books.go
+    location: internal/app/build_bundles_core.go
   - service: ArtlistService
     constructor: NewService
-    location: internal/app/module_sources.go
+    location: internal/app/build_bundles_artlist_artlist.go
   - service: YouTubeClipService
     constructor: NewYouTubeService
     location: internal/app/composition.go::BuildDomainBundle
@@ -325,7 +325,7 @@ http_entrypoint:
 # preservation by golden-file comparison against
 # cmd/archcheck/testdata/report_golden.json.
 archcheck_cli:
-  owner: scripting
+  owner: scripts/archcheck
   rationale: |
     cmd/archcheck is the canonical target-tree governance binary. It
     reads architecture/policy.yaml (flat key:value, stdlib-parseable,

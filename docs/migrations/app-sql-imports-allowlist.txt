@@ -42,7 +42,7 @@
 # `internal/infrastructure/database/<feature>/`, wire in
 # `internal/app/<feature>_adapters.go`, plus tests.
 internal/application/assets/providers/artlist/search_cache.go  # Wave 19 PR-Wave19-MIGRATE-C: ArtlistSearchCachePort + artlist cache adapter; owner: agent/Codebuff; deadline: 2026-07-15
-internal/application/scripts/adapters/gemmamemory.go  # Wave 19 PR-Wave19-MIGRATE-D: GemmamemoryPort + gemmamemory adapter (depends on internal/infrastructure/ai/gemmamemory wiring); owner: agent/Codebuff; deadline: 2026-07-15
+internal/application/assets/providers/artlist/service_deps.go  # P1-8 Artlist dependency boundary; owner: agent/Codebuff; deadline: 2026-08-31
 
 # ── 3. Tier-B: medium-risk production migrations (deadline 2026-07-31) ───
 # These files hold a `db *sql.DB` field on a service struct; the
@@ -99,7 +99,7 @@ internal/application/assets/persistence/committer.go  # P1-8 persistence committ
 internal/application/assets/processing/asset_committer.go  # P1-8 processing asset committer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/providers/stock/enrichment/handler_repository.go  # P1-8 stock enrichment handler repository SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/providers/stock/enrichment/outbox_emitter.go  # P1-8 stock enrichment outbox emitter SQL; owner: agent/Codebuff; deadline: 2026-08-31
-internal/application/assets/providers/stock/stockpipeline/service_types.go  # P1-8 stock pipeline service types SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/scripts/usecase/clip_sampler_gates.go  # P1-8 subtitle readiness query; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/texttracks/materializer.go  # P1-8 text tracks materializer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/document/usecase.go  # P1-8 document usecase direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/execution/steps/sqlite_store.go  # P1-8 execution steps sqlite store (canonical tx bridge); owner: agent/Codebuff; deadline: 2026-08-31

@@ -38,7 +38,7 @@ module_route_map:
       - GET  /jobs/:id
   - module: Assets
     prefix: /api/media + /api/assets
-    owner: internal/app/module_media.go
+    owner: internal/app/assets_core.go
     routes:
       - POST /media/search
       - POST /media/upload
@@ -59,7 +59,7 @@ module_route_map:
       - POST /ingest/bulk
   - module: Artlist
     prefix: /api/artlist
-    owner: internal/app/module_sources.go
+    owner: internal/app/build_bundles_artlist_artlist.go
     routes:
       - POST /run
       - GET  /runs/:run_id

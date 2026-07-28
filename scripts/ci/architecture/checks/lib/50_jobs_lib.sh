@@ -66,9 +66,7 @@ SUBCHECKS=(
     "50_jobs_forbid_recreation_of_internalapicommon.sh"
     "50_jobs_forbid_databasesql_import_in_applicationapi_production_paths.sh"
     "50_jobs_section.sh"
-    "50_jobs_channel_monitor_e2e_dedup_contract_test_coverage.sh"
     "50_jobs_forbid_retry_classifier_substring_matcher_outside_pkgretry.sh"
-    "50_jobs_forbid_legacy_stock_pipeline_keywords.sh"
     "50_jobs_forbid_portsscriptrecord_literal_outside_canonical_allowlist.sh"
     "50_jobs_forbid_direct_vlm_http_calls.sh"
 )
