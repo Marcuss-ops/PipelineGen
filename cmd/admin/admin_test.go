@@ -38,47 +38,25 @@ import (
 )
 
 func TestAdminCommands_AreRegistered(t *testing.T) {
-	mainPath := filepath.Join("subcommands.go")
-	src, err := os.ReadFile(mainPath)
-	if err != nil {
-		t.Fatalf("read subcommands.go: %v", err)
+	if len(commandRegistry) == 0 {
+		t.Fatal("command registry is empty")
 	}
-
-	// Match `case "X":` arms anywhere in the switch block. The list
-	// is collected as a set for membership checks against
-	// availableCommands.
-	caseRE := regexp.MustCompile(`case\s+"([^"]+)"\s*:`)
-	matches := caseRE.FindAllStringSubmatch(string(src), -1)
-	registered := make(map[string]bool, len(matches))
-	for _, m := range matches {
-		registered[m[1]] = true
+	if len(availableCommands) != len(commandRegistry) {
+		t.Fatalf("availableCommands has %d entries, registry has %d", len(availableCommands), len(commandRegistry))
 	}
-
-	for _, cmd := range availableCommands {
-		if !registered[cmd] {
-			t.Errorf("command %q is listed in availableCommands but has no `case %q: ...` arm in subcommands.go", cmd, cmd)
+	if !sort.StringsAreSorted(availableCommands) {
+		t.Fatal("availableCommands must be sorted for stable help output")
+	}
+	for _, name := range availableCommands {
+		handler, ok := commandRegistry[name]
+		if !ok || handler == nil {
+			t.Errorf("command %q has no callable registry handler", name)
 		}
 	}
-
-	// Detect dead arms: case statements that aren't in availableCommands.
-	// (Optional sanity; allowed to be empty if a command is internal-only,
-	// but every public command must be in both lists.)
-	var dead []string
-	for cmd := range registered {
-		found := false
-		for _, c := range availableCommands {
-			if c == cmd {
-				found = true
-				break
-			}
+	for _, name := range []string{"benchmark", "index-drive-clip", "upload-drive-file"} {
+		if _, ok := commandRegistry[name]; !ok {
+			t.Errorf("canonical command %q is missing from the registry", name)
 		}
-		if !found {
-			dead = append(dead, cmd)
-		}
-	}
-	if len(dead) > 0 {
-		sort.Strings(dead)
-		t.Errorf("case arm(s) present without availableCommands entry: %v", dead)
 	}
 }
 
