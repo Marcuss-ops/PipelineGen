@@ -62,6 +62,24 @@ import (
 type RunSummary struct {
 	Manifest    *job.ArtifactManifest
 	FinalStatus job.Status
+	Counts      RunCounts
+}
+
+// RunCounts is the auditable outcome of one stock run. Values are derived
+// from completed stages, never copied from requested values.
+type RunCounts struct {
+	RequestedVideoCount  int `json:"requested_video_count"`
+	DiscoveredVideoCount int `json:"discovered_video_count"`
+	SelectedVideoCount   int `json:"selected_video_count"`
+	DownloadedVideoCount int `json:"downloaded_video_count"`
+	ProcessedVideoCount  int `json:"processed_video_count"`
+	PlannedClipCount     int `json:"planned_clip_count"`
+	CreatedClipCount     int `json:"created_clip_count"`
+	PublishedClipCount   int `json:"published_clip_count"`
+	PersistedClipCount   int `json:"persisted_clip_count"`
+	IndexedClipCount     int `json:"indexed_clip_count"`
+	FailedVideoCount     int `json:"failed_video_count"`
+	FailedClipCount      int `json:"failed_clip_count"`
 }
 
 // TransactionalAssetWriter is the canonical port for atomic

@@ -334,7 +334,8 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// on when to populate them. The forward-pointer lives in
 	// StockRunMetadata (orchestrator_metadata.go) so the step body
 	// implementations do not need to change.
-	summary = &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
+	state.Counts = deriveRunCounts(input, state)
+	summary = &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus, Counts: state.Counts}
 
 	// §12-1 P0 #1 gate: enforce manifest-completeness BEFORE
 	// returning nil. The gate fires in production mode (JobFinalizer
