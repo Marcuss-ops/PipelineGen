@@ -3,6 +3,9 @@ package artlist
 import (
 	"testing"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 
@@ -39,6 +42,12 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	}
 	if deps.ServiceDependencies.Repos.TextTrackRepo == nil {
 		deps.ServiceDependencies.Repos.TextTrackRepo = &stubTextTrackRepo{}
+	}
+	if deps.ServiceDependencies.Infra.MainDB != nil {
+		deps.ServiceDependencies.Finalizer.AssetFinalizerTx = assetfinalizer.NewAssetTxFinalizer(
+			deps.ServiceDependencies.Infra.Log,
+			sqassets.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, outboxevents.NewRepository(deps.ServiceDependencies.Infra.MainDB), deps.ServiceDependencies.Infra.Log),
+		)
 	}
 
 	return deps
