@@ -99,7 +99,6 @@ internal/application/assets/persistence/committer.go  # P1-8 persistence committ
 internal/application/assets/processing/asset_committer.go  # P1-8 processing asset committer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/providers/stock/enrichment/handler_repository.go  # P1-8 stock enrichment handler repository SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/providers/stock/enrichment/outbox_emitter.go  # P1-8 stock enrichment outbox emitter SQL; owner: agent/Codebuff; deadline: 2026-08-31
-internal/application/assets/providers/stock/stockpipeline/service.go  # P1-8 stock pipeline service SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/providers/stock/stockpipeline/service_types.go  # P1-8 stock pipeline service types SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/texttracks/materializer.go  # P1-8 text tracks materializer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/document/usecase.go  # P1-8 document usecase direct SQL; owner: agent/Codebuff; deadline: 2026-08-31

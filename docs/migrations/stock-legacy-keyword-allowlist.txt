@@ -30,22 +30,3 @@
 # Forward-pointer: any new keyword entanglement MUST go to
 # architecture/issues.yaml as PR-STOCK-LEGACY-REMAINING, NOT here.
 # =============================================================================
-
-# Commit 5: legacy Service wiring — removes assetIndex / clipsRepo /
-# dispatcher / clipIndexer / metaWriter / youtubeSvc / ytdlp / publisher
-# fields. Type aliases here for back-compat with the constructor.
-internal/application/assets/providers/stock/stockpipeline/service.go
-
-# Commit 7: legacy source adapter — adapter.go exposes StageSource as a
-# duplicated FetchProvider pattern. Replaced by registered SourceStagers.
-internal/application/assets/providers/stock/adapter.go
-
-# Commit 6: legacy duplicate use case — stockpipeline/usecase.go lives at
-# this path. Migrate API to SubmitStockPipelineUseCase then DELETE.
-# NOTE: top-level stock/usecase.go (parent package) stays — only the
-# stockpipeline/ subpackage file is on this list.
-internal/application/assets/providers/stock/stockpipeline/usecase.go
-
-# Commit 5 (parallel deletion with service.go): the Service.Run entrypoint
-# body deletes when the legacy storage-dispatcher chain is removed.
-internal/application/assets/providers/stock/stockpipeline/run.go
