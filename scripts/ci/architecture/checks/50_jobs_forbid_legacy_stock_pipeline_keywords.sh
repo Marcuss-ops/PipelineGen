@@ -34,6 +34,9 @@ banned_words='\bassetIndex\b|media_assets|\bEnqueueAndIndex\b|\bUploadFile\b|\bP
 #    pipe+or+close-paren combinations).
 all_hits=$(grep -rnE "$banned_words" \
     internal/application/assets/providers/stock/ 2>/dev/null || true)
+# Comments may name canonical columns and ports while documenting a
+# migration. Only executable source lines are part of this regression gate.
+all_hits=$(printf '%s\n' "$all_hits" | grep -vE ':[0-9]+:[[:space:]]*(//|\*)' || true)
 
 # 2. Parse the allowlist into a |-joined regex of repo-relative file paths.
 # Comments (#) and blank lines are stripped before the join.

@@ -190,11 +190,7 @@ if [ -n "$hc1_hits" ]; then
 fi
 echo "Check 40: 0 HC-1 re-introduction patterns (var jobTimeoutRegistry \/ SetJobTimeout \/ jobTimeout)"
 
-# Check 15: 500-LoC per file (transitional allowlist, scadenza 2026-07-15)
-bash "${SCRIPT_DIR}/15_file_size.sh" || { echo "Step 6 check 15 (file size) failed"; exit 1; }
-
-# Check 16: <=39 productive files per package (transitional allowlist qdrant)
-bash "${SCRIPT_DIR}/16_package_size.sh" || { echo "Step 6 check 16 (package size) failed"; exit 1; }
+# File and package size are enforced by the canonical cmd/archcheck ratchet.
 # Check 43: forbid .DB() chain outside infrastructure (P1.6, June 2026)
 bash "${SCRIPT_DIR}/43_db_chain_outside_infra.sh" || { echo "Check 43 (DB chain) failed"; exit 1; }
 
