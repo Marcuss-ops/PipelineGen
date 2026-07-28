@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -88,7 +90,37 @@ func newTokenBucketRateLimiter(limit int, window time.Duration) *tokenBucketRate
 	}
 }
 
-func (rl *tokenBucketRateLimiter) Allow(key string) bool {
+// Allow checks whether the bucket for `key` admits one token and,
+// atomically under rl.mu, returns the gate decision plus the honest
+// time the caller would have to wait for the next refill (godlike/07
+// fail-closed contract on retry hints):
+//   - allowed=true,  retryAfter=0  on success (one token was consumed)
+//   - allowed=false, retryAfter>0  on deny;  retryAfter is the time
+//     until the bucket would admit one token. Coerced to integer
+//     delta-seconds by the HTTP layer per RFC 7231 §7.1.3.
+//
+// The honest retryAfter reflects the actual token-bucket arithmetic:
+// the bucket refills `rl.limit` tokens every `rl.window`, so the
+// next refill is at the smallest `prevLastRef + k*window` >= now.
+//
+//	retryAfter = rl.window - (now - prevLastRef) % rl.window
+//
+// clamped to (0, rl.window]. The integer-second coercion (Ceil + floor
+// at 1s) lives in the handler so the limiter stays RFC-agnostic and
+// the wire-shape decision stays in the transport layer (godlike/06
+// SSOT: one canonical owner per concern).
+//
+// FWD-POINTER (godlike/07 honest-limitation): the current scheme
+// unconditionally updates `b.lastRef = now` even when the call is
+// denied, which in the integer-window scheme makes `elapsed / window`
+// accumulate zero across rapid-fire denied requests until the caller
+// pauses for a full `rl.window`. The honest Retry-After value
+// therefore equals `rl.window` for denied requests issued immediately
+// after exhaustion. Tightening the refill to a smooth-per-token
+// scheme is OUT OF SCOPE for this commit (AGENTS.md "Do not add
+// features unless explicitly requested"; godlike/06 minimum-blast-
+// radius); track as a separate PR if/when needed.
+func (rl *tokenBucketRateLimiter) Allow(key string) (bool, time.Duration) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -97,10 +129,11 @@ func (rl *tokenBucketRateLimiter) Allow(key string) bool {
 	if !ok {
 		b = &bucket{tokens: rl.limit - 1, lastRef: now}
 		rl.buckets[key] = b
-		return true
+		return true, 0
 	}
 
-	elapsed := now.Sub(b.lastRef)
+	prevLastRef := b.lastRef
+	elapsed := now.Sub(prevLastRef)
 	refill := int(elapsed / rl.window * time.Duration(rl.limit))
 	if refill > 0 {
 		b.tokens += refill
@@ -111,10 +144,16 @@ func (rl *tokenBucketRateLimiter) Allow(key string) bool {
 	b.lastRef = now
 
 	if b.tokens <= 0 {
-		return false
+		// Reuse `elapsed` instead of re-computing now.Sub(prevLastRef):
+		// one critical section, no extra time arithmetic on the hot path.
+		retryAfter := rl.window - (elapsed % rl.window)
+		if retryAfter <= 0 {
+			retryAfter = rl.window
+		}
+		return false, retryAfter
 	}
 	b.tokens--
-	return true
+	return true, 0
 }
 
 // Cleanup removes stale buckets and limits map size.
@@ -211,7 +250,19 @@ func RateLimit(rl middleware.RateLimitPort) *RateLimitMiddleware {
 				return
 			}
 			key := c.ClientIP()
-			if !limiter.Allow(key) {
+			allowed, retryAfter := limiter.Allow(key)
+			if !allowed {
+				// godlike/07 fail-closed: emit the HONEST time until the
+				// limiter would admit one token (not a generic placeholder).
+				// RFC 7231 §7.1.3: delta-seconds is a non-negative integer.
+				// Floor to 1s so the header can never advise "retry now"
+				// (which would defeat the limiter — the caller would spin
+				// on the same 429 in a tight loop).
+				secs := int(math.Ceil(retryAfter.Seconds()))
+				if secs < 1 {
+					secs = 1
+				}
+				c.Header("Retry-After", strconv.Itoa(secs))
 				c.JSON(http.StatusTooManyRequests, gin.H{
 					"ok":    false,
 					"error": "Rate limit exceeded",
