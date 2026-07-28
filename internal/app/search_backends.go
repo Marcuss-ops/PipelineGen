@@ -179,7 +179,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 // Mediasearch + FindDuplicates).
 //
 // Wave 4 (July 2026): also returns the bare *search.Aggregator so
-// consumers that need direct query access (e.g. YouTube SearchAdvanced)
+// consumers that need direct query access (e.g. YouTube SearchCatalog)
 // can use it without type-asserting the decorator.
 //
 // Fail-closed: BuildSearchBackends error propagates verbatim so

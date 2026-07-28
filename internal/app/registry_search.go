@@ -41,7 +41,7 @@ import (
 //     by Step 5 (registerAssets).
 //   - searchBackends: the BackendRegistry surface for the Assets bundle.
 //   - searchAgg: the *search.Aggregator used by YouTubeClip's
-//     SearchAdvanced route and the Assets search routes.
+//     SearchCatalog route and the Assets search routes.
 //
 // Empty-input behavior (when ProviderReg is nil) is the canonical
 // fail-closed: the fan-out / backends / aggregator are all nil; the
