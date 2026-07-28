@@ -37,11 +37,13 @@ import (
 // FFmpegRenderer is the canonical concrete implementation of the
 // StockRenderer port. It reads configuration from RenderRequest and
 // builds the FFmpeg filter_complex + arguments from the active
-// TransitionRegistry.
+// TransitionRegistry. The renderer owns its own scratchbuffer pool
+// (listPool) so no package-level mutable state leaks across instances.
 type FFmpegRenderer struct {
 	ffmpegPath  string
 	transitions stockpipeline.TransitionRegistry
 	log         *zap.Logger
+	listPool    *appliedListPoolImpl
 }
 
 // NewFFmpegRenderer constructs the FFmpeg renderer with the canonical
@@ -60,6 +62,7 @@ func NewFFmpegRenderer(ffmpegPath string, transitions stockpipeline.TransitionRe
 		ffmpegPath:  ffmpegPath,
 		transitions: transitions,
 		log:         log,
+		listPool:    &appliedListPoolImpl{},
 	}
 }
 
@@ -228,12 +231,12 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 		effectEvery = 3 // negative → use safe default
 	}
 	catalog := r.transitions.All()
-	appliedTransitions := appliedListPool.Get().(*[]string)
+	appliedTransitions := r.listPool.Get().(*[]string)
 	*appliedTransitions = (*appliedTransitions)[:0]
-	defer appliedListPool.Put(appliedTransitions)
-	appliedOverlays := appliedListPool.Get().(*[]string)
+	defer r.listPool.Put(appliedTransitions)
+	appliedOverlays := r.listPool.Get().(*[]string)
 	*appliedOverlays = (*appliedOverlays)[:0]
-	defer appliedListPool.Put(appliedOverlays)
+	defer r.listPool.Put(appliedOverlays)
 
 	for idx := 0; idx < inputCount; idx++ {
 		clipFilters := []string{
@@ -372,13 +375,33 @@ func (r *FFmpegRenderer) loadEffects(dir string) ([]string, error) {
 	return effects, nil
 }
 
-// appliedListPool reuses []string buffers across complex render invocations
-// to avoid an allocation per chunk. Pre-PR6 allocate-on-call with `var
-// appliedTransitions []string` was simpler but per-chunk garbage; the
-// pool keeps the perf neutral without sacrificing readability.
-var appliedListPool = &appliedListPoolImpl{}
+// appliedListPool reuses []string buffers across complex render invocations to
+// avoid an allocation per chunk. The pool lives on the FFmpegRenderer
+// receiver (see listPool field + appliedListPoolImpl.buffer below), so no
+// package-level mutable state survives between renderer instances. The
+// pre-PR6 allocate-on-call with `var appliedTransitions []string` was simpler
+// but per-chunk garbage; the pool keeps the perf neutral without sacrificing
+// readability.
+//
+// Concurrency: renderComplex is serialised upstream in chunk rendering, so the
+// per-renderer buffer is single-threaded by design. No sync.Mutex is needed.
+// When StockRenderer becomes concurrent per renderer, replace the per-renderer
+// slice with sync.Pool[string][]string so buffers are recycled per-goroutine.
+//
+// Known aliasing caveat: the impl holds a single internal buffer; the two
+// current Get() callers inside renderComplex (appliedTransitions +
+// appliedOverlays) alias the same backing array. This is unchanged from the
+// pre-refactor behaviour and is intentionally preserved here to keep this PR
+// scoped to "remove the global var"; the aliasing lives on the followup
+// "FIX-OVERLAY-ALIASING" backlog item.
 
-type appliedListPoolImpl struct{}
+// appliedListPoolImpl holds the scratch []string buffer on the receiver so each
+// FFmpegRenderer owns its own (no package-level mutables). Get returns a
+// pointer to the buffer; Put zeroes the slice length so the buffer cap is
+// reused without retaining pointers into long-lived render graphs.
+type appliedListPoolImpl struct {
+	buffer []string
+}
 
 func (p *appliedListPoolImpl) Get() any { return p.get() }
 func (p *appliedListPoolImpl) Put(v any) {
@@ -386,9 +409,4 @@ func (p *appliedListPoolImpl) Put(v any) {
 		*p.get() = (*s)[:0]
 	}
 }
-func (p *appliedListPoolImpl) get() *[]string { return &appliedListBuffer }
-
-// appliedListBuffer is a single-threaded scratch buffer (RenderComplex is
-// serialised upstream in chunk rendering). When the StockRenderer renderer
-// becomes concurrent, replace with sync.Pool[string][]string.
-var appliedListBuffer []string
+func (p *appliedListPoolImpl) get() *[]string { return &p.buffer }
