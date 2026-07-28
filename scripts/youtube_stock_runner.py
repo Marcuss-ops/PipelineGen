@@ -19,6 +19,12 @@ from typing import Any
 
 ENDPOINT = "/api/stock-pipeline/run"
 TERMINAL_STATES = {"SUCCEEDED", "COMPLETED", "FAILED", "CANCELLED", "DEAD_LETTERED"}
+COUNT_KEYS = (
+    "requested_video_count", "discovered_video_count", "selected_video_count",
+    "downloaded_video_count", "processed_video_count", "planned_clip_count",
+    "created_clip_count", "published_clip_count", "persisted_clip_count",
+    "indexed_clip_count", "failed_video_count", "failed_clip_count",
+)
 
 
 def load_fixture(path: Path) -> dict[str, Any]:
@@ -42,15 +48,23 @@ def validate_fixture(fixture: dict[str, Any]) -> None:
     for index, request in enumerate(requests):
         if not isinstance(request, dict):
             raise ValueError(f"requests[{index}] must be an object")
-        source_url = request.get("source_url")
-        if not isinstance(source_url, str) or not source_url.startswith("https://www.youtube.com/"):
-            raise ValueError(f"requests[{index}].source_url must be a public YouTube URL")
+        source_urls = request.get("source_urls")
+        if source_urls is None:
+            source_urls = [request.get("source_url")]
+        if not isinstance(source_urls, list) or not source_urls:
+            raise ValueError(f"requests[{index}].source_urls must be non-empty")
+        if any(not isinstance(url, str) or not url.startswith("https://www.youtube.com/") for url in source_urls):
+            raise ValueError(f"requests[{index}].source_urls must contain public YouTube URLs")
         clips = request.get("clips")
-        if not isinstance(clips, list) or not clips:
-            raise ValueError(f"requests[{index}].clips must be non-empty")
-        if len(clips) > 100:
-            raise ValueError(f"requests[{index}] exceeds the API clip limit")
-        for clip_index, clip in enumerate(clips):
+        clips_per_source = request.get("clips_per_source", 0)
+        if clips is None and (not isinstance(clips_per_source, int) or clips_per_source <= 0):
+            raise ValueError(f"requests[{index}] needs clips or a positive clips_per_source")
+        if clips is not None and (not isinstance(clips, list) or not clips):
+            raise ValueError(f"requests[{index}].clips must be non-empty when provided")
+        clip_count = len(clips) if clips is not None else clips_per_source * len(source_urls)
+        if clip_count > 1000:
+            raise ValueError(f"requests[{index}] exceeds the fixture clip limit")
+        for clip_index, clip in enumerate(clips or []):
             if not isinstance(clip, dict):
                 raise ValueError(f"requests[{index}].clips[{clip_index}] must be an object")
             start = clip.get("start_sec")
@@ -67,14 +81,26 @@ def make_payload(fixture: dict[str, Any], request: dict[str, Any], folder_id: st
     defaults = fixture.get("defaults", {})
     if not isinstance(defaults, dict):
         raise ValueError("defaults must be an object")
+    source_urls = request.get("source_urls") or [request["source_url"]]
     clips = []
-    for clip in request["clips"]:
-        item = dict(clip)
-        item["url"] = request["source_url"]
-        clips.append(item)
+    if request.get("clips") is not None:
+        for clip in request["clips"]:
+            item = dict(clip)
+            item["url"] = source_urls[0]
+            clips.append(item)
+    else:
+        for source_index, source_url in enumerate(source_urls):
+            for clip_index in range(request["clips_per_source"]):
+                start = 10 + clip_index * 40
+                clips.append({
+                    "title": f"source-{source_index + 1:02d}-clip-{clip_index + 1:03d}",
+                    "start_sec": start,
+                    "end_sec": start + 4,
+                    "url": source_url,
+                })
     payload = {
         **defaults,
-        "direct_urls": [request["source_url"]],
+        "direct_urls": source_urls,
         "clips": clips,
         "folder_name": request["destination_folder_name"],
         "drive_folder_id": folder_id,
@@ -126,6 +152,17 @@ def assert_counts(expected: dict[str, Any], result: dict[str, Any], label: str) 
         raise RuntimeError(f"{label}: count verification failed ({'; '.join(mismatches)})")
 
 
+def add_counts(total: dict[str, int], result: dict[str, Any]) -> None:
+    counts = result.get("counts", result.get("summary", {}))
+    if not isinstance(counts, dict):
+        raise RuntimeError("job result does not contain structured counts")
+    for key in COUNT_KEYS:
+        value = counts.get(key)
+        if not isinstance(value, int):
+            raise RuntimeError(f"job result count {key} is missing or not an integer")
+        total[key] += value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run a fixture-driven YouTube stock pipeline request")
     parser.add_argument("fixture", type=Path)
@@ -146,11 +183,12 @@ def main(argv: list[str] | None = None) -> int:
         if not args.dry_run and not token:
             raise ValueError("VELOX_ADMIN_TOKEN is required for a live run")
 
+        aggregate = {key: 0 for key in COUNT_KEYS}
         for request in fixture["requests"]:
             payload = make_payload(fixture, request, folder_id)
             label = request["name"]
             if args.dry_run:
-                print(f"{label}: clips={len(payload['clips'])} source={request['source_url']}")
+                print(f"{label}: clips={len(payload['clips'])} sources={len(payload['direct_urls'])}")
                 continue
             status_code, response = request_json(args.base_url, token, "POST", ENDPOINT, payload)
             if status_code >= 300 or not response.get("job_id"):
@@ -159,7 +197,10 @@ def main(argv: list[str] | None = None) -> int:
             if str(result.get("status", result.get("state", ""))).upper() not in {"SUCCEEDED", "COMPLETED"}:
                 raise RuntimeError(f"{label}: job did not succeed")
             assert_counts(request.get("expected_counts", {}), result, label)
+            add_counts(aggregate, result)
             print(f"{label}: succeeded")
+        if not args.dry_run:
+            assert_counts(fixture.get("expected_run_counts", {}), {"counts": aggregate}, "fixture aggregate")
     except (RuntimeError, TimeoutError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

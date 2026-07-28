@@ -10,16 +10,23 @@
   },
   "requests": [
     {
-      "name": "mike-tyson-sample",
-      "source_url": "https://www.youtube.com/watch?v=9u4T_o3FxOU",
-      "destination_folder_name": "Mike Tyson",
-      "clips": [
-        {"title": "sample-01", "start_sec": 10, "end_sec": 14},
-        {"title": "sample-02", "start_sec": 20, "end_sec": 24},
-        {"title": "sample-03", "start_sec": 30, "end_sec": 34}
+      "name": "mike-tyson-10x150",
+      "source_urls": [
+        "https://www.youtube.com/watch?v=9u4T_o3FxOU",
+        "https://www.youtube.com/watch?v=4fndeDfaWCg",
+        "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+        "https://www.youtube.com/watch?v=ScMzIvxBSi4",
+        "https://www.youtube.com/watch?v=Zi_XLOBDo_Y",
+        "https://www.youtube.com/watch?v=kJQP7kiw5Fk",
+        "https://www.youtube.com/watch?v=OPf0YbXqDm0",
+        "https://www.youtube.com/watch?v=09R8_2nJtjg",
+        "https://www.youtube.com/watch?v=YQHsXMglC9A",
+        "https://www.youtube.com/watch?v=JGwWNGJdvx8"
       ],
+      "destination_folder_name": "Mike Tyson",
+      "clips_per_source": 15,
       "metadata": {"title": "Mike Tyson stock sample", "category": "sport", "tags": ["boxing", "mike-tyson"]},
-      "expected_counts": {"planned_clip_count": 3, "created_clip_count": 3}
+      "expected_counts": {"selected_video_count": 10, "planned_clip_count": 150, "created_clip_count": 150, "indexed_clip_count": 150}
     }
   ]
 }

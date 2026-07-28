@@ -107,7 +107,7 @@ func fileReadable(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// SearchAdvanced performs advanced clip search with structured filters.
+// SearchCatalog searches the local catalog with structured filters.
 func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 	var req asset.AdvancedSearchRequest
 

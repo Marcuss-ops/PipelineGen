@@ -9,7 +9,7 @@
 // Split topology (godlike/06 SSOT one-canonical-owner-per-fact):
 //   - youtube_handlers.go — types + struct + ctor + RegisterRoutes + GetVideoInfo
 //   - youtube_extract.go  — Extract + ExtractImportant + normalizeExtractionDestination
-//   - youtube_search.go   — Diagnostics + SearchAdvanced + Stats
+//   - youtube_search.go   — Diagnostics + SearchCatalog + Stats
 package youtube
 
 import (
@@ -62,7 +62,7 @@ type YouTubeClipHandler struct {
 	toolChecker appassets.ToolChecker
 	Idempotency gin.HandlerFunc
 	// searchSvc (Wave 4, July 2026): canonical search.Aggregator for
-	// SearchAdvanced. When nil, the route returns 503.
+	// SearchCatalog. When nil, the route returns 503.
 	searchSvc *search.Aggregator
 	// searchFanOut (Wave 4, July 2026): canonical SearchFanOut decorator
 	// for Stats telemetry. When nil, Stats returns 503.
@@ -74,11 +74,11 @@ type YouTubeClipHandler struct {
 // clipsRepo        - canonical YouTube clip-store port.
 // toolChecker      - external-tool probe used by Diagnostics.
 // idempotencyMiddleware - reusable Gin idempotency middleware; nil disables.
-// searchSvc        - canonical search.Aggregator for SearchAdvanced.
+// searchSvc        - canonical search.Aggregator for SearchCatalog.
 // searchFanOut     - canonical SearchFanOut decorator for Stats.
 //
-// Wave 4 (July 2026): SearchAdvanced + Stats route through the
-// canonical search.Aggregator. SearchAdvanced uses searchSvc.Search;
+// Wave 4 (July 2026): SearchCatalog + Stats route through the
+// canonical search.Aggregator. SearchCatalog uses searchSvc.Search;
 // Stats uses searchFanOut.Stats().
 //
 // PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
@@ -123,7 +123,7 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // Wave 16 PR1 (June 2026): SearchTopics + searchTopicsViaProvider +
 // providersToTopicResults removed — canonical search is
-// SearchAdvanced via GET/POST /api/media/clips/search. See
+// SearchCatalog via GET/POST /api/media/clips/search. See
 // architecture/deprecations.yaml#PR-YT-SEARCHTOPICS for the removal
 // record (deprecation ID + owner_capability + replacement +
 // introduction_date + removal_date + tracking_issue + compatibility_test +
@@ -157,6 +157,6 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 }
 
 // S3d (June 2026) removal: getAllClipRepos() is REMOVED.
-// SearchAdvanced + Stats now route through the canonical
+// SearchCatalog + Stats now route through the canonical
 // *search.Aggregator. clipsRepo stays for downstream uses
 // (reprocess / download paths that don't aggregate provider fan-out).
