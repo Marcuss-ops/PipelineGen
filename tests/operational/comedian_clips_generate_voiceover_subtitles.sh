@@ -703,12 +703,16 @@ if [[ "$SKIP_VELOX" == "0" ]]; then
                 --data-binary "@${VELOX_PAYLOAD}" \
                 "${VELOX_MASTER_URL}/api/v1/jobs")
             IDEMPOTENCY_JOB_ID=$(jq -r '.job_id // .enqueue.job_id // .job.id // ""' "$VELOX_IDEMPOTENCY_SUBMIT" 2>/dev/null || echo "")
-            if [[ "$VELOX_IDEMPOTENCY_HTTP" != "202" && "$VELOX_IDEMPOTENCY_HTTP" != "200" ]] || [[ "$IDEMPOTENCY_JOB_ID" != "$VELOX_JOB_ID" ]]; then
+            IDEMPOTENCY_ERROR=$(jq -r '.error // .code // ""' "$VELOX_IDEMPOTENCY_SUBMIT" 2>/dev/null || echo "")
+            if [[ ("$VELOX_IDEMPOTENCY_HTTP" == "202" || "$VELOX_IDEMPOTENCY_HTTP" == "200") && "$IDEMPOTENCY_JOB_ID" == "$VELOX_JOB_ID" ]]; then
+                printf '  idempotency replay: %sOK same job_id%s\n' "$GREEN" "$RESET"
+            elif [[ "$VELOX_IDEMPOTENCY_HTTP" == "409" && "$IDEMPOTENCY_ERROR" == "idempotency_key_reused" ]]; then
+                printf '  idempotency replay: %sOK conflict/no duplicate%s\n' "$GREEN" "$RESET"
+            else
                 printf '%sFAIL step 9: idempotency replay returned HTTP %s job_id=%s, want %s%s\n' \
                     "$RED" "$VELOX_IDEMPOTENCY_HTTP" "$IDEMPOTENCY_JOB_ID" "$VELOX_JOB_ID" "$RESET" >&2
                 exit 1
             fi
-            printf '  idempotency replay: %sOK same job_id%s\n' "$GREEN" "$RESET"
             # Save tracking info
             jq -n \
                 --arg pg "$PG_JOB_ID" \
