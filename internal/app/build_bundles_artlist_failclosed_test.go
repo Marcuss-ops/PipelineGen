@@ -41,6 +41,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -126,6 +127,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
+		Committer:           assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
 		// MediaProcessor / AssetIndexService / DestinationService /
 		// AssetLocRepo / AssetVerRepo are intentionally nil: the
 		// production WireArtlist treats them as runtime-nil-tolerant
@@ -320,7 +322,7 @@ func TestWireArtlist_FinalizerGate_SourceLevelContract(t *testing.T) {
 	require.NoError(t, err, "build_bundles_artlist_artlist.go must be readable at "+sourcePath)
 	src := string(body)
 
-	require.Contains(t, src, `finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)`,
+	require.Contains(t, src, `finalizerTx := assetfinalizer.NewAssetTxFinalizer(log, bundle.Committer)`,
 		"Fase 1: Finalizer gate MUST construct via the canonical helper; lock-step with composition fail-closed")
 	require.Contains(t, src, `if finalizerTx == nil`,
 		"Fase 1: Finalizer gate nil-discard MUST be present so a future NewAssetTxFinalizer returning nil aborts boot (godlike/07)")

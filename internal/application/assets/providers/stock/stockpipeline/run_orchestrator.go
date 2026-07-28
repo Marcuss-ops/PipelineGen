@@ -18,7 +18,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -76,8 +75,8 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// orchestrator falls back to in-memory (NewOrchestrator default).
 	// PROSSIMO STEP: make DB required when WireStockPipeline is
 	// re-enabled.
-	if s.db != nil {
-		cfg.StepStore = steps.NewSQLiteStore(s.db)
+	if s.stepStore != nil {
+		cfg.StepStore = s.stepStore
 	}
 	o := NewOrchestrator(
 		cfg,

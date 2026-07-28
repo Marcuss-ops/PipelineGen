@@ -12,6 +12,7 @@ import (
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -296,8 +297,8 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 	}
 
 	// 2. Construct the spine components.
-	assetTx := assetfinalizer.NewAssetTxFinalizer(nil)
 	outboxRepo := outboxevents.NewRepository(db)
+	assetTx := assetfinalizer.NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxRepo, nil))
 	fx := New(db, outboxRepo, assetTx, nil)
 
 	// 3. Call CompleteWithArtifacts with a published PDF artifact.
@@ -569,6 +570,17 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS asset_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,

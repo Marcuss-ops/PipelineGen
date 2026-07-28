@@ -1,6 +1,5 @@
 // Package finalizer contains the canonical caller-owned transaction asset
-// finalizer. SQL table writers, committer integration, legacy compatibility and
-// post-commit fan-out are separated into focused sibling files.
+// finalizer. Durable asset writes are delegated to the AssetCommitter port.
 package finalizer
 
 import (
@@ -23,11 +22,15 @@ type AssetTxFinalizer struct {
 	committer persistence.AssetCommitter
 }
 
-func NewAssetTxFinalizer(log *zap.Logger) *AssetTxFinalizer {
+func NewAssetTxFinalizer(log *zap.Logger, committers ...persistence.AssetCommitter) *AssetTxFinalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &AssetTxFinalizer{log: log}
+	var committer persistence.AssetCommitter
+	if len(committers) > 0 {
+		committer = committers[0]
+	}
+	return &AssetTxFinalizer{log: log, committer: committer}
 }
 
 // WithFanOut attaches the sole post-commit text-track fan-out seam.
@@ -39,22 +42,10 @@ func (s *AssetTxFinalizer) WithFanOut(fanout *texttracks.MaterializeFanOut) *Ass
 	return s
 }
 
-// WithCommitter attaches the canonical AssetCommitter. When present, the
-// finalizer delegates canonical asset, location, metadata and index-event writes
-// to that surface.
-func (s *AssetTxFinalizer) WithCommitter(committer persistence.AssetCommitter) *AssetTxFinalizer {
-	if s == nil {
-		return s
-	}
-	s.committer = committer
-	return s
-}
-
 var _ finalization.AssetFinalizerTx = (*AssetTxFinalizer)(nil)
 
-// FinalizeAsset validates the artifact and selects the canonical committer path
-// or the temporary legacy path. Both paths preserve the required write order:
-// asset, version, primary location, renditions, then outbox.
+// FinalizeAsset validates the artifact and delegates all durable writes to the
+// canonical committer path.
 func (s *AssetTxFinalizer) FinalizeAsset(
 	ctx context.Context,
 	tx finalization.Transaction,
@@ -63,12 +54,12 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 	if artifact.ArtifactID == "" {
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: ArtifactID is empty")
 	}
+	if s == nil || s.committer == nil {
+		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: AssetCommitter is required")
+	}
 
 	nowStr := timeutil.FormatRFC3339(time.Now())
-	if s.committer != nil {
-		return s.finalizeWithCommitter(ctx, tx, artifact, nowStr)
-	}
-	return s.finalizeLegacy(ctx, tx, artifact, nowStr)
+	return s.finalizeWithCommitter(ctx, tx, artifact, nowStr)
 }
 
 // kindToMediaType maps the domain artifact kind to media_assets.media_type.

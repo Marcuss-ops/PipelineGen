@@ -1,13 +1,14 @@
 // ── GET /api/clips/diagnostics + POST /api/clips/search-advanced + GET /api/clips/stats ─
 //
 // Diagnostics returns YouTube clip module health and dependency status.
-// SearchAdvanced performs advanced clip search with structured filters.
+// SearchCatalog searches the local catalog with structured filters.
 // Stats returns clip statistics across all sources.
 
 package youtube
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
@@ -17,15 +18,18 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
+type dependencyCheck struct {
+	Required bool `json:"required"`
+	OK       bool `json:"ok"`
+}
+
 // Diagnostics returns YouTube clip module health and dependency status.
 func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
-	serviceAvailable := h.service != nil
-	jobsAvailable := h.jobsSvc != nil
-
-	checks := gin.H{
-		"service": serviceAvailable,
-		"jobs":    jobsAvailable,
+	checks := map[string]dependencyCheck{
+		"service": {Required: true, OK: h.service != nil},
+		"jobs":    {Required: true, OK: h.jobsSvc != nil},
 	}
+	serviceAvailable := h.service != nil
 
 	// Check external dependencies
 	if serviceAvailable {
@@ -33,54 +37,78 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 		ytdlpPath := cfg.YtdlpPath
 
 		// Check yt-dlp
-		if _, err := h.toolChecker.LookPath(ytdlpPath); err != nil {
-			checks["ytdlp"] = "not_found"
-		} else {
-			checks["ytdlp"] = "ok"
+		ytdlpOK := false
+		if h.toolChecker != nil {
+			_, err := h.toolChecker.LookPath(ytdlpPath)
+			ytdlpOK = err == nil
 		}
+		checks["ytdlp"] = dependencyCheck{Required: true, OK: ytdlpOK}
 
 		// Check ffmpeg
-		if _, err := h.toolChecker.LookPath("ffmpeg"); err != nil {
-			checks["ffmpeg"] = "not_found"
-		} else {
-			checks["ffmpeg"] = "ok"
+		ffmpegOK := false
+		if h.toolChecker != nil {
+			_, err := h.toolChecker.LookPath("ffmpeg")
+			ffmpegOK = err == nil
 		}
+		checks["ffmpeg"] = dependencyCheck{Required: true, OK: ffmpegOK}
 
 		// Check Node.js (for YouTube signature solving)
-		if _, err := h.toolChecker.LookPath("node"); err != nil {
-			checks["node"] = "not_found"
-		} else {
-			checks["node"] = "ok"
+		nodeOK := false
+		if h.toolChecker != nil {
+			_, err := h.toolChecker.LookPath("node")
+			nodeOK = err == nil
 		}
+		checks["node"] = dependencyCheck{Required: true, OK: nodeOK}
 
 		// Check cookies file
 		cookiesPath := cfg.YouTubeCookiesPath
 		if cookiesPath == "" {
 			cookiesPath = "config/youtube_cookies.txt"
 		}
-		if _, err := filepath.Abs(cookiesPath); err != nil {
-			checks["cookies"] = "invalid_path"
-		} else {
-			checks["cookies"] = "configured"
-		}
+		_, absErr := filepath.Abs(cookiesPath)
+		cookiesOK := absErr == nil && fileReadable(cookiesPath)
+		checks["cookies"] = dependencyCheck{Required: false, OK: cookiesOK}
 
-		checks["config"] = gin.H{
+		configDetails := gin.H{
 			"youtube_enabled": cfg.YouTubeEnabled,
 			"extract_timeout": cfg.YouTubeExtractTimeout,
 			"cookies_path":    cookiesPath,
 			"ytdlp_path":      ytdlpPath,
 			"js_runtime_path": cfg.YouTubeJSRuntimePath,
 		}
+		// Keep configuration details separate from the typed dependency checks.
+		apiutil.OK(c, gin.H{"ok": requiredChecksOK(checks), "checks": checks, "config": configDetails})
+		return
 	}
 
+	ok := true
+	for _, check := range checks {
+		if check.Required && !check.OK {
+			ok = false
+		}
+	}
 	apiutil.OK(c, gin.H{
-		"ok":     serviceAvailable && jobsAvailable,
+		"ok":     ok,
 		"checks": checks,
 	})
 }
 
+func requiredChecksOK(checks map[string]dependencyCheck) bool {
+	for _, check := range checks {
+		if check.Required && !check.OK {
+			return false
+		}
+	}
+	return true
+}
+
+func fileReadable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
 // SearchAdvanced performs advanced clip search with structured filters.
-func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
+func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 	var req asset.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
@@ -88,6 +116,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		req.Q = c.Query("q")
 		req.Source = c.Query("source")
 		req.Category = c.Query("category")
+		req.MediaType = c.Query("media_type")
 		req.SortBy = c.Query("sort_by")
 		req.CreatedAfter = c.Query("created_after")
 		req.CreatedBefore = c.Query("created_before")
@@ -115,7 +144,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		Limit: req.Limit,
 		Filters: search.Filters{
 			Source:    req.Source,
-			MediaType: req.Category,
+			MediaType: req.MediaType,
 		},
 		Mode: search.ParseMode(""),
 	}

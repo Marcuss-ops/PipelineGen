@@ -569,6 +569,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
     ON outbox_events(event_key) WHERE event_key != '';
 CREATE INDEX IF NOT EXISTS IX_outbox_events_status_next
     ON outbox_events(status, next_attempt_at);
+ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT '';
 `
 
 func openInMemDB_Integration(t *testing.T) *sql.DB {
@@ -613,7 +624,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 	db := openInMemDB_Integration(t)
 	repo := outboxevents.NewRepository(db)
 
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop())
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 	ctx := context.Background()
 	assetID := "yt_integration_001"
 

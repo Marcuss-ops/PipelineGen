@@ -54,6 +54,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
 		)`,
+		`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS asset_versions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
@@ -134,6 +145,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func newTestFinalizer(t *testing.T, db *sql.DB) *finalizer.AssetTxFinalizer {
+	t.Helper()
+	return finalizer.NewAssetTxFinalizer(nil, assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
+}
+
 func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArtifact {
 	return finalization.PublishedArtifact{
 		ArtifactID:     assetID,
@@ -165,7 +181,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 	artifact := publishedArtifact("asset-001", "abc123", "drive-file-abc")
 
@@ -283,7 +299,7 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	// First finalization.
@@ -333,7 +349,7 @@ func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	cases := []struct {
@@ -383,7 +399,7 @@ func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	artifact := publishedArtifact("asset-payload", "sha256-hash", "drive-id-xyz")
@@ -428,7 +444,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	// Insert a row that will cause a UNIQUE constraint violation on
@@ -479,7 +495,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	tx, err := db.BeginTx(ctx, nil)
@@ -561,7 +577,7 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	fx := finalizer.NewAssetTxFinalizer(nil)
+	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	// First ingest: asset with hash "old-hash".

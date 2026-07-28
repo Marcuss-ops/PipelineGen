@@ -39,6 +39,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -402,7 +403,8 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		MediaProcessor:     nil,                                            // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
+		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		MediaProcessor:     nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
 		TextTrackRepo:      &stubTextTrackRepoForArtlistComposition{},
 	}
 

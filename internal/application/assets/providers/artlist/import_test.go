@@ -129,7 +129,7 @@ func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 
 	logger := zap.NewNop()
 	committer := assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), logger)
-	finalizer := assetfinalizer.NewAssetTxFinalizer(logger).WithCommitter(committer)
+	finalizer := assetfinalizer.NewAssetTxFinalizer(logger, committer)
 	publisher := &stubPublisherForArtlist{}
 
 	svc := &Service{

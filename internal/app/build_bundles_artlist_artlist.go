@@ -108,6 +108,9 @@ func WireArtlist(
 	if bundle.ClipIndexerService == nil {
 		return nil, ErrArtlistDepMissing{Kind: DepKindIndexer, Field: "bundle.ClipIndexerService"}
 	}
+	if bundle.Committer == nil {
+		return nil, ErrArtlistDepMissing{Kind: DepKindFinalizer, Field: "bundle.Committer"}
+	}
 
 	// job.Service alias pin is verified at compile time (Pattern 0 + AGENTS.md).
 
@@ -118,10 +121,7 @@ func WireArtlist(
 	// on incompatible schema). Composition-time rejection via typed
 	// sentinel pins the invariant; `Field: "finalizerTx"` so the
 	// diagnostic surfaces the source-path beside the well-known Kind.
-	finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)
-	if bundle.Committer != nil {
-		finalizerTx.WithCommitter(bundle.Committer)
-	}
+	finalizerTx := assetfinalizer.NewAssetTxFinalizer(log, bundle.Committer)
 	if len(textTrackFanOut) > 0 && textTrackFanOut[0] != nil {
 		finalizerTx.WithFanOut(textTrackFanOut[0])
 	}

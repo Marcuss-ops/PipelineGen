@@ -97,6 +97,17 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	created_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL DEFAULT ''
 );
+ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN asset_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN asset_location TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN rendition TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN source_video_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN source_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN start_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE media_assets ADD COLUMN end_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE media_assets ADD COLUMN title TEXT NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS asset_versions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
@@ -402,7 +413,7 @@ func payloadFor(t *testing.T, db *sql.DB, assetID string) string {
 //   - "IndexClip fired 2× for same asset_id" → replay dedup regressed.
 func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop())
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	// 3 stock-derived chunks with deterministic sha256 per chunk.
 	chunks := []finalization.PublishedArtifact{
@@ -519,7 +530,7 @@ func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T)
 //   - "IndexClip fired 2× for same aggregate_id" → dedup regressed.
 func TestStockFinalize_IdempotentReplay_SameChunkTripleStaysSingle(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop())
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	art := stockChunkFixture("stock:fp:idem_001", "sha256:stock_idem_v1")
 
@@ -612,7 +623,7 @@ func TestStockFinalize_IdempotentReplay_SameChunkTripleStaysSingle(t *testing.T)
 //     Tier 1 regressed to Tier 2 fallback.
 func TestStockFinalize_SupersedeOnChunk_NewSourceVersionMarksPriorAsSuperseded(t *testing.T) {
 	db := openInMemDBStock(t)
-	fx := finalizer.NewAssetTxFinalizer(zap.NewNop())
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop(), assets.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil))
 
 	chunkID := "stock:fp:supersede_001"
 	hashV1 := "sha256:stock_supersede_v1"

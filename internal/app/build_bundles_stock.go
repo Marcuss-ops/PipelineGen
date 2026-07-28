@@ -39,6 +39,7 @@ import (
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/enrichment"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
+	stocksteps "github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -118,9 +119,10 @@ type StockSourceCacheDeps struct {
 // StockRuntimeDeps groups the runtime environment the stock bundle
 // needs (Cfg, Log, DB). Field count: 3.
 type StockRuntimeDeps struct {
-	Cfg *config.Config
-	Log *zap.Logger
-	DB  *sql.DB // optional (nil → in-memory)
+	Cfg       *config.Config
+	Log       *zap.Logger
+	DB        *sql.DB // optional (nil → in-memory)
+	StepStore stocksteps.Store
 }
 
 // StockDeliveryDeps groups the asymmetric production-pair surface
@@ -316,9 +318,10 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
-			Cfg: deps.Runtime.Cfg,
-			Log: deps.Runtime.Log,
-			DB:  deps.Runtime.DB,
+			Cfg:       deps.Runtime.Cfg,
+			Log:       deps.Runtime.Log,
+			DB:        deps.Runtime.DB,
+			StepStore: deps.Runtime.StepStore,
 		},
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:       deps.Acquisition.ClipsRepo,

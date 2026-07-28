@@ -2,6 +2,7 @@ package finalizer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,6 +32,22 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: commit asset: %w", err)
 	}
 	_ = res
+	var events []finalization.OutboxEvent
+	if res.OutboxEventKey != "" {
+		var eventType, aggregateID, payload string
+		if err := sqlTx.QueryRowContext(ctx, `
+			SELECT event_type, aggregate_id, payload_json
+			FROM outbox_events WHERE event_key = ?`, res.OutboxEventKey).
+			Scan(&eventType, &aggregateID, &payload); err != nil {
+			return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: read committed outbox event: %w", err)
+		}
+		events = append(events, finalization.OutboxEvent{
+			EventType:   eventType,
+			AggregateID: aggregateID,
+			EventKey:    res.OutboxEventKey,
+			Payload:     json.RawMessage(payload),
+		})
+	}
 
 	// Populate backward-compatible media_assets columns (width, height, local_path, source_provider, source_version)
 	// for media querying scripts and tests that expect them at the top-level asset schema.
@@ -92,7 +109,7 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		zap.Int("version", versionNum),
 		zap.String("media_type", kindToMediaType(artifact.Kind)),
 	)
-	return ref, nil, nil
+	return ref, events, nil
 }
 
 // buildCommitRequest translates a PublishedArtifact into the canonical
@@ -108,9 +125,6 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		Description:   artifact.Description,
 		PublishAction: string(artifact.Location.Action),
 		SizeBytes:     artifact.SizeBytes,
-	}
-	if artifact.SourceVersion != 0 {
-		metadata.SourceVersion = fmt.Sprintf("%d", artifact.SourceVersion)
 	}
 	if len(artifact.ArtifactMetadata) > 0 {
 		metadata.Extra = make(map[string]any, len(artifact.ArtifactMetadata))
