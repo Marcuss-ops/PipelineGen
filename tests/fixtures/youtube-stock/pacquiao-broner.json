@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "pacquiao-broner",
+  "endpoint": "/api/stock-pipeline/run",
+  "defaults": {
+    "clip_duration": 5,
+    "no_audio": false,
+    "no_effects": true,
+    "no_transitions": true
+  },
+  "requests": [
+    {
+      "name": "round-1",
+      "source_url": "https://www.youtube.com/watch?v=RRJvrDKunyA",
+      "destination_folder_name": "Pacquiao Vs Broner",
+      "clips": [
+        {"title": "round-1-opening", "start_sec": 32, "end_sec": 37},
+        {"title": "round-1-footwork", "start_sec": 37, "end_sec": 42}
+      ],
+      "metadata": {"title": "Pacquiao vs Broner — Round 1", "category": "sport", "tags": ["boxing", "pacquiao", "broner"]},
+      "expected_counts": {"planned_clip_count": 2, "created_clip_count": 2}
+    }
+  ]
+}

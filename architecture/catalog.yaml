@@ -110,7 +110,6 @@ issues:
     - "Bring up the Node.js sidecar via `node node-scraper/artlist_server.js` in the dev environment with CHROME_EXECUTABLE=/usr/bin/google-chrome + ARTLIST_SCRAPER_BIND=127.0.0.1 + ARTLIST_SCRAPER_PORT=9123."
     - "Confirm /health returns healthy=true before re-running artlist_live_e2e_verify.sh."
     - "Optionally add a `make scraper-up` command that spawns the sidecar as a background process for live-verify runs."
-  evidence_filename: "tests/operational/artlist_live_e2e_LAST_RUN.md"
   opened_date: "2026-07-12"
   tracking_issue: "PR-P0-SCRAPER-BROWSER followup; commit de53b2540 covers diagnostic surface only"
 
@@ -124,7 +123,6 @@ issues:
     - "Confirm /ready response shape: `curl -s http://127.0.0.1:8000/ready | jq .` — look for top-level `.status` field."
     - "If `.status` is missing, add it to the /ready handler with the AND-of-all-checks semantics (currently the handler emits per-check status, no aggregate)."
     - "Re-run artlist_live_e2e_verify.sh after the fix; the dry-run preflight should now report `server /ready: ok`."
-  evidence_filename: "tests/operational/artlist_live_e2e_LAST_RUN.md"
   opened_date: "2026-07-12"
   tracking_issue: "godlike/07 fail-closed operator preflight conformance"
 
@@ -138,7 +136,6 @@ issues:
     - "Set VELOX_DRIVE_ARTLIST_ROOT to a known dedicated folder (e.g. `/Velox-Live-Verify`) in the dev environment's .env + CI secrets."
     - "Confirm ROOT_FOLDER_ID propagates into POST /api/artlist/run via the dry-run plan output."
     - "Document the canonical folder shape in docs/operations/stock-e2e-runbook.md so new operators know where to point Drive uploads for live-e2e."
-  evidence_filename: "tests/operational/artlist_live_e2e_LAST_RUN.md"
   opened_date: "2026-07-12"
   tracking_issue: "godlike/06 SSOT Drive destination reproducibility"
 
@@ -152,7 +149,6 @@ issues:
     - "Generate VELOX_ADMIN_TOKEN via the canonical scripts/tools/generate_drive_token.py analog (or scripts/tools/rotate_token.sh). Persist to dev .env + CI secrets (NEVER commit)."
     - "Confirm dry-run preflight output flips from `VELOX_ADMIN_TOKEN is empty — skipping preflight probes` to `light preflight probes (read-only)` listing server/scraper/Qdrant hits."
     - "Audit AGENTS.md git workflow compliance: `git log -p` should NEVER contain the literal VELOX_ADMIN_TOKEN (it lives in .gitignore + env-only)."
-  evidence_filename: "tests/operational/artlist_live_e2e_LAST_RUN.md"
   opened_date: "2026-07-12"
   tracking_issue: "godlike/07 no-fake-availability token precondition; AGENTS.md Operational rules"
 
@@ -167,7 +163,6 @@ issues:
     - "Confirm VELOX_DRIVE_* env vars (per architecture policy.yaml `drive.*` keys) are present in dev `.env` + CI secrets, AND the Go loader at internal/infrastructure/drive reads them on startup."
     - "Re-run artlist_live_e2e_verify.sh non-dry-run; point 5 (Drive Files.Get via /api/drive/resolve-by-id) should resolve ok=true + resolved_count >= 1 + size > 0."
     - "Audit: `git log -p` should NEVER print the service-account JSON contents; only the env var name + path reference."
-  evidence_filename: "tests/operational/artlist_live_e2e_LAST_RUN.md"
   opened_date: "2026-07-12"
   tracking_issue: "godlike/06 SSOT Drive auth; AGENTS.md Operational rules credential hygiene"
 
@@ -197,10 +192,8 @@ issues:
     - "Test-side fix (if Round 16 hypothesis stands): add `AND id NOT LIKE '%:metadata'` to scripts/stock_pipeline_live_test.sh Step 5 WHERE clause (commit a 1-line change to both `scripts/stock_pipeline_live_test.sh` and its byte-equal mirror `scripts/tests/stock_pipeline_live_test.sh`). Re-run live battery fresh — expected PASS=12/FAIL=0 confirming the test-side root cause. Apply this fix only after operator sign-off (test-side changes touch CI)."
     - "Cleanup: revert inert DEBUG_INSTRUMENTATION + log import in step_finalize.go via `git restore` once the test-side fix is validated. The 5-line log.Printf on Phase 4 entry was source-only decoration under the current ceiling; reverting returns the file to origin/main baseline. Track via `git status --porcelain internal/application/assets/providers/stock/stockpipeline/step_finalize.go`."
     - "Future-investigator playbook (encoded from Round 7-16 evidence): hypothesis A is DECIDED — refuted live; do not re-validate without remounted fresh-binary evidence. Hypothesis B is OPEN — currently untestable; prefer Path C (data-layer) over source-level instrumentation until the Dockerfile+host-process ceiling lifts. The live battery Step-6/7 cascade likely has a test-side root cause (Round 16 Step 5 SELECT ordering); look test-side FIRST before any production-code revert."
-  evidence_filename: "/tmp/_live_real_run_round6.log + /tmp/_live_sqlite_probe_round15.log + /tmp/_live_sqlite_failure_rate_round15b.log + /tmp/_live_sqlite_metadata_hypothesis_round16.log + commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline; per AGENTS.md Documentation rule 'Git history is the archive', do NOT create a separate .md attachment file — commit message IS the canonical trace)"
   opened_date: "2026-07-12"
   tracking_issue: "godlike/07 no-fake-availability (no assumed behavioural restoration); AGENTS.md Documentation rule (forward-pointers in commit message body, no new archived files); AGENTS.md Operational rules (no source edits without explicit user request; pre-push verify-main gate RED blocks push)"
-
 
 
 

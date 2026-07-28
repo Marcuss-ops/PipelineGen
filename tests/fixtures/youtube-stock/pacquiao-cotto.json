@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "pacquiao-cotto",
+  "endpoint": "/api/stock-pipeline/run",
+  "defaults": {
+    "clip_duration": 4,
+    "no_audio": false,
+    "no_effects": true,
+    "no_transitions": true
+  },
+  "requests": [
+    {
+      "name": "round-1",
+      "source_url": "https://www.youtube.com/watch?v=QdSbtEo3x_Y",
+      "destination_folder_name": "Pacquiao Vs Cotto",
+      "clips": [
+        {"title": "round-1-opening", "start_sec": 0, "end_sec": 4},
+        {"title": "round-1-jab", "start_sec": 4, "end_sec": 8}
+      ],
+      "metadata": {"title": "Pacquiao vs Cotto — Round 1", "category": "sport", "tags": ["boxing", "pacquiao", "cotto"]},
+      "expected_counts": {"planned_clip_count": 2, "created_clip_count": 2}
+    }
+  ]
+}
