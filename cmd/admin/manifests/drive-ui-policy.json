@@ -1,0 +1,12 @@
+{
+  "folder_id": "1YLE7cVlXUwA9Sa4dqJbkaSGQ2colp-Wy",
+  "default_group": "Other UI",
+  "rules": [
+    {"group":"Rewards & Success","keywords":["cash","register","success","win","correct","ascending"]},
+    {"group":"Displays & System","keywords":["display","digits","counter","dialup","network","download","disc"]},
+    {"group":"Sci-Fi Interface","keywords":["scifi","futuristic","metal","modem"]},
+    {"group":"Pops & Bubbles","keywords":["bubble","pop"]},
+    {"group":"Clicks & Selects","keywords":["click","select","mouse","keyboard","shutter","press"]},
+    {"group":"Notifications & Alerts","keywords":["beep","ding","iphone","discord","notification","message","error","wrong","access","censor"]}
+  ]
+}

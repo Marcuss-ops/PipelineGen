@@ -1,0 +1,9 @@
+{
+  "folder_id": "12AY75eIFSvtxbte1ECocZ2A7WXAwBC3Q",
+  "default_group": "Meme",
+  "rules": [
+    {"group":"Anime","keywords":["one_piece","anime","dragon_ball","sukuna","yowai_mo","kuru_kuru","ara_ara"]},
+    {"group":"Cartoni","keywords":["mail_bike","upin_ipin","spongebob","yoshi","boing","spring","bloop","bubble"]},
+    {"group":"Comico","keywords":["snore","laughter","fart","gulp","kiss","chuaks","bo_womp","hiyakkk","splat"]}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "default_group": "Other Impact",
+  "rules": [
+    {"group":"Watery Impacts","keywords":["water","watery","puddle","ocean"]},
+    {"group":"Metal & Crashes","keywords":["metal","warehouse","glass","crash","slam"]},
+    {"group":"Drops & Sub Bass","keywords":["drop","sub","bass","rumble","disto"]},
+    {"group":"Cinematic Booms","keywords":["boom","cinematic","grand","explosive","universe"]},
+    {"group":"Hits & Punches","keywords":["hit","punch","combat","thud"]}
+  ]
+}
