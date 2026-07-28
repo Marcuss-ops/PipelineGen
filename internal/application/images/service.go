@@ -15,7 +15,6 @@
 package images
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
@@ -24,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 )
 
 // ── Compile-time satisfaction pins ──────────────────────────────────
@@ -102,8 +102,17 @@ func NewService(deps ImagesDeps) *Service {
 		imagesDir:     cfg.Storage.ImagesPath(),
 		tempDir:       cfg.Storage.TempPath(),
 		driveFolderID: cfg.Drive.RootFolder(),
-		client:        &http.Client{Timeout: 10 * time.Minute},
-		committer:     deps.External.Committer,
+		// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the http.Client
+		// construction through internal/infrastructure/httpclient.NewDefaultClient
+		// (the canonical owner of *http.Client construction for the
+		// application-facing port surface). The field type stays *http.Client
+		// because the image retrieval providers (provider_duckduckgo.go,
+		// provider_searxng.go, provider_wikipedia.go) still take *http.Client
+		// — widening their interface to ports.Client is a separate
+		// PR-IO-BINDER-HTTP follow-up. .HTTPClient() is the documented
+		// escape hatch for that migration window.
+		client:    httpclient.NewDefaultClient(10 * time.Minute).HTTPClient(),
+		committer: deps.External.Committer,
 		// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager is
 		// the canonical port for staging remote URLs into
 		// deterministic local files. downloadAndIngest routes web
