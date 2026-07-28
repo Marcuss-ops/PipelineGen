@@ -549,6 +549,7 @@ PY
 import json
 import os
 import re
+import textwrap
 
 def ts(seconds):
     ms_total = int(round(seconds * 1000))
@@ -557,17 +558,49 @@ def ts(seconds):
     s, ms = divmod(rem, 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
+def cue_chunks(text, max_words=10, max_chars=72):
+    words = text.split()
+    chunks = []
+    cur = []
+    for word in words:
+        candidate = " ".join(cur + [word])
+        if cur and (len(cur) >= max_words or len(candidate) > max_chars):
+            chunks.append(" ".join(cur))
+            cur = [word]
+        else:
+            cur.append(word)
+    if cur:
+        chunks.append(" ".join(cur))
+    return chunks or [text]
+
+def wrap_cue(text):
+    lines = textwrap.wrap(text, width=42, break_long_words=False, break_on_hyphens=False)
+    return "\n".join(lines[:2] if lines else [text])
+
 with open(os.environ["SPEC_FILE"], encoding="utf-8") as fh:
     spec = json.load(fh)
 durations = json.loads(os.environ["VOICEOVER_DURATIONS_JSON"])
 offset = 0.0
 blocks = []
+cue_idx = 1
 for idx, scene in enumerate((spec.get("scenes") or [])[:len(durations)], start=1):
     duration = float(durations[idx - 1])
     text = re.sub(r"\s+", " ", (scene.get("text") or "").strip())
-    end = offset + duration
-    blocks.append(f"{idx}\n{ts(offset)} --> {ts(end)}\n{text}\n")
-    offset = end
+    chunks = cue_chunks(text)
+    cursor = offset
+    scene_end = offset + duration
+    weights = [max(1, len(chunk.split())) for chunk in chunks]
+    total_weight = sum(weights)
+    for chunk_pos, (chunk, weight) in enumerate(zip(chunks, weights)):
+        cue_duration = duration * (weight / total_weight)
+        cue_start = cursor
+        cue_end = scene_end if chunk_pos == len(chunks) - 1 else min(scene_end, cursor + cue_duration)
+        if cue_end - cue_start < 0.35:
+            cue_end = min(scene_end, cue_start + 0.35)
+        blocks.append(f"{cue_idx}\n{ts(cue_start)} --> {ts(cue_end)}\n{wrap_cue(chunk)}\n")
+        cue_idx += 1
+        cursor = cue_end
+    offset = scene_end
 with open(os.environ["VOICEOVER_SRT"], "w", encoding="utf-8") as fh:
     fh.write("\n".join(blocks))
 PY
