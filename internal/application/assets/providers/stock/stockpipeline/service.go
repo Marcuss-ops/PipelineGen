@@ -58,7 +58,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
@@ -84,7 +83,7 @@ import (
 // are REMOVED — dead code or port-abstracted. All infra imports are
 // eliminated from service.go (godlike/06 import-boundary discipline).
 type Service struct {
-	cfg           *config.Config
+	runtime       *RuntimeConfig
 	log           *zap.Logger
 	publisher     delivery.Publisher
 	folderCreator StockFolderCreator
@@ -224,20 +223,30 @@ func NewService(deps Deps) (*Service, error) {
 		return nil, ErrStockPipelineNilStepStore
 	}
 
-	v := deps.Runtime.Cfg.Video.WithDefaults()
+	v := deps.Runtime.Cfg
+	if v.ClipDurationSec <= 0 {
+		v.ClipDurationSec = DefaultPipelineConfig().ClipDuration
+	}
+	if v.ChunkDurationSec <= 0 {
+		v.ChunkDurationSec = DefaultPipelineConfig().ChunkDuration
+	}
+	if v.MaxResults <= 0 {
+		v.MaxResults = DefaultPipelineConfig().MaxResults
+	}
 	return &Service{
-		cfg:           deps.Runtime.Cfg,
+		runtime:       v,
 		log:           deps.Runtime.Log,
 		publisher:     deps.Delivery.Publisher,
 		folderCreator: deps.Delivery.FolderCreator,
 		cutter:        deps.Media.Cutter,
 		renderer:      deps.Media.Renderer,
-		pcfg: PipelineConfig{
-			ChunkDuration:  v.ChunkDuration,
-			MaxResults:     v.MaxClipsPerSource,
-			EffectInterval: v.EffectInterval,
-			EffectsDir:     DefaultPipelineConfig().EffectsDir,
-		},
+		pcfg: func() PipelineConfig {
+			p := DefaultPipelineConfig()
+			p.ChunkDuration = v.ChunkDurationSec
+			p.MaxResults = v.MaxResults
+			p.ClipDuration = v.ClipDurationSec
+			return p
+		}(),
 		jobsSvc:           deps.Execution.Jobs,
 		assetIndex:        deps.Storage.AssetIndex,
 		clipsRepo:         deps.Storage.ClipsRepo,

@@ -34,15 +34,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // PipelineConfig holds configuration for the stock pipeline run.
 type PipelineConfig struct {
-	ChunkDuration  int
-	MaxResults     int
-	EffectInterval int
-	EffectsDir     string
+	ChunkDuration      int
+	MaxResults         int
+	EffectInterval     int
+	EffectsDir         string
+	Width              int
+	Height             int
+	FPS                int
+	Codec              string
+	Preset             string
+	CRF                int
+	KeyframeInterval   int
+	TransitionInterval int
+	OverlayOpacity     float64
+	ClipDuration       int
 }
 
 // DefaultPipelineConfig returns a PipelineConfig with sensible defaults.
@@ -52,7 +61,19 @@ func DefaultPipelineConfig() PipelineConfig {
 		MaxResults:     25,
 		EffectInterval: 4,
 		EffectsDir:     "assets/effects/EffettiVisiv",
+		Width:          1920, Height: 1080, FPS: 24, Codec: "libx264", Preset: "veryfast", CRF: 23,
+		KeyframeInterval: 48, TransitionInterval: 4, OverlayOpacity: 0.25, ClipDuration: 5,
 	}
+}
+
+// RuntimeConfig is the minimal platform configuration translated by the
+// composition root before it reaches the application service.
+type RuntimeConfig struct {
+	WorkDir          string
+	ClipDurationSec  int
+	ChunkDurationSec int
+	MaxResults       int
+	PolicyVersion    string
 }
 
 // StorageDeps groups the canonical media_assets + Qdrant + asset-index stack.
@@ -95,7 +116,7 @@ type MediaDeps struct {
 // RuntimeDeps groups the pure data / runtime knobs so Deps stays
 // under the archcheck 8-field cap.
 type RuntimeDeps struct {
-	Cfg        *config.Config
+	Cfg        *RuntimeConfig
 	Log        *zap.Logger
 	JobCreator JobCreator
 	StepStore  steps.Store

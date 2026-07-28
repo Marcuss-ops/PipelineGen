@@ -275,7 +275,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 // effectiveChunkDurationSec resolves the per-run chunk duration
 // (sec) override chain. Mirrors the prior run.go body semantics
 // (input.ChunkDuration takes precedence over s.pcfg.ChunkDuration
-// which falls back to s.cfg.Video.WithDefaults().ChunkDuration).
+// which falls back to the minimal runtime chunk duration).
 //
 // Centralised here so Service.Run and Service.runOrchestrator
 // (and future Commit 4-7 entrypoints) share the same override
@@ -287,8 +287,8 @@ func effectiveChunkDurationSec(input *RunInput, s *Service) int {
 	if s != nil && s.pcfg.ChunkDuration > 0 {
 		return s.pcfg.ChunkDuration
 	}
-	if s != nil && s.cfg != nil {
-		return s.cfg.Video.WithDefaults().ChunkDuration
+	if s != nil && s.runtime != nil {
+		return s.runtime.ChunkDurationSec
 	}
 	return 0
 }
@@ -300,8 +300,8 @@ func effectiveClipDurationSec(input *RunInput, s *Service) int {
 	if input != nil && input.ClipDuration > 0 {
 		return input.ClipDuration
 	}
-	if s != nil && s.cfg != nil {
-		return s.cfg.Video.WithDefaults().ClipDuration
+	if s != nil && s.runtime != nil {
+		return s.runtime.ClipDurationSec
 	}
 	return 0
 }

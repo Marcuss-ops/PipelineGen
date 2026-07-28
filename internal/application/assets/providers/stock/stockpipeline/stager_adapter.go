@@ -156,22 +156,16 @@ type StockStager struct {
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
 // svc must be non-nil; nil produces a runtime error on StageSource.
-// The downloader is constructed from the service's config (the
-// concrete *downloader.YTDLPDownloader satisfies DownloaderPort
-// structurally).
+// The downloader is supplied by the composition root through WithDownloader.
 //
 // Google Drive download support is wired separately via
 // WithDriveReader (optional — nil means Drive URLs fall through
 // to the downloader, which will fail with a descriptive error).
 //
 // Downloader override is wired separately via WithDownloader
-// (optional — null means use the default constructed from svc.cfg).
+// (optional — nil means the composition root did not wire a downloader).
 func NewStockStager(svc *Service) *StockStager {
-	var dl DownloaderPort
-	if svc != nil && svc.cfg != nil {
-		dl = downloader.NewYTDLP(svc.cfg)
-	}
-	return &StockStager{svc: svc, downloader: dl}
+	return &StockStager{svc: svc}
 }
 
 // WithDriveReader threads a Google Drive reader into the stager.
@@ -361,7 +355,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	}
 
 	// Create a temp staging directory under the service's temp path.
-	tmpDir, err := os.MkdirTemp(s.svc.cfg.Storage.TempPath(), "stock_stage_")
+	tmpDir, err := os.MkdirTemp(s.svc.runtime.WorkDir, "stock_stage_")
 	if err != nil {
 		return nil, fmt.Errorf("stock stager: create temp dir: %w", err)
 	}
@@ -420,7 +414,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	}
 
 	if s.downloader == nil {
-		return nil, fmt.Errorf("stock stager: downloader not wired (cfg nil or WithDownloader not called)")
+		return nil, fmt.Errorf("stock stager: downloader not wired (WithDownloader was not called)")
 	}
 
 	dlReq := &downloader.DownloadRequest{

@@ -23,8 +23,6 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // TestSplit_SentinelsLiveInServiceErrors pins the canonical home
@@ -121,7 +119,7 @@ func TestSplit_NewServiceSurfacesTypedSentinelForMissingCfg(t *testing.T) {
 // here as either (a) a different sentinel (Media.Renderer or
 // Media.Cutter) or (b) a nil-pointer panic.
 func TestSplit_NewServiceSurfacesTypedSentinelForFirstMissingDep(t *testing.T) {
-	cfg := &config.Config{} // zero-value is fine for this test
+	cfg := &RuntimeConfig{WorkDir: t.TempDir(), ClipDurationSec: 5, ChunkDurationSec: 25, MaxResults: 25, PolicyVersion: "test"}
 	deps := Deps{
 		Runtime: RuntimeDeps{
 			Cfg: cfg,

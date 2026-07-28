@@ -319,7 +319,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
-			Cfg:        deps.Runtime.Cfg,
+			Cfg:        stockRuntimeConfig(deps.Runtime.Cfg),
 			Log:        deps.Runtime.Log,
 			JobCreator: deps.Runtime.JobCreator,
 			StepStore:  deps.Runtime.StepStore,
@@ -509,4 +509,16 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		BatchModule: batchModule,
 		Service:     svc,
 	}, nil
+}
+
+func stockRuntimeConfig(cfg *config.Config) *stockpipeline.RuntimeConfig {
+	if cfg == nil {
+		return nil
+	}
+	v := cfg.Video.WithDefaults()
+	return &stockpipeline.RuntimeConfig{
+		WorkDir: cfg.Storage.TempPath(), ClipDurationSec: v.ClipDuration,
+		ChunkDurationSec: v.ChunkDuration, MaxResults: v.MaxClipsPerSource,
+		PolicyVersion: "v1",
+	}
 }
