@@ -127,7 +127,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Publisher:          &stubPublisherForArtlistComposition{},
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
-		Committer:           assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
+		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
 		// MediaProcessor / AssetIndexService / DestinationService /
 		// AssetLocRepo / AssetVerRepo are intentionally nil: the
 		// production WireArtlist treats them as runtime-nil-tolerant
