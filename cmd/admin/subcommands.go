@@ -56,6 +56,7 @@ var errUnknownCommand = errors.New("unknown command")
 type commandHandler func([]string) error
 
 var commandRegistry = map[string]commandHandler{
+	"apply-asset-metadata":           runApplyAssetMetadata,
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
 	"backfill-missing":               runBackfillMissing,
@@ -107,8 +108,6 @@ var commandRegistry = map[string]commandHandler{
 	"reorganize-and-index-sfx":       runReorganizeAndIndexSFX,
 	"reorganize-cartoon":             runReorganizeCartoon,
 	"reset-video-ai":                 runResetVideoAI,
-	"save-crab-commentary-index":     runSaveCrabCommentaryIndex,
-	"save-fish-commentary-index":     runSaveFishCommentaryIndex,
 	"search-drive":                   runSearchDrive,
 	"stock-reset":                    runResetStockDrive,
 	"stock-subfolders-reset":         runResetStockSubfolders,

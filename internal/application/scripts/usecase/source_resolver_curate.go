@@ -1,14 +1,5 @@
 // Package scripts — source_resolver_curate.go resolves SourceCurate sources.
 //
-// PR 5 (June 2026, fix/qdrant-tenant-scope): the previously duplicate
-// ClipSearchQuery struct is replaced with a type alias to the
-// canonical ports.ClipSearchQuery so the WorkspaceID + IsSystem fields
-// (added in PR 5) are visible to the curate path without any further
-// wiring. The alias is bidirectional at the type-system level — every
-// existing callsite that built a usecase.ClipSearchQuery literal
-// keeps compiling, but now resolves to the same shape the qdrant
-// adapter consumes.
-//
 // FASE-7 move-only refactor (July 2026): the
 // deduplicate-and-collect-clip-IDs + coverage gate loop is delegated
 // to the canonical ClipSampler port (usecase/clip_sampler_impl.go).
@@ -34,29 +25,15 @@ import (
 
 // ── Semantic-search leg (opt-in, settable) ────────────────────────────────
 
-// ClipSearchQuery is a TYPE ALIAS for the canonical
-// ports.ClipSearchQuery. PR 5 replaced the pre-existing literal
-// duplicate struct with this alias so adding fields (notably
-// WorkspaceID + IsSystem) cannot drift between the curate path
-// and the canonical port surface. Code that previously referenced
-// `usecase.ClipSearchQuery{...}` keeps compiling — the alias
-// resolves to the same shape at runtime.
-type ClipSearchQuery = ports.ClipSearchQuery
-
-// ClipSearchPort is the canonical semantic-search leg of
+// AssetSearchPort is the canonical semantic-search leg of
 // CurateSourceResolver. Production wires via SetClipSearchPort
 // (Qdrant-enabled deployments); the nil-safe setter keeps
 // HintClipIDs-only mode working.
 //
-// PR 5 (June 2026): the canonical ports.ClipSearchPort interface
-// already carries WorkspaceID + IsSystem; the curate wrapper does
-// not redefine them. Callers must propagate the workspace scope
-// from the request envelope into the ClipSearchQuery literal at
-// the call site; an empty WorkspaceID + IsSystem=false triggers
-// qdrant.CompileQdrantFilter's fail-closed ErrMissingWorkspace
-// contract rather than a silent cross-tenant read.
-type ClipSearchPort interface {
-	SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]scriptpkg.SearchResultItem, error)
+// The canonical AssetSearchPort carries WorkspaceID + IsSystem;
+// callers must propagate the scope from the request envelope.
+type AssetSearchPort interface {
+	SearchAssets(ctx context.Context, q ports.AssetSearchQuery) ([]ports.AssetSearchHit, error)
 }
 
 // ErrCurateNoClips is the sentinel for "no clips could be resolved".
@@ -73,7 +50,7 @@ var ErrCurateNoClips = fmt.Errorf("curate: no clips found to curate")
 //  2. Per-source field plumbing (WorkspaceID + IsSystem, MinQualityScore)
 //  3. Post-clipBuilder hydration + AllowTextOnly fallback path
 type CurateSourceResolver struct {
-	clipSearch  ClipSearchPort
+	clipSearch  AssetSearchPort
 	clipBuilder clipContextBuilder
 	samplerReg  *ClipSamplerRegistry // FASE-7: single source of selection logic
 	log         *zap.Logger
@@ -90,8 +67,8 @@ func NewCurateSourceResolver(clipBuilder *ClipSourceBuilder, log *zap.Logger, sa
 	}
 }
 
-// SetClipSearchPort attaches the typed ClipSearchPort adapter.
-func (r *CurateSourceResolver) SetClipSearchPort(port ClipSearchPort) {
+// SetAssetSearchPort attaches the canonical semantic search adapter.
+func (r *CurateSourceResolver) SetAssetSearchPort(port AssetSearchPort) {
 	if r == nil {
 		return
 	}
@@ -145,7 +122,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	seenForItems := make(map[string]struct{})
 
 	if src.Search && r.clipSearch != nil {
-		hits, searchErr := r.clipSearch.SearchClips(ctx, ClipSearchQuery{
+		hits, searchErr := r.clipSearch.SearchAssets(ctx, ports.AssetSearchQuery{
 			Query:       query,
 			Source:      src.SourceFilter,
 			Category:    "",
@@ -162,7 +139,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			}
 		} else {
 			for _, h := range hits {
-				id := strings.TrimSpace(h.ClipID)
+				id := strings.TrimSpace(h.AssetID)
 				if id == "" {
 					continue
 				}

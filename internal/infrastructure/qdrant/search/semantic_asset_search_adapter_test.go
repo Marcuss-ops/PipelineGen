@@ -55,30 +55,6 @@ func TestSemanticSearch_CanonicalCtorReturnsCanonicalAssetSearchPort(t *testing.
 	var _ ports.AssetSearchPort = port
 }
 
-// TestSemanticSearch_BACKCOMPAT_NewClipSearchAdapter_ReturnsClipSearchPort
-// verifies the 7-day backward-compat wrapper NewClipSearchAdapter
-// returns the legacy narrow ports.ClipSearchPort type so the
-// 2 existing wire sites (wire_script_resolvers.go:165 +
-// catalog/repository.go) continue to compile without change.
-func TestSemanticSearch_BACKCOMPAT_NewClipSearchAdapter_ReturnsClipSearchPort(t *testing.T) {
-	var port ports.ClipSearchPort = NewClipSearchAdapter(nil, nil, "", nil)
-	if port == nil {
-		t.Fatal("NewClipSearchAdapter returned nil port")
-	}
-}
-
-// TestSemanticSearch_BACKCOMPAT_NewStockSearchAdapter_ReturnsStockSearchPort
-// verifies the 7-day backward-compat wrapper NewStockSearchAdapter
-// returns the legacy narrow ports.StockSearchPort type so the
-// 1 existing wire site (wire_script_postprocess.go:359) continues
-// to compile without change.
-func TestSemanticSearch_BACKCOMPAT_NewStockSearchAdapter_ReturnsStockSearchPort(t *testing.T) {
-	var port ports.StockSearchPort = NewStockSearchAdapter(nil, nil, "", nil)
-	if port == nil {
-		t.Fatal("NewStockSearchAdapter returned nil port")
-	}
-}
-
 // TestSemanticSearch_Clip_NilSearcher_ReturnsTypedError
 // verifies the canonical fail-closed contract for both nil
 // receiver and nil searcher (matches pre-PR-4 clip contract).
@@ -170,33 +146,6 @@ func TestSemanticSearch_NilReceiver_ReturnsTypedError(t *testing.T) {
 	}
 	if hits != nil {
 		t.Fatalf("nil receiver must return nil hit slice; got %d", len(hits))
-	}
-}
-
-// TestSemanticSearch_SearchClips_OnStockAdapter_ReturnsRuntimeGuardError
-// is the LOAD-BEARING cross-kind runtime-guard test. A future
-// agent that wires a stock-flavored adapter to a clip-flavored
-// caller must see a typed error, NOT a silently-wrong result set
-// (the canonical per-path invariants differ — workspace guard vs
-// no-guard, default limit 20 vs 5, MinScore 0.5 vs 0.3).
-func TestSemanticSearch_SearchClips_OnStockAdapter_ReturnsRuntimeGuardError(t *testing.T) {
-	portRaw := NewSemanticAssetSearchAdapter(nil, nil, "", KindStock, nil)
-	clipPort := portRaw.(ports.ClipSearchPort)
-	_, err := clipPort.SearchClips(context.Background(), ports.ClipSearchQuery{Query: "test"})
-	if err == nil {
-		t.Fatal("cross-kind SearchClips on stock adapter must return typed error")
-	}
-}
-
-// TestSemanticSearch_SearchStock_OnClipAdapter_ReturnsRuntimeGuardError
-// is the LOAD-BEARING cross-kind runtime-guard test (the symmetric
-// case to the previous test).
-func TestSemanticSearch_SearchStock_OnClipAdapter_ReturnsRuntimeGuardError(t *testing.T) {
-	portRaw := NewSemanticAssetSearchAdapter(nil, nil, "", KindClip, nil)
-	stockPort := portRaw.(ports.StockSearchPort)
-	_, err := stockPort.SearchStock(context.Background(), "test", 5)
-	if err == nil {
-		t.Fatal("cross-kind SearchStock on clip adapter must return typed error")
 	}
 }
 
@@ -293,36 +242,5 @@ func TestSemanticSearch_StockHit_DriveLinkFallbackToDriveURL(t *testing.T) {
 	}
 	if hits[0].DriveLink != "https://drive.google.com/file/d/LEGACY" {
 		t.Fatalf("stock-path DriveLink must fallback to drive_url; got %q", hits[0].DriveLink)
-	}
-}
-
-// TestSemanticSearch_BACKCOMPAT_NewClipSearchAdapter_KindDiscriminantIsClip
-// verifies the 7-day backward-compat wrapper sets the kind=KindClip
-// discriminant (the load-bearing assumption that any future agent
-// using NewClipSearchAdapter gets the clip-path behavior).
-func TestSemanticSearch_BACKCOMPAT_NewClipSearchAdapter_KindDiscriminantIsClip(t *testing.T) {
-	portRaw := NewClipSearchAdapter(nil, nil, "text", nil)
-	clipPort := portRaw.(ports.ClipSearchPort)
-	stockPort := portRaw.(ports.StockSearchPort)
-	if _, err := clipPort.SearchClips(context.Background(), ports.ClipSearchQuery{Query: ""}); err != nil {
-		t.Fatalf("clip-path wrapper failed its own kind's SearchClips: %v", err)
-	}
-	if _, err := stockPort.SearchStock(context.Background(), "", 0); err == nil {
-		t.Fatalf("clip-path wrapper unexpectedly succeeded on stock path; cross-kind runtime guard failed")
-	}
-}
-
-// TestSemanticSearch_BACKCOMPAT_NewStockSearchAdapter_KindDiscriminantIsStock
-// verifies the 7-day backward-compat wrapper sets the kind=KindStock
-// discriminant (the symmetric case).
-func TestSemanticSearch_BACKCOMPAT_NewStockSearchAdapter_KindDiscriminantIsStock(t *testing.T) {
-	portRaw := NewStockSearchAdapter(nil, nil, "text", nil)
-	stockPort := portRaw.(ports.StockSearchPort)
-	clipPort := portRaw.(ports.ClipSearchPort)
-	if _, err := stockPort.SearchStock(context.Background(), "", 0); err != nil {
-		t.Fatalf("stock-path wrapper failed its own kind's SearchStock: %v", err)
-	}
-	if _, err := clipPort.SearchClips(context.Background(), ports.ClipSearchQuery{Query: ""}); err == nil {
-		t.Fatalf("stock-path wrapper unexpectedly succeeded on clip path; cross-kind runtime guard failed")
 	}
 }

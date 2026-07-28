@@ -82,32 +82,6 @@ func NewSemanticAssetSearchAdapter(
 	}
 }
 
-// NewClipSearchAdapter is a 7-day backward-compat wrapper that
-// delegates to NewSemanticAssetSearchAdapter with kind=KindClip.
-// Returns the legacy ports.ClipSearchPort type so the 2 existing
-// wire sites (wire_script_resolvers.go:165 + the catalog layer)
-// continue to compile without modification.
-//
-// Forward-pointer PR-CLIPS-STOCK-PORT-RETIRE retires this function
-// at soak-end (deadline 2026-08-15).
-func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName string, log *zap.Logger) ports.ClipSearchPort {
-	port := NewSemanticAssetSearchAdapter(searcher, embedder, vectorName, KindClip, log)
-	return port.(ports.ClipSearchPort)
-}
-
-// NewStockSearchAdapter is a 7-day backward-compat wrapper that
-// delegates to NewSemanticAssetSearchAdapter with kind=KindStock.
-// Returns the legacy ports.StockSearchPort type so the 1 existing
-// wire site (wire_script_postprocess.go:359) continues to compile
-// without modification.
-//
-// Forward-pointer PR-CLIPS-STOCK-PORT-RETIRE retires this function
-// at soak-end (deadline 2026-08-15).
-func NewStockSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName string, log *zap.Logger) ports.StockSearchPort {
-	port := NewSemanticAssetSearchAdapter(searcher, embedder, vectorName, KindStock, log)
-	return port.(ports.StockSearchPort)
-}
-
 // Compile-time assertions (AGENTS.md Pattern 0):
 //
 //   - AssetSearchPort: the canonical Port per PR-POSTPROCESSOR-UNIFICATION-PHASE-3.
@@ -120,8 +94,6 @@ func NewStockSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName
 // Pattern 0.
 var (
 	_ ports.AssetSearchPort = (*semanticAssetSearchAdapter)(nil)
-	_ ports.ClipSearchPort  = (*semanticAssetSearchAdapter)(nil)
-	_ ports.StockSearchPort = (*semanticAssetSearchAdapter)(nil)
 )
 
 // SearchAssets implements ports.AssetSearchPort (canonical).

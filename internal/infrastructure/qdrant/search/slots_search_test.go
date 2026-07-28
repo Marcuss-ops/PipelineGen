@@ -87,7 +87,7 @@ func TestSemanticSearch_Slots_NilReceiver_ReturnsTypedError(t *testing.T) {
 // costs).
 func TestSemanticSearch_Slots_NilPlan_ReturnsInvalidPlanError(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	res, err := clipPort.SearchSlots(context.Background(), nil, validSlotsOpts())
 	if !errors.Is(err, ports.ErrSlotSearchInvalidPlan) {
 		t.Fatalf("nil plan must surface ErrSlotSearchInvalidPlan via errors.Is; got %v", err)
@@ -103,7 +103,7 @@ func TestSemanticSearch_Slots_NilPlan_ReturnsInvalidPlanError(t *testing.T) {
 // plan (single sentinel, single fail-closed reason).
 func TestSemanticSearch_Slots_EmptyPlanSlots_ReturnsInvalidPlanError(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	plan := &scriptpkg.ClipPrePlan{
 		Version:    1,
 		SourceHash: "test-source-hash",
@@ -134,7 +134,7 @@ func TestSemanticSearch_Slots_EmptyPlanSlots_ReturnsInvalidPlanError(t *testing.
 // so operators can identify the misconfigured site.
 func TestSemanticSearch_Slots_StockAdapter_ReturnsCrossKindError(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindStock, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	res, err := clipPort.SearchSlots(context.Background(), validSlotsPlan(), validSlotsOpts())
 	if err == nil {
 		t.Fatal("stock-flavored adapter MUST surface a cross-kind error on SearchSlots; got nil")
@@ -165,7 +165,7 @@ func TestSemanticSearch_Slots_StockAdapter_ReturnsCrossKindError(t *testing.T) {
 // nil-check.
 func TestSemanticSearch_Slots_NilEmbedder_ReturnsTypedError(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	res, err := clipPort.SearchSlots(context.Background(), validSlotsPlan(), validSlotsOpts())
 	if err == nil {
 		t.Fatal("nil embedder must return typed error")
@@ -205,7 +205,7 @@ func contains(haystack, needle string) bool {
 // pinned pattern is set up for.
 func TestSemanticSearch_Slots_FolderSet_DoesNotBreakTypedEnvelope(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	opts := validSlotsOpts()
 	opts.Folder = &clipfolder.ClipFolderRef{
 		Path:            "Boxe",
@@ -230,7 +230,7 @@ func TestSemanticSearch_Slots_FolderSet_DoesNotBreakTypedEnvelope(t *testing.T) 
 // sites behave identically post-PR-FOLDER-FILTER.
 func TestSemanticSearch_Slots_FolderNil_DoesNotBreakTypedEnvelope(t *testing.T) {
 	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
-	clipPort := port.(ports.ClipSearchPort)
+	clipPort := port.(*semanticAssetSearchAdapter)
 	opts := validSlotsOpts() // Folder is zero-value nil
 	res, err := clipPort.SearchSlots(context.Background(), validSlotsPlan(), opts)
 	if err == nil {

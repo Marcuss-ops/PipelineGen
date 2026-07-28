@@ -1,0 +1,15 @@
+{
+  "clip_id": "1HOElzTp17PvzGcAq1LK4tzpPr7RjjrwT",
+  "name": "Alien Face Reveal",
+  "metadata": {
+    "commentary_language": "en-US",
+    "commentary_index_version": "fish-statue-reveal.v1",
+    "commentary_index_json": [
+      {"timestamp":"00:00","moment_description":"The diver begins moving the seaweed aside, exploring the underwater wall.","text":"Cleaning up the seaweed... 🌿","suggested_sound":{"id":"1AKBfSAXLCT2fuXPsrEQQygETvZshBlcs","name":"sfx_ambient_sub_bass_drone_01.wav","reason":"A low-frequency underwater rumble that establishes a mysterious vibe right away."}},
+      {"timestamp":"00:03","moment_description":"The diver continues to pull down the seaweed, revealing more of the hidden structure.","text":"Wait, what's behind there? 👀","suggested_sound":{"id":"1yL87psoGX0ULtknzodcnWkCn8jxP4IIh","name":"sfx_ambient_evolve_feedback_01.wav","reason":"An evolving cinematic drone that adds a dramatic build-up to the upcoming surprise."}},
+      {"timestamp":"00:05","moment_description":"The diver clears the face completely, and a giant stone statue face is revealed.","text":"OH MY GOD! 🤯🗿","suggested_sound":{"id":"13SHeZMfnDiIkR2OsVK_3XlYX8cjojQa1","name":"sfx_cartoon_brain_aneurysm_meme_01.mp3","reason":"A shocking meme effect that perfectly hits right as the scary/mysterious face is fully revealed."}},
+      {"timestamp":"00:08","moment_description":"The video ends with a full look at the spooky submerged face.","text":"Unlocking deep sea phobias... 💀","suggested_sound":{"id":"1mzBxdV7BVoZm4C9S4AQe-hAYqth1OB_3","name":"sfx_ambient_spooky_wind_01.wav","reason":"A horror atmosphere that fades out to leave a lingering eerie feeling about the statue."}}
+    ],
+    "sound_design_plan": "00:00 ambient sub-bass; 00:03 evolving feedback; 00:05 reveal reaction; 00:08 spooky wind"
+  }
+}

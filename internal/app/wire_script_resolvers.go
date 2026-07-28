@@ -75,7 +75,7 @@ func buildScriptSourceResolvers(
 	adapters.NormalizationConfig,
 	*adapters.SourceRegistry,
 	*usecase.ClipSourceBuilder,
-	scriptports.ClipSearchPort,
+	scriptports.AssetSearchPort,
 ) {
 	gen := root.AI.ScriptGen
 
@@ -188,16 +188,16 @@ func buildScriptSourceResolvers(
 		sourceReg.Register(scriptpkg.SourceCurate, curateResolver)
 	}
 
-	// ── ClipSearchPort (Qdrant) ────────────────────────────────────
-	var clipSearchPort scriptports.ClipSearchPort
+	// ── canonical AssetSearchPort (Qdrant) ───────────────────────
+	var clipSearchPort scriptports.AssetSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil {
-		clipSearchPort = search.NewClipSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", log)
-		log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
+		clipSearchPort = search.NewSemanticAssetSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", search.KindClip, log)
+		log.Info("AssetSearchPort wired for clip catalog (Qdrant + Ollama embedder)")
 	}
 
 	// Wire ClipSearchPort to curate resolver (via composition-root bridge).
 	if curateResolver != nil && clipSearchPort != nil {
-		curateResolver.SetClipSearchPort(&clipSearchPortAdapter{port: clipSearchPort})
+		curateResolver.SetAssetSearchPort(clipSearchPort)
 	}
 
 	return normCfg, sourceReg, clipSourceBuilder, clipSearchPort

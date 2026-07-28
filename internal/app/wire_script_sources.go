@@ -42,9 +42,7 @@ import (
 	"strings"
 
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -188,38 +186,6 @@ func qdrantPayloadStr(payload map[string]any, key string) string {
 // usecase-typed SearchResultItem. Single bridge struct covers
 // the two consumers (curateResolver + mediaCurator) per
 // AGENTS.md Pattern 0 ("don't duplicate the seam in N places").
-type clipSearchPortAdapter struct {
-	port scriptports.ClipSearchPort
-}
-
-// SearchClips bridges ports.ClipSearchHit (qdrant-shaped) →
-// scriptpkg.SearchResultItem (usecase-typed). Method receiver
-// is pointer-nil-tolerant and inner-port-nil-tolerant so the
-// gate in wireScriptFlow (curateResolver != nil && port != nil)
-// is the canonical fail-fast surface.
-func (a *clipSearchPortAdapter) SearchClips(ctx context.Context, q scriptports.ClipSearchQuery) ([]scriptpkg.SearchResultItem, error) {
-	if a == nil || a.port == nil {
-		return nil, nil
-	}
-	hits, err := a.port.SearchClips(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	if len(hits) == 0 {
-		return []scriptpkg.SearchResultItem{}, nil
-	}
-	out := make([]scriptpkg.SearchResultItem, 0, len(hits))
-	for _, h := range hits {
-		out = append(out, scriptpkg.SearchResultItem{
-			ClipID: h.AssetID,
-			Name:   h.Name,
-			Score:  h.Score,
-			Source: h.Source,
-		})
-	}
-	return out, nil
-}
-
 // ── ClipName search adapter (PR-FIX, June 2026) ─────────────────────
 //
 // Bridges the SQLite ClipsRepository → scriptapi.ClipSearcher for
@@ -289,6 +255,5 @@ func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string,
 // in wire_script_curation.go (that's where the type lives now).
 var (
 	_ usecase.SemanticSearchPort = (*qdrantSemanticSearchPort)(nil)
-	_ usecase.ClipSearchPort     = (*clipSearchPortAdapter)(nil)
 	_ scriptapi.ClipSearcher     = (*clipsNameSearchAdapter)(nil)
 )

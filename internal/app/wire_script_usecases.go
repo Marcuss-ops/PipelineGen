@@ -96,7 +96,7 @@ func buildScriptUseCases(
 	normCfg adapters.NormalizationConfig,
 	sourceReg *adapters.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,
-	clipSearchPort scriptports.ClipSearchPort,
+	clipSearchPort scriptports.AssetSearchPort,
 	clipSourceBuilder *usecase.ClipSourceBuilder,
 	log *zap.Logger,
 ) (

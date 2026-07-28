@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -32,11 +33,15 @@ type fakeClipSearch struct {
 	returnErr error
 }
 
-func (f *fakeClipSearch) SearchClips(_ context.Context, _ ClipSearchQuery) ([]scriptpkg.SearchResultItem, error) {
+func (f *fakeClipSearch) SearchAssets(_ context.Context, _ ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
 	if f.returnErr != nil {
 		return nil, f.returnErr
 	}
-	return f.hits, nil
+	out := make([]ports.AssetSearchHit, 0, len(f.hits))
+	for _, hit := range f.hits {
+		out = append(out, ports.AssetSearchHit{AssetID: hit.ClipID, Name: hit.Name, Score: hit.Score, Source: hit.Source})
+	}
+	return out, nil
 }
 
 // fakeClipBuilder implements clipContextBuilder for tests.
@@ -159,7 +164,7 @@ func TestCurateResolver_EmptyQueryAndHints(t *testing.T) {
 func TestCurateResolver_NoClips_AllowTextOnlyFalse_ReturnsError(t *testing.T) {
 	t.Parallel()
 	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
-	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
+	r.SetAssetSearchPort(&fakeClipSearch{hits: nil})
 	_, err := r.Resolve(context.Background(), srcSpec("no-results", nil, true, false), makeTestResCtx())
 	var srcErr *scriptpkg.SourceResolutionError
 	if !errors.As(err, &srcErr) {
@@ -173,7 +178,7 @@ func TestCurateResolver_NoClips_AllowTextOnlyFalse_ReturnsError(t *testing.T) {
 func TestCurateResolver_NoClips_AllowTextOnlyTrue_EmptyClipList(t *testing.T) {
 	t.Parallel()
 	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
-	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
+	r.SetAssetSearchPort(&fakeClipSearch{hits: nil})
 	resolved, err := r.Resolve(context.Background(), srcSpec("empty", nil, true, true), makeTestResCtx())
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +196,7 @@ func TestCurateResolver_NoClips_AllowTextOnlyTrue_EmptyClipList(t *testing.T) {
 func TestCurateResolver_BuilderError_Propagates(t *testing.T) {
 	t.Parallel()
 	r := makeTestCurateResolver(&fakeClipBuilder{returnErr: errors.New("builder crash")})
-	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A")})
+	r.SetAssetSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A")})
 	_, err := r.Resolve(context.Background(), srcSpec("q", nil, true, false), makeTestResCtx())
 	var srcErr *scriptpkg.SourceResolutionError
 	if !errors.As(err, &srcErr) {
@@ -207,7 +212,7 @@ func TestCurateResolver_SearchResultsPopulated(t *testing.T) {
 	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs([]string{"SRC-A", "SRC-B"}),
 		sourceText: "results text",
 	})
-	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("SRC-A", "SRC-B")})
+	r.SetAssetSearchPort(&fakeClipSearch{hits: makeClipSearchHits("SRC-A", "SRC-B")})
 	resolved, err := r.Resolve(context.Background(), srcSpec("q", nil, true, false), makeTestResCtx())
 	if err != nil {
 		t.Fatal(err)
@@ -346,7 +351,7 @@ func TestCurateResolver_TitleFromResCtx(t *testing.T) {
 func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	t.Parallel()
 	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
-	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
+	r.SetAssetSearchPort(&fakeClipSearch{hits: nil})
 	_, err := r.Resolve(context.Background(), srcSpec("no-results", nil, true, false), makeTestResCtx())
 	if err == nil {
 		t.Fatal("expected error when no clips resolve and AllowTextOnly=false, got nil")
