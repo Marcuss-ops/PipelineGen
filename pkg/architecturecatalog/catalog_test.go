@@ -163,7 +163,7 @@ issues:
 	}
 }
 
-func TestRenderIssuesEmitsCategoryField(t *testing.T) {
+func TestRenderIssuesOmitsMachineMetadata(t *testing.T) {
 	path := writeCatalog(t, `schema_version: 1
 current: []
 issues:
@@ -185,14 +185,12 @@ issues:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), `category: "operational_environment_missing"`) {
-		t.Fatalf("RenderIssues must emit category field, got:\n%s", string(out))
+	for _, forbidden := range []string{"category:", "follow_up:", "evidence_filename:", "opened_date:", "tracking_issue:"} {
+		if strings.Contains(string(out), forbidden) {
+			t.Fatalf("RenderIssues must omit %s, got:\n%s", forbidden, string(out))
+		}
 	}
-	// ordering: severity precedes category precedes owner_capability.
-	sevIdx := strings.Index(string(out), "severity:")
-	catIdx := strings.Index(string(out), "category:")
-	ownIdx := strings.Index(string(out), "owner_capability:")
-	if !(sevIdx < catIdx && catIdx < ownIdx) {
-		t.Fatalf("field ordering violated: severity=%d category=%d owner_capability=%d", sevIdx, catIdx, ownIdx)
+	if !strings.Contains(string(out), `owner: "pkg/x"`) {
+		t.Fatalf("owner missing: %s", out)
 	}
 }

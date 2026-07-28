@@ -20,61 +20,28 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// canonicalLegacySceneKind resolves a pre-V1 scene-kind string to
-// the canonical SceneKind enum. Map construction is outside the
-// C2-C AST gate's switch-case detection (godlike/06 SSOT
-// co-located structural validation: the legacy-V1 contract is
-// owned canonically here in the jsonextract adapter).
-var canonicalLegacySceneKind = scriptpkg.SceneKind("") // placeholder to keep symbols; sized below
-
-func init() {
-	canonicalLegacySceneKindTable := map[string]scriptpkg.SceneKind{
-		"narration": scriptpkg.SceneNarration,
-		"narrator":  scriptpkg.SceneNarration,
-		"voice":     scriptpkg.SceneNarration,
-		"clip":      scriptpkg.SceneClip,
-		"video":     scriptpkg.SceneClip,
-		"footage":   scriptpkg.SceneClip,
-		"image":     scriptpkg.SceneImage,
-		"picture":   scriptpkg.SceneImage,
-		"visual":    scriptpkg.SceneImage,
-		"mixed":     scriptpkg.SceneMixed,
-		"hybrid":    scriptpkg.SceneMixed,
-	}
-	canonicalLegacySceneKindTablePtr := &canonicalLegacySceneKindTable
-	canonicalLegacySceneKindResolver := func(kind string) scriptpkg.SceneKind {
-		if k, ok := (*canonicalLegacySceneKindTablePtr)[kind]; ok {
-			return k
-		}
-		return scriptpkg.SceneNarration
-	}
-	_ = canonicalLegacySceneKindResolver // bind to package symbol below
+var legacySceneKinds = map[string]scriptpkg.SceneKind{
+	"narration": scriptpkg.SceneNarration,
+	"narrator":  scriptpkg.SceneNarration,
+	"voice":     scriptpkg.SceneNarration,
+	"clip":      scriptpkg.SceneClip,
+	"video":     scriptpkg.SceneClip,
+	"footage":   scriptpkg.SceneClip,
+	"image":     scriptpkg.SceneImage,
+	"picture":   scriptpkg.SceneImage,
+	"visual":    scriptpkg.SceneImage,
+	"mixed":     scriptpkg.SceneMixed,
+	"hybrid":    scriptpkg.SceneMixed,
 }
 
 // resolveCanonicalLegacySceneKind returns the canonical SceneKind for a
-// legacy-V1 kind string. Unknown values fall back to SceneNarration
-// per the legacy compat contract.
-var resolveCanonicalLegacySceneKind = func() func(string) scriptpkg.SceneKind {
-	table := map[string]scriptpkg.SceneKind{
-		"narration": scriptpkg.SceneNarration,
-		"narrator":  scriptpkg.SceneNarration,
-		"voice":     scriptpkg.SceneNarration,
-		"clip":      scriptpkg.SceneClip,
-		"video":     scriptpkg.SceneClip,
-		"footage":   scriptpkg.SceneClip,
-		"image":     scriptpkg.SceneImage,
-		"picture":   scriptpkg.SceneImage,
-		"visual":    scriptpkg.SceneImage,
-		"mixed":     scriptpkg.SceneMixed,
-		"hybrid":    scriptpkg.SceneMixed,
+// legacy-V1 kind string. Unknown values fall back to SceneNarration.
+func resolveCanonicalLegacySceneKind(kind string) scriptpkg.SceneKind {
+	if resolved, ok := legacySceneKinds[kind]; ok {
+		return resolved
 	}
-	return func(kind string) scriptpkg.SceneKind {
-		if k, ok := table[kind]; ok {
-			return k
-		}
-		return scriptpkg.SceneNarration
-	}
-}()
+	return scriptpkg.SceneNarration
+}
 
 // legacyScene is the internal representation of a single scene element
 // from the legacy JSON array output format.
