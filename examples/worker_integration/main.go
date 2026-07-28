@@ -49,6 +49,16 @@ import (
 // for the deprecation ticket.
 const scriptGenerateEndpoint = "/api/script/generate"
 
+// voiceoverGenerateEndpoint is the canonical submission route for
+// POST /api/media/voiceover/generate — the parent voiceover job that
+// fans out one voiceover.generate_item child per items[] row
+// (PR-VO-C1 fanout contract). Wire shape matches
+// GenerateVoiceoversRequest in internal/api/assets/voiceover/types.go;
+// destination.kind in {explicit, group} is enforced via the godlike/07
+// fail-closed PR-VO-C1 invariant (kind=explicit requires non-empty
+// folder_id; kind=group requires non-empty group).
+const voiceoverGenerateEndpoint = "/api/media/voiceover/generate"
+
 func main() {
 	var (
 		baseURL   = flag.String("url", envDefault("PIPELINEGEN_URL", envDefault("VELOX_MASTER_URL", "http://127.0.0.1:8000")), "pipelinegen base URL (or env PIPELINEGEN_URL / VELOX_MASTER_URL)")
@@ -58,16 +68,59 @@ func main() {
 		language  = flag.String("language", "en", "script output language (items[].language)")
 		source    = flag.String("source", "text", "items[].source.type — 'text' (topic-driven) or 'clips' (media-clip-driven); godlike/06 canonical set")
 		clipIDs   = flag.String("clip-ids", "", "comma-separated clip ids; REQUIRED iff -source=clips (fail-closed per godlike/07); example: yt_RRJvrDKunyA_32_37_v1,yt_RRJvrDKunyA_993_998_v1")
-		pollEvery = flag.Duration("poll-every", 5*time.Second, "status poll interval")
-		maxWait   = flag.Duration("max-wait", 30*time.Minute, "max wall-time before giving up on the job")
-		dryRun    = flag.Bool("dry-run", false, "print the payload + reqID without calling the server")
-		verbose   = flag.Bool("verbose", false, "print every poll result (default: only on status changes)")
+		// Mode switch + voiceover-mode flag set (ITEM 6 — canonical CLI
+		// for POST /api/media/voiceover/generate; mirror of ITEM 4 source=clips
+		// but the wire shape is GenerateVoiceoversRequest, NOT
+		// GenerationEnvelopeV2, so the payload-builder is mode-specific —
+		// see runVoiceoverMode below).
+		mode          = flag.String("mode", "script", "worker mode: 'script' (POST /api/script/generate with -source=text|clips) or 'voiceover' (POST /api/media/voiceover/generate); godlike/06 canonical set")
+		voText        = flag.String("text", "", "voiceover text to convert via TTS; REQUIRED iff -mode=voiceover (godlike/07 fail-closed)")
+		voLocale      = flag.String("locale", "it-IT", "BCP-47 language tag for the voiceover; e.g. it-IT, en-US, pt-BR; voiceover mode only")
+		voVoice       = flag.String("voice", "it-IT-DiegoNeural", "TTS voice name (e.g. it-IT-DiegoNeural); empty lets the server VoiceRegistry resolve a default for the locale; voiceover mode only")
+		voFilename    = flag.String("filename", "", "voiceover output filename (default: derived from -item-id or MD5(text|locale|voice)); voiceover mode only")
+		voDestKind    = flag.String("destination-kind", "explicit", "destination.kind: 'explicit' (Drive folder_id) or 'group' (Drive group name); godlike/07 fail-closed PR-VO-C1 invariant; voiceover mode only")
+		voDestFolder  = flag.String("destination-folder-id", "", "Drive folder_id; REQUIRED iff -destination-kind=explicit (PR-VO-C1 fail-closed); voiceover mode only")
+		voDestGroup   = flag.String("destination-group", "", "Drive group name; REQUIRED iff -destination-kind=group (PR-VO-C1 fail-closed); voiceover mode only")
+		voStrategy    = flag.String("strategy", "verify", "pipeline strategy: 'verify' (default) | 'skip' | 'replace'; server-side asset.NormalizeStrategy coerces unknown values to 'verify'; voiceover mode only")
+		voParallelism = flag.Int("parallelism", 1, "fan-out concurrency (1..16); server clamps to min(requested, MaxParallelism, len(items)); voiceover mode only")
+		voRequired    = flag.Bool("required", true, "items[].required flag (godlike/07 no-fake-availability: parent treats failed required items as a parent failure); voiceover mode only")
+		voProject     = flag.String("project", "", "optional project name for {project}/{language}/ Drive subdir layout (ThreadingCampaign 2026-07-08); voiceover mode only")
+		voItemID      = flag.String("item-id", "", "logical idempotency anchor used as wire request_id (default: derived deterministically from MD5(text|locale|voice)); voiceover mode only")
+		pollEvery     = flag.Duration("poll-every", 5*time.Second, "status poll interval")
+		maxWait       = flag.Duration("max-wait", 30*time.Minute, "max wall-time before giving up on the job")
+		dryRun        = flag.Bool("dry-run", false, "print the payload + reqID without calling the server")
+		verbose       = flag.Bool("verbose", false, "print every poll result (default: only on status changes)")
 	)
 	flag.Parse()
 
 	if strings.TrimSpace(*token) == "" {
 		log.Fatal("-token (or VELOX_WORKER_TOKEN env var) is required")
 	}
+	if *mode != "script" && *mode != "voiceover" {
+		log.Fatalf("-mode must be 'script' or 'voiceover' (godlike/06 canonical set); got %q", *mode)
+	}
+
+	// ITEM 6: voiceover mode is a self-contained flow with its own
+	// fail-closed validation, payload construction (matches the
+	// GenerateVoiceoversRequest wire shape verbatim), idempotency hash
+	// (MD5(itemID|locale|voice) — same hash as the bash test script so
+	// the two tools collide on the same logical idempotency key), submit,
+	// and poll. Submit+poll duplicates the script-mode loop by design —
+	// the two modes have zero shared payload-shape code (script uses
+	// GenerationEnvelopeV2, voiceover uses GenerateVoiceoversRequest),
+	// and a shared submit-poll abstraction would only need if/else
+	// branches per mode (the abstraction would be strictly worse than
+	// the bounded duplication).
+	if *mode == "voiceover" {
+		runVoiceoverMode(*baseURL, *token,
+			*voText, *voLocale, *voVoice, *voFilename,
+			*voDestKind, *voDestFolder, *voDestGroup,
+			*voStrategy, *voParallelism, *voRequired,
+			*voProject, *voItemID,
+			*pollEvery, *maxWait, *dryRun, *verbose)
+		return
+	}
+
 	if *source != "text" && *source != "clips" {
 		log.Fatalf("-source must be 'text' or 'clips' (godlike/06 one-source-type-per-item); got %q", *source)
 	}
@@ -339,4 +392,205 @@ func parseClipIDs(csv string) []string {
 		}
 	}
 	return out
+}
+
+// runVoiceoverMode is the self-contained voiceover flow invoked from
+// main() when -mode=voiceover. It mirrors the script-mode flow at the
+// submit/poll layer (deliberate bounded duplication; see the main()
+// dispatch comment) but builds a GenerateVoiceoversRequest-shaped
+// payload (NOT GenerationEnvelopeV2) and uses a different idempotency
+// contract — MD5(itemID|locale|voice), where itemID is the operator-
+// supplied or auto-derived logical anchor and locale+voice are the
+// TTS-differentiation axes (same text + different voice = different
+// jobs server-side).
+//
+// Fail-closed validation chain (godlike/07 + PR-VO-C1 invariant):
+//   - text:    non-empty
+//   - locale:  non-empty (BCP-47; server normalizes lower-case)
+//   - destKind: 'explicit' OR 'group' (canonical enum)
+//   - destKind=explicit → destFolder non-empty
+//   - destKind=group    → destGroup  non-empty
+//   - strategy: in {verify, skip, replace} (server normalizes unknown
+//     to 'verify' silently; we fail-closed to surface typos)
+//   - parallelism: in [1, 16] (TTS fan-out cap; godlike/07 no-overflow)
+//
+// Idempotency contract: X-Request-ID = MD5(itemID|locale|voice). Matches
+// examples/test_remote_generate_voiceover.sh (LC_ALL=C enforced) so the
+// two tools collide on the same logical key for the same logical inputs.
+// See voiceover/types.go::parentActiveKey for the server-side ActiveKey
+// fingerprint (SHA256 covering Text + Languages + Destination.FolderID
+// + Project) — the worker derives X-Request-ID from logical inputs;
+// the server derives ActiveKey from payload contents.
+func runVoiceoverMode(
+	baseURL, token, text, locale, voice, filename string,
+	destKind, destFolder, destGroup string,
+	strategy string, parallelism int, required bool,
+	project, itemID string,
+	pollEvery, maxWait time.Duration, dryRun, verbose bool,
+) {
+	// Fail-closed validation chain (godlike/07 + PR-VO-C1).
+	if strings.TrimSpace(text) == "" {
+		log.Fatalf("-mode=voiceover requires non-empty -text (godlike/07 fail-closed)")
+	}
+	if strings.TrimSpace(locale) == "" {
+		log.Fatalf("-mode=voiceover requires non-empty -locale (BCP-47 code)")
+	}
+	if destKind != "explicit" && destKind != "group" {
+		log.Fatalf("-destination-kind must be 'explicit' or 'group' (godlike/06 canonical set); got %q", destKind)
+	}
+	if destKind == "explicit" && strings.TrimSpace(destFolder) == "" {
+		log.Fatalf("-destination-kind=explicit requires non-empty -destination-folder-id (godlike/07 fail-closed PR-VO-C1)")
+	}
+	if destKind == "group" && strings.TrimSpace(destGroup) == "" {
+		log.Fatalf("-destination-kind=group requires non-empty -destination-group (godlike/07 fail-closed PR-VO-C1)")
+	}
+	switch strategy {
+	case "verify", "skip", "replace":
+		// canonical set; pass-through.
+	default:
+		log.Fatalf("-strategy must be one of verify|skip|replace (godlike/06 canonical set); got %q (server-side NormalizeStrategy would silently coerce to 'verify' — fail-closed here surfaces the typo)", strategy)
+	}
+	if parallelism < 1 || parallelism > 16 {
+		log.Fatalf("-parallelism must be in [1, 16] (godlike/07 fan-out cap); got %d", parallelism)
+	}
+
+	// Idempotency anchor: derive itemID deterministically if the
+	// operator did not supply one. The auto-derivation uses the same
+	// MD5 helper as the canonical reqID so the wire request_id stays
+	// 32-hex stable across retries (server accepts up to 64 alphanumeric
+	// chars; 32-hex fits with room for prefixes).
+	if strings.TrimSpace(itemID) == "" {
+		itemID = buildStableReqID(text, locale, voice)
+	}
+	if strings.TrimSpace(filename) == "" {
+		filename = itemID + ".mp3"
+	}
+
+	// Build destination map — only the field required by the canonical
+	// kind is populated (godlike/07 fail-closed: kind=explicit carries
+	// folder_id only; kind=group carries group only; mirror of
+	// internal/api/assets/voiceover/types.go::GenerateVoiceoversRequest.Validate
+	// PR-VO-C1 invariant).
+	destination := map[string]any{"kind": destKind}
+	switch destKind {
+	case "explicit":
+		destination["folder_id"] = destFolder
+	case "group":
+		destination["group"] = destGroup
+	}
+
+	// Build the canonical GenerateVoiceoversRequest-shaped payload
+	// (wire-shape/payload split preserved per AGENTS.md Pattern 6 — the
+	// request_id field is the wire-correlation-id, NOT a separate
+	// header in this mode; X-Request-ID is set by veloxclient.SubmitAsync
+	// from the reqID argument).
+	payload := map[string]any{
+		"request_id": itemID,
+		"items": []map[string]any{
+			{
+				"text":     text,
+				"language": locale,
+				"voice":    voice,
+				"filename": filename,
+				"required": required,
+			},
+		},
+		"destination": destination,
+		"options": map[string]any{
+			"remove_silence": false,
+			"strategy":       strategy,
+			"parallelism":    parallelism,
+		},
+	}
+	if strings.TrimSpace(project) != "" {
+		// ThreadingCampaign 2026-07-08: project is forwarded verbatim
+		// for {project}/{language}/ Drive subdir layout. Empty project
+		// falls through to the pre-P12 default — do NOT add a default
+		// here, that would change byte-identical behavior for existing
+		// callers (back-compat invariant per PR-PROMOTE-REQUIRED-FIX).
+		payload["project"] = project
+	}
+
+	// Deterministic reqID — MD5(itemID|locale|voice). itemID is the
+	// operator-supplied or auto-derived logical anchor (the SAME hash
+	// used for the wire request_id); locale+voice are the TTS-
+	// differentiation axes. Same text + different voice ⇒ different
+	// reqID ⇒ different server job. Same text + same voice + same itemID
+	// across retries ⇒ same reqID ⇒ server returns existing job (the
+	// godlike/07 fail-closed idempotency-anchor contract).
+	reqID := buildStableReqID(itemID, locale, voice)
+
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("worker starting mode=voiceover endpoint=%s url=%s", voiceoverGenerateEndpoint, baseURL)
+
+	if dryRun {
+		out := map[string]any{
+			"url":          strings.TrimRight(baseURL, "/") + voiceoverGenerateEndpoint,
+			"x_request_id": reqID,
+			"payload":      payload,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(out)
+		log.Printf("(dry-run: nothing was submitted; rerun without -dry-run to dispatch)")
+		return
+	}
+
+	// SIGINT/SIGTERM cancels the long poll loop without orphaning the
+	// job (the job keeps running server-side — that's the whole point
+	// of the submit/poll separation).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	// Default 30s submit/poll timeout is fine — /api/media/voiceover/generate
+	// typically returns within a few hundred ms even on the
+	// idempotency-hit branch (existing job rows read fast; voiceover
+	// ActiveKey fingerprint covers Text + Languages + Destination.FolderID).
+	cli := veloxclient.New(baseURL, token)
+
+	log.Printf("submitting job (reqID=%s)", reqID)
+	resp, err := cli.SubmitAsync(ctx, voiceoverGenerateEndpoint, payload, reqID)
+	if err != nil {
+		// SubmitAsync already wraps ErrUnauthorized/ErrBadRequest/ErrServer
+		// with credential-redacted bodies — surface directly to operator.
+		log.Fatalf("submit failed: %v", err)
+	}
+	log.Printf("job accepted: job_id=%s status=%s", resp.JobID, resp.Status)
+
+	// Poll until terminal state. Tolerate transient ErrServer (network
+	// hiccups mid-poll) by logging + looping; only a StatusFailed result
+	// is fatal.
+	deadline := time.Now().Add(maxWait)
+	lastStatus := ""
+	for {
+		select {
+		case <-ctx.Done():
+			log.Fatalf("interrupted before terminal state (job %s still running on server): %v", resp.JobID, ctx.Err())
+		case <-time.After(pollEvery):
+		}
+		if time.Now().After(deadline) {
+			log.Fatalf("timed out after %s waiting for job %s", maxWait, resp.JobID)
+		}
+
+		st, err := cli.GetJobStatus(ctx, resp.JobID)
+		if err != nil {
+			if errors.Is(err, veloxclient.ErrNotFound) {
+				// Job created seconds ago and already 404 — would be a bug.
+				log.Fatalf("job %s vanished (404): %v", resp.JobID, err)
+			}
+			log.Printf("poll transient error (will retry): %v", err)
+			continue
+		}
+		if verbose || st.Status != lastStatus {
+			log.Printf("poll: id=%s status=%s progress=%d%%", st.ID, st.Status, st.Progress)
+			lastStatus = st.Status
+		}
+		if veloxclient.IsTerminal(st.Status) {
+			renderResult(resp.JobID, st)
+			if st.Status == veloxclient.StatusFailed {
+				os.Exit(2)
+			}
+			return
+		}
+	}
 }
