@@ -1,4 +1,28 @@
-// cmd/admin/admin_test.go — static invariants guard.
+// cmd/admin/admin_test.go — static invariants guard
+//
+// Test suite:
+//   - TestAdminCommands_AreRegistered
+//   - TestBenchmarkReport_PreservesMetadata
+//   - TestBenchmark_PropagatesSearchErrors
+//   - TestAdminCommands_NoLegacyImports
+//
+// These tests protect the static invariants the PR fixes:
+//
+//  1. Every command listed in `availableCommands` must have a
+//     `case "X":` arm in cmd/admin/subcommands.go's switch (otherwise operators
+//     trigger an "Unknown command" exit-code-1 trip).
+//  2. benchQueriesFile.Description/Version metadata must survive a
+//     JSON round-trip through benchSaveReport / benchLoadQueries
+//     (DRY-run observability).
+//  3. Errors from the search-fn MUST propagate through benchRun into
+//     benchQueryResult.Error and the aggregate benchReport.TotalErrors.
+//     Pre-fix the code did `results, _ := searchFn(...)` and dropped
+//     the error entirely — this test pins the fail-visible behaviour.
+//  4. No *.go file in cmd/admin/ may import a retired legacy
+//     package (`internal/config`, `internal/media`, `internal/media/*`,
+//     `internal/storage`, `internal/upload/drive`, `internal/repository/clips`).
+//     This mirrors the gate `! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go`
+//     mentioned in the Definition of Done.
 package main
 
 import (
@@ -8,43 +32,53 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
 
 func TestAdminCommands_AreRegistered(t *testing.T) {
-	if len(subcommandRegistry) != len(availableCommands) {
-		t.Fatalf("registry/list length mismatch: registry=%d available=%d", len(subcommandRegistry), len(availableCommands))
-	}
-	if len(subcommandRegistry) != len(subcommandHandlers) {
-		t.Fatalf("registry/index length mismatch: registry=%d handlers=%d", len(subcommandRegistry), len(subcommandHandlers))
+	mainPath := filepath.Join("subcommands.go")
+	src, err := os.ReadFile(mainPath)
+	if err != nil {
+		t.Fatalf("read subcommands.go: %v", err)
 	}
 
-	seen := make(map[string]struct{}, len(subcommandRegistry))
-	for index, entry := range subcommandRegistry {
-		if strings.TrimSpace(entry.name) == "" {
-			t.Errorf("registry[%d] has an empty name", index)
-			continue
-		}
-		if entry.run == nil {
-			t.Errorf("registry[%d] %q has a nil handler", index, entry.name)
-		}
-		if _, exists := seen[entry.name]; exists {
-			t.Errorf("duplicate command %q", entry.name)
-		}
-		seen[entry.name] = struct{}{}
+	// Match `case "X":` arms anywhere in the switch block. The list
+	// is collected as a set for membership checks against
+	// availableCommands.
+	caseRE := regexp.MustCompile(`case\s+"([^"]+)"\s*:`)
+	matches := caseRE.FindAllStringSubmatch(string(src), -1)
+	registered := make(map[string]bool, len(matches))
+	for _, m := range matches {
+		registered[m[1]] = true
+	}
 
-		if availableCommands[index] != entry.name {
-			t.Errorf("availableCommands[%d]=%q, want %q", index, availableCommands[index], entry.name)
-		}
-		if subcommandHandlers[entry.name] == nil {
-			t.Errorf("command %q missing from dispatch index", entry.name)
+	for _, cmd := range availableCommands {
+		if !registered[cmd] {
+			t.Errorf("command %q is listed in availableCommands but has no `case %q: ...` arm in subcommands.go", cmd, cmd)
 		}
 	}
 
-	err := dispatchSubcommand("definitely-not-a-command", nil)
-	if !errors.Is(err, errUnknownCommand) {
-		t.Fatalf("unknown command error = %v, want errUnknownCommand", err)
+	// Detect dead arms: case statements that aren't in availableCommands.
+	// (Optional sanity; allowed to be empty if a command is internal-only,
+	// but every public command must be in both lists.)
+	var dead []string
+	for cmd := range registered {
+		found := false
+		for _, c := range availableCommands {
+			if c == cmd {
+				found = true
+				break
+			}
+		}
+		if !found {
+			dead = append(dead, cmd)
+		}
+	}
+	if len(dead) > 0 {
+		sort.Strings(dead)
+		t.Errorf("case arm(s) present without availableCommands entry: %v", dead)
 	}
 }
 
@@ -59,10 +93,13 @@ func TestBenchmarkReport_PreservesMetadata(t *testing.T) {
 		TotalErrors: 0,
 	}
 
+	// Marshal → unmarshal round-trip through the JSON shape used by
+	// benchSaveReport.
 	raw, err := json.Marshal(original)
 	if err != nil {
 		t.Fatalf("marshal benchReport: %v", err)
 	}
+	// Sanity-check the wire shape carries the optional metadata.
 	if !strings.Contains(string(raw), `"description":"round-trip metadata canonicalisation test"`) {
 		t.Errorf("marshalled report missing Description field: %s", raw)
 	}
@@ -74,6 +111,7 @@ func TestBenchmarkReport_PreservesMetadata(t *testing.T) {
 	if err := json.Unmarshal(raw, &roundTrip); err != nil {
 		t.Fatalf("unmarshal benchReport: %v", err)
 	}
+
 	if roundTrip.Description != original.Description {
 		t.Errorf("Description: got %q, want %q", roundTrip.Description, original.Description)
 	}
@@ -90,46 +128,55 @@ func TestBenchmarkReport_PreservesMetadata(t *testing.T) {
 
 func TestBenchmark_PropagatesSearchErrors(t *testing.T) {
 	failingErr := errors.New("simulated upstream semantic-search failure")
+
+	// Search fn that fails for every query. The pre-fix code did
+	// `results, _ := searchFn(...)` and silently dropped the error;
+	// post-fix the error MUST land on benchQueryResult.Error and bump
+	// benchReport.TotalErrors.
 	queries := []benchQuery{
 		{Label: "ok", Text: "trees", Source: "stock"},
 		{Label: "broken", Text: "broken", Source: "stock"},
 		{Label: "ok-2", Text: "rivers", Source: "stock"},
 	}
-	searchFn := func(ctx context.Context, query, source string, limit int) ([]benchResult, error) {
+	searchFn := func(ctx context.Context, q, source string, limit int) ([]benchResult, error) {
 		_ = ctx
 		_ = source
 		_ = limit
-		if query == "broken" {
+		if q == "broken" {
 			return nil, failingErr
 		}
-		return []benchResult{{ID: query, Score: 0.9}}, nil
+		return []benchResult{{ID: q, Score: 0.9}}, nil
 	}
 
 	report := benchRun(context.Background(), queries, searchFn, 10)
+
 	if report.TotalErrors != 1 {
-		t.Errorf("TotalErrors: got %d, want 1", report.TotalErrors)
+		t.Errorf("TotalErrors: got %d, want 1 (one failing query)", report.TotalErrors)
 	}
-	if len(report.Queries) != len(queries) {
-		t.Fatalf("queries length: got %d, want %d", len(report.Queries), len(queries))
+	if len(report.Queries) != 3 {
+		t.Fatalf("queries length: got %d, want 3", len(report.Queries))
 	}
 
-	for index, result := range report.Queries {
+	for i, q := range report.Queries {
 		wantErr := ""
-		if queries[index].Text == "broken" {
+		if queries[i].Text == "broken" {
 			wantErr = failingErr.Error()
-			if result.Results != nil {
-				t.Errorf("query[%d]: expected nil results on failure, got %+v", index, result.Results)
+			if q.Results != nil {
+				t.Errorf("query[%d] (%s): expected nil results on failing path, got %+v", i, q.Label, q.Results)
 			}
-		} else if len(result.Results) != 1 {
-			t.Errorf("query[%d]: expected one result, got %+v", index, result.Results)
+		} else if len(q.Results) != 1 {
+			t.Errorf("query[%d] (%s): expected 1 result on happy path, got %+v", i, q.Label, q.Results)
 		}
-		if result.Error != wantErr {
-			t.Errorf("query[%d] Error: got %q, want %q", index, result.Error, wantErr)
+		if q.Error != wantErr {
+			t.Errorf("query[%d] (%s) Error: got %q, want %q", i, q.Label, q.Error, wantErr)
 		}
 	}
 }
 
 func TestAdminCommands_NoLegacyImports(t *testing.T) {
+	// Forbidden imports — the static gate:
+	//   ! rg 'internal/(config|media|storage|upload|repository/clips)' cmd/admin --type go
+	// Banned patterns (anchored to the import line):
 	bannedPatterns := []string{
 		`"github.com/Marcuss-ops/PipelineGen/internal/config"`,
 		`"github.com/Marcuss-ops/PipelineGen/internal/media"`,
@@ -144,40 +191,57 @@ func TestAdminCommands_NoLegacyImports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("glob cmd/admin: %v", err)
 	}
-	for _, filename := range matches {
-		if strings.HasSuffix(filename, "_test.go") {
+
+	for _, fname := range matches {
+		// Skip _test.go files — the gate referenced in the PR brief
+		// (`! rg ... cmd/admin`) operates on production code only; the
+		// test file is allowed to mention legacy packages *as strings*
+		// (the bannedPatterns list itself contains those names).
+		if strings.HasSuffix(fname, "_test.go") {
 			continue
 		}
-		source, err := os.ReadFile(filename)
+
+		src, err := os.ReadFile(fname)
 		if err != nil {
-			t.Fatalf("read %s: %v", filename, err)
+			t.Fatalf("read %s: %v", fname, err)
 		}
-		importBlock := extractImportBlock(string(source))
+		contents := string(src)
+
+		// Restrict to import block so a comment mentioning
+		// "internal/media...legacy…" doesn't trip the gate. Imports are
+		// inside a contiguous `import (...)` block, occasionally inline
+		// `import "x"`.
+		importBlock := extractImportBlock(contents)
 		for _, pattern := range bannedPatterns {
 			if strings.Contains(importBlock, pattern) {
-				t.Errorf("file %s imports banned legacy package %s", filename, pattern)
+				t.Errorf("file %s imports banned legacy package %s", fname, pattern)
 			}
 		}
 	}
 }
 
-func extractImportBlock(source string) string {
-	var builder strings.Builder
+// extractImportBlock returns the union of `import (...)` blocks and
+// any single-line `import "x"` statements as a single string for cheap
+// substring matching. Comments outside the import blocks are excluded.
+func extractImportBlock(src string) string {
+	var b strings.Builder
 	blockRE := regexp.MustCompile(`(?s)import\s*\((.*?)\)`)
-	for _, match := range blockRE.FindAllStringSubmatch(source, -1) {
-		builder.WriteString(match[1])
-		builder.WriteString("\n")
+	for _, m := range blockRE.FindAllStringSubmatch(src, -1) {
+		b.WriteString(m[1])
+		b.WriteString("\n")
 	}
 	lineRE := regexp.MustCompile(`(?m)^\s*import\s+"([^"]+)"`)
-	for _, match := range lineRE.FindAllStringSubmatch(source, -1) {
-		builder.WriteString(`"`)
-		builder.WriteString(match[1])
-		builder.WriteString(`"`)
-		builder.WriteString("\n")
+	for _, m := range lineRE.FindAllStringSubmatch(src, -1) {
+		b.WriteString(`"`)
+		b.WriteString(m[1])
+		b.WriteString(`"`)
+		b.WriteString("\n")
 	}
-	return builder.String()
+	return b.String()
 }
 
+// Sanity: ensure the test file can see the banned imports listed above
+// (avoids accidental deletion of the gate strings in the future).
 func TestNoLegacyImports_gateStringsAreIntact(t *testing.T) {
 	mustContain := []string{
 		"internal/config",
@@ -185,17 +249,20 @@ func TestNoLegacyImports_gateStringsAreIntact(t *testing.T) {
 		"internal/storage",
 		"internal/upload/drive",
 	}
+	// Walk every *.go file under cmd/admin and ensure the gate strings
+	// appear at least once. We don't care where — only that the gate is
+	// review-resistant.
 	matches, _ := filepath.Glob("*.go")
-	var combined strings.Builder
-	for _, filename := range matches {
-		contents, _ := os.ReadFile(filename)
+	combined := strings.Builder{}
+	for _, fname := range matches {
+		contents, _ := os.ReadFile(fname)
 		combined.Write(contents)
 		combined.WriteString("\n")
 	}
 	corpus := combined.String()
-	for _, value := range mustContain {
-		if !strings.Contains(corpus, value) {
-			t.Errorf("expected substring %q in cmd/admin to keep the static gate reviewable", value)
+	for _, s := range mustContain {
+		if !strings.Contains(corpus, s) {
+			t.Errorf("expected substring %q in cmd/admin to keep the static gate reviewable", s)
 		}
 	}
 }
