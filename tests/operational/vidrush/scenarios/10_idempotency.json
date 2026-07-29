@@ -1,0 +1,139 @@
+{
+  "scenario_id": "10_idempotency",
+  "description": "Vidrush idempotency and deduplication — verifica il contratto idempotency key del POST /api/script/generate. Stesso payload+stessa key → replay (202, stesso job_id). Payload diverso+stessa key → 409 IDEMPOTENCY_KEY_CONFLICT. Richieste concorrenti identiche → un solo job effettivo, nessun doppio asset/documento/evento outbox.",
+  "version": 1,
+  "scenario_type": "idempotency",
+  "test_cases": [
+    {
+      "case_id": "same_payload_same_key",
+      "description": "Stesso payload e stessa idempotency key inviati due volte",
+      "steps": [
+        {
+          "step": 1,
+          "action": "POST /api/script/generate con idempotency key K1 e payload P",
+          "expect": {
+            "http_status": 202,
+            "job_id": "J1 (non vuoto)",
+            "idempotency_replay_header": false
+          }
+        },
+        {
+          "step": 2,
+          "action": "POST /api/script/generate con stessa idempotency key K1 e stesso payload P",
+          "expect": {
+            "http_status": 202,
+            "job_id": "J1 (stesso di step 1)",
+            "idempotency_replay_header": "X-Idempotency-Replay: true",
+            "no_second_job_created": "nessun nuovo job nel database",
+            "no_duplicate_assets": "nessun asset duplicato in SQLite",
+            "no_duplicate_outbox": "nessun evento outbox duplicato"
+          }
+        }
+      ],
+      "assertions": {
+        "same_job_id": "job_id dello step 2 == job_id dello step 1",
+        "replay_header": "X-Idempotency-Replay: true presente nella risposta dello step 2",
+        "no_duplicates": "nessuna duplicazione in SQLite, Drive, o outbox"
+      }
+    },
+    {
+      "case_id": "different_payload_same_key",
+      "description": "Payload diverso con stessa idempotency key → 409 Conflict",
+      "steps": [
+        {
+          "step": 1,
+          "action": "POST /api/script/generate con idempotency key K2 e payload P1",
+          "expect": {
+            "http_status": 202,
+            "job_id": "J2"
+          }
+        },
+        {
+          "step": 2,
+          "action": "POST /api/script/generate con stessa idempotency key K2 ma payload P2 (diverso)",
+          "expect": {
+            "http_status": 409,
+            "error_code": "IDEMPOTENCY_KEY_CONFLICT",
+            "error_message": "contiene riferimento alla key in conflitto",
+            "original_job_unchanged": "J2 non modificato dal tentativo di conflitto"
+          }
+        }
+      ],
+      "assertions": {
+        "conflict_http_409": "secondo POST restituisce HTTP 409",
+        "error_code_present": "response body contiene code: IDEMPOTENCY_KEY_CONFLICT",
+        "original_job_preserved": "job originale J2 inalterato"
+      }
+    },
+    {
+      "case_id": "concurrent_identical_requests",
+      "description": "Tre richieste identiche simultanee → un solo job effettivo",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Lancia 3 POST /api/script/generate simultanei con stessa idempotency key K3 e stesso payload P",
+          "concurrency": 3,
+          "expect": {
+            "total_jobs_created": 1,
+            "all_responses_200_or_202": "tutte le risposte sono 2xx",
+            "all_same_job_id": "tutti i job_id uguali",
+            "at_least_one_replay": "almeno una risposta ha X-Idempotency-Replay: true",
+            "no_duplicate_assets": "nessun asset duplicato in SQLite",
+            "no_duplicate_documents": "nessun documento duplicato",
+            "no_duplicate_outbox_events": "nessun evento outbox duplicato"
+          }
+        }
+      ],
+      "assertions": {
+        "single_job": "esattamente 1 job creato nel database",
+        "consistent_job_id": "tutti e 3 i response body contengono lo stesso job_id",
+        "no_race_condition": "nessuna race condition ha creato job duplicati",
+        "outbox_integrity": "COUNT(DISTINCT aggregate_id) == 1 per event_type = 'script.generate.requested'"
+      }
+    }
+  ],
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-10-idempotency",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-10-idem-item",
+        "title": "Idempotency key operational test",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Short factual prose.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Idempotency verification",
+          "source_text": "Operational idempotency test. The same key must produce the same result. A different body with the same key must be rejected. Operational marker: vidrush-10-idempotency."
+        },
+        "script_params": {
+          "target_words": 100,
+          "min_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": false
+          }
+        }
+      }
+    ]
+  },
+  "execution_notes": "Questo scenario richiede al runner di orchestrare richieste multiple con header Idempotency-Key personalizzati. Il current run_scenario.sh supporta una singola richiesta per scenario. Per eseguire: (1) inviare manualmente le coppie di richieste descritte, oppure (2) estendere run_scenario.sh con supporto multi-step. Il caso 'concurrent_identical_requests' richiede parallelismo (xargs -P o GNU parallel)."
+}
