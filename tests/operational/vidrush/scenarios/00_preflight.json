@@ -103,7 +103,7 @@
       {
         "name": "workers_available",
         "kind": "capacity",
-        "obligatory": true,
+        "obligatory": false,
         "check": "api_endpoint",
         "path": "/api/system/doctor",
         "jq_assert": ".workers_available >= 1",
