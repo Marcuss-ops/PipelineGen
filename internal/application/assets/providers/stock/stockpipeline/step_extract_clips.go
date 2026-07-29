@@ -124,7 +124,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 		result, cutErr := executeCuts(ctx, runner, sourceID, sourcePath, sourceDuration, groupPlans, sourceIdx, noAudio)
 		successful := result.SuccessfulItems()
 		if cutErr != nil && len(successful) == 0 {
-			return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s: %w", sourceID, cutErr)
+			return fmt.Errorf("orchestrator: stock.extract_clips: executeCuts failed for source %s: %w", sourceID, cutErr)
 		}
 
 		// Publish cuts (hash, asset write, Drive upload).

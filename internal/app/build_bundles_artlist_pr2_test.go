@@ -23,6 +23,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -53,7 +54,7 @@ func TestWireArtlistJobBindings_NilArtlistService_AbortsBoot(t *testing.T) {
 // TestWireArtlistJobBindings_NilJobsBundleService_AbortsBoot: gate #2
 // fail-closed — a nil jobsBundle OR jobsBundle.Service returns the
 // typed error. Mirrors the gate ordering of the publisher gate in
-// WireArtlist (PR-ARTLIST-PERSIST-FIX uses the same pattern).
+// wiring.WireArtlist (PR-ARTLIST-PERSIST-FIX uses the same pattern).
 func TestWireArtlistJobBindings_NilJobsBundleService_AbortsBoot(t *testing.T) {
 	log := zap.NewNop()
 	_ = log

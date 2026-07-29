@@ -130,7 +130,8 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: w, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
-		WithJobFinalizer(stubJobFinalizer{})
+		WithJobFinalizer(stubJobFinalizer{}).
+		WithLocalFS(&fakeLocalFS{})
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
 		ClipDuration:  5,
