@@ -1,0 +1,113 @@
+{
+  "step": "6-qdrant-index",
+  "boxer": "Mike Tyson",
+  "timestamp": "2026-07-29T12:40:00Z",
+  "status": "BLOCKED — Steps 3-5 incomplete, Qdrant projection stale",
+  "summary": "Qdrant indexing cannot pass. Only 5 stock clips exist in SQLite (all with non-semantic search text), 0 of them are in the active Qdrant collection. The active Qdrant collection (media_assets_v3_e5_768_siglip_768) is empty (0 points) — the 2506-point legacy collection (20260727_081027_639685520) contains older data but none for the Mike Tyson stock clips. 295 clips are missing because Steps 3-5 never completed.",
+
+  "target": {
+    "indexed_clip_count": 300,
+    "dead_letter_count": 0,
+    "pending_index_events": 0,
+    "semantic_search_text": "e.g. 'Mike Tyson during a boxing fight', 'Mike Tyson lands a combination', 'Mike Tyson speaking during an interview'",
+    "boxer_tags": "mike_tyson, boxing, fight/interview/training"
+  },
+
+  "actual": {
+    "indexed_clip_count_in_sqlite": 5,
+    "indexed_clip_count_in_qdrant_active": 0,
+    "dead_letter_count_outbox": 0,
+    "pending_index_events_outbox": 0,
+    "completed_index_events_outbox": 49,
+    "non_index_dead_letters": 39,
+    "non_index_dead_letter_type": "script.generate.queued"
+  },
+
+  "qdrant_state": {
+    "health": "running",
+    "active_collection": "media_assets_v3_e5_768_siglip_768",
+    "active_collection_status": "green",
+    "active_collection_points": 0,
+    "active_collection_vectors": 0,
+    "legacy_collection": "media_assets_v3_e5_768_siglip_768_20260727_081027_639685520",
+    "legacy_collection_points": 2506,
+    "qdrant_projection_note": "The active collection is empty (0 points). The legacy collection has 2506 points from a previous projection version. This indicates a collection rotation occurred (version bump) and the 5 stock clips with index_state='INDEXED' in SQLite were never re-projected into the new collection."
+  },
+
+  "sqlite_state": {
+    "total_stock_clips": 5,
+    "stock_clips_indexed": 5,
+    "stock_clips_with_drive_file_id": 0,
+    "search_text_semantic": false,
+    "search_text_sample_1": "Stock video clip | start_sec: 2 | end_sec: 6",
+    "search_text_sample_2": "Stock video clip | start_sec: 0 | end_sec: 4",
+    "search_text_quality": "NON-SEMANTIC: no boxer name, no category (fight/interview/training), no contextual description"
+  },
+
+  "outbox_state": {
+    "asset_index_requested_completed": 49,
+    "asset_index_requested_pending": 0,
+    "asset_index_requested_dead": 0,
+    "script_generate_queued_dead_letter": 39,
+    "total_outbox_events": 88
+  },
+
+  "indexed_clips_detail": [
+    {
+      "id": "planner:b07a88acbad7ab27:0",
+      "search_text": "Stock video clip | start_sec: 2 | end_sec: 6",
+      "index_state": "INDEXED",
+      "qdrant_active": false,
+      "drive_file_id": null,
+      "source_video_id": "",
+      "semantic_text_missing": ["boxer_name", "fight/interview/training", "action_description"]
+    },
+    {
+      "id": "planner:80fef28c9642b1bc:0",
+      "search_text": "Stock video clip | start_sec: 0 | end_sec: 4",
+      "index_state": "INDEXED",
+      "qdrant_active": false,
+      "drive_file_id": null,
+      "source_video_id": "",
+      "semantic_text_missing": ["boxer_name", "fight/interview/training", "action_description"]
+    },
+    {
+      "id": "planner:abf1b22a18ffaab2:0",
+      "search_text": "Stock video clip | start_sec: 0 | end_sec: 4",
+      "index_state": "INDEXED",
+      "qdrant_active": false,
+      "drive_file_id": null,
+      "source_video_id": "",
+      "semantic_text_missing": ["boxer_name", "fight/interview/training", "action_description"]
+    },
+    {
+      "id": "planner:107e7fa2d3ac3cea:0",
+      "search_text": "Stock video clip | start_sec: 2 | end_sec: 6",
+      "index_state": "INDEXED",
+      "qdrant_active": false,
+      "drive_file_id": null,
+      "source_video_id": "",
+      "semantic_text_missing": ["boxer_name", "fight/interview/training", "action_description"]
+    },
+    {
+      "id": "planner:197747b5fbb42911:0",
+      "search_text": "Stock video clip | start_sec: 2 | end_sec: 6",
+      "index_state": "INDEXED",
+      "qdrant_active": false,
+      "drive_file_id": null,
+      "source_video_id": "",
+      "semantic_text_missing": ["boxer_name", "fight/interview/training", "action_description"]
+    }
+  ],
+
+  "gap_analysis": {
+    "missing_sqlite_clips": 295,
+    "missing_qdrant_points": 300,
+    "search_text_quality": "NON-SEMANTIC — all 5 clips use generic 'Stock video clip' text with no boxer name, no category, no action description",
+    "qdrant_rotation_issue": "Active collection has 0 points; legacy collection has 2506. The 5 INDEXED clips in SQLite are not in any Qdrant collection — they need re-projection.",
+    "blocking_steps": ["Step 3: extract 300 clips", "Step 4: publish to Drive", "Step 5: register in SQLite with semantic metadata"],
+    "recommendation": "Complete Steps 3-5 first. When registering clips in SQLite, ensure search_text contains semantic descriptions like 'Mike Tyson landing a right hook during boxing fight' rather than 'Stock video clip | start_sec: 2 | end_sec: 6'. After SQLite registration, trigger Qdrant re-projection to populate the active collection."
+  },
+
+  "conclusion": "Step 6 Qdrant indexing CANNOT pass. The active Qdrant collection is empty (0 points). The 5 stock clips in SQLite have index_state='INDEXED' but are not in the active Qdrant collection (stale projection after rotation). Their search_text is non-semantic ('Stock video clip | start_sec: X | end_sec: Y'). 295 clips are missing because the stock pipeline failed at Step 3 (extract_clips: context canceled). Steps 3-5 must be completed before Qdrant indexing can produce meaningful semantic results."
+}
