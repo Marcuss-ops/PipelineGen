@@ -52,11 +52,11 @@ import (
 // driveUploader + reconcileSvc so /drive routes can answer (when
 // either is nil the corresponding handler returns 503).
 func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
-	// FASE 9 Step 2: use root.Drive.driveUploader directly instead of
+	// FASE 9 Step 2: use root.Drive.DriveUploader directly instead of
 	// constructing a redundant *drive.Uploader from DriveClient.
 	var driveUploaderAdapter *drive.Uploader
-	if root.Drive != nil && root.Drive.driveUploader != nil {
-		driveUploaderAdapter = root.Drive.driveUploader
+	if root.Drive != nil && root.Drive.DriveUploader != nil {
+		driveUploaderAdapter = root.Drive.DriveUploader
 	}
 	return tryRegisterModuleStrict(registry, log, systemapi.NewModule(
 		doctorConfigFrom(cfg),

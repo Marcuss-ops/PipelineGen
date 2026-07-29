@@ -27,7 +27,7 @@ import (
 func buildDomainScriptServices(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *databases,
+	dbs *wiring.Databases,
 	log *zap.Logger,
 	drive *wiring.DriveBundle,
 	repos *wiring.RepoBundle,
@@ -42,7 +42,7 @@ func buildDomainScriptServices(
 	if err != nil {
 		return fmt.Errorf("compose domains: artifact blob store: %w", err)
 	}
-	artifactRepo := artifacts.NewSQLiteRepository(dbs.dualPool.Writer)
+	artifactRepo := artifacts.NewSQLiteRepository(dbs.DualPool.Writer)
 	bundle.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
 	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
 		zap.String("data_dir", cfg.Storage.DataDir))
@@ -67,10 +67,10 @@ func buildDomainScriptServices(
 		Downloader: extractDl,
 		Folder:     &adminFolderManagerAdapter{admin: drive.Admin},
 		Files: func(ctx context.Context, req drivePutFnRequest) (*drivePutFnResult, error) {
-			if drive.driveUploader == nil {
-				return nil, fmt.Errorf("compose domains: extract-important upload: drive.driveUploader unwired")
+			if drive.DriveUploader == nil {
+				return nil, fmt.Errorf("compose domains: extract-important upload: drive.DriveUploader unwired")
 			}
-			res, err := drive.driveUploader.UploadFile(ctx, req.LocalPath, req.FolderID, req.Filename)
+			res, err := drive.DriveUploader.UploadFile(ctx, req.LocalPath, req.FolderID, req.Filename)
 			if err != nil {
 				return nil, fmt.Errorf("compose domains: extract-important upload: %w", err)
 			}

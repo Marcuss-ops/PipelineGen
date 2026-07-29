@@ -48,19 +48,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*wiring.RepoBundle, error) {
+func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.RepoBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetsStore := sqassets.NewAssetStoreSQLite(dbs.dualPool.Writer, log)
+	assetsStore := sqassets.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
 	assetsSvc := asset.NewService(assetsStore, log)
-	imageRepo := imagesrepo.NewImagesRepository(dbs.dualPool.Writer)
-	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.dualPool.Writer)
-	monitorsRepo := monitors.NewMonitorsRepository(dbs.dualPool.Writer)
-	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.dualPool.Writer, log, assetsSvc.Repository())
+	imageRepo := imagesrepo.NewImagesRepository(dbs.DualPool.Writer)
+	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.DualPool.Writer)
+	monitorsRepo := monitors.NewMonitorsRepository(dbs.DualPool.Writer)
+	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.DualPool.Writer, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
-	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.dualPool.Writer)
-	sqRepo := sqassets.NewSearchQueriesRepository(dbs.dualPool.Writer)
-	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.dualPool.Writer)
+	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.DualPool.Writer)
+	sqRepo := sqassets.NewSearchQueriesRepository(dbs.DualPool.Writer)
+	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.DualPool.Writer)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
 	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
 	// the video pipeline + the AcquireService backfill CLI. It MUST
@@ -74,11 +74,11 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: wiring.BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
-	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.dualPool.Writer, log)
+	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init text track repository: %w", err)
 	}
-	subArtRepo, err := texttracks.NewSubtitleArtifactRepository(dbs.dualPool.Writer, log)
+	subArtRepo, err := texttracks.NewSubtitleArtifactRepository(dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
 	}
@@ -90,12 +90,12 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	}, nil
 }
 
-func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle) (*wiring.SearchBundle, error) {
+func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle) (*wiring.SearchBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetIndexRepo := assetindex.NewRepository(dbs.dualPool.Writer)
+	assetIndexRepo := assetindex.NewRepository(dbs.DualPool.Writer)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := sqassets.NewAssetTreeRepository(dbs.dualPool.Writer, log)
+	assetTreeRepo, err := sqassets.NewAssetTreeRepository(dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init asset tree repository: %w", err)
 	}
@@ -248,7 +248,7 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 }
 
 // buildBooksService wires the books apply-layer Service.
-func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
+func buildBooksService(cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
 	var transformer *pythontransformer.SubprocessTransformer
 	if cfg.Books.Enabled {
 		var err error
@@ -261,7 +261,7 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, publ
 	}
 	booksSvc := books.NewService(
 		&books.Config{DriveFolderID: cfg.Drive.BooksFolder()},
-		dbs.dualPool.Writer, cfg.Drive.BooksFolder(), log, publisher, reader, transformer,
+		dbs.DualPool.Writer, cfg.Drive.BooksFolder(), log, publisher, reader, transformer,
 	)
 	booksSvc.SetEnabled(cfg.Books.Enabled)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))

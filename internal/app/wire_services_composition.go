@@ -4,7 +4,7 @@
 // Split rationale, see wire_services.go header.
 //
 // This file owns the COMPOSITION stage: the chain that:
-//  1. Opens databases
+//  1. Opens wiring.Databases
 //  2. Runs migrations
 //  3. Calls NewComposition (builds *wiring.ComposeRoot with 12 bundles)
 //  4. Constructs the local broker (PR-WORKER-RUNNER-INPROCESS-MIGRATION,
@@ -68,7 +68,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	security.SetAllowedHosts(hosts)
 	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(hosts)))
 
-	dbs, err := initDatabases(ctx, cfg, log)
+	dbs, err := wiring.InitDatabases(ctx, cfg, log)
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -76,14 +76,14 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 
 	partialCleanup := func() {
 		cancel()
-		if dbs.main != nil {
-			if err := dbs.main.Close(); err != nil {
+		if dbs.Main != nil {
+			if err := dbs.Main.Close(); err != nil {
 				log.Error("Failed to close main database during cleanup", zap.Error(err))
 			}
 		}
 	}
 
-	if err := runAllMigrations(dbs, log); err != nil {
+	if err := wiring.RunAllMigrations(dbs, log); err != nil {
 		partialCleanup()
 		return nil, nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
@@ -101,7 +101,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// "CompletionPort not wired". The WireServices caller reuses this
 	// same broker instance via type-assertion for the full
 	// appjobs.Broker surface needed by the internal worker handler.
-	workerNodesRepo := workernodes.NewWorkerNodesRepository(dbs.dualPool.Writer)
+	workerNodesRepo := workernodes.NewWorkerNodesRepository(dbs.DualPool.Writer)
 
 	progressCoalesceWindow := 100 * time.Millisecond
 	if cfg.Jobs.ProgressCoalesceWindow != "" {

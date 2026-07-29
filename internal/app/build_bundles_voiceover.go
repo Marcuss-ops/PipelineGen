@@ -5,7 +5,7 @@
 // modules/content.go, modules/images.go"). The "modules/" path in the
 // pending item is a forward reference; the canonical current target for
 // per-capability helpers is `internal/app/build_bundles_<capability>.go`,
-// matching the buildIngestService / buildHealthService / buildSyncTargets
+// matching the buildIngestService / buildHealthService / wiring.BuildSyncTargets
 // pattern already established by build_bundles_core.go / build_bundles_process.go
 // / build_bundles_domain.go.
 //
@@ -66,7 +66,7 @@ import (
 func buildVoiceoverService(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *databases,
+	dbs *wiring.Databases,
 	log *zap.Logger,
 
 	driveUploader *drive.Uploader,
@@ -94,14 +94,14 @@ func buildVoiceoverService(
 	}
 
 	voDir := cfg.Storage.VoiceoversPath()
-	voRepo := assets.NewVoiceoversRepository(dbs.dualPool.Writer)
+	voRepo := assets.NewVoiceoversRepository(dbs.DualPool.Writer)
 
 	// P1-2 (June 2026): persistence.Repository adapter — wraps the
 	// production *sqassets.VoiceoversRepository + *sql.DB so the
 	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
 	// through a canonical port instead of holding a *sql.DB field
 	// (the previous field was removed in P1-2 commit 1).
-	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.dualPool.Writer)
+	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
 	// lifecycle.Registry so NewLifecycleFromDeps accepts it.
@@ -350,14 +350,14 @@ func buildVoiceoverService(
 	// P0.4 Fase 4a (July 2026): wire the post-commit SQL verifier.
 	// After the tx commits, finalizeStage calls Verify to confirm both
 	// the voiceovers row and the media_assets projection are durably
-	// present. The adapter uses dbs.dualPool.Writer for post-commit SELECTs.
-	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.dualPool.Writer)
+	// present. The adapter uses dbs.DualPool.Writer for post-commit SELECTs.
+	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.DualPool.Writer)
 
 	// PR-CATALOG-MULTILINGUA step 3 (July 2026): build the canonical
 	// per-language capability surface used by the voiceover pipeline to
 	// resolve EdgeTTSVoice identifiers. A nil registry falls through
 	// to the bridge's emergency fallback (nil-safe in process.go).
-	languageRegistry, err := buildLanguageRegistry(activeMultilingualConfig(cfg))
+	languageRegistry, err := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("compose voiceover: language registry: %w", err)
 	}

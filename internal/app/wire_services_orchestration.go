@@ -132,9 +132,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	})
 	// PG-011: removed the defensive logDB.Close block — the observability
 	// DB is the same handle as root.DB (the OpenSet opens both as a single
-	// SQLiteDB-set; root.DB and dbs.main share the underlying *sql.DB).
+	// SQLiteDB-set; root.DB and dbs.Main share the underlying *sql.DB).
 	// Closing it twice would error; the partialCleanup inside coreClean
-	// already handles dbs.main.Close() once.
+	// already handles dbs.Main.Close() once.
 	cleanupStack = append(cleanupStack, middleware.StopLogger)
 
 	// Reuse the broker constructed in initCompositionMinimalWithContext

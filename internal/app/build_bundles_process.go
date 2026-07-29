@@ -96,7 +96,7 @@ import (
 // handles local file removal (stdlib os.Remove, no port ceremony)
 // and logs+skips the Drive delete branch with an operator-visible
 // warning. Production wiring always supplies a non-nil adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
@@ -138,7 +138,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
 		return nil, nil, err
 	}
-	outboxEventsRepo := outboxevents.NewRepository(dbs.dualPool.Writer)
+	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
 
 	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
 	// construction moved to AFTER the fail-closed handler
@@ -197,7 +197,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// place infra concrete types meet application ports — the
 	// outbox.Deps struct no longer needs MetadataDir because the
 	// handler gets its output dir as part of HandlerDeps at wire time.
-	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.dualPool.Writer)
+	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
 	metadataExportWriter := &filesmetadataexport.FileWriter{}
 	metadataExportDeps := metadataexport.HandlerDeps{
 		Resolver:  metadataExportResolver,
@@ -209,7 +209,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	outboxDeps := &jobsoutbox.Deps{
 		Infra: jobsoutbox.InfraDeps{
-			DB:          dbs.dualPool.Writer,
+			DB:          dbs.DualPool.Writer,
 			HTTPClient:  httpClient,
 			HMACSecrets: hmacSecrets,
 			InsecureDev: cfg.Security.DeliveryInsecureDev,
@@ -356,7 +356,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log,
 	)
 	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
-	outboxTxMgr := outbox.NewManager(dbs.dualPool.Writer, log)
+	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
 	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
@@ -444,7 +444,7 @@ func startOutboxEventsPool(
 func wireMediaProcessor(
 	outbox *wiring.OutboxBundle,
 	repos *wiring.RepoBundle,
-	dbs *databases,
+	dbs *wiring.Databases,
 	cfg *config.Config,
 	publisher delivery.Publisher,
 	log *zap.Logger,
@@ -457,9 +457,9 @@ func wireMediaProcessor(
 	if err != nil {
 		return nil, fmt.Errorf("wireMediaProcessor: mutations dispatcher adapter: %w", err)
 	}
-	mp := initMediaProcessor(
+	mp := wiring.InitMediaProcessor(
 		cfg,
-		dbs.main,
+		dbs.Main,
 		repos.Assets.Repository(),
 		repos.Assets,
 		repos.Assets.LocationRepository(),

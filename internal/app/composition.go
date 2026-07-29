@@ -23,7 +23,7 @@ import (
 
 // NewComposition assembles all bundles in dependency order and returns
 // the fully-wired wiring.ComposeRoot. Cleanup is owned by shutdown.go.
-func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*wiring.ComposeRoot, error) {
+func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.ComposeRoot, error) {
 	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose repos: %w", err)
@@ -39,13 +39,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
 
-	jobsDB := dbs.main
-	if dbs.jobs != nil {
-		jobsDB = dbs.jobs
+	jobsDB := dbs.Main
+	if dbs.Jobs != nil {
+		jobsDB = dbs.Jobs
 	}
 	// Cross-domain dependencies are threaded into wiring.JobsBundle here so that
 	// downstream constructors can keep strict, narrow signatures.
-	jobs, err := wiring.BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.driveUploader, driveBundle.Lifecycle)
+	jobs, err := wiring.BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}
@@ -100,7 +100,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}
 
-	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
+	utility := BuildUtilityBundle(cfg, dbs.Main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
 	acquirePorts := &wiring.AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
@@ -129,7 +129,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	}
 
 	root := &wiring.ComposeRoot{
-		DB:         dbs.main,
+		DB:         dbs.Main,
 		Drive:      driveBundle,
 		Repos:      repos,
 		Search:     search,
@@ -189,12 +189,12 @@ func wireLateBindings(cfg *config.Config, sync *wiring.SyncBundle, domains *wiri
 	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
 		return fmt.Errorf("compose clipindexer late-binding: %w", err)
 	}
-	if err := wireTextTrackJobBindings(textTracks, jobs); err != nil {
+	if err := wiring.WireTextTrackJobBindings(textTracks, jobs); err != nil {
 		return fmt.Errorf("compose texttracks late-binding: %w", err)
 	}
 	wiring.WireTextTracksFanOut(textTracks, jobs.Service, log)
 	if textTracks.FanOut != nil {
-		textTracks.FanOut.SetDefaultSourceLanguage(activeMultilingualConfig(cfg).SourceLanguage)
+		textTracks.FanOut.SetDefaultSourceLanguage(wiring.ActiveMultilingualConfig(cfg).SourceLanguage)
 	}
 	return nil
 }

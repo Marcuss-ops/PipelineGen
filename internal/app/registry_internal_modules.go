@@ -23,7 +23,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
+func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
 
@@ -104,7 +104,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
 		DB:                root.DB,
 		Assets:            root.Repos.Assets,
-		DriveUploader:     root.Drive.driveUploader,
+		DriveUploader:     root.Drive.DriveUploader,
 		Lifecycle:         root.Drive.Lifecycle,
 		Publisher:         root.Drive.Publisher,
 		ImageRepo:         root.Repos.ImageRepo,
@@ -184,7 +184,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	return nil
 }
 
-func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
+func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
 	if !cfg.Features.ArtlistEnabled {
 		log.Info("registerArtlist: feature disabled (cfg.Features.ArtlistEnabled=false); skipping route registration")
 		wiring.ArtlistSvc = nil
@@ -201,7 +201,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 			Assets:             root.Repos.Assets,
 			ClipsRepo:          root.Repos.ClipsRepo,
 			DriveClient:        nil,
-			DriveUploader:      root.Drive.driveUploader,
+			DriveUploader:      root.Drive.DriveUploader,
 			Publisher:          root.Drive.Publisher,
 			AssetIndexService:  root.Search.AssetIndexService,
 			ClipIndexerService: root.Process.ClipIndexerService,
@@ -252,7 +252,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 	return nil
 }
 
-func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) error {
+func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) error {
 	if !cfg.Features.YouTubeEnabled {
 		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
 		wiring.YouTubeClip = nil

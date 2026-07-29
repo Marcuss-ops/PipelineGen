@@ -21,7 +21,7 @@ import (
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle) (*wiring.MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle) (*wiring.MaintBundle, error) {
 	_ = ctx
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
 	// REMOVED from the canonical ctor — the field has been retired
@@ -43,7 +43,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		Dispatcher: outboxBundle.Dispatcher,
 		Log:        log,
 	})
-	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.dualPool.Writer, log)
+	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.DualPool.Writer, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
 		jobs.Service, maintRepo,

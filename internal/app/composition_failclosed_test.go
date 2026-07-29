@@ -107,11 +107,11 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	cfg.ClipIndexer.Enabled = false // sidecar OFF (the RED-POINT under test)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
-	require.NoError(t, err, "initDatabases")
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	require.NoError(t, err, "wiring.InitDatabases")
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -160,11 +160,11 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 	cfg.Qdrant.Enabled = false     // Qdrant OFF — the BLOCKER #3 trigger
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
-	require.NoError(t, err, "initDatabases")
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	require.NoError(t, err, "wiring.InitDatabases")
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -217,11 +217,11 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -232,7 +232,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, qd.QdrantDeleter)
 
-	jobsBundle, err := BuildJobsBundle(dbs.main, log, nil, nil, nil, nil)
+	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
 	// Force a nil AssetDeleter dep at the BuildOutboxBundle call site

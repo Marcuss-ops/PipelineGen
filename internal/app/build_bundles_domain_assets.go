@@ -36,7 +36,7 @@ import (
 type buildDomainAssetServicesParams struct {
 	ctx           context.Context
 	cfg           *config.Config
-	dbs           *databases
+	dbs           *wiring.Databases
 	log           *zap.Logger
 	drive         *wiring.DriveBundle
 	repos         *wiring.RepoBundle
@@ -73,7 +73,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		voiceoverDestResolver = resolved
 	}
 	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverService(params.ctx, params.cfg, params.dbs, params.log,
-		params.drive.driveUploader,
+		params.drive.DriveUploader,
 		params.drive.Publisher,
 		params.search.AssetIndexService, params.process.ClipIndexerService,
 		voiceoverDestResolver,
@@ -84,24 +84,24 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		return fmt.Errorf("compose domains: voiceover service: %w", err)
 	}
 
-	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, params.drive.Publisher, params.drive.driveUploader)
+	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, params.drive.Publisher, params.drive.DriveUploader)
 	if err != nil {
 		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}
 
-	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.driveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp)
+	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.DriveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp)
 
 	imageSvc, metaWriter := buildImagesService(buildImagesParams{
 		Cfg:           params.cfg,
 		Log:           params.log,
-		DriveUploader: params.drive.driveUploader,
+		DriveUploader: params.drive.DriveUploader,
 		StyleRegistry: params.drive.StyleRegistry,
 		ScriptGen:     params.ai.ScriptGen,
 		Publisher:     params.drive.Publisher,
 		ImageRepo:     params.repos.ImageRepo,
 		VOMetaWriter:  params.voMetaWriter,
 		IngestSvc:     ingestSvc,
-		Committer:     sqassets.NewSQLiteAssetCommitter(params.dbs.dualPool.Writer, params.outbox.EventsRepo, params.log),
+		Committer:     sqassets.NewSQLiteAssetCommitter(params.dbs.DualPool.Writer, params.outbox.EventsRepo, params.log),
 		Dispatcher:    params.outbox.Dispatcher,
 	})
 
@@ -145,7 +145,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	}
 
 	autotagSvc := autotag.NewService(autotag.ServiceDeps{
-		DB: params.dbs.dualPool.Writer, Repo: params.repos.Assets.Repository(),
+		DB: params.dbs.DualPool.Writer, Repo: params.repos.Assets.Repository(),
 		VLMClient: params.process.VLMClient, Dispatcher: params.mutationsDisp,
 		EnrichState: enrichState, Log: params.log,
 		VideoAnalysis: autotag.VideoAnalysisDeps{
@@ -171,7 +171,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 
 	var vosyncSvc *voiceoverreconcile.Service
 	if voFolder := params.cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
-		vosyncSvc = voiceoverreconcile.NewService(params.drive.driveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
+		vosyncSvc = voiceoverreconcile.NewService(params.drive.DriveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
 		params.log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 

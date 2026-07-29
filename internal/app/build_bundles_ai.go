@@ -27,10 +27,10 @@ import (
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
 // and Drive.DriveUploader (which were constructed earlier).
-// PR4.A (June 2026): MemoryRepo is created here (dbs.dualPool.Writer), not in BuildRepoBundle,
+// PR4.A (June 2026): MemoryRepo is created here (dbs.DualPool.Writer), not in BuildRepoBundle,
 // so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
 // without going through wiring.RepoBundle.
-func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle, drive *wiring.DriveBundle) (*wiring.AIBundle, error) {
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, drive *wiring.DriveBundle) (*wiring.AIBundle, error) {
 	_ = ctx
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
@@ -79,9 +79,9 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := sqlitescripts.NewCache(dbs.dualPool.Writer)
+	translationCache := sqlitescripts.NewCache(dbs.DualPool.Writer)
 	scriptGen.SetTranslationCache(translationCache)
-	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
+	log.Info("translation cache initialized", zap.String("db", dbs.Main.Path()))
 
 	// Construct the single application-layer OllamaTranslator per
 	// process and route the canonical TranslationPort through it. Wrap
@@ -106,7 +106,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// provided by sqlitescripts.MemoryRepository and wrapped here in the
 	// composition root so that no application-layer package imports
 	// database/sql (PR-REFACTOR-P0-IO-BINDER).
-	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.dualPool.Writer)
+	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
 	memGate := newScriptMemoryGate(scriptMemRepo)
 	memSvc := adapters.NewService(memGate, log)
 	engine := usecase.NewEngine(scriptGen, usecase.NewMemoryGateChecker(memSvc), log)
@@ -152,6 +152,6 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		MemorySvc:          memSvc,
 		ScriptEngine:       engine,
 		WhisperTranscriber: whisperAdapter,
-		wiring.SceneTextGenerator: sceneTextGen,
+		SceneTextGenerator: sceneTextGen,
 	}, nil
 }
