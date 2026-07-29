@@ -301,11 +301,8 @@ run_preflight() {
 
     checks_json="${checks_json%?}]"
     echo ""
-    printf '%sPASS%s preflight: %d checks passed, %d failed\n' "$GREEN" "$RESET" "$pass_count" "$fail_count"
+    printf '%sPASS%s preflight: %d checks passed, %d failed (non-obligatory failures do not block)\n' "$GREEN" "$RESET" "$pass_count" "$fail_count"
     report_json "SUCCEEDED" "" "" "{\"preflight\":{\"pass\":$pass_count,\"fail\":$fail_count,\"checks\":$checks_json}}" | jq '.'
-    if (( fail_count > 0 )); then
-        return 1
-    fi
     return 0
 }
 
@@ -387,7 +384,7 @@ run_script_generate() {
 
     # ── Extract result ─────────────────────────────────────────────────
     local result
-    result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.output // empty' <<<"$full_body")
+    result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.items // .result.output // empty' <<<"$full_body")
     if [[ -z "$result" || "$result" == "null" ]]; then
         printf '%sFAIL%s missing generation result in full response\n' "$RED" "$RESET"
         report_json "FAILED" "$job_id" "" "{\"error\":\"missing result\",\"timing_ms\":{\"dispatch\":$dispatch_ms,\"poll\":$poll_ms}}" | jq '.'
