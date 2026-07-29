@@ -61,7 +61,7 @@
   rationale: "Migrate production imports from the compatibility domain/job surface to the canonical internal/kernel/job contract, then delete the compatibility aliases when the census reaches zero."
   count:
     baseline_initial: 172
-    current: 172
+    current: 0
     target_zero: 0
   cross_refs:
     canonical_import: "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
