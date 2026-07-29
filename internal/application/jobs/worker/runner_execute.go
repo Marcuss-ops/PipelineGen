@@ -173,5 +173,3 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	}
 	return tools.Complete(jobCtx, resultJSON)
 }
-
-
