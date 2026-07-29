@@ -12,7 +12,7 @@
 //
 //   - wire_services_composition.go   : COMPOSITION flow. Opens DBs +
 //     migrations, calls NewComposition
-//     (builds the *ComposeRoot with 12
+//     (builds the *wiring.ComposeRoot with 12
 //     bundles), constructs the local
 //     broker + JobFinalizer, starts
 //     background jobs, builds the
@@ -40,14 +40,15 @@
 // averaging ~150 LOC each, each with one stage-aligned responsibility
 // + cross-file deps documented in its header.
 //
-// godlike/06 SSOT: the *ComposeRoot contract produced here is
-// canonical; no caller constructs a *ComposeRoot-shaped value outside
+// godlike/06 SSOT: the *wiring.ComposeRoot contract produced here is
+// canonical; no caller constructs a *wiring.ComposeRoot-shaped value outside
 // NewComposition + the test fixtures in composition_ordering_test.go.
-// The split does NOT change ComposeRoot fields, AppDeps fields, or
+// The split does NOT change wiring.ComposeRoot fields, AppDeps fields, or
 // any public function signature.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 
 	"go.uber.org/zap"
@@ -55,17 +56,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// InitComposition returns the unified *ComposeRoot tree directly.
+// InitComposition returns the unified *wiring.ComposeRoot tree directly.
 // PR4d-final (June 2026): the legacy *CoreDeps projection was deleted —
-// the public entry point now returns *ComposeRoot + *backgroundJobs so
+// the public entry point now returns *wiring.ComposeRoot + *backgroundJobs so
 // callers can start the JobRunner AFTER WireRegistry has registered all
 // handlers.
-func InitComposition(cfg *config.Config, log *zap.Logger) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+func InitComposition(cfg *config.Config, log *zap.Logger) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
 	return initCompositionMinimal(cfg, log, "")
 }
 
 // WireMinimal creates a minimal server with core services only.
-// Uses InitComposition to build the full *ComposeRoot (so background jobs,
+// Uses InitComposition to build the full *wiring.ComposeRoot (so background jobs,
 // migrations, and DB are wired identically to WireServices), but returns
 // an empty registry so the caller can mount routes selectively.
 func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {

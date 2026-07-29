@@ -23,6 +23,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -48,10 +49,10 @@ import (
 )
 
 // WireArtlist constructs *artlist.Service + *ArtlistDescriptor from the canonical
-// ArtlistBundle populated by registerArtlist + the 5 ComposeRoot receiver-fields
+// wiring.ArtlistBundle populated by registerArtlist + the 5 wiring.ComposeRoot receiver-fields
 // (Dispatcher / Drive.Reader / Drive.Lifecycle / MetaWriter / DestResolver) that
-// were not pre-exposed on ArtlistBundle by PR4d-chunk2 convention. Each of the
-// 5 is a DIRECT receiver from ComposeRoot — not an adapter shim (godlike/06 SSOT).
+// were not pre-exposed on wiring.ArtlistBundle by PR4d-chunk2 convention. Each of the
+// 5 is a DIRECT receiver from wiring.ComposeRoot — not an adapter shim (godlike/06 SSOT).
 //
 // godlike/07: 7 mandatory gates checked UPFRONT. The first 4 are
 // runtime-wiring gates (Publisher / Dispatcher / ClipsRepo / Jobs.Service);
@@ -66,14 +67,14 @@ func WireArtlist(
 	ctx context.Context,
 	log *zap.Logger,
 	cfg *config.Config,
-	bundle *ArtlistBundle,
+	bundle *wiring.ArtlistBundle,
 	dispatcher *outbox.Dispatcher,
 	reader drivepkg.Reader,
 	lifecycle drivepkg.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
 	textTrackFanOut ...*texttracks.MaterializeFanOut,
-) (*ArtlistWiring, error) {
+) (*wiring.ArtlistWiring, error) {
 	_ = ctx
 
 	// godlike/07 fail-closed: 5 mandatory UPFRONT gates (4 wiring + 1 cfg).
@@ -303,7 +304,7 @@ func WireArtlist(
 	// canonical would yield a nil adapter; the handler's nil-
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
-	bundle.ClipResolver = NewClipResolverRecommendAdapter(
+	bundle.ClipResolver = wiring.NewClipResolverRecommendAdapter(
 		scripts_usecase.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
@@ -352,7 +353,7 @@ func WireArtlist(
 		zap.Strings("provider_assets", providerAssetsRegistry.Names()),
 		zap.Bool("godlike_06_ssot", true),
 	)
-	return &ArtlistWiring{
+	return &wiring.ArtlistWiring{
 		Module:         ad.Module,
 		Service:        ad.Service,
 		ProviderAssets: providerAssetsRegistry,
@@ -421,7 +422,7 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 // to dead-letter forever without a consumer). The composition-time
 // fail-closed contract is the user-spec literal:
 // "fallisci l'avvio con un typed error (no warning silenzioso)".
-func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle) error {
+func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.JobsBundle) error {
 	if artlistSvc == nil {
 		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
 	}

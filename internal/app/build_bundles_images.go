@@ -3,6 +3,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -10,7 +11,7 @@ import (
 
 // wireImagesJobBinding registers the image generation handler into
 // jobs.Service. Extracted from NewComposition per PG-028.
-func wireImagesJobBinding(domains *DomainBundle, jobs *JobsBundle) error {
+func wireImagesJobBinding(domains *wiring.DomainBundle, jobs *wiring.JobsBundle) error {
 	if domains.ImageService != nil && jobs.Service != nil {
 		if err := domains.ImageService.RegisterHandler(jobs.Service); err != nil {
 			return fmt.Errorf("images.image_generate_google: %w", err)
@@ -22,7 +23,7 @@ func wireImagesJobBinding(domains *DomainBundle, jobs *JobsBundle) error {
 // appendImagesCriticalValidator populates the critical-handler validators
 // slice with the images.image_generate_google binding.
 // Extracted from NewComposition per PG-028.
-func appendImagesCriticalValidator(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+func appendImagesCriticalValidator(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
 	if domains.ImageService != nil && jobs.Service != nil {
 		img := domains.ImageService
 		*validators = append(*validators,

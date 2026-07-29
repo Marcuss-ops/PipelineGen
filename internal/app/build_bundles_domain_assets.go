@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -37,20 +38,20 @@ type buildDomainAssetServicesParams struct {
 	cfg           *config.Config
 	dbs           *databases
 	log           *zap.Logger
-	drive         *DriveBundle
-	repos         *RepoBundle
-	search        *SearchBundle
-	process       *ProcessBundle
-	ai            *AIBundle
-	outbox        *OutboxBundle
+	drive         *wiring.DriveBundle
+	repos         *wiring.RepoBundle
+	search        *wiring.SearchBundle
+	process       *wiring.ProcessBundle
+	ai            *wiring.AIBundle
+	outbox        *wiring.OutboxBundle
 	mutationsDisp mutations.AssetMutationDispatcher
 	voMetaWriter  semantic.MetadataWriterPort
-	bundle        *DomainBundle
+	bundle        *wiring.DomainBundle
 }
 
 // buildDomainAssetServices constructs the voiceover, books, ingest,
 // images, lessons, and voiceover-sync services and populates the
-// DomainBundle with them.
+// wiring.DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the SOLE canonical
 // owner of its composition.
@@ -61,7 +62,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	voiceoverDestResolver := params.drive.DestResolver
 	// Voiceover group names are resolved against the canonical SQLite
 	// asset tree rooted at Drive.VoiceoverFolder. Do not reuse the
-	// generic DriveBundle resolver here: that resolver may belong to a
+	// generic wiring.DriveBundle resolver here: that resolver may belong to a
 	// different asset family (for example images) and would turn a valid
 	// voiceover group into an empty destination.
 	if params.search != nil && params.cfg.Drive.VoiceoverFolder() != "" {

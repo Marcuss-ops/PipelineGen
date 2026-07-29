@@ -6,7 +6,7 @@
 // This file owns the COMPOSITION stage: the chain that:
 //  1. Opens databases
 //  2. Runs migrations
-//  3. Calls NewComposition (builds *ComposeRoot with 12 bundles)
+//  3. Calls NewComposition (builds *wiring.ComposeRoot with 12 bundles)
 //  4. Constructs the local broker (PR-WORKER-RUNNER-INPROCESS-MIGRATION,
 //     July 2026)
 //  5. Wires JobFinalizer for Path B artifact-producing jobs
@@ -26,19 +26,20 @@
 //   - jobsfinalizer.New
 //
 // The composition-buildable assets (broker, finalizer, textTracks.FanOut
-// wiring) are stored on *ComposeRoot bundles so the orchestration stage
+// wiring) are stored on *wiring.ComposeRoot bundles so the orchestration stage
 // (wire_services_orchestration.go) can re-cast them as typed ports.
 //
 // Why NOT extend the split inside WireServices for assetSvc +
 // workerHandler construction: those two are built FROM root.* fields +
 // broker AFTER initCompositionMinimal has returned, and they live
-// exclusively in AppDeps.Handlers.WorkerHandler (not on ComposeRoot).
+// exclusively in AppDeps.Handlers.WorkerHandler (not on wiring.ComposeRoot).
 // Promoting them to composition would require adding fields to
-// ComposeRoot, which violates the godlike/06 SSOT contract for this
-// refactor (ComposeRoot contract must stay unchanged).
+// wiring.ComposeRoot, which violates the godlike/06 SSOT contract for this
+// refactor (wiring.ComposeRoot contract must stay unchanged).
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"time"
@@ -56,11 +57,11 @@ import (
 
 // initCompositionMinimal is the public-name entry for servers and tests
 // that do NOT need a parent ctx (defaults to context.Background()).
-func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
 	return initCompositionMinimalWithContext(context.Background(), cfg, log, mode, context.Background())
 }
 
-func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*wiring.ComposeRoot, *backgroundJobs, wiring.CleanupFunc, error) {
 	ctx, cancel := context.WithCancel(parent)
 
 	hosts := append(cfg.Security.AllowedDownloadHosts, "youtube.com", "youtu.be", "www.youtube.com")

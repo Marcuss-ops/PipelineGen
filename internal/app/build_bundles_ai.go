@@ -8,6 +8,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -28,8 +29,8 @@ import (
 // and Drive.DriveUploader (which were constructed earlier).
 // PR4.A (June 2026): MemoryRepo is created here (dbs.dualPool.Writer), not in BuildRepoBundle,
 // so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
-// without going through RepoBundle.
-func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
+// without going through wiring.RepoBundle.
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle, drive *wiring.DriveBundle) (*wiring.AIBundle, error) {
 	_ = ctx
 	_ = drive
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
@@ -114,7 +115,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// WhisperTranscriber adapter is the SOLE canonical concrete
 	// for the WhisperTranscriber interface
 	// (internal/infrastructure/youtube/ports.go). Constructed
-	// here so the AIBundle can expose it for the backfill
+	// here so the wiring.AIBundle can expose it for the backfill
 	// CLI's 5-priority chain (priority 5: Whisper fallback).
 	// The adapter spawns scripts/bridges/whisper_transcriber.py
 	// via subprocess and parses its JSON output into the
@@ -128,20 +129,20 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	if wErr != nil {
 		// godlike/07 fail-closed: surface the typed error.
 		// The composition root MUST NOT register a
-		// half-wired AIBundle — operators see a hard fail
+		// half-wired wiring.AIBundle — operators see a hard fail
 		// at startup, not silent gaps at runtime.
 		return nil, fmt.Errorf("compose ai: whisper transcriber: %w", wErr)
 	}
 	log.Info("WhisperTranscriber adapter configured (Fase 5)")
 
-	// P1 verdetto: SceneTextGenerator wraps the Engine to produce
+	// P1 verdetto: wiring.SceneTextGenerator wraps the Engine to produce
 	// AI-generated scene text (scene-by-scene) separate from the
 	// Translator. The adapter bridges scriptgeneration.GenerateRequest
 	// to the existing engine ResolvedGenerationPlan.
-	sceneTextGen := NewSceneTextGenerator(engine, log)
-	log.Info("SceneTextGenerator adapter configured (P1 verdetto)")
+	sceneTextGen := wiring.NewSceneTextGenerator(engine, log)
+	log.Info("wiring.SceneTextGenerator adapter configured (P1 verdetto)")
 
-	return &AIBundle{
+	return &wiring.AIBundle{
 		OllamaClient:       ollamaClient,
 		OllamaEmbedClient:  ollamaEmbedClient,
 		Reranker:           rerankerClient,
@@ -151,6 +152,6 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		MemorySvc:          memSvc,
 		ScriptEngine:       engine,
 		WhisperTranscriber: whisperAdapter,
-		SceneTextGenerator: sceneTextGen,
+		wiring.SceneTextGenerator: sceneTextGen,
 	}, nil
 }

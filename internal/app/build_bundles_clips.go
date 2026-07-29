@@ -2,6 +2,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -9,7 +10,7 @@ import (
 
 // wireClipIndexerJobBinding registers the media_reindex handler into
 // jobs.Service.
-func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
+func wireClipIndexerJobBinding(process *wiring.ProcessBundle, jobs *wiring.JobsBundle) error {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
 			return fmt.Errorf("clipindexer.media_reindex: %w", err)
@@ -20,7 +21,7 @@ func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
 
 // appendClipIndexerCriticalValidator populates the critical-handler
 // validators slice with the clipindexer.media_reindex binding.
-func appendClipIndexerCriticalValidator(process *ProcessBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+func appendClipIndexerCriticalValidator(process *wiring.ProcessBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		ci := process.ClipIndexerService
 		*validators = append(*validators,

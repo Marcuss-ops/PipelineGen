@@ -17,6 +17,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"strings"
@@ -29,7 +30,7 @@ import (
 )
 
 // assetTreeVoiceoverResolver is the production resolver for voiceover
-// destinations. DriveBundle no longer owns a generic destination resolver;
+// destinations. wiring.DriveBundle no longer owns a generic destination resolver;
 // voiceover routing is rooted in the configured voiceover folder and the
 // canonical SQLite-backed asset tree.
 type assetTreeVoiceoverResolver struct {

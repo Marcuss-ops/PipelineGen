@@ -25,6 +25,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"time"
 
@@ -46,7 +47,7 @@ import (
 // mirrors the jobRunnerDeps + workerDeps + schedulerDeps pattern.
 type maintenanceDeps struct {
 	cfg  *config.Config
-	root *ComposeRoot
+	root *wiring.ComposeRoot
 	log  *zap.Logger
 }
 
@@ -158,7 +159,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 	// + PR-QDRANT-FINAL-DECISION 2026-07-04: Qdrant is the canonical
 	// data-path vector store; the 3 background-cleanup steps retired
 	// earlier will be re-introduced by Wave 30 BACKFILL with the
-	// canonical scope pinned to composition.go::ProcessBundle).
+	// canonical scope pinned to composition.go::wiring.ProcessBundle).
 
 	if deps.root.Repos.ClipsRepo != nil {
 		cr := deps.root.Repos.ClipsRepo

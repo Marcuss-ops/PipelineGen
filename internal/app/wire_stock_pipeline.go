@@ -20,6 +20,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql"
 	"fmt"
@@ -43,8 +44,8 @@ import (
 )
 
 // WireStockPipeline constructs every stock pipeline dependency from the
-// ComposeRoot and routes them through BuildStockBundle. Returns a fully
-// populated *StockPipelineWiring on success, or (nil, error) when a
+// wiring.ComposeRoot and routes them through BuildStockBundle. Returns a fully
+// populated *wiring.StockPipelineWiring on success, or (nil, error) when a
 // required dep is missing (godlike/07 fail-closed).
 //
 // Dep construction sequence:
@@ -57,7 +58,7 @@ import (
 //
 // Returns (nil, nil) when StockPipelineEnabled is false — the caller
 // treats nil wiring as "route not mounted" (no error, no registration).
-func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*StockPipelineWiring, error) {
+func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot) (*wiring.StockPipelineWiring, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("wire stock pipeline: cfg is nil")
 	}

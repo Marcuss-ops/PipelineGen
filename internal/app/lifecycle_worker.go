@@ -20,6 +20,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"time"
 
@@ -44,7 +45,7 @@ import (
 // says "don't run voiceover's background goroutines" — composition root
 // must respect that flag, not just initialize-under-noisy-crash).
 type workerDeps struct {
-	root *ComposeRoot
+	root *wiring.ComposeRoot
 	cfg  *config.Config
 	log  *zap.Logger
 }

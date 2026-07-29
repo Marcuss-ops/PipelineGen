@@ -19,6 +19,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -45,7 +46,7 @@ import (
 // mirrors the jobRunnerDeps + workerDeps pattern.
 type schedulerDeps struct {
 	cfg  *config.Config
-	root *ComposeRoot
+	root *wiring.ComposeRoot
 	log  *zap.Logger
 }
 

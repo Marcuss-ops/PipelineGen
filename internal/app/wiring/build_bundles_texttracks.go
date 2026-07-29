@@ -91,8 +91,8 @@ func BuildTextTrackBundle(
 		return nil, fmt.Errorf("compose texttracks: log is required")
 	}
 
-	mlCfg := activeMultilingualConfig(cfg)
-	registry, err := buildLanguageRegistry(mlCfg)
+	mlCfg := ActiveMultilingualConfig(cfg)
+	registry, err := BuildLanguageRegistry(mlCfg)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: language registry: %w", err)
 	}
@@ -231,9 +231,9 @@ func WireTextTracksFanOut(
 	textTracks.FanOut = texttracks.NewMaterializeFanOut(jobsService, log)
 }
 
-// wireTextTrackJobBindings registers the asset.text.materialize
+// WireTextTrackJobBindings registers the asset.text.materialize
 // handler with the canonical jobs.Service.
-func wireTextTrackJobBindings(
+func WireTextTrackJobBindings(
 	textTracks *TextTrackBundle,
 	jobsBundle *JobsBundle,
 ) error {
@@ -249,7 +249,7 @@ func wireTextTrackJobBindings(
 	return nil
 }
 
-// buildLanguageRegistry constructs the canonical
+// BuildLanguageRegistry constructs the canonical
 // asset.LanguageRegistry from cfg.MultilingualConfig. godlike/06
 // SSOT: this helper is the SOLE canonical owner of the
 // "YAML → registry" projection. Two-tier priority:
@@ -270,7 +270,7 @@ func wireTextTrackJobBindings(
 // surfaces every other compose-time failure. godlike/07
 // fail-closed does NOT require a panic: an error returned
 // from the composition root IS the boot-time fail-fast.
-func buildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry, error) {
+func BuildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry, error) {
 	if len(ml.Languages) > 0 {
 		reg, err := asset.NewLanguageRegistry(ml.Languages)
 		if err != nil {
@@ -281,12 +281,12 @@ func buildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry
 	return asset.EmptyLanguageRegistry(), nil
 }
 
-// buildMultilingualLanguageCSV projects the canonical registry onto a
+// BuildMultilingualLanguageCSV projects the canonical registry onto a
 // deterministic comma-separated language list. Callers can filter the
 // enabled set when a specific capability is needed (e.g. subtitle
 // probing wants TranslateClips=true targets only).
-func buildMultilingualLanguageCSV(ml config.MultilingualConfig, filter func(asset.LanguageSpec) bool) (string, error) {
-	reg, err := buildLanguageRegistry(ml)
+func BuildMultilingualLanguageCSV(ml config.MultilingualConfig, filter func(asset.LanguageSpec) bool) (string, error) {
+	reg, err := BuildLanguageRegistry(ml)
 	if err != nil {
 		return "", err
 	}
@@ -301,10 +301,10 @@ func buildMultilingualLanguageCSV(ml config.MultilingualConfig, filter func(asse
 	return buildBcp47CSV(codes), nil
 }
 
-// activeMultilingualConfig picks the nested media.multilingual config
+// ActiveMultilingualConfig picks the nested media.multilingual config
 // when present and falls back to the legacy top-level Multilingual
 // block for back-compat tests and old YAMLs.
-func activeMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
+func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 	if cfg == nil {
 		return config.MultilingualConfig{}
 	}

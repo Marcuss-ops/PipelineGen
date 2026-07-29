@@ -2,7 +2,7 @@
 //
 // Extracted from bootstrap.go so the bootstrap.go entry-point file remains
 // strictly free of `internal/infrastructure/*` imports. The `databases`
-// struct + `initDatabases` + `runAllMigrations` helpers are pure concrete
+// struct + `InitDatabases` + `RunAllMigrations` helpers are pure concrete
 // wiring (storage.OpenSet, connection pooling + WAL/busy_timeout config,
 // schema migration); only the composition root is allowed to keep the
 // infra imports.
@@ -58,7 +58,7 @@ type CleanupFunc func()
 //
 // PR-Queue-Split-EXPAND (June 2026): the `jobs` field is added for the
 // EXPAND-on flag shape. When cfg.Jobs.SplitDBEnabled is true,
-// `initDatabases` opens a separate jobs.db.sqlite file via
+// `InitDatabases` opens a separate jobs.db.sqlite file via
 // storage.OpenSQLiteDB and populates this field; composition.go picks
 // `dbs.Jobs` over `dbs.Main` for the JobsBundle's *SQLiteStore when
 // `dbs.Jobs != nil`. Default behaviour: `jobs` stays nil.
@@ -76,7 +76,7 @@ type CleanupFunc func()
 //   - dbs.Main: storage.SQLiteDB wrapper around dbs.Set.Primary.DB.
 //   - dbs.Logs: storage.SQLiteDB wrapper around dbs.Set.Observability.DB.
 //   - dbs.DualPool: nil in tests that bypass NewDualPool (legacy TestDB).
-//     Production callers (initDatabases) MUST construct a non-nil
+//     Production callers (InitDatabases) MUST construct a non-nil
 //     DualPool so the canonical instrumentation surface (Cut 6.2
 //     metrics + EXPLAIN) fires at boot.
 //   - dbs.Jobs: non-nil only when cfg.Jobs.SplitDBEnabled=true.
@@ -114,7 +114,7 @@ func (d *Databases) Close() {
 	}
 }
 
-// initDatabases opens BOTH the primary + observability DBs via the
+// InitDatabases opens BOTH the primary + observability DBs via the
 // canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
 // remains outside `internal/infrastructure/database/**`.
 //
@@ -135,7 +135,7 @@ func (d *Databases) Close() {
 // PR-Queue-Split-EXPAND (June 2026): when cfg.Jobs.SplitDBEnabled is
 // true, also opens jobs.db.sqlite via storage.OpenSQLiteDB and
 // populates dbs.Jobs.
-func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
+func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
 		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
@@ -171,7 +171,7 @@ func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 		zap.String("primary_path", setCfg.PrimaryDBPath),
 	)
 
-	// PR-Queue-Split-EXPAND: gate at initDatabases so the JobsBundle can
+	// PR-Queue-Split-EXPAND: gate at InitDatabases so the JobsBundle can
 	// pick the right DB at composition-root call time (BuildJobsBundle's
 	// signature does not need to change — it accepts a *storage.SQLiteDB).
 	if cfg != nil && cfg.Jobs.SplitDBEnabled {
@@ -224,7 +224,7 @@ const jobsMigrationsDir = "migrations/sqlite_jobs"
 // stripping "media.db.sqlite" from the primary path's basename and
 // substituting "jobs.db.sqlite" — the canonical pair lives side-by-side.
 // Returns the primary path verbatim if it does not end in
-// media.db.sqlite (operator-set custom layout); the caller (initDatabases)
+// media.db.sqlite (operator-set custom layout); the caller (InitDatabases)
 // decides whether to error or pass through.
 func jobsDBPathFromPrimary(primaryPath string) string {
 	dir := filepath.Dir(primaryPath)
@@ -235,7 +235,7 @@ func jobsDBPathFromPrimary(primaryPath string) string {
 	return filepath.Join(dir, strings.Replace(base, "media.db.sqlite", "jobs.db.sqlite", 1))
 }
 
-func runAllMigrations(dbs *Databases, log *zap.Logger) error {
+func RunAllMigrations(dbs *Databases, log *zap.Logger) error {
 	if err := dbs.Set.Migrate(log); err != nil {
 		return err
 	}

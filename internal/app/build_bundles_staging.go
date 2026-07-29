@@ -7,7 +7,7 @@
 // Repository + staging.StoreService pair. No caller (worker pool,
 // finalizer, admin tool, test stub) should construct a second
 // instance or read the staging workspace dir independently — every
-// consumer reaches the typed ports via ComposeRoot.Staging.
+// consumer reaches the typed ports via wiring.ComposeRoot.Staging.
 //
 // godlike/06 SSOT: this is the SINGLE canonical wiring of the
 // FASE 3 application-layer staging step. The composition root
@@ -15,7 +15,7 @@
 // dependency order — it depends ONLY on dbs.main.DB (for the
 // artifact_stages SQLite handle) + cfg.Storage.StagingPath() (for
 // the canonical workspace dir) + log — so it can be placed at the
-// end of NewComposition, after BuildTextTrackBundle, without
+// end of NewComposition, after wiring.BuildTextTrackBundle, without
 // disturbing the existing 12-bundle aggregation.
 //
 // godlike/07 fail-closed: a misconfigured workspace dir (empty
@@ -29,6 +29,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -42,8 +43,8 @@ import (
 // staging bundle: the artifact_stages SQLite Repository (the
 // single-writer of the artifact_stages table) + the
 // application-layer staging.StoreService (the typed port the
-// publisher worker pool will drain into). Returns the StagingBundle
-// for assignment to ComposeRoot.Staging.
+// publisher worker pool will drain into). Returns the wiring.StagingBundle
+// for assignment to wiring.ComposeRoot.Staging.
 //
 // Dependency surface (intentionally minimal — only 3 deps):
 //   - dbs.main.DB: the *sql.DB handle the artifact_stages Repository
@@ -66,7 +67,7 @@ import (
 // (empty workspace dir — should never trigger after
 // StorageConfig.StagingPath()'s default-resolution but
 // fail-closed at the boundary anyway).
-func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*StagingBundle, error) {
+func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*wiring.StagingBundle, error) {
 	// Step 1: construct the artifact_stages SQLite Repository.
 	// artifactstages.NewRepository is the canonical concrete
 	// (internal/infrastructure/database/sqlite/artifact_stages).
@@ -78,11 +79,11 @@ func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*S
 	}
 	repo := artifactstages.NewRepository(dbs.dualPool.Writer)
 	// Conformance with artifact.Repository is pinned at the
-	// StagingBundle.Repository field type + the canonical anchor
+	// wiring.StagingBundle.Repository field type + the canonical anchor
 	// at internal/infrastructure/database/sqlite/artifact_stages/repository.go:51
 	// (`var _ artifact.Repository = (*Repository)(nil)`). The
 	// compiler checks the port conformance at the
-	// &StagingBundle{...} literal in this function's return.
+	// &wiring.StagingBundle{...} literal in this function's return.
 
 	// Step 2: resolve the staging workspace dir via the canonical
 	// StorageConfig method. StagingPath() returns
@@ -94,7 +95,7 @@ func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*S
 
 	// Step 3: construct the application-layer StoreService. The
 	// concrete is staging.NewStoreService; the field on
-	// StagingBundle is typed as the Store port so test stubs
+	// wiring.StagingBundle is typed as the Store port so test stubs
 	// (fakeStore) can satisfy it via Go's implicit-interface
 	// rules. The NewStoreService constructor fail-closes on
 	// nil repo (impossible — repo is non-nil above) or empty
@@ -105,10 +106,10 @@ func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*S
 		return nil, fmt.Errorf("build staging: NewStoreService (workspace=%q): %w", workspace, err)
 	}
 	// Conformance with staging.Store is pinned at the
-	// StagingBundle.Store field type + the canonical anchor at
+	// wiring.StagingBundle.Store field type + the canonical anchor at
 	// internal/application/staging/service.go:53
 	// (`var _ Store = (*StoreService)(nil)`). The compiler
-	// checks the port conformance at the &StagingBundle{...}
+	// checks the port conformance at the &wiring.StagingBundle{...}
 	// literal in this function's return.
 
 	log.Info("staging bundle wired (FASE 3 Spina Dorsale Push 3.1b)",
@@ -116,7 +117,7 @@ func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*S
 		zap.String("repository_table", "artifact_stages"),
 	)
 
-	return &StagingBundle{
+	return &wiring.StagingBundle{
 		Store:      store,
 		Repository: repo,
 		Workspace:  workspace,

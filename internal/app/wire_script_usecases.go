@@ -56,6 +56,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -92,7 +93,7 @@ import (
 // have now been fully removed (file + service entry + port/bundle).
 func buildScriptUseCases(
 	cfg *config.Config,
-	root *ComposeRoot,
+	root *wiring.ComposeRoot,
 	normCfg adapters.NormalizationConfig,
 	sourceReg *adapters.SourceRegistry,
 	ppReg *adapters.PostProcessorRegistry,

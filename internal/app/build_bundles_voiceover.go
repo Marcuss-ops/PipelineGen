@@ -12,10 +12,11 @@
 // Private-helper convention (lowercase `build*`) — these helpers are NOT
 // standalone composable bundles; they are internal to BuildDomainBundle
 // (build_bundles_domain.go) which aggregates their output into
-// ComposeRoot.Domains.
+// wiring.ComposeRoot.Domains.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -438,7 +439,7 @@ func (nopDestinationResolver) Resolve(_ context.Context, _ *voiceover.Destinatio
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +
 // voiceover.generate_item (BLOC5.3 child fanout) handlers into jobs.Service.
 // Extracted from NewComposition per PG-028 (July 2026).
-func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.Logger) error {
+func wireVoiceoverJobBindings(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, log *zap.Logger) error {
 	// Voiceover registration moved to the new GenerateJobHandler path
 	// (P0.1, June 2026) — see buildVoiceoverService.
 	// The legacy Service.RegisterHandler hook (which registered
@@ -518,7 +519,7 @@ func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.
 // appendVoiceoverCriticalValidators populates the critical-handler
 // validators slice with voiceover.generate + voiceover.generate_item bindings.
 // Extracted from NewComposition per PG-028 (July 2026).
-func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+func appendVoiceoverCriticalValidators(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
 	// voiceover.generate: literal Register re-call gated by
 	// HasHandler check to preserve BLOC5.3 + Catena A P0 idempotency
 	// (parent gate at late-bindings time). If the dispatcher already

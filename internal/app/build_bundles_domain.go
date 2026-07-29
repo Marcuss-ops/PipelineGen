@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -17,8 +18,8 @@ import (
 // domain's composition glue. The orchestrator owns ONLY the shared
 // deps (mutations dispatcher) and the bundle assembly.
 //
-// Requires outbox.Dispatcher (injected via OutboxBundle, last arg).
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle) (*DomainBundle, error) {
+// Requires outbox.Dispatcher (injected via wiring.OutboxBundle, last arg).
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle) (*wiring.DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	if outbox != nil && outbox.Dispatcher != nil {
@@ -31,7 +32,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
-	bundle := &DomainBundle{}
+	bundle := &wiring.DomainBundle{}
 
 	// ── Media domain: YouTube clip pipeline ──────────────────
 	voMetaWriter, clipWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, mutationsDisp, bundle)

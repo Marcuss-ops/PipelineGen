@@ -1,4 +1,4 @@
-// Package app — ProcessBundle orchestration (FASE 2.B PR2-followup, June 2026).
+// Package app — wiring.ProcessBundle orchestration (FASE 2.B PR2-followup, June 2026).
 //
 // Originally build_process_qdrant.go owned BuildProcessBundle AND its
 // inline body (media-processor init + VLMClient init + Qdrant runtime
@@ -10,16 +10,16 @@
 //     mutations.AssetMutationDispatcher adapter + initMediaProcessor
 //     FFmpeg-backed wiring) + newVLMClient (cfg.VLM → *vlm.Client).
 //   - build_qdrant_runtime.go owns ONLY initQdrantProcessSubsystems
-//     (Qdrant runtime → ProcessBundle mapping via named returns) +
+//     (Qdrant runtime → wiring.ProcessBundle mapping via named returns) +
 //     the 2 QDRANT-003-style composition-time port assertions (clipindexer
 //   - jobsoutbox/sqassets).
 //   - THIS file is reduced to a thin BuildProcessBundle orchestrator
 //     that calls the 3 helpers above and assembles the canonical
-//     *ProcessBundle return value.
+//     *wiring.ProcessBundle return value.
 //
 // Why an orchestrator (not a no-op file): BuildProcessBundle owns the
-// composition-time nil check on `qd *QdrantDeps` (fail-closed, QDRANT-002
-// PR8) and the ProcessBundle field-assembly (mapping helper outputs to
+// composition-time nil check on `qd *wiring.QdrantDeps` (fail-closed, QDRANT-002
+// PR8) and the wiring.ProcessBundle field-assembly (mapping helper outputs to
 // the canonical struct). Both responsibilities live here because they
 // are the bundle's invariant contract, not a per-helper concern.
 //
@@ -28,6 +28,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -50,7 +51,7 @@ import (
 )
 
 // BuildProcessBundle builds the media-processing adapters and assembles
-// the canonical *ProcessBundle. publisher is passed in directly —
+// the canonical *wiring.ProcessBundle. publisher is passed in directly —
 // the Publisher is the canonical Drive upload canal, and
 // processor.NewProcessor panics on nil publisher so a wiring gap is
 // loud at boot.
@@ -59,12 +60,12 @@ import (
 // `delivery.Publisher`. The Publisher routes every Drive write from
 // the processor through the DestinationRegistry + RequireSubpath +
 // ConflictPolicy belt; the legacy direct-uploader bypass is closed.
-// See DriveBundle.Publisher doc for the canonical one-owner-per-fact
+// See wiring.DriveBundle.Publisher doc for the canonical one-owner-per-fact
 // story (godlike/06).
 //
 // The body is intentionally thin: it calls the 3 cross-file helpers
 // (wireMediaProcessor, newVLMClient, initQdrantProcessSubsystems) and
-// maps their outputs to the ProcessBundle field set. The fail-closed
+// maps their outputs to the wiring.ProcessBundle field set. The fail-closed
 // contract on qd nil is enforced HERE (composition root, BEFORE the
 // helpers run) so a missing qdrantDeps is surfaced as a typed error
 // rather than silently downgrading to the disabled-Qdrant fallback.
@@ -73,11 +74,11 @@ import (
 // IndexWriter + ClipIndexerService are constructed in the canonical
 // pre-phase (composition.go::buildQdrantDeps) so BuildOutboxBundle can
 // run BEFORE BuildProcessBundle, and threaded back here via the qd
-// *QdrantDeps input. EnsureSchema is deferred to wire_services.go
+// *wiring.QdrantDeps input. EnsureSchema is deferred to wire_services.go
 // startup plan (startup-time).
 //
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed):
-// BuildProcessBundle gains `outbox *OutboxBundle` + `qd *QdrantDeps` as
+// BuildProcessBundle gains `outbox *wiring.OutboxBundle` + `qd *wiring.QdrantDeps` as
 // the last 2 positional args. MediaProcessor is now constructed via
 // wireMediaProcessor (which delegates to initMediaProcessor for FFmpeg
 // wiring). Composition graph is now a strict DAG:
@@ -98,11 +99,11 @@ func BuildProcessBundle(
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
-	repos *RepoBundle,
+	repos *wiring.RepoBundle,
 	publisher delivery.Publisher,
-	outbox *OutboxBundle,
-	qd *QdrantDeps,
-) (*ProcessBundle, error) {
+	outbox *wiring.OutboxBundle,
+	qd *wiring.QdrantDeps,
+) (*wiring.ProcessBundle, error) {
 	_ = ctx
 
 	if qd == nil {
@@ -118,11 +119,11 @@ func BuildProcessBundle(
 
 	collectionMgr, vectorSvc, qdrantClient, qdrantHealthProbe, locatorCleaner, qdrantSearcher := initQdrantProcessSubsystems(qd, cfg, log)
 
-	return &ProcessBundle{
-		ProcessQdrantBundle: ProcessQdrantBundle{
+	return &wiring.ProcessBundle{
+		wiring.ProcessQdrantBundle: wiring.ProcessQdrantBundle{
 			CollectionManager: collectionMgr,
 			QdrantDeleter:     qd.QdrantDeleter,
-			QdrantRuntime:     qd.Runtime, // PR 4: first-class facade exposed at ProcessBundle level
+			QdrantRuntime:     qd.Runtime, // PR 4: first-class facade exposed at wiring.ProcessBundle level
 			VectorSvc:         vectorSvc,
 			QdrantClient:      qdrantClient,
 			QdrantHealthProbe: qdrantHealthProbe,
@@ -143,7 +144,7 @@ var (
 )
 
 func initQdrantProcessSubsystems(
-	qd *QdrantDeps,
+	qd *wiring.QdrantDeps,
 	cfg *config.Config,
 	log *zap.Logger,
 ) (
@@ -170,7 +171,7 @@ func initQdrantProcessSubsystems(
 	log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
 	return
 }
-func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, repos *RepoBundle, log *zap.Logger) (*QdrantDeps, error) {
+func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, repos *wiring.RepoBundle, log *zap.Logger) (*wiring.QdrantDeps, error) {
 	_ = ctx
 
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): canonical
@@ -228,15 +229,15 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 		// SearchTextInput.TextTracks at search-text construction time.
 		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 		// TextTrackRepository is now sourced from the canonical
-		// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
+		// wiring.RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
 		// pre-PR local construction is removed so every consumer
-		// (BuildTextTrackBundle, BuildRepoBundle, this Qdrant
+		// (wiring.BuildTextTrackBundle, BuildRepoBundle, this Qdrant
 		// PayloadMapper, the TextTrackResolver in buildDomainMediaServices)
 		// shares the SAME instance.
 		if repos != nil && repos.TextTrackRepo != nil {
 			runtime.Mapper.SetTextTrackQuerier(repos.TextTrackRepo)
 		} else {
-			log.Warn("buildQdrantDeps: TextTrackRepository nil in RepoBundle; multilingual TextTracks disabled in search text")
+			log.Warn("buildQdrantDeps: TextTrackRepository nil in wiring.RepoBundle; multilingual TextTracks disabled in search text")
 		}
 		// PR 3 fix/qdrant-outbox-fail-closed (#3 from verdict Qdrant):
 		// IndexWriter is now constructed when Qdrant is enabled, regardless
@@ -261,7 +262,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 		log.Info("QDRANT-003: Qdrant disabled — no QdrantRuntime wired (buildQdrantDeps pre-phase)")
 	}
 
-	qd := &QdrantDeps{
+	qd := &wiring.QdrantDeps{
 		Runtime:            runtime,
 		ClipIndexerService: clipIndexerService,
 	}

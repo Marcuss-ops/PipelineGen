@@ -12,7 +12,7 @@
 //
 //   - The 2 typed sentinels live ONLY in stockpipeline/upload_orchestration.go
 //     (ErrStockProductionJobFinalizerMissing + ErrStockProductionArtifactPrepMissing).
-//   - The StockPipelineWiring struct lives in bundle_types.go
+//   - The wiring.StockPipelineWiring struct lives in bundle_types.go
 //     (Module api.Module + Service *stockpipeline.Service).
 //   - The canonical StockUseCase constructor lives in
 //     stockpipeline/usecase.go::NewStockUseCase (returns *stockpipeline.StockUseCase,
@@ -25,6 +25,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -257,7 +258,7 @@ func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
 //  3. stockpipeline.NewStockUseCase (ServiceRunner + narrowed jobsEnqueuer).
 //  4. stockapi.Build (API Descriptor with EnabledFunc closure).
 //
-// Returns a fully populated *StockPipelineWiring (Module + Service).
+// Returns a fully populated *wiring.StockPipelineWiring (Module + Service).
 // The HTTP Handler stays internal to stockapi.Build per Block
 // C1-Step 6 — no caller reads it outside the API module's
 // RegisterRoutes closure.
@@ -290,7 +291,7 @@ func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
 // preamble in one probe.
 //
 // Returns:
-//   - *StockPipelineWiring (nil, non-nil) on success — caller registers
+//   - *wiring.StockPipelineWiring (nil, non-nil) on success — caller registers
 //     the Module via tryRegisterModuleStrict.
 //   - (nil, ErrStockProduction*) on asymmetric wiring (gate fires
 //     before NewService).
@@ -298,7 +299,7 @@ func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
 //     required dep (NewService rejects Cfg/Log/SourceStager/ClipsRepo/
 //     AssetIndex/Dispatcher/Cutter/Renderer/Jobs).
 //   - (nil, stockapi.Build error) on missing UseCase / EnabledFunc.
-func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
+func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error) {
 	// ── Gate 1: godlike/07 symmetric production pairing ────────
 	if err := validateStockSymmetricGate(deps.Delivery.Publisher, deps.Delivery.Finalizer); err != nil {
 		return nil, err
@@ -504,7 +505,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		}
 	}
 
-	return &StockPipelineWiring{
+	return &wiring.StockPipelineWiring{
 		Module:      typed.Module,
 		BatchModule: batchModule,
 		Service:     svc,

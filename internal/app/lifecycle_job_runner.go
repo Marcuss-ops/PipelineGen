@@ -39,12 +39,13 @@
 //   - The runner is the canonical *appjobs.Runner (no struct shadow or
 //     adapter), and the step is the canonical StartupStep (no lifecycle
 //     abstraction drift).
-//   - The deps struct has three typed fields (root *ComposeRoot,
+//   - The deps struct has three typed fields (root *wiring.ComposeRoot,
 //     cfg *config.Config, log *zap.Logger); no `any` carrier, no option
 //     struct over-engineering.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"time"
 
@@ -60,7 +61,7 @@ import (
 // build the job runner and its lifecycle step. Typed, not any:
 // every field is a concrete pointer that callers must provide.
 type jobRunnerDeps struct {
-	root *ComposeRoot
+	root *wiring.ComposeRoot
 	cfg  *config.Config
 	log  *zap.Logger
 }

@@ -16,7 +16,7 @@
 // handler bound successfully; if any bind fails, NewComposition
 // returns non-nil and the server boot aborts.
 //
-// Why the slice-of-closures shape (instead of pulling ComposeRoot or
+// Why the slice-of-closures shape (instead of pulling wiring.ComposeRoot or
 // domain services directly into the validator): the validator is
 // decoupled from the composition-tree shape — the caller decides
 // what handlers to register. This makes the validator trivially
@@ -26,6 +26,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"errors"
 	"fmt"
 
@@ -109,7 +110,7 @@ type CriticalHandler struct {
 //
 // godlike/05 fail-fast posture: any non-nil error from this
 // function MUST abort NewComposition so the caller never sees
-// `(*ComposeRoot, nil)` with a half-registered dispatcher.
+// `(*wiring.ComposeRoot, nil)` with a half-registered dispatcher.
 //
 // godlike/07 no-fake-availability: validators do NOT fabricate a
 // "soft success" on binding failure. A nil Bind closure that

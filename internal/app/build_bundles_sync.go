@@ -10,6 +10,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -29,7 +30,7 @@ import (
 // the dispatcher is captured at construction time. Composition-root
 // pre-rejection lives here so a nil outbox dispatcher fails the bundle
 // build with an explicit error instead of racing the late-bind sequence.
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, drive *DriveBundle, outbox *OutboxBundle) (*SyncBundle, error) {
+func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, drive *wiring.DriveBundle, outbox *wiring.OutboxBundle) (*wiring.SyncBundle, error) {
 	_ = ctx
 	_ = cfg
 	_ = dbs
@@ -61,7 +62,7 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		return nil, fmt.Errorf("BuildSyncBundle: catalogsync.NewService: %w", err)
 	}
 
-	return &SyncBundle{
+	return &wiring.SyncBundle{
 		CatalogSync: catalogSync,
 	}, nil
 }

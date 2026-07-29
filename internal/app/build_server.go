@@ -13,6 +13,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -92,7 +93,7 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 		// ModelsHandler probes the sidecar at request time; when empty the
 		// canonical "models sidecar not configured" 200 JSON is returned.
 		ModelsSidecarURL: cfg.ClipIndexer.ServerURL,
-		// FASE 7 routing singleton from app.DomainBundle; held on the
+		// FASE 7 routing singleton from app.wiring.DomainBundle; held on the
 		// server for downstream handlers. nil-typed-port safe.
 		ImageSearchResolver: deps.Images.ImageSearchResolver,
 	})

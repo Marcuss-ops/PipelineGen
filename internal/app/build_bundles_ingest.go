@@ -10,6 +10,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"time"
@@ -116,10 +117,10 @@ func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *imagesrep
 // BuildDomainBundle and reused so the same SSOT instance flows into
 // every caller without raising the boot-time cost of repeated
 // newMutationsDispatcherAdapter wraps. The buildIngestService signature
-// drops the previously-threaded *OutboxBundle arg (it was never read
+// drops the previously-threaded *wiring.OutboxBundle arg (it was never read
 // inside the function body) — the caller still constructs mutationsDisp
 // from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *RepoBundle, search *SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *wiring.RepoBundle, search *wiring.SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
 	if driveUploader == nil {
 		return nil
 	}

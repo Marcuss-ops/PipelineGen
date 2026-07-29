@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -8,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// InitWorkerComposition builds the full ComposeRoot (DB, repos, services,
+// InitWorkerComposition builds the full wiring.ComposeRoot (DB, repos, services,
 // Drive, AI, etc.) and runs WireRegistry so that all job handlers are
 // registered on the in-process Dispatcher. It does NOT start background
 // jobs, the HTTP server, or the in-process job runner — it is intended
@@ -17,7 +18,7 @@ import (
 //
 // The caller must invoke BuildWorkerRegistry(root) afterwards to copy the
 // handlers into the remote worker.Registry and derive capabilities.
-func InitWorkerComposition(cfg *config.Config, log *zap.Logger) (*ComposeRoot, CleanupFunc, error) {
+func InitWorkerComposition(cfg *config.Config, log *zap.Logger) (*wiring.ComposeRoot, wiring.CleanupFunc, error) {
 	if err := initLinguistics(cfg, log); err != nil {
 		return nil, nil, fmt.Errorf("init worker composition: %w", err)
 	}

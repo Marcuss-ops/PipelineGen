@@ -15,6 +15,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
@@ -35,7 +36,7 @@ import (
 //	    structurally — its RegisterRoutes forwarder delegates to the
 //	    embedded api.Module which mounts POST /api/media/sync on the
 //	    parent /api/media group); AND
-//	(b) the AssetsWiring.InternalMediaHandler forwarder
+//	(b) the wiring.AssetsWiring.InternalMediaHandler forwarder
 //	    (storageDesc.Handler) — the QDRANT-001 closure kept a narrow
 //	    api.MediaInternalRouter port at internal/api/routes.go::Setup().
 //	    The Router binds this via Router.SetInternalMediaHandler,
@@ -46,7 +47,7 @@ import (
 // per-feature middleware.
 func buildStorageBundle(
 	log *zap.Logger,
-	jobs *JobsBundle,
+	jobs *wiring.JobsBundle,
 	catalogSync *catalogsync.Service,
 ) (*assetstorage.StorageDescriptor, error) {
 	descriptor, err := assetstorage.Build(assetstorage.Dependencies{
