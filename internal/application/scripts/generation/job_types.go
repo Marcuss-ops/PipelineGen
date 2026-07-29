@@ -1,4 +1,4 @@
-package scripts
+package generation
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"

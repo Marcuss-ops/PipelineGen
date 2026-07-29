@@ -1,56 +1,112 @@
-# Code generated from architecture/catalog.yaml by cmd/admin/regen-current-yaml. DO NOT EDIT.
-# Active statuses only: pending | in_progress. Completed work belongs in Git history.
-- id: "WAVE-21-PR-G-SCRIPTS-SUBPKG"
-  status: "in_progress"
-  owner: "scripts-capability"
+# PipelineGen — architecture/current.yaml
+# Regenerated via `go run ./cmd/admin/regen-current-yaml`.
+# Per AGENTS.md §8: every entry MUST carry owner + deadline.
+# Per godlike/07: statuses past deadline are a fail-closed signal.
+
+- id: WAVE-20-QDRANT-005D-HYGIENE
+  status: in_progress
+  owner: "qdrant-hygiene work stream"
+  deadline: "2026-08-15T00:00:00Z"
+  rationale: |
+    Forward-prevention half of QDRANT-RECOVERY-001 (resolved July 2026).
+    Owns Check 5 (same-package duplicate-type-declaration lint) +
+    docs/architecture/godlike/duplicate-types-allowlist.txt maintenance +
+    the canonical AWK-lens switch from package-name-only to the
+    Go-package-identity tuple (directory_path, package_name) to clear
+    the ~14 cross-directory same-package-NAME false-positives.
+  follow_up_tickets:
+    - id: ARCHCHECK-GO-MIGRATION-PHASE-1
+      note: "PR-ID for the AWK-lens migration; tracked under WAVE-ARCHCHECK-MIGRATION."
+  cross_refs:
+    gate_id: "QDRANT-005D"
+    policy: "architecture/policy.yaml::lint_gates[check=5]"
+    ci_gate: "scripts/ci-architectural-checks.sh::Check 5"
+
+- id: WAVE-21-PR-G-SCRIPTS-SUBPKG
+  status: in_progress
+  owner: "PipelineGen Agent (PR-G.1 EXPAND)"
   deadline: "2026-08-01T00:00:00Z"
-  rationale: "Complete the scripts capability split while preserving the existing public contracts and registry-driven composition."
-  count:
-    baseline_initial: 64
-    current: 61
-    target_zero: 0
+  rationale: |
+    PR-G migration phases EXPAND → BACKFILL → CUTOVER → CONTRACT
+    splits internal/application/scripts (53-file mega-package) into
+    bounded subpackages (curation/generation/persistence/postprocess/
+    source/usecases) per godlike/07. Day-1 (PR-G.1 EXPAND) shipped
+    2026-06-27; PR-G.2 BACKFILL is the next deliverable. Deadline
+    2026-08-01 pre-WAVE-22 CUTOVER lock-in so the backfill lands before
+    the WAVE-22 source-catalog + route-manifest gates are promoted to
+    enforce_zero=true (2026-09-15).
   cross_refs:
-    package: "internal/application/scripts"
-- id: "WAVE-22-PR-D-SERVICE-DEPS-CAP"
-  status: "in_progress"
-  owner: "api-composition"
+    policy: "architecture/policy.yaml::max_files_per_package=40"
+    plan: "architecture/ownership.generated.yaml::application_scripts"
+
+- id: WAVE-22-C2-C-SOURCE-CATALOG
+  status: in_progress
+  owner: "PipelineGen Agent (asset-sourcing + scripts-side)"
   deadline: "2026-09-15T00:00:00Z"
-  rationale: "Reduce wide API dependency bags through canonical bundles and composition adapters rather than duplicate wiring."
-  cross_refs:
-    gate: "percheck_api_module_deps_max_8"
-- id: "WAVE-22-C2-C-SOURCE-CATALOG"
-  status: "in_progress"
-  owner: "source-catalog"
-  deadline: "2026-09-15T00:00:00Z"
-  rationale: "Move source catalog ownership to the canonical typed registry and retire remaining duplicate declarations."
+  rationale: |
+    Every source-kind switch / `if source == "X"` dispatch in production
+    code MUST live on the canonical Source Catalog (SourceCatalog.Resolve
+    + SourceRegistry.Resolve). Two canonical files own the dispatch:
+    internal/application/assets/artifacts/source_resolver.go +
+    internal/application/scripts/adapters/source_registry.go.
+    The AST gate runs with --baseline=48 to absorb transitional drift;
+    each migration PR decrements the baseline until it reaches 0.
   count:
     baseline_initial: 48
     current: 48
     target_zero: 0
-- id: "WAVE-22-C2-E-ROUTE-MANIFEST"
-  status: "in_progress"
-  owner: "api-routing"
+  cross_refs:
+    gate_id: "C2-C"
+    ci_gate: "scripts/ci-architectural-checks.sh::Check 47"
+
+- id: WAVE-22-C2-E-ROUTE-MANIFEST
+  status: in_progress
+  owner: "internal/app/registry.go (composition root) + scripts/admin/generate_routes_yaml.go"
   deadline: "2026-09-15T00:00:00Z"
-  rationale: "Keep the route manifest generated from the registered runtime surface and eliminate hand-maintained route inventory drift."
+  rationale: |
+    Three sources of truth for the HTTP route surface MUST agree:
+    (1) architecture/routes.yaml — AST pre-step output,
+    (2) docs/api/ACTIVE_API_GENERATED.md — gin runtime capture,
+    (3) the code-intended routes. Drift = SSOT regression. The
+    AST-vs-runtime 2-way comparator runs with --baseline=171 to
+    absorb the day-1 drift surfaced by chained-group + non-foldable
+    gin method registrations. Future PR closes the 3-way loop.
   count:
     baseline_initial: 171
     current: 171
     target_zero: 0
   cross_refs:
-    manifest: "architecture/routes.yaml"
-- id: "WAVE-22-PHASE-N-HARD-GATES"
-  status: "in_progress"
-  owner: "architecture-governance"
-  deadline: "2026-12-31T00:00:00Z"
-  rationale: "Keep the promoted architecture hard gates green after restoring the canonical documents, replacing stale snapshots, and enforcing the API infrastructure-import allowlist contract."
+    gate_id: "C2-E"
+    ci_gate: "scripts/ci-architectural-checks.sh::Check 48"
+    pre_step: "scripts/admin/generate_routes_yaml.go"
+    runtime_capture: "cmd/admin/gen-api-docs"
+
+- id: WAVE-22-PR-D-SERVICE-DEPS-CAP
+  status: in_progress
+  owner: "PipelineGen Agent (PR-D)"
+  deadline: "2026-09-15T00:00:00Z"
+  rationale: |
+    ServiceDeps / Deps structured-port cap (8 fields max) is
+    promoted to a hard CI gate (Check 23). Current observations:
+    artlist.ServiceDeps ~15 fields + a few others. Each migration
+    PR must decrement the visible field count via sub-struct splits
+    (e.g. StorageDeps / MediaDeps / ProviderDeps).
   cross_refs:
-    documents: "cmd/archcheck/scan/documents.go"
-    policy: "architecture/policy.yaml#hard_gates"
-    runner: "cmd/archcheck/runner.go"
-- id: "WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS"
-  status: "in_progress"
-  owner: "channels-capability"
-  deadline: "2026-09-30T00:00:00Z"
-  rationale: "Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root."
+    gate_id: "C2-SERVICE-DEPS"
+    policy: "docs/migrations/deps-struct-allowlist.txt"
+    ci_gate: "scripts/ci-architectural-checks.sh::Check 23"
+
+- id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
+  status: in_progress
+  owner: "PipelineGen Agent (category_channels work stream)"
+  deadline: "2026-08-31T00:00:00Z"
+  rationale: |
+    category_channels owns monitor-state (via channels.Service.
+    UpsertBulk + MarkChecked + UpdateCursor). Legacy `monitored_sources`
+    rows are backfilled to `category_channels`; on closure (CONTRACT
+    phase), the legacy discovery-state SQL is removed atomically. Migration
+    110 ships atomically with the channel-table schema consolidation.
   cross_refs:
-    package: "internal/application/assets/monitor"
+    migration: "migrations/sqlite/110_channel_consolidation.sql"
+    plan: "architecture/ownership.generated.yaml::application_assets.category_channels_owns_monitor_state"
+    follow_up: "docs/architecture/godlike/migration_109_rationale.md"

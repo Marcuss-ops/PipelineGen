@@ -18,7 +18,7 @@
 // against the dispatched sentinels (ErrEnqueuerNotWired, etc.).
 // The compile-time assertion var _ SceneImageJobEmitter = (*Emitter)(nil)
 // pins the contract so any future drift is a build failure.
-package scripts
+package curation
 
 import (
 	"context"
