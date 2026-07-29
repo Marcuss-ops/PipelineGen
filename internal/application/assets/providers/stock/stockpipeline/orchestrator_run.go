@@ -165,7 +165,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 		return nil, fmt.Errorf("orchestrator §12-1 P0 #2 production gate: %w", ErrStockProductionJobFinalizerMissing)
 	}
 
-	state := &runState{}
+	state := &RunState{}
 	runner := &orchestratorRunner{
 		orch:                o,
 		in:                  input,
@@ -238,9 +238,9 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 						zap.String("step", step.Name()),
 						zap.String("job_id", o.cfg.JobId))
 				}
-				// Rehydrate the accumulated runState produced by
+				// Rehydrate the accumulated RunState produced by
 				// this completed step. The row's result_json holds
-				// the full runState snapshot taken at the step's
+				// the full RunState snapshot taken at the step's
 				// MarkCompleted, so resuming here restores exactly
 				// the state the step left behind.
 				if row, ok := completedRows[step.Name()]; ok {
@@ -261,7 +261,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 						}
 						*state = rehydrated
 						if o.executorLog != nil {
-							o.executorLog.Info("orchestrator: rehydrated runState from completed step",
+							o.executorLog.Info("orchestrator: rehydrated RunState from completed step",
 								zap.String("step", step.Name()),
 								zap.String("job_id", o.cfg.JobId))
 						}
@@ -389,7 +389,7 @@ func (o *Orchestrator) executorLogOrNop() *zap.Logger {
 
 // loadCompletedStepRows builds a map of the latest Completed row
 // for each step key for the given job. It is used once per
-// RunResilient call so the resume path can rehydrate runState
+// RunResilient call so the resume path can rehydrate RunState
 // without querying the store inside the dispatch loop.
 func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
 	if o.stepStore == nil {
@@ -415,17 +415,17 @@ func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) 
 	return latest, nil
 }
 
-// rehydrateRunState unmarshals a JSON snapshot of runState.
+// rehydrateRunState unmarshals a JSON snapshot of RunState.
 // Returns a typed error when the snapshot is empty or malformed so
 // the caller can fail the run loudly rather than resuming with an
 // empty accumulator.
-func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (runState, error) {
+func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (RunState, error) {
 	if len(result) == 0 {
-		return runState{}, fmt.Errorf("orchestrator: rehydrateRunState: empty checkpoint result")
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: empty checkpoint result")
 	}
-	var rehydrated runState
+	var rehydrated RunState
 	if err := json.Unmarshal(result, &rehydrated); err != nil {
-		return runState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
 	}
 	return rehydrated, nil
 }

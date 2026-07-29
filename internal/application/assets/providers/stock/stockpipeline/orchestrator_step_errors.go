@@ -100,7 +100,7 @@ var (
 	// ErrStockPublishStateLost is raised when StockPublishStep.Run
 	// is wired with a non-nil ArtifactPreparation BUT state.ComposedPaths
 	// is empty — meaning the upstream compose step produced zero composed
-	// chunks (or the runState was lost on resume). This closes the
+	// chunks (or the RunState was lost on resume). This closes the
 	// godlike/07 no-fake-availability class where a production run
 	// (ArtifactPreparation wired) silently declared SUCCEEDED with zero
 	// uploaded chunks because the lenient "len(chunks) == 0 → return nil"
@@ -112,7 +112,7 @@ var (
 	// ErrStockFinalizeStateLost is raised when StockFinalizeStep.Run
 	// is wired with a non-nil JobFinalizer BUT state.Published is empty —
 	// meaning the upstream publish step did not upload any chunks (or the
-	// runState was lost on resume). This closes the godlike/07
+	// RunState was lost on resume). This closes the godlike/07
 	// no-fake-availability class where a production run (JobFinalizer
 	// wired) silently declared SUCCEEDED without writing to media_assets
 	// because the lenient "len(Published) == 0 → return nil" guard masked
@@ -135,10 +135,10 @@ var (
 	ErrFinalizerAbsent = errors.New("stock.finalize: JobFinalizer absent")
 
 	// ErrStockResumeStateInvalid is raised when the orchestrator
-	// cannot rehydrate the runState snapshot from a pre-completed
+	// cannot rehydrate the RunState snapshot from a pre-completed
 	// step's result_json, or when it cannot marshal the current
-	// runState to persist a checkpoint. This closes the silent-
+	// RunState to persist a checkpoint. This closes the silent-
 	// corruption class where a crash-resume proceeds with a malformed
 	// accumulator or where a checkpoint is silently dropped.
-	ErrStockResumeStateInvalid = errors.New("stock: resume: runState checkpoint invalid")
+	ErrStockResumeStateInvalid = errors.New("stock: resume: RunState checkpoint invalid")
 )

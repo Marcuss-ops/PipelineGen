@@ -100,6 +100,9 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	if s.log != nil {
 		o.WithLogger(s.log)
 	}
+	if s.localFS != nil {
+		o.WithLocalFS(s.localFS)
+	}
 	if s.publisher != nil {
 		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
 			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))

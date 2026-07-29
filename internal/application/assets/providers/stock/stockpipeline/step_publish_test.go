@@ -37,7 +37,7 @@ func (r *recordingArtifactPreparation) Prepare(_ context.Context, artifact final
 type publishFakeRunner struct {
 	runInput     *RunInput
 	cfg          OrchestratorConfig
-	state        *runState
+	state        *RunState
 	artifactPrep finalization.ArtifactPreparationService
 }
 
@@ -61,7 +61,7 @@ func (f *publishFakeRunner) ArtifactPreparation() finalization.ArtifactPreparati
 func (f *publishFakeRunner) JobFinalizer() finalization.JobFinalizer { return nil }
 func (f *publishFakeRunner) RunFingerprint() string                  { return "run-fingerprint-123" }
 func (f *publishFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (f *publishFakeRunner) State() *runState                        { return f.state }
+func (f *publishFakeRunner) State() *RunState                        { return f.state }
 func (f *publishFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
 var _ StepRunner = (*publishFakeRunner)(nil)
@@ -253,7 +253,7 @@ func TestStockPublishStep_ExplicitClips_SharedTimestampPathLeafName(t *testing.T
 	runner := &publishFakeRunner{
 		runInput: runInput,
 		cfg:      OrchestratorConfig{PolicyVersion: "policy-v1"},
-		state: &runState{
+		state: &RunState{
 			Plan:          plans,
 			ComposedPaths: paths,
 		},
@@ -315,7 +315,7 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 		cfg: OrchestratorConfig{
 			PolicyVersion: "policy-v1",
 		},
-		state: &runState{
+		state: &RunState{
 			Plan: []ClipPlan{
 				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Title: "Round 1", Description: "Pacquiao fires the first clean left."},
 				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91, Title: "Round 2", Description: "Broner tries to reset and circle out."},
@@ -495,7 +495,7 @@ func TestStockPublishStep_LegacyRunMetadata_RemainsSingleArtifact(t *testing.T) 
 		cfg: OrchestratorConfig{
 			PolicyVersion: "policy-v1",
 		},
-		state: &runState{
+		state: &RunState{
 			Plan:          []ClipPlan{{SourceID: "https://youtu.be/a", StartSec: 10, EndSec: 20}},
 			ComposedPaths: []string{chunk},
 		},
@@ -602,7 +602,7 @@ func TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName(t *testing.T) 
 			runner := &publishFakeRunner{
 				runInput: tc.runInput,
 				cfg:      OrchestratorConfig{PolicyVersion: "policy-v1"},
-				state: &runState{
+				state: &RunState{
 					Plan:          plans,
 					ComposedPaths: paths,
 				},
@@ -717,7 +717,7 @@ func makePR004LegacyRunner(t *testing.T, runInput *RunInput, policyVersion strin
 	return &publishFakeRunner{
 		runInput: runInput,
 		cfg:      OrchestratorConfig{PolicyVersion: policyVersion},
-		state: &runState{
+		state: &RunState{
 			Plan:          []ClipPlan{{SourceID: "https://youtu.be/abc", StartSec: 10, EndSec: 20}},
 			ComposedPaths: []string{chunk},
 		},
@@ -857,7 +857,7 @@ func TestStockPublishStep_BothFieldsPropagatedPerChunk(t *testing.T) {
 			PolicyVersion: wantPolicy,
 		},
 		cfg: OrchestratorConfig{PolicyVersion: wantPolicy},
-		state: &runState{
+		state: &RunState{
 			Plan:          plans,
 			ComposedPaths: paths,
 		},
@@ -954,7 +954,7 @@ func TestStockPublishStep_PlanDescriptionSync(t *testing.T) {
 			NoTransitions: true,
 		},
 		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
-		state: &runState{
+		state: &RunState{
 			// Both Plan entries have Description = "" (empty) — the
 			// MUST-FIX precondition. The fix must populate
 			// cs.Description from in.Clips[i].Description for chunk 0
@@ -1039,7 +1039,7 @@ func TestStockPublishStep_PlanDescriptionWinsOverClipsSpec(t *testing.T) {
 			ChunkDuration: 10,
 		},
 		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
-		state: &runState{
+		state: &RunState{
 			Plan: []ClipPlan{
 				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Title: "Round 1", Description: planDesc},
 			},
@@ -1098,7 +1098,7 @@ func TestStockPublishStep_ExplicitClips_DrivePathOnTimestampChunks(t *testing.T)
 			PolicyVersion: "policy-explicit-v1",
 		},
 		cfg: OrchestratorConfig{PolicyVersion: "policy-explicit-v1"},
-		state: &runState{
+		state: &RunState{
 			Plan: []ClipPlan{
 				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51},
 				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91},

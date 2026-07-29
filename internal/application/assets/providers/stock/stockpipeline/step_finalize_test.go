@@ -42,7 +42,7 @@ import (
 type finalizeFakeRunner struct {
 	runInput     *RunInput
 	cfg          OrchestratorConfig
-	state        *runState
+	state        *RunState
 	jobFinalizer finalization.JobFinalizer // controllable: nil for test-fixture mode, non-nil for production mode
 }
 
@@ -66,7 +66,7 @@ func (f *finalizeFakeRunner) ArtifactPreparation() finalization.ArtifactPreparat
 func (f *finalizeFakeRunner) JobFinalizer() finalization.JobFinalizer { return f.jobFinalizer }
 func (f *finalizeFakeRunner) RunFingerprint() string                  { return "test-finalize-fingerprint" }
 func (f *finalizeFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (f *finalizeFakeRunner) State() *runState                        { return f.state }
+func (f *finalizeFakeRunner) State() *RunState                        { return f.state }
 func (f *finalizeFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
 // Compile-time assertion: *finalizeFakeRunner satisfies StepRunner.
@@ -76,7 +76,7 @@ var _ StepRunner = (*finalizeFakeRunner)(nil)
 // runInput + state + jobFinalizer. The cfg carries a non-empty
 // PolicyVersion so Phase 1's RunFingerprint derivation succeeds
 // (Step.Run uses Cfg().PolicyVersion to validate fingerprint).
-func newFinalizeFakeRunner(in *RunInput, state *runState, finalizer finalization.JobFinalizer) *finalizeFakeRunner {
+func newFinalizeFakeRunner(in *RunInput, state *RunState, finalizer finalization.JobFinalizer) *finalizeFakeRunner {
 	return &finalizeFakeRunner{
 		runInput: in,
 		cfg: OrchestratorConfig{
@@ -129,7 +129,7 @@ func TestStockFinalizeStep_JobFinalizerWired_PublishedEmpty_FailsClosed(t *testi
 	// Arrange: stub JobFinalizer wired (production mode) + empty state.Published
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
-		&runState{Published: nil},
+		&RunState{Published: nil},
 		stubJobFinalizer{},
 	)
 	step := StockFinalizeStep{}
@@ -157,7 +157,7 @@ func TestStockFinalizeStep_JobFinalizerWired_PublishedEmpty_FailsClosed(t *testi
 func TestStockFinalizeStep_JobFinalizerWired_PublishedEmpty_NoOpState_AlsoFailsClosed(t *testing.T) {
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
-		&runState{Published: []ChunkState{}}, // explicit empty slice (not nil)
+		&RunState{Published: []ChunkState{}}, // explicit empty slice (not nil)
 		stubJobFinalizer{},
 	)
 	step := StockFinalizeStep{}
@@ -194,7 +194,7 @@ func TestStockFinalizeStep_JobFinalizerWired_PublishedEmpty_NoOpState_AlsoFailsC
 func TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_FailsClosedAtManifestValidate(t *testing.T) {
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
-		&runState{Published: nil},
+		&RunState{Published: nil},
 		nil, // JobFinalizer nil → test-fixture mode
 	)
 	step := StockFinalizeStep{}
@@ -230,7 +230,7 @@ func TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_FailsClosedAtManifestV
 func TestStockFinalizeStep_JobFinalizerWired_PublishedNonEmpty_GateBypassed(t *testing.T) {
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
-		&runState{
+		&RunState{
 			Published: []ChunkState{
 				{Index: 0, ArtifactID: "stock:test:chunk:0", Filename: "chunk_0.mp4", SHA256: "deadbeef"},
 			},
@@ -279,7 +279,7 @@ func TestStockFinalizeStep_NilJobFinalizer_FailsClosed(t *testing.T) {
 	// Phase 3+4 on the new fail-closed branch.
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
-		&runState{
+		&RunState{
 			Published: []ChunkState{
 				{
 					Index:      0,

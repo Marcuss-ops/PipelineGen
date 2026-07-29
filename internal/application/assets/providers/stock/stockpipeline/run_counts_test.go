@@ -9,7 +9,7 @@ import (
 
 func TestDeriveRunCountsUsesCompletedStages(t *testing.T) {
 	input := &RunInput{DirectURLs: []string{"a", "b"}}
-	state := &runState{
+	state := &RunState{
 		Plan:         []ClipPlan{{SourceID: "a"}, {SourceID: "a"}, {SourceID: "b"}},
 		StagedAssets: []*assets.StagedAsset{{SourceID: "a"}, {SourceID: "b"}},
 		CutPaths:     []string{"one", "two", "three"},

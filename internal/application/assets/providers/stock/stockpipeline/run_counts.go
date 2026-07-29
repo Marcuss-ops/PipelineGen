@@ -5,7 +5,7 @@ import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 import "fmt"
 
 // deriveRunCounts projects completed stage outputs into the public result.
-func deriveRunCounts(input *RunInput, state *runState) RunCounts {
+func deriveRunCounts(input *RunInput, state *RunState) RunCounts {
 	var c RunCounts
 	if input == nil || state == nil {
 		return c

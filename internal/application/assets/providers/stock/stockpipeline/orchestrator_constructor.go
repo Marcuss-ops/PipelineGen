@@ -178,6 +178,18 @@ func (o *Orchestrator) WithLogger(log *zap.Logger) *Orchestrator {
 	return o
 }
 
+// WithLocalFS (PR-REFACTOR-P0-IO-BINDER, July 2026) threads the
+// canonical LocalFSPort into the Orchestrator so steps can
+// perform filesystem I/O through the typed port instead of
+// importing "os" directly. nil pass-through is allowed so
+// test fixtures compile unchanged (godlike/07 minimum-blast-
+// radius: backward-compat; steps fall back to os.* when nil).
+// Returns the receiver for fluent chaining.
+func (o *Orchestrator) WithLocalFS(fs LocalFSPort) *Orchestrator {
+	o.localFS = fs
+	return o
+}
+
 // stepInputFingerprint returns the canonical input fingerprint
 // for a step within (JobID, stepName). Per §12-3 Design A (per-row
 // canonical): each (JobID, StepKey, fingerprint) triple is a

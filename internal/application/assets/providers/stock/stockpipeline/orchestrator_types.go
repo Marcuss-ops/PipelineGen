@@ -199,4 +199,10 @@ type Orchestrator struct {
 	// injects the SQLite-backed adapter via
 	// WithBatchRepository(...).
 	batchRepository StockBatchRepository
+
+	// localFS is the Pattern 0 typed port for local filesystem I/O
+	// (PR-REFACTOR-P0-IO-BINDER, July 2026). nil means test/backcompat
+	// mode — steps fall back to os.* (the legacy path). Production
+	// wiring injects filesystem.NewLocal() via WithLocalFS.
+	localFS LocalFSPort
 }

@@ -563,7 +563,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			return ordered[i].firstIndex < ordered[j].firstIndex
 		})
 		for _, group := range ordered {
-			metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, group.chunks, runner.RunFingerprint())
+			metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, group.chunks, runner.RunFingerprint(), runner.LocalFS())
 			if metaErr != nil {
 				return fmt.Errorf("%w: parent metadata stage for %s: %w",
 					ErrStockPublishArtifactFailed, group.leafName, metaErr)

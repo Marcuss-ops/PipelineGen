@@ -107,7 +107,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 
 	// godlike/07 fail-closed (PR-STOCK-RESUME-STATE-LOSS, July 2026):
 	// if AssetPreparation is wired (production mode) but ComposedPaths
-	// was empty (zero chunks prepared), the runState was lost on resume
+	// was empty (zero chunks prepared), the RunState was lost on resume
 	// (or compose_chunks short-circuited). Returning nil here would be
 	// a silent-success false-positive — the job would declare SUCCEEDED
 	// without uploading anything. The leniency is preserved ONLY for

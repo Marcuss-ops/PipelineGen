@@ -415,7 +415,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 }
 
 // TestOrchestrator_RunResilient_RehydratesRunState verifies that
-// pre-completed steps restore their produced runState so later
+// pre-completed steps restore their produced RunState so later
 // steps see the accumulated state. This is the core crash-resume
 // contract: a prior run persisted Plan in stock.plan's checkpoint,
 // and the resumed run's stock.stage_sources step must observe it.
@@ -426,8 +426,8 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	jobID := "rehydrate-test-1"
 
 	// Simulate a prior run that completed stock.plan and persisted
-	// its produced runState (including the Plan slice).
-	planState := runState{
+	// its produced RunState (including the Plan slice).
+	planState := RunState{
 		Plan: []ClipPlan{
 			{
 				SourceID:        "https://example.com/video.mp4",
@@ -452,7 +452,7 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	var stageSourcesCalled bool
 	stageSourcesStep := &stateAssertingStep{
 		name: "stock.stage_sources",
-		assertFn: func(state *runState) error {
+		assertFn: func(state *RunState) error {
 			stageSourcesCalled = true
 			if len(state.Plan) != 1 {
 				return fmt.Errorf("expected 1 rehydrated plan entry, got %d", len(state.Plan))
@@ -470,7 +470,7 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	var extractClipsCalled bool
 	extractClipsStep := &stateAssertingStep{
 		name: "stock.extract_clips",
-		assertFn: func(state *runState) error {
+		assertFn: func(state *RunState) error {
 			extractClipsCalled = true
 			if len(state.Plan) != 1 {
 				return fmt.Errorf("expected plan to survive through stage_sources, got %d", len(state.Plan))
@@ -504,11 +504,11 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 }
 
 // stateAssertingStep is a test Step that runs an custom assertion
-// against the current runState. It fails the run if the assertion
+// against the current RunState. It fails the run if the assertion
 // returns an error.
 type stateAssertingStep struct {
 	name     string
-	assertFn func(state *runState) error
+	assertFn func(state *RunState) error
 }
 
 func (s *stateAssertingStep) Name() string { return s.name }
@@ -517,7 +517,7 @@ func (s *stateAssertingStep) Run(_ context.Context, runner StepRunner) error {
 }
 
 // TestOrchestrator_RunResilient_PersistsRunState verifies that
-// MarkCompleted persists the full runState snapshot produced by a
+// MarkCompleted persists the full RunState snapshot produced by a
 // step. A step mutates Plan; after RunResilient we read the
 // stock.plan row and assert its result_json contains the mutation.
 func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
@@ -528,7 +528,7 @@ func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 
 	mutatingStep := &stateMutatingStep{
 		name: "stock.plan",
-		mutateFn: func(state *runState) {
+		mutateFn: func(state *RunState) {
 			state.Plan = []ClipPlan{
 				{SourceID: "https://example.com/video.mp4", OutputLogicalID: "planner:persist:0"},
 			}
@@ -563,7 +563,7 @@ func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 	require.NotNil(t, planRow, "stock.plan row must exist")
 	require.True(t, len(planRow.Result) > 0, "stock.plan result_json must be non-empty")
 
-	var persisted runState
+	var persisted RunState
 	require.NoError(t, json.Unmarshal(planRow.Result, &persisted))
 	require.Equal(t, 1, len(persisted.Plan), "persisted Plan must contain one entry")
 	require.Equal(t, "https://example.com/video.mp4", persisted.Plan[0].SourceID)
@@ -579,10 +579,10 @@ func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 	ctx := context.Background()
 	jobID := "rehydrate-multi-test-1"
 
-	planState := runState{
+	planState := RunState{
 		Plan: []ClipPlan{{SourceID: "https://example.com/plan.mp4", OutputLogicalID: "planner:multi:0"}},
 	}
-	stageState := runState{
+	stageState := RunState{
 		Plan: []ClipPlan{{SourceID: "https://example.com/plan.mp4", OutputLogicalID: "planner:multi:0"}},
 		StagedAssets: []*assets.StagedAsset{
 			{LocalPath: "/tmp/staged_multi.mp4", SourceID: "https://example.com/plan.mp4", Bytes: 1234},
@@ -603,7 +603,7 @@ func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 	var extractCalled bool
 	extractStep := &stateAssertingStep{
 		name: "stock.extract_clips",
-		assertFn: func(state *runState) error {
+		assertFn: func(state *RunState) error {
 			extractCalled = true
 			if len(state.Plan) != 1 {
 				return fmt.Errorf("expected 1 plan entry, got %d", len(state.Plan))
@@ -639,12 +639,12 @@ func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 	assert.Equal(t, int32(0), atomic.LoadInt32(stageCount), "pre-completed stock.stage_sources must not re-run")
 }
 
-// stateMutatingStep is a test Step that mutates runState via a
+// stateMutatingStep is a test Step that mutates RunState via a
 // callback. Used to verify that MarkCompleted persists the mutated
 // state.
 type stateMutatingStep struct {
 	name     string
-	mutateFn func(state *runState)
+	mutateFn func(state *RunState)
 }
 
 func (s *stateMutatingStep) Name() string { return s.name }
@@ -675,7 +675,7 @@ func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testi
 	var stageSourcesCalled bool
 	stageSourcesStep := &stateAssertingStep{
 		name: "stock.stage_sources",
-		assertFn: func(state *runState) error {
+		assertFn: func(state *RunState) error {
 			stageSourcesCalled = true
 			// State is empty because the legacy checkpoint had no
 			// payload; the important thing is that we got here.
