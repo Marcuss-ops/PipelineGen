@@ -158,17 +158,23 @@ func BuildTextTrackBundle(
 			acquireService.WithDrive(acquirePorts.Drive)
 		}
 	}
-	backfill, err := texttracks.NewBackfillService(
-		repos.ClipsRepo,
-		repos.TextTrackRepo,
-		acquirePorts.CueWriter,
-		repos.SubtitleArtifactRepo,
-		materializer,
-		acquireService,
-		publisher,
-		cfg.Drive.ClipsFolder(),
-		log,
-	)
+	backfill, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
+		Data: texttracks.BackfillDataDeps{
+			Clips:      repos.ClipsRepo,
+			Repo:       repos.TextTrackRepo,
+			Cues:       acquirePorts.CueWriter,
+			SubArtRepo: repos.SubtitleArtifactRepo,
+		},
+		Pipeline: texttracks.BackfillPipelineDeps{
+			Materializer: materializer,
+			Acquirer:     acquireService,
+		},
+		Delivery: texttracks.BackfillDeliveryDeps{
+			Publisher:     publisher,
+			DriveFolderID: cfg.Drive.ClipsFolder(),
+		},
+		Log: log,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: automatic backfill: %w", err)
 	}
