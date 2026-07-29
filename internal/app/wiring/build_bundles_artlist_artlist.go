@@ -30,7 +30,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
-	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -44,6 +44,14 @@ import (
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+
 	"go.uber.org/zap"
 )
 
@@ -175,7 +183,7 @@ func WireArtlist(
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
 	// constructor args are all DIRECT receivers — no shim layer.
 	searchTextRegistry := searchtextinfra.NewRegistry()
-	semanticEnricher := artlist.NewSemanticEnricher(artlist.SemanticEnricherDeps{
+	semanticEnricher := artlistPkg.NewSemanticEnricher(artlistPkg.SemanticEnricherDeps{
 		Repo:             bundle.ClipsRepo,
 		Indexer:          bundle.ClipIndexerService,
 		MetaWriter:       metaWriter,
@@ -193,21 +201,21 @@ func WireArtlist(
 	// Resolver instead of the legacy downloadViaScraper method.
 	// The adapter is the SINGLE translation site between the
 	// processor's narrow ArtlistDownloader interface and the
-	// Resolver's Download(artlist.DownloadRequest) method.
+	// Resolver's Download(artlistPkg.DownloadRequest) method.
 	wireArtlistProcessorDownloader(log, bundle, providers.ArtlistDownloader)
 
 	// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): the transcriber is
 	// the same adapter used by the YouTube registrar. Reusing it here
 	// keeps the Whisper wiring in a single place and satisfies the
-	// artlist.Transcriber port via implicit interface satisfaction.
-	transcriber := &sourcingTranscriberAdapter{cfg: cfg, log: log}
+	// artlistPkg.Transcriber port via implicit interface satisfaction.
+	transcriber := &SourcingTranscriberAdapter{cfg: cfg, log: log}
 
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
 	// (PR-ARTLIST-SEARCHERS closed 2026-07-04: 3 searchers wired inline).
-	service, err := artlist.NewService(artlist.ServiceDeps{
-		ServicePorts: artlist.ServicePorts{
+	service, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
+		ServicePorts: artlistPkg.ServicePorts{
 			// ServicePorts (9) — 9 DIRECT (PR-ARTLIST-SEARCHERS closed: 3 searchers
 			// constructed inline from cfg + the canonical infra concretes; runtime
 			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
@@ -235,11 +243,11 @@ func WireArtlist(
 			// refactor collapsed it onto the same source line as
 			// `local Record interface. ...` which Go's parser
 			// silently consumed as comment text — that swallowed
-			// the wiring and forced artlist.NewService to fail with
+			// the wiring and forced artlistPkg.NewService to fail with
 			// ErrRunRepositoryUnavailable, leaving /api/artlist/*
 			// unmounted on main.
 			RunRepository:  repos.RunsAdapter,
-			SearchStrategy: artlist.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
+			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
 			// Phase 2 / Fase 2 (July 2026): SystemProber port is the
 			// 10-probe fan-out node. Injected by composition root
 			// (canonical owner of the wire shape per godlike/06 SSOT);
@@ -255,30 +263,30 @@ func WireArtlist(
 			MediaMemoryNormalizer:  mediamemory.NewDefaultNormalizer(""),
 			Transcriber:            transcriber,
 		},
-		ServiceDependencies: artlist.ServiceDependencies{
+		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (10) — grouped into sub-bundles to
 			// respect the AGENTS.md 8-field cap.
-			Infra: artlist.ArtlistInfraDeps{
+			Infra: artlistPkg.ArtlistInfraDeps{
 				Cfg:    cfg,
 				Log:    log,
 				MainDB: bundle.DB.DB,
 			},
-			Ports: artlist.ArtlistPortDeps{
+			Ports: artlistPkg.ArtlistPortDeps{
 				Dispatcher: dispatcher,
 			},
-			Domain: artlist.ArtlistDomainDeps{
+			Domain: artlistPkg.ArtlistDomainDeps{
 				MediaProcessor:    bundle.MediaProcessor,
 				AssetDestResolver: destResolver,
 				JobsSvc:           bundle.Jobs.Service,
 			},
-			Repos: artlist.ArtlistRepoDeps{
+			Repos: artlistPkg.ArtlistRepoDeps{
 				AssetProcRepo:       repos.AssetProcRepo,
 				AssetVerRepo:        repos.AssetVerRepo,
 				LocationRepository:  nil, // retired from artlist service wiring
 				RenditionRepository: repos.RenditionRepo,
 				TextTrackRepo:       bundle.TextTrackRepo,
 			},
-			Finalizer: artlist.ArtlistFinalizerDeps{
+			Finalizer: artlistPkg.ArtlistFinalizerDeps{
 				// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
 				// asset finalizer. Replaces the legacy dispatchBridge path.
 				// Phase 1 (Fase 1, July 2026): finalizerTx is declared above
@@ -290,7 +298,7 @@ func WireArtlist(
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("WireArtlist: artlist.NewService: %w", err)
+		return nil, fmt.Errorf("WireArtlist: artlistPkg.NewService: %w", err)
 	}
 
 	// PR-ARTLIST-RECOMMEND-ADAPTER (closed 2026-07-04): wire the
@@ -341,7 +349,7 @@ func WireArtlist(
 	// Pexels and Pixabay. The registry is frozen before the module
 	// is returned so no provider can be added or removed at runtime.
 	providerAssetsRegistry := providerassets.NewRegistry()
-	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlist.NewAdapter(service))
+	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlistPkg.NewAdapter(service))
 	_ = providerAssetsRegistry.Register(artlistAdapter)
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pexels", providers.PexelsSearcher))
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pixabay", providers.PixabaySearcher))
@@ -447,10 +455,10 @@ func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle)
 
 // NewArtlistConfigAdapter is the canonical composition-root constructor (moved from adapters_infra.go).
 func NewArtlistConfigAdapter(cfg *config.Config) artlistPkg.ArtlistConfigPort {
-\tif cfg == nil {
-\t\treturn nil
-\t}
-\treturn &artlistConfigAdapter{cfg: cfg}
+	if cfg == nil {
+		return nil
+	}
+	return &artlistConfigAdapter{cfg: cfg}
 }
 
 // artlistConfigAdapter wraps *config.Config to satisfy artlistPkg.ArtlistConfigPort
@@ -464,4 +472,41 @@ var _ artlistPkg.ArtlistConfigPort = (*artlistConfigAdapter)(nil)
 
 func (a *artlistConfigAdapter) ArtlistRootFolderID() string {
 	return artlistPkg.ResolveRootFolderID(a.cfg)
+}
+type SourcingTranscriberAdapter struct {
+	cfg *config.Config
+	log *zap.Logger
+}
+
+func (a *SourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath string) (string, string, error) {
+	if a.cfg == nil {
+		return "", "", fmt.Errorf("register transcriber config not configured")
+	}
+	if audioPath == "" {
+		return "", "", nil
+	}
+	if _, err := executil.LookPath("python3"); err != nil {
+		return "", "", err
+	}
+	scriptPath := filepath.Join(a.cfg.Paths.PythonScriptsDir, "tools", "transcribe_detect_lang.py")
+	if _, err := os.Stat(scriptPath); err != nil {
+		return "", "", err
+	}
+	res, err := executil.Run(ctx, "python3", []string{scriptPath, "--transcribe", "--model", "tiny", "--json-only", audioPath}, executil.Options{CombinedOutput: false})
+	if err != nil {
+		return "", "", err
+	}
+	type transcriptResult struct {
+		Language       string `json:"language"`
+		TranscriptFull string `json:"transcript_full"`
+		Error          string `json:"error"`
+	}
+	var parsed transcriptResult
+	if err := json.Unmarshal([]byte(res.Stdout), &parsed); err != nil {
+		return "", "", err
+	}
+	if strings.TrimSpace(parsed.Error) != "" {
+		return "", "", fmt.Errorf("%s", parsed.Error)
+	}
+	return strings.TrimSpace(parsed.TranscriptFull), strings.TrimSpace(parsed.Language), nil
 }
