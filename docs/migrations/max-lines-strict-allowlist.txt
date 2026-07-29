@@ -3,132 +3,35 @@
 # Allowlist for the strict 600-LOC per-file cap (cmd/archcheck::max_lines_per_
 # file_strict, added July 2026 per godlike/08 §"Forward-prevention gates").
 #
-# SCOPE
-# ─────
-# Every production .go file under internal/ + cmd/ whose line count exceeds
-# `architecture/policy.yaml::max_lines_per_file_strict` (default 600) MUST be
-# either split into smaller cohesive files OR listed here as an exempt
-# grandfathered entry. Exemptions are TEMPORARY — each entry carries an
-# owner + deadline + removal_trigger per the godlike/08 zero-baseline rule.
-# Adding a NEW entry REQUIRES team review (no solo adds); the entry must carry
-# the owner + deadline + rationale fields below. Removing an entry is always
-# safe: the scan will fail-closed (the file will now violate the cap) and
-# surface the regression for the assigned workstream to address.
+# STATUS (2026-07-29): ALLOWLIST CLEARED
+# ─────────────────────────────────────
+# Census confirmed: zero production .go files under internal/ + cmd/
+# exceed 600 lines. All previously grandfathered entries have been
+# resolved via splits or removal:
 #
-# FORMAT
-# ──────
-# One repo-root-relative forward-slashed path per non-comment line.
-# `#`-prefixed lines are comments (ignored by the parser). Inline trailing
-# `# owner=...` annotations document the per-entry governance metadata; the
-# parser does not consume them but operators must keep them in sync with the
-# canonical baselined metadata in docs/migrations/archcheck-strict-baseline.json.
+# RESOLVED:
+#   - cmd/admin/qdrant_readiness.go: 1466 → 468 (split into subcommands)
+#   - internal/application/assets/providers/aggregator.go: deleted
+#   - internal/application/clips/clip_ops.go: deleted
+#   - internal/infrastructure/database/sqlite/outbox/repository.go: deleted
+#   - internal/api/assets/clips/ops.go: 851 → 128 (split)
+#   - internal/app/module_media.go: deleted (split into wiring/)
+#   - internal/api/assets/clips/handler.go: 824 → 133 (split)
+#   - internal/infrastructure/observability/metrics.go: deleted
+#   - internal/api/script/handler_legacy_adapters.go: deleted
+#   - internal/application/clips/bulk_upload_worker.go: 707 → 300 (split)
+#   - internal/app/composition.go: 666 → 214 (split into wiring/)
+#   - internal/application/qdrant/legacyaudit/legacyaudit.go: 660 → 144
+#   - internal/application/workerdoctor/default_probes.go: 629 → 176
+#   - internal/app/module_sources.go: deleted (split into wiring/)
+#   - internal/app/assets_register_sourcing.go: 607 → 356
+#   - internal/application/mediamemory/linker_worker.go: >600 → 368
 #
-# POLICY (mirrors admin-sql-allowlist.txt / duplicate-types-allowlist.txt)
-# ────────────────────────────────────────────────────────────────────────
-# * Each entry must ship with a migration plan tracked under the
-#   corresponding `architecture/current.yaml` wave (or PR track for
-#   in-flight work).
-# * Owner+deadline+rationale annotations are MANDATORY: the on-disk scanner
-#   fails closed if the allowlist path is missing (treats it as empty) but
-#   does not validate per-entry annotations today — operator-review on the
-#   `max_lines_per_file_strict` family in the JSON report is the enforcement
-#   mechanism for stale entries past their deadline.
-# * The whole block is ratcheted to the SINGLE deadline 2026-09-15; entries
-#   that miss this deadline surface in the next Wave 24 re-scan as overdue
-#   per godlike/07 NO-FAKE-AVAILABILITY.
+#   - stockpipeline/stager_adapter.go: split into 6 files (167 max)
+#   - stockpipeline/step_extract_clips.go: split into 8 files (208 max)
 #
-# BASELINE (origin/main, July 2026)
-# ────────────────────────────────
-# 16 .go files currently exceed 600 LOC (extracted from
-# docs/migrations/archcheck-strict-baseline.json::max_lines_per_file
-# failing_entries filtered at the 600-LOC threshold; was 18 before
-# stager_adapter.go + step_extract_clips.go dropped under 600). The most-over-cap file
-# is cmd/admin/qdrant_readiness.go at 1466 — owner=@admin-team has a Wave-23
-# plan to split it into per-concern subcommands.
+# This file is intentionally empty. The strict 600-LOC gate now passes
+# clean on all production .go files.
 #
-# Future population cadence: ratchet the allowlist DOWNWARDS (not upwards).
-# Every entry has a removal_trigger (the next step of its migration plan);
-# the `max_lines_per_file_strict` family will exit clean only when this list
-# is empty. Until then, each merge MUST audit the post-merge LOC delta via
-# `wc -l <file>` to prevent silent regressions that hide behind the existing
-# grandfathered entries.
-# ──────────────────────────────────────────────────────────────────────────────
-
-# ── Bucket 1: cmd/admin tooling (Wave-23 admin-team split) ───────────
-# These files own the admin CLI subcommands. Each migration split
-# follows the EXPAND → BACKFILL → CUTOVER → CONTRACT sequence per
-# godlike/07 §"Migration sequence". Removal_trigger = the file deletes
-# from disk (auto-rejected if it doesn't), so the allowlist entry's
-# existence is the source of truth.
-# owner=@admin-team; deadline=2026-09-15; Wave-23 admin-CLI-split; removal_trigger=file-deleted
-cmd/admin/qdrant_readiness.go
-
-# ── Bucket 2: application-layer cohesive files (Wave-23+ provider + use-case splits) ──
-# These files own cohesive application-layer surfaces that are SPLITTABLE
-# but blocked behind parallel workstreams per godlike/06 SSOT (single owner
-# per fact). Each migration splits into 2-3 per-concern subfiles.
-# owner=@app-team; deadline=2026-09-15; PR-G.4+ application-layer split; removal_trigger=file-deleted
-internal/application/assets/providers/aggregator.go
-# owner=@clips-team; deadline=2026-09-15; PR-G.4+ clips split; removal_trigger=file-deleted
-internal/application/clips/clip_ops.go
-# owner=@qdrant-hygiene; deadline=2026-09-15; Wave-22 Task 2/3 migration; removal_trigger=file-deleted
-internal/infrastructure/database/sqlite/outbox/repository.go
-# owner=@api-team; deadline=2026-09-15; PR-G.4+ clips API split; removal_trigger=file-deleted-AND-ops-co-migrated
-internal/api/assets/clips/ops.go
-# owner=@app-team; deadline=2026-09-15; PR-G.4+ composition-root split; removal_trigger=file-deleted
-internal/app/module_media.go
-# owner=@api-team; deadline=2026-09-15; PR-G.4+ clips API split; removal_trigger=file-deleted
-internal/api/assets/clips/handler.go
-# owner=@observability-team; deadline=2026-09-15; observability metrics split; removal_trigger=file-deleted
-internal/infrastructure/observability/metrics.go
-# owner=@api-team; deadline=2026-09-15; Wave-22 legacy text handlers split; removal_trigger=file-deleted
-internal/api/script/handler_legacy_adapters.go
-# owner=@clips-team; deadline=2026-09-15; PR-G.4+ clips split; removal_trigger=file-deleted
-internal/application/clips/bulk_upload_worker.go
-
-# ── Bucket 3: composition-root + qdrant-reconciler cohesive files ───
-# These files own composition-root glue and qdrant-side reconcilers.
-# Smaller cohesive surfaces slated for per-concern subpackage migration.
-# owner=@app-team; deadline=2026-09-15; PR-G.4+ composition-root split; removal_trigger=file-deleted
-internal/app/composition.go
-# owner=@qdrant-team; deadline=2026-09-15; Wave-22 legacyaudit reconciliation; removal_trigger=migration-completed-to-tracker-only
-internal/application/qdrant/legacyaudit/legacyaudit.go
-# owner=@health-team; deadline=2026-09-15; workerdoctor split; removal_trigger=file-deleted
-internal/application/workerdoctor/default_probes.go
-# owner=@app-team; deadline=2026-09-15; PR-G.4+ composition-root split; removal_trigger=file-deleted
-internal/app/module_sources.go
-
-# ── Bucket 4: asset-state register (FASE-X finalizer consolidation) ─
-# This file owns the asset state register (FASE-X finalizer consolidation
-# wave). Once the consolidation completes the file gets removed in favor of
-# the post-FASE-X canonical asset-state surface.
-# owner=@assets-team; deadline=2026-09-15; FASE-X asset-state finalizer consolidation; removal_trigger=file-deleted
-internal/app/assets_register_sourcing.go
-
-# ── Bucket 5: Wave-24 promotion-surface (max_lines_per_file_strict gate promotion) ──
-# These files entered the allowlist when the strict 600-LOC cap was
-# promoted from soft-warning to hard gate (Wave-24 evolution, see
-# architecture/policy.history.yaml::max_lines_per_file_strict and
-# architecture/policy.yaml::hard_gates). Per godlike/08 zero-baseline
-# rule + the Wave-24 tighten clause (deadline=2026-08-15, NOT 2026-09-15
-# like Buckets 1-4), each entry MUST be split before 2026-08-15 or
-# fail-closed at the next architecture re-scan. Replacement plan per
-# entry is a 2-file per-concern split preserving the canonical
-# public-API surface (godlike/07 minimum-blast-radius: zero new
-# exported symbols, same package scope).
-#
-# ✅ RESOLVED (July 2026):
-#   - internal/application/assets/providers/stock/stockpipeline/stager_adapter.go
-#     Split into stager_adapter.go (167) + stager_lease.go + stager_cache.go +
-#     stager_drive.go + stager_download.go + stager_cleanup.go
-#   - internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go
-#     Split into step_extract_clips.go (180) + step_extract_clips_batch.go +
-#     step_extract_clips_cut.go + step_extract_clips_publish.go +
-#     step_extract_clips_metadata.go + step_extract_clips_validation.go +
-#     step_extract_clips_upload.go + step_extract_clips_assets.go
-#
-# NO new grandfathered entries are accepted beyond this Bucket. Every
-# future PR must split cohesively before crossing the 600-LOC mark or
-# surface as a hard CI build failure on push.
-# owner=@mediamemory-team; deadline=2026-08-15; Wave-24 linker-worker-split; removal_trigger=file-deleted
-internal/application/mediamemory/linker_worker.go
+# POLICY: any NEW file exceeding 600 LOC must be split before merge
+# and cannot be added to this allowlist. The gate is hard-fail-closed.
