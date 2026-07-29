@@ -66,6 +66,7 @@ func (f *finalizeFakeRunner) ArtifactPreparation() finalization.ArtifactPreparat
 func (f *finalizeFakeRunner) JobFinalizer() finalization.JobFinalizer { return f.jobFinalizer }
 func (f *finalizeFakeRunner) RunFingerprint() string                  { return "test-finalize-fingerprint" }
 func (f *finalizeFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
+	func (f *finalizeFakeRunner) LocalFS() LocalFSPort { return nil }
 func (f *finalizeFakeRunner) State() *RunState                        { return f.state }
 func (f *finalizeFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
