@@ -26,7 +26,7 @@
 // expanded; see architecture/action-plans/2026-07-04-stock-architecture
 // -improvement.md and the commit body for the full honest scope
 // disclosure).
-package stockpipeline
+package types
 
 import "errors"
 

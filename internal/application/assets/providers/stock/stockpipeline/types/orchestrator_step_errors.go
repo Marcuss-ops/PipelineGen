@@ -26,7 +26,7 @@
 // + slimmed orchestrator_steps.go = 8 files) is the canonical
 // interpretation; see the commit body for the full honest scope
 // disclosure).
-package stockpipeline
+package types
 
 import "errors"
 

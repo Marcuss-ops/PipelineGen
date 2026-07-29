@@ -6,7 +6,7 @@
 //
 // Wiring happens at the composition root (internal/app/wire_*.go); the
 // infrastructure adapter lives in internal/infrastructure/downloader/stock_adapter.go.
-package stockpipeline
+package types
 
 import "context"
 
