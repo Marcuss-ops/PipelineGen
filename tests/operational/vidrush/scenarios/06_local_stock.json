@@ -1,0 +1,90 @@
+{
+  "scenario_id": "06_local_stock",
+  "description": "Vidrush local stock — ricerca locale clip Mike Tyson già indicizzate. Verifica binding per segmento, alternanza fight/interview/training, nessun asset_id duplicato, max 2 scene consecutive stesso video, Drive/SQLite/Qdrant verificati. Nessuna clip Artlist usata come fallback silenzioso.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "no_duplicate_asset_ids": true,
+    "max_consecutive_same_video": 2,
+    "no_artlist_fallback": true,
+    "provider_requests_artlist": 0,
+    "provider_requests_internet_images": 0
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-06-local-stock",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-06-stock-item",
+        "title": "Mike Tyson: fight highlights, interviews, and training compilation",
+        "language": "en",
+        "tone": "documentary",
+        "style": "Write a dynamic boxing narrative using the retrieved Mike Tyson clips. Alternate between fight highlights, interview moments, and training footage. Keep the prose grounded in actual clip content.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "search",
+          "query": "Mike Tyson boxing fight highlights knockout training interview",
+          "max_clips": 12,
+          "min_coverage": 1,
+          "min_transcript_words": 5,
+          "ordering_strategy": "chronological",
+          "grounding_policy": "clips_primary",
+          "fallback_policy": "strict",
+          "source_filter": "youtube",
+          "media_type_filter": "clip"
+        },
+        "script_params": {
+          "target_words": 400,
+          "min_words": 250,
+          "segment_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "enabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": false
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "min_segments": 3,
+      "stock_clips_found": "almeno 8 clip Mike Tyson trovate nella ricerca locale",
+      "binding_per_segment": "ogni segmento ha un binding stock (primary_video con provider yt o drive)",
+      "alternanza_categorie": "alternanza tra fight, interview, training nei segmenti",
+      "no_duplicate_assets": "nessun asset_id duplicato tra i candidati",
+      "max_consecutive_same_video": "massimo 2 scene consecutive dallo stesso video",
+      "no_artlist_fallback": "nessuna clip Artlist usata come fallback silenzioso per mancanza stock",
+      "drive_link_valid": "Drive link valido per ogni clip selezionata",
+      "sqlite_verified": "ogni asset_id presente nella tabella media_assets di SQLite",
+      "qdrant_verified": "ogni asset_id presente nell'indice Qdrant",
+      "semantic_relevance": "pertinenza semantica tra testo del segmento e clip selezionata",
+      "no_wrong_boxer": "nessun pugile sbagliato nei risultati principali (solo Mike Tyson)"
+    }
+  }
+}
