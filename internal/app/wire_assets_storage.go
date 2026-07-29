@@ -15,8 +15,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/api/assets/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"

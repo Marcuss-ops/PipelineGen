@@ -44,11 +44,11 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"

@@ -13,8 +13,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // searchReadAdapter wraps *assets.ClipsRepository to satisfy the

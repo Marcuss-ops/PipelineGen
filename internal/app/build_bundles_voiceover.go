@@ -16,9 +16,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
@@ -27,8 +27,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"

@@ -71,7 +71,7 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -170,7 +170,7 @@ func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
@@ -202,7 +202,7 @@ func TestComposition_NilObligatory_BuildSearchBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {

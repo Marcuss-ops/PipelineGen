@@ -15,9 +15,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"

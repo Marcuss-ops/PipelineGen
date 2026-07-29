@@ -19,8 +19,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
 	"go.uber.org/zap"

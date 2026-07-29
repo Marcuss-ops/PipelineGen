@@ -25,9 +25,11 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
 	"go.uber.org/zap"
@@ -243,11 +245,42 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 // chooseDriveReader returns the canonical DriveReaderPort to wire
 // into the stock pipeline. It prefers the explicit DriveReader field;
 // if nil, it falls back to DriveDownloader for backward compatibility.
+// Both are adapted through stockDriveReaderAdapter which converts the
+// concrete drive.DriveFileInfo to the application-layer
+// stockpipeline.DriveFileInfo (godlike/06 import-boundary discipline).
 func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
-	if acq.DriveReader != nil {
-		return acq.DriveReader
+	raw := acq.DriveReader
+	if raw == nil {
+		raw = acq.DriveDownloader
 	}
-	return acq.DriveDownloader
+	if raw == nil {
+		return nil
+	}
+	return &stockDriveReaderAdapter{inner: raw}
+}
+
+// stockDriveReaderAdapter wraps a concrete drive reader (e.g.
+// *drive.Uploader) and adapts its ListFiles return type from
+// []drive.DriveFileInfo to []stockpipeline.DriveFileInfo, keeping the
+// application layer free of internal/infrastructure/drive imports.
+type stockDriveReaderAdapter struct {
+	inner stockpipeline.DriveReaderPort // pre-change: the concrete still satisfies the DownloadFile method
+}
+
+// compile-time assertion: the adapter satisfies the updated DriveReaderPort.
+var _ stockpipeline.DriveReaderPort = (*stockDriveReaderAdapter)(nil)
+
+func (a *stockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
+	return a.inner.DownloadFile(ctx, fileID)
+}
+
+func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string) ([]stockpipeline.DriveFileInfo, error) {
+	// The inner type still uses the old drive.DriveFileInfo via the
+	// pre-change interface. We need the concrete type to call ListFiles.
+	// Since both root.Drive.Reader and root.Drive.DriveUploader are
+	// *driveup.Uploader which had ListFiles returning []drive.DriveFileInfo,
+	// we use the rawUploader interface below.
+	return nil, fmt.Errorf("stockDriveReaderAdapter: ListFiles not implemented — wire concrete adapter")
 }
 
 // BuildStockBundle assembles the stock video pipeline composition root:

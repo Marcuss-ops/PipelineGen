@@ -31,8 +31,8 @@ package app
 // pin + import-allowlist AST scan in ONE file. Only the deps the
 // shim itself references are imported here.
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 

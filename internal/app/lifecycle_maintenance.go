@@ -25,8 +25,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
 	deletionreconciler "github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion/reconciler"

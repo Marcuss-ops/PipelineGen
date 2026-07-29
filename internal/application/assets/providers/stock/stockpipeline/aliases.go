@@ -106,8 +106,12 @@ const (
 )
 
 // Function wrappers for canonical constructors in types/.
-func StockArtifactGroupID(batchID, sourceID string) string { return types.StockArtifactGroupID(batchID, sourceID) }
-func StockArtifactID(batchID, sourceID string, clipIdx int) string      { return types.StockArtifactID(batchID, sourceID, clipIdx) }
+func StockArtifactGroupID(batchID, sourceID string) string {
+	return types.StockArtifactGroupID(batchID, sourceID)
+}
+func StockArtifactID(batchID, sourceID string, clipIdx int) string {
+	return types.StockArtifactID(batchID, sourceID, clipIdx)
+}
 
 // ──── planner (P3 Batch 3) ────
 
@@ -119,46 +123,46 @@ var (
 	ErrExplicitPlannerNoClips = types.ErrExplicitPlannerNoClips
 )
 
-func NewDeterministicPlanner() ClipPlanner { return types.NewDeterministicPlanner() }
+func NewDeterministicPlanner() ClipPlanner            { return types.NewDeterministicPlanner() }
 func NewExplicitPlanner(clips []ClipSpec) ClipPlanner { return types.NewExplicitPlanner(clips) }
 
 // ──── error sentinels (was service_errors.go) ────
 
 var (
-	ErrStockPipelineNilCfg                       = types.ErrStockPipelineNilCfg
-	ErrStockPipelineNilLog                       = types.ErrStockPipelineNilLog
-	ErrStockPipelineNilClipsRepo                 = types.ErrStockPipelineNilClipsRepo
-	ErrStockPipelineNilAssetIndex                = types.ErrStockPipelineNilAssetIndex
-	ErrStockPipelineNilDispatcher                = types.ErrStockPipelineNilDispatcher
-	ErrStockPipelineNilCutter                    = types.ErrStockPipelineNilCutter
-	ErrStockPipelineNilRenderer                  = types.ErrStockPipelineNilRenderer
-	ErrStockPipelineNilJobs                      = types.ErrStockPipelineNilJobs
-	ErrStockPipelineNilPublisher                 = types.ErrStockPipelineNilPublisher
-	ErrStockPipelineNilFolderCreator             = types.ErrStockPipelineNilFolderCreator
-	ErrStockPipelineNilStepStore                 = types.ErrStockPipelineNilStepStore
-	ErrStockPipelineNilSourceStager              = types.ErrStockPipelineNilSourceStager
-	ErrStockPipelineNilLocalFS                  = types.ErrStockPipelineNilLocalFS
-	ErrStockProductionDBMissing                  = types.ErrStockProductionDBMissing
-	ErrStockProductionBatchRepositoryMissing     = types.ErrStockProductionBatchRepositoryMissing
-	ErrStockPipelineNilDB                        = types.ErrStockPipelineNilDB
-	ErrStockPipelineNilFinalizer                 = types.ErrStockPipelineNilFinalizer
-	ErrStockPipelineAllQueriesFailed             = types.ErrStockPipelineAllQueriesFailed
+	ErrStockPipelineNilCfg                   = types.ErrStockPipelineNilCfg
+	ErrStockPipelineNilLog                   = types.ErrStockPipelineNilLog
+	ErrStockPipelineNilClipsRepo             = types.ErrStockPipelineNilClipsRepo
+	ErrStockPipelineNilAssetIndex            = types.ErrStockPipelineNilAssetIndex
+	ErrStockPipelineNilDispatcher            = types.ErrStockPipelineNilDispatcher
+	ErrStockPipelineNilCutter                = types.ErrStockPipelineNilCutter
+	ErrStockPipelineNilRenderer              = types.ErrStockPipelineNilRenderer
+	ErrStockPipelineNilJobs                  = types.ErrStockPipelineNilJobs
+	ErrStockPipelineNilPublisher             = types.ErrStockPipelineNilPublisher
+	ErrStockPipelineNilFolderCreator         = types.ErrStockPipelineNilFolderCreator
+	ErrStockPipelineNilStepStore             = types.ErrStockPipelineNilStepStore
+	ErrStockPipelineNilSourceStager          = types.ErrStockPipelineNilSourceStager
+	ErrStockPipelineNilLocalFS               = types.ErrStockPipelineNilLocalFS
+	ErrStockProductionDBMissing              = types.ErrStockProductionDBMissing
+	ErrStockProductionBatchRepositoryMissing = types.ErrStockProductionBatchRepositoryMissing
+	ErrStockPipelineNilDB                    = types.ErrStockPipelineNilDB
+	ErrStockPipelineNilFinalizer             = types.ErrStockPipelineNilFinalizer
+	ErrStockPipelineAllQueriesFailed         = types.ErrStockPipelineAllQueriesFailed
 )
 
 // ──── step error sentinels (was orchestrator_step_errors.go) ────
 
 var (
-	ErrStockPublishArtifactFailed    = types.ErrStockPublishArtifactFailed
-	ErrStockFinalizeSpineFailed      = types.ErrStockFinalizeSpineFailed
-	ErrStockComposeChunksAllFailed   = types.ErrStockComposeChunksAllFailed
-	ErrStockExtractClipsCutterRequired   = types.ErrStockExtractClipsCutterRequired
-	ErrStockExtractClipsLocalFSRequired  = types.ErrStockExtractClipsLocalFSRequired
-	ErrStockFinalizeLeaseMissing     = types.ErrStockFinalizeLeaseMissing
-	ErrStockFinalizeStateLost        = types.ErrStockFinalizeStateLost
-	ErrStockFnRequired               = types.ErrStockFnRequired
-	ErrStockPublishStateLost         = types.ErrStockPublishStateLost
-	ErrStockResumeStateInvalid       = types.ErrStockResumeStateInvalid
-	ErrStockStageSourcesAllFailed    = types.ErrStockStageSourcesAllFailed
-	ErrStockStageSourcesIncomplete   = types.ErrStockStageSourcesIncomplete
-	ErrFinalizerAbsent               = types.ErrFinalizerAbsent
+	ErrStockPublishArtifactFailed       = types.ErrStockPublishArtifactFailed
+	ErrStockFinalizeSpineFailed         = types.ErrStockFinalizeSpineFailed
+	ErrStockComposeChunksAllFailed      = types.ErrStockComposeChunksAllFailed
+	ErrStockExtractClipsCutterRequired  = types.ErrStockExtractClipsCutterRequired
+	ErrStockExtractClipsLocalFSRequired = types.ErrStockExtractClipsLocalFSRequired
+	ErrStockFinalizeLeaseMissing        = types.ErrStockFinalizeLeaseMissing
+	ErrStockFinalizeStateLost           = types.ErrStockFinalizeStateLost
+	ErrStockFnRequired                  = types.ErrStockFnRequired
+	ErrStockPublishStateLost            = types.ErrStockPublishStateLost
+	ErrStockResumeStateInvalid          = types.ErrStockResumeStateInvalid
+	ErrStockStageSourcesAllFailed       = types.ErrStockStageSourcesAllFailed
+	ErrStockStageSourcesIncomplete      = types.ErrStockStageSourcesIncomplete
+	ErrFinalizerAbsent                  = types.ErrFinalizerAbsent
 )

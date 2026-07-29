@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -185,13 +184,24 @@ type DeliveryDeps struct {
 	Finalizer     finalization.JobFinalizer
 }
 
+// DriveFileInfo is the application-layer representation of a Google Drive
+// file entry returned by ListFiles. Defined locally so the DriveReaderPort
+// stays free of internal/infrastructure/drive imports (godlike/06
+// import-boundary discipline). The composition root adapts the concrete
+// drive.DriveFileInfo to this type.
+type DriveFileInfo struct {
+	ID       string
+	MimeType string
+}
+
 // DriveReaderPort is the Google Drive read-side port used by the
 // stock pipeline to download a single file and to list the contents
 // of a Drive folder (so a folder URL can be expanded to the first
-// video). The concrete *drive.Uploader satisfies it structurally.
+// video). The concrete *drive.Uploader is adapted at the composition
+// root via a thin wrapper.
 type DriveReaderPort interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
-	ListFiles(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+	ListFiles(ctx context.Context, parentID string) ([]DriveFileInfo, error)
 }
 
 type Deps struct {

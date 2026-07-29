@@ -42,8 +42,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	fullimagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/fullimages"

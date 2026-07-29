@@ -56,10 +56,10 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"

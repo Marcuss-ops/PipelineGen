@@ -107,9 +107,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediamemory"
@@ -122,7 +122,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
@@ -132,6 +131,7 @@ import (
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"

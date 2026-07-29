@@ -30,7 +30,7 @@ func TestBuildJobsBundle_FieldsAreNonNil(t *testing.T) {
 	// PG-011 typed-handle migration (June 2026): BuildJobsBundle
 	// signature is now `*storage.SQLiteDB` so we pass the typed
 	// handle directly (no `.DB` accessor).
-	bundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	bundle, err := wiring.BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("BuildJobsBundle: %v", err)
 	}
@@ -54,10 +54,10 @@ func TestBuildJobsBundle_FieldsAreNonNil(t *testing.T) {
 // TestBuildJobsBundle_RejectsNilInputs pins down the defensive guards so
 // future callers can rely on the documented error contract.
 func TestBuildJobsBundle_RejectsNilInputs(t *testing.T) {
-	if _, err := BuildJobsBundle(nil, zaptest.NewLogger(t), nil, nil, nil, nil); err == nil {
-		t.Fatal("BuildJobsBundle(nil db) expected error, got nil")
+	if _, err := wiring.BuildJobsBundle(nil, zaptest.NewLogger(t), nil, nil, nil, nil); err == nil {
+		t.Fatal("wiring.BuildJobsBundle(nil db) expected error, got nil")
 	}
-	if _, err := BuildJobsBundle(nil, nil, nil, nil, nil, nil); err == nil {
-		t.Fatal("BuildJobsBundle(nil logger) expected error, got nil")
+	if _, err := wiring.BuildJobsBundle(nil, nil, nil, nil, nil, nil); err == nil {
+		t.Fatal("wiring.BuildJobsBundle(nil logger) expected error, got nil")
 	}
 }

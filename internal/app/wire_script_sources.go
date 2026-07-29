@@ -44,10 +44,10 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
