@@ -1,0 +1,86 @@
+{
+  "scenario_id": "04_partial_cache",
+  "description": "Vidrush partial cache — modifica solo il terzo segmento del payload di 02. I primi due segmenti invariati devono tornare HIT_EXACT, il terzo modificato MISS. Solo il segmento modificato deve triggerare nuove chiamate provider. Nessuna rigenerazione globale.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "provider_requests_artlist": -1,
+    "provider_requests_internet_images": -1,
+    "cache_segment_1": "HIT_EXACT",
+    "cache_segment_2": "HIT_EXACT",
+    "cache_segment_3": "MISS"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-04-partial-cache",
+    "force_refresh": false,
+    "items": [
+      {
+        "id": "vidrush-02-full-item",
+        "title": "Vidrush partial cache: terzo segmento modificato",
+        "language": "en",
+        "tone": "documentary",
+        "style": "Write a vivid, concrete narrative. Each segment should describe a distinct visual scene. Use specific, searchable details that translate well to media queries.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Three cinematic stories for partial cache verification",
+          "source_text": "A surfer rides a massive wave at sunset on the North Shore of Oahu. The golden light reflects off the water as the board cuts through the curl.\n\nA wildlife photographer tracks a snow leopard through the Himalayan mountains. Paw prints in fresh snow lead toward a rocky outcrop at dawn.\n\nAn astronaut repairs a solar panel outside the International Space Station. Earth glows blue and white in the background as tools float in microgravity.\n\nOperational marker: vidrush-04-partial-cache."
+        },
+        "script_params": {
+          "target_words": 260,
+          "min_words": 200,
+          "segment_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": true
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 5,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "min_segments": 3,
+      "per_segment": {
+        "segment_id_non_empty": ".segment_id | length > 0",
+        "text_hash_non_empty": ".text_hash | length > 0"
+      },
+      "cache_isolation": "i primi due segmenti invariati → HIT_EXACT, il terzo modificato → MISS",
+      "no_global_regeneration": "nessuna rigenerazione globale dello script, solo il segmento modificato triggera nuovi provider",
+      "partial_provider_calls": "provider chiamati solo per il segmento modificato, non per quelli invariati",
+      "binding_preserved": "binding dei segmenti invariati conservati dal cold run",
+      "no_cache_key_too_wide": "cache key non troppo larghe: modifica di un segmento non invalida tutto lo script"
+    }
+  }
+}
