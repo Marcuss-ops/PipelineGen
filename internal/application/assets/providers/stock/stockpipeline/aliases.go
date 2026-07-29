@@ -138,6 +138,7 @@ var (
 	ErrStockPipelineNilRenderer              = types.ErrStockPipelineNilRenderer
 	ErrStockPipelineNilJobs                  = types.ErrStockPipelineNilJobs
 	ErrStockPipelineNilPublisher             = types.ErrStockPipelineNilPublisher
+	ErrStockPipelineNilPublisherPort         = types.ErrStockPipelineNilPublisherPort
 	ErrStockPipelineNilFolderCreator         = types.ErrStockPipelineNilFolderCreator
 	ErrStockPipelineNilStepStore             = types.ErrStockPipelineNilStepStore
 	ErrStockPipelineNilSourceStager          = types.ErrStockPipelineNilSourceStager

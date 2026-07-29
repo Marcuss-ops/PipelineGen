@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -105,7 +104,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	}
 	if s.publisher != nil {
 		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
-			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
+			s.publisherPort, s.log))
 	}
 	o.WithJobFinalizer(s.finalizer)
 	// Production stock runs must persist each extracted clip through the

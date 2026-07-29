@@ -46,6 +46,7 @@ var (
 	ErrStockPipelineNilRenderer      = errors.New("stockpipeline.NewService: media.Renderer is required (PR6 port)")
 	ErrStockPipelineNilJobs          = errors.New("stockpipeline.NewService: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
 	ErrStockPipelineNilPublisher     = errors.New("stockpipeline.NewService: delivery.Publisher is required")
+	ErrStockPipelineNilPublisherPort = errors.New("stockpipeline.NewService: delivery.PublisherPort is required (godlike/06: wire drive.NewArtifactPublisherAdapter at the composition root)")
 	ErrStockPipelineNilFolderCreator = errors.New("stockpipeline.NewService: delivery.FolderCreator is required")
 	ErrStockPipelineNilStepStore     = errors.New("stockpipeline.NewService: Runtime.StepStore is required for durable stock state")
 
