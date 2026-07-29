@@ -1,0 +1,164 @@
+{
+  "scenario_id": "09_provider_failure",
+  "description": "Vidrush provider failure injection — simula fallimenti distinti per ogni provider/dipendenza. Verifica: BestEffort→warning+continua, obbligatorio→FAILED, temporaneo→retry limitato, permanente→nessun retry inutile. Mai: provider fallito→ok=true senza dichiarare la perdita.",
+  "version": 1,
+  "scenario_type": "failure_injection",
+  "failure_cases": [
+    {
+      "case_id": "artlist_timeout",
+      "dependency": "artlist",
+      "class": "BestEffort",
+      "failure": "timeout (30s)",
+      "expect": {
+        "job_status": "SUCCEEDED",
+        "warning_logged": true,
+        "no_false_success": "provider registrato come fallito, non ok vuoto",
+        "other_providers_continue": "images e binding completano normalmente",
+        "retry_policy": "nessun retry (timeout = permanente per questa run)"
+      },
+      "payload_override": {
+        "media_plan": {
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          }
+        },
+        "simulate": "artlist_timeout"
+      }
+    },
+    {
+      "case_id": "artlist_empty_response",
+      "dependency": "artlist",
+      "class": "BestEffort",
+      "failure": "risposta vuota / no results",
+      "expect": {
+        "job_status": "SUCCEEDED",
+        "warning_logged": false,
+        "cache_negative_not_permanent": "risultato vuoto non persiste in cache negativa permanente",
+        "candidates_empty": "nessun candidato Artlist, ma il job completa",
+        "retry_on_next_run": "run successiva ritenta la ricerca (cache TTL)"
+      },
+      "payload_override": {
+        "media_plan": {
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "disabled"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "image_provider_timeout",
+      "dependency": "internet_images",
+      "class": "BestEffort",
+      "failure": "timeout (15s)",
+      "expect": {
+        "job_status": "SUCCEEDED",
+        "warning_logged": true,
+        "artlist_completes": "Artlist completa normalmente",
+        "binding_completes": "binding usa solo candidati Artlist"
+      },
+      "payload_override": {
+        "media_plan": {
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          }
+        },
+        "simulate": "images_timeout"
+      }
+    },
+    {
+      "case_id": "qdrant_temporarily_down",
+      "dependency": "qdrant",
+      "class": "BestEffort",
+      "failure": "connection refused / 503",
+      "expect": {
+        "job_status": "SUCCEEDED",
+        "warning_logged": true,
+        "limited_retry": "retry limitato (max 3 tentativi con backoff)",
+        "fallback_behavior": "usa solo risultati già in cache o direct provider"
+      }
+    },
+    {
+      "case_id": "drive_5xx",
+      "dependency": "google_drive",
+      "class": "obligatory",
+      "failure": "HTTP 500 / 503",
+      "expect": {
+        "job_status": "FAILED",
+        "error_typed": "errore tipizzato (non panic generico)",
+        "no_infinite_retry": "nessun retry infinito su errore permanente",
+        "outbox_not_poisoned": "outbox event non scritto se upload fallito"
+      }
+    },
+    {
+      "case_id": "ollama_timeout",
+      "dependency": "ollama",
+      "class": "obligatory",
+      "failure": "timeout (120s) / connection refused",
+      "expect": {
+        "job_status": "FAILED",
+        "error_typed": "errore LLM tipizzato",
+        "limited_retry": "retry limitato (max 2 tentativi)",
+        "no_hanging": "nessun hang indefinito, timeout rispettato"
+      }
+    }
+  ],
+  "global_assertions": {
+    "best_effort_never_blocks": "fallimento BestEffort non impedisce mai il completamento del job",
+    "obligatory_fails_closed": "fallimento obbligatorio produce FAILED con errore tipizzato",
+    "temporary_retries": "errore temporaneo (503, connection refused) → retry limitato con backoff",
+    "permanent_no_retry": "errore permanente (400, 401, 403) → nessun retry",
+    "never_ok_without_warning": "mai: provider fallito → ok=true senza warning/dichiarazione della perdita",
+    "metrics": "vidrush_provider_failures_total{provider,reason} incrementato correttamente per ogni caso",
+    "logs": "log strutturati contengono provider, reason, retry_count per ogni fallimento"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-09-failure",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-09-failure-item",
+        "title": "Provider failure injection test",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Short factual prose.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Failure injection operational test",
+          "source_text": "A routine operational verification. The system under test processes this text while specific dependencies are configured to fail. Operational marker: vidrush-09-failure."
+        },
+        "script_params": {
+          "target_words": 100,
+          "min_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_artlist_queries_per_segment": 3,
+            "max_image_queries_per_segment": 3
+          }
+        }
+      }
+    ]
+  },
+  "execution_notes": "Questo scenario richiede instrumentation lato server per simulare i fallimenti (feature flag, chaos proxy, o network partitioning). Non eseguibile come semplice POST. I casi vanno attivati uno alla volta con il sistema in stato controllato."
+}

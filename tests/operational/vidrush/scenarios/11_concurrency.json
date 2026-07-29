@@ -1,0 +1,159 @@
+{
+  "scenario_id": "11_concurrency",
+  "description": "Vidrush concurrency e massimo throughput — esegue livelli progressivi di carico (1→2→5→10→20 job simultanei) con warm-up e cool-down. Misura: job/min, seg/s, queue wait, CPU, RAM, goroutine, GC, SQLite busy/locked, Qdrant latency, provider latency, download throughput, error rate, retry rate. Si ferma al primo livello con degrado (p95 +20%, errori, lock SQLite, RAM crescente, 429 provider, queue infinita).",
+  "version": 1,
+  "scenario_type": "concurrency",
+  "concurrency_levels": [
+    {
+      "level": 1,
+      "concurrent_jobs": 1,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "cooldown_seconds": 10,
+      "baseline": true,
+      "description": "Baseline: 1 job alla volta"
+    },
+    {
+      "level": 2,
+      "concurrent_jobs": 2,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "cooldown_seconds": 15,
+      "baseline": false,
+      "description": "2 job simultanei"
+    },
+    {
+      "level": 3,
+      "concurrent_jobs": 5,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "cooldown_seconds": 30,
+      "baseline": false,
+      "description": "5 job simultanei"
+    },
+    {
+      "level": 4,
+      "concurrent_jobs": 10,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "cooldown_seconds": 60,
+      "baseline": false,
+      "description": "10 job simultanei"
+    },
+    {
+      "level": 5,
+      "concurrent_jobs": 20,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "cooldown_seconds": 120,
+      "baseline": false,
+      "description": "20 job simultanei — limite operativo"
+    }
+  ],
+  "metrics": {
+    "throughput": [
+      "jobs_per_minute",
+      "segments_per_second",
+      "total_wall_clock_seconds"
+    ],
+    "latency": [
+      "queue_wait_seconds_p50",
+      "queue_wait_seconds_p95",
+      "queue_wait_seconds_p99",
+      "job_total_seconds_p50",
+      "job_total_seconds_p95",
+      "qdrant_search_latency_ms_p95",
+      "provider_artlist_latency_ms_p95",
+      "provider_images_latency_ms_p95",
+      "download_throughput_mbps"
+    ],
+    "resources": [
+      "cpu_peak_pct",
+      "rss_peak_mb",
+      "goroutines_peak",
+      "gc_pause_ms_p95",
+      "sqlite_busy_count",
+      "sqlite_locked_count"
+    ],
+    "reliability": [
+      "error_rate_pct",
+      "retry_rate_pct",
+      "provider_429_count",
+      "provider_timeout_count"
+    ]
+  },
+  "stop_conditions": {
+    "p95_degradation": "p95 del livello corrente peggiora oltre il 20% rispetto al livello precedente",
+    "error_rate": "error_rate > 0% (qualsiasi errore)",
+    "sqlite_lock": "sqlite_locked_count > 0 (lock detected)",
+    "ram_growth": "RAM continua a salire senza stabilizzarsi tra le run",
+    "provider_429": "provider riceve HTTP 429 (rate limit)",
+    "queue_unbounded": "queue cresce senza recuperare tra le run"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-11-concurrency",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-11-conc-item",
+        "title": "Concurrency throughput test",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Short factual prose. Keep it simple and fast to generate.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Concurrency operational verification",
+          "source_text": "A quick operational throughput test. The system processes this lightweight text under concurrent load. Operational marker: vidrush-11-concurrency."
+        },
+        "script_params": {
+          "target_words": 100,
+          "min_words": 60,
+          "segment_words": 30,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": false,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": false
+          }
+        }
+      }
+    ]
+  },
+  "execution_procedure": {
+    "precondition": "Sistema in stato idle, code vuote, nessun job pendente",
+    "per_level": [
+      "1. Warm-up: invia warmup_runs job (scarta i risultati)",
+      "2. Attendi cooldown_seconds",
+      "3. Measured: invia concurrent_jobs job simultaneamente (usa GNU parallel o xargs -P)",
+      "4. Raccogli metriche Prometheus (vidrush_*, sqlite_*, process_*, go_*)",
+      "5. Verifica SQLite: nessun lock, nessuna corruzione",
+      "6. Confronta p50/p95/p99 con il livello precedente",
+      "7. Se una stop_condition è attivata, interrompi e segna il livello come limite operativo"
+    ],
+    "report": "Per ogni livello, produrre un oggetto JSON con tutte le metriche misurate e il verdetto (PASS/DEGRADED/STOPPED)"
+  },
+  "assertions": {
+    "baseline_ok": "livello 1 (1 job) completa con 0 errori",
+    "linear_scaling_expected": "fino a 5 job, throughput scala linearmente",
+    "no_sqlite_corruption": "nessuna corruzione SQLite a nessun livello",
+    "no_lost_jobs": "tutti i job raggiungono stato terminale (nessun job perso)",
+    "deterministic_output": "output identico per payload identici anche sotto carico",
+    "resource_cleanup": "dopo cool-down, CPU/RAM/goroutine tornano ai livelli idle"
+  },
+  "execution_notes": "Questo scenario richiede: (1) GNU parallel o xargs -P per lancio parallelo, (2) accesso a /metrics Prometheus, (3) accesso diretto a SQLite per verifiche post-run, (4) server in stato controllato senza altri carichi. Non eseguibile dal run_scenario.sh corrente — richiede un runner specializzato o esecuzione manuale."
+}
