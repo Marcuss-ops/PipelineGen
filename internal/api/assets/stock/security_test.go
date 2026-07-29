@@ -305,7 +305,7 @@ func TestStockHandler_NoInternalServerError_OnAnyViolation(t *testing.T) {
 	}
 
 	cases := []struct{ name, payload string }{
-		{"file_scheme", `{"direct_urls":["file:///etc/passwd"]}`},
+		{"file_scheme_path_traversal", `{"direct_urls":["file:///home/user/../../../etc/passwd"]}`},
 		{"private_ip_loopback", `{"direct_urls":["https://127.0.0.1/v.mp4"]}`},
 		{"private_ip_rfc1918_10", `{"direct_urls":["https://10.0.0.1/v.mp4"]}`},
 		{"path_traversal_forward", `{"direct_urls":["https://example.com/x"],"folder_name":"../../etc"}`},

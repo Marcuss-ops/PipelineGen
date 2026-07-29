@@ -50,22 +50,48 @@ func TestStockHandler_UnknownField_Returns400(t *testing.T) {
 	}
 }
 
-// ── 2. file:// scheme rejection (SSRF surface) ────────────────────────
+// ── 2. file:// scheme accepted for local hermetic runs ───────────────
 //
-// Definition of Done §16: file:///etc/passwd → 400. The handler
-// rejects any non-https scheme to prevent file reads via the
-// orchestrator's source-stager chain.
-func TestStockHandler_FileSchemeURL_Returns400(t *testing.T) {
+// PR-FILE-SCHEME-ACCEPT (July 2026): file:// URLs are accepted for
+// local hermetic stock pipeline runs (Mike Tyson pilot). The path
+// portion is validated for null bytes, backslash escapes, and path
+// traversal — but absolute paths to media files (e.g. /data/media/)
+// are explicitly allowed. SSRF is not a concern for local-only file
+// paths handled by the orchestrator's source-stager chain.
+func TestStockHandler_FileSchemeURL_Accepted(t *testing.T) {
 	_, router := newStockHandler(nil, "job-1")
 
-	payload := `{"direct_urls":["file:///etc/passwd"]}`
+	// Valid file:// URL pointing to a media file (portable path).
+	payload := `{"direct_urls":["file:///data/media/test-video.mp4"]}`
+	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// file:// URLs are now accepted; the handler returns 200 (sync)
+	// or 202 (async) depending on the use-case path.
+	if w.Code != http.StatusOK && w.Code != http.StatusAccepted {
+		t.Fatalf("expected 200 or 202, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// ── 2b. file:// path traversal rejection ─────────────────────────────
+//
+// PR-FILE-SCHEME-ACCEPT (July 2026): file:// URLs with path traversal
+// patterns (../) are STILL rejected — same as folder_name / subfolder
+// fields. This is the defense boundary: file:// is accepted for local
+// stock runs but the path must stay within the intended tree.
+func TestStockHandler_FileSchemeURL_PathTraversal_Returns400(t *testing.T) {
+	_, router := newStockHandler(nil, "job-1")
+
+	payload := `{"direct_urls":["file:///home/user/../../../etc/passwd"]}`
 	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(payload))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 400 for path traversal, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp testRunResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
