@@ -37,6 +37,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -117,7 +118,7 @@ type Service struct {
 
 	// Heavy-init fields (Audit + Delete modes only).
 	sqliteDB   *sql.DB
-	root       *app.ComposeRoot
+	root       *wiring.ComposeRoot
 	client     qdrantClient
 	activeCol  string
 	scanner    *QdrantScannerAdapter

@@ -61,6 +61,17 @@ const (
 
 	TypeVoiceoverGenerate     = "voiceover.generate"
 	TypeVoiceoverGenerateItem = "voiceover.generate.item"
+
+	// Re-exported canonical job type constants previously in
+	// internal/domain/job (deleted July 2026). Callers that
+	// imported `job "internal/domain/job"` can now import
+	// `job "internal/kernel/job"` unmodified.
+	TypeYouTubeClipExtract   = "youtube.clip.extract"
+	TypeScriptGenerate       = "script.generate"
+	TypeScriptGenerateItem   = "script.generate.item"
+	TypeAssetTextMaterialize = "asset.text.materialize"
+	TypeBooksProcess         = "books.process"
+	TypeLessonsProcess       = "lessons.process"
 )
 
 // CanonicalScriptGenerate is the canonical JobDefinition for

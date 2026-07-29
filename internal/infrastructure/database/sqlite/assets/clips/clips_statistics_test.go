@@ -15,7 +15,6 @@ package clips
 import (
 	"context"
 	"database/sql"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"path/filepath"
 	"strings"
 	"testing"
