@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -175,5 +174,4 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	return tools.Complete(jobCtx, resultJSON)
 }
 
-// sleep wraps time.Sleep for testability (package-level var swap in tests).
-var sleep = time.Sleep
+
