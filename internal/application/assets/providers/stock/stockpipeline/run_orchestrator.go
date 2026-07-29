@@ -276,7 +276,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 
 // effectiveChunkDurationSec resolves the per-run chunk duration
 // (sec) override chain. Mirrors the prior run.go body semantics
-// (input.ChunkDuration takes precedence over s.pcfg.ChunkDuration
+// (input.ChunkDuration takes precedence over the runtime config)
 // which falls back to the minimal runtime chunk duration).
 //
 // Centralised here so Service.Run and Service.runOrchestrator
@@ -285,9 +285,6 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 func effectiveChunkDurationSec(input *RunInput, s *Service) int {
 	if input != nil && input.ChunkDuration > 0 {
 		return input.ChunkDuration
-	}
-	if s != nil && s.pcfg.ChunkDuration > 0 {
-		return s.pcfg.ChunkDuration
 	}
 	if s != nil && s.runtime != nil {
 		return s.runtime.ChunkDurationSec

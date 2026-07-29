@@ -145,7 +145,6 @@ var (
 	ErrStockPipelineNilLocalFS               = types.ErrStockPipelineNilLocalFS
 	ErrStockProductionDBMissing              = types.ErrStockProductionDBMissing
 	ErrStockProductionBatchRepositoryMissing = types.ErrStockProductionBatchRepositoryMissing
-	ErrStockPipelineNilDB                    = types.ErrStockPipelineNilDB
 	ErrStockPipelineNilFinalizer             = types.ErrStockPipelineNilFinalizer
 	ErrStockPipelineAllQueriesFailed         = types.ErrStockPipelineAllQueriesFailed
 )

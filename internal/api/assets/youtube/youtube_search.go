@@ -145,6 +145,7 @@ func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 		Filters: search.Filters{
 			Source:    req.Source,
 			MediaType: req.MediaType,
+			Category:  req.Category,
 		},
 		Mode: search.ParseMode(""),
 	}

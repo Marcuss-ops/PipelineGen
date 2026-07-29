@@ -48,27 +48,28 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		return fmt.Errorf("renderChunk: StockRenderer port is nil — was composition root build correct?")
 	}
 
+	cfg := DefaultPipelineConfig()
 	req := RenderRequest{
 		OutputPath:       outputPath,
 		InputPaths:       clips,
-		Width:            s.pcfg.Width,
-		Height:           s.pcfg.Height,
-		FPS:              s.pcfg.FPS,
-		Codec:            s.pcfg.Codec,
-		Preset:           s.pcfg.Preset,
-		CRF:              s.pcfg.CRF,
-		KeyframeInterval: s.pcfg.KeyframeInterval,
+		Width:            cfg.Width,
+		Height:           cfg.Height,
+		FPS:              cfg.FPS,
+		Codec:            cfg.Codec,
+		Preset:           cfg.Preset,
+		CRF:              cfg.CRF,
+		KeyframeInterval: cfg.KeyframeInterval,
 		KeepAudio:        !noAudio,
 
 		NoTransitions:   noTransitions,
-		TransitionEvery: s.pcfg.TransitionInterval,
-		ClipDurationSec: s.pcfg.ClipDuration,
+		TransitionEvery: cfg.TransitionInterval,
+		ClipDurationSec: s.runtime.ClipDurationSec,
 
 		NoEffects:       noEffects,
-		EffectsDir:      s.pcfg.EffectsDir,
-		EffectEvery:     s.pcfg.EffectInterval,
+		EffectsDir:      cfg.EffectsDir,
+		EffectEvery:     cfg.EffectInterval,
 		EffectIndexHint: chunkIdx % 1024, // deterministic hint (mod 1024 avoids overflow on big indexes)
-		OverlayOpacity:  s.pcfg.OverlayOpacity,
+		OverlayOpacity:  cfg.OverlayOpacity,
 
 		Logger:     s.log,
 		ChunkIndex: chunkIdx,

@@ -123,7 +123,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	}
 	s.log.Info("stock pipeline clip duration resolved", zap.Int("clip_duration", clipDur))
 
-	maxClipsPerSource := s.pcfg.MaxResults
+	maxClipsPerSource := s.runtime.MaxResults
 
 	numClips := secsPerVideo / clipDur
 	if numClips < 1 {
@@ -179,12 +179,13 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Int("clip_count", len(jobs)),
 	)
 
+	cfg := DefaultPipelineConfig()
 	batch, cutErr := s.cutter.Cut(ctx, CutRequest{
 		SourcePath: actualPath,
 		Jobs:       jobs,
-		Codec:      s.pcfg.Codec,
-		Preset:     s.pcfg.Preset,
-		CRF:        s.pcfg.CRF,
+		Codec:      cfg.Codec,
+		Preset:     cfg.Preset,
+		CRF:        cfg.CRF,
 		NoAudio:    noAudio,
 		Logger:     s.log,
 		SourceIdx:  idx,

@@ -82,14 +82,6 @@ var (
 	// supply a StockBatchRepository adapter.
 	ErrStockProductionBatchRepositoryMissing = errors.New("stockpipeline: StockBatchRepository is mandatory for production stock pipeline")
 
-	// ErrStockPipelineNilDB surfaces a nil *sql.DB at ctor time.
-	// PROSSIMO STEP: make DB REQUIRED when WireStockPipeline is
-	// re-enabled and the SQLite step store survives restarts.
-	// STATO ATTUALE: DB is optional (nil-tolerant) because the
-	// stock Service is routed via imageSvc and WireStockPipeline
-	// is currently stubbed.
-	ErrStockPipelineNilDB = errors.New("stockpipeline.NewService: DB is nil — step store will fall back to in-memory (production should wire media.db.sqlite)")
-
 	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
 
 	// ErrStockPipelineAllQueriesFailed surfaces when every text
