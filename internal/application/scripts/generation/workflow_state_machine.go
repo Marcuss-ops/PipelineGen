@@ -19,7 +19,7 @@
 // godlike/07 typed-error contract: every illegal transition returns
 // a typed sentinel reachable via errors.Is + errors.As traversal,
 // mirroring the domain/remote/artifact_uploader.go UploadState pattern.
-package scripts
+package generation
 
 import (
 	"errors"
