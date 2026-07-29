@@ -12,10 +12,79 @@ var (
 	vidrushProviderFailures = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "vidrush_provider_failures_total", Help: "VidRush provider failures."}, []string{"provider"})
 	vidrushBindingsTotal    = prometheus.NewCounter(prometheus.CounterOpts{Name: "vidrush_bindings_total", Help: "VidRush bindings finalized."})
 	vidrushUnresolved       = prometheus.NewCounter(prometheus.CounterOpts{Name: "vidrush_unresolved_segments_total", Help: "VidRush segments without a valid asset."})
+
+	// ── Performance metrics (VidRush battery, July 2026) ──────────────
+	// Labels are intentionally limited: no job_id, segment_id, asset_id,
+	// query, title, or user_id. Dynamic values stay in structured logs.
+
+	vidrushJobDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "vidrush_job_duration_seconds",
+		Help:    "End-to-end job duration from dispatch to terminal status.",
+		Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 900},
+	}, []string{"scenario", "cache_mode"})
+
+	vidrushQueueWait = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "vidrush_queue_wait_seconds",
+		Help:    "Time spent waiting in queue before processing starts.",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60},
+	}, []string{"scenario"})
+
+	vidrushProcessorDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "vidrush_processor_duration_seconds",
+		Help:    "Duration of each postprocessor step.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60},
+	}, []string{"processor"})
+
+	vidrushProviderDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "vidrush_provider_duration_seconds",
+		Help:    "Duration of provider calls (search, download, etc.).",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
+	}, []string{"provider"})
+
+	vidrushSegmentsPerJob = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "vidrush_segments_per_job",
+		Help:    "Number of segments produced per job.",
+		Buckets: []float64{1, 2, 3, 5, 8, 12, 16, 20},
+	})
+
+	vidrushCandidatesPerSegment = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "vidrush_candidates_per_segment",
+		Help:    "Number of asset candidates per segment.",
+		Buckets: []float64{0, 1, 2, 3, 5, 8, 10, 15},
+	}, []string{"provider"})
+
+	vidrushJobFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "vidrush_job_failures_total",
+		Help: "Total number of failed VidRush jobs.",
+	}, []string{"scenario", "stage"})
+
+	vidrushRetries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "vidrush_retries_total",
+		Help: "Total number of provider retries.",
+	}, []string{"provider", "reason"})
+
+	vidrushBindingRatio = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vidrush_binding_ratio",
+		Help: "Ratio of successfully bound segments to total segments (0.0–1.0).",
+	})
+
+	vidrushUnresolvedRatio = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "vidrush_unresolved_ratio",
+		Help: "Ratio of unresolved segments to total segments (0.0–1.0).",
+	})
 )
 
 func init() {
-	prometheus.MustRegister(vidrushSegmentsTotal, vidrushExtractionHits, vidrushExtractionMisses, vidrushAssetHits, vidrushAssetMisses, vidrushProviderRequests, vidrushProviderFailures, vidrushBindingsTotal, vidrushUnresolved)
+	prometheus.MustRegister(
+		vidrushSegmentsTotal, vidrushExtractionHits, vidrushExtractionMisses,
+		vidrushAssetHits, vidrushAssetMisses, vidrushProviderRequests, vidrushProviderFailures,
+		vidrushBindingsTotal, vidrushUnresolved,
+		// Performance metrics
+		vidrushJobDuration, vidrushQueueWait, vidrushProcessorDuration,
+		vidrushProviderDuration, vidrushSegmentsPerJob, vidrushCandidatesPerSegment,
+		vidrushJobFailures, vidrushRetries,
+		vidrushBindingRatio, vidrushUnresolvedRatio,
+	)
 }
 
 type VidRushMetricsAdapter struct{}
@@ -44,3 +113,36 @@ func (*VidRushMetricsAdapter) IncProviderFailure(provider string) {
 }
 func (*VidRushMetricsAdapter) IncBinding()           { vidrushBindingsTotal.Inc() }
 func (*VidRushMetricsAdapter) IncUnresolvedSegment() { vidrushUnresolved.Inc() }
+
+// ── Performance metric helpers ────────────────────────────────────────
+
+func (a *VidRushMetricsAdapter) ObserveJobDuration(scenario, cacheMode string, seconds float64) {
+	vidrushJobDuration.WithLabelValues(scenario, cacheMode).Observe(seconds)
+}
+func (a *VidRushMetricsAdapter) ObserveQueueWait(scenario string, seconds float64) {
+	vidrushQueueWait.WithLabelValues(scenario).Observe(seconds)
+}
+func (a *VidRushMetricsAdapter) ObserveProcessorDuration(processor string, seconds float64) {
+	vidrushProcessorDuration.WithLabelValues(processor).Observe(seconds)
+}
+func (a *VidRushMetricsAdapter) ObserveProviderDuration(provider string, seconds float64) {
+	vidrushProviderDuration.WithLabelValues(provider).Observe(seconds)
+}
+func (a *VidRushMetricsAdapter) ObserveSegmentsPerJob(count float64) {
+	vidrushSegmentsPerJob.Observe(count)
+}
+func (a *VidRushMetricsAdapter) ObserveCandidatesPerSegment(provider string, count float64) {
+	vidrushCandidatesPerSegment.WithLabelValues(provider).Observe(count)
+}
+func (a *VidRushMetricsAdapter) IncJobFailure(scenario, stage string) {
+	vidrushJobFailures.WithLabelValues(scenario, stage).Inc()
+}
+func (a *VidRushMetricsAdapter) IncRetry(provider, reason string) {
+	vidrushRetries.WithLabelValues(provider, reason).Inc()
+}
+func (a *VidRushMetricsAdapter) SetBindingRatio(ratio float64) {
+	vidrushBindingRatio.Set(ratio)
+}
+func (a *VidRushMetricsAdapter) SetUnresolvedRatio(ratio float64) {
+	vidrushUnresolvedRatio.Set(ratio)
+}
