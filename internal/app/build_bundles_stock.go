@@ -29,7 +29,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
 	"go.uber.org/zap"
@@ -37,6 +36,7 @@ import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
 	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stockbatches"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/enrichment"
@@ -49,6 +49,7 @@ import (
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -137,6 +138,17 @@ type StockDeliveryDeps struct {
 	Finalizer finalization.JobFinalizer // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
 }
 
+// stockConcreteDriveReader is the raw interface matched by the concrete
+// drive types (*drive.Uploader, drive.Reader). Defined in the composition
+// root so the application layer's DriveReaderPort can stay free of
+// internal/infrastructure/drive imports. chooseDriveReader wraps the
+// concrete with a stockDriveReaderAdapter that converts
+// drive.DriveFileInfo → stockpipeline.DriveFileInfo.
+type stockConcreteDriveReader interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+	ListFiles(ctx context.Context, parentID string) ([]drive.DriveFileInfo, error)
+}
+
 // StockAcquisitionDeps groups the storage + dispatch layer the stock
 // pipeline reads from (SourceStager, ClipsRepo, AssetIndex,
 // Dispatcher, BatchRepository, DriveDownloader). Field count: 6.
@@ -148,19 +160,15 @@ type StockAcquisitionDeps struct {
 	BatchRepository stockpipeline.StockBatchRepository // optional; required in production via DB gate
 	// DriveDownloader enables staging of Google Drive source URLs.
 	// Optional — nil means Drive URLs fail with a typed error (no
-	// silent fallback to yt-dlp). The canonical concrete is
-	// *driveup.Uploader, which satisfies stockpipeline.DriveReaderPort
-	// structurally via its DownloadFile + ListFiles methods.
+	// silent fallback to yt-dlp). Wraps a concrete drive type.
 	//
 	// Deprecated: DriveReader is the canonical field going forward.
 	// DriveDownloader is still accepted for backward compatibility.
-	DriveDownloader stockpipeline.DriveReaderPort
+	DriveDownloader stockConcreteDriveReader
 	// DriveReader enables staging of Google Drive source URLs,
 	// including folder expansion. Optional — nil means Drive URLs
-	// fail with a typed error. The canonical concrete is
-	// *driveup.Uploader, which satisfies stockpipeline.DriveReaderPort
-	// structurally.
-	DriveReader stockpipeline.DriveReaderPort
+	// fail with a typed error.
+	DriveReader stockConcreteDriveReader
 }
 
 // StockMediaDeps groups the ffmpeg-mediated media processing layer
@@ -259,15 +267,14 @@ func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
 	return &stockDriveReaderAdapter{inner: raw}
 }
 
-// stockDriveReaderAdapter wraps a concrete drive reader (e.g.
-// *drive.Uploader) and adapts its ListFiles return type from
-// []drive.DriveFileInfo to []stockpipeline.DriveFileInfo, keeping the
-// application layer free of internal/infrastructure/drive imports.
+// stockDriveReaderAdapter wraps a stockConcreteDriveReader and adapts
+// its ListFiles return type from []drive.DriveFileInfo to
+// []stockpipeline.DriveFileInfo, keeping the application layer free
+// of internal/infrastructure/drive imports.
 type stockDriveReaderAdapter struct {
-	inner stockpipeline.DriveReaderPort // pre-change: the concrete still satisfies the DownloadFile method
+	inner stockConcreteDriveReader
 }
 
-// compile-time assertion: the adapter satisfies the updated DriveReaderPort.
 var _ stockpipeline.DriveReaderPort = (*stockDriveReaderAdapter)(nil)
 
 func (a *stockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
@@ -275,12 +282,18 @@ func (a *stockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID strin
 }
 
 func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string) ([]stockpipeline.DriveFileInfo, error) {
-	// The inner type still uses the old drive.DriveFileInfo via the
-	// pre-change interface. We need the concrete type to call ListFiles.
-	// Since both root.Drive.Reader and root.Drive.DriveUploader are
-	// *driveup.Uploader which had ListFiles returning []drive.DriveFileInfo,
-	// we use the rawUploader interface below.
-	return nil, fmt.Errorf("stockDriveReaderAdapter: ListFiles not implemented — wire concrete adapter")
+	raw, err := a.inner.ListFiles(ctx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]stockpipeline.DriveFileInfo, len(raw))
+	for i, f := range raw {
+		out[i] = stockpipeline.DriveFileInfo{
+			ID:       f.ID,
+			MimeType: f.MimeType,
+		}
+	}
+	return out, nil
 }
 
 // BuildStockBundle assembles the stock video pipeline composition root:

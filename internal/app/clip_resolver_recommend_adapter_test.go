@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 )
 
