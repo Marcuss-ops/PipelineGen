@@ -19,16 +19,24 @@ package stockpipeline
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+// StockAssetUpsertRecord is the application-layer representation of an
+// asset index record for upsert. Defined locally so the stock pipeline
+// stays free of internal/infrastructure/database/assetindex imports
+// (godlike/06 import-boundary discipline). The composition root adapts
+// the concrete assetindex.AssetRecord to this type.
+type StockAssetUpsertRecord struct {
+	AssetID string
+}
+
 // stockAssetIndexUpserter is the narrow surface the stock pipeline
-// uses from *assetindex.Service. Only Upsert is invoked
+// uses from *assetindex.Service. Only Upsert is invoked.
 //
 //nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 type stockAssetIndexUpserter interface {
-	Upsert(ctx context.Context, rec *assetindex.AssetRecord) error
+	Upsert(ctx context.Context, rec *StockAssetUpsertRecord) error
 }
 
 // stockClipsSearchTermUpdater is the narrow surface the stock pipeline

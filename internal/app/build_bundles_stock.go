@@ -131,11 +131,15 @@ type StockRuntimeDeps struct {
 }
 
 // StockDeliveryDeps groups the asymmetric production-pair surface
-// (Publisher, Finalizer). The StockSymmetricGate validates this pair
-// is both-nil or both-non-nil. Field count: 2.
+// (Publisher, PublisherPort, Finalizer). The StockSymmetricGate validates
+// this pair is both-nil or both-non-nil. PublisherPort is the pre-constructed
+// finalization.PublisherPort adapter (drive.NewArtifactPublisherAdapter)
+// created at the composition root so the application layer stays free of
+// internal/infrastructure/drive imports. Field count: 3.
 type StockDeliveryDeps struct {
-	Publisher delivery.Publisher        // optional (nil → backcompat; finalizer nil → OK)
-	Finalizer finalization.JobFinalizer // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
+	Publisher     delivery.Publisher               // optional (nil → backcompat; finalizer nil → OK)
+	PublisherPort finalization.PublisherPort       // optional (nil → backcompat; constructed from Publisher at composition root)
+	Finalizer     finalization.JobFinalizer        // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
 }
 
 // stockConcreteDriveReader is the raw interface matched by the concrete
@@ -296,6 +300,18 @@ func (a *stockDriveReaderAdapter) ListFiles(ctx context.Context, parentID string
 	return out, nil
 }
 
+// stockAssetIndexAdapter wraps *assetindex.Service and adapts its Upsert
+// method from *assetindex.AssetRecord to *stockpipeline.StockAssetUpsertRecord,
+// keeping the application layer free of internal/infrastructure/database/assetindex
+// imports (godlike/06 import-boundary discipline).
+type stockAssetIndexAdapter struct {
+	inner *assetindex.Service
+}
+
+func (a *stockAssetIndexAdapter) Upsert(ctx context.Context, rec *stockpipeline.StockAssetUpsertRecord) error {
+	return a.inner.Upsert(ctx, &assetindex.AssetRecord{AssetID: rec.AssetID})
+}
+
 // BuildStockBundle assembles the stock video pipeline composition root:
 //
 //  1. validateStockSymmetricGate (godlike/07 fail-fast at composition time).
@@ -373,7 +389,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		},
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:       deps.Acquisition.ClipsRepo,
-			AssetIndex:      deps.Acquisition.AssetIndex,
+			AssetIndex:      &stockAssetIndexAdapter{inner: deps.Acquisition.AssetIndex},
 			Dispatcher:      deps.Acquisition.Dispatcher,
 			BatchRepository: deps.Acquisition.BatchRepository,
 		},
@@ -393,6 +409,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		},
 		Delivery: stockpipeline.DeliveryDeps{
 			Publisher:     deps.Delivery.Publisher,
+			PublisherPort: deps.Delivery.PublisherPort,
 			FolderCreator: deps.Orchestration.FolderCreator,
 			DriveReader:   chooseDriveReader(deps.Acquisition),
 			Finalizer:     deps.Delivery.Finalizer,

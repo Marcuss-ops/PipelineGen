@@ -23,8 +23,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"os"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"go.uber.org/zap"
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
@@ -36,11 +38,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stocksourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-
-	"go.uber.org/zap"
 )
 
 // WireStockPipeline constructs every stock pipeline dependency from the
@@ -194,6 +195,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		log.Info("WireStockPipeline: batch repository wired")
 	}
 
+	// PublisherPort: construct the canonical drive.NewArtifactPublisherAdapter
+	// so the application layer stays free of internal/infrastructure/drive imports.
+	var stockPublisherPort finalization.PublisherPort
+	if root.Drive != nil && root.Drive.Publisher != nil {
+		stockPublisherPort = drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
+	}
+
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{
 			Cfg: cfg,
@@ -213,8 +221,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 			}(),
 		},
 		Delivery: StockDeliveryDeps{
-			Publisher: root.Drive.Publisher,
-			Finalizer: stockFinalizer,
+			Publisher:     root.Drive.Publisher,
+			PublisherPort: stockPublisherPort,
+			Finalizer:     stockFinalizer,
 		},
 		Acquisition: StockAcquisitionDeps{
 			SourceStager:    stockSourceStager,
@@ -222,13 +231,8 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 			AssetIndex:      root.Search.AssetIndexService,
 			Dispatcher:      root.Outbox.Dispatcher,
 			BatchRepository: stockBatchRepo,
-			// DriveDownloader/DriveReader: deferred to stockDriveReaderAdapter
-			// in chooseDriveReader (build_bundles_stock.go). The infra types
-			// (*drive.Uploader, drive.Reader) have a different ListFiles
-			// return type than stockpipeline.DriveReaderPort; the adapter
-			// bridges the gap at composition time.
-			DriveDownloader: nil,
-			DriveReader:     nil,
+			DriveDownloader: root.Drive.DriveUploader,
+			DriveReader:     root.Drive.Reader,
 		},
 		Media: StockMediaDeps{
 			Cutter:   stockCutter,
