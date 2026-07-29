@@ -8,15 +8,15 @@
 //   prepareBatchState → step_extract_clips_batch.go
 //   executeCuts       → step_extract_clips_cut.go
 //   publishCuts       → step_extract_clips_publish.go
-//   publishGroupMetadata → step_extract_clips_metadata.go
+//   writeTimestampGroups → step_extract_clips_metadata.go
 //   validateAndProbeSourceDuration → step_extract_clips_validation.go
 //   buildRichStockAsset → step_extract_clips_assets.go
 package stockpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"go.uber.org/zap"
@@ -146,7 +146,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	}
 
 	// Publish group metadata.
-	if err := publishGroupMetadata(ctx, runner, groupBuckets, rootFolderName, rootFolderOverride, in); err != nil {
+	if err := writeTimestampGroups(ctx, runner, in, rootFolderName, rootFolderOverride, groupBuckets, runner.ArtifactPreparation()); err != nil {
 		return err
 	}
 

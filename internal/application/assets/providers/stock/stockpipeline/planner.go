@@ -25,7 +25,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
