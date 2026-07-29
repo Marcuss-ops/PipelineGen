@@ -177,8 +177,14 @@ type SourceCacheDeps struct {
 // DeliveryDeps groups the ports that complete and publish a stock run.
 // Keeping this boundary explicit prevents the service constructor from
 // growing a flat list of cross-cutting delivery concerns.
+//
+// PublisherPort is the pre-constructed finalization.PublisherPort adapter
+// (created at the composition root via drive.NewArtifactPublisherAdapter)
+// so the application layer stays free of internal/infrastructure/drive
+// imports (godlike/06 import-boundary discipline).
 type DeliveryDeps struct {
 	Publisher     delivery.Publisher
+	PublisherPort finalization.PublisherPort
 	FolderCreator StockFolderCreator
 	DriveReader   DriveReaderPort
 	Finalizer     finalization.JobFinalizer

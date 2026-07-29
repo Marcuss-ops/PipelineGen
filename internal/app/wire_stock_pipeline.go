@@ -222,8 +222,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 			AssetIndex:      root.Search.AssetIndexService,
 			Dispatcher:      root.Outbox.Dispatcher,
 			BatchRepository: stockBatchRepo,
-			DriveDownloader: root.Drive.DriveUploader,
-			DriveReader:     root.Drive.Reader,
+			// DriveDownloader/DriveReader: deferred to stockDriveReaderAdapter
+			// in chooseDriveReader (build_bundles_stock.go). The infra types
+			// (*drive.Uploader, drive.Reader) have a different ListFiles
+			// return type than stockpipeline.DriveReaderPort; the adapter
+			// bridges the gap at composition time.
+			DriveDownloader: nil,
+			DriveReader:     nil,
 		},
 		Media: StockMediaDeps{
 			Cutter:   stockCutter,

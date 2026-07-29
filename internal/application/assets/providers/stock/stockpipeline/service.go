@@ -86,6 +86,7 @@ type Service struct {
 	runtime       *RuntimeConfig
 	log           *zap.Logger
 	publisher     delivery.Publisher
+	publisherPort finalization.PublisherPort
 	folderCreator StockFolderCreator
 	cutter        VideoCutter
 	renderer      StockRenderer
@@ -194,6 +195,9 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Delivery.Publisher == nil {
 		return nil, ErrStockPipelineNilPublisher
 	}
+	if deps.Delivery.PublisherPort == nil {
+		return nil, ErrStockPipelineNilPublisherPort
+	}
 	if deps.Delivery.FolderCreator == nil {
 		return nil, ErrStockPipelineNilFolderCreator
 	}
@@ -245,6 +249,7 @@ func NewService(deps Deps) (*Service, error) {
 		runtime:       v,
 		log:           deps.Runtime.Log,
 		publisher:     deps.Delivery.Publisher,
+		publisherPort: deps.Delivery.PublisherPort,
 		folderCreator: deps.Delivery.FolderCreator,
 		cutter:        deps.Media.Cutter,
 		renderer:      deps.Media.Renderer,

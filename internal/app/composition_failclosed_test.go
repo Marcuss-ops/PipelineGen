@@ -29,6 +29,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
