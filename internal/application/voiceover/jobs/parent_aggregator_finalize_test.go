@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -23,7 +23,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Test fixtures ──────────────────────────────────────────────────

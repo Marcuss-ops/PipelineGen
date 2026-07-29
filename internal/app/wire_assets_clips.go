@@ -17,10 +17,9 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -36,7 +35,6 @@ type buildClipsParams struct {
 	AssetRepo        asset.Repository
 	SearchAggregator *search.Aggregator
 	MetaWriter       semantic.MetadataWriterPort
-	FolderMemSvc     *foldermemory.Service
 	DeletionSvc      *deletion.DeletionService
 	IdemHandler      gin.HandlerFunc
 }
@@ -144,26 +142,26 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	clipsDrive := newClipsDriveAdapter(params.DriveUploader, params.DriveUploader, nil)
-	repoForSource := func(source string) *sqliteassets.ClipsRepository {
+	repoForSource := func(source string) appclips.ClipRepositoryPort {
 		if !artifacts.IsClipsSource(source) {
 			return nil
 		}
-		return params.Deps.Core.Repositories.ClipsRepo
+		return newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo)
 	}
 
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		Handlers: clipsapi.Deps{
 			Search: clipsapi.SearchDeps{
-				ClipsRepo:     params.Deps.Core.Repositories.ClipsRepo,
+				ClipsRepo:     newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo),
 				AssetRepo:     params.AssetRepo,
-				VoiceoverRepo: params.Deps.Core.Repositories.VoiceoverRepo,
+				VoiceoverRepo: newVoiceoverRepoAdapter(params.Deps.Core.Repositories.VoiceoverRepo),
 				ImagesRepo:    params.Deps.Core.Repositories.ImageRepo,
 			},
 			Ingest: clipsapi.IngestDeps{
 				Dispatcher:   clipsDispatcherPort,
 				AssetTreeSvc: params.Deps.Core.Services.AssetTreeService,
 				JobsSvc:      params.Jobs.Facade,
-				ClipsRepo:    params.Deps.Core.Repositories.ClipsRepo,
+				ClipsRepo:    newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo),
 				EnrichUC:     enrichUC,
 				UploadUC:     uploadUC,
 				AIStockUC:    aiStockUC,
@@ -172,8 +170,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 			Operations: clipsapi.OpsDeps{
 				ClipOpsService: clipOpsSvc,
 				DeletionSvc:    params.DeletionSvc,
-				FolderMemSvc:   params.FolderMemSvc,
-				ClipsRepo:      params.Deps.Core.Repositories.ClipsRepo,
+				ClipsRepo:      newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo),
 				DriveAdmin:     clipsDrive,
 				AssetTreeSvc:   params.Deps.Core.Services.AssetTreeService,
 				Log:            params.Log,
@@ -182,7 +179,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				BulkTagsUC:       bulkTagsUC,
 				ReprocessUC:      reprocessUC,
 				EnrichUC:         enrichUC,
-				ClipIndexer:      params.Deps.Search.ClipIndexerService,
+				ClipIndexer:      newClipsIndexerAdapter(params.Deps.Search.ClipIndexerService),
 				JobsSvc:          params.Jobs.Facade,
 				BulkUploadWorker: bulkUploadWorker,
 				RepoForSource:    repoForSource,

@@ -24,7 +24,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 

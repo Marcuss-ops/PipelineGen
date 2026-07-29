@@ -10,7 +10,7 @@ package voiceover
 import (
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/stretchr/testify/assert"
 )
 
