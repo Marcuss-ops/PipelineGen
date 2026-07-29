@@ -147,7 +147,7 @@ smoke_resolve_token() {
         printf '%s' "$SMOKE_TOKEN"
         return 0
     fi
-    # Canonical file takes precedence over env vars (AGENTS.md SSOT)
+    # Canonical file takes precedence over bare env var (AGENTS.md SSOT)
     if [[ -n "${TOKEN_FILE:-}" && -f "${TOKEN_FILE}" ]]; then
         local token
         token=$(grep -E '^VELOX_ADMIN_TOKEN=' "$TOKEN_FILE" | head -1 | cut -d= -f2- ||
@@ -157,6 +157,8 @@ smoke_resolve_token() {
             return 0
         fi
     fi
+    # Last resort: direct env var (backward-compatible with CI)
+    if [[ -n "${VELOX_ADMIN_TOKEN:-}" ]]; then
     return 1
 }
 if [[ "$DRY_RUN" == "1" || "$HELP_REQUESTED" == "1" ]]; then
