@@ -1,0 +1,204 @@
+{
+  "scenario_id": "05_provider_toggles",
+  "description": "Vidrush provider toggle matrix — 4 combinazioni Artlist/Images ON/OFF in un'unica richiesta batch. Verifica che un provider disabilitato: non venga chiamato, registri BYPASSED, non produca warning ingannevoli, non impedisca il completamento.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "provider_disabled_not_called": true,
+    "provider_disabled_registers_bypassed": true,
+    "no_misleading_warnings": "nessun warning ingannevole per provider disabilitato",
+    "completion_not_blocked": "provider disabilitato non impedisce il completamento"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-05-provider-toggles",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-05-artlist-only",
+        "title": "Provider toggle: Artlist ON, Images OFF",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Write a short grounded paragraph. Keep it concrete.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Artlist-only provider test",
+          "source_text": "A drone flies over a vineyard at golden hour. Rows of grapevines stretch toward the horizon. Operational marker: vidrush-05-artlist-only."
+        },
+        "script_params": {
+          "target_words": 80,
+          "min_words": 50,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      },
+      {
+        "id": "vidrush-05-images-only",
+        "title": "Provider toggle: Artlist OFF, Images ON",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Write a short grounded paragraph. Keep it concrete.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Images-only provider test",
+          "source_text": "A street artist paints a mural on a brick wall in Brooklyn. Vibrant colors contrast with the grey urban backdrop. Operational marker: vidrush-05-images-only."
+        },
+        "script_params": {
+          "target_words": 80,
+          "min_words": 50,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      },
+      {
+        "id": "vidrush-05-none",
+        "title": "Provider toggle: Artlist OFF, Images OFF",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Write a short grounded paragraph. Keep it concrete.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "No-provider test",
+          "source_text": "A gardener tends to a rooftop vegetable patch overlooking the city skyline. Fresh tomatoes ripen in wooden planters. Operational marker: vidrush-05-none."
+        },
+        "script_params": {
+          "target_words": 80,
+          "min_words": 50,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": false,
+            "max_entities_per_segment": 5
+          }
+        }
+      },
+      {
+        "id": "vidrush-05-both",
+        "title": "Provider toggle: Artlist ON, Images ON",
+        "language": "en",
+        "tone": "neutral",
+        "style": "Write a short grounded paragraph. Keep it concrete.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Both-providers test",
+          "source_text": "A chef prepares fresh pasta in a rustic Italian kitchen. Flour dusts the wooden counter as dough is rolled by hand. Operational marker: vidrush-05-both."
+        },
+        "script_params": {
+          "target_words": 80,
+          "min_words": 50,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": false,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "items_count": 4,
+      "per_item": {
+        "artlist_only": {
+          "provider_artlist_active": "candidati Artlist presenti o cache BYPASSED",
+          "provider_images_bypassed": "images cache == BYPASSED, nessun candidato internet_images"
+        },
+        "images_only": {
+          "provider_artlist_bypassed": "artlist cache == BYPASSED, nessun candidato artlist",
+          "provider_images_active": "candidati internet_images presenti o cache BYPASSED"
+        },
+        "none": {
+          "all_providers_bypassed": "entrambi i provider registrano BYPASSED, nessun candidato esterno"
+        },
+        "both": {
+          "both_providers_active": "candidati da entrambi i provider presenti o cache MISS"
+        }
+      }
+    },
+    "no_misleading_warnings": "provider disabilitato non produce warning ingannevoli nei log",
+    "completion_not_blocked": "tutti e 4 gli item completano con SUCCEEDED indipendentemente dai provider abilitati",
+    "provider_metrics": "vidrush_provider_requests_total{provider=\"artlist\"} incrementato solo per item con artlist=enabled; analogo per internet_images"
+  }
+}
