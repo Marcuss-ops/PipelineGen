@@ -50,7 +50,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -569,7 +569,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					ErrStockPublishArtifactFailed, group.leafName, metaErr)
 			}
 			defer func(p string) {
-				if rmErr := runner.LocalFS().Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
+				if rmErr := runner.LocalFS().Remove(p); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 					if runner.Log() != nil {
 						runner.Log().Warn("orchestrator: stock.extract_clips: failed to remove parent metadata temp file",
 							zap.String("path", p), zap.Error(rmErr))

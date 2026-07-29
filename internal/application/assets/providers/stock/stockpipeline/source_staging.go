@@ -11,7 +11,7 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
-	"os"
+	"io/fs"
 
 	"go.uber.org/zap"
 
@@ -139,7 +139,7 @@ func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*a
 
 // statLocal delegates to s.localFS.Stat when the port is wired;
 // returns an error when the port is nil (PR-REFACTOR-P0-IO-BINDER).
-func (s *Service) statLocal(path string) (os.FileInfo, error) {
+func (s *Service) statLocal(path string) (fs.FileInfo, error) {
 	if s.localFS == nil {
 		return nil, fmt.Errorf("stat %q: LocalFSPort not wired (composition root must inject filesystem.NewLocal())", path)
 	}
