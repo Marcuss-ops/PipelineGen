@@ -159,6 +159,9 @@ smoke_resolve_token() {
     fi
     # Last resort: direct env var (backward-compatible with CI)
     if [[ -n "${VELOX_ADMIN_TOKEN:-}" ]]; then
+        printf '%s' "$VELOX_ADMIN_TOKEN"
+        return 0
+    fi
     return 1
 }
 if [[ "$DRY_RUN" == "1" || "$HELP_REQUESTED" == "1" ]]; then
