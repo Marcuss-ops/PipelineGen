@@ -15,7 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -74,7 +73,6 @@ func WireAssets(
 	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
 		zap.Int("backends", len(searchBackends.All())))
 
-	folderMemSvc := foldermemory.NewService(log, deps.Core.Repositories.ClipsRepo)
 	metaWriter := semantic.NewNopMetadataWriter(log)
 
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
@@ -92,7 +90,6 @@ func WireAssets(
 		AssetRepo:        assetRepo,
 		SearchAggregator: searchAggregator,
 		MetaWriter:       metaWriter,
-		FolderMemSvc:     folderMemSvc,
 		DeletionSvc:      deletionSvc,
 		IdemHandler:      idemHandler,
 	})
