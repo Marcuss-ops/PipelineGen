@@ -12,9 +12,10 @@
 // its port — no shim layer between the composition root and the
 // upstream packages. The helpers below write the bundle verbatim and
 // return it to `WireArtlist` which forwards into artlist.NewService.
-package wiring
+package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"time"
@@ -30,7 +31,7 @@ import (
 )
 
 // constructArtlistProviders returns the provider-side bundle built from
-// cfg + the ArtlistBundle + the auditAdapter parameter (constructor-
+// cfg + the wiring.ArtlistBundle + the auditAdapter parameter (constructor-
 // order: caller must run constructArtlistRepositories first so this
 // audit adapter is available before the Resolver is constructed).
 //
@@ -56,7 +57,7 @@ import (
 func constructArtlistProviders(
 	cfg *config.Config,
 	log *zap.Logger,
-	bundle *ArtlistBundle,
+	bundle *wiring.ArtlistBundle,
 	auditAdapter artlist.DownloadAuditRepository,
 ) artlistProviders {
 	// PR-HLS-AES128 followup-2 (July 2026): construct the canonical ffprobe
@@ -238,7 +239,7 @@ func constructArtlistProviders(
 // but the log.Info confirms the wiring landed.
 func wireArtlistProcessorDownloader(
 	log *zap.Logger,
-	bundle *ArtlistBundle,
+	bundle *wiring.ArtlistBundle,
 	artlistDownloader *downloader.Resolver,
 ) {
 	if bundle == nil || bundle.MediaProcessor == nil {

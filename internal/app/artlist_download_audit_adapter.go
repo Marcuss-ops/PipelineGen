@@ -2,7 +2,7 @@
 //
 // Bridges the application-layer artlist.DownloadAuditRepository port to the
 // SQLite concrete in internal/infrastructure/database/sqlite/assets.
-package wiring
+package app
 
 import (
 	"context"

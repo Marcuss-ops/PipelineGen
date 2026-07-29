@@ -248,7 +248,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// registerSearchBackend + registerArtlist + registerYouTubeClip +
 	// registerMediaIngest + registerScraper + registerFullImages +
 	// registerStockPipeline in the canonical DAG order.
-	if err := registerInternalModules(ctx, registry, log, cfg, root, regWiring); err != nil {
+	if err := registerInternalModules(ctx, registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: internal-modules: %w", err)
 	}
 
@@ -270,7 +270,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Step 4 — Images: single route module; consumes wiring.MediaIngest.Service.
-	if err := registerImages(registry, log, cfg, root, regWiring); err != nil {
+	if err := registerImages(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: images: %w", err)
 	}
 
@@ -278,7 +278,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// wiring.searchBackends + wiring.idempotencyHandler; constructs
 	// maintenanceSvc locally + calls WireAssets + performs the
 	// DeletionService backfill on the maintenance service.
-	if err := registerAssets(registry, log, cfg, root, regWiring); err != nil {
+	if err := registerAssets(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: assets: %w", err)
 	}
 

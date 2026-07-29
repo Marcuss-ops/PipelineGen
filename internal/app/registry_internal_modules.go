@@ -83,21 +83,21 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		log,
 		providerReg,
 		root.Repos.ClipsRepo,
-		wiring,
+		regWiring,
 		embeddingReg,
 		vectorStoreForSearch,
 		mediaRepo,
 		deliveryPort,
 		rerankerPort,
 	)
-	wiring.idempotencyHandler = idemHandler
+	regWiring.idempotencyHandler = idemHandler
 
-	if err := registerArtlist(ctx, registry, log, cfg, root, wiring); err != nil {
+	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
 		return err
 	}
 	// Fase 4.1: native Pexels image search provider. Registered
 	// alongside Artlist + YouTube so the canonical SearchFanOut
-	if err := registerYouTubeClip(registry, log, cfg, root, wiring, searchAgg, searchFanOut); err != nil {
+	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut); err != nil {
 		return err
 	}
 
@@ -114,7 +114,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		PrebuiltService:   root.Domains.IngestService,
 		Dispatcher:        root.Outbox.Dispatcher,
 	}, idemHandler)
-	wiring.MediaIngest = mediaIngestW
+	regWiring.MediaIngest = mediaIngestW
 	if mediaIngestErr != nil {
 		log.Warn("failed to wire module", zap.String("module", "MediaIngest"), zap.Error(mediaIngestErr))
 	} else if mediaIngestW != nil && mediaIngestW.Module != nil {
@@ -147,23 +147,23 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	fullW, fullErr := WireFullImages(fullImgBundle, cfg, log)
 	if fullErr != nil {
 		log.Warn("registerInternalModules Step 7 WireFullImages failed (godlike/07 fail-closed)", zap.Error(fullErr))
-		wiring.FullImages = nil
+		regWiring.FullImages = nil
 	} else if fullW != nil && fullW.Module != nil {
-		wiring.FullImages = fullW
+		regWiring.FullImages = fullW
 		if err := tryRegisterModuleStrict(registry, log, fullW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
 			return fmt.Errorf("wire registry: full-images: %w", err)
 		}
 		log.Info("registerInternalModules Step 7 FullImages pipeline mounted")
 	} else {
-		wiring.FullImages = nil
+		regWiring.FullImages = nil
 	}
 
-	wiring.StockPipeline = nil
+	regWiring.StockPipeline = nil
 	stockW, stockErr := WireStockPipeline(cfg, log, root)
 	if stockErr != nil {
 		log.Warn("registerInternalModules Step 8 WireStockPipeline failed (godlike/07 fail-closed: typed sentinel surfaced, /api/stock-pipeline/* may return 404 or 503 depending on which gate fired)", zap.Error(stockErr))
 	} else if stockW != nil && stockW.Module != nil {
-		wiring.StockPipeline = stockW
+		regWiring.StockPipeline = stockW
 		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
 			return fmt.Errorf("wire registry: stock-pipeline: %w", err)
 		}
@@ -187,11 +187,11 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
 	if !cfg.Features.ArtlistEnabled {
 		log.Info("registerArtlist: feature disabled (cfg.Features.ArtlistEnabled=false); skipping route registration")
-		wiring.ArtlistSvc = nil
+		regWiring.ArtlistSvc = nil
 		return nil
 	}
 
-	wiring.ArtlistWiring, err := wiring.WireArtlist(
+	artlistWiring, err := WireArtlist(
 		ctx,
 		log,
 		cfg,
@@ -218,7 +218,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		root.TextTracks.FanOut,
 	)
 	if err != nil {
-		var depMissing wiring.ErrArtlistDepMissing
+		var depMissing ErrArtlistDepMissing
 		if errors.As(err, &depMissing) {
 			log.Error("registerArtlist: mandatory dependency strictly required when Artlist is enabled; aborting boot (godlike/07 fail-closed)",
 				zap.String("root_path", "/api/artlist/*"),
@@ -227,7 +227,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 				zap.Error(err),
 			)
 		} else {
-			log.Error("registerArtlist: wiring.WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
+			log.Error("registerArtlist: WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
 				zap.String("root_path", "/api/artlist/*"),
 				zap.Error(err),
 			)
@@ -235,19 +235,19 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		return fmt.Errorf("registerArtlist aborting boot (godlike/07 fail-closed): %w", err)
 	}
 
-	if err := tryRegisterModuleStrict(registry, log, wiring.ArtlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
-		_ = wiring.ArtlistWiring.Service.Close()
+	if err := tryRegisterModuleStrict(registry, log, artlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
+		_ = artlistWiring.Service.Close()
 		return fmt.Errorf("registerArtlist: tryRegisterModuleStrict: %w", err)
 	}
 
-	wiring.ArtlistSvc = wiring.ArtlistWiring
-	if err := WireArtlistJobBindings(wiring.ArtlistWiring.Service, root.Jobs); err != nil {
-		_ = wiring.ArtlistWiring.Service.Close()
+	regWiring.ArtlistSvc = artlistWiring
+	if err := WireArtlistJobBindings(artlistWiring.Service, root.Jobs); err != nil {
+		_ = artlistWiring.Service.Close()
 		return fmt.Errorf("wire registry: artlist: %w", err)
 	}
 
 	log.Info("registerArtlist: ART-001 reversal milestone complete",
-		zap.String("descriptor_module_name", wiring.ArtlistWiring.Module.Name()),
+		zap.String("descriptor_module_name", artlistWiring.Module.Name()),
 	)
 	return nil
 }
@@ -255,7 +255,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) error {
 	if !cfg.Features.YouTubeEnabled {
 		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
-		wiring.YouTubeClip = nil
+		regWiring.YouTubeClip = nil
 		return nil
 	}
 
@@ -271,7 +271,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 			FanOut:  searchFanOut,
 		},
 		Transport: youtubeapi.TransportDeps{
-			Idempotency: wiring.idempotencyHandler,
+			Idempotency: regWiring.idempotencyHandler,
 			EnabledFunc: func() bool { return cfg.Features.YouTubeEnabled },
 			ModuleOpts:  nil,
 		},
@@ -286,7 +286,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	if !ok || yd == nil {
 		return fmt.Errorf("registerYouTubeClip: youtube.Build returned unexpected descriptor type %T (want *youtubeapi.YouTubeDescriptor)", descriptor)
 	}
-	wiring.YouTubeClip = &wiring.YouTubeClipWiring{
+	regWiring.YouTubeClip = &wiring.YouTubeClipWiring{
 		Module:  yd.Module,
 		Service: yd.Service,
 	}

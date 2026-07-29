@@ -14,7 +14,7 @@
 // godlike/07 fail-closed: mandatory gates are checked UPFRONT and nil
 // dependencies yield typed errors (see WireArtlist in artlist.go for the
 // actual gate sequence).
-package wiring
+package app
 
 import (
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"

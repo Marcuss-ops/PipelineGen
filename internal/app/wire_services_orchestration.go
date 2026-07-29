@@ -39,7 +39,6 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"net/http"

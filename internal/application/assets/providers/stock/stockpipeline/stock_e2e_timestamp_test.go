@@ -580,7 +580,8 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(prep).
-		WithJobFinalizer(finalizer)
+		WithJobFinalizer(finalizer).
+		WithLocalFS(newRealishFakeLocalFS())
 
 	// ── 5. Run the pipeline ─────────────────────────────────────────
 	// Tight per-step timeout: the 8 stream-copy cuts + 8 passthrough
