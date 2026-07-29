@@ -28,7 +28,7 @@ import (
 // is not wired (e.g. tests using NewOrchestrator without WithLocalFS).
 type noOpFS struct{}
 
-func (noOpFS) Stat(string) (os.FileInfo, error)              { return nil, nil }
+func (noOpFS) Stat(name string) (os.FileInfo, error)         { return os.Stat(name) }
 func (noOpFS) Open(string) (io.ReadCloser, error)             { return nil, fmt.Errorf("noOpFS: Open not wired") }
 func (noOpFS) Create(string) (io.WriteCloser, error)          { return nil, fmt.Errorf("noOpFS: Create not wired") }
 func (noOpFS) MkdirTemp(string, string) (string, error)       { return "", fmt.Errorf("noOpFS: MkdirTemp not wired") }
