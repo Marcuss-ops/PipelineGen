@@ -1,5 +1,5 @@
 // Package app — build_bundles_artlist_test.go: TDD coverage for the
-// WireArtlist composition surface (PR-ARTLIST-LIVE-WIRE, July 2026).
+// wiring.WireArtlist composition surface (PR-ARTLIST-LIVE-WIRE, July 2026).
 //
 // Scope (per architecture/current.yaml#ART-001.linked_issues[id=PR-ARTLIST-LIVE-WIRE]):
 //   - TestWireArtlist_PublisherGate_FailsClosed: confirms the 4-gate UPFRONT
@@ -11,12 +11,12 @@
 //     short-circuit fires before the Dispatcher check.
 //   - TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute: regression test
 //     for the ART-002 P0 (July 2026) collapsed-comment bug — confirms that
-//     when the 4 mandatory composition gates are satisfied, WireArtlist
+//     when the 4 mandatory composition gates are satisfied, wiring.WireArtlist
 //     returns a non-nil wiring with Module + Service properly populated so
 //     /api/artlist/* routes are mounted.
 //
 // Both failure-mode tests use httptest.Server to mock /api/artlist/stats —
-// this is the live-probe endpoint that WireArtlist pings via
+// this is the live-probe endpoint that wiring.WireArtlist pings via
 // NewHTTPSelfLoopProbe. The HTTPSelfLoopProbe adapter is *DIRECTLY* tested
 // by the unit tests in
 // internal/application/assets/providers/artlist/http_live_probe_test.go;
@@ -24,6 +24,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 	"net/http"
@@ -44,12 +45,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// artlistCompositionSchema: minimal DDL subset needed by WireArtlist to
+// artlistCompositionSchema: minimal DDL subset needed by wiring.WireArtlist to
 // construct every canonical asset run repository on an in-memory SQLite
 // handle. Mirrors the column reconciliation in
 // migrations/sqlite/001_velox_core.sql:46-62 (artlist_runs) + the
 // companion tables touched by sqassets.NewAssetStoreSQLite (PR4d-chunk2).
-// We deliberately keep this fixture tight: WireArtlist only *constructs*
+// We deliberately keep this fixture tight: wiring.WireArtlist only *constructs*
 // the repos during the wiring path (it does NOT call them), so any
 // constraint violation triggered at construction is enough to fail the
 // test loudly — a future PR that adds a column-level query at
@@ -98,7 +99,7 @@ const artlistCompositionSchema = `
 // stubPublisherForArtlistComposition is the in-test
 // delivery.Publisher stub. Mirrors the F2.11 audit-pin precedent
 // (internal/infrastructure/drive/artifact_publisher_adapter_test.go)
-// so WireArtlist's mandatory publisher gate #1 fires through to the
+// so wiring.WireArtlist's mandatory publisher gate #1 fires through to the
 // downstream Builder without panicking on a missing config.
 type stubPublisherForArtlistComposition struct{}
 
@@ -123,7 +124,7 @@ var _ delivery.Publisher = (*stubPublisherForArtlistComposition)(nil)
 // ladder returns a typed error when bundle.Publisher is nil — all
 // mandatory dependencies nil simultaneously. This pins the godlike/07
 // no-fake-availability contract at the COMPOSITION layer: nil on any
-// mandatory gate aborts WireArtlist loudly rather than silently downgrading
+// mandatory gate aborts wiring.WireArtlist loudly rather than silently downgrading
 // to skip-route. The IsLiveProbe probe is WIRED via cfg (so the wire-up
 // path runs) but the mandatory Publisher gate runs FIRST and short-circuits.
 func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
@@ -154,13 +155,13 @@ func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
 		MediaProcessor:     nil,
 	}
 
-	wiring, err := WireArtlist(context.Background(), log, cfg, bundle, nil, nil, nil, nil, nil)
+	wiring, err := wiring.WireArtlist(context.Background(), log, cfg, bundle, nil, nil, nil, nil, nil)
 
 	require.Error(t, err)
 	require.Nil(t, wiring)
-	var missing ErrArtlistDepMissing
+	var missing wiring.ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
-		"Fase 1: WireArtlist MUST return typed ErrArtlistDepMissing{Kind: DepKindPublisher} on the mandatory Publisher gate")
+		"Fase 1: wiring.WireArtlist MUST return typed wiring.ErrArtlistDepMissing{Kind: DepKindPublisher} on the mandatory Publisher gate")
 	assert.Equal(t, DepKindPublisher, missing.Kind,
 		"gate #1 short-circuit on Publisher nil — Kind/Field carry the canonical diagnostic")
 	assert.Equal(t, "bundle.Publisher", missing.Field,
@@ -202,14 +203,14 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 		MediaProcessor:     nil,
 	}
 
-	wiring, err := WireArtlist(context.Background(), log, cfg, bundle,
+	wiring, err := wiring.WireArtlist(context.Background(), log, cfg, bundle,
 		&outbox.Dispatcher{}, // gate #2 wired: Dispatcher is non-nil
 		nil, nil, nil, nil,
 	)
 
 	require.Error(t, err)
 	require.Nil(t, wiring)
-	var missing ErrArtlistDepMissing
+	var missing wiring.ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
 		"Fase 1: Publisher must short-circuit BEFORE Dispatcher gate; typed sentinel MUST still publish the Ladder-1 Kind")
 	assert.Equal(t, DepKindPublisher, missing.Kind,
@@ -219,9 +220,9 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 
 // ---------- ART-002 P0.1 (July 2026): gate #5 scraper-URL fail-closed ----------
 //
-// The 4 tests below target validateArtlistScraperURL directly per
+// The 4 tests below target wiring.ValidateArtlistScraperURL directly per
 // godlike/06 SSOT — the gate is the SINGLE canonical owner of the
-// fail-closed check; its call site inside WireArtlist is one line.
+// fail-closed check; its call site inside wiring.WireArtlist is one line.
 // Extracting the gate to a package-level helper keeps these tests pure
 // (no httptest, no bundle construction, no httptest/fixture churn — a
 // 4-case table that locks the contract).
@@ -238,16 +239,16 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 // weaken them.
 
 // TestValidateArtlistScraperURL_NilCfg_ReturnsError: defensive coverage
-// for the gate-#5 nil-cfg case. Returns a typed error so WireArtlist's
+// for the gate-#5 nil-cfg case. Returns a typed error so wiring.WireArtlist's
 // single call site propagates the same pattern as the 4 wiring gates.
 // Fase 1 (Phase 1, July 2026) — the typed sentinel is now parsed via
 // errors.As so DepKindScraperURL + Field="cfg" are structurally testable.
 func TestValidateArtlistScraperURL_NilCfg_ReturnsError(t *testing.T) {
-	err := validateArtlistScraperURL(nil)
+	err := wiring.ValidateArtlistScraperURL(nil)
 	require.Error(t, err)
-	var missing ErrArtlistDepMissing
+	var missing wiring.ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
-		"Fase 1: validateArtlistScraperURL nil-cfg MUST return typed ErrArtlistDepMissing{Kind: DepKindScraperURL}")
+		"Fase 1: wiring.ValidateArtlistScraperURL nil-cfg MUST return typed wiring.ErrArtlistDepMissing{Kind: DepKindScraperURL}")
 	assert.Equal(t, DepKindScraperURL, missing.Kind)
 	assert.Equal(t, "cfg", missing.Field)
 	assert.Contains(t, missing.Detail, "scraper-URL fail-closed",
@@ -265,7 +266,7 @@ func TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil(t *testing.T) 
 		Features: config.FeaturesConfig{ArtlistEnabled: false},
 		External: config.ExternalConfig{ArtlistScraperServerURL: ""},
 	}
-	err := validateArtlistScraperURL(cfg)
+	err := wiring.ValidateArtlistScraperURL(cfg)
 	assert.NoError(t, err,
 		"disabled Artlist + empty URL is the allowed zero-state — gate is a no-op")
 }
@@ -278,7 +279,7 @@ func TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil(t *testing.T) {
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 		External: config.ExternalConfig{ArtlistScraperServerURL: "http://artlist-scraper:9123"},
 	}
-	err := validateArtlistScraperURL(cfg)
+	err := wiring.ValidateArtlistScraperURL(cfg)
 	assert.NoError(t, err,
 		"enabled Artlist + valid Node scraper URL must pass gate #5 silently")
 }
@@ -344,7 +345,7 @@ func (s *stubTextTrackRepoForArtlistComposition) InsertTranslationWithAuditPrede
 // Co-deps the test relies on:
 //   - storage.NewSQLiteDB + artlistCompositionSchema
 //   - assets.NewClipsRepository (audio/file/clip columns kept loose
-//     because WireArtlist only constructs the repo, never queries it
+//     because wiring.WireArtlist only constructs the repo, never queries it
 //     in this test — see gate01_happy_path_test.go for the heavier
 //     integration variant)
 //   - BuildJobsBundle (composition-root's canonical Jobs builder) so
@@ -386,7 +387,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// the helper's documented contract.
 	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
-	require.NotNil(t, jobsBundle.Service, "JobsBundle.Service must be populated so WireArtlist gate #4 passes")
+	require.NotNil(t, jobsBundle.Service, "JobsBundle.Service must be populated so wiring.WireArtlist gate #4 passes")
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{Port: 8080},
@@ -404,17 +405,17 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Jobs:               jobsBundle,
 		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
 		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
-		MediaProcessor:     nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
+		MediaProcessor:     nil, // optional; nil-tolerant in wiring.WireArtlist's MediaProcessor bridge
 		TextTrackRepo:      &stubTextTrackRepoForArtlistComposition{},
 	}
 
-	// WireArtlist mandatory call shape (8 args). The 3 ComposeRoot
+	// wiring.WireArtlist mandatory call shape (8 args). The 3 ComposeRoot
 	// receiver-fields not surfaced on ArtlistBundle (reader, lifecycle,
 	// metaWriter) and the destResolver port are passed nil — every
 	// downstream consumer in NewService / SemanticEnricher is
 	// nil-tolerant at construction (they DEFER their dispatch to
 	// runtime methods which this test does not exercise).
-	wiring, err := WireArtlist(
+	wiring, err := wiring.WireArtlist(
 		context.Background(),
 		log,
 		cfg,
@@ -429,9 +430,9 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// The regression assertion: pre-fix the error chain wrapped
 	// ErrRunRepositoryUnavailable (the bug closed silently left
 	// /api/artlist/* unmounted). Post-fix it does NOT appear, and
-	// WireArtlist returns a fully-populated *ArtlistWiring.
+	// wiring.WireArtlist returns a fully-populated *ArtlistWiring.
 	require.NoError(t, err,
-		"WireArtlist must succeed when all 4 mandatory composition gates are up — the run-repo field is no longer swallowed by a comment (ART-002 P0 fix, July 2026)")
+		"wiring.WireArtlist must succeed when all 4 mandatory composition gates are up — the run-repo field is no longer swallowed by a comment (ART-002 P0 fix, July 2026)")
 	require.NotNil(t, wiring,
 		"wiring must be non-nil so registerArtlist can promote it into the registry")
 
@@ -468,7 +469,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 // canonical godlike/07 fail-closed case. Artlist is enabled but the
 // Node scraper URL is empty — the gate aborts loudly with an actionable
 // fix hint instead of silently degrading to per-call exec fallback at
-// first /run invocation. The associated WireArtlist tests
+// first /run invocation. The associated wiring.WireArtlist tests
 // (PublisherGateFailsClosed + ShortCircuitsOverDispatcher) already pin
 // that gate #1 short-circuits BEFORE this gate; this unit test pins
 // gate #5's own contract independently.
@@ -477,7 +478,7 @@ func TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError(t *testing.T)
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 		External: config.ExternalConfig{ArtlistScraperServerURL: ""},
 	}
-	err := validateArtlistScraperURL(cfg)
+	err := wiring.ValidateArtlistScraperURL(cfg)
 	require.Error(t, err,
 		"ART-002 P0.1: enabled Artlist + empty Node scraper URL must fail-closed (godlike/07 no-fake-availability)")
 	assert.Contains(t, err.Error(), "ArtlistEnabled=true",

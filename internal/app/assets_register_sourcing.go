@@ -10,6 +10,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -97,7 +98,7 @@ func newAssetRegisterService(
 		Fetcher:     &sourcingFetchAdapter{registry: providerRegistry},
 		Clips:       &sourcingClipStoreAdapter{repo: clipsRepo},
 		Publisher:   &sourcingPublisherAdapter{publisher: publisher},
-		Transcriber: &sourcingTranscriberAdapter{cfg: cfg, log: log},
+		Transcriber: &wiring.SourcingTranscriberAdapter{cfg: cfg, log: log},
 		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
 		// TrashFile now routes via FileLifecycle.Trash (no Admin fallback).
 		Metadata:      &sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
