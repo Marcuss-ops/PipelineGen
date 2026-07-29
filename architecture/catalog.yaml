@@ -55,13 +55,13 @@ current:
   cross_refs:
     package: internal/application/assets/monitor
 - id: WAVE-23-JOB-KERNEL-MIGRATION
-  status: in_progress
+  status: completed
   owner: internal/kernel/job
   deadline: '2026-09-30T00:00:00Z'
   rationale: Migrate production imports from the compatibility domain/job surface to the canonical internal/kernel/job contract, then delete the compatibility aliases when the census reaches zero.
   count:
     baseline_initial: 172
-    current: 172
+    current: 0
     target_zero: 0
   cross_refs:
     details: architecture/job_kernel_migration.json
