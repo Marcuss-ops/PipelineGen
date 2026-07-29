@@ -93,7 +93,7 @@ var metadataKeyScannerSkipDirs = map[string]bool{
 // positives on scanner self-references would block CI.
 var metadataKeyScannerSkipPathPrefixes = []string{
 	"cmd/archcheck/scan",
-	"internal/domain/asset",
+	"internal/kernel/asset",
 }
 
 // metadataKeyScannerAccessRe matches BOTH
@@ -159,7 +159,7 @@ func ParseMetadataKeys(root string, pol *policy.Policy, r *report.Report) []stri
 	f, err := os.Open(path)
 	if err != nil {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        metadataKeyCanonicalPath,
 			Line:        0,
 			Rule:        metadataKeyScannerRule,
@@ -195,7 +195,7 @@ func ParseMetadataKeys(root string, pol *policy.Policy, r *report.Report) []stri
 
 	if len(keys) == 0 {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        metadataKeyCanonicalPath,
 			Line:        0,
 			Rule:        metadataKeyScannerRule,

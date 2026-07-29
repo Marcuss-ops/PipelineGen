@@ -213,9 +213,9 @@ func TestExtractionIntentAdapter_HappyPath_TranslationLocksAndCursorOmits(t *tes
 	if jsvc.lastEnqueueReq == nil {
 		t.Fatal("Enqueue was called but lastEnqueueReq is nil (test fixture bug)")
 	}
-	if jsvc.lastEnqueueReq.Type != job.TypeYouTubeClipExtract {
+	if jsvc.lastEnqueueReq.Type != "youtube_clip.extract" {
 		t.Errorf("Enqueue Type = %q, want %q",
-			jsvc.lastEnqueueReq.Type, job.TypeYouTubeClipExtract)
+			jsvc.lastEnqueueReq.Type, "youtube_clip.extract")
 	}
 	if want := monitor.ActiveKeyPrefix + intent.VideoID; jsvc.lastEnqueueReq.ActiveKey != want {
 		t.Errorf("Enqueue ActiveKey = %q, want %q", jsvc.lastEnqueueReq.ActiveKey, want)

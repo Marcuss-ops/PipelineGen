@@ -115,7 +115,7 @@ func ScanReviewStatusCanonical4(root string, pol *policy.Policy, r *report.Repor
 		// opened the operator MUST investigate. Surface a
 		// violation rather than silently passing.
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        reviewStatusCanonical4Path,
 			Line:        0,
 			Rule:        reviewStatusCanonical4Rule,
@@ -153,7 +153,7 @@ func ScanReviewStatusCanonical4(root string, pol *policy.Policy, r *report.Repor
 	}
 	if count != wantCount {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        reviewStatusCanonical4Path,
 			Line:        0,
 			Rule:        reviewStatusCanonical4Rule,

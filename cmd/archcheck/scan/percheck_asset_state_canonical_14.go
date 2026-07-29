@@ -107,7 +107,7 @@ func ScanAssetStateCanonical14(root string, pol *policy.Policy, r *report.Report
 		// opened the operator MUST investigate. Surface a
 		// violation rather than silently passing.
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        assetStateCanonical14Path,
 			Line:        0,
 			Rule:        assetStateCanonical14Rule,
@@ -153,7 +153,7 @@ func ScanAssetStateCanonical14(root string, pol *policy.Policy, r *report.Report
 	}
 	if count != wantCount {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        assetStateCanonical14Path,
 			Line:        0,
 			Rule:        assetStateCanonical14Rule,

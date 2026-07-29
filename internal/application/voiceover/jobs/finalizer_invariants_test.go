@@ -163,10 +163,10 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 	reg := appjobs.Compose()
 	require.NotNil(t, reg)
-	require.True(t, reg.IsRegistered(job.TypeVoiceoverGenerateItem),
+	require.True(t, reg.IsRegistered(appjobs.TypeVoiceoverGenerateItem),
 		"job.TypeVoiceoverGenerateItem MUST be registered in the canonical registry (Compose())")
 
-	assert.False(t, reg.ProducesArtifacts(job.TypeVoiceoverGenerateItem),
+	assert.False(t, reg.ProducesArtifacts(appjobs.TypeVoiceoverGenerateItem),
 		"job.TypeVoiceoverGenerateItem MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
 			"Each per-language child persists its own voiceovers row + media_assets projection + outbox events inside "+
 			"its own per-item tx via the unified finalizer. The broker's legacy Complete is the canonical mark-SUCCEEDED "+
@@ -175,7 +175,7 @@ func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 			"internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
 			"with domainremote.ErrCompleteJobPathViolation, mirroring the parent-type bug.")
 
-	entry, ok := reg.Get(job.TypeVoiceoverGenerateItem)
+	entry, ok := reg.Get(appjobs.TypeVoiceoverGenerateItem)
 	require.True(t, ok)
 	assert.Equal(t, "voiceover.generate_item", entry.Type)
 	assert.False(t, entry.ProducesArtifacts,
