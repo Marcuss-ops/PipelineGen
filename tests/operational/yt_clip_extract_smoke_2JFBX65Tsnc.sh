@@ -56,20 +56,29 @@ set -euo pipefail
 URL_BASE="${URL_BASE:-http://127.0.0.1:8000}"
 ENV_FILE="${ENV_FILE:-.env}"
 DB_PATH="${DB_PATH:-data/media/media.db.sqlite}"
-DRIVE_FOLDER_ID="1iAGhWidRF0hpJYvku_fIavEIY50_V1wA"
-YOUTUBE_URL="https://www.youtube.com/watch?v=2JFBX65Tsnc"
-EXPECTED_VIDEO_ID="2JFBX65Tsnc"
-SEG_START="00:05"
-SEG_END="00:10"
-SEG_NAME="One Piece - Ace finding Ruffy's crew"
-SEG_SUMMARY="one piece clip talking about ace finding ruffy's crew"
-POLICY_VER="v1"
-# Canonical filename: yt_<videoID>_<startSecSec>_<endSecSec>_<policyVer>.mp4
-# (per process_segment.go:217 Sprintf). 00:05 -> 5; 00:10 -> 10 (int seconds).
-SEG_START_SEC="5"
-SEG_END_SEC="10"
-EXPECTED_ASSET_ID="yt_${EXPECTED_VIDEO_ID}_${SEG_START_SEC}_${SEG_END_SEC}_v1"
-EXPECTED_FILENAME_PATTERN="yt_${EXPECTED_VIDEO_ID}_${SEG_START_SEC}_${SEG_END_SEC}_%${POLICY_VER}"
+
+# Canonical fixture path (overridable via FIXTURE env var).
+DIR=$(cd "$(dirname "$0")" && pwd)
+FIXTURE="${FIXTURE:-$DIR/../fixtures/velox/2JFBX65Tsnc.json}"
+if [[ ! -f "$FIXTURE" ]]; then
+    echo "setup error: fixture missing: $FIXTURE" >&2
+    exit 2
+fi
+
+# Extract values from the fixture JSON (single source of truth).
+YOUTUBE_URL=$(jq -r '.youtube_url' "$FIXTURE")
+DRIVE_FOLDER_ID=$(jq -r '.drive_folder_id' "$FIXTURE")
+EXPECTED_VIDEO_ID=$(jq -r '.expected_video_id' "$FIXTURE")
+SEG_START=$(jq -r '.segment.start' "$FIXTURE")
+SEG_END=$(jq -r '.segment.end' "$FIXTURE")
+SEG_NAME=$(jq -r '.segment.name' "$FIXTURE")
+SEG_SUMMARY=$(jq -r '.segment.summary' "$FIXTURE")
+SEG_START_SEC=$(jq -r '.segment.start_sec' "$FIXTURE")
+SEG_END_SEC=$(jq -r '.segment.end_sec' "$FIXTURE")
+POLICY_VER=$(jq -r '.policy_version' "$FIXTURE")
+EXPECTED_ASSET_ID=$(jq -r '.expected_asset_id' "$FIXTURE")
+EXPECTED_FILENAME_PATTERN=$(jq -r '.expected_filename_pattern' "$FIXTURE")
+
 TMPDIR_RUN="/tmp/yt-extract-smoke-2JFBX65Tsnc"
 REQ_TAG="yt-extract-smoke-$(date +%s)-$$"
 
