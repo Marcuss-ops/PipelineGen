@@ -49,7 +49,7 @@ import (
 // percheck_asset_state_canonical_14_test.go.
 func writeFakeProcessorForWbTest(t *testing.T, root, content string) {
 	t.Helper()
-	full := filepath.Join(root, "internal", "domain", "asset", "processor.go")
+	full := filepath.Join(root, "internal", "kernel", "asset", "processor.go")
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

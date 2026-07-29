@@ -35,7 +35,7 @@ import (
 // of the canonical file.
 func writeFakeAssetStateValues(t *testing.T, tempDir string, count int, prefix string) string {
 	t.Helper()
-	dir := filepath.Join(tempDir, "internal", "domain", "asset")
+	dir := filepath.Join(tempDir, "internal", "kernel", "asset")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir fake asset_state dir: %v", err)
 	}
