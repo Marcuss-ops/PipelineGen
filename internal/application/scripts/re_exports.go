@@ -43,11 +43,11 @@ var CanonicalWorkflowStateValues = generation.CanonicalWorkflowStateValues
 
 // State constants re-exported from generation.
 const (
-	StateScriptReady        = generation.StateScriptReady
-	StateImagesPending      = generation.StateImagesPending
-	StateImagesGenerated    = generation.StateImagesGenerated
-	StateDocumentCreated    = generation.StateDocumentCreated
-	StateWorkflowFailed     = generation.StateWorkflowFailed
+	StateScriptReady          = generation.StateScriptReady
+	StateImagesPending        = generation.StateImagesPending
+	StateImagesGenerated      = generation.StateImagesGenerated
+	StateDocumentCreated      = generation.StateDocumentCreated
+	StateWorkflowFailed       = generation.StateWorkflowFailed
 	StateWorkflowDeadLettered = generation.StateWorkflowDeadLettered
 )
 
@@ -59,9 +59,9 @@ var ErrIllegalWorkflowStateTransition = generation.ErrIllegalWorkflowStateTransi
 
 // SceneImageJobEmitter re-exported from curation.
 type (
-	SceneImageJobEmitter = curation.SceneImageJobEmitter
-	Emitter              = curation.Emitter
-	DispatcherShim       = curation.DispatcherShim
+	SceneImageJobEmitter  = curation.SceneImageJobEmitter
+	Emitter               = curation.Emitter
+	DispatcherShim        = curation.DispatcherShim
 	EmitSceneImageCommand = curation.EmitSceneImageCommand
 	SceneImageJobPayload  = curation.SceneImageJobPayload
 )
