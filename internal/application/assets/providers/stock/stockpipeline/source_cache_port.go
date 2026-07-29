@@ -21,6 +21,31 @@ import (
 	"go.uber.org/zap"
 )
 
+// noOpFS is a no-op LocalFSPort that delegates to the real filesystem
+// for essential operations (CreateTemp, Remove, MkdirAll) so tests that
+// exercise the writeAndHashStockMetadata path work without wiring the
+// real filesystem.LocalAdapter. Used as a safe fallback when LocalFSPort
+// is not wired (e.g. tests using NewOrchestrator without WithLocalFS).
+type noOpFS struct{}
+
+func (noOpFS) Stat(string) (os.FileInfo, error)              { return nil, nil }
+func (noOpFS) Open(string) (io.ReadCloser, error)             { return nil, fmt.Errorf("noOpFS: Open not wired") }
+func (noOpFS) Create(string) (io.WriteCloser, error)          { return nil, fmt.Errorf("noOpFS: Create not wired") }
+func (noOpFS) MkdirTemp(string, string) (string, error)       { return "", fmt.Errorf("noOpFS: MkdirTemp not wired") }
+func (noOpFS) Remove(name string) error                        { return os.Remove(name) }
+func (noOpFS) RemoveAll(path string) error                     { return os.RemoveAll(path) }
+func (noOpFS) MkdirAll(path string, perm os.FileMode) error    { return os.MkdirAll(path, perm) }
+func (noOpFS) CreateTemp(dir, pattern string) (string, io.WriteCloser, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", nil, err
+	}
+	return f.Name(), f, nil
+}
+func (noOpFS) TempDir() string { return "/tmp" }
+
+var _ LocalFSPort = noOpFS{}
+
 // LocalFSPort is the Pattern 0 typed port for local filesystem I/O.
 //
 // godlike/07 PR-REFACTOR-P0-IO-BINDER (July 2026): the application

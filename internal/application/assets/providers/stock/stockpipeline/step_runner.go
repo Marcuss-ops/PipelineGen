@@ -101,8 +101,8 @@ func (a *orchestratorRunner) SourceDurationProbe() SourceDurationProbe {
 	return a.orch.sourceProbe
 }
 func (a *orchestratorRunner) LocalFS() LocalFSPort {
-	if a == nil || a.orch == nil {
-		return nil
+	if a == nil || a.orch == nil || a.orch.localFS == nil {
+		return noOpFS{}
 	}
 	return a.orch.localFS
 }
