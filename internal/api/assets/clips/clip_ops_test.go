@@ -16,7 +16,6 @@ package clips
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -108,51 +107,6 @@ func (r *handlerVoiceoverRepo) ListAll(_ context.Context) ([]*appclips.ClipVoice
 	return out, nil
 }
 func (r *handlerVoiceoverRepo) Upsert(_ context.Context, _ *appclips.ClipVoiceoverRecordDTO) error {
-	return nil
-}
-
-type handlerImagesRepo struct{ images []*asset.ImageAsset }
-
-func (r *handlerImagesRepo) ListAll(_ context.Context) ([]*asset.ImageAsset, error) {
-	if r == nil {
-		return nil, nil
-	}
-	return r.images, nil
-}
-
-type handlerDriveAdmin struct{ md5ByFileID map[string]string }
-
-func (d *handlerDriveAdmin) GetOrCreateFolder(_ context.Context, _, _ string) (string, error) {
-	return "", nil
-}
-func (d *handlerDriveAdmin) GetFolderName(_ context.Context, _ string) (string, error) {
-	return "", nil
-}
-func (d *handlerDriveAdmin) TrashFolder(_ context.Context, _ string) error  { return nil }
-func (d *handlerDriveAdmin) DeleteFolder(_ context.Context, _ string) error { return nil }
-func (d *handlerDriveAdmin) DownloadFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
-	return nil, "", nil
-}
-func (d *handlerDriveAdmin) GetFileMD5(_ context.Context, fileID string) (string, error) {
-	if d == nil || d.md5ByFileID == nil {
-		return "", nil
-	}
-	return d.md5ByFileID[fileID], nil
-}
-func (d *handlerDriveAdmin) GetFileMeta(_ context.Context, _ string) (*appclips.ClipDriveFileMetaDTO, error) {
-	return &appclips.ClipDriveFileMetaDTO{}, nil
-}
-func (d *handlerDriveAdmin) TrashFile(_ context.Context, _ string) error { return nil }
-func (d *handlerDriveAdmin) ListFiles(_ context.Context, _ string) ([]appclips.ClipDriveFileDTO, error) {
-	return nil, nil
-}
-
-type handlerCleanupPort struct{}
-
-func (*handlerCleanupPort) CleanupOrphanFiles(_ context.Context, _ string, _ bool) (int, error) {
-	return 0, nil
-}
-func (*handlerCleanupPort) DeleteClip(_ context.Context, _, _ string, _ bool) error {
 	return nil
 }
 
