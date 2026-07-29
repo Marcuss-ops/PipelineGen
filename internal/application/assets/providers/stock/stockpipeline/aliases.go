@@ -49,6 +49,66 @@ type TransitionSegment = types.TransitionSegment
 type TransitionRenderer = types.TransitionRenderer
 type TransitionRegistry = types.TransitionRegistry
 
+// ──── render DTOs + ports + batch (P3 Batch 2) ────
+
+type RenderRequest = types.RenderRequest
+type RenderResult = types.RenderResult
+type SourceDurationProbe = types.SourceDurationProbe
+type CutRequest = types.CutRequest
+type CutJob = types.CutJob
+type CutItemStatus = types.CutItemStatus
+type CutItemResult = types.CutItemResult
+type CutBatchResult = types.CutBatchResult
+type Clip = types.Clip
+
+type ArtifactState = types.ArtifactState
+type BatchState = types.BatchState
+type GroupState = types.GroupState
+type StockBatch = types.StockBatch
+type StockBatchGroup = types.StockBatchGroup
+type StockArtifact = types.StockArtifact
+type StockBatchRepository = types.StockBatchRepository
+
+// Const aliases from types/ — CutItemStatus enum values.
+const (
+	CutItemStatusUnknown     = types.CutItemStatusUnknown
+	CutItemStatusFailed      = types.CutItemStatusFailed
+	CutItemStatusSucceeded   = types.CutItemStatusSucceeded
+	CutItemStatusValidated   = types.CutItemStatusValidated
+	CutItemStatusProbeFailed = types.CutItemStatusProbeFailed
+)
+
+// Const aliases from types/ — artifact / batch / group states.
+const (
+	ArtifactStatePlanned         = types.ArtifactStatePlanned
+	ArtifactStateExtracting      = types.ArtifactStateExtracting
+	ArtifactStateExtracted       = types.ArtifactStateExtracted
+	ArtifactStateComposing       = types.ArtifactStateComposing
+	ArtifactStateComposed        = types.ArtifactStateComposed
+	ArtifactStatePublishing      = types.ArtifactStatePublishing
+	ArtifactStatePublished       = types.ArtifactStatePublished
+	ArtifactStateVerified        = types.ArtifactStateVerified
+	ArtifactStateRetryWait       = types.ArtifactStateRetryWait
+	ArtifactStateFailedPermanent = types.ArtifactStateFailedPermanent
+	ArtifactStateQuarantined     = types.ArtifactStateQuarantined
+
+	BatchStatePlanned   = types.BatchStatePlanned
+	BatchStateRunning   = types.BatchStateRunning
+	BatchStateSucceeded = types.BatchStateSucceeded
+	BatchStateFailed    = types.BatchStateFailed
+	BatchStateRetryWait = types.BatchStateRetryWait
+
+	GroupStatePlanned   = types.GroupStatePlanned
+	GroupStateRunning   = types.GroupStateRunning
+	GroupStateSucceeded = types.GroupStateSucceeded
+	GroupStateFailed    = types.GroupStateFailed
+	GroupStateRetryWait = types.GroupStateRetryWait
+)
+
+// Function wrappers for canonical constructors in types/.
+func StockArtifactGroupID(batchID, sourceID string) string { return types.StockArtifactGroupID(batchID, sourceID) }
+func StockArtifactID(batchID, sourceID string, clipIdx int) string      { return types.StockArtifactID(batchID, sourceID, clipIdx) }
+
 // ──── error sentinels (was service_errors.go) ────
 
 var (
