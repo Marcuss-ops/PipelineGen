@@ -28,7 +28,8 @@ func (s *StockStager) checkSourceCache(ctx context.Context, cacheKey string, ref
 	if s.svc.log != nil {
 		s.svc.log.Info("stock stager: SOURCE_CACHE_HIT",
 			zap.String("cache_key", cacheKey[:16]+"..."),
-			zap.String("source_url", ref.URL))
+			zap.String("source_url", ref.URL),
+			zap.String("cached_path", cached.LocalPath))
 	}
 
 	if cpErr := copyFileToPath(cached.LocalPath, outputPath, fs); cpErr != nil {

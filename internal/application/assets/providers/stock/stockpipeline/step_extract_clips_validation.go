@@ -42,10 +42,11 @@ func validateAndProbeSourceDuration(ctx context.Context, runner StepRunner, sour
 	}
 
 	// Bounds-check: every clip.EndSec must be ≤ duration.
-	for _, plan := range groupPlans {
+	for i, plan := range groupPlans {
 		if plan.EndSec > duration {
-			return duration, nil, fmt.Errorf("%w: source=%s EndSec=%.1f > duration=%.1f",
-				ErrStockClipsOutOfRange, sourceID, plan.EndSec, duration)
+			overrun := plan.EndSec - duration
+			return duration, nil, fmt.Errorf("%w: clip[%d] %s EndSec=%.2f > duration=%.2f overrun=%.2fs",
+				ErrStockClipsOutOfRange, i, plan.OutputLogicalID, plan.EndSec, duration, overrun)
 		}
 	}
 
