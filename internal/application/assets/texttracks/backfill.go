@@ -86,6 +86,38 @@ type BackfillService struct {
 	log             *zap.Logger
 }
 
+// BackfillServiceDeps groups constructor dependencies by real
+// capability so NewBackfillService stays under the archcheck
+// max_constructor_deps=8 cap (4 sub-bundles).
+//
+// Field count: 4 (well under max_struct_deps=8).
+type BackfillServiceDeps struct {
+	Data     BackfillDataDeps
+	Pipeline BackfillPipelineDeps
+	Delivery BackfillDeliveryDeps
+	Log      *zap.Logger
+}
+
+// BackfillDataDeps — persistence-layer ports.
+type BackfillDataDeps struct {
+	Clips      MediaAssetLister
+	Repo       asset.TextTrackRepository
+	Cues       TimedCueWriter
+	SubArtRepo asset.SubtitleArtifactRepository
+}
+
+// BackfillPipelineDeps — processing pipeline ports.
+type BackfillPipelineDeps struct {
+	Materializer *Materializer
+	Acquirer     *AcquireService // optional: nil → skip source acquisition
+}
+
+// BackfillDeliveryDeps — Drive delivery ports.
+type BackfillDeliveryDeps struct {
+	Publisher     delivery.Publisher
+	DriveFolderID string
+}
+
 // NewBackfillService constructs the canonical orchestrator.
 //
 // godlike/07 fail-closed: a nil dep surfaces as a typed error.
@@ -94,49 +126,39 @@ type BackfillService struct {
 // READY track). The repo is REQUIRED — tryAcquire uses it
 // to save acquired source tracks without reaching through
 // the Materializer's private fields.
-func NewBackfillService(
-	clips MediaAssetLister,
-	repo asset.TextTrackRepository,
-	cues TimedCueWriter,
-	subArtRepo asset.SubtitleArtifactRepository,
-	materializer *Materializer,
-	acquirer *AcquireService,
-	publisher delivery.Publisher,
-	driveFolderID string,
-	log *zap.Logger,
-) (*BackfillService, error) {
-	if clips == nil {
+func NewBackfillService(deps BackfillServiceDeps) (*BackfillService, error) {
+	if deps.Data.Clips == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: clips lister is nil")
 	}
-	if repo == nil {
+	if deps.Data.Repo == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: repo is required (used by tryAcquire to save acquired source tracks)")
 	}
-	if cues == nil {
+	if deps.Data.Cues == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: cues writer is required")
 	}
-	if subArtRepo == nil {
+	if deps.Data.SubArtRepo == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: subArtRepo is required")
 	}
-	if materializer == nil {
+	if deps.Pipeline.Materializer == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: materializer is nil")
 	}
-	if publisher == nil {
+	if deps.Delivery.Publisher == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: Drive publisher is required")
 	}
-	if log == nil {
+	if deps.Log == nil {
 		return nil, fmt.Errorf("texttracks.NewBackfillService: log is nil")
 	}
 	return &BackfillService{
-		clips:           clips,
-		repo:            repo,
-		cues:            cues,
-		subArtRepo:      subArtRepo,
-		subMaterializer: NewSubtitleArtifactMaterializer(subArtRepo, "data/media/subtitles", publisher),
-		materializer:    materializer,
-		acquirer:        acquirer,
-		publisher:       publisher,
-		driveFolderID:   driveFolderID,
-		log:             log,
+		clips:           deps.Data.Clips,
+		repo:            deps.Data.Repo,
+		cues:            deps.Data.Cues,
+		subArtRepo:      deps.Data.SubArtRepo,
+		subMaterializer: NewSubtitleArtifactMaterializer(deps.Data.SubArtRepo, "data/media/subtitles", deps.Delivery.Publisher),
+		materializer:    deps.Pipeline.Materializer,
+		acquirer:        deps.Pipeline.Acquirer,
+		publisher:       deps.Delivery.Publisher,
+		driveFolderID:   deps.Delivery.DriveFolderID,
+		log:             deps.Log,
 	}, nil
 }
 

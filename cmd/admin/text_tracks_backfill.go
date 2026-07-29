@@ -214,17 +214,23 @@ func runTextTracksBackfill(args []string) error {
 	// nil, the per-clip report surfaces "no source" for
 	// clips without a READY track. The repo is REQUIRED
 	// (used by tryAcquire to save acquired source tracks).
-	svc, err := texttracks.NewBackfillService(
-		root.Repos.ClipsRepo,
-		root.Repos.TextTrackRepo, // Fase 5: canonical SSOT for save
-		root.Domains.CueWriter,
-		root.Repos.SubtitleArtifactRepo,
-		root.TextTracks.Materializer,
-		root.TextTracks.AcquireService, // Fase 5
-		root.Drive.Publisher,
-		cfg.Drive.ClipsFolder(),
-		log,
-	)
+	svc, err := texttracks.NewBackfillService(texttracks.BackfillServiceDeps{
+		Data: texttracks.BackfillDataDeps{
+			Clips:      root.Repos.ClipsRepo,
+			Repo:       root.Repos.TextTrackRepo,
+			Cues:       root.Domains.CueWriter,
+			SubArtRepo: root.Repos.SubtitleArtifactRepo,
+		},
+		Pipeline: texttracks.BackfillPipelineDeps{
+			Materializer: root.TextTracks.Materializer,
+			Acquirer:     root.TextTracks.AcquireService,
+		},
+		Delivery: texttracks.BackfillDeliveryDeps{
+			Publisher:     root.Drive.Publisher,
+			DriveFolderID: cfg.Drive.ClipsFolder(),
+		},
+		Log: log,
+	})
 	if err != nil {
 		return fmt.Errorf("text-tracks-backfill: new backfill service: %w", err)
 	}
