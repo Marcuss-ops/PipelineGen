@@ -64,6 +64,7 @@ var (
 	ErrStockPipelineNilFolderCreator             = types.ErrStockPipelineNilFolderCreator
 	ErrStockPipelineNilStepStore                 = types.ErrStockPipelineNilStepStore
 	ErrStockPipelineNilSourceStager              = types.ErrStockPipelineNilSourceStager
+	ErrStockPipelineNilLocalFS                  = types.ErrStockPipelineNilLocalFS
 	ErrStockProductionDBMissing                  = types.ErrStockProductionDBMissing
 	ErrStockProductionBatchRepositoryMissing     = types.ErrStockProductionBatchRepositoryMissing
 	ErrStockPipelineNilDB                        = types.ErrStockPipelineNilDB

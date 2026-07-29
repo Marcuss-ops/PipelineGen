@@ -54,6 +54,13 @@ var (
 	// the composition root; ClipIndexer + MetaWriter were dead code (zero
 	// call sites in the stockpipeline package).
 
+	// Audit P0 (July 2026): LocalFS is REQUIRED — the composition root
+	// MUST inject a concrete LocalFSPort (filesystem.NewLocal() or
+	// filesystem.NewTempDirFS()). A nil LocalFS would previously
+	// fail-closed at the cache copy site; now it fails at construction
+	// time so the wiring gap is caught before the first stock run.
+	ErrStockPipelineNilLocalFS = errors.New("stockpipeline.NewService: SourceCache.LocalFS is required (audit P0: no implicit fallback to real filesystem — inject filesystem.NewLocal() or filesystem.NewTempDirFS())")
+
 	// §12-4 (July 2026): stock pipeline no longer threads
 	// `*downloader.YTDLPDownloader` directly. Every yt-dlp / HTTP / Drive
 	// byte-fetch call routes through the canonical

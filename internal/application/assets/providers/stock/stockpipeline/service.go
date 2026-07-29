@@ -138,7 +138,7 @@ type Service struct {
 	// localFS is the Pattern 0 typed port for the local filesystem
 	// I/O the source cache needs (Stat on hit; Open+Create on copy).
 	// PR-REFACTOR-P0-IO-BINDER keeps os.* calls out of this package;
-	// opt nil → fail-closed at the cache copy site.
+	// REQUIRED at ctor time (audit P0: no implicit fallback to real FS).
 	localFS LocalFSPort
 }
 
@@ -221,6 +221,14 @@ func NewService(deps Deps) (*Service, error) {
 	}
 	if deps.Runtime.StepStore == nil {
 		return nil, ErrStockPipelineNilStepStore
+	}
+	// Audit P0 (July 2026): LocalFS is REQUIRED. The previous
+	// nil-tolerant fallback that failed at the cache copy site is
+	// retired; the constructor now rejects nil so a missing
+	// composition-root injection fails at boot rather than on the
+	// first cache operation.
+	if deps.SourceCache.LocalFS == nil {
+		return nil, ErrStockPipelineNilLocalFS
 	}
 
 	v := deps.Runtime.Cfg
