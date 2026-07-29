@@ -293,9 +293,12 @@ func (s *StockStager) releaseSharedLease(cacheKey string) error {
 		lease.released = true
 		var unlinkErr error
 		if lease.path != "" {
-			dir := filepath.Dir(lease.path)
-			if dir != "" && dir != "." && dir != "/" {
-				unlinkErr = s.svc.localFS.RemoveAll(dir)
+			fs, fsErr := s.fs()
+			if fsErr == nil {
+				dir := filepath.Dir(lease.path)
+				if dir != "" && dir != "." && dir != "/" {
+					unlinkErr = fs.RemoveAll(dir)
+				}
 			}
 		}
 		// Evict BEFORE unlocking so a concurrent new acquireSharedLease
@@ -336,6 +339,15 @@ func (s *StockStager) isLeaseLeader(leaseKey, localPath string) bool {
 	return !lease.released && lease.path == localPath
 }
 
+// fs returns the wired LocalFSPort, or a typed error when nil
+// (PR-REFACTOR-P0-IO-BINDER fail-closed: no silent nil deref).
+func (s *StockStager) fs() (LocalFSPort, error) {
+	if s.svc == nil || s.svc.localFS == nil {
+		return nil, fmt.Errorf("stock stager: LocalFSPort not wired (composition root must inject filesystem.NewLocal())")
+	}
+	return s.svc.localFS, nil
+}
+
 // StageSource implements assets.SourceStager. Downloads the source video
 // directly via yt-dlp (YouTube/DirectURLs) or via DriveReaderPort
 // (Google Drive file or folder URLs), bypassing the
@@ -353,8 +365,13 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		return nil, fmt.Errorf("stock stager: empty URL")
 	}
 
+	fs, fsErr := s.fs()
+	if fsErr != nil {
+		return nil, fsErr
+	}
+
 	// Create a temp staging directory under the service's temp path.
-	tmpDir, err := s.svc.localFS.MkdirTemp(s.svc.runtime.WorkDir, "stock_stage_")
+	tmpDir, err := fs.MkdirTemp(s.svc.runtime.WorkDir, "stock_stage_")
 	if err != nil {
 		return nil, fmt.Errorf("stock stager: create temp dir: %w", err)
 	}
@@ -368,7 +385,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	cacheKey := DeriveSourceCacheKey(ref.URL, ref.DownloadSection, ref.MergeFormat, ref.ForceKeyframes)
 	if s.cacheReader != nil {
 		if cached, cacheErr := s.cacheReader.GetByCacheKey(ctx, cacheKey); cacheErr == nil && cached != nil {
-			if validateErr := validateCacheHit(cached, s.svc.localFS, s.svc.log); validateErr == nil {
+			if validateErr := validateCacheHit(cached, fs, s.svc.log); validateErr == nil {
 				if s.svc.log != nil {
 					s.svc.log.Info("stock stager: SOURCE_CACHE_HIT",
 						zap.String("cache_key", cacheKey[:16]+"..."),
@@ -376,14 +393,14 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 						zap.String("cached_path", cached.LocalPath))
 				}
 				// Copy cached file into the new temp directory.
-				if cpErr := copyFileToPath(cached.LocalPath, outputPath, s.svc.localFS); cpErr != nil {
+				if cpErr := copyFileToPath(cached.LocalPath, outputPath, fs); cpErr != nil {
 					if s.svc.log != nil {
 						s.svc.log.Warn("stock stager: cache hit but copy failed, falling through to download",
 							zap.String("cache_key", cacheKey[:16]+"..."),
 							zap.Error(cpErr))
 					}
 				} else {
-				fi, statErr := s.svc.localFS.Stat(outputPath)
+				fi, statErr := fs.Stat(outputPath)
 				if statErr == nil {
 						return &assets.StagedAsset{
 							LocalPath: outputPath,
@@ -404,7 +421,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	if isDriveURL(ref.URL) {
 		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
 		if driveErr != nil {
-		_ = s.svc.localFS.RemoveAll(tmpDir)
+		_ = fs.RemoveAll(tmpDir)
 		return nil, driveErr
 		}
 		// Populate cache for Drive downloads.
@@ -459,7 +476,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		if resolveErr != nil {
 			return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
 		}
-		fi, statErr := s.svc.localFS.Stat(resolved)
+		fi, statErr := fs.Stat(resolved)
 		if statErr != nil {
 			return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
 		}
@@ -474,7 +491,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		// Cleanup this caller's tmp dir (leader's tmp was different
 		// — followers don't write any file so their tmpDir is empty
 		// and is left in place for Cleanup() downstream).
-		_ = s.svc.localFS.RemoveAll(tmpDir)
+		_ = fs.RemoveAll(tmpDir)
 		return nil, sfErr
 	}
 	stagedAsset := v.(*assets.StagedAsset)
@@ -487,8 +504,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	leaderPath := stagedAsset.LocalPath
 	finalLocalPath := leaderPath
 	if leaderPath != outputPath {
-		if cpErr := copyFileToPath(leaderPath, outputPath, s.svc.localFS); cpErr != nil {
-			_ = s.svc.localFS.RemoveAll(tmpDir)
+		if cpErr := copyFileToPath(leaderPath, outputPath, fs); cpErr != nil {
+			_ = fs.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("stock stager: copy concurrent download from %s to %s: %w", leaderPath, outputPath, cpErr)
 		}
 		finalLocalPath = outputPath
@@ -565,6 +582,11 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 		return nil
 	}
 
+	fs, fsErr := s.fs()
+	if fsErr != nil {
+		return fsErr
+	}
+
 	leaseKeyAny, hasLease := s.assetLeases.LoadAndDelete(staged.LocalPath)
 
 	var ownErr error
@@ -575,7 +597,7 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 		if !s.isLeaseLeader(leaseKey, staged.LocalPath) {
 			ownDir := filepath.Dir(staged.LocalPath)
 			if ownDir != "" && ownDir != "." && ownDir != "/" {
-				ownErr = s.svc.localFS.RemoveAll(ownDir)
+				ownErr = fs.RemoveAll(ownDir)
 			}
 		}
 		if rerr := s.releaseSharedLease(leaseKey); rerr != nil {
@@ -596,7 +618,7 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 	if ownDir == "" || ownDir == "." || ownDir == "/" {
 		return nil
 	}
-	return s.svc.localFS.RemoveAll(ownDir)
+	return fs.RemoveAll(ownDir)
 }
 
 // ── Drive download helpers ─────────────────────────────────────────────
@@ -632,6 +654,11 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 		return nil, fmt.Errorf("stock stager: drive reader not wired (use WithDriveReader at composition time)")
 	}
 
+	fs, fsErr := s.fs()
+	if fsErr != nil {
+		return nil, fsErr
+	}
+
 	fileID, fileErr := extractDriveFileID(ref.URL)
 	if fileErr != nil || fileID == "" {
 		// Not a file URL — try treating it as a folder URL.
@@ -660,7 +687,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 	}
 	defer body.Close()
 
-	f, createErr := s.svc.localFS.Create(outputPath)
+	f, createErr := fs.Create(outputPath)
 	if createErr != nil {
 		return nil, fmt.Errorf("stock stager: create output file %q: %w", outputPath, createErr)
 	}
@@ -675,7 +702,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 		return nil, fmt.Errorf("stock stager: close output file: %w", closeErr)
 	}
 
-	fi, statErr := s.svc.localFS.Stat(outputPath)
+	fi, statErr := fs.Stat(outputPath)
 	if statErr != nil {
 		return nil, fmt.Errorf("stock stager: stat downloaded file %q: %w", outputPath, statErr)
 	}

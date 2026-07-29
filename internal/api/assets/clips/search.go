@@ -25,9 +25,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -37,20 +36,20 @@ import (
 // less. Cluster ownership follows the matrix in the Step 5 discovery
 // report (June 2026, §4 Search cluster).
 type SearchDeps struct {
-	ClipsRepo     *assets.ClipsRepository
+	ClipsRepo     appclips.ClipRepositoryPort
 	AssetRepo     asset.Repository
-	VoiceoverRepo *assets.VoiceoversRepository
-	ImagesRepo    *imagesrepo.ImagesRepository
+	VoiceoverRepo appclips.VoiceoverRepositoryPort
+	ImagesRepo    appclips.ImageRepositoryPort
 }
 
 // SearchHandler owns the 3 clip-search routes. Receiver-on-pattern-B:
 // constructed in NewHandler from a SearchDeps shape extracted from
 // the orchestrator Deps.
 type SearchHandler struct {
-	clipsRepo     *assets.ClipsRepository
+	clipsRepo     appclips.ClipRepositoryPort
 	assetRepo     asset.Repository
-	voiceoverRepo *assets.VoiceoversRepository
-	imagesRepo    *imagesrepo.ImagesRepository
+	voiceoverRepo appclips.VoiceoverRepositoryPort
+	imagesRepo    appclips.ImageRepositoryPort
 }
 
 // NewSearchHandler constructs a SearchHandler with the supplied
@@ -68,7 +67,7 @@ func NewSearchHandler(d SearchDeps) *SearchHandler {
 // via the shared ClipsRepository. All clip-type sources share the same
 // concrete repo in production. Returns nil for voiceover/images.
 // Authoritative implementation; orchestrator *Handler.repoForSource delegates here.
-func (sh *SearchHandler) repoForSource(source string) *assets.ClipsRepository {
+func (sh *SearchHandler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if sh.clipsRepo == nil {
 		return nil
 	}

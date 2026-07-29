@@ -34,7 +34,6 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
@@ -67,7 +66,7 @@ type IngestDeps struct {
 	Dispatcher   appclips.ClipIndexDispatcherPort
 	AssetTreeSvc *assettree.Service
 	JobsSvc      jobs.Service
-	ClipsRepo    *assets.ClipsRepository
+	ClipsRepo    appclips.ClipRepositoryPort
 	EnrichUC     *appclips.EnrichUseCase
 	UploadUC     *appupload.UseCase
 	AIStockUC    *aistock.UseCase
@@ -83,7 +82,7 @@ type IngestHandler struct {
 	dispatcher   appclips.ClipIndexDispatcherPort
 	assetTreeSvc *assettree.Service
 	jobsSvc      jobs.Service
-	clipsRepo    *assets.ClipsRepository
+	clipsRepo    appclips.ClipRepositoryPort
 	enrichUC     *appclips.EnrichUseCase
 	uploadUC     *appupload.UseCase
 	aiStockUC    *aistock.UseCase
@@ -110,7 +109,7 @@ func NewIngestHandler(d IngestDeps) *IngestHandler {
 // repoForSource resolves a clip source to its canonical repository
 // via the shared ClipsRepository. All clip-type sources share the same
 // concrete repo in production. Returns nil for voiceover/images.
-func (ih *IngestHandler) repoForSource(source string) *assets.ClipsRepository {
+func (ih *IngestHandler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if ih.clipsRepo == nil {
 		return nil
 	}

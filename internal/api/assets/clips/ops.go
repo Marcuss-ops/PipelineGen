@@ -39,8 +39,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -53,8 +51,7 @@ import (
 type OpsDeps struct {
 	ClipOpsService *appclips.ClipOpsService
 	DeletionSvc    *deletion.DeletionService
-	FolderMemSvc   *foldermemory.Service
-	ClipsRepo      *assets.ClipsRepository
+	ClipsRepo      appclips.ClipRepositoryPort
 	DriveAdmin     appclips.ClipDriveUploaderPort
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
@@ -66,8 +63,7 @@ type OpsDeps struct {
 type OpsHandler struct {
 	clipOpsService *appclips.ClipOpsService
 	deletionSvc    *deletion.DeletionService
-	folderMemSvc   *foldermemory.Service
-	clipsRepo      *assets.ClipsRepository
+	clipsRepo      appclips.ClipRepositoryPort
 	driveAdmin     appclips.ClipDriveUploaderPort
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
@@ -78,7 +74,6 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 	return &OpsHandler{
 		clipOpsService: d.ClipOpsService,
 		deletionSvc:    d.DeletionSvc,
-		folderMemSvc:   d.FolderMemSvc,
 		clipsRepo:      d.ClipsRepo,
 		driveAdmin:     d.DriveAdmin,
 		assetTreeSvc:   d.AssetTreeSvc,
