@@ -1,0 +1,125 @@
+{
+  "scenario_id": "00_preflight",
+  "description": "Vidrush preflight — verifica tutte le dipendenze prima di consumare risorse. Fallisce immediatamente su dipendenza obbligatoria mancante.",
+  "version": 1,
+  "checks": {
+    "http_endpoints": [
+      {
+        "path": "/health",
+        "method": "GET",
+        "expect_status": 200,
+        "obligatory": true,
+        "label": "health endpoint"
+      },
+      {
+        "path": "/ready",
+        "method": "GET",
+        "expect_status": 200,
+        "obligatory": true,
+        "label": "readiness probe"
+      },
+      {
+        "path": "/metrics",
+        "method": "GET",
+        "expect_status": 200,
+        "obligatory": false,
+        "label": "Prometheus metrics"
+      },
+      {
+        "path": "/api/system/doctor",
+        "method": "GET",
+        "expect_status": 200,
+        "obligatory": true,
+        "label": "system doctor"
+      }
+    ],
+    "dependencies": [
+      {
+        "name": "sqlite",
+        "kind": "database",
+        "obligatory": true,
+        "check": "file_exists",
+        "target": "${DB_PATH:-data/media/media.db.sqlite}",
+        "label": "SQLite media database"
+      },
+      {
+        "name": "qdrant",
+        "kind": "vector_db",
+        "obligatory": true,
+        "check": "http_health",
+        "url": "${QDRANT_URL:-http://127.0.0.1:6333}/health",
+        "label": "Qdrant vector store"
+      },
+      {
+        "name": "ollama",
+        "kind": "llm",
+        "obligatory": true,
+        "check": "http_health",
+        "url": "${OLLAMA_URL:-http://127.0.0.1:11434}/api/tags",
+        "label": "Ollama LLM server"
+      },
+      {
+        "name": "artlist",
+        "kind": "provider",
+        "obligatory": false,
+        "check": "http_health",
+        "url": "${ARTLIST_SCRAPER_URL:-http://127.0.0.1:3000}/health",
+        "label": "Artlist scraper"
+      },
+      {
+        "name": "image_provider",
+        "kind": "provider",
+        "obligatory": false,
+        "check": "http_connectivity",
+        "url": "https://api.pexels.com",
+        "label": "Internet image provider"
+      },
+      {
+        "name": "google_drive",
+        "kind": "storage",
+        "obligatory": true,
+        "check": "googledrive_token",
+        "env_var": "GOOGLE_APPLICATION_CREDENTIALS",
+        "label": "Google Drive credentials"
+      },
+      {
+        "name": "ffmpeg",
+        "kind": "binary",
+        "obligatory": true,
+        "check": "binary_exists",
+        "binary": "ffmpeg",
+        "label": "FFmpeg binary"
+      },
+      {
+        "name": "ffprobe",
+        "kind": "binary",
+        "obligatory": true,
+        "check": "binary_exists",
+        "binary": "ffprobe",
+        "label": "FFprobe binary"
+      }
+    ],
+    "system": [
+      {
+        "name": "workers_available",
+        "kind": "capacity",
+        "obligatory": true,
+        "check": "api_endpoint",
+        "path": "/api/system/doctor",
+        "jq_assert": ".workers_available >= 1",
+        "label": "workers disponibili"
+      },
+      {
+        "name": "disk_space",
+        "kind": "capacity",
+        "obligatory": true,
+        "check": "unix_df",
+        "path": "${DISK_PATH:-/var/lib/pipelinegen}",
+        "min_gb": 10,
+        "label": "spazio disco"
+      }
+    ]
+  },
+  "on_failure": "fail_immediately",
+  "timeout_seconds": 30
+}
