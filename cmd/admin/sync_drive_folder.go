@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 const normalClipsDriveFolderID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
@@ -92,7 +93,7 @@ func runSyncDriveFolder(args []string) error {
 	return nil
 }
 
-func waitForAssetIndexOutbox(ctx context.Context, root *app.ComposeRoot, deadLettersBefore int64) error {
+func waitForAssetIndexOutbox(ctx context.Context, root *wiring.ComposeRoot, deadLettersBefore int64) error {
 	for {
 		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "pending")
 		if err != nil {

@@ -54,21 +54,4 @@ current:
   rationale: Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root.
   cross_refs:
     package: internal/application/assets/monitor
-issues:
-- id: "P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER"
-  title: "Live battery Steps 6-7 fail diagnostic arc — composition-root gap hypothesis A falsified; race-condition hypothesis B untestable under current Dockerfile + host-process constraints; data-layer pivot revealed test-side Step 5 misread"
-  status: resolved
-  severity: p2
-  category: code_defect
-  owner_capability: "internal/application/assets/providers/stock/stockpipeline (step_finalize.go + downstream cross-pkg surfaces; see tracking_issue for sibling pkgs)"
-  follow_up:
-    - "Path A — Dockerfile patch (lift build-blocker only): bump ARG YTDLP_VERSION=2025.03.20 to a current release tag (e.g. 2026.07.04) so `docker compose -f docker-compose.yml build pipelinegen-server pipelinegen-worker` succeeds. NOT sufficient alone — operator must additionally restart the live host process to deploy the fresh binary. Source-tree change required; coordinate with any other live Dockerfile consumers."
-    - "Path B — local Go rebuild + operator-managed host restart (highest risk, requires downtime): `go build -o ./pipelinegen-rebuilt ./cmd/server` then operator restarts pid 2787159 with the freshly-built binary. Restart command is currently unknown (systemd? nohup? tmux-resurrect?) — operator MUST provide the exact restart invocation. Reserve a maintenance window; expect 30-120s downtime."
-    - "Path C — data-layer observability, no rebuild required (preferred for hypothesis-testing that doesn't require fresh source): `lsof -p 2787159 | grep '\\.db'` to find the live SQLite, then `sqlite3 <path> 'SELECT id, lifecycle_state, file_hash, drive_file_id FROM media_assets WHERE source='\\''stock'\\'' ORDER BY created_at DESC LIMIT 10'` for read-only diagnostics. Future diagnostic runs should default to Path C unless hypothesis-testing specifically requires fresh source."
-    - "Test-side fix (if Round 16 hypothesis stands): add `AND id NOT LIKE '%:metadata'` to scripts/stock_pipeline_live_test.sh Step 5 WHERE clause (commit a 1-line change to both `scripts/stock_pipeline_live_test.sh` and its byte-equal mirror `scripts/tests/stock_pipeline_live_test.sh`). Re-run live battery fresh — expected PASS=12/FAIL=0 confirming the test-side root cause. Apply this fix only after operator sign-off (test-side changes touch CI)."
-    - "Cleanup: revert inert DEBUG_INSTRUMENTATION + log import in step_finalize.go via `git restore` once the test-side fix is validated. The 5-line log.Printf on Phase 4 entry was source-only decoration under the current ceiling; reverting returns the file to origin/main baseline. Track via `git status --porcelain internal/application/assets/providers/stock/stockpipeline/step_finalize.go`."
-    - "Future-investigator playbook (encoded from Round 7-16 evidence): hypothesis A is DECIDED — refuted live; do not re-validate without remounted fresh-binary evidence. Hypothesis B is OPEN — currently untestable; prefer Path C (data-layer) over source-level instrumentation until the Dockerfile+host-process ceiling lifts. The live battery Step-6/7 cascade likely has a test-side root cause (Round 16 Step 5 SELECT ordering); look test-side FIRST before any production-code revert."
-  opened_date: "2026-07-12"
-  tracking_issue: "godlike/07 no-fake-availability (no assumed behavioural restoration); AGENTS.md Documentation rule (forward-pointers in commit message body, no new archived files); AGENTS.md Operational rules (no source edits without explicit user request; pre-push verify-main gate RED blocks push)"
-
-
+issues: []

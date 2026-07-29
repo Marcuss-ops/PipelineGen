@@ -29,7 +29,6 @@ package clips
 
 import (
 	"errors"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"strings"
 	"testing"
 
