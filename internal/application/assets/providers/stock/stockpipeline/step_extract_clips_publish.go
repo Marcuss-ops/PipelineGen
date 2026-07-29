@@ -11,36 +11,13 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// timestampGroupBuffer collects chunks for a single timestamp leaf folder.
-type timestampGroupBuffer struct {
-	leafName   string
-	firstIndex int
-	chunks     []ChunkState
-}
-
-// clipUploadTask is the pre-flight metadata for a single clip upload.
-type clipUploadTask struct {
-	clipIdx         int
-	plan            ClipPlan
-	cVA             finalization.VerifiedArtifact
-	segmentFilename string
-	leafName        string
-}
-
-// clipUploadResult is the outcome of a single clip upload.
-type clipUploadResult struct {
-	chunk    ChunkState
-	leafName string
-	err      error
-}
-
 // publishCuts handles the post-cut pipeline for a single source group:
 // SHA256 hashing, asset/outbox writes, Drive upload with bounded worker pool.
 // Returns the cut paths and published chunks for this source.
 func publishCuts(ctx context.Context, runner StepRunner, sourceID string, sourceIdx int,
 	groupPlans []ClipPlan, result CutBatchResult,
 	segmentCounts map[string]int, groupBuckets map[string]*timestampGroupBuffer,
-	rootFolderName, rootFolderOverride, timestampGroupName string, in *StockRunInput, batchID string) ([]string, []ChunkState, error) {
+	rootFolderName, rootFolderOverride, timestampGroupName string, in *RunInput, batchID string) ([]string, []ChunkState, error) {
 
 	writer := runner.Writer()
 	artifactPrep := runner.ArtifactPreparation()
