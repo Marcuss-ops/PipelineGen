@@ -15,10 +15,9 @@
 // propagates verbatim with the "WireArtlist: " prefix (preserved
 // for grep-compat with the orchestrator's existing observability
 // pipeline — WireArtlist does NOT distinguish helper-source errors).
-package app
+package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -28,7 +27,7 @@ import (
 )
 
 // constructArtlistRepositories returns the publisher-side bundle built
-// from the wiring.ArtlistBundle's DB handle. Each error is wrapped with the
+// from the ArtlistBundle's DB handle. Each error is wrapped with the
 // canonical "WireArtlist: " prefix so existing log-grep pipelines and
 // e2e test assertions (tests/e2e/artlist_full_run_test.go) continue to
 // match verbatim.
@@ -53,7 +52,7 @@ import (
 // handle and bridged to the artlist port via the composition-root
 // adapter (internal/app/artlist_download_audit_adapter.go).
 func constructArtlistRepositories(
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	log *zap.Logger,
 ) (artlistRepositories, error) {
 	assetSQLiteStore := assets.NewAssetStoreSQLite(bundle.DB.DB, log)

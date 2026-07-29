@@ -19,7 +19,7 @@
 // orchestrator and downstream consumers (cut, retry, render) lock
 // against: the plan is persisted as data and consumed verbatim
 // rather than re-computed.
-package stockpipeline
+package types
 
 import (
 	"context"
@@ -119,8 +119,127 @@ func inferSourceVideoID(rawURL string) string {
 	return vid
 }
 
-// ClipPlan and ClipPlanner are canonical in types/ — see aliases.go.
-// ErrPlannerBudgetTooSmall, NewDeterministicPlanner are in aliases.go.
+// ClipPlan is the deterministic output of the ClipPlanner.
+// The plan is persisted as data so subsequent phases (download,
+// cut, retry) consume it without re-computing offsets.
+type ClipPlan struct {
+	// SourceID is the canonical identifier of the source (URL or
+	// VideoID). Carried through the pipeline so retries can
+	// re-fetch without re-planning.
+	SourceID string
+
+	// SourceProvider is the canonical provider bucket for
+	// SourceID — inference happens at plan-build time so all
+	// downstream consumers (stager, cutter, publish step,
+	// metadata.json) read the same value. Possible values
+	// (canonical constants above): youtube / pexels / pixabay /
+	// unknown. Locked to inferSourceProvider() — call sites
+	// MUST NOT re-parse the URL.
+	SourceProvider string
+
+	// SourceVideoID is the canonical provider-native identifier
+	// (YouTube video ID when SourceProvider == youtube; ""
+	// otherwise). Extracted via pkg/urlutil.ExtractVideoID at
+	// plan-build time. Empty string is the canonical zero
+	// value for non-YouTube providers AND for YouTube URLs that
+	// are not watch pages (channel, playlist, live, embed —
+	// see pkg/urlutil::ExtractVideoID for the exact contract).
+	SourceVideoID string
+
+	// SourceVersion is a content-derived hash that locks the plan
+	// to a specific source snapshot. v1 today (producers don't
+	// compute one); future PRs will hash the source bytes.
+	SourceVersion string
+
+	// StartSec / EndSec are the canonical clip-window boundaries.
+	// Cutters consume them verbatim; retry paths pre/post-compute
+	// any drift with the planner's stable permutation.
+	StartSec float64
+	EndSec   float64
+
+	// Title carries the human-readable clip/timestamp label when the
+	// plan originates from explicit clips. Deterministic planner runs
+	// leave it empty.
+	Title string
+
+	// Description carries the human-readable English summary for the
+	// timestamp. Explicit clip payloads can populate it per segment;
+	// deterministic planner runs leave it empty.
+	Description string
+
+	// Round carries the boxing-style round number when set. Surfaced
+	// into ChunkState + ChunkMetadataEntry + Qdrant semantic payload
+	// (PR-STOCK-TIMESTAMP-CLIPS Front 2, July 2026). Zero is the
+	// canonical "not set" value (godlike/07 NO-FAKE-AVAILABILITY —
+	// never use -1 or a magic literal). Deterministic planner runs
+	// leave it at zero.
+	Round int
+
+	// Tags is the free-form per-clip tag list. Carries people, theme,
+	// technique — any metadata that should surface in BM25 sparse
+	// search. Empty slice = no tags; nil/empty are byte-equivalent
+	// for the wire shape.
+	Tags []string
+
+	// Category is the content category for this clip (boxing / running
+	// etc.). Surfaces in metadata.json + Qdrant payload for semantic
+	// filtering. Empty = not specified.
+	Category string
+
+	// Slug is the explicit operator-supplied Drive folder slug for
+	// this clip. Per godlike/07 user-spec directive: Slug is the
+	// EXPLICIT OVERRIDE that wins over Title-derived slug in
+	// perClipLeafName. Use this when the title contains characters
+	// that don't slugify cleanly (e.g. accented Portuguese "veredito"
+	// stays verbatim) or when the operator wants a canonical
+	// machine-friendly folder name.
+	Slug string
+
+	// ParentSlug is the explicit timestamp-group folder slug for
+	// expanded 5-second children. When explicit clips are split into
+	// child slices, ParentSlug preserves the original parent folder
+	// identity while Slug may carry the child-specific timestamp
+	// suffix. Nil/empty means "derive from Title / other cascade".
+	ParentSlug string
+
+	// OutputLogicalID is the deterministic asset ID the chunk
+	// producer will mint. Format: planner:<sha256-prefix>:<index>
+	// — opaque hash so callers don't depend on its internal shape.
+	OutputLogicalID string
+
+	// PolicyVersion is the planner policy version at plan-time.
+	// Stored on the plan so a future policy upgrade can detect
+	// (and re-plan) old plans instead of silently miscomputing.
+	PolicyVersion string
+}
+
+// ClipPlanner produces a deterministic clip plan from (source, budget).
+//
+// Contract:
+//   - Same input tuple (src, budgetSec, clipDur, policyVer) always
+//     produces the same plan slice (same length, same OutputLogicalIDs,
+//     same StartSec/EndSec) regardless of clock, process restart,
+//     or parallel worker. This replaces the rng-based path that gave
+//     a different permutation on every invocation.
+//   - Returns nil, ErrPlannerBudgetTooSmall if budget < clipDur so
+//     callers can short-circuit on impossible requests.
+type ClipPlanner interface {
+	Plan(ctx context.Context, src VideoSource, budgetSec int, clipDur int, policyVer string) ([]ClipPlan, error)
+}
+
+// ErrPlannerBudgetTooSmall signals that the per-source budget
+// (seconds) is smaller than the requested clip duration. This is a
+// caller-side configuration error (NOT a transient runtime error),
+// so the caller should fail-closed with the typed error.
+var ErrPlannerBudgetTooSmall = errors.New("deterministic planner: budget must be >= clip duration")
+
+// NewDeterministicPlanner returns the canonical ClipPlanner.
+// Today there is exactly one implementation; the constructor lets
+// future variants (e.g. policy-aware planners) plug in without a
+// Service constructor signature change.
+func NewDeterministicPlanner() ClipPlanner {
+	return &deterministicPlanner{}
+}
 
 // deterministicPlanner is the canonical ClipPlanner.
 // Stable permutation via SHA-256 hashing of (URL + index) mod
@@ -227,7 +346,24 @@ func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer strin
 	}
 }
 
-// ErrExplicitPlannerNoClips and NewExplicitPlanner are in aliases.go.
+// ErrExplicitPlannerNoClips signals that the explicit planner was
+// invoked with an empty clips slice. The caller should fail-closed
+// rather than producing a nil output.
+var ErrExplicitPlannerNoClips = errors.New("explicit planner: no clips provided")
+
+// NewExplicitPlanner returns a ClipPlanner that uses pre-defined
+// ClipSpec entries instead of computing deterministic offsets from
+// a budget. Each ClipSpec produces exactly one ClipPlan.
+//
+// The explicit planner ignores the budgetSec and clipDur parameters
+// — it always returns len(clips) ClipPlan entries regardless of
+// the source duration. SourceID is set to src.URL for all plans.
+//
+// godlike/07 typed-error contract: Plan returns
+// ErrExplicitPlannerNoClips when clips is empty.
+func NewExplicitPlanner(clips []ClipSpec) ClipPlanner {
+	return &explicitPlanner{clips: clips}
+}
 
 type explicitPlanner struct {
 	clips []ClipSpec

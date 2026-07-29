@@ -20,10 +20,9 @@
 // godlike/07 fail-closed: 7 mandatory gates are checked UPFRONT.
 // godlike/06: SemanticEnricher is the canonical app-layer wrapper
 // matching artlist.MetadataWriter.Enrich (enrich signature verbatim).
-package app
+package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -49,10 +48,10 @@ import (
 )
 
 // WireArtlist constructs *artlist.Service + *ArtlistDescriptor from the canonical
-// wiring.ArtlistBundle populated by registerArtlist + the 5 wiring.ComposeRoot receiver-fields
+// ArtlistBundle populated by registerArtlist + the 5 ComposeRoot receiver-fields
 // (Dispatcher / Drive.Reader / Drive.Lifecycle / MetaWriter / DestResolver) that
-// were not pre-exposed on wiring.ArtlistBundle by PR4d-chunk2 convention. Each of the
-// 5 is a DIRECT receiver from wiring.ComposeRoot — not an adapter shim (godlike/06 SSOT).
+// were not pre-exposed on ArtlistBundle by PR4d-chunk2 convention. Each of the
+// 5 is a DIRECT receiver from ComposeRoot — not an adapter shim (godlike/06 SSOT).
 //
 // godlike/07: 7 mandatory gates checked UPFRONT. The first 4 are
 // runtime-wiring gates (Publisher / Dispatcher / ClipsRepo / Jobs.Service);
@@ -67,14 +66,14 @@ func WireArtlist(
 	ctx context.Context,
 	log *zap.Logger,
 	cfg *config.Config,
-	bundle *wiring.ArtlistBundle,
+	bundle *ArtlistBundle,
 	dispatcher *outbox.Dispatcher,
 	reader drivepkg.Reader,
 	lifecycle drivepkg.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
 	textTrackFanOut ...*texttracks.MaterializeFanOut,
-) (*wiring.ArtlistWiring, error) {
+) (*ArtlistWiring, error) {
 	_ = ctx
 
 	// godlike/07 fail-closed: 5 mandatory UPFRONT gates (4 wiring + 1 cfg).
@@ -304,7 +303,7 @@ func WireArtlist(
 	// canonical would yield a nil adapter; the handler's nil-
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
-	bundle.ClipResolver = wiring.NewClipResolverRecommendAdapter(
+	bundle.ClipResolver = NewClipResolverRecommendAdapter(
 		scripts_usecase.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
@@ -318,7 +317,7 @@ func WireArtlist(
 		// above) — no longer an unset forward-pointer. /recommend
 		// returns real recommendations when canonical is available.
 		ClipResolver: bundle.ClipResolver,
-		CfgPort:      newArtlistConfigAdapter(cfg),
+		CfgPort:      NewArtlistConfigAdapter(cfg),
 		EnabledFunc:  func() bool { return cfg.Features.ArtlistEnabled },
 		ModuleOpts:   nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
 		Logger:       log,
@@ -353,7 +352,7 @@ func WireArtlist(
 		zap.Strings("provider_assets", providerAssetsRegistry.Names()),
 		zap.Bool("godlike_06_ssot", true),
 	)
-	return &wiring.ArtlistWiring{
+	return &ArtlistWiring{
 		Module:         ad.Module,
 		Service:        ad.Service,
 		ProviderAssets: providerAssetsRegistry,
@@ -422,7 +421,7 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 // to dead-letter forever without a consumer). The composition-time
 // fail-closed contract is the user-spec literal:
 // "fallisci l'avvio con un typed error (no warning silenzioso)".
-func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.JobsBundle) error {
+func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle) error {
 	if artlistSvc == nil {
 		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
 	}
@@ -444,4 +443,25 @@ func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.Jobs
 			ErrArtlistConsumerRegistrationFailed)
 	}
 	return nil
+}
+
+// NewArtlistConfigAdapter is the canonical composition-root constructor (moved from adapters_infra.go).
+func NewArtlistConfigAdapter(cfg *config.Config) artlistPkg.ArtlistConfigPort {
+\tif cfg == nil {
+\t\treturn nil
+\t}
+\treturn &artlistConfigAdapter{cfg: cfg}
+}
+
+// artlistConfigAdapter wraps *config.Config to satisfy artlistPkg.ArtlistConfigPort
+// (moved from adapters_infra.go).
+type artlistConfigAdapter struct {
+	cfg *config.Config
+}
+
+// Compile-time assertion: artlistConfigAdapter satisfies artlistPkg.ArtlistConfigPort.
+var _ artlistPkg.ArtlistConfigPort = (*artlistConfigAdapter)(nil)
+
+func (a *artlistConfigAdapter) ArtlistRootFolderID() string {
+	return artlistPkg.ResolveRootFolderID(a.cfg)
 }
