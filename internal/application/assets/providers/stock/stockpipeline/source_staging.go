@@ -58,7 +58,7 @@ func (s *Service) StageSource(ctx context.Context, url string) (*StagedSource, e
 	if err != nil {
 		return nil, fmt.Errorf("stage source: prepare via acquisition.SourceStager: %w", err)
 	}
-	fi, statErr := os.Stat(prepared.LocalPath)
+	fi, statErr := s.statLocal(prepared.LocalPath)
 	if statErr != nil {
 		return nil, fmt.Errorf("stage source: stat staged file %q: %w", prepared.LocalPath, statErr)
 	}
@@ -115,7 +115,7 @@ func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*a
 	if err != nil {
 		return nil, fmt.Errorf("stage section: prepare via acquisition.SourceStager (%q section=%q): %w", ref.URL, ref.DownloadSection, err)
 	}
-	fi, statErr := os.Stat(prepared.LocalPath)
+	fi, statErr := s.statLocal(prepared.LocalPath)
 	if statErr != nil {
 		return nil, fmt.Errorf("stage section: stat %q: %w", prepared.LocalPath, statErr)
 	}
@@ -135,4 +135,13 @@ func (s *Service) stageSection(ctx context.Context, ref appassets.SourceRef) (*a
 		LocalPath: prepared.LocalPath,
 		Bytes:     fi.Size(),
 	}, nil
+}
+
+// statLocal delegates to s.localFS.Stat when the port is wired;
+// returns an error when the port is nil (PR-REFACTOR-P0-IO-BINDER).
+func (s *Service) statLocal(path string) (os.FileInfo, error) {
+	if s.localFS == nil {
+		return nil, fmt.Errorf("stat %q: LocalFSPort not wired (composition root must inject filesystem.NewLocal())", path)
+	}
+	return s.localFS.Stat(path)
 }

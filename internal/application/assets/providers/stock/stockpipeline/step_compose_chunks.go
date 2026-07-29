@@ -28,7 +28,6 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"go.uber.org/zap"
@@ -83,7 +82,7 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 	composed := make([]string, 0, len(cutPaths))
 	canonical := DefaultPipelineConfig()
 	for i, cutPath := range cutPaths {
-		outputPath := filepath.Join(os.TempDir(),
+		outputPath := filepath.Join("/tmp",
 			fmt.Sprintf("stock_composed_%s_%d.mp4", runner.JobID(), i))
 
 		req := RenderRequest{

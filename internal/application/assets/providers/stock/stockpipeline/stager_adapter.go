@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -296,7 +295,7 @@ func (s *StockStager) releaseSharedLease(cacheKey string) error {
 		if lease.path != "" {
 			dir := filepath.Dir(lease.path)
 			if dir != "" && dir != "." && dir != "/" {
-				unlinkErr = os.RemoveAll(dir)
+				unlinkErr = s.svc.localFS.RemoveAll(dir)
 			}
 		}
 		// Evict BEFORE unlocking so a concurrent new acquireSharedLease
@@ -355,7 +354,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	}
 
 	// Create a temp staging directory under the service's temp path.
-	tmpDir, err := os.MkdirTemp(s.svc.runtime.WorkDir, "stock_stage_")
+	tmpDir, err := s.svc.localFS.MkdirTemp(s.svc.runtime.WorkDir, "stock_stage_")
 	if err != nil {
 		return nil, fmt.Errorf("stock stager: create temp dir: %w", err)
 	}
@@ -384,8 +383,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 							zap.Error(cpErr))
 					}
 				} else {
-					fi, statErr := os.Stat(outputPath)
-					if statErr == nil {
+				fi, statErr := s.svc.localFS.Stat(outputPath)
+				if statErr == nil {
 						return &assets.StagedAsset{
 							LocalPath: outputPath,
 							Bytes:     fi.Size(),
@@ -405,8 +404,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	if isDriveURL(ref.URL) {
 		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
 		if driveErr != nil {
-			os.RemoveAll(tmpDir)
-			return nil, driveErr
+		_ = s.svc.localFS.RemoveAll(tmpDir)
+		return nil, driveErr
 		}
 		// Populate cache for Drive downloads.
 		s.populateCache(ctx, cacheKey, "drive", "", ref, outputPath, sa.Bytes)
@@ -460,7 +459,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		if resolveErr != nil {
 			return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
 		}
-		fi, statErr := os.Stat(resolved)
+		fi, statErr := s.svc.localFS.Stat(resolved)
 		if statErr != nil {
 			return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
 		}
@@ -475,7 +474,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		// Cleanup this caller's tmp dir (leader's tmp was different
 		// — followers don't write any file so their tmpDir is empty
 		// and is left in place for Cleanup() downstream).
-		os.RemoveAll(tmpDir)
+		_ = s.svc.localFS.RemoveAll(tmpDir)
 		return nil, sfErr
 	}
 	stagedAsset := v.(*assets.StagedAsset)
@@ -489,7 +488,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	finalLocalPath := leaderPath
 	if leaderPath != outputPath {
 		if cpErr := copyFileToPath(leaderPath, outputPath, s.svc.localFS); cpErr != nil {
-			os.RemoveAll(tmpDir)
+			_ = s.svc.localFS.RemoveAll(tmpDir)
 			return nil, fmt.Errorf("stock stager: copy concurrent download from %s to %s: %w", leaderPath, outputPath, cpErr)
 		}
 		finalLocalPath = outputPath
@@ -576,7 +575,7 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 		if !s.isLeaseLeader(leaseKey, staged.LocalPath) {
 			ownDir := filepath.Dir(staged.LocalPath)
 			if ownDir != "" && ownDir != "." && ownDir != "/" {
-				ownErr = os.RemoveAll(ownDir)
+				ownErr = s.svc.localFS.RemoveAll(ownDir)
 			}
 		}
 		if rerr := s.releaseSharedLease(leaseKey); rerr != nil {
@@ -597,7 +596,7 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 	if ownDir == "" || ownDir == "." || ownDir == "/" {
 		return nil
 	}
-	return os.RemoveAll(ownDir)
+	return s.svc.localFS.RemoveAll(ownDir)
 }
 
 // ── Drive download helpers ─────────────────────────────────────────────
@@ -661,7 +660,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 	}
 	defer body.Close()
 
-	f, createErr := os.Create(outputPath)
+	f, createErr := s.svc.localFS.Create(outputPath)
 	if createErr != nil {
 		return nil, fmt.Errorf("stock stager: create output file %q: %w", outputPath, createErr)
 	}
@@ -676,7 +675,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 		return nil, fmt.Errorf("stock stager: close output file: %w", closeErr)
 	}
 
-	fi, statErr := os.Stat(outputPath)
+	fi, statErr := s.svc.localFS.Stat(outputPath)
 	if statErr != nil {
 		return nil, fmt.Errorf("stock stager: stat downloaded file %q: %w", outputPath, statErr)
 	}

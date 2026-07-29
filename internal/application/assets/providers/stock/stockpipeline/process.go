@@ -33,7 +33,6 @@ import (
 	"hash/fnv"
 	"math"
 	"math/rand"
-	"os"
 	"path/filepath"
 
 	"go.uber.org/zap"
@@ -108,12 +107,14 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	if actualPath == "" {
 		return nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
 	}
-	if info, statErr := os.Stat(actualPath); statErr == nil {
-		s.log.Info("video downloaded",
-			zap.Int("video_index", idx),
-			zap.String("download_path", actualPath),
-			zap.Int64("download_size_bytes", info.Size()),
-		)
+	if s.localFS != nil {
+		if info, statErr := s.localFS.Stat(actualPath); statErr == nil {
+			s.log.Info("video downloaded",
+				zap.Int("video_index", idx),
+				zap.String("download_path", actualPath),
+				zap.Int64("download_size_bytes", info.Size()),
+			)
+		}
 	}
 
 	clipDur := s.runtime.ClipDurationSec
