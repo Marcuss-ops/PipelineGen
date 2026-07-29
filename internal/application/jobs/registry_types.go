@@ -26,7 +26,6 @@ package jobs
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
@@ -40,6 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────

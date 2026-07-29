@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type fakeDispatcher struct {

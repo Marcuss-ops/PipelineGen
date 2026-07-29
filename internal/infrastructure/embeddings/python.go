@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // PythonScriptEmbedder generates embeddings by shelling out to a Python

@@ -27,8 +27,8 @@ import (
 	"go.uber.org/zap"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // PayloadMapper converts internal AssetData to Qdrant schema.Point representations.

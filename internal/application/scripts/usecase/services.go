@@ -23,8 +23,8 @@ import (
 	"context"
 
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 

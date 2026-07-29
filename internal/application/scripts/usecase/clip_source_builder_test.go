@@ -42,8 +42,8 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // stubClipsResolver is a hand-rolled typedClipResolverPort stub that

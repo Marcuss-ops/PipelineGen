@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	ytdlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type MusicTrack struct {

@@ -18,8 +18,8 @@ package embeddings
 import (
 	"context"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // OllamaEmbedderAdapter wraps *client.Client to satisfy asset.Embedder.

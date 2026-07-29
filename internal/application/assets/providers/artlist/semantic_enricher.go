@@ -20,9 +20,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	searchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // enrichMetaMu serialises access to the cumulative metadata.json file

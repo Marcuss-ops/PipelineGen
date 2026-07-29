@@ -3,8 +3,8 @@ package artifacts
 import (
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // VoiceoverRecordToClip converts a voiceover.Record to asset.Asset.

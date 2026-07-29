@@ -5,9 +5,9 @@
 package sourcing
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // §12-5 CONTRACT (July 2026): the sourcing.IndexingStatus type-alias

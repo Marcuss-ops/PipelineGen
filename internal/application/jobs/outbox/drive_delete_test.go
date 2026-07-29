@@ -47,8 +47,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/googleapi"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Mock surfaces ─────────────────────────────────────────────────────

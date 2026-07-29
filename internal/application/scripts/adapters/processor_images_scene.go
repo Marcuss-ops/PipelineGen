@@ -43,8 +43,8 @@ import (
 	"fmt"
 	"strings"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // resolveSceneQuery picks the canonical query string for a scene's
