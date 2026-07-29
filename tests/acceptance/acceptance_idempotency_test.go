@@ -17,7 +17,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestIdempotency_DoubleDispatch_SecondCallSuperseded(t *testing.T) {

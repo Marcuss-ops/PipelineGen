@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"

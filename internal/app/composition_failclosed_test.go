@@ -123,7 +123,7 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE reading the repos
 	// argument; the repos construction is required by the new
 	// signature but is not semantically used in the fail-closed path.
-	var qd *QdrantDeps
+	var qd *wiring.QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.Error(t, err,
 		"PR-QDRANT-CONFIG-MISMATCH-GATE: cfg.Qdrant.Enabled=true + cfg.ClipIndexer.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root; godlike/07 no-fake-availability)")
@@ -176,7 +176,7 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE using the repos argument;
 	// the repos construction is required by the new signature but not
 	// semantically used in the fail-closed path.
-	var qd *QdrantDeps
+	var qd *wiring.QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.Error(t, err,
 		"PR-QDRANT-CONFIG-MISMATCH-GATE (Direction A): cfg.ClipIndexer.Enabled=true + cfg.Qdrant.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root)")

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

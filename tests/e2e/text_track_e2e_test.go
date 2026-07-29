@@ -35,12 +35,12 @@ import (
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	texttrackssql "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"

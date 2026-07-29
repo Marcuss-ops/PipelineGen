@@ -18,6 +18,7 @@ import (
 // local_path, sha256, and file_hash so downstream consumers (Qdrant indexer,
 // asset search, media_assets projection) see the full rich surface.
 func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash string) *asset.Asset {
+	_, _ = sourceIdx, clipIdx
 	slug := perClipLeafName(plan)
 	if slug == "" {
 		slug = slugifyTitle(plan.Title)

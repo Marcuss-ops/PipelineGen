@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -25,8 +26,8 @@ func errContains(err error, sub string) bool {
 }
 
 func TestBuildWorkerRegistry_EmptyDispatcher(t *testing.T) {
-	root := &ComposeRoot{
-		Jobs: &JobsBundle{
+	root := &wiring.ComposeRoot{
+		Jobs: &wiring.JobsBundle{
 			Dispatcher: appjobs.NewDispatcher(),
 		},
 	}
@@ -42,8 +43,8 @@ func TestBuildWorkerRegistry_WithHandlers(t *testing.T) {
 		return nil, nil
 	})
 
-	root := &ComposeRoot{
-		Jobs: &JobsBundle{
+	root := &wiring.ComposeRoot{
+		Jobs: &wiring.JobsBundle{
 			Dispatcher: dispatcher,
 		},
 	}
@@ -67,7 +68,7 @@ func TestBuildWorkerRegistry_NilRoot(t *testing.T) {
 }
 
 func TestBuildWorkerRegistry_NilJobs(t *testing.T) {
-	_, _, err := BuildWorkerRegistry(&ComposeRoot{})
+	_, _, err := BuildWorkerRegistry(&wiring.ComposeRoot{})
 	if err == nil {
 		t.Fatal("expected error for nil jobs")
 	}
@@ -82,7 +83,7 @@ func TestBuildProfileWorkerRegistry_FiltersByAllowedTypes(t *testing.T) {
 	_ = dispatcher.Register("youtube.upload", noopHandler)
 	_ = dispatcher.Register("render.video", noopHandler)
 
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: dispatcher}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: dispatcher}}
 	allowed := []string{"script.generate", "voiceover.generate_item"}
 	reg, caps, err := BuildProfileWorkerRegistry(root, allowed)
 	if err != nil {
@@ -113,7 +114,7 @@ func TestBuildProfileWorkerRegistry_MissingScriptGenerate_Error(t *testing.T) {
 	dispatcher := appjobs.NewDispatcher()
 	_ = dispatcher.Register("voiceover.generate_item", noopHandler)
 
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: dispatcher}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: dispatcher}}
 	allowed := []string{"script.generate", "voiceover.generate_item"}
 	_, _, err := BuildProfileWorkerRegistry(root, allowed)
 	if err == nil {
@@ -130,7 +131,7 @@ func TestBuildProfileWorkerRegistry_AllowedTypeHasNoDispatcherHandler_Error(t *t
 	dispatcher := appjobs.NewDispatcher()
 	_ = dispatcher.Register("script.generate", noopHandler)
 
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: dispatcher}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: dispatcher}}
 	// "image.generate.google" is in allowedTypes but NOT in dispatcher.
 	allowed := []string{"script.generate", "image.generate.google"}
 	_, _, err := BuildProfileWorkerRegistry(root, allowed)
@@ -149,7 +150,7 @@ func TestBuildProfileWorkerRegistry_EmptyAllowedTypes_Error(t *testing.T) {
 	dispatcher := appjobs.NewDispatcher()
 	_ = dispatcher.Register("script.generate", noopHandler)
 
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: dispatcher}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: dispatcher}}
 	_, _, err := BuildProfileWorkerRegistry(root, []string{})
 	if err == nil {
 		t.Fatal("expected error for empty allowedTypes")
@@ -173,7 +174,7 @@ func TestBuildProfileWorkerRegistry_ScriptGenerateNotInAllowed_Error(t *testing.
 	_ = dispatcher.Register("script.generate", noopHandler)
 	_ = dispatcher.Register("voiceover.generate_item", noopHandler)
 
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: dispatcher}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: dispatcher}}
 	allowed := []string{"voiceover.generate_item"} // script.generate not included
 	_, _, err := BuildProfileWorkerRegistry(root, allowed)
 	if err == nil {
@@ -185,7 +186,7 @@ func TestBuildProfileWorkerRegistry_ScriptGenerateNotInAllowed_Error(t *testing.
 }
 
 func TestBuildProfileWorkerRegistry_NilDispatcher(t *testing.T) {
-	root := &ComposeRoot{Jobs: &JobsBundle{Dispatcher: nil}}
+	root := &wiring.ComposeRoot{Jobs: &wiring.JobsBundle{Dispatcher: nil}}
 	_, _, err := BuildProfileWorkerRegistry(root, []string{"script.generate"})
 	if err == nil {
 		t.Fatal("expected error for nil dispatcher")
@@ -200,8 +201,8 @@ func TestBuildProfileWorkerRegistry_DerivedCapsSorted(t *testing.T) {
 			return nil, nil
 		})
 	}
-	root := &ComposeRoot{
-		Jobs: &JobsBundle{
+	root := &wiring.ComposeRoot{
+		Jobs: &wiring.JobsBundle{
 			Dispatcher: dispatcher,
 		},
 	}
