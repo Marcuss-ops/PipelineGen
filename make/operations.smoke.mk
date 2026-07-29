@@ -33,6 +33,16 @@ smoke-run-all:
 	done
 	@echo "✅ smoke-run-all OK"
 
+# VidRush operational battery — runs all 12 scenarios via full_battery.sh.
+# Fail-closed: exits non-zero if any scenario fails.
+# Requires: SMOKE_TOKEN set, server running on SMOKE_API_BASE.
+verify-vidrush:
+	@bash tests/operational/vidrush/full_battery.sh
+
+# Dry-run for the VidRush battery. Prints all would-be invocations, exits 0.
+verify-vidrush-dry:
+	@bash tests/operational/vidrush/full_battery.sh --dry
+
 # Dry-run for the heavy path. Prints the would-be payloads, exits 0. Honors
 # SMOKE_DRY_RUN=1 env override for CI-friendly invocations.
 smoke-dry:
