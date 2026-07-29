@@ -34,8 +34,9 @@ package stockpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 
 	"go.uber.org/zap"
 
@@ -95,7 +96,7 @@ func publishMetadataPhase(
 			ErrStockPublishArtifactFailed, metaErr)
 	}
 	defer func() {
-		if rmErr := runner.LocalFS().Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+		if rmErr := runner.LocalFS().Remove(metaPath); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 			if runner.Log() != nil {
 				runner.Log().Warn("orchestrator: stock.publish: failed to remove metadata temp file",
 					zap.String("path", metaPath), zap.Error(rmErr))

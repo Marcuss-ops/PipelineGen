@@ -39,8 +39,9 @@ package stockpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"strconv"
 	"strings"
 
@@ -257,7 +258,7 @@ func publishChunkPhase(
 					ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)
 			}
 			defer func() {
-				if rmErr := runner.LocalFS().Remove(clipMetaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				if rmErr := runner.LocalFS().Remove(clipMetaPath); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 					if runner.Log() != nil {
 						runner.Log().Warn("orchestrator: stock.publish: failed to remove per-clip metadata temp file",
 							zap.String("path", clipMetaPath), zap.Int("chunk_index", i), zap.Error(rmErr))
