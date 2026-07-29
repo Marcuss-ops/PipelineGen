@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -25,6 +26,11 @@ func (s stubRateLimitPort) RateLimitRequests() int { return s.requests }
 
 var _ mwapp.RateLimitPort = stubRateLimitPort{}
 
+// stubEnvReader delegates to os.Getenv so t.Setenv in tests works.
+type stubEnvReader struct{}
+
+func (stubEnvReader) Getenv(key string) string { return os.Getenv(key) }
+
 // TestRateLimit_VoiceoverBurstBypass_AllowsBurstWhenEnvSet:
 // godlike/07 fix-minimo canonical case — burst of 5 against
 // /api/media/voiceover/generate with the env set and limit=1 must
@@ -34,7 +40,7 @@ func TestRateLimit_VoiceoverBurstBypass_AllowsBurstWhenEnvSet(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1}, stubEnvReader{})
 	r.Use(rl.Handler)
 	r.POST(voiceoverBurstBypassRoutePrefix+"/generate", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -59,7 +65,7 @@ func TestRateLimit_VoiceoverBurstBypass_BlocksWhenEnvUnset(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1}, noopEnvReader{})
 	r.Use(rl.Handler)
 	r.POST(voiceoverBurstBypassRoutePrefix+"/generate", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -89,7 +95,7 @@ func TestRateLimit_VoiceoverBurstBypass_DoesNotAffectOtherRoutes(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1}, noopEnvReader{})
 	r.Use(rl.Handler)
 	r.POST("/api/script/generate", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -135,7 +141,7 @@ func TestRateLimit_VoiceoverBurstBypass_DoesNotMatchLookalikeRoute(t *testing.T)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1}, noopEnvReader{})
 	r.Use(rl.Handler)
 	r.POST("/api/media/voiceovers-archive/list", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -178,7 +184,7 @@ func TestRateLimit_EmitsRetryAfter_On429(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	// limit=1 → first request consumes the only token, second hits it.
-	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1})
+	rl := RateLimit(stubRateLimitPort{enabled: true, requests: 1}, noopEnvReader{})
 	r.Use(rl.Handler)
 	r.GET("/probe", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
