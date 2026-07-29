@@ -77,7 +77,7 @@
       {
         "name": "google_drive",
         "kind": "storage",
-        "obligatory": true,
+        "obligatory": false,
         "check": "googledrive_token",
         "env_var": "GOOGLE_APPLICATION_CREDENTIALS",
         "label": "Google Drive credentials"
