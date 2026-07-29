@@ -400,8 +400,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 							zap.Error(cpErr))
 					}
 				} else {
-				fi, statErr := fs.Stat(outputPath)
-				if statErr == nil {
+					fi, statErr := fs.Stat(outputPath)
+					if statErr == nil {
 						return &assets.StagedAsset{
 							LocalPath: outputPath,
 							Bytes:     fi.Size(),
@@ -421,8 +421,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	if isDriveURL(ref.URL) {
 		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
 		if driveErr != nil {
-		_ = fs.RemoveAll(tmpDir)
-		return nil, driveErr
+			_ = fs.RemoveAll(tmpDir)
+			return nil, driveErr
 		}
 		// Populate cache for Drive downloads.
 		s.populateCache(ctx, cacheKey, "drive", "", ref, outputPath, sa.Bytes)
