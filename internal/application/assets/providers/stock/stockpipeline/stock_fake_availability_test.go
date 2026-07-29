@@ -142,7 +142,8 @@ func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, re
 		renderer,
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
-		WithJobFinalizer(stubJobFinalizer{})
+		WithJobFinalizer(stubJobFinalizer{}).
+		WithLocalFS(newRealishFakeLocalFS())
 }
 
 // successNoopRenderer is a mapRenderer that returns success and

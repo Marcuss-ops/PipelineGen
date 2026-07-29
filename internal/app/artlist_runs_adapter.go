@@ -25,7 +25,7 @@
 // godlike/07 minimum-blast-radius: configuration-only changes (no
 // field renames; the field-to-field translation is the canonical
 // mapping per the schema-reconciliation review of 2026-07-04).
-package wiring
+package app
 
 import (
 	"context"

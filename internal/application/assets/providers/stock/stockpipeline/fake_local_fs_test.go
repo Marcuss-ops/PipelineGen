@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 )
 
 // fakeLocalFS is a configurable LocalFSPort fake for tests.
@@ -97,3 +98,48 @@ func (f *fakeLocalFS) TempDir() string {
 
 // Compile-time assertion: *fakeLocalFS satisfies LocalFSPort.
 var _ LocalFSPort = (*fakeLocalFS)(nil)
+
+// newRealishFakeLocalFS returns a *fakeLocalFS that delegates every
+// LocalFSPort method to the real OS filesystem. Tests that need the
+// cutter to write real files (e.g. fakeSucceedingCutter uses os.WriteFile)
+// must wire this so executeCuts can create workspace directories, metadata
+// steps can create temp files, and publish steps can stat output paths.
+//
+// The base fakeLocalFS{} (with no function fields set) remains strict
+// fail-closed (godlike/07): unconfigured methods return typed errors.
+// Tests that need real I/O explicitly opt in via this constructor.
+func newRealishFakeLocalFS() *fakeLocalFS {
+	return &fakeLocalFS{
+		StatFn: func(name string) (fs.FileInfo, error) {
+			return os.Stat(name)
+		},
+		OpenFn: func(name string) (io.ReadCloser, error) {
+			return os.Open(name)
+		},
+		CreateFn: func(name string) (io.WriteCloser, error) {
+			return os.Create(name)
+		},
+		MkdirTempFn: func(dir, pattern string) (string, error) {
+			return os.MkdirTemp(dir, pattern)
+		},
+		RemoveFn: func(name string) error {
+			return os.Remove(name)
+		},
+		RemoveAllFn: func(path string) error {
+			return os.RemoveAll(path)
+		},
+		MkdirAllFn: func(path string, perm fs.FileMode) error {
+			return os.MkdirAll(path, os.FileMode(perm))
+		},
+		CreateTempFn: func(dir, pattern string) (string, io.WriteCloser, error) {
+			f, err := os.CreateTemp(dir, pattern)
+			if err != nil {
+				return "", nil, err
+			}
+			return f.Name(), f, nil
+		},
+		TempDirFn: func() string {
+			return os.TempDir()
+		},
+	}
+}

@@ -180,7 +180,8 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 		successNoopRenderer(),
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
-		WithJobFinalizer(stubJobFinalizer{})
+		WithJobFinalizer(stubJobFinalizer{}).
+		WithLocalFS(newRealishFakeLocalFS())
 }
 
 // ─────────────────────────────────────────────────────────────────────

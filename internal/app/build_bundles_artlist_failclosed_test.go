@@ -5,13 +5,13 @@
 // Purpose (per user-spec literal "Aggiungi test che dimostrano il
 // fail-closed eliminando una dipendenza alla volta"):
 //   - TestWireArtlist_FailClosed_AllMandatoryGates: table-driven, mutates
-//     ONE wiring dep at a time, asserts typed wiring.ErrArtlistDepMissing{Kind,
+//     ONE wiring dep at a time, asserts typed ErrArtlistDepMissing{Kind,
 //     Field} fires.
 //   - TestWireArtlist_FailClosed_BundleNil: separate case (gate #1); the
 //     table mutates FIELDS of an existing bundle, not the bundle itself.
 //   - TestWireArtlist_FailClosed_ScraperURLCfgNil + ScraperURLEnabledAnd
-//     EmptyURL: gate #8 (wiring.ValidateArtlistScraperURL sub-cases) at the
-//     wiring.WireArtlist ladder integration surface.
+//     EmptyURL: gate #8 (validateArtlistScraperURL sub-cases) at the
+//     WireArtlist ladder integration surface.
 //   - TestWireArtlist_FinalizerGate_SourceLevelContract: parity with
 //     TestRegisterArtlist_NoSilentWarnOnJobBindFailure (pr2_test.go);
 //     the canonical NewAssetTxFinalizer never returns nil today so
@@ -25,7 +25,6 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 	"net/http"
@@ -48,7 +47,7 @@ import (
 )
 
 // happyPathWireArtlistArgs bundles the 8 fully-populated inputs to
-// wiring.WireArtlist for the per-dep table-test. Position 6 / 7 / 8 / 9
+// WireArtlist for the per-dep table-test. Position 6 / 7 / 8 / 9
 // (reader / lifecycle / metaWriter / destResolver) are runtime-nil
 // tolerant per the production happy-path test fixture
 // (build_bundles_artlist_test.go line 369) so the table mutator
@@ -111,7 +110,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
 	require.NotNil(t, jobsBundle.Service,
-		"JobsBundle.Service must be populated so wiring.WireArtlist gate #5 passes")
+		"JobsBundle.Service must be populated so WireArtlist gate #5 passes")
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{Port: 8080},
@@ -131,7 +130,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Committer:          assets.NewSQLiteAssetCommitter(sqliteDB.DB, outboxevents.NewRepository(sqliteDB.DB), log),
 		// MediaProcessor / AssetIndexService / DestinationService /
 		// AssetLocRepo / AssetVerRepo are intentionally nil: the
-		// production wiring.WireArtlist treats them as runtime-nil-tolerant
+		// production WireArtlist treats them as runtime-nil-tolerant
 		// (NOT hard gates — see build_bundles_artlist.go godoc on
 		// "Documented-not-gated-by-design").
 	}
@@ -147,7 +146,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 // TestWireArtlist_FailClosed_AllMandatoryGates: table-driven per-dep
 // coverage of the 5 hard wiring gates (gates #2–6) eliminating one
 // dependency at a time. Each row nil-replaces a single field; the
-// expected wiring.ErrArtlistDepMissing{Kind, Field} is verified via errors.As.
+// expected ErrArtlistDepMissing{Kind, Field} is verified via errors.As.
 //
 // Note: gate #1 (bundle==nil) is covered separately at TestWireArtlist_
 // FailClosed_BundleNil because the table mutates FIELDS of an EXISTING
@@ -211,7 +210,7 @@ func TestWireArtlist_FailClosed_AllMandatoryGates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHappyPathWireArtlistArgs(t)
 			tc.mutate(h)
-			_, err := wiring.WireArtlist(
+			_, err := WireArtlist(
 				context.Background(),
 				h.log,
 				h.cfg,
@@ -224,9 +223,9 @@ func TestWireArtlist_FailClosed_AllMandatoryGates(t *testing.T) {
 			)
 			require.Error(t, err,
 				"Fase 1: per-dep nil MUST fail-closed at composition; gate-ordering ensures the failing dep's Kind+Field surface verbatim")
-			var missing wiring.ErrArtlistDepMissing
+			var missing ErrArtlistDepMissing
 			require.True(t, errors.As(err, &missing),
-				"Fase 1: wiring.WireArtlist MUST return typed wiring.ErrArtlistDepMissing sentinel — not fmt.Errorf/stringly-typed")
+				"Fase 1: WireArtlist MUST return typed ErrArtlistDepMissing sentinel — not fmt.Errorf/stringly-typed")
 			assert.Equal(t, tc.wantKind, missing.Kind,
 				"Kind=canonical wire-id tag; matches the typed constant for grep/log scan")
 			assert.Equal(t, tc.wantField, missing.Field,
@@ -241,33 +240,33 @@ func TestWireArtlist_FailClosed_AllMandatoryGates(t *testing.T) {
 // separate case.
 func TestWireArtlist_FailClosed_BundleNil(t *testing.T) {
 	h := newHappyPathWireArtlistArgs(t)
-	_, err := wiring.WireArtlist(
+	_, err := WireArtlist(
 		context.Background(), h.log, h.cfg, nil,
 		h.dispatcher, nil, nil, nil, nil,
 	)
 	require.Error(t, err,
-		"Fase 1: bundle==nil MUST fire gate #1 in the wiring.WireArtlist ladder")
-	var missing wiring.ErrArtlistDepMissing
+		"Fase 1: bundle==nil MUST fire gate #1 in the WireArtlist ladder")
+	var missing ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
-		"Fase 1: gate #1 must return typed wiring.ErrArtlistDepMissing{Kind: DepKindRunRepo}")
+		"Fase 1: gate #1 must return typed ErrArtlistDepMissing{Kind: DepKindRunRepo}")
 	assert.Equal(t, DepKindRunRepo, missing.Kind)
 	assert.Equal(t, "bundle", missing.Field)
 }
 
 // TestWireArtlist_FailClosed_ScraperURLCfgNil: gate #8 sub-case — cfg
-// itself is nil. Validates wiring.WireArtlist threads nil cfg through the
-// wiring.ValidateArtlistScraperURL helper correctly.
+// itself is nil. Validates WireArtlist threads nil cfg through the
+// validateArtlistScraperURL helper correctly.
 func TestWireArtlist_FailClosed_ScraperURLCfgNil(t *testing.T) {
 	h := newHappyPathWireArtlistArgs(t)
-	_, err := wiring.WireArtlist(
+	_, err := WireArtlist(
 		context.Background(), h.log, nil, h.bundle,
 		h.dispatcher, nil, nil, nil, nil,
 	)
 	require.Error(t, err,
-		"Fase 1: nil cfg MUST propagate from wiring.WireArtlist through wiring.ValidateArtlistScraperURL as a typed sentinel")
-	var missing wiring.ErrArtlistDepMissing
+		"Fase 1: nil cfg MUST propagate from WireArtlist through validateArtlistScraperURL as a typed sentinel")
+	var missing ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing),
-		"Fase 1: wiring.ValidateArtlistScraperURL nil-cfg MUST surface typed wiring.ErrArtlistDepMissing{Kind: DepKindScraperURL}")
+		"Fase 1: validateArtlistScraperURL nil-cfg MUST surface typed ErrArtlistDepMissing{Kind: DepKindScraperURL}")
 	assert.Equal(t, DepKindScraperURL, missing.Kind)
 	assert.Equal(t, "cfg", missing.Field)
 	assert.Contains(t, missing.Detail, "scraper-URL fail-closed",
@@ -282,13 +281,13 @@ func TestWireArtlist_FailClosed_ScraperURLCfgNil(t *testing.T) {
 func TestWireArtlist_FailClosed_ScraperURLEnabledAndEmptyURL(t *testing.T) {
 	h := newHappyPathWireArtlistArgs(t)
 	h.cfg.External.ArtlistScraperServerURL = "" // re-introduce godlike/07 trigger
-	_, err := wiring.WireArtlist(
+	_, err := WireArtlist(
 		context.Background(), h.log, h.cfg, h.bundle,
 		h.dispatcher, nil, nil, nil, nil,
 	)
 	require.Error(t, err,
 		"Fase 1: enabled + empty URL MUST abort at composition (godlike/07 no-fake-availability)")
-	var missing wiring.ErrArtlistDepMissing
+	var missing ErrArtlistDepMissing
 	require.True(t, errors.As(err, &missing))
 	assert.Equal(t, DepKindScraperURL, missing.Kind)
 	assert.Equal(t, "cfg.External.ArtlistScraperServerURL", missing.Field)
@@ -312,11 +311,11 @@ func TestWireArtlist_FailClosed_ScraperURLEnabledAndEmptyURL(t *testing.T) {
 func TestWireArtlist_FinalizerGate_SourceLevelContract(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller(0) must succeed for this test file")
-	// Composition-root 4-file split (July 2026): wiring.WireArtlist moved to
+	// Composition-root 4-file split (July 2026): WireArtlist moved to
 	// build_bundles_artlist_artlist.go (the file that owns the function
-	// post-split). The Finalizer gate #7 is wired INSIDE the wiring.WireArtlist
+	// post-split). The Finalizer gate #7 is wired INSIDE the WireArtlist
 	// function body (not as a helper), so this test points at the file
-	// that owns wiring.WireArtlist.
+	// that owns WireArtlist.
 	sourcePath := filepath.Join(filepath.Dir(thisFile), "build_bundles_artlist_artlist.go")
 
 	body, err := os.ReadFile(sourcePath)

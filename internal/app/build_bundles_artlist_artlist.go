@@ -20,9 +20,10 @@
 // godlike/07 fail-closed: 7 mandatory gates are checked UPFRONT.
 // godlike/06: SemanticEnricher is the canonical app-layer wrapper
 // matching artlist.MetadataWriter.Enrich (enrich signature verbatim).
-package wiring
+package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -30,7 +31,7 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
-	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -44,22 +45,14 @@ import (
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
-
 	"go.uber.org/zap"
 )
 
 // WireArtlist constructs *artlist.Service + *ArtlistDescriptor from the canonical
-// ArtlistBundle populated by registerArtlist + the 5 ComposeRoot receiver-fields
+// wiring.ArtlistBundle populated by registerArtlist + the 5 wiring.ComposeRoot receiver-fields
 // (Dispatcher / Drive.Reader / Drive.Lifecycle / MetaWriter / DestResolver) that
-// were not pre-exposed on ArtlistBundle by PR4d-chunk2 convention. Each of the
-// 5 is a DIRECT receiver from ComposeRoot — not an adapter shim (godlike/06 SSOT).
+// were not pre-exposed on wiring.ArtlistBundle by PR4d-chunk2 convention. Each of the
+// 5 is a DIRECT receiver from wiring.ComposeRoot — not an adapter shim (godlike/06 SSOT).
 //
 // godlike/07: 7 mandatory gates checked UPFRONT. The first 4 are
 // runtime-wiring gates (Publisher / Dispatcher / ClipsRepo / Jobs.Service);
@@ -74,14 +67,14 @@ func WireArtlist(
 	ctx context.Context,
 	log *zap.Logger,
 	cfg *config.Config,
-	bundle *ArtlistBundle,
+	bundle *wiring.ArtlistBundle,
 	dispatcher *outbox.Dispatcher,
 	reader drivepkg.Reader,
 	lifecycle drivepkg.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
 	textTrackFanOut ...*texttracks.MaterializeFanOut,
-) (*ArtlistWiring, error) {
+) (*wiring.ArtlistWiring, error) {
 	_ = ctx
 
 	// godlike/07 fail-closed: 5 mandatory UPFRONT gates (4 wiring + 1 cfg).
@@ -183,7 +176,7 @@ func WireArtlist(
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
 	// constructor args are all DIRECT receivers — no shim layer.
 	searchTextRegistry := searchtextinfra.NewRegistry()
-	semanticEnricher := artlistPkg.NewSemanticEnricher(artlistPkg.SemanticEnricherDeps{
+	semanticEnricher := artlist.NewSemanticEnricher(artlist.SemanticEnricherDeps{
 		Repo:             bundle.ClipsRepo,
 		Indexer:          bundle.ClipIndexerService,
 		MetaWriter:       metaWriter,
@@ -201,21 +194,21 @@ func WireArtlist(
 	// Resolver instead of the legacy downloadViaScraper method.
 	// The adapter is the SINGLE translation site between the
 	// processor's narrow ArtlistDownloader interface and the
-	// Resolver's Download(artlistPkg.DownloadRequest) method.
+	// Resolver's Download(artlist.DownloadRequest) method.
 	wireArtlistProcessorDownloader(log, bundle, providers.ArtlistDownloader)
 
 	// PR-ARTLIST-MANDATORY-TRANSCRIPTION (July 2026): the transcriber is
 	// the same adapter used by the YouTube registrar. Reusing it here
 	// keeps the Whisper wiring in a single place and satisfies the
-	// artlistPkg.Transcriber port via implicit interface satisfaction.
-	transcriber := &SourcingTranscriberAdapter{cfg: cfg, log: log}
+	// artlist.Transcriber port via implicit interface satisfaction.
+	transcriber := &sourcingTranscriberAdapter{cfg: cfg, log: log}
 
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
 	// (PR-ARTLIST-SEARCHERS closed 2026-07-04: 3 searchers wired inline).
-	service, err := artlistPkg.NewService(artlistPkg.ServiceDeps{
-		ServicePorts: artlistPkg.ServicePorts{
+	service, err := artlist.NewService(artlist.ServiceDeps{
+		ServicePorts: artlist.ServicePorts{
 			// ServicePorts (9) — 9 DIRECT (PR-ARTLIST-SEARCHERS closed: 3 searchers
 			// constructed inline from cfg + the canonical infra concretes; runtime
 			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
@@ -243,11 +236,11 @@ func WireArtlist(
 			// refactor collapsed it onto the same source line as
 			// `local Record interface. ...` which Go's parser
 			// silently consumed as comment text — that swallowed
-			// the wiring and forced artlistPkg.NewService to fail with
+			// the wiring and forced artlist.NewService to fail with
 			// ErrRunRepositoryUnavailable, leaving /api/artlist/*
 			// unmounted on main.
 			RunRepository:  repos.RunsAdapter,
-			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
+			SearchStrategy: artlist.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
 			// Phase 2 / Fase 2 (July 2026): SystemProber port is the
 			// 10-probe fan-out node. Injected by composition root
 			// (canonical owner of the wire shape per godlike/06 SSOT);
@@ -263,30 +256,30 @@ func WireArtlist(
 			MediaMemoryNormalizer:  mediamemory.NewDefaultNormalizer(""),
 			Transcriber:            transcriber,
 		},
-		ServiceDependencies: artlistPkg.ServiceDependencies{
+		ServiceDependencies: artlist.ServiceDependencies{
 			// ServiceDependencies (10) — grouped into sub-bundles to
 			// respect the AGENTS.md 8-field cap.
-			Infra: artlistPkg.ArtlistInfraDeps{
+			Infra: artlist.ArtlistInfraDeps{
 				Cfg:    cfg,
 				Log:    log,
 				MainDB: bundle.DB.DB,
 			},
-			Ports: artlistPkg.ArtlistPortDeps{
+			Ports: artlist.ArtlistPortDeps{
 				Dispatcher: dispatcher,
 			},
-			Domain: artlistPkg.ArtlistDomainDeps{
+			Domain: artlist.ArtlistDomainDeps{
 				MediaProcessor:    bundle.MediaProcessor,
 				AssetDestResolver: destResolver,
 				JobsSvc:           bundle.Jobs.Service,
 			},
-			Repos: artlistPkg.ArtlistRepoDeps{
+			Repos: artlist.ArtlistRepoDeps{
 				AssetProcRepo:       repos.AssetProcRepo,
 				AssetVerRepo:        repos.AssetVerRepo,
 				LocationRepository:  nil, // retired from artlist service wiring
 				RenditionRepository: repos.RenditionRepo,
 				TextTrackRepo:       bundle.TextTrackRepo,
 			},
-			Finalizer: artlistPkg.ArtlistFinalizerDeps{
+			Finalizer: artlist.ArtlistFinalizerDeps{
 				// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
 				// asset finalizer. Replaces the legacy dispatchBridge path.
 				// Phase 1 (Fase 1, July 2026): finalizerTx is declared above
@@ -298,7 +291,7 @@ func WireArtlist(
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("WireArtlist: artlistPkg.NewService: %w", err)
+		return nil, fmt.Errorf("WireArtlist: artlist.NewService: %w", err)
 	}
 
 	// PR-ARTLIST-RECOMMEND-ADAPTER (closed 2026-07-04): wire the
@@ -311,7 +304,7 @@ func WireArtlist(
 	// canonical would yield a nil adapter; the handler's nil-
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
-	bundle.ClipResolver = NewClipResolverRecommendAdapter(
+	bundle.ClipResolver = wiring.NewClipResolverRecommendAdapter(
 		scripts_usecase.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
@@ -325,7 +318,7 @@ func WireArtlist(
 		// above) — no longer an unset forward-pointer. /recommend
 		// returns real recommendations when canonical is available.
 		ClipResolver: bundle.ClipResolver,
-		CfgPort:      NewArtlistConfigAdapter(cfg),
+		CfgPort:      newArtlistConfigAdapter(cfg),
 		EnabledFunc:  func() bool { return cfg.Features.ArtlistEnabled },
 		ModuleOpts:   nil, // forward-pointer: PR-COMPOSITION-MODULE-OPTS
 		Logger:       log,
@@ -349,7 +342,7 @@ func WireArtlist(
 	// Pexels and Pixabay. The registry is frozen before the module
 	// is returned so no provider can be added or removed at runtime.
 	providerAssetsRegistry := providerassets.NewRegistry()
-	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlistPkg.NewAdapter(service))
+	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlist.NewAdapter(service))
 	_ = providerAssetsRegistry.Register(artlistAdapter)
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pexels", providers.PexelsSearcher))
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pixabay", providers.PixabaySearcher))
@@ -360,7 +353,7 @@ func WireArtlist(
 		zap.Strings("provider_assets", providerAssetsRegistry.Names()),
 		zap.Bool("godlike_06_ssot", true),
 	)
-	return &ArtlistWiring{
+	return &wiring.ArtlistWiring{
 		Module:         ad.Module,
 		Service:        ad.Service,
 		ProviderAssets: providerAssetsRegistry,
@@ -429,7 +422,7 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 // to dead-letter forever without a consumer). The composition-time
 // fail-closed contract is the user-spec literal:
 // "fallisci l'avvio con un typed error (no warning silenzioso)".
-func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle) error {
+func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.JobsBundle) error {
 	if artlistSvc == nil {
 		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
 	}
@@ -451,62 +444,4 @@ func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *JobsBundle)
 			ErrArtlistConsumerRegistrationFailed)
 	}
 	return nil
-}
-
-// NewArtlistConfigAdapter is the canonical composition-root constructor (moved from adapters_infra.go).
-func NewArtlistConfigAdapter(cfg *config.Config) artlistPkg.ArtlistConfigPort {
-	if cfg == nil {
-		return nil
-	}
-	return &artlistConfigAdapter{cfg: cfg}
-}
-
-// artlistConfigAdapter wraps *config.Config to satisfy artlistPkg.ArtlistConfigPort
-// (moved from adapters_infra.go).
-type artlistConfigAdapter struct {
-	cfg *config.Config
-}
-
-// Compile-time assertion: artlistConfigAdapter satisfies artlistPkg.ArtlistConfigPort.
-var _ artlistPkg.ArtlistConfigPort = (*artlistConfigAdapter)(nil)
-
-func (a *artlistConfigAdapter) ArtlistRootFolderID() string {
-	return artlistPkg.ResolveRootFolderID(a.cfg)
-}
-type SourcingTranscriberAdapter struct {
-	cfg *config.Config
-	log *zap.Logger
-}
-
-func (a *SourcingTranscriberAdapter) Transcribe(ctx context.Context, audioPath string) (string, string, error) {
-	if a.cfg == nil {
-		return "", "", fmt.Errorf("register transcriber config not configured")
-	}
-	if audioPath == "" {
-		return "", "", nil
-	}
-	if _, err := executil.LookPath("python3"); err != nil {
-		return "", "", err
-	}
-	scriptPath := filepath.Join(a.cfg.Paths.PythonScriptsDir, "tools", "transcribe_detect_lang.py")
-	if _, err := os.Stat(scriptPath); err != nil {
-		return "", "", err
-	}
-	res, err := executil.Run(ctx, "python3", []string{scriptPath, "--transcribe", "--model", "tiny", "--json-only", audioPath}, executil.Options{CombinedOutput: false})
-	if err != nil {
-		return "", "", err
-	}
-	type transcriptResult struct {
-		Language       string `json:"language"`
-		TranscriptFull string `json:"transcript_full"`
-		Error          string `json:"error"`
-	}
-	var parsed transcriptResult
-	if err := json.Unmarshal([]byte(res.Stdout), &parsed); err != nil {
-		return "", "", err
-	}
-	if strings.TrimSpace(parsed.Error) != "" {
-		return "", "", fmt.Errorf("%s", parsed.Error)
-	}
-	return strings.TrimSpace(parsed.TranscriptFull), strings.TrimSpace(parsed.Language), nil
 }

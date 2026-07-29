@@ -1,5 +1,5 @@
 // Single canonical owner of ErrArtlistConsumerRegistrationFailed + ErrArtlistDepMissing + DepKind constants (godlike/06 SSOT Commit A; gates fail-closed at composition).
-package wiring
+package app
 
 import (
 	"errors"
@@ -29,7 +29,7 @@ var ErrArtlistConsumerRegistrationFailed = errors.New("artlist: consumer-job reg
 //   1. Branch on intent via `errors.As(err, &missing)` — structured logs
 //      (zap.String("missing_dep", missing.Kind.String())).
 //   2. Surface the missing field name (Field) verbatim so operators can
-//      map to the upstream ComposeRoot / runtime receipt.
+//      map to the upstream wiring.ComposeRoot / runtime receipt.
 //   3. Avoid the godlike/07 fake-availability anti-pattern of
 //      `log.Warn + skip-route + return-nil` (previous behavior) — the
 //      composition caller now aborts boot with a typed-wrapped error.
@@ -51,15 +51,15 @@ var ErrArtlistConsumerRegistrationFailed = errors.New("artlist: consumer-job reg
 type DepKind string
 
 const (
-	// DepKindRunRepo gates `bundle == nil` (the ArtlistBundle itself).
-	DepKindRunRepo DepKind = "ArtlistBundle"
+	// DepKindRunRepo gates `bundle == nil` (the wiring.ArtlistBundle itself).
+	DepKindRunRepo DepKind = "wiring.ArtlistBundle"
 	// DepKindPublisher gates `bundle.Publisher == nil` (canonical delivery.Publisher).
 	DepKindPublisher DepKind = "DrivePublisher"
 	// DepKindDispatcher gates `dispatcher == nil` (canonical outbox.Dispatcher).
 	DepKindDispatcher DepKind = "OutboxDispatcher"
 	// DepKindClipsRepo gates `bundle.ClipsRepo == nil` (canonical *assets.ClipsRepository).
 	DepKindClipsRepo DepKind = "ClipsRepository"
-	// DepKindJobsService gates `bundle.Jobs.Service == nil` (composition-time JobsBundle.Service).
+	// DepKindJobsService gates `bundle.Jobs.Service == nil` (composition-time wiring.JobsBundle.Service).
 	DepKindJobsService DepKind = "JobsService"
 	// DepKindScraperURL gates the (cfg.Features.ArtlistEnabled &&
 	// cfg.External.ArtlistScraperServerURL=="") pair via validateArtlistScraperURL.

@@ -107,8 +107,8 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	cfg.ClipIndexer.Enabled = false // sidecar OFF (the RED-POINT under test)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
-	require.NoError(t, err, "wiring.InitDatabases")
+	dbs, err := initDatabases(context.Background(), cfg, log)
+	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
 			_ = dbs.Main.Close()
@@ -160,8 +160,8 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 	cfg.Qdrant.Enabled = false     // Qdrant OFF — the BLOCKER #3 trigger
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
-	require.NoError(t, err, "wiring.InitDatabases")
+	dbs, err := initDatabases(context.Background(), cfg, log)
+	require.NoError(t, err, "initDatabases")
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {
 			_ = dbs.Main.Close()
@@ -217,7 +217,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
-	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	dbs, err := initDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		if dbs != nil && dbs.Main != nil {

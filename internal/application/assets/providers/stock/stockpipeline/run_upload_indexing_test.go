@@ -131,7 +131,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
 		WithJobFinalizer(stubJobFinalizer{}).
-		WithLocalFS(&fakeLocalFS{})
+		WithLocalFS(newRealishFakeLocalFS())
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
 		ClipDuration:  5,
@@ -163,7 +163,8 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 		ResilienceDeps{Builder: stubBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
-		WithJobFinalizer(stubJobFinalizer{})
+		WithJobFinalizer(stubJobFinalizer{}).
+		WithLocalFS(newRealishFakeLocalFS())
 	summary, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/b.mp4"},
 		ClipDuration:  5,
@@ -195,7 +196,8 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: stubProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
-		WithJobFinalizer(stubJobFinalizer{})
+		WithJobFinalizer(stubJobFinalizer{}).
+		WithLocalFS(newRealishFakeLocalFS())
 	summary, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/c.mp4"},
 		ClipDuration:  5,
