@@ -112,7 +112,7 @@
       {
         "name": "disk_space",
         "kind": "capacity",
-        "obligatory": true,
+        "obligatory": false,
         "check": "unix_df",
         "path": "${DISK_PATH:-/var/lib/pipelinegen}",
         "min_gb": 10,
