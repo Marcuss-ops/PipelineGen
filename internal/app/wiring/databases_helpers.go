@@ -19,7 +19,7 @@
 // `dbs.DualPool.Writer` is the canonical write-side *sql.DB handle for
 // repository construction (Cut 6.2 A3 verdict: every repo gets Writer
 // by default; Reader migration is a forward-pointer to a future cut).
-// `dbs.main` (the storage.SQLiteDB wrapper) is RETAINED for health /
+// `dbs.Main` (the storage.SQLiteDB wrapper) is RETAINED for health /
 // observability consumers that don't decompose into writer/reader
 // (infrahealth.NewSQLiteChecker, NewDriveRootsValidator). The two
 // pools share the same on-disk file via WAL-mode concurrent-reader +
@@ -46,41 +46,41 @@ type CleanupFunc func()
 
 // databases is the composition-root view of `storage.DatabaseSet`.
 // Exists only to keep the consumer-facing API of composition.go stable
-// (every Build*Bundle() takes `*databases`); the inner state delegates
+// (every Build*Bundle() takes `*Databases`); the inner state delegates
 // to the canonical DatabaseSet opened by `storage.OpenSet` (rule: no
 // `sql.Open` outside `internal/infrastructure/database/**`).
 //
 // `main` and `logs` fields are kept for back-compat with the dozens of
-// `dbs.main.<X>` references in `composition.go` / `shutdown.go` /
+// `dbs.Main.<X>` references in `composition.go` / `shutdown.go` /
 // `registry.go` / `dependencies.go`. They are populated from the
 // DatabaseSet at construction time; the canonical source of truth is
-// `dbs.set.Primary` / `dbs.set.Observability`.
+// `dbs.Set.Primary` / `dbs.Set.Observability`.
 //
 // PR-Queue-Split-EXPAND (June 2026): the `jobs` field is added for the
 // EXPAND-on flag shape. When cfg.Jobs.SplitDBEnabled is true,
 // `initDatabases` opens a separate jobs.db.sqlite file via
 // storage.OpenSQLiteDB and populates this field; composition.go picks
-// `dbs.jobs` over `dbs.main` for the JobsBundle's *SQLiteStore when
-// `dbs.jobs != nil`. Default behaviour: `jobs` stays nil.
+// `dbs.Jobs` over `dbs.Main` for the JobsBundle's *SQLiteStore when
+// `dbs.Jobs != nil`. Default behaviour: `jobs` stays nil.
 //
 // Cut 6.2 sibling (July 2026): the `dualPool` field is added for the
 // WAL-mode reader/writer split. Repositories throughout the composition
 // tree thread Writer and Reader from the dualPool; health/observability
-// consumers keep using storage.SQLiteDB (`dbs.main.DB`) because the
+// consumers keep using storage.SQLiteDB (`dbs.Main.DB`) because the
 // `infrahealth.NewSQLiteChecker(db)` constructor takes the storage
 // wrapper as its argument. The two pools share the on-disk file via
 // WAL-mode SQLite concurrency.
 //
 // Field population rules (godlike/06 SSOT):
-//   - dbs.set: always non-nil after a successful OpenSet.
-//   - dbs.main: storage.SQLiteDB wrapper around dbs.set.Primary.DB.
-//   - dbs.logs: storage.SQLiteDB wrapper around dbs.set.Observability.DB.
+//   - dbs.Set: always non-nil after a successful OpenSet.
+//   - dbs.Main: storage.SQLiteDB wrapper around dbs.Set.Primary.DB.
+//   - dbs.Logs: storage.SQLiteDB wrapper around dbs.Set.Observability.DB.
 //   - dbs.DualPool: nil in tests that bypass NewDualPool (legacy TestDB).
 //     Production callers (initDatabases) MUST construct a non-nil
 //     DualPool so the canonical instrumentation surface (Cut 6.2
 //     metrics + EXPLAIN) fires at boot.
-//   - dbs.jobs: non-nil only when cfg.Jobs.SplitDBEnabled=true.
-type databases struct {
+//   - dbs.Jobs: non-nil only when cfg.Jobs.SplitDBEnabled=true.
+type Databases struct {
 	Set      *storage.DatabaseSet
 	Main     *storage.SQLiteDB
 	Logs     *storage.SQLiteDB
@@ -94,7 +94,7 @@ type databases struct {
 	Jobs *storage.SQLiteDB
 }
 
-func (d *databases) Close() {
+func (d *Databases) Close() {
 	// Close the dualPool BEFORE storage.DatabaseSet so the
 	// Cut 6.2-instrumented txs (connection_wait_seconds,
 	// tx_duration_seconds, sqlite_busy_total) finish their
@@ -106,11 +106,11 @@ func (d *databases) Close() {
 	if d.DualPool != nil {
 		_ = d.DualPool.Close()
 	}
-	if d.jobs != nil {
-		_ = d.jobs.Close()
+	if d.Jobs != nil {
+		_ = d.Jobs.Close()
 	}
-	if d.set != nil {
-		_ = d.set.Close()
+	if d.Set != nil {
+		_ = d.Set.Close()
 	}
 }
 
@@ -128,14 +128,14 @@ func (d *databases) Close() {
 // migrate to dbs.DualPool.Reader in a follow-up cut.
 //
 // godlike/07 fail-closed: a NewDualPool error aborts the boot sequence
-// rather than silently regressing back to dbs.main.DB. Migration
+// rather than silently regressing back to dbs.Main.DB. Migration
 // failure surfaces as a typed error from CleanupStack rather than as
 // a deadlocked writer tx at first write.
 //
 // PR-Queue-Split-EXPAND (June 2026): when cfg.Jobs.SplitDBEnabled is
 // true, also opens jobs.db.sqlite via storage.OpenSQLiteDB and
-// populates dbs.jobs.
-func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*databases, error) {
+// populates dbs.Jobs.
+func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
 		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
@@ -148,17 +148,17 @@ func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*d
 	if err != nil {
 		return nil, fmt.Errorf("init databases: %w", err)
 	}
-	dbs := &databases{
-		set:  set,
-		main: set.Primary,
-		logs: set.Observability,
+	dbs := &Databases{
+		Set:  set,
+		Main: set.Primary,
+		Logs: set.Observability,
 	}
 
 	// Cut 6.2 sibling: build the canonical WAL-mode DualPool on the
 	// same primary file. The dual pool is the canonical connection
 	// surface for code that wants the connection_wait_seconds +
 	// tx_duration_seconds + sqlite_busy_total instrumentation; legacy
-	// dbs.main.DB remains for health-check consumers that need the
+	// dbs.Main.DB remains for health-check consumers that need the
 	// storage.SQLiteDB wrapper (infrahealth.NewSQLiteChecker).
 	dualPool, dErr := sqlite.NewDualPool(ctx, setCfg.PrimaryDBPath, runtime.NumCPU())
 	if dErr != nil {
@@ -189,9 +189,9 @@ func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*d
 			dbs.Close()
 			return nil, fmt.Errorf("init jobs DB %s: %w", jobsPath, jobsOpenErr)
 		}
-		dbs.jobs = jobsDB
-		log.Info("PR-Queue-Split-EXPAND: jobs DB opened alongside media DB",
-			zap.String("main_db", dbs.main.Path()),
+		dbs.Jobs = jobsDB
+		log.Info("PR-Queue-Split-EXPAND: Jobs DB opened alongside media DB",
+			zap.String("main_db", dbs.Main.Path()),
 			zap.String("jobs_db", jobsDB.Path()),
 			zap.Bool("legacy_alias_enabled", cfg.Jobs.LegacyAliasEnabled),
 		)
@@ -201,7 +201,7 @@ func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*d
 }
 
 // jobsMigrationsDir is the EXPAND-PR-Queue-Split migration directory
-// scanned at boot time WHEN dbs.jobs is open (SplitDBEnabled=true). The
+// scanned at boot time WHEN dbs.Jobs is open (SplitDBEnabled=true). The
 // directory mirrors the canonical migrations/sqlite/ but scoped to the
 // three jobs-domain tables — media-side migrations stay on media.db.sqlite.
 //
@@ -235,8 +235,8 @@ func jobsDBPathFromPrimary(primaryPath string) string {
 	return filepath.Join(dir, strings.Replace(base, "media.db.sqlite", "jobs.db.sqlite", 1))
 }
 
-func runAllMigrations(dbs *databases, log *zap.Logger) error {
-	if err := dbs.set.Migrate(log); err != nil {
+func runAllMigrations(dbs *Databases, log *zap.Logger) error {
+	if err := dbs.Set.Migrate(log); err != nil {
 		return err
 	}
 	// EXPAND / ADR-0003: when the jobs DB is open, run its peer-ledger
@@ -248,7 +248,7 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 	// SplitDBEnabled=true on a deployment with a no-op or half-decoded
 	// jobs.db.sqlite file but expects prod to boot regardless — the
 	// runner must surface the gap, not silently no-op.
-	if dbs.jobs != nil {
+	if dbs.Jobs != nil {
 		// TargetDB="primary" — the EXPAND-OBSERVABILITY
 		// jobs DB is a split-shard of the canonical media DB and shares
 		// the same domain shape. Its peer migrations dir
@@ -256,7 +256,7 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		// so the scope check is a defensive no-op for the jobs DB
 		// (nothing inside jobsMigrationsDir carries a `-- database:`
 		// directive today).
-		if err := dbs.jobs.RunMigrations(log, jobsMigrationsDir, "primary"); err != nil {
+		if err := dbs.Jobs.RunMigrations(log, jobsMigrationsDir, "primary"); err != nil {
 			return fmt.Errorf("jobs-db migrations: %w", err)
 		}
 	}

@@ -11,8 +11,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 var clipIDPattern = regexp.MustCompile(`^yt_(.+)_([0-9]+)_([0-9]+)_v[0-9]+$`)

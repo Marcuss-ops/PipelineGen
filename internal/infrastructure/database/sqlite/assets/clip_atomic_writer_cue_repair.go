@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func (w *ClipAtomicWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {

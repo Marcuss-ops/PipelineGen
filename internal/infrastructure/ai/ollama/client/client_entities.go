@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.

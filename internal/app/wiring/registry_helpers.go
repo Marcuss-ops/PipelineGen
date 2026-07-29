@@ -38,7 +38,7 @@ import (
 
 // ── Asset service initialisation ────────────────────────────────────────────
 
-func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
+func initAssetServices(dbs *Databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
 	assetIndexRepo := assetindex.NewRepository(dbs.DualPool.Writer)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
 	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.DualPool.Writer, log)

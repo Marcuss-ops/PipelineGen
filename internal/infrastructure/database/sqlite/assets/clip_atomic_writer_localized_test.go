@@ -63,8 +63,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // localizedClipWriterSchema is the in-memory test schema matching

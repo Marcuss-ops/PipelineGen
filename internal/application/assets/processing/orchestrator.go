@@ -21,8 +21,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Orchestrator coordinates staging, transformation, publishing, and commit.

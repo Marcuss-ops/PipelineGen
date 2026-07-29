@@ -10,6 +10,7 @@
 package wiring
 
 import (
+	"strings"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
@@ -347,4 +348,15 @@ func resolveTranslationModel(policy string) string {
 	default:
 		return ""
 	}
+}
+func buildBcp47CSV(codes []string) string {
+	var out []string
+	for _, raw := range codes {
+		normalized, err := asset.Normalize(raw)
+		if err != nil || normalized == "und" {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	return strings.Join(out, ",")
 }

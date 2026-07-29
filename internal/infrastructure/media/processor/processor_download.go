@@ -8,10 +8,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	artlist_dl "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // downloadStep downloads the asset from the source URL.

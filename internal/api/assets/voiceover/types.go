@@ -39,8 +39,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

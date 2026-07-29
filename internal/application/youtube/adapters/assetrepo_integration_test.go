@@ -22,9 +22,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // pr12bYoutubeSchema mirrors the production schema: CanonicalMediaAssetsSchema
