@@ -1,0 +1,97 @@
+{
+  "scenario_id": "07_artlist_live",
+  "description": "Vidrush Artlist live — ricerca reale su Artlist separata dallo stock YouTube. Verifica: live search→stream URL→download MP4→FFprobe valido→Drive upload→SQLite insert→outbox event→Qdrant index→binding Vidrush. La cache negativa NON deve rendere permanente una ricerca vuota.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "max_artlist_queries_per_segment": 5,
+    "provider_requests_artlist": -1,
+    "provider_requests_internet_images": 0,
+    "no_permanent_negative_cache": true,
+    "cache_extraction": "MISS"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-07-artlist-live",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-07-artlist-item",
+        "title": "Artlist live: cinematic stock footage discovery",
+        "language": "en",
+        "tone": "cinematic",
+        "style": "Write a visually rich narrative using cinematic language. Each segment should evoke a scene that maps well to stock footage categories: nature, urban, lifestyle, technology, sports.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Cinematic stock footage scenes for Artlist live discovery",
+          "source_text": "Aerial drone footage reveals a winding coastal road at golden hour. Turquoise water crashes against cliffs as a red convertible traces the curves.\n\nA barista crafts latte art in a sunlit specialty coffee shop. Slow motion captures the milk swirling into the espresso crema.\n\nA trail runner ascends a mountain ridge at sunrise. The camera follows from behind as the runner crests the summit and takes in the panoramic view.\n\nOperational marker: vidrush-07-artlist-live."
+        },
+        "script_params": {
+          "target_words": 260,
+          "min_words": 200,
+          "segment_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "disabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 5,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 0
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "min_segments": 3,
+      "per_segment": {
+        "segment_id_non_empty": ".segment_id | length > 0",
+        "text_hash_non_empty": ".text_hash | length > 0",
+        "artlist_queries_max_5": "(.insights.artlist_queries | length) <= 5",
+        "artlist_candidates_present": "candidati Artlist presenti per ogni segmento (best-effort)",
+        "images_bypassed": ".cache.internet_images == \"BYPASSED\""
+      }
+    },
+    "live_pipeline": {
+      "search": "POST /api/artlist/search eseguito con query generate dai segmenti",
+      "stream_url": "stream URL reale ottenuto da Artlist",
+      "download": "MP4 scaricato e verificato con hash",
+      "ffprobe": "FFprobe valido: durata > 0, codec video presente, risoluzione > 0",
+      "drive": "file caricato su Google Drive con link valido",
+      "sqlite": "record inserito in media_assets con drive_link popolato",
+      "outbox": "evento outbox prodotto per ogni asset indicizzato",
+      "qdrant": "embedding inserito in Qdrant con metadata corretti",
+      "binding": "binding Vidrush associa ogni segmento a un candidato Artlist"
+    },
+    "no_permanent_negative_cache": "una ricerca Artlist vuota non viene memorizzata permanentemente in cache negativa",
+    "retry_on_miss": "un miss Artlist viene ritentato a run successive (cache negativa con TTL)"
+  }
+}
