@@ -28,8 +28,14 @@ var (
 )
 
 type (
+	// JobGenerateHandlerFunc re-exports the job handler func type alias.
+	JobGenerateHandlerFunc = generation.JobGenerateHandlerFunc
+
 	// WorkflowState is the canonical 6-state machine for script.generate workflows.
 	WorkflowState = generation.WorkflowState
+
+	// IllegalWorkflowTransitionError re-exports the typed error-data envelope.
+	IllegalWorkflowTransitionError = generation.IllegalWorkflowTransitionError
 )
 
 // CanonicalWorkflowStateValues re-exports from generation.
@@ -55,13 +61,15 @@ var ErrIllegalWorkflowStateTransition = generation.ErrIllegalWorkflowStateTransi
 type (
 	SceneImageJobEmitter = curation.SceneImageJobEmitter
 	Emitter              = curation.Emitter
+	DispatcherShim       = curation.DispatcherShim
 	EmitSceneImageCommand = curation.EmitSceneImageCommand
 	SceneImageJobPayload  = curation.SceneImageJobPayload
 )
 
 // Re-exports from curation.
 var (
-	ErrEmitMissingParentJobID = curation.ErrEmitMissingParentJobID
-	ErrEmitMissingPrompt      = curation.ErrEmitMissingPrompt
-	NewEmitter                = curation.NewEmitter
+	ErrEmitMissingParentJobID         = curation.ErrEmitMissingParentJobID
+	ErrEmitMissingPrompt              = curation.ErrEmitMissingPrompt
+	NewEmitter                        = curation.NewEmitter
+	NewIllegalWorkflowTransitionError = generation.NewIllegalWorkflowTransitionError
 )
