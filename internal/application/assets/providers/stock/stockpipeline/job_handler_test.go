@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestStockJobResult_ToResultMap_AllFieldsPopulated verifies that every
