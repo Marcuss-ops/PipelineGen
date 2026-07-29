@@ -47,8 +47,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // publishChunkPhase runs the per-chunk ArtifactPreparation loop

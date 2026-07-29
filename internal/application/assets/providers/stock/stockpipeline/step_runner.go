@@ -11,6 +11,8 @@
 package stockpipeline
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +21,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -136,7 +137,15 @@ func (a *orchestratorRunner) RunFingerprint() string {
 		strconv.FormatBool(in.NoEffects),
 		strconv.FormatBool(in.NoTransitions),
 	}
-	return files.SHA256String(strings.Join(parts, "|"))
+	return sha256String(strings.Join(parts, "|"))
+}
+
+// sha256String returns the lowercase hex-encoded SHA-256 digest of text.
+// Replaces the direct internal/infrastructure/files.SHA256String import
+// (godlike/06 import-boundary discipline).
+func sha256String(text string) string {
+	h := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(h[:])
 }
 
 func defaultStepRunnerLog() *zap.Logger {

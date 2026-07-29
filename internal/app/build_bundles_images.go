@@ -3,8 +3,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )

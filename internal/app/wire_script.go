@@ -65,9 +65,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"net/http"
 	"strings"
 	"time"

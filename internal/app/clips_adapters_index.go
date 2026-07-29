@@ -1,16 +1,16 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // clipsIndexerAdapter wraps *clipindexer.Service to satisfy

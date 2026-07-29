@@ -10,9 +10,9 @@ import (
 	appdiag "github.com/Marcuss-ops/PipelineGen/internal/application/assets/diagnostics"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

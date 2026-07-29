@@ -52,7 +52,7 @@ func makeValidatorSvcForTest(t *testing.T) *appjobs.Service {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	bundle, err := BuildJobsBundle(sqliteDB, zap.NewNop(), nil, nil, nil, nil)
+	bundle, err := wiring.BuildJobsBundle(sqliteDB, zap.NewNop(), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bundle.Service, "BuildJobsBundle must yield a non-nil jobs.Service")
 	return bundle.Service

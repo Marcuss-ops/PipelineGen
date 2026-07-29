@@ -23,9 +23,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
@@ -35,7 +35,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
@@ -43,6 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	searchtextinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"

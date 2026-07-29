@@ -19,8 +19,8 @@ package stockpipeline
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // stockAssetIndexUpserter is the narrow surface the stock pipeline

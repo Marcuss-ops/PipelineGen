@@ -33,9 +33,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 	"time"
 
@@ -48,13 +48,13 @@ import (
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )

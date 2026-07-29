@@ -43,6 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -55,7 +56,7 @@ import (
 // parameter.
 type happyPathWireArtlistArgs struct {
 	cfg        *config.Config
-	bundle     *ArtlistBundle
+	bundle     *wiring.ArtlistBundle
 	dispatcher *outbox.Dispatcher
 	log        *zap.Logger
 }
@@ -107,7 +108,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 
 	// Real JobsBundle through the composition-root's canonical
 	// BuildJobsBundle helper.
-	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	jobsBundle, err := wiring.BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
 	require.NotNil(t, jobsBundle.Service,
 		"JobsBundle.Service must be populated so WireArtlist gate #5 passes")
@@ -121,7 +122,7 @@ func newHappyPathWireArtlistArgs(t *testing.T) *happyPathWireArtlistArgs {
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 	}
 
-	bundle := &ArtlistBundle{
+	bundle := &wiring.ArtlistBundle{
 		DB:                 sqliteDB,
 		ClipsRepo:          clipsRepo,
 		Publisher:          &stubPublisherForArtlistComposition{},

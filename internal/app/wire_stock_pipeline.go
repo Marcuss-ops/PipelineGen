@@ -20,10 +20,10 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"os"
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"

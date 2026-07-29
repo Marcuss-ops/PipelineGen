@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // clipsDispatcherAdapter adapts the concrete *outbox.Dispatcher to

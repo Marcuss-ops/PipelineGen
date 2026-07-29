@@ -19,10 +19,10 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"os"
 
 	"go.uber.org/zap"

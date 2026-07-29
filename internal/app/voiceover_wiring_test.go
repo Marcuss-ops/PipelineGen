@@ -52,7 +52,7 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqliteDB.Close() })
 
-	jobsBundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
+	jobsBundle, err := wiring.BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, jobsBundle)
 	require.NotNil(t, jobsBundle.Service)

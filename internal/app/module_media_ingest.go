@@ -15,7 +15,6 @@ import (
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -23,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/gin-gonic/gin"

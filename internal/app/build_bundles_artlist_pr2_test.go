@@ -34,6 +34,7 @@ import (
 	"go.uber.org/zap"
 
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // TestWireArtlistJobBindings_NilArtlistService_AbortsBoot: gate #1
@@ -62,8 +63,8 @@ func TestWireArtlistJobBindings_NilJobsBundleService_AbortsBoot(t *testing.T) {
 	// NewService is heavyweight; we want to skip its gates — easier
 	// to test with literal nil pointers that the typed signature
 	// rejects immediately.
-	bundleNil := &JobsBundle{Service: nil}
-	bundleOK := &JobsBundle{Service: nil} // Service field kept nil deliberately
+	bundleNil := &wiring.JobsBundle{Service: nil}
+	bundleOK := &wiring.JobsBundle{Service: nil} // Service field kept nil deliberately
 
 	err1 := WireArtlistJobBindings(nil, bundleNil)
 	require.Error(t, err1)

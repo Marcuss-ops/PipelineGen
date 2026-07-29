@@ -28,9 +28,9 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 

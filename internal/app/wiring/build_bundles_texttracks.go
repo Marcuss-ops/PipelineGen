@@ -10,8 +10,8 @@
 package wiring
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"

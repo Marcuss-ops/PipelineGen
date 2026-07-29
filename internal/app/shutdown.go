@@ -8,8 +8,8 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"sync"
 	"time"
 

@@ -60,10 +60,10 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql" // ← positive test anchor; pinned by var _ compile-pin below
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"os"
 	"path/filepath"
 

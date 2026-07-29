@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"

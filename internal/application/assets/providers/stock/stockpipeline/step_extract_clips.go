@@ -4,13 +4,14 @@
 //
 // Slim orchestrator for StockExtractClipsStep. The Run() method
 // delegates to helper functions in sister files:
-//   groupPlans        → step_extract_clips_batch.go
-//   prepareBatchState → step_extract_clips_batch.go
-//   executeCuts       → step_extract_clips_cut.go
-//   publishCuts       → step_extract_clips_publish.go
-//   writeTimestampGroups → step_extract_clips_metadata.go
-//   validateAndProbeSourceDuration → step_extract_clips_validation.go
-//   buildRichStockAsset → step_extract_clips_assets.go
+//
+//	groupPlans        → step_extract_clips_batch.go
+//	prepareBatchState → step_extract_clips_batch.go
+//	executeCuts       → step_extract_clips_cut.go
+//	publishCuts       → step_extract_clips_publish.go
+//	writeTimestampGroups → step_extract_clips_metadata.go
+//	validateAndProbeSourceDuration → step_extract_clips_validation.go
+//	buildRichStockAsset → step_extract_clips_assets.go
 package stockpipeline
 
 import (

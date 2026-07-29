@@ -34,13 +34,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -144,7 +145,7 @@ func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
 
 	// bundle WITHOUT Publisher (mandatory gate #1; F2.11 enforces nil-rejection).
 	// All other mandatory gates ALSO nil: ClipsRepo nil, Jobs nil.
-	bundle := &ArtlistBundle{
+	bundle := &wiring.ArtlistBundle{
 		DB:                 nil,
 		ClipsRepo:          nil,
 		DriveUploader:      nil,
@@ -192,7 +193,7 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 	// bundle WITHOUT Publisher (mandatory gate #1) but with the OTHER
 	// mandatory gates intact where possible: ClipsRepo nil (would be gate
 	// #3 but Publisher runs first), Jobs nil (would be gate #4).
-	bundle := &ArtlistBundle{
+	bundle := &wiring.ArtlistBundle{
 		DB:                 nil,
 		ClipsRepo:          nil, // would be mandatory gate #3 if Publisher passed
 		DriveUploader:      nil,
@@ -384,7 +385,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	// BuildJobsBundle helper. The 4 trailing args (voiceoverRepo,
 	// imagesRepo, driveUploader, driveLifecycle) are nil-tolerant per
 	// the helper's documented contract.
-	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	jobsBundle, err := wiring.BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
 	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
 	require.NotNil(t, jobsBundle.Service, "JobsBundle.Service must be populated so WireArtlist gate #4 passes")
 
@@ -397,7 +398,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 		Features: config.FeaturesConfig{ArtlistEnabled: true},
 	}
 
-	bundle := &ArtlistBundle{
+	bundle := &wiring.ArtlistBundle{
 		DB:                 sqliteDB,
 		ClipsRepo:          clipsRepo,
 		Publisher:          &stubPublisherForArtlistComposition{},
