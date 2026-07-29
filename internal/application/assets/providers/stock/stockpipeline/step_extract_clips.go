@@ -270,7 +270,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		if err != nil {
 			return fmt.Errorf("orchestrator: stock.extract_clips: resolve persistent workspace: %w", err)
 		}
-		if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		if err := runner.LocalFS().MkdirAll(workspaceDir, 0o755); err != nil {
 			return fmt.Errorf("orchestrator: stock.extract_clips: create persistent workspace: %w", err)
 		}
 		for clipIdx, plan := range groupPlans {
@@ -569,7 +569,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					ErrStockPublishArtifactFailed, group.leafName, metaErr)
 			}
 			defer func(p string) {
-				if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
+				if rmErr := runner.LocalFS().Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
 					if runner.Log() != nil {
 						runner.Log().Warn("orchestrator: stock.extract_clips: failed to remove parent metadata temp file",
 							zap.String("path", p), zap.Error(rmErr))

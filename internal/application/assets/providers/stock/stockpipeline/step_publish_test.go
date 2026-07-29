@@ -61,6 +61,7 @@ func (f *publishFakeRunner) ArtifactPreparation() finalization.ArtifactPreparati
 func (f *publishFakeRunner) JobFinalizer() finalization.JobFinalizer { return nil }
 func (f *publishFakeRunner) RunFingerprint() string                  { return "run-fingerprint-123" }
 func (f *publishFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
+	func (f *publishFakeRunner) LocalFS() LocalFSPort { return nil }
 func (f *publishFakeRunner) State() *RunState                        { return f.state }
 func (f *publishFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
