@@ -36,6 +36,20 @@
 // (`&TokenSecurityAdapter{Admin: "x"}`).
 package middleware
 
+import "os"
+
+// osEnvReader is the production EnvReader implementation.
+// Lives here (adapters.go, the concrete-adapter file) rather than
+// ports.go so the ports file stays free of "os" imports.
+type osEnvReader struct{}
+
+func (osEnvReader) Getenv(key string) string { return os.Getenv(key) }
+
+var _ EnvReader = osEnvReader{}
+
+// NewOSEnvReader returns the production env reader backed by os.Getenv.
+func NewOSEnvReader() EnvReader { return osEnvReader{} }
+
 // TokenSecurityAdapter is the canonical SecurityAdapter concrete
 // implementation. It exposes the EnableAuth/AdminToken/WorkerToken
 // method set that internal/application/middleware.AuthSecurityPort

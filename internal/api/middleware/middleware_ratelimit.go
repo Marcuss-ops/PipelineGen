@@ -3,7 +3,6 @@ package middleware
 import (
 	"math"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,12 +53,16 @@ func isVoiceoverBurstBypassRoute(c *gin.Context) bool {
 }
 
 // voiceoverBurstBypassEnabled reads the canonical env-var at ctor
-// time. Reading at ctor time (not at request time) keeps the verdict
-// stable across the ctor's lifetime; operators who change the env
-// mid-flight pay the cost of one server restart. This matches the
-// canonical "fix minimo" discipline (godlike/07).
-func voiceoverBurstBypassEnabled() bool {
-	return os.Getenv(voiceoverBurstBypassEnvKey) == "1"
+// time via the EnvReader port (no direct os.Getenv). Reading at ctor
+// time (not at request time) keeps the verdict stable across the
+// ctor's lifetime; operators who change the env mid-flight pay the
+// cost of one server restart. This matches the canonical "fix minimo"
+// discipline (godlike/07).
+func voiceoverBurstBypassEnabled(env EnvReader) bool {
+	if env == nil {
+		return false
+	}
+	return env.Getenv(voiceoverBurstBypassEnvKey) == "1"
 }
 
 // tokenBucketRateLimiter implements a simple token-bucket per IP.
@@ -220,7 +223,7 @@ func (r *RateLimitMiddleware) Stop() {
 // at internal/app/middleware_security_adapter.go. The returned
 // RateLimitMiddleware must have its Stop() method called during
 // server shutdown to prevent goroutine leaks.
-func RateLimit(rl middleware.RateLimitPort) *RateLimitMiddleware {
+func RateLimit(rl middleware.RateLimitPort, env EnvReader) *RateLimitMiddleware {
 	if rl == nil || !rl.RateLimitEnabled() {
 		return &RateLimitMiddleware{
 			Handler: func(c *gin.Context) {
@@ -231,7 +234,7 @@ func RateLimit(rl middleware.RateLimitPort) *RateLimitMiddleware {
 		}
 	}
 
-	bypassVoiceoverBurst := voiceoverBurstBypassEnabled()
+	bypassVoiceoverBurst := voiceoverBurstBypassEnabled(env)
 
 	limiter := newTokenBucketRateLimiter(rl.RateLimitRequests(), time.Minute)
 

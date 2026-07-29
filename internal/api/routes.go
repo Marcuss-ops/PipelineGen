@@ -424,7 +424,7 @@ func (r *Router) Setup() *gin.Engine {
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
 		protected.Use(middleware.Auth(r.cfg.Auth, r.cfg.Log))
-		r.rateLimitMiddleware = middleware.RateLimit(r.cfg.Rate)
+		r.rateLimitMiddleware = middleware.RateLimit(r.cfg.Rate, middleware.NewOSEnvReader())
 		protected.Use(r.rateLimitMiddleware.Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
