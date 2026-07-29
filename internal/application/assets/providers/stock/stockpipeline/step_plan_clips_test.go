@@ -32,7 +32,7 @@ import (
 type fakeStepRunner struct {
 	runInput *RunInput
 	cfg      OrchestratorConfig
-	state    *runState
+	state    *RunState
 	planner  ClipPlanner
 }
 
@@ -52,7 +52,7 @@ func (f *fakeStepRunner) ArtifactPreparation() finalization.ArtifactPreparationS
 func (f *fakeStepRunner) JobFinalizer() finalization.JobFinalizer                      { return nil }
 func (f *fakeStepRunner) RunFingerprint() string                                       { return "test-fingerprint" }
 func (f *fakeStepRunner) Log() *zap.Logger                                             { return zap.NewNop() }
-func (f *fakeStepRunner) State() *runState                                             { return f.state }
+func (f *fakeStepRunner) State() *RunState                                             { return f.state }
 func (f *fakeStepRunner) BatchRepository() StockBatchRepository                        { return nil }
 
 // newFakeRunner builds a fakeStepRunner with the given clips,
@@ -72,7 +72,7 @@ func newFakeRunner(clips []ClipSpec, clipDur int, policyVer string) *fakeStepRun
 		cfg: OrchestratorConfig{
 			PolicyVersion: policyVer,
 		},
-		state:   &runState{},
+		state:   &RunState{},
 		planner: NewDeterministicPlanner(),
 	}
 }
@@ -478,7 +478,7 @@ func TestStockPlanStep_NoClips_UsesDeterministicPlanner(t *testing.T) {
 			ClipDurationSec:  10,
 			ChunkDurationSec: 60,
 		},
-		state:   &runState{},
+		state:   &RunState{},
 		planner: NewDeterministicPlanner(),
 	}
 	step := StockPlanStep{}
@@ -520,5 +520,5 @@ func TestStockPlanStep_ClipsPropagatePolicyVersion(t *testing.T) {
 
 var _ StepRunner = (*fakeStepRunner)(nil)
 
-// avoid unused import warning for job package (referenced by runState.Manifest type).
+// avoid unused import warning for job package (referenced by RunState.Manifest type).
 var _ job.Status

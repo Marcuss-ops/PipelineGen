@@ -37,7 +37,6 @@ package stockpipeline
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -206,19 +205,22 @@ type ChunkState struct {
 // the field is left empty so VerifyChunks surfaces
 // ErrStockChunkLocalMissing / ErrStockChunkHashMissing.
 //
+// PR-REFACTOR-P0-IO-BINDER (July 2026): uses LocalFSPort instead
+// of os.Stat. nil fs is fail-closed — returns ErrStockChunkLocalMissing.
+//
 // Caveat: read-only call on cs. Mutates cs only — safe under
 // sequence-point guard because callers invoke this BEFORE publishing.
 // Returns sentinel errors verbatim so VerifyChunks can errors.Is()
 // without re-deriving the failure class.
-func (cs *ChunkState) ComputeAndFillSHA256() error {
+func (cs *ChunkState) ComputeAndFillSHA256(fs LocalFSPort) error {
 	if cs.LocalPath == "" {
 		return ErrStockChunkLocalMissing
 	}
-	fi, statErr := os.Stat(cs.LocalPath)
+	if fs == nil {
+		return fmt.Errorf("%w: %s (LocalFSPort not wired)", ErrStockChunkLocalMissing, cs.LocalPath)
+	}
+	fi, statErr := fs.Stat(cs.LocalPath)
 	if statErr != nil {
-		if os.IsNotExist(statErr) {
-			return fmt.Errorf("%w: %s", ErrStockChunkLocalMissing, cs.LocalPath)
-		}
 		return fmt.Errorf("stock: stat %s: %w", cs.LocalPath, statErr)
 	}
 	if fi.Size() == 0 {

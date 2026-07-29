@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -128,7 +127,7 @@ func timestampFolderID(chunks []ChunkState) string {
 	return chunks[0].TimestampFolderID
 }
 
-func writeAndHashPerClipMetadata(in *RunInput, chunk ChunkState, runFingerprint string) (string, string, int64, error) {
+func writeAndHashPerClipMetadata(in *RunInput, chunk ChunkState, runFingerprint string, fs LocalFSPort) (string, string, int64, error) {
 	if in == nil {
 		return "", "", 0, errors.New("writeAndHashPerClipMetadata: nil RunInput")
 	}
@@ -139,10 +138,11 @@ func writeAndHashPerClipMetadata(in *RunInput, chunk ChunkState, runFingerprint 
 		buildStockRunMetadata(in, []ChunkState{chunk}, runFingerprint),
 		"pipelinegen-stock-clip-metadata-*.json",
 		"writeAndHashPerClipMetadata",
+		fs,
 	)
 }
 
-func writeAndHashMetadata(in *RunInput, chunks []ChunkState, runFingerprint string) (string, string, int64, error) {
+func writeAndHashMetadata(in *RunInput, chunks []ChunkState, runFingerprint string, fs LocalFSPort) (string, string, int64, error) {
 	if in == nil {
 		return "", "", 0, errors.New("writeAndHashMetadata: nil RunInput")
 	}
@@ -150,37 +150,38 @@ func writeAndHashMetadata(in *RunInput, chunks []ChunkState, runFingerprint stri
 		buildStockRunMetadata(in, chunks, runFingerprint),
 		"pipelinegen-stock-metadata-*.json",
 		"writeAndHashMetadata",
+		fs,
 	)
 }
 
-func writeAndHashStockMetadata(meta StockRunMetadata, pattern, operation string) (string, string, int64, error) {
+func writeAndHashStockMetadata(meta StockRunMetadata, pattern, operation string, fs LocalFSPort) (string, string, int64, error) {
 	raw, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return "", "", 0, fmt.Errorf("%s: marshal: %w", operation, err)
 	}
-	file, err := os.CreateTemp("", pattern)
+	path, wc, err := fs.CreateTemp("", pattern)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("%s: create temp: %w", operation, err)
 	}
-	cleanup := func() { _ = os.Remove(file.Name()) }
-	if _, err = file.Write(raw); err != nil {
-		closeErr := file.Close()
+	cleanup := func() { _ = fs.Remove(path) }
+	if _, err = wc.Write(raw); err != nil {
+		closeErr := wc.Close()
 		cleanup()
 		if closeErr != nil {
-			return "", "", 0, fmt.Errorf("%s: write %s: %w (close: %v)", operation, file.Name(), err, closeErr)
+			return "", "", 0, fmt.Errorf("%s: write %s: %w (close: %v)", operation, path, err, closeErr)
 		}
-		return "", "", 0, fmt.Errorf("%s: write %s: %w", operation, file.Name(), err)
+		return "", "", 0, fmt.Errorf("%s: write %s: %w", operation, path, err)
 	}
-	if err = file.Close(); err != nil {
+	if err = wc.Close(); err != nil {
 		cleanup()
-		return "", "", 0, fmt.Errorf("%s: close %s: %w", operation, file.Name(), err)
+		return "", "", 0, fmt.Errorf("%s: close %s: %w", operation, path, err)
 	}
-	hash, err := job.ComputeSHA256(file.Name())
+	hash, err := job.ComputeSHA256(path)
 	if err != nil {
 		cleanup()
-		return "", "", 0, fmt.Errorf("%s: hash %s: %w", operation, file.Name(), err)
+		return "", "", 0, fmt.Errorf("%s: hash %s: %w", operation, path, err)
 	}
-	return file.Name(), hash, int64(len(raw)), nil
+	return path, hash, int64(len(raw)), nil
 }
 
 func buildChunkedStockManifest(workflowID, jobID, fingerprint string, chunks []ChunkState, metadata MetadataState) *job.ArtifactManifest {

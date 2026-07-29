@@ -112,7 +112,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 		// so downstream steps can map ClipPlan.SourceID → LocalPath.
 		sa.SourceID = plan.SourceID
 		staged = append(staged, sa)
-		// Publish immediately to the shared runState so the
+		// Publish immediately to the shared RunState so the
 		// orchestrator-level deferred cleanup can see this asset
 		// even if a later iteration (or a downstream step) panics
 		// before the step returns.

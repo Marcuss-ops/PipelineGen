@@ -33,7 +33,7 @@
 //   - DefaultStockSteps() +
 //     compile-time assertions:  orchestrator_defaults.go
 //   - StepRunner interface +
-//     runState + 6 accessors:   step_runner.go
+//     RunState + 6 accessors:   step_runner.go
 //   - Artifact ID helpers:      orchestrator_fingerprint.go
 //   - Metadata helpers:         orchestrator_metadata.go
 //

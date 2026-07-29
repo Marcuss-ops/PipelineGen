@@ -177,7 +177,7 @@ func publishChunkPhase(
 			}
 		}
 		if compPath != "" {
-			if err := cs.ComputeAndFillSHA256(); err != nil {
+			if err := cs.ComputeAndFillSHA256(runner.LocalFS()); err != nil {
 				// P6 (July 2026): compose_chunks now produces real
 				// files — ErrStockChunkLocalMissing is a hard failure.
 				return nil, fmt.Errorf("orchestrator: stock.publish: chunk %d (artifact=%s): %w",
@@ -251,7 +251,7 @@ func publishChunkPhase(
 			// envelope behavior. Explicit timestamp runs now publish one
 			// metadata.json per parent timestamp folder from the extract
 			// step, so this branch is skipped for the 5-second child clips.
-			clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp)
+			clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp, runner.LocalFS())
 			if clipMetaErr != nil {
 				return nil, fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %w",
 					ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)

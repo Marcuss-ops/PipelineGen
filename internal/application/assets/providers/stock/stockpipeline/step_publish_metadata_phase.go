@@ -89,13 +89,13 @@ func publishMetadataPhase(
 	//
 	// The driveFolderURLPrefix constant above is the SSOT source.
 
-	metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, chunks, fp)
+	metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, chunks, fp, runner.LocalFS())
 	if metaErr != nil {
 		return MetadataState{}, fmt.Errorf("%w: metadata.json stage: %v",
 			ErrStockPublishArtifactFailed, metaErr)
 	}
 	defer func() {
-		if rmErr := os.Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+		if rmErr := runner.LocalFS().Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			if runner.Log() != nil {
 				runner.Log().Warn("orchestrator: stock.publish: failed to remove metadata temp file",
 					zap.String("path", metaPath), zap.Error(rmErr))

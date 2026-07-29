@@ -37,7 +37,7 @@ import (
 // ─── Tests: Stage Sources (originally step_stage_sources_test.go) ───
 
 type stageURLRecordingRunner struct {
-	state  *runState
+	state  *RunState
 	stager assets.SourceStager
 }
 
@@ -59,7 +59,7 @@ func (r *stageURLRecordingRunner) ArtifactPreparation() finalization.ArtifactPre
 func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer { return nil }
 func (r *stageURLRecordingRunner) RunFingerprint() string                  { return "stage-url-test" }
 func (r *stageURLRecordingRunner) Log() *zap.Logger                        { return zap.NewNop() }
-func (r *stageURLRecordingRunner) State() *runState                        { return r.state }
+func (r *stageURLRecordingRunner) State() *RunState                        { return r.state }
 func (r *stageURLRecordingRunner) BatchRepository() StockBatchRepository   { return nil }
 
 var _ StepRunner = (*stageURLRecordingRunner)(nil)
@@ -89,7 +89,7 @@ func TestStockStageSourcesStep_CanonicalizesYouTubeURL(t *testing.T) {
 	stager := &stageURLRecordingStager{}
 	runner := &stageURLRecordingRunner{
 		stager: stager,
-		state: &runState{
+		state: &RunState{
 			Plan: []ClipPlan{
 				{
 					SourceID:       "https://www.youtube.com/watch?v=dgB9UHHapq4&pp=ugUEEgJlbg%3D%3D",

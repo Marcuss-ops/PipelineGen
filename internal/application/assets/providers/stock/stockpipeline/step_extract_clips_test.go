@@ -239,7 +239,7 @@ func TestStockExtractClips_BatchPerSourceGroup(t *testing.T) {
 	cutter := &batchRecordingCutter{}
 	writer := &recordingWriter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: plans,
 		StagedAssets: []*assets.StagedAsset{
 			{SourceID: "yt-same-source", LocalPath: sourcePath, DurationSec: 60},
@@ -329,7 +329,7 @@ func TestStockExtractClips_BatchPerMultipleSourceGroups(t *testing.T) {
 	cutter := &batchRecordingCutter{}
 	writer := &recordingWriter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: plans,
 		StagedAssets: []*assets.StagedAsset{
 			{SourceID: "yt-source-a", LocalPath: sourceA, DurationSec: 60},
@@ -453,7 +453,7 @@ func TestStockExtractClips_OutOfRange_FailsClosed(t *testing.T) {
 	writer := &recordingWriter{}
 	cutter := &recordingCutter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: []ClipPlan{plan},
 		StagedAssets: []*assets.StagedAsset{
 			{
@@ -599,7 +599,7 @@ func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
 	cutter := &deterministicRichCutter{outputPath: outputPath}
 	writer := &recordingWriter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: []ClipPlan{want},
 		StagedAssets: []*assets.StagedAsset{
 			{SourceID: want.SourceID, LocalPath: sourcePath},
@@ -768,7 +768,7 @@ func TestStockExtractClips_UploadWorkerPoolLimitsConcurrency(t *testing.T) {
 	cutter := &batchRecordingCutter{}
 	writer := &recordingWriter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: plans,
 		StagedAssets: []*assets.StagedAsset{
 			{SourceID: "yt-upload-pool", LocalPath: sourcePath, DurationSec: 60},
@@ -869,7 +869,7 @@ func TestStockExtractClips_ThirtyClips_SingleCutRequest(t *testing.T) {
 	cutter := &batchRecordingCutter{}
 	writer := &recordingWriter{}
 
-	state := &runState{
+	state := &RunState{
 		Plan: plans,
 		StagedAssets: []*assets.StagedAsset{
 			{SourceID: "yt-thirty-clips", LocalPath: sourcePath, DurationSec: 200},

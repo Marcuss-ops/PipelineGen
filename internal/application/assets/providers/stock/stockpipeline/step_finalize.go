@@ -12,7 +12,7 @@
 // Phase 0 — Fail-closed gate (PR-STOCK-FINALIZE-PHASE-0-GATE, July 2026).
 // If JobFinalizer is wired (production mode) BUT state.Published is
 // empty, the upstream stock.publish step short-circuited without
-// uploading chunks (or the runState was lost on resume). Returning
+// uploading chunks (or the RunState was lost on resume). Returning
 // nil here would be a silent-success false-positive — the job would
 // declare SUCCEEDED via the broker without writing to media_assets.
 // The gate fires BEFORE Phase 1's manifest.Validate so the typed

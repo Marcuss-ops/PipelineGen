@@ -2,7 +2,6 @@ package stockpipeline
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -53,17 +52,21 @@ func extractVideoID(url string) string {
 }
 
 // resolveActualPath checks for the actual file path by trying common extensions.
-func resolveActualPath(basePath string) string {
-	if _, err := os.Stat(basePath); err == nil {
+// PR-REFACTOR-P0-IO-BINDER (July 2026): uses LocalFSPort instead of os.Stat.
+func resolveActualPath(basePath string, fs LocalFSPort) string {
+	if fs == nil {
 		return basePath
 	}
-	if _, err := os.Stat(basePath + ".mp4"); err == nil {
+	if _, err := fs.Stat(basePath); err == nil {
+		return basePath
+	}
+	if _, err := fs.Stat(basePath + ".mp4"); err == nil {
 		return basePath + ".mp4"
 	}
-	if _, err := os.Stat(basePath + ".mkv"); err == nil {
+	if _, err := fs.Stat(basePath + ".mkv"); err == nil {
 		return basePath + ".mkv"
 	}
-	if _, err := os.Stat(basePath + ".webm"); err == nil {
+	if _, err := fs.Stat(basePath + ".webm"); err == nil {
 		return basePath + ".webm"
 	}
 	return ""

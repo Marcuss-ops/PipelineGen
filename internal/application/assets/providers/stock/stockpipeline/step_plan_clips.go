@@ -5,7 +5,7 @@
 // the stock.plan step (Step 1 of the 6-step pipeline) per
 // godlike/06 SSOT (one canonical owner per fact). The step
 // exercises the deterministic ClipPlanner.Plan round-trip for
-// every concrete source, populating runState.Plan for downstream
+// every concrete source, populating RunState.Plan for downstream
 // steps.
 //
 // godlike/07 fail-closed contracts:
@@ -13,7 +13,7 @@
 //     "no sources to plan (DirectURLs and SearchQueries are empty)".
 //   - planner.Plan returns error → typed wrap via %w preserving
 //     the planner's underlying typed sentinel for errors.Is traversal.
-//   - Successful path → runState.Plan populated with the
+//   - Successful path → RunState.Plan populated with the
 //     concatenated planner output for downstream consumption.
 //
 // PR-STOCK-ORCHESTRATOR-SPLIT extracted this from
@@ -34,7 +34,7 @@ import (
 
 // StockPlanStep is the canonical implementation of stock.plan.
 // It exercises the deterministic ClipPlanner.Plan round-trip on
-// the first source, populating runState.Plan for downstream steps.
+// the first source, populating RunState.Plan for downstream steps.
 type StockPlanStep struct{}
 
 func (StockPlanStep) Name() string { return StepKeyStockPlan }

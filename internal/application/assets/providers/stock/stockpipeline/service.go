@@ -29,7 +29,7 @@
 //     4 typed sentinels:                        upload_orchestration.go
 //   - 6-step orchestrator + StepRunner + 2
 //     more typed sentinels:                     orchestrator_steps.go
-//   - StepRunner interface + runState + 6
+//   - StepRunner interface + RunState + 6
 //     accessors:                                step_runner.go
 //   - Orchestrator defaults + compile-time
 //     assertions:                               orchestrator_defaults.go

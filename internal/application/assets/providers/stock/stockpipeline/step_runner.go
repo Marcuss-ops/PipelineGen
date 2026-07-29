@@ -1,6 +1,6 @@
 // Package stockpipeline — step_runner.go (Stock P1 split, July 2026).
 //
-// This file owns the StepRunner interface, the runState accumulator,
+// This file owns the StepRunner interface, the RunState accumulator,
 // the orchestratorRunner concrete implementation, its accessor methods,
 // and the RunFingerprint computation. Extracted from orchestrator_steps.go
 // (Stock P0 action plan).
@@ -39,17 +39,18 @@ type StepRunner interface {
 	Projection() ProjectionPort
 	SourceDurationProbe() SourceDurationProbe
 	BatchRepository() StockBatchRepository
+	LocalFS() LocalFSPort
 
 	ArtifactPreparation() finalization.ArtifactPreparationService
 	JobFinalizer() finalization.JobFinalizer
 	RunFingerprint() string
 
 	Log() *zap.Logger
-	State() *runState
+	State() *RunState
 }
 
-// runState is the mutable per-call accumulator shared by the ordered steps.
-type runState struct {
+// RunState is the mutable per-call accumulator shared by the ordered steps.
+type RunState struct {
 	Plan               []ClipPlan
 	StagedAssets       []*assets.StagedAsset
 	CutPaths           []string
@@ -66,7 +67,7 @@ type runState struct {
 type orchestratorRunner struct {
 	orch                *Orchestrator
 	in                  *RunInput
-	state               *runState
+	state               *RunState
 	log                 *zap.Logger
 	artifactPreparation finalization.ArtifactPreparationService
 	jobFinalizer        finalization.JobFinalizer
@@ -99,6 +100,12 @@ func (a *orchestratorRunner) Projection() ProjectionPort        { return a.orch.
 func (a *orchestratorRunner) SourceDurationProbe() SourceDurationProbe {
 	return a.orch.sourceProbe
 }
+func (a *orchestratorRunner) LocalFS() LocalFSPort {
+	if a == nil || a.orch == nil {
+		return nil
+	}
+	return a.orch.localFS
+}
 func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return a.artifactPreparation
 }
@@ -106,7 +113,7 @@ func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
 	return a.jobFinalizer
 }
 func (a *orchestratorRunner) Log() *zap.Logger { return a.log }
-func (a *orchestratorRunner) State() *runState { return a.state }
+func (a *orchestratorRunner) State() *RunState { return a.state }
 
 // RunFingerprint returns the deterministic fingerprint for this run.
 func (a *orchestratorRunner) RunFingerprint() string {
