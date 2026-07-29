@@ -1,0 +1,160 @@
+{
+  "step": "8-diversity",
+  "boxer": "Mike Tyson",
+  "timestamp": "2026-07-29T12:30:00Z",
+  "status": "BLOCKED — Steps 3-6 incomplete",
+  "summary": "Diversity verification cannot be completed: the stock pipeline failed before extracting and registering the full 300-clip dataset. All 20 pipeline jobs are stuck in RETRY_WAIT (max_retries=1 exhausted) with 'context canceled' errors during the extract_clips phase.",
+
+  "target": {
+    "total_clips": 300,
+    "distinct_source_video_ids": 20,
+    "max_clips_per_video": 15,
+    "category_distribution": {
+      "fight": 180,
+      "interview": 90,
+      "training": 30
+    },
+    "min_clip_spacing_seconds": 10,
+    "no_temporal_overlap": true,
+    "no_duplicate_hashes": true
+  },
+
+  "actual": {
+    "clips_in_db_stock": 5,
+    "clips_in_db_total": 27,
+    "workspace_clip_files_on_disk": 345,
+    "workspace_dirs": 23,
+    "distinct_source_video_ids_in_db": 0,
+    "clips_with_drive_file_id": 0,
+    "clips_with_source_video_id": 0,
+    "clips_with_content_category": 0,
+    "hash_duplicates_in_db": 0,
+    "drive_links": 0
+  },
+
+  "pipeline_job_status": {
+    "total_submitted": 20,
+    "completed": 0,
+    "failed_retry_wait": 20,
+    "root_cause": "VideoCutter.Cut failed: context canceled — timeout during clip extraction with yt-dlp download of full YouTube videos"
+  },
+
+  "workspace_clips_breakdown": [
+    { "workspace": "job_1785324092885717162_6ec6237d", "clips": 45 },
+    { "workspace": "job_1785324178044011096_f4f2ca45", "clips": 15 },
+    { "workspace": "job_1785324178069571734_82f7078f", "clips": 15 },
+    { "workspace": "job_1785324178128755230_ced06c83", "clips": 15 },
+    { "workspace": "job_1785324178178048266_0891f289", "clips": 15 },
+    { "workspace": "job_1785324178199469208_0b6bd6bf", "clips": 15 },
+    { "workspace": "job_1785324178224879538_d8bf2fb3", "clips": 15 },
+    { "workspace": "job_1785324178265369443_325d52c9", "clips": 15 },
+    { "workspace": "job_1785324178399194240_564edf6a", "clips": 15 },
+    { "workspace": "job_1785324178420689880_c8b55b3b", "clips": 15 },
+    { "workspace": "job_1785326944121724323_7cb11db6", "clips": 15 },
+    { "workspace": "job_1785326976505355666_4f64c5f2", "clips": 15 },
+    { "workspace": "job_1785326976573456832_6472f874", "clips": 15 },
+    { "workspace": "job_1785326976608538769_35dc9b58", "clips": 15 },
+    { "workspace": "job_1785326976625630961_ba81f910", "clips": 15 },
+    { "workspace": "job_1785326976643795310_33eb0ecc", "clips": 15 },
+    { "workspace": "job_1785326976666573134_c29cbed1", "clips": 15 },
+    { "workspace": "job_1785326976855210354_fab541b6", "clips": 15 },
+    { "workspace": "job_1785326976873622479_265543d8", "clips": 15 },
+    { "workspace": "job_1785326976916755060_945c3d1f", "clips": 15 },
+    { "workspace": "job_1785326976935414161_8c7ec2ed", "clips": 15 },
+    { "workspace": "job_1785326976957926421_e9a93ca0", "clips": 15 },
+    { "workspace": "job_1785326976973935247_0d4d90f9", "clips": 15 }
+  ],
+
+  "db_registered_clips_detail": [
+    {
+      "id": "planner:b07a88acbad7ab27:0",
+      "name": "00-00-02_to_00-00-06",
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "duration_ms": 4000,
+      "file_hash": "69b0c8e5465bd1f5d528757e892b21ca2206ab12c2bdd4fb45df8b03abcad1a0",
+      "drive_file_id": null,
+      "source_video_id": "",
+      "content_category": "",
+      "drive_link": null
+    },
+    {
+      "id": "planner:80fef28c9642b1bc:0",
+      "name": "00-00-00_to_00-00-04",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "duration_ms": 4000,
+      "file_hash": "430a977ec6d723bd26536842b0203ae5f695b8598c71350f8eecdde622c20496",
+      "drive_file_id": null,
+      "source_video_id": "",
+      "content_category": "",
+      "drive_link": null
+    },
+    {
+      "id": "planner:abf1b22a18ffaab2:0",
+      "name": "00-00-00_to_00-00-04",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "duration_ms": 4000,
+      "file_hash": "0603fe4b5e50e825094dfbc2a93fb0c8cf409dce5cd0efc091ebc171abe620f7",
+      "drive_file_id": null,
+      "source_video_id": "",
+      "content_category": "",
+      "drive_link": null
+    },
+    {
+      "id": "planner:107e7fa2d3ac3cea:0",
+      "name": "00-00-02_to_00-00-06",
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "duration_ms": 4000,
+      "file_hash": "ff56d0a914518728067020d7067330844de53341943c8d58a64d3bb9d455fb30",
+      "drive_file_id": null,
+      "source_video_id": "",
+      "content_category": "",
+      "drive_link": null
+    },
+    {
+      "id": "planner:197747b5fbb42911:0",
+      "name": "00-00-02_to_00-00-06",
+      "start_ms": 2000,
+      "end_ms": 6000,
+      "duration_ms": 4000,
+      "file_hash": "57e4bd400011ea9b8850b4037aa030bd37108df432bc5c4ffca1b32c33169cd0",
+      "drive_file_id": null,
+      "source_video_id": "",
+      "content_category": "",
+      "drive_link": null
+    }
+  ],
+
+  "diversity_analysis_on_available_data": {
+    "registered_clips": {
+      "distinct_source_video_ids": 0,
+      "max_clips_per_video": "N/A — no source_video_id in metadata",
+      "hash_duplicates": 0,
+      "category_distribution": "N/A — no content_category in metadata",
+      "temporal_overlap": "Cannot verify — all clips from unknown sources",
+      "drive_links_valid": "0/5 — no drive_file_id present"
+    },
+    "workspace_clips": {
+      "note": "345 clip files exist on disk across 23 workspaces but are NOT registered in SQLite and NOT on Drive",
+      "workspaces_with_15_clips": 22,
+      "workspaces_with_45_clips": 1,
+      "sample_clip_quality": "Verified: 4.08s duration, 1.08 MB, valid MP4 — extraction works when pipeline doesn't timeout"
+    }
+  },
+
+  "gap_analysis": {
+    "missing_clips": 295,
+    "missing_drive_uploads": 300,
+    "missing_sqlite_rows": 295,
+    "missing_source_video_ids": 300,
+    "missing_content_categories": 300,
+    "missing_drive_links": 300,
+    "blocking_issue": "Pipeline timeout during yt-dlp download → extract_clips fails → publish/register/index never execute",
+    "recommendation": "Restart pipeline with YouTube URLs, increase context timeout for extract_clips phase, or use pre-downloaded local files with file:// scheme (handler.go already patched)"
+  },
+
+  "conclusion": "Step 8 diversity verification CANNOT pass. The full 300-clip dataset does not exist in SQLite or on Drive. Only 5 clips are registered (all without metadata), and 345 workspace files are orphaned on disk. Steps 3 (extract), 4 (Drive publish), 5 (SQLite register), and 6 (Qdrant index) must be completed first."
+}
