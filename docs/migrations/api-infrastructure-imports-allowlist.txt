@@ -155,10 +155,13 @@
 # internal/app/system_adapters.go (the only place allowed to wire
 # infrastructure types into api ports). Removed from allowlist at PR4-cleanup.
 
-# Grandfathered clips handlers (PR2) — pending complete extraction
-internal/api/assets/clips/folder_query_handler.go
-internal/api/assets/clips/handler.go
-internal/api/assets/clips/ingest.go
-internal/api/assets/clips/nonops/handler.go
-internal/api/assets/clips/ops.go
-internal/api/assets/clips/search.go
+# Grandfathered clips handlers (PR2) — CLEANED, July 2026
+# All 6 clips handler files migrated to ClipRepositoryPort / ImageRepositoryPort /
+# ClipIndexerPort / VoiceoverRepositoryPort from internal/application/clips/ports.go
+# during the P0 middleware+clips API cleanup (July 2026). Zero infrastructure imports remain.
+# internal/api/assets/clips/folder_query_handler.go  ← removed from allowlist
+# internal/api/assets/clips/handler.go                ← removed from allowlist
+# internal/api/assets/clips/ingest.go                 ← removed from allowlist
+# internal/api/assets/clips/nonops/handler.go         ← removed from allowlist
+# internal/api/assets/clips/ops.go                    ← removed from allowlist
+# internal/api/assets/clips/search.go                 ← removed from allowlist

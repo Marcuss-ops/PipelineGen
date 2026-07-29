@@ -24,11 +24,6 @@ func (oh *OpsHandler) RegenerateManifest(c *gin.Context) {
 		return
 	}
 
-	if oh.folderMemSvc == nil {
-		apiutil.InternalError(c, nil)
-		return
-	}
-
 	oh.log.Info("regenerating manifest for folder", zap.String("id", folderID))
 
 	apiutil.OK(c, gin.H{

@@ -17,8 +17,8 @@ import (
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type recordingYouTubeClipService struct {
