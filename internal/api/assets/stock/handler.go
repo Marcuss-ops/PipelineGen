@@ -324,8 +324,9 @@ func (h *StockHandler) Run(c *gin.Context) {
 
 // isValidURL validates that u is an absolute https URL with a
 // resolvable hostname and rejects private / loopback IP addresses
-// (RFC1918 SSRF mitigation). file://, ftp://, gopher://, jar: are
-// rejected via the scheme check.
+// (RFC1918 SSRF mitigation). file:// URLs are accepted for local
+// hermetic stock runs; the path portion is validated via isSafePath.
+// ftp://, gopher://, jar: are rejected via the scheme check.
 //
 // godlike/06 SSOT: this is the single source of truth for URL
 // validation at the HTTP boundary. The orchestrator's downstream
@@ -350,6 +351,25 @@ func isValidURL(u primitives.URL) bool {
 	// Null-byte rejection — some libraries truncate at NUL.
 	if strings.ContainsRune(raw, '\x00') {
 		return false
+	}
+	// file:// scheme: accept for local hermetic stock runs.
+	// Validate the path portion for traversal, null bytes, and backslashes.
+	if strings.HasPrefix(raw, "file://") {
+		filePath := strings.TrimPrefix(raw, "file://")
+		// Null-byte rejection
+		if strings.ContainsRune(filePath, '\x00') {
+			return false
+		}
+		// Backslash escape — reject (mirrors isSafePath)
+		if strings.Contains(filePath, "\\") {
+			return false
+		}
+		// Path traversal rejection
+		clean := path.Clean(filePath)
+		if clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
+			return false
+		}
+		return true
 	}
 	parsed, err := url.ParseRequestURI(raw)
 	if err != nil {
