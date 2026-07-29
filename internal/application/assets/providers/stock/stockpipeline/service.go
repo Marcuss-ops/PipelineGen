@@ -245,13 +245,13 @@ func NewService(deps Deps) (*Service, error) {
 		v.MaxResults = DefaultPipelineConfig().MaxResults
 	}
 	return &Service{
-		runtime:       v,
-		log:           deps.Runtime.Log,
-		publisher:     deps.Delivery.Publisher,
-		publisherPort: deps.Delivery.PublisherPort,
-		folderCreator: deps.Delivery.FolderCreator,
-		cutter:        deps.Media.Cutter,
-		renderer:      deps.Media.Renderer,
+		runtime:           v,
+		log:               deps.Runtime.Log,
+		publisher:         deps.Delivery.Publisher,
+		publisherPort:     deps.Delivery.PublisherPort,
+		folderCreator:     deps.Delivery.FolderCreator,
+		cutter:            deps.Media.Cutter,
+		renderer:          deps.Media.Renderer,
 		jobsSvc:           deps.Execution.Jobs,
 		assetIndex:        deps.Storage.AssetIndex,
 		clipsRepo:         deps.Storage.ClipsRepo,
