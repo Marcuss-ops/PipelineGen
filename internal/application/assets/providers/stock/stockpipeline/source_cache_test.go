@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
 )
 
@@ -259,7 +258,7 @@ func newFakeDownloader(b []byte) *fakeDownloader {
 	return &fakeDownloader{writesBytes: b, downloadedCh: make(chan struct{}, 100)}
 }
 
-func (f *fakeDownloader) Download(_ context.Context, req *downloader.DownloadRequest) error {
+func (f *fakeDownloader) Download(_ context.Context, req *SourceDownloadRequest) (*DownloadedSource, error) {
 	f.mu.Lock()
 	f.downloadCount++
 	n := f.downloadCount
@@ -273,12 +272,17 @@ func (f *fakeDownloader) Download(_ context.Context, req *downloader.DownloadReq
 	if f.delay > 0 {
 		time.Sleep(f.delay)
 	}
-	// Mimic yt-dlp: writes OutputPath + ".mp4" (the canonical after-rename
-	// path). StageSource then calls
-	// downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s") and
-	// yt-dlp-replaces %(ext)s with the actual extension (here .mp4),
-	// producing OutputPath + ".mp4" — the test fake must match.
-	return os.WriteFile(req.OutputPath+".mp4", f.writesBytes, 0644)
+	// Mimic the infra adapter: write OutputPath + ".mp4" (the resolved
+	// path after yt-dlp's %(ext)s template resolution), then return
+	// DownloadedSource with the resolved path and size.
+	resolved := req.OutputPath + ".mp4"
+	if err := os.WriteFile(resolved, f.writesBytes, 0644); err != nil {
+		return nil, err
+	}
+	return &DownloadedSource{
+		ResolvedPath: resolved,
+		SizeBytes:    int64(len(f.writesBytes)),
+	}, nil
 }
 
 func (f *fakeDownloader) Count() int {
@@ -398,7 +402,7 @@ func (l *loggerCapture) HasMatch(needle string) bool {
 // returns it verbatim (StorageConfig.FullPath has an "already-absolute"
 // short-circuit — relative TempDir would join DataDir+TempDir and MkdirTemp
 // would then fail because the joined subdir does not exist on disk).
-func setupTestEnv(t *testing.T, downloader DownloaderPort) (*StockStager, *fakeSourceCache, *loggerCapture) {
+func setupTestEnv(t *testing.T, downloader SourceDownloader) (*StockStager, *fakeSourceCache, *loggerCapture) {
 	t.Helper()
 	tmpRoot := t.TempDir()
 	cap := newLoggerCapture()

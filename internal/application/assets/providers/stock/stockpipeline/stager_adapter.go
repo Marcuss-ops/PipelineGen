@@ -31,7 +31,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -472,16 +471,12 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		if dlErr != nil {
 			return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, dlErr)
 		}
-		// Resolved path and size are already computed by the infra adapter.
-		fi, statErr := fs.Stat(dlResult.ResolvedPath)
-		if statErr != nil {
-			return nil, fmt.Errorf("stock stager: stat %q: %w", dlResult.ResolvedPath, statErr)
-		}
 		// Populate cache for fresh downloads (best-effort, never surfaces).
-		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, fi.Size())
+		// ResolvedPath and SizeBytes are computed by the infra adapter.
+		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return &assets.StagedAsset{
 			LocalPath: dlResult.ResolvedPath,
-			Bytes:     fi.Size(),
+			Bytes:     dlResult.SizeBytes,
 		}, nil
 	})
 	if sfErr != nil {
