@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -54,7 +55,7 @@ func TestErrCapabilityDisabled_NotEqualToOtherSentinels(t *testing.T) {
 		name string
 		sent error
 	}{
-		{"ErrRecommendAdapterNotConfigured", ErrRecommendAdapterNotConfigured},
+		{"ErrRecommendAdapterNotConfigured", wiring.ErrRecommendAdapterNotConfigured},
 		{"ErrStageDriveInsufficientForCompletion", ErrStageDriveInsufficientForCompletion},
 	}
 	for _, o := range others {

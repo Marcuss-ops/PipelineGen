@@ -48,6 +48,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -244,7 +245,7 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 	// handle directly. Underlying *sql.DB is reached via the
 	// embedded `.DB` accessor only for callers (e.g.
 	// clipindexer.NewService) that have not yet been migrated.
-	bundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
+	bundle, err := wiring.BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.Repo)

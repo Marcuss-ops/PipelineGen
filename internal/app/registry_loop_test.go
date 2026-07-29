@@ -44,6 +44,7 @@ import (
 	"testing"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -54,7 +55,7 @@ import (
 func TestRegisterChannelsCapability_NilDB_NoRegister(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zap.NewNop()
-	root := &ComposeRoot{Domains: nil, DB: nil}
+	root := &wiring.ComposeRoot{Domains: nil, DB: nil}
 
 	require.NoError(t, registerChannelsCapability(reg, log, root))
 	require.Empty(t, reg.GetEnabled(),
@@ -66,7 +67,7 @@ func TestRegisterChannelsCapability_NilDB_NoRegister(t *testing.T) {
 func TestRegisterSearchQueriesCapability_NilDB_NoRegister(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zap.NewNop()
-	root := &ComposeRoot{Domains: nil, DB: nil}
+	root := &wiring.ComposeRoot{Domains: nil, DB: nil}
 
 	require.NoError(t, registerSearchQueriesCapability(reg, log, root))
 	require.Empty(t, reg.GetEnabled(),
@@ -91,7 +92,7 @@ func TestRegisterSearchQueriesCapability_NilDB_NoRegister(t *testing.T) {
 func TestRegisterAllCapabilities_DoNotFreezeRegistry(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zap.NewNop()
-	root := &ComposeRoot{Domains: nil, DB: nil}
+	root := &wiring.ComposeRoot{Domains: nil, DB: nil}
 
 	// Zero-value ComposeRoot paths short-circuit all named functions.
 	// Errors on the strict path (e.g., a real Build that fails) are

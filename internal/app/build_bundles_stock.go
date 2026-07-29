@@ -137,9 +137,9 @@ type StockRuntimeDeps struct {
 // created at the composition root so the application layer stays free of
 // internal/infrastructure/drive imports. Field count: 3.
 type StockDeliveryDeps struct {
-	Publisher     delivery.Publisher               // optional (nil → backcompat; finalizer nil → OK)
-	PublisherPort finalization.PublisherPort       // optional (nil → backcompat; constructed from Publisher at composition root)
-	Finalizer     finalization.JobFinalizer        // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
+	Publisher     delivery.Publisher         // optional (nil → backcompat; finalizer nil → OK)
+	PublisherPort finalization.PublisherPort // optional (nil → backcompat; constructed from Publisher at composition root)
+	Finalizer     finalization.JobFinalizer  // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
 }
 
 // stockConcreteDriveReader is the raw interface matched by the concrete
