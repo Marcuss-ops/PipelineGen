@@ -147,11 +147,17 @@ for sf in "${SCENARIO_FILES[@]}"; do
     scenario_rc=0
     scenario_report=""
 
-    if bash "$RUNNER" "$sf" > "$report_file" 2>"${report_file}.err"; then
+    if bash "$RUNNER" "$sf" > "$report_file.raw" 2>"${report_file}.err"; then
         scenario_rc=0
     else
         scenario_rc=$?
     fi
+
+    # Extract JSON from mixed stdout (runner may emit status lines before JSON)
+    sed -n '/^{/,/^}/p' "$report_file.raw" | jq '.' > "$report_file" 2>/dev/null || {
+        cp "$report_file.raw" "$report_file"
+    }
+    rm -f "$report_file.raw"
 
     scenario_report=$(cat "$report_file" 2>/dev/null || echo '{}')
     scenario_status=$(jq -r '.status // "UNKNOWN"' <<<"$scenario_report")

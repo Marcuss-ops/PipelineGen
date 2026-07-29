@@ -323,8 +323,8 @@ run_script_generate() {
     # ── Collect pre-request provider counters ──────────────────────────
     local metrics_url="${METRICS_URL:-http://${SMOKE_API_BASE}/metrics}"
     local artlist_before images_before
-    artlist_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1)
-    images_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1)
+    artlist_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1) || true
+    images_before=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2; found=1} END {if (!found) print "MISSING"}' | tail -1) || true
 
     # ── Dispatch ───────────────────────────────────────────────────────
     echo "  → POST /api/script/generate"
@@ -435,7 +435,7 @@ run_script_generate() {
     expect_images=$(jq -r '.expect.provider_requests_internet_images // -1' "$SCENARIO_FILE")
     if [[ "$expect_artlist" == "0" && "$artlist_before" != "MISSING" ]]; then
         local artlist_after
-        artlist_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2}' | tail -1)
+        artlist_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2}' | tail -1) || true
         if [[ "$artlist_before" != "$artlist_after" ]]; then
             printf '%sFAIL%s artlist provider was called but should be disabled (counter %s → %s)\n' "$RED" "$RESET" "$artlist_before" "$artlist_after"
             assert_fail=1
@@ -445,7 +445,7 @@ run_script_generate() {
     fi
     if [[ "$expect_images" == "0" && "$images_before" != "MISSING" ]]; then
         local images_after
-        images_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2}' | tail -1)
+        images_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2}' | tail -1) || true
         if [[ "$images_before" != "$images_after" ]]; then
             printf '%sFAIL%s internet_images provider was called but should be disabled (counter %s → %s)\n' "$RED" "$RESET" "$images_before" "$images_after"
             assert_fail=1
