@@ -87,9 +87,10 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	stockRenderer := render.NewFFmpegRenderer(ffmpegPath, nil, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
-	// *YTDLPDownloader satisfies ChannelLister (compile-time pin in ports.go).
+	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
+	// application-layer ports (SourceDownloader + ChannelLister).
 	ytdlp := downloader.NewYTDLP(cfg)
-	stockChannelLister := ytdlp
+	stockAdapter := downloader.NewStockAdapter(ytdlp)
 
 	// SourceStager: wire a real yt-dlp Fetch closure so Prepare
 	// downloads source videos via yt-dlp subprocess. The closure
@@ -229,7 +230,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		},
 		Orchestration: StockOrchestrationDeps{
 			Jobs:          root.Jobs.Service,
-			ChannelLister: stockChannelLister,
+			ChannelLister: stockAdapter,
 			FolderCreator: root.Drive.Admin,
 		},
 		Feature: StockFeatureGate{
