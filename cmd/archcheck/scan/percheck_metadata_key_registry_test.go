@@ -106,7 +106,7 @@ func TestScanMetadataKeys_RegisteredKeyPasses(t *testing.T) {
 	})
 	writeFakeCallerFile(t, tempDir, "internal/application/youtube/foo.go",
 		"package youtube\n\n"+
-			"import \"github.com/Marcuss-ops/PipelineGen/internal/domain/asset\"\n\n"+
+			"import \"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset\"\n\n"+
 			"func getVideoID(a *asset.Asset) string { return a.GetMetadataString(\"youtube.video_id\") }\n"+
 			"func getChannelID(a *asset.Asset) string { return a.GetMetadataString(\"youtube.channel_id\") }\n")
 	r := freshReport()
@@ -129,7 +129,7 @@ func TestScanMetadataKeys_UnregisteredKeyFails(t *testing.T) {
 	})
 	writeFakeCallerFile(t, tempDir, "internal/application/foo/foo.go",
 		"package foo\n\n"+
-			"import \"github.com/Marcuss-ops/PipelineGen/internal/domain/asset\"\n\n"+
+			"import \"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset\"\n\n"+
 			"func bad(a *asset.Asset) string { return a.GetMetadataString(\"unregistered.key\") }\n")
 	r := freshReport()
 	ScanMetadataKeys(tempDir, &policy.Policy{}, r)
@@ -169,7 +169,7 @@ func TestScanMetadataKeys_BareKeysResidue(t *testing.T) {
 	})
 	writeFakeCallerFile(t, tempDir, "internal/infrastructure/asset_repo.go",
 		"package infrastructure\n\n"+
-			"import \"github.com/Marcuss-ops/PipelineGen/internal/domain/asset\"\n\n"+
+			"import \"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset\"\n\n"+
 			"func get(a *asset.Asset) string { return a.Metadata[\"drive_file_id\"] }\n"+
 			"func set(a *asset.Asset) { a.Metadata[\"local_path\"] = \"x\" }\n"+
 			"func getPath(a *asset.Asset) string { return a.GetMetadataString(\"quality_score\") }\n")

@@ -118,7 +118,7 @@ func ScanAssetStateMigration157DefaultWire(root string, pol *policy.Policy, r *r
 		// investigate. Surface a violation rather than
 		// silently passing (godlike/07 fail-closed).
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        migration157AssetStatePath,
 			Line:        0,
 			Rule:        migration157DefaultRule,
@@ -178,7 +178,7 @@ func ScanAssetStateMigration157DefaultWire(root string, pol *policy.Policy, r *r
 		// "file missing" — the migration is structurally
 		// incomplete (the wire shape is undefined).
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        migration157AssetStatePath,
 			Line:        0,
 			Rule:        migration157DefaultRule,
@@ -188,7 +188,7 @@ func ScanAssetStateMigration157DefaultWire(root string, pol *policy.Policy, r *r
 		})
 	} else if gotLiteral != wantLiteral {
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        migration157AssetStatePath,
 			Line:        gotLineNo,
 			Rule:        migration157DefaultRule,

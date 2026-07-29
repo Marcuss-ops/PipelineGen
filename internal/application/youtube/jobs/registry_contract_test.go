@@ -53,17 +53,17 @@ func TestYouTubeClipExtract_RoutesToLegacyComplete(t *testing.T) {
 	if reg == nil {
 		t.Fatal("appjobs.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(job.TypeYouTubeClipExtract) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", job.TypeYouTubeClipExtract)
+	if !reg.IsRegistered(appjobs.TypeYouTubeClipExtract) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", appjobs.TypeYouTubeClipExtract)
 	}
-	entry, _ := reg.Get(job.TypeYouTubeClipExtract)
-	if reg.ProducesArtifacts(job.TypeYouTubeClipExtract) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", job.TypeYouTubeClipExtract)
+	entry, _ := reg.Get(appjobs.TypeYouTubeClipExtract)
+	if reg.ProducesArtifacts(appjobs.TypeYouTubeClipExtract) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", appjobs.TypeYouTubeClipExtract)
 	}
-	if got, want := reg.Timeout(job.TypeYouTubeClipExtract), 60*time.Minute; got != want {
+	if got, want := reg.Timeout(appjobs.TypeYouTubeClipExtract), 60*time.Minute; got != want {
 		t.Fatalf("registry.Timeout(%q) = %s; want %s", job.TypeYouTubeClipExtract, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(job.TypeYouTubeClipExtract), 2; got != want {
+	if got, want := reg.DefaultMaxRetries(appjobs.TypeYouTubeClipExtract), 2; got != want {
 		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", job.TypeYouTubeClipExtract, got, want)
 	}
 	if got := entry.Description; got != wantDescription {
@@ -84,7 +84,7 @@ func TestYouTubeClipExtract_NotInProducesArtifactsMap(t *testing.T) {
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
-	if m[job.TypeYouTubeClipExtract] {
-		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", job.TypeYouTubeClipExtract)
+	if m[appjobs.TypeYouTubeClipExtract] {
+		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", appjobs.TypeYouTubeClipExtract)
 	}
 }

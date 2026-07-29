@@ -286,7 +286,7 @@ func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *repor
 		// opened the operator MUST investigate. Surface a
 		// violation rather than silently passing.
 		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/domain/asset",
+			Package:     "internal/kernel/asset",
 			File:        mediaTransformerCanonicalPath,
 			Line:        0,
 			Rule:        mediaTransformerRule,
@@ -384,7 +384,7 @@ func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *repor
 			}
 			forbidden := mediaTransformerForbiddenNames[i]
 			r.Violations = append(r.Violations, report.Violation{
-				Package: "internal/domain/asset",
+				Package: "internal/kernel/asset",
 				File:    mediaTransformerCanonicalPath,
 				Line:    lineNo,
 				Rule:    mediaTransformerRule,

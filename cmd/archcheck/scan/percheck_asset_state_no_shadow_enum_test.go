@@ -60,7 +60,7 @@ func TestScanAssetStateNoShadowEnum_ShadowInOtherFileFails(t *testing.T) {
 	shadowPath := filepath.Join(shadowDir, "shadow_states.go")
 	if err := os.WriteFile(shadowPath, []byte(
 		"package images\n\n"+
-			"import \"github.com/Marcuss-ops/PipelineGen/internal/domain/asset\"\n\n"+
+			"import \"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset\"\n\n"+
 			"// StateAssetShadowOut is a forbidden shadow declaration.\n"+
 			"const StateAssetShadowOut asset.AssetState = \"SHADOW_FAILED_PERMANENT\"\n",
 	), 0o644); err != nil {
@@ -96,7 +96,7 @@ func TestScanAssetStateNoShadowEnum_TestFileExempted(t *testing.T) {
 	testPath := filepath.Join(testDir, "shadow_states_test.go")
 	if err := os.WriteFile(testPath, []byte(
 		"package images\n\n"+
-			"import \"github.com/Marcuss-ops/PipelineGen/internal/domain/asset\"\n\n"+
+			"import \"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset\"\n\n"+
 			"const StateAssetTestStub asset.AssetState = \"TEST_STUB\"\n",
 	), 0o644); err != nil {
 		t.Fatalf("write test shadow file: %v", err)
