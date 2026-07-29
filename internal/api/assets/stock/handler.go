@@ -353,7 +353,8 @@ func isValidURL(u primitives.URL) bool {
 		return false
 	}
 	// file:// scheme: accept for local hermetic stock runs.
-	// Validate the path portion for traversal, null bytes, and backslashes.
+	// Validate the path portion for traversal, null bytes, and backslashes
+	// with inline checks (file paths are absolute so isSafePath can't be used).
 	if strings.HasPrefix(raw, "file://") {
 		filePath := strings.TrimPrefix(raw, "file://")
 		// Null-byte rejection
@@ -364,10 +365,12 @@ func isValidURL(u primitives.URL) bool {
 		if strings.Contains(filePath, "\\") {
 			return false
 		}
-		// Path traversal rejection
-		clean := path.Clean(filePath)
-		if clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
-			return false
+		// Path traversal rejection — check raw string BEFORE path.Clean
+		// because Clean legitimately resolves /../ sequences for absolute paths.
+		for _, part := range strings.Split(filePath, "/") {
+			if part == ".." {
+				return false
+			}
 		}
 		return true
 	}
