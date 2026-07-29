@@ -5,7 +5,14 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 104,
+      "baseline": {
+        "files": 104,
+        "max_loc": 17092
+      },
+      "current": {
+        "files": 96,
+        "max_loc": 14618
+      },
       "target_packages": [
         "cmd/admin/commands",
         "cmd/admin/backfill",
@@ -17,7 +24,14 @@
       "path": "cmd/archcheck/scan",
       "owner": "cmd/archcheck architecture enforcement",
       "deadline": "2026-09-30",
-      "baseline_files": 42,
+      "baseline": {
+        "files": 42,
+        "max_loc": 13718
+      },
+      "current": {
+        "files": 58,
+        "max_loc": 13718
+      },
       "target_packages": [
         "cmd/archcheck/scan/structure",
         "cmd/archcheck/scan/boundaries",
@@ -29,7 +43,14 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
-      "baseline_files": 132,
+      "baseline": {
+        "files": 132,
+        "max_loc": 26637
+      },
+      "current": {
+        "files": 123,
+        "max_loc": 23098
+      },
       "target_packages": [
         "internal/app/workerruntime",
         "internal/app/wiring",
@@ -41,7 +62,14 @@
       "path": "internal/application/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
-      "baseline_files": 52,
+      "baseline": {
+        "files": 52,
+        "max_loc": 11473
+      },
+      "current": {
+        "files": 64,
+        "max_loc": 9396
+      },
       "target_packages": [
         "internal/application/assets/providers/stock/stockpipeline/ingest",
         "internal/application/assets/providers/stock/stockpipeline/finalize",
@@ -54,7 +82,14 @@
       "path": "internal/application/images",
       "owner": "internal/application/images",
       "deadline": "2026-10-15",
-      "baseline_files": 55,
+      "baseline": {
+        "files": 55,
+        "max_loc": 6760
+      },
+      "current": {
+        "files": 57,
+        "max_loc": 6760
+      },
       "target_packages": [
         "internal/application/images/workflow",
         "internal/application/images/generation",
@@ -66,7 +101,14 @@
       "path": "internal/application/jobs",
       "owner": "internal/application/jobs",
       "deadline": "2026-09-15",
-      "baseline_files": 41,
+      "baseline": {
+        "files": 41,
+        "max_loc": 5218
+      },
+      "current": {
+        "files": 41,
+        "max_loc": 5218
+      },
       "target_packages": [
         "internal/application/jobs/queue",
         "internal/application/jobs/worker",
@@ -78,7 +120,14 @@
       "path": "internal/application/voiceover",
       "owner": "internal/application/voiceover",
       "deadline": "2026-10-15",
-      "baseline_files": 41,
+      "baseline": {
+        "files": 41,
+        "max_loc": 8135
+      },
+      "current": {
+        "files": 41,
+        "max_loc": 8135
+      },
       "target_packages": [
         "internal/application/voiceover/workflow",
         "internal/application/voiceover/translation",
@@ -90,7 +139,15 @@
       "path": "internal/domain/asset",
       "owner": "internal/domain/asset",
       "deadline": "2026-10-31",
-      "baseline_files": 45,
+      "baseline": {
+        "files": 45,
+        "max_loc": 4500
+      },
+      "current": {
+        "files": 0,
+        "max_loc": 0
+      },
+      "note": "Migrated to internal/kernel/asset (WAVE-24-ASSET-KERNEL-MIGRATION, completed July 2026)",
       "target_packages": [
         "internal/domain/asset/identity",
         "internal/domain/asset/metadata",
@@ -102,7 +159,14 @@
       "path": "internal/infrastructure/database/sqlite/assets",
       "owner": "internal/infrastructure/database/sqlite/assets",
       "deadline": "2026-09-30",
-      "baseline_files": 63,
+      "baseline": {
+        "files": 63,
+        "max_loc": 9659
+      },
+      "current": {
+        "files": 48,
+        "max_loc": 9659
+      },
       "target_packages": [
         "internal/infrastructure/database/sqlite/assets/clips",
         "internal/infrastructure/database/sqlite/assets/catalog",
