@@ -8,7 +8,6 @@ package clips
 
 import (
 	"context"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"os"
 	"testing"
 
