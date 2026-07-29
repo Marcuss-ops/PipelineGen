@@ -143,7 +143,8 @@ run_preflight() {
         label=$(jq -r ".checks.http_endpoints[$i].label" "$SCENARIO_FILE")
 
         local http_code
-        http_code=$(smoke_curl "$method" "$path" 2>/dev/null)
+        smoke_curl "$method" "$path" >/dev/null
+        http_code="${SMOKE_LAST_HTTP:-0}"
         local check_result="PASS"
         if [[ "$http_code" != "$expect" ]]; then
             check_result="FAIL"
@@ -332,7 +333,8 @@ run_script_generate() {
     dispatch_start=$(date +%s%3N 2>/dev/null || date +%s000)
     export SMOKE_IDEMPOTENCY_KEY="$idem_key"
     local http_code
-    http_code=$(smoke_curl POST "/api/script/generate" --data "$payload" 2>/dev/null)
+    smoke_curl POST "/api/script/generate" --data "$payload" >/dev/null
+    http_code="${SMOKE_LAST_HTTP:-0}"
     unset SMOKE_IDEMPOTENCY_KEY
     dispatch_end=$(date +%s%3N 2>/dev/null || date +%s000)
     dispatch_ms=$(( dispatch_end - dispatch_start ))
