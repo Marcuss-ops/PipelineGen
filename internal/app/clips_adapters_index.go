@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -223,7 +224,7 @@ type clipsOpsPorts struct {
 // buildClipOpsPorts is the canonical SLIM constructor per the user
 // spec literal for PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026). Strict
 // 2-arg surface: clipRepo (canonical clip-side repo port) + jobs
-// (the JobsBundle aggregator, polluted with the 4 cross-domain deps
+// (the wiring.JobsBundle aggregator, polluted with the 4 cross-domain deps
 // per the godlike/06 SSOT pollute-at-the-bundle-stem trade-off). The
 // 5 fields of clipsOpsPorts are constructed inline in one place
 // (this function) so the dead-weight surface stays gone in lockstep.
@@ -232,7 +233,7 @@ type clipsOpsPorts struct {
 // typed-port constructors which are themselves nil-tolerant; any nil
 // dep surfaces as a typed error at first use, never silent-success
 // in production.
-func buildClipOpsPorts(clipRepo clips.ClipRepositoryPort, jobs *JobsBundle) clipsOpsPorts {
+func buildClipOpsPorts(clipRepo clips.ClipRepositoryPort, jobs *wiring.JobsBundle) clipsOpsPorts {
 	return clipsOpsPorts{
 		clipRepo:      clipRepo,
 		voiceoverRepo: newVoiceoverRepoAdapter(jobs.VoiceoverRepo),

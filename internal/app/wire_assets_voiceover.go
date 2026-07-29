@@ -19,6 +19,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover"
@@ -43,7 +44,7 @@ import (
 // per-feature middleware.
 func buildVoiceoverBundle(
 	log *zap.Logger,
-	jobs *JobsBundle,
+	jobs *wiring.JobsBundle,
 ) (*assetvoice.VoiceoverDescriptor, error) {
 	descriptor, err := assetvoice.Build(assetvoice.Dependencies{
 		Jobs:        jobs.Facade,

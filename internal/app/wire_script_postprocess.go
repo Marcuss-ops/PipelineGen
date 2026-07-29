@@ -26,6 +26,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -73,7 +74,7 @@ import (
 // silently skipped (graceful-degradation per spec).
 func registerScriptPostProcessors(
 	ppReg *adapters.PostProcessorRegistry,
-	root *ComposeRoot,
+	root *wiring.ComposeRoot,
 	cfg *config.Config,
 	log *zap.Logger,
 	scriptsRepoAdapter adapters.ScriptRepository,

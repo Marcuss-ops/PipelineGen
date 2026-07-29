@@ -3,6 +3,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
@@ -29,7 +30,7 @@ type buildClipsParams struct {
 	Cfg              *config.Config
 	Log              *zap.Logger
 	Deps             *AssetsModuleDeps
-	Jobs             *JobsBundle
+	Jobs             *wiring.JobsBundle
 	Dispatcher       *outbox.Dispatcher
 	DriveUploader    *driveutil.Uploader
 	AssetRepo        asset.Repository

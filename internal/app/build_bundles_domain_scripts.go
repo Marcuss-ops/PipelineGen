@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -19,7 +20,7 @@ import (
 
 // buildDomainScriptServices constructs the artifact service, image
 // search resolver, and extract-important-clips handler and populates
-// the DomainBundle with them.
+// the wiring.DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the canonical SOLE
 // owner of its composition.
@@ -28,12 +29,12 @@ func buildDomainScriptServices(
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
-	drive *DriveBundle,
-	repos *RepoBundle,
-	search *SearchBundle,
-	process *ProcessBundle,
-	ai *AIBundle,
-	bundle *DomainBundle,
+	drive *wiring.DriveBundle,
+	repos *wiring.RepoBundle,
+	search *wiring.SearchBundle,
+	process *wiring.ProcessBundle,
+	ai *wiring.AIBundle,
+	bundle *wiring.DomainBundle,
 	imageSvc *imgservice.Service,
 	clipWriter *assets.ClipAtomicWriterAdapter,
 ) error {

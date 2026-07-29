@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 	"os"
 
@@ -29,12 +30,12 @@ func WireAssets(
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
 	textTrackRepo asset.TextTrackRepository,
-	jobs *JobsBundle,
+	jobs *wiring.JobsBundle,
 	lifecycle driveutil.FileLifecycle,
 	providerRegistry *providers.Registry,
 	dispatcher *outbox.Dispatcher,
 	deletionSvc *deletion.DeletionService,
-) (*AssetsWiring, error) {
+) (*wiring.AssetsWiring, error) {
 	if deletionSvc == nil {
 		return nil, fmt.Errorf("WireAssets: canonical deletion service is required")
 	}
@@ -172,7 +173,7 @@ func WireAssets(
 	)
 	log.Info("created unified Assets module (thin transport)")
 
-	return &AssetsWiring{
+	return &wiring.AssetsWiring{
 		Module:               assetsRouteMod,
 		DeletionSvc:          deletionSvc,
 		InternalMediaHandler: storageDesc.Handler,
@@ -237,7 +238,7 @@ func buildRegisterBundle(
 	clipEnricher appclips.ClipEnricher,
 	idemHandler gin.HandlerFunc,
 	dispatcher *outbox.Dispatcher,
-	jobs *JobsBundle,
+	jobs *wiring.JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
 	registerSvc := newAssetRegisterService(cfg, log, deps.Core.Repositories.ClipsRepo, textTrackRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
 

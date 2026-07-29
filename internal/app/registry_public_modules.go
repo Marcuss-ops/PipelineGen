@@ -15,6 +15,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 	"path/filepath"
 
@@ -50,7 +51,7 @@ import (
 // (DriveHandler) sharing the same /drive sub-group. The ctor takes
 // driveUploader + reconcileSvc so /drive routes can answer (when
 // either is nil the corresponding handler returns 503).
-func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	// FASE 9 Step 2: use root.Drive.driveUploader directly instead of
 	// constructing a redundant *drive.Uploader from DriveClient.
 	var driveUploaderAdapter *drive.Uploader
@@ -71,7 +72,7 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 // satisfies both interfaces — it implements the canonical domain
 // job.Service (orchestrator) AND the JobStatsReader port (via the
 // runtime type-assertion GetStats helper).
-func registerJobs(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+func registerJobs(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
 	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
 		Service:     root.Jobs.Service,
 		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both kerneljob.Service + appjobs.JobStatsReader
@@ -94,7 +95,7 @@ func registerJobs(registry *module.Registry, log *zap.Logger, root *ComposeRoot)
 // wiring.MediaIngest.Service for upstream service injection.
 //
 // PR8 (June 2026): idemHandler installed on POST /api/media/ingest.
-func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
+func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
 	var ingestSvc *ingest.Service
 	if wiring.MediaIngest != nil {
 		ingestSvc = wiring.MediaIngest.Service
@@ -115,7 +116,7 @@ func registerImages(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 }
 
 // registerScriptHistory wires the /scripts history module.
-func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	if root.Repos == nil || root.Repos.ScriptsRepo == nil {
 		return nil
 	}
@@ -138,7 +139,7 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 }
 
 // registerUtility wires the /utility module.
-func registerUtility(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerUtility(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	if err := tryRegisterModuleStrict(registry, log, module.NewUtilityModule(cfg, log, root.Utility.Utility), WithRegistrationPoint("register.Utility")); err != nil {
 		return fmt.Errorf("wire registry: utility module: %w", err)
 	}
@@ -147,13 +148,13 @@ func registerUtility(registry *module.Registry, log *zap.Logger, cfg *config.Con
 
 // registerRealtime wires the realtime module (clip-search lateral).
 //
-// Wave 15 (June 2026): DomainBundle.RealtimeMatcher is the typed
+// Wave 15 (June 2026): wiring.DomainBundle.RealtimeMatcher is the typed
 // assetsapi.RealtimeMatcher — drop the runtime cast.
 //
 // Note: realtimeEnabled is hardcoded false because the Realtime package
 // was removed in commit d61068b3. The route-module closure still exists
 // for future re-introduction.
-func registerRealtime(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+func registerRealtime(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
 	if root.Domains == nil || root.Domains.RealtimeMatcher == nil {
 		return nil
 	}
@@ -174,7 +175,7 @@ func registerRealtime(registry *module.Registry, log *zap.Logger, root *ComposeR
 // registerChannelsCapability wires the channels capability via
 // channels.Build(deps). Build runs at most once per call; the resulting
 // Descriptor is registered via tryRegisterModuleStrict exactly once.
-func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
 	if root.DB == nil || root.DB.DB == nil {
 		return nil
 	}
@@ -196,7 +197,7 @@ func registerChannelsCapability(registry *module.Registry, log *zap.Logger, root
 // The handler is thin transport; this function owns the
 // *searchqueries.UseCase construction (Wave 14 problem #3 close-out,
 // June 2026) and registers the route module via tryRegisterModuleStrict.
-func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
+func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
 	if root.DB == nil || root.DB.DB == nil {
 		return nil
 	}
@@ -284,7 +285,7 @@ func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.
 // canonical *config.Config as AuthSecurityPort.
 //
 // Step 3 of YouTube Clips Deploy Readiness action plan (July 2026).
-func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	if root.Drive == nil || root.Drive.Publisher == nil {
 		log.Warn("admin module skipped: Drive.Publisher not wired")
 		return nil

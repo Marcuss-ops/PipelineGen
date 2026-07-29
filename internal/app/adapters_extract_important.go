@@ -17,6 +17,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"os"
@@ -202,7 +203,7 @@ func (a *md5HasherAdapter) HashFile(ctx context.Context, path string) (string, e
 // this adapter is a typed-shape conversion (godlike/06 Pattern 0: bridge
 // admin.GetOrCreateFolder(name, parent) → FolderManagerPort.EnsureFolder(parent, segments...)).
 //
-// ComposeRoot-only construction: this adapter is the SOLE caller of
+// wiring.ComposeRoot-only construction: this adapter is the SOLE caller of
 // drive.Admin for the extract-important pipeline; the canonical YouTube
 // pipeline uses a different adapter (NewYouTubePublisherDriveAdapter).
 type adminFolderManagerAdapter struct {

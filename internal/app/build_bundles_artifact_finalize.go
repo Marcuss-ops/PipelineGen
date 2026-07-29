@@ -7,13 +7,13 @@
 // artifact_finalize.Finalizer service. No caller (publisher worker
 // pool, admin tool, test stub) should construct a second instance
 // or call the artifact.Repository Mark* primitives directly — every
-// consumer reaches the typed port via ComposeRoot.Finalizer.
+// consumer reaches the typed port via wiring.ComposeRoot.Finalizer.
 //
 // godlike/06 SSOT: this is the SINGLE canonical wiring of the
 // FASE 3 application-layer finalization step. The composition
 // root (composition.go::NewComposition) calls BuildArtifactFinalizeBundle
 // immediately AFTER BuildStagingBundle because the Finalizer consumes
-// the SAME artifact.Repository instance that StagingBundle.Repository
+// the SAME artifact.Repository instance that wiring.StagingBundle.Repository
 // exposes (no second DB lookup; the typed port is the canonical
 // cursor to the same *artifactstages.Repository concrete).
 //
@@ -32,6 +32,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -44,12 +45,12 @@ import (
 // finalizerService (the typed port that closes the FASE 3 saga's
 // Finalize step by scanning ListByJob + flipping PUBLISHED →
 // SUCCEEDED via the fenced MarkSucceeded primitive, gated on
-// "all REQUIRED are PUBLISHED"). Returns the FinalizerBundle
-// for assignment to ComposeRoot.Finalizer.
+// "all REQUIRED are PUBLISHED"). Returns the wiring.FinalizerBundle
+// for assignment to wiring.ComposeRoot.Finalizer.
 //
 // Dependency surface (intentionally minimal — 2 deps):
 //   - staging.Repository: the canonical artifact.Repository port
-//     exposed on StagingBundle. The Finalizer's read path
+//     exposed on wiring.StagingBundle. The Finalizer's read path
 //     (ListByJob) + write path (MarkSucceeded, fenced-CAS) both
 //     consume this port, so sharing the same instance is a
 //     godlike/06 SSOT requirement (the artifact_stages table has
@@ -68,7 +69,7 @@ import (
 // re-runs as a defense-in-depth). No log is emitted on error
 // path — NewComposition wraps the error and the orchestrator
 // aborts startup.
-func BuildArtifactFinalizeBundle(staging *StagingBundle, log *zap.Logger) (*FinalizerBundle, error) {
+func BuildArtifactFinalizeBundle(staging *wiring.StagingBundle, log *zap.Logger) (*wiring.FinalizerBundle, error) {
 	// Step 1 (godlike/07 fail-fast at construction):
 	// pre-validate the staging bundle dependency. A nil
 	// Repository signals that BuildStagingBundle did NOT run
@@ -95,7 +96,7 @@ func BuildArtifactFinalizeBundle(staging *StagingBundle, log *zap.Logger) (*Fina
 		zap.String("repository_table", "artifact_stages"),
 	)
 
-	return &FinalizerBundle{
+	return &wiring.FinalizerBundle{
 		Finalizer: finalizer,
 	}, nil
 }

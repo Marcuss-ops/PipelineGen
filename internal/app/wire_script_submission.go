@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql"
 	"fmt"
@@ -24,7 +25,7 @@ func (m *sqliteTxManager) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return m.db.BeginTx(ctx, nil)
 }
 
-func buildScriptSubmissionService(root *ComposeRoot, log *zap.Logger) (*opsapp.Service, error) {
+func buildScriptSubmissionService(root *wiring.ComposeRoot, log *zap.Logger) (*opsapp.Service, error) {
 	if root == nil || root.DB == nil || root.Jobs == nil || root.Jobs.Repo == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, fmt.Errorf("script submission: required runtime dependencies are nil")
 	}

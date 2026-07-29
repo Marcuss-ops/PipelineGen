@@ -44,6 +44,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -76,7 +77,7 @@ import (
 //
 //	(a) Registry has the type. Looks up appjobs.Compose().IsRegistered
 //	    for script.generate -- the canonical job-type registry built
-//	    in module_media.go::BuildJobsBundle.
+//	    in module_media.go::wiring.BuildJobsBundle.
 //
 //	(b) Broker has the handler. The handler-registration itself is
 //	    the proof: RegisterJobs just successfully pushed the handler
@@ -99,7 +100,7 @@ import (
 // other composition validators (validateRequiredProcessors,
 // etc.). Tests pin the fail-fast contract in
 // internal/application/scripts/jobs/generation_job_test.go.
-func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
+func validateScriptGenerateWiring(root *wiring.ComposeRoot, log *zap.Logger) error {
 	// (a) Registry has the type. Direct query against the canonical
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
@@ -123,7 +124,7 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
-	//     script.generate. Forward-looking: when JobsBundle
+	//     script.generate. Forward-looking: when wiring.JobsBundle
 	//     exposes a WorkerTypes field, uncomment the check below.
 	//     Until then, the operator must rely on Worker.ExportTypes
 	//     runtime audit.

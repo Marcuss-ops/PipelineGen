@@ -36,6 +36,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -69,7 +70,7 @@ import (
 // after freeze.
 func buildScriptSourceResolvers(
 	cfg *config.Config,
-	root *ComposeRoot,
+	root *wiring.ComposeRoot,
 	log *zap.Logger,
 ) (
 	adapters.NormalizationConfig,

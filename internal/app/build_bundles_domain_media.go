@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"strings"
@@ -38,7 +39,7 @@ import (
 )
 
 // buildDomainMediaServices constructs the YouTube clip pipeline service
-// and populates the DomainBundle with it. Returns intermediate deps
+// and populates the wiring.DomainBundle with it. Returns intermediate deps
 // consumed by other domain sections.
 //
 // godlike/06 SSOT: the YouTube Service and its adapters are the SOLE
@@ -48,14 +49,14 @@ func buildDomainMediaServices(
 	cfg *config.Config,
 	dbs *databases,
 	log *zap.Logger,
-	drive *DriveBundle,
-	repos *RepoBundle,
-	search *SearchBundle,
-	process *ProcessBundle,
-	ai *AIBundle,
-	outbox *OutboxBundle,
+	drive *wiring.DriveBundle,
+	repos *wiring.RepoBundle,
+	search *wiring.SearchBundle,
+	process *wiring.ProcessBundle,
+	ai *wiring.AIBundle,
+	outbox *wiring.OutboxBundle,
 	mutationsDisp mutations.AssetMutationDispatcher,
-	bundle *DomainBundle,
+	bundle *wiring.DomainBundle,
 ) (
 	voMetaWriter semantic.MetadataWriterPort,
 	clipWriter *assets.ClipAtomicWriterAdapter,
@@ -154,9 +155,9 @@ func buildDomainMediaServices(
 	// by checking the API payload and the DB before falling through.
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// TextTrackRepository is now sourced from the canonical
-	// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
+	// wiring.RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
 	// pre-PR local construction is removed so every consumer
-	// (BuildTextTrackBundle, BuildRepoBundle, the Qdrant
+	// (wiring.BuildTextTrackBundle, BuildRepoBundle, the Qdrant
 	// PayloadMapper, the TextTrackResolver here) shares the SAME
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
@@ -169,7 +170,7 @@ func buildDomainMediaServices(
 	//
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// SubtitleFetcherAdapter is ALSO exposed on the
-	// DomainBundle so composition.go can wire it into the
+	// wiring.DomainBundle so composition.go can wire it into the
 	// AcquireService (backfill CLI 5-priority chain —
 	// priorities 3+4: YouTube subtitles). The narrow
 	// texttracks.SubtitlesPort interface is a structural

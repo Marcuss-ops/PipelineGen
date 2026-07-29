@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -22,7 +23,7 @@ import (
 // registerAdminConsoleAPI wires the schema-driven admin console API.
 // It registers entities backed by the existing application services
 // without duplicating business logic.
-func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	if root == nil || root.Repos == nil || root.Repos.Assets == nil {
 		return fmt.Errorf("wire registry: adminconsole-api: asset service not available")
 	}

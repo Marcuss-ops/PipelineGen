@@ -41,6 +41,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -66,7 +67,7 @@ import (
 // Steps NOT enabled are silently skipped (drive-init skipped when
 // root.DriveStart is nil, etc.) so the same helper works for
 // minimal-mode and full-mode server boots.
-func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJobs, log *zap.Logger) ([]StartupStep, error) {
+func buildStartupPlan(cfg *config.Config, root *wiring.ComposeRoot, jobs *backgroundJobs, log *zap.Logger) ([]StartupStep, error) {
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth gate.
 	// This is the FOURTH wire site (BUILD_PROCESS is 1st, BUILD_OUTBOX
 	// is 2nd, BUILD_BUNDLES_QDRANT_GATES validateQdrantIndexer

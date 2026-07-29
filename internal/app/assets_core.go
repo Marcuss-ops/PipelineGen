@@ -9,7 +9,7 @@
 //     repositories, asset.Service, asset tree + index,
 //     mediaProcessor, catalogSync). The bulk of any
 //     Assets-module wire logic consumes these. Held by
-//     ComposeRoot.Repos + ComposeRoot.Search.
+//     wiring.ComposeRoot.Repos + wiring.ComposeRoot.Search.
 //   - Search:      the search sub-system (clipIndexer, mediasearch,
 //     SearchWorkspaceID, SearchFanOut + BackendRegistry).
 //     SearchFanOut + BackendRegistry are stamped by
@@ -28,7 +28,7 @@
 // disturbing the 11 other fields that live in Core.
 //
 // Pass by pointer (`*AssetsModuleDeps`) to keep symmetry with
-// JobsBundle / MediaIngestBundle / StockBundle / ArtlistBundle (all
+// wiring.JobsBundle / MediaIngestBundle / wiring.StockBundle / wiring.ArtlistBundle (all
 // pointer-receiver here in package app).
 //
 // PR4d-chunk2 (June 2026): absorbs the historical AssetsBundle
@@ -42,6 +42,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
@@ -67,9 +68,9 @@ import (
 //
 // The bulk of any Assets-module wire logic (clips handler + register
 // handler + sfx handler + diag handler) consumes Core. Held by
-// ComposeRoot.Repos (clipsRepo + voiceoverRepo + imageRepo + Assets)
-// + ComposeRoot.Search (AssetTreeService + AssetIndexService)
-// + ComposeRoot.Process (MediaProcessor) + ComposeRoot.Sync
+// wiring.ComposeRoot.Repos (clipsRepo + voiceoverRepo + imageRepo + Assets)
+// + wiring.ComposeRoot.Search (AssetTreeService + AssetIndexService)
+// + wiring.ComposeRoot.Process (MediaProcessor) + wiring.ComposeRoot.Sync
 // (CatalogSync).
 //
 // PR-CORE-DEPS-SPLIT (July 2026): split into RepositoryDeps +
@@ -96,7 +97,7 @@ type ServiceDeps struct {
 	MediaProcessor     domainasset.Processor
 	CatalogSyncService *catalogsync.Service
 	// P0.1 (June 2026): the concrete artifact blob service wired
-	// from BuildDomainBundle → DomainBundle → CoreDeps.
+	// from BuildDomainBundle → wiring.DomainBundle → CoreDeps.
 	ArtifactService *artifacts.Service
 }
 
@@ -148,13 +149,13 @@ type DeliveryDeps struct {
 // (2 fields).
 //
 // The idempotency layer is a singleton (one cleanup goroutine per
-// app, owned by ComposeRoot.IdempotencyMiddleware) shared by clips +
+// app, owned by wiring.ComposeRoot.IdempotencyMiddleware) shared by clips +
 // register endpoints inside the Assets module + by MediaIngest +
 // YouTubeClip in their respective bundles — that's why the Store +
 // HandlerFunc travel together.
 //
 // PR 8 (June 2026): the cleanup goroutine is owned by
-// ComposeRoot.IdempotencyMiddleware (single instance per app), NOT
+// wiring.ComposeRoot.IdempotencyMiddleware (single instance per app), NOT
 // constructed inside WireAssets — keeps the registry-level lifecycle
 // simple and avoids double-ticker leaks.
 type BackgroundDeps struct {
@@ -176,7 +177,7 @@ type BackgroundDeps struct {
 // fields.
 //
 // The pointer-pass convention (`*AssetsModuleDeps`) keeps symmetry
-// with JobsBundle / MediaIngestBundle / StockBundle / ArtlistBundle
+// with wiring.JobsBundle / MediaIngestBundle / wiring.StockBundle / wiring.ArtlistBundle
 // in the same composition-root package.
 type AssetsModuleDeps struct {
 	Core       CoreDeps

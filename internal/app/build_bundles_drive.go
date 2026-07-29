@@ -11,14 +11,15 @@
 // Cross-references:
 //   - internal/app/build_drive_startup.go: houses startDriveBackgroundFolders
 //     (Drive folder pre-creation, AC validation, local storage dirs).
-//     Captured as the IOpaqueStartFunc closure returned from BuildDriveBundle.
+//     Captured as the wiring.IOpaqueStartFunc closure returned from BuildDriveBundle.
 //   - internal/app/build_bundles_process.go: builds BuildProcessBundle +
 //     BuildOutboxBundle (Qdrant-derivable media + canonical outbox).
-//   - internal/app/composition.go: defines *DriveBundle struct + calls
+//   - internal/app/composition.go: defines *wiring.DriveBundle struct + calls
 //     BuildDriveBundle from NewComposition.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 	"fmt"
@@ -34,10 +35,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// configOnlyDestinations builds *DriveDestinations from config only (no runtime resolution).
+// configOnlyDestinations builds *wiring.DriveDestinations from config only (no runtime resolution).
 // Moved from composition.go (PR-GODOBJ-7 composition target, July 2026).
-func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
-	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
+func configOnlyDestinations(cfg *config.Config) *wiring.DriveDestinations {
+	return &wiring.DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
 }
 
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
@@ -46,7 +47,7 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // but no longer drives a side-effecting pre-creation goroutine — that
 // path was REMOVED in Wave A Item 15 (June 2026).
 //
-// PR9-A (June 2026): BuildDriveBundle returns an IOpaqueStartFunc closure
+// PR9-A (June 2026): BuildDriveBundle returns an wiring.IOpaqueStartFunc closure
 // that defers side-effecting initialisation (Drive folder validation,
 // storage directory creation) to the lifecycle. The bundle itself is
 // fully populated on return.
@@ -72,7 +73,7 @@ func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
 // (cfg.Drive.StrictStartupValidation=false) bypasses the gate; the
 // handler-level preflight at BatchRegisterFromYouTube still
 // fail-closed 503 at request time per godlike/07 defense-in-depth.
-func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*DriveBundle, IOpaqueStartFunc, error) {
+func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*wiring.DriveBundle, wiring.IOpaqueStartFunc, error) {
 	// PR-DRIVE-AVAILABILITY-GATE: boot-time fail-closed gate. Surfaces a
 	// typed error with an actionable fix hint when the operator has
 	// strict-mode on but credentials.json + token.json are missing
@@ -118,7 +119,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// PG-011-residual-cleanup (June 2026): the previous
 	// resolveRuntimeDestinations function (a no-op alias for
 	// configOnlyDestinations — both pre-existing branches converged
-	// on the same cfg-derived *DriveDestinations) was deleted;
+	// on the same cfg-derived *wiring.DriveDestinations) was deleted;
 	// dests is now derived once, unconditionally. driveClient
 	// remains a dependency for driveUploader construction, the
 	// mediaStore block below, and the startClosure's folder
@@ -230,7 +231,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		lifecycle = drive.NewFileLifecycleAdapter(driveUploader.Service, log)
 	}
 
-	return &DriveBundle{
+	return &wiring.DriveBundle{
 		// Canonical Pattern 0 ports (FASE 9 P0.1 / DRIVE-005).
 		Admin:  admin,
 		Reader: reader,
@@ -248,7 +249,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
 		driveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
-		// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): DriveBundle.MediaStore
+		// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): wiring.DriveBundle.MediaStore
 		// field was REMOVED. DestResolver field stays on the struct
 		// (nil-tolerant for legacy non-image callers like voiceover/artlist
 		// that still consume asset.Resolver through the bundle) but is
@@ -317,7 +318,7 @@ func startDriveBackgroundFolders(
 	cfg *config.Config,
 	driveClient *gdrive.Service,
 	driveUploader *drive.Uploader,
-	dests *DriveDestinations,
+	dests *wiring.DriveDestinations,
 	log *zap.Logger,
 ) error {
 	// P1.3: registry-driven startup root validation. Replaces the

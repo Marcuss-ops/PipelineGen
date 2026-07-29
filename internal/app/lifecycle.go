@@ -1,7 +1,7 @@
-// Package app — background lifecycle (PR4: takes *ComposeRoot).
+// Package app — background lifecycle (PR4: takes *wiring.ComposeRoot).
 //
 // Before PR4 this file took the legacy `*services` struct. After PR4 it
-// takes *ComposeRoot (the per-bundle decomposition). The body is the same
+// takes *wiring.ComposeRoot (the per-bundle decomposition). The body is the same
 // `startBackgroundJobs(ctx, cfg, dbs, root, log, mode) (*backgroundJobs)`
 // pattern as before, but reads from root.Domains, root.Repos, root.Process,
 // root.Outbox, root.Jobs, root.Domains.RealtimeService, etc.
@@ -45,7 +45,7 @@
 // PR-QDRANT-FINAL-DECISION (2026-07-04, decision: live, forward-cite
 // PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION): Qdrant is the canonical
 // data-path vector store (Wave 30 / QDRANT-003 + QDRANT-005). The data-path
-// is owned by composition.go::ProcessBundle (8 typed Qdrant fields:
+// is owned by composition.go::wiring.ProcessBundle (8 typed Qdrant fields:
 // CollectionManager, QdrantDeleter, QdrantRuntime, VectorSvc,
 // LocatorCleaner, QdrantClient, QdrantHealthProbe, QdrantSearcher) +
 // build_process_qdrant.go; the qdrant-collection EnsureSchema step is a
@@ -55,7 +55,7 @@
 // steps listed above were removed earlier (godlike/07 no-fake-availability:
 // they no longer represented the canonical background-cleanup topology);
 // Wave 30 BACKFILL will re-introduce them with the canonical scope pinned
-// to the new ProcessBundle / wire_services.go wiring.
+// to the new wiring.ProcessBundle / wire_services.go wiring.
 //
 // The returned *backgroundJobs handle is consumed by shutdown.go for
 // graceful teardown (channel-monitor.Stop, drive-sync-scheduler.Stop).
@@ -69,6 +69,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"errors"
 
@@ -161,9 +162,9 @@ type backgroundJobs struct {
 //     clip-dedup + vlm-autotag) + deletion-reconciler + orphan-sweeper
 //     (see lifecycle_maintenance.go)
 //  4. Job runner (REQUIRED, always last) — see lifecycle_job_runner.go
-func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, root *ComposeRoot, log *zap.Logger, mode string) *backgroundJobs {
+func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, root *wiring.ComposeRoot, log *zap.Logger, mode string) *backgroundJobs {
 	if root == nil {
-		log.Warn("startBackgroundJobs called with nil ComposeRoot — skipping")
+		log.Warn("startBackgroundJobs called with nil wiring.ComposeRoot — skipping")
 		return &backgroundJobs{}
 	}
 

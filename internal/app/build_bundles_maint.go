@@ -8,6 +8,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -20,7 +21,7 @@ import (
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle) (*MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle) (*wiring.MaintBundle, error) {
 	_ = ctx
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
 	// REMOVED from the canonical ctor — the field has been retired
@@ -59,7 +60,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		return nil, fmt.Errorf("compose: register maintenance job handler (BuildMaintBundle): %w", err)
 	}
 
-	return &MaintBundle{
+	return &wiring.MaintBundle{
 		MaintenanceSvc: maintenanceSvc,
 		DeletionSvc:    deletionSvc,
 	}, nil

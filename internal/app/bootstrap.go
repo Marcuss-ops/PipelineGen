@@ -7,6 +7,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -44,7 +45,7 @@ type HealthProber interface {
 // AppDeps holds the composition-root output for the server runtime.
 // Surface nests into 4 purpose-grouped sub-bundles (Handlers, Runtime,
 // Health, Images) so the struct stays ≤ 8 fields. Concrete infra types
-// (Drive, Qdrant, JobBroker) live behind *ComposeRoot in
+// (Drive, Qdrant, JobBroker) live behind *wiring.ComposeRoot in
 // wire_services.go; the API runtime only sees AppDeps.
 //
 // Each sub-bundle holds:

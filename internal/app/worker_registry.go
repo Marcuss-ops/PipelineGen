@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
@@ -17,7 +18,7 @@ import (
 //     source of truth, no manual copies.
 //
 // Returns worker.ErrNoHandlers if the filtered registry is empty.
-func BuildProfileWorkerRegistry(root *ComposeRoot, allowedTypes []string) (*worker.Registry, []string, error) {
+func BuildProfileWorkerRegistry(root *wiring.ComposeRoot, allowedTypes []string) (*worker.Registry, []string, error) {
 	if root == nil || root.Jobs == nil || root.Jobs.Dispatcher == nil {
 		return nil, nil, fmt.Errorf("compose root or jobs dispatcher is nil")
 	}
@@ -90,7 +91,7 @@ func BuildProfileWorkerRegistry(root *ComposeRoot, allowedTypes []string) (*work
 // Returns worker.ErrNoHandlers if the Dispatcher has zero registered
 // handlers, preventing the remote worker from starting with an empty
 // registry that would silently claim every job.
-func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) {
+func BuildWorkerRegistry(root *wiring.ComposeRoot) (*worker.Registry, []string, error) {
 	if root == nil || root.Jobs == nil || root.Jobs.Dispatcher == nil {
 		return nil, nil, fmt.Errorf("compose root or jobs dispatcher is nil")
 	}

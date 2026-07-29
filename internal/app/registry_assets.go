@@ -2,6 +2,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -13,7 +14,7 @@ import (
 // adapter, and application service has already been constructed by
 // NewComposition. In particular, deletion and maintenance are owned by
 // BuildMaintBundle; this phase never reconstructs or mutates either service.
-func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
+func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
 	if root.Maint == nil || root.Maint.DeletionSvc == nil {
 		return fmt.Errorf("wire registry: assets: canonical deletion service is not constructed")
 	}

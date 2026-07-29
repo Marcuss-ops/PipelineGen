@@ -107,6 +107,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -168,12 +169,12 @@ var (
 //     surface that callers (server bootstrap, tests) read.
 type RegistryWiring struct {
 	Registry      *module.Registry
-	ArtlistSvc    *ArtlistWiring
-	YouTubeClip   *YouTubeClipWiring
+	ArtlistSvc    *wiring.ArtlistWiring
+	YouTubeClip   *wiring.YouTubeClipWiring
 	MediaIngest   *MediaIngestWiring
-	Assets        *AssetsWiring
-	FullImages    *FullImagesWiring
-	StockPipeline *StockPipelineWiring
+	Assets        *wiring.AssetsWiring
+	FullImages    *wiring.FullImagesWiring
+	StockPipeline *wiring.StockPipelineWiring
 
 	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
 	// These handlers are constructed by WireRegistry but NOT registered
@@ -211,7 +212,7 @@ type RegistryWiring struct {
 // now a 7-step orchestrator. Each step delegates to a dedicated helper
 // file in the same package and returns responsibility for cross-step
 // state via the unexported RegistryWiring fields (see type doc above).
-func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*RegistryWiring, error) {
+func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot) (*RegistryWiring, error) {
 	if root == nil {
 		return nil, fmt.Errorf("wire registry: compose root is nil")
 	}
@@ -368,7 +369,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 // bindings + feedback surface. The resolver is backed by the Brain
 // (canonical 9-level cascade); the binding service is backed by
 // SQLite + outbox dispatcher.
-func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
+func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
 	if wiring.searchFanOut == nil {
 		log.Warn("registerMediaMemory: searchFanOut not wired; skipping (Level 3-9 cascade unavailable)")
 		return nil

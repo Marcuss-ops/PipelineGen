@@ -1,13 +1,14 @@
-// Package app — graceful shutdown (PR4: takes *ComposeRoot).
+// Package app — graceful shutdown (PR4: takes *wiring.ComposeRoot).
 //
 // Before PR4 this file took *services + *backgroundJobs. After PR4 it takes
-// *ComposeRoot + the backgroundJobs handle returned from
+// *wiring.ComposeRoot + the backgroundJobs handle returned from
 // lifecycle.go::startBackgroundJobs. The body is structurally identical
 // (LIFO orchestration, 100ms settle, goroutine Stop with timeout, DB close)
 // but consumes the new types.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ import (
 // buildCleanup constructs a cleanup function that stops background jobs,
 // waits for graceful shutdown, and closes the database.
 //
-// PR4a: Takes the assembled *ComposeRoot + the backgroundJobs handle +
+// PR4a: Takes the assembled *wiring.ComposeRoot + the backgroundJobs handle +
 // cancel + log. The signature replaces the previous
 // `buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger)`.
 //
@@ -38,7 +39,7 @@ import (
 // via RealClock). context.Background() is intentional — the parent
 // ctx was just cancelled in step 1, so there is no parent ctx to
 // honor.
-func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
+func buildCleanup(dbs *databases, root *wiring.ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) wiring.CleanupFunc {
 	return func() {
 		// 1. Cancel parent context to signal all background jobs to stop
 		if cancel != nil {

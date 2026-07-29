@@ -60,6 +60,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"database/sql" // ← positive test anchor; pinned by var _ compile-pin below
 	"fmt"
@@ -111,7 +112,7 @@ type CreatorRoot = CreatorRuntime
 //     the contract surface (future call sites can rely on the field
 //     name) while deferring implementation drift to a later wave.
 //
-//   - Log — required by the canonical app.CleanupFunc contract for
+//   - Log — required by the canonical app.wiring.CleanupFunc contract for
 //     diagnostic-on-cleanup-failure (workspace removal BestEffort).
 type CreatorRuntime struct {
 	ScriptEngine *usecase.Engine
@@ -130,7 +131,7 @@ type CreatorRuntime struct {
 
 	// Workspace is the temporary job workspace. The Creator does not
 	// share a filesystem with the Sender; workspace cleanup is owned
-	// by the CleanupFunc returned by BuildCreatorRuntime.
+	// by the wiring.CleanupFunc returned by BuildCreatorRuntime.
 	Workspace *worker.Workspace
 
 	// AssetClient is the HTTP client for talking to the Sender broker.
@@ -148,8 +149,8 @@ type CreatorRuntime struct {
 }
 
 // BuildCreatorRuntime constructs the Creator runtime graph from
-// config. Returns (*CreatorRuntime, CleanupFunc, error) on success;
-// the caller is responsible for invoking the CleanupFunc at shutdown
+// config. Returns (*CreatorRuntime, wiring.CleanupFunc, error) on success;
+// the caller is responsible for invoking the wiring.CleanupFunc at shutdown
 // (typically via defer in workerruntime/run.go).
 //
 // The factory enforces the canonical Creator-side contract (see
@@ -171,7 +172,7 @@ type CreatorRuntime struct {
 // Fail-closed precondition: cfg and log MUST be non-nil. A nil
 // argument produces a typed error and (nil, nil, err), NOT a panic.
 // This makes the canonical composition graph's optionality explicit.
-func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, CleanupFunc, error) {
+func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, wiring.CleanupFunc, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("creator runtime: config is nil")
 	}

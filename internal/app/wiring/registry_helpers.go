@@ -61,7 +61,7 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 
 // ── Media processor initialisation ──────────────────────────────────────────
 
-// initMediaProcessor wires the media processor. PG-011: db is now
+// InitMediaProcessor wires the media processor. PG-011: db is now
 // *storage.SQLiteDB (the typed canonical handle) instead of raw *sql.DB;
 // the artifacts.NewClipsRegistry constructor still takes *sql.DB so we
 // deref via db.DB at the call site — this keeps the upstream contract
@@ -90,7 +90,7 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 // bypass is closed. The driveup import is no longer needed in this
 // file (Wave A Item 15, June 2026) — the ensureStyleDriveFolders
 // helper that used it has been removed.
-func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher) asset.Processor {
+func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.NewFromConfig(cfg)
@@ -100,7 +100,7 @@ func initMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo ass
 
 // ── Sync target building ────────────────────────────────────────────────────
 
-func buildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) []catalogsync.Target {
+func BuildSyncTargets(cfg *config.Config, clipsOnlyRepo *assets.ClipsRepository, clipsRepo *assets.ClipsRepository, artlistRepo *assets.ClipsRepository) []catalogsync.Target {
 	return []catalogsync.Target{
 		{Name: "stock", RootFolderID: cfg.Drive.StockFolder(), Source: "stock", MediaType: "stock", Repo: clipsRepo},
 		{Name: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Source: "youtube", MediaType: "clip", Repo: clipsOnlyRepo},

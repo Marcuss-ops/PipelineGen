@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"net/http"
@@ -47,7 +48,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*RepoBundle, error) {
+func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*wiring.RepoBundle, error) {
 	_ = ctx
 	_ = cfg
 	assetsStore := sqassets.NewAssetStoreSQLite(dbs.dualPool.Writer, log)
@@ -63,15 +64,15 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
 	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
 	// the video pipeline + the AcquireService backfill CLI. It MUST
-	// be wired at the RepoBundle composition root (BuildRepoBundle)
-	// so every consumer (BuildTextTrackBundle, BuildDomainBundle, the
+	// be wired at the wiring.RepoBundle composition root (BuildRepoBundle)
+	// so every consumer (wiring.BuildTextTrackBundle, BuildDomainBundle, the
 	// AcquireService wiring in composition.go, the Qdrant
 	// PayloadMapper in buildQdrantDeps) sees the SAME non-nil
 	// dependency. The pre-PR scattered construction in
 	// build_bundles_domain_media.go::buildDomainMediaServices and
 	// build_process_qdrant.go::buildQdrantDeps is now removed — both
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
-	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
+	// fail-closed: wiring.BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
 	textTrackRepo, err := texttracks.NewTextTrackRepository(dbs.dualPool.Writer, log)
 	if err != nil {
@@ -81,7 +82,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	if err != nil {
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
 	}
-	return &RepoBundle{
+	return &wiring.RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, SQRepo: sqRepo, IdempotencyStore: idempotencyStore,
@@ -89,7 +90,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	}, nil
 }
 
-func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle) (*SearchBundle, error) {
+func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle) (*wiring.SearchBundle, error) {
 	_ = ctx
 	_ = cfg
 	assetIndexRepo := assetindex.NewRepository(dbs.dualPool.Writer)
@@ -110,7 +111,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	assetResolver := assetindex.NewResolver(assetIndexService, &assetindex.ResolverConfig{
 		ClipsRepos: clipsRepos, ImageRepo: repos.ImageRepo, VoiceoverRepo: repos.VoiceoverRepo,
 	}, log)
-	return &SearchBundle{
+	return &wiring.SearchBundle{
 		AssetIndexService: assetIndexService,
 		AssetTreeService:  assetTreeService,
 		AssetResolver:     assetResolver,
@@ -118,7 +119,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *wiring.UtilityBundle {
 	svc := buildHealthService(cfg, db)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithTools(systemhealth.NewToolsChecker()).
@@ -196,7 +197,7 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 		))
 	}
 
-	return &UtilityBundle{
+	return &wiring.UtilityBundle{
 		Utility: transport.NewUtilityHandler(), HealthService: svc,
 		ReadyChecker: rc,
 	}

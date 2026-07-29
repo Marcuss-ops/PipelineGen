@@ -42,6 +42,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -70,7 +71,7 @@ type FullImagesBundle struct {
 
 // WireFullImages constructs the FullImages module wiring (handler +
 // module) from the canonical FullImagesBundle. Returns a typed
-// *FullImagesWiring on success; nil + typed error on any of the 2
+// *wiring.FullImagesWiring on success; nil + typed error on any of the 2
 // mandatory gates (godlike/07 fail-closed-at-composition).
 //
 // PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
@@ -84,7 +85,7 @@ type FullImagesBundle struct {
 // which fullimages is a subset) — matches the artlist pattern at
 // WireArtlist's api.NewRouteModule call site. This lets operators
 // disable the fullimages route at boot without code changes.
-func WireFullImages(bundle *FullImagesBundle, cfg *config.Config, log *zap.Logger) (*FullImagesWiring, error) {
+func WireFullImages(bundle *FullImagesBundle, cfg *config.Config, log *zap.Logger) (*wiring.FullImagesWiring, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("WireFullImages: cfg is nil")
 	}
@@ -145,7 +146,7 @@ func WireFullImages(bundle *FullImagesBundle, cfg *config.Config, log *zap.Logge
 		zap.Bool("godlike_07_fail_closed", true),
 	)
 
-	return &FullImagesWiring{
+	return &wiring.FullImagesWiring{
 		Module: mod,
 	}, nil
 }

@@ -4,6 +4,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -25,7 +26,7 @@ import (
 //
 // Registration, validation and freeze happen later and exclusively inside
 // registerCapabilities. No object is completed through setters here.
-func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) (PreparedCapabilities, error) {
+func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, wiring *RegistryWiring) (PreparedCapabilities, error) {
 	prepared := PreparedCapabilities{}
 
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {

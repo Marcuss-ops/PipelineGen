@@ -25,6 +25,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 
@@ -56,7 +57,7 @@ import (
 // in their canonical positions after ClipBindings.
 func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
-	root *ComposeRoot,
+	root *wiring.ComposeRoot,
 	cfg *config.Config,
 	log *zap.Logger,
 ) error {

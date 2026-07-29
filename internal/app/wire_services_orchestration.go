@@ -4,7 +4,7 @@
 // Split rationale, see wire_services.go header.
 //
 // This file owns the RUNTIME ORCHESTRATION stage: the chain that runs
-// AFTER composition has produced the *ComposeRoot:
+// AFTER composition has produced the *wiring.ComposeRoot:
 //
 //  1. Set the log sink (request-middleware observability) — logsink +
 //     middleware.SetLogSink.
@@ -39,6 +39,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"net/http"
@@ -65,7 +66,7 @@ import (
 
 // WireServices initializes the full server composition root.
 //
-// PR4d-final flow (June 2026): initCompositionMinimal builds the *ComposeRoot
+// PR4d-final flow (June 2026): initCompositionMinimal builds the *wiring.ComposeRoot
 // via NewComposition, starts background jobs (the StartupStep plan —
 // including the job runner — is captured in jobs.startupPlan), builds
 // cleanup. WireRegistry takes ONLY root + ctx — there is no *CoreDeps
@@ -139,7 +140,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// Reuse the broker constructed in initCompositionMinimalWithContext
 	// (must be set before startBackgroundJobs so the job-runner sees
 	// a non-nil CompletionPort). The local broker satisfies both
-	// appjobs.CompletionPort (stored in JobsBundle) and appjobs.Broker
+	// appjobs.CompletionPort (stored in wiring.JobsBundle) and appjobs.Broker
 	// (needed here for the full worker-handler surface).
 	lb, ok := root.Jobs.Broker.(*localbroker.Broker)
 	if !ok {
@@ -239,7 +240,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	// relying solely on DB+Drive. Constructed only when Qdrant is
 	// enabled; nil-safe when disabled.
 	//
-	// PR 4 typed ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
+	// PR 4 typed wiring.ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
 	// (was `any` pre-PR4). The concrete type satisfies the probe
 	// contract via the compile-time assertion in
 	// internal/infrastructure/qdrant/health.go (`_ interface{ Probe(...) error }

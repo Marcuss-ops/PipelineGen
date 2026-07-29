@@ -65,6 +65,7 @@
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"net/http"
@@ -111,7 +112,7 @@ import (
 // ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
 // depended on sectionRegen + cacheEviction (RegenerateSection +
 // EvictCache) are RETIRED in lockstep.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot, registry *module.Registry) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -165,26 +166,26 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 	}
 
-	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
+	// ── Wire wiring.ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
 	// Constructs the VoiceoverGenerator adapter from the TTS audio processor
 	// when available. Used by the script generation runner's Stage 4
 	// (GENERATING_VOICEOVERS).
 	if root.Domains != nil && root.Domains.AudioProcessor != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		root.AI.ScriptVoiceoverGenerator = NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
-		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired",
+		root.AI.wiring.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
+		log.Info("wireScriptFlow: wiring.ScriptVoiceoverGenerator wired",
 			zap.String("output_dir", voPath))
 	} else {
-		log.Warn("wireScriptFlow: ScriptVoiceoverGenerator NOT wired (no audio processor) — voiceover stage will be skipped")
+		log.Warn("wireScriptFlow: wiring.ScriptVoiceoverGenerator NOT wired (no audio processor) — voiceover stage will be skipped")
 	}
 
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
 	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
 
-	// Wire the source registry into the SceneTextGenerator so the
+	// Wire the source registry into the wiring.SceneTextGenerator so the
 	// durable pipeline can resolve clip/catalog/search/curate sources.
-	if root.AI != nil && root.AI.SceneTextGenerator != nil {
-		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
+	if root.AI != nil && root.AI.wiring.SceneTextGenerator != nil {
+		root.AI.wiring.SceneTextGenerator.SetSourceRegistry(sourceReg)
 	}
 
 	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──
@@ -355,7 +356,7 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 // Moved from registry_script.go (Phase 5 consolidation, June 2026).
 // Calls wireScriptFlow for the canonical use-case delegation and
 // registerScriptHistory for the script-history route module.
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	if err := wireScriptFlow(ctx, cfg, log, root, registry); err != nil {
 		return err
 	}

@@ -32,10 +32,11 @@
 // search.SearchFanOut — the telemetry decorator that wraps the
 // aggregator and exposes the user-spec Option{Hits, Latencies}
 // Stats surface. All callers consume SearchFanOut via the
-// AssetsWiring struct.
+// wiring.AssetsWiring struct.
 package app
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 	"fmt"
 	"strings"
