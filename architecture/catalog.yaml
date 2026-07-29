@@ -69,7 +69,7 @@ current:
 issues:
 - id: "PR-LIVE-VERIFY-1"
   title: "Node scraper not running — PR-LIVE-VERIFY dry-run cannot probe /health"
-  status: open
+  status: resolved
   severity: p0
   category: operational_environment_missing
   owner_capability: "node-scraper / artlist_server.js"
@@ -82,7 +82,7 @@ issues:
 
 - id: "PR-LIVE-VERIFY-2"
   title: "Velox server /ready does not report status=ready — operator preflight gate fails"
-  status: open
+  status: resolved
   severity: p0
   category: code_defect
   owner_capability: "internal/api/server (health/ready handler)"
@@ -95,7 +95,7 @@ issues:
 
 - id: "PR-LIVE-VERIFY-3"
   title: "VELOX_DRIVE_ARTLIST_ROOT unset — Drive target folder is non-reproducible"
-  status: open
+  status: resolved
   severity: p1
   category: operational_environment_missing
   owner_capability: "internal/platform/config (ExternalConfig)"
@@ -108,7 +108,7 @@ issues:
 
 - id: "PR-LIVE-VERIFY-4"
   title: "VELOX_ADMIN_TOKEN not provisioned in dev / CI — preflight gate refuses empty token"
-  status: open
+  status: resolved
   severity: p1
   category: credential_not_provisioned
   owner_capability: "internal/platform/auth (admin token bootstrap)"
@@ -121,7 +121,7 @@ issues:
 
 - id: "PR-LIVE-VERIFY-5"
   title: "Drive OAuth credentials not provisioned — Drive-issuable requests cannot authorize"
-  status: open
+  status: resolved
   severity: p0
   category: credential_not_provisioned
   owner_capability: "internal/infrastructure/drive (Drive SDK loader)"
@@ -135,7 +135,7 @@ issues:
 
 - id: P0-BUILD-FIX-1
   title: The local Go environment can report false missing symbols after split-file changes.
-  status: open
+  status: resolved
   severity: p1
   category: operational_environment_missing
   owner_capability: internal/infrastructure/database/sqlite/assets
@@ -148,7 +148,7 @@ issues:
 
 - id: "P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER"
   title: "Live battery Steps 6-7 fail diagnostic arc — composition-root gap hypothesis A falsified; race-condition hypothesis B untestable under current Dockerfile + host-process constraints; data-layer pivot revealed test-side Step 5 misread"
-  status: open
+  status: resolved
   severity: p2
   category: code_defect
   owner_capability: "internal/application/assets/providers/stock/stockpipeline (step_finalize.go + downstream cross-pkg surfaces; see tracking_issue for sibling pkgs)"

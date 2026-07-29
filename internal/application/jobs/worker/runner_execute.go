@@ -9,10 +9,10 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	// domainjob is aliased because runLease binds the local variable
+	// kerneljob is aliased because runLease binds the local variable
 	// `job := lease.Job`; using the bare package name would shadow it.
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // runLease is the main job execution pipeline. Called from the Run
@@ -129,7 +129,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	// a typed-nil *RemoteArtifactManifest satisfies uploaded != nil
 	// correctly, unlike an interface-typed any which would treat a
 	// typed-nil pointer as non-nil.
-	var uploaded *domainjob.RemoteArtifactManifest
+	var uploaded *kerneljob.RemoteArtifactManifest
 	if r.registry.ProducesArtifacts(lease.Job.Type) {
 		var upErr error
 		uploaded, upErr = r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
