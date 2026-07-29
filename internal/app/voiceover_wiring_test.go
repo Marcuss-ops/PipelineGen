@@ -32,8 +32,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

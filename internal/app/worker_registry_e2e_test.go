@@ -26,11 +26,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // stubAssetClient is a no-op worker.AssetClient used by the W1

@@ -28,8 +28,8 @@
 package clips
 
 import (
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"errors"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"strings"
 	"testing"
 

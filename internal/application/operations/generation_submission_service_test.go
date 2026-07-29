@@ -27,11 +27,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // schemasFASE2 is the inline mirror of migrations/sqlite/092

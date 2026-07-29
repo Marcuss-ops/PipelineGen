@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"net/http"
-	"os"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"testing"
 
