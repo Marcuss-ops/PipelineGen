@@ -172,7 +172,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// (GENERATING_VOICEOVERS).
 	if root.Domains != nil && root.Domains.AudioProcessor != nil {
 		voPath := cfg.Storage.VoiceoversPath()
-		root.AI.wiring.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
+		root.AI.ScriptVoiceoverGenerator = wiring.NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
 		log.Info("wireScriptFlow: wiring.ScriptVoiceoverGenerator wired",
 			zap.String("output_dir", voPath))
 	} else {
@@ -184,8 +184,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Wire the source registry into the wiring.SceneTextGenerator so the
 	// durable pipeline can resolve clip/catalog/search/curate sources.
-	if root.AI != nil && root.AI.wiring.SceneTextGenerator != nil {
-		root.AI.wiring.SceneTextGenerator.SetSourceRegistry(sourceReg)
+	if root.AI != nil && root.AI.SceneTextGenerator != nil {
+		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
 	}
 
 	// ── Pre-compute metadata model (used by post-processor + AI bundle) ──

@@ -138,9 +138,9 @@ func registerAIBackedProcessors(
 		if root.Repos != nil && root.Repos.ClipsRepo != nil {
 			clipSvc.RealtimeSvc = &sqliteRealtimeSearchAdapter{repo: root.Repos.ClipsRepo}
 		}
-		if root.Drive != nil && root.Drive.driveUploader != nil {
+		if root.Drive != nil && root.Drive.DriveUploader != nil {
 			clipSvc.DriveSvc = &driveCheckServiceAdapter{
-				up: root.Drive.driveUploader,
+				up: root.Drive.DriveUploader,
 			}
 		}
 		if root.Jobs != nil && root.Jobs.Service != nil {

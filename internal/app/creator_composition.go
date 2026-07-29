@@ -3,7 +3,7 @@
 // InitCreatorComposition builds a minimal wiring.ComposeRoot-like graph for the
 // Creator worker profile. Unlike InitWorkerComposition, this path:
 //
-//   - Does NOT open databases (no SQLite, no migrations).
+//   - Does NOT open wiring.Databases (no SQLite, no migrations).
 //   - Does NOT construct Drive, Qdrant, Repos, or the full wiring.ComposeRoot.
 //   - Builds ONLY the services the Creator needs: Ollama client → script
 //     engine → script.generate handler + voiceover.generate_item handler.

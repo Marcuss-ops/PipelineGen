@@ -30,19 +30,19 @@ import (
 // the dispatcher is captured at construction time. Composition-root
 // pre-rejection lives here so a nil outbox dispatcher fails the bundle
 // build with an explicit error instead of racing the late-bind sequence.
-func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, drive *wiring.DriveBundle, outbox *wiring.OutboxBundle) (*wiring.SyncBundle, error) {
+func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, drive *wiring.DriveBundle, outbox *wiring.OutboxBundle) (*wiring.SyncBundle, error) {
 	_ = ctx
 	_ = cfg
 	_ = dbs
 	_ = repos
-	syncTargets := buildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
+	syncTargets := wiring.BuildSyncTargets(cfg, repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo)
 
 	// PR-D composition-root pre-rejection is relaxed for the no-Drive
 	// test path: when Drive is disabled the sync bundle still builds
 	// with a nil-service reader so the bootstrap tests can complete.
 	// The catalogsync service itself remains fail-closed if it is ever
 	// invoked without a real Drive client.
-	reader := drive.driveUploader
+	reader := drive.DriveUploader
 	if reader == nil {
 		reader = &driveutil.Uploader{Log: log}
 		log.Warn("BuildSyncBundle: drive reader missing; using nil-service placeholder for disabled-drive bootstrap")

@@ -7,7 +7,7 @@
 // dedicated helper hosts so that:
 //
 //   - build_media_processor.go owns ONLY wireMediaProcessor (canonical
-//     mutations.AssetMutationDispatcher adapter + initMediaProcessor
+//     mutations.AssetMutationDispatcher adapter + wiring.InitMediaProcessor
 //     FFmpeg-backed wiring) + newVLMClient (cfg.VLM → *vlm.Client).
 //   - build_qdrant_runtime.go owns ONLY initQdrantProcessSubsystems
 //     (Qdrant runtime → wiring.ProcessBundle mapping via named returns) +
@@ -80,7 +80,7 @@ import (
 // PR 8 (June 2026, codex/qdrant-app-writers-fail-closed):
 // BuildProcessBundle gains `outbox *wiring.OutboxBundle` + `qd *wiring.QdrantDeps` as
 // the last 2 positional args. MediaProcessor is now constructed via
-// wireMediaProcessor (which delegates to initMediaProcessor for FFmpeg
+// wireMediaProcessor (which delegates to wiring.InitMediaProcessor for FFmpeg
 // wiring). Composition graph is now a strict DAG:
 //
 //	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
@@ -97,7 +97,7 @@ import (
 func BuildProcessBundle(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *databases,
+	dbs *wiring.Databases,
 	log *zap.Logger,
 	repos *wiring.RepoBundle,
 	publisher delivery.Publisher,
@@ -120,7 +120,7 @@ func BuildProcessBundle(
 	collectionMgr, vectorSvc, qdrantClient, qdrantHealthProbe, locatorCleaner, qdrantSearcher := initQdrantProcessSubsystems(qd, cfg, log)
 
 	return &wiring.ProcessBundle{
-		wiring.ProcessQdrantBundle: wiring.ProcessQdrantBundle{
+		ProcessQdrantBundle: wiring.ProcessQdrantBundle{
 			CollectionManager: collectionMgr,
 			QdrantDeleter:     qd.QdrantDeleter,
 			QdrantRuntime:     qd.Runtime, // PR 4: first-class facade exposed at wiring.ProcessBundle level
@@ -171,7 +171,7 @@ func initQdrantProcessSubsystems(
 	log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
 	return
 }
-func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, repos *wiring.RepoBundle, log *zap.Logger) (*wiring.QdrantDeps, error) {
+func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, repos *wiring.RepoBundle, log *zap.Logger) (*wiring.QdrantDeps, error) {
 	_ = ctx
 
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): canonical
@@ -198,8 +198,8 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 		PythonBin:             cfg.ClipIndexer.PythonBin,
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
 		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
-		DBPath:                dbs.main.Path(),
-	}, dbs.main, dbs.main.Path(), log)
+		DBPath:                dbs.Main.Path(),
+	}, dbs.Main, dbs.Main.Path(), log)
 
 	var runtime *qdrant.QdrantRuntime
 	if cfg.Qdrant.Enabled {
@@ -210,7 +210,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 				APIKey:  cfg.Qdrant.APIKey,
 				Timeout: cfg.Qdrant.Timeout,
 			},
-			DB:     dbs.dualPool.Writer,
+			DB:     dbs.DualPool.Writer,
 			Logger: log,
 		})
 		if rerr != nil {
@@ -220,7 +220,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 		// Wire the canonical language registry into the PayloadMapper so
 		// youtubeStrategy can filter TextTracks by the configured
 		// language capabilities instead of a second slice.
-		if langsCSV, csvErr := buildMultilingualLanguageCSV(activeMultilingualConfig(cfg), nil); csvErr == nil {
+		if langsCSV, csvErr := wiring.BuildMultilingualLanguageCSV(wiring.ActiveMultilingualConfig(cfg), nil); csvErr == nil {
 			runtime.Mapper.SetIndexLanguages(langsCSV)
 		} else {
 			return nil, fmt.Errorf("buildQdrantDeps: index languages: %w", csvErr)

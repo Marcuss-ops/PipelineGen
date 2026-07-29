@@ -19,7 +19,7 @@ import (
 // deps (mutations dispatcher) and the bundle assembly.
 //
 // Requires outbox.Dispatcher (injected via wiring.OutboxBundle, last arg).
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle) (*wiring.DomainBundle, error) {
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle) (*wiring.DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	if outbox != nil && outbox.Dispatcher != nil {

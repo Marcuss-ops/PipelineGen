@@ -71,11 +71,11 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
-	require.NoError(t, err, "initDatabases")
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
+	require.NoError(t, err, "wiring.InitDatabases")
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -170,11 +170,11 @@ func TestComposition_NilObligatory_BuildRepoBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -202,11 +202,11 @@ func TestComposition_NilObligatory_BuildSearchBundle(t *testing.T) {
 	cfg := minimalConfig(dataDir)
 	log := zaptest.NewLogger(t)
 
-	dbs, err := initDatabases(context.Background(), cfg, log)
+	dbs, err := wiring.InitDatabases(context.Background(), cfg, log)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if dbs != nil && dbs.main != nil {
-			_ = dbs.main.Close()
+		if dbs != nil && dbs.Main != nil {
+			_ = dbs.Main.Close()
 		}
 	})
 
@@ -334,7 +334,7 @@ func TestComposition_FreezeOrdering_BuildSequence(t *testing.T) {
 // godlike/07 ordering history (the reason this test exists):
 //   - Push 3.1b (July 2026) placed BuildStagingBundle LAST in
 //     NewComposition because the staging bundle had "minimal deps
-//     (only dbs.main.DB + cfg + log), so reordering [earlier] is
+//     (only dbs.Main.DB + cfg + log), so reordering [earlier] is
 //     fail-safe — no risk of breaking the existing 12-bundle
 //     aggregation." That comment is the forward-pointer footgun
 //     this test exists to disarm.

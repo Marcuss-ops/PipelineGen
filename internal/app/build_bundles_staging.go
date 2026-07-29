@@ -12,7 +12,7 @@
 // godlike/06 SSOT: this is the SINGLE canonical wiring of the
 // FASE 3 application-layer staging step. The composition root
 // (composition.go::NewComposition) calls BuildStagingBundle in
-// dependency order — it depends ONLY on dbs.main.DB (for the
+// dependency order — it depends ONLY on dbs.Main.DB (for the
 // artifact_stages SQLite handle) + cfg.Storage.StagingPath() (for
 // the canonical workspace dir) + log — so it can be placed at the
 // end of NewComposition, after wiring.BuildTextTrackBundle, without
@@ -47,10 +47,10 @@ import (
 // for assignment to wiring.ComposeRoot.Staging.
 //
 // Dependency surface (intentionally minimal — only 3 deps):
-//   - dbs.main.DB: the *sql.DB handle the artifact_stages Repository
+//   - dbs.Main.DB: the *sql.DB handle the artifact_stages Repository
 //     uses for all 8 methods (Insert, GetByID, ListByJob,
 //     ListByState, MarkPublished, MarkSucceeded, MarkFailedPermanent,
-//     IncrementAttemptCount). dbs.main is the same handle every
+//     IncrementAttemptCount). dbs.Main is the same handle every
 //     other repository in the composition root uses (jobs, assets,
 //     voiceover, scripts, etc.) — co-location on the same handle
 //     preserves the canonical "one DB per deployment" SSOT.
@@ -62,22 +62,22 @@ import (
 //     only.
 //   - log: *zap.Logger for the boot-time wiring log line.
 //
-// Returns error on (a) nil dbs.main.DB (composition-time
+// Returns error on (a) nil dbs.Main.DB (composition-time
 // misconfiguration) or (b) staging.NewStoreService rejection
 // (empty workspace dir — should never trigger after
 // StorageConfig.StagingPath()'s default-resolution but
 // fail-closed at the boundary anyway).
-func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*wiring.StagingBundle, error) {
+func BuildStagingBundle(dbs *wiring.Databases, cfg *config.Config, log *zap.Logger) (*wiring.StagingBundle, error) {
 	// Step 1: construct the artifact_stages SQLite Repository.
 	// artifactstages.NewRepository is the canonical concrete
 	// (internal/infrastructure/database/sqlite/artifact_stages).
 	// A nil *sql.DB surfaces as a wrapped error from the
 	// SQLite driver on the first call; we pre-validate here to
 	// fail loud at boot, not mid-job.
-	if dbs == nil || dbs.dualPool == nil || dbs.dualPool.Writer == nil {
-		return nil, fmt.Errorf("build staging: dbs.dualPool.Writer is nil (composition root failed to construct the DualPool before BuildStagingBundle)")
+	if dbs == nil || dbs.DualPool == nil || dbs.DualPool.Writer == nil {
+		return nil, fmt.Errorf("build staging: dbs.DualPool.Writer is nil (composition root failed to construct the DualPool before BuildStagingBundle)")
 	}
-	repo := artifactstages.NewRepository(dbs.dualPool.Writer)
+	repo := artifactstages.NewRepository(dbs.DualPool.Writer)
 	// Conformance with artifact.Repository is pinned at the
 	// wiring.StagingBundle.Repository field type + the canonical anchor
 	// at internal/infrastructure/database/sqlite/artifact_stages/repository.go:51

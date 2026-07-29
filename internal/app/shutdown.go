@@ -24,7 +24,7 @@ import (
 //
 // PR4a: Takes the assembled *wiring.ComposeRoot + the backgroundJobs handle +
 // cancel + log. The signature replaces the previous
-// `buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger)`.
+// `buildCleanup(dbs *wiring.Databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger)`.
 //
 // Orchestration order (LIFO):
 //  1. cancel() — signals all goroutines
@@ -39,7 +39,7 @@ import (
 // via RealClock). context.Background() is intentional — the parent
 // ctx was just cancelled in step 1, so there is no parent ctx to
 // honor.
-func buildCleanup(dbs *databases, root *wiring.ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) wiring.CleanupFunc {
+func buildCleanup(dbs *wiring.Databases, root *wiring.ComposeRoot, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) wiring.CleanupFunc {
 	return func() {
 		// 1. Cancel parent context to signal all background jobs to stop
 		if cancel != nil {
@@ -118,8 +118,8 @@ func buildCleanup(dbs *databases, root *wiring.ComposeRoot, jobs *backgroundJobs
 		}
 
 		// 5. Close database connection
-		if dbs.main != nil {
-			if err := dbs.main.Close(); err != nil {
+		if dbs.Main != nil {
+			if err := dbs.Main.Close(); err != nil {
 				log.Error("Failed to close main database", zap.Error(err))
 			}
 		}

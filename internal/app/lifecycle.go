@@ -162,7 +162,7 @@ type backgroundJobs struct {
 //     clip-dedup + vlm-autotag) + deletion-reconciler + orphan-sweeper
 //     (see lifecycle_maintenance.go)
 //  4. Job runner (REQUIRED, always last) — see lifecycle_job_runner.go
-func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, root *wiring.ComposeRoot, log *zap.Logger, mode string) *backgroundJobs {
+func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, root *wiring.ComposeRoot, log *zap.Logger, mode string) *backgroundJobs {
 	if root == nil {
 		log.Warn("startBackgroundJobs called with nil wiring.ComposeRoot — skipping")
 		return &backgroundJobs{}

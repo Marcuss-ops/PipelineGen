@@ -42,7 +42,6 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"

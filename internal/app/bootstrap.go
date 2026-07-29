@@ -7,7 +7,6 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"context"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"

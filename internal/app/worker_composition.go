@@ -25,15 +25,15 @@ func InitWorkerComposition(cfg *config.Config, log *zap.Logger) (*wiring.Compose
 
 	ctx := context.Background()
 
-	dbs, err := initDatabases(ctx, cfg, log)
+	dbs, err := wiring.InitDatabases(ctx, cfg, log)
 	if err != nil {
-		return nil, nil, fmt.Errorf("init databases: %w", err)
+		return nil, nil, fmt.Errorf("init wiring.Databases: %w", err)
 	}
 	cleanup := func() {
 		dbs.Close()
 	}
 
-	if err := runAllMigrations(dbs, log); err != nil {
+	if err := wiring.RunAllMigrations(dbs, log); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("run migrations: %w", err)
 	}

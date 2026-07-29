@@ -120,7 +120,7 @@ func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *imagesrep
 // drops the previously-threaded *wiring.OutboxBundle arg (it was never read
 // inside the function body) — the caller still constructs mutationsDisp
 // from outbox.Dispatcher, so the Site-1 wiring is unchanged.
-func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *wiring.RepoBundle, search *wiring.SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
+func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *wiring.Databases, driveUploader *driveutil.Uploader, publisher delivery.Publisher, repos *wiring.RepoBundle, search *wiring.SearchBundle, mutationsDisp mutations.AssetMutationDispatcher) *ingest.Service {
 	if driveUploader == nil {
 		return nil
 	}
@@ -134,10 +134,10 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)
-	clipRegistry := artifacts.NewClipsRegistry(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
-	stockRegistry := artifacts.NewClipsRegistry(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
-	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	clipRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
+	stockRegistry := artifacts.NewClipsRegistry(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
+	stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.DualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	downloader := downloader.NewMediaDownloader(90 * time.Second)
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy
 	// `driveUploader.Admin()` arg is REMOVED from the canonical

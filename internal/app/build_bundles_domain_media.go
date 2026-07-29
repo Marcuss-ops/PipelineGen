@@ -47,7 +47,7 @@ import (
 func buildDomainMediaServices(
 	ctx context.Context,
 	cfg *config.Config,
-	dbs *databases,
+	dbs *wiring.Databases,
 	log *zap.Logger,
 	drive *wiring.DriveBundle,
 	repos *wiring.RepoBundle,
@@ -111,8 +111,8 @@ func buildDomainMediaServices(
 	// acquisition chain consumes this list as the PreferredLanguages
 	// fan-out order and as the SubtitleFetcherAdapter --sub-langs CSV
 	// (yt-dlp probes them top-to-bottom).
-	mlCfg := activeMultilingualConfig(cfg)
-	subtitleLanguagesCSV, err := buildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
+	mlCfg := wiring.ActiveMultilingualConfig(cfg)
+	subtitleLanguagesCSV, err := wiring.BuildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
 		return spec.TranslateClips
 	})
 	if err != nil {
@@ -129,8 +129,8 @@ func buildDomainMediaServices(
 		false,
 	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
-	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.dualPool.Writer, outbox.EventsRepo, log)
-	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.dualPool.Writer, outbox.EventsRepo, log)
+	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
+	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
@@ -246,7 +246,7 @@ func buildDomainMediaServices(
 		AssetDestResolver: drive.DestResolver,
 		LifecycleService: NewLifecycleFromDeps(&AssetLifecycleDeps{
 			Registry: artifacts.NewClipsRegistry(
-				dbs.dualPool.Writer,
+				dbs.DualPool.Writer,
 				repos.Assets.Repository(),
 				repos.Assets,
 				repos.Assets.LocationRepository(),
@@ -254,7 +254,7 @@ func buildDomainMediaServices(
 				mutationsDisp,
 			),
 			Publisher:   drive.Publisher,
-			DriveReader: drive.driveUploader,
+			DriveReader: drive.DriveUploader,
 			AssetIndex:  search.AssetIndexService,
 		}, log),
 		MediaProcessor: process.MediaProcessor,

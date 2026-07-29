@@ -38,7 +38,7 @@ import (
 // configOnlyDestinations builds *wiring.DriveDestinations from config only (no runtime resolution).
 // Moved from composition.go (PR-GODOBJ-7 composition target, July 2026).
 func configOnlyDestinations(cfg *config.Config) *wiring.DriveDestinations {
-	return &wiring.DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder()}
+	return &wiring.DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, ImagesFolderID: cfg.Drive.ImagesFolder()}
 }
 
 // BuildDriveBundle constructs the Drive adapters + MediaStore + DestResolver.
@@ -73,7 +73,7 @@ func configOnlyDestinations(cfg *config.Config) *wiring.DriveDestinations {
 // (cfg.Drive.StrictStartupValidation=false) bypasses the gate; the
 // handler-level preflight at BatchRegisterFromYouTube still
 // fail-closed 503 at request time per godlike/07 defense-in-depth.
-func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*wiring.DriveBundle, wiring.IOpaqueStartFunc, error) {
+func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.DriveBundle, wiring.IOpaqueStartFunc, error) {
 	// PR-DRIVE-AVAILABILITY-GATE: boot-time fail-closed gate. Surfaces a
 	// typed error with an actionable fix hint when the operator has
 	// strict-mode on but credentials.json + token.json are missing
@@ -166,7 +166,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// folder IDs before making Drive API calls. Nil-tolerant: when
 		// the catalog table doesn't exist yet (fresh DB), the adapter
 		// returns nil and SetCatalogLookup becomes a no-op.
-		catalogRepo := sqlitedelivery.NewRepository(dbs.dualPool.Writer)
+		catalogRepo := sqlitedelivery.NewRepository(dbs.DualPool.Writer)
 		catalog := drive.NewCatalogFolderLookup(catalogRepo)
 		pub.SetCatalogLookup(catalog)
 		if writer, ok := catalog.(drive.CatalogFolderWriter); ok {
@@ -247,7 +247,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// canonical Drive surface on the bundle per godlike/06 SSOT
 		// (one owner per fact). Deprecation record:
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
-		driveUploader: driveUploader, // unexported; for internal wiring within package app
+		DriveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
 		// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): wiring.DriveBundle.MediaStore
 		// field was REMOVED. DestResolver field stays on the struct
