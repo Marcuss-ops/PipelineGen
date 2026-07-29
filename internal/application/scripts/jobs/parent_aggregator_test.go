@@ -54,7 +54,7 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
