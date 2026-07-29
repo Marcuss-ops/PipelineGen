@@ -1,0 +1,16 @@
+{
+  "youtube_url": "https://www.youtube.com/watch?v=2JFBX65Tsnc",
+  "expected_video_id": "2JFBX65Tsnc",
+  "drive_folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
+  "segment": {
+    "start": "00:05",
+    "end": "00:10",
+    "start_sec": 5,
+    "end_sec": 10,
+    "name": "One Piece - Ace finding Ruffy's crew",
+    "summary": "one piece clip talking about ace finding ruffy's crew"
+  },
+  "expected_asset_id": "yt_2JFBX65Tsnc_5_10_v1",
+  "expected_filename_pattern": "yt_2JFBX65Tsnc_5_10_%v1",
+  "policy_version": "v1"
+}

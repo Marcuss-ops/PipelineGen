@@ -28,7 +28,7 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
 
-PAYLOAD_FILE="${PAYLOAD_FILE:-$DIR/pacquiao_broner_script_test.json}"
+PAYLOAD_FILE="${PAYLOAD_FILE:-$DIR/../fixtures/script-generation/pacquiao-broner.json}"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     sed -n '2,24p' "$0"
