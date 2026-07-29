@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"net/http"
 
@@ -21,7 +20,7 @@ import (
 
 // repoForSource resolves a clip source to its canonical repository.
 // All clip-type sources share the same concrete repo in production.
-func (oh *OpsHandler) repoForSource(source string) *assets.ClipsRepository {
+func (oh *OpsHandler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if oh.clipsRepo == nil {
 		return nil
 	}

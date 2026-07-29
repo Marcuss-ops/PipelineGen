@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
@@ -107,7 +108,7 @@ func (sh *SearchHandler) GetClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := artifacts.VoiceoverRecordToClip(rec)
+		clip := voiceoverDTOToClip(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -204,7 +205,7 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, voiceoverDTOToClip(rec))
 		}
 	} else if sourceLower == "images" {
 		if sh.imagesRepo == nil {
@@ -289,4 +290,42 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 		"total":  total,
 		"clips":  allClips,
 	})
+}
+
+// voiceoverDTOToClip converts a ClipVoiceoverRecordDTO to an *asset.Asset.
+// Replacement for artifacts.VoiceoverRecordToClip when the source is a
+// ClipVoiceoverRecordDTO (from the VoiceoverRepositoryPort) instead of the
+// concrete *assets.Record.
+func voiceoverDTOToClip(rec *appclips.ClipVoiceoverRecordDTO) *asset.Asset {
+	if rec == nil {
+		return nil
+	}
+	name := rec.Filename
+	if name == "" {
+		name = rec.TextPreview
+		if len(name) > 50 {
+			name = name[:50]
+		}
+	}
+	createdAt, _ := time.Parse(time.RFC3339, rec.CreatedAtRFC)
+	updatedAt, _ := time.Parse(time.RFC3339, rec.UpdatedAtRFC)
+	clip := &asset.Asset{
+		ID:          rec.ID,
+		Name:        name,
+		Filename:    rec.Filename,
+		Source:      "voiceover",
+		MediaType:   "audio",
+		SearchTerms: []string{rec.TextPreview},
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
+	}
+	clip.SetFolderID(rec.FolderID)
+	clip.SetFolderPath(rec.FolderPath)
+	clip.SetDriveLink(rec.DriveLink)
+	clip.SetDriveFileID(rec.DriveFileID)
+	clip.SetDownloadLink(rec.DownloadLink)
+	clip.SetFileHash(rec.FileHash)
+	clip.SetLocalPath(rec.LocalPath)
+	clip.SetMetadataJSON(rec.Metadata)
+	return clip
 }

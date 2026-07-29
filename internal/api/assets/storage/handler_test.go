@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Fake job service for thin-transport test ────────────────────────

@@ -5,7 +5,6 @@ package clips
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -74,7 +73,7 @@ func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, 
 	return NewHandler(d, idempotencyMiddleware), nil
 }
 
-func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
+func (h *Handler) repoForSource(source string) appclips.ClipRepositoryPort {
 	if h.search == nil {
 		return nil
 	}

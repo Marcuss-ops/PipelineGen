@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Compile-time pin (godlike/06 SSOT discipline): the test

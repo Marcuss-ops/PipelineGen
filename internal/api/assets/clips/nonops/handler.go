@@ -24,8 +24,6 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
@@ -80,7 +78,7 @@ type Deps struct {
 	// EnrichUC powers EnrichMedia + EnrichAndIndexClip + ReindexClip (enrichNeeded branch).
 	EnrichUC *appclips.EnrichUseCase
 	// ClipIndexer powers ReindexClip (clipIndexer.IsEnabled() gate) + BatchReindex.
-	ClipIndexer *clipindexer.Service
+	ClipIndexer appclips.ClipIndexerPort
 	// JobsSvc powers EnrichMedia + ReindexClip (enqueue) + BatchReindex (enqueue) +
 	// RegisterJobHandlers (job handler registration).
 	JobsSvc kerneljob.Service
@@ -91,7 +89,7 @@ type Deps struct {
 	// (a Go method-value bound to the orchestrator *Handler so the
 	// lookup chains into the Search sub-handler without coupling
 	// nonops to it directly). Required by ReindexClip.
-	RepoForSource func(string) *assets.ClipsRepository
+	RepoForSource func(string) appclips.ClipRepositoryPort
 	// Log is the structured logger. nil-tolerated via zap.NewNop().
 	Log *zap.Logger
 }
@@ -103,10 +101,10 @@ type NonOpsHandler struct {
 	bulkTagsUC       *appclips.BulkTagsUseCase
 	reprocessUC      *appclips.ReprocessUseCase
 	enrichUC         *appclips.EnrichUseCase
-	clipIndexer      *clipindexer.Service
+	clipIndexer      appclips.ClipIndexerPort
 	jobsSvc          kerneljob.Service
 	bulkUploadWorker *appclips.BulkUploadWorker
-	repoForSource    func(string) *assets.ClipsRepository
+	repoForSource    func(string) appclips.ClipRepositoryPort
 	log              *zap.Logger
 }
 

@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
