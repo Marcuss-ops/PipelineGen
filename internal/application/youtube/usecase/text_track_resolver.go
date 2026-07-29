@@ -30,10 +30,10 @@
 //     NO handler may re-implement priorities 3-5 inline
 //     (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a, July 2026).
 //   - The TextHash + SourceVersion SHA-256 formula lives in
-//     internal/domain/asset/text_track_hashes.go. The orchestrator
+//     internal/kernel/asset/text_track_hashes.go. The orchestrator
 //     calls the helpers and NEVER re-implements the formula inline.
 //   - The canonical BCP-47 normalization rules live in
-//     internal/domain/asset/bcp47.go. The orchestrator calls
+//     internal/kernel/asset/bcp47.go. The orchestrator calls
 //     asset.Normalize and NEVER re-derives the rules inline
 //     (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026).
 //   - The 6-file split delegates raw dataflow to leaf files but keeps
@@ -71,7 +71,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TextTrackResolver bundles the DB lookup, YouTube subtitle + Whisper

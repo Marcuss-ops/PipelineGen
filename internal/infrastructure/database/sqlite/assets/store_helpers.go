@@ -1,7 +1,7 @@
 // Package assets — canonical SQL primitives for media_assets queries.
 //
 // Wave A / Blocco 1 / PR 1 Asset SSOT (June 2026): moved from
-// internal/domain/asset/store_helpers.go to enforce the layering
+// internal/kernel/asset/store_helpers.go to enforce the layering
 // rule that domain must not own SQL primitives. As an INFRA package
 // (internal/infrastructure/...) this file may freely import
 // database/sql — the AGENTS.md Pattern 8 ban targets internal/api/**
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -35,7 +35,7 @@ import (
 // file references `MediaAssetColumns` (from clips_repository.go of the
 // same package) directly — same-package visibility, no import.
 //
-// Domain mirror: `internal/domain/asset/store_helpers.go::localMediaAssetColumns`
+// Domain mirror: `internal/kernel/asset/store_helpers.go::localMediaAssetColumns`
 // is a SEPARATE verbatim duplicate kept so the domain file compiles
 // without a `database/sql` import. Phase 4 unification should lift
 // this duplication by exporting an `assets.MediaAssetColumns` getter

@@ -81,7 +81,7 @@ var imageAssetSkipPathPrefixes = []string{
 // Currently only consumed by Rule A (image_asset_literal_ban).
 // Lives in shared to keep the allow-list surface co-located with
 // the other path-pinned constants.
-const imageAssetCanonicalOwnerPath = "internal/domain/asset/canonical_metadata.go"
+const imageAssetCanonicalOwnerPath = "internal/kernel/asset/canonical_metadata.go"
 
 // imageAssetCanonicalBuilderPath is the repo-relative allowlisted
 // path for the canonical SOLE builder helper that converts the

@@ -3,7 +3,7 @@ package artlist
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // stubTranscriber is a minimal Transcriber test double that returns a

@@ -11,7 +11,7 @@ import (
 
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	similarity "github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 

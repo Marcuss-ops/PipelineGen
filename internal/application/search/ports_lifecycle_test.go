@@ -51,8 +51,8 @@
 // fail because the slice now contains the forbidden state.
 //
 // Related contracts locked by sibling tests:
-//   - LifecycleState.IsValidTransition — internal/domain/asset/lifecycle_state_test.go
-//   - LifecycleState.Valid — internal/domain/asset/lifecycle_test.go
+//   - LifecycleState.IsValidTransition — internal/kernel/asset/lifecycle_state_test.go
+//   - LifecycleState.Valid — internal/kernel/asset/lifecycle_test.go
 package search
 
 import (
@@ -60,7 +60,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TestSearchableLifecycleStates_AcceptsACTIVE pins the canonical
@@ -107,7 +107,7 @@ func TestSearchableLifecycleStates_RejectsDELETED(t *testing.T) {
 // canonical rejection of the soft-delete-pending state. The
 // DELETE_REQUESTED → DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING
 // → DELETED state machine is owned by the lifecycle subsystem
-// (internal/domain/asset/lifecycle_state.go); the search
+// (internal/kernel/asset/lifecycle_state.go); the search
 // capability MUST NOT surface any row in the middle of that
 // chain — clients must see a stable "gone" experience during
 // the async delete pipeline.

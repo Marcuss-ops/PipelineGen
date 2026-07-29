@@ -24,14 +24,14 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // fetchDatabaseTrackRaw performs the canonical READY-only lookup
 // against the given TextTrackRepository. The orchestrator plumbs
 // the (already-normalized) language code so this leaf does NOT
 // re-derive the BCP-47 rules (godlike/06 SSOT — those rules live
-// in internal/domain/asset/bcp47.go).
+// in internal/kernel/asset/bcp47.go).
 //
 // Returns (nil, nil, nil) when the repo is nil (orchestrator keeps
 // its priority-2 fail-closed path). When the repo returns a row,

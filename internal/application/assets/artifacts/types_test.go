@@ -17,7 +17,7 @@ import "testing"
 // not the alias identity.
 //
 // Mirrors the discipline already established in
-// internal/domain/asset/asset_test.go (TestStateConstantsMatchAssets,
+// internal/kernel/asset/asset_test.go (TestStateConstantsMatchAssets,
 // TestProcessingConstantsMatchAssets, TestFunctionRebindingsMatchAssets,
 // TestLocationKindMatches). The same pattern (table-driven any-comparison
 // + sub-tests) is used here for the canonical artifacts.Status values.

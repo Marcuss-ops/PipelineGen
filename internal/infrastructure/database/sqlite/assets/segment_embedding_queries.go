@@ -1,5 +1,5 @@
 // Package assets — segment_embeddings SQL queries (Wave A: moved
-// from internal/domain/asset/segment_embeddings.go).
+// from internal/kernel/asset/segment_embeddings.go).
 //
 // The SegmentEmbeddingRecord type itself stays in the domain
 // package (domain/asset) because callers in application/ refer to
@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // DeleteSegmentEmbeddingsByScriptKey removes all cached segments

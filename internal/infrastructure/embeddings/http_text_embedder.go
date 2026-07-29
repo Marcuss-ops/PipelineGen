@@ -24,7 +24,7 @@ import (
 	"net/http"
 	"time"
 
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // HTTPTextEmbedder calls a Python embedding sidecar server's /embed

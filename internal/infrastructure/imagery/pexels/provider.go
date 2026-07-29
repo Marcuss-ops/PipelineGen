@@ -35,7 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ProviderName is the canonical canonical name registered in

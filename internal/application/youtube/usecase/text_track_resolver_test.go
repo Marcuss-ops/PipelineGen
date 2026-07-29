@@ -35,8 +35,8 @@ package usecase_test
 //
 // Drift from any of the above MUST FAIL the test, not regress silently.
 // All assertions use the asset.TextTrack field shape (TextHash,
-// SourceVersion) defined in internal/domain/asset/text_track.go and
-// the canonical hash factory in internal/domain/asset/text_track_hashes.go.
+// SourceVersion) defined in internal/kernel/asset/text_track.go and
+// the canonical hash factory in internal/kernel/asset/text_track_hashes.go.
 
 import (
 	"context"
@@ -48,7 +48,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Stubs (in-memory mocks) ──────────────────────────────────────────────

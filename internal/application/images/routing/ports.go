@@ -16,7 +16,7 @@
 package routing
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // RepositoryListFilter is the application-layer read-request filter

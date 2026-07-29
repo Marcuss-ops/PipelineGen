@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // fakeDetailFetcher is a test-only implementation of the DetailFetcher port.

@@ -1,5 +1,5 @@
 // Package assets — search_terms index SQL queries (Wave C: moved from
-// internal/domain/asset/search_terms.go).
+// internal/kernel/asset/search_terms.go).
 //
 // The PURE Go helpers (DeriveSearchTerms/normalizeToken/addNormalized/
 // deriveStripper/mergeSearchTerms) STAY in the domain package — they
@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── SQL receivers (migrated from search_terms.go) ────────────────────

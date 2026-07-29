@@ -1,5 +1,5 @@
 // Package assets — location SQL queries (Wave C: moved from
-// internal/domain/asset/location.go).
+// internal/kernel/asset/location.go).
 //
 // The Location type itself stays in the domain package (domain/asset)
 // because callers in application/ refer to it and don't want a type
@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

@@ -5,7 +5,7 @@
 // scan/percheck_rights_status_canonical_6.go owns the Go
 // migration of the canonical-6 forward-prevention gate for the
 // new RightsStatus surface. It reads ONLY the canonical SOLE
-// owner (internal/domain/asset/rights_state.go) and counts the
+// owner (internal/kernel/asset/rights_state.go) and counts the
 // `RightsStatusX RightsStatus = "..."` const declarations. The
 // count MUST equal 6 (the canonical surface declared at
 // CanonicalRightsStatusValues()). A future agent who adds a
@@ -52,7 +52,7 @@ import (
 
 // rightsStatusCanonical6Path is the canonical SOLE owner of
 // the RightsStatus enum (6 constants + helpers).
-const rightsStatusCanonical6Path = "internal/domain/asset/rights_state.go"
+const rightsStatusCanonical6Path = "internal/kernel/asset/rights_state.go"
 
 // rightsStatusConstLineRe matches the LITERAL const-declaration
 // shape at canonical_file line-start (post-tab indentation):

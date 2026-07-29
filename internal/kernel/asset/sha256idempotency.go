@@ -12,7 +12,7 @@
 // godlike/06 SSOT — one canonical owner per fact:
 //
 //	"Validate canonical SHA-256 hex digest (exactly 64 lowercase
-//	hex chars)" lives at internal/domain/asset/sha256idempotency.go
+//	hex chars)" lives at internal/kernel/asset/sha256idempotency.go
 //	and is exposed as the ValidateSHA256 typed helper. The two
 //	derivative facts — (a) normalisation to lowercase hex, (b)
 //	first-16-hex-chars prefix for idempotency-key composition —

@@ -20,7 +20,7 @@
 package routing
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // SearchRequest is the per-call request envelope the Router

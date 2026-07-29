@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrTextTrackNotReady is the canonical typed error returned by

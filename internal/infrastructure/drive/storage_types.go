@@ -19,7 +19,7 @@
 package drive
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Re-exported as type aliases so `storage.SourceType` and

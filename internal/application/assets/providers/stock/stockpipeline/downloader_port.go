@@ -1,45 +1,53 @@
-// Package stockpipeline — downloader_port.go
+// Package stockpipeline — downloader_port.go (PR-REFACTOR-P0-IO-BINDER, July 2026).
 //
-// DownloaderPort is the Pattern 0 typed port for the source
-// downloader. StockStager routes source downloads through this port
-// so the application layer can be tested with a fake downloader
-// that counts invocations and gates operations; the concrete
-// *downloader.YTDLPDownloader satisfies DockerPort structurally.
+// SourceDownloader is the Pattern 0 typed port for source video
+// downloading. StockStager routes source downloads through this
+// port so the application layer never imports infrastructure types
+// (godlike/07). The concrete implementation lives in
+// internal/infrastructure/downloader/stock_adapter.go and is
+// injected via WithDownloader at composition time.
 //
 // godlike/06 SSOT:
-//   - This file is the SOLE owner of the DownloaderPort interface.
-//   - The concrete implementation lives in
-//     internal/infrastructure/downloader/ytdlp_downloader.go
-//     and is injected via WithDownloader at composition time
-//     (asset default: NewStockStager constructs the concrete from
-//     the composition root; tests override via WithDownloader(fake)).
+//   - This file is the SOLE owner of the SourceDownloader interface
+//     and the SourceDownloadRequest / DownloadedSource DTOs.
+//   - Tests inject fakes via WithDownloader(fake).
 //
 // godlike/07 fail-closed:
 //   - When StockStager.s.downloader is nil and a download path is
-//     required, StageSource surfaces a typed error
-//     (`downloader not wired (cfg nil)`) so the caller can
-//     errors.Is probe the wrapper instead of nil-deref'ing.
+//     required, StageSource surfaces a typed error.
 package stockpipeline
 
-import (
-	"context"
+import "context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-)
+// SourceDownloadRequest is the application-layer DTO for configuring
+// a source video download. It mirrors the fields StockStager needs
+// without importing infrastructure types.
+type SourceDownloadRequest struct {
+	URL              string
+	OutputPath       string
+	DownloadSections []string
+	ForceKeyframes   bool
+	MergeFormat      string
+	NoPlaylist       bool
+	UseCookies       bool
+}
 
-// DownloaderPort is the Pattern 0 typed port for the source
-// downloader. The single method mirrors *downloader.YTDLPDownloader.Download
-// so the concrete type is structural-conformant without an adapter
-// wrapper.
+// DownloadedSource is the application-layer DTO returned by a
+// successful download. The ResolvedPath is the actual file path
+// after the infrastructure adapter resolves yt-dlp's %(ext)s
+// template internally.
+type DownloadedSource struct {
+	ResolvedPath string
+	SizeBytes    int64
+}
+
+// SourceDownloader is the Pattern 0 typed port for source video
+// downloading. The single method mirrors the canonical download
+// contract without exposing infrastructure types.
 //
-// Usage in StockStager:
-//
-//	s.downloader.Download(ctx, &downloader.DownloadRequest{...})
-//
-// The downloader writes its output to dlReq.OutputPath (or
-// OutputPath + ".%(ext)s" if yt-dlp resolves a different container).
-// StockStager then resolves the actual downloaded file path via
-// downloader.ResolveDownloadedSegmentPath before stat-ing it.
-type DownloaderPort interface {
-	Download(ctx context.Context, req *downloader.DownloadRequest) error
+// The infrastructure adapter (stock_adapter.go) translates
+// SourceDownloadRequest → downloader.DownloadRequest, calls
+// yt-dlp, resolves the output path, and returns DownloadedSource.
+type SourceDownloader interface {
+	Download(ctx context.Context, req *SourceDownloadRequest) (*DownloadedSource, error)
 }

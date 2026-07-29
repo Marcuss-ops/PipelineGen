@@ -24,7 +24,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ingestGeneratedImage routes the on-disk artifact (or in-memory

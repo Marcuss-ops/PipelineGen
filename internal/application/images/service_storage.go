@@ -11,7 +11,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // IngestImage ingests raw image bytes into the storage system.

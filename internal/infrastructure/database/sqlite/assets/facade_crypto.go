@@ -23,7 +23,7 @@ package assets
 import (
 	sqcrypto "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/crypto"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ComputeContentHashWithTextTracks computes a deterministic content

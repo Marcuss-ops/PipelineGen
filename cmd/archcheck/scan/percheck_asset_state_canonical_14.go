@@ -5,7 +5,7 @@
 // scan/percheck_asset_state_canonical_14.go owns the Go
 // migration of the canonical-14 forward-prevention gate.
 // It reads ONLY the canonical SOLE owner
-// (internal/domain/asset/asset_state_values.go) and counts the
+// (internal/kernel/asset/asset_state_values.go) and counts the
 // `StateAssetX AssetState = "..."` const declarations. The
 // count MUST equal 14 (the canonical surface declared at
 // CanonicalAssetStateValues()). A future agent who adds a
@@ -46,12 +46,12 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // assetStateCanonical14Path is the canonical SOLE owner of
 // the AssetState enum (14 constants + helpers).
-const assetStateCanonical14Path = "internal/domain/asset/asset_state_values.go"
+const assetStateCanonical14Path = "internal/kernel/asset/asset_state_values.go"
 
 // assetStateConstLineRe matches the LITERAL const-declaration
 // shape at canonical_file line-start (post-tab indentation):

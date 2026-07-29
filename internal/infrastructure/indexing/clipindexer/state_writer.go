@@ -16,7 +16,7 @@ package clipindexer
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // IndexerStateUpdater is the per-asset index_state writer the

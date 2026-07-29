@@ -14,11 +14,11 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The TextHash + SourceVersion SHA-256 formula lives in
-//     internal/domain/asset/text_track_hashes.go. This file CALLS
+//     internal/kernel/asset/text_track_hashes.go. This file CALLS
 //     asset.TextHash / asset.SourceVersion and NEVER re-implements
 //     the formula inline.
 //   - The canonical BCP-47 normalization rules live in
-//     internal/domain/asset/bcp47.go. This file CALLS asset.Normalize
+//     internal/kernel/asset/bcp47.go. This file CALLS asset.Normalize
 //     and NEVER re-derives the rules inline.
 //   - The ResolvedTextBundle -> TextTrack row factory lives in
 //     text_track_persistence.go (bundleToTextTracks helper). This
@@ -52,7 +52,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Save persists a single transcript row (text_kind=transcript) to

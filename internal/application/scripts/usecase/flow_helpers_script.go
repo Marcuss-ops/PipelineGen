@@ -7,7 +7,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Script-domain stub types ────────────────────────────────────────────────

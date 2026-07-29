@@ -3,7 +3,7 @@
 //
 // Pins the in-tree forward-prevention gate for the
 // Asset.Metadata name-spaced key alphabet. Builds a
-// synthetic `internal/domain/asset/metadata_registry.go`
+// synthetic `internal/kernel/asset/metadata_registry.go`
 // inside a `t.TempDir()` and verifies that the scanner:
 //
 //   - PASSES when a registered name-spaced key is

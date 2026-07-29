@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     -- godlike/06 SSOT: the enum alphabets for license_basis
     -- (freeform string), review_status (closed 4), and
     -- allowed_channels/allowed_regions (JSON arrays) live in
-    -- internal/domain/asset/rights_state.go. The archcheck gates
+    -- internal/kernel/asset/rights_state.go. The archcheck gates
     -- percheck_rights_status_canonical_6 +
     -- percheck_review_status_canonical_4 enforce the enum
     -- counts. expires_at carries an RFC3339-numeric string so

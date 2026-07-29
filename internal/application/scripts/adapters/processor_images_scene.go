@@ -43,7 +43,7 @@ import (
 	"fmt"
 	"strings"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 

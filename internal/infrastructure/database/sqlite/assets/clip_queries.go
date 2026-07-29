@@ -1,7 +1,7 @@
 // Package assets — clip/tag SQL queries (Wave C: moved from
-// internal/domain/asset/tags.go).
+// internal/kernel/asset/tags.go).
 //
-// After Wave C, the source `internal/domain/asset/tags.go` is deleted
+// After Wave C, the source `internal/kernel/asset/tags.go` is deleted
 // (no types reside in it). The 8 SQL receivers migrate here.
 package assets
 
@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── SQL receivers (migrated from tags.go) ────────────────────────────

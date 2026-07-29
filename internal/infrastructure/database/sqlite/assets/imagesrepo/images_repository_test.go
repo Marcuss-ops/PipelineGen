@@ -21,7 +21,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // AGENTS.md driver lock (mattn/go-sqlite3)
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // testDB opens an in-memory SQLite with the minimum schema needed for

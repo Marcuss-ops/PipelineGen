@@ -21,7 +21,7 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Sentinel errors that ports must return. Implementations map transport

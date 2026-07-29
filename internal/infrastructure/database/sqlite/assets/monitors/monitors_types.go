@@ -1,7 +1,7 @@
 // Package assets — SQLite-specific persistence types for the assets domain.
 //
 // PR4.B (June 2026): infrastructure DTOs that carry SQL tags (db:"...",
-// TableName) are isolated here. Upstream code in internal/domain/asset/
+// TableName) are isolated here. Upstream code in internal/kernel/asset/
 // uses Domain types that only carry JSON tags so the domain layer has
 // zero knowledge of the underlying SQLite schema. Boundary mappers
 // (FromDomain + ToDomain) live alongside the row types so adapters can
@@ -17,7 +17,7 @@
 package monitors
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // MonitoredSourceRow is the SQLite-only projection of asset.MonitoredSource.

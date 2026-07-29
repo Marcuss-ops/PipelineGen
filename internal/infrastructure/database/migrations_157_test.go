@@ -6,7 +6,7 @@
 //
 // godlike/06 SSOT invariant: the column's alphabet MUST equal the
 // 14 canonical AssetState values declared at
-// internal/domain/asset/asset_state_values.go — percheck_asset_state_canonical_14
+// internal/kernel/asset/asset_state_values.go — percheck_asset_state_canonical_14
 // enforces the count, and percheck_asset_state_no_shadow_enum
 // enforces no shadow declarations.
 //

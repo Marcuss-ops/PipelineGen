@@ -34,7 +34,7 @@ import (
 //
 // Migration invariants:
 //   - String values are UPPERCASE (mirrors LifecycleState convention in
-//     internal/domain/asset/asset_types.go).
+//     internal/kernel/asset/asset_types.go).
 //   - The canonical list is locked at 6 values; adding a new value
 //     requires a godlike/07 4-phase migration.
 //   - Self-loops are idempotent (s.IsValidTransition(s) returns true).

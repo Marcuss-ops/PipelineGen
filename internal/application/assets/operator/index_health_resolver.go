@@ -3,7 +3,7 @@ package operator
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // IndexHealthInput contains the read-model data needed by the resolver.

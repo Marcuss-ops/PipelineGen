@@ -36,7 +36,7 @@ import (
 
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube/usecase"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

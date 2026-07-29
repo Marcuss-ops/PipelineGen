@@ -10,7 +10,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The strict BCP-47 normalization rule lives in
-//     internal/domain/asset/bcp47.go::Normalize — the leaf
+//     internal/kernel/asset/bcp47.go::Normalize — the leaf
 //     DELEGATES verbatim so underscore-separators like "pt_BR"
 //     propagate the rejection (Fase 1.b "Rifiutare varianti miste
 //     tipo pt_br" hard contract).
@@ -30,7 +30,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // timeRegex is the canonical VTT cue-time pattern used by

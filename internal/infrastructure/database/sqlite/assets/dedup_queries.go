@@ -1,5 +1,5 @@
 // Package assets — dedup helpers (Wave A: moved from
-// internal/domain/asset/dedup.go).
+// internal/kernel/asset/dedup.go).
 //
 // These queries are used by the new clip registration endpoints
 // (register-from-youtube, upload-video) to avoid creating duplicate

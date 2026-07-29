@@ -6,7 +6,7 @@
 // the scanner:
 //
 //   - PASSES  when only the canonical SOLE owner
-//     (internal/domain/asset/asset_state_values.go) declares the
+//     (internal/kernel/asset/asset_state_values.go) declares the
 //     StateAssetX alphabet.
 //   - FAILS   when any other .go file declares a
 //     `StateAssetX AssetState = "..."` const literal
@@ -125,7 +125,7 @@ func TestScanAssetStateNoShadowEnum_CommentOnlyIsResidue(t *testing.T) {
 	warnPath := filepath.Join(warnDir, "narrative_doc.go")
 	if err := os.WriteFile(warnPath, []byte(
 		"package images\n\n"+
-			"// NOTE: see internal/domain/asset/asset_state_values.go::StateAsset*\n"+
+			"// NOTE: see internal/kernel/asset/asset_state_values.go::StateAsset*\n"+
 			"// enum for the canonical 14 states. The shadow declaration\n"+
 			"// below is intentionally commented out to exercise the\n"+
 			"// residue-accounting discipline per godlike/07.\n"+

@@ -1,5 +1,5 @@
 // Package assets — search SQL queries (Wave C: moved from
-// internal/domain/asset/search_core.go).
+// internal/kernel/asset/search_core.go).
 //
 // AdvancedSearchRequest/AdvancedSearchResult/SearchRequest/SearchResult/
 // Searcher/EntityExtraction* types stay in domain (canonical contracts).
@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Test doubles ───────────────────────────────────────────────────────

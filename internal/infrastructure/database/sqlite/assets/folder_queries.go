@@ -1,5 +1,5 @@
 // Package assets — clip_folders SQL queries (Wave C: moved from
-// internal/domain/asset/clips_core.go).
+// internal/kernel/asset/clips_core.go).
 //
 // ClipFolder/ClipManifest/ClipFolderStats/ClipManifestItem types stay
 // in domain (canonical orchestration contracts). The 9 SQL receivers
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )

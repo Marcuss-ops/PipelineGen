@@ -38,7 +38,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/api/googleapi"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TestDriveDeleteHandler_PreflightIdempotencyTable runs every
@@ -180,7 +180,7 @@ func TestDriveDeleteHandler_PreflightIdempotencyTable(t *testing.T) {
 				// target is StateDriveDeleted (the post-Drive
 				// confirmation hop) per the canonical 6-state
 				// deletion state machine in
-				// internal/domain/asset/lifecycle_state.go. The legacy
+				// internal/kernel/asset/lifecycle_state.go. The legacy
 				// direct-to-INDEX_DELETE_PENDING transition is
 				// FORBIDDEN by IsValidTransition: from DRIVE_DELETE_PENDING
 				// the only valid forward edge is to DRIVE_DELETED. The

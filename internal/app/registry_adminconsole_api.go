@@ -13,7 +13,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/api/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminconsole"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"

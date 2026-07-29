@@ -1,9 +1,9 @@
 // Package assets — canonical SQL scan helpers for media_assets projections.
 //
 // Wave A / Blocco 1 / PR 1 Asset SSOT (June 2026): moved from
-// internal/domain/asset/scan.go to enforce the layering rule that
+// internal/kernel/asset/scan.go to enforce the layering rule that
 // domain must not own SQL primitives. The Slim domain
-// (internal/domain/asset/scan.go) keeps the same exported + private
+// (internal/kernel/asset/scan.go) keeps the same exported + private
 // names so the 11+ domain files that consume these helpers
 // (search_core.go, clips_core.go, etc.) compile unchanged.
 //
@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

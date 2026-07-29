@@ -18,7 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Test doubles ──────────────────────────────────────────────────

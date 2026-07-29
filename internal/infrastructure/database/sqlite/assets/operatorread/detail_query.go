@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/operator"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func (r *InventoryReader) get(ctx context.Context, assetID string) (*operator.AssetInspection, error) {

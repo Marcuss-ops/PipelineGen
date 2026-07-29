@@ -35,7 +35,7 @@ import (
 //
 // Migration invariants:
 //   - String values are UPPERCASE (mirrors LifecycleState convention
-//     in internal/domain/asset/asset_types.go).
+//     in internal/kernel/asset/asset_types.go).
 //   - The canonical list is locked at 6 values; adding a new value
 //     requires a godlike/07 4-phase migration.
 //   - Self-loops are idempotent (s.IsValidTransition(s) returns true).
@@ -119,7 +119,7 @@ func (s UploadState) Valid() bool {
 // Self-loops are IDEMPOTENT (s.IsValidTransition(s) returns true) —
 // re-running the same-state handler is a no-op rather than a fatal
 // transition error. Mirrors the LifecycleState convention in
-// internal/domain/asset/asset_types.go.
+// internal/kernel/asset/asset_types.go.
 //
 // Skip-ahead PREPARING→UPLOADED is REJECTED — the forward chain is
 // strictly 1-step. The Creator-side adapter threads PREPARING→

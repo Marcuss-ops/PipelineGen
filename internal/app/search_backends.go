@@ -40,7 +40,7 @@ import (
 	"fmt"
 	"strings"
 
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"

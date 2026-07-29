@@ -22,7 +22,7 @@
 // not a fake-success no-op.
 //
 // godlike/06 SSOT: the canonical index_state enum lives in
-// internal/domain/asset/index_state.go. The fail-soft contract
+// internal/kernel/asset/index_state.go. The fail-soft contract
 // documented here is the same contract that cmd/admin qdrant-preflight
 // checks in production via the index_state column.
 //
@@ -45,7 +45,7 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

@@ -8,7 +8,7 @@
 // return exactly this package regardless of where the state-machine
 // is consumed (ingest / VLM sweeper / admin reindex tooling).
 //
-// Companion surface: internal/domain/asset/enrich_state.go (the typed
+// Companion surface: internal/kernel/asset/enrich_state.go (the typed
 // enum canonical 4-state vocabulary lives there per godlike/06 SSOT
 // one-owner-per-fact).
 package enrichment
@@ -16,7 +16,7 @@ package enrichment
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrEnrichStateNotWired is returned when a typed state-machine

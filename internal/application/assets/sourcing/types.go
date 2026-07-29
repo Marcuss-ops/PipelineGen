@@ -5,7 +5,7 @@
 package sourcing
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/sourcing"
 )

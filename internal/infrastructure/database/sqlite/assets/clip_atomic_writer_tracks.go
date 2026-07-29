@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // localizedClipTextsToTextTracks converts payload-provided
@@ -108,7 +108,7 @@ func localizedClipTextsToTextTracks(clipID string, texts []youtubetypes.Localize
 // (clip_metadata_writer.go) but adds the RETURNING clause. The
 // hash + source_version columns are populated from the row's
 // TextHash / SourceVersion fields; callers MUST have invoked the
-// canonical hash factory (internal/domain/asset/text_track_hashes.go).
+// canonical hash factory (internal/kernel/asset/text_track_hashes.go).
 // Re-deriving the SHA-256 inline is forbidden (see the SSOT
 // contract on text_track_hashes.go).
 func upsertTextTracksReturningIDsInTx(

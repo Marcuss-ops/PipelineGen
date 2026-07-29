@@ -63,7 +63,7 @@ var hardcodedENScopeFiles = []string{
 	"internal/application/youtube/ports/ports.go",
 	"internal/infrastructure/youtube/subtitles.go",
 	"internal/infrastructure/youtube/ports.go",
-	"internal/domain/asset/text_track_repository.go",
+	"internal/kernel/asset/text_track_repository.go",
 	"internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_schema.go",
 	"internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_queries.go",
 	"internal/infrastructure/database/sqlite/assets/texttracks/text_track_repository_lookup.go",
@@ -107,9 +107,9 @@ func projectRoot() string {
 	if !ok {
 		return ""
 	}
-	// thisFile = .../internal/domain/asset/bcp47_hardcoded_en_test.go
+	// thisFile = .../internal/kernel/asset/bcp47_hardcoded_en_test.go
 	// projectRoot = .../  (three levels up)
-	// depth invariant: internal/domain/asset/<this_file> → 3 levels up = project root. If this file is moved, the walk depth must be updated in lockstep or the scope scanner will silently scan the wrong paths.
+	// depth invariant: internal/kernel/asset/<this_file> → 3 levels up = project root. If this file is moved, the walk depth must be updated in lockstep or the scope scanner will silently scan the wrong paths.
 	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
 }
 

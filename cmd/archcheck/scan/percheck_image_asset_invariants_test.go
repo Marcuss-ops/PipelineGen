@@ -85,7 +85,7 @@ func TestRuleA_LiteralBanFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/application/images/random_factory.go": `package factory
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // production code: ImageAsset literal in a non-canonical place
 func build() *asset.ImageAsset {
 	return &asset.ImageAsset{Origin: "x", Provider: "y", ContentHash: "z", Width: 1, Height: 1}
@@ -113,7 +113,7 @@ func TestRuleA_DomainAliasLiteralFailsProduction(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/application/images/random_alias_factory.go": `package factory
-import domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // domain-alias literal is also banned
 func build() *domainasset.ImageAsset {
 	return &domainasset.ImageAsset{Origin: "x"}
@@ -135,7 +135,7 @@ func build() *domainasset.ImageAsset {
 func TestRuleA_ExemptsCanonicalOwnerAndBuilder(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
-		"internal/domain/asset/canonical_metadata.go": `package asset
+		"internal/kernel/asset/canonical_metadata.go": `package asset
 // canonical owner — literal MAY appear here as the structural source-of-truth
 type ImageAsset struct {
 	Origin   string
@@ -148,7 +148,7 @@ type ImageAsset struct {
 func (a *ImageAsset) ResetCanonical() *ImageAsset { return &ImageAsset{Origin: "x"} }
 `,
 		"internal/application/images/storage_ingest_direct.go": `package images
-import asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 // canonical builder — literal MAY appear here if the typed route promotes to a literal in the future
 func Build() *asset.ImageAsset { return &asset.ImageAsset{Origin: "x"} }
 `,
@@ -168,7 +168,7 @@ func TestRuleA_ExemptsTestFiles(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/application/images/some_factory_test.go": `package factory_test
-import asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 func Stub() *asset.ImageAsset { return &asset.ImageAsset{AssetID: "stub-id"} }
 `,
 	})
@@ -314,7 +314,7 @@ func TestBoth_RulesCoexistOnSameFile(t *testing.T) {
 	dir := t.TempDir()
 	imageAssetWriteTree(t, dir, map[string]string{
 		"internal/application/scripts/usecase/leaky.go": `package usecase
-import asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 type Envelope struct {
 	Ref string ` + "`json:\"ref\"`" + `
 	AssetID string ` + "`json:\"asset_id\"`" + `

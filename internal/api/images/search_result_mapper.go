@@ -11,7 +11,7 @@ package images
 import (
 	"fmt"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/gin-gonic/gin"
 )

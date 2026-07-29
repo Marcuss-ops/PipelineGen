@@ -23,7 +23,7 @@ import (
 	"time"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"go.uber.org/zap"
 )

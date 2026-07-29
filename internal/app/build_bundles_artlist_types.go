@@ -28,7 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Pattern 0 compile-time pins (AGENTS.md): canonical DIRECT receivers

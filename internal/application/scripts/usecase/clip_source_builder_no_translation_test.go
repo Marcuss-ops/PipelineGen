@@ -27,7 +27,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // stubTranslationPort is a translation.TranslationPort spy that

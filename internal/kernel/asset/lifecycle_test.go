@@ -3,7 +3,7 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TestLifecycleState_PreparingToPublishedToActive verifies the FASE 3b

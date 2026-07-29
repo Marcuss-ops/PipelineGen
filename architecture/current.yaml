@@ -54,6 +54,17 @@
   rationale: "Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root."
   cross_refs:
     package: "internal/application/assets/monitor"
+- id: "WAVE-24-ASSET-KERNEL-MIGRATION"
+  status: "completed"
+  owner: "internal/kernel/asset"
+  deadline: "2026-09-30T00:00:00Z"
+  rationale: "Migrate 89 domain types from internal/domain/asset to internal/kernel/asset. 558 imports updated. domain/asset is now empty (canonical content lives in kernel/asset)."
+  count:
+    baseline_initial: 89
+    current: 0
+    target_zero: 0
+  cross_refs:
+    canonical_import: "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 - id: "WAVE-23-JOB-KERNEL-MIGRATION"
   status: "in_progress"
   owner: "internal/kernel/job"

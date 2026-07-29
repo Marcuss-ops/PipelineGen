@@ -115,7 +115,7 @@ func scanSourceStagerFile(root, path, relPath string, r *report.Report) {
 				Rule:        "percheck_sourcestager_transformer",
 				Severity:    string(report.SeverityError),
 				MatchedRule: "raw_source_media_or_transform",
-				Note:        "raw source media / transformation reference: " + p.desc + " — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead",
+				Note:        "raw source media / transformation reference: " + p.desc + " — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/kernel/asset/transformer) instead",
 			})
 		}
 	}

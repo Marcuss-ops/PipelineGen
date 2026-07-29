@@ -5,7 +5,7 @@ import (
 	"context"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // CategoryChannelsPort is the narrow channel-service surface consumed by monitor orchestration.

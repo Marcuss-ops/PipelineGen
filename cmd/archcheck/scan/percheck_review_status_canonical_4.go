@@ -5,7 +5,7 @@
 // scan/percheck_review_status_canonical_4.go owns the Go
 // migration of the canonical-4 forward-prevention gate for the
 // ReviewStatus surface. It reads ONLY the canonical SOLE owner
-// (internal/domain/asset/rights_state.go) and counts the
+// (internal/kernel/asset/rights_state.go) and counts the
 // `ReviewStatusX ReviewStatus = "..."` const declarations. The
 // count MUST equal 4 (the canonical surface declared at
 // CanonicalReviewStatusValues()). A future agent who adds a 5th
@@ -55,7 +55,7 @@ import (
 
 // reviewStatusCanonical4Path is the canonical SOLE owner of
 // the ReviewStatus enum (4 constants + helpers).
-const reviewStatusCanonical4Path = "internal/domain/asset/rights_state.go"
+const reviewStatusCanonical4Path = "internal/kernel/asset/rights_state.go"
 
 // reviewStatusConstLineRe matches the LITERAL const-declaration
 // shape at canonical_file line-start (post-tab indentation):

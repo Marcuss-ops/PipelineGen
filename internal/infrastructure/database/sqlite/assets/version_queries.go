@@ -1,5 +1,5 @@
 // Package assets — version SQL queries (Wave C: moved from
-// internal/domain/asset/lifecycle_core.go).
+// internal/kernel/asset/lifecycle_core.go).
 //
 // The Version type and the VersionRepository interface stay in domain.
 // The SQL receivers + adapter factory + adapter struct migrate to
@@ -12,7 +12,7 @@ import (
 
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

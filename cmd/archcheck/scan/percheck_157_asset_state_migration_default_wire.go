@@ -16,7 +16,7 @@
 // godlike/06 SSOT invariant: there is exactly one
 // runtime companion for each enum value — the typed
 // initial-sentinel (string(asset.StateAssetDiscovered))
-// in internal/domain/asset/asset_state_values.go is mirrored by
+// in internal/kernel/asset/asset_state_values.go is mirrored by
 // the column DEFAULT in
 // migrations/sqlite/157_asset_state.sql. Drift between
 // the two surfaces (a future agent renames the typed
@@ -55,7 +55,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // migration157AssetStatePath is the SOLE canonical owner of
@@ -88,7 +88,7 @@ const migration157DefaultRule = "percheck_157_asset_state_migration_default_wire
 // DEFAULT literal drift. Reference the canonical SOLE owner
 // + the migration path so the operator sees both surfaces
 // of the mismatch inline.
-const migration157DefaultNote = "migration 157 DEFAULT literal must equal string(asset.StateAssetDiscovered) (PR-CATALOG-MULTILINGUA step 7+ GAMMA, July 2026); godlike/06 SSOT requires the column DEFAULT to stay in lockstep with the typed canonical initial-sentinel in internal/domain/asset/asset_state_values.go; rename both surfaces together"
+const migration157DefaultNote = "migration 157 DEFAULT literal must equal string(asset.StateAssetDiscovered) (PR-CATALOG-MULTILINGUA step 7+ GAMMA, July 2026); godlike/06 SSOT requires the column DEFAULT to stay in lockstep with the typed canonical initial-sentinel in internal/kernel/asset/asset_state_values.go; rename both surfaces together"
 
 // migration157DefaultWarn is the centralized WARN-bucket
 // emitter for residue-accounting. Mirrors assetStateWarn.
