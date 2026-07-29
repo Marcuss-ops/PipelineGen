@@ -147,10 +147,7 @@ smoke_resolve_token() {
         printf '%s' "$SMOKE_TOKEN"
         return 0
     fi
-    if [[ -n "${VELOX_ADMIN_TOKEN:-}" ]]; then
-        printf '%s' "$VELOX_ADMIN_TOKEN"
-        return 0
-    fi
+    # Canonical file takes precedence over env vars (AGENTS.md SSOT)
     if [[ -n "${TOKEN_FILE:-}" && -f "${TOKEN_FILE}" ]]; then
         local token
         token=$(grep -E '^VELOX_ADMIN_TOKEN=' "$TOKEN_FILE" | head -1 | cut -d= -f2- ||
