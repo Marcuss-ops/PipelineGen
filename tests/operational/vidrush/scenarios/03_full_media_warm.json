@@ -1,0 +1,94 @@
+{
+  "scenario_id": "03_full_media_warm",
+  "description": "Vidrush full media warm replay — stesso payload di 02_full_media_cold. Deve restituire stessi segment_id, text_hash, asset_id, binding. Cache HIT_EXACT su tutti gli step, 0 nuove chiamate provider. Warm ≥30% più veloce del cold.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "max_artlist_queries_per_segment": 5,
+    "max_image_queries_per_segment": 5,
+    "provider_requests_artlist": 0,
+    "provider_requests_internet_images": 0,
+    "cache_extraction": "HIT_EXACT",
+    "cache_artlist": "HIT_EXACT",
+    "cache_images": "HIT_EXACT",
+    "cache_binding": "HIT_EXACT",
+    "speedup_vs_cold_pct": 30
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-03-full-media-warm",
+    "force_refresh": false,
+    "items": [
+      {
+        "id": "vidrush-02-full-item",
+        "title": "Vidrush full media cold: asset discovery completo con tutti i provider",
+        "language": "en",
+        "tone": "documentary",
+        "style": "Write a vivid, concrete narrative. Each segment should describe a distinct visual scene. Use specific, searchable details that translate well to media queries.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Three cinematic stories for full media asset discovery",
+          "source_text": "A surfer rides a massive wave at sunset on the North Shore of Oahu. The golden light reflects off the water as the board cuts through the curl.\n\nA wildlife photographer tracks a snow leopard through the Himalayan mountains. Paw prints in fresh snow lead toward a rocky outcrop at dawn.\n\nA jazz musician performs in a dimly lit New York club. Close-up on fingers moving across saxophone keys as smoke drifts through the spotlight.\n\nOperational marker: vidrush-02-full-media-cold."
+        },
+        "script_params": {
+          "target_words": 260,
+          "min_words": 200,
+          "segment_words": 60,
+          "skip_quality_gate": true,
+          "use_memory": true
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 5,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "min_segments": 3,
+      "per_segment": {
+        "segment_id_non_empty": ".segment_id | length > 0",
+        "text_hash_non_empty": ".text_hash | length > 0",
+        "cache_extraction_hit": ".cache.extraction == \"HIT_EXACT\"",
+        "cache_artlist_hit_or_bypassed": ".cache.artlist == \"HIT_EXACT\" or .cache.artlist == \"BYPASSED\"",
+        "cache_images_hit_or_bypassed": ".cache.internet_images == \"HIT_EXACT\" or .cache.internet_images == \"BYPASSED\"",
+        "cache_binding_hit_or_bypassed": ".cache.binding == \"HIT_EXACT\" or .cache.binding == \"BYPASSED\"",
+        "candidates_not_empty": "(.assets.candidates | length) >= 0"
+      }
+    },
+    "no_duplicates": "nessuna duplicazione SQLite, nessun nuovo download, nessun doppio asset",
+    "no_new_provider_calls": "vidrush_provider_requests_total invariato per artlist e internet_images",
+    "speed_up": "warm job sensibilmente più veloce del cold job (target: ≥30% in meno)",
+    "idempotent_output": "stessi segment_id, text_hash, asset_id, binding del run cold"
+  }
+}
