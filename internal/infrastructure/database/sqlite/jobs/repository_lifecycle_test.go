@@ -24,8 +24,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // readConflictCounter returns the current cumulative value of the

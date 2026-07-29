@@ -1,8 +1,8 @@
 package clips
 
 import (
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"database/sql"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -135,8 +135,8 @@ const MediaAssetColumns = `
 
 type ClipsRepository struct {
 	*assets.AssetStoreSQLite // Wave C / Phase 3: embed LOCAL *assets.AssetStoreSQLite (the canonical infra struct) instead of legacy *asset.AssetStoreSQLite. LOCAL has the canonical Save/Get/Delete/List methods AND transitively exposes legacy receivers via its own HYBRID embed of legacy. Existing call sites like `r.AssetStoreSQLite.Save(...)` auto-resolve because the embedded-field name is unchanged.
-	db                *sql.DB
-	log               *zap.Logger
+	db                       *sql.DB
+	log                      *zap.Logger
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {

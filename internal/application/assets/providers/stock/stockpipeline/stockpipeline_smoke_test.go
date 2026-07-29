@@ -59,7 +59,7 @@ func (r *stageURLRecordingRunner) ArtifactPreparation() finalization.ArtifactPre
 func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer { return nil }
 func (r *stageURLRecordingRunner) RunFingerprint() string                  { return "stage-url-test" }
 func (r *stageURLRecordingRunner) Log() *zap.Logger                        { return zap.NewNop() }
-	func (f *stageURLRecordingRunner) LocalFS() LocalFSPort { return &fakeLocalFS{} }
+func (f *stageURLRecordingRunner) LocalFS() LocalFSPort                    { return &fakeLocalFS{} }
 func (r *stageURLRecordingRunner) State() *RunState                        { return r.state }
 func (r *stageURLRecordingRunner) BatchRepository() StockBatchRepository   { return nil }
 

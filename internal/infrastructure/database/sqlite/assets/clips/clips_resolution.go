@@ -1,10 +1,10 @@
 package clips
 
 import (
-	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"context"
 	"database/sql"
 	"fmt"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )

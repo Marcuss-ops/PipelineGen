@@ -109,7 +109,11 @@
         "internal/infrastructure/database/sqlite/assets/artifacts",
         "internal/infrastructure/database/sqlite/assets/delivery",
         "internal/infrastructure/database/sqlite/assets/maintenance"
-      ]
+      ],
+      "completed_packages": [
+        "internal/infrastructure/database/sqlite/assets/clips"
+      ],
+      "remaining_files": 47
     }
   ],
   "root_migrations": [

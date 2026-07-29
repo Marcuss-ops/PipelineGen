@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // validScriptResult builds a minimal typed GenerationResult that
