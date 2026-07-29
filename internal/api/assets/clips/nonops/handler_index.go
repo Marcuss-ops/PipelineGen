@@ -21,11 +21,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// Local typed alias for jobs.EnqueueRequest. Private to the nonops
-// sub-package. Was at clips/handler.go:280 pre-PR-CLIPS-NONOPS-EXTRACT;
-// moved here because all 3 callers (this file lines 50 + 95, and
-// handler_download.go's EnrichMedia) live in nonops.
-type enqueueRequest = kerneljob.EnqueueRequest
+// ── ReindexClip, BatchReindex, and EnrichMedia endpoints use
+// kerneljob.EnqueueRequest (the canonical kernel type) directly.
+// The `type enqueueRequest` alias was inlined per P1 legacy cleanup.
 
 // ReindexClip triggers re-indexing of an existing clip (semantic
 // enrichment + vector store).
@@ -54,7 +52,7 @@ func (h *NonOpsHandler) ReindexClip(c *gin.Context) {
 				"reindex requires the jobs service (S1a removed the in-process SafeGo fallback); wire jobsSvc to use reindex")
 			return
 		}
-		job, err := h.jobsSvc.Enqueue(ctx, &enqueueRequest{
+		job, err := h.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
 			Type: "media.enrich",
 			Payload: map[string]any{
 				"asset_id": clipID,
@@ -119,7 +117,7 @@ func (h *NonOpsHandler) BatchReindex(c *gin.Context) {
 	}
 
 	if h.jobsSvc != nil {
-		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &enqueueRequest{
+		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &kerneljob.EnqueueRequest{
 			Type: "media.reindex",
 			Payload: map[string]any{
 				"source":     req.Source,

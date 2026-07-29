@@ -15,36 +15,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"os"
+	"io/fs"
 	"strings"
 
 	"go.uber.org/zap"
 )
-
-// noOpFS is a no-op LocalFSPort that delegates to the real filesystem
-// for essential operations (CreateTemp, Remove, MkdirAll) so tests that
-// exercise the writeAndHashStockMetadata path work without wiring the
-// real filesystem.LocalAdapter. Used as a safe fallback when LocalFSPort
-// is not wired (e.g. tests using NewOrchestrator without WithLocalFS).
-type noOpFS struct{}
-
-func (noOpFS) Stat(name string) (os.FileInfo, error)         { return os.Stat(name) }
-func (noOpFS) Open(string) (io.ReadCloser, error)             { return nil, fmt.Errorf("noOpFS: Open not wired") }
-func (noOpFS) Create(string) (io.WriteCloser, error)          { return nil, fmt.Errorf("noOpFS: Create not wired") }
-func (noOpFS) MkdirTemp(string, string) (string, error)       { return "", fmt.Errorf("noOpFS: MkdirTemp not wired") }
-func (noOpFS) Remove(name string) error                        { return os.Remove(name) }
-func (noOpFS) RemoveAll(path string) error                     { return os.RemoveAll(path) }
-func (noOpFS) MkdirAll(path string, perm os.FileMode) error    { return os.MkdirAll(path, perm) }
-func (noOpFS) CreateTemp(dir, pattern string) (string, io.WriteCloser, error) {
-	f, err := os.CreateTemp(dir, pattern)
-	if err != nil {
-		return "", nil, err
-	}
-	return f.Name(), f, nil
-}
-func (noOpFS) TempDir() string { return "/tmp" }
-
-var _ LocalFSPort = noOpFS{}
 
 // LocalFSPort is the Pattern 0 typed port for local filesystem I/O.
 //
@@ -60,7 +35,7 @@ var _ LocalFSPort = noOpFS{}
 // (filesystem.LocalAdapter) implement it structurally.
 type LocalFSPort interface {
 	// Stat returns the FileInfo for the named file.
-	Stat(name string) (os.FileInfo, error)
+	Stat(name string) (fs.FileInfo, error)
 	// Open opens the named file for reading.
 	Open(name string) (io.ReadCloser, error)
 	// Create creates or truncates the named file for writing.
@@ -72,7 +47,7 @@ type LocalFSPort interface {
 	// RemoveAll removes path and any children it contains.
 	RemoveAll(path string) error
 	// MkdirAll creates a directory along with any necessary parents.
-	MkdirAll(path string, perm os.FileMode) error
+	MkdirAll(path string, perm fs.FileMode) error
 	// CreateTemp creates a new temporary file, returning its path
 	// and a WriteCloser for writing. The caller must close the
 	// returned WriteCloser before using the path for hashing.

@@ -349,6 +349,7 @@ S5_SQL="SELECT id, filename, '' as folder_id, index_state, lifecycle_state, \
         CASE WHEN file_hash='' THEN '-' ELSE substr(file_hash,1,12)||'...' END as file_hash, \
         CASE WHEN drive_file_id='' THEN '-' ELSE substr(drive_file_id,1,12)||'...' END as drive_file_id \
     FROM media_assets WHERE source='stock' \
+        AND id NOT LIKE '%:metadata' \
         AND created_at > datetime('now','-30 minutes') \
     ORDER BY created_at DESC LIMIT 5;"
 sqlite3 -header -column "$DB_PATH" "$S5_SQL" \

@@ -83,7 +83,7 @@ func (h *NonOpsHandler) EnrichMedia(c *gin.Context) {
 		"source":         source,
 		"skip_embed_gen": req.SkipEmbedGen,
 	}
-	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &enqueueRequest{
+	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &kerneljob.EnqueueRequest{
 		Type:      "media.enrich",
 		Payload:   payload,
 		ActiveKey: "enrich_clip_" + req.AssetID,
