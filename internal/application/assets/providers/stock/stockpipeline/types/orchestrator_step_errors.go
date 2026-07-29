@@ -87,6 +87,14 @@ var (
 	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2, follow-up July 2026).
 	ErrStockExtractClipsCutterRequired = errors.New("stock.extract_clips: VideoCutter nil but plans non-empty — cutter must be wired for production runs")
 
+	// ErrStockExtractClipsLocalFSRequired is raised when executeCuts
+	// finds a nil LocalFSPort — the step needs a filesystem to create
+	// the persistent workspace directory for cut outputs. This closes
+	// the godlike/07 no-fake-availability class where a nil LocalFS
+	// panic'd with nil-pointer dereference instead of surfacing a
+	// typed error. PR-STOCK-NOOPFS-REMOVAL (P0.1, July 2026).
+	ErrStockExtractClipsLocalFSRequired = errors.New("stock.extract_clips: LocalFSPort nil — filesystem must be wired for production runs")
+
 	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
 	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
 	// every chunk failed to render (zero string paths appended to the

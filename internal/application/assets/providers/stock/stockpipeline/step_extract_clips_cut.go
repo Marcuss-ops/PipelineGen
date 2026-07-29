@@ -10,13 +10,17 @@ import (
 // the VideoCutter.Cut port for a single source group.
 func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath string, sourceDuration float64, groupPlans []ClipPlan, sourceIdx int, noAudio bool) (CutBatchResult, error) {
 	cutter := runner.Cutter()
+	localFS := runner.LocalFS()
+	if localFS == nil {
+		return CutBatchResult{}, ErrStockExtractClipsLocalFSRequired
+	}
 	jobs := make([]CutJob, len(groupPlans))
 
 	workspaceDir, err := filepath.Abs(filepath.Join("data", "stock", "workspaces", runner.JobID(), "extracted"))
 	if err != nil {
 		return CutBatchResult{}, fmt.Errorf("orchestrator: stock.extract_clips: resolve persistent workspace: %w", err)
 	}
-	if err := runner.LocalFS().MkdirAll(workspaceDir, 0o755); err != nil {
+	if err := localFS.MkdirAll(workspaceDir, 0o755); err != nil {
 		return CutBatchResult{}, fmt.Errorf("orchestrator: stock.extract_clips: create persistent workspace: %w", err)
 	}
 

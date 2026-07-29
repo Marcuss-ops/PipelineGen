@@ -151,7 +151,8 @@ var (
 	ErrStockPublishArtifactFailed    = types.ErrStockPublishArtifactFailed
 	ErrStockFinalizeSpineFailed      = types.ErrStockFinalizeSpineFailed
 	ErrStockComposeChunksAllFailed   = types.ErrStockComposeChunksAllFailed
-	ErrStockExtractClipsCutterRequired = types.ErrStockExtractClipsCutterRequired
+	ErrStockExtractClipsCutterRequired   = types.ErrStockExtractClipsCutterRequired
+	ErrStockExtractClipsLocalFSRequired  = types.ErrStockExtractClipsLocalFSRequired
 	ErrStockFinalizeLeaseMissing     = types.ErrStockFinalizeLeaseMissing
 	ErrStockFinalizeStateLost        = types.ErrStockFinalizeStateLost
 	ErrStockFnRequired               = types.ErrStockFnRequired
