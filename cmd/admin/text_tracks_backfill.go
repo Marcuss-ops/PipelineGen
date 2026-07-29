@@ -79,7 +79,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // textTracksBackfillDeps groups parsed CLI flags. Pure data; the

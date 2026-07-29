@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // CatalogSearch is the read-only search surface. Handlers

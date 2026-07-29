@@ -14,7 +14,7 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestNormalizeForHash_StripsAndFoldsCase(t *testing.T) {

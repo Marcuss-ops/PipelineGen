@@ -30,7 +30,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -122,7 +122,7 @@ type sharedSourceLease struct {
 // tmpDir, defeating the FD-based protection of (a).
 type StockStager struct {
 	svc         *Service
-	downloader  DownloaderPort
+	downloader  SourceDownloader
 	driveReader DriveReaderPort
 	cacheReader SourceCacheReader
 	cacheWriter SourceCacheWriter
@@ -201,7 +201,7 @@ func (s *StockStager) WithSourceCache(reader SourceCacheReader, writer SourceCac
 // test fake that counts calls and gates operations). Returns the
 // receiver for fluent chaining. nil is allowed but surfaces a typed
 // error on StageSource's download path (godlike/07 fail-closed).
-func (s *StockStager) WithDownloader(dl DownloaderPort) *StockStager {
+func (s *StockStager) WithDownloader(dl SourceDownloader) *StockStager {
 	s.downloader = dl
 	return s
 }
@@ -433,7 +433,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		return nil, fmt.Errorf("stock stager: downloader not wired (WithDownloader was not called)")
 	}
 
-	dlReq := &downloader.DownloadRequest{
+	dlReq := &SourceDownloadRequest{
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
@@ -468,22 +468,19 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	// follower's own copy), so Cleanup's leader-detection correctly
 	// defers leader-tmpDir removal to the lease's last-ref unlink.
 	v, sfErr, _ := s.sf.Do(cacheKey, func() (interface{}, error) {
-		if dlErr := s.downloader.Download(ctx, dlReq); dlErr != nil {
+		dlResult, dlErr := s.downloader.Download(ctx, dlReq)
+		if dlErr != nil {
 			return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, dlErr)
 		}
-		// Resolve the actual downloaded file path.
-		resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s")
-		if resolveErr != nil {
-			return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
-		}
-		fi, statErr := fs.Stat(resolved)
+		// Resolved path and size are already computed by the infra adapter.
+		fi, statErr := fs.Stat(dlResult.ResolvedPath)
 		if statErr != nil {
-			return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
+			return nil, fmt.Errorf("stock stager: stat %q: %w", dlResult.ResolvedPath, statErr)
 		}
 		// Populate cache for fresh downloads (best-effort, never surfaces).
-		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, resolved, fi.Size())
+		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, fi.Size())
 		return &assets.StagedAsset{
-			LocalPath: resolved,
+			LocalPath: dlResult.ResolvedPath,
 			Bytes:     fi.Size(),
 		}, nil
 	})

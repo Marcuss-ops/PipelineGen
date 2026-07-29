@@ -47,7 +47,7 @@ import (
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"

@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/recommendation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/transcription"
 	"github.com/Marcuss-ops/PipelineGen/internal/youtube/acquisition"
 	ytfeatmetadata "github.com/Marcuss-ops/PipelineGen/internal/youtube/metadata"

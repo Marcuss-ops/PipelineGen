@@ -32,7 +32,7 @@ package ports
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TextTrackReader is the canonical read surface for the video

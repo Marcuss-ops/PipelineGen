@@ -19,7 +19,7 @@ package routing
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // RetrievalSearchOptions are the per-call options that control how

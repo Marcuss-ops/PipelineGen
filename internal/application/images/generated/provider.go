@@ -14,7 +14,7 @@ package generated
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // GenerationProvider is the single backend contract for AI image generation.

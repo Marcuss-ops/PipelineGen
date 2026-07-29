@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // AssetInventoryReader is the canonical read-only port used by the

@@ -62,7 +62,7 @@ func CanonicalStepStatusValues() []StepStatus {
 }
 
 // IsValid returns true iff s is one of the 4 canonical closed values.
-// Mirrors the pattern at internal/domain/asset/asset_types.go::LifecycleState.
+// Mirrors the pattern at internal/kernel/asset/asset_types.go::LifecycleState.
 func (s StepStatus) IsValid() bool {
 	switch s {
 	case StatusPending, StatusRunning, StatusCompleted, StatusFailed:

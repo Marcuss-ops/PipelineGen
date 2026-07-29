@@ -1,7 +1,7 @@
 // Package scan — per-check forward-prevention gate that bans
 // `StateAssetX AssetState = "..."` const declarations OUTSIDE
 // the canonical SOLE owner at
-// internal/domain/asset/asset_state_values.go
+// internal/kernel/asset/asset_state_values.go
 // (PR-CATALOG-MULTILINGUA step 7, July 2026).
 //
 // scan/percheck_asset_state_no_shadow_enum.go owns the Go
@@ -24,7 +24,7 @@
 //     sibling scanners reference the canonical literals for
 //     greppability — false-positive exemption).
 //   - allow the canonical SOLE owner
-//     (internal/domain/asset/asset_state_values.go) — the SSOT.
+//     (internal/kernel/asset/asset_state_values.go) — the SSOT.
 //   - comment-only references to StateAsset are WARNed
 //     (residue accounting, godlike/07).
 //
@@ -46,7 +46,7 @@ import (
 // assetStateShadowSkipDirs mirrors percheck_image_asset_invariants.go's
 // standard skip-dir set (one CRITICAL EXCEPTION: do NOT add
 // `scripts` here — the canonical SSOT path
-// internal/domain/asset/ lives under no scripts dir, but
+// internal/kernel/asset/ lives under no scripts dir, but
 // future sibling surfaces might). Mirrors the rationale in
 // imageAssetSkipDirs.
 var assetStateShadowSkipDirs = map[string]bool{
@@ -90,7 +90,7 @@ var assetStateShadowDeclRe = regexp.MustCompile(`StateAsset\w+\b[\w.\s]*\bAssetS
 // shadow declarations. The message references the canonical
 // SOLE owner + the forward-prevention gate so the operator
 // sees the migration path inline.
-const assetStateShadowNote = "forbidden `StateAssetX AssetState = \"...\"` const declaration outside canonical SOLE owner (internal/domain/asset/asset_state_values.go); godlike/06 SSOT permits AssetState's alphabet ONLY in the canonical file; route through the canonical SOLE owner to avoid alphabet drift (PR-CATALOG-MULTILINGUA step 7 forward-prevention gate)"
+const assetStateShadowNote = "forbidden `StateAssetX AssetState = \"...\"` const declaration outside canonical SOLE owner (internal/kernel/asset/asset_state_values.go); godlike/06 SSOT permits AssetState's alphabet ONLY in the canonical file; route through the canonical SOLE owner to avoid alphabet drift (PR-CATALOG-MULTILINGUA step 7 forward-prevention gate)"
 
 // assetStateShadowRule is the rule-family id this scanner
 // emits. Mirrors percheck_image_asset_invariants.go

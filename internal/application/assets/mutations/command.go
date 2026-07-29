@@ -31,7 +31,7 @@
 //     those two via package isolation, not via lowercase visibility.
 //  3. upsertFolder / SoftDeleteFilter live on the embedded
 //     *asset.AssetStoreSQLite. Removing that embedding is PR 1's
-//     deliverable (move SQL primitives out of internal/domain/asset/).
+//     deliverable (move SQL primitives out of internal/kernel/asset/).
 //     PR 1 was aborted in a prior turn to preserve build green; the
 //     domain still hosts the embedded SQLite primitives, so the
 //     embedding structurally cannot be removed until PR 1 lands.
@@ -64,7 +64,7 @@ package mutations
 import (
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrUnsupportedAction is the canonical sentinel returned by the

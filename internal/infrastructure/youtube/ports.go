@@ -16,7 +16,7 @@ package youtube
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TimedEntry represents a parsed subtitle cue. The values are in seconds.
@@ -74,7 +74,7 @@ type SubtitleFetcher interface {
 // the infrastructure-layer WhisperTranscriber interface.
 //
 // godlike/06 SSOT (one canonical owner per fact): TranscriptResult
-// is defined in internal/domain/asset/transcript_result.go so the
+// is defined in internal/kernel/asset/transcript_result.go so the
 // application-layer port and the infrastructure-layer port BOTH
 // reference the same type without import cycles. The canonical
 // contract is:

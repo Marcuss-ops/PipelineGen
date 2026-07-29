@@ -9,7 +9,7 @@ package imagesrepo
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // GetImageByHash recupera un'immagine tramite il suo hash.

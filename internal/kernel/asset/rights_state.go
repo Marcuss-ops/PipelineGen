@@ -70,7 +70,7 @@ const (
 
 	// RightsStatusLicensed — the asset is covered by a per-call
 	// license the operator has on file. Tied to the
-	// internal/domain/asset/license_release.go::AssetLicense
+	// internal/kernel/asset/license_release.go::AssetLicense
 	// surface via the license_basis column (the canonical
 	// pointer to AssetLicense.id; operator workflow).
 	RightsStatusLicensed RightsStatus = "licensed"

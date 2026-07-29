@@ -1,7 +1,7 @@
 // Package assets — clip list/count SQL queries (Wave C: moved from
-// internal/domain/asset/clips_list.go).
+// internal/kernel/asset/clips_list.go).
 //
-// After Wave C, the source `internal/domain/asset/clips_list.go` is
+// After Wave C, the source `internal/kernel/asset/clips_list.go` is
 // deleted (no types reside in it). The filesystem scanner
 // (ScanDirectory + MediaFile) was migrated to
 // `internal/infrastructure/files/scanner.go` in PR 3 of Blocco 1.
@@ -12,7 +12,7 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── SQL receivers (migrated from clips_list.go) ──────────────────────

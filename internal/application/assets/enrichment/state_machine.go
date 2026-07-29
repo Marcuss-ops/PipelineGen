@@ -35,7 +35,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // validEdges is the canonical closed-set of legal state-machine

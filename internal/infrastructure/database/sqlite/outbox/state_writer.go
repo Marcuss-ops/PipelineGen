@@ -21,7 +21,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ClipsStateWriter is the *assets.ClipsRepository method surface the

@@ -34,7 +34,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

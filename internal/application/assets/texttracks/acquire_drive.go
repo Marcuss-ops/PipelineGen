@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireCommand) (*AcquireResult, error) {

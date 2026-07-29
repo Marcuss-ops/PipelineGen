@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/visualanalysis"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 

@@ -32,7 +32,7 @@ package youtube
 import (
 	"os"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // triggerWhisperFallback is the canonical (nil, nil) sentinel that

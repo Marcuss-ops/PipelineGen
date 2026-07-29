@@ -19,7 +19,7 @@
 //
 // Step-1 typed migration (PR-IMAGES-AI-VS-NORMAL-PLAN, A1, July 2026):
 // the underlying StyleDefinition canonically lives at
-// internal/domain/asset/types_style.go (slim 8-field shape). The 3-level
+// internal/kernel/asset/types_style.go (slim 8-field shape). The 3-level
 // alias chain (image/styles.StyleDefinition = asset.GenerationStyle =
 // asset.StyleDefinition) collapses to a single type identity at compile
 // time, so existing consumers in this shim continue to work unchanged.

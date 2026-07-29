@@ -3,7 +3,7 @@
 // scanner.go — canonical MediaScanner surface (Wave 24 / PR 3 of
 // Blocco 1 Asset SSOT, June 2026). Replaces the legacy
 // `asset.ScanDirectory` + `asset.MediaFile` helpers that previously
-// lived in `internal/domain/asset/clips_list.go:114-152` and pulled
+// lived in `internal/kernel/asset/clips_list.go:114-152` and pulled
 // `os`/`path/filepath`/`sort`/`time` imports into the canonical
 // domain layer.
 //
@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 // Filesystem scanning is intrinsically an infrastructure concern:
 // it reaches into `os.DirEntry`, calls `filepath.WalkDir`, and reads
-// file metadata. Domain code in `internal/domain/asset/` is
+// file metadata. Domain code in `internal/kernel/asset/` is
 // supposed to be filesystem-primitive-free after this PR 3 move.
 // Cross-package consumers that need to scan a local directory
 // inject `MediaScanner` from the composition root; the canonical

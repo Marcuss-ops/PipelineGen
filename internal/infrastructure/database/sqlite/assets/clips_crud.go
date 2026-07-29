@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
@@ -165,7 +165,7 @@ func (r *ClipsRepository) DeleteClip(ctx context.Context, id string) error {
 //     asked for.
 //  3. *asset.AssetStoreSQLite embedding reflects the still-in-domain
 //     SQL primitives (PR 1 deliverable was aborted in a prior turn to
-//     preserve build green — internal/domain/asset/ still owns the
+//     preserve build green — internal/kernel/asset/ still owns the
 //     embeddable store). Removing that embedding strictly requires
 //     PR 1 / Blocco 1 to land first.
 //

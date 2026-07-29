@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
@@ -84,7 +84,7 @@ func (a *searchReadAdapter) GetMany(
 	// MUST NOT introduce a different allowlist; the constant
 	// `search.SearchableLifecycleStates` is the SSOT and is
 	// updated atomically with the lifecycle_state enum
-	// (internal/domain/asset/asset_types.go::LifecycleState).
+	// (internal/kernel/asset/asset_types.go::LifecycleState).
 	allowSet := make(map[string]bool, len(search.SearchableLifecycleStates))
 	for _, s := range search.SearchableLifecycleStates {
 		allowSet[s] = true

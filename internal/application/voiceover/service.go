@@ -8,7 +8,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 

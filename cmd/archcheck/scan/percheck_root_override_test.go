@@ -262,7 +262,7 @@ const sample = "RootFolderOverride"
 
 const note = "RootFolderOverride is in delivery.PublishRequest"
 `
-	writeFixture(t, root, "internal/domain/asset/docs.go", domainContent)
+	writeFixture(t, root, "internal/kernel/asset/docs.go", domainContent)
 
 	r := newEmptyReport()
 	ScanRootOverrideBan(root, newTestPolicy(), r, false)

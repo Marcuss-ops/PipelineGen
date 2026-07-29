@@ -154,7 +154,7 @@ type AssetSearchQuery struct {
 	// `asset.ReviewStatus.String()` (4-value alphabet). A
 	// custom caller bypassing the canonical enums MUST use
 	// the wire alphabet verbatim (see RightsStatus.Valid /
-	// ReviewStatus.Valid in internal/domain/asset/rights_state.go).
+	// ReviewStatus.Valid in internal/kernel/asset/rights_state.go).
 	//
 	// godlike/07 fail-closed at the planning-tier: a
 	// non-empty ExcludeRightsStatuses slice on a Qdrant

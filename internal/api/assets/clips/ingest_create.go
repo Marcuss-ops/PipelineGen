@@ -7,7 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"

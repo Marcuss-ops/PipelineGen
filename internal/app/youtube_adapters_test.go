@@ -9,7 +9,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 
 	"github.com/stretchr/testify/assert"

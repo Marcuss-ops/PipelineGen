@@ -78,7 +78,7 @@ type MetadataKeySpec struct {
 	// scanner does NOT cross-reference Doc; it lives for
 	// humans reading the registry, mirroring the field-
 	// level godoc discipline throughout
-	// internal/domain/asset/.
+	// internal/kernel/asset/.
 	Doc string
 }
 

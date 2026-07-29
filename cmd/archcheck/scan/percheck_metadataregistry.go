@@ -33,12 +33,12 @@ import (
 // the migration proceeds.
 var metadataAllowlist = map[string]bool{
 	// Grandfathered domain files can be added here with owner + deadline.
-	"internal/domain/asset/asset_accessors.go":                 true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/asset_types.go":                     true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/metadata_helpers.go":                true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/processor.go":                       true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/scoring.go":                         true, // owner: platform-asset-metadata, deadline: 2026-08-15
-	"internal/domain/asset/location_resolver.go":               true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/asset_accessors.go":                 true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/asset_types.go":                     true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/metadata_helpers.go":                true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/processor.go":                       true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/scoring.go":                         true, // owner: platform-asset-metadata, deadline: 2026-08-15
+	"internal/kernel/asset/location_resolver.go":               true, // owner: platform-asset-metadata, deadline: 2026-08-15
 	"internal/domain/finalization/types_published_artifact.go": true, // owner: platform-finalization, deadline: 2026-08-15
 	"internal/domain/script/generation_errors.go":              true, // owner: platform-script-domain, deadline: 2026-08-15
 	"internal/domain/script/generation_result.go":              true, // owner: platform-script-domain, deadline: 2026-08-15

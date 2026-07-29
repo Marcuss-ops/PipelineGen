@@ -10,7 +10,7 @@
 package texttracks
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // MaterializationKey is the canonical key that determines

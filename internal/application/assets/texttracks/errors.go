@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrTranslationFailed is the canonical terminal sentinel for a

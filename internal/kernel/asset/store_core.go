@@ -45,7 +45,7 @@ package asset
 // canonical caller is `Service` — a domain type. Putting the bridge
 // in domain keeps the direction-of-import graph acyclic:
 //
-//	internal/domain/asset/Service → assetStoreAdapter (here)
+//	internal/kernel/asset/Service → assetStoreAdapter (here)
 //	internal/infrastructure/database/sqlite/assets/AssetStoreSQLite
 //	                              → satisfies assetStoreAdapter
 //	                                (declarations live next to it)

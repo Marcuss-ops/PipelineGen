@@ -6,7 +6,7 @@
 // migration of the forward-prevention gate for the
 // MediaTransformer contract. The canonical DTOs (`TransformSpec`
 // and `RenditionSet`) are declared at
-// `internal/domain/asset/processor.go` and MUST NOT carry fields
+// `internal/kernel/asset/processor.go` and MUST NOT carry fields
 // whose NAME or TYPE matches any of the forbidden WORDS
 // (case-insensitive, word-bounded) listed below.
 //
@@ -64,7 +64,7 @@
 //   - skip `cmd/archcheck/scan/**` (this scanner file +
 //     sibling scanners reference the canonical literals).
 //   - allow the canonical SOLE owner
-//     (internal/domain/asset/processor.go) — the gate
+//     (internal/kernel/asset/processor.go) — the gate
 //     inspects THIS file but the inspection is read-only.
 //   - comment-only references to the forbidden WORDS are
 //     WARNed (residue accounting, godlike/07). The comment-
@@ -96,7 +96,7 @@ import (
 // the MediaTransformer contract (interface + TransformSpec +
 // RenditionSet DTOs). The gate inspects this file but the
 // inspection is read-only — the gate does NOT modify the file.
-const mediaTransformerCanonicalPath = "internal/domain/asset/processor.go"
+const mediaTransformerCanonicalPath = "internal/kernel/asset/processor.go"
 
 // mediaTransformerTargetTypes lists the DTO struct names that
 // the gate inspects. Both names are matched exactly
@@ -188,7 +188,7 @@ var mediaTransformerForbiddenNames = []string{
 // field runtime cost is 8 `MatchString` calls per
 // `fieldName || fieldType`, which is acceptable because the
 // scanner inspects exactly ONE canonical file
-// (`internal/domain/asset/processor.go`).
+// (`internal/kernel/asset/processor.go`).
 var mediaTransformerForbiddenWordReList = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bdrive\b`),
 	regexp.MustCompile(`(?i)\bqdrant\b`),

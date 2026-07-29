@@ -20,7 +20,7 @@
 //     contract per godlike/07 fail-closed).
 //
 // Test 5 (state_machine_extension) lives in
-// internal/domain/asset/index_state_skipped_test.go per godlike/06
+// internal/kernel/asset/index_state_skipped_test.go per godlike/06
 // SSOT (one canonical test file per package — IndexState enum +
 // Valid /IsTerminal /IsRetryPending predicates are owned by the asset
 // package, not by the outbox handler).

@@ -16,7 +16,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 )
 

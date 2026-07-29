@@ -9,7 +9,7 @@
 //   - Dispatcher error propagation: stub returns sentinel; Ingest must
 //     errors.Is surface the sentinel.
 //
-// Field shapes (canonical from internal/domain/asset/*.go):
+// Field shapes (canonical from internal/kernel/asset/*.go):
 //   - asset.TranscriptResult{ Text string, DetectedLanguage string,
 //     Confidence *float64 } — NO bare Language field.
 //   - asset.TextTrack{ LanguageCode, TextContent, ... } — NO bare Language
@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Test stubs satisfying the 9 named ports ────────────────────────────

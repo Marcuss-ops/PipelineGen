@@ -1,6 +1,6 @@
 package ontology
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 // TopicRule defines the scoring rules for a specific topic.
 type TopicRule struct {

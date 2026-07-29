@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // testImageGenSvc satisfies ImageGenService via fixed 4-string signature.

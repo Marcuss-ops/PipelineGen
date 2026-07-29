@@ -57,7 +57,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrUnavailable is the sentinel returned by upstream code paths that detect

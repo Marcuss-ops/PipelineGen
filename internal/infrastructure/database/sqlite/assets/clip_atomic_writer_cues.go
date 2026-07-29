@@ -30,7 +30,7 @@ import (
 	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // insertTextTrackSegmentsInTx performs the BATCH INSERT of

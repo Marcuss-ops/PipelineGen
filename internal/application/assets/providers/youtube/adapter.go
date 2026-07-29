@@ -30,7 +30,7 @@ import (
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

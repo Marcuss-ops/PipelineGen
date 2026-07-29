@@ -25,7 +25,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // SearchServicePort is the structural port that the parent

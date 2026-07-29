@@ -3,7 +3,7 @@ package ontology
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestScorer_Apply(t *testing.T) {

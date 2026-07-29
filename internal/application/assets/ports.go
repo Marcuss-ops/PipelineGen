@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── MaintenanceRepository port (extracted from maintenance package) ─────
@@ -152,7 +152,7 @@ type DBHealthChecker interface {
 //
 // PR-MEDIATRANSFORMER-RENAME (July 2026): SourceRef + StagedSource
 // are NOT defined here — they live in the domain layer at
-// `internal/domain/asset/staged_source.go` (the canonical SSOT per
+// `internal/kernel/asset/staged_source.go` (the canonical SSOT per
 // godlike/06). The domain types are imported as `asset.SourceRef`
 // and `asset.StagedSource` via the `asset` import alias. The
 // SourceStager port signature uses the domain types so the port
@@ -209,7 +209,7 @@ type SourceStager interface {
 // `internal/infrastructure/{stager,media}` continue to reference
 // `assets.SourceRef` and `assets.StagedSource` without churn. The
 // canonical SSOT lives in the domain layer at
-// `internal/domain/asset/staged_source.go`; the aliases are
+// `internal/kernel/asset/staged_source.go`; the aliases are
 // transparent forwarders that resolve to the same underlying type
 // at compile time.
 //

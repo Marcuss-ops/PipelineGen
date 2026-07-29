@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestAssetSearchDocumentBuilder_Build_IncludesAllFields(t *testing.T) {

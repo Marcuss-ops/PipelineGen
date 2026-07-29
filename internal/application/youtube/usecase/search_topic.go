@@ -22,7 +22,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"

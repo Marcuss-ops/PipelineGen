@@ -15,7 +15,7 @@ import (
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"

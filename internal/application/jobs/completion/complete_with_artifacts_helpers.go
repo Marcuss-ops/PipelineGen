@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

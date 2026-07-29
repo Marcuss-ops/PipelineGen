@@ -20,7 +20,7 @@ package enrichment
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // EnrichRepositoryPort is the canonical read+write seam to the

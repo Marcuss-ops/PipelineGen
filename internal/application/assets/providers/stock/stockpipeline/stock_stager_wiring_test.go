@@ -73,7 +73,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ─────────────────────────────────────────────────────────────────────

@@ -60,7 +60,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // imageGenSvcAdapter adapts *imgservice.Service →

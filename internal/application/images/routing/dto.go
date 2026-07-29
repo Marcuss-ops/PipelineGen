@@ -2,7 +2,7 @@
 // image-territories action plan FASE 6).
 //
 // ImageOrigin (FASE 7 image-territories cleanup, July 2026): re-exported
-// from internal/domain/asset/image_taxonomy.go via a Go 1.9+ type
+// from internal/kernel/asset/image_taxonomy.go via a Go 1.9+ type
 // alias. This collapses the previously-duplicate defined-type
 // `routing.ImageOrigin string` into a single canonical type identity
 // with `asset.ImageOrigin` so:
@@ -10,7 +10,7 @@
 //   - `var x []routing.ImageOrigin` IS the same type as
 //     `var y []asset.ImageOrigin` — no cast loop at composition seams.
 //   - The canonical enum set (Retrieved / Generated / Uploaded) lives
-//     at `internal/domain/asset/image_taxonomy.go` and is the SSOT
+//     at `internal/kernel/asset/image_taxonomy.go` and is the SSOT
 //     per godlike/06 "one owner per fact". `routing.OriginRetrieved`
 //     and `routing.OriginGenerated` are REMOVED — callers must use
 //     `asset.ImageOriginRetrieved` / `asset.ImageOriginGenerated`.
@@ -23,7 +23,7 @@
 package routing
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type ImageSearchTerritory string
@@ -44,7 +44,7 @@ func (t ImageSearchTerritory) IsValid() bool {
 }
 
 // ImageOrigin is an alias for the canonical asset.ImageOrigin enum
-// declared at internal/domain/asset/image_taxonomy.go. Go 1.9+ type
+// declared at internal/kernel/asset/image_taxonomy.go. Go 1.9+ type
 // alias — same identity, so []routing.ImageOrigin and
 // []asset.ImageOrigin are interchangeable at every callsite. One owner
 // per fact: domain/asset. Existing routes that referenced the

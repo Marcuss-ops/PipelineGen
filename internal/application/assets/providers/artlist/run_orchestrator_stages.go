@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 

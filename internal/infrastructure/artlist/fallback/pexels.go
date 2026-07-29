@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // pexelsVideoFile mirrors the inline JSON shape used both for

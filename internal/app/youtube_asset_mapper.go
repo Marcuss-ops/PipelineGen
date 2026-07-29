@@ -4,7 +4,7 @@ package app
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // metadataStringSlice reads a []string from Asset.Metadata via the canonical

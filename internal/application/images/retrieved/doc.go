@@ -4,7 +4,7 @@
 //
 // Per the July 2026 image-restructuring plan, retrieval sources fall
 // into four named providers per the ImageProvider taxonomy in
-// internal/domain/asset/image_taxonomy.go:
+// internal/kernel/asset/image_taxonomy.go:
 //
 //   - Wikipedia  (provider.ProviderWikipedia)
 //   - SearXNG    (provider.ProviderSearXNG)

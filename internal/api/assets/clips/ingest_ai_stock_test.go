@@ -19,7 +19,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )

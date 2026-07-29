@@ -27,7 +27,7 @@ package searchqueries
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // Repository is the port the use-case depends on. Production wire-up

@@ -33,7 +33,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // projectRootForMigration157Test resolves the project root

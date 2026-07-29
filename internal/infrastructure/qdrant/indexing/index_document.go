@@ -66,7 +66,7 @@ package indexing
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // VectorChannel names a per-channel vector handle in the canonical
@@ -314,7 +314,7 @@ type IndexedMetadata struct {
 	TextTracksVersion string
 
 	// ── VLM visual summary block (FASE-9 + visual-summary reindex path) ────
-	// Sourced from internal/domain/asset/clip_visual_summary.go
+	// Sourced from internal/kernel/asset/clip_visual_summary.go
 	// (canonical VisualSummary row in asset_visual_summaries). The Go
 	// visual-summary reindex service (cmd/admin/reindex_visual_summary.go)
 	// populates the AssetData.VisualSummary* fields, which the airlock

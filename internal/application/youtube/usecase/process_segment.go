@@ -45,7 +45,7 @@ import (
 	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.

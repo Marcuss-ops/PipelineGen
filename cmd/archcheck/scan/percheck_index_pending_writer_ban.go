@@ -10,7 +10,7 @@
 // and MUST NOT introduce new writers of INDEX_PENDING.
 //
 // Exempt zones:
-//   - internal/domain/asset/index_state.go — the canonical definition
+//   - internal/kernel/asset/index_state.go — the canonical definition
 //     of the deprecated value.
 //   - internal/application/assets/operator/index_health_resolver.go —
 //     reads legacy state for backward-compat health reporting.
@@ -39,7 +39,7 @@ var indexPendingWriterRe = regexp.MustCompile(`\basset\.StateIndexPending\b`)
 
 const indexPendingWriterRule = "percheck_index_pending_writer_ban"
 
-const indexPendingWriterNote = "forbidden reference to deprecated asset.StateIndexPending in production code. New writers MUST use the canonical asset lifecycle (asset.StateDiscovered / NewIndexableAssetState). StateIndexPending is retained only for DB backward-compat. See internal/domain/asset/index_state.go."
+const indexPendingWriterNote = "forbidden reference to deprecated asset.StateIndexPending in production code. New writers MUST use the canonical asset lifecycle (asset.StateDiscovered / NewIndexableAssetState). StateIndexPending is retained only for DB backward-compat. See internal/kernel/asset/index_state.go."
 
 var indexPendingWriterSkipDirs = map[string]bool{
 	".git":         true,
@@ -52,7 +52,7 @@ var indexPendingWriterSkipPathPrefixes = []string{
 }
 
 var indexPendingWriterExemptPaths = map[string]bool{
-	"internal/domain/asset/index_state.go":                          true,
+	"internal/kernel/asset/index_state.go":                          true,
 	"internal/application/assets/operator/index_health_resolver.go": true,
 }
 

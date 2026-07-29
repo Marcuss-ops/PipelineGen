@@ -26,7 +26,7 @@ import (
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TranscriptReader reads the on-disk transcript file for a clip.

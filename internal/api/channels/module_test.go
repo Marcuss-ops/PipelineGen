@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

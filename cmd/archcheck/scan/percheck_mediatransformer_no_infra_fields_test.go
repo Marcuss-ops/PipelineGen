@@ -44,7 +44,7 @@ import (
 )
 
 // writeFakeProcessorForWbTest scaffolds
-// <root>/internal/domain/asset/processor.go with the supplied
+// <root>/internal/kernel/asset/processor.go with the supplied
 // content. Mirrors the write-pattern from
 // percheck_asset_state_canonical_14_test.go.
 func writeFakeProcessorForWbTest(t *testing.T, root, content string) {

@@ -13,7 +13,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── DTOs (minimal surface — only fields the handler reads) ───────────

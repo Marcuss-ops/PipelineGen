@@ -3,7 +3,7 @@ package operator
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestResolveIndexHealth_MapsAllCases(t *testing.T) {

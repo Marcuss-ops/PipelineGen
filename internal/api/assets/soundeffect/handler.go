@@ -24,7 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

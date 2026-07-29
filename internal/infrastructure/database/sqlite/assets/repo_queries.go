@@ -1,11 +1,11 @@
 // Package assets — repository adapter SQL helpers (Wave C: moved
-// from internal/domain/asset/store_core.go).
+// from internal/kernel/asset/store_core.go).
 //
 // The `Repository` interface stays in domain (canonical contract).
 // The concrete `assetRepositoryAdapter` struct + `AssetRepository()`
 // factory + supporting SQL helpers (`FindByExternalRef`,
 // `listAssetsByFilter`) migrate here. The slim
-// `internal/domain/asset/store_core.go` keeps only the `Service`
+// `internal/kernel/asset/store_core.go` keeps only the `Service`
 // type and its interface-resolution helpers.
 package assets
 
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

@@ -12,7 +12,7 @@
 // /api/assets/clips/{id} and what cmd/admin qdrant-preflight checks.
 //
 // godlike/06 SSOT: the canonical index_state enum lives in
-// internal/domain/asset/index_state.go (StateDiscovered, StateIndexed, etc.).
+// internal/kernel/asset/index_state.go (StateDiscovered, StateIndexed, etc.).
 // The production DISCOVERED → INDEXED transition is performed by
 // setIndexedAt in internal/infrastructure/indexing/clipindexer; for tests
 // we simulate it with a plain SQL UPDATE on metadata_json.$.index_state.
@@ -38,7 +38,7 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

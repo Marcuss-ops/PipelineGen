@@ -45,7 +45,7 @@ import (
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	sfxports "github.com/Marcuss-ops/PipelineGen/internal/application/assets/soundeffect"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 // Package assets — processing SQL queries (Wave C: moved from
-// internal/domain/asset/processor.go).
+// internal/kernel/asset/processor.go).
 //
 // The ProcessingRecord/ProcessingStatus/ProcessingStage types AND
 // the ProcessingRepository/Processor interfaces stay in domain
@@ -13,7 +13,7 @@ import (
 
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

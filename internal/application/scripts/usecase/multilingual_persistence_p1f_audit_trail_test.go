@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Audit-trail-aware stub tests ────────────────────────────────────────────
@@ -39,7 +39,7 @@ import (
 // grow by exactly 1 (the prior row is preserved, NOT deleted).
 //
 // The test mirrors the canonical SQLite impl semantics documented
-// in `internal/domain/asset/text_track_repository.go` and the
+// in `internal/kernel/asset/text_track_repository.go` and the
 // `fakeTextTrackRepo` seam in
 // `internal/application/assets/texttracks/materializer_test.go`.
 func TestAuditTrail_P1F_Stub_InsertTranslationWithAuditPredecessor_FlipsPriorCurrent(t *testing.T) {

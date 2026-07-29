@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// writeFakeAssetState creates a tempDir/internal/domain/asset/
+// writeFakeAssetState creates a tempDir/internal/kernel/asset/
 // asset_state_values.go file with exactly `count` StateAssetX
 // const declarations of the canonical literal shape. The
 // rest of the file is a minimal scaffolding the scanner
@@ -200,7 +200,7 @@ func projectRootFromTestFile(t *testing.T) string {
 // TestScanAssetStateCanonical14_ProductionCanonicalFile is the
 // END-TO-END SANITY RUN for the canonical-14 gate (PR-CATALOG-
 // MULTILINGUA step 7+, July 2026). Opens the REAL production
-// canonical file at internal/domain/asset/asset_state_values.go (NOT
+// canonical file at internal/kernel/asset/asset_state_values.go (NOT
 // a synthetic fixture) and asserts the scanner returns ZERO
 // violations + at least one residue WARN (the descriptive
 // GodLike-07 comment-only StateAsset references inside the

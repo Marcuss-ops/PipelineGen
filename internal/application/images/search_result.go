@@ -1,6 +1,6 @@
 package images
 
-import "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 // SearchResult carries the canonical image asset plus the retrieval
 // trace needed by HTTP callers to expose cache provenance.

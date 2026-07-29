@@ -44,7 +44,7 @@ import (
 	"strings"
 	"sync"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/styleerrors"
 	"gopkg.in/yaml.v3"
 )

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )

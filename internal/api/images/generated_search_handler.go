@@ -36,14 +36,14 @@ import (
 	"fmt"
 	"strconv"
 
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
 
 // domain import retained: the canonical ImageOriginGenerated
-// constant lives in internal/domain/asset/image_taxonomy.go.
+// constant lives in internal/kernel/asset/image_taxonomy.go.
 
 // ErrInvalidGeneratedSearchLimit is the typed sentinel returned by
 // the data-only listGeneratedTerritoryResults helper when the

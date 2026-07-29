@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -41,7 +41,7 @@ func CollectionVersion() string { return collectionVersion }
 
 // IndexClip generates embeddings for a clip and upserts it into Qdrant.
 // Uses the canonical state machine in media_assets.index_state (column,
-// QDRANT-002 PR6 / migration 094) — see internal/domain/asset/index_state.go
+// QDRANT-002 PR6 / migration 094) — see internal/kernel/asset/index_state.go
 // for the IndexState enum:
 //
 //	DISCOVERED → EMBEDDING → EMBEDDED → INDEXING → INDEXED

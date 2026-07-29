@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
-	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // parseMetadataJSON lazily parses metadata JSON on first access.
