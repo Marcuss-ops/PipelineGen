@@ -139,6 +139,14 @@ export DRY_RUN
 # token is still empty; that is intentional (force operators to see the
 # authentication gap when actually hitting the server).
 smoke_resolve_token() {
+    # If already resolved by a parent process (exported via SMOKE_TOKEN),
+    # reuse it. This propagates the token through nested script invocations
+    # (e.g. full_battery.sh → run_scenario.sh) without requiring
+    # VELOX_ADMIN_TOKEN or TOKEN_FILE to be present in every child.
+    if [[ -n "${SMOKE_TOKEN:-}" ]]; then
+        printf '%s' "$SMOKE_TOKEN"
+        return 0
+    fi
     if [[ -n "${VELOX_ADMIN_TOKEN:-}" ]]; then
         printf '%s' "$VELOX_ADMIN_TOKEN"
         return 0
