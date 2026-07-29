@@ -75,3 +75,38 @@ func (l *LocalAdapter) Open(name string) (io.ReadCloser, error) {
 func (l *LocalAdapter) Create(name string) (io.WriteCloser, error) {
 	return os.Create(name)
 }
+
+// MkdirTemp creates a new temporary directory and returns its path.
+func (l *LocalAdapter) MkdirTemp(dir, pattern string) (string, error) {
+	return os.MkdirTemp(dir, pattern)
+}
+
+// Remove removes the named file or (empty) directory.
+func (l *LocalAdapter) Remove(name string) error {
+	return os.Remove(name)
+}
+
+// RemoveAll removes path and any children it contains.
+func (l *LocalAdapter) RemoveAll(path string) error {
+	return os.RemoveAll(path)
+}
+
+// MkdirAll creates a directory along with any necessary parents.
+func (l *LocalAdapter) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
+// CreateTemp creates a new temporary file, returning its path
+// and a WriteCloser for writing.
+func (l *LocalAdapter) CreateTemp(dir, pattern string) (string, io.WriteCloser, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", nil, err
+	}
+	return f.Name(), f, nil
+}
+
+// TempDir returns the default directory to use for temporary files.
+func (l *LocalAdapter) TempDir() string {
+	return os.TempDir()
+}
