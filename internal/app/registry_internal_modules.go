@@ -191,7 +191,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		return nil
 	}
 
-	artlistWiring, err := WireArtlist(
+	wiring.ArtlistWiring, err := wiring.WireArtlist(
 		ctx,
 		log,
 		cfg,
@@ -218,7 +218,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		root.TextTracks.FanOut,
 	)
 	if err != nil {
-		var depMissing ErrArtlistDepMissing
+		var depMissing wiring.ErrArtlistDepMissing
 		if errors.As(err, &depMissing) {
 			log.Error("registerArtlist: mandatory dependency strictly required when Artlist is enabled; aborting boot (godlike/07 fail-closed)",
 				zap.String("root_path", "/api/artlist/*"),
@@ -227,7 +227,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 				zap.Error(err),
 			)
 		} else {
-			log.Error("registerArtlist: WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
+			log.Error("registerArtlist: wiring.WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
 				zap.String("root_path", "/api/artlist/*"),
 				zap.Error(err),
 			)
@@ -235,19 +235,19 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		return fmt.Errorf("registerArtlist aborting boot (godlike/07 fail-closed): %w", err)
 	}
 
-	if err := tryRegisterModuleStrict(registry, log, artlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
-		_ = artlistWiring.Service.Close()
+	if err := tryRegisterModuleStrict(registry, log, wiring.ArtlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
+		_ = wiring.ArtlistWiring.Service.Close()
 		return fmt.Errorf("registerArtlist: tryRegisterModuleStrict: %w", err)
 	}
 
-	wiring.ArtlistSvc = artlistWiring
-	if err := WireArtlistJobBindings(artlistWiring.Service, root.Jobs); err != nil {
-		_ = artlistWiring.Service.Close()
+	wiring.ArtlistSvc = wiring.ArtlistWiring
+	if err := WireArtlistJobBindings(wiring.ArtlistWiring.Service, root.Jobs); err != nil {
+		_ = wiring.ArtlistWiring.Service.Close()
 		return fmt.Errorf("wire registry: artlist: %w", err)
 	}
 
 	log.Info("registerArtlist: ART-001 reversal milestone complete",
-		zap.String("descriptor_module_name", artlistWiring.Module.Name()),
+		zap.String("descriptor_module_name", wiring.ArtlistWiring.Module.Name()),
 	)
 	return nil
 }

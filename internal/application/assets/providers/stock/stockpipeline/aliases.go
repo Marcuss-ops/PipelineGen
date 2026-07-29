@@ -109,6 +109,19 @@ const (
 func StockArtifactGroupID(batchID, sourceID string) string { return types.StockArtifactGroupID(batchID, sourceID) }
 func StockArtifactID(batchID, sourceID string, clipIdx int) string      { return types.StockArtifactID(batchID, sourceID, clipIdx) }
 
+// ──── planner (P3 Batch 3) ────
+
+type ClipPlan = types.ClipPlan
+type ClipPlanner = types.ClipPlanner
+
+var (
+	ErrPlannerBudgetTooSmall  = types.ErrPlannerBudgetTooSmall
+	ErrExplicitPlannerNoClips = types.ErrExplicitPlannerNoClips
+)
+
+func NewDeterministicPlanner() ClipPlanner { return types.NewDeterministicPlanner() }
+func NewExplicitPlanner(clips []ClipSpec) ClipPlanner { return types.NewExplicitPlanner(clips) }
+
 // ──── error sentinels (was service_errors.go) ────
 
 var (

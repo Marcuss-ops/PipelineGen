@@ -303,34 +303,13 @@ var (
 // REGISTRY) — see adapters_infra_embedding.go for the concrete type.
 var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 
-// artlistConfigAdapter wraps *config.Config to satisfy
-// artlistPkg.ArtlistConfigPort. The composition-root keeps the
-// config concrete; this adapter exposes only the narrow port
-// surface to the api/ layer.
-type artlistConfigAdapter struct {
-	cfg *config.Config
-}
 
 // Compile-time assertion: artlistConfigAdapter satisfies artlistPkg.ArtlistConfigPort.
-var _ artlistPkg.ArtlistConfigPort = (*artlistConfigAdapter)(nil)
 
 // ArtlistRootFolderID resolves the canonical artlist root folder.
 // Nil-tolerant: a nil underlying cfg returns "" matching the
 // pre-refactor behaviour of artlist.ResolveRootFolderID(nil).
-func (a *artlistConfigAdapter) ArtlistRootFolderID() string {
-	return artlistPkg.ResolveRootFolderID(a.cfg)
-}
 
-// newArtlistConfigAdapter is the canonical composition-root constructor.
-// Returns a nil interface when cfg is nil so the wiring site preserves
-// the `cfgPort != nil` discipline callers can rely on (production
-// wiring always passes a non-nil cfg).
-func newArtlistConfigAdapter(cfg *config.Config) artlistPkg.ArtlistConfigPort {
-	if cfg == nil {
-		return nil
-	}
-	return &artlistConfigAdapter{cfg: cfg}
-}
 
 // middlewareRateLimitAdapter + middlewareFeatureFlagsAdapter
 // — extracted to adapters_middleware.go (PR-ADAPTERS-SPLIT, July 2026).
