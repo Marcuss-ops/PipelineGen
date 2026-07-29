@@ -47,7 +47,7 @@
         "kind": "vector_db",
         "obligatory": true,
         "check": "http_health",
-        "url": "${QDRANT_URL:-http://127.0.0.1:6333}/health",
+        "url": "${QDRANT_URL:-http://127.0.0.1:6333}",
         "label": "Qdrant vector store"
       },
       {
