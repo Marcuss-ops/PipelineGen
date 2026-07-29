@@ -52,7 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // pacquiaoBronerRounds is the canonical 8-round Pacquiao/Broner fight
