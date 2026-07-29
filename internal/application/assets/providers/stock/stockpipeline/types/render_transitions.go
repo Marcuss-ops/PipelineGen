@@ -19,7 +19,7 @@
 // STABLE — the composition root's TransitionRegistry implementation
 // and the infra renderer's catalog consumption both reference
 // these types by name. No surface-contract changes.
-package stockpipeline
+package types
 
 // ── Transition Registry ────────────────────────────────────────────────
 

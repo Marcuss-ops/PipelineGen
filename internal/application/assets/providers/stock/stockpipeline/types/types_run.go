@@ -9,7 +9,7 @@
 // All callers (adapter.go, orchestrator.go, run_orchestrator.go,
 // usecase.go, stager_adapter.go) are in the same package and
 // reference these types directly.
-package stockpipeline
+package types
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
