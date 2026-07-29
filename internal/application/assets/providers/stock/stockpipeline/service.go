@@ -90,7 +90,6 @@ type Service struct {
 	folderCreator StockFolderCreator
 	cutter        VideoCutter
 	renderer      StockRenderer
-	pcfg          PipelineConfig
 	jobsSvc       *appjobs.Service
 	assetIndex    stockAssetIndexUpserter
 	clipsRepo     stockClipsSearchTermUpdater
@@ -253,13 +252,6 @@ func NewService(deps Deps) (*Service, error) {
 		folderCreator: deps.Delivery.FolderCreator,
 		cutter:        deps.Media.Cutter,
 		renderer:      deps.Media.Renderer,
-		pcfg: func() PipelineConfig {
-			p := DefaultPipelineConfig()
-			p.ChunkDuration = v.ChunkDurationSec
-			p.MaxResults = v.MaxResults
-			p.ClipDuration = v.ClipDurationSec
-			return p
-		}(),
 		jobsSvc:           deps.Execution.Jobs,
 		assetIndex:        deps.Storage.AssetIndex,
 		clipsRepo:         deps.Storage.ClipsRepo,

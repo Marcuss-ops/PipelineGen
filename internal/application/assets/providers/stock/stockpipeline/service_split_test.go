@@ -43,12 +43,11 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 		ErrStockPipelineNilJobs,
 		ErrStockPipelineNilSourceStager,
 		ErrStockPipelineNilLocalFS,
-		ErrStockPipelineNilDB,
 		ErrStockPipelineNilFinalizer,
 	}
-	if got, want := len(sentinels), 12; got != want {
-		// 12 distinct sentinels today (DriveSvc / YouTube / ClipIndexer /
-		// MetaWriter retired per F2.10 + P8; LocalFS added per audit P0).
+	if got, want := len(sentinels), 11; got != want {
+		// 11 distinct sentinels today (ErrStockPipelineNilDB retired — DB no
+		// longer passed to stockpipeline.NewService; step store is mandatory).
 		t.Fatalf("sentinel count: got %d, want %d (a sentinel was accidentally added/removed; update this test byte-stable)", got, want)
 	}
 	for _, s := range sentinels {
