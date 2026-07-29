@@ -40,6 +40,20 @@ type LocalFSPort interface {
 	Open(name string) (io.ReadCloser, error)
 	// Create creates or truncates the named file for writing.
 	Create(name string) (io.WriteCloser, error)
+	// MkdirTemp creates a new temporary directory and returns its path.
+	MkdirTemp(dir, pattern string) (string, error)
+	// Remove removes the named file or (empty) directory.
+	Remove(name string) error
+	// RemoveAll removes path and any children it contains.
+	RemoveAll(path string) error
+	// MkdirAll creates a directory along with any necessary parents.
+	MkdirAll(path string, perm os.FileMode) error
+	// CreateTemp creates a new temporary file, returning its path
+	// and a WriteCloser for writing. The caller must close the
+	// returned WriteCloser before using the path for hashing.
+	CreateTemp(dir, pattern string) (string, io.WriteCloser, error)
+	// TempDir returns the default directory to use for temporary files.
+	TempDir() string
 }
 
 // SourceCacheReader abstracts the read side of the source download cache.
