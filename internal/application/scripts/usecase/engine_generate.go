@@ -125,9 +125,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 					zap.String("title", title),
 					zap.Int("word_count", result.WordCount))
 			}
-			// P0.8 (June 2026): jsonextract.Scanner in ModeCompatibility —
-			// cascading fallback: V1 → legacy array → plain-text wrapper.
-			// All fallbacks are declared and measured via Prometheus counters.
+			// P0.8 (June 2026) + post-rename (July 2026): jsonextract.Scanner
+			// in ModeCompatibility on the cache-replay path. The fresh
+			// generation path (further below) uses ModeFreshPlainText
+			// (deprecated same-value alias: ModeStrict). All ModeCompatibility
+			// fallbacks are declared and measured via Prometheus counters.
 			scanner := &jsonextract.Scanner{Mode: jsonextract.ModeCompatibility}
 			output, decodeErr := scanner.Scan([]byte(result.Output), "cache")
 			if decodeErr != nil {
@@ -240,21 +242,27 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			zap.Int("est_duration_s", genResult.EstDuration))
 	}
 
-	// P0.8 (June 2026): jsonextract.Scanner in ModeStrict — no
-	// fallbacks. Bare prose and legacy arrays both produce
-	// ErrModelOutputMalformed. The cache-replay path uses
-	// ModeCompatibility (declared fallback with Prometheus metrics).
-	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeStrict}
+	// P0.8 (June 2026) + post-rename (July 2026): jsonextract.Scanner
+	// in ModeFreshPlainText (canonical; deprecated same-value alias ModeStrict)
+	// — V1 JSON fast lane first, then ParsePlainTextFresh (canonical
+	// primary path for plain prose per the LLM-PLAIN-TEXT-CONTRACT
+	// wave). Legacy arrays and invalid V1 envelopes still produce
+	// ErrModelOutputMalformed so the retry path below can downgrade
+	// to ModeCompatibility for cache-replay of pre-V1 rows.
+	// The cache-replay path at the top of this function uses
+	// ModeCompatibility directly (declared fallback with Prometheus
+	// metrics).
+	scanner := &jsonextract.Scanner{Mode: jsonextract.ModeFreshPlainText}
 	output, decodeErr := scanner.Scan([]byte(genResult.Script), "fresh")
 	if decodeErr != nil {
 		if e.log != nil {
-			e.log.Warn("engine: ModeStrict decode failed, retrying with ModeCompatibility",
+			e.log.Warn("engine: ModeFreshPlainText decode failed, retrying with ModeCompatibility",
 				zap.Error(decodeErr))
 		}
 		scanner.Mode = jsonextract.ModeCompatibility
 		output, decodeErr = scanner.Scan([]byte(genResult.Script), "fresh-fallback")
 		if decodeErr != nil {
-			return nil, fmt.Errorf("engine: model output decode failed (strict + compatibility): %w", decodeErr)
+			return nil, fmt.Errorf("engine: model output decode failed (fresh + compatibility): %w", decodeErr)
 		}
 		if e.log != nil {
 			e.log.Info("engine: ModeCompatibility fallback succeeded",

@@ -27,11 +27,13 @@
 // scripts-table persistence (see processor_persistence.go for the
 // single-writer contract).
 //
-// P0.8 (June 2026): payload decoding unified into
-// internal/application/scripts/jsonextract/. Engine uses
-// ModeStrict on the fresh path (errors on bare prose) and
-// ModeCompatibility on the cache-replay path (declared fallback
-// with Prometheus metrics).
+// P0.8 (June 2026) + post-rename (July 2026): payload decoding unified
+// into internal/application/scripts/jsonextract/. Engine uses
+// ModeFreshPlainText (canonical; deprecated same-value alias ModeStrict)
+// on the fresh path — V1 JSON fast lane then ParsePlainTextFresh
+// (canonical primary path in fresh_parser.go) for plain prose per
+// the LLM-PLAIN-TEXT-CONTRACT wave. ModeCompatibility drives the
+// cache-replay path with declared Prometheus fallback metrics.
 //
 // The Engine does NOT own:
 //   - clip context building (ClipSourceBuilder responsibility)

@@ -4,14 +4,28 @@
 // (model_output_decoder.go + compat/legacy_model_output_decoder.go)
 // with a single Scanner whose Mode controls the fallback behaviour.
 //
-//   ModeStrict        — V1 JSON only; plain text and legacy arrays error.
-//   ModeCompatibility — V1 → legacy array (bump metric) → plain text
-//                        wrapper (bump metric) → error.
+//   ModeFreshPlainText — canonical alias for ModeStrict (zero value).
+//                        Try V1 JSON envelope first; on JSON-shaped
+//                        input, surface ErrModelOutputMalformed
+//                        (do not silently wrap as prose); on plain
+//                        prose, delegate to ParsePlainTextFresh which
+//                        wraps the prose and is the canonical PRIMARY
+//                        path for fresh-mode LLM contracts.
+//   ModeStrict         — DEPRECATED alias for ModeFreshPlainText.
+//                        Kept as same-value constant so all existing
+//                        callers (tests, engine) compile unchanged.
+//                        New code MUST use ModeFreshPlainText.
+//   ModeCompatibility  — V1 → legacy array (bump metric) → plain text
+//                        wrapper (bump metric) → error. For
+//                        cache-replay paths where pre-V1 rows may
+//                        still be present.
 //
 // The scanner is self-contained: it registers its own Prometheus
 // counters via promauto so no internal/infrastructure imports are
 // needed. All JSON extraction and legacy-array conversion is handled
-// by the sibling files in this package.
+// by the sibling files in this package (fresh_parser.go owns the
+// fresh-mode gate; legacy_converter.go owns the legacy-array
+// conversion and compatibility fallback helpers).
 
 package jsonextract
 
@@ -32,11 +46,22 @@ import (
 type Mode int
 
 const (
-	// ModeStrict accepts ONLY canonical V1 JSON objects. Plain text,
-	// legacy arrays, and any other shape produce an error wrapping
-	// script.ErrModelOutputMalformed. This is the default for
-	// fresh-generation paths where the model contract enforces V1.
-	ModeStrict Mode = iota
+	// ModeFreshPlainText is the CANONICAL name for the fresh-mode
+	// behaviour. It owns the iota=0 slot (the zero-value default);
+	// callers that don't construct a Scanner explicitly land here.
+	//
+	// Behaviour (locks post-PR-5 of the LLM-PLAIN-TEXT-CONTRACT wave):
+	//  1. Try to extract a V1 JSON envelope; if successful and valid
+	//     on schema_version, return it.
+	//  2. If the input LOOKS like a JSON envelope (object, array, or
+	//     JSON-string-wrapped object/array) but decodeV1 failed, the
+	//     LLM is honouring a structured contract — surface
+	//     ErrModelOutputMalformed (godlike/07 NO-FAKE-AVAILABILITY).
+	//     Do NOT silently fall back to prose wrapping.
+	//  3. Otherwise (raw prose), delegate to ParsePlainTextFresh
+	//     (canonical gate in fresh_parser.go) which wraps the input
+	//     into a ModelScriptOutputV1 with empty scenes.
+	ModeFreshPlainText Mode = iota
 
 	// ModeCompatibility tries the canonical V1 decoder first, then
 	// falls back to legacy-array conversion (bumping the
@@ -47,11 +72,36 @@ const (
 	ModeCompatibility
 )
 
+// ModeStrict is a DEPRECATED same-value alias for ModeFreshPlainText.
+// It is declared as its own top-level const (OUTSIDE the
+// iota-driven block above) so the implicit-expression chain inside
+// that block does not fragment — bare identifiers after an explicit
+// `B = A` assignment continue to reuse `A` instead of stepping
+// through iota, which would silently collapse ModeCompatibility to
+// the same numeric slot as ModeFreshPlainText.
+//
+// It is retained so existing callers (tests, engine_generate.go,
+// retry paths) continue to compile unchanged. New code MUST use
+// ModeFreshPlainText.
+//
+// godlike/07 contract-correction: the pre-rename documentation
+// (gone after this commit) mis-described ModeStrict as "V1 JSON
+// only; plain text and legacy arrays error." The actual runtime
+// behaviour has been plain-prose-primary since PR-4/PR-5. The
+// rename aligns the name with reality so the verifier-comment,
+// docs, operator logs, and matrix tests no longer contradict
+// each other.
+const ModeStrict = ModeFreshPlainText
+
 // String returns a human-readable mode name for log/diagnostics.
 func (m Mode) String() string {
 	switch m {
-	case ModeStrict:
-		return "strict"
+	case ModeFreshPlainText:
+		// ModeStrict shares this numeric slot via the deprecated-
+		// alias constant; the operator dashboard grep target is
+		// "fresh_plain_text" so future callsites all converge on
+		// the canonical name.
+		return "fresh_plain_text"
 	case ModeCompatibility:
 		return "compatibility"
 	default:
@@ -86,7 +136,9 @@ var (
 // ModelScriptOutputV1. Its Mode controls whether legacy
 // fallbacks are permitted.
 //
-// Zero value is ModeStrict.
+// Zero value is ModeFreshPlainText (and therefore also ModeStrict
+// via the deprecated-alias constant — they share the same numeric
+// slot).
 type Scanner struct {
 	Mode Mode
 }
@@ -126,12 +178,13 @@ func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV
 
 	jsonBytes, extractErr := extractJSON(raw)
 
-	// ── ModeStrict: V1 JSON primary, plain-text wrap AS THE PRIMARY PATH (PR-5 flip) ───
+	// ── ModeFreshPlainText (canonical; ModeStrict alias shares this slot) ──
+	// ── V1 JSON fast-lane, plain-text wrap AS THE PRIMARY PATH (PR-5 flip) ─────
 	//
 	// PR-5 of the LLM-PLAIN-TEXT-CONTRACT wave inverts the original
 	// "ModeStrict => JSON required, no fallbacks" logic. Fresh-mode
 	// generation now expects raw narrative prose (see PR-1 prompt
-	// flip + PR-2 OutputModePlainText const). The strict path
+	// flip + PR-2 OutputModePlainText const). The fresh path
 	// therefore:
 	//
 	//  1. Try decodeV1 (canonical V1 JSON envelope) → success returns.
@@ -144,15 +197,19 @@ func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV
 	// Pre-PR-5 behaviour was "no fallbacks" — a deprecated V1
 	// contract violation would surface as ErrModelOutputMalformed
 	// upstream. Post-PR-5 behaviour is "primary text path is
-	// parsePlainTextFresh (the LLM-PLAIN-TEXT contract)"; the JSON
+	// ParsePlainTextFresh (the LLM-PLAIN-TEXT contract)"; the JSON
 	// path is now the OPTIONAL fast-lane, not the only legal input.
 	//
 	// godlike/06 SSOT: ParsePlainTextFresh (the canonical gate)
-	// lives ONLY at legacy_converter.go. Scanner is a router, not a
+	// lives ONLY at fresh_parser.go. Scanner is a router, not a
 	// decoder. godlike/07 NO-FAKE-AVAILABILITY: legacy-JSON detection
 	// is owned by ParsePlainTextFresh (single typed-sentinel surface).
-	if s.Mode == ModeStrict {
-		// PR-5 LLM-PLAIN-TEXT contract: strict mode first tries to
+	if s.Mode == ModeFreshPlainText {
+		// ModeStrict shares this numeric slot via the deprecated-
+		// alias constant declared at the top of this file, so
+		// a single equality check covers both names.
+		//
+		// PR-5 LLM-PLAIN-TEXT contract: fresh mode first tries to
 		// extract a canonical V1 JSON envelope. When extraction
 		// succeeds, the decoded/validated result (or its error) is
 		// returned directly — no silent fallback to plain prose.
