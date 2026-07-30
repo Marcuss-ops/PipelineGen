@@ -1,8 +1,26 @@
 [
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_1", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_1"},
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_2", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_2"},
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_3", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_3"},
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_4", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_4"},
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_5", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_5"},
-  {"id": "PLACEHOLDER_TYSON_CLIP_ID_6", "drive_link": "PLACEHOLDER_TYSON_DRIVE_LINK_6"}
+  {
+    "id": "yt_6VtSrG1hs9U_119_164_v1",
+    "drive_link": "https://drive.google.com/file/d/1dqD5m_3k0YUIhPKWYTSKc9BwPPGqrSic/view?usp=drivesdk"
+  },
+  {
+    "id": "yt_6VtSrG1hs9U_299_350_v1",
+    "drive_link": "https://drive.google.com/file/d/1g2jydV_tKqgUjAICu2efadrSNSkUNLB7/view?usp=drivesdk"
+  },
+  {
+    "id": "yt_6VtSrG1hs9U_196_239_v1",
+    "drive_link": "https://drive.google.com/file/d/1ivBEEKi3_lJpNj-2F1SGeEi365yNeuBe/view?usp=drivesdk"
+  },
+  {
+    "id": "yt_6VtSrG1hs9U_274_299_v1",
+    "drive_link": "https://drive.google.com/file/d/1Vz17ol3rN7W6VnsKZfn3EFVqbaR4TTLF/view?usp=drivesdk"
+  },
+  {
+    "id": "yt_6VtSrG1hs9U_24_39_v1",
+    "drive_link": "https://drive.google.com/file/d/1ktuNMPyzlfofBS7_K3O2YEaygQj1h2ED/view?usp=drivesdk"
+  },
+  {
+    "id": "yt_6VtSrG1hs9U_65_97_v1",
+    "drive_link": "https://drive.google.com/file/d/1UGWBDdfhHLOn8B6Be90878QbEci4WgXc/view?usp=drivesdk"
+  }
 ]
