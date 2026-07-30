@@ -267,16 +267,25 @@ precheck_worker_session() {
         printf '  %sSKIP: no --worker-id specified — cannot check single worker session%s\n' "$DIM" "$RESET"
         return 0
     fi
-    smoke_curl GET "/api/v1/velox/workers/${TARGET_WORKER_ID}" >/dev/null
+    # Query the fleet endpoint and filter for the target worker.
+    # The /api/v1/workers response shape is {"workers": [{...}, ...]}.
+    smoke_curl GET "/api/v1/workers" >/dev/null
     if [[ ! "$SMOKE_LAST_HTTP" =~ ^2[0-9][0-9]$ ]]; then
-        printf '%sFAIL: worker %s not reachable (HTTP %s)%s\n' "$RED" "$TARGET_WORKER_ID" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        printf '%sFAIL: cannot list workers (HTTP %s)%s\n' "$RED" "$SMOKE_LAST_HTTP" "$RESET" >&2
         return 1
     fi
-    local connected session
-    connected=$(jq -r '.connected // false' "$SMOKE_LAST_BODY" 2>/dev/null || echo "false")
-    session=$(jq -r '.session_active // false' "$SMOKE_LAST_BODY" 2>/dev/null || echo "false")
-    if [[ "$connected" != "true" ]]; then
-        printf '%sFAIL: worker %s not CONNECTED%s\n' "$RED" "$TARGET_WORKER_ID" "$RESET" >&2
+    local connected session status
+    connected=$(jq -r --arg wid "$TARGET_WORKER_ID" \
+        '.workers[]? | select(.worker_id == $wid) | .status // ""' \
+        "$SMOKE_LAST_BODY" 2>/dev/null || echo "")
+    session=$(jq -r --arg wid "$TARGET_WORKER_ID" \
+        '.workers[]? | select(.worker_id == $wid) | .session_active // false' \
+        "$SMOKE_LAST_BODY" 2>/dev/null || echo "false")
+    status=$(jq -r --arg wid "$TARGET_WORKER_ID" \
+        '.workers[]? | select(.worker_id == $wid) | .status // "UNKNOWN"' \
+        "$SMOKE_LAST_BODY" 2>/dev/null || echo "UNKNOWN")
+    if [[ "$status" != "CONNECTED" ]]; then
+        printf '%sFAIL: worker %s status=%s (expected CONNECTED)%s\n' "$RED" "$TARGET_WORKER_ID" "$status" "$RESET" >&2
         return 1
     fi
     if [[ "$session" != "true" ]]; then
