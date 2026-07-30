@@ -5,7 +5,7 @@
 // POLICY §"No new imports of legacy roots" for the canonical
 // deprecation targets enumerated in the godlike/07 retirement plan:
 // internal/transcription (P1-4 step 1, retired 2026-07-30),
-// internal/youtube (P1-4 step 2, planned),
+// internal/youtube (P1-4 step 2, retired 2026-07-30),
 // internal/scriptgeneration (P1-4 step 3, planned).
 //
 // The gate is a hard-coded ban list: any *.go file under <root>
@@ -49,7 +49,7 @@ import (
 // retirement lands. Step 1 (internal/transcription) is live.
 var legacyRootImportBanned = []string{
 	"github.com/Marcuss-ops/PipelineGen/internal/transcription",
-	// "github.com/Marcuss-ops/PipelineGen/internal/youtube",          // P1-4 step 2 — activate when step 2 lands.
+	"github.com/Marcuss-ops/PipelineGen/internal/youtube",
 	// "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration", // P1-4 step 3 — activate when step 3 lands.
 }
 
