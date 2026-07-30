@@ -6,7 +6,8 @@
 #
 # Chain: preflight → text cold → full cold → full warm → partial cache →
 #        provider matrix → local stock → Artlist live → images live →
-#        failure injection → idempotency → concurrency → render handoff.
+#        failure injection → idempotency → concurrency → render handoff →
+#        Maya civilization (strict provider separation).
 #
 # Fail-closed: if a scenario fails, the battery continues through
 # non-obligatory scenarios but exits non-zero. Obligatory scenario
