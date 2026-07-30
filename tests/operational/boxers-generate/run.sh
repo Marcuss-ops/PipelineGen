@@ -222,7 +222,7 @@ run_scenario() {
     printf 'job_id enqueued: %s%s%s\n' "$YELLOW" "$job_id" "$RESET"
     
     # Poll job to terminal status
-    if [[ "$num" == "07" || "$num" == "08" ]]; then
+    if [[ "$num" == "07" || "$num" == "07b" || "$num" == "08" ]]; then
         # For multilang batch jobs: poll parent job until terminal, then fetch child jobs.
         smoke_log_section "Polling parent job: $job_id"
         if ! smoke_poll_terminal "$job_id"; then
@@ -335,7 +335,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
     
     local out_json
     local text
-    if [[ "$num" != "07" && "$num" != "08" ]]; then
+    if [[ "$num" != "07" && "$num" != "07b" && "$num" != "08" ]]; then
         # Extract script result output.
         # Canonical path: .result.data.items[0].result.output
         # Fallbacks: broker-nested, batch, and legacy shapes.
@@ -625,6 +625,18 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             printf '%sPASS: Scenario 7 multi-boxer, multi-stock, multi-lang E2E pipeline verified.%s\n' "$GREEN" "$RESET"
             ;;
 
+        "07b")
+            # Scenario 7b: Negative check — swapped stock in multilang scenario
+            # (Tyson scene gets Ali's asset; verify_multilang.py --negative exits 3 on mismatch)
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
+            local exit_code=$?
+            if [[ "$exit_code" != "3" ]]; then
+                printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
+                return 1
+            fi
+            printf '%sPASS: Negative swapped stock verified — STOCK_SUBJECT_MISMATCH correctly detected in multilang scenario.%s\n' "$GREEN" "$RESET"
+            ;;
+
         "08")
             # Scenario 8: Negative check — swapped stock detection
             python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
@@ -650,6 +662,11 @@ run_test() {
     local name="$2"
     local fname="$3"
     if [[ "$TARGET_SCENARIO" == "all" || "$TARGET_SCENARIO" == "$num" ]]; then
+        if [[ "$num" == "07" || "$num" == "07b" ]]; then
+            export SMOKE_POLL_TIMEOUT_SECONDS=2400
+        else
+            export SMOKE_POLL_TIMEOUT_SECONDS=180
+        fi
         run_scenario "$num" "$name" "$fname" || return 1
     fi
     return 0
@@ -662,15 +679,16 @@ run_test "04" "Direct stock bindings" "04_direct_stock_bindings.json" || failure
 run_test "05" "Full pipeline" "05_full_pipeline.json" || failures=$((failures + 1))
 run_test "06" "Negative translation gate" "06_negative_translation_fail.json" || failures=$((failures + 1))
 run_test "07" "Multi-boxer, multi-stock, multi-lang E2E" "top5_financial_stories_multilang.json" || failures=$((failures + 1))
-run_test "08" "Negative swapped stock detection" "top5_neg_swapped_stock.json" || failures=$((failures + 1))
+run_test "07b" "Negative swapped stock (multilang variant)" "top5_financial_stories_multilang_neg.json" || failures=$((failures + 1))
+run_test "08" "Negative swapped stock (single-item)" "top5_neg_swapped_stock.json" || failures=$((failures + 1))
 
 if (( failures > 0 )); then
-    printf '%sFAIL: %d scenario(s) failed out of 8.%s\n' "$RED" "$failures" "$RESET" >&2
+    printf '%sFAIL: %d scenario(s) failed out of 9.%s\n' "$RED" "$failures" "$RESET" >&2
     exit 1
 fi
 
 if [[ "$TARGET_SCENARIO" == "all" ]]; then
-    printf '%sOK: All 8 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
+    printf '%sOK: All 9 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
 else
     printf '%sOK: Scenario %s completed and verified!%s\n' "$GREEN" "$TARGET_SCENARIO" "$RESET"
 fi
