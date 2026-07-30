@@ -149,6 +149,16 @@ part of `verify-main` or `verify-release`**.
 | **Surface** | full Vid Rush battery — server + scraper + SQLite + FFmpeg + Drive + Qdrant, covering every stage from intake to projection |
 | **Common trigger** | after ANY pipelined-component change touching FFmpeg, scraper, Drive, Qdrant, SQLite migrations, or the session auth surface. **Server-stateful** — run on dedicated operational hosts, never on dev workstations |
 
+### Battery 5 — `make verify-vidrush-maya`
+
+| | |
+|---|---|
+| **Script** | `tests/operational/maya_vidrush_e2e.sh` |
+| **Locate Makefile target** | `grep -nE '^verify-vidrush-maya:' make/operations.smoke.mk` |
+| **Cost** | ~15–40 min (heavy, server-stateful, full Maya scenario) |
+| **Surface** | 7 smoke jobs: cold LLM analysis (Italian, 800 words), strict provider separation (images=internet_images, video=artlist, zero YouTube), SQLite persistence, binding verification, cache warm (HIT_EXACT), partial cache, provider miss (no YouTube fallback). Uses the `13_maya.json` scenario plus 6 additional programmatic assertions. |
+| **Common trigger** | after provider-policy changes, cache-layer refactors, Artlist/internet_images processor changes, or YouTube pipeline isolation work. Runs the full Maya civilization scenario in Italian. **Server-stateful** — requires Artlist scraper, internet_images provider, and SQLite. |
+
 ### Composite — `make verify-live`
 
 Composition per Makefile (locate with `grep -nE '^verify-live:' Makefile`):
@@ -245,6 +255,16 @@ SMOKE_DRY_RUN=1 bash tests/operational/vidrush_script_generate_e2e.sh
 make verify-vidrush-live
 ```
 
+### Maya VidRush
+
+```bash
+# Dry-run — describes all 7 smoke jobs:
+make verify-vidrush-maya-dry
+
+# Real run on operational host ONLY:
+make verify-vidrush-maya
+```
+
 ---
 
 ## (d) Auth contract (mandatory for ALL live batteries)
@@ -311,6 +331,8 @@ This doc intentionally does NOT repeat:
   - `grep -nE '^verify-(images|artlist|script|vidrush)-live:' Makefile`
   - `grep -nE '^verify-artlist-[a-z]+:' Makefile`
 - `tests/operational/{images_e2e.sh,artlist/run_all.sh,script_generate_smoke.sh,vidrush_script_generate_e2e.sh}` — canonical battery scripts.
+- `tests/operational/vidrush/scenarios/{00..13}_*.json` — VidRush scenario manifests (14 total, 13_maya is the Maya civilization scenario).
+- `tests/operational/maya_vidrush_e2e.sh` — Maya VidRush 7-job E2E battery.
 - `tests/operational/artlist/{01..09}_*.sh` — the 9 Artlist sub-gates.
 - `tests/operational/lib/{common,artlist,drive,sqlite,qdrant,velox_domain}.sh` — shared lib (curl/jq/sqlite dispatch).
 
