@@ -179,7 +179,7 @@ SMOKE_HTTP_ASSET_DIR="${SMOKE_HTTP_ASSET_DIR:-/tmp/smoke-http-server}"
 BGM_TRACK=""
 BGM_TRACK_URL=""
 if [[ -d "$SMOKE_BGM_DIR" ]]; then
-    local_bgm=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name 'music_*.mp3' -o -name '*background*' -o -name '*podcast*' 2>/dev/null | head -1 || true)
+    local_bgm=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name '*.mp3' 2>/dev/null | head -1 || true)
     if [[ -n "$local_bgm" && -f "$local_bgm" ]]; then
         BGM_TRACK="$local_bgm"
         # Link into HTTP server dir so it's reachable.
@@ -235,7 +235,7 @@ start_http_asset_server() {
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import os
 os.chdir('$SMOKE_HTTP_ASSET_DIR')
-HTTPServer(('127.0.0.1', '"$http_port"'), SimpleHTTPRequestHandler).serve_forever()
+HTTPServer(('127.0.0.1', $http_port), SimpleHTTPRequestHandler).serve_forever()
 " &>/tmp/smoke-http-server.log &
     HTTP_SERVER_PID=$!
 
