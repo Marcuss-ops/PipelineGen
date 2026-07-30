@@ -47,6 +47,40 @@ func TestArtlistMatchesToCandidatesDeduplicatesDriveLinks(t *testing.T) {
 	}
 }
 
+// TestArtlistMatchesToCandidates_AlwaysProviderArtlist verifies that
+// every candidate produced by the Artlist pipeline has provider="artlist",
+// regardless of what the searcher returns. This is the processor-level
+// guarantee that YouTube can never leak through the clip-search path:
+// even if the Artlist scraper returned a YouTube URL, the provider field
+// is hardcoded to "artlist" and the URL would be caught by the binding gate
+// (validVidRushCandidate's forbidden URL patterns).
+func TestArtlistMatchesToCandidates_AlwaysProviderArtlist(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-001"}
+
+	// Simulate an unlikely scenario where Artlist somehow returns
+	// URLs that look like YouTube links.
+	matches := []ArtlistClipMatch{
+		{
+			Phrase:         "maya temple ruins",
+			FolderLink:     "https://drive.example/maya-folder",
+			ClipNames:      []string{"temple clip", "pyramid clip"},
+			ClipDriveLinks: []string{"https://www.youtube.com/watch?v=abc123", "https://drive.example/genuine-artlist"},
+		},
+	}
+
+	got := artlistMatchesToCandidates(segment, matches)
+	// The youtube-like URL candidate should still be produced
+	// (with provider="artlist"), but the binding gate will catch it.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(got))
+	}
+	for i, c := range got {
+		if c.Provider != "artlist" {
+			t.Errorf("candidate %d provider = %q, want \"artlist\" (hardcoded in artlistMatchesToCandidates)", i, c.Provider)
+		}
+	}
+}
+
 type emptyArtlistSearcher struct {
 	calls int
 }
@@ -81,3 +115,62 @@ func TestClipSearchProcessorDoesNotCacheProviderMisses(t *testing.T) {
 		t.Fatalf("expected provider to be retried after an empty result, calls = %d", searcher.calls)
 	}
 }
+
+// multiClipArtlistSearcher returns clips that look like YouTube results
+// to verify the processor pipeline never produces provider=youtube.
+type multiClipArtlistSearcher struct{}
+
+func (multiClipArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) []ArtlistClipMatch {
+	out := make([]ArtlistClipMatch, 0)
+	for _, q := range queries {
+		out = append(out, ArtlistClipMatch{
+			Phrase:         q,
+			FolderLink:     "https://drive.example/folder",
+			ClipNames:      []string{"valid clip"},
+			ClipDriveLinks: []string{"https://drive.example/valid-" + q[:minInt(8, len(q))]},
+		})
+	}
+	return out
+}
+
+// TestClipSearchProcessor_AllCandidatesAreArtlist verifies that after
+// a full processor run, every candidate in the segment result has
+// provider="artlist". This is the processor-level YouTube-block contract:
+// the clip-search path can NEVER produce provider=youtube candidates.
+func TestClipSearchProcessor_AllCandidatesAreArtlist(t *testing.T) {
+	processor := NewClipSearchProcessor(multiClipArtlistSearcher{})
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: media.MediaPlanSpec{
+			ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+		},
+	}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "artlist-provider-gate",
+		TextHash:  "artlist-provider-gate-hash",
+		Insights: scriptpkg.SegmentInsights{
+			ArtlistQueries: []string{"maya temple", "ancient ruins", "jungle pyramid"},
+		},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process failed: %v", err)
+	}
+	if len(result.VidRushSegments) != 1 {
+		t.Fatalf("expected 1 segment, got %d", len(result.VidRushSegments))
+	}
+	candidates := result.VidRushSegments[0].Assets.Candidates
+	if len(candidates) < 3 {
+		t.Fatalf("expected at least 3 candidates (one per query), got %d", len(candidates))
+	}
+	for i, c := range candidates {
+		if c.Provider != "artlist" {
+			t.Errorf("candidate %d provider = %q, want \"artlist\"", i, c.Provider)
+		}
+		if c.Provider == "youtube" {
+			t.Errorf("candidate %d has provider=youtube — FORBIDDEN", i)
+		}
+	}
+}
+
+

@@ -137,6 +137,13 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				if cand.Provider == "" {
 					cand.Provider = "internet_images"
 				}
+				// Defense-in-depth: reject candidates from forbidden providers.
+				// The binding gate (validVidRushCandidate) also rejects these,
+				// but filtering at ingest time prevents forbidden candidates
+				// from polluting cache entries.
+				if strings.ToLower(strings.TrimSpace(cand.Provider)) != "internet_images" {
+					continue
+				}
 				if cand.RightsStatus == "" {
 					cand.RightsStatus = "unknown"
 				}
