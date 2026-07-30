@@ -1097,6 +1097,7 @@ post_bgm_subtitle_job() {
     fi
 
     # 3 scenes matching the ASS file's 3 segments (0-4s, 4-8s, 8-12s).
+    local voiceover_ref="file:///opt/velox/current/.velox/data/test_voice.mp3"
     payload=$(jq -n \
         --arg ikey "$IDEMPOTENCY_KEY" \
         --arg vname "BGM + Vivid Subtitle Smoke Test" \
@@ -1104,6 +1105,7 @@ post_bgm_subtitle_job() {
         --argjson audio_tracks "$audio_tracks_json" \
         --arg ass_path "$ass_path" \
         --arg preset "$SUBTITLE_PRESET" \
+        --arg vo_ref "$voiceover_ref" \
         '{
             idempotency_key: $ikey,
             video_name: $vname,
@@ -1129,6 +1131,7 @@ post_bgm_subtitle_job() {
                 }
             ],
             audio_tracks: $audio_tracks,
+            voiceover_paths: [$vo_ref],
             delivery_plan: [
                 {
                     destination_id: "comedy_test",
