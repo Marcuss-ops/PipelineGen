@@ -59,6 +59,20 @@ const (
 	// maxTargetWordsRatio is the upper bound of the target word
 	// tolerance (actual <= target * maxTargetWordsRatio).
 	maxTargetWordsRatio = 1.20
+
+	// singleSegmentDocumentaryMinCoverage is the relaxed source_text
+	// coverage threshold for the Italian microstoria single-segment
+	// documentary prose shape (SingleScene=true with non-empty
+	// SourceText and the default grounding policy). The LLM
+	// paraphrases the source heavily when generating the 450-550
+	// word narrative voice, so lexical overlap against the source
+	// text legitimately drops below defaultMinSourceTextCoverage
+	// (0.70) even for a faithful rendering. Apply this relaxed
+	// value only for the exact shape documented in
+	// evaluateQualityGate; any non-default GroundingPolicy keeps
+	// its policy-defined threshold unchanged, and an empty
+	// GroundingPolicy with SingleScene=false keeps the default.
+	singleSegmentDocumentaryMinCoverage = 0.55
 )
 
 // policyThresholds returns the source_text and clip_evidence coverage
@@ -182,6 +196,24 @@ func evaluateQualityGate(
 		q.ClipEvidenceCoverage >= 1.0 && q.SourceTextCoverage > 0 &&
 		q.SourceTextCoverage < minSourceTextCov {
 		minSourceTextCov = 0.0
+	}
+
+	// Single-segment documentary prose (Italian microstoria shape):
+	// when SingleScene=true with non-empty SourceText and the
+	// default grounding policy, the LLM paraphrases the source
+	// heavily into a 450-550 word narrative voice, so lexical
+	// overlap against the source text legitimately drops below
+	// the 0.70 default. Relax the threshold to
+	// singleSegmentDocumentaryMinCoverage for this exact shape
+	// only. Any non-default GroundingPolicy (clips_primary,
+	// source_primary, balanced) keeps its policy-defined
+	// threshold unchanged; an empty GroundingPolicy with
+	// SingleScene=false (multi-segment or unspecified) keeps
+	// the default minimum.
+	if plan.SingleScene &&
+		plan.GroundingPolicy == "" &&
+		strings.TrimSpace(plan.SourceText) != "" {
+		minSourceTextCov = singleSegmentDocumentaryMinCoverage
 	}
 
 	var reasons []string
