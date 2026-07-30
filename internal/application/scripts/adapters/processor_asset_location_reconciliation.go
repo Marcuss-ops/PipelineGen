@@ -1,6 +1,6 @@
 // Package adapters — processor_asset_location_reconciliation.go
 // verifies every drive_link in the SpecScene bindings against the
-// canonical AssetLocationResolver before the document is published.
+// canonical AssetLocationVerifier before the document is published.
 //
 // The processor runs after clip_bindings and stock_bindings have
 // populated the per-scene bindings and before the document and
@@ -11,9 +11,9 @@
 //   - Missing/trashed/inaccessible links are cleared and flagged
 //     as warnings.
 //
-// The processor is Required: every SpecScene with bindings MUST
-// pass through location reconciliation. A nil resolver at
-// composition time is a hard error.
+// The processor is BestEffort: transport errors are surfaced as
+// warnings rather than hard failures. A nil verifier is still a
+// hard composition error.
 package adapters
 
 import (
@@ -26,30 +26,31 @@ import (
 
 // AssetLocationReconciliationProcessor verifies every drive_link
 // in the SpecScene bindings and reconciles them against the
-// canonical AssetLocationResolver.
+// canonical AssetLocationVerifier.
 type AssetLocationReconciliationProcessor struct {
-	resolver scriptpkg.AssetLocationResolver
+	verifier scriptpkg.AssetLocationVerifier
 }
 
 // NewAssetLocationReconciliationProcessor creates the processor.
-// resolver must be non-nil (enforced at registration time).
+// verifier must be non-nil (enforced at registration time).
 func NewAssetLocationReconciliationProcessor(
-	resolver scriptpkg.AssetLocationResolver,
+	verifier scriptpkg.AssetLocationVerifier,
 ) *AssetLocationReconciliationProcessor {
-	return &AssetLocationReconciliationProcessor{resolver: resolver}
+	return &AssetLocationReconciliationProcessor{verifier: verifier}
 }
 
 func (p *AssetLocationReconciliationProcessor) Name() ProcessorName {
 	return ProcessorAssetLocationReconciliation
 }
 
-// Policy classifies asset_location_reconciliation as Required:
-// every generation that produces bindings MUST verify its Drive
-// links before the document is published.
+// Policy classifies asset_location_reconciliation as BestEffort:
+// transport errors during verification are surfaced as warnings
+// rather than hard failures, allowing generation to complete with
+// degraded link integrity.
 func (p *AssetLocationReconciliationProcessor) Policy(
 	_ *scriptpkg.ResolvedGenerationPlan,
 ) ProcessorPolicy {
-	return ProcessorRequired
+	return ProcessorBestEffort
 }
 
 // Process iterates over every scene in the SpecScene and verifies
@@ -65,8 +66,8 @@ func (p *AssetLocationReconciliationProcessor) Process(
 ) (*PostProcessResult, error) {
 	_ = plan
 
-	if p.resolver == nil {
-		return nil, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationResolver not configured", scriptpkg.ErrPostprocessFailed)
+	if p.verifier == nil {
+		return nil, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
 	scenes := input.SpecScene.Scenes
@@ -222,7 +223,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	}
 
 	return &PostProcessResult{
-		Changed:          changed || len(warnings) > 0,
+		Changed:          changed,
 		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
 		Warnings:         warnings,
 	}, nil
@@ -240,12 +241,12 @@ type reconcileResult struct {
 	warning      string
 }
 
-// verifyAndReconcile calls the resolver for a single link and
+// verifyAndReconcile calls the verifier for a single link and
 // updates the link pointer in place. Returns a reconcileResult
 // with counters and an optional warning string.
-// Transport errors (network timeout, Drive API 5xx) are returned
-// as Go errors — the caller MUST fail closed per the
-// ProcessorRequired contract.
+// Transport errors (network timeout, Drive API 5xx) are surfaced
+// as warnings per the ProcessorBestEffort contract — the generation
+// continues with the link preserved as-is.
 func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	ctx context.Context,
 	assetID string,
@@ -255,11 +256,14 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	label string,
 	sceneID string,
 ) (reconcileResult, error) {
-	verified, err := p.resolver.ResolveAndVerify(ctx, assetID, fileID, link)
+	verified, err := p.verifier.Verify(ctx, assetID, fileID, link)
 	if err != nil {
-		return reconcileResult{}, fmt.Errorf(
-			"asset_location_reconciliation: transport error verifying %s link in %s: %w",
-			label, sceneID, err)
+		// BestEffort: transport errors become warnings, link preserved.
+		return reconcileResult{
+			warning: fmt.Sprintf(
+				"asset_location_reconciliation: transport error verifying %s link in %s (link preserved): %v",
+				label, sceneID, err),
+		}, nil
 	}
 	if verified == nil {
 		// No link to verify — no-op.
@@ -307,6 +311,33 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 			changed:   true,
 			malformed: 1,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is MALFORMED (cannot extract file ID): asset=%s",
+				label, sceneID, assetID),
+		}, nil
+
+	case scriptpkg.LocationStateOrphanDriveFile:
+		*linkPtr = ""
+		return reconcileResult{
+			changed: true,
+			missing: 1,
+			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is an ORPHAN (file on Drive but no SQLite record): asset=%s",
+				label, sceneID, assetID),
+		}, nil
+
+	case scriptpkg.LocationStateBrokenAssetLocation:
+		*linkPtr = ""
+		return reconcileResult{
+			changed: true,
+			missing: 1,
+			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has a BROKEN location (SQLite references missing Drive file): asset=%s",
+				label, sceneID, assetID),
+		}, nil
+
+	case scriptpkg.LocationStateDuplicate:
+		*linkPtr = ""
+		return reconcileResult{
+			changed:   true,
+			malformed: 1,
+			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is a DUPLICATE (multiple assets share same drive_file_id): asset=%s",
 				label, sceneID, assetID),
 		}, nil
 

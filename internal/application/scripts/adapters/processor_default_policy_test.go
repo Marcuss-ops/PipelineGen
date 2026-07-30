@@ -52,8 +52,7 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 		case adapterspkg.ProcessorPersistence,
 			adapterspkg.ProcessorEntities,
 			adapterspkg.ProcessorMetadata,
-			adapterspkg.ProcessorStockBindings,
-			adapterspkg.ProcessorAssetLocationReconciliation:
+			adapterspkg.ProcessorStockBindings:
 			want = adapterspkg.ProcessorRequired
 		case adapterspkg.ProcessorImages,
 			adapterspkg.ProcessorInternetImages,
@@ -62,7 +61,8 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 			adapterspkg.ProcessorVisualPlanning,
 			adapterspkg.ProcessorClipBindings,
 			adapterspkg.ProcessorTranslation,
-			adapterspkg.ProcessorDocument:
+			adapterspkg.ProcessorDocument,
+			adapterspkg.ProcessorAssetLocationReconciliation:
 			want = adapterspkg.ProcessorBestEffort
 		case adapterspkg.ProcessorVisualSlots:
 			want = adapterspkg.ProcessorBestEffort
