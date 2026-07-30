@@ -155,6 +155,7 @@ type stockSeed struct {
 	DurationMS  int
 	LocalPath   string
 	Filename    string
+	Category    string
 }
 
 // seedStockRow inserts a single media_assets row populated with the
@@ -184,11 +185,11 @@ func seedStockRow(t *testing.T, db *sql.DB, s stockSeed) {
 		`INSERT INTO media_assets (
 			id, source, media_type, lifecycle_state, created_at,
 			file_hash, drive_file_id, drive_link, duration_ms,
-			local_path, filename
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			local_path, filename, category
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Source, s.MediaType, s.Lifecycle, s.CreatedAt,
 		s.FileHash, s.DriveFileID, s.DriveLink, s.DurationMS,
-		s.LocalPath, s.Filename,
+		s.LocalPath, s.Filename, s.Category,
 	)
 	require.NoError(t, err, "seed stock row id=%s", s.ID)
 }
@@ -484,4 +485,70 @@ func TestStockMediaAssets_Integrity_NonStockRowIsIgnored(t *testing.T) {
 	require.Len(t, reports, 1, "only source='stock' rows must appear in the integrity report")
 	assert.Equal(t, "stock-good-1", reports[0].Row.ID,
 		"canonical SELECT must filter source='stock' (godlike/06 SSOT)")
+}
+
+// ── T9: category column schema + round-trip ─────────────────────────
+//
+// Verifies that the media_assets fixture has the category column (from
+// migration 059_canonical_media_columns.sql) and that category values
+// round-trip through INSERT → SELECT correctly.
+func TestMediaAssetCategoryRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// ── Schema check: PRAGMA table_info must include category ──
+	t.Run("schema_has_category_column", func(t *testing.T) {
+		db := setupStockIntegrityDB(t)
+		var categoryFound bool
+		rows, err := db.Query(`PRAGMA table_info(media_assets)`)
+		require.NoError(t, err)
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull int
+			var dflt sql.NullString
+			var pk int
+			require.NoError(t, rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk))
+			if name == "category" {
+				categoryFound = true
+				break
+			}
+		}
+		require.NoError(t, rows.Err())
+		require.NoError(t, rows.Close())
+		assert.True(t, categoryFound, "media_assets must have a 'category' column (migration 059)")
+	})
+
+	// ── Round-trip: fight, interview, training, empty ──
+	categories := []struct {
+		name     string
+		category string
+	}{
+		{name: "fight", category: "fight"},
+		{name: "interview", category: "interview"},
+		{name: "training", category: "training"},
+		{name: "empty", category: ""},
+	}
+	for _, tc := range categories {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupStockIntegrityDB(t)
+			id := "cat-roundtrip-" + tc.name
+			seedStockRow(t, db, stockSeed{
+				ID:          id,
+				FileHash:    "hash_" + tc.name,
+				DriveFileID: "drive_" + tc.name,
+				DurationMS:  5000,
+				Filename:    id + ".mp4",
+				Category:    tc.category,
+			})
+
+			var gotCategory string
+			err := db.QueryRowContext(context.Background(),
+				`SELECT category FROM media_assets WHERE id = ?`, id,
+			).Scan(&gotCategory)
+			require.NoError(t, err, "SELECT category for id=%s", id)
+			assert.Equal(t, tc.category, gotCategory,
+				"category round-trip for %q", tc.name)
+		})
+	}
 }

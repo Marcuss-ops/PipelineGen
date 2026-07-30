@@ -97,6 +97,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	created_at TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL DEFAULT ''
 );
+ALTER TABLE media_assets ADD COLUMN category TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN url TEXT NOT NULL DEFAULT '';

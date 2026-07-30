@@ -235,6 +235,9 @@ func translateSegments(in []monitor.ExtractionSegment) []youtubetypes.Segment {
 			Start:            s.Start,
 			End:              s.End,
 			Name:             s.Name,
+			Category:         s.Category,
+			SourceTitle:      s.SourceTitle,
+			SourceChannel:    s.SourceChannel,
 			Tags:             s.Tags,
 			Summary:          s.Summary,
 			Topics:           s.Topics,
@@ -243,6 +246,7 @@ func translateSegments(in []monitor.ExtractionSegment) []youtubetypes.Segment {
 			Hook:             s.Hook,
 			QualityScore:     s.QualityScore,
 			SearchVisibility: s.SearchVisibility,
+			Texts:            s.Texts,
 		}
 	}
 	return out

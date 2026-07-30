@@ -26,6 +26,7 @@ package monitoradapter
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -123,7 +124,29 @@ func extractIntentFixture() monitor.ExtractionIntent {
 		Group:         "test-cat",
 		DriveFolderID: "fld-1",
 		Segments: []monitor.ExtractionSegment{
-			{Start: "00:01", End: "00:30", Name: "Segment One"},
+			{
+				Start:            "00:01",
+				End:              "00:30",
+				Name:             "Segment One",
+				Category:         "interview",
+				SourceTitle:      "Source Title",
+				SourceChannel:    "@SourceChannel",
+				Tags:             []string{"tag1", "tag2"},
+				Summary:          "A test summary",
+				Topics:           []string{"topic-a", "topic-b"},
+				Speakers:         []string{"Speaker A"},
+				MentionedPeople:  []string{"Person X"},
+				Hook:             "test hook",
+				QualityScore:     0.92,
+				SearchVisibility: "medium",
+				Texts: []youtubetypes.LocalizedClipText{
+					{
+						LanguageCode: "en",
+						SourceType:   "description",
+						Description:  "Test description",
+					},
+				},
+			},
 		},
 		Channel: extractIntentChannelsFixture(),
 	}
@@ -243,18 +266,14 @@ func TestExtractionIntentAdapter_HappyPath_TranslationLocksAndCursorOmits(t *tes
 	// every readable field on the segment (alias identity makes
 	// this trivially true today; the assert pins a future drift
 	// where ExtractionSegment and youtubetypes.Segment diverge).
+	//
+	// Uses reflect.DeepEqual instead of field-by-field assertions
+	// because both sides are the same type (type alias) — a single
+	// DeepEqual catches any field that was silently zeroed.
 	for i, seg := range intent.Segments {
-		if payload.Segments[i].Start != seg.Start {
-			t.Errorf("Payload.Segments[%d].Start = %q, want %q",
-				i, payload.Segments[i].Start, seg.Start)
-		}
-		if payload.Segments[i].End != seg.End {
-			t.Errorf("Payload.Segments[%d].End = %q, want %q",
-				i, payload.Segments[i].End, seg.End)
-		}
-		if payload.Segments[i].Name != seg.Name {
-			t.Errorf("Payload.Segments[%d].Name = %q, want %q",
-				i, payload.Segments[i].Name, seg.Name)
+		if !reflect.DeepEqual(payload.Segments[i], seg) {
+			t.Errorf("Payload.Segments[%d] DeepEqual mismatch:\n  got:  %+v\n  want: %+v",
+				i, payload.Segments[i], seg)
 		}
 	}
 	if payload.Destination == nil {

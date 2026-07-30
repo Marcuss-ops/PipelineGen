@@ -97,6 +97,8 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 			// appear in the wire output. The interior segment JSON
 			// follows ytdomain.Segment's snake_case tag scheme (no
 			// marshalled field renaming).
+			// All 15 Segment fields are populated to serve as a
+			// regression guard against silent field drops.
 			name: "full_payload",
 			fields: ExtractionIntent{
 				VideoID:       "video_xyz",
@@ -109,6 +111,9 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 						Start:            "00:00:00",
 						End:              "00:01:30",
 						Name:             "intro_segment",
+						Category:         "fight",
+						SourceTitle:      "Test Source Title",
+						SourceChannel:    "@TestChannel",
 						Tags:             []string{"test", "intro"},
 						Summary:          "test segment summary",
 						Topics:           []string{"topic1", "topic2"},
@@ -117,11 +122,18 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 						Hook:             "test hook line",
 						QualityScore:     0.85,
 						SearchVisibility: "high",
+						Texts: []ytdomain.LocalizedClipText{
+							{
+								LanguageCode: "en",
+								SourceType:   "transcript",
+								Transcript:   "Hello world",
+							},
+						},
 					},
 				},
 				Channel: channels.Channel{ID: "channel_xyz", Category: "test_category", ChannelName: "Test Channel"},
 			},
-			expectPrefix: `{"video_id":"video_xyz","title":"Test Title","url":"https://youtube.com/watch?v=video_xyz","group":"test_group","drive_folder_id":"drive_folder_abc","segments":[{"start":"00:00:00","end":"00:01:30","name":"intro_segment","tags":["test","intro"],"summary":"test segment summary","topics":["topic1","topic2"],"speakers":["speaker1"],"mentioned_people":["person1"],"hook":"test hook line","quality_score":0.85,"search_visibility":"high"}]`,
+			expectPrefix: `{"video_id":"video_xyz","title":"Test Title","url":"https://youtube.com/watch?v=video_xyz","group":"test_group","drive_folder_id":"drive_folder_abc","segments":[{"start":"00:00:00","end":"00:01:30","name":"intro_segment","category":"fight","source_title":"Test Source Title","source_channel":"@TestChannel","tags":["test","intro"],"summary":"test segment summary","topics":["topic1","topic2"],"speakers":["speaker1"],"mentioned_people":["person1"],"hook":"test hook line","quality_score":0.85,"search_visibility":"high","texts":[{"language_code":"en","transcript":"Hello world","source_type":"transcript"}]}]`,
 		},
 		{
 			name: "no_segments",
@@ -240,7 +252,7 @@ func TestExtractionSegment_FieldParityWithYtdomainSegment(t *testing.T) {
 	monitorType := reflect.TypeOf(ExtractionSegment{})
 	ytdomainType := reflect.TypeOf(ytdomain.Segment{})
 
-	const expectedFieldCount = 12 // overshoot vs spec >= 10 (intentional stronger pin)
+	const expectedFieldCount = 15 // overshoot vs spec >= 10 (intentional stronger pin)
 	if monitorType.NumField() != expectedFieldCount {
 		t.Errorf("monitor.ExtractionSegment has %d fields, expected == %d (godlike/06 SSOT pin)",
 			monitorType.NumField(), expectedFieldCount)
