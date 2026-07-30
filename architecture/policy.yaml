@@ -152,8 +152,8 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # legacy" — two-layout mode accumulated transitional allowlists and
 # ratchets (see the stock-legacy-keyword allowlist header for the
 # surviving forward-pointers). The legacy zones still exist on disk
-# (api, app, application, domain, infrastructure, transcription,
-# youtube) but no longer receive policy cover; each retirement is a
+# (api, app, application, domain, infrastructure, youtube) but
+# no longer receive policy cover; each retirement is a
 # follow-up commit. cmd/archcheck treats unknown first-level internal/
 # dirs as a warn violation (`unknown_internal_root` rule).
 target_internal_roots: app, kernel, capabilities, platform
