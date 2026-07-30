@@ -104,7 +104,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 			URL:        req.Source.URL,
 			OutputPath: dstPath + ".%(ext)s",
 			Timeout:    req.Timeout,
-			UseCookies: false, // godlike/07: cookies force web-only extraction → n-challenge block on public YT videos
+			UseCookies: true, // July 2026: android_creator client supports cookies without n-challenge
 		}
 		if req.Source.DownloadSection != "" {
 			dlReq.DownloadSections = []string{req.Source.DownloadSection}

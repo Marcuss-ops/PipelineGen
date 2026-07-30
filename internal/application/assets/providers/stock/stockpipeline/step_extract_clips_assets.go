@@ -45,6 +45,7 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 
 	a := &asset.Asset{
 		ID:         plan.OutputLogicalID,
+		Source:     asset.Source("stock"),
 		Name:       name,
 		Filename:   filename,
 		Category:   plan.Category,

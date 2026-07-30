@@ -148,6 +148,15 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		},
 	}
 
+	var durationMs int64
+	if raw, ok := artifact.ArtifactMetadata["chunk_duration_sec"]; ok {
+		if sec, conv := raw.(float64); conv && sec > 0 {
+			durationMs = int64(sec * 1000)
+		}
+	} else if artifact.SizeBytes > 0 && artifact.MIMEType != "" {
+		durationMs = artifact.SizeBytes / 250000
+	}
+
 	_, initIndex := asset.NewIndexableAssetState()
 	return persistence.CommitRequest{
 		AssetID:        artifact.ArtifactID,
@@ -157,6 +166,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		MediaType:      mediaType,
 		ContentHash:    artifact.SHA256,
 		Description:    artifact.Description,
+		DurationMs:     durationMs,
 		LifecycleState: string(asset.StatePublished),
 		IndexState:     string(initIndex),
 		FolderID:       artifact.Location.FolderID,
