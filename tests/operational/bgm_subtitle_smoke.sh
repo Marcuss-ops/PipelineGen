@@ -178,6 +178,10 @@ fi
 #   ccc7f50e... (103KB)  b5bc023f... (4KB)  cc6f82a5... (874KB)  961eecdd... (12KB)
 SMOKE_VOICEOVER_ASSET="${SMOKE_VOICEOVER_ASSET:-961eecddff027773c199ffbb1c07750fc5466a15a6ad43bcee0a306ea847f57a}"
 
+# Known READY scene_image assets (from database):
+#   bded583d... (6.7KB)  7f3d11a7...  etc.
+SMOKE_SCENE_IMAGE_ASSET="${SMOKE_SCENE_IMAGE_ASSET:-bded583dc09c8f22395219c06616193b7f73cde00a7267d21acd760b1499ed51}"
+
 # BGM is optional for the plumbing test — the worker may not have BGM files yet.
 BGM_TRACK=""
 BGM_TRACK_URL=""
@@ -1109,12 +1113,18 @@ post_bgm_subtitle_job() {
 
     # Voiceover via velox-asset:// (always bypasses SSRF, resolved by worker via DataServer).
     local voiceover_ref="velox-asset://${SMOKE_VOICEOVER_ASSET}"
+    # Scene image via velox-asset:// — provides renderable media so the worker
+    # can produce a video. The image_link on each scene triggers the
+    # hasImagesForRewrite guard → BuildSceneImagePayloadForMaster → items +
+    # video_mode=scene_image.
+    local image_ref="velox-asset://${SMOKE_SCENE_IMAGE_ASSET}"
     payload=$(jq -n \
         --arg ikey "$IDEMPOTENCY_KEY" \
         --arg vname "BGM + Vivid Subtitle Smoke Test" \
         --arg script "Questa è una demo con sottotitoli animati. I sottotitoli seguono la voce con effetti dinamici. PipelineGen rende i video professionali." \
         --argjson audio_tracks "$audio_tracks_json" \
         --arg vo_ref "$voiceover_ref" \
+        --arg img_ref "$image_ref" \
         '{
             idempotency_key: $ikey,
             video_name: $vname,
@@ -1122,15 +1132,18 @@ post_bgm_subtitle_job() {
             scenes: [
                 {
                     text: "Prima scena: testo bianco in basso con musica di sottofondo.",
-                    duration_seconds: 4.0
+                    duration_seconds: 4.0,
+                    image_link: $img_ref
                 },
                 {
                     text: "Seconda scena: frase importante rossa grande e bold in alto.",
-                    duration_seconds: 4.0
+                    duration_seconds: 4.0,
+                    image_link: $img_ref
                 },
                 {
                     text: "Terza scena: nome ciano con parola evidenziata verde italic.",
-                    duration_seconds: 4.0
+                    duration_seconds: 4.0,
+                    image_link: $img_ref
                 }
             ],
             audio_tracks: $audio_tracks,
