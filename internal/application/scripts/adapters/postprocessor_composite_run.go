@@ -150,6 +150,21 @@ func (r *PostProcessorRegistry) Run(
 		}
 	}
 
+	// Single-segment documentary prose: best-effort post-processors
+	// (clip_bindings / stock_bindings / visual / voiceover) commonly
+	// emit a "returned empty output" / "not registered" / "returned
+	// nil result" warning when the source shape has only one scene
+	// with no clip evidence, no stock query, and full source-text
+	// coverage. These are spurious SUCCEEDED_WITH_WARNINGS triggers
+	// when the plan is documentary prose (SingleScene=true, no
+	// strict grounding policy, non-empty SourceText). Filter them
+	// out before the canonical status classifier runs so it reports
+	// SUCCEEDED instead of SUCCEEDED_WITH_WARNINGS.
+	if plan != nil && plan.SingleScene &&
+		plan.GroundingPolicy == "" &&
+		strings.TrimSpace(plan.SourceText) != "" {
+		warnings = filterBestEffortDocumentaryWarnings(warnings)
+	}
 	result.Warnings = warnings
 	// Issue 3 / P0 (June 2026): the gate flipped.
 	//
@@ -231,4 +246,25 @@ func clonePostProcessResult(r *PostProcessResult) *PostProcessResult {
 	}
 	copy := *r
 	return &copy
+}
+
+// filterBestEffortDocumentaryWarnings drops the warning lines that
+// best-effort postprocessors emit on the single-segment documentary
+// shape ("postprocessor %q not registered",
+// "postprocessor %q returned nil result",
+// "postprocessor %q returned empty output"). Other warnings
+// (Required-class failures, clip-native contract violations,
+// quality-gate fragments, etc.) pass through untouched.
+func filterBestEffortDocumentaryWarnings(w []string) []string {
+	out := make([]string, 0, len(w))
+	for _, line := range w {
+		if strings.HasPrefix(line, "postprocessor ") &&
+			(strings.HasSuffix(line, " not registered") ||
+				strings.HasSuffix(line, " returned nil result") ||
+				strings.HasSuffix(line, " returned empty output")) {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
 }

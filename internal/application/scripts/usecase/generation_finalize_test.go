@@ -292,3 +292,23 @@ func TestGenerationFinalizer_Finalize_SkipQualityGate(t *testing.T) {
 		t.Error("expected quality gate to fail when skipped")
 	}
 }
+
+// TestClassifyGenerationStatus_CleanContractEndToEnd codifies the
+// end-to-end success contract: a GenerationResult with
+// Quality.Passed=true and an empty Warnings slice must classify as
+// ItemStatusSucceeded (NOT ItemStatusSucceededWithWarnings) when
+// qualitySkipped=false. This pins the contract that the
+// postprocessor_composite_run.go SWW-suppression filter relies on:
+// after best-effort warnings on the single-segment documentary
+// shape are filtered out, ClassifyGenerationStatus must report
+// SUCCEEDED, never SUCCEEDED_WITH_WARNINGS.
+func TestClassifyGenerationStatus_CleanContractEndToEnd(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Quality:  &scriptpkg.GenerationQuality{Passed: true},
+		Warnings: []string{},
+	}
+	if got := ClassifyGenerationStatus(result, false); got != scriptpkg.ItemStatusSucceeded {
+		t.Errorf("ClassifyGenerationStatus(Quality.Passed=true, Warnings=[], qualitySkipped=false) = %q, want %q",
+			got, scriptpkg.ItemStatusSucceeded)
+	}
+}
