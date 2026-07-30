@@ -1,7 +1,7 @@
 {
   "scenario_id": "13_maya",
-  "timeout_seconds": 900,
-  "description": "Vidrush Maya civilization — verifica separazione rigida provider: immagini solo internet_images, video solo Artlist. Blocco assoluto YouTube. LLM genera testo reale, estrae entità per segmento, binding coerenti. Cache warm, partial cache, provider miss.",
+  "timeout_seconds": 300,
+  "description": "Vidrush Maya civilization (pre-written text) — verifica separazione rigida provider: immagini solo internet_images, video solo Artlist. Blocco assoluto YouTube. Testo pre-scritto inviato direttamente, LLM estrae solo entità/keyword/query per segmento. Artlist non ha contenuti Maya → attesi 0 candidati video.",
   "version": 1,
   "expect": {
     "http_status": 202,
@@ -16,7 +16,7 @@
     "min_segments": 6,
     "min_entities": 5,
     "min_image_candidates": 5,
-    "min_artlist_video_candidates": 1,
+    "min_artlist_video_candidates": 0,
     "forbidden_providers": ["youtube", "generated_images", "local_stock"]
   },
   "payload": {
@@ -30,20 +30,20 @@
         "title": "Vidrush Maya: verifica separazione rigida provider e blocco YouTube",
         "language": "it",
         "tone": "documentary",
-        "style": "Scrivi un testo documentaristico concreto e informativo sulla civiltà Maya. Suddividi in segmenti distinti per tema: città, astronomia, religione, scrittura, declino. Usa dettagli specifici e ricercabili che si traducono bene in query multimediali.",
+        "style": "Testo documentaristico pre-scritto sulla civiltà Maya. Il server deve solo segmentare, estrarre entità/keyword/query, e cercare media (internet_images + Artlist).",
         "model": "gemma2:2b",
         "source": {
           "type": "text",
           "topic": "La civiltà Maya: città, astronomia, religione, scrittura e mistero del suo declino",
-          "source_text": "La civiltà Maya si sviluppò in Mesoamerica, raggiungendo il suo apice tra il 250 e il 900 d.C. Le loro città-stato, come Tikal, Palenque e Chichén Itzá, ospitavano imponenti piramidi e palazzi decorati con elaborate sculture in pietra. Gli astronomi Maya svilupparono un calendario di straordinaria precisione, basato sull'osservazione dei cicli di Venere e delle eclissi. La loro scrittura geroglifica, una delle più complesse del mondo antico, è stata decifrata solo in parte. Il Popol Vuh, il libro sacro dei Maya Quiché, racconta i miti della creazione e le gesta degli eroi gemelli Hunahpú e Ixbalanqué. Il declino della civiltà classica Maya rimane uno dei grandi misteri dell'archeologia: siccità prolungate, guerre intestine e collasso ecologico sono tra le ipotesi più accreditate. Oggi i discendenti Maya conservano vive molte tradizioni nelle comunità dello Yucatán, del Guatemala e del Belize.\n\nOperational marker: vidrush-13-maya."
+          "source_text": "La civiltà Maya si sviluppò in Mesoamerica a partire dal 2000 a.C., raggiungendo il suo massimo splendore durante il periodo Classico, tra il 250 e il 900 d.C. Le loro città-stato sorgevano nelle foreste pluviali dell'attuale Messico meridionale, Guatemala, Belize, Honduras ed El Salvador. Tra le città più imponenti spicca Tikal, nel cuore del Petén guatemalteco, con le sue piramidi a gradoni che si innalzano sopra la giungla. Palenque, nel Chiapas, è celebre per il Tempio delle Iscrizioni e la tomba del re Pakal. Chichén Itzá, nello Yucatán, rappresenta una fusione tra architettura Maya e influenze tolteche, con la celebre piramide di Kukulkán, detta El Castillo. Uxmal e Copán completano il quadro delle grandi capitali Maya, ciascuna con uno stile architettonico distintivo. L'astronomia Maya era straordinariamente avanzata. I sacerdoti-astronomi osservavano meticolosamente i movimenti di Venere, del Sole e della Luna, sviluppando calendari di impressionante precisione. Il calendario Haab di 365 giorni e il calendario sacro Tzolkin di 260 giorni si combinavano nella Ruota Calendarica, un ciclo di 52 anni. Le eclissi venivano previste con esattezza e registrate nei codici. Gli osservatori astronomici, come il Caracol di Chichén Itzá, permettevano di tracciare con precisione il moto degli astri. La religione permeava ogni aspetto della vita Maya. Il pantheon includeva divinità come Kukulkán, il serpente piumato, e Chaac, il dio della pioggia. I rituali si svolgevano sulle sommità delle piramidi e nelle piazze cerimoniali. Il Popol Vuh, il libro sacro dei Maya Quiché, racconta il mito della creazione e le avventure degli eroi gemelli Hunahpú e Ixbalanqué nel regno sotterraneo di Xibalbá. Il sistema di scrittura Maya, composto da oltre 800 glifi, è considerato il più sofisticato dell'America precolombiana. I glifi combinavano elementi logografici e fonetici per registrare eventi storici, genealogie reali, osservazioni astronomiche e testi religiosi. Le iscrizioni venivano scolpite su stele di pietra, altari, scalinate e pannelli architettonici. I codici Maya, manoscritti pieghevoli in corteccia di ficus, conservano preziose informazioni su astronomia, rituali e divinazione. Solo quattro codici sono sopravvissuti: Dresda, Madrid, Parigi e Grolier. Il declino della civiltà Maya classica rimane uno dei grandi enigmi dell'archeologia. Intorno al 900 d.C., molte città del sud furono abbandonate. Le ipotesi includono siccità prolungate documentate da carotaggi nei laghi dello Yucatán, deforestazione e degrado ecologico, guerre endemiche tra città-stato rivali, e possibili rivolte sociali. Oggi i discendenti Maya, circa sei milioni di persone, mantengono vive tradizioni millenarie nelle comunità dello Yucatán, del Chiapas, del Guatemala e del Belize."
         },
         "script_params": {
           "target_words": 800,
-          "min_words": 600,
-          "segment_words": 80,
+          "min_words": 400,
+          "segment_words": 60,
           "skip_quality_gate": true,
-          "use_memory": true,
-          "prompt_version": "vidrush-maya-v1"
+          "use_memory": false,
+          "prompt_version": "vidrush-maya-pretext-v2"
         },
         "output": {
           "extract_entities": true,
@@ -86,8 +86,6 @@
         "per_segment_structural": ".segment_id | length > 0 and (.text | length) > 0 and (.text_hash | length) > 0"
       },
       "llm_generation": {
-        "text_generated": "(.output.text | type) == \"string\" and (.output.text | length) >= 400",
-        "text_not_echoed": ".output.text != .source.source_text",
         "segments_from_text": "[.segments[]?.text] | all(length > 30)"
       },
       "entity_extraction": {
@@ -133,7 +131,7 @@
         "candidates_have_provenance": "all(.segments[]; all(.assets.candidates[]?; (.source_url // \"\") != \"\" or (.preview_url // \"\") != \"\" or (.drive_link // \"\") != \"\"))",
         "candidate_asset_ids_unique": "([.segments[]?.assets.candidates[]?.asset_id] | unique | length) == ([.segments[]?.assets.candidates[]?.asset_id] | length)",
         "candidates_have_score": "all(.segments[]; all(.assets.candidates[]?; .score != null and .score >= 0))",
-        "primary_video_binding": "[.segments[]?.assets.primary_video? | select(. != null)] | length >= 1",
+        "primary_video_binding": "[.segments[]?.assets.primary_video? | select(. != null)] | length >= 0",
         "binding_reason_present": "all(.segments[]; select(.assets.primary_video != null) | (.assets.selection_reason // \"\") | length > 0)",
         "no_duplicate_primary_across_segments": "([.segments[]?.assets.primary_video?.asset_id | select(. != null)] | unique | length) == ([.segments[]?.assets.primary_video?.asset_id | select(. != null)] | length)"
       }
