@@ -152,12 +152,15 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # legacy" — two-layout mode accumulated transitional allowlists and
 # ratchets (see the stock-legacy-keyword allowlist header for the
 # surviving forward-pointers). P1-4 step 1 (internal/transcription)
-# + P1-4 step 2 (internal/youtube) are now retired. The remaining
-# legacy zones still exist on disk
-# (api, app, application, domain, infrastructure) but
-# no longer receive policy cover; each retirement is a
-# follow-up commit. cmd/archcheck treats unknown first-level internal/
-# dirs as a warn violation (`unknown_internal_root` rule).
+# + P1-4 step 2 (internal/youtube) + P1-7 (internal/domain/job →
+# internal/kernel/job) are now retired. The domain/ root still
+# exists on disk for sibling subtrees (transcription, voiceover,
+# translation, etc.) but the kernel/job surface is fully canonical.
+# Remaining legacy zones still exist on disk
+# (api, app, application, infrastructure) but no longer
+# receive policy cover; each retirement is a follow-up commit.
+# cmd/archcheck treats unknown first-level internal/ dirs as a warn
+# violation (`unknown_internal_root` rule).
 target_internal_roots: app, kernel, capabilities, platform
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
@@ -389,6 +392,15 @@ hard_gates:
   # brain component must have exactly one production implementation.
   - percheck_brain_infra_ban
   - percheck_brain_single_impl
+  # Wave-25 (P1-7 + P1-4 step 1/2 retirement) forward-prevention
+  # gate: any *.go import of a deleted legacy root (canonical
+  # enumeration in cmd/archcheck/scan/percheck_legacy_root_ban.go
+  # legacyRootImportBanned) is a hard CI failure. Promoted from
+  # the Wave-25 soft report-only state to a hard gate now that
+  # the P1-7 cutover has eliminated all backwards-compatible
+  # consumers of `internal/domain/job`; the percheck now has a
+  # zero legal-call-site footprint by construction.
+  - percheck_legacy_root_ban
   # Wave-24 forward-prevention: max_lines_per_file_strict promoted
   # from soft-warning (godlike/08 §"Mandatory checks" — Phase 0
   # report-only) to hard gate (Wave-24 evolution, see

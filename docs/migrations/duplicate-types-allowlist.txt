@@ -27,11 +27,18 @@
 # │ format mismatch flagged in the prior code-review (commit 55a0f56eb).     │
 # └──────────────────────────────────────────────────────────────────────────┘
 #
-# Current baseline (origin/main, July 2026): 71 lines (38 logical entries
-#   after post-CHECK-5-LENS ground-truth sweep: engine:Generate dropped
-#   (0 hits) + 3 stale cross-package-name mirror families dropped
-#   (0 hits in their alleged directories OR the directory itself is gone
-#   after FASE-X/voiceover-shim refactors)).
+# Current baseline (origin/main, July 2026): see `wc -l` for the live
+#   line count. Post-P1-7 the PHASE-A.2-PR-KERNEL-JOB-POPULATE section is
+#   ENTIRELY retired (atomic cutover of internal/domain/job/ →
+#   internal/kernel/job/, 2026-07-30). Before P1-7 the section hosted 30
+#   entry lines (15 paired `internal/domain/job:*` + `internal/kernel/job:*`
+#   cells) plus its 8-line section header block; both are gone now.
+#   The matching canonical-side kernel/job cells were REMOVED FROM THIS
+#   ALLOWLIST TOGETHER with the domain/job cells rather than left as
+#   zero-source exemptions — a Check 5 ground-truth sweep reconfirmed
+#   they are zero-sources in current tree, so they need no exemption.
+#   Operators auditing churn: the prior 71-line / 38-entry baseline is in
+#   git history at HEAD~1.
 #   - 13 CHECK 5 LOG entries (21 lines: 4 single-dir (scripts:*×3 +
 #     outbox:IndexClipper) + 9 multi-dir split × 2 cells = 22 cells,
 #     minus 1 cell api-side images:GenerateImageRequest drop = 21 actual)
@@ -124,45 +131,6 @@ internal/domain/translation/translation:TranslationResult             # cross-pa
 internal/application/assets/deletion/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/assets/deletion/reconciler/service.go:53 (assets-side deps) — owner: @qdrant-team, deadline: 2026-09-01
 internal/application/qdrant/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/qdrant/reconciler/service.go:94 (qdrant-side deps, distinct dep-bag per godlike/06 SSOT) — owner: @qdrant-team, deadline: 2026-09-01
 #
-# ◷ PHASE-A.2-PR-KERNEL-JOB-POPULATE (July 2026, post-LENS migration) ◷
-# 15 back-compat alias entries (each split into 2 lines = 30 lines):
-# `internal/domain/job/*` (back-compat aliases) coexist with
-# `internal/kernel/job/*` (canonicals). Both directories declare
-# `package job` so the Check 5 scanner creates distinct (dir,pkg,*) keys
-# per directory; each is allowlisted separately for forward-prevention.
-# Migration plan: CUTOVER to `kernel/job/` per godlike/07 §"Migration
-# sequence" + Phase A.2; deadline 2026-09-01 (whole-block parity).
-#
-internal/domain/job/job:Result                              # cross-package-NAME false positive — domain/job/handler.go:107 (back-compat alias `Result` = kernel.Job.Result) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Result                              # cross-package-NAME canonical — kernel/job/handler.go:75 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:ResultCodec                         # cross-package-NAME false positive — domain/job/codec.go:36 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:ResultCodec                         # cross-package-NAME canonical — kernel/job/codec.go:75 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:Service                             # cross-package-NAME false positive — domain/job/service.go:34 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Service                             # cross-package-NAME canonical — kernel/job/service.go:30 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:Status                              # cross-package-NAME false positive — domain/job/job.go:36 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Status                              # cross-package-NAME canonical — kernel/job/job.go:75 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:Store                               # cross-package-NAME false positive — domain/job/store.go:34 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Store                               # cross-package-NAME canonical — kernel/job/store.go:27 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:JobExecutionTools                   # cross-package-NAME false positive — domain/job/handler.go:31 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:JobExecutionTools                   # cross-package-NAME canonical — kernel/job/handler.go:54 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:LeaseState                          # cross-package-NAME false positive — domain/job/finalize_aliases.go:55 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:LeaseState                          # cross-package-NAME canonical — kernel/job/lease_state.go:47 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:OutboxEventSpec                     # cross-package-NAME false positive — domain/job/finalize_aliases.go:28 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:OutboxEventSpec                     # cross-package-NAME canonical — kernel/job/finalize_commands.go:145 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:PayloadCodec                        # cross-package-NAME false positive — domain/job/codec.go:30 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:PayloadCodec                        # cross-package-NAME canonical — kernel/job/codec.go:43 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:RenewLeaseResult                    # cross-package-NAME false positive — domain/job/finalize_aliases.go:59 (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:RenewLeaseResult                    # cross-package-NAME canonical — kernel/job/lease_state.go:98 — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:FinalizeAttemptResult               # cross-package-NAME false positive — domain/job/finalize_aliases.go (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:FinalizeAttemptResult               # cross-package-NAME canonical — kernel/job/finalize_commands.go — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:Handler                             # cross-package-NAME false positive — domain/job/handler.go (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Handler                             # cross-package-NAME canonical — kernel/job/handler.go — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:Job                                 # cross-package-NAME false positive — domain/job/job.go (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:Job                                 # cross-package-NAME canonical — kernel/job/job.go — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:JobBroker                           # cross-package-NAME false positive — domain/job/store.go (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:JobBroker                           # cross-package-NAME canonical — kernel/job/store.go — owner: @jobs-core, deadline: 2026-09-01
-internal/domain/job/job:JobDefinition                       # cross-package-NAME false positive — domain/job/job_definition.go (alias) — owner: @jobs-core, deadline: 2026-09-01
-internal/kernel/job/job:JobDefinition                       # cross-package-NAME canonical — kernel/job/job_definition.go — owner: @jobs-core, deadline: 2026-09-01
 #
 # ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
 # The Check 5 lint also flagged 3 additional pairs that are NOT in the

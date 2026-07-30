@@ -44,7 +44,9 @@ import (
 
 // newTestWorkspaceManager returns a Manager backed by a temp dir for
 // each test (matches the C9 stub precedent at
-// `internal/domain/job/workspace/manager_test.go::newStubManager`).
+// `internal/kernel/job/workspace/manager_test.go::newStubManager`,
+// the canonical home after the P1-7 retirement of legacy
+// `internal/domain/job/`).
 func newTestWorkspaceManager(t *testing.T) workspace.WorkspaceManager {
 	t.Helper()
 	root := t.TempDir()

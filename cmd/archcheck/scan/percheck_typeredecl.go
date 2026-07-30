@@ -14,9 +14,11 @@
 //     wave-tracker entry that registers this closure.
 //   - architecture/current.yaml#id-20: the original type-redecl
 //     tracker (QDRANT-RECOVERY-001 follow-up).
-//   - docs/architecture/godlike/duplicate-types-allowlist.txt: the
-//     per-package allowlist the scanner reads (same file the shell
-//     check reads — single source of truth).
+//   - docs/migrations/duplicate-types-allowlist.txt: the per-package
+//     allowlist the scanner reads (same file the shell check reads —
+//     single source of truth). Post-P1-7 the allowlist has zero
+//     internal/domain/job cells; the canonical kernel/job surface is
+//     the sole owner of all job-related types.
 //   - docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"moved-to-shared-types-package":
 //     the canonical resolution order (pick one file as canonical OR
 //     add an allowlist row with owner + deadline).
@@ -94,10 +96,12 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 	// nested map) so the dedup-and-sort pass is a single linear walk.
 	//
 	// The dirpath component distinguishes distinct Go packages that
-	// happen to share the same package NAME (e.g. `package job` in
-	// internal/domain/job vs internal/kernel/job), eliminating
-	// cross-directory same-package-NAME false positives while still
-	// detecting TRUE same-package (same-dir) redeclarations.
+	// happen to share the same package NAME (eliminating cross-directory
+	// same-package-NAME false positives while still detecting TRUE
+	// same-package (same-dir) redeclarations). Prior to P1-7 this
+	// example was `package job` in internal/domain/job vs
+	// internal/kernel/job; post-P1-7 only internal/kernel/job owns
+	// `package job` and the cross-directory mirroring is gone.
 	type site struct{ file, line string }
 	typeSites := map[string][]site{}
 
