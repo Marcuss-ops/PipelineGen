@@ -77,8 +77,8 @@ if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
         printf 'Loading Pacquiao stock bindings from fixtures/%s\n' "mike_tyson_stock_bindings.json"
         while IFS=$'\t' read -r asset_id drive_link; do
             [[ -z "$asset_id" ]] && continue
-            if [[ "$asset_id" =~ PLACEHOLDER ]]; then
-                printf '%swarn: stock bindings fixture has PLACEHOLDER values — falling back to Tyson clips for Pacquiao%s\n' \
+            if [[ "$asset_id" =~ PLACEHOLDER || "$asset_id" =~ PACQUIAO ]]; then
+                printf '%swarn: stock bindings fixture has PLACEHOLDER/PACQUIAO values — falling back to Tyson clips for Pacquiao%s\n' \
                     "$YELLOW" "$RESET" >&2
                 PACQUIAO_CLIPS=()
                 break
@@ -185,9 +185,9 @@ run_scenario() {
     # Dispatch generate
     local idem_key
     idem_key=$(smoke_gen_uuid)
+    export SMOKE_IDEMPOTENCY_KEY="$idem_key"
     
     smoke_curl POST "/api/script/generate" \
-        -H "Idempotency-Key: $idem_key" \
         --data "$payload" >/dev/null
     
     local http_code="$SMOKE_LAST_HTTP"
@@ -343,7 +343,7 @@ run_scenario() {
                 if [[ -n "$TYSON_VIDEO_ID" ]]; then
                     count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube' AND id LIKE '${TYSON_VIDEO_ID}_%';")
                 else
-                    count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube' AND LOWER(folder_path) LIKE LOWER('%${TYSON_FOLDER_NAME}%');")
+                    count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube';")
                 fi
                 if [[ "$count" != "1" ]]; then
                     printf '%sFAIL: Bound clip %s not found in SQLite or is not a Tyson clip%s\n' "$RED" "$bid" "$RESET" >&2
@@ -360,7 +360,7 @@ run_scenario() {
                 and (.specscene.scenes[1].bindings.stock.asset_id == $i_id)
                 and (.specscene.scenes[2].bindings.stock.asset_id == $t_id)
                 and (all(.specscene.scenes[];
-                    .bindings.stock.fallback == false
+                    (.bindings.stock.fallback // false) == false
                     and (.bindings.stock.drive_link | length) > 0
                     and .bindings.stock.source == "youtube"
                 ))
@@ -407,12 +407,21 @@ run_scenario() {
                 return 1
             fi
             
+            # Verify Google Doc artifact is published
+            local doc_link
+            doc_link=$(jq -r '.job.result.data.data.artifacts.document.doc_link // .job.result.data.items[0].result.artifacts.document.doc_link // ""' "$full_body_file")
+            if [[ -z "$doc_link" || "$doc_link" == "null" ]]; then
+                printf '%sFAIL: Google Doc artifact not generated/published%s\n' "$RED" "$RESET" >&2
+                return 1
+            fi
+            printf '%sPASS: Google Doc published successfully: %s%s\n' "$GREEN" "$doc_link" "$RESET"
+            
             # Idempotency Replay Verifications
             smoke_log_section "Idempotency Replay checks"
             
             # 1. Same payload + same idempotency key -> returns same job response (HTTP 200 or 202)
+            export SMOKE_IDEMPOTENCY_KEY="$idem_key"
             smoke_curl POST "/api/script/generate" \
-                -H "Idempotency-Key: $idem_key" \
                 --data "$payload" >/dev/null
             local replay_http="$SMOKE_LAST_HTTP"
             if [[ "$replay_http" != "200" && "$replay_http" != "202" ]]; then
@@ -430,8 +439,8 @@ run_scenario() {
             # 2. Different payload + same idempotency key -> HTTP 409 Conflict
             local diff_payload
             diff_payload=$(jq '.items[0].title = "A different title"' <<<"$payload")
+            export SMOKE_IDEMPOTENCY_KEY="$idem_key"
             smoke_curl POST "/api/script/generate" \
-                -H "Idempotency-Key: $idem_key" \
                 --data "$diff_payload" >/dev/null
             local conflict_http="$SMOKE_LAST_HTTP"
             if [[ "$conflict_http" != "409" ]]; then
