@@ -275,10 +275,10 @@ def verify(db: Path, folder_id: str, boxer: str) -> None:
           SELECT COUNT(*), COUNT(DISTINCT source_video_id), COALESCE(SUM(duration_ms),0),
                  COUNT(DISTINCT file_hash), SUM(CASE WHEN drive_file_id='' THEN 1 ELSE 0 END),
                  SUM(CASE WHEN source_video_id='' OR source_url='' OR category='' OR duration_ms<=0 THEN 1 ELSE 0 END)
-          FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND folder_path=?
+          FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)
         """, (folder_id, boxer)).fetchone()
-        per_source = conn.execute("SELECT source_video_id, COUNT(*) FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND folder_path=? GROUP BY source_video_id", (folder_id, boxer)).fetchall()
-        paths = [r[0] for r in conn.execute("SELECT local_path FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND folder_path=?", (folder_id, boxer))]
+        per_source = conn.execute("SELECT source_video_id, COUNT(*) FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?) GROUP BY source_video_id", (folder_id, boxer)).fetchall()
+        paths = [r[0] for r in conn.execute("SELECT local_path FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)", (folder_id, boxer))]
     count, videos, duration, hashes, missing_drive, incomplete = row
     if (count, videos, duration, hashes, missing_drive, incomplete) != (300, 20, 1_200_000, 300, 0, 0):
         raise RuntimeError(f"SQLite gate failed: clips={count}, videos={videos}, duration_ms={duration}, hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}")
@@ -312,6 +312,10 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true")
     ap.add_argument("--concurrency", type=int, default=2)
     args = ap.parse_args()
+    # Normalise to lowercase so folder_path in SQLite is always consistent.
+    # verify() already uses LOWER() for case-insensitive matching, but new
+    # clips must also land with the same casing to avoid mixed-path bugs.
+    args.boxer = args.boxer.strip().lower()
     token = os.environ.get("VELOX_ADMIN_TOKEN", "")
     if not token:
         raise SystemExit("VELOX_ADMIN_TOKEN is required")
