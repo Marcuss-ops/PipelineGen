@@ -110,6 +110,11 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)
 		}
 		runner.State().Plan = plans
+		if in.DownloadMode == "sections_only" {
+			for i := range runner.State().Plan {
+				runner.State().Plan[i].StageKey = runner.State().Plan[i].OutputLogicalID
+			}
+		}
 
 		if runner.Log() != nil {
 			runner.Log().Info("orchestrator: stock.plan: SUCCEEDED (explicit clips)",
@@ -124,14 +129,27 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	planBudget := in.TotalMinutes * 60
+	clipDuration := runner.Cfg().ClipDurationSec
+	if in.TargetDurationPerSourceSeconds > 0 {
+		planBudget = in.TargetDurationPerSourceSeconds
+	}
+	if in.ClipDurationSeconds > 0 {
+		clipDuration = in.ClipDurationSeconds
+	}
 	if planBudget <= 0 {
 		planBudget = runner.Cfg().ChunkDurationSec
+	}
+	if in.ClipsPerSource > 0 && planBudget != in.ClipsPerSource*clipDuration {
+		return fmt.Errorf("orchestrator: stock.plan: duration contract mismatch: per_source=%d clips=%d clip_duration=%d", planBudget, in.ClipsPerSource, clipDuration)
+	}
+	if in.TargetTotalDurationSeconds > 0 && in.TargetTotalDurationSeconds != planBudget*len(sources) {
+		return fmt.Errorf("orchestrator: stock.plan: total duration contract mismatch: total=%d expected=%d for %d sources", in.TargetTotalDurationSeconds, planBudget*len(sources), len(sources))
 	}
 	allPlans := make([]ClipPlan, 0, len(sources))
 	for _, src := range sources {
 		plans, err := runner.Planner().Plan(
 			ctx, src, planBudget,
-			runner.Cfg().ClipDurationSec, runner.Cfg().PolicyVersion,
+			clipDuration, runner.Cfg().PolicyVersion,
 		)
 		if err != nil {
 			return fmt.Errorf("orchestrator: stock.plan: planner.Plan source %q: %w", src.URL, err)
@@ -139,7 +157,27 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 		allPlans = append(allPlans, plans...)
 	}
 	applyRunMetadataToPlans(allPlans, in.Metadata)
+	if in.DownloadMode == "sections_only" {
+		for i := range allPlans {
+			allPlans[i].StageKey = allPlans[i].OutputLogicalID
+		}
+	}
 	runner.State().Plan = allPlans
+	if in.ClipsPerSource > 0 {
+		for _, src := range sources {
+			count := 0
+			var total float64
+			for _, plan := range allPlans {
+				if plan.SourceID == src.URL {
+					count++
+					total += plan.EndSec - plan.StartSec
+				}
+			}
+			if count != in.ClipsPerSource || int(total+0.0001) != planBudget {
+				return fmt.Errorf("orchestrator: stock.plan: source %q violates duration contract: clips=%d duration=%.3f", src.URL, count, total)
+			}
+		}
+	}
 
 	if runner.Log() != nil {
 		runner.Log().Info("orchestrator: stock.plan: SUCCEEDED",

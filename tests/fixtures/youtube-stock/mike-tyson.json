@@ -10,7 +10,7 @@
   },
   "requests": [
     {
-      "name": "mike-tyson-10x150",
+      "name": "mike-tyson-3x5",
       "source_urls": [
         "https://www.youtube.com/watch?v=9u4T_o3FxOU",
         "https://www.youtube.com/watch?v=4fndeDfaWCg",
@@ -24,9 +24,13 @@
         "https://www.youtube.com/watch?v=JGwWNGJdvx8"
       ],
       "destination_folder_name": "Mike Tyson",
-      "clips_per_source": 15,
+      "target_total_duration_seconds": 60,
+      "target_duration_per_source_seconds": 20,
+      "clips_per_source": 5,
+      "clip_duration_seconds": 4,
+      "download_mode": "sections_only",
       "metadata": {"title": "Mike Tyson stock sample", "category": "sport", "tags": ["boxing", "mike-tyson"]},
-      "expected_counts": {"selected_video_count": 10, "planned_clip_count": 150, "created_clip_count": 150, "indexed_clip_count": 150}
+      "expected_counts": {"selected_video_count": 3, "planned_clip_count": 15, "created_clip_count": 15, "indexed_clip_count": 15}
     }
   ]
 }
