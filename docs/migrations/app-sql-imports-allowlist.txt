@@ -41,8 +41,7 @@
 # declaration in the file's own `ports.go`, adapter in
 # `internal/infrastructure/database/<feature>/`, wire in
 # `internal/app/<feature>_adapters.go`, plus tests.
-internal/application/assets/providers/artlist/search_cache.go  # Wave 19 PR-Wave19-MIGRATE-C: ArtlistSearchCachePort + artlist cache adapter; owner: agent/Codebuff; deadline: 2026-07-15
-internal/application/assets/providers/artlist/service_deps.go  # P1-8 Artlist dependency boundary; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/providers/artlist/service_deps.go  # P1-8 Artlist dependency boundary; owner: agent/Codebuff; deadline: 2026-08-31# Wave 19 PR-Wave19-MIGRATE-C closed 2026-07-30: search_cache.go migrated to typed ArtlistSearchCachePort + sqlite adapter; see REVERSE-REFERENCE below.
 
 # ── 3. Tier-B: medium-risk production migrations (deadline 2026-07-31) ───
 # These files hold a `db *sql.DB` field on a service struct; the

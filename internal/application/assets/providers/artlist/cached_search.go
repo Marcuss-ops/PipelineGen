@@ -20,9 +20,19 @@ package artlist
 //
 // Current Service facade exposure: Service.liveCache (unexported
 // field, same-package access only). Composition root wires the cache
-// implicitly via newLiveSearchCache() inside NewService; future
-// extensions can swap to a persistent variant via
-// newPersistentLiveSearchCache(db, log).
+// implicitly via newLiveSearchCache() inside NewService; persistent
+// extensions route through the typed ArtlistSearchCachePort per
+// godlike/07 zero-legacy (P0-3, July 2026):
+//
+//	newPersistentLiveSearchCache(
+//	    NewSQLiteArtlistSearchCacheAdapter(db, log),  // returns artlist.ArtlistSearchCachePort
+//	    log,
+//	)
+//
+// The two-arg wiring IS the post-migration contract — direct *sql.DB
+// usage in the application layer is forbidden by
+// scripts/ci-architectural-checks.sh Check 42 + the canonical
+// app-sql-imports-allowlist owner + deadline discipline.
 //
 // Phase 7 manifest: this file marks the canonical location of the
 // cached-search capability in the split-by-capability refactor of
