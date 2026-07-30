@@ -131,13 +131,21 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 		rootOverride = folderID
 	}
 	result, err := a.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          localPath,
-		Filename:           filename,
-		Group:              group,
-		Subject:            subject,
-		RootFolderOverride: rootOverride,
-		ConflictPolicy:     delivery.ConflictSkipByHash,
+		Destination: delivery.DestinationYouTubeClip,
+		LocalPath:   localPath,
+		Filename:    filename,
+		Group:       group,
+		Subject:     subject,
+		// An explicitly resolved folder is the complete destination. Using
+		// RootFolderOverride here would re-run YouTubeClipPath and create
+		// group/video subfolders inside it.
+		DestinationFolderID: func() string {
+			if rootOverride != "" {
+				return rootOverride
+			}
+			return ""
+		}(),
+		ConflictPolicy: delivery.ConflictSkipByHash,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)

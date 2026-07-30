@@ -39,6 +39,22 @@ func (s *MetadataService) GenerateClipMetadata(
 	if out.ClipID == "" || out.Summary == "" {
 		return s.fallbackMetadata(in), nil
 	}
+	// Builders may return only semantic fields. Canonical provenance comes
+	// from the request and must survive every enrichment implementation.
+	out.SourceURL = in.SourceURL
+	out.SourceTitle = in.SourceTitle
+	out.SourceChannel = in.SourceChannel
+	out.SourceProvider = in.SourceProvider
+	out.VideoID = in.VideoID
+	out.ClipStartSec = in.ClipStartSec
+	out.ClipEndSec = in.ClipEndSec
+	out.ClipDurationSec = in.ClipEndSec - in.ClipStartSec
+	out.PolicyVersion = in.PolicyVersion
+	out.DrivePath = in.DrivePath
+	out.ContentHash = in.ContentHash
+	if out.Title == "" {
+		out.Title = in.Title
+	}
 	return out, nil
 }
 
@@ -78,6 +94,16 @@ func FallbackMetadata(in youtubetypes.ClipMetadataInput) youtubetypes.CanonicalC
 		SponsorSegment:   sponsor,
 		TranscriptPath:   transcriptPath,
 		SourceURL:        in.SourceURL,
+		SourceTitle:      in.SourceTitle,
+		SourceChannel:    in.SourceChannel,
+		SourceProvider:   in.SourceProvider,
+		VideoID:          in.VideoID,
+		ClipStartSec:     in.ClipStartSec,
+		ClipEndSec:       in.ClipEndSec,
+		ClipDurationSec:  in.ClipEndSec - in.ClipStartSec,
+		PolicyVersion:    in.PolicyVersion,
+		DrivePath:        in.DrivePath,
+		ContentHash:      in.ContentHash,
 		NormalizedGroup:  group,
 		SourceVersion:    DeriveFallbackSourceVersion(in.ClipID, in.Transcript, score),
 		JobID:            "",
@@ -114,6 +140,16 @@ func (s *MetadataService) fallbackMetadata(in youtubetypes.ClipMetadataInput) yo
 	if in.SearchVisibility != "" {
 		out.SearchVisibility = in.SearchVisibility
 	}
+	out.SourceTitle = in.SourceTitle
+	out.SourceChannel = in.SourceChannel
+	out.SourceProvider = in.SourceProvider
+	out.VideoID = in.VideoID
+	out.ClipStartSec = in.ClipStartSec
+	out.ClipEndSec = in.ClipEndSec
+	out.ClipDurationSec = in.ClipEndSec - in.ClipStartSec
+	out.PolicyVersion = in.PolicyVersion
+	out.DrivePath = in.DrivePath
+	out.ContentHash = in.ContentHash
 	return out
 }
 

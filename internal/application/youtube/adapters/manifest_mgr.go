@@ -23,6 +23,16 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *youtubetypes
 	if s.assetDestResolver == nil || req.Destination == nil {
 		return "", ""
 	}
+	// A batch caller may resolve the final Drive folder once and pass it
+	// explicitly.  Preserve that folder verbatim: the YouTube path builder
+	// must not create a per-video child in this mode.
+	if strings.TrimSpace(req.Destination.FolderID) != "" &&
+		strings.TrimSpace(req.Destination.FolderPath) != "" &&
+		!req.Destination.CreateSubfolder &&
+		strings.TrimSpace(req.Destination.Group) == "" &&
+		strings.TrimSpace(req.Destination.SubfolderName) == "" {
+		return strings.TrimSpace(req.Destination.FolderID), strings.TrimSpace(req.Destination.FolderPath)
+	}
 
 	destReq := &asset.ResolveRequest{
 		Source:          "youtube",

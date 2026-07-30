@@ -65,6 +65,9 @@ func maybeWrapNamespace(cfg *config.Config, namespace, specificRoot string, inne
 // destination write directly into the root.
 func withNamespace(namespace string, inner PathBuilder) PathBuilder {
 	return func(req PublishRequest) ([]string, error) {
+		if strings.TrimSpace(req.DestinationFolderID) != "" {
+			return nil, nil
+		}
 		segs, err := inner(req)
 		if err != nil {
 			return nil, err
@@ -161,16 +164,9 @@ var ErrYouTubeAssetPathMissingField = errors.New(
 // SHOULD be validated at the handler boundary.
 func YouTubeClipPath(req PublishRequest) ([]string, error) {
 	if strings.TrimSpace(req.DestinationFolderID) != "" {
-		leaf := firstNonEmpty(
-			strings.TrimSpace(req.Subject),
-			strings.TrimSpace(req.Group),
-			strings.TrimSpace(req.Category),
-		)
-		if leaf != "" {
-			return []string{
-				pathutil.SafeFolderName(leaf),
-			}, nil
-		}
+		// DestinationFolderID is already the resolved leaf folder. Do not
+		// append a group, video ID, or namespace beneath it.
+		return nil, nil
 	}
 	group := firstNonEmpty(
 		strings.TrimSpace(req.Group),

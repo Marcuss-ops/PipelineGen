@@ -160,6 +160,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 	res, err := sqlTx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
+			category, duration_ms,
 			file_hash, drive_file_id, drive_link, download_link,
 			local_path, folder_id, folder_path,
 			lifecycle_state, index_state, metadata_json,
@@ -168,12 +169,14 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 			asset_version, asset_location, rendition,
 			source_provider, source_video_id, source_url,
 			start_ms, end_ms, title
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
 			filename = excluded.filename,
-			media_type = excluded.media_type,
+				media_type = excluded.media_type,
+				category = excluded.category,
+				duration_ms = excluded.duration_ms,
 			file_hash = excluded.file_hash,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
@@ -199,6 +202,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 			title = excluded.title
 	`,
 		req.AssetID, req.Source, name, req.Filename, req.MediaType,
+		req.Category, req.DurationMs,
 		req.ContentHash, primaryDriveFileID(req.Locations), primaryWebViewLink(req.Locations), primaryDownloadURL(req.Locations),
 		req.LocalPath, req.FolderID, req.FolderPath,
 		req.LifecycleState, indexState, string(metadataJSON),

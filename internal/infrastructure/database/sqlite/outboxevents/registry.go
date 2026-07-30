@@ -50,6 +50,7 @@ const (
 	EventProviderSyncRequested        = "provider.sync.requested"
 	EventWorkflowStepCompleted        = "workflow.step.completed"
 	EventWorkflowStepFailed           = "workflow.step.failed"
+	EventScriptGenerateQueued         = "script.generate.queued"
 
 	// EventVoiceoverCleanupRequested (P0.7 Wave 21, Step 10/12, June 2026).
 	// Replaces the pre-fix fire-and-forget `cleanupOrphanVoiceover`

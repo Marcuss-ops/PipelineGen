@@ -25,10 +25,12 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // upsertClipInTx writes the canonical 17-column clip row shape into
@@ -52,23 +54,35 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
+			category, duration_ms, metadata_json,
 			drive_file_id, drive_link, download_link,
-			local_path, file_hash,
+			local_path, file_hash, binary_sha256,
 			folder_id, folder_path,
+			source_provider, source_video_id, source_url, start_ms, end_ms, title,
 			source_version, search_text,
 			lifecycle_state, updated_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
 			filename = excluded.filename,
+			category = excluded.category,
+			duration_ms = excluded.duration_ms,
+			metadata_json = json_patch(COALESCE(media_assets.metadata_json, '{}'), excluded.metadata_json),
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			download_link = excluded.download_link,
 			local_path = excluded.local_path,
 			file_hash = excluded.file_hash,
+			binary_sha256 = excluded.binary_sha256,
 			folder_id = excluded.folder_id,
 			folder_path = excluded.folder_path,
+			source_provider = excluded.source_provider,
+			source_video_id = excluded.source_video_id,
+			source_url = excluded.source_url,
+			start_ms = excluded.start_ms,
+			end_ms = excluded.end_ms,
+			title = excluded.title,
 			source_version = excluded.source_version,
 			search_text = excluded.search_text,
 			updated_at = excluded.updated_at
@@ -78,13 +92,23 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		routeEmpty(deriveNameFromAsset(asset), clipID),
 		routeEmpty(deriveFilenameFromAsset(asset), clipID+".mp4"),
 		"video",
+		asset.Metadata.Category,
+		int64(asset.Metadata.ClipDurationSec*1000),
+		canonicalClipProvenanceJSON(asset),
 		asset.Drive.FileID,
 		asset.Drive.WebViewLink,
 		"", // download_link — derived from FileID in production; left empty in Commit 2
 		asset.LocalPath,
 		asset.FileHash,
+		binarySHA256(asset),
 		asset.Drive.FolderID,
 		routeEmpty(asset.Drive.FolderPath, asset.Drive.FolderID),
+		asset.Metadata.SourceProvider,
+		asset.Metadata.VideoID,
+		asset.Metadata.SourceURL,
+		int64(asset.Metadata.ClipStartSec*1000),
+		int64(asset.Metadata.ClipEndSec*1000),
+		asset.Metadata.Title,
 		sourceVersion,
 		routeEmpty(asset.SearchText, ""),
 		"ACTIVE",
@@ -95,6 +119,37 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		return err
 	}
 	return nil
+}
+
+func binarySHA256(asset youtubetypes.ClipAsset) string {
+	if asset.LocalPath == "" {
+		return ""
+	}
+	sha, err := files.SHA256File(asset.LocalPath)
+	if err != nil || len(sha) != 64 {
+		return ""
+	}
+	return sha
+}
+
+func canonicalClipProvenanceJSON(asset youtubetypes.ClipAsset) string {
+	payload := map[string]any{
+		"category":          asset.Metadata.Category,
+		"source_provider":   asset.Metadata.SourceProvider,
+		"video_id":          asset.Metadata.VideoID,
+		"source_url":        asset.Metadata.SourceURL,
+		"source_title":      asset.Metadata.SourceTitle,
+		"source_channel":    asset.Metadata.SourceChannel,
+		"clip_start_sec":    asset.Metadata.ClipStartSec,
+		"clip_end_sec":      asset.Metadata.ClipEndSec,
+		"clip_duration_sec": asset.Metadata.ClipDurationSec,
+		"title":             asset.Metadata.Title,
+	}
+	if sha := binarySHA256(asset); sha != "" {
+		payload["sha256"] = sha
+	}
+	raw, _ := json.Marshal(payload)
+	return string(raw)
 }
 
 // ── Column-mapping derivation helpers (pure functions) ──────────────

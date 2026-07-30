@@ -26,6 +26,7 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 		MediaType:      asset.MediaTypeClip,
 		LifecycleState: asset.StateActive,
 		Category:       c.Category,
+		SourceURL:      c.SourceURL,
 		Tags:           append([]string(nil), c.Tags...),
 		Duration:       c.Duration,
 	}
@@ -33,6 +34,8 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	out.SetDriveLink(c.DriveLink)
 	out.SetDriveFileID(c.DriveFileID)
 	out.SetFileHash(c.FileHash)
+	out.SetFolderID(c.DriveFolderID)
+	out.SetFolderPath(c.DrivePath)
 	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026).
 	// Stored in Metadata for round-trip through UpsertClipTx →
 	// media_assets.metadata_json → Qdrant semantic search.

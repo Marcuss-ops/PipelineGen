@@ -131,6 +131,15 @@ type StagedArtifactReference struct {
 	// Empty SHA256 is valid (the Sender recomputes on-disk per the
 	// canonical prepare pipeline).
 	SHA256 string `json:"sha256,omitempty"`
+
+	// Local-worker completion fields are projected from the validated
+	// artifact manifest before ArtifactPreparation runs. They remain
+	// optional for callers that submit a reference through the public wire.
+	Path      string `json:"path,omitempty"`
+	Filename  string `json:"filename,omitempty"`
+	MIMEType  string `json:"mime_type,omitempty"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+	Required  bool   `json:"required,omitempty"`
 }
 
 // Validate returns nil if the StagedArtifactReference is well-formed;

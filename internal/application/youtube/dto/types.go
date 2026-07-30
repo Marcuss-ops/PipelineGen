@@ -48,6 +48,9 @@ type Segment struct {
 	Start            string              `json:"start"`
 	End              string              `json:"end"`
 	Name             string              `json:"name"`
+	Category         string              `json:"category,omitempty"`
+	SourceTitle      string              `json:"source_title,omitempty"`
+	SourceChannel    string              `json:"source_channel,omitempty"`
 	Tags             []string            `json:"tags,omitempty"`
 	Summary          string              `json:"summary,omitempty"`
 	Topics           []string            `json:"topics,omitempty"`

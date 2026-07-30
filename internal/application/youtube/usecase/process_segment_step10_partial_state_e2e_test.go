@@ -74,6 +74,7 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			source TEXT, name TEXT, filename TEXT, media_type TEXT,
+			category TEXT NOT NULL DEFAULT '', duration_ms INTEGER NOT NULL DEFAULT 0,
 			drive_file_id TEXT, drive_link TEXT, download_link TEXT,
 			local_path TEXT, file_hash TEXT,
 			folder_id TEXT, folder_path TEXT,

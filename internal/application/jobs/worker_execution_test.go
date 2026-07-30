@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -60,7 +60,7 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 		t.Fatal("expected non-empty staged artifacts for a valid manifest")
 	}
 
-	var artifacts []finalization.PublishedArtifact
+	var artifacts remote.StagedArtifacts
 	if err := json.Unmarshal(raw, &artifacts); err != nil {
 		t.Fatalf("failed to unmarshal staged artifacts: %v", err)
 	}
@@ -74,8 +74,8 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 	if a.ArtifactID != "job_test_123:script_json" {
 		t.Errorf("ArtifactID: got %q, want %q", a.ArtifactID, "job_test_123:script_json")
 	}
-	if a.Kind != finalization.ArtifactKind(job.ArtifactKindScriptJSON) {
-		t.Errorf("Kind: got %q, want %q", a.Kind, job.ArtifactKindScriptJSON)
+	if a.Destination != "script" {
+		t.Errorf("Destination: got %q, want script", a.Destination)
 	}
 	if a.Filename != "script.json" {
 		t.Errorf("Filename: got %q, want %q", a.Filename, "script.json")
@@ -89,25 +89,15 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 	if a.SHA256 != "abc123" {
 		t.Errorf("SHA256: got %q, want %q", a.SHA256, "abc123")
 	}
-	if a.Requirement != finalization.ArtifactRequirementRequired {
-		t.Errorf("Requirement: got %v, want Required", a.Requirement)
-	}
-	if a.IdempotencyKey != "job_test_123:script_json" {
-		t.Errorf("IdempotencyKey: got %q, want %q", a.IdempotencyKey, "job_test_123:script_json")
+	if a.Path == "" || a.Filename != "script.json" || a.SizeBytes != 1024 {
+		t.Errorf("local artifact projection incomplete: path=%q filename=%q size=%d", a.Path, a.Filename, a.SizeBytes)
 	}
 
 	// Source derived from job type prefix
-	if a.Source != "script" {
-		t.Errorf("Source: got %q, want %q", a.Source, "script")
-	}
-
 	// Second artifact: optional
 	b := artifacts[1]
-	if b.Requirement != finalization.ArtifactRequirementOptional {
-		t.Errorf("Requirement: got %v, want Optional", b.Requirement)
-	}
-	if b.IdempotencyKey != "job_test_123:script_text" {
-		t.Errorf("IdempotencyKey: got %q, want %q", b.IdempotencyKey, "job_test_123:script_text")
+	if b.Destination != "script" || b.Path == "" {
+		t.Errorf("optional artifact projection incomplete: destination=%q path=%q", b.Destination, b.Path)
 	}
 }
 

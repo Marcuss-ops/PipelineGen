@@ -51,6 +51,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // step10_MetadataEnrich is the canonical owner of Step 10. The
@@ -106,12 +107,21 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 	//          accepted but unused.
 
 	if u.metadata.MetadataService != nil {
+		startSec, _ := textutil.ParseTimestamp(cmd.Segment.Start)
+		endSec, _ := textutil.ParseTimestamp(cmd.Segment.End)
 		_, metaErr := u.metadata.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
 			ClipID:           clipID,
 			Title:            cmd.Segment.Name,
 			Transcript:       transcript,
 			ClipDuration:     duration,
 			SourceURL:        cmd.VideoURL,
+			SourceTitle:      cmd.Segment.SourceTitle,
+			SourceChannel:    cmd.Segment.SourceChannel,
+			SourceProvider:   "youtube",
+			VideoID:          cmd.VideoID,
+			ClipStartSec:     startSec,
+			ClipEndSec:       endSec,
+			PolicyVersion:    cmd.PolicyVersion,
 			Group:            deriveNormalizedGroup(cmd),
 			Hook:             cmd.Segment.Hook,
 			SearchVisibility: cmd.Segment.SearchVisibility,

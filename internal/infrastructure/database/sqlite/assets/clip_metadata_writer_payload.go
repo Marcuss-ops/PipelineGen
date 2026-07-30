@@ -66,18 +66,45 @@ func updateMediaAssetsMetadataTx(
 		"quality_score":    m.QualityScore,
 		"sponsor_segment":  m.SponsorSegment,
 		"transcript_path":  m.TranscriptPath,
-		"source_url":       m.SourceURL,
 		"normalized_group": m.NormalizedGroup,
-		// ── PR-YT-DOD-7: 9 new canonical fields ──
-		"source_provider":   m.SourceProvider,
-		"video_id":          m.VideoID,
-		"title":             m.Title,
-		"clip_start_sec":    m.ClipStartSec,
-		"clip_end_sec":      m.ClipEndSec,
-		"clip_duration_sec": m.ClipDurationSec,
-		"policy_version":    m.PolicyVersion,
-		"drive_path":        m.DrivePath,
-		"content_hash":      m.ContentHash,
+	}
+	// Do not let a sparse enrichment result erase canonical provenance
+	// written during the atomic clip commit.
+	if m.SourceURL != "" {
+		meta["source_url"] = m.SourceURL
+	}
+	if m.SourceProvider != "" {
+		meta["source_provider"] = m.SourceProvider
+	}
+	if m.VideoID != "" {
+		meta["video_id"] = m.VideoID
+	}
+	if m.Title != "" {
+		meta["title"] = m.Title
+	}
+	if m.SourceTitle != "" {
+		meta["source_title"] = m.SourceTitle
+	}
+	if m.SourceChannel != "" {
+		meta["source_channel"] = m.SourceChannel
+	}
+	if m.ClipStartSec != 0 {
+		meta["clip_start_sec"] = m.ClipStartSec
+	}
+	if m.ClipEndSec != 0 {
+		meta["clip_end_sec"] = m.ClipEndSec
+	}
+	if m.ClipDurationSec != 0 {
+		meta["clip_duration_sec"] = m.ClipDurationSec
+	}
+	if m.PolicyVersion != "" {
+		meta["policy_version"] = m.PolicyVersion
+	}
+	if m.DrivePath != "" {
+		meta["drive_path"] = m.DrivePath
+	}
+	if m.ContentHash != "" {
+		meta["content_hash"] = m.ContentHash
 	}
 	if m.Hook != "" {
 		meta["hook"] = m.Hook

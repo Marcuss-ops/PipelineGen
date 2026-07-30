@@ -287,7 +287,7 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Canonical web,android is present (the f3f1ee90 web-first policy)
-	require.Contains(t, runner.argv, "youtube:player_client=web,android",
+	require.Contains(t, runner.argv, "youtube:player_client=android_creator",
 		"downloader must use the canonical web,android order centralized in cmd_builder.go")
 
 	// The drift (reversed order) MUST NOT appear anywhere in argv

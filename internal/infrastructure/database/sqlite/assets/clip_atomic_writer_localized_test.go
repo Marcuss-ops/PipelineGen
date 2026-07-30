@@ -78,6 +78,7 @@ const localizedClipWriterSchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,
     source TEXT, name TEXT, filename TEXT, media_type TEXT,
+    category TEXT NOT NULL DEFAULT '', duration_ms INTEGER NOT NULL DEFAULT 0,
     drive_file_id TEXT, drive_link TEXT, download_link TEXT,
     local_path TEXT, file_hash TEXT,
     folder_id TEXT, folder_path TEXT,
@@ -214,6 +215,13 @@ func makeClipAssetForTest(clipID, videoID, fileHash string) youtubetypes.ClipAss
 		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         "Localized Happy Path",
 			NormalizedGroup: "general",
+			Category:        "fight",
+			SourceURL:       "https://www.youtube.com/watch?v=" + videoID,
+			SourceProvider:  "youtube",
+			VideoID:         videoID,
+			ClipStartSec:    10,
+			ClipEndSec:      60,
+			ClipDurationSec: 50,
 		},
 		PolicyVersion: "v1",
 	}
@@ -286,6 +294,18 @@ func TestCommitClipTextAndIndexEvent_HappyPath(t *testing.T) {
 	if mediaCount != 1 {
 		t.Errorf("media_assets: want 1 row got %d", mediaCount)
 	}
+	var sourceURL, sourceProvider, sourceVideoID, category string
+	var durationMs, startMs, endMs int64
+	err := db.QueryRow(`SELECT source_url, source_provider, source_video_id, category, duration_ms, start_ms, end_ms FROM media_assets WHERE id = ?`, clipID).
+		Scan(&sourceURL, &sourceProvider, &sourceVideoID, &category, &durationMs, &startMs, &endMs)
+	require.NoError(t, err)
+	require.Equal(t, "https://www.youtube.com/watch?v=localized_happy_001", sourceURL)
+	require.Equal(t, "youtube", sourceProvider)
+	require.Equal(t, "localized_happy_001", sourceVideoID)
+	require.Equal(t, "fight", category)
+	require.EqualValues(t, 50000, durationMs)
+	require.EqualValues(t, 10000, startMs)
+	require.EqualValues(t, 60000, endMs)
 
 	// asset_text_tracks — one row per (lang, kind=transcript).
 	var trackCount int

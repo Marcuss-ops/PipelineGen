@@ -80,6 +80,30 @@ type Filters struct {
 	DurationMsMin int      // inclusive lower bound on duration (videos only)
 }
 
+// InferCategoryFromQuery applies the shared media-taxonomy vocabulary to
+// natural-language queries when the caller did not provide an explicit
+// category filter. It is intentionally conservative: an explicit filter
+// remains authoritative and ambiguous queries remain unfiltered.
+func InferCategoryFromQuery(text string) string {
+	t := strings.ToLower(strings.TrimSpace(text))
+	for _, term := range []string{"interview", "interviews", "press conference", "press conferences", "backstage"} {
+		if strings.Contains(t, term) {
+			return "interview"
+		}
+	}
+	for _, term := range []string{"training", "train", "gym", "workout"} {
+		if strings.Contains(t, term) {
+			return "training"
+		}
+	}
+	for _, term := range []string{"fight", "fights", "knockout", "knockouts", "knockdown", "ring", "boxing"} {
+		if strings.Contains(t, term) {
+			return "fight"
+		}
+	}
+	return ""
+}
+
 // ── Cursor ──────────────────────────────────────────────────────────
 //
 // Cursor is an opaque pagination token. Wire format is base64url(JSON

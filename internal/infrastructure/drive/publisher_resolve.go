@@ -62,7 +62,7 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	}
 
 	// Step 5: RequireSubpath enforcement (SYMMETRIC across callers).
-	if policy.RequireSubpath && len(segments) == 0 && pathBuilt {
+	if policy.RequireSubpath && len(segments) == 0 && pathBuilt && strings.TrimSpace(req.DestinationFolderID) == "" {
 		return nil, fmt.Errorf(
 			"delivery: direct upload into root %q is forbidden for destination %q",
 			rootFolderID, req.Destination,

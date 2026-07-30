@@ -642,6 +642,22 @@ func TestCompileSemanticFilters_IsAdminMapping(t *testing.T) {
 	}
 }
 
+func TestCompileSemanticFilters_InfersYouTubeCategoryFromQuery(t *testing.T) {
+	for _, tt := range []struct{ query, want string }{
+		{"Mike Tyson interview", "interview"},
+		{"Mike Tyson press conference", "interview"},
+		{"Mike Tyson training in the gym", "training"},
+		{"Mike Tyson knockout fight", "fight"},
+		{"Mike Tyson career", ""},
+	} {
+		scope, filter := compileSemanticFilters(search.Query{Text: tt.query})
+		_ = scope
+		if filter.Category != tt.want {
+			t.Errorf("query %q category = %q, want %q", tt.query, filter.Category, tt.want)
+		}
+	}
+}
+
 // ── Test 10: MediaType filter ───────────────────────────────────────────
 
 func TestSemanticBackendFiltersMediaType(t *testing.T) {

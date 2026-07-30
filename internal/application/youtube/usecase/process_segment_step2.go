@@ -48,7 +48,13 @@ func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 	// pipeline.
 	if u.core.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
 		existingItem, exists, cacheErr := u.core.Cache.GetExisting(ctx, clipID)
-		if cacheErr == nil && exists && existingItem != nil {
+		// A cache hit is authoritative only when the persisted artifact is
+		// complete enough to satisfy the canonical SQLite/Drive gate. Older
+		// rows may have a Drive ID but missing duration/hash; those must be
+		// reprocessed so a green cache response cannot preserve partial state.
+		cacheComplete := existingItem != nil && existingItem.Duration > 0 &&
+			existingItem.FileHash != "" && existingItem.DriveFileID != ""
+		if cacheErr == nil && exists && cacheComplete {
 			out.Item.Status = "skipped"
 			out.Item.LocalPath = existingItem.LocalPath
 			out.Item.DriveFileID = existingItem.DriveFileID

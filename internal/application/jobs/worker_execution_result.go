@@ -49,7 +49,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -181,7 +180,7 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		return nil, fmt.Errorf("artifact-producing job %q: validate failure: %w: %w", jobType, job.ErrArtifactManifestInvalid, err)
 	}
 
-	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
+	staged := make(domainremote.StagedArtifacts, 0, len(manifest.Artifacts))
 	// PR-SOURCE-FIX: derive source from job type prefix
 	// ("script.generate" → "script", "image.generate.google" → "image", etc.).
 	// Hoisted outside the loop — all artifacts in one manifest share the
@@ -191,24 +190,19 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		src = jobType[:idx]
 	}
 	for _, a := range manifest.Artifacts {
-		req := finalization.ArtifactRequirementOptional
-		if a.Required {
-			req = finalization.ArtifactRequirementRequired
-		}
-		published = append(published, finalization.PublishedArtifact{
-			ArtifactID:     a.ID,
-			Kind:           finalization.ArtifactKind(a.Kind),
-			Filename:       a.Filename,
-			MIMEType:       a.MIMEType,
-			SizeBytes:      a.SizeBytes,
-			SHA256:         a.SHA256,
-			Requirement:    req,
-			IdempotencyKey: a.ID,
-			Source:         src,
+		staged = append(staged, &domainremote.StagedArtifactReference{
+			ArtifactID:  a.ID,
+			Destination: destinationForArtifactKind(a.Kind, src),
+			SHA256:      a.SHA256,
+			Path:        a.Path,
+			Filename:    a.Filename,
+			MIMEType:    a.MIMEType,
+			SizeBytes:   a.SizeBytes,
+			Required:    a.Required,
 		})
 	}
 
-	raw, marshalErr := json.Marshal(published)
+	raw, marshalErr := json.Marshal(staged)
 	if marshalErr != nil {
 		// Marshal failure on the PublishedArtifact conversion shape —
 		// typed error per FASE 1 (c). Caller fails the job. Dual-%w
@@ -217,6 +211,25 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		return nil, fmt.Errorf("artifact-producing job %q: PublishedArtifact marshal: %w: %w", jobType, job.ErrArtifactManifestInvalid, marshalErr)
 	}
 	return json.RawMessage(raw), nil
+}
+
+func destinationForArtifactKind(kind, source string) string {
+	switch kind {
+	case job.ArtifactKindScriptJSON, job.ArtifactKindScriptText, job.ArtifactKindScenes,
+		job.ArtifactKindMetadata, job.ArtifactKindEntities, job.ArtifactKindClipBindings:
+		return "script"
+	case job.ArtifactKindVoiceover:
+		return "voiceover"
+	case job.ArtifactKindImage:
+		return "image"
+	case job.ArtifactKindPDF, job.ArtifactKindMarkdown:
+		return "document"
+	default:
+		if source == "youtube" {
+			return "youtube_clip"
+		}
+		return "document"
+	}
 }
 
 // finalizeJob consolidates the 4 finalisation paths previously inlined

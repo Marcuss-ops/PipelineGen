@@ -138,6 +138,19 @@ func TestNormalizeExtractionDestination_DefaultsVideoSubfolderWithoutGroup(t *te
 	require.True(t, createSubfolder)
 }
 
+func TestNormalizeExtractionDestination_HonorsExplicitFlatFolder(t *testing.T) {
+	group, subfolder, folderPath, createSubfolder := normalizeExtractionDestination(&yttypes.DestinationRequest{
+		FolderID:        "youtube-stock-folder-id",
+		FolderPath:      "Mike Tyson",
+		CreateSubfolder: false,
+	}, "yt_video-one")
+
+	require.Empty(t, group)
+	require.Empty(t, subfolder)
+	require.Equal(t, "Mike Tyson", folderPath)
+	require.False(t, createSubfolder)
+}
+
 func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

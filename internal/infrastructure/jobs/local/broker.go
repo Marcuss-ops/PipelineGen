@@ -11,6 +11,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -292,8 +293,49 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	// internal/domain/remote/staged_artifact_reference.go (godlike/06 SSOT).
 	var artifacts []finalization.PublishedArtifact
 	if len(cmd.StagedArtifacts) > 0 {
-		if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
+		var staged remote.StagedArtifacts
+		if err := json.Unmarshal(cmd.StagedArtifacts, &staged); err != nil {
 			return nil, fmt.Errorf("broker: deserialise staged artifacts: %w", err)
+		}
+		isStaged := len(staged) > 0 && staged[0] != nil && staged[0].Destination != ""
+		if isStaged {
+			artifacts = make([]finalization.PublishedArtifact, 0, len(staged))
+			for _, ref := range staged {
+				if ref == nil {
+					return nil, fmt.Errorf("broker: nil staged artifact reference")
+				}
+				kind, err := publishedKind(ref.Destination)
+				if err != nil {
+					return nil, err
+				}
+				requirement := finalization.ArtifactRequirementOptional
+				if ref.Required {
+					requirement = finalization.ArtifactRequirementRequired
+				}
+				artifacts = append(artifacts, finalization.PublishedArtifact{
+					ArtifactID: ref.ArtifactID, Kind: kind, Filename: ref.Filename,
+					MIMEType: ref.MIMEType, SizeBytes: ref.SizeBytes, SHA256: ref.SHA256,
+					Requirement: requirement, IdempotencyKey: ref.ArtifactID,
+					Location: finalization.AssetLocation{Provider: "local", FileID: ref.ArtifactID, DownloadLink: ref.Path, Action: finalization.PublishCreated},
+				})
+			}
+		} else if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
+			return nil, fmt.Errorf("broker: deserialise published artifacts: %w", err)
+		}
+		// Older in-process runners emitted the published envelope before
+		// the typed requirement/location cutover. Normalize only that
+		// legacy shape at this compatibility boundary; new staged refs
+		// above always carry both values explicitly.
+		for i := range artifacts {
+			if !artifacts[i].Requirement.Valid() {
+				artifacts[i].Requirement = finalization.ArtifactRequirementRequired
+			}
+			if artifacts[i].Location.Provider == "" {
+				artifacts[i].Location = finalization.AssetLocation{
+					Provider: "local", FileID: artifacts[i].ArtifactID,
+					Action: finalization.PublishCreated,
+				}
+			}
 		}
 	}
 
@@ -352,6 +394,25 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	}
 
 	return assetIDs, nil
+}
+
+func publishedKind(destination string) (finalization.ArtifactKind, error) {
+	switch destination {
+	case "script":
+		return finalization.KindScript, nil
+	case "voiceover":
+		return finalization.KindVoiceover, nil
+	case "image":
+		return finalization.KindImage, nil
+	case "youtube_clip":
+		return finalization.KindVideo, nil
+	case "document", "book":
+		return finalization.KindDocument, nil
+	case "sound_effect":
+		return finalization.KindSoundEffect, nil
+	default:
+		return "", fmt.Errorf("broker: unsupported staged artifact destination %q", destination)
+	}
 }
 
 // Fail — same flush-pending-progress ordering as Complete.

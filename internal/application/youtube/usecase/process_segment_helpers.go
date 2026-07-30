@@ -71,12 +71,17 @@ func buildClipAsset(
 		ContentHash:     fileHash,
 	}
 	md.Summary = cmd.Segment.Summary
+	md.Category = cmd.Segment.Category
+	md.SourceTitle = cmd.Segment.SourceTitle
+	md.SourceChannel = cmd.Segment.SourceChannel
 	md.Topics = cmd.Segment.Topics
 	md.Speakers = cmd.Segment.Speakers
 	md.MentionedPeople = cmd.Segment.MentionedPeople
 	// Title: use the segment name if present, otherwise derive from Summary.
 	if cmd.Segment.Name != "" {
 		md.Title = cmd.Segment.Name
+	} else if cmd.Segment.SourceTitle != "" {
+		md.Title = cmd.Segment.SourceTitle
 	} else if cmd.Segment.Summary != "" {
 		md.Title = cmd.Segment.Summary
 	}

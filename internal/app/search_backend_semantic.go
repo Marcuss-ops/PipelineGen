@@ -333,13 +333,17 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 // The Qdrant adapter (infrastructure/qdrant/search_adapter.go)
 // internally calls CompileQdrantFilter with these values.
 func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
+	category := strings.TrimSpace(q.Filters.Category)
+	if category == "" {
+		category = search.InferCategoryFromQuery(q.Text)
+	}
 	return assetsearch.SearchScope{
 			WorkspaceID: strings.TrimSpace(q.Actor.WorkspaceID),
 			IsSystem:    q.Actor.IsSystem || q.Actor.IsAdmin,
 		},
 		assetsearch.AssetFilter{
 			Source:    strings.TrimSpace(q.Filters.Source),
-			Category:  strings.TrimSpace(q.Filters.Category),
+			Category:  category,
 			MediaType: strings.TrimSpace(q.Filters.MediaType),
 			Language:  strings.TrimSpace(q.Filters.Language),
 			// LifecycleState: include both ACTIVE and PUBLISHED
