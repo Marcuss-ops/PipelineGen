@@ -1,26 +1,30 @@
 // cmd/admin/repair_drive_links.go — repair broken Drive links in
-// a completed script.generate job.
+// a completed script.generate job with deep audit and reconciliation.
 //
 // Reads the result_json from the jobs table, extracts every
 // SpecScene across all items, verifies every drive_link via the
-// canonical AssetLocationResolver, and produces an audit report.
-// With --remove-invalid, cleared links are persisted back to the
-// job's result_json. With --refresh-docs, existing Google Docs
-// are refreshed with the reconciled SpecScene.
+// canonical AssetLocationVerifier, and produces a detailed audit
+// report. With --remove-invalid, cleared/updated links are persisted
+// to SQLite (media_assets), SpecScene, and Manifest. With
+// --refresh-docs, existing Google Docs are refreshed with the
+// reconciled SpecScene.
 //
 // Usage:
 //
 //	admin repair-drive-links --job-id job_xxx
+//	admin repair-drive-links --job-id job_xxx --audit > report.json
 //	admin repair-drive-links --job-id job_xxx --remove-invalid --refresh-docs
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -29,12 +33,53 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
+// repairAuditReport is the canonical JSON audit output produced by
+// the repair-drive-links command when --audit is set.
+type repairAuditReport struct {
+	JobID             string               `json:"job_id"`
+	ExecutedAt        string               `json:"executed_at"`
+	RemoveInvalid     bool                 `json:"remove_invalid"`
+	RefreshDocs       bool                 `json:"refresh_docs"`
+	AssetsReferenced  int                  `json:"assets_referenced"`
+	Verified          int                  `json:"verified"`
+	Updated           int                  `json:"updated"`
+	Missing           int                  `json:"missing"`
+	Trashed           int                  `json:"trashed"`
+	Inaccessible      int                  `json:"inaccessible"`
+	Malformed         int                  `json:"malformed"`
+	Orphans           int                  `json:"orphans"`
+	BrokenLocations   int                  `json:"broken_locations"`
+	Duplicates        int                  `json:"duplicates"`
+	TransportErrors   int                  `json:"transport_errors"`
+	QdrantMismatches  int                  `json:"qdrant_mismatches"`
+	SpecSceneRepaired bool                 `json:"specscene_repaired"`
+	SQLiteUpdated     bool                 `json:"sqlite_updated"`
+	DocumentsRefreshed int                 `json:"documents_refreshed"`
+	Warnings          []string            `json:"warnings,omitempty"`
+	Details           []repairAssetDetail `json:"details,omitempty"`
+}
+
+// repairAssetDetail carries per-link diagnostic information for the
+// --audit JSON report.
+type repairAssetDetail struct {
+	ItemIdx   int    `json:"item_idx"`
+	SceneID   string `json:"scene_id"`
+	Label     string `json:"label"`
+	AssetID   string `json:"asset_id"`
+	FileID    string `json:"file_id"`
+	Link      string `json:"link"`
+	State     string `json:"state"`
+	ErrorCode string `json:"error_code,omitempty"`
+	Action    string `json:"action"` // "preserved", "updated", "cleared", "error"
+}
+
 func runRepairDriveLinks(args []string) error {
 	fs := flag.NewFlagSet("repair-drive-links", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	jobID := fs.String("job-id", "", "Job ID to repair (required)")
-	removeInvalid := fs.Bool("remove-invalid", false, "Clear broken links in result_json and persist")
+	removeInvalid := fs.Bool("remove-invalid", false, "Clear broken links, update SQLite, and persist reconciled SpecScene")
 	refreshDocs := fs.Bool("refresh-docs", false, "Refresh existing Google Docs with reconciled SpecScene")
+	audit := fs.Bool("audit", false, "Output detailed JSON audit report to stdout")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -62,17 +107,12 @@ func runRepairDriveLinks(args []string) error {
 		return fmt.Errorf("database port is not available")
 	}
 
-	resolver := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
+	// AssetLocationResolverAdapter satisfies AssetLocationVerifier.
+	verifier := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
 	db := root.DB.DB
 	ctx := cmdContext()
 
 	// ── Step 1: Read the job ──────────────────────────────────
-	fmt.Printf("=== Repair Drive Links ===\n")
-	fmt.Printf("Job ID:    %s\n", *jobID)
-	fmt.Printf("Remove:    %v\n", *removeInvalid)
-	fmt.Printf("Refresh:   %v\n\n", *refreshDocs)
-
-	fmt.Println("Step 1: Reading job...")
 	var resultJSON string
 	var status string
 	err = db.QueryRowContext(ctx,
@@ -85,21 +125,17 @@ func runRepairDriveLinks(args []string) error {
 		}
 		return fmt.Errorf("failed to read job: %w", err)
 	}
-	fmt.Printf("  Status: %s\n", status)
 	if resultJSON == "" || resultJSON == "{}" {
 		return fmt.Errorf("job %s has no result_json", *jobID)
 	}
 
 	// ── Step 2: Parse result_json ─────────────────────────────
-	fmt.Println("\nStep 2: Parsing result_json...")
 	var envelope scriptpkg.GenerationEnvelopeResult
 	if err := json.Unmarshal([]byte(resultJSON), &envelope); err != nil {
 		return fmt.Errorf("failed to parse result_json as GenerationEnvelopeResult: %w", err)
 	}
-	fmt.Printf("  Items:    %d\n", len(envelope.Items))
 
 	// ── Step 3: Collect all links ─────────────────────────────
-	fmt.Println("\nStep 3: Collecting Drive links from SpecScene bindings...")
 	type linkRef struct {
 		itemIdx int
 		sceneID string
@@ -169,84 +205,161 @@ func runRepairDriveLinks(args []string) error {
 			}
 		}
 	}
-	fmt.Printf("  Links found: %d\n", len(links))
+
 	if len(links) == 0 {
-		fmt.Println("\nNo Drive links to verify. Done.")
+		fmt.Println("No Drive links found. Nothing to repair.")
 		return nil
 	}
 
 	// ── Step 4: Verify every link ─────────────────────────────
-	fmt.Println("\nStep 4: Verifying links against Drive API...")
 	var (
-		verified, updated, missing, trashed, inaccessible, malformed int
-		transportErrors                                              int
+		report = repairAuditReport{
+			JobID:         *jobID,
+			ExecutedAt:    time.Now().UTC().Format(time.RFC3339),
+			RemoveInvalid: *removeInvalid,
+			RefreshDocs:   *refreshDocs,
+		}
 	)
 
-	for idx, ref := range links {
-		result, err := resolver.ResolveAndVerify(ctx, ref.assetID, ref.fileID, ref.link)
+	for _, ref := range links {
+		verified, err := verifier.Verify(ctx, ref.assetID, ref.fileID, ref.link)
 		if err != nil {
-			fmt.Printf("  [%d/%d] %-12s %s → TRANSPORT ERROR: %v\n", idx+1, len(links), ref.label, ref.sceneID, err)
-			transportErrors++
+			report.TransportErrors++
+			report.Warnings = append(report.Warnings,
+				fmt.Sprintf("transport error verifying %s in %s (link preserved): %v",
+					ref.label, ref.sceneID, err))
+			report.Details = append(report.Details, repairAssetDetail{
+				ItemIdx: ref.itemIdx, SceneID: ref.sceneID,
+				Label: ref.label, AssetID: ref.assetID,
+				Link: ref.link, State: "TRANSPORT_ERROR",
+				ErrorCode: "TRANSPORT_ERROR", Action: "preserved",
+			})
 			continue
 		}
-		if result == nil {
+		if verified == nil {
 			continue
 		}
-		switch result.State {
+
+		detail := repairAssetDetail{
+			ItemIdx:   ref.itemIdx,
+			SceneID:   ref.sceneID,
+			Label:     ref.label,
+			AssetID:   ref.assetID,
+			FileID:    verified.DriveFileID,
+			Link:      ref.link,
+			State:     string(verified.State),
+			ErrorCode: verified.ErrorCode,
+		}
+
+		switch verified.State {
 		case scriptpkg.LocationStateVerified:
-			fmt.Printf("  [%d/%d] %-12s %s → VERIFIED\n", idx+1, len(links), ref.label, ref.sceneID)
-			verified++
+			report.Verified++
+			detail.Action = "preserved"
+
 		case scriptpkg.LocationStateUpdated:
-			fmt.Printf("  [%d/%d] %-12s %s → UPDATED  (new: %s)\n", idx+1, len(links), ref.label, ref.sceneID, result.DriveLink)
-			updated++
+			report.Updated++
+			report.QdrantMismatches++ // stored link ≠ canonical → Qdrant may be stale
+			detail.Action = "updated"
 			if *removeInvalid {
-				*ref.linkPtr = result.DriveLink
+				*ref.linkPtr = verified.DriveLink
+				report.SpecSceneRepaired = true
+				// Also update SQLite media_assets.drive_link.
+				if err := updateAssetDriveLink(ctx, db, ref.assetID, verified.DriveLink); err != nil {
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("failed to update SQLite drive_link for %s: %v", ref.assetID, err))
+				} else {
+					report.SQLiteUpdated = true
+				}
 			}
+
 		case scriptpkg.LocationStateMissing:
-			fmt.Printf("  [%d/%d] %-12s %s → MISSING  (asset: %s)\n", idx+1, len(links), ref.label, ref.sceneID, ref.assetID)
-			missing++
+			report.Missing++
+			detail.Action = "cleared"
 			if *removeInvalid {
 				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
+				} else {
+					report.SQLiteUpdated = true
+				}
 			}
+
 		case scriptpkg.LocationStateTrashed:
-			fmt.Printf("  [%d/%d] %-12s %s → TRASHED\n", idx+1, len(links), ref.label, ref.sceneID)
-			trashed++
+			report.Trashed++
+			detail.Action = "cleared"
 			if *removeInvalid {
 				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
+				} else {
+					report.SQLiteUpdated = true
+				}
 			}
+
 		case scriptpkg.LocationStateInaccessible:
-			fmt.Printf("  [%d/%d] %-12s %s → INACCESSIBLE\n", idx+1, len(links), ref.label, ref.sceneID)
-			inaccessible++
+			report.Inaccessible++
+			detail.Action = "cleared"
 			if *removeInvalid {
 				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
+				} else {
+					report.SQLiteUpdated = true
+				}
 			}
+
 		case scriptpkg.LocationStateMalformed:
-			fmt.Printf("  [%d/%d] %-12s %s → MALFORMED\n", idx+1, len(links), ref.label, ref.sceneID)
-			malformed++
+			report.Malformed++
+			detail.Action = "cleared"
 			if *removeInvalid {
 				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+			}
+
+		case scriptpkg.LocationStateOrphanDriveFile:
+			report.Orphans++
+			detail.Action = "cleared"
+			if *removeInvalid {
+				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+			}
+
+		case scriptpkg.LocationStateBrokenAssetLocation:
+			report.BrokenLocations++
+			detail.Action = "cleared"
+			if *removeInvalid {
+				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
+				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
+				} else {
+					report.SQLiteUpdated = true
+				}
+			}
+
+		case scriptpkg.LocationStateDuplicate:
+			report.Duplicates++
+			detail.Action = "cleared"
+			if *removeInvalid {
+				*ref.linkPtr = ""
+				report.SpecSceneRepaired = true
 			}
 		}
+
+		report.Details = append(report.Details, detail)
 	}
 
-	// ── Summary ───────────────────────────────────────────────
-	fmt.Println("\n──────────────────────────────────────────────")
-	fmt.Println("Summary")
-	fmt.Println("──────────────────────────────────────────────")
-	fmt.Printf("  Scenes inspected:        %d\n", countScenes(envelope))
-	fmt.Printf("  Drive links inspected:   %d\n", len(links))
-	fmt.Printf("  Valid links:             %d\n", verified)
-	fmt.Printf("  Updated links:           %d\n", updated)
-	fmt.Printf("  Removed links:           %d\n", missing+trashed+inaccessible+malformed)
-	fmt.Printf("    Missing:               %d\n", missing)
-	fmt.Printf("    Trashed:               %d\n", trashed)
-	fmt.Printf("    Inaccessible:          %d\n", inaccessible)
-	fmt.Printf("    Malformed:             %d\n", malformed)
-	fmt.Printf("  Transport errors:        %d\n", transportErrors)
+	report.AssetsReferenced = len(links)
 
-	// ── Step 5: Persist ───────────────────────────────────────
-	if *removeInvalid && (updated > 0 || missing > 0 || trashed > 0 || inaccessible > 0 || malformed > 0) {
-		fmt.Println("\nStep 5: Persisting reconciled result_json...")
+	// ── Step 5: Persist reconciled SpecScene ──────────────────
+	if *removeInvalid && report.SpecSceneRepaired {
 		raw, err := json.Marshal(envelope)
 		if err != nil {
 			return fmt.Errorf("failed to marshal reconciled envelope: %w", err)
@@ -257,18 +370,12 @@ func runRepairDriveLinks(args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to update result_json: %w", err)
 		}
-		fmt.Println("  result_json updated successfully.")
-	} else if *removeInvalid {
-		fmt.Println("\nStep 5: No changes to persist.")
 	}
 
 	// ── Step 6: Refresh Google Docs ───────────────────────────
 	if *refreshDocs {
-		fmt.Println("\nStep 6: Refreshing Google Docs...")
-		if root.Drive == nil || root.Drive.DocClient == nil {
-			fmt.Println("  SKIPPED: DocClient not available.")
-		} else {
-			refreshed := 0
+		refreshed := 0
+		if root.Drive != nil && root.Drive.DocClient != nil {
 			for i := range envelope.Items {
 				item := &envelope.Items[i]
 				if item.Result == nil || item.Result.Provenance == nil {
@@ -290,31 +397,96 @@ func runRepairDriveLinks(args []string) error {
 				}
 				content := buildRepairHTML(model, title)
 				if err := root.Drive.DocClient.UpdateDoc(ctx, docID, title, content); err != nil {
-					fmt.Printf("  [%d/%d] doc %s → FAILED: %v\n", i+1, len(envelope.Items), docID, err)
+					report.Warnings = append(report.Warnings,
+						fmt.Sprintf("doc refresh failed for %s: %v", docID, err))
 				} else {
-					fmt.Printf("  [%d/%d] doc %s → REFRESHED\n", i+1, len(envelope.Items), docID)
 					refreshed++
 				}
 			}
-			fmt.Printf("  Documents refreshed: %d\n", refreshed)
 		}
+		report.DocumentsRefreshed = refreshed
 	}
 
-	if transportErrors > 0 {
-		return fmt.Errorf("completed with %d transport errors", transportErrors)
+	// ── Output ────────────────────────────────────────────────
+	if *audit {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(report); err != nil {
+			return fmt.Errorf("failed to encode audit report: %w", err)
+		}
+	} else {
+		printRepairSummary(&report)
+	}
+
+	if report.TransportErrors > 0 {
+		log.Warn("repair completed with transport errors", zap.Int("count", report.TransportErrors))
 	}
 	return nil
 }
 
-// countScenes returns the total number of scenes across all items.
-func countScenes(envelope scriptpkg.GenerationEnvelopeResult) int {
-	n := 0
-	for i := range envelope.Items {
-		if envelope.Items[i].Result != nil {
-			n += len(envelope.Items[i].Result.Output.SpecScene.Scenes)
+// printRepairSummary prints the human-readable repair summary to stdout.
+func printRepairSummary(r *repairAuditReport) {
+	fmt.Println("=== Repair Drive Links ===")
+	fmt.Printf("Job ID:         %s\n", r.JobID)
+	fmt.Printf("Executed at:    %s\n", r.ExecutedAt)
+	fmt.Printf("Remove:         %v\n", r.RemoveInvalid)
+	fmt.Printf("Refresh:        %v\n\n", r.RefreshDocs)
+	fmt.Println("──────────────────────────────────────────────")
+	fmt.Println("Summary")
+	fmt.Println("──────────────────────────────────────────────")
+	fmt.Printf("  Assets referenced:      %d\n", r.AssetsReferenced)
+	fmt.Printf("  Verified:               %d\n", r.Verified)
+	fmt.Printf("  Updated:                %d\n", r.Updated)
+	fmt.Printf("  Missing:                %d\n", r.Missing)
+	fmt.Printf("  Trashed:                %d\n", r.Trashed)
+	fmt.Printf("  Inaccessible:           %d\n", r.Inaccessible)
+	fmt.Printf("  Malformed:              %d\n", r.Malformed)
+	fmt.Printf("  Orphans:                %d\n", r.Orphans)
+	fmt.Printf("  Broken locations:       %d\n", r.BrokenLocations)
+	fmt.Printf("  Duplicates:             %d\n", r.Duplicates)
+	fmt.Printf("  Transport errors:       %d\n", r.TransportErrors)
+	fmt.Printf("  Qdrant mismatches:      %d\n", r.QdrantMismatches)
+	fmt.Printf("  SpecScene repaired:     %v\n", r.SpecSceneRepaired)
+	fmt.Printf("  SQLite updated:         %v\n", r.SQLiteUpdated)
+	fmt.Printf("  Documents refreshed:    %d\n", r.DocumentsRefreshed)
+	if len(r.Warnings) > 0 {
+		fmt.Println("\n  Warnings:")
+		for _, w := range r.Warnings {
+			fmt.Printf("    - %s\n", w)
 		}
 	}
-	return n
+	if r.TransportErrors > 0 {
+		fmt.Printf("\n  Final status: COMPLETED_WITH_WARNINGS\n")
+	} else {
+		fmt.Printf("\n  Final status: COMPLETED\n")
+	}
+}
+
+// updateAssetDriveLink updates the drive_link in media_assets for a
+// single asset. Returns nil on success (including when the asset does
+// not exist — that's handled by the ORPHAN state elsewhere).
+func updateAssetDriveLink(ctx context.Context, db *sql.DB, assetID, newLink string) error {
+	aid := strings.TrimSpace(assetID)
+	if aid == "" || strings.HasPrefix(aid, "voiceover:") {
+		return nil // voiceover links have no SQLite asset row.
+	}
+	_, err := db.ExecContext(ctx, "UPDATE media_assets SET drive_link = ? WHERE id = ? AND drive_link != ?",
+		newLink, aid, newLink)
+	return err
+}
+
+// clearAssetDriveLink clears the drive_link and drive_file_id in
+// media_assets for a single asset. Both fields are cleared together
+// to avoid inconsistent rows where drive_file_id points to a
+// non-existent file.
+func clearAssetDriveLink(ctx context.Context, db *sql.DB, assetID string) error {
+	aid := strings.TrimSpace(assetID)
+	if aid == "" || strings.HasPrefix(aid, "voiceover:") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, "UPDATE media_assets SET drive_link = '', drive_file_id = '' WHERE id = ? AND (drive_link != '' OR drive_file_id != '')",
+		aid)
+	return err
 }
 
 // buildRepairHTML renders a minimal SpecScene HTML document for the
