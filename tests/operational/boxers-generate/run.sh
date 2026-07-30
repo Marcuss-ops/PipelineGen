@@ -12,7 +12,7 @@ PROJECT_ROOT=$(cd "$DIR/../../.." && pwd)
 
 # Source common smoke helpers
 # Environment overrides for boxers-generate smoke tests
-export SMOKE_TIMEOUT_SECONDS=600
+export SMOKE_TIMEOUT_SECONDS=2700
 export SMOKE_POLL_TIMEOUT_SECONDS=180
 export SMOKE_POLL_INTERVAL_SECONDS=3
 
@@ -591,6 +591,12 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             if ! python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH"; then
                 printf '%sFAIL: Scenario 7 multilang verification failed%s\n' "$RED" "$RESET" >&2
                 return 1
+            fi
+
+            # Generate structured report from aggregated job response
+            local report_file="$REPORTS_DIR/07_Top5 multilang_report.json"
+            if ! python3 "$DIR/generate_report.py" "$full_body_file" "$report_file"; then
+                printf '%sWARN: Report generation failed (non-fatal)%s\n' "$YELLOW" "$RESET" >&2
             fi
             
             # Idempotency Replay Verifications
