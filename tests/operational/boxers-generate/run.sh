@@ -20,7 +20,7 @@ export SMOKE_POLL_INTERVAL_SECONDS=3
 # shellcheck disable=SC1091
 source "$DIR/../lib/common.sh"
 
-smoke_require jq sqlite3 grep
+smoke_require jq sqlite3 grep python3
 
 # 1. Resolve DB Path
 DB_PATH="${VELOX_DB:-}"
@@ -117,6 +117,21 @@ else
     TYSON_LINKS=("http://drive.com/1" "http://drive.com/2" "http://drive.com/3" "http://drive.com/4" "http://drive.com/5" "http://drive.com/6")
 fi
 
+# 3. Load top5 boxer stock fixtures for multilang scenarios (07, 08).
+#    top5_boxers_stock.json — aggregated fixture with 5 boxers × 2 assets each.
+TOP5_STOCK_FILE="$FIXTURES_DIR/top5_boxers_stock.json"
+if [[ -f "$TOP5_STOCK_FILE" ]]; then
+    printf 'Loading top5 boxer stock fixture from %s\n' "$TOP5_STOCK_FILE"
+    TOP5_TYSON_FIGHT=$(jq -r '.mike_tyson.fight.asset_id' "$TOP5_STOCK_FILE")
+    TOP5_ALI_FIGHT=$(jq -r '.muhammad_ali.fight.asset_id' "$TOP5_STOCK_FILE")
+    TOP5_PACQUIAO_FIGHT=$(jq -r '.manny_pacquiao.fight.asset_id' "$TOP5_STOCK_FILE")
+    TOP5_MAYWEATHER_FIGHT=$(jq -r '.floyd_mayweather.fight.asset_id' "$TOP5_STOCK_FILE")
+    TOP5_ROBINSON_FIGHT=$(jq -r '.sugar_ray_robinson.fight.asset_id' "$TOP5_STOCK_FILE")
+    printf 'Top5 stock assets: Tyson=%s Ali=%s Pacquiao=%s Mayweather=%s Robinson=%s\n' \
+        "$TOP5_TYSON_FIGHT" "$TOP5_ALI_FIGHT" "$TOP5_PACQUIAO_FIGHT" \
+        "$TOP5_MAYWEATHER_FIGHT" "$TOP5_ROBINSON_FIGHT"
+fi
+
 VOICEOVER_FOLDER="1Cph0ypa_tBgRW_2PgTrzqy1RWW-fPe5X"
 REPORTS_DIR="$DIR/reports"
 mkdir -p "$REPORTS_DIR"
@@ -207,9 +222,31 @@ run_scenario() {
     printf 'job_id enqueued: %s%s%s\n' "$YELLOW" "$job_id" "$RESET"
     
     # Poll job to terminal status
-    if ! smoke_poll_terminal "$job_id"; then
-        printf '%sFAIL: Scenario %s polling failed or timed out%s\n' "$RED" "$num" "$RESET" >&2
-        return 1
+    if [[ "$num" == "07" || "$num" == "08" ]]; then
+        # For multilang batch jobs, we poll parent_state inside .result.data
+        smoke_log_section "Polling parent job aggregation: $job_id"
+        local deadline=$(( $(date +%s) + 600 )) # 10 minutes timeout
+        local parent_state="waiting_children"
+        while (( $(date +%s) < deadline )); do
+            smoke_wallclock_check
+            smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
+            if [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
+                parent_state=$(jq -r '.result.data.parent_state // .job.result.data.parent_state // "succeeded"' "$SMOKE_LAST_BODY")
+                if [[ "$parent_state" != "waiting_children" ]]; then
+                    break
+                fi
+            fi
+            sleep 10
+        done
+        if [[ "$parent_state" == "waiting_children" ]]; then
+            printf '%sFAIL: Scenario %s parent aggregator timed out%s\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+    else
+        if ! smoke_poll_terminal "$job_id"; then
+            printf '%sFAIL: Scenario %s polling failed or timed out%s\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
     fi
     
     # Fetch FULL job details
@@ -232,11 +269,8 @@ run_scenario() {
     # Verify warnings are fatal (like translation/voiceover failure warnings)
     local has_warnings
     has_warnings=$(jq -r '
-        .warnings // .job.warnings // [] 
-        | if type == "array" then . 
-          elif type == "string" and . != "" then [.] 
-          else [] end 
-        | join(", ")
+        (.warnings // .job.warnings // []) 
+        | if type == "array" then join(", ") else . end
     ' "$full_body_file")
     
     # Look for fatal warning patterns
@@ -245,32 +279,34 @@ run_scenario() {
         return 1
     fi
     
-    # Extract script result output.
-    # Canonical path: .result.data.items[0].result.output
-    # Fallbacks: broker-nested, batch, and legacy shapes.
     local out_json
-    out_json=$(jq -c '
-        .result.data.items[0].result.output
-        // .job.result.data.items[0].result.output
-        // .result.data.output
-        // .job.result.data.output
-        // .job.result.output
-        // .result.output
-        // .job.result.data.data.output
-        // .result.data.data.output
-        // empty
-    ' "$full_body_file")
-    
-    if [[ -z "$out_json" || "$out_json" == "null" ]]; then
-        printf '%sFAIL: Generated script output JSON is empty%s\n' "$RED" "$RESET" >&2
-        return 1
-    fi
-    
     local text
-    text=$(jq -r '.text // ""' <<<"$out_json")
-    if [[ -z "$text" || "$text" == "null" ]]; then
-        printf '%sFAIL: Generated script text is empty%s\n' "$RED" "$RESET" >&2
-        return 1
+    if [[ "$num" != "07" && "$num" != "08" ]]; then
+        # Extract script result output.
+        # Canonical path: .result.data.items[0].result.output
+        # Fallbacks: broker-nested, batch, and legacy shapes.
+        out_json=$(jq -c '
+            .result.data.items[0].result.output
+            // .job.result.data.items[0].result.output
+            // .result.data.output
+            // .job.result.data.output
+            // .job.result.output
+            // .result.output
+            // .job.result.data.data.output
+            // .result.data.data.output
+            // empty
+        ' "$full_body_file")
+        
+        if [[ -z "$out_json" || "$out_json" == "null" ]]; then
+            printf '%sFAIL: Generated script output JSON is empty%s\n' "$RED" "$RESET" >&2
+            return 1
+        fi
+        
+        text=$(jq -r '.text // ""' <<<"$out_json")
+        if [[ -z "$text" || "$text" == "null" ]]; then
+            printf '%sFAIL: Generated script text is empty%s\n' "$RED" "$RESET" >&2
+            return 1
+        fi
     fi
     
     # Scenario-Specific Assertions
@@ -493,6 +529,58 @@ run_scenario() {
 
             printf '%sPASS: Scenario 6 negative gate — translation applied, voiceovers present.%s\n' "$GREEN" "$RESET"
             ;;
+
+        "07")
+            # Scenario 7: Multi-boxer, multi-stock, multi-lang E2E pipeline
+            if ! python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH"; then
+                printf '%sFAIL: Scenario 7 multilang verification failed%s\n' "$RED" "$RESET" >&2
+                return 1
+            fi
+            
+            # Idempotency Replay Verifications
+            smoke_log_section "Idempotency Replay checks"
+            export SMOKE_IDEMPOTENCY_KEY="$idem_key"
+            smoke_curl POST "/api/script/generate" \
+                --data "$payload" >/dev/null
+            local replay_http="$SMOKE_LAST_HTTP"
+            if [[ "$replay_http" != "200" && "$replay_http" != "202" ]]; then
+                printf '%sFAIL: Idempotency replay returned HTTP %s, expected 200 or 202%s\n' "$RED" "$replay_http" "$RESET" >&2
+                return 1
+            fi
+            local replay_job_id
+            replay_job_id=$(jq -r '.job_id // ""' "$SMOKE_LAST_BODY")
+            if [[ "$replay_job_id" != "$job_id" ]]; then
+                printf '%sFAIL: Idempotency replay returned different job_id: got %s, expected %s%s\n' "$RED" "$replay_job_id" "$job_id" "$RESET" >&2
+                return 1
+            fi
+            printf 'Idempotency replay OK (returned same job_id %s)\n' "$job_id"
+            
+            # Idempotency Conflict Verification
+            local diff_payload
+            diff_payload=$(jq '.items[0].title = "A different title"' <<<"$payload")
+            export SMOKE_IDEMPOTENCY_KEY="$idem_key"
+            smoke_curl POST "/api/script/generate" \
+                --data "$diff_payload" >/dev/null
+            local conflict_http="$SMOKE_LAST_HTTP"
+            if [[ "$conflict_http" != "409" ]]; then
+                printf '%sFAIL: Different payload with same key returned HTTP %s, expected 409 Conflict%s\n' "$RED" "$conflict_http" "$RESET" >&2
+                return 1
+            fi
+            printf 'Idempotency conflict OK (returned HTTP 409)\n'
+            
+            printf '%sPASS: Scenario 7 multi-boxer, multi-stock, multi-lang E2E pipeline verified.%s\n' "$GREEN" "$RESET"
+            ;;
+
+        "08")
+            # Scenario 8: Negative check — swapped stock detection
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
+            local exit_code=$?
+            if [[ "$exit_code" != "3" ]]; then
+                printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
+                return 1
+            fi
+            printf '%sPASS: Negative swapped stock verified (correctly detected STOCK_SUBJECT_MISMATCH)%s\n' "$GREEN" "$RESET"
+            ;;
     esac
     
     printf '%sSUCCESS: Scenario %s passed!%s\n\n' "$GREEN" "$num" "$RESET"
@@ -519,14 +607,16 @@ run_test "03" "Supplied clips" "03_supplied_clips.json" || failures=$((failures 
 run_test "04" "Direct stock bindings" "04_direct_stock_bindings.json" || failures=$((failures + 1))
 run_test "05" "Full pipeline" "05_full_pipeline.json" || failures=$((failures + 1))
 run_test "06" "Negative translation gate" "06_negative_translation_fail.json" || failures=$((failures + 1))
+run_test "07" "Multi-boxer, multi-stock, multi-lang E2E" "top5_financial_stories_multilang.json" || failures=$((failures + 1))
+run_test "08" "Negative swapped stock detection" "top5_neg_swapped_stock.json" || failures=$((failures + 1))
 
 if (( failures > 0 )); then
-    printf '%sFAIL: %d scenario(s) failed out of 6.%s\n' "$RED" "$failures" "$RESET" >&2
+    printf '%sFAIL: %d scenario(s) failed out of 8.%s\n' "$RED" "$failures" "$RESET" >&2
     exit 1
 fi
 
 if [[ "$TARGET_SCENARIO" == "all" ]]; then
-    printf '%sOK: All 6 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
+    printf '%sOK: All 8 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
 else
     printf '%sOK: Scenario %s completed and verified!%s\n' "$GREEN" "$TARGET_SCENARIO" "$RESET"
 fi
