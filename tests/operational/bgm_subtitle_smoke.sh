@@ -1131,7 +1131,7 @@ post_bgm_subtitle_job() {
             audio_tracks: $audio_tracks,
             delivery_plan: [
                 {
-                    destination_id: "local_disk",
+                    destination_id: "comedy_test",
                     priority: 1
                 }
             ]
