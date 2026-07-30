@@ -172,5 +172,3 @@ func TestClipSearchProcessor_AllCandidatesAreArtlist(t *testing.T) {
 		}
 	}
 }
-
-

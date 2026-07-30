@@ -95,6 +95,7 @@ var commandRegistry = map[string]commandHandler{
 	"qdrant-preflight":               runQdrantPreflight,
 	"qdrant-readiness":               runQdrantReadiness,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
+	"remove-drive-folder-recursive":  runRemoveDriveFolderRecursive,
 	"reindex-qdrant":                 reconcile.RunReindexQdrant,
 	"rename-indexed-sound-effects":   runRenameIndexedSoundEffects,
 	"rename-sound-effects":           runRenameSoundEffects,
