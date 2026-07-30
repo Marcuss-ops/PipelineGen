@@ -31,6 +31,7 @@ import (
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -153,6 +154,19 @@ func registerScriptPostProcessors(
 	}
 	if !ppReg.Register(adapters.NewStockBindingsProcessor()) {
 		return fmt.Errorf("register stock_bindings processor: composition bug")
+	}
+
+	// AssetLocationReconciliationProcessor verifies every drive_link
+	// in the SpecScene bindings before the document is published.
+	// Required policy: composition fails if the processor cannot be
+	// registered. The resolver uses Drive.Reader to verify file
+	// existence, trashed state, and accessibility.
+	if root != nil && root.Drive != nil && root.Drive.Reader != nil {
+		resolver := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
+		if !ppReg.Register(adapters.NewAssetLocationReconciliationProcessor(resolver)) {
+			return fmt.Errorf("register asset_location_reconciliation processor: composition bug or duplicate name")
+		}
+		log.Info("AssetLocationReconciliationProcessor successfully registered")
 	}
 
 	// AI-backed processors (entities, metadata, translation,
