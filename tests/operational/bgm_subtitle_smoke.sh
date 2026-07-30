@@ -1139,7 +1139,7 @@ post_bgm_subtitle_job() {
 
     # Inject _placement_pin_worker_id when targeting a specific worker.
     if [[ -n "$TARGET_WORKER_ID" ]]; then
-        payload=$(jq --arg wid "$TARGET_WORKER_ID" '. + {_placement_pin_worker_id: $wid}' <<< "$payload")
+        payload=$(jq --arg wid "$TARGET_WORKER_ID" '. + {placement_pin_worker_id: $wid}' <<< "$payload")
     fi
 
     # ── Fire POST ────────────────────────────────────────────────
