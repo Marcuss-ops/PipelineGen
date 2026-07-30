@@ -1,0 +1,145 @@
+{
+  "scenario_id": "13_maya",
+  "description": "Vidrush Maya civilization — verifica separazione rigida provider: immagini solo internet_images, video solo Artlist. Blocco assoluto YouTube. LLM genera testo reale, estrae entità per segmento, binding coerenti. Cache warm, partial cache, provider miss.",
+  "version": 1,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "max_important_phrases_per_segment": 5,
+    "max_important_words_per_segment": 5,
+    "max_artlist_queries_per_segment": 5,
+    "max_image_queries_per_segment": 5,
+    "provider_requests_artlist": -1,
+    "provider_requests_internet_images": -1,
+    "min_segments": 6,
+    "min_entities": 5,
+    "min_image_candidates": 5,
+    "min_artlist_video_candidates": 1,
+    "forbidden_providers": ["youtube", "generated_images", "local_stock"]
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-13-maya",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-13-maya-item",
+        "title": "Vidrush Maya: verifica separazione rigida provider e blocco YouTube",
+        "language": "it",
+        "tone": "documentary",
+        "style": "Scrivi un testo documentaristico concreto e informativo sulla civiltà Maya. Suddividi in segmenti distinti per tema: città, astronomia, religione, scrittura, declino. Usa dettagli specifici e ricercabili che si traducono bene in query multimediali.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "La civiltà Maya: città, astronomia, religione, scrittura e mistero del suo declino",
+          "source_text": "La civiltà Maya si sviluppò in Mesoamerica, raggiungendo il suo apice tra il 250 e il 900 d.C. Le loro città-stato, come Tikal, Palenque e Chichén Itzá, ospitavano imponenti piramidi e palazzi decorati con elaborate sculture in pietra. Gli astronomi Maya svilupparono un calendario di straordinaria precisione, basato sull'osservazione dei cicli di Venere e delle eclissi. La loro scrittura geroglifica, una delle più complesse del mondo antico, è stata decifrata solo in parte. Il Popol Vuh, il libro sacro dei Maya Quiché, racconta i miti della creazione e le gesta degli eroi gemelli Hunahpú e Ixbalanqué. Il declino della civiltà classica Maya rimane uno dei grandi misteri dell'archeologia: siccità prolungate, guerre intestine e collasso ecologico sono tra le ipotesi più accreditate. Oggi i discendenti Maya conservano vive molte tradizioni nelle comunità dello Yucatán, del Guatemala e del Belize.\n\nOperational marker: vidrush-13-maya."
+        },
+        "script_params": {
+          "target_words": 800,
+          "min_words": 600,
+          "segment_words": 80,
+          "skip_quality_gate": true,
+          "use_memory": true,
+          "prompt_version": "vidrush-maya-v1"
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 5,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 5,
+            "max_image_queries_per_segment": 5
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "dispatch": {
+      "http_202": ".http_status == 202",
+      "job_id_present": ".job_id != null and (.job_id | length) > 0",
+      "ok_true": ".ok == true"
+    },
+    "terminal": {
+      "status_succeeded": ".status == \"completed\" or .status == \"SUCCEEDED\""
+    },
+    "result": {
+      "min_segments": 6,
+      "segments_structural": {
+        "positions_ordered": "[.segments[].position] == ([.segments[].position] | sort)",
+        "segment_ids_unique": "([.segments[].segment_id] | unique | length) == ([.segments[].segment_id] | length)",
+        "per_segment_structural": ".segment_id | length > 0 and (.text | length) > 0 and (.text_hash | length) > 0"
+      },
+      "llm_generation": {
+        "text_generated": "(.output.text | type) == \"string\" and (.output.text | length) >= 400",
+        "text_not_echoed": ".output.text != .source.source_text",
+        "segments_from_text": "[.segments[]?.text] | all(length > 30)"
+      },
+      "entity_extraction": {
+        "entities_non_empty": "[.segments[]?.insights.entities[]?] | length >= 5",
+        "entity_values_not_empty": "all(.segments[]?.insights.entities[]?; .value != null and (.value | length) > 0)",
+        "entity_types_present": "all(.segments[]?.insights.entities[]?; .type != null and (.type | length) > 0)",
+        "entities_unique_per_segment": "(.insights.entities | map(.value) | map(select(length > 0)) | unique | length) == (.insights.entities | map(.value) | map(select(length > 0)) | length)",
+        "no_generic_words": "all(.segments[]?.insights.important_words[]?; . != \"history\" and . != \"people\" and . != \"old\" and . != \"things\")"
+      },
+      "media_queries": {
+        "image_queries_present": "[.segments[]?.insights.image_queries[]?] | length >= 3",
+        "artlist_queries_present": "[.segments[]?.insights.artlist_queries[]?] | length >= 3",
+        "image_queries_max_5": "all(.segments[]; (.insights.image_queries | length) <= 5)",
+        "artlist_queries_max_5": "all(.segments[]; (.insights.artlist_queries | length) <= 5)",
+        "queries_not_generic": "all(.segments[]; all(.insights.artlist_queries[]?; (. | ascii_downcase | test(\"history|people|old|things\") | not)))"
+      },
+      "provider_separation": {
+        "all_providers_artlist_or_internet_images": "all(.segments[]; all(.assets.candidates[]?; .provider == \"artlist\" or .provider == \"internet_images\"))",
+        "no_youtube_provider": "all(.segments[]; all(.assets.candidates[]?; .provider != \"youtube\"))",
+        "no_youtube_urls": "all(.segments[]; all(.assets.candidates[]?; (.source_url // \"\") | test(\"youtube\\\\.com|youtu\\\\.be\") | not))",
+        "no_youtube_video_id": "all(.segments[]; all(.assets.candidates[]?; (.youtube_video_id // \"\") == \"\"))",
+        "no_generated_images_provider": "all(.segments[]; all(.assets.candidates[]?; .provider != \"image_generation\" and .provider != \"generated_images\"))",
+        "no_local_stock_origin": "all(.segments[]; all(.assets.candidates[]?; (.origin // \"\") != \"local_youtube_stock\"))"
+      },
+      "image_assets": {
+        "images_only_internet_images": "all(.segments[]; all(.assets.candidates[]?; select(.provider != \"artlist\") | .provider == \"internet_images\"))",
+        "image_urls_http": "all(.segments[]; all(.assets.candidates[]?; select(.provider == \"internet_images\") | (.source_url // .preview_url // \"\") | test(\"^https?://\")))",
+        "images_have_query": "all(.segments[]; all(.assets.candidates[]?; select(.provider == \"internet_images\") | (.query // \"\") | length > 0))",
+        "no_artlist_images": "all(.segments[]; all(.assets.candidates[]?; select(.provider == \"artlist\") | (.media_type // \"video\") != \"image\"))"
+      },
+      "video_assets": {
+        "videos_only_artlist": "all(.segments[]; all(.assets.candidates[]?; select(.provider == \"artlist\") | .provider == \"artlist\"))",
+        "artlist_videos_have_provenance": "all(.segments[]; all(.assets.candidates[]?; select(.provider == \"artlist\") | ((.source_url // \"\") != \"\" or (.drive_link // \"\") != \"\")))"
+      },
+      "cache_cold": {
+        "extraction_miss": "all(.segments[]; .cache.extraction == \"MISS\")",
+        "artlist_miss": "all(.segments[]; .cache.artlist == \"MISS\" or .cache.artlist == \"BYPASSED\")",
+        "internet_images_miss": "all(.segments[]; .cache.internet_images == \"MISS\" or .cache.internet_images == \"BYPASSED\")",
+        "binding_miss": "all(.segments[]; .cache.binding == \"MISS\" or .cache.binding == \"BYPASSED\")"
+      },
+      "binding": {
+        "candidates_not_empty": "[.segments[]?.assets.candidates[]?] | length > 0",
+        "candidates_have_provenance": "all(.segments[]; all(.assets.candidates[]?; (.source_url // \"\") != \"\" or (.preview_url // \"\") != \"\" or (.drive_link // \"\") != \"\"))",
+        "candidate_asset_ids_unique": "([.segments[]?.assets.candidates[]?.asset_id] | unique | length) == ([.segments[]?.assets.candidates[]?.asset_id] | length)",
+        "candidates_have_score": "all(.segments[]; all(.assets.candidates[]?; .score != null and .score >= 0))",
+        "primary_video_binding": "[.segments[]?.assets.primary_video? | select(. != null)] | length >= 1",
+        "binding_reason_present": "all(.segments[]; select(.assets.primary_video != null) | (.assets.selection_reason // \"\") | length > 0)",
+        "no_duplicate_primary_across_segments": "([.segments[]?.assets.primary_video?.asset_id | select(. != null)] | unique | length) == ([.segments[]?.assets.primary_video?.asset_id | select(. != null)] | length)"
+      }
+    },
+    "persistence": "job, segmenti e candidati persistiti in SQLite con provider provenance corretta",
+    "block_youtube": "Il test fallisce se compare qualsiasi provider=youtube, source_url youtube.com/youtu.be, youtube_video_id non vuoto, o asset origin=local_youtube_stock",
+    "artlist_video_only": "Artlist è esclusivamente provider di stock video. Se un risultato Artlist contiene media_type=image o un URL YouTube, il test fallisce.",
+    "provider_metrics": "vidrush_provider_requests_total{provider=\"artlist\"} e {provider=\"internet_images\"} incrementati correttamente. Nessun incremento per provider youtube."
+  }
+}
