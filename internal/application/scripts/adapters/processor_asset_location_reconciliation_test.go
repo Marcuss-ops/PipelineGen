@@ -1,6 +1,6 @@
 // Package adapters — processor_asset_location_reconciliation_test.go
 // covers the canonical reconciliation processor against a stub
-// AssetLocationResolver.
+// AssetLocationVerifier.
 package adapters
 
 import (
@@ -12,29 +12,29 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// stubResolver is a test double for script.AssetLocationResolver.
-type stubResolver struct {
+// stubVerifier is a test double for script.AssetLocationVerifier.
+type stubVerifier struct {
 	// results maps (assetID, fileID, link) to a VerifiedLocation and optional error.
 	byLink  map[string]*scriptpkg.VerifiedLocation
 	byError map[string]error
 }
 
-func newStubResolver() *stubResolver {
-	return &stubResolver{
+func newStubVerifier() *stubVerifier {
+	return &stubVerifier{
 		byLink:  make(map[string]*scriptpkg.VerifiedLocation),
 		byError: make(map[string]error),
 	}
 }
 
-func (s *stubResolver) stubResult(link string, result *scriptpkg.VerifiedLocation) {
+func (s *stubVerifier) stubResult(link string, result *scriptpkg.VerifiedLocation) {
 	s.byLink[link] = result
 }
 
-func (s *stubResolver) stubError(link string, err error) {
+func (s *stubVerifier) stubError(link string, err error) {
 	s.byError[link] = err
 }
 
-func (s *stubResolver) ResolveAndVerify(
+func (s *stubVerifier) Verify(
 	_ context.Context, assetID, currentFileID, currentLink string,
 ) (*scriptpkg.VerifiedLocation, error) {
 	if err, ok := s.byError[currentLink]; ok {
@@ -104,7 +104,7 @@ func sceneWithMedia(assetID, driveLink string) scriptpkg.SpecScene {
 // 1. Link valido conservato
 func TestAssetLocationReconciliation_ValidLinkPreserved(t *testing.T) {
 	link := "https://drive.google.com/file/d/abc123/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "abc123",
@@ -135,7 +135,7 @@ func TestAssetLocationReconciliation_ValidLinkPreserved(t *testing.T) {
 func TestAssetLocationReconciliation_StaleLinkReplaced(t *testing.T) {
 	oldLink := "https://drive.google.com/file/d/OLD_ID/view"
 	newLink := "https://drive.google.com/file/d/NEW_ID/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(oldLink, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "NEW_ID",
@@ -166,7 +166,7 @@ func TestAssetLocationReconciliation_StaleLinkReplaced(t *testing.T) {
 // 3. File cancellato → link svuotato + warning
 func TestAssetLocationReconciliation_MissingLinkCleared(t *testing.T) {
 	link := "https://drive.google.com/file/d/ghost123/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "ghost123",
@@ -200,7 +200,7 @@ func TestAssetLocationReconciliation_MissingLinkCleared(t *testing.T) {
 // 4. File nel cestino → link svuotato
 func TestAssetLocationReconciliation_TrashedLinkCleared(t *testing.T) {
 	link := "https://drive.google.com/file/d/trash1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "trash1",
@@ -234,7 +234,7 @@ func TestAssetLocationReconciliation_TrashedLinkCleared(t *testing.T) {
 func TestAssetLocationReconciliation_SubtitleMissingClipValid(t *testing.T) {
 	clipLink := "https://drive.google.com/file/d/clip123/view"
 	subLink := "https://drive.google.com/file/d/sub456/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(clipLink, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "clip123",
@@ -278,7 +278,7 @@ func TestAssetLocationReconciliation_SubtitleMissingClipValid(t *testing.T) {
 func TestAssetLocationReconciliation_StockMissingClipValid(t *testing.T) {
 	clipLink := "https://drive.google.com/file/d/clipOk/view"
 	stockLink := "https://drive.google.com/file/d/stockGone/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(clipLink, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "clipOk",
@@ -318,7 +318,7 @@ func TestAssetLocationReconciliation_StockMissingClipValid(t *testing.T) {
 // 7. Permission denied → INACCESSIBLE
 func TestAssetLocationReconciliation_InaccessibleLinkCleared(t *testing.T) {
 	link := "https://drive.google.com/file/d/secret1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "secret1",
@@ -349,10 +349,10 @@ func TestAssetLocationReconciliation_InaccessibleLinkCleared(t *testing.T) {
 	}
 }
 
-// 8. Transport error → fail-closed (Required processor contract)
-func TestAssetLocationReconciliation_TransportErrorFailClosed(t *testing.T) {
+// 8. Transport error → warning (BestEffort contract)
+func TestAssetLocationReconciliation_TransportErrorWarning(t *testing.T) {
 	link := "https://drive.google.com/file/d/netfail/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubError(link, fmt.Errorf("drive: network timeout"))
 
 	p := NewAssetLocationReconciliationProcessor(r)
@@ -362,16 +362,27 @@ func TestAssetLocationReconciliation_TransportErrorFailClosed(t *testing.T) {
 		}},
 	}
 
-	_, err := p.Process(context.Background(), nil, input)
-	if err == nil {
-		t.Fatal("transport error must be propagated as Go error (fail-closed)")
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatalf("BestEffort: transport error must NOT be a hard error, got %v", err)
+	}
+	// Link preserved as-is (BestEffort degrades gracefully).
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != link {
+		t.Fatalf("link should be preserved on transport error, got %q",
+			got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink)
+	}
+	if len(got.Warnings) != 1 {
+		t.Fatalf("expected 1 warning for transport error, got %d: %v", len(got.Warnings), got.Warnings)
+	}
+	if !strings.Contains(got.Warnings[0], "transport error") {
+		t.Fatalf("warning should mention transport error, got %q", got.Warnings[0])
 	}
 }
 
 // 9. Idempotenza: secondo repair con zero modifiche
 func TestAssetLocationReconciliation_IdempotentSecondRepair(t *testing.T) {
 	link := "https://drive.google.com/file/d/stable1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-1",
 		DriveFileID: "stable1",
@@ -411,7 +422,7 @@ func TestAssetLocationReconciliation_IdempotentSecondRepair(t *testing.T) {
 // 10. Malformed link → cleared
 func TestAssetLocationReconciliation_MalformedLinkCleared(t *testing.T) {
 	link := "not-a-drive-link"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:   "clip-1",
 		State:     scriptpkg.LocationStateMalformed,
@@ -438,7 +449,7 @@ func TestAssetLocationReconciliation_MalformedLinkCleared(t *testing.T) {
 // 11. Voiceover link verified
 func TestAssetLocationReconciliation_VoiceoverLink(t *testing.T) {
 	link := "https://drive.google.com/file/d/vo1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "voiceover:scene-0",
 		DriveFileID: "vo1",
@@ -466,7 +477,7 @@ func TestAssetLocationReconciliation_VoiceoverLink(t *testing.T) {
 // 12. Media binding verified
 func TestAssetLocationReconciliation_MediaBinding(t *testing.T) {
 	link := "https://drive.google.com/file/d/media1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "asset-m1",
 		DriveFileID: "media1",
@@ -491,22 +502,22 @@ func TestAssetLocationReconciliation_MediaBinding(t *testing.T) {
 	}
 }
 
-// 13. Nil resolver → hard error
-func TestAssetLocationReconciliation_NilResolverError(t *testing.T) {
-	p := &AssetLocationReconciliationProcessor{resolver: nil}
+// 13. Nil verifier → hard error
+func TestAssetLocationReconciliation_NilVerifierError(t *testing.T) {
+	p := &AssetLocationReconciliationProcessor{verifier: nil}
 	_, err := p.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
 			sceneWithClip("c", "https://drive.google.com/file/d/x/view"),
 		}},
 	})
 	if err == nil {
-		t.Fatal("nil resolver must produce an error")
+		t.Fatal("nil verifier must produce an error")
 	}
 }
 
 // 14. Empty scenes → no-op
 func TestAssetLocationReconciliation_EmptyScenes(t *testing.T) {
-	r := newStubResolver()
+	r := newStubVerifier()
 	p := NewAssetLocationReconciliationProcessor(r)
 	got, err := p.Process(context.Background(), nil, ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: nil},
@@ -521,7 +532,7 @@ func TestAssetLocationReconciliation_EmptyScenes(t *testing.T) {
 
 // 15. No links to verify → no-op
 func TestAssetLocationReconciliation_NoLinks(t *testing.T) {
-	r := newStubResolver()
+	r := newStubVerifier()
 	p := NewAssetLocationReconciliationProcessor(r)
 	input := ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
@@ -545,7 +556,7 @@ func TestAssetLocationReconciliation_TenLanguagesNoBrokenLinks(t *testing.T) {
 	}
 
 	link := "https://drive.google.com/file/d/shared1/view"
-	r := newStubResolver()
+	r := newStubVerifier()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
 		AssetID:     "clip-shared",
 		DriveFileID: "shared1",

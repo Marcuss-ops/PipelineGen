@@ -158,15 +158,15 @@ func registerScriptPostProcessors(
 
 	// AssetLocationReconciliationProcessor verifies every drive_link
 	// in the SpecScene bindings before the document is published.
-	// Required policy: composition fails if the processor cannot be
-	// registered. The resolver uses Drive.Reader to verify file
-	// existence, trashed state, and accessibility.
+	// BestEffort policy: transport errors become warnings, link
+	// integrity is best-effort. The verifier uses Drive.Reader to
+	// check file existence, trashed state, and accessibility.
 	if root != nil && root.Drive != nil && root.Drive.Reader != nil {
-		resolver := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
-		if !ppReg.Register(adapters.NewAssetLocationReconciliationProcessor(resolver)) {
+		verifier := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
+		if !ppReg.Register(adapters.NewAssetLocationReconciliationProcessor(verifier)) {
 			return fmt.Errorf("register asset_location_reconciliation processor: composition bug or duplicate name")
 		}
-		log.Info("AssetLocationReconciliationProcessor successfully registered")
+		log.Info("AssetLocationReconciliationProcessor (BestEffort) successfully registered")
 	}
 
 	// AI-backed processors (entities, metadata, translation,
