@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "pacquiao-direct-stock",
+      "title": "Manny Pacquiao: velocita, pressione e carriera",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Manny Pacquiao",
+        "source_text": "Genera tre sezioni: velocita nel combattimento, intervista e allenamento."
+      },
+      "script_params": {
+        "target_words": 300,
+        "skip_quality_gate": true,
+        "segments": [
+          {"id": "pac-fight", "topic": "Velocita sul ring", "target_words": 100},
+          {"id": "pac-interview", "topic": "Riflessione in intervista", "target_words": 100},
+          {"id": "pac-training", "topic": "Allenamento", "target_words": 100}
+        ]
+      },
+      "output": {
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "pac-fight",
+            "asset_id": "PACQUIAO_FIGHT_ASSET_ID",
+            "name": "Pacquiao fight stock",
+            "source": "youtube",
+            "drive_link": "PACQUIAO_FIGHT_DRIVE_LINK",
+            "score": 1,
+            "fallback": false
+          },
+          {
+            "index": 1,
+            "scene_id": "pac-interview",
+            "asset_id": "PACQUIAO_INTERVIEW_ASSET_ID",
+            "name": "Pacquiao interview stock",
+            "source": "youtube",
+            "drive_link": "PACQUIAO_INTERVIEW_DRIVE_LINK",
+            "score": 1,
+            "fallback": false
+          },
+          {
+            "index": 2,
+            "scene_id": "pac-training",
+            "asset_id": "PACQUIAO_TRAINING_ASSET_ID",
+            "name": "Pacquiao training stock",
+            "source": "youtube",
+            "drive_link": "PACQUIAO_TRAINING_DRIVE_LINK",
+            "score": 1,
+            "fallback": false
+          }
+        ],
+        "save_to_db": true
+      }
+    }
+  ]
+}

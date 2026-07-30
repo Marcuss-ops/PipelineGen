@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "tyson-provided-clips",
+      "title": "Mike Tyson tra combattimento, interviste e allenamento",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "TYSON_CLIP_ID_1",
+          "TYSON_CLIP_ID_2",
+          "TYSON_CLIP_ID_3",
+          "TYSON_CLIP_ID_4",
+          "TYSON_CLIP_ID_5",
+          "TYSON_CLIP_ID_6"
+        ],
+        "num_clips": 6,
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "allow_text_only": false
+      },
+      "script_params": {
+        "target_words": 480,
+        "skip_quality_gate": true,
+        "segments": [
+          {"id": "scene-fight-1", "topic": "Pressione iniziale", "target_words": 80},
+          {"id": "scene-interview-1", "topic": "Una riflessione durante un'intervista", "target_words": 80},
+          {"id": "scene-training-1", "topic": "Allenamento e preparazione", "target_words": 80},
+          {"id": "scene-fight-2", "topic": "Potenza e combinazioni", "target_words": 80},
+          {"id": "scene-interview-2", "topic": "Il rapporto con il passato", "target_words": 80},
+          {"id": "scene-training-2", "topic": "Disciplina e trasformazione", "target_words": 80}
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true
+      }
+    }
+  ]
+}

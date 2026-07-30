@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "tyson-full-pipeline",
+      "title": "Mike Tyson: Rise, Style, Struggle and Transformation",
+      "language": "en",
+      "tone": "documentary",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "TYSON_CLIP_ID_1",
+          "TYSON_CLIP_ID_2",
+          "TYSON_CLIP_ID_3",
+          "TYSON_CLIP_ID_4"
+        ],
+        "num_clips": 4,
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "allow_text_only": false
+      },
+      "script_params": {
+        "target_words": 440,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "tyson-rise",
+            "topic": "Rise of Tyson",
+            "source_text": "SRC-TYSON-01. Describe the rapid rise and sudden public attention around Mike Tyson.",
+            "target_words": 110
+          },
+          {
+            "id": "tyson-style",
+            "topic": "Fighting Style",
+            "source_text": "SRC-TYSON-02. Describe the technical fighting style, speed, and heavy pressure on opponents.",
+            "target_words": 110
+          },
+          {
+            "id": "tyson-struggle",
+            "topic": "Struggle and Difficulty",
+            "source_text": "SRC-TYSON-03. Describe the contrast between athletic success and heavy personal difficulties.",
+            "target_words": 110
+          },
+          {
+            "id": "tyson-transformation",
+            "topic": "Personal Transformation",
+            "source_text": "SRC-TYSON-04. Describe his personal transformation and mature reflections on the past.",
+            "target_words": 110
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true,
+        "translate_to": "it",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    }
+  ]
+}
