@@ -1,0 +1,43 @@
+{
+  "scenario": "top5_boxers_multilang",
+  "items_requested": 10,
+  "items_completed": 10,
+  "languages": {
+    "it": "PASS",
+    "en": "PASS",
+    "es": "PASS",
+    "pt": "PASS",
+    "fr": "PASS",
+    "de": "PASS",
+    "nl": "PASS",
+    "pl": "PASS",
+    "ro": "PASS",
+    "tr": "PASS"
+  },
+  "source_segments": {
+    "expected": 50,
+    "verified": 50
+  },
+  "stock_bindings": {
+    "expected": 50,
+    "verified": 50,
+    "wrong_subject": 0,
+    "fallback": 0,
+    "artlist": 0
+  },
+  "voiceovers": {
+    "expected": 50,
+    "completed": 50,
+    "failed": 0
+  },
+  "documents": {
+    "expected": 10,
+    "created": 10,
+    "wrong_folder": 0
+  },
+  "sqlite": {
+    "scripts": 10,
+    "completed": 10
+  },
+  "final": "PASS"
+}

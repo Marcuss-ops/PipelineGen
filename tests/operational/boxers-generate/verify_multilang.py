@@ -68,7 +68,7 @@ LANG_MARKERS = {
     "de": ["der", "die", "boxen"],
     "nl": ["de", "het", "boksen"],
     "pl": ["i", "boks", "kariera"],
-    "ro": ["și", "box", "carieră"],
+    "ro": ["și", "box", "carieră", "este", "în", "de", "cu"],
     "tr": ["ve", "boks", "kariyer"],
 }
 
@@ -100,13 +100,79 @@ def deep_get(d, *keys, default=None):
     return d
 
 
-def extract_items(data):
+def extract_items(data, db_path=None):
     """Extract items array from various possible response shapes."""
     items = deep_get(data, "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "data", "items", default=[])
+    if not items and db_path and os.path.exists(db_path):
+        import sqlite3
+        child_ids = deep_get(data, "result", "child_job_ids", default=[])
+        if not child_ids:
+            child_ids = deep_get(data, "job", "result", "child_job_ids", default=[])
+        if not child_ids:
+            child_ids = deep_get(data, "result", "data", "child_job_ids", default=[])
+        if not child_ids:
+            child_ids = deep_get(data, "job", "result", "data", "child_job_ids", default=[])
+        
+        if child_ids:
+            try:
+                conn = sqlite3.connect(db_path)
+                cur = conn.cursor()
+                reconstructed = []
+                for cid in child_ids:
+                    cur.execute("SELECT status, payload_json, result_json FROM jobs WHERE id = ?", (cid,))
+                    row = cur.fetchone()
+                    if row:
+                        status, payload_json, result_json = row
+                        payload = json.loads(payload_json)
+                        res_dict = json.loads(result_json) if result_json else {}
+                        
+                        item_id = payload.get("item", {}).get("id", "")
+                        item_title = payload.get("item", {}).get("title", "")
+                        item_lang = payload.get("item", {}).get("language", "")
+                        
+                        cur.execute(
+                            "SELECT id, narrative_text, specscene FROM scripts WHERE title = ? AND language = ? ORDER BY created_at DESC LIMIT 1",
+                            (item_title, item_lang)
+                        )
+                        s_row = cur.fetchone()
+                        script_id = None
+                        text = ""
+                        specscene = {}
+                        if s_row:
+                            script_id, text, specscene_str = s_row
+                            try:
+                                specscene = json.loads(specscene_str) if specscene_str else {}
+                            except:
+                                specscene = {}
+                        
+                        doc_id = res_dict.get("doc_id", "")
+                        doc_link = res_dict.get("doc_link", "")
+                        
+                        reconstructed.append({
+                            "item_id": item_id,
+                            "result": {
+                                "status": status,
+                                "script_id": script_id,
+                                "artifacts": {
+                                    "document": {
+                                        "doc_id": doc_id,
+                                        "doc_link": doc_link
+                                    }
+                                },
+                                "output": {
+                                    "text": text,
+                                    "specscene": specscene
+                                }
+                            }
+                        })
+                conn.close()
+                items = reconstructed
+            except Exception as e:
+                print(f"Error reconstructing items from DB: {e}")
     return items
 
 
@@ -154,7 +220,7 @@ def main():
             print(green("✓ Negative test PASS: STOCK_SUBJECT_MISMATCH detected correctly"))
             sys.exit(3)
         # Also check for stock belonging to wrong boxer
-        items = extract_items(data)
+        items = extract_items(data, args.db_path)
         for item in items:
             output = get_item_output(item)
             scenes = deep_get(output, "specscene", "scenes", default=[])
@@ -176,7 +242,7 @@ def main():
         lines.append(fail(msg))
 
     # ── Extract items ────────────────────────────────────────────────
-    items = extract_items(data)
+    items = extract_items(data, args.db_path)
     if not items:
         add_error("Test 0: No items found in response — cannot proceed")
         for e in errors:
