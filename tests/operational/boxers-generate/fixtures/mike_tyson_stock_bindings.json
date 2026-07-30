@@ -1,0 +1,32 @@
+[
+  {
+    "index": 0,
+    "scene_id": "pac-fight",
+    "asset_id": "PACQUIAO_FIGHT_ASSET_ID",
+    "name": "Pacquiao fight stock",
+    "source": "youtube",
+    "drive_link": "PACQUIAO_FIGHT_DRIVE_LINK",
+    "score": 1,
+    "fallback": false
+  },
+  {
+    "index": 1,
+    "scene_id": "pac-interview",
+    "asset_id": "PACQUIAO_INTERVIEW_ASSET_ID",
+    "name": "Pacquiao interview stock",
+    "source": "youtube",
+    "drive_link": "PACQUIAO_INTERVIEW_DRIVE_LINK",
+    "score": 1,
+    "fallback": false
+  },
+  {
+    "index": 2,
+    "scene_id": "pac-training",
+    "asset_id": "PACQUIAO_TRAINING_ASSET_ID",
+    "name": "Pacquiao training stock",
+    "source": "youtube",
+    "drive_link": "PACQUIAO_TRAINING_DRIVE_LINK",
+    "score": 1,
+    "fallback": false
+  }
+]

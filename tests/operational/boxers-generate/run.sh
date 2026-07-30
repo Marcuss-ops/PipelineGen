@@ -41,13 +41,57 @@ fi
 
 printf 'Using database: %s%s%s\n' "$CYAN" "$DB_PATH" "$RESET"
 
-# 2. Query actual Mike Tyson clips from SQLite.
-# Prefer TYSON_VIDEO_ID env var (e.g. yt_6VtSrG1hs9U); falls back to folder_path.
-TYSON_VIDEO_ID="${TYSON_VIDEO_ID:-}"
-TYSON_FOLDER_NAME="${TYSON_FOLDER_NAME:-Mike Tyson}"
+# 2. Load Tyson clip data from fixtures, falling back to SQLite.
+#   fixtures/mike_tyson_clip_ids.json — pre-computed clip IDs + drive links
+#   fixtures/mike_tyson_stock_bindings.json — Pacquiao stock binding data
+#   Env vars: TYSON_VIDEO_ID (SQLite fallback), TYSON_FOLDER_NAME (default: Mike Tyson)
+FIXTURES_DIR="$DIR/fixtures"
 TYSON_CLIPS=()
 TYSON_LINKS=()
-if [[ "$DRY_RUN" != "1" ]]; then
+PACQUIAO_CLIPS=()
+PACQUIAO_LINKS=()
+TYSON_VIDEO_ID="${TYSON_VIDEO_ID:-}"
+TYSON_FOLDER_NAME="${TYSON_FOLDER_NAME:-Mike Tyson}"
+
+if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
+    printf 'Loading Tyson clips from fixtures/%s\n' "mike_tyson_clip_ids.json"
+    while IFS=$'\t' read -r id link; do
+        [[ -z "$id" ]] && continue
+        # Refuse placeholder values — fixture must be populated with real data.
+        if [[ "$id" =~ PLACEHOLDER ]]; then
+            printf '%ssetup error: fixture %s contains PLACEHOLDER values — populate with real clip IDs first%s\n' \
+                "$RED" "mike_tyson_clip_ids.json" "$RESET" >&2
+            exit 2
+        fi
+        TYSON_CLIPS+=("$id")
+        TYSON_LINKS+=("$link")
+    done < <(jq -r '.[] | "\(.id)\t\(.drive_link)"' "$FIXTURES_DIR/mike_tyson_clip_ids.json")
+    if (( ${#TYSON_CLIPS[@]} < 4 )); then
+        printf '%ssetup error: not enough Tyson clips in fixtures (found %d, need at least 4)%s\n' "$RED" "${#TYSON_CLIPS[@]}" "$RESET" >&2
+        exit 2
+    fi
+    printf 'Loaded %d Tyson clips from fixtures: %s\n' "${#TYSON_CLIPS[@]}" "${TYSON_CLIPS[*]}"
+
+    # Load Pacquiao stock bindings from fixture (optional — falls back to Tyson clips).
+    if [[ -f "$FIXTURES_DIR/mike_tyson_stock_bindings.json" ]]; then
+        printf 'Loading Pacquiao stock bindings from fixtures/%s\n' "mike_tyson_stock_bindings.json"
+        while IFS=$'\t' read -r asset_id drive_link; do
+            [[ -z "$asset_id" ]] && continue
+            if [[ "$asset_id" =~ PLACEHOLDER ]]; then
+                printf '%swarn: stock bindings fixture has PLACEHOLDER values — falling back to Tyson clips for Pacquiao%s\n' \
+                    "$YELLOW" "$RESET" >&2
+                PACQUIAO_CLIPS=()
+                break
+            fi
+            PACQUIAO_CLIPS+=("$asset_id")
+            PACQUIAO_LINKS+=("$drive_link")
+        done < <(jq -r '.[] | "\(.asset_id)\t\(.drive_link)"' "$FIXTURES_DIR/mike_tyson_stock_bindings.json")
+        if (( ${#PACQUIAO_CLIPS[@]} >= 3 )); then
+            printf 'Loaded %d Pacquiao stock bindings from fixtures\n' "${#PACQUIAO_CLIPS[@]}"
+        fi
+    fi
+elif [[ "$DRY_RUN" != "1" ]]; then
+    # SQLite fallback
     if [[ -n "$TYSON_VIDEO_ID" ]]; then
         TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE id LIKE '${TYSON_VIDEO_ID}_%' AND lifecycle_status='ACTIVE' LIMIT 6;"
         printf 'Querying by video ID: %s\n' "$TYSON_VIDEO_ID"
@@ -94,15 +138,23 @@ prepare_payload() {
     # Replace Voiceover Folder
     sed -i "s/REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID/$VOICEOVER_FOLDER/g" "$temp_json"
     
-    # Replace Pacquiao placeholder IDs and links
-    sed -i "s/PACQUIAO_FIGHT_ASSET_ID/${TYSON_CLIPS[0]}/g" "$temp_json"
-    sed -i "s|PACQUIAO_FIGHT_DRIVE_LINK|${TYSON_LINKS[0]}|g" "$temp_json"
-    
-    sed -i "s/PACQUIAO_INTERVIEW_ASSET_ID/${TYSON_CLIPS[1]}/g" "$temp_json"
-    sed -i "s|PACQUIAO_INTERVIEW_DRIVE_LINK|${TYSON_LINKS[1]}|g" "$temp_json"
-    
-    sed -i "s/PACQUIAO_TRAINING_ASSET_ID/${TYSON_CLIPS[2]}/g" "$temp_json"
-    sed -i "s|PACQUIAO_TRAINING_DRIVE_LINK|${TYSON_LINKS[2]}|g" "$temp_json"
+    # Replace Pacquiao placeholder IDs and links.
+    # Prefer Pacquiao-specific fixture data; fall back to Tyson clips.
+    if (( ${#PACQUIAO_CLIPS[@]} >= 3 )); then
+        sed -i "s/PACQUIAO_FIGHT_ASSET_ID/${PACQUIAO_CLIPS[0]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_FIGHT_DRIVE_LINK|${PACQUIAO_LINKS[0]}|g" "$temp_json"
+        sed -i "s/PACQUIAO_INTERVIEW_ASSET_ID/${PACQUIAO_CLIPS[1]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_INTERVIEW_DRIVE_LINK|${PACQUIAO_LINKS[1]}|g" "$temp_json"
+        sed -i "s/PACQUIAO_TRAINING_ASSET_ID/${PACQUIAO_CLIPS[2]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_TRAINING_DRIVE_LINK|${PACQUIAO_LINKS[2]}|g" "$temp_json"
+    else
+        sed -i "s/PACQUIAO_FIGHT_ASSET_ID/${TYSON_CLIPS[0]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_FIGHT_DRIVE_LINK|${TYSON_LINKS[0]}|g" "$temp_json"
+        sed -i "s/PACQUIAO_INTERVIEW_ASSET_ID/${TYSON_CLIPS[1]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_INTERVIEW_DRIVE_LINK|${TYSON_LINKS[1]}|g" "$temp_json"
+        sed -i "s/PACQUIAO_TRAINING_ASSET_ID/${TYSON_CLIPS[2]}/g" "$temp_json"
+        sed -i "s|PACQUIAO_TRAINING_DRIVE_LINK|${TYSON_LINKS[2]}|g" "$temp_json"
+    fi
     
     cat "$temp_json"
 }
@@ -265,12 +317,12 @@ run_scenario() {
             ;;
             
         "03")
-            # Scenario 3 assertions: Supplied clips only
             if ! jq -e --argjson supplied "$(printf '%s\n' "${TYSON_CLIPS[@]}" | jq -R . | jq -s .)" '
                 (all(.specscene.scenes[];
                     .bindings.clip == null
                     or (
-                        (($supplied | index(.bindings.clip.clip_id)) != null)
+                        .bindings.clip.clip_id as $cid
+                        | (($supplied | index($cid)) != null)
                         and ((.bindings.clip.drive_link | length) > 0)
                     )
                 ))
@@ -345,7 +397,8 @@ run_scenario() {
                 all(.specscene.scenes[];
                     .bindings.clip == null
                     or (
-                        (($supplied | index(.bindings.clip.clip_id)) != null)
+                        .bindings.clip.clip_id as $cid
+                        | (($supplied | index($cid)) != null)
                         and ((.bindings.clip.drive_link | length) > 0)
                     )
                 )
