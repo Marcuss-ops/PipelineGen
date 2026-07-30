@@ -184,15 +184,19 @@ run_scenario() {
         return 1
     fi
     
-    # Extract script result output
+    # Extract script result output.
+    # Canonical path: .result.data.items[0].result.output
+    # Fallbacks: broker-nested, batch, and legacy shapes.
     local out_json
     out_json=$(jq -c '
-        .job.result.data.items[0].result.output
-        // .result.data.items[0].result.output
-        // .job.result.data.output
+        .result.data.items[0].result.output
+        // .job.result.data.items[0].result.output
         // .result.data.output
+        // .job.result.data.output
         // .job.result.output
         // .result.output
+        // .job.result.data.data.output
+        // .result.data.data.output
         // empty
     ' "$full_body_file")
     
@@ -213,10 +217,10 @@ run_scenario() {
         "01")
             # Scenario 1 assertions: Anchor text segments present in output
             if ! jq -e '
-                .text | contains("SRC-TYSON-01")
-                and .text | contains("SRC-TYSON-02")
-                and .text | contains("SRC-TYSON-03")
-                and .text | contains("SRC-TYSON-04")
+                (.text | test("SRC-TYSON-01"))
+                and (.text | test("SRC-TYSON-02"))
+                and (.text | test("SRC-TYSON-03"))
+                and (.text | test("SRC-TYSON-04"))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Anchor texts not found in correct sequence%s\n' "$RED" "$RESET" >&2
                 jq .text <<<"$out_json" >&2
