@@ -282,9 +282,12 @@ smoke_curl() {
     printf '%s' "$code"
 }
 
-# Poll /api/jobs/{id}/full until the job reaches a terminal status.
+# Poll /api/jobs/{id} until the job reaches a terminal status.
 # Terminal statuses: completed, failed, cancelled, dead_letter.
 # Returns 0 on terminal state, 124 on timeout.
+# After return 0, SMOKE_LAST_BODY contains the /api/jobs/{id} status body.
+# Callers needing the FULL result (segments, candidates, etc.) must fetch
+# /api/jobs/{id}/full separately after this function returns.
 smoke_poll_terminal() {
     local job_id="$1"
     SMOKE_LAST_STATUS=""
@@ -295,7 +298,7 @@ smoke_poll_terminal() {
         # SMOKE_LAST_BODY/SMOKE_LAST_HTTP as side-effects; inside a subshell
         # those exports are lost and subsequent jq reads fail with
         # "No such file or directory".
-        smoke_curl GET "/api/v1/jobs/${job_id}" >/dev/null
+        smoke_curl GET "/api/jobs/${job_id}" >/dev/null
         if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
             return 1
         fi

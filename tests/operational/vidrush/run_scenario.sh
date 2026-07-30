@@ -8,7 +8,7 @@
 # Reads a VidRush scenario manifest (scenarios/NN_name.json) and:
 #   1. For preflight (00_*): executes health checks, collects results.
 #   2. For script.generate (01_* and later): POSTs the payload,
-#      polls /api/jobs/{id}/full, runs assertions, produces report.
+#      polls /api/jobs/{id} for terminal status, fetches /api/jobs/{id}/full for assertions.
 #
 # Outputs a unified JSON report to stdout. Exits 0 on PASS, 1 on FAIL,
 # 2 on setup error, 124 on timeout.
@@ -69,6 +69,13 @@ SCENARIO_DESC=$(jq -r '.description // ""' <<<"$SCENARIO")
 SCENARIO_TYPE="script_generate"
 if [[ "$SCENARIO_ID" == 00_* ]]; then
     SCENARIO_TYPE="preflight"
+fi
+
+# Override poll timeout from scenario manifest (heavier scenarios need
+# more time for LLM generation + provider searches).
+scenario_timeout=$(jq -r '.timeout_seconds // empty' "$SCENARIO_FILE")
+if [[ -n "$scenario_timeout" && "$scenario_timeout" -gt 0 ]]; then
+    SCENARIO_POLL_TIMEOUT_SECONDS="$scenario_timeout"
 fi
 
 # ── Git SHA ────────────────────────────────────────────────────────────
@@ -356,7 +363,7 @@ run_script_generate() {
     printf '  job_id: %s (HTTP %s, %dms)\n' "$job_id" "$http_code" "$dispatch_ms"
 
     # ── Poll terminal ──────────────────────────────────────────────────
-    echo "  → polling /api/jobs/${job_id}/full"
+    echo "  → polling /api/jobs/${job_id}"
     export SMOKE_POLL_TIMEOUT_SECONDS="$SCENARIO_POLL_TIMEOUT_SECONDS"
     local poll_start poll_end poll_ms
     poll_start=$(date +%s%3N 2>/dev/null || date +%s000)
@@ -371,6 +378,12 @@ run_script_generate() {
     poll_ms=$(( poll_end - poll_start ))
 
     local terminal_status="${SMOKE_LAST_STATUS}"
+    printf '  terminal status: %s (%dms poll)\n' "$terminal_status" "$poll_ms"
+
+    # ── Fetch full result ──────────────────────────────────────────────
+    # smoke_poll_terminal returns the /api/jobs/{id} status body (lightweight).
+    # We need /api/jobs/{id}/full for segments, entities, candidates, cache.
+    smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
     local full_body
     full_body=$(cat "$SMOKE_LAST_BODY" 2>/dev/null || echo '{}')
 
@@ -380,7 +393,6 @@ run_script_generate() {
         report_json "FAILED" "$job_id" "" "{\"terminal_status\":\"$terminal_status\",\"dispatch_http\":$http_code,\"timing_ms\":{\"dispatch\":$dispatch_ms,\"poll\":$poll_ms}}" | jq '.'
         return 1
     fi
-    printf '  terminal status: %s (%dms poll)\n' "$terminal_status" "$poll_ms"
 
     # ── Extract result ─────────────────────────────────────────────────
     local result
