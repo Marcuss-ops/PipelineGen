@@ -15,6 +15,7 @@
       "script_params": {
         "target_words": 360,
         "skip_quality_gate": true,
+        "use_memory": false,
         "segments": [
           {
             "id": "ali-movement",

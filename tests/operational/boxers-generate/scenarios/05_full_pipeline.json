@@ -23,6 +23,7 @@
       "script_params": {
         "target_words": 440,
         "skip_quality_gate": true,
+        "use_memory": false,
         "segments": [
           {
             "id": "tyson-rise",

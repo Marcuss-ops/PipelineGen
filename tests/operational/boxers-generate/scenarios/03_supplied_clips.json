@@ -25,6 +25,7 @@
       "script_params": {
         "target_words": 480,
         "skip_quality_gate": true,
+        "use_memory": false,
         "segments": [
           {"id": "scene-fight-1", "topic": "Pressione iniziale", "target_words": 80},
           {"id": "scene-interview-1", "topic": "Una riflessione durante un'intervista", "target_words": 80},

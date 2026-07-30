@@ -15,6 +15,7 @@
       "script_params": {
         "target_words": 300,
         "skip_quality_gate": true,
+        "use_memory": false,
         "segments": [
           {"id": "pac-fight", "topic": "Velocita sul ring", "target_words": 100},
           {"id": "pac-interview", "topic": "Riflessione in intervista", "target_words": 100},
