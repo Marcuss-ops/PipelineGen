@@ -2,21 +2,47 @@ package adapters
 
 import (
 	"context"
+	"html"
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 type documentServiceStub struct {
-	titles []string
+	titles  []string
+	content []string
 }
 
-func (s *documentServiceStub) CreateDoc(_ context.Context, title, _ string, _ FolderResolver, folderID, key string, forceRefresh bool) (string, string) {
+func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string, _ FolderResolver, folderID, key string, forceRefresh bool) (string, string) {
 	s.titles = append(s.titles, title+"|"+folderID+"|"+key)
+	s.content = append(s.content, content)
 	if forceRefresh {
 		s.titles = append(s.titles, "refresh")
 	}
 	return "https://docs.google.com/document/d/doc-1/edit", "doc-1"
+}
+
+func TestDocumentsProcessor_UsesFullNarrativeForSingleScene(t *testing.T) {
+	stub := &documentServiceStub{}
+	processor := NewDocumentsProcessor(stub)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID: "run-full", Title: "Full narrative", Language: "it",
+		DocsEnabled: true, DocsLanguages: []string{"it"}, SingleScene: true,
+	}
+	fullText := "Questo è il testo completo generato dall'endpoint, non il preview della scena."
+	_, err := processor.Process(context.Background(), plan, ProcessInput{
+		Text: fullText,
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", Text: "preview breve",
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.content) != 1 || !strings.Contains(stub.content[0], html.EscapeString(fullText)) {
+		t.Fatalf("document must contain full generated narrative: %v", stub.content)
+	}
 }
 
 func (s *documentServiceStub) UpdateDoc(context.Context, string, string, string) error { return nil }
