@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "tyson-source-segments",
+      "title": "Mike Tyson: ascesa, stile e trasformazione",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "La carriera di Mike Tyson",
+        "source_text": "Usa esclusivamente le informazioni fornite nei singoli segmenti. Non aggiungere date, incontri o dichiarazioni non presenti."
+      },
+      "script_params": {
+        "target_words": 480,
+        "skip_quality_gate": true,
+        "use_memory": false,
+        "segments": [
+          {
+            "id": "tyson-rise",
+            "topic": "Ascesa iniziale",
+            "target_words": 120,
+            "source_text": "SRC-TYSON-01. Il segmento deve spiegare l'ascesa iniziale di Mike Tyson e il modo in cui la sua presenza attirò rapidamente attenzione."
+          },
+          {
+            "id": "tyson-style",
+            "topic": "Stile sul ring",
+            "target_words": 120,
+            "source_text": "SRC-TYSON-02. Il segmento deve concentrarsi su pressione, rapidità, movimento del busto e potenza."
+          },
+          {
+            "id": "tyson-pressure",
+            "topic": "Pressione e difficoltà",
+            "target_words": 120,
+            "source_text": "SRC-TYSON-03. Il segmento deve distinguere i successi sportivi dalle difficoltà affrontate fuori dal ring."
+          },
+          {
+            "id": "tyson-change",
+            "topic": "Trasformazione pubblica",
+            "target_words": 120,
+            "source_text": "SRC-TYSON-04. Il segmento deve descrivere il passaggio da pugile temuto a figura pubblica capace di riflettere sul proprio passato."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true
+      }
+    }
+  ]
+}

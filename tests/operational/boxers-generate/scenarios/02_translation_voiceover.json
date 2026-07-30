@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "ali-translation-voiceover",
+      "title": "Muhammad Ali: speed, voice and legacy",
+      "language": "en",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Muhammad Ali and his public legacy",
+        "source_text": "Muhammad Ali became known not only for movement and speed in the ring, but also for the confidence with which he spoke in public. The documentary must distinguish sporting analysis from broader cultural interpretation."
+      },
+      "script_params": {
+        "target_words": 360,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "ali-movement",
+            "topic": "Movement and speed",
+            "source_text": "ALI-SOURCE-01. Explain movement, distance and rhythm.",
+            "target_words": 120
+          },
+          {
+            "id": "ali-voice",
+            "topic": "Public voice",
+            "source_text": "ALI-SOURCE-02. Explain how public communication became part of his image.",
+            "target_words": 120
+          },
+          {
+            "id": "ali-legacy",
+            "topic": "Legacy",
+            "source_text": "ALI-SOURCE-03. Explain the difference between sporting legacy and cultural memory.",
+            "target_words": 120
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true,
+        "translate_to": "it",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    }
+  ]
+}
