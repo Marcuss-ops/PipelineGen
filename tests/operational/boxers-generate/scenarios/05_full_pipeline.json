@@ -51,6 +51,11 @@
           }
         ]
       },
+      "docs": {
+        "enabled": true,
+        "languages": ["it"],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
       "output": {
         "extract_entities": "enabled",
         "generate_metadata": "enabled",

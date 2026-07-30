@@ -149,7 +149,10 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
 		AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
-		AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')`
+		AND (
+			json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
+			OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
+		)`
 	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, parentStateTyped, nowStr, id}
 	if expectedVersion > 0 {
 		query += `

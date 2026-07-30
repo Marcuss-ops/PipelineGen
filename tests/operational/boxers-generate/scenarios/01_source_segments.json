@@ -10,7 +10,7 @@
       "source": {
         "type": "text",
         "topic": "La carriera di Mike Tyson",
-        "source_text": "Usa esclusivamente le informazioni fornite nei singoli segmenti. Non aggiungere date, incontri o dichiarazioni non presenti."
+        "source_text": "Usa esclusivamente le informazioni fornite nei singoli segmenti. Ciascun segmento generato DEVE iniziare con il rispettivo token (es. SRC-TYSON-01, SRC-TYSON-02, ecc.) scritto esattamente in quel modo."
       },
       "script_params": {
         "target_words": 480,
@@ -21,25 +21,25 @@
             "id": "tyson-rise",
             "topic": "Ascesa iniziale",
             "target_words": 120,
-            "source_text": "SRC-TYSON-01. Il segmento deve spiegare l'ascesa iniziale di Mike Tyson e il modo in cui la sua presenza attirò rapidamente attenzione."
+            "source_text": "SRC-TYSON-01. Includi il token letterale 'SRC-TYSON-01' all'inizio. Il segmento deve spiegare l'ascesa iniziale di Mike Tyson e il modo in cui la sua presenza attirò rapidamente attenzione."
           },
           {
             "id": "tyson-style",
             "topic": "Stile sul ring",
             "target_words": 120,
-            "source_text": "SRC-TYSON-02. Il segmento deve concentrarsi su pressione, rapidità, movimento del busto e potenza."
+            "source_text": "SRC-TYSON-02. Includi il token letterale 'SRC-TYSON-02' all'inizio. Il segmento deve concentrarsi su pressione, rapidità, movimento del busto e potenza."
           },
           {
             "id": "tyson-pressure",
             "topic": "Pressione e difficoltà",
             "target_words": 120,
-            "source_text": "SRC-TYSON-03. Il segmento deve distinguere i successi sportivi dalle difficoltà affrontate fuori dal ring."
+            "source_text": "SRC-TYSON-03. Includi il token letterale 'SRC-TYSON-03' all'inizio. Il segmento deve distinguere i successi sportivi dalle difficoltà affrontate fuori dal ring."
           },
           {
             "id": "tyson-change",
             "topic": "Trasformazione pubblica",
             "target_words": 120,
-            "source_text": "SRC-TYSON-04. Il segmento deve descrivere il passaggio da pugile temuto a figura pubblica capace di riflettere sul proprio passato."
+            "source_text": "SRC-TYSON-04. Includi il token letterale 'SRC-TYSON-04' all'inizio. Il segmento deve descrivere il passaggio da pugile temuto a figura pubblica capace di riflettere sul proprio passato."
           }
         ]
       },
