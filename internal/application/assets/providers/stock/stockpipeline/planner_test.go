@@ -103,6 +103,31 @@ func TestDeterministicPlanner_BudgetEqualsClipReturnsSingleFullWindow(t *testing
 	}
 }
 
+func TestDeterministicPlanner_DistributesWindowsAcrossKnownSource(t *testing.T) {
+	p := NewDeterministicPlanner()
+	plans, err := p.Plan(context.Background(), VideoSource{
+		URL:         "https://www.youtube.com/watch?v=distributed",
+		DurationSec: 1800,
+	}, 60, 4, "policy-v1")
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(plans) != 15 {
+		t.Fatalf("expected 15 plans, got %d", len(plans))
+	}
+	for i, plan := range plans {
+		if plan.EndSec-plan.StartSec != 4 {
+			t.Errorf("plan[%d] duration = %.3f, want 4", i, plan.EndSec-plan.StartSec)
+		}
+		if i > 0 && plan.StartSec < plans[i-1].EndSec {
+			t.Errorf("plan[%d] overlaps previous plan: %.3f < %.3f", i, plan.StartSec, plans[i-1].EndSec)
+		}
+	}
+	if plans[1].StartSec <= plans[0].EndSec || plans[14].StartSec <= plans[1].StartSec {
+		t.Fatal("planned windows were not distributed across the source")
+	}
+}
+
 func TestDeterministicPlanner_OutputLogicalIDFormatSuffixIndex(t *testing.T) {
 	// Operators relying on Visual ID format for log greps will hit
 	// "planner:HEX:N" pattern. Lock the format string so a future

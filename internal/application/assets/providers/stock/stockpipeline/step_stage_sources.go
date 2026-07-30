@@ -79,12 +79,20 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 	// (orchestrator.go::RunResilient), fired after ALL steps complete.
 
 	for _, plan := range plans {
-		if seen[plan.SourceID] {
+		stageKey := plan.SourceID
+		if in := runner.RunInput(); in != nil && in.DownloadMode == "sections_only" {
+			stageKey = plan.StageKey
+		}
+		if seen[stageKey] {
 			continue
 		}
-		seen[plan.SourceID] = true
+		seen[stageKey] = true
 
 		ref := assets.SourceRef{URL: stagingSourceURL(plan)}
+		if runner.RunInput() != nil && runner.RunInput().DownloadMode == "sections_only" {
+			ref.DownloadSection = fmt.Sprintf("*%s-%s", formatDuration(plan.StartSec), formatDuration(plan.EndSec))
+			ref.MergeFormat = "mp4"
+		}
 		sa, stageErr := stager.StageSource(ctx, ref)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
@@ -110,7 +118,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		// Phase 1 (July 2026): stamp the SourceID on the StagedAsset
 		// so downstream steps can map ClipPlan.SourceID → LocalPath.
-		sa.SourceID = plan.SourceID
+		sa.SourceID = stageKey
 		staged = append(staged, sa)
 		// Publish immediately to the shared RunState so the
 		// orchestrator-level deferred cleanup can see this asset
@@ -121,6 +129,11 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 		if runner.Log() != nil {
 			runner.Log().Info("orchestrator: stock.stage_sources: staged source",
 				zap.String("source_id", plan.SourceID),
+				zap.String("stage_key", stageKey),
+				zap.Int("section_count", 1),
+				zap.Float64("requested_section_seconds", plan.EndSec-plan.StartSec),
+				zap.String("download_mode", runner.RunInput().DownloadMode),
+				zap.Float64("downloaded_file_duration_seconds", sa.DurationSec),
 				zap.String("local_path", sa.LocalPath),
 				zap.Int64("bytes", sa.Bytes))
 		}

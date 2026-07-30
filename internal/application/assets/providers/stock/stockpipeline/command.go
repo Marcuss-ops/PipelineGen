@@ -17,23 +17,28 @@ type SearchQuery struct {
 // search-and-run endpoint. The api package re-exports its handlers'
 // request DTOs from here (handler binds JSON onto this type).
 type StockSearchAndRunRequest struct {
-	Queries           []SearchQuery       `json:"queries"`
-	DirectURLs        []string            `json:"direct_urls,omitempty"`
-	DriveURLs         []string            `json:"drive_urls,omitempty"`
-	Clips             []ClipSpec          `json:"clips,omitempty"`
-	TotalMinutes      int                 `json:"total_minutes"`
-	ChunkDuration     int                 `json:"chunk_duration,omitempty"`
-	ClipDuration      int                 `json:"clip_duration,omitempty"`
-	SecondsPerSegment int                 `json:"seconds_per_segment,omitempty"`
-	NoAudio           bool                `json:"no_audio,omitempty"`
-	NoEffects         bool                `json:"no_effects,omitempty"`
-	NoTransitions     bool                `json:"no_transitions,omitempty"`
-	MaxVideos         int                 `json:"max_videos,omitempty"`
-	Subfolder         string              `json:"subfolder"`
-	FolderName        string              `json:"folder_name"`
-	DriveFolderID     string              `json:"drive_folder_id,omitempty"`
-	FolderID          string              `json:"folder_id,omitempty"`
-	Metadata          *ChunkMetadataInput `json:"metadata,omitempty"`
+	Queries                        []SearchQuery       `json:"queries"`
+	DirectURLs                     []string            `json:"direct_urls,omitempty"`
+	DriveURLs                      []string            `json:"drive_urls,omitempty"`
+	Clips                          []ClipSpec          `json:"clips,omitempty"`
+	TotalMinutes                   int                 `json:"total_minutes"`
+	TargetTotalDurationSeconds     int                 `json:"target_total_duration_seconds,omitempty"`
+	TargetDurationPerSourceSeconds int                 `json:"target_duration_per_source_seconds,omitempty"`
+	ClipsPerSource                 int                 `json:"clips_per_source,omitempty"`
+	ClipDurationSeconds            int                 `json:"clip_duration_seconds,omitempty"`
+	DownloadMode                   string              `json:"download_mode,omitempty"`
+	ChunkDuration                  int                 `json:"chunk_duration,omitempty"`
+	ClipDuration                   int                 `json:"clip_duration,omitempty"`
+	SecondsPerSegment              int                 `json:"seconds_per_segment,omitempty"`
+	NoAudio                        bool                `json:"no_audio,omitempty"`
+	NoEffects                      bool                `json:"no_effects,omitempty"`
+	NoTransitions                  bool                `json:"no_transitions,omitempty"`
+	MaxVideos                      int                 `json:"max_videos,omitempty"`
+	Subfolder                      string              `json:"subfolder"`
+	FolderName                     string              `json:"folder_name"`
+	DriveFolderID                  string              `json:"drive_folder_id,omitempty"`
+	FolderID                       string              `json:"folder_id,omitempty"`
+	Metadata                       *ChunkMetadataInput `json:"metadata,omitempty"`
 	// Async: operator opt-out for sync execution. Defaults to false
 	// (zero-value); api handler flips to true before JSON binding so
 	// existing clients see no behaviour change. With "async":false on
@@ -44,28 +49,58 @@ type StockSearchAndRunRequest struct {
 	Persist bool `json:"persist,omitempty"`
 }
 
+// ValidateDurationContract validates the unambiguous per-source duration
+// contract. Zero values mean the legacy request shape is in use; once any
+// explicit field is supplied, all values must be present and consistent.
+func ValidateDurationContract(total, perSource, clips, clipDuration int, mode string) error {
+	if total == 0 && perSource == 0 && clips == 0 && clipDuration == 0 && mode == "" {
+		return nil
+	}
+	if total <= 0 || perSource <= 0 || clips <= 0 || clipDuration <= 0 {
+		return fmt.Errorf("explicit stock duration contract requires positive target_total_duration_seconds, target_duration_per_source_seconds, clips_per_source and clip_duration_seconds")
+	}
+	if perSource != clips*clipDuration {
+		return fmt.Errorf("target_duration_per_source_seconds must equal clips_per_source × clip_duration_seconds (%d != %d)", perSource, clips*clipDuration)
+	}
+	if total%perSource != 0 {
+		return fmt.Errorf("target_total_duration_seconds must be a multiple of target_duration_per_source_seconds")
+	}
+	if mode != "sections_only" {
+		return fmt.Errorf("download_mode must be sections_only")
+	}
+	if clipDuration < 3 || clipDuration > 30 {
+		return fmt.Errorf("clip_duration_seconds must be between 3 and 30 seconds")
+	}
+	return nil
+}
+
 // StockCommand is the canonical internal command the API layer hands to
 // StockUseCase.Submit. It is independent of the API request types and the
 // job-payload shape used by HandleJob — the use case and the worker each
 // derive their own serialisation.
 type StockCommand struct {
-	SearchQueries     []string
-	DirectURLs        []string
-	DriveURLs         []string
-	Clips             []ClipSpec
-	TotalMinutes      int
-	MaxVideos         int
-	ChunkDuration     int
-	ClipDuration      int
-	SecondsPerSegment int
-	NoAudio           bool
-	NoEffects         bool
-	NoTransitions     bool
-	Subfolder         string
-	FolderName        string
-	DriveFolderID     string
-	FolderID          string
-	Metadata          *ChunkMetadataInput
+	SearchQueries                  []string
+	DirectURLs                     []string
+	DriveURLs                      []string
+	Clips                          []ClipSpec
+	TotalMinutes                   int
+	TargetTotalDurationSeconds     int
+	TargetDurationPerSourceSeconds int
+	ClipsPerSource                 int
+	ClipDurationSeconds            int
+	DownloadMode                   string
+	MaxVideos                      int
+	ChunkDuration                  int
+	ClipDuration                   int
+	SecondsPerSegment              int
+	NoAudio                        bool
+	NoEffects                      bool
+	NoTransitions                  bool
+	Subfolder                      string
+	FolderName                     string
+	DriveFolderID                  string
+	FolderID                       string
+	Metadata                       *ChunkMetadataInput
 	// Async: submitter-chosen sync vs jobs-broker dispatch decision.
 	// Mirrors the same field on StockSearchAndRunRequest + StockRunPayload
 	// for end-to-end wire-shape audit trail.
@@ -89,25 +124,30 @@ func FromRunPayload(p *StockRunPayload) (*StockCommand, error) {
 	}
 	metadata := chunkMetadataFromRunPayload(p.Metadata)
 	return &StockCommand{
-		SearchQueries:     append([]string(nil), p.SearchQueries...),
-		DirectURLs:        append([]string(nil), p.DirectURLs...),
-		DriveURLs:         append([]string(nil), p.DriveURLs...),
-		Clips:             append([]ClipSpec(nil), p.Clips...),
-		TotalMinutes:      p.TotalMinutes,
-		ChunkDuration:     p.ChunkDuration,
-		ClipDuration:      p.ClipDuration,
-		SecondsPerSegment: p.SecondsPerSegment,
-		NoAudio:           p.NoAudio,
-		NoEffects:         p.NoEffects,
-		NoTransitions:     p.NoTransitions,
-		MaxVideos:         p.MaxVideos,
-		Subfolder:         p.Subfolder,
-		FolderName:        p.FolderName,
-		DriveFolderID:     p.DriveFolderID,
-		FolderID:          p.FolderID,
-		Metadata:          metadata,
-		Async:             p.Async,
-		Persist:           p.Persist,
+		SearchQueries:                  append([]string(nil), p.SearchQueries...),
+		DirectURLs:                     append([]string(nil), p.DirectURLs...),
+		DriveURLs:                      append([]string(nil), p.DriveURLs...),
+		Clips:                          append([]ClipSpec(nil), p.Clips...),
+		TotalMinutes:                   p.TotalMinutes,
+		TargetTotalDurationSeconds:     p.TargetTotalDurationSeconds,
+		TargetDurationPerSourceSeconds: p.TargetDurationPerSourceSeconds,
+		ClipsPerSource:                 p.ClipsPerSource,
+		ClipDurationSeconds:            p.ClipDurationSeconds,
+		DownloadMode:                   p.DownloadMode,
+		ChunkDuration:                  p.ChunkDuration,
+		ClipDuration:                   p.ClipDuration,
+		SecondsPerSegment:              p.SecondsPerSegment,
+		NoAudio:                        p.NoAudio,
+		NoEffects:                      p.NoEffects,
+		NoTransitions:                  p.NoTransitions,
+		MaxVideos:                      p.MaxVideos,
+		Subfolder:                      p.Subfolder,
+		FolderName:                     p.FolderName,
+		DriveFolderID:                  p.DriveFolderID,
+		FolderID:                       p.FolderID,
+		Metadata:                       metadata,
+		Async:                          p.Async,
+		Persist:                        p.Persist,
 	}, nil
 }
 
@@ -140,25 +180,30 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		}
 	}
 	return &StockCommand{
-		SearchQueries:     queries,
-		DirectURLs:        append([]string(nil), r.DirectURLs...),
-		DriveURLs:         append([]string(nil), r.DriveURLs...),
-		Clips:             append([]ClipSpec(nil), r.Clips...),
-		TotalMinutes:      r.TotalMinutes,
-		ChunkDuration:     r.ChunkDuration,
-		ClipDuration:      r.ClipDuration,
-		SecondsPerSegment: r.SecondsPerSegment,
-		NoAudio:           r.NoAudio,
-		NoEffects:         r.NoEffects,
-		NoTransitions:     r.NoTransitions,
-		MaxVideos:         r.MaxVideos,
-		Subfolder:         r.Subfolder,
-		FolderName:        r.FolderName,
-		DriveFolderID:     r.DriveFolderID,
-		FolderID:          r.FolderID,
-		Metadata:          metadata,
-		Async:             r.Async,
-		Persist:           r.Persist,
+		SearchQueries:                  queries,
+		DirectURLs:                     append([]string(nil), r.DirectURLs...),
+		DriveURLs:                      append([]string(nil), r.DriveURLs...),
+		Clips:                          append([]ClipSpec(nil), r.Clips...),
+		TotalMinutes:                   r.TotalMinutes,
+		TargetTotalDurationSeconds:     r.TargetTotalDurationSeconds,
+		TargetDurationPerSourceSeconds: r.TargetDurationPerSourceSeconds,
+		ClipsPerSource:                 r.ClipsPerSource,
+		ClipDurationSeconds:            r.ClipDurationSeconds,
+		DownloadMode:                   r.DownloadMode,
+		ChunkDuration:                  r.ChunkDuration,
+		ClipDuration:                   r.ClipDuration,
+		SecondsPerSegment:              r.SecondsPerSegment,
+		NoAudio:                        r.NoAudio,
+		NoEffects:                      r.NoEffects,
+		NoTransitions:                  r.NoTransitions,
+		MaxVideos:                      r.MaxVideos,
+		Subfolder:                      r.Subfolder,
+		FolderName:                     r.FolderName,
+		DriveFolderID:                  r.DriveFolderID,
+		FolderID:                       r.FolderID,
+		Metadata:                       metadata,
+		Async:                          r.Async,
+		Persist:                        r.Persist,
 	}, nil
 }
 
@@ -185,25 +230,30 @@ func (c *StockCommand) ToRunInput() *RunInput {
 		return nil
 	}
 	return &RunInput{
-		SearchQueries:     append([]string(nil), c.SearchQueries...),
-		DirectURLs:        append([]string(nil), c.DirectURLs...),
-		DriveURLs:         append([]string(nil), c.DriveURLs...),
-		Clips:             append([]ClipSpec(nil), c.Clips...),
-		TotalMinutes:      c.TotalMinutes,
-		ChunkDuration:     c.ChunkDuration,
-		ClipDuration:      c.ClipDuration,
-		SecondsPerSegment: c.SecondsPerSegment,
-		NoAudio:           c.NoAudio,
-		NoEffects:         c.NoEffects,
-		NoTransitions:     c.NoTransitions,
-		MaxVideos:         c.MaxVideos,
-		Subfolder:         c.Subfolder,
-		FolderName:        c.FolderName,
-		DriveFolderID:     c.DriveFolderID,
-		FolderID:          c.FolderID,
-		Metadata:          c.Metadata,
-		Progress:          c.Progress,
-		Persist:           c.Persist,
+		SearchQueries:                  append([]string(nil), c.SearchQueries...),
+		DirectURLs:                     append([]string(nil), c.DirectURLs...),
+		DriveURLs:                      append([]string(nil), c.DriveURLs...),
+		Clips:                          append([]ClipSpec(nil), c.Clips...),
+		TotalMinutes:                   c.TotalMinutes,
+		TargetTotalDurationSeconds:     c.TargetTotalDurationSeconds,
+		TargetDurationPerSourceSeconds: c.TargetDurationPerSourceSeconds,
+		ClipsPerSource:                 c.ClipsPerSource,
+		ClipDurationSeconds:            c.ClipDurationSeconds,
+		DownloadMode:                   c.DownloadMode,
+		ChunkDuration:                  c.ChunkDuration,
+		ClipDuration:                   c.ClipDuration,
+		SecondsPerSegment:              c.SecondsPerSegment,
+		NoAudio:                        c.NoAudio,
+		NoEffects:                      c.NoEffects,
+		NoTransitions:                  c.NoTransitions,
+		MaxVideos:                      c.MaxVideos,
+		Subfolder:                      c.Subfolder,
+		FolderName:                     c.FolderName,
+		DriveFolderID:                  c.DriveFolderID,
+		FolderID:                       c.FolderID,
+		Metadata:                       c.Metadata,
+		Progress:                       c.Progress,
+		Persist:                        c.Persist,
 	}
 }
 
@@ -251,6 +301,21 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 		payload["clips"] = clipsCopy
 	}
 	payload["total_minutes"] = c.TotalMinutes
+	if c.TargetTotalDurationSeconds != 0 {
+		payload["target_total_duration_seconds"] = c.TargetTotalDurationSeconds
+	}
+	if c.TargetDurationPerSourceSeconds != 0 {
+		payload["target_duration_per_source_seconds"] = c.TargetDurationPerSourceSeconds
+	}
+	if c.ClipsPerSource != 0 {
+		payload["clips_per_source"] = c.ClipsPerSource
+	}
+	if c.ClipDurationSeconds != 0 {
+		payload["clip_duration_seconds"] = c.ClipDurationSeconds
+	}
+	if c.DownloadMode != "" {
+		payload["download_mode"] = c.DownloadMode
+	}
 	if c.ChunkDuration != 0 {
 		payload["chunk_duration"] = c.ChunkDuration
 	}

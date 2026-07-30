@@ -12,18 +12,23 @@ import (
 
 // StockRunMetadata is the canonical per-run metadata.json envelope.
 type StockRunMetadata struct {
-	JobID          string               `json:"job_id"`
-	RunFingerprint string               `json:"run_fingerprint"`
-	WorkflowID     string               `json:"workflow_id"`
-	Subfolder      string               `json:"subfolder,omitempty"`
-	DirectURLs     []string             `json:"direct_urls,omitempty"`
-	SearchQueries  []string             `json:"search_queries,omitempty"`
-	TotalMinutes   int                  `json:"total_minutes"`
-	ChunkDuration  int                  `json:"chunk_duration"`
-	ClipDuration   int                  `json:"clip_duration"`
-	Chunks         []ChunkMetadataEntry `json:"chunks"`
-	CreatedAt      time.Time            `json:"created_at"`
-	PolicyVersion  string               `json:"policy_version"`
+	JobID                          string               `json:"job_id"`
+	RunFingerprint                 string               `json:"run_fingerprint"`
+	WorkflowID                     string               `json:"workflow_id"`
+	Subfolder                      string               `json:"subfolder,omitempty"`
+	DirectURLs                     []string             `json:"direct_urls,omitempty"`
+	SearchQueries                  []string             `json:"search_queries,omitempty"`
+	TotalMinutes                   int                  `json:"total_minutes"`
+	TargetTotalDurationSeconds     int                  `json:"target_total_duration_seconds,omitempty"`
+	TargetDurationPerSourceSeconds int                  `json:"target_duration_per_source_seconds,omitempty"`
+	ClipsPerSource                 int                  `json:"clips_per_source,omitempty"`
+	ClipDurationSeconds            int                  `json:"clip_duration_seconds,omitempty"`
+	DownloadMode                   string               `json:"download_mode,omitempty"`
+	ChunkDuration                  int                  `json:"chunk_duration"`
+	ClipDuration                   int                  `json:"clip_duration"`
+	Chunks                         []ChunkMetadataEntry `json:"chunks"`
+	CreatedAt                      time.Time            `json:"created_at"`
+	PolicyVersion                  string               `json:"policy_version"`
 
 	Category string   `json:"category,omitempty"`
 	Event    string   `json:"event,omitempty"`
@@ -95,21 +100,26 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 		})
 	}
 	return StockRunMetadata{
-		JobID:                    in.FolderID,
-		RunFingerprint:           runFingerprint,
-		WorkflowID:               in.FolderID,
-		Subfolder:                in.Subfolder,
-		DirectURLs:               append([]string(nil), in.DirectURLs...),
-		SearchQueries:            append([]string(nil), in.SearchQueries...),
-		TotalMinutes:             in.TotalMinutes,
-		ChunkDuration:            in.ChunkDuration,
-		ClipDuration:             in.ClipDuration,
-		Chunks:                   entries,
-		CreatedAt:                time.Now().UTC(),
-		PolicyVersion:            in.PolicyVersion,
-		IndexingStatus:           IndexingStatusPending,
-		TimestampDriveFolderLink: timestampFolderLink(chunks),
-		TimestampFolderID:        timestampFolderID(chunks),
+		JobID:                          in.FolderID,
+		RunFingerprint:                 runFingerprint,
+		WorkflowID:                     in.FolderID,
+		Subfolder:                      in.Subfolder,
+		DirectURLs:                     append([]string(nil), in.DirectURLs...),
+		SearchQueries:                  append([]string(nil), in.SearchQueries...),
+		TotalMinutes:                   in.TotalMinutes,
+		TargetTotalDurationSeconds:     in.TargetTotalDurationSeconds,
+		TargetDurationPerSourceSeconds: in.TargetDurationPerSourceSeconds,
+		ClipsPerSource:                 in.ClipsPerSource,
+		ClipDurationSeconds:            in.ClipDurationSeconds,
+		DownloadMode:                   in.DownloadMode,
+		ChunkDuration:                  in.ChunkDuration,
+		ClipDuration:                   in.ClipDuration,
+		Chunks:                         entries,
+		CreatedAt:                      time.Now().UTC(),
+		PolicyVersion:                  in.PolicyVersion,
+		IndexingStatus:                 IndexingStatusPending,
+		TimestampDriveFolderLink:       timestampFolderLink(chunks),
+		TimestampFolderID:              timestampFolderID(chunks),
 	}
 }
 

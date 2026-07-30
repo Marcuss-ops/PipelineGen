@@ -19,7 +19,16 @@ func (p *StockBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Pro
 	return ProcessorRequired
 }
 
-func (p *StockBindingsProcessor) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+	// Explicit segment payloads define the canonical scene cardinality for
+	// direct stock bindings. The LLM may legally return prose grouped into a
+	// different number of scenes; accepting that shape would make a valid
+	// binding for a later segment fail as "outside SpecScene". Normalize only
+	// this explicit contract, leaving model-emitted scenes untouched for all
+	// other jobs.
+	if plan != nil && len(plan.Segments) > 0 && len(input.StockBindings) > 0 {
+		input.SpecScene.Scenes = normalizeScenesForExplicitSegments(input.SpecScene.Scenes, plan.Segments)
+	}
 	stockEnabled := input.StockEnabled.AsBool() ||
 		(input.StockEnabled != scriptpkg.ToggleDisabled && len(input.StockBindings) > 0)
 	if !stockEnabled {
@@ -60,4 +69,40 @@ func (p *StockBindingsProcessor) Process(_ context.Context, _ *scriptpkg.Resolve
 		}
 	}
 	return &PostProcessResult{Changed: true, UpdatedSpecScene: input.SpecScene}, nil
+}
+
+// normalizeScenesForExplicitSegments creates the exact scene slots declared
+// by the caller. Existing generated scenes are retained by position; missing
+// slots are grounded in the caller-provided segment source text/topic. This
+// keeps direct stock bindings deterministic without inventing empty scenes.
+func normalizeScenesForExplicitSegments(existing []scriptpkg.SpecScene, segments []scriptpkg.ScriptSegment) []scriptpkg.SpecScene {
+	if len(segments) == 0 {
+		return existing
+	}
+	scenes := make([]scriptpkg.SpecScene, len(segments))
+	for i, segment := range segments {
+		if i < len(existing) {
+			scenes[i] = existing[i]
+		}
+		scenes[i].Index = i
+		// Explicit segments define the canonical scene slots. Re-key the
+		// retained model scenes by slot so stale/generated IDs cannot leave
+		// gaps (for example scene-0, scene-1, scene-3 for index 2).
+		scenes[i].ID = fmt.Sprintf("scene-%d", i)
+		if strings.TrimSpace(segment.ID) != "" {
+			scenes[i].SegmentID = segment.ID
+		} else if strings.TrimSpace(scenes[i].SegmentID) == "" {
+			scenes[i].SegmentID = fmt.Sprintf("segment-%d", i+1)
+		}
+		if strings.TrimSpace(scenes[i].Text) == "" {
+			scenes[i].Text = strings.TrimSpace(segment.SourceText)
+			if scenes[i].Text == "" {
+				scenes[i].Text = strings.TrimSpace(segment.Topic)
+			}
+		}
+		if !scenes[i].Kind.Valid() {
+			scenes[i].Kind = scriptpkg.SceneClip
+		}
+	}
+	return scenes
 }

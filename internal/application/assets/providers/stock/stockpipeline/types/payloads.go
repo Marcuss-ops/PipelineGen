@@ -3,23 +3,28 @@ package types
 // StockRunPayload is the job payload for media.stock jobs.
 // It was previously in the now-deleted internal/core/jobs/payloads.go (PR4).
 type StockRunPayload struct {
-	SearchQueries     []string                 `json:"search_queries"`
-	DirectURLs        []string                 `json:"direct_urls,omitempty"`
-	DriveURLs         []string                 `json:"drive_urls,omitempty"`
-	Clips             []ClipSpec               `json:"clips,omitempty"`
-	TotalMinutes      int                      `json:"total_minutes"`
-	ChunkDuration     int                      `json:"chunk_duration,omitempty"`
-	ClipDuration      int                      `json:"clip_duration,omitempty"`
-	SecondsPerSegment int                      `json:"seconds_per_segment,omitempty"`
-	NoAudio           bool                     `json:"no_audio,omitempty"`
-	NoEffects         bool                     `json:"no_effects,omitempty"`
-	NoTransitions     bool                     `json:"no_transitions,omitempty"`
-	MaxVideos         int                      `json:"max_videos,omitempty"`
-	Subfolder         string                   `json:"subfolder"`
-	FolderName        string                   `json:"folder_name"`
-	DriveFolderID     string                   `json:"drive_folder_id,omitempty"`
-	FolderID          string                   `json:"folder_id,omitempty"`
-	Metadata          *StockRunPayloadMetadata `json:"metadata,omitempty"`
+	SearchQueries                  []string                 `json:"search_queries"`
+	DirectURLs                     []string                 `json:"direct_urls,omitempty"`
+	DriveURLs                      []string                 `json:"drive_urls,omitempty"`
+	Clips                          []ClipSpec               `json:"clips,omitempty"`
+	TotalMinutes                   int                      `json:"total_minutes"`
+	TargetTotalDurationSeconds     int                      `json:"target_total_duration_seconds,omitempty"`
+	TargetDurationPerSourceSeconds int                      `json:"target_duration_per_source_seconds,omitempty"`
+	ClipsPerSource                 int                      `json:"clips_per_source,omitempty"`
+	ClipDurationSeconds            int                      `json:"clip_duration_seconds,omitempty"`
+	DownloadMode                   string                   `json:"download_mode,omitempty"`
+	ChunkDuration                  int                      `json:"chunk_duration,omitempty"`
+	ClipDuration                   int                      `json:"clip_duration,omitempty"`
+	SecondsPerSegment              int                      `json:"seconds_per_segment,omitempty"`
+	NoAudio                        bool                     `json:"no_audio,omitempty"`
+	NoEffects                      bool                     `json:"no_effects,omitempty"`
+	NoTransitions                  bool                     `json:"no_transitions,omitempty"`
+	MaxVideos                      int                      `json:"max_videos,omitempty"`
+	Subfolder                      string                   `json:"subfolder"`
+	FolderName                     string                   `json:"folder_name"`
+	DriveFolderID                  string                   `json:"drive_folder_id,omitempty"`
+	FolderID                       string                   `json:"folder_id,omitempty"`
+	Metadata                       *StockRunPayloadMetadata `json:"metadata,omitempty"`
 	// Async is the submitter's wire-shape audit trail: true means the
 	// operator asked for the jobs-broker path (canonical production);
 	// false means the operator asked for in-process sync. The

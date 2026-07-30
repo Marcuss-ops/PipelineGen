@@ -76,6 +76,9 @@ func FromAPIRequest(req *StockSearchAndRunRequest) (*StockCommand, error) {
 	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
 		return nil, fmt.Errorf("stock: clip_duration must be between 3 and 30 seconds (got %d)", req.ClipDuration)
 	}
+	if err := stockpipeline.ValidateDurationContract(req.TargetTotalDurationSeconds, req.TargetDurationPerSourceSeconds, req.ClipsPerSource, req.ClipDurationSeconds, req.DownloadMode); err != nil {
+		return nil, err
+	}
 	// Mutate-in-place via a local copy so we don't surprise callers
 	// who hold the request pointer post-binding.
 	cloned := *req

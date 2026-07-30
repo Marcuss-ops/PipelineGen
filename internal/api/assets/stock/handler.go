@@ -40,25 +40,30 @@ func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // runRequest is the JSON body for POST /api/stock-pipeline/run.
 type runRequest struct {
-	SearchQueries     []string                          `json:"search_queries"`
-	DirectURLs        []string                          `json:"direct_urls,omitempty"`
-	DriveURLs         []string                          `json:"drive_urls,omitempty"`
-	Clips             []stockpipeline.ClipSpec          `json:"clips,omitempty"`
-	TotalMinutes      int                               `json:"total_minutes"`
-	ChunkDuration     int                               `json:"chunk_duration,omitempty"`
-	ClipDuration      int                               `json:"clip_duration,omitempty"`
-	SecondsPerSegment int                               `json:"seconds_per_segment,omitempty"`
-	NoAudio           bool                              `json:"no_audio,omitempty"`
-	NoEffects         bool                              `json:"no_effects,omitempty"`
-	NoTransitions     bool                              `json:"no_transitions,omitempty"`
-	MaxVideos         int                               `json:"max_videos,omitempty"`
-	Subfolder         string                            `json:"subfolder"`
-	FolderName        string                            `json:"folder_name"`
-	DriveFolderID     string                            `json:"drive_folder_id,omitempty"`
-	FolderID          string                            `json:"folder_id,omitempty"`
-	Metadata          *stockpipeline.ChunkMetadataInput `json:"metadata,omitempty"`
-	Async             bool                              `json:"async,omitempty"`
-	Persist           bool                              `json:"persist,omitempty"`
+	SearchQueries                  []string                          `json:"search_queries"`
+	DirectURLs                     []string                          `json:"direct_urls,omitempty"`
+	DriveURLs                      []string                          `json:"drive_urls,omitempty"`
+	Clips                          []stockpipeline.ClipSpec          `json:"clips,omitempty"`
+	TotalMinutes                   int                               `json:"total_minutes"`
+	TargetTotalDurationSeconds     int                               `json:"target_total_duration_seconds,omitempty"`
+	TargetDurationPerSourceSeconds int                               `json:"target_duration_per_source_seconds,omitempty"`
+	ClipsPerSource                 int                               `json:"clips_per_source,omitempty"`
+	ClipDurationSeconds            int                               `json:"clip_duration_seconds,omitempty"`
+	DownloadMode                   string                            `json:"download_mode,omitempty"`
+	ChunkDuration                  int                               `json:"chunk_duration,omitempty"`
+	ClipDuration                   int                               `json:"clip_duration,omitempty"`
+	SecondsPerSegment              int                               `json:"seconds_per_segment,omitempty"`
+	NoAudio                        bool                              `json:"no_audio,omitempty"`
+	NoEffects                      bool                              `json:"no_effects,omitempty"`
+	NoTransitions                  bool                              `json:"no_transitions,omitempty"`
+	MaxVideos                      int                               `json:"max_videos,omitempty"`
+	Subfolder                      string                            `json:"subfolder"`
+	FolderName                     string                            `json:"folder_name"`
+	DriveFolderID                  string                            `json:"drive_folder_id,omitempty"`
+	FolderID                       string                            `json:"folder_id,omitempty"`
+	Metadata                       *stockpipeline.ChunkMetadataInput `json:"metadata,omitempty"`
+	Async                          bool                              `json:"async,omitempty"`
+	Persist                        bool                              `json:"persist,omitempty"`
 }
 
 // runResponse is the JSON response for POST /api/stock-pipeline/run.
@@ -262,30 +267,39 @@ func (h *StockHandler) Run(c *gin.Context) {
 		})
 		return
 	}
+	if err := stockpipeline.ValidateDurationContract(req.TargetTotalDurationSeconds, req.TargetDurationPerSourceSeconds, req.ClipsPerSource, req.ClipDurationSeconds, req.DownloadMode); err != nil {
+		c.JSON(http.StatusBadRequest, runResponse{Status: StatusError, Error: err.Error(), ErrorCode: ErrCodeInvalidPayload})
+		return
+	}
 	if req.TotalMinutes <= 0 {
 		req.TotalMinutes = 5
 	}
 
 	cmd := &stockpipeline.StockCommand{
-		SearchQueries:     req.SearchQueries,
-		DirectURLs:        req.DirectURLs,
-		DriveURLs:         req.DriveURLs,
-		Clips:             req.Clips,
-		TotalMinutes:      req.TotalMinutes,
-		ChunkDuration:     req.ChunkDuration,
-		ClipDuration:      req.ClipDuration,
-		SecondsPerSegment: req.SecondsPerSegment,
-		NoAudio:           req.NoAudio,
-		NoEffects:         req.NoEffects,
-		NoTransitions:     req.NoTransitions,
-		MaxVideos:         req.MaxVideos,
-		Subfolder:         req.Subfolder,
-		FolderName:        req.FolderName,
-		DriveFolderID:     req.DriveFolderID,
-		FolderID:          req.FolderID,
-		Metadata:          req.Metadata,
-		Async:             req.Async,
-		Persist:           req.Persist,
+		SearchQueries:                  req.SearchQueries,
+		DirectURLs:                     req.DirectURLs,
+		DriveURLs:                      req.DriveURLs,
+		Clips:                          req.Clips,
+		TotalMinutes:                   req.TotalMinutes,
+		TargetTotalDurationSeconds:     req.TargetTotalDurationSeconds,
+		TargetDurationPerSourceSeconds: req.TargetDurationPerSourceSeconds,
+		ClipsPerSource:                 req.ClipsPerSource,
+		ClipDurationSeconds:            req.ClipDurationSeconds,
+		DownloadMode:                   req.DownloadMode,
+		ChunkDuration:                  req.ChunkDuration,
+		ClipDuration:                   req.ClipDuration,
+		SecondsPerSegment:              req.SecondsPerSegment,
+		NoAudio:                        req.NoAudio,
+		NoEffects:                      req.NoEffects,
+		NoTransitions:                  req.NoTransitions,
+		MaxVideos:                      req.MaxVideos,
+		Subfolder:                      req.Subfolder,
+		FolderName:                     req.FolderName,
+		DriveFolderID:                  req.DriveFolderID,
+		FolderID:                       req.FolderID,
+		Metadata:                       req.Metadata,
+		Async:                          req.Async,
+		Persist:                        req.Persist,
 	}
 
 	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, req.Async)

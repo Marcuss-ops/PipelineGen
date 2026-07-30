@@ -24,7 +24,6 @@ package types
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/url"
@@ -127,6 +126,9 @@ type ClipPlan struct {
 	// VideoID). Carried through the pipeline so retries can
 	// re-fetch without re-planning.
 	SourceID string
+	// StageKey identifies the section-local staged file when the run uses
+	// sections_only. Empty means the whole source is staged once.
+	StageKey string
 
 	// SourceProvider is the canonical provider bucket for
 	// SourceID — inference happens at plan-build time so all
@@ -275,40 +277,29 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 		}, nil
 	}
 
-	sliceSec := (budgetSec - clipDur) / count
+	// The output budget is not the source-video duration. When the source
+	// duration is known, distribute the windows across that source. Direct
+	// URL runs may not have metadata yet, so use a conservative deterministic
+	// sampling horizon; extraction still fails closed if the source is shorter
+	// than the planned end offsets.
+	horizonSec := int(src.DurationSec)
+	if horizonSec < budgetSec {
+		horizonSec = budgetSec
+	}
+	if src.DurationSec <= 0 {
+		horizonSec = budgetSec * 10
+	}
+	maxStart := horizonSec - clipDur
 	out := make([]ClipPlan, 0, count)
 	for i := 0; i < count; i++ {
-		// SHA-256-mod-sliceSec gives a stable permutation. Note:
-		// sliceSec collapses to 0 when budget == N*clipDur; the hash
-		// fallback to 0 in that case produces overlapping copies,
-		// which we accept as degenerate (the budget is already
-		// exactly N clips back-to-back — there is no "shuffle" room).
-		start := deterministicStart(src.URL, i, sliceSec)
-		end := start + float64(clipDur)
-		if end > float64(budgetSec) {
-			end = float64(budgetSec)
+		start := float64(0)
+		if count > 1 && maxStart > 0 {
+			start = float64(i * maxStart / (count - 1))
 		}
+		end := start + float64(clipDur)
 		out = append(out, buildClipPlan(src, start, end, i, policyVer))
 	}
 	return out, nil
-}
-
-// deterministicStart returns a stable offset in [0, sliceSec)
-// derived from SHA-256(URL + ":" + idx).
-//
-// Replace-only path: the legacy rng-based picked random offsets
-// inside a loop that capped at 20 attempts. That non-replayable
-// behaviour is replaced by this hash-derived stable permutation so
-// the plan can be persisted + replayed (and so retries don't
-// produce visually-identical-offset clips mismatched with their
-// logical IDs across runs).
-func deterministicStart(url string, idx int, sliceSec int) float64 {
-	if sliceSec <= 0 {
-		return 0
-	}
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d", url, idx)))
-	n := binary.BigEndian.Uint32(h[:4])
-	return float64(int(n) % sliceSec)
 }
 
 // buildClipPlan mints a ClipPlan with the deterministic OutputLogicalID.

@@ -330,7 +330,9 @@ func (s *Service) stagerForRun() assets.SourceStager {
 	// (the canonical yt-dlp-backed download path) and satisfies
 	// assets.SourceStager via the compile-time assertion at
 	// stager_adapter.go:18.
-	stockStager := NewStockStager(s).WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter)
+	stockStager := NewStockStager(s).
+		WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter).
+		WithDownloader(serviceSourceDownloader{service: s})
 	if s.driveReader != nil {
 		stockStager = stockStager.WithDriveReader(s.driveReader)
 	}

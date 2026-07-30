@@ -76,10 +76,14 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 		}
 	}
 
-	// Group ClipPlan by SourceID.
-	grouped := groupPlans(plans)
-
 	in := runner.RunInput()
+	// In sections_only mode each plan has its own staged file. The original
+	// source URL remains on the plan for provenance; StageKey selects the
+	// section-local file used by the cutter.
+	grouped := groupPlans(plans)
+	if in != nil && in.DownloadMode == "sections_only" {
+		grouped = groupPlansByStageKey(plans)
+	}
 	noAudio := in != nil && in.NoAudio
 	batchID := runner.JobID()
 	rootFolderName := stockRootFolderName(in)
@@ -93,6 +97,8 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	var publishedChunks []ChunkState
 	groupBuckets := make(map[string]*timestampGroupBuffer)
 	segmentCounts := make(map[string]int)
+	contractCounts := make(map[string]int)
+	contractDurations := make(map[string]float64)
 	sourceIdx := 0
 	batchEnsured := false
 
@@ -108,28 +114,51 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 			continue
 		}
 		sourcePath := staged.LocalPath
+		// In sections_only mode sourceID is the section-local staging key.
+		// Durable batch/artifact identity must remain tied to the original
+		// source URL, otherwise extraction creates rows under the staging key
+		// and publication looks them up under the source URL.
+		durableSourceID := durableSourceIDForGroup(sourceID, groupPlans)
 
 		// Fase 2 durable state: batch/group/artifact rows.
-		batchEnsured = prepareBatchState(ctx, runner, sourceID, groupPlans, len(grouped), len(plans), batchID, batchEnsured)
+		batchEnsured = prepareBatchState(ctx, runner, durableSourceID, groupPlans, len(grouped), len(plans), batchID, batchEnsured)
 
 		// Pre-cut duration validation.
-		sourceDuration, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, groupPlans)
+		cutPlans := groupPlans
+		if in != nil && in.DownloadMode == "sections_only" {
+			cutPlans = make([]ClipPlan, len(groupPlans))
+			copy(cutPlans, groupPlans)
+			for i := range cutPlans {
+				d := cutPlans[i].EndSec - cutPlans[i].StartSec
+				cutPlans[i].StartSec = 0
+				cutPlans[i].EndSec = d
+			}
+		}
+		sourceDuration, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, cutPlans)
 		if validationErr != nil {
 			return validationErr
 		}
 
 		// Mark artifacts as extracting.
-		markArtifactsExtracting(ctx, runner, batchID, sourceID, groupPlans)
+		markArtifactsExtracting(ctx, runner, batchID, durableSourceID, groupPlans)
 
 		// Execute cuts.
-		result, cutErr := executeCuts(ctx, runner, sourceID, sourcePath, sourceDuration, groupPlans, sourceIdx, noAudio)
+		result, cutErr := executeCuts(ctx, runner, sourceID, sourcePath, sourceDuration, cutPlans, sourceIdx, noAudio)
 		successful := result.SuccessfulItems()
 		if cutErr != nil && len(successful) == 0 {
 			return fmt.Errorf("orchestrator: stock.extract_clips: executeCuts failed for source %s: %w", sourceID, cutErr)
 		}
+		if in != nil && in.ClipsPerSource > 0 {
+			for i, plan := range groupPlans {
+				if i < len(result.Items) && result.Items[i].Status != CutItemStatusFailed {
+					contractCounts[plan.SourceID]++
+					contractDurations[plan.SourceID] += result.Items[i].DurationSec
+				}
+			}
+		}
 
 		// Publish cuts (hash, asset write, Drive upload).
-		sourceCutPaths, sourceChunks, pubErr := publishCuts(ctx, runner, sourceID, sourceIdx, groupPlans,
+		sourceCutPaths, sourceChunks, pubErr := publishCuts(ctx, runner, durableSourceID, sourceIdx, groupPlans,
 			result, segmentCounts, groupBuckets, rootFolderName, rootFolderOverride, timestampGroupName, in, batchID)
 		if pubErr != nil {
 			return pubErr
@@ -144,6 +173,15 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 				zap.Int("produced", len(sourceCutPaths)))
 		}
 		sourceIdx++
+	}
+	if in != nil && in.ClipsPerSource > 0 {
+		for source := range uniquePlanSources(plans) {
+			count := contractCounts[source]
+			duration := contractDurations[source]
+			if count != in.ClipsPerSource || duration < float64(in.TargetDurationPerSourceSeconds-3) || duration > float64(in.TargetDurationPerSourceSeconds+3) {
+				return fmt.Errorf("orchestrator: stock.extract_clips: source %q violates produced duration contract: clips=%d duration=%.3fs", source, count, duration)
+			}
+		}
 	}
 
 	// Publish group metadata.
@@ -167,6 +205,27 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 			zap.Int("sources_processed", sourceIdx))
 	}
 	return nil
+}
+
+// durableSourceIDForGroup keeps SQLite identity on the original source while
+// allowing sections_only to use one local staging key per clip.
+func durableSourceIDForGroup(stageKey string, plans []ClipPlan) string {
+	if len(plans) > 0 && plans[0].SourceID != "" {
+		return plans[0].SourceID
+	}
+	return stageKey
+}
+
+func groupPlansByStageKey(plans []ClipPlan) map[string][]ClipPlan {
+	grouped := make(map[string][]ClipPlan)
+	for _, plan := range plans {
+		key := plan.StageKey
+		if key == "" {
+			key = plan.SourceID
+		}
+		grouped[key] = append(grouped[key], plan)
+	}
+	return grouped
 }
 
 // groupPlans groups ClipPlan entries by SourceID.
