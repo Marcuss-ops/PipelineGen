@@ -145,6 +145,28 @@ func (r *Resolver) downloadViaScraper(ctx context.Context, req artapp.DownloadRe
 		return fmt.Errorf("scraper returned empty local_path")
 	}
 
+	// Strict path-traversal guard (P0-1 fix): the scraper advertises a
+	// local filesystem path that we then rename/copy into outPath. We
+	// MUST verify that result.LocalPath lives inside the configured
+	// scraper output directory (req.DestinationID). Anything outside
+	// is rejected as ErrInvalidResponse so a malicious or buggy
+	// scraper response cannot redirect our copy into a privileged file.
+	//
+	//  - filepath.IsAbs: defend against relative responses that
+	//    filepath.Clean would interpret relative to our CWD.
+	//  - filepath.Rel: clean -> relative-path member test. Windows
+	//    different-drive relErr is also caught. rel == ".." catches
+	//    the exact-parent edge case.
+	cleanRoot := filepath.Clean(req.DestinationID)
+	cleanCand := filepath.Clean(result.LocalPath)
+	if !filepath.IsAbs(cleanCand) {
+		return fmt.Errorf("%w: scraper returned non-absolute local_path %q (must be absolute under output_dir %q)", artapp.ErrInvalidResponse, result.LocalPath, cleanRoot)
+	}
+	rel, relErr := filepath.Rel(cleanRoot, cleanCand)
+	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%w: scraper returned local_path %q outside of configured output directory %q", artapp.ErrInvalidResponse, result.LocalPath, cleanRoot)
+	}
+
 	// The scraper saves to its own output path. Move/copy to our outPath.
 	if result.LocalPath != outPath {
 		if renameErr := os.Rename(result.LocalPath, outPath); renameErr != nil {
@@ -167,25 +189,39 @@ func (r *Resolver) downloadViaScraper(ctx context.Context, req artapp.DownloadRe
 
 // copyFile copies src to dst. Used as a fallback when os.Rename fails
 // (cross-device move on some filesystems).
-func copyFile(src, dst string) error {
-	s, err := os.Open(src)
+//
+// Uses a NAMED return value (retErr) so the deferred Close-capture can
+// surface write/flush errors that otherwise appear only at Close time on
+// buffered filesystems. The pre-fix signature used a plain `err`
+// parameter; the deferred `err = cerr` mutated the local AFTER the
+// naked return had already copied the value, silently dropping the
+// Close error (P0-1 bug; see REPORT_ARCH.md verdict).
+//
+// On any failure path the partial destination is unlinked so callers
+// never observe a half-written file masquerading as a real download
+// (no-fake-availability contract).
+func copyFile(src, dst string) (retErr error) {
+	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer srcFile.Close()
 
-	d, err := os.Create(dst)
+	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	// Capture the Close error — a write failure on buffered filesystems
-	// can surface only on Close, not on Write.
+	// LIFO order: dstFile closes FIRST (writes/flush errors take
+	// priority), then srcFile closes best-effort.
 	defer func() {
-		if cerr := d.Close(); cerr != nil && err == nil {
-			err = cerr
+		if closeErr := dstFile.Close(); closeErr != nil && retErr == nil {
+			retErr = closeErr
+		}
+		if retErr != nil {
+			_ = os.Remove(dst)
 		}
 	}()
 
-	_, err = io.Copy(d, s)
-	return err
+	_, retErr = io.Copy(dstFile, srcFile)
+	return retErr
 }
