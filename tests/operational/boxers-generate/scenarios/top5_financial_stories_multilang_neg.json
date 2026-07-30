@@ -1,0 +1,1315 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "top5-neg-boxers-it",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [IT]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-en",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [EN]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "en",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "en"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-es",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [ES]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "es",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "es"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-pt",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [PT]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "pt",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "pt"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-fr",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [FR]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "fr",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "fr"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-de",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [DE]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "de",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "de"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-nl",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [NL]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "nl",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "nl"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-pl",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [PL]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "pl",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "pl"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-ro",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [RO]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "ro",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "ro"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    },
+    {
+      "id": "top5-neg-boxers-tr",
+      "title": "[NEG] Cinque campioni tra ricchezza, difficolt\u00e0 e cadute finanziarie [TR]",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili che hanno affrontato difficolt\u00e0 economiche",
+        "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
+      },
+      "script_params": {
+        "target_words": 750,
+        "skip_quality_gate": true,
+        "use_memory": true,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 150,
+            "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 150,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficolt\u00e0 economiche, problemi professionali e interpretazioni editoriali."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 150,
+            "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povert\u00e0 nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorit\u00e0 filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 150,
+            "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 150,
+            "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "boxer-mike-tyson",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight (WRONG: should be Tyson)",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "boxer-muhammad-ali",
+            "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+            "name": "Muhammad Ali fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "boxer-manny-pacquiao",
+            "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+            "name": "Manny Pacquiao fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "boxer-floyd-mayweather",
+            "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+            "name": "Floyd Mayweather fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "boxer-sugar-ray-robinson",
+            "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+            "name": "Sugar Ray Robinson fight",
+            "source": "youtube",
+            "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "save_to_db": true,
+        "translate_to": "tr",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "tr"
+        ],
+        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    }
+  ]
+}
