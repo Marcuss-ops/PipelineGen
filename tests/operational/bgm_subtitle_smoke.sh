@@ -62,8 +62,36 @@ SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-300}"
 SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-180}"
 SMOKE_POLL_INTERVAL_SECONDS="${SMOKE_POLL_INTERVAL_SECONDS:-3}"
 
+# ── Strip smoke-test-specific flags BEFORE sourcing common.sh ──
+# common.sh processes $@ at source time and rejects unknown flags.
+# We save our custom flags, strip them from $@, source common.sh,
+# then process them after.
+SAVED_DRAIN_OTHERS=0
+SAVED_WORKER_ID=""
+NEW_ARGS=()
+prev_arg=""
+for arg in "$@"; do
+    case "$arg" in
+        --drain-others) SAVED_DRAIN_OTHERS=1 ;;
+        --worker-id=*)  SAVED_WORKER_ID="${arg#*=}" ;;
+        --worker-id)    SAVED_WORKER_ID_ARG=1 ;; # next-arg pattern — handled below
+        *)  if [[ "${prev_arg:-}" == "--worker-id" ]]; then
+                SAVED_WORKER_ID="$arg"
+            else
+                NEW_ARGS+=("$arg")
+            fi ;;
+    esac
+    prev_arg="$arg"
+done
+# Rebuild $@ with only common.sh-compatible flags.
+set -- "${NEW_ARGS[@]}"
+
 # shellcheck disable=SC1091
 source "$DIR/lib/common.sh"
+
+# Restore saved flags so the rest of the script can use them.
+DRAIN_OTHERS="$SAVED_DRAIN_OTHERS"
+TARGET_WORKER_ID="$SAVED_WORKER_ID"
 
 # Project-specific binaries
 smoke_require sqlite3
@@ -75,24 +103,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0
 fi
 
-# ── CLI flags ─────────────────────────────────────────────────────
-DRAIN_OTHERS=0
-TARGET_WORKER_ID=""
-for arg in "$@"; do
-    case "$arg" in
-        --drain-others) DRAIN_OTHERS=1 ;;
-        --worker-id=*)  TARGET_WORKER_ID="${arg#*=}" ;;
-        --worker-id)    ;; # next-arg pattern — handled below
-        -h|--help)      ;; # already handled
-        --dry)          ;; # handled by common.sh
-        *)  if [[ "${prev:-}" == "--worker-id" ]]; then
-                TARGET_WORKER_ID="$arg"
-            fi ;;
-    esac
-    prev="$arg"
-done
 # Validate --worker-id was not orphaned (bare flag without value as last arg).
-if [[ "${prev:-}" == "--worker-id" && -z "$TARGET_WORKER_ID" ]]; then
+if [[ "${SAVED_WORKER_ID_ARG:-0}" == "1" && -z "$TARGET_WORKER_ID" ]]; then
     printf '%ssetup error: --worker-id requires a value (e.g. --worker-id=velox-worker-13197)%s\n' \
         "$RED" "$RESET" >&2
     exit 2
