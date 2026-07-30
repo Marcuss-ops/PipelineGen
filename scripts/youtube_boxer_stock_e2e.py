@@ -24,6 +24,23 @@ from pathlib import Path
 from typing import Any
 
 TERMINAL = {"SUCCEEDED", "COMPLETED", "FAILED", "CANCELLED", "DEAD_LETTERED"}
+
+# ── Contract constants (July 2026) ──────────────────────────────────────
+# Every boxer MUST produce exactly 20 minutes of stock, never more, never
+# less.  PER-SOURCE gates are as important as the global totals, because a
+# single misconfigured source that downloads the full video would silently
+# inflate the aggregate while the per-source tolerance catches it.
+TARGET_VIDEOS = 20
+TARGET_CLIPS_PER_VIDEO = 15
+CLIP_DURATION_SECONDS = 4
+TARGET_SECONDS_PER_SOURCE = 60          # TARGET_CLIPS_PER_VIDEO × CLIP_DURATION_SECONDS
+TARGET_TOTAL_SECONDS = 1_200            # TARGET_VIDEOS × TARGET_SECONDS_PER_SOURCE
+TARGET_TOTAL_MS = TARGET_VIDEOS * TARGET_SECONDS_PER_SOURCE * 1000
+PER_SOURCE_MIN_MS = 57_000              # ─2×CLIP_DURATION_SECONDS tolerance
+PER_SOURCE_MAX_MS = 63_000
+CLIP_DURATION_MIN_SEC = 3.8             # ffprobe tolerance
+CLIP_DURATION_MAX_SEC = 4.2
+
 QUERIES = {
     "fight": ("{name} fights", "{name} knockout", "{name} highlights", "{name} boxing fight"),
     "interview": ("{name} interview", "{name} press conference", "{name} documentary interview"),
@@ -182,7 +199,7 @@ def segments(video: dict[str, Any]) -> list[dict[str, Any]]:
              "source_channel": video.get("channel", ""),
              "category": video["category"],
              "description": f"{video['category']} scene featuring {video.get('title') or video['video_id']}"}
-            for i in range(15)
+            for i in range(TARGET_CLIPS_PER_VIDEO)
             for start, end in [(8 + i * step, 12 + i * step)]]
 
 
@@ -280,10 +297,21 @@ def verify(db: Path, folder_id: str, boxer: str) -> None:
         per_source = conn.execute("SELECT source_video_id, COUNT(*) FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?) GROUP BY source_video_id", (folder_id, boxer)).fetchall()
         paths = [r[0] for r in conn.execute("SELECT local_path FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)", (folder_id, boxer))]
     count, videos, duration, hashes, missing_drive, incomplete = row
-    if (count, videos, duration, hashes, missing_drive, incomplete) != (300, 20, 1_200_000, 300, 0, 0):
+    if (count, videos, duration, hashes, missing_drive, incomplete) != (TARGET_VIDEOS * TARGET_CLIPS_PER_VIDEO, TARGET_VIDEOS, TARGET_TOTAL_MS, TARGET_VIDEOS * TARGET_CLIPS_PER_VIDEO, 0, 0):
         raise RuntimeError(f"SQLite gate failed: clips={count}, videos={videos}, duration_ms={duration}, hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}")
-    if any(n > 15 for _, n in per_source):
+    if any(n > TARGET_CLIPS_PER_VIDEO for _, n in per_source):
         raise RuntimeError("more than 15 clips found for a source video")
+    # ── Per-source duration gate ────────────────────────────────────────
+    per_dur = conn.execute("""
+      SELECT source_video_id, COUNT(*) AS clip_count, SUM(duration_ms) AS total_duration_ms
+      FROM media_assets
+      WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)
+      GROUP BY source_video_id
+      HAVING COUNT(*) != ? OR SUM(duration_ms) < ? OR SUM(duration_ms) > ?
+    """, (folder_id, boxer, TARGET_CLIPS_PER_VIDEO, PER_SOURCE_MIN_MS, PER_SOURCE_MAX_MS)).fetchall()
+    if per_dur:
+        offenders = [f"{r[0]} clips={r[1]} dur_ms={r[2]}" for r in per_dur]
+        raise RuntimeError(f"per-source duration gate failed ({len(offenders)} sources): {'; '.join(offenders[:5])}")
     bad_files = []
     for path in paths:
         clip = Path(path)
@@ -295,7 +323,7 @@ def verify(db: Path, folder_id: str, boxer: str) -> None:
             duration_sec = float(probe.stdout.strip())
         except ValueError:
             duration_sec = 0
-        if probe.returncode != 0 or not 3.8 <= duration_sec <= 4.2:
+        if probe.returncode != 0 or not CLIP_DURATION_MIN_SEC <= duration_sec <= CLIP_DURATION_MAX_SEC:
             bad_files.append(f"duration:{path}:{duration_sec:.3f}")
     if bad_files:
         raise RuntimeError(f"physical clip gate failed ({len(bad_files)} files): {bad_files[:3]}")
