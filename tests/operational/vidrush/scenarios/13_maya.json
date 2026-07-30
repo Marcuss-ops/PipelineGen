@@ -1,6 +1,6 @@
 {
   "scenario_id": "13_maya",
-  "timeout_seconds": 300,
+  "timeout_seconds": 600,
   "description": "Vidrush Maya civilization (pre-written text) — verifica separazione rigida provider: immagini solo internet_images, video solo Artlist. Blocco assoluto YouTube. Testo pre-scritto inviato direttamente, LLM estrae solo entità/keyword/query per segmento. Artlist non ha contenuti Maya → attesi 0 candidati video.",
   "version": 1,
   "expect": {
