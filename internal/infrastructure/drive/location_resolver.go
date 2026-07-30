@@ -171,6 +171,6 @@ func (a *AssetLocationResolverAdapter) Verify(
 // Compile-time pins: AssetLocationResolverAdapter satisfies both
 // AssetLocationResolver and AssetLocationVerifier.
 var (
-	_ scriptpkg.AssetLocationResolver  = (*AssetLocationResolverAdapter)(nil)
+	_ scriptpkg.AssetLocationResolver = (*AssetLocationResolverAdapter)(nil)
 	_ scriptpkg.AssetLocationVerifier = (*AssetLocationResolverAdapter)(nil)
 )
