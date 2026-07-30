@@ -310,8 +310,8 @@ if dispatch_and_poll "maya-01-cold" "$PAYLOAD_01" "${CASE_PREFIX}-01-key" "RESUL
     fi
 
     # Queries are segment-specific, not shared globally
-    unique_image_queries=$(jq -s 'map(.insights.image_queries) | flatten | unique | length' <<<"$result")
-    total_image_queries=$(jq -s 'map(.insights.image_queries) | flatten | length' <<<"$result")
+    unique_image_queries=$(jq '[.segments[].insights.image_queries] | flatten | unique | length' <<<"$result")
+    total_image_queries=$(jq '[.segments[].insights.image_queries] | flatten | length' <<<"$result")
     if [[ "$unique_image_queries" -ge "$seg_count" ]]; then
         pass "Image queries are segment-specific: ${unique_image_queries} unique across ${seg_count} segments"
     else
@@ -324,6 +324,8 @@ if dispatch_and_poll "maya-01-cold" "$PAYLOAD_01" "${CASE_PREFIX}-01-key" "RESUL
 else
     fail "MY-VIDRUSH-01 dispatch/poll failed"
     FIRST_RESULT_FILE=""
+    FIRST_SEGMENT_IDS="[]"
+    FIRST_TEXT_HASHES="[]"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
