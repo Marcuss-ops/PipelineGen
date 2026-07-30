@@ -295,7 +295,7 @@ smoke_poll_terminal() {
         # SMOKE_LAST_BODY/SMOKE_LAST_HTTP as side-effects; inside a subshell
         # those exports are lost and subsequent jq reads fail with
         # "No such file or directory".
-        smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
+        smoke_curl GET "/api/v1/jobs/${job_id}" >/dev/null
         if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
             return 1
         fi

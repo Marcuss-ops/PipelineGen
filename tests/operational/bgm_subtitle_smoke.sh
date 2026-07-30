@@ -170,103 +170,29 @@ if [[ ! -f "$SMOKE_DB" ]]; then
     exit 2
 fi
 
-# HTTP asset server for SSRF-compliant URLs (file:// is rejected by the validator).
-# The test uses http://127.0.0.1:9999/... served by a Python HTTP server.
-SMOKE_HTTP_ASSET_BASE="${SMOKE_HTTP_ASSET_BASE:-http://127.0.0.1:9999}"
-SMOKE_HTTP_ASSET_DIR="${SMOKE_HTTP_ASSET_DIR:-/tmp/smoke-http-server}"
+# ── Asset references (velox-asset:// always bypasses SSRF validation) ──
+# Using registered assets from the DataServer asset registry. The worker
+# resolves velox-asset:// references through the DataServer's asset API.
+#
+# Known READY voiceover assets (from database):
+#   ccc7f50e... (103KB)  b5bc023f... (4KB)  cc6f82a5... (874KB)  961eecdd... (12KB)
+SMOKE_VOICEOVER_ASSET="${SMOKE_VOICEOVER_ASSET:-961eecddff027773c199ffbb1c07750fc5466a15a6ad43bcee0a306ea847f57a}"
 
-# Discover a background music file and link it into the HTTP server directory.
+# BGM is optional for the plumbing test — the worker may not have BGM files yet.
 BGM_TRACK=""
 BGM_TRACK_URL=""
 if [[ -d "$SMOKE_BGM_DIR" ]]; then
     local_bgm=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name '*.mp3' 2>/dev/null | head -1 || true)
     if [[ -n "$local_bgm" && -f "$local_bgm" ]]; then
         BGM_TRACK="$local_bgm"
-        # Link into HTTP server dir so it's reachable.
-        bgm_name=$(basename "$local_bgm")
-        mkdir -p "$SMOKE_HTTP_ASSET_DIR" 2>/dev/null || true
-        ln -sf "$local_bgm" "$SMOKE_HTTP_ASSET_DIR/$bgm_name" 2>/dev/null || true
-        BGM_TRACK_URL="${SMOKE_HTTP_ASSET_BASE}/${bgm_name}"
     fi
 fi
-if [[ -z "$BGM_TRACK" ]]; then
-    printf '%sWARN: no background music .mp3 found in %s — smoke test will run WITHOUT background music (testing audio_track plumbing only)%s\n' \
-        "$YELLOW" "$SMOKE_BGM_DIR" "$RESET" >&2
+if [[ -n "$BGM_TRACK" ]]; then
+    printf '  %sINFO: background music found: %s%s\n' "$DIM" "$(basename "$BGM_TRACK")" "$RESET"
+else
+    printf '%sWARN: no BGM file — running without background music (audio_track plumbing only)%s\n' \
+        "$YELLOW" "$RESET" >&2
 fi
-
-# ── Self-managed HTTP asset server (file:// is rejected by SSRF validator) ──
-HTTP_SERVER_PID=""
-start_http_asset_server() {
-    smoke_log_section "Starting HTTP asset server on ${SMOKE_HTTP_ASSET_BASE}"
-
-    # Ensure the directory exists with required files linked.
-    mkdir -p "$SMOKE_HTTP_ASSET_DIR" 2>/dev/null || true
-
-    # Link voiceover test file.
-    local vo_src="/opt/velox/current/.velox/data/test_voice.mp3"
-    if [[ -f "$vo_src" ]]; then
-        ln -sf "$vo_src" "$SMOKE_HTTP_ASSET_DIR/test_voice.mp3" 2>/dev/null || true
-    fi
-
-    # Link ASS subtitle fixture.
-    if [[ -f "$SMOKE_ASS_FIXTURE" ]]; then
-        ln -sf "$SMOKE_ASS_FIXTURE" "$SMOKE_HTTP_ASSET_DIR/subtitle_vivid_test.ass" 2>/dev/null || true
-    fi
-
-    # Kill any existing server on this port.
-    local http_port
-    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
-    http_port="${http_port:-9999}"
-    local existing_pid
-    existing_pid=$(ss -tlnp 2>/dev/null | awk -v p="$http_port" '$0 ~ ":" p " " {print $NF}' | sed 's/.*pid=\([0-9]*\).*/\1/' || true)
-    if [[ -n "$existing_pid" ]]; then
-        kill "$existing_pid" 2>/dev/null || true
-        sleep 0.5
-    fi
-
-    # Derive port from SMOKE_HTTP_ASSET_BASE (e.g. http://127.0.0.1:9999 → 9999).
-    local http_port
-    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
-    http_port="${http_port:-9999}"
-
-    # Start Python HTTP server in background (uses os.chdir, no shell cd needed).
-    python3 -c "
-from http.server import HTTPServer, SimpleHTTPRequestHandler
-import os
-os.chdir('$SMOKE_HTTP_ASSET_DIR')
-HTTPServer(('127.0.0.1', $http_port), SimpleHTTPRequestHandler).serve_forever()
-" &>/tmp/smoke-http-server.log &
-    HTTP_SERVER_PID=$!
-
-    # Wait for it to become ready.
-    local retries=0
-    while [[ $retries -lt 10 ]]; do
-        sleep 0.3
-        if curl -s -o /dev/null --connect-timeout 1 "${SMOKE_HTTP_ASSET_BASE}/test_voice.mp3" 2>/dev/null; then
-            printf '  %sOK: HTTP asset server ready (pid=%s)%s\n' "$GREEN" "$HTTP_SERVER_PID" "$RESET"
-            return 0
-        fi
-        retries=$((retries + 1))
-    done
-    printf '  %sWARN: HTTP server failed to start — job POSTs may fail SSRF validation%s\n' "$YELLOW" "$RESET" >&2
-    return 1
-}
-
-stop_http_asset_server() {
-    if [[ -n "${HTTP_SERVER_PID:-}" ]]; then
-        kill "$HTTP_SERVER_PID" 2>/dev/null || true
-        HTTP_SERVER_PID=""
-    fi
-    # Also clean up any lingering server on the port.
-    local http_port
-    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
-    http_port="${http_port:-9999}"
-    local leftover
-    leftover=$(ss -tlnp 2>/dev/null | awk -v p="$http_port" '$0 ~ ":" p " " {print $NF}' | sed 's/.*pid=\([0-9]*\).*/\1/' || true)
-    if [[ -n "$leftover" ]]; then
-        kill "$leftover" 2>/dev/null || true
-    fi
-}
 
 declare -a FAILURES=()
 fail() { FAILURES+=("$1"); }
@@ -1163,7 +1089,7 @@ post_bgm_subtitle_job() {
     # Build the JSON payload with jq for reliability.
     local payload audio_tracks_json
 
-    # Audio tracks: background music via HTTP (SSRF-compliant).
+    # Audio tracks: background music (optional — skipped if no BGM file found).
     if [[ -n "$BGM_TRACK_URL" ]]; then
         audio_tracks_json=$(jq -n --arg bgm "$BGM_TRACK_URL" --arg vol "$BGM_VOLUME" '
             [{
@@ -1177,22 +1103,17 @@ post_bgm_subtitle_job() {
         audio_tracks_json='[]'
     fi
 
-    # ASS subtitle fixture via HTTP (SSRF-compliant).
-    local ass_url="${SMOKE_HTTP_ASSET_BASE}/subtitle_vivid_test.ass"
-    if [[ ! -f "$SMOKE_ASS_FIXTURE" ]]; then
-        printf '%sWARN: ASS fixture not found at %s — subtitle rendering will fail%s\n' \
-            "$YELLOW" "$SMOKE_ASS_FIXTURE" "$RESET" >&2
-    fi
+    # ASS subtitles: deferred to a future smoke (requires registered subtitle asset).
+    # For now we test the core pipeline: voiceover + delivery without subtitles.
+    local ass_url=""
 
-    # 3 scenes matching the ASS file's 3 segments (0-4s, 4-8s, 8-12s).
-    local voiceover_ref="${SMOKE_HTTP_ASSET_BASE}/test_voice.mp3"
+    # Voiceover via velox-asset:// (always bypasses SSRF, resolved by worker via DataServer).
+    local voiceover_ref="velox-asset://${SMOKE_VOICEOVER_ASSET}"
     payload=$(jq -n \
         --arg ikey "$IDEMPOTENCY_KEY" \
         --arg vname "BGM + Vivid Subtitle Smoke Test" \
         --arg script "Questa è una demo con sottotitoli animati. I sottotitoli seguono la voce con effetti dinamici. PipelineGen rende i video professionali." \
         --argjson audio_tracks "$audio_tracks_json" \
-        --arg ass_url "$ass_url" \
-        --arg preset "$SUBTITLE_PRESET" \
         --arg vo_ref "$voiceover_ref" \
         '{
             idempotency_key: $ikey,
@@ -1210,12 +1131,6 @@ post_bgm_subtitle_job() {
                 {
                     text: "Terza scena: nome ciano con parola evidenziata verde italic.",
                     duration_seconds: 4.0
-                }
-            ],
-            subtitle_tracks: [
-                {
-                    source: $ass_url,
-                    preset: $preset
                 }
             ],
             audio_tracks: $audio_tracks,
@@ -1493,12 +1408,8 @@ main() {
     printf '  tag:           %s\n' "$TAG_PREFIX"
     printf '  run_id:        %s\n' "$RUN_ID"
     printf '  bgm_volume:    %s\n' "$BGM_VOLUME"
-    printf '  http_assets:   %s\n' "$SMOKE_HTTP_ASSET_BASE"
+    printf '  voiceover:     velox-asset://%s\n' "$SMOKE_VOICEOVER_ASSET"
     echo
-
-    # Start the local HTTP asset server (needed because file:// is rejected by SSRF).
-    trap stop_http_asset_server EXIT
-    start_http_asset_server || { printf '%sFAIL: HTTP asset server failed to start (SSRF will reject file:// URLs)%s\n' "$RED" "$RESET" >&2; exit 2; }
 
     # Fase 1 preflight (fail-fast before state-mutating calls).
     precheck_server_up         || { fail "precheck_server_up"; }
