@@ -1000,6 +1000,7 @@ write_metrics_json() {
         --arg warm_render "${WARM_TOTAL_S:-0}" \
         --arg warm_total "${WARM_TOTAL_S:-0}" \
         --arg warm_sha "${WARM_OUTPUT_SHA256:-}" \
+        --arg warm_job "${WARM_JOB_ID:-}" \
         --argjson restart_hit "${POST_RESTART_CACHE_HIT:-false}" \
         --arg restart_files "${POST_RESTART_FILES:-0}" \
         --arg bgm_track "${BGM_TRACK_URL:-none}" \
