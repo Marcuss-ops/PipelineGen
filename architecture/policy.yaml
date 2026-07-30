@@ -161,6 +161,18 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # receive policy cover; each retirement is a follow-up commit.
 # cmd/archcheck treats unknown first-level internal/ dirs as a warn
 # violation (`unknown_internal_root` rule).
+# + P1-4 step 3 (internal/scriptgeneration -> internal/application/scripts/legacy)
+#   is also retired in this same wave (CUTOVER phase per godlike/07
+#   Zero-Legacy; verbatim body, package scriptgeneration preserved for
+#   importer alias stability). The SQLite adapter was mirrored to
+#   internal/infrastructure/database/sqlite/scripts/legacy/ to honor
+#   the godlike/06 SSOT mirror rule (application + infrastructure
+#   mirror). The CONTRACT phase that surgically distributes the 15
+#   stub files into canonical sub-packages (usecase/ ports/ dto/
+#   contracts/) is planned as a follow-up commit; this YAML docblock
+#   backfill lands with it. The Wave-25 hard gate (promoted via the
+#   percheck_legacy_root_ban hard_gates entry in hard_gates below)
+#   catches new imports of the deleted legacy root.
 target_internal_roots: app, kernel, capabilities, platform
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each

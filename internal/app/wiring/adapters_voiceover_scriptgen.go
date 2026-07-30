@@ -26,8 +26,8 @@ import (
 	"fmt"
 	"strings"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 
 	"go.uber.org/zap"
 )

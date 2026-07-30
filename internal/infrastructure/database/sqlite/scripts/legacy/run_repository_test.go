@@ -9,7 +9,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 )
 
 // TestSQLiteRunRepository_RoundTrip verifies the full lifecycle of a

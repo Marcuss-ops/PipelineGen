@@ -28,11 +28,11 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 
 	"go.uber.org/zap"

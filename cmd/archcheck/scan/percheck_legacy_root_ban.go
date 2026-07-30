@@ -6,7 +6,7 @@
 // deprecation targets enumerated in the godlike/07 retirement plan:
 // internal/transcription (P1-4 step 1, retired 2026-07-30),
 // internal/youtube (P1-4 step 2, retired 2026-07-30),
-// internal/scriptgeneration (P1-4 step 3, planned), and
+// internal/scriptgeneration (P1-4 step 3, retired 2026-07-30), and
 // internal/domain/job (P1-7 retired atomic cutover 2026-07-30 —
 // the back-compat alias module backed by the canonical kernel/job
 // tree). The kernel/job canonical destination is exempted from the
@@ -50,14 +50,17 @@ import (
 // roots are themselves SSOT violations caught elsewhere; this
 // percheck enforces the import-path SSOT.
 //
-// P1-4 step 3 is commented out and uncomment when the
-// retirement lands. Steps 1 + 2 (transcription, youtube) and
-// the P1-7 back-compat root (internal/domain/job) are live.
+// All four Wave-25 retired legacy roots are live. P1-4 step 3
+// (internal/scriptgeneration) is the final retirement closure:
+// the legacy root was git-mv'd to internal/application/scripts/legacy/
+// and its SQLite adapter moved to internal/infrastructure/database/sqlite/scripts/legacy/.
+// Both surfaces retain the verbatim body (CUTOVER phase per godlike/07 §"Migration
+// sequence"); the CONTRACT phase will follow in a follow-up commit.
 var legacyRootImportBanned = []string{
 	"github.com/Marcuss-ops/PipelineGen/internal/transcription",
 	"github.com/Marcuss-ops/PipelineGen/internal/youtube",
+	"github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration",
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job",
-	// "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration", // P1-4 step 3 — activate when step 3 lands.
 }
 
 // selfSkipBaseName is the file basename of the gate's own source
