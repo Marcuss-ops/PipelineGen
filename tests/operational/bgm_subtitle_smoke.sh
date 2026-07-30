@@ -176,11 +176,11 @@ fi
 #
 # Known READY voiceover assets (from database):
 #   ccc7f50e... (103KB)  b5bc023f... (4KB)  cc6f82a5... (874KB)  961eecdd... (12KB)
-SMOKE_VOICEOVER_ASSET="${SMOKE_VOICEOVER_ASSET:-961eecddff027773c199ffbb1c07750fc5466a15a6ad43bcee0a306ea847f57a}"
+SMOKE_VOICEOVER_ASSET="${SMOKE_VOICEOVER_ASSET:-ccc7f50e7adc3625d978a483766fe40e5c7e6a74ce8d992cf13b6cf3cd0e706f}"
 
 # Known READY scene_image assets (from database):
 #   bded583d... (6.7KB)  7f3d11a7...  etc.
-SMOKE_SCENE_IMAGE_ASSET="${SMOKE_SCENE_IMAGE_ASSET:-bded583dc09c8f22395219c06616193b7f73cde00a7267d21acd760b1499ed51}"
+SMOKE_SCENE_IMAGE_ASSET="${SMOKE_SCENE_IMAGE_ASSET:-smoke_test_image_320x240_png}"
 
 # BGM is optional for the plumbing test — the worker may not have BGM files yet.
 BGM_TRACK=""
