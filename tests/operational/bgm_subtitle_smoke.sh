@@ -195,6 +195,80 @@ if [[ -z "$BGM_TRACK" ]]; then
         "$YELLOW" "$SMOKE_BGM_DIR" "$RESET" >&2
 fi
 
+# ── Self-managed HTTP asset server (file:// is rejected by SSRF validator) ──
+HTTP_SERVER_PID=""
+start_http_asset_server() {
+    smoke_log_section "Starting HTTP asset server on ${SMOKE_HTTP_ASSET_BASE}"
+
+    # Ensure the directory exists with required files linked.
+    mkdir -p "$SMOKE_HTTP_ASSET_DIR" 2>/dev/null || true
+
+    # Link voiceover test file.
+    local vo_src="/opt/velox/current/.velox/data/test_voice.mp3"
+    if [[ -f "$vo_src" ]]; then
+        ln -sf "$vo_src" "$SMOKE_HTTP_ASSET_DIR/test_voice.mp3" 2>/dev/null || true
+    fi
+
+    # Link ASS subtitle fixture.
+    if [[ -f "$SMOKE_ASS_FIXTURE" ]]; then
+        ln -sf "$SMOKE_ASS_FIXTURE" "$SMOKE_HTTP_ASSET_DIR/subtitle_vivid_test.ass" 2>/dev/null || true
+    fi
+
+    # Kill any existing server on this port.
+    local http_port
+    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
+    http_port="${http_port:-9999}"
+    local existing_pid
+    existing_pid=$(ss -tlnp 2>/dev/null | awk -v p="$http_port" '$0 ~ ":" p " " {print $NF}' | sed 's/.*pid=\([0-9]*\).*/\1/' || true)
+    if [[ -n "$existing_pid" ]]; then
+        kill "$existing_pid" 2>/dev/null || true
+        sleep 0.5
+    fi
+
+    # Derive port from SMOKE_HTTP_ASSET_BASE (e.g. http://127.0.0.1:9999 → 9999).
+    local http_port
+    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
+    http_port="${http_port:-9999}"
+
+    # Start Python HTTP server in background (uses os.chdir, no shell cd needed).
+    python3 -c "
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import os
+os.chdir('$SMOKE_HTTP_ASSET_DIR')
+HTTPServer(('127.0.0.1', '"$http_port"'), SimpleHTTPRequestHandler).serve_forever()
+" &>/tmp/smoke-http-server.log &
+    HTTP_SERVER_PID=$!
+
+    # Wait for it to become ready.
+    local retries=0
+    while [[ $retries -lt 10 ]]; do
+        sleep 0.3
+        if curl -s -o /dev/null --connect-timeout 1 "${SMOKE_HTTP_ASSET_BASE}/test_voice.mp3" 2>/dev/null; then
+            printf '  %sOK: HTTP asset server ready (pid=%s)%s\n' "$GREEN" "$HTTP_SERVER_PID" "$RESET"
+            return 0
+        fi
+        retries=$((retries + 1))
+    done
+    printf '  %sWARN: HTTP server failed to start — job POSTs may fail SSRF validation%s\n' "$YELLOW" "$RESET" >&2
+    return 1
+}
+
+stop_http_asset_server() {
+    if [[ -n "${HTTP_SERVER_PID:-}" ]]; then
+        kill "$HTTP_SERVER_PID" 2>/dev/null || true
+        HTTP_SERVER_PID=""
+    fi
+    # Also clean up any lingering server on the port.
+    local http_port
+    http_port=$(echo "$SMOKE_HTTP_ASSET_BASE" | sed 's/.*://')
+    http_port="${http_port:-9999}"
+    local leftover
+    leftover=$(ss -tlnp 2>/dev/null | awk -v p="$http_port" '$0 ~ ":" p " " {print $NF}' | sed 's/.*pid=\([0-9]*\).*/\1/' || true)
+    if [[ -n "$leftover" ]]; then
+        kill "$leftover" 2>/dev/null || true
+    fi
+}
+
 declare -a FAILURES=()
 fail() { FAILURES+=("$1"); }
 
@@ -1420,7 +1494,12 @@ main() {
     printf '  tag:           %s\n' "$TAG_PREFIX"
     printf '  run_id:        %s\n' "$RUN_ID"
     printf '  bgm_volume:    %s\n' "$BGM_VOLUME"
+    printf '  http_assets:   %s\n' "$SMOKE_HTTP_ASSET_BASE"
     echo
+
+    # Start the local HTTP asset server (needed because file:// is rejected by SSRF).
+    trap stop_http_asset_server EXIT
+    start_http_asset_server || { printf '%sFAIL: HTTP asset server failed to start (SSRF will reject file:// URLs)%s\n' "$RED" "$RESET" >&2; exit 2; }
 
     # Fase 1 preflight (fail-fast before state-mutating calls).
     precheck_server_up         || { fail "precheck_server_up"; }
