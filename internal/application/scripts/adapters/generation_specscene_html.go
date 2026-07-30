@@ -66,6 +66,23 @@ func BuildSpecSceneDocumentHTML(
 					b.WriteString("</p>")
 				}
 			}
+			// Render the Stock binding drive_link as a visible "Clip" link
+			// so the scene-N section mirrors what the JSON SpecScene
+			// block already carries: stock bindings were previously only
+			// visible inside the JSON snapshot, never in the per-scene
+			// <section>. renderDocumentLink escapes both url and label,
+			// so the bound drive_link is html-escape-safe even when it
+			// carries '&', '<', '>' or quote characters; the visible label
+			// uses stock.Name (human-readable) and the fallback is
+			// stock.AssetID so we still emit a visible anchor when Name is
+			// empty. Independent from the Clip binding above: when both
+			// bindings are present on the same scene, both links render
+			// side-by-side in the same <section>.
+			if stock := scene.Bindings.Stock; stock != nil {
+				b.WriteString("<p><strong>Clip:</strong> ")
+				b.WriteString(renderDocumentLink(stock.DriveLink, stock.Name, stock.AssetID))
+				b.WriteString("</p>")
+			}
 			b.WriteString("</section>")
 		}
 	}
