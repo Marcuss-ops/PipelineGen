@@ -82,9 +82,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
-	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scriptgeneration"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 
 	"go.uber.org/zap"
 )

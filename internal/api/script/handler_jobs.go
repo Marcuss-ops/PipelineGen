@@ -38,8 +38,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

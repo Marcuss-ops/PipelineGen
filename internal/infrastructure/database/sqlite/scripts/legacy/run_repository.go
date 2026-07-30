@@ -17,7 +17,7 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 )
 
 // SQLiteRunRepository is the SQLite-backed implementation of

@@ -27,9 +27,9 @@ import (
 	"strings"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 
 	"go.uber.org/zap"
 )
