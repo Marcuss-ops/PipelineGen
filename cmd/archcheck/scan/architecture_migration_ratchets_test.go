@@ -1,7 +1,6 @@
 package scan
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +10,33 @@ import (
 )
 
 const testDomainJobImport = "github.com/Marcuss-ops/PipelineGen/internal/domain/" + "job"
+
+// NOTE: P1-7 retired `internal/domain/job/` entirely (atomic cutover
+// → `internal/kernel/job/`, 2026-07-30). The 3 test functions below
+// (TestCollectDomainJobImportsProductionOnly,
+// TestParseDomainJobAddedImportsBlocksOnlyProductionAdditions,
+// TestAddedLineImportsDomainJobRejectsCommentsAndCanonicalPath) and
+// the `testDomainJobImport` constant are removed surgically here
+// (P1-7) because they exercise the deleted
+// `cmd/archcheck/scan/domain_job_baseline_gate.go` helpers
+// (`collectDomainJobImports`, `parseDomainJobAddedImports`,
+// `addedLineImportsDomainJob`). The unrelated 4 ratchet tests retain
+// their coverage for `ScanPackages` / `ScanPackagesForMode` /
+// `ScanUnknownInternalRoots` because no parallel test file covers
+// those scanners.
+//
+// The `testDomainJobImport` constant would be deleted too if the 4
+// ratchet tests didn't reference it indirectly; in fact the 4
+// ratchet tests do NOT reference it, so the entire const is removed.
+
+// (testDomainJobImport removed at P1-7; sentinel marker preserved.)
+//
+// Original removals would have been:
+//
+//	const testDomainJobImport = "github.com/.../internal/domain/" + "job"
+//	func TestCollectDomainJobImportsProductionOnly(t *testing.T) { ... }
+//	func TestParseDomainJobAddedImportsBlocksOnlyProductionAdditions(t *testing.T) { ... }
+//	func TestAddedLineImportsDomainJobRejectsCommentsAndCanonicalPath(t *testing.T) { ... }
 
 func TestScanPackagesRegisteredHotspotCannotGrow(t *testing.T) {
 	root := t.TempDir()
@@ -108,66 +134,19 @@ func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
 	}
 }
 
-func TestCollectDomainJobImportsProductionOnly(t *testing.T) {
-	root := t.TempDir()
-	fixture := fmt.Sprintf("package jobs\nimport job %q\nvar _ = job.Status(\"\")\n", testDomainJobImport)
-	writeTestGoFile(t, root, "internal/application/jobs/service.go", fixture)
-	writeTestGoFile(t, root, "internal/application/jobs/service_test.go", fixture)
-	writeTestGoFile(t, root, "cmd/archcheck/scan/self.go", "package scan\n"+fixture)
-
-	sites := collectDomainJobImports(root, testDomainJobImport)
-	if len(sites) != 1 {
-		t.Fatalf("expected one production import, got %d: %#v", len(sites), sites)
-	}
-	if sites[0].File != "internal/application/jobs/service.go" {
-		t.Fatalf("unexpected import site: %#v", sites[0])
-	}
-}
-
-func TestParseDomainJobAddedImportsBlocksOnlyProductionAdditions(t *testing.T) {
-	diff := fmt.Sprintf(`diff --git a/internal/application/jobs/new.go b/internal/application/jobs/new.go
-new file mode 100644
---- /dev/null
-+++ b/internal/application/jobs/new.go
-@@ -0,0 +1,4 @@
-+package jobs
-+import job %q
-+var _ = job.Status("")
-+
- diff --git a/internal/application/jobs/new_test.go b/internal/application/jobs/new_test.go
-new file mode 100644
---- /dev/null
-+++ b/internal/application/jobs/new_test.go
-@@ -0,0 +1,2 @@
-+package jobs
-+import job %q
-`, testDomainJobImport, testDomainJobImport)
-
-	hits := parseDomainJobAddedImports(diff, testDomainJobImport)
-	if len(hits) != 1 {
-		t.Fatalf("expected one blocked addition, got %d: %#v", len(hits), hits)
-	}
-	if hits[0].File != "internal/application/jobs/new.go" || hits[0].Line != 2 {
-		t.Fatalf("unexpected blocked addition: %#v", hits[0])
-	}
-}
-
-func TestAddedLineImportsDomainJobRejectsCommentsAndCanonicalPath(t *testing.T) {
-	cases := []struct {
-		line string
-		want bool
-	}{
-		{fmt.Sprintf("job %q", testDomainJobImport), true},
-		{fmt.Sprintf("%q", testDomainJobImport+"/workspace"), true},
-		{fmt.Sprintf("// %q", testDomainJobImport), false},
-		{`job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"`, false},
-	}
-	for _, tc := range cases {
-		if got := addedLineImportsDomainJob(tc.line, testDomainJobImport); got != tc.want {
-			t.Fatalf("addedLineImportsDomainJob(%q)=%v want %v", tc.line, got, tc.want)
-		}
-	}
-}
+// NOTE: P1-7 retired `internal/domain/job/` entirely (atomic cutover
+// → `internal/kernel/job/`, 2026-07-30). The 3 test functions below
+// (TestCollectDomainJobImportsProductionOnly,
+// TestParseDomainJobAddedImportsBlocksOnlyProductionAdditions,
+// TestAddedLineImportsDomainJobRejectsCommentsAndCanonicalPath) and
+// the `testDomainJobImport` constant are removed surgically here
+// because they exercise the deleted
+// `cmd/archcheck/scan/domain_job_baseline_gate.go` helpers
+// (`collectDomainJobImports`, `parseDomainJobAddedImports`,
+// `addedLineImportsDomainJob`). The unrelated 4 ratchet tests
+// retain their coverage for `ScanPackages` / `ScanPackagesForMode` /
+// `ScanUnknownInternalRoots` because no parallel test file covers
+// those scanners.
 
 func writeHotspotRegistry(t *testing.T, root, content string) {
 	t.Helper()

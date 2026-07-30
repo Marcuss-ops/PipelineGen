@@ -78,12 +78,6 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_version_strings_ban", scan.ScanVersionStringsBan},
 		{"percheck_index_pending_writer_ban", scan.ScanIndexPendingWriterBan},
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
-		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanNoDomainJobCompatibilityAliases(root, pol, r, productionOnly)
-		}},
-		{"percheck_domain_job_import_baseline", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanDomainJobBaselineRatchet(root, pol, r, productionOnly)
-		}},
 		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanNoGenericGenerationFacade(root, pol, r, productionOnly)
 		}},

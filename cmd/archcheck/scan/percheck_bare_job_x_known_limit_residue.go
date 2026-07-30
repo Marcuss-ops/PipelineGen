@@ -106,14 +106,21 @@ type KnownLimitResidueEntry struct {
 	Reason string
 }
 
-// KnownLimitResidueInventory — the 37 survivors from the
-// post-Path-ζ archcheck --strict run, classified by the
-// verify_hits classifier (see /tmp/param_var_classify_fixed.txt
+// KnownLimitResidueInventory — the 37 (originally) / 36 (post-P1-7)
+// survivors from the post-Path-ζ archcheck --strict run, classified
+// by the verify_hits classifier (see /tmp/param_var_classify_fixed.txt
 // in the closeout cascade). The list excludes the 3 real
 // canonical-package-symbol references in
 // parent_state_machine.go (see KnownLimitTruePkgRefFile).
 //
-// Total breakdown at disable-time:
+// At disable-time the inventory totalled 34 entries (91.9% of 37).
+// The P1-7 retirement of `internal/domain/job/` (→ `internal/kernel/job/`)
+// deleted the single STRING_LITERAL row at parent_state.go:165 — the
+// panic message that referenced `domain.job.NewStateMachine`. The row
+// is dropped HERE rather than left as a dangling inventory entry, so
+// the cardinality count below matches the live on-disk file set.
+//
+// Total breakdown post-P1-7 (was 34 at disable-time, now 33):
 //
 //	PARAM_VAR       : 16 entries  (sync_jobs=6, maintenance=3,
 //	                               enrichment=2,
@@ -122,13 +129,12 @@ type KnownLimitResidueEntry struct {
 //	                               drivesync=1, localimport=1,
 //	                               runner_execute=11
 //	                               [original 4 + deeper 7])
-//	STRING_LITERAL  :  4 entries  (handler_download=1,
-//	                               drivesync=1, errors.go=1,
-//	                               parent_state.go=1)
+//	STRING_LITERAL  :  3 entries  (handler_download=1,
+//	                               drivesync=1, errors.go=1)
 //	DOC_COMMENT     :  0 entries  (skip policy held)
 //	──────────────────────────────────────────
-//	TOTAL FP        : 34 entries  (91.9% of 37)
-//	PKG_REF (real)  :  3 entries  (8.1%)  — parent_state_machine.go
+//	TOTAL FP        : 33 entries  (91.7% of 36)
+//	PKG_REF (real)  :  3 entries  (8.3%)  — parent_state_machine.go
 //
 // The list is the basis for:
 //   - the operator-triage dashboard (forward pointer to PR-GODLIKE-08).
@@ -173,11 +179,10 @@ var KnownLimitResidueInventory = []KnownLimitResidueEntry{
 	{File: "internal/application/jobs/worker/runner_execute.go", Line: 99, Archetype: KnownLimitArchetypeLocalVar, Reason: "runLease(...) — observability.WorkerProgressErrorsTotal.WithLabelValues(job.Type, \"broker_emit_failed\").Inc()"},
 	{File: "internal/application/jobs/worker/runner_execute.go", Line: 101, Archetype: KnownLimitArchetypeLocalVar, Reason: "runLease(...) — observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, \"success\").Inc()"},
 
-	// ── STRING_LITERAL (4): token inside quoted string ──
+	// ── STRING_LITERAL (3): token inside quoted string ──
 	{File: "internal/api/assets/clips/nonops/handler_download.go", Line: 98, Archetype: KnownLimitArchetypeStringLiteral, Reason: "\"status_url\": \"/api/jobs/\" + job.ID + \"/full\" — token inside string concat"},
 	{File: "internal/application/assets/sourcing/drivesync/service.go", Line: 103, Archetype: KnownLimitArchetypeStringLiteral, Reason: "Message: \"Drive folder sync dispatched. Poll GET /api/jobs/\" + job.ID + \" for status.\" — token inside string concat"},
 	{File: "internal/application/jobs/errors.go", Line: 110, Archetype: KnownLimitArchetypeStringLiteral, Reason: "errors.New(\"appjobs.Service: repo is required ... canonical-job.JobBroker-port ...\") — token inside errors.New literal"},
-	{File: "internal/domain/job/parent_state.go", Line: 165, Archetype: KnownLimitArchetypeStringLiteral, Reason: "panic(fmt.Errorf(\"domain.job.NewStateMachine: %w (parent=%s)\", ErrExpectedChildrenUnset, parentJobID)) — token inside fmt.Errorf format-string"},
 }
 
 // KnownLimitTruePkgRefFile is the canonical file path where
@@ -197,17 +202,19 @@ var KnownLimitResidueInventory = []KnownLimitResidueEntry{
 const KnownLimitTruePkgRefFile = "internal/application/voiceover/jobs/parent_state_machine.go"
 
 // KnownLimitExpectedResidueTotal is the canonical expected
-// TOTAL residue count at disable-time (37). A future
-// audit-time comparison of len(KnownLimitResidueInventory)
-// against this constant verifies that the closeout cascade's
-// residue accounting has not drifted (e.g., a new file
-// adopting `HandleJob(ctx, job *appjobs.Job, ...)` style
-// would add new PARAM_VAR entries and surface a miss with
-// len > KnownLimitExpectedResidueTotal).
-const KnownLimitExpectedResidueTotal = 34
+// TOTAL residue count post-P1-7 (33; was 34 at disable-time
+// before the internal/domain/job/parent_state.go row was
+// removed along with the back-compat root). A future audit-
+// time comparison of len(KnownLimitResidueInventory) against
+// this constant verifies that the closeout cascade's residue
+// accounting has not drifted (e.g., a new file adopting
+// `HandleJob(ctx, job *appjobs.Job, ...)` style would add
+// new PARAM_VAR entries and surface a miss with len >
+// KnownLimitExpectedResidueTotal).
+const KnownLimitExpectedResidueTotal = 33
 
 // KnownLimitExpectedBreakdown is the cardinalities of the
-// four residue archetypes at disable-time. Indexed by
+// four residue archetypes post-P1-7 (sum = 33). Indexed by
 // KnownLimitArchetype (string). Used by a future audit script
 // to assert:
 //
@@ -219,7 +226,7 @@ const KnownLimitExpectedResidueTotal = 34
 var KnownLimitExpectedBreakdown = map[KnownLimitArchetype]int{
 	KnownLimitArchetypeParamVar:      16,
 	KnownLimitArchetypeLocalVar:      14,
-	KnownLimitArchetypeStringLiteral: 4,
+	KnownLimitArchetypeStringLiteral: 3,
 	KnownLimitArchetypeDocComment:    0,
 }
 

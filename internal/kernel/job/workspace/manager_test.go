@@ -36,6 +36,15 @@
 //     points outside the workspace root is rejected with
 //     ErrPathOutsideWorkspace (regression guard against the
 //     `os.Open(/etc/passwd)`-shaped attack).
+//
+// P1-7 atomic migration (godlike/07 ZERO_LEGACY_POLICY step): the
+// canonical WorkspaceManager owner is now internal/kernel/job/workspace.
+// This test file is the verbatim port of the previous test surface
+// at internal/domain/job/workspace/manager_test.go. The deletion
+// of that legacy file is part of the same atomic commit; the
+// percheck_legacy_root_ban Wave-25 forward-prevention gate (now
+// extended to also ban internal/domain/job) prevents any future
+// reintroduction of the legacy root.
 package workspace
 
 import (

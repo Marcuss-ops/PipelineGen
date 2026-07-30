@@ -27,7 +27,11 @@ func TestCategorize_PrefixBuckets(t *testing.T) {
 		// Jobs.
 		{"internal/kernel/job/startup_validator", bucketJobs},
 		{"compatibility/domain/job/legacy", bucketJobs},
-		{"internal/domain/job/legacy", bucketJobs},
+		// NOTE: P1-7 retired `internal/domain/job/`; records that
+		// still reference the legacy prefix fall through to
+		// bucketMisc so an operator audit can find them. Removed
+		// the prior `{"internal/domain/job/legacy", bucketJobs}`
+		// row at the P1-7 cutover.
 		// Qdrant.
 		{"internal/infrastructure/qdrant/schema", bucketQdrant},
 		// Assets.

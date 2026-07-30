@@ -68,7 +68,13 @@ var subsystemPrefixes = []struct {
 	// Jobs / kernel.
 	{"internal/kernel/job", bucketJobs},
 	{"compatibility/domain/job", bucketJobs},
-	{"internal/domain/job", bucketJobs},
+	// NOTE: P1-7 retired `internal/domain/job/` (atomic cutover →
+	// `internal/kernel/job/`, 2026-07-30). The canonical records
+	// below now live under the kernel prefix; the back-compat
+	// `compatibility/domain/job/` entry survives because it is
+	// an unrelated umbrella package (not the legacy root). Any
+	// new record pointing at `internal/domain/job/<x>` will fall
+	// through to `bucketMisc` so the regression is auditable.
 	// Qdrant projection.
 	{"internal/infrastructure/qdrant", bucketQdrant},
 	{"pkg/architecturecatalog", bucketQdrant},
