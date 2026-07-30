@@ -19,8 +19,8 @@ import (
 
 	"google.golang.org/api/googleapi"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // AssetStoreLookup is the narrow surface the LocationVerifier needs
@@ -35,8 +35,8 @@ type AssetStoreLookup interface {
 // LocationVerifier implements script.AssetLocationVerifier with
 // deep Drive API checks and SQLite cross-reference.
 type LocationVerifier struct {
-	reader  Reader
-	assets  AssetStoreLookup
+	reader Reader
+	assets AssetStoreLookup
 }
 
 // NewLocationVerifier constructs the verifier from a Reader port
@@ -61,8 +61,8 @@ func (v *LocationVerifier) Verify(
 ) (*scriptpkg.VerifiedLocation, error) {
 	if strings.TrimSpace(fileID) == "" {
 		return &scriptpkg.VerifiedLocation{
-			AssetID: assetID,
-			State:   scriptpkg.LocationStateMalformed,
+			AssetID:   assetID,
+			State:     scriptpkg.LocationStateMalformed,
 			ErrorCode: "EMPTY_FILE_ID",
 		}, nil
 	}
@@ -259,8 +259,8 @@ func (v *LocationVerifier) ResolveAndVerify(
 	}
 	if fileID == "" {
 		return &scriptpkg.VerifiedLocation{
-			AssetID:  assetID,
-			State:    scriptpkg.LocationStateMalformed,
+			AssetID:   assetID,
+			State:     scriptpkg.LocationStateMalformed,
 			ErrorCode: "MALFORMED_LINK",
 		}, nil
 	}

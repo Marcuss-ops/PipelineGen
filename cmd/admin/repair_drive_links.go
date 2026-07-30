@@ -36,27 +36,27 @@ import (
 // repairAuditReport is the canonical JSON audit output produced by
 // the repair-drive-links command when --audit is set.
 type repairAuditReport struct {
-	JobID             string               `json:"job_id"`
-	ExecutedAt        string               `json:"executed_at"`
-	RemoveInvalid     bool                 `json:"remove_invalid"`
-	RefreshDocs       bool                 `json:"refresh_docs"`
-	AssetsReferenced  int                  `json:"assets_referenced"`
-	Verified          int                  `json:"verified"`
-	Updated           int                  `json:"updated"`
-	Missing           int                  `json:"missing"`
-	Trashed           int                  `json:"trashed"`
-	Inaccessible      int                  `json:"inaccessible"`
-	Malformed         int                  `json:"malformed"`
-	Orphans           int                  `json:"orphans"`
-	BrokenLocations   int                  `json:"broken_locations"`
-	Duplicates        int                  `json:"duplicates"`
-	TransportErrors   int                  `json:"transport_errors"`
-	QdrantMismatches  int                  `json:"qdrant_mismatches"`
-	SpecSceneRepaired bool                 `json:"specscene_repaired"`
-	SQLiteUpdated     bool                 `json:"sqlite_updated"`
+	JobID              string              `json:"job_id"`
+	ExecutedAt         string              `json:"executed_at"`
+	RemoveInvalid      bool                `json:"remove_invalid"`
+	RefreshDocs        bool                `json:"refresh_docs"`
+	AssetsReferenced   int                 `json:"assets_referenced"`
+	Verified           int                 `json:"verified"`
+	Updated            int                 `json:"updated"`
+	Missing            int                 `json:"missing"`
+	Trashed            int                 `json:"trashed"`
+	Inaccessible       int                 `json:"inaccessible"`
+	Malformed          int                 `json:"malformed"`
+	Orphans            int                 `json:"orphans"`
+	BrokenLocations    int                 `json:"broken_locations"`
+	Duplicates         int                 `json:"duplicates"`
+	TransportErrors    int                 `json:"transport_errors"`
+	QdrantMismatches   int                 `json:"qdrant_mismatches"`
+	SpecSceneRepaired  bool                `json:"specscene_repaired"`
+	SQLiteUpdated      bool                `json:"sqlite_updated"`
 	DocumentsRefreshed int                 `json:"documents_refreshed"`
-	Warnings          []string            `json:"warnings,omitempty"`
-	Details           []repairAssetDetail `json:"details,omitempty"`
+	Warnings           []string            `json:"warnings,omitempty"`
+	Details            []repairAssetDetail `json:"details,omitempty"`
 }
 
 // repairAssetDetail carries per-link diagnostic information for the
