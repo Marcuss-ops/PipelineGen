@@ -165,6 +165,28 @@ func (r *PostProcessorRegistry) Run(
 		strings.TrimSpace(plan.SourceText) != "" {
 		warnings = filterBestEffortDocumentaryWarnings(warnings)
 	}
+	// Single-segment text plan with a populated Stock binding in
+	// SpecScene: ClipSearchProcessor may have emitted
+	// "clip_search: no matching Artlist clips found for segment X"
+	// / "clip_search: ArtlistClipSearcher not configured" soft
+	// warnings when the Artlist searcher returned no candidates
+	// (and the plan's ProviderPolicy did not opt in). Those
+	// warnings are spurious — StockBindingsProcessor landed a real
+	// binding in the post-walk SclipScene (Stock.DriveLink or
+	// Stock.AssetID populated), so the operator observability
+	// signal is "binding is present in JSON" rather than
+	// "warning: no clips found". Drop clip_search: prefixed lines
+	// in this case so the canonical status classifier reports
+	// SUCCEEDED instead of SUCCEEDED_WITH_WARNINGS.
+	if plan != nil && plan.SingleScene && plan.SourceKind == "text" &&
+		len(result.FinalSpecScene.Scenes) > 0 {
+		stock := result.FinalSpecScene.Scenes[0].Bindings.Stock
+		if stock != nil &&
+			(strings.TrimSpace(stock.DriveLink) != "" ||
+				strings.TrimSpace(stock.AssetID) != "") {
+			warnings = filterBestEffortBindingWarnings(warnings)
+		}
+	}
 	result.Warnings = warnings
 	// Issue 3 / P0 (June 2026): the gate flipped.
 	//
@@ -262,6 +284,27 @@ func filterBestEffortDocumentaryWarnings(w []string) []string {
 			(strings.HasSuffix(line, " not registered") ||
 				strings.HasSuffix(line, " returned nil result") ||
 				strings.HasSuffix(line, " returned empty output")) {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// filterBestEffortBindingWarnings drops the ClipSearch soft-warnings
+// when a Stock binding has legitimately populated the post-walk
+// SpecScene. The composite invokes this on the SingleScene + text
+// + Stock-present branch above; clip_search: prefixed lines are
+// signals ("no Artlist hits for segment X", "ArtlistClipSearcher
+// not configured") that lose relevance once a direct Stock binding
+// confirms downstream binding presence. Other warning lines (any
+// non-clip_search: prefix) pass through untouched so unrelated
+// signals (required-class failures, hard errors, etc.) remain
+// observable.
+func filterBestEffortBindingWarnings(w []string) []string {
+	out := make([]string, 0, len(w))
+	for _, line := range w {
+		if strings.HasPrefix(line, "clip_search: ") {
 			continue
 		}
 		out = append(out, line)

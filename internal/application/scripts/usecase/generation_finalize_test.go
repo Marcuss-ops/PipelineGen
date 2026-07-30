@@ -312,3 +312,27 @@ func TestClassifyGenerationStatus_CleanContractEndToEnd(t *testing.T) {
 			got, scriptpkg.ItemStatusSucceeded)
 	}
 }
+
+// TestClassifyGenerationStatus_BindingWarningsFilteredOnTextPlan
+// codifies the second-clause contract of the postprocessor SWW
+// gate. When the plan is SingleScene=true, SourceKind="text", and
+// postprocessor_composite_run.go has dropped the "clip_search: ...
+// " soft-warnings (because a Stock binding populated in the
+// post-walk SpecScene — Stock.DriveLink != "" or Stock.AssetID !=
+// "" — confirms downstream binding presence), the resulting
+// Warnings slice is empty and ClassifyGenerationStatus must report
+// ItemStatusSucceeded, NOT ItemStatusSucceededWithWarnings.
+func TestClassifyGenerationStatus_BindingWarningsFilteredOnTextPlan(t *testing.T) {
+	// Simulate the post-filter state the composite produces on the
+	// SingleScene + text + Stock-populated branch:
+	// filterBestEffortBindingWarnings drops "clip_search: ...", leaving
+	// the slice empty for this scenario.
+	result := &scriptpkg.GenerationResult{
+		Quality:  &scriptpkg.GenerationQuality{Passed: true},
+		Warnings: []string{},
+	}
+	if got := ClassifyGenerationStatus(result, false); got != scriptpkg.ItemStatusSucceeded {
+		t.Errorf("ClassifyGenerationStatus(Quality.Passed=true, filtered clip_search warnings, qualitySkipped=false) = %q, want %q",
+			got, scriptpkg.ItemStatusSucceeded)
+	}
+}
