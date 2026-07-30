@@ -160,6 +160,17 @@ func driveLinksEquivalent(a, b, fileID string) bool {
 	return aID == bID
 }
 
-// Compile-time pin: AssetLocationResolverAdapter satisfies
-// script.AssetLocationResolver.
-var _ scriptpkg.AssetLocationResolver = (*AssetLocationResolverAdapter)(nil)
+// Verify implements AssetLocationVerifier by delegating to
+// ResolveAndVerify with the file ID already resolved.
+func (a *AssetLocationResolverAdapter) Verify(
+	ctx context.Context, assetID, fileID, link string,
+) (*scriptpkg.VerifiedLocation, error) {
+	return a.ResolveAndVerify(ctx, assetID, fileID, link)
+}
+
+// Compile-time pins: AssetLocationResolverAdapter satisfies both
+// AssetLocationResolver and AssetLocationVerifier.
+var (
+	_ scriptpkg.AssetLocationResolver  = (*AssetLocationResolverAdapter)(nil)
+	_ scriptpkg.AssetLocationVerifier = (*AssetLocationResolverAdapter)(nil)
+)
