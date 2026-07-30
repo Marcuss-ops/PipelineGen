@@ -434,20 +434,23 @@ clear_test_cache() {
     return 0
 }
 
-# Measures job timing from attempt_metrics in the Master DB.
-# Returns tab-separated: download_ms<TAB>render_ms<TAB>total_ms
+# Measures job output metrics from task_attempt_metrics.
+# Returns tab-separated: output_bytes<TAB>output_sha256
+# Timing fields (pipeline_total_ms, engine_asset_download_ms, etc.)
+# are not populated by the current worker fleet for scene.composite.v1
+# jobs. Wall-clock timing is measured by the caller via date +%s.
 measure_job_metrics() {
     local jid="$1"
     local row
     row=$(sqlite_q "
-        SELECT COALESCE(engine_asset_download_ms, 0) || '|' ||
-               COALESCE(pipeline_render_ms, 0) || '|' ||
-               COALESCE(engine_total_ms, 0)
-        FROM attempt_metrics
-        WHERE job_id = '${jid}'
-        ORDER BY created_at DESC
+        SELECT COALESCE(output_bytes, 0) || '|' ||
+               COALESCE(output_sha256, '')
+        FROM task_attempt_metrics
+        WHERE attempt_id = (
+            SELECT attempt_id FROM tasks WHERE job_id = '${jid}' LIMIT 1
+        )
         LIMIT 1
-    " 2>/dev/null || echo "0|0|0")
+    " 2>/dev/null || echo "0|")
     printf '%s' "$row"
 }
 
@@ -470,20 +473,19 @@ run_cold_cache_phase() {
 
     local metrics
     metrics=$(measure_job_metrics "$JOB_ID")
-    local download_ms render_ms engine_total_ms
-    download_ms=$(echo "$metrics" | cut -d'|' -f1)
-    render_ms=$(echo "$metrics" | cut -d'|' -f2)
-    engine_total_ms=$(echo "$metrics" | cut -d'|' -f3)
+    local output_bytes output_sha256
+    output_bytes=$(echo "$metrics" | cut -d'|' -f1)
+    output_sha256=$(echo "$metrics" | cut -d'|' -f2)
     local wall_s=$((end_ts - start_ts))
 
     printf '  %sOK: cold cache job_id=%s%s\n' "$GREEN" "$JOB_ID" "$RESET"
-    printf '  cold_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_s=%s\n' \
-        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_s"
+    printf '  cold_cache: wall_s=%s output_bytes=%s sha256=%s\n' \
+        "$wall_s" "$output_bytes" "$output_sha256"
 
     # Store for JSON output.
-    COLD_DOWNLOAD_MS="$download_ms"
-    COLD_RENDER_MS="$render_ms"
-    COLD_TOTAL_MS="$wall_s"
+    COLD_OUTPUT_BYTES="$output_bytes"
+    COLD_OUTPUT_SHA256="$output_sha256"
+    COLD_TOTAL_S="$wall_s"
     COLD_JOB_ID="$JOB_ID"
     return 0
 }
@@ -505,26 +507,25 @@ run_warm_cache_phase() {
 
     local metrics
     metrics=$(measure_job_metrics "$JOB_ID")
-    local download_ms render_ms engine_total_ms
-    download_ms=$(echo "$metrics" | cut -d'|' -f1)
-    render_ms=$(echo "$metrics" | cut -d'|' -f2)
-    engine_total_ms=$(echo "$metrics" | cut -d'|' -f3)
+    local output_bytes output_sha256
+    output_bytes=$(echo "$metrics" | cut -d'|' -f1)
+    output_sha256=$(echo "$metrics" | cut -d'|' -f2)
     local wall_s=$((end_ts - start_ts))
 
     printf '  %sOK: warm cache job_id=%s%s\n' "$GREEN" "$JOB_ID" "$RESET"
-    printf '  warm_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_s=%s\n' \
-        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_s"
+    printf '  warm_cache: wall_s=%s output_bytes=%s sha256=%s\n' \
+        "$wall_s" "$output_bytes" "$output_sha256"
 
-    # Verify download_ms is 0 (cache hit — no download).
-    if [[ "$download_ms" == "0" || "$download_ms" == "" ]]; then
-        printf '  %sOK: warm cache hit confirmed (download_ms=%s)%s\n' "$GREEN" "$download_ms" "$RESET"
-    else
-        printf '  %sWARN: warm cache download_ms=%s (expected 0 — cache may not be working)%s\n' "$YELLOW" "$download_ms" "$RESET" >&2
+    # Verify warm cache: output_sha256 should match cold cache.
+    if [[ -n "$output_sha256" && "$output_sha256" == "${COLD_OUTPUT_SHA256:-}" ]]; then
+        printf '  %sOK: warm cache SHA-256 matches cold cache (same output)%s\n' "$GREEN" "$RESET"
+    elif [[ -z "$output_sha256" ]]; then
+        printf '  %sWARN: warm cache SHA-256 not available%s\n' "$YELLOW" "$RESET" >&2
     fi
 
-    WARM_DOWNLOAD_MS="$download_ms"
-    WARM_RENDER_MS="$render_ms"
-    WARM_TOTAL_MS="$wall_s"
+    WARM_OUTPUT_BYTES="$output_bytes"
+    WARM_OUTPUT_SHA256="$output_sha256"
+    WARM_TOTAL_S="$wall_s"
     WARM_JOB_ID="$JOB_ID"
     return 0
 }
@@ -990,14 +991,15 @@ write_metrics_json() {
     jq -n \
         --arg run_id "$RUN_ID" \
         --arg worker_id "${TARGET_WORKER_ID:-auto}" \
-        --arg cold_dl "${COLD_DOWNLOAD_MS:-0}" \
-        --arg cold_render "${COLD_RENDER_MS:-0}" \
-        --arg cold_total "${COLD_TOTAL_MS:-0}" \
+        --arg cold_dl "${COLD_OUTPUT_BYTES:-0}" \
+        --arg cold_render "${COLD_TOTAL_S:-0}" \
+        --arg cold_total "${COLD_TOTAL_S:-0}" \
+        --arg cold_sha "${COLD_OUTPUT_SHA256:-}" \
         --arg cold_job "${COLD_JOB_ID:-}" \
-        --arg warm_dl "${WARM_DOWNLOAD_MS:-0}" \
-        --arg warm_render "${WARM_RENDER_MS:-0}" \
-        --arg warm_total "${WARM_TOTAL_MS:-0}" \
-        --arg warm_job "${WARM_JOB_ID:-}" \
+        --arg warm_dl "${WARM_OUTPUT_BYTES:-0}" \
+        --arg warm_render "${WARM_TOTAL_S:-0}" \
+        --arg warm_total "${WARM_TOTAL_S:-0}" \
+        --arg warm_sha "${WARM_OUTPUT_SHA256:-}" \
         --argjson restart_hit "${POST_RESTART_CACHE_HIT:-false}" \
         --arg restart_files "${POST_RESTART_FILES:-0}" \
         --arg bgm_track "${BGM_TRACK_URL:-none}" \
@@ -1019,15 +1021,16 @@ write_metrics_json() {
             run_id: $run_id,
             worker_id: $worker_id,
             cold_cache: {
-                download_ms: ($cold_dl | tonumber),
-                render_ms: ($cold_render | tonumber),
-                total_ms: ($cold_total | tonumber),
+                output_bytes: ($cold_dl | tonumber),
+                wall_s: ($cold_render | tonumber),
+                sha256: $cold_sha,
                 job_id: $cold_job
             },
             warm_cache: {
-                download_ms: ($warm_dl | tonumber),
-                render_ms: ($warm_render | tonumber),
-                total_ms: ($warm_total | tonumber),
+                output_bytes: ($warm_dl | tonumber),
+                wall_s: ($warm_render | tonumber),
+                sha256: $warm_sha,
+                sha256_match: ($cold_sha == $warm_sha),
                 job_id: $warm_job
             },
             post_restart: {
