@@ -43,6 +43,16 @@ verify-vidrush:
 verify-vidrush-dry:
 	@bash tests/operational/vidrush/full_battery.sh --dry
 
+# Maya VidRush E2E battery — 7 smoke jobs covering LLM analysis, strict
+# provider separation (zero YouTube), SQLite persistence, binding, cache
+# warm/partial/miss. Requires: SMOKE_TOKEN set, server running.
+verify-vidrush-maya:
+	@bash tests/operational/maya_vidrush_e2e.sh
+
+# Dry-run for the Maya VidRush battery. Prints all 7 job descriptions, exits 0.
+verify-vidrush-maya-dry:
+	@bash tests/operational/maya_vidrush_e2e.sh --dry
+
 # Dry-run for the heavy path. Prints the would-be payloads, exits 0. Honors
 # SMOKE_DRY_RUN=1 env override for CI-friendly invocations.
 smoke-dry:
