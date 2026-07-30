@@ -57,6 +57,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -343,16 +344,23 @@ func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) (f
 	return finalization.VerifiedArtifact{
 		ArtifactID:     ref.ArtifactID,
 		Kind:           kind,
-		Filename:       ref.ArtifactID, // canonical fallback; resolver populates real filename
-		MIMEType:       "application/octet-stream",
-		LocalPath:      "",         // forward-pointer: lookup from media_assets via staged.Resolver
-		SizeBytes:      0,          // forward-pointer: lookup from media_assets
+		Filename:       firstNonEmpty(ref.Filename, ref.ArtifactID),
+		MIMEType:       firstNonEmpty(ref.MIMEType, "application/octet-stream"),
+		LocalPath:      ref.Path,
+		SizeBytes:      ref.SizeBytes,
 		SHA256:         ref.SHA256, // pre-computed hint; prepare recomputes on-disk
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: ref.ArtifactID, // minimal hint; canonical derivation post-resolver
 		Source:         source,
 	}, nil
+}
+
+func firstNonEmpty(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
 }
 
 // kindFromDestination maps the canonical 9-key destination directory

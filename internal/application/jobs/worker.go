@@ -62,6 +62,7 @@ import (
 
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 var workerIDPrefix string
@@ -330,6 +331,8 @@ func (w *Worker) Start(ctx context.Context) {
 			return
 		}
 
+		w.requeueDueRetries(ctx)
+
 		j, err := w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
 		if err != nil {
 			if errors.Is(err, job.ErrTransitionConflict) {
@@ -395,6 +398,37 @@ func (w *Worker) Start(ctx context.Context) {
 		currentBackoff = w.pollEvery
 
 		w.runJob(ctx, j)
+	}
+}
+
+// requeueDueRetries closes the retry lifecycle: ScheduleRetry records a
+// RETRY_WAIT row, while ClaimNext only accepts QUEUED rows. The persisted
+// UpdatedAt and RetryCount provide a deterministic backoff without adding a
+// second scheduler or making SQLite state non-canonical.
+func (w *Worker) requeueDueRetries(ctx context.Context) {
+	status := job.StatusRetryWait
+	waiting, err := w.repo.List(ctx, job.Filter{Status: &status, Limit: 100})
+	if err != nil {
+		w.log.Warn("failed to list retry-wait jobs", zap.Error(err))
+		return
+	}
+	now := time.Now().UTC()
+	for i := range waiting {
+		j := &waiting[i]
+		if j.RetryCount >= j.MaxRetries {
+			continue
+		}
+		backoff := retry.BackoffFor(j.RetryCount-1, retry.Options{
+			InitialBackoff: 2 * time.Second,
+			BackoffFactor:  2.0,
+			MaxBackoff:     30 * time.Second,
+		})
+		if now.Sub(j.UpdatedAt) < backoff {
+			continue
+		}
+		if _, err := w.repo.Retry(ctx, j.ID); err != nil && !errors.Is(err, job.ErrTransitionConflict) {
+			w.log.Warn("failed to requeue retry-wait job", zap.String("job_id", j.ID), zap.Error(err))
+		}
 	}
 }
 

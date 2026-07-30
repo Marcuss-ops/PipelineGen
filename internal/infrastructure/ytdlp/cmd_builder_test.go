@@ -27,7 +27,7 @@ const nonYouTubeURLA = "https://drive.google.com/file/d/abc123/view"
 // to web-only) surface as a diff in this test file rather than as a
 // runtime failure on a stock pipeline run.
 var expectedExtractorArgs = []string{
-	"--extractor-args", "youtube:player_client=web,android",
+	"--extractor-args", "youtube:player_client=android_creator",
 }
 
 // newTestBuilder returns a CommandBuilder with the resource paths the

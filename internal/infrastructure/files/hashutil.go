@@ -39,6 +39,20 @@ func MD5File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// SHA256File calculates the authoritative binary SHA-256 digest of a file.
+func SHA256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // SHA256Bytes calculates the SHA-256 hash of a byte slice.
 func SHA256Bytes(data []byte) string {
 	h := sha256.New()

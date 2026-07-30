@@ -294,6 +294,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps, metadataExportHandler); err != nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
 	}
+	queuedHandler, queuedErr := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
+	if queuedErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: script.generate.queued handler: %w", queuedErr)
+	}
+	if regErr := eventsRegistry.Register(queuedHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register script.generate.queued handler: %w", regErr)
+	}
 
 	// FASE 3 Push 3.1c (July 2026): register the canonical
 	// Promote→Publisher worker. Drains

@@ -50,6 +50,8 @@ type TypedMetadata struct {
 	Category       string
 	SourceProvider string
 	SourceVideoID  string
+	SourceTitle    string
+	SourceChannel  string
 	DrivePath      string
 	IndexingStatus string
 	StartSec       float64
@@ -78,6 +80,8 @@ func (m TypedMetadata) ToMap() map[string]any {
 	setIfNotEmpty("category", m.Category)
 	setIfNotEmpty("source_provider", m.SourceProvider)
 	setIfNotEmpty("source_video_id", m.SourceVideoID)
+	setIfNotEmpty("source_title", m.SourceTitle)
+	setIfNotEmpty("source_channel", m.SourceChannel)
 	setIfNotEmpty("drive_path", m.DrivePath)
 	setIfNotEmpty("indexing_status", m.IndexingStatus)
 	setIfNotEmpty("slug", m.Slug)
@@ -132,6 +136,8 @@ type CommitRequest struct {
 	Name           string
 	Filename       string
 	MediaType      string
+	Category       string
+	DurationMs     int64
 	ContentHash    string
 	Description    string
 	SearchText     string

@@ -187,7 +187,11 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	var normalizeErr error
 	if req.Normalize {
 		videoCfg := p.cfg.Video.CanonicalClip()
-		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
+		// yt-dlp's download section may include keyframe padding.  The raw
+		// file is therefore not itself a trustworthy 4-second clip.  Bound
+		// the canonical render to the requested duration so the persisted
+		// artifact, Drive object, and SQLite metadata agree physically.
+		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), pkgffmpeg.CutAndNormalizeOptions{
 			Width:   videoCfg.Width,
 			Height:  videoCfg.Height,
 			FPS:     videoCfg.FPS,

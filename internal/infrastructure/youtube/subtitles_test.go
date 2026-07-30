@@ -96,7 +96,7 @@ func TestSubtitles_DelegatesToBaseArgs_CanonicalPlayerClient(t *testing.T) {
 	require.NotEmpty(t, runner.argv, "argv must not be empty")
 
 	// 1. Canonical web,android is present (the f3f1ee90 web-first policy)
-	require.Contains(t, runner.argv, "youtube:player_client=web,android",
+	require.Contains(t, runner.argv, "youtube:player_client=android_creator",
 		"subtitle adapter must use the canonical web,android order centralized in cmd_builder.go")
 
 	// 2. The drift (reversed order) MUST NOT appear anywhere in argv
@@ -176,7 +176,7 @@ func TestSubtitles_EmptyConfigDefaultsToNode(t *testing.T) {
 		"--remote-components must co-present with --js-runtime (the canonical BaseArgs contract)")
 
 	// Canonical web,android must still be present (unconditional policy)
-	assert.Contains(t, runner.argv, "youtube:player_client=web,android",
+	assert.Contains(t, runner.argv, "youtube:player_client=android_creator",
 		"canonical web,android must be present even without explicit JS runtime")
 
 	// --no-warnings must also still be present (unconditional policy)

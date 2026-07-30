@@ -54,28 +54,26 @@ func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, cli
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
 	var searchAgg *search.Aggregator
-	if providerReg != nil {
-		var err error
-		searchFanOut, searchBackends, searchAgg, err = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
-			Logger:      log,
-			ProviderReg: providerReg,
-			ClipsRepo:   clipsRepo,
-			// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic
-			// backend deps are nil-safe — the backend only
-			// registers when all four are non-nil. Embeddings
-			// replaces the historical Embedder search.QueryEmbedder.
-			Embeddings:  embeddings,
-			VectorStore: vectorStore,
-			MediaRepo:   mediaRepo,
-			Delivery:    delivery,
-			Reranker:    reranker,
-		})
-		if err != nil {
-			log.Error("registerSearchBackend: BuildCanonicalSearchFanOut failed (fail-closed)", zap.Error(err))
-			return nil, nil, nil
-		}
-		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
+	var err error
+	searchFanOut, searchBackends, searchAgg, err = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
+		Logger:      log,
+		ProviderReg: providerReg,
+		ClipsRepo:   clipsRepo,
+		// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic
+		// backend deps are nil-safe — the backend only
+		// registers when all four are non-nil. Embeddings
+		// replaces the historical Embedder search.QueryEmbedder.
+		Embeddings:  embeddings,
+		VectorStore: vectorStore,
+		MediaRepo:   mediaRepo,
+		Delivery:    delivery,
+		Reranker:    reranker,
+	})
+	if err != nil {
+		log.Error("registerSearchBackend: BuildCanonicalSearchFanOut failed (fail-closed)", zap.Error(err))
+		return nil, nil, nil
 	}
+	log.Info("PR-2: canonical SearchFanOut wired against the composition-root search dependencies (provider registry optional)")
 	wiring.searchFanOut = searchFanOut
 	wiring.searchBackends = searchBackends
 	wiring.searchAgg = searchAgg

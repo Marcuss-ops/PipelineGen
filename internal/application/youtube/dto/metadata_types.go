@@ -62,6 +62,18 @@ type ClipMetadataInput struct {
 	// metadata JSON and the outbox event payload for operator audit.
 	SourceURL string
 
+	// SourceTitle and SourceChannel preserve the original YouTube
+	// provenance through metadata enrichment.
+	SourceTitle    string
+	SourceChannel  string
+	SourceProvider string
+	VideoID        string
+	ClipStartSec   int
+	ClipEndSec     int
+	PolicyVersion  string
+	DrivePath      string
+	ContentHash    string
+
 	// Group is the canonical normalized_group (e.g. "general",
 	// "tutorial", "vlog"). When empty, the metadata service falls back
 	// to "general".
@@ -227,6 +239,15 @@ type CanonicalClipMetadata struct {
 	// from the video title). Distinct from Summary which is a longer
 	// narrative description.
 	Title string `json:"title,omitempty"`
+
+	// SourceTitle and SourceChannel preserve the original YouTube metadata
+	// separately from the generated clip display title.
+	SourceTitle   string `json:"source_title,omitempty"`
+	SourceChannel string `json:"source_channel,omitempty"`
+
+	// Category is the semantic content category used by structured search
+	// and persisted in the canonical media_assets.category column.
+	Category string `json:"category,omitempty"`
 
 	// PolicyVersion is the extraction policy version (e.g., "v1").
 	// Same value as ClipAsset.PolicyVersion.

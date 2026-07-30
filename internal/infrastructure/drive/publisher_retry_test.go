@@ -77,7 +77,7 @@ func TestYouTubeClipPath_CategoryBoxeSubjectPacquiaoVsBroner_DOD_9_1(t *testing.
 		"YouTubeClipPath must return canonical [{group},{subject}] segments — SafeFolderName preserves spaces and hyphens")
 }
 
-func TestYouTubeClipPath_WithDestinationFolderID_UsesSingleLeaf(t *testing.T) {
+func TestYouTubeClipPath_WithDestinationFolderID_UsesFolderVerbatim(t *testing.T) {
 	req := delivery.PublishRequest{
 		DestinationFolderID: "explicit-root",
 		Subject:             "qQIsvIOQS8U",
@@ -85,7 +85,7 @@ func TestYouTubeClipPath_WithDestinationFolderID_UsesSingleLeaf(t *testing.T) {
 
 	segs, err := delivery.YouTubeClipPath(req)
 	require.NoError(t, err)
-	require.Equal(t, []string{"qQIsvIOQS8U"}, segs)
+	require.Empty(t, segs)
 
 	req = delivery.PublishRequest{
 		DestinationFolderID: "explicit-root",
@@ -93,5 +93,5 @@ func TestYouTubeClipPath_WithDestinationFolderID_UsesSingleLeaf(t *testing.T) {
 	}
 	segs, err = delivery.YouTubeClipPath(req)
 	require.NoError(t, err)
-	require.Equal(t, []string{"boxing-channels"}, segs)
+	require.Empty(t, segs)
 }

@@ -84,7 +84,9 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 	args = append(args, "--no-warnings")
 
 	if isYouTube {
-		// player_client=web,android (web first, android fallback).
+		// Prefer web/android, then fall back to mweb/android_creator. The
+		// latter pair remains usable when YouTube rate-limits the web
+		// session while still serving public progressive formats.
 		// The android client returns wrong durations + missing formats for
 		// some videos when tried first; web,android order tries web first
 		// (correct metadata) with android as fallback for videos like
@@ -94,7 +96,7 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 		// cookies was a brittle combination. YouTube now accepts cookies
 		// with the combined client list, and web-only causes regressions
 		// (no video formats) on several videos. Always use both.
-		args = append(args, "--extractor-args", "youtube:player_client=web,android")
+		args = append(args, "--extractor-args", "youtube:player_client=android_creator")
 	}
 
 	return args

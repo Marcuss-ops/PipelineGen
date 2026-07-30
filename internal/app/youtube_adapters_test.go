@@ -238,11 +238,16 @@ func (s *stubMediaProcessor) Process(ctx context.Context, input *asset.ProcessIn
 // This is the canonical 2-line bug that this test prevents from recurring.
 func TestFromExistingClip_SetsMediaTypeAndLifecycleState(t *testing.T) {
 	clip := &sourcing.ExistingClip{
-		ID:       "yt_abc123_0_10_v1",
-		Name:     "Test Clip",
-		Filename: "test-clip.mp4",
-		Source:   "youtube",
-		Duration: 10 * time.Second,
+		ID:            "yt_abc123_0_10_v1",
+		Name:          "Test Clip",
+		Filename:      "test-clip.mp4",
+		Source:        "youtube",
+		SourceURL:     "https://www.youtube.com/watch?v=abc123",
+		SourceVideoID: "abc123",
+		Category:      "fight",
+		Duration:      10 * time.Second,
+		DriveFolderID: "folder-id",
+		DrivePath:     "Mike Tyson",
 	}
 	a := fromExistingClip(clip)
 	require.NotNil(t, a, "fromExistingClip must return non-nil for non-nil input")
@@ -251,6 +256,18 @@ func TestFromExistingClip_SetsMediaTypeAndLifecycleState(t *testing.T) {
 		"fromExistingClip must set MediaType=clip so UpsertClipTx writes media_type correctly")
 	assert.Equal(t, asset.StateActive, a.LifecycleState,
 		"fromExistingClip must set LifecycleState=ACTIVE so UpsertClipTx writes lifecycle_state correctly")
+	assert.Equal(t, clip.SourceURL, a.SourceURL,
+		"fromExistingClip must preserve source_url for the canonical SQLite columns")
+	assert.Equal(t, clip.Category, a.Category,
+		"fromExistingClip must preserve category for the canonical SQLite columns")
+	assert.Equal(t, clip.Duration, a.Duration,
+		"fromExistingClip must preserve duration for duration_ms")
+	assert.Equal(t, clip.SourceVideoID, a.GetMetadataString("source_video_id"),
+		"fromExistingClip must preserve source_video_id in metadata")
+	assert.Equal(t, clip.DriveFolderID, a.FolderID(),
+		"fromExistingClip must preserve drive folder id")
+	assert.Equal(t, clip.DrivePath, a.FolderPath(),
+		"fromExistingClip must preserve drive folder path")
 }
 
 // TestFromExistingClip_RoundTrip_RichMetadata verifies the rich metadata

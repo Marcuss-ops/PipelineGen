@@ -339,7 +339,10 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	// Wire a cache that ALWAYS hits (so the orchestrator
 	// short-circuits at Step 2 BEFORE the resolver).
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
-		Filename: "yt_yt_fase1c_cachehit_0_10_v1.mp4",
+		Filename:    "yt_yt_fase1c_cachehit_0_10_v1.mp4",
+		Duration:    10,
+		FileHash:    "cache-hit-hash",
+		DriveFileID: "cache-hit-drive-file",
 	}}
 
 	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)

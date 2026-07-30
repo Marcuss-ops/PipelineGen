@@ -135,6 +135,16 @@ func normalizeExtractionDestination(dest *yttypes.DestinationRequest, videoID st
 	if rawSubfolder := strings.TrimPrefix(strings.TrimSpace(dest.SubfolderName), "yt_"); rawSubfolder != "" {
 		subfolderName = pathutil.SafeFolderName(rawSubfolder)
 	}
+	// An explicit folder path with subfolder creation disabled is the
+	// canonical flat-batch escape hatch. It is used by batch callers that
+	// resolve one destination folder once and publish clips from multiple
+	// source videos into that same folder. Preserve the path verbatim after
+	// the transport-level path validation; do not infer a video subfolder.
+	explicitFlatFolder := strings.TrimSpace(dest.FolderPath) != "" &&
+		!dest.CreateSubfolder && groupName == "" && subfolderName == ""
+	if explicitFlatFolder {
+		return "", "", strings.TrimSpace(dest.FolderPath), false
+	}
 	// Default to a child folder when we have a concrete video ID.
 	// This keeps direct clip extraction runs from dumping multiple
 	// clips into the same Drive root when the caller only supplied

@@ -58,7 +58,7 @@ func TestBuildSubtitleArgs_DelegatesToBaseArgs(t *testing.T) {
 	require.NotEmpty(t, args, "argv must not be empty")
 
 	// 1. Canonical web,android is present (the f3f1ee90 web-first policy)
-	require.True(t, containsFlagValue(args, "--extractor-args", "youtube:player_client=web,android"),
+	require.True(t, containsFlagValue(args, "--extractor-args", "youtube:player_client=android_creator"),
 		"segment finder must use the canonical web,android order centralized in cmd_builder.go")
 
 	// 2. The drift (reversed order) MUST NOT appear anywhere in argv
