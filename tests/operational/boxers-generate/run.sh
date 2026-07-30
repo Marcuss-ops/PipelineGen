@@ -41,12 +41,21 @@ fi
 
 printf 'Using database: %s%s%s\n' "$CYAN" "$DB_PATH" "$RESET"
 
-# 2. Query actual Mike Tyson clips from SQLite
+# 2. Query actual Mike Tyson clips from SQLite.
+# Prefer TYSON_VIDEO_ID env var (e.g. yt_6VtSrG1hs9U); falls back to folder_path.
+TYSON_VIDEO_ID="${TYSON_VIDEO_ID:-}"
+TYSON_FOLDER_NAME="${TYSON_FOLDER_NAME:-Mike Tyson}"
 TYSON_CLIPS=()
 TYSON_LINKS=()
 if [[ "$DRY_RUN" != "1" ]]; then
-    # Query clips matching Tyson's video ID from media_assets
-    mapfile -t DB_ROWS < <(sqlite3 "$DB_PATH" "SELECT id, drive_link FROM media_assets WHERE id LIKE 'yt_6VtSrG1hs9U_%' AND lifecycle_status='ACTIVE' LIMIT 6;")
+    if [[ -n "$TYSON_VIDEO_ID" ]]; then
+        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE id LIKE '${TYSON_VIDEO_ID}_%' AND lifecycle_status='ACTIVE' LIMIT 6;"
+        printf 'Querying by video ID: %s\n' "$TYSON_VIDEO_ID"
+    else
+        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE LOWER(folder_path) LIKE LOWER('%${TYSON_FOLDER_NAME}%') AND lifecycle_status='ACTIVE' AND source='youtube' LIMIT 6;"
+        printf 'Querying by folder name: %s\n' "$TYSON_FOLDER_NAME"
+    fi
+    mapfile -t DB_ROWS < <(sqlite3 "$DB_PATH" "$TYSON_SQL")
     if (( ${#DB_ROWS[@]} < 4 )); then
         printf '%ssetup error: not enough Mike Tyson clips in database (found %d, need at least 4)%s\n' "$RED" "${#DB_ROWS[@]}" "$RESET" >&2
         exit 2
@@ -232,8 +241,8 @@ run_scenario() {
         "02")
             # Scenario 2 assertions: Translation and voiceover
             if ! jq -e --arg lang "it" '
-                .text | length > 100
-                and test("\\b(il|la|gli|della|velocità|pugilato|eredità)\\b"; "i")
+                (.text | length > 100)
+                and (.text | test("\\b(il|la|gli|della|velocità|pugilato|eredità)\\b"; "i"))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Text not translated to Italian or too short%s\n' "$RED" "$RESET" >&2
                 printf 'Text: %s\n' "$text" >&2
@@ -241,12 +250,12 @@ run_scenario() {
             fi
             # Verify voiceover bindings
             if ! jq -e '
-                [.specscene.scenes[].bindings.voiceover] | length == (.specscene.scenes | length)
-                and all(.specscene.scenes[];
+                (([.specscene.scenes[].bindings.voiceover] | length) == (.specscene.scenes | length))
+                and (all(.specscene.scenes[];
                     .bindings.voiceover.status == "completed"
                     and (.bindings.voiceover.link | length) > 0
                     and ((.bindings.voiceover.local_path // "") == "")
-                )
+                ))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Voiceover check failed (missing/incomplete/exposes local path)%s\n' "$RED" "$RESET" >&2
                 jq '.specscene.scenes[].bindings.voiceover' <<<"$out_json" >&2
@@ -258,17 +267,16 @@ run_scenario() {
         "03")
             # Scenario 3 assertions: Supplied clips only
             if ! jq -e --argjson supplied "$(printf '%s\n' "${TYSON_CLIPS[@]}" | jq -R . | jq -s .)" '
-                all(.specscene.scenes[];
+                (all(.specscene.scenes[];
                     .bindings.clip == null
                     or (
-                        ($supplied | index(.bindings.clip.clip_id)) != null
-                        and (.bindings.clip.drive_link | length) > 0
+                        (($supplied | index(.bindings.clip.clip_id)) != null)
+                        and ((.bindings.clip.drive_link | length) > 0)
                     )
-                )
+                ))
                 and (
-                    [.specscene.scenes[].bindings.clip.clip_id // empty] | length
-                ) == (
-                    [.specscene.scenes[].bindings.clip.clip_id // empty] | unique | length
+                    ([.specscene.scenes[].bindings.clip.clip_id // empty] | length)
+                    == ([.specscene.scenes[].bindings.clip.clip_id // empty] | unique | length)
                 )
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Supplied clip IDs check failed or duplicate bindings found%s\n' "$RED" "$RESET" >&2
@@ -280,7 +288,11 @@ run_scenario() {
             bound_ids=$(jq -r '.specscene.scenes[].bindings.clip.clip_id // empty' <<<"$out_json")
             for bid in $bound_ids; do
                 local count
-                count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube' AND id LIKE 'yt_6VtSrG1hs9U_%';")
+                if [[ -n "$TYSON_VIDEO_ID" ]]; then
+                    count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube' AND id LIKE '${TYSON_VIDEO_ID}_%';")
+                else
+                    count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE id='$bid' AND source='youtube' AND LOWER(folder_path) LIKE LOWER('%${TYSON_FOLDER_NAME}%');")
+                fi
                 if [[ "$count" != "1" ]]; then
                     printf '%sFAIL: Bound clip %s not found in SQLite or is not a Tyson clip%s\n' "$RED" "$bid" "$RESET" >&2
                     return 1
@@ -292,14 +304,14 @@ run_scenario() {
         "04")
             # Scenario 4 assertions: Direct stock bindings
             if ! jq -e --arg f_id "${TYSON_CLIPS[0]}" --arg i_id "${TYSON_CLIPS[1]}" --arg t_id "${TYSON_CLIPS[2]}" '
-                .specscene.scenes[0].bindings.stock.asset_id == $f_id
-                and .specscene.scenes[1].bindings.stock.asset_id == $i_id
-                and .specscene.scenes[2].bindings.stock.asset_id == $t_id
-                and all(.specscene.scenes[];
+                (.specscene.scenes[0].bindings.stock.asset_id == $f_id)
+                and (.specscene.scenes[1].bindings.stock.asset_id == $i_id)
+                and (.specscene.scenes[2].bindings.stock.asset_id == $t_id)
+                and (all(.specscene.scenes[];
                     .bindings.stock.fallback == false
                     and (.bindings.stock.drive_link | length) > 0
                     and .bindings.stock.source == "youtube"
-                )
+                ))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Direct stock bindings validation failed (wrong order/fallback/missing link)%s\n' "$RED" "$RESET" >&2
                 jq '.specscene.scenes[].bindings.stock' <<<"$out_json" >&2
@@ -311,19 +323,19 @@ run_scenario() {
         "05")
             # Scenario 5 assertions: Full pipeline integration
             if ! jq -e --arg lang "it" '
-                .text | length > 100
-                and test("\\b(il|la|gli|della|velocità|pugilato|eredità)\\b"; "i")
+                (.text | length > 100)
+                and (.text | test("\\b(il|la|gli|della|velocità|pugilato|eredità)\\b"; "i"))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Full pipeline text not in Italian%s\n' "$RED" "$RESET" >&2
                 return 1
             fi
             # Verify voiceover completed
             if ! jq -e '
-                [.specscene.scenes[].bindings.voiceover] | length == (.specscene.scenes | length)
-                and all(.specscene.scenes[];
+                (([.specscene.scenes[].bindings.voiceover] | length) == (.specscene.scenes | length))
+                and (all(.specscene.scenes[];
                     .bindings.voiceover.status == "completed"
                     and (.bindings.voiceover.link | length) > 0
-                )
+                ))
             ' <<<"$out_json" >/dev/null; then
                 printf '%sFAIL: Full pipeline voiceover check failed%s\n' "$RED" "$RESET" >&2
                 return 1
@@ -333,8 +345,8 @@ run_scenario() {
                 all(.specscene.scenes[];
                     .bindings.clip == null
                     or (
-                        ($supplied | index(.bindings.clip.clip_id)) != null
-                        and (.bindings.clip.drive_link | length) > 0
+                        (($supplied | index(.bindings.clip.clip_id)) != null)
+                        and ((.bindings.clip.drive_link | length) > 0)
                     )
                 )
             ' <<<"$out_json" >/dev/null; then
