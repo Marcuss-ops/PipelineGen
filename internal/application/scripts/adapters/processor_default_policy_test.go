@@ -52,7 +52,8 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 		case adapterspkg.ProcessorPersistence,
 			adapterspkg.ProcessorEntities,
 			adapterspkg.ProcessorMetadata,
-			adapterspkg.ProcessorStockBindings:
+			adapterspkg.ProcessorStockBindings,
+			adapterspkg.ProcessorAssetLocationReconciliation:
 			want = adapterspkg.ProcessorRequired
 		case adapterspkg.ProcessorImages,
 			adapterspkg.ProcessorInternetImages,
