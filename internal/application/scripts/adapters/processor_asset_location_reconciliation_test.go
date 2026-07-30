@@ -589,3 +589,163 @@ func TestAssetLocationReconciliation_TenLanguagesNoBrokenLinks(t *testing.T) {
 		}
 	}
 }
+
+// 17. Orphan Drive file → link cleared + warning
+func TestAssetLocationReconciliation_OrphanDriveFileCleared(t *testing.T) {
+	link := "https://drive.google.com/file/d/orphan1/view"
+	r := newStubVerifier()
+	r.stubResult(link, &scriptpkg.VerifiedLocation{
+		AssetID:     "clip-orphan",
+		DriveFileID: "orphan1",
+		State:       scriptpkg.LocationStateOrphanDriveFile,
+		ErrorCode:   "ASSET_NOT_IN_SQLITE",
+	})
+
+	p := NewAssetLocationReconciliationProcessor(r)
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("clip-orphan", link),
+		}},
+	}
+
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != "" {
+		t.Fatalf("orphan link should be cleared, got %q",
+			got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink)
+	}
+	if !got.Changed {
+		t.Fatal("Changed should be true for cleared orphan link")
+	}
+	if len(got.Warnings) != 1 {
+		t.Fatalf("expected 1 warning for orphan link, got %d: %v", len(got.Warnings), got.Warnings)
+	}
+	if !strings.Contains(got.Warnings[0], "ORPHAN") {
+		t.Fatalf("warning should mention ORPHAN, got %q", got.Warnings[0])
+	}
+}
+
+// 18. Duplicate file_id → link cleared + warning
+func TestAssetLocationReconciliation_DuplicateFileIDCleared(t *testing.T) {
+	link := "https://drive.google.com/file/d/dup1/view"
+	r := newStubVerifier()
+	r.stubResult(link, &scriptpkg.VerifiedLocation{
+		AssetID:     "clip-dup",
+		DriveFileID: "dup1",
+		State:       scriptpkg.LocationStateDuplicate,
+		ErrorCode:   "DUPLICATE_FILE_ID",
+	})
+
+	p := NewAssetLocationReconciliationProcessor(r)
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("clip-dup", link),
+		}},
+	}
+
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != "" {
+		t.Fatalf("duplicate link should be cleared, got %q",
+			got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink)
+	}
+	if !got.Changed {
+		t.Fatal("Changed should be true for cleared duplicate link")
+	}
+	if len(got.Warnings) != 1 {
+		t.Fatalf("expected 1 warning for duplicate link, got %d: %v", len(got.Warnings), got.Warnings)
+	}
+	if !strings.Contains(got.Warnings[0], "DUPLICATE") {
+		t.Fatalf("warning should mention DUPLICATE, got %q", got.Warnings[0])
+	}
+}
+
+// 19. Document refresh: SpecScene structure preserved after reconciliation
+// ensures the UpdatedSpecScene is suitable for downstream document
+// rendering with the same doc_id — all binding types survive round-trip.
+func TestAssetLocationReconciliation_DocumentRefreshStructurePreserved(t *testing.T) {
+	clipLink := "https://drive.google.com/file/d/docClip/view"
+	stockLink := "https://drive.google.com/file/d/docStock/view"
+	voLink := "https://drive.google.com/file/d/docVO/view"
+	mediaLink := "https://drive.google.com/file/d/docMedia/view"
+
+	r := newStubVerifier()
+	r.stubResult(clipLink, &scriptpkg.VerifiedLocation{
+		AssetID: "clip-doc", DriveFileID: "docClip",
+		DriveLink: clipLink, State: scriptpkg.LocationStateVerified,
+	})
+	r.stubResult(stockLink, &scriptpkg.VerifiedLocation{
+		AssetID: "stock-doc", DriveFileID: "docStock",
+		DriveLink: stockLink, State: scriptpkg.LocationStateVerified,
+	})
+	r.stubResult(voLink, &scriptpkg.VerifiedLocation{
+		AssetID: "voiceover:scene-doc", DriveFileID: "docVO",
+		DriveLink: voLink, State: scriptpkg.LocationStateVerified,
+	})
+	r.stubResult(mediaLink, &scriptpkg.VerifiedLocation{
+		AssetID: "media-doc", DriveFileID: "docMedia",
+		DriveLink: mediaLink, State: scriptpkg.LocationStateVerified,
+	})
+
+	// Build a scene with all 4 binding types populated.
+	scene := scriptpkg.SpecScene{
+		ID: "scene-doc", Index: 0, Text: "test scene for doc refresh",
+		Kind: scriptpkg.SceneClip,
+		Bindings: scriptpkg.SceneBindings{
+			Clip:      &scriptpkg.ClipBinding{ClipID: "clip-doc", ClipTitle: "Doc Clip", DriveLink: clipLink},
+			Stock:     &scriptpkg.StockBinding{AssetID: "stock-doc", Name: "Doc Stock", DriveLink: stockLink},
+			Voiceover: &scriptpkg.VoiceoverBinding{Link: voLink, Status: "completed"},
+			Media: []scriptpkg.ResolvedMediaBinding{
+				{Slot: "bg", AssetID: "media-doc", DriveLink: mediaLink},
+			},
+		},
+	}
+
+	p := NewAssetLocationReconciliationProcessor(r)
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{scene}},
+	}
+
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := got.UpdatedSpecScene.Scenes[0]
+
+	// All links preserved for valid bindings.
+	if out.Bindings.Clip == nil || out.Bindings.Clip.DriveLink != clipLink {
+		t.Fatal("clip binding must be preserved for document refresh")
+	}
+	if out.Bindings.Stock == nil || out.Bindings.Stock.DriveLink != stockLink {
+		t.Fatal("stock binding must be preserved for document refresh")
+	}
+	if out.Bindings.Voiceover == nil || out.Bindings.Voiceover.Link != voLink {
+		t.Fatal("voiceover binding must be preserved for document refresh")
+	}
+	if len(out.Bindings.Media) != 1 || out.Bindings.Media[0].DriveLink != mediaLink {
+		t.Fatal("media binding must be preserved for document refresh")
+	}
+
+	// Structure integrity: same scene ID, text, kind.
+	if out.ID != scene.ID {
+		t.Fatalf("scene ID changed: %q → %q", scene.ID, out.ID)
+	}
+	if out.Text != scene.Text {
+		t.Fatalf("scene text changed")
+	}
+	if out.Kind != scene.Kind {
+		t.Fatalf("scene kind changed")
+	}
+
+	if got.Changed {
+		t.Fatal("Changed should be false when all links are verified — safe for document refresh")
+	}
+	if len(got.Warnings) > 0 {
+		t.Fatalf("no warnings expected for fully valid bindings: %v", got.Warnings)
+	}
+}
