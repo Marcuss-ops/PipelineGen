@@ -501,6 +501,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
 	name TEXT NOT NULL DEFAULT '',
 	filename TEXT NOT NULL DEFAULT '',
 	media_type TEXT NOT NULL DEFAULT '',
+	category TEXT NOT NULL DEFAULT '',
+	duration_ms INTEGER NOT NULL DEFAULT 0,
 	file_hash TEXT NOT NULL DEFAULT '',
 	drive_file_id TEXT NOT NULL DEFAULT '',
 	drive_link TEXT NOT NULL DEFAULT '',
