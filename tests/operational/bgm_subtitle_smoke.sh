@@ -182,21 +182,14 @@ SMOKE_VOICEOVER_ASSET="${SMOKE_VOICEOVER_ASSET:-ccc7f50e7adc3625d978a483766fe40e
 #   bded583d... (6.7KB)  7f3d11a7...  etc.
 SMOKE_SCENE_IMAGE_ASSET="${SMOKE_SCENE_IMAGE_ASSET:-smoke_test_image_320x240_png}"
 
+# Known READY background_music asset (from database):
+#   smoke_bgm_mp3 (1s mp3, copied from voiceover for smoke testing)
+SMOKE_BGM_ASSET="${SMOKE_BGM_ASSET:-smoke_bgm_mp3}"
+
 # BGM is optional for the plumbing test — the worker may not have BGM files yet.
 BGM_TRACK=""
-BGM_TRACK_URL=""
-if [[ -d "$SMOKE_BGM_DIR" ]]; then
-    local_bgm=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name '*.mp3' 2>/dev/null | head -1 || true)
-    if [[ -n "$local_bgm" && -f "$local_bgm" ]]; then
-        BGM_TRACK="$local_bgm"
-    fi
-fi
-if [[ -n "$BGM_TRACK" ]]; then
-    printf '  %sINFO: background music found: %s%s\n' "$DIM" "$(basename "$BGM_TRACK")" "$RESET"
-else
-    printf '%sWARN: no BGM file — running without background music (audio_track plumbing only)%s\n' \
-        "$YELLOW" "$RESET" >&2
-fi
+BGM_TRACK_URL="velox-asset://${SMOKE_BGM_ASSET}"
+printf '  %sINFO: background music via velox-asset://%s%s\n' "$DIM" "$SMOKE_BGM_ASSET" "$RESET"
 
 declare -a FAILURES=()
 fail() { FAILURES+=("$1"); }
@@ -457,8 +450,8 @@ measure_job_metrics() {
     local jid="$1"
     local row
     row=$(sqlite_q "
-        SELECT COALESCE(engine_audio_download_ms, 0) || '|' ||
-               COALESCE(engine_render_ms, 0) || '|' ||
+        SELECT COALESCE(engine_asset_download_ms, 0) || '|' ||
+               COALESCE(pipeline_render_ms, 0) || '|' ||
                COALESCE(engine_total_ms, 0)
         FROM attempt_metrics
         WHERE job_id = '${jid}'
@@ -479,11 +472,11 @@ run_cold_cache_phase() {
     JOB_ID=""
 
     local start_ts
-    start_ts=$(date +%s%3N)
+    start_ts=$(date +%s)
     post_bgm_subtitle_job  || { fail "cold_cache_post"; return 1; }
     poll_job_to_terminal   || { fail "cold_cache_poll"; return 1; }
     local end_ts
-    end_ts=$(date +%s%3N)
+    end_ts=$(date +%s)
 
     local metrics
     metrics=$(measure_job_metrics "$JOB_ID")
@@ -491,16 +484,16 @@ run_cold_cache_phase() {
     download_ms=$(echo "$metrics" | cut -d'|' -f1)
     render_ms=$(echo "$metrics" | cut -d'|' -f2)
     engine_total_ms=$(echo "$metrics" | cut -d'|' -f3)
-    local wall_ms=$((end_ts - start_ts))
+    local wall_s=$((end_ts - start_ts))
 
     printf '  %sOK: cold cache job_id=%s%s\n' "$GREEN" "$JOB_ID" "$RESET"
-    printf '  cold_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_ms=%s\n' \
-        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_ms"
+    printf '  cold_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_s=%s\n' \
+        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_s"
 
     # Store for JSON output.
     COLD_DOWNLOAD_MS="$download_ms"
     COLD_RENDER_MS="$render_ms"
-    COLD_TOTAL_MS="$wall_ms"
+    COLD_TOTAL_MS="$wall_s"
     COLD_JOB_ID="$JOB_ID"
     return 0
 }
@@ -514,11 +507,11 @@ run_warm_cache_phase() {
     JOB_ID=""
 
     local start_ts
-    start_ts=$(date +%s%3N)
+    start_ts=$(date +%s)
     post_bgm_subtitle_job  || { fail "warm_cache_post"; return 1; }
     poll_job_to_terminal   || { fail "warm_cache_poll"; return 1; }
     local end_ts
-    end_ts=$(date +%s%3N)
+    end_ts=$(date +%s)
 
     local metrics
     metrics=$(measure_job_metrics "$JOB_ID")
@@ -526,11 +519,11 @@ run_warm_cache_phase() {
     download_ms=$(echo "$metrics" | cut -d'|' -f1)
     render_ms=$(echo "$metrics" | cut -d'|' -f2)
     engine_total_ms=$(echo "$metrics" | cut -d'|' -f3)
-    local wall_ms=$((end_ts - start_ts))
+    local wall_s=$((end_ts - start_ts))
 
     printf '  %sOK: warm cache job_id=%s%s\n' "$GREEN" "$JOB_ID" "$RESET"
-    printf '  warm_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_ms=%s\n' \
-        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_ms"
+    printf '  warm_cache: download_ms=%s render_ms=%s engine_total_ms=%s wall_s=%s\n' \
+        "$download_ms" "$render_ms" "$engine_total_ms" "$wall_s"
 
     # Verify download_ms is 0 (cache hit — no download).
     if [[ "$download_ms" == "0" || "$download_ms" == "" ]]; then
@@ -541,7 +534,7 @@ run_warm_cache_phase() {
 
     WARM_DOWNLOAD_MS="$download_ms"
     WARM_RENDER_MS="$render_ms"
-    WARM_TOTAL_MS="$wall_ms"
+    WARM_TOTAL_MS="$wall_s"
     WARM_JOB_ID="$JOB_ID"
     return 0
 }
@@ -1093,7 +1086,10 @@ post_bgm_subtitle_job() {
     # Build the JSON payload with jq for reliability.
     local payload audio_tracks_json
 
-    # Audio tracks: background music (optional — skipped if no BGM file found).
+    # Audio tracks: background music with loop + fade + ducking.
+    # Uses velox-asset:// for reliable asset resolution on any worker.
+    # The hybrid.v1 compiler auto-enables loop/fade/ducking when role
+    # is "background_music".
     if [[ -n "$BGM_TRACK_URL" ]]; then
         audio_tracks_json=$(jq -n --arg bgm "$BGM_TRACK_URL" --arg vol "$BGM_VOLUME" '
             [{
@@ -1101,7 +1097,11 @@ post_bgm_subtitle_job() {
                 volume: ($vol | tonumber),
                 start_time_offset: 0,
                 duration_seconds: 0,
-                role: "background_music"
+                role: "background_music",
+                loop: true,
+                fade_in_seconds: 0.5,
+                fade_out_seconds: 0.5,
+                ducking_enabled: true
             }]')
     else
         audio_tracks_json='[]'
