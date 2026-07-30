@@ -1,0 +1,52 @@
+{
+  "mike_tyson": {
+    "fight": {
+      "asset_id": "yt_0vnOfawuQF4_20_24_v1",
+      "drive_link": "https://drive.google.com/file/d/147z3Qq-MYbxwolcg8ApWOy9WRyMNQlEN/view?usp=drivesdk"
+    },
+    "interview": {
+      "asset_id": "yt_0vnOfawuQF4_50_54_v1",
+      "drive_link": "https://drive.google.com/file/d/1SqFLAuvej_Y0446ql5hWtBjID6yk5E7k/view?usp=drivesdk"
+    }
+  },
+  "muhammad_ali": {
+    "fight": {
+      "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk"
+    },
+    "interview": {
+      "asset_id": "yt_RtINcMrdKY0_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1XlsDWVk8chRBl64jxXciEYMdEGqMB-kj/view?usp=drivesdk"
+    }
+  },
+  "manny_pacquiao": {
+    "fight": {
+      "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk"
+    },
+    "interview": {
+      "asset_id": "yt_kUruG4y9mak_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1Ur3q2nvgGfT6YB3yqj_meEafdssMSG1g/view?usp=drivesdk"
+    }
+  },
+  "floyd_mayweather": {
+    "fight": {
+      "asset_id": "yt_66Dg_n0H8rQ_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1Fr8F2tLNUBNTXu5kzGq8K1OgxmzmiQtp/view?usp=drivesdk"
+    },
+    "interview": {
+      "asset_id": "yt_1gjZjirv740_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1KCV0cEH7mYY-84cuSqK2SJoa6r-_W2Ip/view?usp=drivesdk"
+    }
+  },
+  "sugar_ray_robinson": {
+    "fight": {
+      "asset_id": "yt_n_M4SFK8NCc_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1VNOzAk7GcUnG4-7ogK1kkr15-TKX_jKZ/view?usp=drivesdk"
+    },
+    "interview": {
+      "asset_id": "yt_Xi-2E5QcXtQ_8_12_v1",
+      "drive_link": "https://drive.google.com/file/d/1AyFR1Xaj5iAiCkKE0YKeIZltRtsD4UbP/view?usp=drivesdk"
+    }
+  }
+}

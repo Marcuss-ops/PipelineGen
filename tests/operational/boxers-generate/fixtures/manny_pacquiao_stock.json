@@ -1,0 +1,28 @@
+[
+  {
+    "index": 2,
+    "scene_id": "scene-2",
+    "segment_id": "boxer-manny-pacquiao",
+    "asset_id": "yt_VJAk5sy1xoI_8_12_v1",
+    "name": "Manny Pacquiao fight",
+    "source": "youtube",
+    "drive_link": "https://drive.google.com/file/d/1a2_-bF2Uj--fnEU2JR7u1InjabFkV9SW/view?usp=drivesdk",
+    "score": 1,
+    "fallback": false,
+    "start_ms": 0,
+    "end_ms": 5000
+  },
+  {
+    "index": 2,
+    "scene_id": "scene-2",
+    "segment_id": "boxer-manny-pacquiao",
+    "asset_id": "yt_kUruG4y9mak_8_12_v1",
+    "name": "Manny Pacquiao interview",
+    "source": "youtube",
+    "drive_link": "https://drive.google.com/file/d/1Ur3q2nvgGfT6YB3yqj_meEafdssMSG1g/view?usp=drivesdk",
+    "score": 1,
+    "fallback": false,
+    "start_ms": 0,
+    "end_ms": 5000
+  }
+]
