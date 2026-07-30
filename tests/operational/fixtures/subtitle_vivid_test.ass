@@ -1,0 +1,34 @@
+[Script Info]
+; Semantic labels for worker smoke test (Fase 6 — subtitle verification)
+; Segment 0-4s:  nome: "white_bottom"   — testo normale bianco bottom-center
+; Segment 4-8s:  nome: "red_bold_top"   — frase importante rossa grande bold top-center
+; Segment 8-12s: nome: "cyan_green_hl"  — nome ciano + parola evidenziata verde italic
+; Generated for: PipelineGen/tests/operational/bgm_subtitle_smoke.sh
+; Preset:        vivid_test (static style + position + colour verification)
+Title: Subtitle Vivid Test — Background Music + Animated Subtitles Smoke
+ScriptType: v4.00+
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+; white_bottom: text standard bianco, allineato in basso al centro (Alignment=2)
+Style: white_bottom, Arial, 36, &H00FFFFFF, &H000000FF, &H00000000, &H64000000, 0, 0, 0, 0, 100, 100, 0, 0, 1, 2, 1, 2, 40, 40, 30, 1
+; red_bold_top: rosso brillante, grassetto, grande, allineato in alto al centro (Alignment=8)
+Style: red_bold_top, Arial, 48, &H000000FF, &H000000FF, &H00000000, &H64000000, -1, 0, 0, 0, 100, 100, 0, 0, 1, 2, 1, 8, 40, 40, 30, 1
+; cyan_green_hl: ciano base + override verde su highlight inline
+Style: cyan_green_hl, Arial, 40, &H0000FFFF, &H000000FF, &H00000000, &H64000000, 0, 0, 0, 0, 100, 100, 0, 0, 1, 2, 1, 5, 40, 40, 30, 1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+; ── 0–4 s: testo bianco in basso, semantico name:white_bottom ──
+Dialogue: 0, 0:00:00.00, 0:00:04.00, white_bottom,, 0, 0, 0,, {\an2}Questa è una {\b1}demo{\b0} con sottotitoli animati.
+
+; ── 4–8 s: frase rossa grande bold in alto, semantico name:red_bold_top ──
+Dialogue: 0, 0:00:04.00, 0:00:08.00, red_bold_top,, 0, 0, 0,, {\an8}{\c&H0000FF&}I sottotitoli seguono la voce con {\b1}effetti dinamici{\b0}.
+
+; ── 8–12 s: nome ciano + highlight verde italic, semantico name:cyan_green_hl ──
+Dialogue: 0, 0:00:08.00, 0:00:12.00, cyan_green_hl,, 0, 0, 0,, {\an5}{\c&H00FFFF&}PipelineGen {\c&HFFFFFF&}rende i video {\i1}{\c&H00FF00&}professionali{\i0}{\c&HFFFFFF&}.
