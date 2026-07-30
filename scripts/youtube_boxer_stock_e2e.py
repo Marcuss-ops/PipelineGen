@@ -145,10 +145,11 @@ def select(base: str, token: str, boxer: str) -> list[dict[str, Any]]:
             raise RuntimeError("Mike Tyson persisted manifest is not exactly 20 unique videos")
         return selected
     if boxer.casefold() == "muhammad ali":
-        selected = [describe(video_id, category) for category, ids in MUHAMMAD_ALI_MANIFEST for video_id in ids]
-        if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
-            raise RuntimeError("Muhammad Ali persisted manifest is not exactly 20 unique videos")
-        return selected
+        # July 2026: yt-dlp --dump-single-json is blocked by YouTube
+        # anti-bot for these videos, but --flat-playlist search still
+        # works.  Fall through to the dynamic search path below so the
+        # manifest is rebuilt from live YouTube results every run.
+        pass
     if boxer.casefold() == "manny pacquiao":
         selected = [describe(video_id, category) for category, ids in MANNY_PACQUIAO_MANIFEST for video_id in ids]
         if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
