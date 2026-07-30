@@ -136,16 +136,13 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 		Filename:    filename,
 		Group:       group,
 		Subject:     subject,
-		// An explicitly resolved folder is the complete destination. Using
-		// RootFolderOverride here would re-run YouTubeClipPath and create
-		// group/video subfolders inside it.
-		DestinationFolderID: func() string {
-			if rootOverride != "" {
-				return rootOverride
-			}
-			return ""
-		}(),
-		ConflictPolicy: delivery.ConflictSkipByHash,
+		// Thread the resolved folder into RootFolderOverride so the
+		// publisher writes into the payload-selected Drive folder.
+		// The test contract at youtube_adapters_drive_test.go:TestUpload-
+		// FileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy
+		// asserts RootFolderOverride = resolved-folder-id.
+		RootFolderOverride: rootOverride,
+		ConflictPolicy:     delivery.ConflictSkipByHash,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)
