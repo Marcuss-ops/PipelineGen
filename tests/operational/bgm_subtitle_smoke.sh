@@ -170,14 +170,29 @@ if [[ ! -f "$SMOKE_DB" ]]; then
     exit 2
 fi
 
-# Discover a background music file.
+# HTTP asset server for SSRF-compliant URLs (file:// is rejected by the validator).
+# The test uses http://127.0.0.1:9999/... served by a Python HTTP server.
+SMOKE_HTTP_ASSET_BASE="${SMOKE_HTTP_ASSET_BASE:-http://127.0.0.1:9999}"
+SMOKE_HTTP_ASSET_DIR="${SMOKE_HTTP_ASSET_DIR:-/tmp/smoke-http-server}"
+
+# Discover a background music file and link it into the HTTP server directory.
+BGM_TRACK=""
+BGM_TRACK_URL=""
 if [[ -d "$SMOKE_BGM_DIR" ]]; then
-    BGM_TRACK=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name 'music_*.mp3' -o -name '*background*' -o -name '*podcast*' 2>/dev/null | head -1 || true)
+    local_bgm=$(find "$SMOKE_BGM_DIR" -maxdepth 2 -name 'music_*.mp3' -o -name '*background*' -o -name '*podcast*' 2>/dev/null | head -1 || true)
+    if [[ -n "$local_bgm" && -f "$local_bgm" ]]; then
+        BGM_TRACK="$local_bgm"
+        # Link into HTTP server dir so it's reachable.
+        local bgm_name
+        bgm_name=$(basename "$local_bgm")
+        mkdir -p "$SMOKE_HTTP_ASSET_DIR" 2>/dev/null || true
+        ln -sf "$local_bgm" "$SMOKE_HTTP_ASSET_DIR/$bgm_name" 2>/dev/null || true
+        BGM_TRACK_URL="${SMOKE_HTTP_ASSET_BASE}/${bgm_name}"
+    fi
 fi
 if [[ -z "$BGM_TRACK" ]]; then
     printf '%sWARN: no background music .mp3 found in %s — smoke test will run WITHOUT background music (testing audio_track plumbing only)%s\n' \
         "$YELLOW" "$SMOKE_BGM_DIR" "$RESET" >&2
-    BGM_TRACK=""
 fi
 
 declare -a FAILURES=()
@@ -999,7 +1014,7 @@ write_metrics_json() {
         --arg warm_job "${WARM_JOB_ID:-}" \
         --argjson restart_hit "${POST_RESTART_CACHE_HIT:-false}" \
         --arg restart_files "${POST_RESTART_FILES:-0}" \
-        --arg bgm_track "${BGM_TRACK:-none}" \
+        --arg bgm_track "${BGM_TRACK_URL:-none}" \
         --arg subtitle_ps "$SUBTITLE_PRESET" \
         --arg video_streams "${FFPROBE_VIDEO_STREAMS:-0}" \
         --arg audio_streams "${FFPROBE_AUDIO_STREAMS:-0}" \
@@ -1075,9 +1090,9 @@ post_bgm_subtitle_job() {
     # Build the JSON payload with jq for reliability.
     local payload audio_tracks_json
 
-    # Audio tracks: background music with velox-asset:// reference.
-    if [[ -n "$BGM_TRACK" && -f "$BGM_TRACK" ]]; then
-        audio_tracks_json=$(jq -n --arg bgm "file://${BGM_TRACK}" --arg vol "$BGM_VOLUME" '
+    # Audio tracks: background music via HTTP (SSRF-compliant).
+    if [[ -n "$BGM_TRACK_URL" ]]; then
+        audio_tracks_json=$(jq -n --arg bgm "$BGM_TRACK_URL" --arg vol "$BGM_VOLUME" '
             [{
                 source_url: $bgm,
                 volume: ($vol | tonumber),
@@ -1089,21 +1104,21 @@ post_bgm_subtitle_job() {
         audio_tracks_json='[]'
     fi
 
-    # ASS subtitle fixture path (12-second, 3 segments).
-    local ass_path="file://${SMOKE_ASS_FIXTURE}"
+    # ASS subtitle fixture via HTTP (SSRF-compliant).
+    local ass_url="${SMOKE_HTTP_ASSET_BASE}/subtitle_vivid_test.ass"
     if [[ ! -f "$SMOKE_ASS_FIXTURE" ]]; then
         printf '%sWARN: ASS fixture not found at %s — subtitle rendering will fail%s\n' \
             "$YELLOW" "$SMOKE_ASS_FIXTURE" "$RESET" >&2
     fi
 
     # 3 scenes matching the ASS file's 3 segments (0-4s, 4-8s, 8-12s).
-    local voiceover_ref="file:///opt/velox/current/.velox/data/test_voice.mp3"
+    local voiceover_ref="${SMOKE_HTTP_ASSET_BASE}/test_voice.mp3"
     payload=$(jq -n \
         --arg ikey "$IDEMPOTENCY_KEY" \
         --arg vname "BGM + Vivid Subtitle Smoke Test" \
         --arg script "Questa è una demo con sottotitoli animati. I sottotitoli seguono la voce con effetti dinamici. PipelineGen rende i video professionali." \
         --argjson audio_tracks "$audio_tracks_json" \
-        --arg ass_path "$ass_path" \
+        --arg ass_url "$ass_url" \
         --arg preset "$SUBTITLE_PRESET" \
         --arg vo_ref "$voiceover_ref" \
         '{
@@ -1126,7 +1141,7 @@ post_bgm_subtitle_job() {
             ],
             subtitle_tracks: [
                 {
-                    source: $ass_path,
+                    source: $ass_url,
                     preset: $preset
                 }
             ],
