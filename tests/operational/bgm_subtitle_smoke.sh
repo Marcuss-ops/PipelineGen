@@ -183,7 +183,6 @@ if [[ -d "$SMOKE_BGM_DIR" ]]; then
     if [[ -n "$local_bgm" && -f "$local_bgm" ]]; then
         BGM_TRACK="$local_bgm"
         # Link into HTTP server dir so it's reachable.
-        local bgm_name
         bgm_name=$(basename "$local_bgm")
         mkdir -p "$SMOKE_HTTP_ASSET_DIR" 2>/dev/null || true
         ln -sf "$local_bgm" "$SMOKE_HTTP_ASSET_DIR/$bgm_name" 2>/dev/null || true
