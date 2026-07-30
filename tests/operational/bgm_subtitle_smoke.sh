@@ -37,8 +37,7 @@
 #   VELOX_ADMIN_TOKEN       bearer token (mandatory if not --dry)
 #   SMOKE_DB                path to media.db.sqlite
 #                            (default data/media/media.db.sqlite)
-#   SMOKE_BGM_DIR            local directory containing background music .mp3 files
-#                            (default data/media/sound_effects)
+#   SMOKE_BGM_ASSET          background music asset ID (velox-asset:// resolved by worker)
 #   SMOKE_TIMEOUT_SECONDS   per-script overall wall clock (default 300)
 #   SMOKE_POLL_TIMEOUT_SECONDS  poll loop ceiling (default 180)
 #   SMOKE_POLL_INTERVAL_SECONDS poll sleep (default 3)
@@ -115,7 +114,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     smoke_echo_safe "DRY RUN — would probe:"
     printf '  GET  http://%s/health  (DataServer up check)\n' "$SMOKE_API_BASE"
     printf '  GET  http://%s/api/v1/velox/workers  (worker fleet)\n' "$SMOKE_API_BASE"
-    printf '  fs   %s  (background music directory)\n' "${SMOKE_BGM_DIR:-data/media/sound_effects}"
+    printf '  BGM  velox-asset://%s  (background music asset)\n' "${SMOKE_BGM_ASSET:-smoke_bgm_mp3}"
     printf '  fs   %s  (ASS subtitle fixture)\n' "${SMOKE_ASS_FIXTURE:-tests/operational/fixtures/subtitle_vivid_test.ass}"
     printf '  POST http://%s/api/v1/jobs  (3 scenes + bgm + vivid ASS subtitles)\n' "$SMOKE_API_BASE"
     printf '  poll http://%s/api/jobs/<id>/full  (terminal)\n' "$SMOKE_API_BASE"
@@ -131,11 +130,7 @@ fi
 
 # ── Configuration (after common.sh — only override if env var not already set) ──
 SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
-SMOKE_BGM_DIR="${SMOKE_BGM_DIR:-data/media/sound_effects}"
 
-# Default background music — first available .mp3 from the catalog.
-# Falls back to the podcast bed (safest for any content type).
-BGM_TRACK=""
 BGM_VOLUME="0.15"   # subtle background, voiceover stays prominent
 
 # Subtitle presets and ASS fixture path.
@@ -186,8 +181,8 @@ SMOKE_SCENE_IMAGE_ASSET="${SMOKE_SCENE_IMAGE_ASSET:-smoke_test_image_320x240_png
 #   smoke_bgm_mp3 (1s mp3, copied from voiceover for smoke testing)
 SMOKE_BGM_ASSET="${SMOKE_BGM_ASSET:-smoke_bgm_mp3}"
 
-# BGM is optional for the plumbing test — the worker may not have BGM files yet.
-BGM_TRACK=""
+# Background music is served via velox-asset://, resolved by the
+# worker through the DataServer asset API (no local file discovery).
 BGM_TRACK_URL="velox-asset://${SMOKE_BGM_ASSET}"
 printf '  %sINFO: background music via velox-asset://%s%s\n' "$DIM" "$SMOKE_BGM_ASSET" "$RESET"
 
@@ -234,17 +229,12 @@ precheck_db_schema() {
     return 0
 }
 
-# ── Precheck 3: Background music discoverable ────────────────────
+# ── Precheck 3: Background music asset registered ────────────────
 precheck_bgm_available() {
-    smoke_log_section "Precheck 3: Background music available"
-    if [[ -n "$BGM_TRACK" && -f "$BGM_TRACK" ]]; then
-        printf '  %sOK: background music found: %s (%s bytes)%s\n' \
-            "$GREEN" "$(basename "$BGM_TRACK")" "$(wc -c < "$BGM_TRACK")" "$RESET"
-        return 0
-    fi
-    printf '  %sWARN: no background music file found — proceeding without actual audio file (audio_track plumbing test only)%s\n' \
-        "$YELLOW" "$RESET" >&2
-    return 0  # non-fatal — test plumbing, not actual audio
+    smoke_log_section "Precheck 3: Background music asset"
+    printf '  %sOK: background music via velox-asset://%s%s\n' \
+        "$GREEN" "$SMOKE_BGM_ASSET" "$RESET"
+    return 0
 }
 
 # ── Precheck 4: Workers available ────────────────────────────────
@@ -1090,22 +1080,19 @@ post_bgm_subtitle_job() {
     # Uses velox-asset:// for reliable asset resolution on any worker.
     # The hybrid.v1 compiler auto-enables loop/fade/ducking when role
     # is "background_music".
-    if [[ -n "$BGM_TRACK_URL" ]]; then
-        audio_tracks_json=$(jq -n --arg bgm "$BGM_TRACK_URL" --arg vol "$BGM_VOLUME" '
-            [{
-                source_url: $bgm,
-                volume: ($vol | tonumber),
-                start_time_offset: 0,
-                duration_seconds: 0,
-                role: "background_music",
-                loop: true,
-                fade_in_seconds: 0.5,
-                fade_out_seconds: 0.5,
-                ducking_enabled: true
-            }]')
-    else
-        audio_tracks_json='[]'
-    fi
+    # Background music always included via registered velox-asset.
+    audio_tracks_json=$(jq -n --arg bgm "$BGM_TRACK_URL" --arg vol "$BGM_VOLUME" '
+        [{
+            source_url: $bgm,
+            volume: ($vol | tonumber),
+            start_time_offset: 0,
+            duration_seconds: 0,
+            role: "background_music",
+            loop: true,
+            fade_in_seconds: 0.5,
+            fade_out_seconds: 0.5,
+            ducking_enabled: true
+        }]')
 
     # ASS subtitles: deferred to a future smoke (requires registered subtitle asset).
     # For now we test the core pipeline: voiceover + delivery without subtitles.
@@ -1412,8 +1399,7 @@ main() {
     smoke_log_section "Background Music + Vivid Subtitles — E2E Smoke (Fase 1 Preflight)"
     printf '  target:        %s\n' "$SMOKE_API_BASE"
     printf '  db:            %s\n' "$SMOKE_DB"
-    printf '  bgm_dir:       %s\n' "$SMOKE_BGM_DIR"
-    printf '  bgm_track:     %s\n' "${BGM_TRACK:-none}"
+    printf '  bgm_asset:     velox-asset://%s\n' "$SMOKE_BGM_ASSET"
     printf '  subtitle_ps:   %s\n' "$SUBTITLE_PRESET"
     printf '  ass_fixture:   %s\n' "$SMOKE_ASS_FIXTURE"
     printf '  target_worker: %s\n' "${TARGET_WORKER_ID:-auto}"
