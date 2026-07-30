@@ -413,8 +413,8 @@ func TestAssetLocationReconciliation_MalformedLinkCleared(t *testing.T) {
 	link := "not-a-drive-link"
 	r := newStubResolver()
 	r.stubResult(link, &scriptpkg.VerifiedLocation{
-		AssetID:  "clip-1",
-		State:    scriptpkg.LocationStateMalformed,
+		AssetID:   "clip-1",
+		State:     scriptpkg.LocationStateMalformed,
 		ErrorCode: "MALFORMED_LINK",
 	})
 

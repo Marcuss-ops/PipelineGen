@@ -34,20 +34,20 @@ const (
 // (godlike/06 SSOT one-owner-per-fact) — do NOT redeclare these in
 // sibling files.
 const (
-	ProcessorEntities       ProcessorName = "entities"
-	ProcessorClipSearch     ProcessorName = "clip_search"
-	ProcessorMetadata       ProcessorName = "metadata"
-	ProcessorTranslation    ProcessorName = "translation"
-	ProcessorClipBindings                      ProcessorName = "clip_bindings"
-	ProcessorStockBindings                     ProcessorName = "stock_bindings"
-	ProcessorAssetLocationReconciliation       ProcessorName = "asset_location_reconciliation"
-	ProcessorVisualPlanning ProcessorName = "visual_planning"
-	ProcessorVisualSlots    ProcessorName = "visual_slots"
-	ProcessorVoiceover      ProcessorName = "voiceover"
-	ProcessorImages         ProcessorName = "images"
-	ProcessorInternetImages ProcessorName = "internet_images"
-	ProcessorPersistence    ProcessorName = "persistence"
-	ProcessorDocument       ProcessorName = "document"
+	ProcessorEntities                    ProcessorName = "entities"
+	ProcessorClipSearch                  ProcessorName = "clip_search"
+	ProcessorMetadata                    ProcessorName = "metadata"
+	ProcessorTranslation                 ProcessorName = "translation"
+	ProcessorClipBindings                ProcessorName = "clip_bindings"
+	ProcessorStockBindings               ProcessorName = "stock_bindings"
+	ProcessorAssetLocationReconciliation ProcessorName = "asset_location_reconciliation"
+	ProcessorVisualPlanning              ProcessorName = "visual_planning"
+	ProcessorVisualSlots                 ProcessorName = "visual_slots"
+	ProcessorVoiceover                   ProcessorName = "voiceover"
+	ProcessorImages                      ProcessorName = "images"
+	ProcessorInternetImages              ProcessorName = "internet_images"
+	ProcessorPersistence                 ProcessorName = "persistence"
+	ProcessorDocument                    ProcessorName = "document"
 )
 
 // ProcessorDescriptor is the single source of truth for a

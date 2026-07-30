@@ -75,14 +75,14 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	}
 
 	var (
-		warnings    []string
-		changed     bool
-		okCount     int
-		updatedCount int
-		missingCount int
-		trashedCount int
+		warnings          []string
+		changed           bool
+		okCount           int
+		updatedCount      int
+		missingCount      int
+		trashedCount      int
 		inaccessibleCount int
-		malformedCount int
+		malformedCount    int
 	)
 
 	// Work on a copy of the scenes so we can mutate in place.
@@ -222,22 +222,22 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	}
 
 	return &PostProcessResult{
-		Changed:           changed || len(warnings) > 0,
-		UpdatedSpecScene:  scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
-		Warnings:          warnings,
+		Changed:          changed || len(warnings) > 0,
+		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+		Warnings:         warnings,
 	}, nil
 }
 
 // reconcileResult captures the outcome of a single link verification.
 type reconcileResult struct {
-	changed     bool
-	ok          int
-	updated     int
-	missing     int
-	trashed     int
+	changed      bool
+	ok           int
+	updated      int
+	missing      int
+	trashed      int
 	inaccessible int
-	malformed   int
-	warning     string
+	malformed    int
+	warning      string
 }
 
 // verifyAndReconcile calls the resolver for a single link and
