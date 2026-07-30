@@ -47,6 +47,21 @@ const (
 	// LocationStateMalformed — the stored drive_link could not be
 	// parsed into a valid Drive file ID.
 	LocationStateMalformed LocationState = "MALFORMED"
+
+	// LocationStateOrphanDriveFile — the file exists on Drive but
+	// has no corresponding asset/location record in SQLite. Do not
+	// import automatically without sufficient metadata.
+	LocationStateOrphanDriveFile LocationState = "ORPHAN_DRIVE_FILE"
+
+	// LocationStateBrokenAssetLocation — SQLite has an ACTIVE asset
+	// with a drive_file_id that no longer exists on Drive.
+	LocationStateBrokenAssetLocation LocationState = "BROKEN_ASSET_LOCATION"
+
+	// LocationStateDuplicate — two or more asset_id values share the
+	// same drive_file_id, or a single asset has multiple ACTIVE
+	// locations. The system must have exactly one canonical active
+	// location unless explicit replica support is present.
+	LocationStateDuplicate LocationState = "DUPLICATE"
 )
 
 // VerifiedLocation is the canonical result of resolving and verifying
@@ -75,6 +90,30 @@ type VerifiedLocation struct {
 
 	// VerifiedAt is the wall-clock time of verification.
 	VerifiedAt time.Time `json:"verified_at"`
+}
+
+// AssetLocationVerifier is the narrow port for verifying a single
+// asset location. Unlike AssetLocationResolver (which resolves AND
+// verifies), this interface only performs the verification step —
+// callers that already have a resolved file ID can use this lighter
+// contract without the resolution logic.
+//
+// The application layer owns this interface; the concrete
+// implementation is the same *drive.AssetLocationResolverAdapter
+// that satisfies AssetLocationResolver (the Verify method delegates
+// to the same underlying Reader.GetFileMeta call).
+type AssetLocationVerifier interface {
+	// Verify checks whether the given Drive file is still accessible.
+	//
+	// Parameters:
+	//   - assetID: the canonical media_assets.id
+	//   - fileID:  the Google Drive file ID to verify
+	//   - link:    the current drive_link string (used for comparison
+	//              to detect UPDATED vs VERIFIED)
+	//
+	// Returns a VerifiedLocation on success. A non-nil error is
+	// reserved for transport-level failures.
+	Verify(ctx context.Context, assetID, fileID, link string) (*VerifiedLocation, error)
 }
 
 // AssetLocationResolver is the canonical port for resolving and
