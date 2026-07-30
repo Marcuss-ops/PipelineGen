@@ -61,6 +61,13 @@ func (p *DocumentsProcessor) Process(
 			Text: input.Text, Bindings: bindings,
 		}}
 	}
+	// For a single explicit segment, the persisted model text is the
+	// canonical generated narrative. The scene planner may retain only a
+	// short preview in SpecScene; publishing that preview would silently
+	// truncate the document produced by the endpoint.
+	if len(model.SpecScene.Scenes) == 1 && strings.TrimSpace(input.Text) != "" {
+		model.SpecScene.Scenes[0].Text = input.Text
+	}
 	content := BuildSpecSceneDocumentHTML(model, plan.Title, input.Provenance)
 	if strings.TrimSpace(content) == "" {
 		return nil, fmt.Errorf("document content is empty")
