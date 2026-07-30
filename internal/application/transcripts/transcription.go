@@ -1,3 +1,14 @@
+// Package transcripts (canonical) — the audio-side Transcriber port
+// moved here from internal/transcription/ in P1-4 step 1 (godlike/07
+// ZERO_LEGACY_POLICY, July 2026). The package name is `transcripts`
+// (no separate `transcription` package remains). Content below is
+// preserved verbatim from the old root; only the package declaration
+// + this forward-pointer header were updated. See
+// docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md §"What counts as
+// legacy" for the retirement sequence; the percheck_legacy_root_ban
+// forward-prevention gate (cmd/archcheck/scan/percheck_legacy_root_ban.go)
+// bans reverse-imports of the deleted root.
+//
 // Package transcription owns the LocalMedia → TextTrack
 // surface: takes a local media file path, returns the
 // canonical TextTrack representation of the spoken content.
@@ -10,7 +21,7 @@
 // the actual Transcribe delegation is DEFERRED to phase 2
 // until the typed-sentinel chain surface (errors.As
 // constraints + ErrStubTranscript projection) is reconciled.
-package transcription
+package transcripts
 
 import (
 	"context"

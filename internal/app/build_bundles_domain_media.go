@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -19,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/recommendation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/transcription"
 	"github.com/Marcuss-ops/PipelineGen/internal/youtube/acquisition"
 	ytfeatmetadata "github.com/Marcuss-ops/PipelineGen/internal/youtube/metadata"
 
@@ -302,7 +302,7 @@ func buildDomainMediaServices(
 	var (
 		_ = acquisition.NewServiceAdapter
 		_ = ytfeatmetadata.NewSearchServiceAdapter
-		_ = transcription.NewWhisperAdapter
+		_ = transcripts.NewWhisperAdapter
 		_ = publication.NewDriveAdapter
 		_ = commit.NewTxAdapter
 		_ = recommendation.NewStubAdapter
