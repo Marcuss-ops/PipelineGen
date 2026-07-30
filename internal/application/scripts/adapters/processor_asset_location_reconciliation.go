@@ -316,7 +316,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 }
 
 // cloneSpecScenes returns a shallow copy of the scenes slice for
-// safe in-place mutation during reconciliation.
+// safe in-place mutation during reconciliation. Copies all
+// binding types including Media (which cloneSceneBindings does
+// not yet handle — forward-pointer to merge back when
+// cloneSceneBindings gains Media support).
 func cloneSpecScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 	out := make([]scriptpkg.SpecScene, len(scenes))
 	for i, sc := range scenes {
@@ -325,9 +328,13 @@ func cloneSpecScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 			meta := *sc.Metadata
 			out[i].Metadata = &meta
 		}
-		// Shallow-clone the bindings so we can mutate pointers
-		// without affecting the original SceneBindings struct.
 		out[i].Bindings = cloneSceneBindings(sc.Bindings)
+		// Clone Media bindings (cloneSceneBindings currently only
+		// handles Clip/Image/Voiceover/Stock).
+		if len(sc.Bindings.Media) > 0 {
+			out[i].Bindings.Media = make([]scriptpkg.ResolvedMediaBinding, len(sc.Bindings.Media))
+			copy(out[i].Bindings.Media, sc.Bindings.Media)
+		}
 	}
 	return out
 }
