@@ -223,36 +223,90 @@ run_scenario() {
     
     # Poll job to terminal status
     if [[ "$num" == "07" || "$num" == "08" ]]; then
-        # For multilang batch jobs, we poll parent_state inside .result.data
-        smoke_log_section "Polling parent job aggregation: $job_id"
-        local deadline=$(( $(date +%s) + 600 )) # 10 minutes timeout
-        local parent_state="waiting_children"
-        while (( $(date +%s) < deadline )); do
-            smoke_wallclock_check
-            smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
-            if [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
-                parent_state=$(jq -r '.result.data.parent_state // .job.result.data.parent_state // "succeeded"' "$SMOKE_LAST_BODY")
-                if [[ "$parent_state" != "waiting_children" ]]; then
-                    break
-                fi
-            fi
-            sleep 10
-        done
-        if [[ "$parent_state" == "waiting_children" ]]; then
-            printf '%sFAIL: Scenario %s parent aggregator timed out%s\n' "$RED" "$num" "$RESET" >&2
+        # For multilang batch jobs: poll parent job until terminal, then fetch child jobs.
+        smoke_log_section "Polling parent job: $job_id"
+        if ! smoke_poll_terminal "$job_id"; then
+            printf '%sFAIL: Scenario %s parent job polling failed or timed out%s\n' "$RED" "$num" "$RESET" >&2
             return 1
         fi
+
+        # Fetch parent job and save as the full_body_file
+        local full_body_file="$WORK_DIR/full_job_$num.json"
+        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
+        cp "$SMOKE_LAST_BODY" "$full_body_file"
+
+        # Extract child job IDs and poll each one
+        local child_job_ids
+        child_job_ids=$(jq -r '.result.data.child_job_ids[] // .job.result.data.child_job_ids[] // empty' "$full_body_file")
+        if [[ -z "$child_job_ids" ]]; then
+            printf '%sFAIL: Scenario %s parent job has no child_job_ids%s\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+        local child_count
+        child_count=$(echo "$child_job_ids" | wc -l)
+        printf 'Parent job completed with %s child jobs. Polling children...\n' "$child_count"
+
+        local children_dir="$WORK_DIR/children_$num"
+        mkdir -p "$children_dir"
+        local child_ok=0
+        local child_fail=0
+        local cstatus
+        while IFS= read -r cid; do
+            [[ -z "$cid" ]] && continue
+            smoke_wallclock_check
+            smoke_poll_terminal "$cid" || true
+            smoke_curl GET "/api/jobs/$cid/full" >/dev/null
+            if [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
+                cp "$SMOKE_LAST_BODY" "$children_dir/$cid.json"
+                local cstatus
+                cstatus=$(jq -r '.status // "UNKNOWN"' "$children_dir/$cid.json")
+                if [[ "$cstatus" == "SUCCEEDED" || "$cstatus" == "completed" ]]; then
+                    child_ok=$((child_ok + 1))
+                else
+                    child_fail=$((child_fail + 1))
+                    printf '  %sFAIL: Child %s status=%s%s\n' "$RED" "$cid" "$cstatus" "$RESET" >&2
+                fi
+            else
+                child_fail=$((child_fail + 1))
+                printf '  %sFAIL: Child %s HTTP %s%s\n' "$RED" "$cid" "$SMOKE_LAST_HTTP" "$RESET" >&2
+            fi
+        done <<< "$child_job_ids"
+        printf 'Child jobs: %s succeeded, %s failed\n' "$child_ok" "$child_fail"
+
+        if (( child_fail > 0 )); then
+            printf '%sFAIL: %s child job(s) failed%s\n' "$RED" "$child_fail" "$RESET" >&2
+            return 1
+        fi
+
+        # Build aggregated response with all child items embedded into the parent
+        python3 -c "
+import json, sys, os, glob
+parent = json.load(open('$full_body_file'))
+children_dir = '$children_dir'
+all_items = []
+for fpath in sorted(glob.glob(os.path.join(children_dir, '*.json'))):
+    child = json.load(open(fpath))
+    # Extract items from child job (same paths as single-item jobs)
+    items = (child.get('result', {}).get('data', {}).get('items', []) or
+             child.get('job', {}).get('result', {}).get('data', {}).get('items', []) or
+             child.get('job', {}).get('result', {}).get('data', {}).get('data', {}).get('items', []))
+    if items:
+        all_items.extend(items)
+# Embed items into parent for verify_multilang.py compatibility
+rd = parent.setdefault('result', {}).setdefault('data', {})
+rd['items'] = all_items
+json.dump(parent, open('$full_body_file', 'w'), indent=2)
+print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} child jobs')
+"
     else
         if ! smoke_poll_terminal "$job_id"; then
             printf '%sFAIL: Scenario %s polling failed or timed out%s\n' "$RED" "$num" "$RESET" >&2
             return 1
         fi
+        local full_body_file="$WORK_DIR/full_job_$num.json"
+        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
+        cp "$SMOKE_LAST_BODY" "$full_body_file"
     fi
-    
-    # Fetch FULL job details
-    local full_body_file="$WORK_DIR/full_job_$num.json"
-    smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
-    cp "$SMOKE_LAST_BODY" "$full_body_file"
     
     # Persist Report
     cp "$full_body_file" "$REPORTS_DIR/${num}_${name}_report.json"
