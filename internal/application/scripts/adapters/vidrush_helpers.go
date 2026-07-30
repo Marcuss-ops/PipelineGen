@@ -309,11 +309,40 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 	return out
 }
 
+// vidRushForbiddenProviders lists provider values that MUST be rejected
+// regardless of provenance. This gate enforces the VidRush provider separation
+// contract (internet_images for images, artlist for video, zero YouTube/GAI).
+var vidRushForbiddenProviders = map[string]bool{
+	"youtube":             true,
+	"generated_images":    true,
+	"image_generation":    true,
+	"local_youtube_stock": true,
+	"local_stock":         true,
+}
+
+// vidRushForbiddenURLPatterns lists URL substrings that disqualify a candidate
+// even when the provider field is not directly "youtube".
+var vidRushForbiddenURLPatterns = []string{
+	"youtube-nocookie.com",
+	"youtube.com",
+	"youtu.be",
+}
+
 func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(candidate.Provider) == "" || candidate.Score < 0 {
 		return false
 	}
-	if strings.TrimSpace(candidate.Provider) == "artlist" {
+	provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+	if vidRushForbiddenProviders[provider] {
+		return false
+	}
+	sourceURL := strings.ToLower(strings.TrimSpace(candidate.SourceURL))
+	for _, pattern := range vidRushForbiddenURLPatterns {
+		if strings.Contains(sourceURL, pattern) {
+			return false
+		}
+	}
+	if provider == "artlist" {
 		return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.DriveLink) != ""
 	}
 	return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
