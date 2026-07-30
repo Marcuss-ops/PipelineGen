@@ -74,6 +74,11 @@ count_assets_total() {
     sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets;" 2>/dev/null || echo "0"
 }
 
+count_null_provider() {
+    if [[ ! -f "$DB_PATH" ]]; then echo "0"; return; fi
+    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM media_assets WHERE provider IS NULL OR provider = '';" 2>/dev/null || echo "0"
+}
+
 # ── Dispatch + poll + extract result ─────────────────────────────────────
 dispatch_and_poll() {
     local label="$1" payload="$2" idem_key="$3"
@@ -412,18 +417,19 @@ ASSETS_BEFORE_TOTAL=$(count_assets_total)
 ASSETS_BEFORE_ARTLIST=$(count_assets_by_provider "artlist")
 ASSETS_BEFORE_INTERNET=$(count_assets_by_provider "internet_images")
 ASSETS_BEFORE_YOUTUBE=$(count_assets_by_provider "youtube")
+NULL_PROVIDER_BEFORE=$(count_null_provider)
 
-printf '  before: total=%s artlist=%s internet_images=%s youtube=%s\n' \
-    "$ASSETS_BEFORE_TOTAL" "$ASSETS_BEFORE_ARTLIST" "$ASSETS_BEFORE_INTERNET" "$ASSETS_BEFORE_YOUTUBE"
+printf '  before: total=%s artlist=%s internet_images=%s youtube=%s null_provider=%s\n' \
+    "$ASSETS_BEFORE_TOTAL" "$ASSETS_BEFORE_ARTLIST" "$ASSETS_BEFORE_INTERNET" "$ASSETS_BEFORE_YOUTUBE" "$NULL_PROVIDER_BEFORE"
 
 if [[ -f "$DB_PATH" ]]; then
-    # Verify no asset without provider (among recent ones)
-    null_provider=$(sqlite3 "$DB_PATH" \
-        "SELECT COUNT(*) FROM media_assets WHERE provider IS NULL OR provider = '';" 2>/dev/null || echo "0")
-    if [[ "$null_provider" == "0" ]]; then
-        pass "Zero assets with null/empty provider"
+    # Verify no NEW asset without provider (delta check against pre-existing DB state)
+    null_provider_after=$(count_null_provider)
+    null_provider_delta=$(( null_provider_after - NULL_PROVIDER_BEFORE ))
+    if [[ "$null_provider_delta" -le 0 ]]; then
+        pass "Zero new assets added without provider (delta=0, ${null_provider_after} pre-existing)"
     else
-        fail "${null_provider} assets have null/empty provider"
+        fail "${null_provider_delta} new assets added without provider during Maya test"
     fi
 
     # Verify zero YouTube assets
