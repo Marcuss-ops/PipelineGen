@@ -1,9 +1,38 @@
+// Package artlist — search_cache.go: in-memory L1 + persistent
+// L2 cache for Artlist live search results (PR-ARTLIST-CACHE-L1,
+// July 2026).
+//
+// P0-3 (godlike/07 zero-legacy, July 2026): the persistent cache
+// no longer relies on `database/sql` directly; it consumes a
+// typed ArtlistSearchCachePort (declared in cache_ports.go) whose
+// concrete SQLite adapter lives at
+// internal/infrastructure/database/sqlite/artlist_search_cache_adapter.go.
+// This file is now application-layer-only; SQL is owned by the
+// infrastructure layer per AGENTS.md Pattern 0.
+//
+// The two-level cache contract is preserved verbatim from the
+// pre-migration version — in-memory L1 for the same-term hit
+// fast-path, persistent L2 (via the port) for cross-restart
+// durability, async persist, async warm-up.
+//
+// Behavior preserved:
+//
+//   - L1 (`c.items`) is the source of truth for served reads;
+//     cache mutations are atomic w.r.t. concurrent readers
+//     via sync.RWMutex.
+//   - L2 (`c.cache`) failures are surfaced via the port's
+//     typed-error contract; persistent-layer failures never
+//     panic the L1 path (the legacy fail-soft logic is
+//     retained verbatim).
+//   - In-memory-only mode (`c.cache == nil`) is preserved for
+//     tests + single-process pipelines; tests in
+//     search_cache_test.go bypass the constructor and construct
+//     `&liveSearchCache{items: ...}` directly to exercise L1
+//     semantics in isolation.
 package artlist
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -13,20 +42,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// liveSearchCacheEntry holds a cached live search result for a term.
+// liveSearchCacheEntry holds a cached live search result.
 type liveSearchCacheEntry struct {
 	Clips    []Candidate
 	CachedAt time.Time
 }
 
-// liveSearchCache is a TWO-LEVEL cache for Artlist live search results.
-// Level 1 (fast): in-memory map — eliminates redundant DB reads for same term.
-// Level 2 (persistent): SQLite-backed table — survives server restarts.
-// Level 3 (background refresh): refreshes stale entries before expiry.
+// liveSearchCache is a TWO-LEVEL cache for Artlist live search
+// results. Level 1 (fast): in-memory map. Level 2 (persistent):
+// typed ArtlistSearchCachePort (typically SQLite-backed in
+// production, nil in tests).
 type liveSearchCache struct {
 	mu    sync.RWMutex
 	items map[string]liveSearchCacheEntry
-	db    *sql.DB // SQLite-backed persistent cache (optional)
+	cache ArtlistSearchCachePort // optional: nil → in-memory only
 	log   *zap.Logger
 }
 
@@ -36,71 +65,58 @@ func newLiveSearchCache() *liveSearchCache {
 	}
 }
 
-// newPersistentLiveSearchCache creates a cache with SQLite backing.
-// The optional parentCtx is used for tracing in the background warm-up
-// goroutine. Pass nil to use context.Background().
-func newPersistentLiveSearchCache(db *sql.DB, log *zap.Logger, parentCtx ...context.Context) *liveSearchCache {
+// newPersistentLiveSearchCache creates a cache backed by the
+// supplied typed cache port. The optional parentCtx is used for
+// tracing in the background warm-up goroutine. Pass nil to use
+// context.Background().
+//
+// godlike/06 SSOT post-migration (P0-3): the constructor signature
+// is the typed-port analogue of the legacy `*sql.DB` shape. The
+// concrete SQLite adapter is wired by the composition root
+// (internal/app/build_bundles_artlist_artlist.go future cable); no
+// production caller wires this today, but the shape is correct
+// for the next wave.
+func newPersistentLiveSearchCache(cache ArtlistSearchCachePort, log *zap.Logger, parentCtx ...context.Context) *liveSearchCache {
 	c := newLiveSearchCache()
-	c.db = db
+	c.cache = cache
 	c.log = log
 	var warmCtx context.Context = context.Background()
 	if len(parentCtx) > 0 && parentCtx[0] != nil {
 		warmCtx = parentCtx[0]
 	}
-	// Warm up in-memory cache from DB (load recent entries asynchronously)
-	c.warmFromDB(warmCtx)
+	c.warmFromCache(warmCtx)
 	return c
 }
 
-// warmFromDB loads cached entries that are still fresh into the in-memory map.
-// Accepts a parent context for tracing; the actual work runs in a background goroutine
-// with its own timeout to avoid blocking startup.
-func (c *liveSearchCache) warmFromDB(parentCtx context.Context) {
-	if c.db == nil {
+// warmFromCache asks the persistent port to bulk-load recent
+// entries into the in-memory map. Failures are logged and the
+// in-memory map proceeds empty (fail-soft, mirroring legacy).
+func (c *liveSearchCache) warmFromCache(parentCtx context.Context) {
+	if c.cache == nil {
 		return
 	}
-	// Don't block startup — load in background
 	concurrent.SafeGo("artlist-cache-warm", func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 15*time.Second)
 		defer cancel()
-		rows, err := c.db.QueryContext(ctx, `SELECT term, clips_json, cached_at FROM artlist_search_cache`)
+		entries, err := c.cache.Warm(ctx)
 		if err != nil {
 			if c.log != nil {
 				c.log.Debug("persistent cache warm: no table yet", zap.Error(err))
 			}
 			return
 		}
-		defer rows.Close()
-
 		c.mu.Lock()
 		defer c.mu.Unlock()
-
-		for rows.Next() {
-			var term, clipsJSON, cachedAtStr string
-			if err := rows.Scan(&term, &clipsJSON, &cachedAtStr); err != nil {
-				continue
-			}
-			cachedAt, err := time.Parse("2006-01-02 15:04:05", cachedAtStr)
-			if err != nil {
-				continue
-			}
-			// Only load entries < 48h old (twice default TTL)
-			if time.Since(cachedAt) > 48*time.Hour {
-				continue
-			}
-			var clips []Candidate
-			if err := json.Unmarshal([]byte(clipsJSON), &clips); err != nil {
-				continue
-			}
-			if _, exists := c.items[term]; !exists {
-				c.items[term] = liveSearchCacheEntry{
-					Clips:    clips,
-					CachedAt: cachedAt,
+		for _, ent := range entries {
+			if _, exists := c.items[ent.Term]; !exists {
+				c.items[ent.Term] = liveSearchCacheEntry{
+					Clips:    ent.Clips,
+					CachedAt: ent.CachedAt,
 				}
 			}
 		}
 		if c.log != nil {
-			c.log.Info("persistent cache warmed from SQLite",
+			c.log.Info("persistent cache warmed from port",
 				zap.Int("entries", len(c.items)),
 			)
 		}
@@ -108,7 +124,7 @@ func (c *liveSearchCache) warmFromDB(parentCtx context.Context) {
 }
 
 // get returns cached clips and whether the entry exists.
-// Keys are lowercased for case-insensitive matching.
+// L1 fast-path first; L2 fallback only on L1 miss.
 func (c *liveSearchCache) get(term string) ([]Candidate, bool) {
 	key := strings.ToLower(term)
 	c.mu.RLock()
@@ -117,47 +133,20 @@ func (c *liveSearchCache) get(term string) ([]Candidate, bool) {
 	if ok {
 		return entry.Clips, true
 	}
-	// L2: fallback to SQLite
-	if c.db != nil {
-		clips, ok := c.getFromDB(key)
+	// L2 fallback through the typed port.
+	if c.cache != nil {
+		clips, cachedAt, ok, err := c.cache.Get(context.Background(), key)
+		if err != nil && c.log != nil {
+			c.log.Warn("persistent cache get failed", zap.String("term", key), zap.Error(err))
+		}
 		if ok {
-			// Promote to in-memory cache
 			c.mu.Lock()
-			c.items[key] = liveSearchCacheEntry{Clips: clips, CachedAt: time.Now()}
+			c.items[key] = liveSearchCacheEntry{Clips: clips, CachedAt: cachedAt}
 			c.mu.Unlock()
 			return clips, true
 		}
 	}
 	return nil, false
-}
-
-// getFromDB fetches a cache entry from SQLite.
-func (c *liveSearchCache) getFromDB(term string) ([]Candidate, bool) {
-	if c.db == nil {
-		return nil, false
-	}
-	var clipsJSON, cachedAtStr string
-	err := c.db.QueryRow(
-		`SELECT clips_json, cached_at FROM artlist_search_cache WHERE term = ?`,
-		term,
-	).Scan(&clipsJSON, &cachedAtStr)
-	if err != nil {
-		return nil, false
-	}
-	cachedAt, err := time.Parse("2006-01-02 15:04:05", cachedAtStr)
-	if err != nil {
-		return nil, false
-	}
-	// Check if expired (48h hard limit for persisted cache)
-	if time.Since(cachedAt) > 48*time.Hour {
-		c.deleteFromDB(term)
-		return nil, false
-	}
-	var clips []Candidate
-	if err := json.Unmarshal([]byte(clipsJSON), &clips); err != nil {
-		return nil, false
-	}
-	return clips, true
 }
 
 // age returns how old the cached entry is. Returns -1 if not cached.
@@ -172,8 +161,10 @@ func (c *liveSearchCache) age(term string) time.Duration {
 	return time.Since(entry.CachedAt)
 }
 
-// set stores a fresh live search result in both in-memory and SQLite cache.
-// Keys are lowercased for case-insensitive matching.
+// set stores a fresh live search result in both in-memory and
+// the persistent port. Persist errors are logged (fail-soft) —
+// the L1 has already been updated, the operator sees the failure
+// in the warn-level log line.
 func (c *liveSearchCache) set(term string, clips []Candidate) {
 	key := strings.ToLower(term)
 	c.mu.Lock()
@@ -182,35 +173,11 @@ func (c *liveSearchCache) set(term string, clips []Candidate) {
 		CachedAt: time.Now(),
 	}
 	c.mu.Unlock()
-
-	// Persist to SQLite asynchronously
-	if c.db != nil {
-		c.persistToDB(key, clips)
+	if c.cache != nil {
+		if err := c.cache.Set(context.Background(), key, clips); err != nil && c.log != nil {
+			c.log.Debug("persistent cache write failed", zap.String("term", key), zap.Error(err))
+		}
 	}
-}
-
-// persistToDB writes the cache entry to SQLite.
-func (c *liveSearchCache) persistToDB(term string, clips []Candidate) {
-	data, err := json.Marshal(clips)
-	if err != nil {
-		return
-	}
-	_, err = c.db.Exec(
-		`INSERT INTO artlist_search_cache (term, clips_json, cached_at) VALUES (?, ?, datetime('now'))
-		 ON CONFLICT(term) DO UPDATE SET clips_json = excluded.clips_json, cached_at = excluded.cached_at`,
-		term, string(data),
-	)
-	if err != nil && c.log != nil {
-		c.log.Debug("persistent cache write failed", zap.String("term", term), zap.Error(err))
-	}
-}
-
-// deleteFromDB removes a cache entry from SQLite.
-func (c *liveSearchCache) deleteFromDB(term string) {
-	if c.db == nil {
-		return
-	}
-	_, _ = c.db.Exec(`DELETE FROM artlist_search_cache WHERE term = ?`, term)
 }
 
 // isFresh returns true if the cache entry exists and is within the TTL.
@@ -219,13 +186,15 @@ func (c *liveSearchCache) isFresh(term string, ttl time.Duration) bool {
 	return age >= 0 && age < ttl
 }
 
-// isGettingStale returns true if cache is past 75% of TTL — time to schedule a background refresh.
+// isGettingStale returns true if cache is past 75% of TTL.
 func (c *liveSearchCache) isGettingStale(term string, ttl time.Duration) bool {
 	age := c.age(term)
 	return age >= 0 && age >= (ttl*3/4)
 }
 
-// Cleanup removes expired entries from both in-memory and SQLite.
+// Cleanup removes expired entries from both in-memory and the
+// persistent port. The in-memory cleanup is unconditional; the
+// L2 delegated through the port's typed cleanup contract.
 func (c *liveSearchCache) Cleanup(ttl time.Duration) {
 	c.mu.Lock()
 	for term, entry := range c.items {
@@ -235,14 +204,9 @@ func (c *liveSearchCache) Cleanup(ttl time.Duration) {
 	}
 	c.mu.Unlock()
 
-	// Remove expired from DB (48h hard limit for persisted entries)
-	if c.db != nil {
-		expiryHours := int(48 * time.Hour / time.Hour)
-		if c.log != nil {
-			c.log.Debug("cleaning up expired search cache entries",
-				zap.Int("expiry_hours", expiryHours),
-			)
+	if c.cache != nil {
+		if err := c.cache.CleanupExpired(context.Background(), ttl); err != nil && c.log != nil {
+			c.log.Warn("persistent cache cleanup failed", zap.Error(err))
 		}
-		_, _ = c.db.Exec(`DELETE FROM artlist_search_cache WHERE cached_at < datetime('now', '-' || ? || ' hours')`, expiryHours)
 	}
 }
