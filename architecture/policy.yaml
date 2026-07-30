@@ -151,8 +151,10 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # retired 2026-07-25 per godlike/07 ZERO_LEGACY_POLICY §"What counts as
 # legacy" — two-layout mode accumulated transitional allowlists and
 # ratchets (see the stock-legacy-keyword allowlist header for the
-# surviving forward-pointers). The legacy zones still exist on disk
-# (api, app, application, domain, infrastructure, youtube) but
+# surviving forward-pointers). P1-4 step 1 (internal/transcription)
+# + P1-4 step 2 (internal/youtube) are now retired. The remaining
+# legacy zones still exist on disk
+# (api, app, application, domain, infrastructure) but
 # no longer receive policy cover; each retirement is a
 # follow-up commit. cmd/archcheck treats unknown first-level internal/
 # dirs as a warn violation (`unknown_internal_root` rule).

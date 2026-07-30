@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -20,8 +21,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/recommendation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/youtube/acquisition"
-	ytfeatmetadata "github.com/Marcuss-ops/PipelineGen/internal/youtube/metadata"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -300,8 +299,8 @@ func buildDomainMediaServices(
 	// (youtube.Service, WhisperTranscriberAdapter, PublishClipToDrive,
 	// AssetTxFinalizer) stays untouched in this commit.
 	var (
-		_ = acquisition.NewServiceAdapter
-		_ = ytfeatmetadata.NewSearchServiceAdapter
+		_ = ytacquisition.NewServiceAdapter
+		_ = ytmetadata.NewSearchServiceAdapter
 		_ = transcripts.NewWhisperAdapter
 		_ = publication.NewDriveAdapter
 		_ = commit.NewTxAdapter
