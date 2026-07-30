@@ -222,7 +222,7 @@ run_scenario() {
     printf 'job_id enqueued: %s%s%s\n' "$YELLOW" "$job_id" "$RESET"
     
     # Poll job to terminal status
-    if [[ "$num" == "07" || "$num" == "07b" || "$num" == "08" ]]; then
+    if [[ "$num" == "07" || "$num" == "07b" || "$num" == "07c" || "$num" == "08" ]]; then
         # For multilang batch jobs: poll parent job until terminal, then fetch child jobs.
         smoke_log_section "Polling parent job: $job_id"
         if ! smoke_poll_terminal "$job_id"; then
@@ -273,9 +273,11 @@ run_scenario() {
         done <<< "$child_job_ids"
         printf 'Child jobs: %s succeeded, %s failed\n' "$child_ok" "$child_fail"
 
-        if (( child_fail > 0 )); then
-            printf '%sFAIL: %s child job(s) failed%s\n' "$RED" "$child_fail" "$RESET" >&2
-            return 1
+        if [[ "$num" != "07c" ]]; then
+            if (( child_fail > 0 )); then
+                printf '%sFAIL: %s child job(s) failed%s\n' "$RED" "$child_fail" "$RESET" >&2
+                return 1
+            fi
         fi
 
         # Build aggregated response with all child items embedded into the parent
@@ -335,7 +337,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
     
     local out_json
     local text
-    if [[ "$num" != "07" && "$num" != "07b" && "$num" != "08" ]]; then
+    if [[ "$num" != "07" && "$num" != "07b" && "$num" != "07c" && "$num" != "08" ]]; then
         # Extract script result output.
         # Canonical path: .result.data.items[0].result.output
         # Fallbacks: broker-nested, batch, and legacy shapes.
@@ -637,6 +639,21 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             printf '%sPASS: Negative swapped stock verified — STOCK_SUBJECT_MISMATCH correctly detected in multilang scenario.%s\n' "$GREEN" "$RESET"
             ;;
 
+        "07c")
+            # Scenario 7c: Negative — expect exactly 1 child job to fail (FR voiceover invalid).
+            # child_fail is the count of children that didn't reach SUCCEEDED/completed.
+            if (( child_ok == 9 && child_fail == 1 )); then
+                printf '%sPASS: Negative language-fail correctly detected — 9/10 completed, 1 failed (FR).%s\n' "$GREEN" "$RESET"
+                printf '  Child jobs: %s OK, %s failed (expected 9 OK + 1 fail)\n' "$child_ok" "$child_fail"
+            elif (( child_ok == 10 && child_fail == 0 )); then
+                printf '%sFAIL: Negative language-fail NOT detected — all 10 child jobs succeeded (false PASS)%s\n' "$RED" "$RESET" >&2
+                return 1
+            else
+                printf '%sFAIL: Unexpected child job counts — %s OK, %s failed (expected 9 OK + 1 fail)%s\n' "$RED" "$child_ok" "$child_fail" "$RESET" >&2
+                return 1
+            fi
+            ;;
+
         "08")
             # Scenario 8: Negative check — swapped stock detection
             python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
@@ -680,15 +697,21 @@ run_test "05" "Full pipeline" "05_full_pipeline.json" || failures=$((failures + 
 run_test "06" "Negative translation gate" "06_negative_translation_fail.json" || failures=$((failures + 1))
 run_test "07" "Multi-boxer, multi-stock, multi-lang E2E" "top5_financial_stories_multilang.json" || failures=$((failures + 1))
 run_test "07b" "Negative swapped stock (multilang variant)" "top5_financial_stories_multilang_neg.json" || failures=$((failures + 1))
+
+# ── Scenario 07c: Negative test — French language intentionally fails ──
+# The scenario itself asserts child_ok==9 && child_fail==1 (see case statement).
+# If the assertion passes, run_scenario returns 0; if false-positive, returns 1.
+run_test "07c" "Negative language fail (FR voiceover invalid)" "top5_financial_stories_multilang_fail_fr.json" || failures=$((failures + 1))
+
 run_test "08" "Negative swapped stock (single-item)" "top5_neg_swapped_stock.json" || failures=$((failures + 1))
 
 if (( failures > 0 )); then
-    printf '%sFAIL: %d scenario(s) failed out of 9.%s\n' "$RED" "$failures" "$RESET" >&2
+    printf '%sFAIL: %d scenario(s) failed.%s\n' "$RED" "$failures" "$RESET" >&2
     exit 1
 fi
 
 if [[ "$TARGET_SCENARIO" == "all" ]]; then
-    printf '%sOK: All 9 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
+    printf '%sOK: All boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
 else
     printf '%sOK: Scenario %s completed and verified!%s\n' "$GREEN" "$TARGET_SCENARIO" "$RESET"
 fi
