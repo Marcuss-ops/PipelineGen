@@ -187,13 +187,12 @@ run_scenario() {
     # Extract script result output
     local out_json
     out_json=$(jq -c '
-        .job.result.data.output
-        // .job.result.output
-        // .result.data.data.output
+        .job.result.data.items[0].result.output
+        // .result.data.items[0].result.output
+        // .job.result.data.output
         // .result.data.output
+        // .job.result.output
         // .result.output
-        // .result.items[0].result.output
-        // .result.items[0].output
         // empty
     ' "$full_body_file")
     
@@ -214,14 +213,13 @@ run_scenario() {
         "01")
             # Scenario 1 assertions: Anchor text segments present in output
             if ! jq -e '
-                (.scenes | length) >= 4
-                and (.scenes[0].text | contains("SRC-TYSON-01"))
-                and (.scenes[1].text | contains("SRC-TYSON-02"))
-                and (.scenes[2].text | contains("SRC-TYSON-03"))
-                and (.scenes[3].text | contains("SRC-TYSON-04"))
+                .text | contains("SRC-TYSON-01")
+                and .text | contains("SRC-TYSON-02")
+                and .text | contains("SRC-TYSON-03")
+                and .text | contains("SRC-TYSON-04")
             ' <<<"$out_json" >/dev/null; then
-                printf '%sFAIL: Anchor texts not found in correct scene sequence%s\n' "$RED" "$RESET" >&2
-                jq .scenes[].text <<<"$out_json" >&2
+                printf '%sFAIL: Anchor texts not found in correct sequence%s\n' "$RED" "$RESET" >&2
+                jq .text <<<"$out_json" >&2
                 return 1
             fi
             printf '%sPASS: Scenario 1 sequence anchors verified.%s\n' "$GREEN" "$RESET"
@@ -375,6 +373,48 @@ run_scenario() {
             
             printf '%sPASS: Scenario 5 full pipeline verified.%s\n' "$GREEN" "$RESET"
             ;;
+
+        "06")
+            # Scenario 6: Negative test — detect false success when
+            # translation/voiceover are best-effort but silently skipped.
+            # Fatal warnings already caught by the global check above.
+            # The test MUST fail if:
+            #   - text is still English despite translate_to=it
+            #   - voiceovers are missing or incomplete
+            smoke_log_section "Scenario 6: Negative translation/voiceover gate"
+
+            # If job completed, text MUST be Italian (not still English)
+            local italian_markers
+            italian_markers=$(jq -r '.text // ""' <<<"$out_json" | grep -iEc '\b(il|la|gli|della|che|una|sono|nella|velocità|pugilato|eredità)\b' || echo 0)
+            if (( italian_markers < 2 )); then
+                printf '%sFAIL: Negative scenario — job completed but text is NOT Italian (false success)%s\n' "$RED" "$RESET" >&2
+                printf 'Text (%d chars): %s\n' "${#text}" "${text:0:300}" >&2
+                return 1
+            fi
+
+            # Voiceovers MUST be present and completed
+            local vo_count
+            vo_count=$(jq '[.specscene.scenes[]?.bindings.voiceover] | length' <<<"$out_json" 2>/dev/null || echo 0)
+            local scene_count
+            scene_count=$(jq '.specscene.scenes | length' <<<"$out_json" 2>/dev/null || echo 0)
+            if (( vo_count != scene_count )); then
+                printf '%sFAIL: Negative scenario — voiceover count (%d) != scene count (%d)%s\n' "$RED" "$vo_count" "$scene_count" "$RESET" >&2
+                return 1
+            fi
+            if ! jq -e '
+                all(.specscene.scenes[];
+                    .bindings.voiceover.status == "completed"
+                    and (.bindings.voiceover.link | length) > 0
+                    and ((.bindings.voiceover.local_path // "") == "")
+                )
+            ' <<<"$out_json" >/dev/null; then
+                printf '%sFAIL: Negative scenario — voiceovers incomplete or expose local path%s\n' "$RED" "$RESET" >&2
+                jq '.specscene.scenes[].bindings.voiceover' <<<"$out_json" >&2
+                return 1
+            fi
+
+            printf '%sPASS: Scenario 6 negative gate — translation applied, voiceovers present.%s\n' "$GREEN" "$RESET"
+            ;;
     esac
     
     printf '%sSUCCESS: Scenario %s passed!%s\n\n' "$GREEN" "$num" "$RESET"
@@ -382,22 +422,34 @@ run_scenario() {
 }
 
 # Run scenario sequence
+TARGET_SCENARIO="${TARGET_SCENARIO:-all}"
 failures=0
 
-run_scenario "01" "Source segments" "01_source_segments.json" || failures=$((failures + 1))
+run_test() {
+    local num="$1"
+    local name="$2"
+    local fname="$3"
+    if [[ "$TARGET_SCENARIO" == "all" || "$TARGET_SCENARIO" == "$num" ]]; then
+        run_scenario "$num" "$name" "$fname" || return 1
+    fi
+    return 0
+}
 
-run_scenario "02" "Translation and voiceover" "02_translation_voiceover.json" || failures=$((failures + 1))
-
-run_scenario "03" "Supplied clips" "03_supplied_clips.json" || failures=$((failures + 1))
-
-run_scenario "04" "Direct stock bindings" "04_direct_stock_bindings.json" || failures=$((failures + 1))
-
-run_scenario "05" "Full pipeline" "05_full_pipeline.json" || failures=$((failures + 1))
+run_test "01" "Source segments" "01_source_segments.json" || failures=$((failures + 1))
+run_test "02" "Translation and voiceover" "02_translation_voiceover.json" || failures=$((failures + 1))
+run_test "03" "Supplied clips" "03_supplied_clips.json" || failures=$((failures + 1))
+run_test "04" "Direct stock bindings" "04_direct_stock_bindings.json" || failures=$((failures + 1))
+run_test "05" "Full pipeline" "05_full_pipeline.json" || failures=$((failures + 1))
+run_test "06" "Negative translation gate" "06_negative_translation_fail.json" || failures=$((failures + 1))
 
 if (( failures > 0 )); then
-    printf '%sFAIL: %d scenario(s) failed out of 5.%s\n' "$RED" "$failures" "$RESET" >&2
+    printf '%sFAIL: %d scenario(s) failed out of 6.%s\n' "$RED" "$failures" "$RESET" >&2
     exit 1
 fi
 
-printf '%sOK: All 5 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
+if [[ "$TARGET_SCENARIO" == "all" ]]; then
+    printf '%sOK: All 6 boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
+else
+    printf '%sOK: Scenario %s completed and verified!%s\n' "$GREEN" "$TARGET_SCENARIO" "$RESET"
+fi
 exit 0

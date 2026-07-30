@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "id": "negative-translation-voiceover",
+      "title": "Negative test: translation and voiceover availability",
+      "language": "en",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Boxing and cultural legacy",
+        "source_text": "Boxing has produced figures whose impact extends far beyond the ring. The sport creates moments of intense drama that resonate with audiences who have never thrown a punch. Over decades, certain athletes have become symbols of resilience, discipline, and personal transformation."
+      },
+      "script_params": {
+        "target_words": 300,
+        "skip_quality_gate": true,
+        "use_memory": false,
+        "segments": [
+          {
+            "id": "neg-seg-1",
+            "topic": "Sporting impact",
+            "target_words": 100
+          },
+          {
+            "id": "neg-seg-2",
+            "topic": "Cultural resonance",
+            "target_words": 100
+          },
+          {
+            "id": "neg-seg-3",
+            "topic": "Personal transformation",
+            "target_words": 100
+          }
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "save_to_db": true,
+        "translate_to": "it",
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      }
+    }
+  ]
+}
