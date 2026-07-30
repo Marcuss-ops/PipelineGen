@@ -70,19 +70,49 @@ smoke_require sqlite3
 
 # Help text
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,60p' "$0"
+    sed -n '2,80p' "$0"
     exit 0
+fi
+
+# ── CLI flags ─────────────────────────────────────────────────────
+DRAIN_OTHERS=0
+TARGET_WORKER_ID=""
+for arg in "$@"; do
+    case "$arg" in
+        --drain-others) DRAIN_OTHERS=1 ;;
+        --worker-id=*)  TARGET_WORKER_ID="${arg#*=}" ;;
+        --worker-id)    ;; # next-arg pattern — handled below
+        -h|--help)      ;; # already handled
+        --dry)          ;; # handled by common.sh
+        *)  if [[ "${prev:-}" == "--worker-id" ]]; then
+                TARGET_WORKER_ID="$arg"
+            fi ;;
+    esac
+    prev="$arg"
+done
+# Validate --worker-id was not orphaned (bare flag without value as last arg).
+if [[ "${prev:-}" == "--worker-id" && -z "$TARGET_WORKER_ID" ]]; then
+    printf '%ssetup error: --worker-id requires a value (e.g. --worker-id=velox-worker-13197)%s\n' \
+        "$RED" "$RESET" >&2
+    exit 2
 fi
 
 # Dry-run mode
 if [[ "$DRY_RUN" == "1" ]]; then
     smoke_echo_safe "DRY RUN — would probe:"
     printf '  GET  http://%s/health  (DataServer up check)\n' "$SMOKE_API_BASE"
-    printf '  GET  http://%s/api/v1/jobs  (worker availability)\n' "$SMOKE_API_BASE"
+    printf '  GET  http://%s/api/v1/velox/workers  (worker fleet)\n' "$SMOKE_API_BASE"
     printf '  fs   %s  (background music directory)\n' "${SMOKE_BGM_DIR:-data/media/sound_effects}"
-    printf '  POST http://%s/api/v1/jobs  (2 scenes + bgm + karaoke subtitles)\n' "$SMOKE_API_BASE"
+    printf '  fs   %s  (ASS subtitle fixture)\n' "${SMOKE_ASS_FIXTURE:-tests/operational/fixtures/subtitle_vivid_test.ass}"
+    printf '  POST http://%s/api/v1/jobs  (3 scenes + bgm + vivid ASS subtitles)\n' "$SMOKE_API_BASE"
     printf '  poll http://%s/api/jobs/<id>/full  (terminal)\n' "$SMOKE_API_BASE"
     printf '  sqlite3 %s   …   (8 assertions)\n' "${SMOKE_DB:-data/media/media.db.sqlite}"
+    if [[ "$DRAIN_OTHERS" == "1" ]]; then
+        printf '  DRAIN: PUT http://%s/api/v1/velox/workers/<id>/drain (3 workers)\n' "$SMOKE_API_BASE"
+    fi
+    if [[ -n "$TARGET_WORKER_ID" ]]; then
+        printf '  PIN:  placement_pin_worker_id=%s\n' "$TARGET_WORKER_ID"
+    fi
     exit 0
 fi
 
@@ -95,11 +125,11 @@ SMOKE_BGM_DIR="${SMOKE_BGM_DIR:-data/media/sound_effects}"
 BGM_TRACK=""
 BGM_VOLUME="0.15"   # subtle background, voiceover stays prominent
 
-# Subtitle presets: the two built-in Chronon3d animated presets.
-# karaoke_fill: word-by-word fill animation as the voiceover plays
-# active_word_pop: the currently-spoken word pops with scale + color
+# Subtitle presets and ASS fixture path.
+# The vivid_test ASS file has 3 styled segments: white bottom, red bold top, cyan+green highlight.
 SUBTITLE_PRESET="${SUBTITLE_PRESET:-active_word_pop}"
-SUBTITLE_FONT="${SUBTITLE_FONT:-}"
+SUBTITLE_FONT="${SUBTITLE_FONT:-Arial}"
+SMOKE_ASS_FIXTURE="${SMOKE_ASS_FIXTURE:-$DIR/fixtures/subtitle_vivid_test.ass}"
 
 HEALTH_ENDPOINT="/health"
 JOBS_ENDPOINT="/api/v1/jobs"
@@ -186,7 +216,6 @@ precheck_bgm_available() {
 precheck_workers() {
     smoke_log_section "Precheck 4: Worker fleet readiness"
     local code worker_count
-    # Use the admin endpoint if available; gracefully handle 404.
     # NOTE: smoke_curl called directly (not in subshell) so SMOKE_LAST_BODY survives.
     smoke_curl GET "/api/v1/velox/workers" >/dev/null
     code="$SMOKE_LAST_HTTP"
@@ -195,7 +224,6 @@ precheck_workers() {
         printf '  %sOK: %s worker(s) registered%s\n' "$GREEN" "$worker_count" "$RESET"
         return 0
     fi
-    # Fallback: try the PipelineGen workers endpoint.
     smoke_curl GET "/api/v1/workers" >/dev/null
     code="$SMOKE_LAST_HTTP"
     if [[ "$code" =~ ^2[0-9][0-9]$ ]]; then
@@ -205,17 +233,156 @@ precheck_workers() {
     fi
     printf '  %sWARN: could not verify worker fleet (HTTP %s) — proceeding anyway%s\n' \
         "$YELLOW" "$code" "$RESET" >&2
-    return 0  # non-fatal; job will just queue
+    return 0
 }
 
-# ── POST job with background music + animated subtitles ──────────
+# ── FASE 1a: Worker CONNECTED + session_active ──────────────────
+precheck_worker_session() {
+    smoke_log_section "Fase 1a: Worker session active"
+    if [[ -z "$TARGET_WORKER_ID" ]]; then
+        printf '  %sSKIP: no --worker-id specified — cannot check single worker session%s\n' "$DIM" "$RESET"
+        return 0
+    fi
+    smoke_curl GET "/api/v1/velox/workers/${TARGET_WORKER_ID}" >/dev/null
+    if [[ ! "$SMOKE_LAST_HTTP" =~ ^2[0-9][0-9]$ ]]; then
+        printf '%sFAIL: worker %s not reachable (HTTP %s)%s\n' "$RED" "$TARGET_WORKER_ID" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        return 1
+    fi
+    local connected session
+    connected=$(jq -r '.connected // false' "$SMOKE_LAST_BODY" 2>/dev/null || echo "false")
+    session=$(jq -r '.session_active // false' "$SMOKE_LAST_BODY" 2>/dev/null || echo "false")
+    if [[ "$connected" != "true" ]]; then
+        printf '%sFAIL: worker %s not CONNECTED%s\n' "$RED" "$TARGET_WORKER_ID" "$RESET" >&2
+        return 1
+    fi
+    if [[ "$session" != "true" ]]; then
+        printf '%sFAIL: worker %s session_active=false%s\n' "$RED" "$TARGET_WORKER_ID" "$RESET" >&2
+        return 1
+    fi
+    printf '  %sOK: worker %s CONNECTED, session_active=true%s\n' "$GREEN" "$TARGET_WORKER_ID" "$RESET"
+    return 0
+}
+
+# ── FASE 1b: FFmpeg / FFprobe / libass present ──────────────────
+precheck_ffmpeg_tools() {
+    smoke_log_section "Fase 1b: FFmpeg / FFprobe / libass"
+    local fail=0
+    if ! command -v ffmpeg >/dev/null 2>&1; then
+        printf '%sFAIL: ffmpeg not in PATH%s\n' "$RED" "$RESET" >&2
+        fail=1
+    else
+        printf '  %sOK: ffmpeg found%s\n' "$GREEN" "$RESET"
+    fi
+    if ! command -v ffprobe >/dev/null 2>&1; then
+        printf '%sFAIL: ffprobe not in PATH%s\n' "$RED" "$RESET" >&2
+        fail=1
+    else
+        printf '  %sOK: ffprobe found%s\n' "$GREEN" "$RESET"
+    fi
+    # libass is built into FFmpeg; verify via --enable-libass in configure output.
+    if ffmpeg -version 2>/dev/null | grep -q 'enable-libass'; then
+        printf '  %sOK: libass enabled in ffmpeg%s\n' "$GREEN" "$RESET"
+    else
+        printf '  %sWARN: libass NOT detected in ffmpeg build config — ASS subtitles may not render%s\n' "$YELLOW" "$RESET" >&2
+    fi
+    return $fail
+}
+
+# ── FASE 1c: Font present ──────────────────────────────────────
+precheck_font() {
+    smoke_log_section "Fase 1c: Font availability (${SUBTITLE_FONT})"
+    if fc-list 2>/dev/null | grep -qi "${SUBTITLE_FONT}"; then
+        printf '  %sOK: font %s found via fc-list%s\n' "$GREEN" "$SUBTITLE_FONT" "$RESET"
+        return 0
+    fi
+    # Fallback: check common paths.
+    for dir in /usr/share/fonts /usr/local/share/fonts ~/.fonts; do
+        if [[ -d "$dir" ]] && find "$dir" -iname "*${SUBTITLE_FONT}*" 2>/dev/null | grep -q .; then
+            printf '  %sOK: font %s found in %s%s\n' "$GREEN" "$SUBTITLE_FONT" "$dir" "$RESET"
+            return 0
+        fi
+    done
+    printf '  %sWARN: font %s not found — subtitle rendering may fall back to default%s\n' "$YELLOW" "$SUBTITLE_FONT" "$RESET" >&2
+    return 0  # non-fatal
+}
+
+# ── FASE 1d: Cache writable ────────────────────────────────────
+precheck_cache_writable() {
+    smoke_log_section "Fase 1d: Asset cache writable"
+    local cache_dirs=("/tmp/velox-worker/assets/audio" "/tmp/velox-worker/assets/image")
+    local ok=0
+    for dir in "${cache_dirs[@]}"; do
+        if mkdir -p "$dir" 2>/dev/null && [[ -w "$dir" ]]; then
+            printf '  %sOK: %s writable%s\n' "$GREEN" "$dir" "$RESET"
+            ok=$((ok+1))
+        else
+            printf '%sFAIL: %s not writable%s\n' "$RED" "$dir" "$RESET" >&2
+        fi
+    done
+    if [[ $ok -eq 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# ── FASE 1e: Disk sufficient (≥10GB free) ──────────────────────
+precheck_disk_space() {
+    smoke_log_section "Fase 1e: Disk space"
+    local avail_kb
+    avail_kb=$(df -k /tmp 2>/dev/null | awk 'NR==2 {print $4}' || echo "0")
+    local avail_gb=$((avail_kb / 1024 / 1024))
+    if [[ $avail_kb -lt 10485760 ]]; then  # 10GB in KB
+        printf '%sFAIL: only %s GB free on /tmp (need ≥10 GB)%s\n' "$RED" "$avail_gb" "$RESET" >&2
+        return 1
+    fi
+    printf '  %sOK: %s GB free on /tmp%s\n' "$GREEN" "$avail_gb" "$RESET"
+    return 0
+}
+
+# ── FASE 1f: Drain other workers ────────────────────────────────
+drain_other_workers() {
+    smoke_log_section "Fase 1f: Drain other workers"
+    if [[ "$DRAIN_OTHERS" != "1" ]]; then
+        printf '  %sSKIP: --drain-others not specified%s\n' "$DIM" "$RESET"
+        return 0
+    fi
+    if [[ -z "$TARGET_WORKER_ID" ]]; then
+        printf '  %sWARN: --drain-others requires --worker-id — skipping drain%s\n' "$YELLOW" "$RESET" >&2
+        return 0
+    fi
+    smoke_curl GET "/api/v1/velox/workers" >/dev/null
+    if [[ ! "$SMOKE_LAST_HTTP" =~ ^2[0-9][0-9]$ ]]; then
+        printf '  %sWARN: cannot list workers (HTTP %s) — skipping drain%s\n' "$YELLOW" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        return 0
+    fi
+    local drained=0
+    local worker_ids
+    worker_ids=$(jq -r '.[].worker_id // .[].id // empty' "$SMOKE_LAST_BODY" 2>/dev/null || true)
+    while IFS= read -r wid; do
+        [[ -z "$wid" || "$wid" == "$TARGET_WORKER_ID" ]] && continue
+        # PUT /api/v1/velox/workers/<id>/drain
+        smoke_curl PUT "/api/v1/velox/workers/${wid}/drain" >/dev/null
+        if [[ "$SMOKE_LAST_HTTP" =~ ^2[0-9][0-9]$ ]]; then
+            printf '  %sDRAINED: worker %s%s\n' "$DIM" "$wid" "$RESET"
+            drained=$((drained+1))
+        else
+            printf '  %sWARN: drain worker %s returned HTTP %s%s\n' "$YELLOW" "$wid" "$SMOKE_LAST_HTTP" "$RESET" >&2
+        fi
+    done <<< "$worker_ids"
+    if [[ $drained -gt 0 ]]; then
+        printf '  %sOK: drained %s worker(s) — only %s remains active%s\n' "$GREEN" "$drained" "$TARGET_WORKER_ID" "$RESET"
+    fi
+    return 0
+}
+
+# ── POST job with background music + vivid ASS subtitles ────────
 post_bgm_subtitle_job() {
-    smoke_log_section "POST /api/v1/jobs (2 scenes + bgm + ${SUBTITLE_PRESET} subtitles)"
+    smoke_log_section "POST /api/v1/jobs (3 scenes + bgm + vivid ASS subtitles)"
 
     # Build the JSON payload with jq for reliability.
     local payload audio_tracks_json
 
-    # Audio tracks: voiceover + optional background music.
+    # Audio tracks: background music with velox-asset:// reference.
     if [[ -n "$BGM_TRACK" && -f "$BGM_TRACK" ]]; then
         audio_tracks_json=$(jq -n --arg bgm "file://${BGM_TRACK}" --arg vol "$BGM_VOLUME" '
             [{
@@ -229,46 +396,42 @@ post_bgm_subtitle_job() {
         audio_tracks_json='[]'
     fi
 
-    # Write a minimal SRT file with semantic tags for word emphasis.
-    # The worker reads subtitle_tracks[].source as a file:// or http(s) URL;
-    # data: URIs are NOT supported by the C++ subtitle loader.
-    # Two cues mapped to the two scenes (0-4s, 4-8s).
-    local srt_file="$WORK_DIR/smoke_subtitles.srt"
-    cat > "$srt_file" <<'SRTEOF'
-1
-00:00:00,500 --> 00:00:03,500
-base:Questa è una name:demo con sottotitoli animati.
+    # ASS subtitle fixture path (12-second, 3 segments).
+    local ass_path="file://${SMOKE_ASS_FIXTURE}"
+    if [[ ! -f "$SMOKE_ASS_FIXTURE" ]]; then
+        printf '%sWARN: ASS fixture not found at %s — subtitle rendering will fail%s\n' \
+            "$YELLOW" "$SMOKE_ASS_FIXTURE" "$RESET" >&2
+    fi
 
-2
-00:00:04,000 --> 00:00:07,500
-base:I sottotitoli seguono la voce con word:effetti dinamici.
-SRTEOF
-
+    # 3 scenes matching the ASS file's 3 segments (0-4s, 4-8s, 8-12s).
     payload=$(jq -n \
         --arg ikey "$IDEMPOTENCY_KEY" \
-        --arg vname "BGM + Subtitle Smoke Test" \
-        --arg script "Questa è una demo con sottotitoli animati. I sottotitoli seguono la voce con effetti dinamici." \
+        --arg vname "BGM + Vivid Subtitle Smoke Test" \
+        --arg script "Questa è una demo con sottotitoli animati. I sottotitoli seguono la voce con effetti dinamici. PipelineGen rende i video professionali." \
         --argjson audio_tracks "$audio_tracks_json" \
-        --arg srt_path "file://${srt_file}" \
+        --arg ass_path "$ass_path" \
         --arg preset "$SUBTITLE_PRESET" \
-        --arg font "${SUBTITLE_FONT:-}" \
         '{
             idempotency_key: $ikey,
             video_name: $vname,
             script_text: $script,
             scenes: [
                 {
-                    text: "Prima scena: introduzione con musica di sottofondo e sottotitoli animati che seguono il parlato parola per parola.",
+                    text: "Prima scena: testo bianco in basso con musica di sottofondo.",
                     duration_seconds: 4.0
                 },
                 {
-                    text: "Seconda scena: conclusione con effetto karaoke sui sottotitoli per rendere il video più coinvolgente e professionale.",
+                    text: "Seconda scena: frase importante rossa grande e bold in alto.",
+                    duration_seconds: 4.0
+                },
+                {
+                    text: "Terza scena: nome ciano con parola evidenziata verde italic.",
                     duration_seconds: 4.0
                 }
             ],
             subtitle_tracks: [
                 {
-                    source: $srt_path,
+                    source: $ass_path,
                     preset: $preset
                 }
             ],
@@ -280,6 +443,11 @@ SRTEOF
                 }
             ]
         }')
+
+    # Inject _placement_pin_worker_id when targeting a specific worker.
+    if [[ -n "$TARGET_WORKER_ID" ]]; then
+        payload=$(jq --arg wid "$TARGET_WORKER_ID" '. + {_placement_pin_worker_id: $wid}' <<< "$payload")
+    fi
 
     # ── Fire POST ────────────────────────────────────────────────
     # NOTE: smoke_curl is NOT called inside $() so SMOKE_LAST_BODY
@@ -529,22 +697,31 @@ assert_worker_processed() {
 
 # ── Main ────────────────────────────────────────────────────────
 main() {
-    smoke_log_section "Background Music + Animated Subtitles — E2E Smoke"
+    smoke_log_section "Background Music + Vivid Subtitles — E2E Smoke (Fase 1 Preflight)"
     printf '  target:        %s\n' "$SMOKE_API_BASE"
     printf '  db:            %s\n' "$SMOKE_DB"
     printf '  bgm_dir:       %s\n' "$SMOKE_BGM_DIR"
     printf '  bgm_track:     %s\n' "${BGM_TRACK:-none}"
     printf '  subtitle_ps:   %s\n' "$SUBTITLE_PRESET"
+    printf '  ass_fixture:   %s\n' "$SMOKE_ASS_FIXTURE"
+    printf '  target_worker: %s\n' "${TARGET_WORKER_ID:-auto}"
+    printf '  drain_others:  %s\n' "${DRAIN_OTHERS}"
     printf '  tag:           %s\n' "$TAG_PREFIX"
     printf '  run_id:        %s\n' "$RUN_ID"
     printf '  bgm_volume:    %s\n' "$BGM_VOLUME"
     echo
 
-    # Prechecks (fail-fast before state-mutating calls).
-    precheck_server_up        || { fail "precheck_server_up"; }
-    precheck_db_schema        || { fail "precheck_db_schema"; }
-    precheck_bgm_available    || { fail "precheck_bgm_available"; }
-    precheck_workers          || { fail "precheck_workers"; }
+    # Fase 1 preflight (fail-fast before state-mutating calls).
+    precheck_server_up         || { fail "precheck_server_up"; }
+    precheck_db_schema         || { fail "precheck_db_schema"; }
+    precheck_bgm_available     || { fail "precheck_bgm_available"; }
+    precheck_workers           || { fail "precheck_workers"; }
+    precheck_worker_session    || { fail "precheck_worker_session"; }
+    precheck_ffmpeg_tools      || { fail "precheck_ffmpeg_tools"; }
+    precheck_font              || { fail "precheck_font"; }
+    precheck_cache_writable    || { fail "precheck_cache_writable"; }
+    precheck_disk_space        || { fail "precheck_disk_space"; }
+    drain_other_workers        || { fail "drain_other_workers"; }
 
     if (( ${#FAILURES[@]} > 0 )); then
         printf '%sFAIL: precheck(s) failed, aborting before POST%s\n' "$RED" "$RESET" >&2
