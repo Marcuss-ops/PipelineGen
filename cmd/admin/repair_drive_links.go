@@ -101,13 +101,13 @@ func runRepairDriveLinks(args []string) error {
 	// ── Step 3: Collect all links ─────────────────────────────
 	fmt.Println("\nStep 3: Collecting Drive links from SpecScene bindings...")
 	type linkRef struct {
-		itemIdx  int
-		sceneID  string
-		label    string
-		assetID  string
-		fileID   string
-		link     string
-		linkPtr  *string // pointer into the parsed struct for mutation
+		itemIdx int
+		sceneID string
+		label   string
+		assetID string
+		fileID  string
+		link    string
+		linkPtr *string // pointer into the parsed struct for mutation
 	}
 
 	var links []linkRef
@@ -161,7 +161,7 @@ func runRepairDriveLinks(args []string) error {
 				if l := strings.TrimSpace(bindings.Media[k].DriveLink); l != "" {
 					links = append(links, linkRef{
 						itemIdx: i, sceneID: scene.ID,
-						label: fmt.Sprintf("media[%d]", k),
+						label:   fmt.Sprintf("media[%d]", k),
 						assetID: bindings.Media[k].AssetID,
 						link:    l, linkPtr: &bindings.Media[k].DriveLink,
 					})
@@ -179,7 +179,7 @@ func runRepairDriveLinks(args []string) error {
 	fmt.Println("\nStep 4: Verifying links against Drive API...")
 	var (
 		verified, updated, missing, trashed, inaccessible, malformed int
-		transportErrors                                               int
+		transportErrors                                              int
 	)
 
 	for idx, ref := range links {
