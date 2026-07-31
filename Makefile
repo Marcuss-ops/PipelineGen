@@ -4,7 +4,8 @@
 # directive (July 2026), the canonical build chain is split into
 # thematic includes under make/. The root holds ONLY include make/*.mk
 # plus the default all: build target. Per-bucket targets, comments,
-# and recipes live in their include.
+# and recipes live in their include. Runtime shell consumers use the
+# canonical fallback VELOX_PORT:-8000.
 #
 # HONOUR-RULE (binding, July 2026) for git push: scripts/hooks/pre-push
 # invokes make verify-main as the fail-closed pre-push gate. The
