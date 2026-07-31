@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "_runner": {"mode": "smoke", "allowed_warnings_regex": "quality|translation failed|translator port not configured|voiceover skipped|requested translation was not completed"},
   "preset": "custom",
   "items": [
     {

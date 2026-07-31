@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "_runner": {"mode": "strict", "allowed_warnings_regex": ""},
   "preset": "custom",
   "items": [
     {
@@ -24,7 +25,7 @@
       },
       "script_params": {
         "target_words": 480,
-        "skip_quality_gate": true,
+        "skip_quality_gate": false,
         "use_memory": false,
         "segments": [
           {"id": "scene-fight-1", "topic": "Pressione iniziale", "target_words": 80},

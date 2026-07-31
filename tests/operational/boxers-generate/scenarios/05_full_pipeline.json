@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "_runner": {"mode": "strict", "allowed_warnings_regex": ""},
   "preset": "custom",
   "items": [
     {
@@ -22,7 +23,7 @@
       },
       "script_params": {
         "target_words": 440,
-        "skip_quality_gate": true,
+        "skip_quality_gate": false,
         "use_memory": false,
         "segments": [
           {

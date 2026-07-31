@@ -143,7 +143,20 @@ prepare_payload() {
     
     # Replace Voiceover Folder
     sed -i "s/REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID/$VOICEOVER_FOLDER/g" "$temp_json"
-    
+
+    # Scenario metadata is runner-only and must never be sent to the API.
+    # runner_policy.py is also the testable source of the mode contract.
+    local payload_json="$temp_json.payload"
+    if ! python3 "$DIR/runner_policy.py" prepare \
+        --mode "$RUNNER_MODE" \
+        --input "$temp_json" \
+        --output "$payload_json"; then
+        printf '%ssetup error: invalid %s runner payload: %s%s\n' \
+            "$RED" "$RUNNER_MODE" "$scenario_file" "$RESET" >&2
+        return 1
+    fi
+    mv "$payload_json" "$temp_json"
+
     cat "$temp_json"
 }
 
@@ -153,14 +166,21 @@ run_scenario() {
     local name="$2"
     local fname="$3"
     local file="$DIR/scenarios/$fname"
-    
     smoke_log_section "Scenario $num: $name"
-    
+
     if [[ ! -f "$file" ]]; then
         printf '%sFAIL: Scenario file not found: %s%s\n' "$RED" "$file" "$RESET" >&2
         return 1
     fi
-    
+
+    RUNNER_MODE=$(jq -r '._runner.mode // "strict"' "$file")
+    ALLOWED_WARNING_REGEX=$(jq -r '._runner.allowed_warnings_regex // ""' "$file")
+    if [[ "$RUNNER_MODE" != "smoke" && "$RUNNER_MODE" != "strict" ]]; then
+        printf '%sFAIL: Scenario %s has invalid runner mode: %s%s\n' "$RED" "$num" "$RUNNER_MODE" "$RESET" >&2
+        return 1
+    fi
+    printf 'Runner mode: %s%s%s\n' "$CYAN" "$RUNNER_MODE" "$RESET"
+
     local payload
     payload=$(prepare_payload "$file")
     
@@ -288,28 +308,19 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
     mkdir -p "$REPORTS_DIR/raw"
     local raw_report_file="$REPORTS_DIR/raw/${num}_${name}_job.json"
     
-    # Assertions
-    local job_status
-    job_status=$(jq -r '.status // .job.status // ""' "$full_body_file")
-    if [[ "$job_status" != "completed" && "$job_status" != "SUCCEEDED" ]]; then
-        printf '%sFAIL: Job status was %s, expected completed/SUCCEEDED%s\n' "$RED" "$job_status" "$RESET" >&2
-        jq -r '.error // .job.error // ""' "$full_body_file" >&2
+    # Assertions shared by both modes. The policy helper is the single gate
+    # for terminal status, warnings, fallback bindings, and strict asset
+    # lifecycle validation.
+    if ! python3 "$DIR/runner_policy.py" validate \
+        --mode "$RUNNER_MODE" \
+        --response "$full_body_file" \
+        --db "$DB_PATH" \
+        --allowed-warning-regex "$ALLOWED_WARNING_REGEX"; then
+        printf '%sFAIL: Scenario %s failed the %s runner policy%s\n' \
+            "$RED" "$num" "$RUNNER_MODE" "$RESET" >&2
         return 1
     fi
-    
-    # Verify warnings are fatal (like translation/voiceover failure warnings)
-    local has_warnings
-    has_warnings=$(jq -r '
-        (.warnings // .job.warnings // []) 
-        | if type == "array" then join(", ") else . end
-    ' "$full_body_file")
-    
-    # Look for fatal warning patterns
-    if grep -Eiq 'translation failed|translator port not configured|voiceover skipped|requested translation was not completed' <<<"$has_warnings"; then
-        printf '%sFAIL: Job completed with fatal warnings: %s%s\n' "$RED" "$has_warnings" "$RESET" >&2
-        return 1
-    fi
-    
+
     local out_json
     local text
     if [[ "$num" != "07" && "$num" != "07b" && "$num" != "07c" && "$num" != "08" ]]; then
