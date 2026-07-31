@@ -162,7 +162,80 @@ class StockRegistryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "metadata role.*expected 'training'"):
                 stock_registry.resolve_registry(registry, str(db_path))
 
-    def test_top_five_scenario_blocks_unavailable_subjects(self):
+    def test_top_five_preflight_reports_all_unavailable_subjects(self):
+        source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
+        result = stock_registry.preflight(stock_registry.load_json(source), self.resolved)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["missing"], [
+            {
+                "subject": "Floyd Mayweather",
+                "role": "fight",
+                "reason": "NO_ACTIVE_ASSET",
+            },
+            {
+                "subject": "Sugar Ray Robinson",
+                "role": "fight",
+                "reason": "NO_ACTIVE_ASSET",
+            },
+        ])
+
+    def test_direct_pacquiao_preflight_passes(self):
+        source = ROOT / "scenarios" / "04_direct_stock_bindings.json"
+        result = stock_registry.preflight(stock_registry.load_json(source), self.resolved)
+        self.assertEqual(result, {"status": "PASS", "missing": []})
+
+    def test_preflight_cli_returns_blocked_exit_code_without_job_or_voiceover_fields(self):
+        source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "preflight.json"
+            self.assertEqual(
+                stock_registry.main([
+                    "preflight",
+                    "--resolved", str(REGISTRY_PATH),
+                    "--input", str(source),
+                    "--output", str(output),
+                ]),
+                3,
+            )
+            result = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(result["status"], "BLOCKED")
+            self.assertNotIn("job_id", result)
+            self.assertNotIn("voiceover_requests", result)
+
+    def test_preflight_blocks_deleted_db_asset_using_lifecycle_state(self):
+        registry = copy.deepcopy(self.registry)
+        registry["boxers"] = {"manny_pacquiao": registry["boxers"]["manny_pacquiao"]}
+        registry["scene_order"] = ["manny_pacquiao"]
+        payload = {
+            "items": [{"output": {"stock_bindings": [{
+                "asset_id": "{{stock.manny_pacquiao.fight.asset_id}}"
+            }]}}]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "assets.sqlite"
+            with sqlite3.connect(db_path) as connection:
+                connection.execute(
+                    "CREATE TABLE media_assets (id TEXT PRIMARY KEY, lifecycle_state TEXT NOT NULL, "
+                    "source TEXT NOT NULL, drive_link TEXT NOT NULL, name TEXT NOT NULL)"
+                )
+                asset = registry["boxers"]["manny_pacquiao"]["assets"]["fight"]
+                connection.execute(
+                    "INSERT INTO media_assets VALUES (?, 'DELETED', 'youtube', ?, 'Manny Pacquiao fight')",
+                    (asset["asset_id"], asset["drive_link"]),
+                )
+                connection.commit()
+            # The payload must be scanned, not the registry itself.
+            result = stock_registry.preflight(payload, stock_registry.resolve_registry(self.registry), str(db_path))
+        self.assertEqual(result, {
+            "status": "BLOCKED",
+            "missing": [{
+                "subject": "Manny Pacquiao",
+                "role": "fight",
+                "reason": "NO_ACTIVE_ASSET",
+            }],
+        })
+
+    def test_top_five_materialization_remains_blocked_after_preflight(self):
         source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
         with self.assertRaisesRegex(ValueError, "unknown stock token"):
             stock_registry.materialize(stock_registry.load_json(source), self.resolved)

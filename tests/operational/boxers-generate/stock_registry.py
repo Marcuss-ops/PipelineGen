@@ -184,6 +184,84 @@ def _materialize_binding(binding: dict[str, Any], resolved: dict[str, Any], look
     return {key: materialize(value, resolved) for key, value in binding.items()}
 
 
+def _stock_tokens(value: Any) -> list[str]:
+    tokens: list[str] = []
+    if isinstance(value, dict):
+        for child in value.values():
+            tokens.extend(_stock_tokens(child))
+    elif isinstance(value, list):
+        for child in value:
+            tokens.extend(_stock_tokens(child))
+    elif isinstance(value, str) and value.startswith("{{stock.") and value.endswith("}}"):
+        tokens.append(value)
+    return tokens
+
+
+def _token_identity(token: str) -> tuple[str, str]:
+    parts = token[len("{{stock."):-2].split(".")
+    if len(parts) != 3:
+        raise ValueError(f"invalid stock token {token!r}")
+    return parts[0], parts[1]
+
+
+def preflight(
+    payload: dict[str, Any],
+    resolved: dict[str, Any],
+    db_path: str | None = None,
+) -> dict[str, Any]:
+    """Return a structured readiness result before any API request is sent."""
+    validate_registry(resolved)
+    missing: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    boxers = resolved.get("boxers", {})
+    connection = sqlite3.connect(db_path) if db_path else None
+    try:
+      for token in _stock_tokens(payload):
+        boxer_key, role = _token_identity(token)
+        identity = (boxer_key, role)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        boxer = boxers.get(boxer_key) if isinstance(boxers, dict) else None
+        asset = boxer.get("assets", {}).get(role) if isinstance(boxer, dict) else None
+        subject = _text(boxer.get("subject")) if isinstance(boxer, dict) else boxer_key
+        if not isinstance(asset, dict) or not _text(asset.get("asset_id")):
+            missing.append({
+                "subject": subject,
+                "role": role,
+                "reason": "NO_ACTIVE_ASSET",
+            })
+            continue
+        if not _text(asset.get("drive_link")):
+            missing.append({
+                "subject": subject,
+                "role": role,
+                "reason": "EMPTY_DRIVE_LINK",
+            })
+            continue
+        if connection is not None:
+            try:
+                _resolve_from_db(
+                    connection,
+                    _text(asset["asset_id"]),
+                    subject,
+                    role,
+                    _text(asset.get("expected_source", "youtube")),
+                )
+            except (ValueError, sqlite3.Error):
+                missing.append({
+                    "subject": subject,
+                    "role": role,
+                    "reason": "NO_ACTIVE_ASSET",
+                })
+    finally:
+        if connection is not None:
+            connection.close()
+    if missing:
+        return {"status": "BLOCKED", "missing": missing}
+    return {"status": "PASS", "missing": []}
+
+
 def materialize(value: Any, resolved: dict[str, Any]) -> Any:
     """Replace ``{{stock.<boxer>.<role>.<field>}}`` tokens from resolved stock."""
     lookup = _asset_lookup(resolved)
@@ -318,12 +396,26 @@ def main(argv: list[str] | None = None) -> int:
     materialize_command.add_argument("--resolved", required=True)
     materialize_command.add_argument("--input", required=True)
     materialize_command.add_argument("--output", required=True)
+    preflight_command = sub.add_parser("preflight")
+    preflight_command.add_argument("--resolved", required=True)
+    preflight_command.add_argument("--input", required=True)
+    preflight_command.add_argument("--output", required=True)
+    preflight_command.add_argument("--db", default="")
     args = parser.parse_args(argv)
     try:
         if args.command == "resolve":
             write_json(resolve_registry(load_json(args.registry), args.db or None), args.output)
-        else:
+        elif args.command == "materialize":
             write_json(materialize(load_json(args.input), load_resolved_stock(args.resolved)), args.output)
+        else:
+            result = preflight(
+                load_json(args.input),
+                load_resolved_stock(args.resolved),
+                args.db or None,
+            )
+            write_json(result, args.output)
+            if result["status"] == "BLOCKED":
+                return 3
     except (OSError, ValueError, sqlite3.Error) as exc:
         print(f"stock registry error: {exc}", file=sys.stderr)
         return 2

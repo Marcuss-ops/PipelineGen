@@ -51,18 +51,16 @@ TYSON_LINKS=()
 TYSON_VIDEO_ID="${TYSON_VIDEO_ID:-}"
 TYSON_FOLDER_NAME="${TYSON_FOLDER_NAME:-Mike Tyson}"
 
-if [[ "$DRY_RUN" == "1" ]]; then
-    python3 "$DIR/stock_registry.py" resolve \
-        --registry "$REGISTRY_FILE" \
-        --output "$RESOLVED_STOCK_FILE"
-elif ! python3 "$DIR/stock_registry.py" resolve \
-        --db "$DB_PATH" \
-        --registry "$REGISTRY_FILE" \
-        --output "$RESOLVED_STOCK_FILE"; then
+# Resolve logical registry data first. Database validation is deliberately
+# deferred until after scenario preflight so an unavailable top-five subject
+# becomes BLOCKED before any network or voiceover work is attempted.
+if ! python3 "$DIR/stock_registry.py" resolve \
+    --registry "$REGISTRY_FILE" \
+    --output "$RESOLVED_STOCK_FILE"; then
     printf '%ssetup error: stock registry resolution failed%s\\n' "$RED" "$RESET" >&2
     exit 2
 fi
-printf 'Resolved boxer stock registry: %s\\n' "$RESOLVED_STOCK_FILE"
+printf 'Resolved logical boxer stock registry: %s\\n' "$RESOLVED_STOCK_FILE"
 
 if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
     printf 'Loading Tyson clips from fixtures/%s\n' "mike_tyson_clip_ids.json"
@@ -180,6 +178,49 @@ run_scenario() {
         return 1
     fi
     printf 'Runner mode: %s%s%s\n' "$CYAN" "$RUNNER_MODE" "$RESET"
+
+    # Preflight all logical stock placeholders before materialization or POST.
+    # A blocked scenario returns success from the runner as an expected,
+    # dependency-gated outcome; no job or voiceover request is created.
+    local preflight_file="$WORK_DIR/preflight_$num.json"
+    local preflight_status=0
+    local preflight_db_args=()
+    if [[ "$DRY_RUN" != "1" ]]; then
+        preflight_db_args=(--db "$DB_PATH")
+    fi
+    python3 "$DIR/stock_registry.py" preflight \
+        --resolved "$RESOLVED_STOCK_FILE" \
+        --input "$file" \
+        --output "$preflight_file" \
+        "${preflight_db_args[@]}" || preflight_status=$?
+    if [[ "$preflight_status" == "3" ]]; then
+        if ! jq -e '.status == "BLOCKED" and (.missing | length > 0)' "$preflight_file" >/dev/null; then
+            printf '%sFAIL: Scenario %s preflight returned malformed BLOCKED result%s\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+        printf '%sBLOCKED: Scenario %s dependencies are unavailable; no POST/job/voiceover was attempted%s\n' \
+            "$YELLOW" "$num" "$RESET"
+        jq . "$preflight_file"
+        SCENARIO_BLOCKED=1
+        return 0
+    elif (( preflight_status != 0 )); then
+        printf '%sFAIL: Scenario %s preflight failed with status %d%s\n' \
+            "$RED" "$num" "$preflight_status" "$RESET" >&2
+        return 1
+    fi
+
+    # Only a ready scenario reaches SQLite validation and payload creation.
+    # This keeps a BLOCKED preflight side-effect free.
+    if [[ "$DRY_RUN" != "1" ]]; then
+        if ! python3 "$DIR/stock_registry.py" resolve \
+            --db "$DB_PATH" \
+            --registry "$REGISTRY_FILE" \
+            --output "$RESOLVED_STOCK_FILE"; then
+            printf '%sFAIL: Scenario %s registry/database validation failed%s\\n' \
+                "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+    fi
 
     local payload
     payload=$(prepare_payload "$file")
@@ -693,6 +734,8 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
 # Run scenario sequence
 TARGET_SCENARIO="${TARGET_SCENARIO:-all}"
 failures=0
+blocked_scenarios=0
+SCENARIO_BLOCKED=0
 
 run_test() {
     local num="$1"
@@ -705,6 +748,10 @@ run_test() {
             export SMOKE_POLL_TIMEOUT_SECONDS=180
         fi
         run_scenario "$num" "$name" "$fname" || return 1
+        if [[ "$SCENARIO_BLOCKED" == "1" ]]; then
+            blocked_scenarios=$((blocked_scenarios + 1))
+            SCENARIO_BLOCKED=0
+        fi
     fi
     return 0
 }
@@ -730,7 +777,10 @@ if (( failures > 0 )); then
     exit 1
 fi
 
-if [[ "$TARGET_SCENARIO" == "all" ]]; then
+if (( blocked_scenarios > 0 )); then
+    printf '%sBLOCKED: %d scenario(s) have unavailable stock dependencies; no jobs or voiceovers were created.%s\n' \
+        "$YELLOW" "$blocked_scenarios" "$RESET"
+elif [[ "$TARGET_SCENARIO" == "all" ]]; then
     printf '%sOK: All boxers script-generation scenarios completed and verified!%s\n' "$GREEN" "$RESET"
 else
     printf '%sOK: Scenario %s completed and verified!%s\n' "$GREEN" "$TARGET_SCENARIO" "$RESET"
