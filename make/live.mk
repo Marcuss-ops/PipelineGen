@@ -24,11 +24,11 @@
 verify-images-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/images_e2e.sh
 
-# verify-script-live — tests/operational/script_generate_smoke.sh —
+# verify-script-live — tests/operational/generate/run.sh basic.json —
 # end-to-end script.generate dispatch + worker pull + finalizer,
 # without the full Vid Rush media path.
 verify-script-live: auth-check
-	@scripts/with-velox-auth bash tests/operational/script_generate_smoke.sh
+	@scripts/with-velox-auth bash tests/operational/generate/run.sh basic.json
 
 # verify-vidrush-live — tests/operational/vidrush_script_generate_e2e.sh —
 # the canonical VidRush battery. It uses one POST /api/script/generate per
