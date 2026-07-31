@@ -47,6 +47,93 @@ go build -o admin ./cmd/admin
 
 The default HTTP port is `8000` and can be changed with `VELOX_PORT`.
 
+## Local configuration and secrets
+
+Keep repository configuration and host credentials separate:
+
+1. Copy the non-secret configuration template and edit only local settings:
+
+   ```bash
+   cp config.example.yaml config.yaml
+   ```
+
+   `config.yaml` is local state; do not commit credentials, tokens, OAuth files,
+   cookies, or private keys.
+
+2. Provision the canonical admin secret through the host's secure operator
+   process. The required file is `/etc/pipelinegen/pipelinegen.env`, owned by
+   `root:pipelinegen-agents` with mode `0640`. It contains
+   `VELOX_ADMIN_TOKEN` as a 64-character hexadecimal value. Do not create a
+   second repository-local token file, paste the value into chat, shell
+   history, command arguments, `config.yaml`, or logs.
+
+3. Validate access without printing the token:
+
+   ```bash
+   scripts/with-velox-auth bash -c 'test -n "$VELOX_ADMIN_TOKEN"'
+   ```
+
+   The wrapper loads and validates the canonical secret, exports it only to
+   the command it executes, and fails closed on missing or malformed input.
+
+4. For a local process, keep the same boundary when credentials are needed:
+
+   ```bash
+   scripts/with-velox-auth ./bin/pipelinegen --mode all
+   ```
+
+   For a systemd deployment, the service environment is managed by the host;
+   routine operators should use `pipelinegenctl` rather than sourcing secrets
+   into an interactive shell.
+
+## Daily operations versus administration
+
+Daily, unprivileged operations are intentionally separate from host
+administration:
+
+| Activity | Command | Privilege behavior |
+|---|---|---|
+| Check service state | `scripts/systemd/pipelinegenctl status` | No sudo |
+| Check `/ready` | `scripts/systemd/pipelinegenctl verify` | No sudo |
+| Read sanitized logs | `scripts/systemd/pipelinegenctl logs` | No sudo |
+| Restart and verify `/ready` + Drive canary | `scripts/systemd/pipelinegenctl restart-verify` | No interactive password; restricted `sudo -n` restart only |
+
+`restart-verify` prints only `PASS` or `FAIL`. It loads credentials through
+`scripts/with-velox-auth` and never prints tokens, Drive IDs, Drive URLs, or the
+canary response.
+
+Administrative host changes require the operator's normal sudo authorization
+and should not be performed as a daily shortcut. Before installing the
+restricted policy, verify the host's executable path:
+
+```bash
+command -v systemctl
+```
+
+The path in the sudoers policy must match that result. If it is not
+`/usr/bin/systemctl`, pass the verified absolute path through
+`PIPELINEGEN_SYSTEMCTL_PATH` when installing the policy. Because `sudo` may
+filter environment variables, use the explicit form when needed:
+
+```bash
+sudo env PIPELINEGEN_SYSTEMCTL_PATH=/absolute/path/systemctl \
+  scripts/systemd/sudoers/install_operator_access.sh --install
+```
+
+Administrative tasks include:
+
+- install or change `/etc/sudoers.d/pipelinegen-operator`;
+- run `migrate_to_systemd.sh`, `systemctl daemon-reload`, or enable/disable
+  services;
+- change the ownership or mode of `/etc/pipelinegen/pipelinegen.env`;
+- rotate the admin/worker credentials with `scripts/rotate_token.sh` during an
+  administrative change window only;
+- modify unit files, drop-ins, system packages, or service ownership.
+
+See [`scripts/systemd/README.md`](scripts/systemd/README.md) for the complete
+operator matrix and the safe transition from one-time administration to daily
+passwordless checks.
+
 ## Repository layout
 
 ```text
