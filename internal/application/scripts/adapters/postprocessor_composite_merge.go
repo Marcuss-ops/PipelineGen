@@ -63,6 +63,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		currentInput.SpecScene = src.UpdatedSpecScene
 		dst.FinalSpecScene = src.UpdatedSpecScene
 	}
+	if src.SpecSceneChanged {
+		dst.SpecSceneChanged = true
+		if currentInput != nil {
+			currentInput.SpecSceneChanged = true
+		}
+	}
 	if src.Entities != nil {
 		dst.Entities = src.Entities
 		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):

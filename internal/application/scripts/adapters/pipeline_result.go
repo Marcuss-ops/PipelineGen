@@ -73,4 +73,7 @@ type PipelineResult struct {
 	OriginalText      string                    `json:"original_text,omitempty"`
 	OriginalSpecScene scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
 	EffectiveLanguage string                    `json:"effective_language,omitempty"`
+	// SpecSceneChanged is internal pipeline metadata used to force a
+	// document refresh after durable location reconciliation.
+	SpecSceneChanged bool `json:"-"`
 }

@@ -3,8 +3,9 @@ package script
 import "context"
 
 // AssetLocationChange is the durable state change produced by Drive
-// reconciliation for a media asset. DriveFileID and DriveLink are both
-// empty when reconciliation has invalidated the location.
+// reconciliation for a media asset. DriveLink is empty when the location
+// is unusable; DriveFileID is retained when known so operators can diagnose
+// or republish the asset without losing the original Drive identity.
 type AssetLocationChange struct {
 	AssetID     string
 	DriveFileID string
