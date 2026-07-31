@@ -130,6 +130,27 @@ func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
 // + content metadata through to the Qdrant payload and build a rich
 // embedding_text block from it. Includes the forward-prevention
 // negative assertion (no pre-step-6 labels leak into embedding_text).
+func TestBuildPayloadFromDocument_DriveLinkDoesNotFallbackToStaleMetadata(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	a := &AssetData{
+		ID:             "asset-stale-drive-link",
+		Source:         "stock",
+		MediaType:      "video",
+		LifecycleState: "ERROR",
+		DriveFileID:    "deleted-drive-file",
+		DriveLink:      "",
+		MetadataJSON:   `{"drive_link":"https://drive.google.com/file/d/deleted-drive-file/view"}`,
+	}
+	doc := assetToIndexDocumentNoValidate(a, schema)
+	payload := BuildPayloadFromDocument(doc, schema)
+	if _, ok := payload["drive_link"]; ok {
+		t.Fatalf("stale metadata drive_link leaked into payload: %#v", payload)
+	}
+	if got := payload["drive_file_id"]; got != "deleted-drive-file" {
+		t.Fatalf("drive_file_id = %v, want preserved diagnostic identity", got)
+	}
+}
+
 func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	a := &AssetData{
@@ -138,6 +159,8 @@ func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
 		Source:         "stock",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
+		DriveFileID:    "drive-file-pacquiao-broner",
+		DriveLink:      "https://drive.google.com/file/d/drive-file-pacquiao-broner/view",
 		Tags:           []string{"boxing", "pacquiao", "broner"},
 		DurationMs:     5000,
 		YouTubeVideoID: "vdC5GXxS-qU",
@@ -285,10 +308,10 @@ func TestBuildPayloadFromDocument_EmptyArtifactVersionSkipped(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────
 
 // TestAssetToIndexDocument_AirLockStripsForbiddenFields pins that the
-// canonical Mapper airlock (PR 6) removes Status / DriveLink /
-// LocalPath from the wire-shape IndexDocument. The legacy AssetData
-// keeps these fields for diagnostic paths; the new IndexDocument
-// surface does NOT.
+// canonical Mapper airlock removes Status / LocalPath from the
+// wire-shape IndexDocument. DriveLink is intentionally a canonical
+// IndexedMetadata field and is kept out of embedding text; the legacy
+// AssetData retains all three fields for diagnostic paths.
 func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	a := &AssetData{
@@ -306,7 +329,7 @@ func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 		t.Skipf("airlock validation error (vector missing): %v; skipping no-locator check", err)
 	}
 	docBytes, _ := json.Marshal(doc)
-	for _, forbidden := range []string{"drive_link", "local_path", "status"} {
+	for _, forbidden := range []string{"local_path", "status"} {
 		require.False(t, bytes.Contains(docBytes, []byte(forbidden)),
 			"IndexDocument JSON must not contain forbidden key %q (PR 6 verdict §7.4); got %s", forbidden, string(docBytes))
 	}

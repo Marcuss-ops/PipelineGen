@@ -116,19 +116,21 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 		must = append(must, matchClause("normalized_group", filter.FolderNormalizedGroup))
 	}
 
-	// 3. Lifecycle allow-list — PR 5 §8 mandatory invariant.
-	//    AssetFilter.LifecycleState defaults to {"ACTIVE"} when the
-	//    caller doesn't override it. The legacy {"active", "searchable"}
-	//    waterfall was pruned by migration 101; we don't replicate it
-	//    here because any legacy lowercase value would have to be
-	//    repaired by the reconciler, not silently matched at search.
+	// 3. Lifecycle allow-list — states are alternatives, not cumulative
+	//    requirements. Keep the equality predicates in `must`, and put
+	//    the searchable lifecycle states in `should` with min_should=1;
+	//    otherwise ACTIVE+PUBLISHED would require both values and return
+	//    no stock results. The default remains ACTIVE for direct callers.
 	lifecycle := filter.LifecycleState
 	if len(lifecycle) == 0 {
 		lifecycle = []string{"ACTIVE"}
 	}
-	must = append(must, lifecycleClauses(lifecycle)...)
 
-	return map[string]any{"must": must}, nil
+	return map[string]any{
+		"must":       must,
+		"should":     lifecycleClauses(lifecycle),
+		"min_should": 1,
+	}, nil
 }
 
 // matchClause is the canonical wire shape for an equality predicate.

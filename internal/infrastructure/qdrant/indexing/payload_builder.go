@@ -278,6 +278,9 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	// pre-resolved value).
 	// godlike/07 NO-FAKE-AVAILABILITY: both keys are omitempty; absence
 	// means the producer side hasn't populated them yet.
+	if doc.Metadata.DriveFileID != "" {
+		payload["drive_file_id"] = doc.Metadata.DriveFileID
+	}
 	if doc.Metadata.DriveLink != "" {
 		payload["drive_link"] = doc.Metadata.DriveLink
 	}

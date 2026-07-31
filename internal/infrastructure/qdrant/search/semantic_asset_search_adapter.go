@@ -238,17 +238,23 @@ func (a *semanticAssetSearchAdapter) searchAssetsStock(ctx context.Context, q po
 		return nil, fmt.Errorf("stock search embed: %w", err)
 	}
 
+	filt, err := CompileQdrantFilter(
+		appsearch.SearchScope{IsSystem: true},
+		appsearch.AssetFilter{
+			Source:         "stock",
+			LifecycleState: []string{"ACTIVE"},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("stock search: compile filter: %w", err)
+	}
+
 	results, err := a.searcher.Search(ctx, schema.SearchRequest{
 		QueryVector: vec,
 		VectorName:  a.vectorName,
 		Limit:       limit,
 		MinScore:    minScore,
-		Filter: map[string]any{
-			"must": []map[string]any{
-				{"key": "source", "match": map[string]any{"value": "stock"}},
-				{"key": "lifecycle_state", "match": map[string]any{"value": "ACTIVE"}},
-			},
-		},
+		Filter:      filt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock search: %w", err)

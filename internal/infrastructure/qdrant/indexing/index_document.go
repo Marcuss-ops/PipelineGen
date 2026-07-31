@@ -224,6 +224,10 @@ type IndexedMetadata struct {
 	TimestampDriveFolderLink string
 	TimestampFolderID        string
 
+	// DriveFileID is the canonical Drive identity copied from SQLite for
+	// projection coherence and reconciliation diagnostics.
+	DriveFileID string
+
 	// DriveLink is the canonical Drive web-view URL (e.g.
 	// "https://drive.google.com/file/d/abc123/view"). Populated from
 	// AssetData.DriveLink (which is sourced from media_assets.drive_link

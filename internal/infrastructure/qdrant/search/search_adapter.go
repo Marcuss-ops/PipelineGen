@@ -68,10 +68,11 @@ func (a *SearchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 			IsSystem:    req.IsSystem,
 		},
 		appsearch.AssetFilter{
-			Source:    req.Source,
-			Category:  req.Category,
-			MediaType: req.MediaType,
-			Language:  req.Language,
+			Source:         req.Source,
+			Category:       req.Category,
+			MediaType:      req.MediaType,
+			Language:       req.Language,
+			LifecycleState: req.LifecycleState,
 		},
 	)
 	if err != nil {
@@ -126,10 +127,11 @@ func (a *SearchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 			IsSystem:    req.IsSystem,
 		},
 		appsearch.AssetFilter{
-			Source:    req.Source,
-			Category:  req.Category,
-			MediaType: req.MediaType,
-			Language:  req.Language,
+			Source:         req.Source,
+			Category:       req.Category,
+			MediaType:      req.MediaType,
+			Language:       req.Language,
+			LifecycleState: req.LifecycleState,
 		},
 	)
 	if err != nil {

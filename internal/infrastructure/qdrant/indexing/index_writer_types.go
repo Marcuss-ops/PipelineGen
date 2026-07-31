@@ -55,6 +55,9 @@ type AssetData struct {
 	Style          string   `json:"style,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	SearchText     string   `json:"search_text,omitempty"`
+	// DriveFileID is the canonical Drive identity retained for projection
+	// coherence and repair diagnostics. It is never exposed by API DTOs.
+	DriveFileID string `json:"drive_file_id,omitempty"`
 	// DriveLink is the canonical Drive web-view URL for the asset
 	// (e.g. "https://drive.google.com/file/d/abc123/view").
 	// PR-CATALOG-MULTILINGUA step 6 (July 2026): now EMITTED in the

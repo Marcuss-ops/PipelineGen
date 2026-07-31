@@ -57,9 +57,11 @@ import (
 // caught in BuildProcessBundle (`var _ clipindexer.VectorStoreIndexer
 // = (*qdrant.IndexWriter)(nil)`) keeps behaving identically.
 //
-// The airlock strips Status / DriveLink / LocalPath at the
-// IndexDocument boundary; the IndexDocument struct has no such fields,
-// so the wire-shape invariant is enforced statically (frozen test in
+// The airlock strips Status / LocalPath at the IndexDocument boundary;
+// DriveLink is intentionally retained inside IndexedMetadata as the
+// canonical projection field, while its stale legacy metadata fallback
+// is suppressed by the acquire phase. The wire-shape invariant is
+// enforced statically (frozen test in
 // composition_test.go::TestComposition_FrozenQdrantIndexDocument
 // CanonicalTypes) AND dynamically (wire-shape test in
 // payload_mapper_test.go::TestBuildPayloadFromDocument_NoForbidden
