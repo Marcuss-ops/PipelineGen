@@ -85,6 +85,14 @@ func (a *AssetLocationResolverAdapter) ResolveAndVerify(
 			ErrorCode:   "NULL_META",
 		}, nil
 	}
+	if errorCode := invalidDriveMetadataIdentity(meta, fileID); errorCode != "" {
+		return &scriptpkg.VerifiedLocation{
+			AssetID:     assetID,
+			DriveFileID: fileID,
+			State:       scriptpkg.LocationStateMissing,
+			ErrorCode:   errorCode,
+		}, nil
+	}
 
 	// File exists — check if it's in the trash.
 	if meta.Trashed {
@@ -144,6 +152,20 @@ func (a *AssetLocationResolverAdapter) classifyError(assetID, fileID string, err
 	}
 	// Unknown/transport error — surface to caller for fail-closed handling.
 	return nil, fmt.Errorf("drive: failed to verify file %s: %w", fileID, err)
+}
+
+// invalidDriveMetadataIdentity returns a diagnostic code when the
+// response does not identify the file that was requested. A successful
+// HTTP response is not sufficient: Drive metadata must echo a non-empty
+// ID matching the requested file ID before the location is publishable.
+func invalidDriveMetadataIdentity(meta *FileMeta, fileID string) string {
+	if meta == nil || strings.TrimSpace(meta.ID) == "" {
+		return "EMPTY_FILE_ID_METADATA"
+	}
+	if meta.ID != fileID {
+		return "FILE_ID_MISMATCH"
+	}
+	return ""
 }
 
 // driveLinksEquivalent returns true when two Drive links refer to

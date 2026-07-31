@@ -78,6 +78,9 @@ func (v *LocationVerifier) Verify(
 	if meta == nil {
 		return v.classifyMissing(ctx, assetID, fileID, "NULL_META")
 	}
+	if errorCode := invalidDriveMetadataIdentity(meta, fileID); errorCode != "" {
+		return v.classifyMissing(ctx, assetID, fileID, errorCode)
+	}
 
 	// File exists — check trashed state.
 	if meta.Trashed {
