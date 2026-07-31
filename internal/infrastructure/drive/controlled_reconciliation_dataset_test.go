@@ -2,12 +2,14 @@ package drive_test
 
 import (
 	"context"
+	"database/sql"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"testing"
 
+	_ "github.com/mattn/go-sqlite3"
 	"google.golang.org/api/googleapi"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -26,13 +28,14 @@ type controlledReconciliationDatasetFile struct {
 }
 
 type controlledReconciliationAsset struct {
-	AssetID       string                  `json:"asset_id"`
-	Boxer         string                  `json:"boxer"`
-	SceneID       string                  `json:"scene_id"`
-	DriveFileID   string                  `json:"drive_file_id"`
-	DriveLink     string                  `json:"drive_link"`
-	ExpectedState scriptpkg.LocationState `json:"expected_state"`
-	Drive         struct {
+	AssetID               string                     `json:"asset_id"`
+	Boxer                 string                     `json:"boxer"`
+	SceneID               string                     `json:"scene_id"`
+	DriveFileID           string                     `json:"drive_file_id"`
+	DriveLink             string                     `json:"drive_link"`
+	InitialLifecycleState domainasset.LifecycleState `json:"initial_lifecycle_state"`
+	ExpectedState         scriptpkg.LocationState    `json:"expected_state"`
+	Drive                 struct {
 		ID          string   `json:"id"`
 		Name        string   `json:"name"`
 		MIMEType    string   `json:"mime_type"`
@@ -131,6 +134,27 @@ func (r *controlledReader) SearchFiles(context.Context, string) ([]drive.DriveFi
 	return nil, errors.New("controlled reader: SearchFiles not configured")
 }
 
+func openControlledInventoryDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open controlled SQLite inventory: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec(`
+		CREATE TABLE media_assets (
+			id TEXT PRIMARY KEY NOT NULL,
+			drive_file_id TEXT NOT NULL UNIQUE,
+			drive_link TEXT NOT NULL,
+			lifecycle_state TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("create controlled SQLite inventory: %v", err)
+	}
+	return db
+}
+
 func TestControlledReconciliationDataset(t *testing.T) {
 	var dataset controlledReconciliationDatasetFile
 	if err := json.Unmarshal(controlledReconciliationDataset, &dataset); err != nil {
@@ -147,6 +171,7 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		t.Fatalf("scene count = %d, want 5", len(dataset.Script.Scenes))
 	}
 
+	db := openControlledInventoryDB(t)
 	reader := &controlledReader{
 		files:  make(map[string]*drive.FileMeta),
 		errors: make(map[string]error),
@@ -178,6 +203,12 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		}
 		seenAssetIDs[asset.AssetID] = struct{}{}
 		seenDriveFileIDs[asset.DriveFileID] = struct{}{}
+		if _, err := db.Exec(
+			`INSERT INTO media_assets (id, drive_file_id, drive_link, lifecycle_state) VALUES (?, ?, ?, ?)`,
+			asset.AssetID, asset.DriveFileID, asset.DriveLink, asset.InitialLifecycleState,
+		); err != nil {
+			t.Fatalf("%s: insert initial SQLite inventory row: %v", asset.Boxer, err)
+		}
 
 		if asset.Drive.ErrorStatus != 0 {
 			reader.errors[asset.DriveFileID] = &googleapi.Error{Code: asset.Drive.ErrorStatus}
@@ -192,11 +223,23 @@ func TestControlledReconciliationDataset(t *testing.T) {
 				Trashed:     asset.Drive.Trashed,
 			}
 		}
+		if asset.InitialLifecycleState == "" || !asset.InitialLifecycleState.Valid() {
+			t.Fatalf("%s: initial lifecycle state %q is not canonical", asset.Boxer, asset.InitialLifecycleState)
+		}
+		if asset.InitialLifecycleState != domainasset.StateActive {
+			t.Fatalf("%s: initial lifecycle state = %q, want %q", asset.Boxer, asset.InitialLifecycleState, domainasset.StateActive)
+		}
 		assetStore.details[asset.AssetID] = &domainasset.Details{
-			Asset: &domainasset.Asset{ID: asset.AssetID},
+			Asset: &domainasset.Asset{
+				ID:             asset.AssetID,
+				LifecycleState: asset.InitialLifecycleState,
+			},
 		}
 		if details, err := assetStore.GetAsset(context.Background(), asset.AssetID); err != nil || details == nil || details.Asset == nil || details.Asset.ID != asset.AssetID {
 			t.Fatalf("%s: SQLite inventory lookup failed", asset.Boxer)
+		}
+		if details := assetStore.details[asset.AssetID]; details.Asset.LifecycleState != domainasset.StateActive {
+			t.Fatalf("%s: persisted initial lifecycle state = %q, want %q", asset.Boxer, details.Asset.LifecycleState, domainasset.StateActive)
 		}
 		if asset.ExpectedState == scriptpkg.LocationStateUpdated {
 			assetStore.details[asset.AssetID].Locations = []*domainasset.Location{{
@@ -246,6 +289,45 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		}
 	}
 
+	var inventoryRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&inventoryRows); err != nil {
+		t.Fatalf("count SQLite inventory rows: %v", err)
+	}
+	if inventoryRows != 5 {
+		t.Fatalf("SQLite inventory row count = %d, want 5", inventoryRows)
+	}
+	var emptyInventoryFields int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM media_assets
+		WHERE id = '' OR drive_file_id = '' OR drive_link = '' OR lifecycle_state = ''
+	`).Scan(&emptyInventoryFields); err != nil {
+		t.Fatalf("check empty SQLite inventory fields: %v", err)
+	}
+	if emptyInventoryFields != 0 {
+		t.Fatalf("SQLite inventory has %d rows with empty required fields", emptyInventoryFields)
+	}
+	var duplicateAssetIDs, duplicateDriveFileIDs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM (SELECT id FROM media_assets GROUP BY id HAVING COUNT(*) > 1)`).Scan(&duplicateAssetIDs); err != nil {
+		t.Fatalf("check duplicate asset IDs: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM (SELECT drive_file_id FROM media_assets GROUP BY drive_file_id HAVING COUNT(*) > 1)`).Scan(&duplicateDriveFileIDs); err != nil {
+		t.Fatalf("check duplicate Drive file IDs: %v", err)
+	}
+	if duplicateAssetIDs != 0 || duplicateDriveFileIDs != 0 {
+		t.Fatalf("SQLite inventory duplicates: asset_id=%d drive_file_id=%d", duplicateAssetIDs, duplicateDriveFileIDs)
+	}
+	if _, err := db.Exec(`INSERT INTO media_assets (id, drive_file_id, drive_link, lifecycle_state) VALUES (?, ?, ?, ?)`,
+		assetIDForTest(dataset.Assets, 0), "duplicate-id-drive", "https://drive.google.com/file/d/duplicateid/view", "ACTIVE"); err == nil {
+		t.Fatal("SQLite inventory accepted duplicate asset_id")
+	}
+	if _, err := db.Exec(`INSERT INTO media_assets (id, drive_file_id, drive_link, lifecycle_state) VALUES (?, ?, ?, ?)`,
+		"duplicate-drive-id", dataset.Assets[0].DriveFileID, "https://drive.google.com/file/d/duplicatedrive/view", "ACTIVE"); err == nil {
+		t.Fatal("SQLite inventory accepted duplicate drive_file_id")
+	}
+	if len(assetStore.details) != 5 || len(seenAssetIDs) != 5 || len(seenDriveFileIDs) != 5 {
+		t.Fatalf("SQLite inventory uniqueness counts: rows=%d asset_id=%d drive_file_id=%d, want 5 each", inventoryRows, len(seenAssetIDs), len(seenDriveFileIDs))
+	}
+
 	for _, state := range []scriptpkg.LocationState{
 		scriptpkg.LocationStateVerified,
 		scriptpkg.LocationStateUpdated,
@@ -259,6 +341,7 @@ func TestControlledReconciliationDataset(t *testing.T) {
 	}
 
 	seenScenes := make(map[string]struct{}, len(dataset.Script.Scenes))
+	sceneAssetRefs := make(map[string]int, len(dataset.Script.Scenes))
 	processorScenes := make([]scriptpkg.SpecScene, 0, len(dataset.Script.Scenes))
 	for index, scene := range dataset.Script.Scenes {
 		if scene.Index != index {
@@ -271,6 +354,7 @@ func TestControlledReconciliationDataset(t *testing.T) {
 			t.Errorf("duplicate scene id %q", scene.ID)
 		}
 		seenScenes[scene.ID] = struct{}{}
+		sceneAssetRefs[scene.Binding.AssetID]++
 		asset, exists := findControlledAsset(dataset.Assets, scene.Binding.AssetID)
 		if !exists {
 			t.Errorf("scene %s references unknown asset_id %q", scene.ID, scene.Binding.AssetID)
@@ -282,6 +366,16 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		if scene.Binding.DriveFileID != asset.DriveFileID || scene.Binding.DriveLink != asset.DriveLink {
 			t.Errorf("scene %s binding does not match asset %s Drive reference", scene.ID, scene.Binding.AssetID)
 		}
+		var dbDriveFileID, dbDriveLink, dbLifecycleState string
+		if err := db.QueryRow(`SELECT drive_file_id, drive_link, lifecycle_state FROM media_assets WHERE id = ?`, scene.Binding.AssetID).
+			Scan(&dbDriveFileID, &dbDriveLink, &dbLifecycleState); err != nil {
+			t.Fatalf("scene %s: query SQLite inventory row: %v", scene.ID, err)
+		}
+		if dbDriveFileID != scene.Binding.DriveFileID || dbDriveLink != scene.Binding.DriveLink || dbLifecycleState != string(asset.InitialLifecycleState) {
+			t.Errorf("scene %s does not match SQLite inventory row: got (%q, %q, %q), want (%q, %q, %q)",
+				scene.ID, dbDriveFileID, dbDriveLink, dbLifecycleState,
+				scene.Binding.DriveFileID, scene.Binding.DriveLink, asset.InitialLifecycleState)
+		}
 		processorScenes = append(processorScenes, scriptpkg.SpecScene{
 			ID: scene.ID, Index: scene.Index, Text: scene.Boxer + " controlled scene", Kind: scriptpkg.SceneClip,
 			Bindings: scriptpkg.SceneBindings{
@@ -289,7 +383,18 @@ func TestControlledReconciliationDataset(t *testing.T) {
 			},
 		})
 	}
+	if len(sceneAssetRefs) != 5 {
+		t.Fatalf("scene asset reference count = %d, want 5", len(sceneAssetRefs))
+	}
+	for assetID := range seenAssetIDs {
+		if sceneAssetRefs[assetID] != 1 {
+			t.Fatalf("asset %q referenced by %d scenes, want exactly 1", assetID, sceneAssetRefs[assetID])
+		}
+	}
 
+	for assetID := range assetStore.calls {
+		assetStore.calls[assetID] = 0
+	}
 	processor := adapters.NewAssetLocationReconciliationProcessor(resolver)
 	result, err := processor.Process(context.Background(), nil, adapters.ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: processorScenes},
@@ -321,10 +426,24 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		t.Fatalf("processor warnings = %d, want 3: %v", len(result.Warnings), result.Warnings)
 	}
 	for _, asset := range dataset.Assets {
-		if assetStore.calls[asset.AssetID] == 0 {
+		calls := assetStore.calls[asset.AssetID]
+		mustConsultSQLite := asset.ExpectedState == scriptpkg.LocationStateVerified ||
+			asset.ExpectedState == scriptpkg.LocationStateUpdated ||
+			asset.ExpectedState == scriptpkg.LocationStateMissing
+		if mustConsultSQLite && calls == 0 {
 			t.Errorf("asset store was not consulted for %s", asset.AssetID)
 		}
+		if !mustConsultSQLite && calls != 0 {
+			t.Errorf("asset store was unexpectedly consulted for early-classified %s (calls=%d)", asset.AssetID, calls)
+		}
 	}
+}
+
+func assetIDForTest(assets []controlledReconciliationAsset, index int) string {
+	if index < 0 || index >= len(assets) {
+		return ""
+	}
+	return assets[index].AssetID
 }
 
 func equalStrings(left, right []string) bool {
