@@ -69,16 +69,46 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 		}
 		cutPaths = append(cutPaths, item.OutputPath)
 
-		// Asset write + outbox.
+		// Asset write + outbox. The canonical dispatcher performs the
+		// database save and index-outbox enqueue atomically; record both
+		// semantic phases around that one operation without duplicating it.
 		if writer != nil {
 			clip := buildRichStockAsset(plan, sourceIdx, clipIdx, item.OutputPath, hash)
-			if err := writer.WriteAndEnqueue(ctx, clip, hash); err != nil {
+			databaseMetric := startStockPhase(ctx, runner, "stock.database_save")
+			writeErr := writer.WriteAndEnqueue(ctx, clip, hash)
+			if databaseMetric != nil {
+				out := int64(0)
+				if writeErr == nil {
+					out = 1
+				}
+				databaseMetric.SetItems(1, out)
+				databaseMetric.SetBytes(item.SizeBytes, item.SizeBytes)
+				databaseMetric.SetDetails(map[string]any{
+					"assets_generated":        1,
+					"output_duration_seconds": item.DurationSec,
+				})
+			}
+			finishStockPhase(runner, databaseMetric, "stock.database_save", writeErr)
+
+			// EnqueueAndIndex is one atomic database+outbox operation;
+			// record index as a post-commit event so its metric does not
+			// double-count database_save duration. The detail names the
+			// measured boundary; actual Qdrant consumption remains async.
+			indexMetric := startStockPhase(ctx, runner, "stock.index")
+			if indexMetric != nil {
+				indexMetric.SetItems(1, boolToInt64(writeErr == nil))
+				indexMetric.SetDetails(map[string]any{
+					"index_mode": "outbox_enqueue",
+				})
+			}
+			finishStockPhase(runner, indexMetric, "stock.index", writeErr)
+			if writeErr != nil {
 				if runner.Log() != nil {
 					runner.Log().Warn("orchestrator: stock.extract_clips: WriteAndEnqueue failed",
 						zap.String("logical_id", plan.OutputLogicalID),
-						zap.Error(err))
+						zap.Error(writeErr))
 				}
-				return nil, nil, fmt.Errorf("%w: %w", ErrAtomicDispatchFailed, err)
+				return nil, nil, fmt.Errorf("%w: %w", ErrAtomicDispatchFailed, writeErr)
 			}
 
 			if artifactPrep != nil {
@@ -139,7 +169,10 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 				defer wg.Done()
 				for taskIdx := range taskCh {
 					task := uploadTasks[taskIdx]
-					clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, task.cVA)
+					clipPublished, clipPrepErr := prepareStockDriveArtifact(ctx, runner, task.cVA, map[string]any{
+						"assets_generated":        1,
+						"output_duration_seconds": task.plan.EndSec - task.plan.StartSec,
+					})
 					if clipPrepErr != nil {
 						uploadResults[taskIdx] = clipUploadResult{
 							err: fmt.Errorf("%w: chunk %d (artifact=%s): %w",

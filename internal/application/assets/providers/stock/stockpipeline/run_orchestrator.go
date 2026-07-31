@@ -18,6 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -40,6 +41,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *RunInput")
 	}
+	ctx = appmetrics.WithRun(ctx, jobID, "")
 	// drive_folder_id is the operator-selected parent. Resolve the readable
 	// folder_name below it once, then publish round subfolders below that
 	// resolved folder. This keeps Drive hierarchy creation inside stock.
@@ -61,8 +63,19 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 
 	// Resolve text search queries to YouTube URLs before passing to
 	// the orchestrator, which only understands DirectURLs.
-	if err := s.resolveInputQueries(ctx, input); err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: %w", err)
+	searchInputCount := len(input.SearchQueries)
+	searchURLCount := len(input.DirectURLs)
+	searchMetric := startServiceStockPhase(ctx, s.metrics, "stock.search", jobID)
+	searchErr := s.resolveInputQueries(ctx, input)
+	if searchMetric != nil {
+		searchMetric.SetItems(int64(searchInputCount), int64(len(input.DirectURLs)-searchURLCount))
+		searchMetric.SetDetails(map[string]any{
+			"videos_found": len(input.DirectURLs) - searchURLCount,
+		})
+		finishServiceStockPhase(s.log, searchMetric, searchErr)
+	}
+	if searchErr != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: %w", searchErr)
 	}
 
 	cfg := OrchestratorConfig{
@@ -71,6 +84,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		PolicyVersion:    "v1",
 		ChunkDurationSec: effectiveChunkDurationSec(input, s),
 		ClipDurationSec:  effectiveClipDurationSec(input, s),
+		Metrics:          s.metrics,
 	}
 	// Phase 2 (July 2026): wire SQLite-backed step store for
 	// crash-resume across process restarts. When db is nil (stock
