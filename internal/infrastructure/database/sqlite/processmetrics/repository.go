@@ -1,14 +1,11 @@
 // Package processmetrics provides the canonical SQLite adapter for durable
-// process phase metrics (migration 184).
-//
-// The repository is intentionally infrastructure-local for this first
-// persistence slice. Application-layer recorder ports can depend on a
-// narrow interface without importing SQLite or database/sql.
+// process phase metrics.
 package processmetrics
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -17,8 +14,7 @@ import (
 )
 
 // Metric is the persistence model for one completed or in-flight process
-// phase. Timestamps are stored as RFC3339Nano TEXT so short phases and
-// concurrent phases retain a deterministic ordering signal.
+// phase. Timestamps are stored as RFC3339Nano TEXT.
 type Metric struct {
 	ID          int64
 	ProcessType string
@@ -38,16 +34,15 @@ type Metric struct {
 
 	ItemsIn  int64
 	ItemsOut int64
-
 	BytesIn  int64
 	BytesOut int64
 
 	RetryCount int64
 	CreatedAt  time.Time
+	Details    map[string]any
 }
 
-// Repository is the narrow persistence surface used by the application
-// process-metrics recorder. Implementations must be safe for concurrent use.
+// Repository is the persistence surface used by process-metrics recorders.
 type Repository interface {
 	Insert(ctx context.Context, metric *Metric) (int64, error)
 	Update(ctx context.Context, metric *Metric) error
@@ -61,8 +56,7 @@ type SQLiteRepository struct {
 	db *sql.DB
 }
 
-// NewSQLiteRepository constructs the repository. A nil database is a
-// composition error and fails fast, matching other SQLite adapters.
+// NewSQLiteRepository constructs the repository.
 func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	if db == nil {
 		panic("processmetrics.NewSQLiteRepository: nil *sql.DB")
@@ -75,7 +69,7 @@ var _ Repository = (*SQLiteRepository)(nil)
 const metricColumns = `id, process_type, job_id, parent_job_id,
 	phase, language, provider, started_at, duration_ms, queue_wait_ms,
 	status, error_code, items_in, items_out, bytes_in, bytes_out,
-	retry_count, created_at`
+	retry_count, created_at, details_json`
 
 func validateMetric(metric *Metric) error {
 	if metric == nil {
@@ -103,8 +97,7 @@ func validateMetric(metric *Metric) error {
 	return nil
 }
 
-// Insert stores a metric and returns its SQLite row ID. CreatedAt is filled
-// from the canonical UTC clock when callers are creating a new metric.
+// Insert stores a metric and returns its row ID. CreatedAt is filled when absent.
 func (r *SQLiteRepository) Insert(ctx context.Context, metric *Metric) (int64, error) {
 	if err := validateMetric(metric); err != nil {
 		return 0, err
@@ -112,18 +105,21 @@ func (r *SQLiteRepository) Insert(ctx context.Context, metric *Metric) (int64, e
 	if metric.CreatedAt.IsZero() {
 		metric.CreatedAt = timeutil.Now()
 	}
-
+	details, err := encodeDetails(metric.Details)
+	if err != nil {
+		return 0, fmt.Errorf("processmetrics.Insert details_json: %w", err)
+	}
 	result, err := r.db.ExecContext(ctx, `
 		INSERT INTO process_phase_metrics (
 			process_type, job_id, parent_job_id, phase, language, provider,
 			started_at, duration_ms, queue_wait_ms, status, error_code,
-			items_in, items_out, bytes_in, bytes_out, retry_count, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			items_in, items_out, bytes_in, bytes_out, retry_count, created_at, details_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, metric.ProcessType, metric.JobID, metric.ParentJobID, metric.Phase,
 		metric.Language, metric.Provider, timeutil.FormatRFC3339Nano(metric.StartedAt),
 		metric.DurationMs, metric.QueueWaitMs, metric.Status, metric.ErrorCode,
 		metric.ItemsIn, metric.ItemsOut, metric.BytesIn, metric.BytesOut,
-		metric.RetryCount, timeutil.FormatRFC3339Nano(metric.CreatedAt))
+		metric.RetryCount, timeutil.FormatRFC3339Nano(metric.CreatedAt), details)
 	if err != nil {
 		return 0, fmt.Errorf("processmetrics.Insert: %w", err)
 	}
@@ -135,8 +131,7 @@ func (r *SQLiteRepository) Insert(ctx context.Context, metric *Metric) (int64, e
 	return id, nil
 }
 
-// Update replaces the mutable metric fields for an existing row. ID,
-// StartedAt and CreatedAt are immutable identity/timestamp fields.
+// Update replaces mutable metric fields, including details.
 func (r *SQLiteRepository) Update(ctx context.Context, metric *Metric) error {
 	if metric == nil || metric.ID <= 0 {
 		return errors.New("processmetrics: a positive metric id is required")
@@ -144,17 +139,21 @@ func (r *SQLiteRepository) Update(ctx context.Context, metric *Metric) error {
 	if err := validateMetric(metric); err != nil {
 		return err
 	}
+	details, err := encodeDetails(metric.Details)
+	if err != nil {
+		return fmt.Errorf("processmetrics.Update details_json: %w", err)
+	}
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE process_phase_metrics SET
 			process_type = ?, job_id = ?, parent_job_id = ?, phase = ?,
 			language = ?, provider = ?, duration_ms = ?, queue_wait_ms = ?,
 			status = ?, error_code = ?, items_in = ?, items_out = ?,
-			bytes_in = ?, bytes_out = ?, retry_count = ?
+			bytes_in = ?, bytes_out = ?, retry_count = ?, details_json = ?
 		WHERE id = ?
 	`, metric.ProcessType, metric.JobID, metric.ParentJobID, metric.Phase,
 		metric.Language, metric.Provider, metric.DurationMs, metric.QueueWaitMs,
 		metric.Status, metric.ErrorCode, metric.ItemsIn, metric.ItemsOut,
-		metric.BytesIn, metric.BytesOut, metric.RetryCount, metric.ID)
+		metric.BytesIn, metric.BytesOut, metric.RetryCount, details, metric.ID)
 	if err != nil {
 		return fmt.Errorf("processmetrics.Update: %w", err)
 	}
@@ -168,7 +167,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, metric *Metric) error {
 	return nil
 }
 
-// GetByID returns one metric or an error when the row does not exist.
+// GetByID returns one metric or sql.ErrNoRows wrapped when absent.
 func (r *SQLiteRepository) GetByID(ctx context.Context, id int64) (*Metric, error) {
 	if id <= 0 {
 		return nil, errors.New("processmetrics.GetByID: a positive metric id is required")
@@ -185,8 +184,7 @@ func (r *SQLiteRepository) GetByID(ctx context.Context, id int64) (*Metric, erro
 	return metric, nil
 }
 
-// ListByJob returns the newest metrics for a job. A non-positive limit uses
-// the safe default of 100 rows.
+// ListByJob returns newest metrics for a job. Non-positive limits use 100.
 func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string, limit int) ([]Metric, error) {
 	if jobID == "" {
 		return nil, errors.New("processmetrics.ListByJob: job_id is required")
@@ -194,7 +192,7 @@ func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string, limit in
 	return r.list(ctx, `WHERE job_id = ?`, jobID, limit)
 }
 
-// ListByParentJob returns the newest metrics belonging to a parent job.
+// ListByParentJob returns newest metrics for a parent job. Non-positive limits use 100.
 func (r *SQLiteRepository) ListByParentJob(ctx context.Context, parentJobID string, limit int) ([]Metric, error) {
 	if parentJobID == "" {
 		return nil, errors.New("processmetrics.ListByParentJob: parent_job_id is required")
@@ -233,13 +231,13 @@ type scanner interface {
 
 func scanMetric(row scanner) (*Metric, error) {
 	metric := &Metric{}
-	var startedAt, createdAt string
+	var startedAt, createdAt, detailsJSON string
 	if err := row.Scan(
 		&metric.ID, &metric.ProcessType, &metric.JobID, &metric.ParentJobID,
 		&metric.Phase, &metric.Language, &metric.Provider, &startedAt,
 		&metric.DurationMs, &metric.QueueWaitMs, &metric.Status, &metric.ErrorCode,
 		&metric.ItemsIn, &metric.ItemsOut, &metric.BytesIn, &metric.BytesOut,
-		&metric.RetryCount, &createdAt,
+		&metric.RetryCount, &createdAt, &detailsJSON,
 	); err != nil {
 		return nil, err
 	}
@@ -251,5 +249,21 @@ func scanMetric(row scanner) (*Metric, error) {
 	if metric.CreatedAt.IsZero() {
 		return nil, fmt.Errorf("processmetrics: invalid created_at %q", createdAt)
 	}
+	if detailsJSON != "" {
+		if err := json.Unmarshal([]byte(detailsJSON), &metric.Details); err != nil {
+			return nil, fmt.Errorf("processmetrics: invalid details_json: %w", err)
+		}
+	}
 	return metric, nil
+}
+
+func encodeDetails(details map[string]any) (string, error) {
+	if len(details) == 0 {
+		return "{}", nil
+	}
+	encoded, err := json.Marshal(details)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }

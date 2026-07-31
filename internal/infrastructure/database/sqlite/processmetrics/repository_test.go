@@ -32,7 +32,8 @@ CREATE TABLE process_phase_metrics (
     bytes_in INTEGER NOT NULL DEFAULT 0,
     bytes_out INTEGER NOT NULL DEFAULT 0,
     retry_count INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX idx_process_phase_metrics_job
     ON process_phase_metrics(job_id, started_at DESC);
@@ -70,6 +71,12 @@ func sampleMetric() *processmetrics.Metric {
 		ItemsOut:    3,
 		BytesOut:    285000000,
 		RetryCount:  1,
+		Details: map[string]any{
+			"videos_found":            float64(3),
+			"download_bytes":          float64(285000000),
+			"output_duration_seconds": float64(15.5),
+			"segments_completed":      float64(3),
+		},
 	}
 }
 
@@ -97,6 +104,7 @@ func TestRepository_InsertAndGetByIDRoundTrip(t *testing.T) {
 	require.Equal(t, want.BytesOut, got.BytesOut)
 	require.Equal(t, want.RetryCount, got.RetryCount)
 	require.Equal(t, want.StartedAt, got.StartedAt)
+	require.Equal(t, want.Details, got.Details)
 	require.NotZero(t, got.CreatedAt)
 }
 
