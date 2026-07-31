@@ -12,6 +12,8 @@ package ytdlp
 
 import (
 	"reflect"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"slices"
 	"testing"
 )
@@ -31,15 +33,15 @@ var expectedExtractorArgs = []string{
 }
 
 // newTestBuilder returns a CommandBuilder with the resource paths the
-// test scenario requests. keepCookiesPath=true wires cookies.txt;
-// keepJsRuntime=true wires a non-empty JS runtime path.
+// test scenario requests. keepCookiesPath=true wires an explicit fixture
+// path; keepJsRuntime=true wires a non-empty JS runtime path.
 func newTestBuilder(t *testing.T, keepCookiesPath, keepJsRuntime bool) *CommandBuilder {
 	t.Helper()
 	b := &CommandBuilder{
 		Path: "/usr/bin/yt-dlp",
 	}
 	if keepCookiesPath {
-		b.cookiesPath = "cookies.txt"
+		b.cookiesPath = "/secure/youtube.cookies.txt"
 	}
 	if keepJsRuntime {
 		b.jsRuntimePath = "/usr/bin/node"
@@ -73,12 +75,22 @@ func TestBaseArgs_YouTubeURL_NoCookies_NoJsRuntime_PinsWebAndroid(t *testing.T) 
 // prepends --cookies <path> BEFORE the --no-warnings / --extractor-args
 // pair. Cookies ordering matters: --cookies must be early because
 // yt-dlp applies extractor-class flags after authentication.
+func TestNewCommandBuilder_UsesCanonicalCookieEnv(t *testing.T) {
+	t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "/secure/youtube.cookies.txt")
+	t.Setenv("YT_COOKIES_PATH", "/legacy/youtube.cookies.txt")
+	b := NewCommandBuilder(&config.Config{})
+	got := b.BaseArgs(youTubeURLA, true)
+	if len(got) < 2 || got[0] != "--cookies" || got[1] != "/secure/youtube.cookies.txt" {
+		t.Fatalf("canonical cookie resolver not applied: %v", got)
+	}
+}
+
 func TestBaseArgs_YouTubeURL_WithCookies_AppendsCookiesFlag(t *testing.T) {
 	b := newTestBuilder(t, true, false)
 	got := b.BaseArgs(youTubeURLA, true)
 
 	want := append(
-		[]string{"--cookies", "cookies.txt", "--no-warnings"},
+		[]string{"--cookies", "/secure/youtube.cookies.txt", "--no-warnings"},
 		expectedExtractorArgs...,
 	)
 	if !reflect.DeepEqual(got, want) {
@@ -114,7 +126,7 @@ func TestBaseArgs_YouTubeURL_AllFlagsPresent(t *testing.T) {
 
 	want := append(
 		[]string{
-			"--cookies", "cookies.txt",
+			"--cookies", "/secure/youtube.cookies.txt",
 			"--js-runtime", "/usr/bin/node",
 			"--remote-components", "ejs:github",
 			"--no-warnings",
@@ -135,7 +147,7 @@ func TestBaseArgs_YouTubeURL_UseCookiesFalseWithCookiesPathSet_NoCookiesArg(t *t
 	b := newTestBuilder(t, true /*cookiesPath*/, false)
 	got := b.BaseArgs(youTubeURLA, false /*useCookies*/)
 
-	// --cookies must NOT appear even though b.cookiesPath is "cookies.txt".
+	// --cookies must NOT appear even though b.cookiesPath is configured.
 	for _, arg := range got {
 		if arg == "--cookies" {
 			t.Fatalf("--cookies leaked despite useCookies=false: %v", got)

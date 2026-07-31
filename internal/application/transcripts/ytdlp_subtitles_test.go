@@ -23,7 +23,7 @@ func newMinimalCmdBuilder(t *testing.T, jsRuntimePath string, useCookies bool) *
 	cfg := &ytcfg.ExternalConfig{
 		YtdlpPath:            "yt-dlp",
 		YouTubeJSRuntimePath: jsRuntimePath,
-		YouTubeCookiesPath:   "cookies.txt", // path content not asserted in this test surface
+		YouTubeCookiesPath:   "/secure/youtube.cookies.txt", // fixture path only; file is never read
 	}
 	_ = useCookies // cookiesPath is read directly by the builder; useCookies is a per-call flag
 	return ytdlp.NewCommandBuilder(&ytcfg.Config{External: *cfg})
@@ -152,7 +152,7 @@ func TestYTDLPSubtitleAdapter_EmptyConfigDefaultsToNode(t *testing.T) {
 func TestYTDLPSubtitleAdapter_NChallengeReachable(t *testing.T) {
 	cfg := &ytcfg.ExternalConfig{
 		YtdlpPath:          "yt-dlp",
-		YouTubeCookiesPath: "cookies.txt",
+		YouTubeCookiesPath: "/secure/youtube.cookies.txt",
 	}
 	a := &YTDLPSubtitleAdapter{
 		ytdlp:      &downloader.YTDLPDownloader{},
@@ -175,8 +175,8 @@ func TestYTDLPSubtitleAdapter_NChallengeReachable(t *testing.T) {
 	if cookiesIdx == -1 {
 		t.Fatalf("--cookies not found when useCookies=true; the n-challenge case is unreachable. got %v", args)
 	}
-	if got := args[cookiesIdx]; got != "cookies.txt" {
-		t.Fatalf("--cookies value mismatch: expected %q, got %q", "cookies.txt", got)
+	if got := args[cookiesIdx]; got != "/secure/youtube.cookies.txt" {
+		t.Fatalf("--cookies value mismatch: expected %q, got %q", "/secure/youtube.cookies.txt", got)
 	}
 
 	// Inverse case: useCookies=false must NOT inject --cookies.

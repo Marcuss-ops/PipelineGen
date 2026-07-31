@@ -108,7 +108,9 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
-		UseCookies: false,
+		// The downloader's shared BaseArgs resolver gates this to YouTube;
+		// non-YouTube sources are unaffected.
+		UseCookies: true,
 	}
 	if ref.DownloadSection != "" {
 		dlReq.DownloadSections = []string{ref.DownloadSection}

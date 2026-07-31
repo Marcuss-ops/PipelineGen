@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -58,10 +57,8 @@ func (d *YTDLPDownloader) ListChannelVideos(ctx context.Context, req ListChannel
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 
-	args := []string{
-		"--flat-playlist",
-		"--dump-json",
-	}
+	args := append([]string{}, d.cmdBuilder.BaseArgs(req.ChannelURL, d.cookiesPath != "")...)
+	args = append(args, "--flat-playlist", "--dump-json")
 
 	if req.PlaylistEnd > 0 {
 		args = append(args, "--playlist-end", fmt.Sprintf("%d", req.PlaylistEnd))
@@ -115,13 +112,10 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 	// specific args (cookies, JS runtime, --no-warnings, --extractor-args).
 	// Metadata calls use addFormat=false (format selection would conflict
 	// with --dump-json).
-	useCookies := false
-	if d.cookiesPath != "" {
-		if _, err := os.Stat(d.cookiesPath); err == nil {
-			useCookies = true
-		}
-	}
-	args = append(args, d.cmdBuilder.BaseArgs(videoURL, useCookies)...)
+	// The shared CommandBuilder owns the canonical cookie path. Do not
+	// stat or read the cookie file here: yt-dlp must receive the same
+	// configured path on every metadata attempt, including retries.
+	args = append(args, d.cmdBuilder.BaseArgs(videoURL, d.cookiesPath != "")...)
 
 	args = append(args, videoURL)
 
@@ -180,12 +174,17 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 		}
 	}
 
-	args := []string{
+	baseURL := channelURL
+	if strings.HasPrefix(channelURL, "ytsearch") {
+		baseURL = "https://www.youtube.com/"
+	}
+	args := append([]string{}, d.cmdBuilder.BaseArgs(baseURL, d.cookiesPath != "")...)
+	args = append(args,
 		"--flat-playlist",
 		"--dump-json",
 		"--playlist-end", fmt.Sprintf("%d", limit),
 		channelURL,
-	}
+	)
 
 	result, err := d.run(ctx, args, process.Options{
 		Timeout: 60 * time.Second,

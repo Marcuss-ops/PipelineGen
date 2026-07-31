@@ -202,10 +202,12 @@ func TestSubtitles_EmptyConfigDefaultsToNode(t *testing.T) {
 //  1. useCookies=true but --cookies not in argv (regression: the
 //     BaseArgs delegation is broken OR the useCookies flag is ignored).
 //  2. useCookies=true but cookiesPath is empty (regression: the
-//     fallback to "cookies.txt" in NewCommandBuilder is broken).
+//     configured resolver path is not propagated by NewCommandBuilder).
 //  3. useCookies=false on a non-YouTube URL but --cookies leaked (the
 //     BaseArgs contract is YouTube-only + useCookies-only).
 func TestSubtitles_NChallengeReachable(t *testing.T) {
+	t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "/secure/youtube.cookies.txt")
+	t.Setenv("YT_COOKIES_PATH", "")
 	a := newSubtitlesCmdBuilder(t, "/usr/bin/node", true /*useCookies=true*/)
 	runner := a.runner.(*subtitleCaptureRunner)
 
@@ -228,8 +230,8 @@ func TestSubtitles_NChallengeReachable(t *testing.T) {
 	require.GreaterOrEqual(t, cookiesIdx, 0, "--cookies must be in argv")
 	require.Less(t, cookiesIdx, len(runner.argv)-1,
 		"--cookies must be followed by a path argument")
-	assert.Equal(t, "cookies.txt", runner.argv[cookiesIdx+1],
-		"cookies path must be the canonical 'cookies.txt' (from NewCommandBuilder default fallback)")
+	assert.Equal(t, "/secure/youtube.cookies.txt", runner.argv[cookiesIdx+1],
+		"cookies path must come from VELOX_YOUTUBE_COOKIES_FILE")
 
 	// Also verify the inverse: useCookies=false on the SAME URL
 	// should NOT inject --cookies (the BaseArgs contract is opt-in)

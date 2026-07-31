@@ -136,7 +136,7 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 
 	ytdlpPath := s.cfg.YtdlpPath
 
-	subArgs := buildSubtitleArgs(ytdlpPath, videoURL, filepath.Join(tempDir, "subs"))
+	subArgs := buildSubtitleArgs(ytdlpPath, s.cfg.YouTubeCookiesPath, videoURL, filepath.Join(tempDir, "subs"))
 	subCmd := exec.CommandContext(ctx, ytdlpPath, subArgs...)
 	out, err := subCmd.CombinedOutput()
 	outStr := string(out)
@@ -339,15 +339,16 @@ func (s *Service) findSegmentsFromSubtitles(ctx context.Context, videoURL string
 // once per video, so the per-call overhead is negligible. A future
 // optimization could hoist this to the Service struct if profiling
 // shows it matters.
-func buildSubtitleArgs(ytdlpPath, videoURL, outputTemplate string) []string {
+func buildSubtitleArgs(ytdlpPath, cookiesPath, videoURL, outputTemplate string) []string {
 	cfg := &ytcfg.Config{
 		External: ytcfg.ExternalConfig{
-			YtdlpPath: ytdlpPath,
+			YtdlpPath:          ytdlpPath,
+			YouTubeCookiesPath: cookiesPath,
 		},
 	}
 	builder := ytdlp.NewCommandBuilder(cfg)
 
-	baseArgs := builder.BaseArgs(videoURL, false /*useCookies=false: public videos only*/)
+	baseArgs := builder.BaseArgs(videoURL, builder.YouTubeCookiesConfigured())
 	args := append([]string{}, baseArgs...)
 	args = append(args,
 		"--write-auto-subs", "--write-subs", "--skip-download",

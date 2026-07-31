@@ -9,7 +9,6 @@ package youtube
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -62,19 +61,16 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 		// Check cookies file
 		cookiesPath := cfg.YouTubeCookiesPath
-		if cookiesPath == "" {
-			cookiesPath = "config/youtube_cookies.txt"
-		}
-		_, absErr := filepath.Abs(cookiesPath)
-		cookiesOK := absErr == nil && fileReadable(cookiesPath)
+		cookiesOK := cookiesPath != "" && fileReadable(cookiesPath)
 		checks["cookies"] = dependencyCheck{Required: false, OK: cookiesOK}
 
 		configDetails := gin.H{
-			"youtube_enabled": cfg.YouTubeEnabled,
-			"extract_timeout": cfg.YouTubeExtractTimeout,
-			"cookies_path":    cookiesPath,
-			"ytdlp_path":      ytdlpPath,
-			"js_runtime_path": cfg.YouTubeJSRuntimePath,
+			"youtube_enabled":        cfg.YouTubeEnabled,
+			"extract_timeout":        cfg.YouTubeExtractTimeout,
+			"cookie_file_configured": cookiesPath != "",
+			"cookie_file_readable":   cookiesOK,
+			"ytdlp_path":             ytdlpPath,
+			"js_runtime_path":        cfg.YouTubeJSRuntimePath,
 		}
 		// Keep configuration details separate from the typed dependency checks.
 		apiutil.OK(c, gin.H{"ok": requiredChecksOK(checks), "checks": checks, "config": configDetails})
