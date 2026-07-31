@@ -14,7 +14,7 @@ import (
 // adapter, and application service has already been constructed by
 // NewComposition. In particular, deletion and maintenance are owned by
 // BuildMaintBundle; this phase never reconstructs or mutates either service.
-func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
+func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) error {
 	if root.Maint == nil || root.Maint.DeletionSvc == nil {
 		return fmt.Errorf("wire registry: assets: canonical deletion service is not constructed")
 	}
@@ -37,9 +37,9 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		},
 		Search: SearchDeps{
 			ClipIndexerService:    root.Process.ClipIndexerService,
-			SearchFanOut:          wiring.searchFanOut,
-			SearchBackendRegistry: wiring.searchBackends,
-			SearchAggregator:      wiring.searchAgg,
+			SearchFanOut:          crossStep.SearchFanOut,
+			SearchBackendRegistry: crossStep.SearchBackends,
+			SearchAggregator:      crossStep.SearchAggregator,
 		},
 		Delivery: DeliveryDeps{
 			Admin:     root.Drive.Admin,
@@ -47,7 +47,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		},
 		Background: BackgroundDeps{
 			IdempotencyStore:        root.Repos.IdempotencyStore,
-			IdempotencyStoreHandler: wiring.idempotencyHandler,
+			IdempotencyStoreHandler: crossStep.IdempotencyHandler,
 		},
 	}
 
@@ -69,7 +69,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		return fmt.Errorf("wire registry: assets build returned nil wiring")
 	}
 
-	wiring.Assets = aw
+	regWiring.Assets = aw
 	if err := tryRegisterModuleStrict(registry, log, aw.Module, WithRegistrationPoint("register.Assets")); err != nil {
 		return fmt.Errorf("wire registry: assets module: %w", err)
 	}

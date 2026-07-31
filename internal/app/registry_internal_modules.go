@@ -19,11 +19,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
 )
 
-func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
+func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) (registryCrossStepState, error) {
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
 	idemHandler := idemPlus.Handler()
 
@@ -79,26 +80,30 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		rerankerPort = root.AI.Reranker
 	}
 
-	searchFanOut, _, searchAgg := registerSearchBackend(
+	searchFanOut, searchBackends, searchAgg := registerSearchBackend(
 		log,
 		providerReg,
 		root.Repos.ClipsRepo,
-		regWiring,
 		embeddingReg,
 		vectorStoreForSearch,
 		mediaRepo,
 		deliveryPort,
 		rerankerPort,
 	)
-	regWiring.idempotencyHandler = idemHandler
+	crossStep := registryCrossStepState{
+		SearchFanOut:       searchFanOut,
+		SearchBackends:     searchBackends,
+		SearchAggregator:   searchAgg,
+		IdempotencyHandler: idemHandler,
+	}
 
 	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
-		return err
+		return registryCrossStepState{}, err
 	}
 	// Fase 4.1: native Pexels image search provider. Registered
 	// alongside Artlist + YouTube so the canonical SearchFanOut
-	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut); err != nil {
-		return err
+	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut, idemHandler); err != nil {
+		return registryCrossStepState{}, err
 	}
 
 	mediaIngestW, mediaIngestErr := WireMediaIngest(cfg, log, &MediaIngestBundle{
@@ -119,7 +124,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		log.Warn("failed to wire module", zap.String("module", "MediaIngest"), zap.Error(mediaIngestErr))
 	} else if mediaIngestW != nil && mediaIngestW.Module != nil {
 		if err := tryRegisterModuleStrict(registry, log, mediaIngestW.Module, WithRegistrationPoint("register.MediaIngest")); err != nil {
-			return fmt.Errorf("wire registry: media-ingest: %w", err)
+			return registryCrossStepState{}, fmt.Errorf("wire registry: media-ingest: %w", err)
 		}
 	}
 
@@ -133,7 +138,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	)
 	log.Info("created Scraper module")
 	if err := tryRegisterModuleStrict(registry, log, scraperMod, WithRegistrationPoint("register.Scraper")); err != nil {
-		return fmt.Errorf("wire registry: scraper: %w", err)
+		return registryCrossStepState{}, fmt.Errorf("wire registry: scraper: %w", err)
 	}
 
 	var imagesDir string
@@ -151,7 +156,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	} else if fullW != nil && fullW.Module != nil {
 		regWiring.FullImages = fullW
 		if err := tryRegisterModuleStrict(registry, log, fullW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
-			return fmt.Errorf("wire registry: full-images: %w", err)
+			return registryCrossStepState{}, fmt.Errorf("wire registry: full-images: %w", err)
 		}
 		log.Info("registerInternalModules Step 7 FullImages pipeline mounted")
 	} else {
@@ -165,23 +170,23 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	} else if stockW != nil && stockW.Module != nil {
 		regWiring.StockPipeline = stockW
 		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
-			return fmt.Errorf("wire registry: stock-pipeline: %w", err)
+			return registryCrossStepState{}, fmt.Errorf("wire registry: stock-pipeline: %w", err)
 		}
 		if stockW.BatchModule != nil {
 			if err := tryRegisterModuleStrict(registry, log, stockW.BatchModule, WithRegistrationPoint("register.StockBatches")); err != nil {
-				return fmt.Errorf("wire registry: stock-batches: %w", err)
+				return registryCrossStepState{}, fmt.Errorf("wire registry: stock-batches: %w", err)
 			}
 			log.Info("registerInternalModules Step 8 stock-batches pipeline mounted")
 		}
 		if stockW.Service != nil && root.Jobs != nil && root.Jobs.Service != nil {
 			if err := stockW.Service.RegisterHandler(root.Jobs.Service); err != nil {
-				return fmt.Errorf("wire registry: stock-pipeline: register handler: %w", err)
+				return registryCrossStepState{}, fmt.Errorf("wire registry: stock-pipeline: register handler: %w", err)
 			}
 		}
 		log.Info("registerInternalModules Step 8 stock pipeline mounted")
 	}
 
-	return nil
+	return crossStep, nil
 }
 
 func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring) error {
@@ -252,7 +257,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 	return nil
 }
 
-func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) error {
+func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, regWiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.YouTubeEnabled {
 		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
 		regWiring.YouTubeClip = nil
@@ -271,7 +276,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 			FanOut:  searchFanOut,
 		},
 		Transport: youtubeapi.TransportDeps{
-			Idempotency: regWiring.idempotencyHandler,
+			Idempotency: idempotencyHandler,
 			EnabledFunc: func() bool { return cfg.Features.YouTubeEnabled },
 			ModuleOpts:  nil,
 		},
