@@ -8,12 +8,15 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -65,7 +68,7 @@ func (s *StockStager) fs() (LocalFSPort, error) {
 	return s.svc.localFS, nil
 }
 
-func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
+func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (result *assets.StagedAsset, err error) {
 	if s.svc == nil {
 		return nil, fmt.Errorf("stock stager: service not wired")
 	}
@@ -87,6 +90,19 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 
 	cacheKey := DeriveSourceCacheKey(ref.URL, ref.DownloadSection, ref.MergeFormat, ref.ForceKeyframes)
 	if sa, hit := s.checkSourceCache(ctx, cacheKey, ref, outputPath, fs); hit {
+		if isYouTubeSourceURL(ref.URL) && s.svc.metrics != nil {
+			jobID, _ := appmetrics.RunIDs(ctx)
+			cacheMetric := startServiceStockPhase(ctx, s.svc.metrics, "stock.youtube_download", jobID)
+			cacheMetric.SetItems(1, 1)
+			cacheMetric.SetBytes(0, 0)
+			cacheMetric.SetDetails(map[string]any{
+				"videos_downloaded":   0,
+				"download_bytes":      0,
+				"cache_hit":           true,
+				"singleflight_shared": false,
+			})
+			finishServiceStockPhase(s.svc.log, cacheMetric, nil)
+		}
 		return sa, nil
 	}
 
@@ -155,6 +171,15 @@ func (s *StockStager) StageSourceV2(ctx context.Context, ref asset.SourceRef) (*
 		SourceID:  ref.URL,
 		SourceRef: ref,
 	}, nil
+}
+
+func isYouTubeSourceURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "youtu.be" || strings.HasSuffix(host, ".youtube.com") || host == "youtube.com"
 }
 
 func (s *StockStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
