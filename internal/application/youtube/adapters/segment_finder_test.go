@@ -48,12 +48,14 @@ func containsFlagValue(args []string, flag, value string) bool {
 //     kept its own `--no-warnings` AND delegated to BaseArgs).
 //  4. Loss of --no-warnings entirely (the canonical BaseArgs prefix).
 func TestBuildSubtitleArgs_DelegatesToBaseArgs(t *testing.T) {
+	t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "")
+	t.Setenv("YT_COOKIES_PATH", "")
 	const (
 		ytdlpPath      = "/usr/bin/yt-dlp"
 		videoURL       = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 		outputTemplate = "/tmp/subs_segments_xxx/subs"
 	)
-	args := buildSubtitleArgs(ytdlpPath, videoURL, outputTemplate)
+	args := buildSubtitleArgs(ytdlpPath, "", videoURL, outputTemplate)
 
 	require.NotEmpty(t, args, "argv must not be empty")
 
@@ -115,12 +117,14 @@ func TestBuildSubtitleArgs_DelegatesToBaseArgs(t *testing.T) {
 //  3. Loss of the canonical BaseArgs isYouTube-gating (would inject
 //     --cookies for non-YouTube URLs too).
 func TestBuildSubtitleArgs_PublicVideoSemantics(t *testing.T) {
+	t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "")
+	t.Setenv("YT_COOKIES_PATH", "")
 	const (
 		ytdlpPath      = "/usr/bin/yt-dlp"
 		videoURL       = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 		outputTemplate = "/tmp/subs_segments_xxx/subs"
 	)
-	args := buildSubtitleArgs(ytdlpPath, videoURL, outputTemplate)
+	args := buildSubtitleArgs(ytdlpPath, "", videoURL, outputTemplate)
 
 	// --cookies MUST NOT be present (useCookies=false: public videos only)
 	assert.False(t, containsFlag(args, "--cookies"),

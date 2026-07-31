@@ -61,7 +61,7 @@ func buildDomainScriptServices(
 		Subtitles: transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
 			Ytdlp:      extractDl,
 			CmdBuilder: ytdlp.NewCommandBuilder(cfg),
-			UseCookies: false,
+			UseCookies: cfg.External.ResolveYouTubeCookiesPath() != "",
 			Log:        log,
 		}),
 		Downloader: extractDl,

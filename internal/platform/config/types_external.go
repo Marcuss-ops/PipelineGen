@@ -1,5 +1,10 @@
 package config
 
+import (
+	"os"
+	"strings"
+)
+
 type ExternalConfig struct {
 	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
 	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
@@ -52,8 +57,10 @@ type ExternalConfig struct {
 	// Default "node-scraper" relative to working dir.
 	NodeScraperDir string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"node-scraper"`
 
-	// YouTube cookies + JS runtime for yt-dlp.
-	YouTubeCookiesPath   string `yaml:"youtube_cookies_path" env:"YT_COOKIES_PATH" default:"cookies.txt"`
+	// YouTube cookies + JS runtime for yt-dlp. The canonical deployment
+	// override is VELOX_YOUTUBE_COOKIES_FILE; ResolveYouTubeCookiesPath
+	// retains YT_COOKIES_PATH as a migration-only fallback.
+	YouTubeCookiesPath   string `yaml:"youtube_cookies_path" env:"VELOX_YOUTUBE_COOKIES_FILE" default:""`
 	YouTubeJSRuntimePath string `yaml:"youtube_js_runtime_path" env:"YT_JS_RUNTIME_PATH" default:"node"`
 
 	// SearXNG — strictly OPTIONAL sidecar for LLM RAG augmentation.
@@ -261,6 +268,24 @@ type ArtlistAutoDownload struct {
 	Enabled bool `yaml:"enabled"`
 	// DailyLimit caps the per-account per-day download count. 0 disables.
 	DailyLimit int `yaml:"daily_limit"`
+}
+
+// ResolveYouTubeCookiesPath returns the one canonical cookie path used by
+// every YouTube yt-dlp command. It never reads the cookie file. The
+// VELOX_YOUTUBE_COOKIES_FILE-backed field wins; YT_COOKIES_PATH is retained
+// only as a compatibility bridge for older deployments and is not a default
+// filename, so missing authentication remains visible instead of silently
+// targeting a repository-local cookie file.
+func (c *ExternalConfig) ResolveYouTubeCookiesPath() string {
+	if path := strings.TrimSpace(os.Getenv("VELOX_YOUTUBE_COOKIES_FILE")); path != "" {
+		return path
+	}
+	if c != nil {
+		if path := strings.TrimSpace(c.YouTubeCookiesPath); path != "" {
+			return path
+		}
+	}
+	return strings.TrimSpace(os.Getenv("YT_COOKIES_PATH"))
 }
 
 // ResolvedYtdlpPath returns the configured yt-dlp path, falling back to "yt-dlp" if empty.

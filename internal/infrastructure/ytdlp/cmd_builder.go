@@ -40,10 +40,10 @@ type CommandBuilder struct {
 // runtime paths honour the same zero-value → default fallback that the
 // pre-Bloco-5 callers applied independently.
 func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
-	cookiesPath := cfg.External.YouTubeCookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "cookies.txt"
+	if cfg == nil {
+		cfg = &config.Config{}
 	}
+	cookiesPath := cfg.External.ResolveYouTubeCookiesPath()
 	jsRuntimePath := cfg.External.YouTubeJSRuntimePath
 	if jsRuntimePath == "" {
 		jsRuntimePath = "node"
@@ -55,13 +55,19 @@ func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 	}
 }
 
+// YouTubeCookiesConfigured reports whether the canonical resolver returned
+// a path. It never stats or reads the cookie file.
+func (b *CommandBuilder) YouTubeCookiesConfigured() bool {
+	return b != nil && strings.TrimSpace(b.cookiesPath) != ""
+}
+
 // BaseArgs returns the common prefix args every yt-dlp call should include.
 //
 // The returned slice covers:
 //   - --cookies <path>   (when useCookies is true and URL is YouTube)
 //   - --js-runtime <path> + --remote-components ejs:github
 //   - --no-warnings       (suppresses Python deprecation warnings on stderr)
-//   - --extractor-args youtube:player_client=...  (android+web, or web-only with cookies)
+//   - --extractor-args youtube:player_client=...  (canonical YouTube client)
 //
 // Callers MUST append their operation-specific flags (--dump-json,
 // --flat-playlist, --download-sections, -f, -o, etc.) to the returned

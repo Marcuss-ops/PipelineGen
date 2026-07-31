@@ -97,6 +97,23 @@ PREFLIGHT_TARGETS = (
     ("Sugar Ray Robinson", SUGAR_RAY_ROBINSON_MANIFEST[0][1][0]),
 )
 
+CANONICAL_BOXER_NAMES = {
+    "mike tyson": "Mike Tyson",
+    "muhammad ali": "Muhammad Ali",
+    "manny pacquiao": "Manny Pacquiao",
+    "floyd mayweather jr.": "Floyd Mayweather Jr.",
+    "sugar ray robinson": "Sugar Ray Robinson",
+}
+
+
+def canonical_boxer_name(value: str) -> str:
+    normalized = " ".join(value.split()).casefold()
+    return CANONICAL_BOXER_NAMES.get(normalized, " ".join(value.split()))
+
+
+def boxer_slug(value: str) -> str:
+    return canonical_boxer_name(value).casefold().replace(".", "").replace(" ", "-")
+
 
 def http(base: str, token: str, method: str, path: str, body: Any = None, request_id: str = "") -> dict[str, Any]:
     raw = None if body is None else json.dumps(body).encode()
@@ -112,14 +129,34 @@ def http(base: str, token: str, method: str, path: str, body: Any = None, reques
         raise RuntimeError(f"HTTP {exc.code} {path}: {exc.read().decode(errors='replace')}") from exc
 
 
+def build_ytdlp_command(
+    target: str,
+    *operation_args: str,
+    cookies_path: str | None = None,
+) -> list[str]:
+    """Build every runner yt-dlp command from the shared cookie resolver."""
+    command = [os.environ.get("YTDLP_PATH", "yt-dlp")]
+    resolved_cookies_path = (
+        resolve_youtube_cookies_path() if cookies_path is None else cookies_path.strip()
+    )
+    if resolved_cookies_path:
+        command.extend(("--cookies", resolved_cookies_path))
+    command.extend(("--js-runtime", os.environ.get("YT_JS_RUNTIME_PATH", "node"),
+                    "--remote-components", "ejs:github", "--no-warnings",
+                    "--extractor-args", "youtube:player_client=android_creator"))
+    command.extend(operation_args)
+    command.append(target)
+    return command
+
+
 def search(_base: str, _token: str, boxer: str, category: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for template in QUERIES[category]:
         query = template.format(name=boxer)
-        command = ["yt-dlp", "--js-runtime", "node", "--remote-components", "ejs:github",
-                   "--no-warnings", "--extractor-args", "youtube:player_client=android_creator",
-                   "--flat-playlist", "--dump-single-json", f"ytsearch10:{query}"]
+        command = build_ytdlp_command(
+            f"ytsearch10:{query}", "--flat-playlist", "--dump-single-json"
+        )
         try:
             raw = subprocess.check_output(command, text=True, timeout=90, stderr=subprocess.DEVNULL)
             entries = json.loads(raw).get("entries", [])
@@ -139,9 +176,10 @@ def search(_base: str, _token: str, boxer: str, category: str) -> list[dict[str,
 
 
 def describe(video_id: str, category: str) -> dict[str, Any]:
-    command = ["yt-dlp", "--js-runtime", "node", "--remote-components", "ejs:github",
-               "--no-warnings", "--extractor-args", "youtube:player_client=android_creator",
-               "--dump-single-json", "--skip-download", f"https://www.youtube.com/watch?v={video_id}"]
+    command = build_ytdlp_command(
+        f"https://www.youtube.com/watch?v={video_id}",
+        "--dump-single-json", "--skip-download"
+    )
     try:
         item = json.loads(subprocess.check_output(command, text=True, timeout=90, stderr=subprocess.DEVNULL))
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
@@ -157,32 +195,25 @@ def describe(video_id: str, category: str) -> dict[str, Any]:
 def resolve_youtube_cookies_path(environ: dict[str, str] | None = None) -> str:
     """Resolve the cookie path without reading or exposing the cookie file.
 
-    The canonical deployment variable wins. The legacy variable and local
-    fallback remain supported so existing authorized runner environments keep
-    working while deployments migrate to the canonical secret location.
+    The canonical deployment variable wins. The legacy variable remains a
+    migration bridge; unset configuration stays empty so authentication
+    failures remain visible instead of targeting a local repository file.
     """
     environment = os.environ if environ is None else environ
     return (
-        environment.get("VELOX_YOUTUBE_COOKIES_FILE")
-        or environment.get("YT_COOKIES_PATH")
-        or "cookies.txt"
+        environment.get("VELOX_YOUTUBE_COOKIES_FILE", "").strip()
+        or environment.get("YT_COOKIES_PATH", "").strip()
+        or ""
     )
 
 
 def build_preflight_command(video_id: str, cookies_path: str) -> list[str]:
-    """Build a sanitized-probe command; the cookie path is never reported."""
-    ytdlp_path = os.environ.get("YTDLP_PATH", "yt-dlp")
-    js_runtime = os.environ.get("YT_JS_RUNTIME_PATH", "node")
-    return [
-        ytdlp_path,
-        "--cookies", cookies_path,
-        "--js-runtime", js_runtime,
-        "--remote-components", "ejs:github",
-        "--no-warnings",
-        "--extractor-args", "youtube:player_client=android_creator",
-        "--dump-single-json", "--skip-download",
+    """Build a probe using the explicit resolved path without reporting it."""
+    return build_ytdlp_command(
         f"https://www.youtube.com/watch?v={video_id}",
-    ]
+        "--dump-single-json", "--skip-download",
+        cookies_path=cookies_path,
+    )
 
 
 def _contains_auth_required(output: str) -> bool:
@@ -501,10 +532,9 @@ def main() -> int:
         return 0 if report["youtube_auth"] == "PASS" else 1
     if not args.boxer:
         ap.error("boxer is required unless --preflight-auth is used")
-    # Normalise to lowercase so folder_path in SQLite is always consistent.
-    # verify() already uses LOWER() for case-insensitive matching, but new
-    # clips must also land with the same casing to avoid mixed-path bugs.
-    args.boxer = args.boxer.strip().lower()
+    # Keep the display name used for Drive/folder_path separate from the
+    # deterministic slug used in idempotency keys and reports.
+    args.boxer = canonical_boxer_name(args.boxer)
     token = os.environ.get("VELOX_ADMIN_TOKEN", "")
     if not token:
         raise SystemExit("VELOX_ADMIN_TOKEN is required")
@@ -520,7 +550,7 @@ def main() -> int:
     target = folder(args.base, token, args.root_id, args.boxer)
     if not target:
         raise SystemExit("could not resolve/create boxer Drive folder")
-    print(f"selected=20 folder_id={target}")
+    print(f"selected=20 boxer={args.boxer} slug={boxer_slug(args.boxer)}")
     # The server-side worker pool is independently bounded. Keep this
     # client fan-out controlled, but allow enough parallelism for the
     # per-clip metadata/index path to make a five-boxer run practical.

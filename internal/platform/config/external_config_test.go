@@ -42,6 +42,36 @@ features:
 	}
 }
 
+// TestExternalConfigResolveYouTubeCookiesPath pins the canonical cookie
+// resolver without reading any cookie file. VELOX_YOUTUBE_COOKIES_FILE is
+// bound by the struct tag during config loading; YT_COOKIES_PATH is only the
+// compatibility bridge when the canonical field is empty.
+func TestExternalConfigResolveYouTubeCookiesPath(t *testing.T) {
+	t.Run("canonicalEnvWinsOverConfigAndLegacy", func(t *testing.T) {
+		t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "/env/youtube.cookies.txt")
+		t.Setenv("YT_COOKIES_PATH", "/legacy/youtube.cookies.txt")
+		cfg := &Config{External: ExternalConfig{YouTubeCookiesPath: "/yaml/youtube.cookies.txt"}}
+		assert.Equal(t, "/env/youtube.cookies.txt", cfg.External.ResolveYouTubeCookiesPath())
+	})
+
+	t.Run("configWinsOverLegacy", func(t *testing.T) {
+		t.Setenv("VELOX_YOUTUBE_COOKIES_FILE", "")
+		t.Setenv("YT_COOKIES_PATH", "/legacy/youtube.cookies.txt")
+		cfg := &Config{External: ExternalConfig{YouTubeCookiesPath: "/yaml/youtube.cookies.txt"}}
+		assert.Equal(t, "/yaml/youtube.cookies.txt", cfg.External.ResolveYouTubeCookiesPath())
+	})
+	t.Run("legacyBridge", func(t *testing.T) {
+		t.Setenv("YT_COOKIES_PATH", "/legacy/youtube.cookies.txt")
+		cfg := &Config{}
+		assert.Equal(t, "/legacy/youtube.cookies.txt", cfg.External.ResolveYouTubeCookiesPath())
+	})
+	t.Run("unsetIsEmpty", func(t *testing.T) {
+		t.Setenv("YT_COOKIES_PATH", "")
+		cfg := &Config{}
+		assert.Empty(t, cfg.External.ResolveYouTubeCookiesPath())
+	})
+}
+
 // ---------- PR-ARTLIST-CONFIG-PREFIX (July 2026) ----------
 //
 // TestConfigLoaderReadsVeloxArtlistScraperServerURLFromEnv pins the

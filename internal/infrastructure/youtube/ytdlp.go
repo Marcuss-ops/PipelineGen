@@ -66,7 +66,8 @@ func NewYTDLPAdapter(cfg *ytcfg.Config, log *zap.Logger, runner ProcessRunnerPor
 
 // SearchLive implements SearchRunner.SearchLive. ytsearchN:query for
 // relevance-sorted and /results?search_query=...&sp=CAM%253D for views-
-// sorted. Cookies-as-flag pattern: only attach when cookies.txt exists
+// sorted. Cookies-as-flag pattern: attach only when the common resolver
+// returns a configured path
 // (Android client cannot be combined with cookies).
 func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, sort string) ([]LiveSearchResult, error) {
 	if limit <= 0 {
@@ -83,12 +84,13 @@ func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, 
 		// Blocco 5 (July 2026): for views-sorted search, pass the
 		// constructed YouTube URL to BaseArgs so cookies/JS runtime/
 		// extractor-args are applied (old code did this via os.Stat).
-		args = append(a.cmdBuilder.BaseArgs(u, false), args...)
+		args = append(a.cmdBuilder.BaseArgs(u, a.cmdBuilder.YouTubeCookiesConfigured()), args...)
 	} else {
 		args = append(args, fmt.Sprintf("ytsearch%d:%s", limit, query), "--dump-json", "--flat-playlist")
-		// ytsearchN: queries are handled by yt-dlp internally; BaseArgs
-		// is called without cookies (Android client + cookies = brittle).
-		args = append(a.cmdBuilder.BaseArgs(query, false), args...)
+		// ytsearchN queries are handled internally by yt-dlp, so provide a
+		// canonical YouTube URL to BaseArgs for the shared cookie/client
+		// policy while keeping the query as the positional input.
+		args = append(a.cmdBuilder.BaseArgs("https://www.youtube.com/", a.cmdBuilder.YouTubeCookiesConfigured()), args...)
 	}
 
 	stdout, stderr, err := a.runner.Run(ctx, a.cmdBuilder.Path, args)
@@ -151,7 +153,7 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
 	// --no-warnings, and --extractor-args. Cookies are intentionally OFF
 	// for info (disables the Android client and breaks n-challenge solving).
-	args := append(a.cmdBuilder.BaseArgs(videoURL, false),
+	args := append(a.cmdBuilder.BaseArgs(videoURL, a.cmdBuilder.YouTubeCookiesConfigured()),
 		videoURL,
 		"--dump-json",
 		"--no-playlist",

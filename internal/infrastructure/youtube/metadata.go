@@ -92,9 +92,8 @@ func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL 
 	// wrong durations + missing formats for some videos). Delegating
 	// also fixes a latent bug where --js-runtime was injected without
 	// --remote-components ejs:github (BaseArgs always injects both).
-	// useCookies=false: metadata reads public data, no auth required.
 	b := ytdlp.NewCommandBuilder(a.cfg)
-	args := b.BaseArgs(videoURL, false)
+	args := b.BaseArgs(videoURL, b.YouTubeCookiesConfigured())
 	args = append(args, "--dump-json", "--no-playlist", videoURL)
 
 	stdout, stderr, err := a.runner.Run(ctx, path, args)

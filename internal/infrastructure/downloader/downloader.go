@@ -138,10 +138,7 @@ var _ ProcessRunner = defaultRunner{}
 // centralized instead of duplicated.
 func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	path := cfg.External.ResolvedYtdlpPath()
-	cookiesPath := cfg.External.YouTubeCookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "cookies.txt"
-	}
+	cookiesPath := cfg.External.ResolveYouTubeCookiesPath()
 	return &YTDLPDownloader{
 		path:               path,
 		cookiesPath:        cookiesPath,

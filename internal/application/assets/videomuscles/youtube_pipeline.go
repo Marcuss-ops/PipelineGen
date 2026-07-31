@@ -257,12 +257,10 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 }
 
 func (p *Pipeline) hasYouTubeCookies() bool {
-	cookiesPath := p.cfg.External.YouTubeCookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "config/youtube_cookies.txt"
+	if p == nil || p.cfg == nil {
+		return false
 	}
-	_, err := os.Stat(cookiesPath)
-	return err == nil
+	return p.cfg.External.ResolveYouTubeCookiesPath() != ""
 }
 
 // tempRawPath returns a unique temp file path for yt-dlp downloads.

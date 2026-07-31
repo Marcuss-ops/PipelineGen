@@ -102,7 +102,8 @@ func buildDomainMediaServices(
 
 	hashAdapter := hashutil.NewHashAdapter()
 
-	// UseCookies=false: public video segmentation (n-challenge path via monitor).
+	// Use the canonical resolved cookie path for subtitle acquisition; the
+	// shared BaseArgs builder still gates --cookies to YouTube URLs.
 	//
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
 	// SubtitleFetcherAdapter now consumes the canonical language
@@ -125,7 +126,7 @@ func buildDomainMediaServices(
 		},
 		nil,
 		ytdlp.NewCommandBuilder(cfg),
-		false,
+		cfg.External.ResolveYouTubeCookiesPath() != "",
 	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
 	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.DualPool.Writer, outbox.EventsRepo, log)
