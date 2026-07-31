@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -155,6 +156,57 @@ func openControlledInventoryDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func assertControlledSQLiteInventory(t *testing.T, db *sql.DB, wantRows int) {
+	t.Helper()
+
+	var rowCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&rowCount); err != nil {
+		t.Fatalf("count SQLite inventory rows: %v", err)
+	}
+	if rowCount != wantRows {
+		t.Fatalf("SQLite inventory row count = %d, want %d", rowCount, wantRows)
+	}
+
+	var emptyFields int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM media_assets
+		WHERE TRIM(COALESCE(id, '')) = ''
+		   OR TRIM(COALESCE(drive_file_id, '')) = ''
+		   OR TRIM(COALESCE(drive_link, '')) = ''
+		   OR TRIM(COALESCE(lifecycle_state, '')) = ''
+	`).Scan(&emptyFields); err != nil {
+		t.Fatalf("check empty SQLite inventory fields: %v", err)
+	}
+	if emptyFields != 0 {
+		t.Fatalf("SQLite inventory has %d rows with empty required fields", emptyFields)
+	}
+
+	var nonActiveRows int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM media_assets WHERE lifecycle_state <> ?`,
+		domainasset.StateActive,
+	).Scan(&nonActiveRows); err != nil {
+		t.Fatalf("check initial SQLite lifecycle states: %v", err)
+	}
+	if nonActiveRows != 0 {
+		t.Fatalf("SQLite inventory has %d non-ACTIVE initial rows", nonActiveRows)
+	}
+
+	for _, column := range []string{"id", "drive_file_id", "drive_link"} {
+		var duplicateRows int
+		query := fmt.Sprintf(
+			`SELECT COUNT(*) FROM (SELECT %s FROM media_assets GROUP BY %s HAVING COUNT(*) > 1)`,
+			column, column,
+		)
+		if err := db.QueryRow(query).Scan(&duplicateRows); err != nil {
+			t.Fatalf("check duplicate SQLite inventory %s values: %v", column, err)
+		}
+		if duplicateRows != 0 {
+			t.Fatalf("SQLite inventory has %d duplicate %s values", duplicateRows, column)
+		}
+	}
+}
+
 func TestControlledReconciliationDataset(t *testing.T) {
 	var dataset controlledReconciliationDatasetFile
 	if err := json.Unmarshal(controlledReconciliationDataset, &dataset); err != nil {
@@ -289,33 +341,7 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		}
 	}
 
-	var inventoryRows int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&inventoryRows); err != nil {
-		t.Fatalf("count SQLite inventory rows: %v", err)
-	}
-	if inventoryRows != 5 {
-		t.Fatalf("SQLite inventory row count = %d, want 5", inventoryRows)
-	}
-	var emptyInventoryFields int
-	if err := db.QueryRow(`
-		SELECT COUNT(*) FROM media_assets
-		WHERE id = '' OR drive_file_id = '' OR drive_link = '' OR lifecycle_state = ''
-	`).Scan(&emptyInventoryFields); err != nil {
-		t.Fatalf("check empty SQLite inventory fields: %v", err)
-	}
-	if emptyInventoryFields != 0 {
-		t.Fatalf("SQLite inventory has %d rows with empty required fields", emptyInventoryFields)
-	}
-	var duplicateAssetIDs, duplicateDriveFileIDs int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM (SELECT id FROM media_assets GROUP BY id HAVING COUNT(*) > 1)`).Scan(&duplicateAssetIDs); err != nil {
-		t.Fatalf("check duplicate asset IDs: %v", err)
-	}
-	if err := db.QueryRow(`SELECT COUNT(*) FROM (SELECT drive_file_id FROM media_assets GROUP BY drive_file_id HAVING COUNT(*) > 1)`).Scan(&duplicateDriveFileIDs); err != nil {
-		t.Fatalf("check duplicate Drive file IDs: %v", err)
-	}
-	if duplicateAssetIDs != 0 || duplicateDriveFileIDs != 0 {
-		t.Fatalf("SQLite inventory duplicates: asset_id=%d drive_file_id=%d", duplicateAssetIDs, duplicateDriveFileIDs)
-	}
+	assertControlledSQLiteInventory(t, db, len(dataset.Assets))
 	if _, err := db.Exec(`INSERT INTO media_assets (id, drive_file_id, drive_link, lifecycle_state) VALUES (?, ?, ?, ?)`,
 		assetIDForTest(dataset.Assets, 0), "duplicate-id-drive", "https://drive.google.com/file/d/duplicateid/view", "ACTIVE"); err == nil {
 		t.Fatal("SQLite inventory accepted duplicate asset_id")
@@ -324,8 +350,11 @@ func TestControlledReconciliationDataset(t *testing.T) {
 		"duplicate-drive-id", dataset.Assets[0].DriveFileID, "https://drive.google.com/file/d/duplicatedrive/view", "ACTIVE"); err == nil {
 		t.Fatal("SQLite inventory accepted duplicate drive_file_id")
 	}
-	if len(assetStore.details) != 5 || len(seenAssetIDs) != 5 || len(seenDriveFileIDs) != 5 {
-		t.Fatalf("SQLite inventory uniqueness counts: rows=%d asset_id=%d drive_file_id=%d, want 5 each", inventoryRows, len(seenAssetIDs), len(seenDriveFileIDs))
+	if len(assetStore.details) != len(dataset.Assets) ||
+		len(seenAssetIDs) != len(dataset.Assets) ||
+		len(seenDriveFileIDs) != len(dataset.Assets) {
+		t.Fatalf("SQLite inventory uniqueness counts: details=%d asset_id=%d drive_file_id=%d, want %d each",
+			len(assetStore.details), len(seenAssetIDs), len(seenDriveFileIDs), len(dataset.Assets))
 	}
 
 	for _, state := range []scriptpkg.LocationState{
