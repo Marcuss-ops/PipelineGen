@@ -2,11 +2,6 @@
 // model output envelope for script generation.
 package script
 
-import (
-	"fmt"
-	"strings"
-)
-
 // ModelScriptOutputV1 is the canonical structured output the LLM
 // must return for every script generation. SchemaVersion is always 1
 // for this contract; the decoder validates and rejects unknown
@@ -53,36 +48,4 @@ type ModelScriptOutputV1 struct {
 	// CacheStatus is "exact_hit" (memory gate hit) or
 	// "generated". omitempty.
 	CacheStatus string `json:"cache_status,omitempty"`
-}
-
-// Validate checks structural invariants. Returns a ModelOutputError
-// with structured details on failure, or nil when the output is
-// structurally valid.
-//
-// Rules:
-//   - SchemaVersion must be 1.
-//   - Text must be non-empty (after trimming whitespace).
-//   - SpecScene must be valid (specscene version, scenes, indexes).
-func (m *ModelScriptOutputV1) Validate() error {
-	var details []string
-
-	if m.SchemaVersion != 1 {
-		details = append(details,
-			fmt.Sprintf("unsupported schema_version %d (expected 1)", m.SchemaVersion))
-	}
-	if strings.TrimSpace(m.Text) == "" {
-		details = append(details, "text is required and must be non-empty")
-	}
-	if err := m.SpecScene.Validate(); err != nil {
-		if me, ok := err.(*ModelOutputError); ok {
-			details = append(details, "specscene: "+strings.Join(me.Details, "; "))
-		} else {
-			details = append(details, "specscene: "+err.Error())
-		}
-	}
-
-	if len(details) > 0 {
-		return &ModelOutputError{Details: details}
-	}
-	return nil
 }
