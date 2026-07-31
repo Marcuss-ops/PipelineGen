@@ -87,7 +87,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	fp := runner.RunFingerprint()
 	explicitTimestamps := in != nil && len(in.Clips) > 0
 	rootFolderName := stockRootFolderName(in)
-	rootFolderOverride := stockRootFolderOverride(in)
+	resolvedFolderID := stockResolvedFolderID(in)
 	timestampGroupName := stockTimestampGroupName(in)
 	explicitTimestampGroupName := stockTimestampParentGroupName(in)
 	if explicitTimestamps {
@@ -98,7 +98,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// step_publish_chunks_phase.go). Returns built ChunkState
 	// slice (or existingPublished copy when publishedReady).
 	chunks, err := publishChunkPhase(ctx, runner, in, fp, explicitTimestamps,
-		rootFolderName, rootFolderOverride, timestampGroupName,
+		rootFolderName, resolvedFolderID, timestampGroupName,
 		runner.State().Plan, runner.State().ComposedPaths, runner.State().Published)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// Phase 2: metadata.json ArtifactPreparation + TimestampFolderLink
 	// backfill on every chunk (see step_publish_metadata_phase.go).
 	metadataState, err := publishMetadataPhase(ctx, runner, in, fp, explicitTimestamps,
-		rootFolderName, rootFolderOverride, timestampGroupName, chunks)
+		rootFolderName, resolvedFolderID, timestampGroupName, chunks)
 	if err != nil {
 		return err
 	}

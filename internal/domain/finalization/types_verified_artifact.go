@@ -58,10 +58,16 @@ type VerifiedArtifact struct {
 	// When empty, infrastructure falls back to a synthetic label.
 	RootFolderName string `json:"root_folder_name,omitempty"`
 
-	// RootFolderOverride is the explicit provider root folder ID. When
-	// non-empty, infrastructure treats it as the actual Drive root
-	// rather than resolving the registry default.
+	// RootFolderOverride is the legacy explicit provider root folder ID.
+	// It remains for compatibility with older infrastructure callers.
+	// New application producers MUST use ResolvedFolderID together with
+	// RootFolderResolved instead of this escape hatch.
 	RootFolderOverride string `json:"root_folder_override,omitempty"`
+
+	// ResolvedFolderID is the semantic, already-resolved Drive folder
+	// identifier for this artifact. It is eligible for direct delivery
+	// only when RootFolderResolved is true.
+	ResolvedFolderID string `json:"resolved_folder_id,omitempty"`
 
 	// RootFolderResolved records whether the upstream Drive folder
 	// resolution gate already verified the Drive folder corresponding
@@ -78,7 +84,8 @@ type VerifiedArtifact struct {
 	// This field is a sticky-resolved-state trace, NOT a redirector:
 	// it does not name or alter the folder path. The carrier fields
 	// are RootFolderName (human-readable top-level label) and
-	// RootFolderOverride (explicit provider root folder ID).
+	// ResolvedFolderID (semantic direct destination). Legacy
+	// RootFolderOverride remains an infrastructure compatibility seam.
 	RootFolderResolved bool `json:"root_folder_resolved,omitempty"`
 
 	// Description is the human-readable English summary for the clip

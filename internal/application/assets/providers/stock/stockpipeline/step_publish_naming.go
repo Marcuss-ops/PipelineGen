@@ -11,7 +11,7 @@
 // Helpers in this file are the SOLE canonical owners of:
 //
 //   - Root folder name for a stock pipeline run:
-//     stockRootFolderName, stockRootFolderOverride.
+//     stockRootFolderName, stockResolvedFolderID.
 //   - Filesystem-safe sanitization: sanitizedRootName,
 //     sanitizeLegacyQuery, sanitizeLegacyURLBasename,
 //     sanitizedURLBasename.
@@ -96,18 +96,14 @@ func stockRootFolderName(in *RunInput) string {
 	return "stock_" + time.Now().UTC().Format("2006-01-02")
 }
 
-// stockRootFolderOverride returns the explicit Drive root folder ID
-// when the caller provided drive_folder_id. FolderID remains the
-// workflow identifier and is only used as a fallback for older
-// callers that still populate folder_id.
-func stockRootFolderOverride(in *RunInput) string {
-	if in == nil {
+// stockResolvedFolderID returns a Drive folder ID only when the input
+// explicitly carries the resolved Drive identifier. FolderID is a workflow
+// identifier, not a Drive destination, and never crosses this boundary.
+func stockResolvedFolderID(in *RunInput) string {
+	if in == nil || !in.DriveFolderResolved {
 		return ""
 	}
-	if id := strings.TrimSpace(in.DriveFolderID); id != "" {
-		return id
-	}
-	return strings.TrimSpace(in.FolderID)
+	return strings.TrimSpace(in.DriveFolderID)
 }
 
 // sanitizedRootName trims whitespace, returns "" for empty input,

@@ -17,7 +17,7 @@ import (
 func publishCuts(ctx context.Context, runner StepRunner, sourceID string, sourceIdx int,
 	groupPlans []ClipPlan, result CutBatchResult,
 	segmentCounts map[string]int, groupBuckets map[string]*timestampGroupBuffer,
-	rootFolderName, rootFolderOverride, timestampGroupName string, in *RunInput, batchID string) ([]string, []ChunkState, error) {
+	rootFolderName, resolvedFolderID, timestampGroupName string, in *RunInput, batchID string) ([]string, []ChunkState, error) {
 
 	writer := runner.Writer()
 	artifactPrep := runner.ArtifactPreparation()
@@ -102,7 +102,7 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 					IdempotencyKey:     clip.ID + ":" + hash,
 					Description:        plan.Description,
 					RootFolderName:     rootFolderName,
-					RootFolderOverride: rootFolderOverride,
+					ResolvedFolderID:   resolvedFolderID,
 					RootFolderResolved: in != nil && in.DriveFolderResolved,
 					PathLeafName:       leafName,
 				}

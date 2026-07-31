@@ -87,7 +87,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	noAudio := in != nil && in.NoAudio
 	batchID := runner.JobID()
 	rootFolderName := stockRootFolderName(in)
-	rootFolderOverride := stockRootFolderOverride(in)
+	resolvedFolderID := stockResolvedFolderID(in)
 	timestampGroupName := stockTimestampGroupName(in)
 	if in != nil && len(in.Clips) > 0 {
 		timestampGroupName = stockTimestampParentGroupName(in)
@@ -165,7 +165,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 
 		// Publish cuts (hash, asset write, Drive upload).
 		sourceCutPaths, sourceChunks, pubErr := publishCuts(ctx, runner, durableSourceID, sourceIdx, groupPlans,
-			result, segmentCounts, groupBuckets, rootFolderName, rootFolderOverride, timestampGroupName, in, batchID)
+			result, segmentCounts, groupBuckets, rootFolderName, resolvedFolderID, timestampGroupName, in, batchID)
 		if pubErr != nil {
 			return pubErr
 		}
@@ -191,7 +191,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	}
 
 	// Publish group metadata.
-	if err := writeTimestampGroups(ctx, runner, in, rootFolderName, rootFolderOverride, groupBuckets, runner.ArtifactPreparation()); err != nil {
+	if err := writeTimestampGroups(ctx, runner, in, rootFolderName, resolvedFolderID, groupBuckets, runner.ArtifactPreparation()); err != nil {
 		return err
 	}
 

@@ -33,7 +33,7 @@ func writeTimestampGroups(
 	runner StepRunner,
 	in *RunInput,
 	rootFolderName string,
-	rootFolderOverride string,
+	resolvedFolderID string,
 	groupBuckets map[string]*timestampGroupBuffer,
 	artifactPrep finalization.ArtifactPreparationService,
 ) error {
@@ -91,7 +91,7 @@ func writeTimestampGroups(
 			Requirement:        finalization.ArtifactRequirementRequired,
 			IdempotencyKey:     metaIdem,
 			RootFolderName:     rootFolderName,
-			RootFolderOverride: rootFolderOverride,
+			ResolvedFolderID:   resolvedFolderID,
 			RootFolderResolved: in != nil && in.DriveFolderResolved,
 			PathLeafName:       group.leafName,
 		}
