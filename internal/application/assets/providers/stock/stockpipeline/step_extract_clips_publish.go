@@ -39,7 +39,9 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 					zap.Error(item.Err))
 			}
 			if batchRepo != nil {
-				_ = batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "cut failed or empty output")
+				if err := batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "cut failed or empty output"); err != nil {
+					return nil, nil, fmt.Errorf("%w: mark artifact %s failed after cut failure: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
+				}
 			}
 			continue
 		}
@@ -51,7 +53,9 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 			hash, hashErr = job.ComputeSHA256(item.OutputPath)
 			if hashErr != nil {
 				if batchRepo != nil {
-					_ = batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "SHA256: "+hashErr.Error())
+					if stateErr := batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateFailedPermanent, "SHA256: "+hashErr.Error()); stateErr != nil {
+						return nil, nil, fmt.Errorf("%w: mark artifact %s failed after SHA256 error: %w", ErrStockExtractClipsDurableStateFailed, artifactID, stateErr)
+					}
 				}
 				return nil, nil, fmt.Errorf("orchestrator: stock.extract_clips: chunk %d SHA256: %w", clipIdx, hashErr)
 			}
@@ -59,7 +63,9 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 
 		actualDurationMs := int(item.DurationSec * 1000)
 		if batchRepo != nil {
-			_ = batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, actualDurationMs)
+			if err := batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, actualDurationMs); err != nil {
+				return nil, nil, fmt.Errorf("%w: mark artifact %s extracted: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
+			}
 		}
 		cutPaths = append(cutPaths, item.OutputPath)
 

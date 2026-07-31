@@ -121,7 +121,11 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 		durableSourceID := durableSourceIDForGroup(sourceID, groupPlans)
 
 		// Fase 2 durable state: batch/group/artifact rows.
-		batchEnsured = prepareBatchState(ctx, runner, durableSourceID, groupPlans, len(grouped), len(plans), batchID, batchEnsured)
+		var batchErr error
+		batchEnsured, batchErr = prepareBatchState(ctx, runner, durableSourceID, groupPlans, len(grouped), len(plans), batchID, batchEnsured)
+		if batchErr != nil {
+			return batchErr
+		}
 
 		// Pre-cut duration validation.
 		cutPlans := groupPlans
@@ -140,7 +144,9 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 		}
 
 		// Mark artifacts as extracting.
-		markArtifactsExtracting(ctx, runner, batchID, durableSourceID, groupPlans)
+		if err := markArtifactsExtracting(ctx, runner, batchID, durableSourceID, groupPlans); err != nil {
+			return err
+		}
 
 		// Execute cuts.
 		result, cutErr := executeCuts(ctx, runner, sourceID, sourcePath, sourceDuration, cutPlans, sourceIdx, noAudio)
