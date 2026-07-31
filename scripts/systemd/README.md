@@ -26,23 +26,31 @@ sudo systemctl enable --now artlist-scraper.service
 systemctl is-active pipelinegen.service artlist-scraper.service
 ```
 
-## Daily operator command
+## Daily commands — no interactive password
 
-Use the repository command for routine PipelineGen operations:
+Use these commands for routine operation. They do not require an interactive
+password or a TTY:
 
 ```bash
 scripts/systemd/pipelinegenctl status
-scripts/systemd/pipelinegenctl restart
 scripts/systemd/pipelinegenctl verify
-scripts/systemd/pipelinegenctl restart-verify
 scripts/systemd/pipelinegenctl logs
+scripts/systemd/pipelinegenctl restart
+scripts/systemd/pipelinegenctl restart-verify
 ```
 
-`restart` uses only `sudo -n systemctl restart pipelinegen.service` and
-fails closed when the restricted NOPASSWD rule is not installed. The other
-commands do not use sudo. The command waits for the service to become active,
-probes `/ready` with a bounded timeout, and sanitizes journal output so
-passwords, tokens, Drive URLs, and Drive identifiers are not printed.
+| Command | Purpose | Privilege behavior |
+|---|---|---|
+| `status` | Check whether `pipelinegen.service` is active | No sudo |
+| `verify` | Wait for active service and probe `/ready` | No sudo |
+| `logs` | Show bounded, sanitized journal output | No sudo |
+| `restart` | Restart only `pipelinegen.service`, then wait active | `sudo -n`; restricted rule, no prompt |
+| `restart-verify` | Restart, verify `/ready`, and run the Drive canary | `sudo -n`; output is only `PASS` or `FAIL` |
+
+`restart` uses only `sudo -n systemctl restart pipelinegen.service` and fails
+closed when the restricted NOPASSWD rule is not installed. The other commands
+do not use sudo. No daily command accepts a password argument or reads the
+secret file directly.
 
 `restart-verify` additionally runs the authenticated Drive canary against
 `/api/admin/drive/canary-upload` with the canonical `folder_alias` value
@@ -51,7 +59,28 @@ and canary response are kept inside the helper boundary. This command emits
 only one verdict line — `PASS` or `FAIL` — and never prints the response body,
 Drive IDs, Drive URLs, or token material.
 
-## Restricted operator access
+## Administrative operations — explicit sudo required
+
+The following are host-administration tasks, not daily operation. Perform them
+only during provisioning, migration, credential rotation, or an intentional
+unit/configuration change. They may require the operator's normal sudo
+password and should not be automated by pasting credentials into a shell:
+
+| Administrative task | Command or procedure |
+|---|---|
+| Install restricted daily access | `sudo scripts/systemd/sudoers/install_operator_access.sh --install` |
+| Validate policy without changing host | `scripts/systemd/sudoers/install_operator_access.sh --check` |
+| Migrate manually started services | `AUTO_YES=1 bash scripts/systemd/migrate_to_systemd.sh` |
+| Reload changed unit/drop-in files | `sudo systemctl daemon-reload` |
+| Enable/start services after migration | `sudo systemctl enable --now pipelinegen.service` and scraper unit as needed |
+| Rotate credentials | `sudo scripts/rotate_token.sh` using the documented host process |
+| Repair secret-file ownership/mode | `sudo chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env` and `sudo chmod 0640 /etc/pipelinegen/pipelinegen.env` |
+
+Do not grant `NOPASSWD: ALL`, wildcard `systemctl` access, or access to other
+services. The installer does not invoke sudo itself: the caller must already
+have root authorization, and the policy is validated before installation.
+
+### Restricted operator policy
 
 The versioned policy in `sudoers/pipelinegen-operator` grants the configured
 operator only these exact commands as root:
@@ -90,7 +119,35 @@ policy that is not exactly the three-command grant. Its isolated test is:
 scripts/systemd/sudoers/install_operator_access_test.sh
 ```
 
-Optional environment variables:
+## Safe local configuration flow
+
+For a workstation or a controlled development host:
+
+1. Copy `config.example.yaml` to `config.yaml`; keep credentials out of that
+   file and out of the repository.
+2. Use the canonical secret file only on a host configured for it:
+   `/etc/pipelinegen/pipelinegen.env`, mode `0640`, owner
+   `root:pipelinegen-agents`.
+3. Validate the loader boundary without printing the value:
+
+   ```bash
+   scripts/with-velox-auth bash -c 'test -n "$VELOX_ADMIN_TOKEN"'
+   ```
+
+4. Start a local binary through the wrapper when auth is needed:
+
+   ```bash
+   scripts/with-velox-auth ./bin/pipelinegen --mode all
+   ```
+
+5. Prefer `pipelinegenctl verify` or `restart-verify` for a managed service;
+   do not source the env file manually, put the token in command arguments, or
+   capture API responses containing Drive metadata.
+
+If the canonical file is absent or invalid, stop and fix host provisioning;
+do not create a fallback token or downgrade permissions to `0644`.
+
+## Optional environment variables
 
 - `PIPELINEGEN_BASE_URL` — local HTTP base URL (default `http://127.0.0.1:8000`)
 - `PIPELINEGEN_READY_TIMEOUT` — readiness wait in seconds (default `60`)
