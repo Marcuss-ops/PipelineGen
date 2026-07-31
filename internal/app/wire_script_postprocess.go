@@ -26,16 +26,34 @@
 package app
 
 import (
+	"context"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
+
+
+// assetServiceLookupAdapter wraps asset.Service to satisfy the
+// drive.AssetStoreLookup interface needed by LocationVerifier
+// for deep Drive+SQLite cross-reference.
+type assetServiceLookupAdapter struct {
+	svc *asset.Service
+}
+
+func (a *assetServiceLookupAdapter) GetAsset(
+	ctx context.Context, assetID string,
+) (*asset.Details, error) {
+	return a.svc.Get(ctx, assetID)
+}
 
 // registerScriptPostProcessors initialises and registers every
 // canonical postprocessor on the supplied registry. Each registration
@@ -159,14 +177,29 @@ func registerScriptPostProcessors(
 	// AssetLocationReconciliationProcessor verifies every drive_link
 	// in the SpecScene bindings before the document is published.
 	// BestEffort policy: transport errors become warnings, link
-	// integrity is best-effort. The verifier uses Drive.Reader to
-	// check file existence, trashed state, and accessibility.
+	// integrity is best-effort.
+	//
+	// When SQLite (asset.Service) is available, the processor uses
+	// the deep LocationVerifier which cross-references Drive API
+	// results against the asset store to detect ORPHAN_DRIVE_FILE,
+	// BROKEN_ASSET_LOCATION, and DUPLICATE states.
+	//
+	// When SQLite is unavailable, it falls back to the lighter
+	// AssetLocationResolverAdapter (Drive-only: MISSING, TRASHED,
+	// INACCESSIBLE, VERIFIED, UPDATED).
 	if root != nil && root.Drive != nil && root.Drive.Reader != nil {
-		verifier := drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
+		var verifier scriptpkg.AssetLocationVerifier
+		if root.Repos != nil && root.Repos.Assets != nil {
+			adapter := &assetServiceLookupAdapter{svc: root.Repos.Assets}
+			verifier = drive.NewLocationVerifier(root.Drive.Reader, adapter)
+			log.Info("AssetLocationReconciliationProcessor (BestEffort, deep: Drive+SQLite) successfully registered")
+		} else {
+			verifier = drive.NewAssetLocationResolverAdapter(root.Drive.Reader)
+			log.Info("AssetLocationReconciliationProcessor (BestEffort, shallow: Drive-only) successfully registered")
+		}
 		if !ppReg.Register(adapters.NewAssetLocationReconciliationProcessor(verifier)) {
 			return fmt.Errorf("register asset_location_reconciliation processor: composition bug or duplicate name")
 		}
-		log.Info("AssetLocationReconciliationProcessor (BestEffort) successfully registered")
 	}
 
 	// AI-backed processors (entities, metadata, translation,
