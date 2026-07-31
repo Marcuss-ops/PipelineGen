@@ -421,8 +421,19 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             ;;
             
         "04")
-            # Scenario 4 assertions: Direct stock bindings
-            if ! jq -e --arg f_id "${TYSON_CLIPS[0]}" --arg i_id "${TYSON_CLIPS[1]}" --arg t_id "${TYSON_CLIPS[2]}" '
+            # Scenario 4 assertions: Manny Pacquiao's independently resolved stock.
+            # Never use Tyson clips as a substitute for Pacquiao.
+            local pacquiao_fight_id
+            local pacquiao_interview_id
+            local pacquiao_training_id
+            pacquiao_fight_id=$(jq -r '.boxers.manny_pacquiao.assets.fight.asset_id // ""' "$RESOLVED_STOCK_FILE")
+            pacquiao_interview_id=$(jq -r '.boxers.manny_pacquiao.assets.interview.asset_id // ""' "$RESOLVED_STOCK_FILE")
+            pacquiao_training_id=$(jq -r '.boxers.manny_pacquiao.assets.training.asset_id // ""' "$RESOLVED_STOCK_FILE")
+            if [[ -z "$pacquiao_fight_id" || -z "$pacquiao_interview_id" || -z "$pacquiao_training_id" ]]; then
+                printf '%sFAIL: Pacquiao requires three independently resolved ACTIVE assets%s\\n' "$RED" "$RESET" >&2
+                return 1
+            fi
+            if ! jq -e --arg f_id "$pacquiao_fight_id" --arg i_id "$pacquiao_interview_id" --arg t_id "$pacquiao_training_id" '
                 (.specscene.scenes[0].bindings.stock.asset_id == $f_id)
                 and (.specscene.scenes[1].bindings.stock.asset_id == $i_id)
                 and (.specscene.scenes[2].bindings.stock.asset_id == $t_id)
