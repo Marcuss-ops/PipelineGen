@@ -43,4 +43,8 @@ type ProcessInput struct {
 	// document HTML. Populated by GenerateOneUseCase before Run.
 	// PR-PROVENANCE (July 2026).
 	Provenance *scriptpkg.GenerationProvenance
+
+	// SpecSceneChanged is internal pipeline state used to force a document
+	// refresh after reconciliation changed the published scene surface.
+	SpecSceneChanged bool `json:"-"`
 }

@@ -20,6 +20,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -93,6 +94,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		clearUnverifiedSceneLinks(reconciled)
 		return &PostProcessResult{
 			Changed:          len(reconciled) > 0,
+			SpecSceneChanged: len(reconciled) > 0,
 			UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
 			Warnings:         []string{"asset_location_reconciliation: verifier is not configured (all Drive links cleared)"},
 		}, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
@@ -113,6 +115,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		inaccessibleCount int
 		malformedCount    int
 		assetChanges      = make(map[string]scriptpkg.AssetLocationChange)
+		conflictErr       error
 	)
 
 	// Work on a copy of the scenes so we can mutate in place.
@@ -132,7 +135,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					"clip", scene.ID,
 				)
 				if err != nil {
-					return nil, err
+					return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 				}
 				changed = changed || result.changed
 				okCount += result.ok
@@ -145,6 +148,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					warnings = append(warnings, result.warning)
 				}
 				if result.assetChange != nil {
+					if previous, exists := assetChanges[result.assetChange.AssetID]; exists && previous != *result.assetChange && conflictErr == nil {
+						conflictErr = fmt.Errorf("%w: conflicting durable location changes for asset %q", scriptpkg.ErrPostprocessFailed, result.assetChange.AssetID)
+					}
 					assetChanges[result.assetChange.AssetID] = *result.assetChange
 				}
 			}
@@ -157,7 +163,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					"subtitle", scene.ID,
 				)
 				if err != nil {
-					return nil, err
+					return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 				}
 				changed = changed || result.changed
 				okCount += result.ok
@@ -186,7 +192,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					"stock", scene.ID,
 				)
 				if err != nil {
-					return nil, err
+					return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 				}
 				changed = changed || result.changed
 				okCount += result.ok
@@ -199,6 +205,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					warnings = append(warnings, result.warning)
 				}
 				if result.assetChange != nil {
+					if previous, exists := assetChanges[result.assetChange.AssetID]; exists && previous != *result.assetChange && conflictErr == nil {
+						conflictErr = fmt.Errorf("%w: conflicting durable location changes for asset %q", scriptpkg.ErrPostprocessFailed, result.assetChange.AssetID)
+					}
 					assetChanges[result.assetChange.AssetID] = *result.assetChange
 				}
 			}
@@ -211,13 +220,13 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		// as every other published location.
 		if bindings.Image != nil {
 			if link := strings.TrimSpace(bindings.Image.URL); link != "" {
-				if fileID, fileIDErr := urlutil.FileIDFromDriveLink(link); fileIDErr == nil && fileID != "" {
+				if fileID, fileIDErr := urlutil.FileIDFromDriveLink(link); (fileIDErr == nil && fileID != "") || isGoogleDriveURL(link) {
 					result, err := p.verifyAndReconcile(
 						ctx, bindings.Image.ImageID, fileID, link,
 						&bindings.Image.URL, "image", scene.ID,
 					)
 					if err != nil {
-						return nil, err
+						return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 					}
 					changed = changed || result.changed
 					okCount += result.ok
@@ -230,6 +239,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 						warnings = append(warnings, result.warning)
 					}
 					if result.assetChange != nil {
+						if previous, exists := assetChanges[result.assetChange.AssetID]; exists && previous != *result.assetChange && conflictErr == nil {
+							conflictErr = fmt.Errorf("%w: conflicting durable location changes for asset %q", scriptpkg.ErrPostprocessFailed, result.assetChange.AssetID)
+						}
 						assetChanges[result.assetChange.AssetID] = *result.assetChange
 					}
 					if result.changed && strings.TrimSpace(bindings.Image.URL) == "" {
@@ -249,7 +261,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					"voiceover", scene.ID,
 				)
 				if err != nil {
-					return nil, err
+					return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 				}
 				changed = changed || result.changed
 				okCount += result.ok
@@ -276,7 +288,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					fmt.Sprintf("media[%d]", j), scene.ID,
 				)
 				if err != nil {
-					return nil, err
+					return reconciliationFailureResult(input, reconciled, changed, warnings, result, err)
 				}
 				changed = changed || result.changed
 				okCount += result.ok
@@ -289,10 +301,22 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					warnings = append(warnings, result.warning)
 				}
 				if result.assetChange != nil {
+					if previous, exists := assetChanges[result.assetChange.AssetID]; exists && previous != *result.assetChange && conflictErr == nil {
+						conflictErr = fmt.Errorf("%w: conflicting durable location changes for asset %q", scriptpkg.ErrPostprocessFailed, result.assetChange.AssetID)
+					}
 					assetChanges[result.assetChange.AssetID] = *result.assetChange
 				}
 			}
 		}
+	}
+
+	if conflictErr != nil {
+		return &PostProcessResult{
+			Changed:          changed,
+			SpecSceneChanged: changed,
+			UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+			Warnings:         warnings,
+		}, conflictErr
 	}
 
 	if p.committer != nil && len(assetChanges) > 0 {
@@ -306,6 +330,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		if err := p.committer.CommitAssetLocations(ctx, changes); err != nil {
 			return &PostProcessResult{
 				Changed:          changed,
+				SpecSceneChanged: changed,
 				UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
 				Warnings:         warnings,
 			}, fmt.Errorf("%w: asset_location_reconciliation commit failed: %w", scriptpkg.ErrPostprocessFailed, err)
@@ -314,6 +339,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 
 	return &PostProcessResult{
 		Changed:          changed,
+		SpecSceneChanged: changed,
 		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
 		Warnings:         warnings,
 	}, nil
@@ -354,13 +380,12 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		if !result.durableMutation || strings.TrimSpace(assetID) == "" || strings.HasPrefix(assetID, "voiceover:") || label == "subtitle" || linkPtr == nil {
 			return
 		}
-		fileID := strings.TrimSpace(result.driveFileID)
-		if strings.TrimSpace(*linkPtr) == "" {
-			fileID = ""
-		}
+		// Preserve the verified Drive identity even when the published
+		// link is cleared. The durable committer intentionally clears only
+		// the public URL so operators can diagnose or republish the asset.
 		result.assetChange = &scriptpkg.AssetLocationChange{
 			AssetID:     strings.TrimSpace(assetID),
-			DriveFileID: fileID,
+			DriveFileID: strings.TrimSpace(result.driveFileID),
 			DriveLink:   strings.TrimSpace(*linkPtr),
 		}
 	}()
@@ -371,29 +396,55 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		// publication: an unverified link must never reach the
 		// document, manifest, or persisted SpecScene.
 		*linkPtr = ""
-		return reconcileResult{
+		transportResult := reconcileResult{
 			changed: true,
 			warning: fmt.Sprintf(
 				"asset_location_reconciliation: transport error verifying %s link in %s (link cleared): %v",
 				label, sceneID, err),
-		}, nil
+		}
+		if p.committer != nil {
+			return transportResult, fmt.Errorf("%w: asset_location_reconciliation transport verification failed for %s in %s: %w",
+				scriptpkg.ErrPostprocessFailed, label, sceneID, err)
+		}
+		return transportResult, nil
 	}
 	if verified == nil {
 		// A verifier that cannot produce a result has not established
 		// that the link is usable. Fail closed rather than publishing
 		// an unverified location.
 		*linkPtr = ""
-		return reconcileResult{
+		unknownResult := reconcileResult{
 			changed: true,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state (verifier returned no result; link cleared): asset=%s",
 				label, sceneID, assetID),
-		}, nil
+		}
+		if p.committer != nil {
+			return unknownResult, fmt.Errorf("%w: asset_location_reconciliation verifier returned no result for %s in %s",
+				scriptpkg.ErrPostprocessFailed, label, sceneID)
+		}
+		return unknownResult, nil
 	}
 
 	result.driveFileID = verified.DriveFileID
+	if verified.State == scriptpkg.LocationStateVerified || verified.State == scriptpkg.LocationStateUpdated {
+		if strings.TrimSpace(verified.DriveFileID) == "" || strings.TrimSpace(verified.DriveLink) == "" {
+			*linkPtr = ""
+			return reconcileResult{
+				changed:         true,
+				durableMutation: true,
+				driveFileID:     verified.DriveFileID,
+				warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has incomplete canonical Drive metadata (link cleared): asset=%s",
+					label, sceneID, assetID),
+			}, nil
+		}
+	}
 	switch verified.State {
 	case scriptpkg.LocationStateVerified:
-		return reconcileResult{ok: 1}, nil
+		if strings.TrimSpace(*linkPtr) == strings.TrimSpace(verified.DriveLink) {
+			return reconcileResult{ok: 1}, nil
+		}
+		*linkPtr = verified.DriveLink
+		return reconcileResult{changed: true, durableMutation: true, updated: 1, driveFileID: verified.DriveFileID}, nil
 
 	case scriptpkg.LocationStateUpdated:
 		*linkPtr = verified.DriveLink
@@ -429,10 +480,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 			inaccessible:    1,
 			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is INACCESSIBLE (permission denied): asset=%s",
-				label, sceneID, assetID),
-		}, nil
+				label, sceneID, assetID)}, nil
 
 	case scriptpkg.LocationStateMalformed:
+
 		*linkPtr = ""
 		return reconcileResult{
 			changed:         true,
@@ -462,10 +513,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 			missing:         1,
 			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has a BROKEN location (SQLite references missing Drive file): asset=%s",
-				label, sceneID, assetID),
-		}, nil
+				label, sceneID, assetID)}, nil
 
 	case scriptpkg.LocationStateDuplicate:
+
 		*linkPtr = ""
 		return reconcileResult{
 			changed:         true,
@@ -482,12 +533,44 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		// expose the degraded outcome to status classification.
 		*linkPtr = ""
 		return reconcileResult{
-			changed:     true,
-			driveFileID: verified.DriveFileID,
+			changed:         true,
+			durableMutation: true,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state %q (link cleared): asset=%s",
 				label, sceneID, verified.State, assetID),
 		}, nil
 	}
+}
+
+func reconciliationFailureResult(
+	input ProcessInput,
+	reconciled []scriptpkg.SpecScene,
+	changed bool,
+	warnings []string,
+	result reconcileResult,
+	err error,
+) (*PostProcessResult, error) {
+	changed = changed || result.changed
+	if result.warning != "" {
+		warnings = append(warnings, result.warning)
+	}
+	return &PostProcessResult{
+		Changed:          changed,
+		SpecSceneChanged: changed,
+		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+		Warnings:         warnings,
+	}, err
+}
+
+func isGoogleDriveURL(rawLink string) bool {
+	link := strings.TrimSpace(rawLink)
+	parsed, err := url.Parse(link)
+	if err == nil {
+		host := strings.ToLower(parsed.Hostname())
+		return host == "drive.google.com" || host == "www.drive.google.com" || host == "docs.google.com" || host == "www.docs.google.com"
+	}
+	lower := strings.ToLower(link)
+	return strings.HasPrefix(lower, "https://drive.google.com/") || strings.HasPrefix(lower, "http://drive.google.com/")
 }
 
 // cloneSpecScenes returns a copy of the scenes slice for safe

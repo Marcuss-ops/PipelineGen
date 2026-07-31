@@ -1,10 +1,12 @@
 package assets
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +36,12 @@ type IndexRequest struct {
 	UseProviderEventKey      bool
 	IncludeSourceMetadata    bool
 	IncludeEmbeddingMetadata bool
+	// EventKeySuffix differentiates deterministic reindex requests that
+	// share the same asset source_version but represent a changed
+	// projection input, such as a repaired Drive location. It is appended
+	// only to the idempotency key; source_version remains the canonical
+	// asset fingerprint used by the supersede gate.
+	EventKeySuffix string
 }
 
 // IndexRequestCommitResult reports the durable outbox write performed by
@@ -125,6 +133,21 @@ func CommitIndexRequestTx(
 			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
 		}
 		payload = []byte(payloadString)
+	}
+
+	if suffix := strings.TrimSpace(req.EventKeySuffix); suffix != "" {
+		eventKey += suffix
+		var payloadMap map[string]any
+		decoder := json.NewDecoder(bytes.NewReader(payload))
+		decoder.UseNumber()
+		if err := decoder.Decode(&payloadMap); err != nil {
+			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: decode outbox payload for suffix: %w", err)
+		}
+		payloadMap["idempotency_key"] = eventKey
+		payload, err = json.Marshal(payloadMap)
+		if err != nil {
+			return IndexRequestCommitResult{}, fmt.Errorf("asset committer: encode outbox payload for suffix: %w", err)
+		}
 	}
 
 	enqueueResult, err := box.Enqueue(

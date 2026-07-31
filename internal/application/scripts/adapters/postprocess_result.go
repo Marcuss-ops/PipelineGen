@@ -61,6 +61,9 @@ type PostProcessResult struct {
 	OriginalSpecScene   scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
 	EffectiveLanguage   string                    `json:"effective_language,omitempty"`
 	UpdatedSpecScene    scriptpkg.SpecSceneOutput `json:"updated_specscene,omitempty"`
+	// SpecSceneChanged is internal pipeline metadata used to force a
+	// document refresh after durable location reconciliation.
+	SpecSceneChanged bool `json:"-"`
 }
 
 // IsEmpty reports whether the result carries no observable work.

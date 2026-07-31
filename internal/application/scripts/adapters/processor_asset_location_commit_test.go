@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -61,7 +62,7 @@ func TestAssetLocationReconciliation_CommitsSortedDeduplicatedChanges(t *testing
 	if committer.changes[0].AssetID != "clip-1" || committer.changes[0].DriveFileID != "new-clip" || committer.changes[0].DriveLink != newClip {
 		t.Fatalf("first committed change = %#v", committer.changes[0])
 	}
-	if committer.changes[1].AssetID != "stock-1" || committer.changes[1].DriveFileID != "" || committer.changes[1].DriveLink != "" {
+	if committer.changes[1].AssetID != "stock-1" || committer.changes[1].DriveFileID != "gone-stock" || committer.changes[1].DriveLink != "" {
 		t.Fatalf("second committed change = %#v", committer.changes[1])
 	}
 	if got := result.UpdatedSpecScene.Scenes[0].Bindings.Voiceover.Link; got != voiceoverLink {
@@ -102,7 +103,7 @@ func TestAssetLocationReconciliation_NoChangesDoesNotCommit(t *testing.T) {
 	}
 }
 
-func TestAssetLocationReconciliation_InvalidLinkClearsFileIDAndSkipsSubtitle(t *testing.T) {
+func TestAssetLocationReconciliation_PreservesFileIDAndSkipsSubtitle(t *testing.T) {
 	clipLink := "https://drive.google.com/file/d/clip/view"
 	subtitleLink := "https://drive.google.com/file/d/subtitle/view"
 	verifier := newStubVerifier()
@@ -125,6 +126,117 @@ func TestAssetLocationReconciliation_InvalidLinkClearsFileIDAndSkipsSubtitle(t *
 	}
 	if len(committer.changes) != 0 {
 		t.Fatalf("subtitle-only invalidation must not mutate clip asset: %#v", committer.changes)
+	}
+}
+
+func TestAssetLocationReconciliation_ConflictingChangesFailClosed(t *testing.T) {
+	firstLink := "https://drive.google.com/file/d/first/view"
+	secondLink := "https://drive.google.com/file/d/second/view"
+	verifier := newStubVerifier()
+	verifier.stubResult(firstLink, &scriptpkg.VerifiedLocation{
+		AssetID: "asset-1", DriveFileID: "first", DriveLink: firstLink,
+		State: scriptpkg.LocationStateUpdated,
+	})
+	verifier.stubResult(secondLink, &scriptpkg.VerifiedLocation{
+		AssetID: "asset-1", DriveFileID: "second", DriveLink: secondLink,
+		State: scriptpkg.LocationStateUpdated,
+	})
+	committer := &recordingAssetLocationCommitter{}
+	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
+	result, err := processor.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("asset-1", firstLink),
+			{
+				ID: "scene-1", Index: 1, Kind: scriptpkg.SceneClip,
+				Bindings: scriptpkg.SceneBindings{
+					Stock: &scriptpkg.StockBinding{AssetID: "asset-1", DriveLink: secondLink},
+				},
+			},
+		}},
+	})
+	if err == nil || !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Fatalf("expected fail-closed conflict error, got %v", err)
+	}
+	if committer.changes != nil {
+		t.Fatalf("conflicting changes must not reach committer: %#v", committer.changes)
+	}
+	if result == nil || result.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != firstLink {
+		t.Fatalf("expected reconciled scene in failed result, got %#v", result)
+	}
+}
+
+func TestAssetLocationReconciliation_UpdatedWithoutCanonicalLinkClears(t *testing.T) {
+	oldLink := "https://drive.google.com/file/d/old/view"
+	verifier := newStubVerifier()
+	verifier.stubResult(oldLink, &scriptpkg.VerifiedLocation{
+		AssetID: "asset-1", DriveFileID: "known-file", DriveLink: "",
+		State: scriptpkg.LocationStateUpdated,
+	})
+	processor := NewAssetLocationReconciliationProcessor(verifier)
+	result, err := processor.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("asset-1", oldLink),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := result.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink; got != "" {
+		t.Fatalf("empty canonical link must be cleared, got %q", got)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "incomplete canonical Drive metadata") {
+		t.Fatalf("expected canonical-link warning, got %v", result.Warnings)
+	}
+}
+
+func TestAssetLocationReconciliation_DurableMalformedDocsURLClearsOnlyLink(t *testing.T) {
+	docsLink := "https://docs.google.com/document/d//edit"
+	verifier := newStubVerifier()
+	verifier.stubResult(docsLink, &scriptpkg.VerifiedLocation{
+		AssetID:   "image-doc-malformed",
+		State:     scriptpkg.LocationStateMalformed,
+		ErrorCode: "MALFORMED_LINK",
+	})
+	committer := &recordingAssetLocationCommitter{}
+	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
+
+	result, err := processor.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithImage("image-doc-malformed", docsLink),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("malformed Docs URL is a confirmed invalid state, got error: %v", err)
+	}
+	image := result.UpdatedSpecScene.Scenes[0].Bindings.Image
+	if image.URL != "" || image.Status != string(scriptpkg.ImageStatusFailed) {
+		t.Fatalf("malformed Docs URL must be cleared and failed, got URL=%q status=%q", image.URL, image.Status)
+	}
+	if len(committer.changes) != 1 || committer.changes[0].AssetID != "image-doc-malformed" || committer.changes[0].DriveLink != "" {
+		t.Fatalf("durable malformed Docs change = %#v, want one cleared-link change", committer.changes)
+	}
+}
+
+func TestAssetLocationReconciliation_DurableTransportErrorFailsClosed(t *testing.T) {
+	link := "https://drive.google.com/file/d/transport-failure/view"
+	verifier := newStubVerifier()
+	verifier.stubError(link, errors.New("drive unavailable"))
+	committer := &recordingAssetLocationCommitter{}
+	processor := NewDurableAssetLocationReconciliationProcessor(verifier, committer)
+
+	result, err := processor.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("asset-transport", link),
+		}},
+	})
+	if err == nil || !errors.Is(err, scriptpkg.ErrPostprocessFailed) {
+		t.Fatalf("expected durable transport failure, got %v", err)
+	}
+	if result == nil || result.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != "" {
+		t.Fatalf("transport failure must return a cleared scene, got %#v", result)
+	}
+	if committer.changes != nil {
+		t.Fatalf("transport failure must not reach durable committer: %#v", committer.changes)
 	}
 }
 

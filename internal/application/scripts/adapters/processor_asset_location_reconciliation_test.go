@@ -516,6 +516,30 @@ func TestAssetLocationReconciliation_DriveImageMissingCleared(t *testing.T) {
 	}
 }
 
+func TestAssetLocationReconciliation_MalformedDriveImageCleared(t *testing.T) {
+	link := "https://drive.google.com/file/d//view"
+	verifier := newStubVerifier()
+	verifier.stubResult(link, &scriptpkg.VerifiedLocation{
+		AssetID:   "image-malformed",
+		State:     scriptpkg.LocationStateMalformed,
+		ErrorCode: "MALFORMED_LINK",
+	})
+
+	processor := NewAssetLocationReconciliationProcessor(verifier)
+	result, err := processor.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithImage("image-malformed", link),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	image := result.UpdatedSpecScene.Scenes[0].Bindings.Image
+	if image.URL != "" || image.Status != string(scriptpkg.ImageStatusFailed) {
+		t.Fatalf("malformed Drive image must be cleared and failed, got URL=%q status=%q", image.URL, image.Status)
+	}
+}
+
 // 13. Non-Drive provider image URL is not sent to the Drive verifier.
 func TestAssetLocationReconciliation_ExternalImageURLPreserved(t *testing.T) {
 	link := "https://images.example.test/generated/image-1.png"
