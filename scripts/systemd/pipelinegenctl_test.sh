@@ -59,9 +59,45 @@ FAKE_TIMEOUT
 cat > "$FAKE_BIN/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
 set -u
-printf 'curl %s\n' "$*" >> "${FAKE_CALLS:?}"
+args="$*"
+if [[ "$args" == *"/api/admin/drive/canary-upload"* ]]; then
+    config="$(cat)"
+    auth_present=0
+    boxe_present=0
+    argv_safe=1
+    [[ "$config" == *"Authorization: Bearer ${FAKE_ADMIN_TOKEN:?}"* ]] && auth_present=1
+    [[ "$config" == *'folder_alias'* && "$config" == *'Boxe'* ]] && boxe_present=1
+    [[ "$args" == *"${FAKE_ADMIN_TOKEN:?}"* || "$args" == *'Authorization'* ]] && argv_safe=0
+    printf 'curl canary config auth_present=%s boxe_present=%s argv_safe=%s\n' "$auth_present" "$boxe_present" "$argv_safe" >> "${FAKE_CALLS:?}"
+    [[ "$auth_present" == "1" ]] || exit 97
+    [[ "$boxe_present" == "1" ]] || exit 98
+    [[ "$argv_safe" == "1" ]] || exit 99
+    printf 'curl canary authorization=present payload=Boxe\n' >> "${FAKE_CALLS:?}"
+    if [[ "${FAKE_CANARY_OK:-1}" == "1" ]]; then
+        printf '%s' '{"ok":true,"file_id":"hidden-file-id","drive_link":"https://drive.google.com/file/d/hidden-file-id/view"}'
+    else
+        printf '%s' '{"ok":false,"file_id":"hidden-file-id","drive_link":"https://drive.google.com/file/d/hidden-file-id/view"}'
+    fi
+    exit "${FAKE_CANARY_RC:-0}"
+fi
+printf 'curl readiness code=%s\n' "${FAKE_CURL_CODE:-200}" >> "${FAKE_CALLS:?}"
 printf '%s' "${FAKE_CURL_CODE:-200}"
 FAKE_CURL
+
+cat > "$FAKE_BIN/jq" <<'FAKE_JQ'
+#!/usr/bin/env bash
+set -u
+response="$(cat)"
+[[ "$response" != *'file_id'* ]] || printf 'jq inspected canary response without exposing metadata\n' >> "${FAKE_CALLS:?}"
+[[ "$response" == *'"ok":true'* ]]
+FAKE_JQ
+
+cat > "$FAKE_BIN/with-velox-auth" <<'FAKE_AUTH'
+#!/usr/bin/env bash
+set -u
+export VELOX_ADMIN_TOKEN="${FAKE_ADMIN_TOKEN:?}"
+exec "$@"
+FAKE_AUTH
 
 cat > "$FAKE_BIN/journalctl" <<'FAKE_JOURNALCTL'
 #!/usr/bin/env bash
@@ -80,12 +116,17 @@ FAKE_JOURNALCTL
 
 chmod +x "$FAKE_BIN"/* "$CLI"
 
+FAKE_ADMIN_TOKEN='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+
 run_cli() {
     SYSTEMCTL_BIN="$FAKE_BIN/systemctl" \
     SUDO_BIN="$FAKE_BIN/sudo" \
     CURL_BIN="$FAKE_BIN/curl" \
+    JQ_BIN="$FAKE_BIN/jq" \
+    WITH_VELOX_AUTH_BIN="$FAKE_BIN/with-velox-auth" \
     JOURNALCTL_BIN="$FAKE_BIN/journalctl" \
     TIMEOUT_BIN="$FAKE_BIN/timeout" \
+    FAKE_ADMIN_TOKEN="$FAKE_ADMIN_TOKEN" \
     FAKE_CALLS="$CALLS" \
     PIPELINEGEN_READY_TIMEOUT=1 \
     PIPELINEGEN_RESTART_TIMEOUT=30 \
@@ -164,10 +205,31 @@ fi
 assert_contains "$(cat "$WORK_DIR/restart-failed.out")" 'restart denied, failed, or timed out'
 
 : > "$CALLS"
-FAKE_SYSTEMCTL_ACTIVE=1 run_cli restart-verify >/dev/null
+restart_verify_output=$(FAKE_SYSTEMCTL_ACTIVE=1 run_cli restart-verify)
+[[ "$restart_verify_output" == 'PASS' ]] || {
+    printf 'FAIL: restart-verify output was not exactly PASS\n' >&2
+    printf '%s' "$restart_verify_output" >&2
+    exit 1
+}
 calls=$(cat "$CALLS")
 assert_contains "$calls" "sudo -n $FAKE_BIN/systemctl restart pipelinegen.service"
-assert_contains "$calls" 'curl '
+assert_contains "$calls" 'curl readiness code=200'
+assert_contains "$calls" 'curl canary config auth_present=1 boxe_present=1 argv_safe=1'
+assert_contains "$calls" 'curl canary authorization=present payload=Boxe'
+assert_contains "$calls" 'jq inspected canary response without exposing metadata'
+assert_not_contains "$calls" "$FAKE_ADMIN_TOKEN"
+
+: > "$CALLS"
+if FAKE_SYSTEMCTL_ACTIVE=1 FAKE_CANARY_OK=0 run_cli restart-verify >"$WORK_DIR/canary-failed.out" 2>&1; then
+    printf 'FAIL: rejected Drive canary unexpectedly passed\n' >&2
+    exit 1
+fi
+[[ "$(cat "$WORK_DIR/canary-failed.out")" == 'FAIL' ]] || {
+    printf 'FAIL: canary failure output was not exactly FAIL\n' >&2
+    cat "$WORK_DIR/canary-failed.out" >&2
+    exit 1
+}
+assert_not_contains "$(cat "$WORK_DIR/canary-failed.out")" "$FAKE_ADMIN_TOKEN"
 
 : > "$CALLS"
 FAKE_SYSTEMCTL_ACTIVE=1 logs=$(run_cli logs)
