@@ -1,0 +1,9 @@
+# PipelineGen operator access: exact service controls only.
+# This file is rendered by install_operator_access.sh; do not edit the
+# placeholders manually.
+Cmnd_Alias PIPELINEGEN_SERVICE_CONTROL = \
+    __SYSTEMCTL__ restart pipelinegen.service, \
+    __SYSTEMCTL__ start pipelinegen.service, \
+    __SYSTEMCTL__ stop pipelinegen.service
+
+__OPERATOR__ ALL=(root) NOPASSWD: PIPELINEGEN_SERVICE_CONTROL

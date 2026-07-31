@@ -44,6 +44,45 @@ commands do not use sudo. The command waits for the service to become active,
 probes `/ready` with a bounded timeout, and sanitizes journal output so
 passwords, tokens, Drive URLs, and Drive identifiers are not printed.
 
+## Restricted operator access
+
+The versioned policy in `sudoers/pipelinegen-operator` grants the configured
+operator only these exact commands as root:
+
+```text
+/usr/bin/systemctl restart pipelinegen.service
+/usr/bin/systemctl start pipelinegen.service
+/usr/bin/systemctl stop pipelinegen.service
+```
+
+It does **not** grant `status`, `enable`, `disable`, `daemon-reload`, wildcard
+service names, access to `artlist-scraper.service`, or a root shell. The
+policy is intentionally separate from the one-time systemd migration, which
+may require broader administrative commands.
+
+Validate the checked-in policy without changing the host:
+
+```bash
+scripts/systemd/sudoers/install_operator_access.sh --check
+```
+
+Install it on the deployment host only after obtaining the host's normal root
+authorization through the operator's own process; the helper never invokes
+sudo, asks for a password, reads tokens, or prints credentials:
+
+```bash
+sudo scripts/systemd/sudoers/install_operator_access.sh --install
+```
+
+The installer renders and validates the policy with `visudo`, writes only
+`/etc/sudoers.d/pipelinegen-operator`, and enforces mode `0440`. It refuses
+unsafe paths, policy includes, wildcard commands, unrelated services, and any
+policy that is not exactly the three-command grant. Its isolated test is:
+
+```bash
+scripts/systemd/sudoers/install_operator_access_test.sh
+```
+
 Optional environment variables:
 
 - `PIPELINEGEN_BASE_URL` — local HTTP base URL (default `http://127.0.0.1:8000`)
@@ -128,10 +167,10 @@ script will execute the sudo commands itself.
 ## Long-term follow-ups (forward-pointers)
 
 - **`PR-SYSTEMD-RESTART-SUDO-NOPASSDEP`** (architecture/current.yaml#E2E-VERIFICATION-BLOCKED-2026-07-07)
-  Add a restricted NOPASSWD sudoers entry for `pierone` to allow only
-  `/usr/bin/systemctl restart pipelinegen.service` without a password.
-  Operator action; cannot be automated by the agent. Read-only status,
-  readiness, and journal access remain unprivileged.
+  The versioned policy and validator now live under `scripts/systemd/sudoers/`.
+  The operator must install it on the deployment host. It allows only exact
+  restart/start/stop commands for `pipelinegen.service`; status, readiness,
+  and journal access remain unprivileged.
 
 - **`PR-PIPELINEGEN-LOGROTATE`**
   Configure `journalctl --vacuum-time=7d` or a `logrotate` rule for
