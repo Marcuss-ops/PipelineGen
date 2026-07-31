@@ -40,6 +40,17 @@ PER_SOURCE_MIN_MS = 57_000              # ─2×CLIP_DURATION_SECONDS tolerance
 PER_SOURCE_MAX_MS = 63_000
 CLIP_DURATION_MIN_SEC = 3.8             # ffprobe tolerance
 CLIP_DURATION_MAX_SEC = 4.2
+PREFLIGHT_MIN_DURATION_SECONDS = 64.0
+PREFLIGHT_REPORT_SCHEMA = "youtube-auth-preflight.v1"
+AUTH_REQUIRED_MARKERS = (
+    "auth_required",
+    "youtube_auth_required",
+    "sign in to confirm",
+    "confirm you're not a bot",
+    "confirm your age",
+    "authentication required",
+    "login required",
+)
 
 QUERIES = {
     "fight": ("{name} fights", "{name} knockout", "{name} highlights", "{name} boxing fight"),
@@ -79,6 +90,11 @@ SUGAR_RAY_ROBINSON_MANIFEST = (
     ("fight", ("-dixu5le9NI", "H4eP1TTedYc", "eobxArm4tDA", "3BBtxCqNFBA", "HmVSxcShBqg", "cOCDmL4F3nM", "4FzA5frXpzI", "QvDCTmK0Naw", "80RUvhi5uaI", "gOdNYYY99GU", "Ey37kbCfozQ", "n_M4SFK8NCc")),
     ("interview", ("naPht4IBx4w", "ohQYcpFSKs0", "Xi-2E5QcXtQ", "4LNQKtq5SEw", "CrAMsMCb2bg", "iuRLVCEdUUo")),
     ("training", ("FQivVOx8SnM", "7D3_UMN97gI")),
+)
+
+PREFLIGHT_TARGETS = (
+    ("Floyd Mayweather Jr.", FLOYD_MAYWEATHER_MANIFEST[0][1][0]),
+    ("Sugar Ray Robinson", SUGAR_RAY_ROBINSON_MANIFEST[0][1][0]),
 )
 
 
@@ -131,11 +147,147 @@ def describe(video_id: str, category: str) -> dict[str, Any]:
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"YouTube manifest video {video_id} unavailable: {exc}") from exc
     duration = float(item.get("duration", 0) or 0)
-    if duration < 64:
+    if duration < PREFLIGHT_MIN_DURATION_SECONDS:
         raise RuntimeError(f"YouTube manifest video {video_id} is too short: {duration}s")
     return {"video_id": video_id, "url": f"https://www.youtube.com/watch?v={video_id}",
             "title": item.get("title", ""), "channel": item.get("channel", item.get("uploader", "")),
             "duration": duration, "category": category}
+
+
+def resolve_youtube_cookies_path(environ: dict[str, str] | None = None) -> str:
+    """Resolve the cookie path without reading or exposing the cookie file.
+
+    The canonical deployment variable wins. The legacy variable and local
+    fallback remain supported so existing authorized runner environments keep
+    working while deployments migrate to the canonical secret location.
+    """
+    environment = os.environ if environ is None else environ
+    return (
+        environment.get("VELOX_YOUTUBE_COOKIES_FILE")
+        or environment.get("YT_COOKIES_PATH")
+        or "cookies.txt"
+    )
+
+
+def build_preflight_command(video_id: str, cookies_path: str) -> list[str]:
+    """Build a sanitized-probe command; the cookie path is never reported."""
+    ytdlp_path = os.environ.get("YTDLP_PATH", "yt-dlp")
+    js_runtime = os.environ.get("YT_JS_RUNTIME_PATH", "node")
+    return [
+        ytdlp_path,
+        "--cookies", cookies_path,
+        "--js-runtime", js_runtime,
+        "--remote-components", "ejs:github",
+        "--no-warnings",
+        "--extractor-args", "youtube:player_client=android_creator",
+        "--dump-single-json", "--skip-download",
+        f"https://www.youtube.com/watch?v={video_id}",
+    ]
+
+
+def _contains_auth_required(output: str) -> bool:
+    normalized = output.casefold()
+    return any(marker in normalized for marker in AUTH_REQUIRED_MARKERS)
+
+
+def run_preflight_probe(
+    boxer: str,
+    video_id: str,
+    cookies_path: str,
+    *,
+    runner: Any = subprocess.run,
+    timeout: int = 90,
+) -> dict[str, Any]:
+    """Probe one manifest video and return only sanitized, typed results."""
+    result: dict[str, Any] = {
+        "boxer": boxer,
+        "video_id": video_id,
+        "available": False,
+        "auth_required": False,
+        "duration_seconds": None,
+        "duration_check": "FAIL",
+        "status": "FAIL",
+        "error_code": None,
+    }
+    if not os.path.isfile(cookies_path) or not os.access(cookies_path, os.R_OK):
+        result["error_code"] = "COOKIE_FILE_UNAVAILABLE"
+        return result
+
+    try:
+        completed = runner(
+            build_preflight_command(video_id, cookies_path),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        result["error_code"] = "YT_DLP_TIMEOUT"
+        return result
+    except OSError:
+        result["error_code"] = "YT_DLP_UNAVAILABLE"
+        return result
+
+    combined_output = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    if _contains_auth_required(combined_output):
+        result["auth_required"] = True
+        result["error_code"] = "AUTH_REQUIRED"
+        return result
+    if completed.returncode != 0:
+        result["error_code"] = "YT_DLP_FAILED"
+        return result
+
+    try:
+        item = json.loads(completed.stdout or "")
+        duration = float(item.get("duration", 0) or 0)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        result["error_code"] = "INVALID_METADATA"
+        return result
+
+    result["available"] = True
+    result["duration_seconds"] = duration
+    if duration < PREFLIGHT_MIN_DURATION_SECONDS:
+        result["error_code"] = "DURATION_TOO_SHORT"
+        return result
+    result["duration_check"] = "PASS"
+    result["status"] = "PASS"
+    return result
+
+
+def run_auth_preflight(
+    *,
+    cookies_path: str | None = None,
+    runner: Any = subprocess.run,
+) -> dict[str, Any]:
+    """Run the two real manifest probes and return a sanitized JSON report."""
+    resolved_path = cookies_path or resolve_youtube_cookies_path()
+    probes = [
+        run_preflight_probe(boxer, video_id, resolved_path, runner=runner)
+        for boxer, video_id in PREFLIGHT_TARGETS
+    ]
+    passed = all(probe["status"] == "PASS" for probe in probes)
+    return {
+        "schema_version": PREFLIGHT_REPORT_SCHEMA,
+        "youtube_auth": "PASS" if passed else "FAIL",
+        "cookie_file_configured": bool(resolved_path),
+        "cookie_file_readable": os.path.isfile(resolved_path) and os.access(resolved_path, os.R_OK),
+        "floyd_manifest_probe": probes[0]["status"],
+        "sugar_ray_manifest_probe": probes[1]["status"],
+        "probes": probes,
+    }
+
+
+def write_auth_preflight_report(report: dict[str, Any], destination: str) -> None:
+    """Write the already-sanitized report to stdout or an atomic JSON file."""
+    encoded = json.dumps(report, indent=2, sort_keys=True)
+    if destination == "--stdout":
+        print(encoded)
+        return
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.tmp")
+    temporary.write_text(encoded + "\n", encoding="utf-8")
+    temporary.replace(target)
 
 
 def select(base: str, token: str, boxer: str) -> list[dict[str, Any]]:
@@ -333,7 +485,9 @@ def verify(db: Path, folder_id: str, boxer: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("boxer")
+    ap.add_argument("boxer", nargs="?")
+    ap.add_argument("--preflight-auth", action="store_true")
+    ap.add_argument("--preflight-report", default="out/01_youtube_auth_preflight.json")
     ap.add_argument("--base", default=os.environ.get("VELOX_BASE_URL", "http://127.0.0.1:8000"))
     ap.add_argument("--db", default="data/media/media.db.sqlite")
     ap.add_argument("--root-id", default=os.environ.get("YOUTUBE_STOCK_ROOT_ID", ""))
@@ -341,6 +495,12 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true")
     ap.add_argument("--concurrency", type=int, default=2)
     args = ap.parse_args()
+    if args.preflight_auth:
+        report = run_auth_preflight()
+        write_auth_preflight_report(report, args.preflight_report)
+        return 0 if report["youtube_auth"] == "PASS" else 1
+    if not args.boxer:
+        ap.error("boxer is required unless --preflight-auth is used")
     # Normalise to lowercase so folder_path in SQLite is always consistent.
     # verify() already uses LOWER() for case-insensitive matching, but new
     # clips must also land with the same casing to avoid mixed-path bugs.
