@@ -19,6 +19,7 @@ import sys
 import argparse
 import re
 import os
+import math
 
 from stock_registry import load_resolved_stock, scene_expectations
 
@@ -63,13 +64,77 @@ def deep_get(d, *keys, default=None):
     return d
 
 
+def _request_items(data):
+    """Return request items from parent/full envelopes, keyed by item id."""
+    candidates = (
+        deep_get(data, "job", "payload", "items", default=[]),
+        deep_get(data, "payload", "items", default=[]),
+        deep_get(data, "result", "data", "payload", "items", default=[]),
+    )
+    result = {}
+    for candidate in candidates:
+        if not isinstance(candidate, list):
+            continue
+        for request_item in candidate:
+            if not isinstance(request_item, dict):
+                continue
+            item_id = request_item.get("id") or request_item.get("item_id")
+            if item_id:
+                result[str(item_id)] = request_item
+    return result
+
+
+def _attach_request_metadata(item, request_items):
+    """Attach parent request metadata without overwriting response fields."""
+    if not isinstance(item, dict):
+        return item
+    item_id = item.get("item_id") or deep_get(item, "result", "item_id", default="")
+    request_item = request_items.get(str(item_id)) if item_id else None
+    if not request_item:
+        return item
+    enriched = dict(item)
+    enriched["_request"] = request_item
+    return enriched
+
+
+def _payload_item(payload, preferred_id=""):
+    """Extract the matching request item from single or batch payloads."""
+    if not isinstance(payload, dict):
+        return {}
+    item = payload.get("item")
+    if isinstance(item, dict):
+        return item
+    items = payload.get("items")
+    if isinstance(items, list):
+        candidates = [
+            candidate for candidate in items
+            if isinstance(candidate, dict)
+            and str(candidate.get("id") or candidate.get("item_id") or "") == str(preferred_id)
+        ]
+        if candidates:
+            return candidates[0]
+        if len(items) == 1 and isinstance(items[0], dict):
+            return items[0]
+        return {}
+    for key in ("data", "payload"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            item = _payload_item(nested, preferred_id)
+            if item:
+                return item
+    return {}
+
+
 def extract_items(data, db_path=None):
     """Extract items array from various possible response shapes."""
+    request_items = _request_items(data)
     items = deep_get(data, "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "data", "items", default=[])
+    if items:
+        return [_attach_request_metadata(item, request_items) for item in items]
     if not items and db_path and os.path.exists(db_path):
         import sqlite3
         child_ids = deep_get(data, "result", "child_job_ids", default=[])
@@ -93,9 +158,14 @@ def extract_items(data, db_path=None):
                         payload = json.loads(payload_json)
                         res_dict = json.loads(result_json) if result_json else {}
                         
-                        item_id = payload.get("item", {}).get("id", "")
-                        item_title = payload.get("item", {}).get("title", "")
-                        item_lang = payload.get("item", {}).get("language", "")
+                        response_item_id = (
+                            res_dict.get("item_id")
+                            or deep_get(res_dict, "data", "item_id", default="")
+                        )
+                        request_item = _payload_item(payload, response_item_id)
+                        item_id = request_item.get("id", "") or str(response_item_id)
+                        item_title = request_item.get("title", "")
+                        item_lang = request_item.get("language", "")
                         
                         cur.execute(
                             "SELECT id, narrative_text, specscene FROM scripts WHERE title = ? AND language = ? ORDER BY created_at DESC LIMIT 1",
@@ -115,8 +185,24 @@ def extract_items(data, db_path=None):
                         doc_id = res_dict.get("doc_id", "")
                         doc_link = res_dict.get("doc_link", "")
                         
+                        request_output = request_item.get("output")
+                        if not isinstance(request_output, dict):
+                            request_output = {}
+                        request_docs = request_item.get("docs")
+                        if not isinstance(request_docs, dict):
+                            request_docs = {}
+
                         reconstructed.append({
                             "item_id": item_id,
+                            # Preserve request metadata because the SQLite
+                            # fallback has no response envelope to carry it.
+                            "language": item_lang,
+                            "docs": request_docs,
+                            "_request": request_item,
+                            "output": {
+                                "translate_to": request_output.get("translate_to", ""),
+                                "voiceover_folder_id": request_output.get("voiceover_folder_id", ""),
+                            },
                             "result": {
                                 "status": status,
                                 "script_id": script_id,
@@ -145,6 +231,152 @@ def get_item_output(item):
     if not out:
         out = deep_get(item, "result", "data", "output")
     return out or {}
+
+
+def _first_language(value):
+    """Return the first non-empty language from a scalar or language list."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, list):
+        for language in value:
+            if isinstance(language, str) and language.strip():
+                return language.strip()
+    return ""
+
+
+def _metadata_sources(item):
+    """Yield all request/result metadata containers in stable priority order."""
+    if not isinstance(item, dict):
+        return
+
+    seen = set()
+
+    def add(container):
+        if not isinstance(container, dict) or id(container) in seen:
+            return
+        seen.add(id(container))
+        output = container.get("output")
+        docs = container.get("docs")
+        yield container, output if isinstance(output, dict) else {}, docs if isinstance(docs, dict) else {}
+
+    # The item envelope is preferred, followed by result and the nested
+    # result.data/data envelopes used by the API and SQLite reconstruction.
+    containers = [item]
+    request = item.get("_request")
+    if isinstance(request, dict):
+        containers.append(request)
+    result = item.get("result")
+    if isinstance(result, dict):
+        containers.append(result)
+        data = result.get("data")
+        if isinstance(data, dict):
+            containers.append(data)
+            nested_data = data.get("data")
+            if isinstance(nested_data, dict):
+                containers.append(nested_data)
+
+    for container in containers:
+        for source in add(container):
+            yield source
+        output = container.get("output") if isinstance(container, dict) else None
+        if isinstance(output, dict):
+            for source in add(output):
+                yield source
+
+
+def _metadata_values(item, key):
+    """Yield metadata values from every supported response envelope."""
+    for container, output, _docs in _metadata_sources(item):
+        value = container.get(key)
+        if value not in (None, "", []):
+            yield value
+        value = output.get(key)
+        if value not in (None, "", []):
+            yield value
+
+
+def _docs_languages(item):
+    for container, _output, docs in _metadata_sources(item):
+        value = docs.get("languages")
+        if value not in (None, "", []):
+            yield value
+        value = container.get("languages")
+        if value not in (None, "", []):
+            yield value
+
+
+def effective_language(item):
+    """Resolve language centrally: translate_to, docs.languages, language.
+
+    The same resolver is used for translation assertions and voiceover
+    assertions so a translated child is never checked against its source
+    language merely because the request's ``language`` field is unchanged.
+    """
+    for value in _metadata_values(item, "translate_to"):
+        language = _first_language(value)
+        if language:
+            return language
+    for value in _docs_languages(item):
+        language = _first_language(value)
+        if language:
+            return language
+    for value in _metadata_values(item, "language"):
+        language = _first_language(value)
+        if language:
+            return language
+    return ""
+
+
+def canonical_folder_id(item):
+    """Resolve the canonical voiceover folder from output then docs metadata."""
+    for value in _metadata_values(item, "voiceover_folder_id"):
+        folder_id = _first_language(value)
+        if folder_id:
+            return folder_id
+    for container, _output, docs in _metadata_sources(item):
+        for value in (docs.get("folder_id"), container.get("folder_id")):
+            folder_id = _first_language(value)
+            if folder_id:
+                return folder_id
+    return ""
+
+
+def validate_voiceover(voiceover, expected_language, expected_folder_id):
+    """Return descriptive failures for one voiceover binding."""
+    errors = []
+    if not isinstance(voiceover, dict):
+        return ["voiceover binding is missing"]
+
+    status = str(voiceover.get("status", "")).strip()
+    if status.casefold() not in {"completed", "succeeded"}:
+        errors.append(f"status={status or '(missing)'}, expected terminal positive status")
+    if not str(voiceover.get("drive_link", "")).strip():
+        errors.append("drive_link is empty")
+    if not str(voiceover.get("voice", "")).strip():
+        errors.append("voice is empty")
+    actual_language = str(voiceover.get("language", "")).strip()
+    if not expected_language:
+        errors.append("effective language is empty")
+    elif actual_language.casefold() != expected_language.casefold():
+        errors.append(
+            f"language={actual_language or '(missing)'}, expected {expected_language}"
+        )
+    actual_folder = str(voiceover.get("folder_id", "")).strip()
+    if not expected_folder_id:
+        errors.append("canonical voiceover folder_id is empty")
+    elif actual_folder != expected_folder_id:
+        errors.append(
+            f"folder_id={actual_folder or '(missing)'}, expected {expected_folder_id}"
+        )
+    try:
+        duration = float(voiceover.get("duration_seconds", 0))
+    except (TypeError, ValueError):
+        duration = 0
+    if not math.isfinite(duration) or duration <= 0:
+        errors.append(
+            f"duration_seconds={voiceover.get('duration_seconds')!r}, expected > 0"
+        )
+    return errors
 
 
 def count_lang_markers(text, lang):
@@ -279,6 +511,7 @@ def main():
 
     # ── Per-item / per-language checks ───────────────────────────────
     stock_by_scene = {index: set() for index in range(expected_scene_count)}
+    canonical_folders = set()
     doc_links = set()
     vo_completed = 0
     vo_total = 0
@@ -286,8 +519,11 @@ def main():
 
     for item in items:
         item_id = item.get("item_id", "unknown")
-        lang = item_id.split("-")[-1] if item_id else "??"
+        lang = effective_language(item)
         output = get_item_output(item)
+        expected_folder_id = canonical_folder_id(item)
+        if expected_folder_id:
+            canonical_folders.add(expected_folder_id)
 
         if not output:
             add_error(f"Missing output for {item_id}")
@@ -343,13 +579,17 @@ def main():
 
             # ── Test 6: Voiceover ──────────────────────────────────
             vo = deep_get(scene, "bindings", "voiceover", default={})
-            if vo:
-                vo_total += 1
-                if vo.get("status") == "completed" and vo.get("link", ""):
-                    vo_completed += 1
-                else:
-                    add_error(f"Test 6 [{item_id} scene {s_idx}]: voiceover "
-                               f"status={vo.get('status')}, link={'present' if vo.get('link') else 'missing'}")
+            vo_total += 1
+            voiceover_errors = validate_voiceover(
+                vo, lang, expected_folder_id
+            )
+            if voiceover_errors:
+                add_error(
+                    f"Test 6 [{item_id} scene {s_idx}]: voiceover "
+                    + "; ".join(voiceover_errors)
+                )
+            else:
+                vo_completed += 1
 
         # ── Test 5: Translation correctness (non-IT items) ─────────
         if lang != "it" and lang in LANG_MARKERS:
@@ -387,6 +627,12 @@ def main():
         for term in suspicious_terms:
             if term in text_lower:
                 add_error(f"Test 9 [{item_id}]: Editorial integrity — found '{term}'")
+
+    if len(canonical_folders) > 1:
+        add_error(
+            "Voiceover folder is not canonical across items: "
+            + ", ".join(sorted(canonical_folders))
+        )
 
     # ── Test 4: Stock coherence across languages ──────────────────────
     print("\n── Test 4: Stock coherence across languages ──")
