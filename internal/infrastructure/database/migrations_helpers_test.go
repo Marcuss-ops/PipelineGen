@@ -10,6 +10,7 @@
 //   - migrations_156_test.go             — asset_text_tracks source-track FK + segments text_hash
 //   - migrations_157_test.go             — asset_state column + idx + round-trip
 //   - migrations_158_test.go             — rights-extension columns
+//   - migrations_183_test.go             — lifecycle shadow reconciliation
 //
 // Migration scenario tests use the same `applyFreshSmokeDB(t)` helper to
 // spin up an isolated SQLite database in `t.TempDir()`, apply migrations

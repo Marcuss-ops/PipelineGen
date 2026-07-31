@@ -53,6 +53,7 @@ package storage
 //   - migrations_156_test.go      (asset_text_tracks source-track FK + text_hash)
 //   - migrations_157_test.go      (asset_state column + idx + round-trip)
 //   - migrations_158_test.go      (rights-extension columns)
+//   - migrations_183_test.go      (lifecycle shadow reconciliation)
 //   - migrations_helpers_test.go  (shared apply + introspection helpers)
 //
 // scanColumnNames is the small helper used by every per-migration

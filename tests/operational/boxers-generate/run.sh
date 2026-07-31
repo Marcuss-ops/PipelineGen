@@ -93,10 +93,10 @@ if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
 elif [[ "$DRY_RUN" != "1" ]]; then
     # SQLite fallback
     if [[ -n "$TYSON_VIDEO_ID" ]]; then
-        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE id LIKE '${TYSON_VIDEO_ID}_%' AND lifecycle_status='ACTIVE' LIMIT 6;"
+        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE id LIKE '${TYSON_VIDEO_ID}_%' AND lifecycle_state='ACTIVE' LIMIT 6;"
         printf 'Querying by video ID: %s\n' "$TYSON_VIDEO_ID"
     else
-        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE LOWER(folder_path) LIKE LOWER('%${TYSON_FOLDER_NAME}%') AND lifecycle_status='ACTIVE' AND source='youtube' LIMIT 6;"
+        TYSON_SQL="SELECT id, drive_link FROM media_assets WHERE LOWER(folder_path) LIKE LOWER('%${TYSON_FOLDER_NAME}%') AND lifecycle_state='ACTIVE' AND source='youtube' LIMIT 6;"
         printf 'Querying by folder name: %s\n' "$TYSON_FOLDER_NAME"
     fi
     mapfile -t DB_ROWS < <(sqlite3 "$DB_PATH" "$TYSON_SQL")
