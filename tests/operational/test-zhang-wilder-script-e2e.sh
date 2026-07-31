@@ -176,7 +176,7 @@ if [[ "$SMOKE_LAST_STATUS" != "completed" && "$SMOKE_LAST_STATUS" != "SUCCEEDED"
 fi
 
 # ── 4. Output extraction ────────────────────────────────────────────────
-# Mirrors the dual-path read used by script_generate_smoke.sh: nested under
+# Mirrors the dual-path read used by the common generation runner (the historical wrapper remains compatible): nested under
 # items first (current schema), legacy top-level fallback second.
 TEXT=$(jq -r '.result.data.items[0].result.output.text // .result.output.text // ""' "$SMOKE_LAST_BODY")
 if [[ -z "$TEXT" || "$TEXT" == "null" ]]; then

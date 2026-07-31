@@ -118,7 +118,7 @@ bash tests/operational/startup_smoke.sh
 # ── Step 5: Smoke test ──────────────────────────────────────────────────
 echo ""
 echo "=== Step 5/5: Smoke test /api/script/generate ==="
-bash tests/operational/script_generate_smoke.sh
+bash tests/operational/generate/run.sh basic.json
 
 # ── Success ─────────────────────────────────────────────────────────────
 # By default, keep the server running after a successful pipeline so the

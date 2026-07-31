@@ -1,0 +1,43 @@
+{
+  "name": "basic script generation",
+  "case_prefix": "script-smoke",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "Test generazione PipelineGen __CASE_MARKER__",
+        "language": "it",
+        "tone": "documentary",
+        "source": {
+          "type": "text",
+          "topic": "energia solare __CASE_MARKER__",
+          "source_text": "L'energia solare sta trasformando il modo in cui famiglie e imprese producono elettricità. I pannelli installati sui tetti permettono di ridurre i consumi provenienti dalla rete. La luce del sole viene convertita in energia attraverso celle fotovoltaiche, mentre gli inverter rendono questa corrente utilizzabile nelle abitazioni. Durante le ore centrali della giornata una casa può coprire una parte importante del proprio fabbisogno e, quando la produzione supera i consumi, l'energia può essere accumulata o immessa nella rete. L'installazione richiede una valutazione dell'orientamento, dell'inclinazione e delle ombre presenti sul tetto. Anche la manutenzione è relativamente semplice: occorre controllare i collegamenti, mantenere puliti i moduli e verificare nel tempo le prestazioni dell'impianto. Per famiglie e imprese il vantaggio non è soltanto economico. Produrre elettricità vicino al luogo in cui viene consumata riduce le perdite di trasmissione e rende più resiliente il sistema locale. L'energia solare non elimina da sola ogni problema della transizione energetica, perché la disponibilità varia con il meteo e con le stagioni. Tuttavia, insieme a batterie, reti intelligenti e consumi più efficienti, offre uno strumento concreto per ridurre le emissioni e usare meglio le risorse. Un progetto ben valutato parte dai consumi annuali e dalla loro distribuzione durante la giornata. Una famiglia che usa più energia al mattino o alla sera può combinare i pannelli con un sistema di accumulo, mentre un'azienda può spostare alcune attività nelle ore di maggiore produzione. Queste scelte non cambiano il funzionamento delle celle, ma migliorano l'uso dell'energia prodotta. La dimensione dell'impianto deve essere compatibile con lo spazio disponibile, con la struttura dell'edificio e con i vincoli locali. Prima dei lavori è utile controllare il tetto, i collegamenti elettrici e le eventuali ombre create da alberi o costruzioni vicine. Dopo l'installazione, i dati dell'inverter aiutano a individuare cali di rendimento e anomalie. Anche la rete elettrica trae beneficio da una generazione distribuita quando la produzione e i consumi vengono coordinati. I contatori e i sistemi di gestione permettono di osservare i flussi e di programmare l'accumulo. In questo modo l'energia solare diventa parte di un sistema più flessibile, insieme all'efficienza energetica e alle altre fonti rinnovabili. Questo caso operativo __CASE_MARKER__ verifica una generazione documentaria in italiano, ancorata al tema dell'energia solare e senza introdurre fonti esterne non presenti nel testo."
+        },
+        "script_params": {
+          "target_words": 600,
+          "skip_quality_gate": true,
+          "use_memory": true
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 420,
+    "max_words": 900,
+    "keywords": ["energia solare", "elettricità", "pannelli"],
+    "language_regex": ["\\b(il|la|gli|della|energia|produzione|elettricità)\\b"],
+    "reject_prompt_leakage": true,
+    "word_count_positive": true,
+    "segments_optional": true,
+    "idempotency": true,
+    "missing_key": true,
+    "conflict_title": "Payload differente"
+  }
+}

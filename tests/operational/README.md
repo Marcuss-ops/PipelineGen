@@ -158,7 +158,7 @@ failure halts the chain.
 composes the four live batteries:
 
 - `tests/operational/images_e2e.sh`
-- `tests/operational/script_generate_smoke.sh`
+- `tests/operational/generate/run.sh` (canonical runner; `basic.json` scenario)\n- `tests/operational/script_generate_smoke.sh` (compatibility wrapper for the canonical runner)
 - `tests/operational/vidrush_script_generate_e2e.sh`
 - `tests/operational/artlist/run_all.sh`
 

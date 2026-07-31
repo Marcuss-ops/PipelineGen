@@ -1,0 +1,62 @@
+{
+  "name": "Zhang vs Wilder generation",
+  "case_prefix": "zhang-wilder",
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "items": [
+      {
+        "id": "__CASE_MARKER__-item",
+        "title": "Zhang vs Wilder: A Study in Contrasts __CASE_MARKER__",
+        "language": "it",
+        "tone": "documentary",
+        "source": {
+          "type": "text",
+          "topic": "Zhilei Zhang vs Deontay Wilder heavyweight boxing __CASE_MARKER__",
+          "source_text": "Fonte editoriale controllata: questo episodio confronta, in chiave documentaristica e senza presentare fatti non verificati come accaduti, i profili pugilistici di Zhilei Zhang e Deontay Wilder. L'analisi tratta stili, ritmo, distanza, potenza, gestione del ring e possibili scenari tattici. Il testo deve distinguere chiaramente osservazioni tecniche, ipotesi e informazioni non disponibili nella fonte."
+        },
+        "script_params": {
+          "target_words": 500,
+          "segments": [
+            {"topic": "Opening", "target_words": 90},
+            {"topic": "Zhang profile", "target_words": 100},
+            {"topic": "Wilder profile", "target_words": 100},
+            {"topic": "Tactical matchup", "target_words": 120},
+            {"topic": "Fight outlook", "target_words": 90}
+          ],
+          "skip_quality_gate": true,
+          "use_memory": true
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true
+        },
+        "docs": {
+          "enabled": true,
+          "languages": ["it"],
+          "folder_id": "10p7NPodbQNjbSyvDIQJtowcmGeejwwlb"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "enabled",
+            "internet_images": "enabled"
+          },
+          "extraction": {"enabled": true}
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "min_words": 350,
+    "max_words": 750,
+    "reject_prompt_leakage": true,
+    "segments_optional": false,
+    "vidrush": true,
+    "drive": true,
+    "idempotency": true,
+    "missing_key": false,
+    "conflict_title": "Payload diverso"
+  }
+}

@@ -133,7 +133,7 @@ part of `verify-main` or `verify-release`**.
 
 | | |
 |---|---|
-| **Script** | `tests/operational/script_generate_smoke.sh` |
+| **Script** | `tests/operational/generate/run.sh basic.json` |
 | **Locate Makefile target** | `grep -nE '^verify-script-live:' Makefile` |
 | **Cost** | ~3–5 min (text-only dispatch + worker pull + finalizer) |
 | **Surface** | `script.generate` dispatch + worker pull + finalizer **WITHOUT** the full Vid Rush media path — server-side only, no Chrome, no FFmpeg |
@@ -239,7 +239,7 @@ make verify-images-live
 
 ```bash
 # During iteration (no live-service hits):
-SMOKE_DRY_RUN=1 bash tests/operational/script_generate_smoke.sh
+SMOKE_DRY_RUN=1 bash tests/operational/generate/run.sh basic.json
 
 # Real run after a script.generate change:
 make verify-script-live
@@ -330,7 +330,7 @@ This doc intentionally does NOT repeat:
   - `grep -nE '^verify-live:' Makefile`
   - `grep -nE '^verify-(images|artlist|script|vidrush)-live:' Makefile`
   - `grep -nE '^verify-artlist-[a-z]+:' Makefile`
-- `tests/operational/{images_e2e.sh,artlist/run_all.sh,script_generate_smoke.sh,vidrush_script_generate_e2e.sh}` — canonical battery scripts.
+- `tests/operational/{images_e2e.sh,artlist/run_all.sh,generate/run.sh,vidrush_script_generate_e2e.sh}` — canonical battery scripts.
 - `tests/operational/vidrush/scenarios/{00..13}_*.json` — VidRush scenario manifests (14 total, 13_maya is the Maya civilization scenario).
 - `tests/operational/maya_vidrush_e2e.sh` — Maya VidRush 7-job E2E battery.
 - `tests/operational/artlist/{01..09}_*.sh` — the 9 Artlist sub-gates.
