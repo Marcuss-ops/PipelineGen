@@ -167,7 +167,7 @@ func TestSemanticBackendANN(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "asset-1", Name: "Clip A", MediaType: "video", Source: "youtube"},
+			{ID: "asset-1", Name: "Clip A", MediaType: "video", Source: "youtube", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -225,7 +225,7 @@ func TestSemanticBackendHybrid(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "hyb-1", Name: "Hybrid Hit", MediaType: "video"},
+			{ID: "hyb-1", Name: "Hybrid Hit", MediaType: "video", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -254,6 +254,9 @@ func TestSemanticBackendHybrid(t *testing.T) {
 	if vs.lastHybridReq.SparseText != "epic landscape" {
 		t.Errorf("SparseText = %q, want %q",
 			vs.lastHybridReq.SparseText, "epic landscape")
+	}
+	if len(vs.lastHybridReq.LifecycleState) != 2 || vs.lastHybridReq.LifecycleState[0] != "ACTIVE" || vs.lastHybridReq.LifecycleState[1] != "PUBLISHED" {
+		t.Errorf("LifecycleState = %v, want [ACTIVE PUBLISHED]", vs.lastHybridReq.LifecycleState)
 	}
 	// Pin canonical channel contract (see TestSemanticBackendANN).
 	if reg.callsByChan[search.ChannelText] != 1 {
@@ -313,7 +316,7 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "ws-1", Name: "WS Asset"},
+			{ID: "ws-1", Name: "WS Asset", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -340,6 +343,9 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 		t.Errorf("WorkspaceID = %q, want %q",
 			vs.lastAnnReq.WorkspaceID, "tenant-42")
 	}
+	if len(vs.lastAnnReq.LifecycleState) != 2 || vs.lastAnnReq.LifecycleState[0] != "ACTIVE" || vs.lastAnnReq.LifecycleState[1] != "PUBLISHED" {
+		t.Errorf("LifecycleState = %v, want [ACTIVE PUBLISHED]", vs.lastAnnReq.LifecycleState)
+	}
 	// Pin canonical channel contract (see TestSemanticBackendANN).
 	if reg.callsByChan[search.ChannelText] != 1 {
 		t.Errorf("expected exactly 1 EmbedQuery on ChannelText, got %d",
@@ -348,6 +354,38 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 }
 
 // ── Test 5: Lifecycle ACTIVE ───────────────────────────────────────────
+
+func TestSemanticBackendFiltersUnavailableAssetWithStaleDriveLink(t *testing.T) {
+	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
+	vs := &mockVectorStore{
+		annRes: []assetsearch.VectorSearchResult{
+			{AssetID: "active-1", Score: 0.9},
+			{AssetID: "stale-1", Score: 0.8},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "active-1", Name: "Active Asset", LifecycleState: "ACTIVE", DriveLink: "https://drive.google.com/file/d/active/view"},
+			{ID: "stale-1", Name: "Stale Asset", LifecycleState: "ERROR", DriveLink: "https://drive.google.com/file/d/deleted/view"},
+		},
+	}
+	b := newSemanticBackend(reg, vs, mr, &mockDelivery{})
+
+	candidates, err := b.Search(context.Background(), search.Query{
+		Text:  "lifecycle",
+		Mode:  search.SearchModeANN,
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].AssetID != "active-1" {
+		t.Fatalf("unavailable asset with stale DriveLink leaked into search: %+v", candidates)
+	}
+	if candidates[0].DriveLink != "" {
+		t.Fatalf("semantic candidate exposed raw DriveLink = %q; only signed PreviewURL may be public", candidates[0].DriveLink)
+	}
+}
 
 func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
@@ -400,8 +438,8 @@ func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "asset-1", Name: "First Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao pressure round 7"},
-			{ID: "asset-2", Name: "Second Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao hurts Broner near ropes"},
+			{ID: "asset-1", Name: "First Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao pressure round 7", LifecycleState: "ACTIVE"},
+			{ID: "asset-2", Name: "Second Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao hurts Broner near ropes", LifecycleState: "ACTIVE"},
 		},
 	}
 	rk := &mockReranker{
@@ -462,7 +500,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "admin-hit", Name: "Admin Hit"},
+			{ID: "admin-hit", Name: "Admin Hit", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -504,7 +542,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "admin-hyb", Name: "Admin Hybrid"},
+			{ID: "admin-hyb", Name: "Admin Hybrid", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -545,7 +583,7 @@ func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "tenant-hit", Name: "Tenant Hit"},
+			{ID: "tenant-hit", Name: "Tenant Hit", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}
@@ -669,7 +707,7 @@ func TestSemanticBackendFiltersMediaType(t *testing.T) {
 	}
 	mr := &mockMediaReader{
 		assets: []search.MediaAsset{
-			{ID: "img-1", Name: "Image Asset", MediaType: "image"},
+			{ID: "img-1", Name: "Image Asset", MediaType: "image", LifecycleState: "ACTIVE"},
 		},
 	}
 	del := &mockDelivery{}

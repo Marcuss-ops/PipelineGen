@@ -6,6 +6,7 @@ package mediasearch
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -514,6 +515,30 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 
 // TestHandlerReturns503WhenNoBackend verifies that when the
 // aggregator returns ErrNoBackendAvailable, the handler responds 503.
+func TestMediaSearchResponse_DoesNotSerializeRawDriveLink(t *testing.T) {
+	r := &search.Result{Items: []search.Candidate{{
+		AssetID:    "asset-stale",
+		Title:      "stale link candidate",
+		Source:     "semantic",
+		MediaType:  "video",
+		DriveLink:  "https://drive.google.com/file/d/deleted-id/view",
+		PreviewURL: "https://signed.example.test/assets/asset-stale",
+	}}}
+
+	resp := resultToResponse(r, "stale", search.SearchModeANN, "")
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal search response: %v", err)
+	}
+	body := string(raw)
+	if strings.Contains(body, "drive_link") || strings.Contains(body, "deleted-id") {
+		t.Fatalf("raw Drive locator leaked into public response: %s", body)
+	}
+	if !strings.Contains(body, "signed.example.test/assets/asset-stale") {
+		t.Fatalf("signed PreviewURL missing from public response: %s", body)
+	}
+}
+
 func TestHandlerReturns503WhenNoBackend(t *testing.T) {
 	h := NewHandler(WireParams{})
 	c, w := newTestGinContext()

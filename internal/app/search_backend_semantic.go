@@ -197,21 +197,23 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			Category:         filter.Category,
 			MediaType:        filter.MediaType,
 			Language:         filter.Language,
+			LifecycleState:   filter.LifecycleState,
 			WorkspaceID:      scope.WorkspaceID,
 			IsSystem:         scope.IsSystem,
 		})
 	default: // SearchModeANN (or empty string → ANN)
 		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
-			QueryVector: vec,
-			VectorName:  semanticDenseVectorName,
-			Limit:       limit,
-			MinScore:    minScore,
-			Source:      filter.Source,
-			Category:    filter.Category,
-			MediaType:   filter.MediaType,
-			Language:    filter.Language,
-			WorkspaceID: scope.WorkspaceID,
-			IsSystem:    scope.IsSystem,
+			QueryVector:    vec,
+			VectorName:     semanticDenseVectorName,
+			Limit:          limit,
+			MinScore:       minScore,
+			Source:         filter.Source,
+			Category:       filter.Category,
+			MediaType:      filter.MediaType,
+			Language:       filter.Language,
+			LifecycleState: filter.LifecycleState,
+			WorkspaceID:    scope.WorkspaceID,
+			IsSystem:       scope.IsSystem,
 		})
 	}
 	if err != nil {
@@ -261,6 +263,15 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	candidates := make([]search.Candidate, 0, len(assets))
 	assetsByID := make(map[string]search.MediaAsset, len(assets))
 	for _, a := range assets {
+		// Defense in depth against Qdrant/SQLite replication lag or a
+		// non-canonical MediaReadRepository implementation. Only the
+		// search capability's canonical searchable states may reach the
+		// API response; unavailable assets remain diagnosable in SQLite
+		// but never become candidates.
+		if !isSearchableLifecycleState(a.LifecycleState) {
+			continue
+		}
+
 		// Tag filter: AND semantics (every filter tag must
 		// be present on the asset).
 		if !matchesAllTags(a.Tags, q.Filters.Tags) {
@@ -291,13 +302,18 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		}
 
 		candidates = append(candidates, search.Candidate{
-			AssetID:    a.ID,
-			Source:     "semantic",
-			SourceRef:  a.ID,
-			MediaType:  a.MediaType,
-			Title:      a.Name,
-			Name:       a.Name,
-			DriveLink:  a.DriveLink,
+			AssetID:   a.ID,
+			Source:    "semantic",
+			SourceRef: a.ID,
+			MediaType: a.MediaType,
+			Title:     a.Name,
+			Name:      a.Name,
+			// Raw Drive links are intentionally not copied into public
+			// semantic-search candidates. SQLite is canonical, but this
+			// adapter has no per-request Drive verification capability;
+			// exposing the field here could leak a stale URL after
+			// reconciliation lag. PreviewURL is the signed delivery
+			// surface and remains the only client-facing locator.
 			PreviewURL: url,
 			Score:      scoreByID[a.ID],
 		})
@@ -443,6 +459,15 @@ func float64Ptr(v float64) *float64 {
 // matchesAllTags returns true when every filter tag is present in
 // the asset tag list (AND semantics). Case-insensitive comparison.
 // An empty filter list always matches (no-op filter).
+func isSearchableLifecycleState(state string) bool {
+	for _, allowed := range search.SearchableLifecycleStates {
+		if state == allowed {
+			return true
+		}
+	}
+	return false
+}
+
 func matchesAllTags(assetTags, filterTags []string) bool {
 	if len(filterTags) == 0 {
 		return true
