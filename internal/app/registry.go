@@ -1,8 +1,8 @@
 // Package app — slim composition orchestrator (PR4 mechanical split
 // + Blocco C1-Step 2 centralisation, June 2026).
 //
-// PR4 mechanical split (June 2026): WireRegistry is now a 7-step
-// orchestrator that delegates each concern to a dedicated helper
+// PR4 mechanical split (June 2026): WireRegistry is now an ordered
+// 8-step orchestrator that delegates each concern to a dedicated helper
 // file in the same package `app`. The original 819-line file has
 // been split into 8 files:
 //
@@ -26,7 +26,7 @@
 //   - registerScraper + registerFullImages + registerStockPipeline
 //     (bundle-driven modules).
 //   - registry_search.go          registerSearchBackend helper
-//     (BuildCanonicalSearchFanOut + SearchAggregator wiring).
+//     (BuildCanonicalSearchFanOut + explicit search capability value).
 //   - registry_assets.go          registerAssets module
 //     (maintenanceSvc + voiceoverSvc + assetsBundle + WireAssets
 //   - SetDeletionService cycle).
@@ -85,9 +85,8 @@
 //
 //   - Data-flow ordering: registerInternalModules runs BEFORE
 //     registerImages AND registerAssets because both consume
-//     wiring.MediaIngest.Service (Images) and wiring.searchFanOut
-//
-//   - wiring.searchBackends + wiring.idempotencyHandler (Assets).
+//     wiring.MediaIngest.Service (Images) and the explicit search capability
+//     passed to the Assets phase.
 //     The user-stated orchestrator listing (assets before internal)
 //     is illustrative; the executable order is internal → scripts →
 //     images → assets → late-bindings → registerCapabilities.
@@ -99,11 +98,9 @@
 //     no shortcut for "we tried the old permissive helper" so the
 //     composition-time guarantee is identical to the pre-PR4 code.
 //
-//   - Cross-step state lives on RegistryWiring as 3 unexported
-//     fields (searchFanOut, searchBackends, idempotencyHandler).
-//     These are populated by registerInternalModules and consumed
-//     by registerAssets; they are NOT part of the public surface
-//     and are NOT read by tests (no test asserts on them).
+//   - Cross-step capability state is returned explicitly by
+//     registerInternalModules and passed to its consumers. RegistryWiring
+//     contains only final graph outputs, not temporal wiring state.
 package app
 
 import (
@@ -134,8 +131,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/gin-gonic/gin"
-
 	"go.uber.org/zap"
 )
 
@@ -160,13 +155,10 @@ var (
 // PR2 (June 2026): removed System, Jobs, Images, Drive, Scraper — those were
 // thin Wire wrappers inlined directly in WireRegistry below.
 //
-// PR4 (June 2026, codex/registry-composition-split) cross-step state:
-//   - searchFanOut / searchBackends / idempotencyHandler are populated
-//     by registerInternalModules (specifically registerSearchBackend +
-//     registerIdempotencyMiddleware) and consumed by registerAssets.
-//   - These fields are unexported because they are an implementation
-//     detail of the orchestration flow, NOT part of the public wiring
-//     surface that callers (server bootstrap, tests) read.
+// Cross-step capability state is intentionally not stored here. The
+// internal-module phase returns registryCrossStepState and the orchestrator
+// passes it explicitly to later phases; this struct contains only final graph
+// outputs exposed to the server and tests.
 type RegistryWiring struct {
 	Registry      *module.Registry
 	ArtlistSvc    *wiring.ArtlistWiring
@@ -185,21 +177,9 @@ type RegistryWiring struct {
 	OutboxHandler      RouteRegistrar
 	MediasearchHandler RouteRegistrar
 
-	// PR4 (June 2026) cross-step state — populated by internal modules
-	// registry, consumed by assets registration. Unexported.
-	searchFanOut   search.SearchFanOut
-	searchBackends *search.BackendRegistry
-	// searchAgg is the canonical godlike/06 SSOT *search.Aggregator
-	// singleton (constructed once at composition time by
-	// BuildCanonicalSearchFanOut inside registerSearchBackend).
-	// Plumbed into AssetsModuleDeps.Search.SearchAggregator so WireAssets
-	// can consume without constructing a duplicate (per percheck_search_aggregator_singleton).
-	searchAgg          *search.Aggregator
-	idempotencyHandler gin.HandlerFunc
-
 	// SearchFanOut is the public accessor for the canonical search
 	// aggregator (PR-AGENTE2-READINESS). Populated by WireRegistry
-	// after registerInternalModules sets the unexported field.
+	// from the explicit cross-step capability state.
 	SearchFanOut search.SearchFanOut
 }
 
@@ -209,9 +189,9 @@ type RegistryWiring struct {
 // transitional cd parameter was removed. All reads source from root.<bundle>.
 //
 // PR4 (June 2026, codex/registry-composition-split): this function is
-// now a 7-step orchestrator. Each step delegates to a dedicated helper
-// file in the same package and returns responsibility for cross-step
-// state via the unexported RegistryWiring fields (see type doc above).
+// now an 8-step orchestrator. Each step delegates to a cohesive helper
+// in the same package; cross-step capability state flows as an explicit
+// short-lived value rather than through RegistryWiring fields.
 func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot) (*RegistryWiring, error) {
 	if root == nil {
 		return nil, fmt.Errorf("wire registry: compose root is nil")
@@ -243,17 +223,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
-	// registerAssets (consumes wiring.searchFanOut + wiring.searchBackends
-	// + wiring.idempotencyHandler). Wraps registerIdempotencyMiddleware +
+	// registerAssets (consumes explicit registryCrossStepState). Wraps
+	// registerIdempotencyMiddleware +
 	// registerSearchBackend + registerArtlist + registerYouTubeClip +
 	// registerMediaIngest + registerScraper + registerFullImages +
 	// registerStockPipeline in the canonical DAG order.
-	if err := registerInternalModules(ctx, registry, log, cfg, root, wiring); err != nil {
+	crossStep, err := registerInternalModules(ctx, registry, log, cfg, root, wiring)
+	if err != nil {
 		return nil, fmt.Errorf("wire registry: internal-modules: %w", err)
 	}
 
 	// Expose search fanout for readiness gates (PR-AGENTE2-READINESS).
-	wiring.SearchFanOut = wiring.searchFanOut
+	wiring.SearchFanOut = crossStep.SearchFanOut
 
 	// Step 3 — Scripts: wireScriptFlow orchestration + ScriptHistory module.
 	if err := registerScripts(ctx, registry, log, cfg, root); err != nil {
@@ -274,11 +255,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: images: %w", err)
 	}
 
-	// Step 5 — Assets: bundle-driven. Consumes wiring.searchFanOut +
-	// wiring.searchBackends + wiring.idempotencyHandler; constructs
+	// Step 5 — Assets: bundle-driven. Consumes the explicit cross-step
+	// capability state; constructs
 	// maintenanceSvc locally + calls WireAssets + performs the
 	// DeletionService backfill on the maintenance service.
-	if err := registerAssets(registry, log, cfg, root, wiring); err != nil {
+	if err := registerAssets(registry, log, cfg, root, wiring, crossStep); err != nil {
 		return nil, fmt.Errorf("wire registry: assets: %w", err)
 	}
 
@@ -297,9 +278,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Step 5c — MediaMemory: canonical resolve + bindings + feedback
-	// surface. Consumes wiring.searchFanOut (Step 2) + root.DB +
+	// surface. Consumes the explicit search capability (Step 2) + root.DB +
 	// root.Outbox for the binding dispatcher.
-	if err := registerMediaMemory(registry, log, root, wiring); err != nil {
+	if err := registerMediaMemory(registry, log, root, crossStep.SearchFanOut); err != nil {
 		return nil, fmt.Errorf("wire registry: mediamemory: %w", err)
 	}
 
@@ -312,7 +293,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// NOT a typed providers.Registry .Register call). Returns the
 	// provider entry slice for Step 7 to register+freeze via the
 	// canonical composition point.
-	providerEntries, lbErr := applyLateBindings(registry, log, root, wiring)
+	providerEntries, lbErr := applyLateBindings(registry, log, root, wiring, crossStep)
 	if lbErr != nil {
 		return nil, fmt.Errorf("wire registry: late-bindings: %w", lbErr)
 	}
@@ -369,8 +350,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 // bindings + feedback surface. The resolver is backed by the Brain
 // (canonical 9-level cascade); the binding service is backed by
 // SQLite + outbox dispatcher.
-func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, wiring *RegistryWiring) error {
-	if wiring.searchFanOut == nil {
+func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, searchFanOut search.SearchFanOut) error {
+	if searchFanOut == nil {
 		log.Warn("registerMediaMemory: searchFanOut not wired; skipping (Level 3-9 cascade unavailable)")
 		return nil
 	}
@@ -379,7 +360,7 @@ func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wirin
 		return nil
 	}
 
-	resolver, err := WireMediaMemoryResolver(wiring.searchFanOut, root.DB.DB, log)
+	resolver, err := WireMediaMemoryResolver(searchFanOut, root.DB.DB, log)
 	if err != nil {
 		return fmt.Errorf("registerMediaMemory: wire resolver: %w", err)
 	}

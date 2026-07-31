@@ -26,24 +26,24 @@ import (
 //
 // Registration, validation and freeze happen later and exclusively inside
 // registerCapabilities. No object is completed through setters here.
-func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, wiring *RegistryWiring) (PreparedCapabilities, error) {
+func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
 	prepared := PreparedCapabilities{}
 
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
 		outboxPort := newOutboxMonitorAdapter(root.Outbox.EventsRepo)
-		wiring.OutboxHandler = outboxapi.NewHandler(outboxPort, log)
+		regWiring.OutboxHandler = outboxapi.NewHandler(outboxPort, log)
 		log.Info("QDRANT-002: outbox handler prepared for internal route mounting")
 	}
 
-	if root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
+	if root.Process != nil && root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
 		// Consume the canonical composition-root singleton directly. This no
 		// longer depends on Assets having copied the aggregator into its own
 		// wiring object first, eliminating the former temporal coupling.
 		var searchAgg mediasearchapi.AggregatorSearcher
-		if wiring.searchAgg != nil {
-			searchAgg = wiring.searchAgg
+		if crossStep.SearchAggregator != nil {
+			searchAgg = crossStep.SearchAggregator
 		}
-		wiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
+		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
 			Aggregator: searchAgg,
 			Log:        log,
 		})
@@ -54,25 +54,25 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 		return prepared, nil
 	}
 
-	if wiring.ArtlistSvc != nil && wiring.ArtlistSvc.Service != nil {
+	if regWiring.ArtlistSvc != nil && regWiring.ArtlistSvc.Service != nil {
 		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
 			Id:     "artlist",
 			Kind:   ProviderKindSearch,
-			Search: artlistadapter.NewAdapter(wiring.ArtlistSvc.Service),
+			Search: artlistadapter.NewAdapter(regWiring.ArtlistSvc.Service),
 		})
 	}
-	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Service != nil {
+	if regWiring.YouTubeClip != nil && regWiring.YouTubeClip.Service != nil {
 		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
 			Id:     "youtube",
 			Kind:   ProviderKindSearch,
-			Search: youtubeadapter.NewAdapter(wiring.YouTubeClip.Service),
+			Search: youtubeadapter.NewAdapter(regWiring.YouTubeClip.Service),
 		})
 	}
-	if wiring.StockPipeline != nil && wiring.StockPipeline.Service != nil {
+	if regWiring.StockPipeline != nil && regWiring.StockPipeline.Service != nil {
 		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
 			Id:    "stock",
 			Kind:  ProviderKindFetch,
-			Fetch: stockadapter.NewAdapter(wiring.StockPipeline.Service),
+			Fetch: stockadapter.NewAdapter(regWiring.StockPipeline.Service),
 		})
 	}
 
