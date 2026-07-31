@@ -74,6 +74,7 @@ func TestLifecycleState_IsValidTransitionFullTable(t *testing.T) {
 		StateActive: {
 			StateDeleteRequested: true, // user-initiated delete (new chain)
 			StateDeletePending:   true, // legacy broad-intent transition
+			StateError:           true, // Drive reconciliation invalidated the only publishable location
 		},
 		StateDeleteRequested: {
 			StateDriveDeletePending: true, // DriveDeleteHandler pre-flip stamp
