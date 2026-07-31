@@ -12,13 +12,13 @@ package stockpipeline
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/fs"
-	"strings"
 
 	"go.uber.org/zap"
+
+	stockingest "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline/ingest"
 )
 
 // LocalFSPort is the Pattern 0 typed port for local filesystem I/O.
@@ -99,60 +99,20 @@ type SourceCacheEntry struct {
 // "|" + mergeFormat + "|" + forceKeyframes. YouTube URLs are normalized
 // to the canonical watch?v= form before hashing.
 func DeriveSourceCacheKey(url, downloadSection, mergeFormat string, forceKeyframes bool) string {
-	canon := normalizeSourceURL(url)
-	fk := "false"
-	if forceKeyframes {
-		fk = "true"
-	}
-	input := fmt.Sprintf("stock-source:%s|%s|%s|%s", canon, downloadSection, mergeFormat, fk)
-	h := sha256.Sum256([]byte(input))
-	return fmt.Sprintf("%x", h)
+	return stockingest.DeriveSourceCacheKey(url, downloadSection, mergeFormat, forceKeyframes)
 }
 
 // normalizeSourceURL canonicalizes YouTube URLs to the form
 // https://www.youtube.com/watch?v=<id> by stripping query parameters
 // and normalizing the host. Non-YouTube URLs are returned unchanged.
 func normalizeSourceURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	lower := strings.ToLower(raw)
-	if !strings.Contains(lower, "youtube.com") && !strings.Contains(lower, "youtu.be") {
-		return raw
-	}
-	if id := extractVideoIDFromURL(raw); id != "" {
-		return "https://www.youtube.com/watch?v=" + id
-	}
-	return raw
+	return stockingest.NormalizeSourceURL(raw)
 }
 
 // extractVideoIDFromURL extracts the YouTube video ID from a URL.
 // Supports youtube.com/watch?v=<id>, youtu.be/<id>, and bare IDs.
 func extractVideoIDFromURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	lower := strings.ToLower(raw)
-
-	// youtu.be/<id>
-	if strings.Contains(lower, "youtu.be/") {
-		if idx := strings.LastIndex(raw, "/"); idx >= 0 {
-			id := strings.TrimSpace(raw[idx+1:])
-			if id != "" {
-				return id
-			}
-		}
-	}
-
-	// youtube.com/watch?v=<id>
-	if strings.Contains(lower, "youtube.com") {
-		if idx := strings.Index(lower, "v="); idx >= 0 {
-			rest := raw[idx+2:]
-			ampIdx := strings.IndexAny(rest, "&# \t\n")
-			if ampIdx > 0 {
-				return strings.TrimSpace(rest[:ampIdx])
-			}
-			return strings.TrimSpace(rest)
-		}
-	}
-
-	return ""
+	return stockingest.ExtractVideoID(raw)
 }
 
 // validateCacheHit checks that a cached file still exists on disk and
