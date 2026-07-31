@@ -20,45 +20,8 @@ import argparse
 import re
 import os
 
-# ── Expected fixture data ──────────────────────────────────────────────
-EXPECTED_ASSETS = [
-    "yt_0vnOfawuQF4_20_24_v1",   # index 0: Mike Tyson
-    "yt_6kEmuFoEy54_8_12_v1",    # index 1: Muhammad Ali
-    "yt_VJAk5sy1xoI_8_12_v1",    # index 2: Manny Pacquiao
-    "yt_66Dg_n0H8rQ_8_12_v1",    # index 3: Floyd Mayweather
-    "yt_n_M4SFK8NCc_8_12_v1",    # index 4: Sugar Ray Robinson
-]
+from stock_registry import load_resolved_stock, scene_expectations
 
-BOXER_NAMES = [
-    "Mike Tyson",
-    "Muhammad Ali",
-    "Manny Pacquiao",
-    "Floyd Mayweather",
-    "Sugar Ray Robinson",
-]
-
-SEGMENT_IDS = [
-    "boxer-mike-tyson",
-    "boxer-muhammad-ali",
-    "boxer-manny-pacquiao",
-    "boxer-floyd-mayweather",
-    "boxer-sugar-ray-robinson",
-]
-
-SRC_MARKERS = [
-    "SRC_MIKE_TYSON_01",
-    "SRC_MUHAMMAD_ALI_02",
-    "SRC_MANNY_PACQUIAO_03",
-    "SRC_FLOYD_MAYWEATHER_04",
-    "SRC_SUGAR_RAY_ROBINSON_05",
-]
-
-EXPECTED_ITEM_IDS = {
-    "top5-boxers-it", "top5-boxers-en", "top5-boxers-es",
-    "top5-boxers-pt", "top5-boxers-fr", "top5-boxers-de",
-    "top5-boxers-nl", "top5-boxers-pl", "top5-boxers-ro",
-    "top5-boxers-tr",
-}
 
 LANG_MARKERS = {
     "en": ["the", "and", "boxing"],
@@ -196,6 +159,7 @@ def main():
     parser = argparse.ArgumentParser(description="Verify multi-lang E2E script generation output")
     parser.add_argument("response_json", help="Path to full job JSON response file")
     parser.add_argument("db_path", help="Path to SQLite database")
+    parser.add_argument("--registry", required=True, help="Path to resolved_stock.json")
     parser.add_argument("--negative", action="store_true",
                         help="Negative test mode: expect STOCK_SUBJECT_MISMATCH")
     args = parser.parse_args()
@@ -212,6 +176,21 @@ def main():
         print(f"Error reading JSON: {e}")
         sys.exit(2)
 
+    try:
+        resolved = load_resolved_stock(args.registry)
+        expectations = scene_expectations(resolved)
+    except (OSError, ValueError) as exc:
+        print(f"Error loading resolved stock registry: {exc}")
+        sys.exit(2)
+    expected_assets = [entry["asset_id"] for entry in expectations]
+    boxer_names = [entry["subject"] for entry in expectations]
+    expected_item_ids = {f"top5-boxers-{language}" for language in LANG_MARKERS | {"it"}}
+    expected_item_count = len(expected_item_ids)
+    expected_scene_count = len(expectations)
+    expected_total_scenes = expected_item_count * expected_scene_count
+    segment_ids = {entry["segment_id"] for entry in expectations}
+    source_markers = [entry["source_marker"] for entry in expectations]
+
     dumped_raw = json.dumps(data)
 
     # ── Negative test mode (swapped stock detection) ─────────────────
@@ -227,9 +206,9 @@ def main():
             for s_idx, scene in enumerate(scenes):
                 stock = deep_get(scene, "bindings", "stock", default={})
                 asset_id = stock.get("asset_id", "")
-                if asset_id and s_idx < len(EXPECTED_ASSETS) and asset_id != EXPECTED_ASSETS[s_idx]:
+                if asset_id and s_idx < len(expected_assets) and asset_id != expected_assets[s_idx]:
                     print(red(f"✗ Negative test PASS: Stock mismatch found — scene {s_idx} "
-                              f"has {asset_id} instead of {EXPECTED_ASSETS[s_idx]}"))
+                              f"has {asset_id} instead of {expected_assets[s_idx]}"))
                     sys.exit(3)
         print(red("✗ Negative test FAILED: Expected STOCK_SUBJECT_MISMATCH but not found"))
         sys.exit(1)
@@ -256,10 +235,10 @@ def main():
     # ── Test 1: Batch completeness ────────────────────────────────────
     print("\n── Test 1: Batch completeness ──")
     total = len(items)
-    if total != 10:
-        add_error(f"Expected 10 items, got {total}")
+    if total != expected_item_count:
+        add_error(f"Expected {expected_item_count} items, got {total}")
     else:
-        ok(f"items_requested=10, items_returned={total}")
+        ok(f"items_requested={expected_item_count}, items_returned={total}")
 
     item_ids = set()
     script_ids = []
@@ -276,21 +255,21 @@ def main():
         if sid:
             script_ids.append(sid)
 
-    if len(item_ids) != 10:
-        add_error(f"Distinct item IDs: {len(item_ids)}, expected 10. Missing: "
-                   f"{EXPECTED_ITEM_IDS - item_ids}")
+    if len(item_ids) != expected_item_count:
+        add_error(f"Distinct item IDs: {len(item_ids)}, expected {expected_item_count}. Missing: "
+                   f"{expected_item_ids - item_ids}")
     else:
-        ok(f"10 distinct item_ids")
+        ok(f"{expected_item_count} distinct item_ids")
 
-    if completed_count != 10:
-        add_error(f"Completed items: {completed_count}/10")
+    if completed_count != expected_item_count:
+        add_error(f"Completed items: {completed_count}/{expected_item_count}")
     else:
-        ok(f"10/10 items completed")
+        ok(f"{expected_item_count}/{expected_item_count} items completed")
 
-    if len(script_ids) != 10:
-        add_error(f"Valid script_ids: {len(script_ids)}, expected 10")
+    if len(script_ids) != expected_item_count:
+        add_error(f"Valid script_ids: {len(script_ids)}, expected {expected_item_count}")
     else:
-        ok(f"10 valid script_ids")
+        ok(f"{expected_item_count} valid script_ids")
 
     if summary:
         if summary.get("total") != 10 or summary.get("succeeded") != 10:
@@ -299,7 +278,7 @@ def main():
             ok(f"summary: total={summary['total']}, succeeded={summary['succeeded']}")
 
     # ── Per-item / per-language checks ───────────────────────────────
-    stock_by_scene = {0: set(), 1: set(), 2: set(), 3: set(), 4: set()}
+    stock_by_scene = {index: set() for index in range(expected_scene_count)}
     doc_links = set()
     vo_completed = 0
     vo_total = 0
@@ -319,7 +298,7 @@ def main():
 
         # ── Test 2: Source text respect ──────────────────────────────
         if len(scenes) != 5:
-            add_error(f"Test 2 [{item_id}]: {len(scenes)} scenes, expected 5")
+            add_error(f"Test 2 [{item_id}]: {len(scenes)} scenes, expected {expected_scene_count}")
             continue
 
         total_scenes_check += len(scenes)
@@ -329,14 +308,14 @@ def main():
 
             # Check segment_id matches expected
             seg_id = scene.get("segment_id") or scene.get("id", "")
-            if s_idx < len(SEGMENT_IDS) and seg_id and seg_id not in SEGMENT_IDS:
+            if s_idx < len(expectations) and seg_id and seg_id not in segment_ids:
                 # Accept scene-0, scene-1 etc as fallback IDs
                 if not seg_id.startswith("scene-"):
                     add_error(f"Test 2 [{item_id}]: Wrong segment_id '{seg_id}' at index {s_idx}")
 
             # Check boxer name appears in the correct section (not other boxers in wrong scenes)
-            if s_idx < len(BOXER_NAMES):
-                expected_name = BOXER_NAMES[s_idx]
+            if s_idx < len(boxer_names):
+                expected_name = boxer_names[s_idx]
                 # Check that the expected boxer name appears
                 name_parts = expected_name.split()
                 if len(name_parts) >= 2:
@@ -348,10 +327,10 @@ def main():
             stock = deep_get(scene, "bindings", "stock", default={})
             asset_id = stock.get("asset_id", "")
 
-            if asset_id and s_idx < len(EXPECTED_ASSETS):
-                if asset_id != EXPECTED_ASSETS[s_idx]:
+            if asset_id and s_idx < len(expected_assets):
+                if asset_id != expected_assets[s_idx]:
                     add_error(f"Test 3 [{item_id} scene {s_idx}]: Wrong asset_id "
-                               f"'{asset_id}', expected '{EXPECTED_ASSETS[s_idx]}'")
+                               f"'{asset_id}', expected '{expected_assets[s_idx]}'")
                 stock_by_scene[s_idx].add(asset_id)
 
             if stock:
@@ -394,9 +373,9 @@ def main():
             add_error(f"Test 7 [{item_id}]: No document doc_link found")
 
         # ── Test 2b: SRC_ markers preserved in text ──────────────────
-        for s_idx in range(5):
-            if s_idx < len(SRC_MARKERS):
-                marker = SRC_MARKERS[s_idx]
+        for s_idx in range(expected_scene_count):
+            if s_idx < len(source_markers):
+                marker = source_markers[s_idx]
                 if marker not in text and marker not in " ".join(
                         s.get("text", "") for s in scenes):
                     pass  # Not fatal — markers may be stripped after translation
@@ -412,27 +391,27 @@ def main():
     # ── Test 4: Stock coherence across languages ──────────────────────
     print("\n── Test 4: Stock coherence across languages ──")
     all_coherent = True
-    for s_idx in range(5):
+    for s_idx in range(expected_scene_count):
         assets = stock_by_scene[s_idx]
         if len(assets) == 0:
             all_coherent = False
-            add_error(f"Scene {s_idx} ({BOXER_NAMES[s_idx]}): no stock assets found")
+            add_error(f"Scene {s_idx} ({boxer_names[s_idx]}): no stock assets found")
         elif len(assets) > 1:
             all_coherent = False
-            add_error(f"Scene {s_idx} ({BOXER_NAMES[s_idx]}): {len(assets)} different "
+            add_error(f"Scene {s_idx} ({boxer_names[s_idx]}): {len(assets)} different "
                        f"assets across languages — {assets}")
         else:
-            ok(f"{BOXER_NAMES[s_idx]}: COUNT(DISTINCT asset_id) = 1 ({list(assets)[0]})")
+            ok(f"{boxer_names[s_idx]}: COUNT(DISTINCT asset_id) = 1 ({list(assets)[0]})")
 
     # ── Test 6 summary ────────────────────────────────────────────────
     print("\n── Test 6: Voiceover summary ──")
-    if vo_total == 50:
-        if vo_completed == 50:
-            ok(f"50/50 voiceovers completed")
+    if vo_total == expected_total_scenes:
+        if vo_completed == expected_total_scenes:
+            ok(f"{expected_total_scenes}/{expected_total_scenes} voiceovers completed")
         else:
-            add_error(f"Voiceovers: {vo_completed}/50 completed")
+            add_error(f"Voiceovers: {vo_completed}/{expected_total_scenes} completed")
     else:
-        add_error(f"Voiceover scenes found: {vo_total}, expected 50")
+        add_error(f"Voiceover scenes found: {vo_total}, expected {expected_total_scenes}")
 
     # ── Test 7 summary: Documents ─────────────────────────────────────
     print("\n── Test 7: Google Drive documents ──")
@@ -476,18 +455,18 @@ def main():
 
     # ── Test 2 summary ────────────────────────────────────────────────
     print(f"\n── Test 2: Source text respect ──")
-    if total_scenes_check == 50:
-        ok(f"50 scenes across 10 languages (5 per language)")
+    if total_scenes_check == expected_total_scenes:
+        ok(f"{expected_total_scenes} scenes across {expected_item_count} languages ({expected_scene_count} per language)")
     else:
-        add_error(f"Total scenes: {total_scenes_check}, expected 50")
+        add_error(f"Total scenes: {total_scenes_check}, expected {expected_total_scenes}")
 
     # ── Test 3 summary: Stock bindings ───────────────────────────────
     print(f"\n── Test 3: Stock bindings ──")
     total_stocks = sum(len(v) for v in stock_by_scene.values())
-    if total_stocks == 5:
-        ok(f"5 unique stock assets (1 per boxer)")
+    if total_stocks == expected_scene_count:
+        ok(f"{expected_scene_count} unique stock assets (1 per boxer)")
     else:
-        add_error(f"Unique stock assets: {total_stocks}, expected 5")
+        add_error(f"Unique stock assets: {total_stocks}, expected {expected_scene_count}")
 
     # ── Final verdict ─────────────────────────────────────────────────
     print(f"\n{'='*50}")

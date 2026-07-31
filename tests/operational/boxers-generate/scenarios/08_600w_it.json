@@ -3,7 +3,7 @@
   "preset": "custom",
   "items": [
     {
-      "id": "top5-boxers-it",
+      "id": "top5-boxers-600w-it",
       "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [IT]",
       "language": "it",
       "tone": "documentary",
@@ -11,44 +11,51 @@
         "type": "text",
         "topic": "Cinque pugili che hanno affrontato difficoltà economiche",
         "source_text": "Crea un documentario composto esclusivamente dai cinque blocchi forniti. Mantieni l'ordine. Non trasformare il contenuto in una classifica assoluta se le fonti non lo dimostrano.",
-        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici."
+        "guidelines": "Non inventare cifre, classifiche, citazioni, processi, debiti o dettagli biografici. Mantieni invariati i marker SRC_ durante questo test."
       },
       "script_params": {
-        "target_words": 750,
+        "target_words": 3000,
         "skip_quality_gate": true,
         "use_memory": true,
         "segments": [
           {
             "id": "boxer-mike-tyson",
             "topic": "Mike Tyson",
-            "target_words": 150,
+            "target_words": 600,
             "source_text": "SRC_MIKE_TYSON_01. Mike Tyson ha accumulato centinaia di milioni di dollari di guadagni nella sua carriera sportiva, ma ha dichiarato bancarotta nel 2003 con circa 23 milioni di dollari di debiti, inclusi obblighi fiscali e costi legali. Usa soltanto questi fatti."
           },
           {
             "id": "boxer-muhammad-ali",
             "topic": "Muhammad Ali",
-            "target_words": 150,
-            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del rifiuto di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficoltà economiche, problemi professionali e interpretazioni editoriali."
+            "target_words": 600,
+            "source_text": "SRC_MUHAMMAD_ALI_02. Muhammad Ali ha affrontato restrizioni e una dura sospensione sportiva a causa del refusal di arruolarsi, sostenendo ingenti spese legali per la sua difesa costituzionale. Distingui sempre difficoltà economiche, problemi professionali e interpretazioni editoriali."
           },
           {
             "id": "boxer-manny-pacquiao",
             "topic": "Manny Pacquiao",
-            "target_words": 150,
+            "target_words": 600,
             "source_text": "SRC_MANNY_PACQUIAO_03. Manny Pacquiao ha iniziato la sua vita in povertà nelle Filippine prima di raggiungere il successo mondiale, affrontando successivamente importanti verifiche fiscali da parte delle autorità filippine e statunitensi. Non aggiungere dettagli sull'infanzia o sulla famiglia non presenti nella fonte."
           },
           {
             "id": "boxer-floyd-mayweather",
             "topic": "Floyd Mayweather",
-            "target_words": 150,
+            "target_words": 600,
             "source_text": "SRC_FLOYD_MAYWEATHER_04. Floyd Mayweather Jr. promuove attivamente un'immagine pubblica di estrema ricchezza e lusso, affrontando al contempo notevoli contenziosi con il fisco americano (IRS) per imposte non pagate. Spiega soltanto il contrasto documentato senza definirlo povero."
           },
           {
             "id": "boxer-sugar-ray-robinson",
             "topic": "Sugar Ray Robinson",
-            "target_words": 150,
+            "target_words": 600,
             "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Sugar Ray Robinson ha guadagnato milioni sul ring ma ha speso interamente il suo patrimonio in uno stile di vita sfarzoso e investimenti errati, vivendo gli ultimi anni con gravi problemi di salute e scarse risorse finanziarie. Non introdurre fatti esterni."
           }
         ]
+      },
+      "docs": {
+        "enabled": true,
+        "languages": [
+          "it"
+        ],
+        "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
       },
       "output": {
         "extract_entities": "enabled",
@@ -59,13 +66,11 @@
             "index": 0,
             "scene_id": "scene-0",
             "segment_id": "boxer-mike-tyson",
-            "asset_id": "{{stock.muhammad_ali.fight.asset_id}}",
-            "name": "Muhammad Ali fight",
+            "asset_id": "{{stock.mike_tyson.fight.asset_id}}",
+            "name": "Mike Tyson fight",
             "source": "youtube",
-            "drive_link": "{{stock.muhammad_ali.fight.drive_link}}",
+            "drive_link": "{{stock.mike_tyson.fight.drive_link}}",
             "score": 1,
-            "fallback": false,
-            "start_ms": 0,
             "end_ms": 5000
           },
           {
@@ -77,8 +82,6 @@
             "source": "youtube",
             "drive_link": "{{stock.muhammad_ali.fight.drive_link}}",
             "score": 1,
-            "fallback": false,
-            "start_ms": 0,
             "end_ms": 5000
           },
           {
@@ -90,8 +93,6 @@
             "source": "youtube",
             "drive_link": "{{stock.manny_pacquiao.fight.drive_link}}",
             "score": 1,
-            "fallback": false,
-            "start_ms": 0,
             "end_ms": 5000
           },
           {
@@ -103,8 +104,6 @@
             "source": "youtube",
             "drive_link": "{{stock.floyd_mayweather.fight.drive_link}}",
             "score": 1,
-            "fallback": false,
-            "start_ms": 0,
             "end_ms": 5000
           },
           {
@@ -116,20 +115,11 @@
             "source": "youtube",
             "drive_link": "{{stock.sugar_ray_robinson.fight.drive_link}}",
             "score": 1,
-            "fallback": false,
-            "start_ms": 0,
             "end_ms": 5000
           }
         ],
         "save_to_db": true,
-        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
-      },
-      "docs": {
-        "enabled": true,
-        "languages": [
-          "it"
-        ],
-        "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+        "voiceover_folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
       }
     }
   ]

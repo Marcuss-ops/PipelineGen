@@ -3,8 +3,8 @@
   "preset": "custom",
   "items": [
     {
-      "id": "top5-failfr-boxers-it",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [IT]",
+      "id": "top5-boxers-it",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [IT]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -133,8 +133,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-en",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [EN]",
+      "id": "top5-boxers-en",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [EN]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -264,8 +264,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-es",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [ES]",
+      "id": "top5-boxers-es",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [ES]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -395,8 +395,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-pt",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [PT]",
+      "id": "top5-boxers-pt",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [PT]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -526,8 +526,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-fr",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [FR]",
+      "id": "top5-boxers-fr",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [FR]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -646,7 +646,7 @@
         ],
         "save_to_db": true,
         "translate_to": "fr",
-        "voiceover_folder_id": "INVALID_VOICEOVER_FOLDER_DEADBEEF"
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
       },
       "docs": {
         "enabled": true,
@@ -657,8 +657,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-de",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [DE]",
+      "id": "top5-boxers-de",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [DE]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -788,8 +788,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-nl",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [NL]",
+      "id": "top5-boxers-nl",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [NL]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -919,8 +919,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-pl",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [PL]",
+      "id": "top5-boxers-pl",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [PL]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -1050,8 +1050,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-ro",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [RO]",
+      "id": "top5-boxers-ro",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [RO]",
       "language": "it",
       "tone": "documentary",
       "source": {
@@ -1181,8 +1181,8 @@
       }
     },
     {
-      "id": "top5-failfr-boxers-tr",
-      "title": "[FAIL-FR] Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [TR]",
+      "id": "top5-boxers-tr",
+      "title": "Cinque campioni tra ricchezza, difficoltà e cadute finanziarie [TR]",
       "language": "it",
       "tone": "documentary",
       "source": {

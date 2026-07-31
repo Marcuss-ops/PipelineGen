@@ -1,240 +1,238 @@
 #!/usr/bin/env python3
-"""
-generate_report.py — Extract structured test report from aggregated job response JSON.
+"""Build the structured report for the boxer multilang operational scenario."""
 
-Usage:
-  python3 generate_report.py <aggregated_job_json> <report_output_path>
-  python3 generate_report.py <aggregated_job_json> --stdout
-"""
+from __future__ import annotations
 
+import argparse
 import json
-import sys
 import os
+import sqlite3
+from typing import Any
 
+from stock_registry import load_resolved_stock, scene_expectations
 
-EXPECTED_ASSETS = {
-    0: "yt_0vnOfawuQF4_20_24_v1",   # Mike Tyson
-    1: "yt_6kEmuFoEy54_8_12_v1",    # Muhammad Ali
-    2: "yt_VJAk5sy1xoI_8_12_v1",    # Manny Pacquiao
-    3: "yt_66Dg_n0H8rQ_8_12_v1",    # Floyd Mayweather
-    4: "yt_n_M4SFK8NCc_8_12_v1",    # Sugar Ray Robinson
-}
-
-BOXER_NAMES = [
-    "Mike Tyson", "Muhammad Ali", "Manny Pacquiao",
-    "Floyd Mayweather", "Sugar Ray Robinson",
-]
 
 LANG_CODES = ["it", "en", "es", "pt", "fr", "de", "nl", "pl", "ro", "tr"]
 
 
-def deep_get(d, *keys, default=None):
-    for k in keys:
-        if isinstance(d, dict):
-            d = d.get(k, default)
+def deep_get(value: Any, *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if isinstance(value, dict):
+            value = value.get(key, default)
         else:
             return default
-    return d
+    return value
 
 
-def extract_items(data, db_path="data/media/media.db.sqlite"):
-    import os
+def extract_items(data: dict[str, Any], db_path: str = "data/media/media.db.sqlite") -> list[dict[str, Any]]:
     items = deep_get(data, "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "data", "items", default=[])
-    if not items and db_path and os.path.exists(db_path):
-        import sqlite3
-        child_ids = deep_get(data, "result", "child_job_ids", default=[])
-        if not child_ids:
-            child_ids = deep_get(data, "job", "result", "child_job_ids", default=[])
-        if not child_ids:
-            child_ids = deep_get(data, "result", "data", "child_job_ids", default=[])
-        if not child_ids:
-            child_ids = deep_get(data, "job", "result", "data", "child_job_ids", default=[])
-        
-        if child_ids:
-            try:
-                conn = sqlite3.connect(db_path)
-                cur = conn.cursor()
-                reconstructed = []
-                for cid in child_ids:
-                    cur.execute("SELECT status, payload_json, result_json FROM jobs WHERE id = ?", (cid,))
-                    row = cur.fetchone()
-                    if row:
-                        status, payload_json, result_json = row
-                        payload = json.loads(payload_json)
-                        res_dict = json.loads(result_json) if result_json else {}
-                        
-                        item_id = payload.get("item", {}).get("id", "")
-                        item_title = payload.get("item", {}).get("title", "")
-                        item_lang = payload.get("item", {}).get("language", "")
-                        
-                        cur.execute(
-                            "SELECT id, narrative_text, specscene FROM scripts WHERE title = ? AND language = ? ORDER BY created_at DESC LIMIT 1",
-                            (item_title, item_lang)
-                        )
-                        s_row = cur.fetchone()
-                        script_id = None
-                        text = ""
+    if items:
+        return items
+
+    child_ids = (
+        deep_get(data, "result", "child_job_ids", default=[])
+        or deep_get(data, "job", "result", "child_job_ids", default=[])
+        or deep_get(data, "result", "data", "child_job_ids", default=[])
+        or deep_get(data, "job", "result", "data", "child_job_ids", default=[])
+    )
+    if not child_ids or not db_path or not os.path.exists(db_path):
+        return []
+
+    reconstructed = []
+    try:
+        with sqlite3.connect(db_path) as connection:
+            for child_id in child_ids:
+                row = connection.execute(
+                    "SELECT status, payload_json, result_json FROM jobs WHERE id = ?",
+                    (child_id,),
+                ).fetchone()
+                if row is None:
+                    continue
+                status, payload_json, result_json = row
+                payload = json.loads(payload_json)
+                result = json.loads(result_json) if result_json else {}
+                item = payload.get("item", {})
+                script = connection.execute(
+                    "SELECT id, narrative_text, specscene FROM scripts "
+                    "WHERE title = ? AND language = ? ORDER BY created_at DESC LIMIT 1",
+                    (item.get("title", ""), item.get("language", "")),
+                ).fetchone()
+                script_id, text, specscene = (None, "", {})
+                if script:
+                    script_id, text, raw_specscene = script
+                    try:
+                        specscene = json.loads(raw_specscene) if raw_specscene else {}
+                    except json.JSONDecodeError:
                         specscene = {}
-                        if s_row:
-                            script_id, text, specscene_str = s_row
-                            try:
-                                specscene = json.loads(specscene_str) if specscene_str else {}
-                            except:
-                                specscene = {}
-                        
-                        doc_id = res_dict.get("doc_id", "")
-                        doc_link = res_dict.get("doc_link", "")
-                        
-                        reconstructed.append({
-                            "item_id": item_id,
-                            "result": {
-                                "status": status,
-                                "script_id": script_id,
-                                "artifacts": {
-                                    "document": {
-                                        "doc_id": doc_id,
-                                        "doc_link": doc_link
-                                    }
-                                },
-                                "output": {
-                                    "text": text,
-                                    "specscene": specscene
-                                }
+                reconstructed.append({
+                    "item_id": item.get("id", ""),
+                    "result": {
+                        "status": status,
+                        "script_id": script_id,
+                        "artifacts": {
+                            "document": {
+                                "doc_id": result.get("doc_id", ""),
+                                "doc_link": result.get("doc_link", ""),
                             }
-                        })
-                conn.close()
-                items = reconstructed
-            except Exception as e:
-                print(f"Error reconstructing items from DB: {e}")
-    return items
+                        },
+                        "output": {"text": text, "specscene": specscene},
+                    },
+                })
+    except (OSError, sqlite3.Error, json.JSONDecodeError):
+        return []
+    return reconstructed
 
 
-def generate_report(job_path, report_path):
-    with open(job_path) as f:
-        data = json.load(f)
+def _drive_state_counts(data: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"verified": 0, "missing": 0, "trashed": 0, "inaccessible": 0, "invalid_links": 0}
+    states = {"MISSING", "TRASHED", "INACCESSIBLE"}
+    for item in items:
+        output = deep_get(item, "result", "output", default={}) or deep_get(
+            item, "result", "data", "output", default={}
+        )
+        for scene in deep_get(output, "specscene", "scenes", default=[]):
+            for binding_name in ("stock", "clip", "voiceover"):
+                binding = deep_get(scene, "bindings", binding_name, default={})
+                if not isinstance(binding, dict):
+                    continue
+                state = str(binding.get("drive_verification_state", "")).upper()
+                if state in states:
+                    counts[state.lower()] += 1
+                    counts["invalid_links"] += 1
+                elif binding.get("drive_link") or binding.get("link"):
+                    counts["verified"] += 1
+    for detail in data.get("details", []):
+        state = str(detail.get("state", "")).upper() if isinstance(detail, dict) else ""
+        if state in states:
+            counts[state.lower()] += 1
+            counts["invalid_links"] += 1
+    return counts
 
+
+def generate_report(job_path: str, report_path: str, registry_path: str) -> dict[str, Any]:
+    with open(job_path, encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    resolved = load_resolved_stock(registry_path)
+    expectations = scene_expectations(resolved)
+    expected_assets = {entry["index"]: entry["asset_id"] for entry in expectations}
+    expected_items = len(LANG_CODES)
+    expected_scenes = expected_items * len(expectations)
     items = extract_items(data)
 
-    # ── Base counts ──────────────────────────────────────────────
-    report = {
+    report: dict[str, Any] = {
         "scenario": "top5_boxers_multilang",
-        "items_requested": 10,
+        "items_requested": expected_items,
         "items_completed": 0,
-        "languages": {},
-        "source_segments": {"expected": 50, "verified": 0},
-        "stock_bindings": {"expected": 50, "verified": 0, "wrong_subject": 0, "fallback": 0, "artlist": 0},
-        "voiceovers": {"expected": 50, "completed": 0, "failed": 0},
-        "documents": {"expected": 10, "created": 0, "wrong_folder": 0},
+        "languages": {language: "UNKNOWN" for language in LANG_CODES},
+        "source_segments": {"expected": expected_scenes, "verified": 0},
+        "stock_bindings": {
+            "expected": expected_scenes, "verified": 0, "wrong_subject": 0,
+            "fallback": 0, "artlist": 0,
+        },
+        "voiceovers": {"expected": expected_scenes, "completed": 0, "failed": 0},
+        "documents": {"expected": expected_items, "created": 0, "wrong_folder": 0},
         "sqlite": {"scripts": 0, "completed": 0},
+        "drive_verification": _drive_state_counts(data, items),
         "final": "PASS",
     }
 
-    # ── Per-language status ───────────────────────────────────────
-    for lang in LANG_CODES:
-        report["languages"][lang] = "PENDING"
-
-    lang_results = {}
+    language_results: dict[str, str] = {}
     for item in items:
-        item_id = item.get("item_id", "")
-        lang = item_id.split("-")[-1] if item_id else "??"
+        language = item.get("item_id", "").split("-")[-1]
         status = deep_get(item, "result", "status", default="UNKNOWN")
         if status in ("completed", "SUCCEEDED"):
             report["items_completed"] += 1
             report["sqlite"]["scripts"] += 1
             report["sqlite"]["completed"] += 1
-            lang_results[lang] = "PASS"
-        elif status in ("SUCCEEDED_WITH_WARNINGS",):
-            # SWW means translation/voiceover was silently skipped — fatal per test plan
-            lang_results[lang] = "FAIL"
+            language_results[language] = "PASS"
         else:
-            lang_results[lang] = "FAIL"
+            language_results[language] = "FAIL"
+    report["languages"] = {language: language_results.get(language, "UNKNOWN") for language in LANG_CODES}
 
-    report["languages"] = {k: lang_results.get(k, "UNKNOWN") for k in LANG_CODES}
-
-    # ── Per-item scene analysis ──────────────────────────────────
     for item in items:
         item_id = item.get("item_id", "")
-        output = deep_get(item, "result", "output") or deep_get(item, "result", "data", "output") or {}
+        output = deep_get(item, "result", "output", default={}) or deep_get(
+            item, "result", "data", "output", default={}
+        ) or {}
         scenes = deep_get(output, "specscene", "scenes", default=[])
-
-        for s_idx, scene in enumerate(scenes):
+        for scene_index, scene in enumerate(scenes):
             report["source_segments"]["verified"] += 1
-
             stock = deep_get(scene, "bindings", "stock", default={})
-            if stock:
+            if isinstance(stock, dict):
                 asset_id = stock.get("asset_id", "")
                 if asset_id:
                     report["stock_bindings"]["verified"] += 1
-                    if s_idx in EXPECTED_ASSETS and asset_id != EXPECTED_ASSETS[s_idx]:
+                    if expected_assets.get(scene_index) != asset_id:
                         report["stock_bindings"]["wrong_subject"] += 1
                 if stock.get("fallback", False):
                     report["stock_bindings"]["fallback"] += 1
                 if stock.get("source", "") == "artlist":
                     report["stock_bindings"]["artlist"] += 1
-
-            vo = deep_get(scene, "bindings", "voiceover", default={})
-            if vo:
-                if vo.get("status") == "completed" and vo.get("link"):
+            voiceover = deep_get(scene, "bindings", "voiceover", default={})
+            if isinstance(voiceover, dict):
+                if voiceover.get("status") == "completed" and voiceover.get("link"):
                     report["voiceovers"]["completed"] += 1
                 else:
                     report["voiceovers"]["failed"] += 1
-
-        doc_link = (deep_get(item, "result", "artifacts", "document", "doc_link") or
-                    deep_get(item, "result", "data", "artifacts", "document", "doc_link"))
-        if doc_link:
+        if deep_get(item, "result", "artifacts", "document", "doc_link") or deep_get(
+            item, "result", "data", "artifacts", "document", "doc_link"
+        ):
             report["documents"]["created"] += 1
 
-    # ── Final verdict ────────────────────────────────────────────
     failures = []
-    if report["items_completed"] != 10:
-        failures.append(f"items_completed={report['items_completed']}/10")
-    if report["source_segments"]["verified"] != 50:
-        failures.append(f"source_segments={report['source_segments']['verified']}/50")
-    if report["stock_bindings"]["verified"] != 50:
-        failures.append(f"stock_bindings={report['stock_bindings']['verified']}/50")
-    if report["stock_bindings"]["wrong_subject"] > 0:
-        failures.append(f"wrong_subject={report['stock_bindings']['wrong_subject']}")
-    if report["stock_bindings"]["artlist"] > 0:
-        failures.append(f"artlist_bindings={report['stock_bindings']['artlist']}")
-    if report["voiceovers"]["completed"] != 50:
-        failures.append(f"voiceovers={report['voiceovers']['completed']}/50")
-    if report["documents"]["created"] != 10:
-        failures.append(f"documents={report['documents']['created']}/10")
-    if report["sqlite"]["completed"] != 10:
-        failures.append(f"sqlite_scripts={report['sqlite']['completed']}/10")
-
+    if report["items_completed"] != expected_items:
+        failures.append(f"items_completed={report['items_completed']}/{expected_items}")
+    if report["source_segments"]["verified"] != expected_scenes:
+        failures.append(f"source_segments={report['source_segments']['verified']}/{expected_scenes}")
+    if report["stock_bindings"]["verified"] != expected_scenes:
+        failures.append(f"stock_bindings={report['stock_bindings']['verified']}/{expected_scenes}")
+    for key in ("wrong_subject", "fallback", "artlist"):
+        if report["stock_bindings"][key] > 0:
+            failures.append(f"{key}={report['stock_bindings'][key]}")
+    if report["voiceovers"]["completed"] != expected_scenes:
+        failures.append(f"voiceovers={report['voiceovers']['completed']}/{expected_scenes}")
+    if report["documents"]["created"] != expected_items:
+        failures.append(f"documents={report['documents']['created']}/{expected_items}")
+    if report["sqlite"]["completed"] != expected_items:
+        failures.append(f"sqlite_scripts={report['sqlite']['completed']}/{expected_items}")
+    if report["drive_verification"]["invalid_links"]:
+        failures.append(f"invalid_drive_links={report['drive_verification']['invalid_links']}")
     if failures:
         report["final"] = "FAIL"
         report["_failures"] = failures
 
-    # ── Output ───────────────────────────────────────────────────
     if report_path == "--stdout":
         print(json.dumps(report, indent=2))
     else:
-        os.makedirs(os.path.dirname(report_path), exist_ok=True)
-        with open(report_path, "w") as f:
-            json.dump(report, f, indent=2)
+        os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, indent=2)
+            handle.write("\n")
         print(f"Report saved to {report_path}")
         print(f"  Final: {report['final']}")
-        if failures:
-            for f2 in failures:
-                print(f"  → {f2}")
+        for failure in failures:
+            print(f"  → {failure}")
+    return report
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("job_path")
+    parser.add_argument("report_path", nargs="?", default="--stdout")
+    parser.add_argument("--registry", required=True)
+    args = parser.parse_args(argv)
+    try:
+        generate_report(args.job_path, args.report_path, args.registry)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"report generation error: {exc}", file=sys.stderr)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python3 generate_report.py <aggregated_job_json> [report_output_path]")
-        print("       python3 generate_report.py <aggregated_job_json> --stdout")
-        sys.exit(2)
-
-    job_path = sys.argv[1]
-    if len(sys.argv) > 2:
-        out_path = sys.argv[2]
-    else:
-        out_path = "--stdout"
-
-    generate_report(job_path, out_path)
+    raise SystemExit(main())
