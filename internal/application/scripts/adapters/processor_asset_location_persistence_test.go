@@ -19,7 +19,7 @@ func TestAssetLocationReconciliation_PersistedSpecSceneAndManifestContainNoUnusa
 		deletedLink      = "https://drive.google.com/file/d/DELETED_ID/view"
 		trashedLink      = "https://drive.google.com/file/d/TRASHED_ID/view"
 		inaccessibleLink = "https://drive.google.com/file/d/INACCESSIBLE_ID/view"
-		unverifiedLink   = "https://drive.google.com/file/d/UNVERIFIED_ID/view"
+		unverifiedLink   = "https://drive.google.com/file/d/BROKEN_LINK/view"
 		subtitleLink     = "https://drive.google.com/file/d/SUBTITLE_OLD_ID/view"
 	)
 
@@ -139,12 +139,17 @@ func TestAssetLocationReconciliation_PersistedSpecSceneAndManifestContainNoUnusa
 		t.Fatalf("persisted trashed media link = %q, want empty", got)
 	}
 
-	for _, forbidden := range []string{"OLD_ID", "SUBTITLE_OLD_ID", "DELETED_ID", "TRASHED_ID", "INACCESSIBLE_ID", "UNVERIFIED_ID"} {
-		if strings.Contains(repo.lastRec.SpecScene, forbidden) {
-			t.Fatalf("persisted SpecScene contains forbidden Drive token %q: %s", forbidden, repo.lastRec.SpecScene)
-		}
-		if strings.Contains(string(repo.lastManifest), forbidden) {
-			t.Fatalf("persisted manifest contains forbidden Drive token %q: %s", forbidden, repo.lastManifest)
+	persistedSurfaces := map[string]string{
+		"narrative_text": repo.lastRec.NarrativeText,
+		"full_document":  repo.lastRec.FullDocument,
+		"specscene":      repo.lastRec.SpecScene,
+		"manifest_v2":    string(repo.lastManifest),
+	}
+	for _, forbidden := range []string{"OLD_ID", "DELETED_ID", "BROKEN_LINK", "SUBTITLE_OLD_ID", "TRASHED_ID", "INACCESSIBLE_ID"} {
+		for surface, payload := range persistedSurfaces {
+			if strings.Contains(payload, forbidden) {
+				t.Fatalf("persisted %s contains forbidden Drive token %q: %s", surface, forbidden, payload)
+			}
 		}
 	}
 	if !strings.Contains(repo.lastRec.SpecScene, "CANONICAL_ID") {

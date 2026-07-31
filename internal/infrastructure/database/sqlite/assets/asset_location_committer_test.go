@@ -21,6 +21,7 @@ CREATE TABLE media_assets (
     file_hash TEXT NOT NULL DEFAULT '',
     drive_file_id TEXT NOT NULL DEFAULT '',
     drive_link TEXT NOT NULL DEFAULT '',
+    lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     updated_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE asset_locations (
@@ -101,6 +102,13 @@ func TestSQLiteAssetLocationCommitter_AtomicUpdateAndIndexEvent(t *testing.T) {
 	if locationID != "new-file" || locationLink != link {
 		t.Fatalf("asset_locations location = (%q, %q)", locationID, locationLink)
 	}
+	var uri string
+	if err := db.QueryRow(`SELECT uri FROM asset_locations WHERE asset_id = 'asset-1' AND location_kind = 'drive'`).Scan(&uri); err != nil {
+		t.Fatal(err)
+	}
+	if uri != "drive://new-file" {
+		t.Fatalf("asset_locations uri = %q, want canonical drive:// identifier", uri)
+	}
 	var eventType, aggregateID string
 	if err := db.QueryRow(`SELECT event_type, aggregate_id FROM outbox_events WHERE aggregate_id = 'asset-1'`).Scan(&eventType, &aggregateID); err != nil {
 		t.Fatal(err)
@@ -130,12 +138,47 @@ func TestSQLiteAssetLocationCommitter_ClearsLinkPreservesDriveLocation(t *testin
 	if fileID != "old-file" || link != "" {
 		t.Fatalf("cleared media_assets location = (%q, %q), want preserved ID and empty link", fileID, link)
 	}
+	var lifecycle string
+	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = 'asset-1'`).Scan(&lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle != "ERROR" {
+		t.Fatalf("cleared unavailable asset lifecycle_state = %q, want ERROR", lifecycle)
+	}
 	var locationID, locationLink string
 	if err := db.QueryRow(`SELECT external_id, web_view_link FROM asset_locations WHERE asset_id = 'asset-1' AND location_kind = 'drive'`).Scan(&locationID, &locationLink); err != nil {
 		t.Fatal(err)
 	}
 	if locationID != "old-file" || locationLink != "" {
 		t.Fatalf("preserved drive location = (%q, %q), want old-file and empty link", locationID, locationLink)
+	}
+}
+
+func TestSQLiteAssetLocationCommitter_RejectsMissingAssetWithoutPartialCommit(t *testing.T) {
+	db := openAssetLocationCommitterDB(t)
+	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
+	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+
+	_, err := committer.CommitAssetLocationsWithResult(context.Background(), []scriptpkg.AssetLocationChange{
+		{AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "new-link"},
+		{AssetID: "missing-asset", DriveFileID: "missing-file", DriveLink: "missing-link"},
+	})
+	if err == nil {
+		t.Fatal("missing media_assets row must fail closed")
+	}
+	var fileID string
+	if err := db.QueryRow(`SELECT drive_file_id FROM media_assets WHERE id = 'asset-1'`).Scan(&fileID); err != nil {
+		t.Fatal(err)
+	}
+	if fileID != "old-file" {
+		t.Fatalf("asset location after missing-row rollback = %q, want old-file", fileID)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM outbox_events`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("outbox rows after missing-row rollback = %d, want 0", count)
 	}
 }
 
@@ -178,6 +221,46 @@ func TestSQLiteAssetLocationCommitter_RollsBackAssetAndOutboxTogether(t *testing
 	}
 }
 
+func TestSQLiteAssetLocationCommitter_DoesNotTreatLinkOnlyAlternateAsUsable(t *testing.T) {
+	db := openAssetLocationCommitterDB(t)
+	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
+	if _, err := db.Exec(`INSERT INTO asset_locations (asset_id, location_kind, uri, web_view_link, is_primary) VALUES ('asset-1', 'local', '', 'stale-link', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1"}}); err != nil {
+		t.Fatalf("CommitAssetLocations: %v", err)
+	}
+	var lifecycle string
+	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = 'asset-1'`).Scan(&lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle != "ERROR" {
+		t.Fatalf("link-only alternate kept lifecycle_state = %q, want ERROR", lifecycle)
+	}
+}
+
+func TestSQLiteAssetLocationCommitter_RecognizesVerifiedAlternateLocation(t *testing.T) {
+	db := openAssetLocationCommitterDB(t)
+	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
+	if _, err := db.Exec(`INSERT INTO asset_locations
+		(asset_id, location_kind, uri, file_hash, file_size_bytes, is_primary)
+		VALUES ('asset-1', 'local', '/data/asset-1.mp4', 'verified-hash', 1024, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
+	if err := committer.CommitAssetLocations(context.Background(), []scriptpkg.AssetLocationChange{{AssetID: "asset-1"}}); err != nil {
+		t.Fatalf("CommitAssetLocations: %v", err)
+	}
+	var lifecycle string
+	if err := db.QueryRow(`SELECT lifecycle_state FROM media_assets WHERE id = 'asset-1'`).Scan(&lifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if lifecycle != "ACTIVE" {
+		t.Fatalf("verified alternate location changed lifecycle_state = %q, want ACTIVE", lifecycle)
+	}
+}
+
 func TestSQLiteAssetLocationCommitter_PreservesLocalPrimary(t *testing.T) {
 	db := openAssetLocationCommitterDB(t)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
@@ -205,8 +288,12 @@ func TestSQLiteAssetLocationCommitter_RepeatedLocationIsIdempotent(t *testing.T)
 	insertAssetLocationTestAsset(t, db, "asset-1", "hash-1")
 	committer := NewSQLiteAssetLocationCommitter(db, outboxevents.NewRepository(db), zap.NewNop())
 	change := []scriptpkg.AssetLocationChange{{AssetID: "asset-1", DriveFileID: "new-file", DriveLink: "new-link"}}
-	if err := committer.CommitAssetLocations(context.Background(), change); err != nil {
+	firstResult, err := committer.CommitAssetLocationsWithResult(context.Background(), change)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if firstResult.EventsInserted != 1 || firstResult.RowsUpdated != 1 {
+		t.Fatalf("first commit result = %#v, want one event and one updated row", firstResult)
 	}
 	var firstAssetUpdatedAt, firstLocationUpdatedAt string
 	if err := db.QueryRow(`SELECT updated_at FROM media_assets WHERE id = 'asset-1'`).Scan(&firstAssetUpdatedAt); err != nil {
@@ -219,8 +306,12 @@ func TestSQLiteAssetLocationCommitter_RepeatedLocationIsIdempotent(t *testing.T)
 		t.Fatal("first commit must stamp both asset and Drive location timestamps")
 	}
 
-	if err := committer.CommitAssetLocations(context.Background(), change); err != nil {
+	secondResult, err := committer.CommitAssetLocationsWithResult(context.Background(), change)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if secondResult.EventsInserted != 0 || secondResult.RowsUpdated != 0 {
+		t.Fatalf("idempotent replay result = %#v, want zero events and rows", secondResult)
 	}
 	var secondAssetUpdatedAt, secondLocationUpdatedAt string
 	if err := db.QueryRow(`SELECT updated_at FROM media_assets WHERE id = 'asset-1'`).Scan(&secondAssetUpdatedAt); err != nil {
