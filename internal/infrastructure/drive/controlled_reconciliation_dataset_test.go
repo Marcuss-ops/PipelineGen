@@ -468,6 +468,157 @@ func TestControlledReconciliationDataset(t *testing.T) {
 	}
 }
 
+func TestControlledReconciliation_ApplicationDriveAdapter(t *testing.T) {
+	var dataset controlledReconciliationDatasetFile
+	if err := json.Unmarshal(controlledReconciliationDataset, &dataset); err != nil {
+		t.Fatalf("decode controlled reconciliation dataset: %v", err)
+	}
+
+	reader := &controlledReader{
+		files:  make(map[string]*drive.FileMeta),
+		errors: make(map[string]error),
+	}
+	for _, asset := range dataset.Assets {
+		if asset.Drive.ErrorStatus != 0 {
+			reader.errors[asset.DriveFileID] = &googleapi.Error{Code: asset.Drive.ErrorStatus}
+			continue
+		}
+		reader.files[asset.DriveFileID] = &drive.FileMeta{
+			ID:          asset.Drive.ID,
+			Name:        asset.Drive.Name,
+			MimeType:    asset.Drive.MIMEType,
+			Size:        asset.Drive.Size,
+			WebViewLink: asset.Drive.WebViewLink,
+			Parents:     asset.Drive.Parents,
+			Trashed:     asset.Drive.Trashed,
+		}
+	}
+
+	adapter := drive.NewAssetLocationResolverAdapter(reader)
+	counts := make(map[scriptpkg.LocationState]int)
+	for _, asset := range dataset.Assets {
+		t.Run(asset.Boxer, func(t *testing.T) {
+			location, err := adapter.ResolveAndVerify(
+				context.Background(), asset.AssetID, asset.DriveFileID, asset.DriveLink,
+			)
+			if err != nil {
+				t.Fatalf("ResolveAndVerify: %v", err)
+			}
+			if location == nil {
+				t.Fatal("ResolveAndVerify returned nil location")
+			}
+			if location.AssetID != asset.AssetID {
+				t.Errorf("asset_id = %q, want %q", location.AssetID, asset.AssetID)
+			}
+			if location.DriveFileID != asset.DriveFileID {
+				t.Errorf("drive_file_id = %q, want %q", location.DriveFileID, asset.DriveFileID)
+			}
+			if location.State != asset.ExpectedState {
+				t.Fatalf("state = %s, want %s", location.State, asset.ExpectedState)
+			}
+			if asset.ExpectedState == scriptpkg.LocationStateUpdated && asset.DriveLink == asset.Drive.WebViewLink {
+				t.Fatal("UPDATED fixture must have a stale link distinct from the canonical webViewLink")
+			}
+			counts[location.State]++
+
+			if asset.Drive.ErrorStatus != 0 {
+				if location.DriveLink != "" {
+					t.Errorf("unavailable Drive link = %q, want empty", location.DriveLink)
+				}
+				wantCode := map[int]string{403: "PERMISSION_DENIED", 404: "NOT_FOUND"}[asset.Drive.ErrorStatus]
+				if location.ErrorCode != wantCode {
+					t.Errorf("error code = %q, want %q", location.ErrorCode, wantCode)
+				}
+				return
+			}
+
+			meta := reader.files[asset.DriveFileID]
+			if meta.ID != asset.DriveFileID {
+				t.Errorf("Drive metadata id = %q, want requested id %q", meta.ID, asset.DriveFileID)
+			}
+			if meta.MimeType == "" || meta.MimeType != "video/mp4" {
+				t.Errorf("Drive mimeType = %q, want non-empty video/mp4", meta.MimeType)
+			}
+			if meta.Size <= 0 {
+				t.Errorf("Drive size = %d, want positive size", meta.Size)
+			}
+			if meta.Trashed != (asset.ExpectedState == scriptpkg.LocationStateTrashed) {
+				t.Errorf("Drive trashed = %t, expected %t for state %s", meta.Trashed, asset.ExpectedState == scriptpkg.LocationStateTrashed, asset.ExpectedState)
+			}
+
+			switch asset.ExpectedState {
+			case scriptpkg.LocationStateVerified, scriptpkg.LocationStateUpdated:
+				if location.DriveLink != asset.Drive.WebViewLink {
+					t.Errorf("canonical drive_link = %q, want %q", location.DriveLink, asset.Drive.WebViewLink)
+				}
+			case scriptpkg.LocationStateTrashed:
+				if location.DriveLink != "" {
+					t.Errorf("trashed Drive link = %q, want empty", location.DriveLink)
+				}
+			}
+		})
+	}
+
+	for _, state := range []scriptpkg.LocationState{
+		scriptpkg.LocationStateVerified,
+		scriptpkg.LocationStateUpdated,
+		scriptpkg.LocationStateTrashed,
+		scriptpkg.LocationStateInaccessible,
+		scriptpkg.LocationStateMissing,
+	} {
+		if counts[state] != 1 {
+			t.Errorf("application adapter state %s count = %d, want 1", state, counts[state])
+		}
+	}
+}
+
+func TestControlledReconciliation_LocationVerifierRejectsInvalidMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		mimeType string
+		size     int64
+	}{
+		{name: "empty mime type", mimeType: "", size: 1024},
+		{name: "zero size video", mimeType: "video/mp4", size: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const fileID = "invalid-metadata-file"
+			reader := &controlledReader{
+				files: map[string]*drive.FileMeta{
+					fileID: {
+						ID:          fileID,
+						Name:        "invalid.mp4",
+						MimeType:    test.mimeType,
+						Size:        test.size,
+						WebViewLink: "https://drive.google.com/file/d/" + fileID + "/view",
+						Trashed:     false,
+					},
+				},
+				errors: make(map[string]error),
+			}
+			verifier := drive.NewLocationVerifier(reader, nil)
+			location, err := verifier.Verify(
+				context.Background(), "asset-invalid-metadata", fileID,
+				"https://drive.google.com/file/d/"+fileID+"/view",
+			)
+			if err != nil {
+				t.Fatalf("Verify: %v", err)
+			}
+			if location == nil {
+				t.Fatal("Verify returned nil location")
+			}
+			if location.State != scriptpkg.LocationStateMissing {
+				t.Fatalf("state = %s, want MISSING", location.State)
+			}
+			if location.DriveLink != "" {
+				t.Fatalf("drive_link = %q, want empty for invalid metadata", location.DriveLink)
+			}
+		})
+	}
+}
+
 func assetIDForTest(assets []controlledReconciliationAsset, index int) string {
 	if index < 0 || index >= len(assets) {
 		return ""
