@@ -8,6 +8,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
 func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
@@ -37,6 +38,7 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 			search_text, embedding_json, transcript_embedding, visual_embedding, audio_embedding,
 			metadata_json, created_at, updated_at,
 			youtube_video_id, youtube_url, start_time, end_time,
+			drive_file_id, drive_link,
 			workspace_id, channel_id, license, source_version, style
 		) VALUES (
 			?,
@@ -57,6 +59,8 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 			'https://www.youtube.com/watch?v=yt-123',
 			'10.0',
 			'20.0',
+			'drive-file-smoke',
+			'https://drive.google.com/file/d/drive-file-smoke/view',
 			'ws-1',
 			'chan-9',
 			'standard',
@@ -91,6 +95,18 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 	}
 	if asset.SourceVersion != "src-v1" {
 		t.Fatalf("FetchAsset source_version = %q, want src-v1", asset.SourceVersion)
+	}
+	if asset.DriveFileID != "drive-file-smoke" || asset.DriveLink != "https://drive.google.com/file/d/drive-file-smoke/view" {
+		t.Fatalf("FetchAsset Drive location = (%q, %q), want canonical SQLite values", asset.DriveFileID, asset.DriveLink)
+	}
+
+	doc := assetToIndexDocumentNoValidate(asset, qdrantschema.DefaultV3Schema())
+	payload := BuildPayloadFromDocument(doc, qdrantschema.DefaultV3Schema())
+	if payload["drive_file_id"] != "drive-file-smoke" || payload["drive_link"] != "https://drive.google.com/file/d/drive-file-smoke/view" {
+		t.Fatalf("SQLite→AssetData→IndexDocument→payload Drive location = (%v, %v), want canonical values", payload["drive_file_id"], payload["drive_link"])
+	}
+	if payload["lifecycle_state"] != "ACTIVE" {
+		t.Fatalf("SQLite→Qdrant lifecycle_state = %v, want ACTIVE", payload["lifecycle_state"])
 	}
 }
 

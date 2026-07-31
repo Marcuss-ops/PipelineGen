@@ -209,7 +209,11 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	if folderPath == "" {
 		folderPath = assetpkg.MetadataString(asset.Metadata, "folder_path")
 	}
-	driveLink := firstNonEmpty(asset.DriveLink, assetpkg.MetadataString(asset.Metadata, "drive_link"))
+	// DriveLink is authoritative on AssetData. AssetStore hydrates it
+	// from media_assets.drive_link; do not fall back to metadata_json,
+	// because a stale legacy metadata value must never resurrect a link
+	// that SQLite reconciliation intentionally cleared.
+	driveLink := strings.TrimSpace(asset.DriveLink)
 	// PR-CATALOG-MULTILINGUA step 6 (July 2026): SemanticHash carries
 	// the canonical pre-resolved value computed by AssetStore with the
 	// godlike/06 SSOT precedence rule
@@ -261,6 +265,7 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		ContentHash:    asset.ContentHash,
 		SearchText:     asset.SearchText, // legacy pass-through (BuildPayload entry); mapper receivers override via AssetToIndexDocument
 		Metadata: IndexedMetadata{
+			DriveFileID:      asset.DriveFileID,
 			Summary:          summary,
 			Name:             name,
 			Title:            title,

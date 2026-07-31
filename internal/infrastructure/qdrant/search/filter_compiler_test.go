@@ -16,12 +16,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 )
 
-// filterMustValues extracts the values from each `must.x.match.value`
-// clause in the filter body. Used by the cross-tenant test to assert
-// which keys (workspace_id, lifecycle_state, source, ...) the
-// compiler emitted. A separate helper is required because the
-// canonical filter shape is `map[string]interface{}` whose deeply
-// nested arrays do not trivially compare in Go's reflect package.
+// filterClauseValues extracts match values from both Qdrant boolean
+// branches. Equality filters are cumulative (`must`); lifecycle states
+// are alternatives (`should`).
 func filterMustValues(t *testing.T, body map[string]interface{}) map[string][]string {
 	t.Helper()
 	must, ok := body["must"].([]map[string]interface{})
@@ -29,18 +26,32 @@ func filterMustValues(t *testing.T, body map[string]interface{}) map[string][]st
 		t.Fatalf("filter body is missing the canonical `must` slice: %#v", body)
 	}
 	out := make(map[string][]string)
-	for _, clause := range must {
-		key, _ := clause["key"].(string)
-		match, _ := clause["match"].(map[string]interface{})
-		if match == nil {
-			continue
-		}
-		switch v := match["value"].(type) {
-		case string:
-			out[key] = append(out[key], v)
+	for _, clauses := range [][]map[string]interface{}{must, filterClauseSlice(t, body, "should")} {
+		for _, clause := range clauses {
+			key, _ := clause["key"].(string)
+			match, _ := clause["match"].(map[string]interface{})
+			if match == nil {
+				continue
+			}
+			switch v := match["value"].(type) {
+			case string:
+				out[key] = append(out[key], v)
+			}
 		}
 	}
 	return out
+}
+
+func filterClauseSlice(t *testing.T, body map[string]interface{}, key string) []map[string]interface{} {
+	t.Helper()
+	if raw, ok := body[key]; ok {
+		clauses, ok := raw.([]map[string]interface{})
+		if !ok {
+			t.Fatalf("filter body %q must be a canonical clause slice: %#v", key, body)
+		}
+		return clauses
+	}
+	return nil
 }
 
 // hasMustClause asserts that exactly one clause with key=`key` and
@@ -49,13 +60,32 @@ func filterMustValues(t *testing.T, body map[string]interface{}) map[string][]st
 // about workspace_id).
 func hasMustClause(t *testing.T, body map[string]interface{}, key, val string) {
 	t.Helper()
-	clauses := filterMustValues(t, body)
-	for _, v := range clauses[key] {
-		if v == val {
+	clauses := filterClauseSlice(t, body, "must")
+	for _, clause := range clauses {
+		if clause["key"] != key {
+			continue
+		}
+		match, _ := clause["match"].(map[string]interface{})
+		if match != nil && match["value"] == val {
 			return
 		}
 	}
 	t.Fatalf("expected must[%q]=%q, got %#v", key, val, clauses)
+}
+
+func hasShouldClause(t *testing.T, body map[string]interface{}, key, val string) {
+	t.Helper()
+	clauses := filterClauseSlice(t, body, "should")
+	for _, clause := range clauses {
+		if clause["key"] != key {
+			continue
+		}
+		match, _ := clause["match"].(map[string]interface{})
+		if match != nil && match["value"] == val {
+			return
+		}
+	}
+	t.Fatalf("expected should[%q]=%q, got %#v", key, val, clauses)
 }
 
 // hasNoMustClause asserts that the must array contains NO clause
@@ -87,7 +117,7 @@ func TestCompileQdrantFilter_HappyPath_IncludesWorkspaceAndLifecycle(t *testing.
 	hasMustClause(t, filt, "source", "youtube")
 	hasMustClause(t, filt, "category", "intro")
 	hasMustClause(t, filt, "media_type", "video")
-	hasMustClause(t, filt, "lifecycle_state", "ACTIVE")
+	hasShouldClause(t, filt, "lifecycle_state", "ACTIVE")
 }
 
 func TestCompileQdrantFilter_IsSystem_OmitsWorkspaceFilter(t *testing.T) {
@@ -107,7 +137,7 @@ func TestCompileQdrantFilter_IsSystem_OmitsWorkspaceFilter(t *testing.T) {
 		}
 	}
 	// Lifecycle is still always-on (no fake availability).
-	hasMustClause(t, filt, "lifecycle_state", "ACTIVE")
+	hasShouldClause(t, filt, "lifecycle_state", "ACTIVE")
 }
 
 func TestCompileQdrantFilter_EmptyWorkspace_ReturnsErr(t *testing.T) {
@@ -205,7 +235,7 @@ func TestCompileQdrantFilter_DefaultLifecycleFallbackToActive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	hasMustClause(t, filt, "lifecycle_state", "ACTIVE")
+	hasShouldClause(t, filt, "lifecycle_state", "ACTIVE")
 }
 
 func TestCompileQdrantFilter_ExplicitLifecycle_HonoursCallerAllowlist(t *testing.T) {
@@ -221,7 +251,7 @@ func TestCompileQdrantFilter_ExplicitLifecycle_HonoursCallerAllowlist(t *testing
 	clauses := filterMustValues(t, filt)
 	states := clauses["lifecycle_state"]
 	if len(states) != 2 {
-		t.Fatalf("expected 2 lifecycle clauses, got %d", len(states))
+		t.Fatalf("expected 2 lifecycle clauses across should, got %d", len(states))
 	}
 	got := map[string]bool{}
 	for _, s := range states {
@@ -229,6 +259,29 @@ func TestCompileQdrantFilter_ExplicitLifecycle_HonoursCallerAllowlist(t *testing
 	}
 	if !got["ACTIVE"] || !got["STAGING"] {
 		t.Fatalf("expected ACTIVE+STAGING; got %#v", states)
+	}
+}
+
+func TestCompileQdrantFilter_LifecycleAllowlistUsesShouldNotMust(t *testing.T) {
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{WorkspaceID: "tenant-A"},
+		search.AssetFilter{LifecycleState: []string{"ACTIVE", "PUBLISHED"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	must := filterClauseSlice(t, filt, "must")
+	for _, clause := range must {
+		if clause["key"] == "lifecycle_state" {
+			t.Fatalf("lifecycle allowlist must not be cumulative in must: %#v", must)
+		}
+	}
+	should := filterClauseSlice(t, filt, "should")
+	if len(should) != 2 {
+		t.Fatalf("lifecycle should clauses = %d, want 2", len(should))
+	}
+	if got := filt["min_should"]; got != 1 {
+		t.Fatalf("min_should = %#v, want 1", got)
 	}
 }
 
@@ -285,11 +338,9 @@ func TestCompileQdrantFilter_FolderEmpty_OmitsClause(t *testing.T) {
 }
 
 // TestCompileQdrantFilter_FolderAndLifecycle_MustArrayCoexists
-// pins the AND-in-must invariant: when BOTH FolderNormalizedGroup
-// AND lifecycle_state=ACTIVE are set, both clauses live in the
-// same `must` array (Qdrant semantics: must array = AND). A future
-// drift that splits the filter into a different shape (e.g.
-// moves folder into a separate `should` array) surfaces here.
+// pins the invariant that folder/equality clauses stay in `must` while
+// lifecycle alternatives stay in `should`. Qdrant must is AND; should
+// is the lifecycle OR branch.
 func TestCompileQdrantFilter_FolderAndLifecycle_MustArrayCoexists(t *testing.T) {
 	t.Parallel()
 

@@ -347,6 +347,14 @@ func TestBuildPayloadFromDocument_DriveLinkEmittedWhenSet(t *testing.T) {
 		t.Fatalf("payload[drive_link] = %v, ok = %v — want canonical open-in-Drive URL", v, ok)
 	}
 }
+func TestBuildPayloadFromDocument_DriveFileIDAbsentWhenEmpty(t *testing.T) {
+	doc := emptyDoc()
+	p := BuildPayloadFromDocument(doc, nil)
+	if _, ok := p["drive_file_id"]; ok {
+		t.Errorf("payload[drive_file_id] present when empty — want ABSENT")
+	}
+}
+
 func TestBuildPayloadFromDocument_DriveLinkAbsentWhenEmpty(t *testing.T) {
 	doc := emptyDoc()
 	// doc.Metadata.DriveLink is "" by default
@@ -641,9 +649,11 @@ func TestBuildPayloadFromDocument_CanonicalPayloadKey_AllSixPresent(t *testing.T
 	doc.Metadata.CurrentSemanticHash = "sha256-abc"
 	doc.Metadata.OriginalLanguage = "en"
 	doc.Metadata.AvailableLanguages = []string{"en", "it", "es", "pt-BR"}
+	doc.Metadata.DriveFileID = "drive-file-abc"
 	p := BuildPayloadFromDocument(doc, nil)
 	canonical := map[string]string{
 		"asset_id":              "stock:test:timestamp:0:video",
+		"drive_file_id":         "drive-file-abc",
 		"drive_link":            "https://drive.google.com/file/d/abc/view",
 		"source_provider":       "youtube",
 		"original_language":     "en",
