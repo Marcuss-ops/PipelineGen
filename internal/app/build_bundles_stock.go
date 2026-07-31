@@ -44,11 +44,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	stocksteps "github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	sqliteprocessmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -127,6 +129,7 @@ type StockRuntimeDeps struct {
 	Log        *zap.Logger
 	DB         *sql.DB // optional (nil → in-memory)
 	JobCreator stockpipeline.JobCreator
+	Metrics    appmetrics.Recorder
 	StepStore  stocksteps.Store
 }
 
@@ -380,12 +383,18 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 	}
 
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
+	metricsRecorder := deps.Runtime.Metrics
+	if metricsRecorder == nil && deps.Runtime.DB != nil {
+		metricsRepo := sqliteprocessmetrics.NewSQLiteRepository(deps.Runtime.DB)
+		metricsRecorder = appmetrics.NewRecorder(sqliteprocessmetrics.NewApplicationRepository(metricsRepo))
+	}
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
 			Cfg:        stockRuntimeConfig(deps.Runtime.Cfg),
 			Log:        deps.Runtime.Log,
 			JobCreator: deps.Runtime.JobCreator,
 			StepStore:  deps.Runtime.StepStore,
+			Metrics:    metricsRecorder,
 		},
 		Storage: stockpipeline.StorageDeps{
 			ClipsRepo:       deps.Acquisition.ClipsRepo,

@@ -31,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -60,7 +61,7 @@ func DefaultPipelineConfig() PipelineConfig {
 		MaxResults:     25,
 		EffectInterval: 4,
 		EffectsDir:     "assets/effects/EffettiVisiv",
-		Width:          1920, Height: 1080, FPS: 24, Codec: "libx264", Preset: "veryfast", CRF: 23,
+		Width:          1920, Height: 1080, FPS: 24, Codec: "h264_nvenc", Preset: "p1", CRF: 23,
 		KeyframeInterval: 48, TransitionInterval: 4, OverlayOpacity: 0.25, ClipDuration: 5,
 	}
 }
@@ -119,6 +120,7 @@ type RuntimeDeps struct {
 	Log        *zap.Logger
 	JobCreator JobCreator
 	StepStore  steps.Store
+	Metrics    appmetrics.Recorder
 }
 
 // JobCreator is the minimal durable port needed by sync-mode stock runs.

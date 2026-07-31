@@ -42,7 +42,20 @@ type StockComposeChunksStep struct{}
 
 func (StockComposeChunksStep) Name() string { return StepKeyStockComposeChunks }
 
-func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error {
+func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err error) {
+	phaseMetric := startStockPhase(ctx, runner, "stock.compose")
+	defer func() {
+		if phaseMetric != nil {
+			cutPaths := runner.State().CutPaths
+			composed := runner.State().ComposedPaths
+			phaseMetric.SetItems(int64(len(cutPaths)), int64(len(composed)))
+			phaseMetric.SetDetails(map[string]any{
+				"assets_generated": len(composed),
+			})
+		}
+		finishStockPhase(runner, phaseMetric, "stock.compose", err)
+	}()
+
 	cutPaths := runner.State().CutPaths
 
 	if runner.Log() != nil {
