@@ -201,7 +201,11 @@ func (s LifecycleState) IsValidTransition(to LifecycleState) bool {
 		return to == StateActive || to == StateError ||
 			to == StateDeleteRequested || to == StateDeletePending
 	case StateActive:
-		return to == StateDeleteRequested || to == StateDeletePending
+		// A reconciled asset whose only publishable location is gone
+		// remains in SQLite for diagnosis/republication but leaves the
+		// searchable projection. ERROR is the explicit non-searchable
+		// state for that fail-closed transition.
+		return to == StateDeleteRequested || to == StateDeletePending || to == StateError
 	case StateDeleteRequested:
 		return to == StateDriveDeletePending
 	case StateDeletePending:
