@@ -57,6 +57,7 @@ type commandHandler func([]string) error
 
 var commandRegistry = map[string]commandHandler{
 	"apply-asset-metadata":           runApplyAssetMetadata,
+	"audit-google-doc-links":         runAuditGoogleDocLinks,
 	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,

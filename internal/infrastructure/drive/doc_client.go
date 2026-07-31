@@ -36,6 +36,14 @@ type DocClient interface {
 	UpdateDoc(ctx context.Context, docID, title, content string) error
 }
 
+// DocumentReader is the narrow read-only Google Docs retrieval port.
+// It is intentionally separate from DocClient so callers that only need
+// document inspection do not force every document mock to expose the Docs
+// API structural type.
+type DocumentReader interface {
+	GetDocument(ctx context.Context, docID string) (*docs.Document, error)
+}
+
 // DocClientImpl is a Google Docs-backed DocClient.
 type DocClientImpl struct {
 	credentialsPath string
@@ -340,6 +348,29 @@ func NewDocClient(ctx context.Context, credentialsPath, tokenPath string) (DocCl
 		docsService:     docsService,
 		driveService:    driveService,
 	}, nil
+}
+
+// GetDocument retrieves the complete structural document, including
+// multi-tab content, for read-only auditing and diagnostics. With
+// includeTabsContent enabled, the Docs API returns content under Tabs;
+// the audit walker intentionally uses that representation instead of
+// duplicating legacy top-level content.
+func (d *DocClientImpl) GetDocument(ctx context.Context, docID string) (*docs.Document, error) {
+	if d.docsService == nil {
+		return nil, fmt.Errorf("google docs service not initialized")
+	}
+	docID = strings.TrimSpace(docID)
+	if docID == "" {
+		return nil, fmt.Errorf("google doc id is required")
+	}
+	document, err := d.docsService.Documents.Get(docID).
+		IncludeTabsContent(true).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve google doc: %w", err)
+	}
+	return document, nil
 }
 
 // UpdateDoc updates the title and content of an existing Google Doc.

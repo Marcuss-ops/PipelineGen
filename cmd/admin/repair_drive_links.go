@@ -30,48 +30,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
-
-// repairAuditReport is the canonical JSON audit output produced by
-// the repair-drive-links command when --audit is set.
-type repairAuditReport struct {
-	JobID              string              `json:"job_id"`
-	ExecutedAt         string              `json:"executed_at"`
-	RemoveInvalid      bool                `json:"remove_invalid"`
-	RefreshDocs        bool                `json:"refresh_docs"`
-	AssetsReferenced   int                 `json:"assets_referenced"`
-	Verified           int                 `json:"verified"`
-	Updated            int                 `json:"updated"`
-	Missing            int                 `json:"missing"`
-	Trashed            int                 `json:"trashed"`
-	Inaccessible       int                 `json:"inaccessible"`
-	Malformed          int                 `json:"malformed"`
-	Orphans            int                 `json:"orphans"`
-	BrokenLocations    int                 `json:"broken_locations"`
-	Duplicates         int                 `json:"duplicates"`
-	TransportErrors    int                 `json:"transport_errors"`
-	QdrantMismatches   int                 `json:"qdrant_mismatches"`
-	SpecSceneRepaired  bool                `json:"specscene_repaired"`
-	SQLiteUpdated      bool                `json:"sqlite_updated"`
-	DocumentsRefreshed int                 `json:"documents_refreshed"`
-	Warnings           []string            `json:"warnings,omitempty"`
-	Details            []repairAssetDetail `json:"details,omitempty"`
-}
-
-// repairAssetDetail carries per-link diagnostic information for the
-// --audit JSON report.
-type repairAssetDetail struct {
-	ItemIdx   int    `json:"item_idx"`
-	SceneID   string `json:"scene_id"`
-	Label     string `json:"label"`
-	AssetID   string `json:"asset_id"`
-	FileID    string `json:"file_id"`
-	Link      string `json:"link"`
-	State     string `json:"state"`
-	ErrorCode string `json:"error_code,omitempty"`
-	Action    string `json:"action"` // "preserved", "updated", "cleared", "error"
-}
 
 func runRepairDriveLinks(args []string) error {
 	fs := flag.NewFlagSet("repair-drive-links", flag.ContinueOnError)
@@ -207,7 +168,22 @@ func runRepairDriveLinks(args []string) error {
 	}
 
 	if len(links) == 0 {
-		fmt.Println("No Drive links found. Nothing to repair.")
+		report := repairAuditReport{
+			JobID:         *jobID,
+			ExecutedAt:    time.Now().UTC().Format(time.RFC3339),
+			RemoveInvalid: *removeInvalid,
+			RefreshDocs:   *refreshDocs,
+		}
+		report.NoOp = repairReportIsNoOp(report)
+		if *audit {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(report); err != nil {
+				return fmt.Errorf("failed to encode no-op audit report: %w", err)
+			}
+		} else {
+			fmt.Println("No Drive links found. Nothing to repair.")
+		}
 		return nil
 	}
 
@@ -219,7 +195,25 @@ func runRepairDriveLinks(args []string) error {
 			RemoveInvalid: *removeInvalid,
 			RefreshDocs:   *refreshDocs,
 		}
+		locationChanges     = make(map[string]scriptpkg.AssetLocationChange)
+		locationConflictErr error
 	)
+
+	recordLocationChange := func(assetID, fileID, link string) {
+		if !*removeInvalid || strings.TrimSpace(assetID) == "" || strings.HasPrefix(strings.TrimSpace(assetID), "voiceover:") {
+			return
+		}
+		change := scriptpkg.AssetLocationChange{
+			AssetID: strings.TrimSpace(assetID), DriveFileID: strings.TrimSpace(fileID), DriveLink: strings.TrimSpace(link),
+		}
+		if previous, exists := locationChanges[change.AssetID]; exists && previous != change {
+			if locationConflictErr == nil {
+				locationConflictErr = fmt.Errorf("conflicting durable location changes for asset %q", change.AssetID)
+			}
+			return
+		}
+		locationChanges[change.AssetID] = change
+	}
 
 	for _, ref := range links {
 		verified, err := verifier.Verify(ctx, ref.assetID, ref.fileID, ref.link)
@@ -263,13 +257,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = verified.DriveLink
 				report.SpecSceneRepaired = true
-				// Also update SQLite media_assets.drive_link.
-				if err := updateAssetDriveLink(ctx, db, ref.assetID, verified.DriveLink); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("failed to update SQLite drive_link for %s: %v", ref.assetID, err))
-				} else {
-					report.SQLiteUpdated = true
-				}
+				recordLocationChange(ref.assetID, verified.DriveFileID, verified.DriveLink)
 			}
 
 		case scriptpkg.LocationStateMissing:
@@ -278,12 +266,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
-				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
-				} else {
-					report.SQLiteUpdated = true
-				}
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateTrashed:
@@ -292,12 +275,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
-				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
-				} else {
-					report.SQLiteUpdated = true
-				}
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateInaccessible:
@@ -306,12 +284,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
-				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
-				} else {
-					report.SQLiteUpdated = true
-				}
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateMalformed:
@@ -320,6 +293,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateOrphanDriveFile:
@@ -328,6 +302,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateBrokenAssetLocation:
@@ -336,12 +311,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
-				if err := clearAssetDriveLink(ctx, db, ref.assetID); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("failed to clear SQLite drive_link for %s: %v", ref.assetID, err))
-				} else {
-					report.SQLiteUpdated = true
-				}
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 
 		case scriptpkg.LocationStateDuplicate:
@@ -350,6 +320,7 @@ func runRepairDriveLinks(args []string) error {
 			if *removeInvalid {
 				*ref.linkPtr = ""
 				report.SpecSceneRepaired = true
+				recordLocationChange(ref.assetID, verified.DriveFileID, "")
 			}
 		}
 
@@ -357,57 +328,99 @@ func runRepairDriveLinks(args []string) error {
 	}
 
 	report.AssetsReferenced = len(links)
+	if locationConflictErr != nil {
+		return fmt.Errorf("repair refused conflicting durable location changes: %w", locationConflictErr)
+	}
 
-	// ── Step 5: Persist reconciled SpecScene ──────────────────
+	// ── Step 5 + 6: Persist asset locations, outbox, and SpecScene atomically ──
 	if *removeInvalid && report.SpecSceneRepaired {
+		if root.Outbox == nil || root.Outbox.EventsRepo == nil {
+			return fmt.Errorf("repair requires the canonical SQLite/outbox committer when --remove-invalid is set")
+		}
+		changes := make([]scriptpkg.AssetLocationChange, 0, len(locationChanges))
+		for _, change := range locationChanges {
+			changes = append(changes, change)
+		}
+		committer := assets.NewSQLiteAssetLocationCommitter(db, root.Outbox.EventsRepo, log)
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("repair durable transaction begin failed: %w", err)
+		}
+		committed := false
+		defer func() {
+			if !committed {
+				_ = tx.Rollback()
+			}
+		}()
+		commitResult, err := committer.CommitAssetLocationsTx(ctx, tx, changes)
+		if err != nil {
+			return fmt.Errorf("repair durable location commit failed: %w", err)
+		}
 		raw, err := json.Marshal(envelope)
 		if err != nil {
 			return fmt.Errorf("failed to marshal reconciled envelope: %w", err)
 		}
-		_, err = db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"UPDATE jobs SET result_json = ? WHERE id = ?",
-			string(raw), *jobID)
-		if err != nil {
+			string(raw), *jobID); err != nil {
 			return fmt.Errorf("failed to update result_json: %w", err)
 		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("repair durable transaction commit failed: %w", err)
+		}
+		committed = true
+		report.SQLiteUpdated = commitResult.RowsUpdated > 0
+		// This is the number of newly inserted idempotent outbox events;
+		// projection processing remains asynchronous and is not claimed here.
+		report.QdrantEventsEmitted = commitResult.EventsInserted
 	}
 
-	// ── Step 6: Refresh Google Docs ───────────────────────────
-	if *refreshDocs {
+	// ── Step 7: Refresh Google Docs ───────────────────────────
+	if *refreshDocs && report.SpecSceneRepaired {
+		if root.Drive == nil || root.Drive.DocClient == nil {
+			return fmt.Errorf("repair requested Google Doc refresh but the document client is unavailable")
+		}
 		refreshed := 0
-		if root.Drive != nil && root.Drive.DocClient != nil {
-			for i := range envelope.Items {
-				item := &envelope.Items[i]
-				if item.Result == nil || item.Result.Provenance == nil {
-					continue
-				}
-				docID := strings.TrimSpace(item.Result.Provenance.DocID)
-				if docID == "" {
-					continue
-				}
-				title := item.Result.Title
-				if title == "" {
-					title = "Reconciled script"
-				}
-				model := &scriptpkg.ModelScriptOutputV1{
-					SchemaVersion: 1,
-					Text:          item.Result.Output.Text,
-					SpecScene:     item.Result.Output.SpecScene,
-					WordCount:     item.Result.Output.WordCount,
-				}
-				content := buildRepairHTML(model, title)
-				if err := root.Drive.DocClient.UpdateDoc(ctx, docID, title, content); err != nil {
-					report.Warnings = append(report.Warnings,
-						fmt.Sprintf("doc refresh failed for %s: %v", docID, err))
-				} else {
-					refreshed++
-				}
+		expectedDocs := 0
+		for i := range envelope.Items {
+			item := &envelope.Items[i]
+			if item.Result == nil || item.Result.Provenance == nil {
+				continue
 			}
+			docID := strings.TrimSpace(item.Result.Provenance.DocID)
+			if docID == "" {
+				return fmt.Errorf("repair requested Google Doc refresh but item %d has no provenance document ID", i)
+			}
+			expectedDocs++
+			title := item.Result.Title
+			if title == "" {
+				title = "Reconciled script"
+			}
+			model := &scriptpkg.ModelScriptOutputV1{
+				SchemaVersion: 1,
+				Text:          item.Result.Output.Text,
+				SpecScene:     item.Result.Output.SpecScene,
+				WordCount:     item.Result.Output.WordCount,
+			}
+			content := buildRepairHTML(model, title)
+			if err := root.Drive.DocClient.UpdateDoc(ctx, docID, title, content); err != nil {
+				report.Warnings = append(report.Warnings,
+					fmt.Sprintf("doc refresh failed for %s: %v", docID, err))
+			} else {
+				refreshed++
+			}
+		}
+		if expectedDocs == 0 {
+			return fmt.Errorf("repair requested Google Doc refresh but no provenance documents were found")
+		}
+		if refreshed != expectedDocs {
+			return fmt.Errorf("Google Doc refresh incomplete: refreshed %d of %d", refreshed, expectedDocs)
 		}
 		report.DocumentsRefreshed = refreshed
 	}
 
 	// ── Output ────────────────────────────────────────────────
+	report.NoOp = repairReportIsNoOp(report)
 	if *audit {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -422,44 +435,6 @@ func runRepairDriveLinks(args []string) error {
 		log.Warn("repair completed with transport errors", zap.Int("count", report.TransportErrors))
 	}
 	return nil
-}
-
-// printRepairSummary prints the human-readable repair summary to stdout.
-func printRepairSummary(r *repairAuditReport) {
-	fmt.Println("=== Repair Drive Links ===")
-	fmt.Printf("Job ID:         %s\n", r.JobID)
-	fmt.Printf("Executed at:    %s\n", r.ExecutedAt)
-	fmt.Printf("Remove:         %v\n", r.RemoveInvalid)
-	fmt.Printf("Refresh:        %v\n\n", r.RefreshDocs)
-	fmt.Println("──────────────────────────────────────────────")
-	fmt.Println("Summary")
-	fmt.Println("──────────────────────────────────────────────")
-	fmt.Printf("  Assets referenced:      %d\n", r.AssetsReferenced)
-	fmt.Printf("  Verified:               %d\n", r.Verified)
-	fmt.Printf("  Updated:                %d\n", r.Updated)
-	fmt.Printf("  Missing:                %d\n", r.Missing)
-	fmt.Printf("  Trashed:                %d\n", r.Trashed)
-	fmt.Printf("  Inaccessible:           %d\n", r.Inaccessible)
-	fmt.Printf("  Malformed:              %d\n", r.Malformed)
-	fmt.Printf("  Orphans:                %d\n", r.Orphans)
-	fmt.Printf("  Broken locations:       %d\n", r.BrokenLocations)
-	fmt.Printf("  Duplicates:             %d\n", r.Duplicates)
-	fmt.Printf("  Transport errors:       %d\n", r.TransportErrors)
-	fmt.Printf("  Qdrant mismatches:      %d\n", r.QdrantMismatches)
-	fmt.Printf("  SpecScene repaired:     %v\n", r.SpecSceneRepaired)
-	fmt.Printf("  SQLite updated:         %v\n", r.SQLiteUpdated)
-	fmt.Printf("  Documents refreshed:    %d\n", r.DocumentsRefreshed)
-	if len(r.Warnings) > 0 {
-		fmt.Println("\n  Warnings:")
-		for _, w := range r.Warnings {
-			fmt.Printf("    - %s\n", w)
-		}
-	}
-	if r.TransportErrors > 0 {
-		fmt.Printf("\n  Final status: COMPLETED_WITH_WARNINGS\n")
-	} else {
-		fmt.Printf("\n  Final status: COMPLETED\n")
-	}
 }
 
 // updateAssetDriveLink updates the drive_link in media_assets for a
@@ -487,98 +462,4 @@ func clearAssetDriveLink(ctx context.Context, db *sql.DB, assetID string) error 
 	_, err := db.ExecContext(ctx, "UPDATE media_assets SET drive_link = '', drive_file_id = '' WHERE id = ? AND (drive_link != '' OR drive_file_id != '')",
 		aid)
 	return err
-}
-
-// buildRepairHTML renders a minimal SpecScene HTML document for the
-// repair refresh. Uses the same structure as
-// BuildSpecSceneDocumentHTML but without importing the adapters
-// package (keeps the admin CLI free of application-layer deps).
-func buildRepairHTML(model *scriptpkg.ModelScriptOutputV1, title string) string {
-	if model == nil {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
-	if strings.TrimSpace(title) != "" {
-		b.WriteString("<h1>")
-		writeEscaped(&b, strings.TrimSpace(title))
-		b.WriteString("</h1>")
-	}
-	if len(model.SpecScene.Scenes) > 0 {
-		b.WriteString("<h2>Scenes</h2>")
-		for i := range model.SpecScene.Scenes {
-			scene := &model.SpecScene.Scenes[i]
-			b.WriteString("<section>")
-			b.WriteString("<h3>")
-			writeEscaped(&b, scene.ID)
-			b.WriteString("</h3>")
-			if text := strings.TrimSpace(scene.Text); text != "" {
-				b.WriteString("<p>")
-				writeEscaped(&b, text)
-				b.WriteString("</p>")
-			}
-			if clip := scene.Bindings.Clip; clip != nil {
-				b.WriteString("<p><strong>Clip:</strong> ")
-				writeLink(&b, clip.DriveLink, clip.ClipTitle, clip.ClipID)
-				b.WriteString("</p>")
-				if clip.SubtitleLink != "" {
-					b.WriteString("<p><strong>Subtitles ASS:</strong> ")
-					writeLink(&b, clip.SubtitleLink, clip.SubtitleFileID, clip.SubtitleFileID)
-					b.WriteString("</p>")
-				}
-			}
-			if stock := scene.Bindings.Stock; stock != nil {
-				b.WriteString("<p><strong>Clip:</strong> ")
-				writeLink(&b, stock.DriveLink, stock.Name, stock.AssetID)
-				b.WriteString("</p>")
-			}
-			b.WriteString("</section>")
-		}
-	}
-	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
-	if err == nil {
-		b.WriteString("<h2>SpecScene JSON</h2><pre>")
-		writeEscaped(&b, string(raw))
-		b.WriteString("</pre>")
-	}
-	b.WriteString("</body></html>")
-	return b.String()
-}
-
-func writeEscaped(b *strings.Builder, s string) {
-	for _, r := range s {
-		switch r {
-		case '&':
-			b.WriteString("&amp;")
-		case '<':
-			b.WriteString("&lt;")
-		case '>':
-			b.WriteString("&gt;")
-		case '"':
-			b.WriteString("&quot;")
-		default:
-			b.WriteRune(r)
-		}
-	}
-}
-
-func writeLink(b *strings.Builder, url, label, fallback string) {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		if fallback == "" {
-			b.WriteString("(no link)")
-			return
-		}
-		writeEscaped(b, fallback)
-		return
-	}
-	label = strings.TrimSpace(label)
-	if label == "" {
-		label = url
-	}
-	b.WriteString("<a href=\"")
-	writeEscaped(b, url)
-	b.WriteString("\">")
-	writeEscaped(b, label)
-	b.WriteString("</a>")
 }

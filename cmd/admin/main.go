@@ -30,7 +30,7 @@ func main() {
 			fmt.Printf("Unknown command: %s\n\n", name)
 			printUsage()
 		} else {
-			fmt.Printf("Error running command %s: %v\n", name, err)
+			fmt.Fprintf(os.Stderr, "Error running command %s: %v\n", name, err)
 		}
 		os.Exit(1)
 	}
