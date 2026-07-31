@@ -118,7 +118,9 @@ def scene_expectations(resolved: dict[str, Any]) -> list[dict[str, Any]]:
         boxer = resolved["boxers"][boxer_key]
         fight = boxer.get("assets", {}).get("fight")
         if not isinstance(fight, dict) or not _text(fight.get("asset_id")):
-            raise ValueError(f"{boxer_key}: scene order requires a fight asset")
+            # Subjects without validated stock remain BLOCKED and are not
+            # included in expectations until their registry entry is filled.
+            continue
         result.append({
             "index": index,
             "boxer_key": boxer_key,
@@ -177,7 +179,7 @@ def _materialize_binding(binding: dict[str, Any], resolved: dict[str, Any], look
     # cross-subject fallback values are accepted.
     if raw_asset_id not in lookup:
         raise ValueError(
-            f"scenario references asset outside resolved registry: {raw_asset_id!r}"
+            f"scenario references unavailable or unregistered asset: {raw_asset_id!r}"
         )
     return {key: materialize(value, resolved) for key, value in binding.items()}
 
@@ -207,7 +209,7 @@ def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str
     if missing:
         raise ValueError(f"media_assets missing resolver columns: {sorted(missing)}")
     selected = ["id", "lifecycle_state", "source", "drive_link"]
-    for optional in ("name", "folder_path", "filename", "search_text", "folder_id", "metadata_json"):
+    for optional in ("name", "folder_path", "filename", "search_text", "folder_id", "metadata_json", "source_provider"):
         if optional in columns:
             selected.append(optional)
     row = connection.execute(
@@ -218,29 +220,47 @@ def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str
     record = dict(zip(selected, row))
     if _text(record.get("lifecycle_state")).upper() != "ACTIVE":
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} lifecycle_state is {record.get('lifecycle_state')!r}, expected ACTIVE")
-    if _norm(record.get("source")) != _norm(expected_source):
+    if "source_provider" in record:
+        provider = _text(record.get("source_provider"))
+        if _norm(provider) != _norm(expected_source):
+            raise ValueError(f"{subject}.{role}: asset {asset_id!r} provider is {provider!r}, expected {expected_source!r}")
+    elif _norm(record.get("source")) != _norm(expected_source):
+        raise ValueError(f"{subject}.{role}: asset {asset_id!r} provider is {record.get('source')!r}, expected {expected_source!r}")
+    if "source_provider" in record and _norm(record.get("source")) != _norm(expected_source):
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} source is {record.get('source')!r}, expected {expected_source!r}")
     if not _text(record.get("drive_link")):
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} has empty drive_link")
     searchable = " ".join(_text(record.get(column)) for column in ("name", "folder_path", "filename", "search_text") if column in record)
-    if _norm(subject) not in _norm(searchable):
-        raise ValueError(f"{subject}.{role}: asset {asset_id!r} subject metadata does not match {subject!r}")
+    searchable_normalized = _norm(searchable)
+    metadata: dict[str, Any] = {}
     metadata_raw = record.get("metadata_json")
     if _text(metadata_raw):
         try:
-            metadata = json.loads(metadata_raw)
+            decoded_metadata = json.loads(metadata_raw)
         except json.JSONDecodeError as exc:
             raise ValueError(f"{subject}.{role}: asset {asset_id!r} metadata_json is invalid") from exc
-        if isinstance(metadata, dict):
-            declared_role = next(
-                (_text(metadata.get(key)) for key in ("role", "asset_role", "stock_role") if _text(metadata.get(key))),
-                "",
-            )
-            if declared_role and _norm(declared_role) != _norm(role):
-                raise ValueError(
-                    f"{subject}.{role}: asset {asset_id!r} metadata role is "
-                    f"{declared_role!r}, expected {role!r}"
-                )
+        if not isinstance(decoded_metadata, dict):
+            raise ValueError(f"{subject}.{role}: asset {asset_id!r} metadata_json must be an object")
+        metadata = decoded_metadata
+
+    declared_subject = next(
+        (_text(metadata.get(key)) for key in ("subject", "subject_name", "asset_subject") if _text(metadata.get(key))),
+        "",
+    )
+    if _norm(subject) not in searchable_normalized and _norm(declared_subject) != _norm(subject):
+        raise ValueError(f"{subject}.{role}: asset {asset_id!r} subject metadata does not match {subject!r}")
+
+    declared_role = next(
+        (_text(metadata.get(key)) for key in ("role", "asset_role", "stock_role") if _text(metadata.get(key))),
+        "",
+    )
+    if _norm(role) not in searchable_normalized and _norm(declared_role) != _norm(role):
+        raise ValueError(f"{subject}.{role}: asset {asset_id!r} role metadata does not match {role!r}")
+    if declared_role and _norm(declared_role) != _norm(role):
+        raise ValueError(
+            f"{subject}.{role}: asset {asset_id!r} metadata role is "
+            f"{declared_role!r}, expected {role!r}"
+        )
     return record
 
 

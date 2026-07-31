@@ -42,7 +42,7 @@ class StockRegistryTest(unittest.TestCase):
 
     def test_materialization_rejects_literal_asset_outside_registry(self):
         payload = {"output": {"stock_bindings": [{"asset_id": "asset-from-another-subject"}]}}
-        with self.assertRaisesRegex(ValueError, "outside resolved registry"):
+        with self.assertRaisesRegex(ValueError, "unavailable or unregistered"):
             stock_registry.materialize(payload, self.resolved)
 
     def test_pacquiao_requires_all_three_roles(self):
@@ -77,7 +77,7 @@ class StockRegistryTest(unittest.TestCase):
         registry["boxers"] = {"manny_pacquiao": registry["boxers"]["manny_pacquiao"]}
         return registry
 
-    def _write_pacquiao_db(self, directory, *, bad_role=None, bad_value=None, bad_field=None):
+    def _write_pacquiao_db(self, directory, *, bad_role=None, bad_value=None, bad_field=None, metadata_role=None, source_provider=None):
         registry = self._pacquiao_only_registry()
         db_path = Path(directory) / "assets.sqlite"
         with sqlite3.connect(db_path) as connection:
@@ -87,6 +87,7 @@ class StockRegistryTest(unittest.TestCase):
                     lifecycle_state TEXT NOT NULL,
                     lifecycle_status TEXT NOT NULL,
                     source TEXT NOT NULL,
+                    source_provider TEXT,
                     drive_link TEXT NOT NULL,
                     name TEXT NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}'
@@ -97,11 +98,18 @@ class StockRegistryTest(unittest.TestCase):
                 source = bad_value if is_bad_role and bad_field == "source" else "youtube"
                 drive_link = bad_value if is_bad_role and bad_field == "drive_link" else asset["drive_link"]
                 lifecycle_state = bad_value if is_bad_role and bad_field == "lifecycle_state" else "ACTIVE"
+                metadata = "{}"
+                if metadata_role is not None and is_bad_role:
+                    metadata = json.dumps({"role": metadata_role})
                 connection.execute(
                     "INSERT INTO media_assets "
-                    "(id, lifecycle_state, lifecycle_status, source, drive_link, name, metadata_json) "
-                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, '{}')",
-                    (asset["asset_id"], lifecycle_state, source, drive_link, f"Manny Pacquiao {role}"),
+                    "(id, lifecycle_state, lifecycle_status, source, source_provider, drive_link, name, metadata_json) "
+                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, ?)",
+                    (
+                        asset["asset_id"], lifecycle_state, source,
+                        source_provider if is_bad_role and source_provider is not None else "youtube",
+                        drive_link, f"Manny Pacquiao {role}", metadata,
+                    ),
                 )
             connection.commit()
         return registry, db_path
@@ -132,31 +140,58 @@ class StockRegistryTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, expected):
                     stock_registry.resolve_registry(registry, str(db_path))
 
-    def test_positive_scenario_materializes_by_scene_order(self):
-        source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
-        payload = stock_registry.load_json(source)
-        materialized = stock_registry.materialize(payload, self.resolved)
-        expected = [entry["asset_id"] for entry in stock_registry.scene_expectations(self.resolved)]
-        first_item = materialized["items"][0]
-        actual = [
-            binding["asset_id"]
-            for binding in first_item["output"]["stock_bindings"]
-        ]
-        self.assertEqual(actual, expected)
+    def test_pacquiao_rejects_non_youtube_source_provider(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, db_path = self._write_pacquiao_db(
+                directory,
+                bad_role="fight",
+                bad_value="artlist",
+                bad_field="source_provider",
+                source_provider="artlist",
+            )
+            with self.assertRaisesRegex(ValueError, "provider.*artlist"):
+                stock_registry.resolve_registry(registry, str(db_path))
 
-    def test_negative_scenario_preserves_cross_subject_swap(self):
-        source = ROOT / "scenarios" / "top5_financial_stories_multilang_neg.json"
-        payload = stock_registry.materialize(stock_registry.load_json(source), self.resolved)
-        expected = stock_registry.scene_expectations(self.resolved)[0]["asset_id"]
-        swapped = payload["items"][0]["output"]["stock_bindings"][0]["asset_id"]
-        self.assertNotEqual(swapped, expected)
+    def test_pacquiao_validates_declared_role_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, db_path = self._write_pacquiao_db(
+                directory,
+                bad_role="training",
+                metadata_role="interview",
+            )
+            with self.assertRaisesRegex(ValueError, "metadata role.*expected 'training'"):
+                stock_registry.resolve_registry(registry, str(db_path))
+
+    def test_top_five_scenario_blocks_unavailable_subjects(self):
+        source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
+        with self.assertRaisesRegex(ValueError, "unknown stock token"):
+            stock_registry.materialize(stock_registry.load_json(source), self.resolved)
+
+    def test_floyd_and_sugar_ray_remain_blocked(self):
+        self.assertEqual(self.registry["boxers"]["floyd_mayweather"]["assets"], {})
+        self.assertEqual(self.registry["boxers"]["sugar_ray_robinson"]["assets"], {})
         self.assertEqual(
-            swapped,
-            self.resolved["boxers"]["muhammad_ali"]["assets"]["fight"]["asset_id"],
+            [entry["boxer_key"] for entry in stock_registry.scene_expectations(self.resolved)],
+            ["mike_tyson", "muhammad_ali", "manny_pacquiao"],
+        )
+
+    def test_cross_subject_swap_resolves_only_declared_subject(self):
+        payload = {
+            "output": {
+                "stock_bindings": [{
+                    "asset_id": "{{stock.muhammad_ali.fight.asset_id}}",
+                    "drive_link": "{{stock.muhammad_ali.fight.drive_link}}",
+                }]
+            }
+        }
+        materialized = stock_registry.materialize(payload, self.resolved)
+        self.assertEqual(
+            materialized["output"]["stock_bindings"][0]["asset_id"],
+            "yt_6kEmuFoEy54_8_12_v1",
         )
 
     def test_materialize_cli_writes_resolved_payload(self):
-        source = ROOT / "scenarios" / "08_600w_it.json"
+        source = ROOT / "scenarios" / "04_direct_stock_bindings.json"
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "materialized.json"
             self.assertEqual(
