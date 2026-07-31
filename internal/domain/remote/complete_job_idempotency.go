@@ -40,7 +40,6 @@ import (
 	"strconv"
 
 	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
-	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -52,7 +51,7 @@ import (
 //	derive := remote.MakeCompleteJobIdempotencyKey(hashutil.HashFunc)
 //	service := &CompletionService{derive: derive, ...} // field injection
 //
-// (composition root wires the derive using files.NewSHA256Hasher()
+// (composition root wires the derive using hashutil.HashFunc
 // or a test fake per the Commit D spec literal "Aggiungi un test
 // unit con fake `HashFunc`").
 //
@@ -68,7 +67,7 @@ import (
 //
 //  2. Default-priming: the package-init
 //     `defaultCompleteJobKey` (MakeCompleteJobIdempotencyKey
-//     (files.NewSHA256Hasher())) is the byte-stable
+//     (hashutil.SHA256String)) is the byte-stable
 //     production default the free function delegates to.
 //     Removing the free function would force the composition
 //     root to inject the derive into every caller manually —
@@ -78,7 +77,7 @@ import (
 // The deterministic byte format is unchanged across this
 // audit-pin (the free function continues to delegate to
 // defaultCompleteJobKey which delegates to
-// files.NewSHA256Hasher()). godlike/06 SSOT discipline: the
+// the domain-owned SHA256String default). godlike/06 SSOT discipline: the
 // FUNCTION still produces the canonical output; the
 // RECOMMENDED path forward is the factory.
 //
@@ -95,9 +94,9 @@ import (
 // ON CONFLICT DO NOTHING pattern.
 //
 // Algorithm: SHA-256 of "jobID:attempt:resultHash" (colon-separated
-// concatenation), hex-encoded. The hashutil.SHA256String helper
-// (in internal/infrastructure/files/hashutil.go) is the canonical
-// leaf implementation — NOT a re-implementation here.
+// concatenation), hex-encoded. The domain-owned hashutil.SHA256String
+// implementation is the default leaf; callers may inject any compatible
+// HashFunc through MakeCompleteJobIdempotencyKey.
 //
 // Stability contract: the algorithm byte-format is locked at
 // P0 §7 (July 2026); future schema bumps (e.g. v2 with worker-id
@@ -135,11 +134,11 @@ type CompleteJobIdempotencyKeyFunc func(jobID string, attempt int, resultHash st
 // MakeCompleteJobIdempotencyKey is the canonical constructor for
 // the (jobID, attempt, resultHash) triple-key derivation. Mirrors
 // the C6 MakeArtifactIdempotencyKey shape: panic-on-nil HashFunc at
-// construction (godlike/07 fail-closed); candidates receive the
+// construction (godlike/07 fail-closed); callers receive the
 // HashFunc via constructor injection.
 func MakeCompleteJobIdempotencyKey(hash domainhashutil.HashFunc) CompleteJobIdempotencyKeyFunc {
 	if hash == nil {
-		panic("remote.MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject files.NewSHA256Hasher (godlike/07 fail-closed at construction)")
+		panic("remote.MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
 	return func(jobID string, attempt int, resultHash string) string {
 		if jobID == "" || resultHash == "" || attempt < 0 {
@@ -150,9 +149,9 @@ func MakeCompleteJobIdempotencyKey(hash domainhashutil.HashFunc) CompleteJobIdem
 }
 
 // defaultCompleteJobKey is the package-level production default
-// bound to the canonical infrastructure SHA-256 hasher. Mirrors
+// bound to the domain-owned standard-library SHA-256 implementation. Mirrors
 // defaultArtifactKey for the (jobID, attempt, resultHash) surface.
-var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(files.NewSHA256Hasher())
+var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(domainhashutil.SHA256String)
 
 // IsValidCompleteJobIdempotencyKey returns true if `key` is a
 // well-formed key for the job_results UNIQUE column: either the

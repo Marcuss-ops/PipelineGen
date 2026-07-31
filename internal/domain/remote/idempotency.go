@@ -41,7 +41,6 @@ import (
 	"errors"
 
 	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
-	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
@@ -53,7 +52,7 @@ import (
 //	derive := remote.MakeArtifactIdempotencyKey(hashutil.HashFunc)
 //	service := &ArtifactService{derive: derive, ...} // field injection
 //
-// (composition root wires the derive using files.NewSHA256Hasher()
+// (composition root wires the derive using hashutil.HashFunc
 // or a test fake per the Commit D spec literal "Aggiungi un test
 // unit con fake `HashFunc`").
 //
@@ -70,7 +69,7 @@ import (
 //     this. The DEPRECATED note directs future migrations.
 //
 //  2. Default-priming: the package-init `defaultArtifactKey`
-//     (MakeArtifactIdempotencyKey(files.NewSHA256Hasher())) is
+//     (MakeArtifactIdempotencyKey(hashutil.SHA256String)) is
 //     the byte-stable production default the free function
 //     delegates to. Removing the free function would force the
 //     composition root to inject the derive into every caller
@@ -79,7 +78,8 @@ import (
 //
 // The deterministic byte format is unchanged across this audit-pin
 // (the free function continues to delegate to defaultArtifactKey
-// which delegates to files.NewSHA256Hasher()). godlike/06 SSOT
+// which delegates to the domain-owned SHA256String port default).
+// godlike/06 SSOT
 // discipline: the FUNCTION still produces the canonical output;
 // the RECOMMENDED path forward is the factory.
 //
@@ -90,9 +90,9 @@ import (
 // same remote-side dedup slot.
 //
 // Algorithm: SHA-256 of "jobID:artifactID:sha256Hex" (colon-separated
-// concatenation), hex-encoded. The hashutil.SHA256String helper
-// (in internal/infrastructure/files/hashutil.go) is the canonical
-// leaf implementation — NOT a re-implementation here.
+// concatenation), hex-encoded. The domain-owned hashutil.SHA256String
+// implementation is the default leaf; callers may inject any compatible
+// HashFunc through MakeArtifactIdempotencyKey.
 //
 // Stability contract: the algorithm byte-format is locked at
 // P0 §6 (July 2026); future schema bumps (e.g. v2 with
@@ -132,12 +132,12 @@ type ArtifactIdempotencyKeyFunc func(jobID, artifactID, sha256Hex string) string
 // derivation. Returns a Pure + Deterministic + Header-safe closure.
 //
 // godlike/07 fail-closed: nil hash panics at construction time
-// (composition root MUST inject a non-nil HashFunc via NewSHA256Hasher,
+// (composition root MUST inject a non-nil HashFunc,
 // or a test fake for unit-test isolation per Commit D spec literal
 // "Aggiungi un test unit con fake `HashFunc`").
 func MakeArtifactIdempotencyKey(hash domainhashutil.HashFunc) ArtifactIdempotencyKeyFunc {
 	if hash == nil {
-		panic("remote.MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject files.NewSHA256Hasher (godlike/07 fail-closed at construction)")
+		panic("remote.MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject a HashFunc (godlike/07 fail-closed at construction)")
 	}
 	return func(jobID, artifactID, sha256Hex string) string {
 		if jobID == "" || artifactID == "" || sha256Hex == "" {
@@ -148,17 +148,15 @@ func MakeArtifactIdempotencyKey(hash domainhashutil.HashFunc) ArtifactIdempotenc
 }
 
 // defaultArtifactKey is the package-level production default bound to
-// the canonical infrastructure SHA-256 hasher. Initialised at
+// the domain-owned standard-library SHA-256 implementation. Initialised at
 // package-load via MakeArtifactIdempotencyKey so the legacy free
 // function ArtifactIdempotencyKey can delegate to it without per-call
 // construction overhead.
 //
-// godlike/06 note: the `files` (infrastructure) import in this file is
-// bounded to the package-init production default. New code SHOULD
-// prefer MakeArtifactIdempotencyKey + struct-field injection for
+// New code SHOULD prefer MakeArtifactIdempotencyKey + struct-field injection for
 // explicit hash customisation (testable with fake HashFunc per the
 // Commit D spec).
-var defaultArtifactKey = MakeArtifactIdempotencyKey(files.NewSHA256Hasher())
+var defaultArtifactKey = MakeArtifactIdempotencyKey(domainhashutil.SHA256String)
 
 // IsValidIdempotencyKey returns true if `key` is a well-formed
 // X-Idempotency-Key header value: either the empty marker (64-char

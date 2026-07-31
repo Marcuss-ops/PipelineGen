@@ -4,9 +4,8 @@
 // godlike/06 one-owner-per-fact: HashFunc is the SINGLE canonical port
 // consumed by the domain-package idempotency-key derivation surface
 // (internal/domain/remote/idempotency.go + complete_job_idempotency.go).
-// The concrete SHA-256 implementation lives in
-// internal/infrastructure/files.NewSHA256Hasher, which returns the
-// canonical `func(string) string` value typed as HashFunc.
+// The standard-library SHA-256 implementation lives in this package;
+// infrastructure adapters may return it as the canonical HashFunc value.
 //
 // Functional-type-as-single-method-interface idiom: any
 // `func(string) string` value satisfies HashFunc without an explicit
@@ -18,17 +17,28 @@
 // Naming: the package path `internal/domain/remote/hashutil` matches
 // the user spec literal `internal/domain/remote/hashutil.HashFunc`.
 // The package name is `hashutil`; qualified as `hashutil.HashFunc`.
-// Note: this is a SEPARATE package from `internal/infrastructure/files`
-// (which historically called its helper `file.HashFunc`-style methods,
-// but the package name there is `files`, not `hashutil`, so no
-// package-name collision).
+// Infrastructure adapters depend on this package; this package never
+// depends on a concrete storage, transport, or filesystem implementation.
 package hashutil
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+)
+
+// SHA256String is the default standard-library implementation of HashFunc.
+// It lives beside the port so legacy domain helpers can preserve their
+// existing free-function API without importing an infrastructure adapter.
+// New callers should prefer injecting a HashFunc into the Make* constructors.
+func SHA256String(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
 
 // HashFunc is the canonical typed-port for SHA-256-style string hashing.
 //
-// Signature: `func(s string) string` — maps 1:1 to files.SHA256String
-// at internal/infrastructure/files/hashutil.go (same input/output shape,
-// same byte-stable hex digest semantics).
+// Signature: `func(s string) string` — the same input/output shape and
+// byte-stable hex digest semantics used by infrastructure adapters.
 //
 // godlike/07 fail-closed contract: callers MUST inject a non-nil
 // HashFunc at construction time. Nil HashFunc always panics in the
