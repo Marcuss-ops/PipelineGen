@@ -16,11 +16,10 @@
 //	   clip_id + drive_link + start_ms + end_ms byte-identical
 //	   across translation (5-scene fixture).
 //	#5 ToTranslatedScript_CreatesGoogleDocWithSpecSceneBlock
-//	   BuildGenerationDocumentHTML(translated, "it",
-//	   includeSpecSceneBlock=true) → HTML contains Script/Scenes/
-//	   SpecScene JSON sections, Italian "Capitolo N:" chapter label,
-//	   drive link <a>, and NO translated JSON keys like
-//	   "collegamenti"/"tipo"/"testo" inside the SpecScene <pre> block.
+//	   BuildSpecSceneDocumentHTML(translated, title) → HTML contains
+//	   canonical Scenes/SpecScene JSON sections, preserved drive links,
+//	   translated scene text, and NO translated JSON keys inside the
+//	   SpecScene <pre> block.
 //	#6 ToTranslatedScript_LongScript_NoSceneLossNoTruncation
 //	   10 scenes × ~4000 words → out has 10 scenes; out word
 //	   count ≥ 70% source; no scene trims to empty; no tail
@@ -363,7 +362,7 @@ func TestTranslateScriptSpec_PreservesClipBindings(t *testing.T) {
 	}
 }
 
-// ─── TEST 5: post-translation Google Doc DOES render, with localized "Capitolo" chapter + SpecScene JSON block ───
+// ─── TEST 5: post-translation canonical Google Doc renders the SpecScene ───
 func TestTranslateScriptSpec_CreatesGoogleDocWithSpecSceneBlock(t *testing.T) {
 	in := makeThreeSceneSpecEN()
 	tr := &mockTranslatorSuffix{suffix: "IT"}
@@ -372,54 +371,35 @@ func TestTranslateScriptSpec_CreatesGoogleDocWithSpecSceneBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	title := "Top 10 Momenti Incredibili di Jackie Chan"
-	html := adapters.BuildGenerationDocumentHTML(out, title, "it", nil, nil, true)
-	require.NotEmpty(t, html, "BuildGenerationDocumentHTML must produce HTML output")
+	html := adapters.BuildSpecSceneDocumentHTML(out, title)
+	require.NotEmpty(t, html, "BuildSpecSceneDocumentHTML must produce HTML output")
 
-	assert.Contains(t, html, "<h2>Script</h2>",
-		"HTML must contain <h2>Script</h2> section")
 	assert.Contains(t, html, "<h2>Scenes</h2>",
-		"HTML must contain <h2>Scenes</h2> section")
+		"HTML must contain the canonical Scenes section")
 	assert.Contains(t, html, "<h2>SpecScene JSON</h2><pre>",
-		"HTML must contain <h2>SpecScene JSON</h2><pre> block (canonical debug surface)")
+		"HTML must contain the canonical SpecScene JSON block")
 
-	// Italian-localised chapter label: "Capitolo N:" — canonical-key
-	// preservation invariant.
-	assert.Contains(t, html, "Capitolo 1:",
-		"HTML must contain Italian-localised chapter label 'Capitolo 1:'")
-	assert.Contains(t, html, "Capitolo 3:",
-		"HTML must contain Italian-localised chapter label 'Capitolo 3:' (last scene)")
-
-	// Drive link rendered.
+	// The canonical renderer preserves the translated scene text and links.
+	assert.Contains(t, html, "_IT",
+		"HTML must contain translated scene text (suffix _IT)")
 	for _, driveID := range []string{"abc1", "abc2", "abc3"} {
 		assert.Contains(t, html, "drive.google.com/file/d/"+driveID,
 			"HTML must contain drive_link for %s (binding preserved)", driveID)
 	}
 
-	// Anti-LLM-mistranslation guard: scope the check to the SpecScene JSON
-	// <pre> block only (the full HTML legitimately contains CSS class names,
-	// localised "Capitolo N:" chapter label, etc. — a global substring check
-	// would yield false-positives on e.g. "tipo" matching "<input type="
-	// attributes or "Capitolo" matching CSS selectors).
+	// JSON keys remain canonical and are never translated.
 	preStart := strings.Index(html, "<h2>SpecScene JSON</h2><pre>")
 	require.GreaterOrEqual(t, preStart, 0, "HTML must contain SpecScene JSON <pre> block")
 	preEnd := strings.Index(html[preStart:], "</pre>")
 	require.GreaterOrEqual(t, preEnd, 0, "HTML SpecScene JSON block must close with </pre>")
 	preBlock := html[preStart : preStart+preEnd]
-	forbiddenItalianKeys := []string{
-		"collegamenti", "tipo",
-		"testo",
-		"identificatore_clip",
-		"collegamento_drive",
-		"\"id_clip\"", "\"id_drive\"",
+	for _, forbidden := range []string{
+		"collegamenti", "tipo", "testo", "identificatore_clip",
+		"collegamento_drive", "\"id_clip\"", "\"id_drive\"",
+	} {
+		assert.NotContains(t, preBlock, forbidden,
+			"SpecScene JSON must not contain translated key %q", forbidden)
 	}
-	for _, forb := range forbiddenItalianKeys {
-		assert.NotContains(t, preBlock, forb,
-			"SpecScene JSON block must NOT contain translated JSON key %q (JSON-key mistranslation invariant)", forb)
-	}
-
-	// Translated scene text appears.
-	assert.Contains(t, html, "_IT",
-		"HTML must contain translated scene text (suffix _IT) — translation propagated end-to-end")
 }
 
 // ─── TEST 6: long script — 10 scenes × ~4000 words, no scene loss, no truncation ───

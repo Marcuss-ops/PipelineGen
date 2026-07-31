@@ -2,8 +2,7 @@
 // for the postgen LLM entity JSON. It's the bridge between the
 // free-form LLM JSON string (currently stored as
 // EntityResult.Raw) and the typed Persons/Places/Concepts slices
-// that consumers (BuildGenerationDocumentHTML, downstream
-// dashboards) read at runtime.
+// that downstream dashboards read at runtime.
 //
 // PR 7 (June 2026): processor_entities.go now calls ParseEntities
 // instead of stuffing the raw string into EntityResult.Raw. With
@@ -166,9 +165,8 @@ func hasTopLevelKey(probe map[string]json.RawMessage, key string) bool {
 // Score is read from `score` when present (any numeric value;
 // non-numeric values are silently ignored). The Score field is
 // surfaced on Entity.Score but not consumed by the current
-// BuildGenerationDocumentHTML renderer — it is reserved for
-// future dashboards / quality pulls (e.g. confidence-filtered
-// entity lists).
+// document renderer — it is reserved for future dashboards / quality
+// pulls (e.g. confidence-filtered entity lists).
 type flexEntity struct {
 	Value string
 	Score float32
@@ -222,8 +220,8 @@ func (f *flexEntity) UnmarshalJSON(data []byte) error {
 // callers can distinguish between "{places: []}" (empty list —
 // caller wrote the key with no values) and "places absent" (the
 // JSON had no `places` key at all). The distinction shows up in
-// generation_html.go, which skips sub-headers when both Persons
-// and Places are nil.
+// document renderer, which skips sub-headers when both Persons and
+// Places are nil.
 func toEntities(in []flexEntity) []scriptpkg.Entity {
 	if in == nil {
 		return nil
