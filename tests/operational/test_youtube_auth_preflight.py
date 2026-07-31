@@ -106,6 +106,133 @@ class YouTubeAuthPreflightTest(unittest.TestCase):
         self.assertTrue(all(probe["error_code"] == "DURATION_TOO_SHORT" for probe in report["probes"]))
         self.assertTrue(all(probe["duration_check"] == "FAIL" for probe in report["probes"]))
 
+    def test_profiles_define_canary_and_full_contracts(self) -> None:
+        canary = runner.PROFILES["canary"]
+        full = runner.PROFILES["full"]
+
+        self.assertEqual((canary.videos, canary.clips_per_video, canary.total_clips), (1, 3, 3))
+        self.assertEqual((full.videos, full.clips_per_video, full.total_clips), (20, 15, 300))
+        self.assertEqual(canary.per_source_min_ms, 11_400)
+        self.assertEqual(canary.per_source_max_ms, 12_600)
+        self.assertEqual(full.total_min_ms, 1_140_000)
+        self.assertEqual(full.total_max_ms, 1_260_000)
+
+    def test_canary_manifest_selection_uses_one_fight_source(self) -> None:
+        described: list[tuple[str, str]] = []
+        original_describe = runner.describe
+
+        def fake_describe(video_id: str, category: str) -> dict[str, object]:
+            described.append((video_id, category))
+            return {
+                "video_id": video_id,
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+                "title": "fixture",
+                "channel": "fixture",
+                "duration": 180.0,
+                "category": category,
+            }
+
+        runner.describe = fake_describe
+        try:
+            selected = runner.select(
+                "http://unused",
+                "unused",
+                "Floyd Mayweather Jr.",
+                runner.PROFILES["canary"],
+            )
+        finally:
+            runner.describe = original_describe
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["category"], "fight")
+        self.assertEqual(described, [(runner.FLOYD_MAYWEATHER_MANIFEST[0][1][0], "fight")])
+
+    def test_full_manifest_selection_keeps_20_unique_sources(self) -> None:
+        described: list[tuple[str, str]] = []
+        original_describe = runner.describe
+
+        def fake_describe(video_id: str, category: str) -> dict[str, object]:
+            described.append((video_id, category))
+            return {
+                "video_id": video_id,
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+                "title": "fixture",
+                "channel": "fixture",
+                "duration": 180.0,
+                "category": category,
+            }
+
+        runner.describe = fake_describe
+        try:
+            selected = runner.select(
+                "http://unused",
+                "unused",
+                "Floyd Mayweather Jr.",
+                runner.PROFILES["full"],
+            )
+        finally:
+            runner.describe = original_describe
+
+        expected = [
+            (video_id, category)
+            for category, ids in runner.FLOYD_MAYWEATHER_MANIFEST
+            for video_id in ids
+        ]
+        self.assertEqual(len(expected), 20)
+        self.assertEqual(len({video_id for video_id, _ in expected}), 20)
+        self.assertEqual(described, expected)
+        self.assertEqual([item["video_id"] for item in selected], [video_id for video_id, _ in expected])
+
+    def test_sugar_ray_full_manifest_selection_keeps_20_unique_sources(self) -> None:
+        original_describe = runner.describe
+
+        def fake_describe(video_id: str, category: str) -> dict[str, object]:
+            return {
+                "video_id": video_id,
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+                "title": "fixture",
+                "channel": "fixture",
+                "duration": 180.0,
+                "category": category,
+            }
+
+        runner.describe = fake_describe
+        try:
+            selected = runner.select(
+                "http://unused",
+                "unused",
+                "Sugar Ray Robinson",
+                runner.PROFILES["full"],
+            )
+        finally:
+            runner.describe = original_describe
+
+        expected_ids = [
+            video_id
+            for _, ids in runner.SUGAR_RAY_ROBINSON_MANIFEST
+            for video_id in ids
+        ]
+        self.assertEqual(len(expected_ids), 20)
+        self.assertEqual(len(set(expected_ids)), 20)
+        self.assertEqual([item["video_id"] for item in selected], expected_ids)
+
+    def test_segments_honor_profile_clip_count(self) -> None:
+        video = {
+            "video_id": "fixture",
+            "duration": 180.0,
+            "title": "fixture",
+            "channel": "fixture",
+            "category": "fight",
+        }
+        self.assertEqual(len(runner.segments(video, runner.PROFILES["canary"])), 3)
+        self.assertEqual(len(runner.segments(video, runner.PROFILES["full"])), 15)
+
+    def test_concurrency_is_never_above_safe_cap(self) -> None:
+        self.assertEqual(runner.bounded_concurrency(1), 1)
+        self.assertEqual(runner.bounded_concurrency(99), runner.MAX_CONCURRENCY)
+        self.assertEqual(runner.bounded_concurrency(0), 1)
+        self.assertEqual(runner.bounded_concurrency(-10), 1)
+
     def test_missing_cookie_file_fails_closed_without_running_yt_dlp(self) -> None:
         calls = 0
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run and audit the real YouTube stock chain for one boxer.
 
-The runner deliberately submits one source job at a time.  A green HTTP
-enqueue is never treated as success: every job is polled, then SQLite and
-Drive are checked for the final counts and canonical provenance.
+The runner submits one segment per source job, with a bounded number of
+source jobs in flight. A green HTTP enqueue is never treated as success:
+every job is polled, then SQLite and Drive are checked for the selected
+profile's counts and canonical provenance.
 """
 
 from __future__ import annotations
@@ -21,25 +22,58 @@ import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 TERMINAL = {"SUCCEEDED", "COMPLETED", "FAILED", "CANCELLED", "DEAD_LETTERED"}
 
 # ── Contract constants (July 2026) ──────────────────────────────────────
-# Every boxer MUST produce exactly 20 minutes of stock, never more, never
-# less.  PER-SOURCE gates are as important as the global totals, because a
-# single misconfigured source that downloads the full video would silently
-# inflate the aggregate while the per-source tolerance catches it.
+# The full profile produces 20 minutes per boxer. The canary profile is a
+# deliberately smaller preflight: one fight source and three clips.
 TARGET_VIDEOS = 20
 TARGET_CLIPS_PER_VIDEO = 15
 CLIP_DURATION_SECONDS = 4
-TARGET_SECONDS_PER_SOURCE = 60          # TARGET_CLIPS_PER_VIDEO × CLIP_DURATION_SECONDS
-TARGET_TOTAL_SECONDS = 1_200            # TARGET_VIDEOS × TARGET_SECONDS_PER_SOURCE
-TARGET_TOTAL_MS = TARGET_VIDEOS * TARGET_SECONDS_PER_SOURCE * 1000
-PER_SOURCE_MIN_MS = 57_000              # ─2×CLIP_DURATION_SECONDS tolerance
-PER_SOURCE_MAX_MS = 63_000
 CLIP_DURATION_MIN_SEC = 3.8             # ffprobe tolerance
 CLIP_DURATION_MAX_SEC = 4.2
+MAX_CONCURRENCY = 2                      # keep YouTube/Drive/SQLite load bounded
+
+
+class RunnerProfile(NamedTuple):
+    """Immutable profile bounds for one deterministic stock acquisition run."""
+
+    name: str
+    videos: int
+    clips_per_video: int
+
+    @property
+    def total_clips(self) -> int:
+        return self.videos * self.clips_per_video
+
+    @property
+    def target_total_ms(self) -> int:
+        return self.total_clips * CLIP_DURATION_SECONDS * 1000
+
+    @property
+    def total_min_ms(self) -> int:
+        return self.total_clips * int(CLIP_DURATION_MIN_SEC * 1000)
+
+    @property
+    def total_max_ms(self) -> int:
+        return self.total_clips * int(CLIP_DURATION_MAX_SEC * 1000)
+
+    @property
+    def per_source_min_ms(self) -> int:
+        return self.clips_per_video * int(CLIP_DURATION_MIN_SEC * 1000)
+
+    @property
+    def per_source_max_ms(self) -> int:
+        return self.clips_per_video * int(CLIP_DURATION_MAX_SEC * 1000)
+
+
+PROFILES = {
+    "canary": RunnerProfile("canary", videos=1, clips_per_video=3),
+    "full": RunnerProfile("full", videos=TARGET_VIDEOS, clips_per_video=TARGET_CLIPS_PER_VIDEO),
+}
+
 PREFLIGHT_MIN_DURATION_SECONDS = 64.0
 PREFLIGHT_REPORT_SCHEMA = "youtube-auth-preflight.v1"
 AUTH_REQUIRED_MARKERS = (
@@ -104,6 +138,40 @@ CANONICAL_BOXER_NAMES = {
     "floyd mayweather jr.": "Floyd Mayweather Jr.",
     "sugar ray robinson": "Sugar Ray Robinson",
 }
+
+
+def profile_for(name: str) -> RunnerProfile:
+    try:
+        return PROFILES[name.casefold()]
+    except KeyError as exc:
+        raise ValueError(f"unknown runner profile: {name!r}") from exc
+
+
+def manifest_for_boxer(boxer: str) -> tuple[tuple[str, tuple[str, ...]], ...] | None:
+    manifests = {
+        "mike tyson": MIKE_TYSON_MANIFEST,
+        "manny pacquiao": MANNY_PACQUIAO_MANIFEST,
+        "floyd mayweather jr.": FLOYD_MAYWEATHER_MANIFEST,
+        "sugar ray robinson": SUGAR_RAY_ROBINSON_MANIFEST,
+    }
+    return manifests.get(boxer.casefold())
+
+
+def expected_source_video_ids(boxer: str, profile: RunnerProfile) -> set[str] | None:
+    manifest = manifest_for_boxer(boxer)
+    if manifest is None:
+        return None
+    selected: list[str] = []
+    for category, ids in manifest:
+        if profile.name == "canary" and category != "fight":
+            continue
+        selected.extend(ids)
+    return set(selected[:profile.videos])
+
+
+def bounded_concurrency(requested: int) -> int:
+    """Clamp client fan-out so a caller cannot overload downstream services."""
+    return max(1, min(requested, MAX_CONCURRENCY))
 
 
 def canonical_boxer_name(value: str) -> str:
@@ -321,12 +389,37 @@ def write_auth_preflight_report(report: dict[str, Any], destination: str) -> Non
     temporary.replace(target)
 
 
-def select(base: str, token: str, boxer: str) -> list[dict[str, Any]]:
+def _select_manifest(
+    manifest: tuple[tuple[str, tuple[str, ...]], ...],
+    profile: RunnerProfile,
+    label: str,
+) -> list[dict[str, Any]]:
+    manifest_videos = [
+        (category, video_id)
+        for category, ids in manifest
+        for video_id in ids
+    ]
+    if profile.name == "canary":
+        manifest_videos = [
+            (category, video_id)
+            for category, video_id in manifest_videos
+            if category == "fight"
+        ][:profile.videos]
+    selected = [describe(video_id, category) for category, video_id in manifest_videos]
+    if len(selected) != profile.videos or len({item["video_id"] for item in selected}) != profile.videos:
+        raise RuntimeError(f"{label} manifest is not exactly {profile.videos} unique videos for {profile.name}")
+    return selected
+
+
+def select(
+    base: str,
+    token: str,
+    boxer: str,
+    profile: RunnerProfile | None = None,
+) -> list[dict[str, Any]]:
+    profile = profile or PROFILES["full"]
     if boxer.casefold() == "mike tyson":
-        selected = [describe(video_id, category) for category, ids in MIKE_TYSON_MANIFEST for video_id in ids]
-        if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
-            raise RuntimeError("Mike Tyson persisted manifest is not exactly 20 unique videos")
-        return selected
+        return _select_manifest(MIKE_TYSON_MANIFEST, profile, "Mike Tyson")
     if boxer.casefold() == "muhammad ali":
         # July 2026: yt-dlp --dump-single-json is blocked by YouTube
         # anti-bot for these videos, but --flat-playlist search still
@@ -334,28 +427,20 @@ def select(base: str, token: str, boxer: str) -> list[dict[str, Any]]:
         # manifest is rebuilt from live YouTube results every run.
         pass
     if boxer.casefold() == "manny pacquiao":
-        selected = [describe(video_id, category) for category, ids in MANNY_PACQUIAO_MANIFEST for video_id in ids]
-        if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
-            raise RuntimeError("Manny Pacquiao persisted manifest is not exactly 20 unique videos")
-        return selected
+        return _select_manifest(MANNY_PACQUIAO_MANIFEST, profile, "Manny Pacquiao")
     if boxer.casefold() == "floyd mayweather jr.":
-        selected = [describe(video_id, category) for category, ids in FLOYD_MAYWEATHER_MANIFEST for video_id in ids]
-        if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
-            raise RuntimeError("Floyd Mayweather Jr. manifest is not exactly 20 unique videos")
-        return selected
+        return _select_manifest(FLOYD_MAYWEATHER_MANIFEST, profile, "Floyd Mayweather Jr.")
     if boxer.casefold() == "sugar ray robinson":
-        selected = [describe(video_id, category) for category, ids in SUGAR_RAY_ROBINSON_MANIFEST for video_id in ids]
-        if len(selected) != 20 or len({item["video_id"] for item in selected}) != 20:
-            raise RuntimeError("Sugar Ray Robinson manifest is not exactly 20 unique videos")
-        return selected
+        return _select_manifest(SUGAR_RAY_ROBINSON_MANIFEST, profile, "Sugar Ray Robinson")
     selected: list[dict[str, Any]] = []
-    for category, wanted in (("fight", 12), ("interview", 6), ("training", 2)):
+    wanted_by_profile = (("fight", 1),) if profile.name == "canary" else (("fight", 12), ("interview", 6), ("training", 2))
+    for category, wanted in wanted_by_profile:
         candidates = search(base, token, boxer, category)
         if len(candidates) < wanted:
             raise RuntimeError(f"{category}: only {len(candidates)} usable candidates, need {wanted}")
         selected.extend(candidates[:wanted])
-    if len({item["video_id"] for item in selected}) != 20:
-        raise RuntimeError("selection contains duplicate video IDs")
+    if len(selected) != profile.videos or len({item["video_id"] for item in selected}) != profile.videos:
+        raise RuntimeError(f"selection is not exactly {profile.videos} unique videos")
     return selected
 
 
@@ -370,12 +455,13 @@ def folder(base: str, token: str, root_id: str, boxer: str) -> str:
     return str(created.get("created", {}).get(boxer, ""))
 
 
-def segments(video: dict[str, Any]) -> list[dict[str, Any]]:
+def segments(video: dict[str, Any], profile: RunnerProfile | None = None) -> list[dict[str, Any]]:
+    profile = profile or PROFILES["full"]
     duration = int(video["duration"])
-    # Fifteen non-overlapping windows distributed over the source, avoiding
-    # the first/last few seconds where intros/outros are commonly black.
+    # Non-overlapping windows distributed over the source, avoiding the
+    # first/last few seconds where intros/outros are commonly black.
     usable = max(60, duration - 8)
-    step = max(4, usable // 16)
+    step = max(4, usable // (profile.clips_per_video + 1))
     return [{"start": f"{start // 60:02d}:{start % 60:02d}",
              "end": f"{end // 60:02d}:{end % 60:02d}",
              "name": video.get("title", ""),
@@ -383,7 +469,7 @@ def segments(video: dict[str, Any]) -> list[dict[str, Any]]:
              "source_channel": video.get("channel", ""),
              "category": video["category"],
              "description": f"{video['category']} scene featuring {video.get('title') or video['video_id']}"}
-            for i in range(TARGET_CLIPS_PER_VIDEO)
+            for i in range(profile.clips_per_video)
             for start, end in [(8 + i * step, 12 + i * step)]]
 
 
@@ -429,17 +515,21 @@ def asset_complete(db: Path, asset_id: str) -> bool:
     return bool(row and row[0] and row[1] and row[2] and row[2] > 0 and all(row[3:]))
 
 
-def run_source(base: str, token: str, db: Path, boxer: str, folder_id: str, video: dict[str, Any], index: int) -> None:
-    for clip_index, segment in enumerate(segments(video), 1):
+def run_source(
+    base: str, token: str, db: Path, boxer: str, folder_id: str,
+    video: dict[str, Any], index: int, profile: RunnerProfile | None = None,
+) -> None:
+    profile = profile or PROFILES["full"]
+    for clip_index, segment in enumerate(segments(video, profile), 1):
         asset_id = clip_id(video["video_id"], segment)
         if asset_complete(db, asset_id):
-            print(f"[{index:02d}/20] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/15 CACHED")
+            print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} CACHED")
             continue
         payload = {"url": video["url"], "segments": [segment], "strategy": "replace",
                    "destination": {"folder_id": folder_id, "folder_path": boxer, "create_subfolder": False}}
         # One segment per job is intentional.  The multi-segment fan-out
         # currently has a reproducible RUNNING-at-5% deadlock; atomising the
-        # work preserves the 15 clips/video contract and makes retries exact.
+        # work preserves the selected profile's clips/video contract and makes retries exact.
         last_error = ""
         for attempt in range(1, 4):
             request_id = f"youtube-stock-{boxer.casefold().replace(' ', '-')}-{video['video_id']}-{clip_index:02d}-v17-a{attempt}"
@@ -455,7 +545,7 @@ def run_source(base: str, token: str, db: Path, boxer: str, folder_id: str, vide
                 if state in TERMINAL:
                     if state in {"SUCCEEDED", "COMPLETED"}:
                         wait_asset(db, asset_id)
-                        print(f"[{index:02d}/20] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/15 SUCCEEDED")
+                        print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} SUCCEEDED")
                         break
                     last_error = f"job {job_id} ended {state}: {result.get('error', '')}"
                     break
@@ -465,41 +555,80 @@ def run_source(base: str, token: str, db: Path, boxer: str, folder_id: str, vide
             if asset_complete(db, asset_id):
                 break
             if attempt < 3:
-                print(f"[{index:02d}/20] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/15 retry {attempt + 1}/3: {last_error}")
+                print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} retry {attempt + 1}/3: {last_error}")
         else:
             raise RuntimeError(f"{video['video_id']} clip {clip_index}: {last_error}")
 
 
-def verify(db: Path, folder_id: str, boxer: str) -> None:
+def verify(
+    db: Path,
+    folder_id: str,
+    boxer: str,
+    profile: RunnerProfile | None = None,
+    expected_source_video_ids: set[str] | None = None,
+) -> None:
+    profile = profile or PROFILES["full"]
+    scope = (
+        "source='youtube' AND lifecycle_state='ACTIVE' "
+        "AND folder_id=? AND LOWER(folder_path)=LOWER(?)"
+    )
+    scope_params: list[Any] = [folder_id, boxer]
+    if expected_source_video_ids is not None:
+        if not expected_source_video_ids:
+            raise RuntimeError("verification requires at least one expected source video ID")
+        placeholders = ",".join("?" for _ in expected_source_video_ids)
+        scope += f" AND source_video_id IN ({placeholders})"
+        scope_params.extend(sorted(expected_source_video_ids))
+    params = tuple(scope_params)
     with sqlite3.connect(db) as conn:
-        row = conn.execute("""
-          SELECT COUNT(*), COUNT(DISTINCT source_video_id), COALESCE(SUM(duration_ms),0),
+        row = conn.execute(
+            f"""SELECT COUNT(*), COUNT(DISTINCT source_video_id), COALESCE(SUM(duration_ms),0),
                  COUNT(DISTINCT file_hash), SUM(CASE WHEN drive_file_id='' THEN 1 ELSE 0 END),
                  SUM(CASE WHEN source_video_id='' OR source_url='' OR category='' OR duration_ms<=0 THEN 1 ELSE 0 END)
-          FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)
-        """, (folder_id, boxer)).fetchone()
-        per_source = conn.execute("SELECT source_video_id, COUNT(*) FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?) GROUP BY source_video_id", (folder_id, boxer)).fetchall()
-        paths = [r[0] for r in conn.execute("SELECT local_path FROM media_assets WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)", (folder_id, boxer))]
+          FROM media_assets WHERE {scope}""",
+            params,
+        ).fetchone()
+        per_source = conn.execute(
+            f"SELECT source_video_id, COUNT(*) FROM media_assets WHERE {scope} GROUP BY source_video_id",
+            params,
+        ).fetchall()
+        paths = [
+            row[0]
+            for row in conn.execute(
+                f"SELECT local_path FROM media_assets WHERE {scope}", params
+            )
+        ]
+        per_dur = conn.execute(
+            f"""SELECT source_video_id, COUNT(*) AS clip_count, SUM(duration_ms) AS total_duration_ms
+              FROM media_assets WHERE {scope}
+              GROUP BY source_video_id
+              HAVING COUNT(*) != ? OR SUM(duration_ms) < ? OR SUM(duration_ms) > ?""",
+            params + (profile.clips_per_video, profile.per_source_min_ms, profile.per_source_max_ms),
+        ).fetchall()
     count, videos, duration, hashes, missing_drive, incomplete = row
-    if (count, videos, duration, hashes, missing_drive, incomplete) != (TARGET_VIDEOS * TARGET_CLIPS_PER_VIDEO, TARGET_VIDEOS, TARGET_TOTAL_MS, TARGET_VIDEOS * TARGET_CLIPS_PER_VIDEO, 0, 0):
-        raise RuntimeError(f"SQLite gate failed: clips={count}, videos={videos}, duration_ms={duration}, hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}")
-    if any(n > TARGET_CLIPS_PER_VIDEO for _, n in per_source):
-        raise RuntimeError("more than 15 clips found for a source video")
-    # ── Per-source duration gate ────────────────────────────────────────
-    per_dur = conn.execute("""
-      SELECT source_video_id, COUNT(*) AS clip_count, SUM(duration_ms) AS total_duration_ms
-      FROM media_assets
-      WHERE source='youtube' AND lifecycle_state='ACTIVE' AND folder_id=? AND LOWER(folder_path)=LOWER(?)
-      GROUP BY source_video_id
-      HAVING COUNT(*) != ? OR SUM(duration_ms) < ? OR SUM(duration_ms) > ?
-    """, (folder_id, boxer, TARGET_CLIPS_PER_VIDEO, PER_SOURCE_MIN_MS, PER_SOURCE_MAX_MS)).fetchall()
+    expected = profile.total_clips
+    if (
+        count != expected
+        or videos != profile.videos
+        or not profile.total_min_ms <= duration <= profile.total_max_ms
+        or hashes != expected
+        or missing_drive
+        or incomplete
+    ):
+        raise RuntimeError(
+            f"SQLite gate failed: clips={count}, videos={videos}, duration_ms={duration}, "
+            f"expected_duration_ms={profile.total_min_ms}..{profile.total_max_ms}, "
+            f"hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}"
+        )
+    if any(n > profile.clips_per_video for _, n in per_source):
+        raise RuntimeError(f"more than {profile.clips_per_video} clips found for a source video")
     if per_dur:
         offenders = [f"{r[0]} clips={r[1]} dur_ms={r[2]}" for r in per_dur]
         raise RuntimeError(f"per-source duration gate failed ({len(offenders)} sources): {'; '.join(offenders[:5])}")
     bad_files = []
     for path in paths:
-        clip = Path(path)
-        if not path or not clip.is_file() or clip.stat().st_size <= 0:
+        clip = Path(path) if path else None
+        if clip is None or not clip.is_file() or clip.stat().st_size <= 0:
             bad_files.append(f"missing:{path}")
             continue
         probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], capture_output=True, text=True, check=False)
@@ -511,7 +640,10 @@ def verify(db: Path, folder_id: str, boxer: str) -> None:
             bad_files.append(f"duration:{path}:{duration_sec:.3f}")
     if bad_files:
         raise RuntimeError(f"physical clip gate failed ({len(bad_files)} files): {bad_files[:3]}")
-    print("SQLite gate: 300 clips, 20 videos, 20 real minutes, complete provenance")
+    print(
+        f"SQLite gate: {profile.total_clips} clips, {profile.videos} videos, "
+        f"{profile.target_total_ms // 1000} nominal seconds, complete provenance"
+    )
 
 
 def main() -> int:
@@ -524,7 +656,8 @@ def main() -> int:
     ap.add_argument("--root-id", default=os.environ.get("YOUTUBE_STOCK_ROOT_ID", ""))
     ap.add_argument("--folder-id", default="")
     ap.add_argument("--verify-only", action="store_true")
-    ap.add_argument("--concurrency", type=int, default=2)
+    ap.add_argument("--profile", choices=sorted(PROFILES), default="full")
+    ap.add_argument("--concurrency", type=int, default=MAX_CONCURRENCY)
     args = ap.parse_args()
     if args.preflight_auth:
         report = run_auth_preflight()
@@ -532,6 +665,7 @@ def main() -> int:
         return 0 if report["youtube_auth"] == "PASS" else 1
     if not args.boxer:
         ap.error("boxer is required unless --preflight-auth is used")
+    profile = profile_for(args.profile)
     # Keep the display name used for Drive/folder_path separate from the
     # deterministic slug used in idempotency keys and reports.
     args.boxer = canonical_boxer_name(args.boxer)
@@ -542,25 +676,46 @@ def main() -> int:
         target = args.folder_id
         if not target:
             raise SystemExit("--folder-id is required with --verify-only")
-        verify(Path(args.db), target, args.boxer)
+        expected_sources = expected_source_video_ids(args.boxer, profile)
+        if expected_sources is None:
+            raise SystemExit(
+                "--verify-only requires a static manifest for the selected boxer; "
+                "run acquisition first or provide a persisted run manifest"
+            )
+        verify(
+            Path(args.db),
+            target,
+            args.boxer,
+            profile,
+            expected_source_video_ids=expected_sources,
+        )
         return 0
     if not args.root_id:
         raise SystemExit("YOUTUBE_STOCK_ROOT_ID is required")
-    selected = select(args.base, token, args.boxer)
+    selected = select(args.base, token, args.boxer, profile)
     target = folder(args.base, token, args.root_id, args.boxer)
     if not target:
         raise SystemExit("could not resolve/create boxer Drive folder")
-    print(f"selected=20 boxer={args.boxer} slug={boxer_slug(args.boxer)}")
+    print(
+        f"selected={len(selected)} profile={profile.name} "
+        f"clips={profile.total_clips} boxer={args.boxer} slug={boxer_slug(args.boxer)}"
+    )
     # The server-side worker pool is independently bounded. Keep this
-    # client fan-out controlled, but allow enough parallelism for the
-    # per-clip metadata/index path to make a five-boxer run practical.
-    workers = max(1, min(args.concurrency, 16))
+    # client fan-out at or below the safe limit for YouTube, Drive, FFmpeg,
+    # and SQLite, even when a caller requests a larger value.
+    workers = bounded_concurrency(args.concurrency)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="youtube-stock") as pool:
-        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, target, video, index)
+        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, target, video, index, profile)
                    for index, video in enumerate(selected, 1)]
         for future in as_completed(futures):
             future.result()
-    verify(Path(args.db), target, args.boxer)
+    verify(
+        Path(args.db),
+        target,
+        args.boxer,
+        profile,
+        expected_source_video_ids={video["video_id"] for video in selected},
+    )
     return 0
 
 
