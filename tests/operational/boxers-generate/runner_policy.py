@@ -57,6 +57,32 @@ def _fallbacks(response: dict[str, Any]) -> list[str]:
     return result
 
 
+def _drive_reconciliation_errors(response: dict[str, Any]) -> list[str]:
+    """Reject an overall success when any Drive link remains invalid."""
+    errors: list[str] = []
+    for obj in _walk(response):
+        invalid = obj.get("invalid_drive_links")
+        if isinstance(invalid, bool):
+            invalid = int(invalid)
+        if isinstance(invalid, (int, float)) and invalid > 0:
+            errors.append(f"invalid_drive_links={int(invalid)}")
+        verification_payload = obj.get("drive_verification")
+        if isinstance(verification_payload, dict):
+            nested_invalid = verification_payload.get("invalid_links", 0)
+            if isinstance(nested_invalid, bool):
+                nested_invalid = int(nested_invalid)
+            if isinstance(nested_invalid, (int, float)) and nested_invalid > 0:
+                errors.append(f"invalid_drive_links={int(nested_invalid)}")
+        verification = str(obj.get("drive_reconciliation_status", "")).strip().casefold()
+        overall = str(obj.get("overall_status", "")).strip().casefold()
+        if verification in {"failed", "partial"} and overall in {"succeeded", "success", "pass"}:
+            errors.append(
+                f"overall_status={obj.get('overall_status')!r} contradicts "
+                f"drive_reconciliation_status={obj.get('drive_reconciliation_status')!r}"
+            )
+    return sorted(set(errors))
+
+
 def _bound_ids(response: dict[str, Any]) -> list[tuple[str, str]]:
     """Return stock asset IDs and supplied clip IDs from output bindings."""
     result: set[tuple[str, str]] = set()
@@ -183,6 +209,10 @@ def validate_response(
         return [f"invalid runner mode: {mode!r}"]
 
     errors: list[str] = []
+    errors.extend(
+        f"Drive reconciliation gate: {error}"
+        for error in _drive_reconciliation_errors(response)
+    )
     status = _first_job_status(response)
     accepted_statuses = STRICT_STATUSES if mode == "strict" else SMOKE_STATUSES
     if status not in accepted_statuses:

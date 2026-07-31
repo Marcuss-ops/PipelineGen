@@ -271,6 +271,13 @@ def generate_report(
         "documents": {"expected": expected_items, "created": 0, "wrong_folder": 0},
         "sqlite": {"scripts": 0, "completed": 0},
         "drive_verification": _drive_state_counts(data, items),
+        # Machine-readable outcome contract. Generation may have completed
+        # while Drive reconciliation failed; the overall result must still
+        # be non-successful so one invalid link can never become a false
+        # SUCCEEDED publication.
+        "generation_status": "unknown",
+        "drive_reconciliation_status": "unknown",
+        "overall_status": "unknown",
         "final": "PASS",
     }
 
@@ -324,6 +331,16 @@ def generate_report(
         ):
             report["documents"]["created"] += 1
 
+    # Distinguish the generation step from the publication/reconciliation
+    # gate. A completed generation is not an overall success when Drive
+    # contains even one invalid link.
+    report["generation_status"] = (
+        "completed" if report["items_completed"] == expected_items else "failed"
+    )
+    report["drive_reconciliation_status"] = (
+        "passed" if report["drive_verification"]["invalid_links"] == 0 else "failed"
+    )
+
     failures = []
     if report["items_completed"] != expected_items:
         failures.append(f"items_completed={report['items_completed']}/{expected_items}")
@@ -348,7 +365,10 @@ def generate_report(
         failures.append(f"invalid_drive_links={report['drive_verification']['invalid_links']}")
     if failures:
         report["final"] = "FAIL"
+        report["overall_status"] = "failed"
         report["_failures"] = failures
+    else:
+        report["overall_status"] = "succeeded"
 
     if report_path == "--stdout":
         print(json.dumps(report, indent=2))

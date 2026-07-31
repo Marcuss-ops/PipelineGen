@@ -84,6 +84,9 @@ class GenerateReportRegistryTest(unittest.TestCase):
     def test_clean_report_passes(self):
         report = self.generate(self.make_successful_job())
         self.assertEqual(report["final"], "PASS")
+        self.assertEqual(report["generation_status"], "completed")
+        self.assertEqual(report["drive_reconciliation_status"], "passed")
+        self.assertEqual(report["overall_status"], "succeeded")
         self.assertEqual(report["drive_verification"]["invalid_links"], 0)
 
     def test_each_invalid_drive_state_blocks_pass(self):
@@ -94,6 +97,10 @@ class GenerateReportRegistryTest(unittest.TestCase):
                 scene["bindings"]["stock"]["drive_verification_state"] = state
                 report = self.generate(data)
                 self.assertEqual(report["final"], "FAIL")
+                self.assertEqual(report["generation_status"], "completed")
+                self.assertEqual(report["drive_reconciliation_status"], "failed")
+                self.assertEqual(report["overall_status"], "failed")
+                self.assertNotEqual(report["overall_status"], "succeeded")
                 self.assertEqual(report["drive_verification"]["invalid_links"], 1)
                 self.assertIn("invalid_drive_links=1", report["_failures"])
                 self.assertEqual(report["drive_verification"][state.lower()], 1)
@@ -146,6 +153,23 @@ class GenerateReportRegistryTest(unittest.TestCase):
         report = self.generate(data)
         self.assertEqual(report["final"], "PASS")
         self.assertEqual(report["voiceovers"]["failed"], 0)
+
+    def test_single_invalid_link_is_a_false_success_regression(self):
+        data = self.make_successful_job()
+        scene = data["result"]["data"]["items"][0]["result"]["output"]["specscene"]["scenes"][0]
+        scene["bindings"]["stock"]["drive_link"] = "https://drive.google.com/file/d/DELETED_ID/view"
+        scene["bindings"]["stock"]["drive_verification_state"] = "MISSING"
+
+        report = self.generate(data)
+
+        self.assertEqual(report["items_completed"], len(_generate_report.LANG_CODES))
+        self.assertEqual(report["drive_verification"]["invalid_links"], 1)
+        self.assertEqual(report["generation_status"], "completed")
+        self.assertEqual(report["drive_reconciliation_status"], "failed")
+        self.assertEqual(report["overall_status"], "failed")
+        self.assertNotEqual(report["final"], "PASS")
+        self.assertNotEqual(report["overall_status"], "SUCCEEDED")
+        self.assertTrue(any("invalid_drive_links=1" == failure for failure in report["_failures"]))
 
     def test_each_admin_audit_detail_state_blocks_pass(self):
         for state in ("MISSING", "TRASHED", "INACCESSIBLE"):
