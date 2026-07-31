@@ -73,6 +73,11 @@ var ErrArtifactHashMismatch = errors.New("artifact publisher: on-disk SHA-256 do
 // was constructed with a nil Publisher (composition-time wiring gap).
 var ErrArtifactPublisherNotConfigured = errors.New("artifact publisher: delivery.Publisher is nil (composition-time wiring gap)")
 
+// ErrResolvedFolderNotVerified is returned when an application envelope
+// supplies a direct Drive folder ID without the corresponding resolution
+// proof. Publishing must fail closed instead of guessing a destination.
+var ErrResolvedFolderNotVerified = errors.New("artifact publisher: resolved folder ID is not verified")
+
 // ── Adapter ─────────────────────────────────────────────────────────
 
 // ArtifactPublisherAdapter implements finalization.PublisherPort by
@@ -131,6 +136,10 @@ func (a *ArtifactPublisherAdapter) Publish(
 		return finalization.AssetLocation{}, err
 	}
 
+	if strings.TrimSpace(artifact.ResolvedFolderID) != "" && !artifact.RootFolderResolved {
+		return finalization.AssetLocation{}, fmt.Errorf("%w: artifact=%s", ErrResolvedFolderNotVerified, artifact.ArtifactID)
+	}
+
 	// Step 3: Build publish request with idempotency-key identity (P0.6).
 	// The IdempotencyKey is derived from SHA-256(dest:artifactID:sha256:version)
 	// and becomes the authoritative identity for Drive conflict detection.
@@ -152,26 +161,27 @@ func (a *ArtifactPublisherAdapter) Publish(
 	idemKey := delivery.DeriveIdempotencyKey(destKey, artifact.ArtifactID, artifact.SHA256, artifact.SourceVersion)
 	group, subject, provider := stockArtifactPathParts(artifact)
 	req := delivery.PublishRequest{
-		Destination:        destKey,
-		LocalPath:          artifact.LocalPath,
-		Filename:           artifact.Filename,
-		Description:        fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
-		AssetID:            artifact.ArtifactID,
-		ConflictPolicy:     delivery.ConflictSkip,
-		IdempotencyKey:     idemKey,
-		ContentHash:        artifact.SHA256,
-		SourceVersion:      artifact.SourceVersion,
-		Group:              group,
-		Subject:            subject,
-		Provider:           provider,
-		Tags:               nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
+		Destination:    destKey,
+		LocalPath:      artifact.LocalPath,
+		Filename:       artifact.Filename,
+		Description:    fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
+		AssetID:        artifact.ArtifactID,
+		ConflictPolicy: delivery.ConflictSkip,
+		IdempotencyKey: idemKey,
+		ContentHash:    artifact.SHA256,
+		SourceVersion:  artifact.SourceVersion,
+		Group:          group,
+		Subject:        subject,
+		Provider:       provider,
+		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
+		// RootFolderOverride is retained only for legacy envelopes.
 		RootFolderOverride: artifact.RootFolderOverride,
 		// A stock run resolves its named Drive folder before publishing.
-		// Pin the canonical destination explicitly so the YouTube path
-		// builder cannot recreate its legacy category/video subfolders.
+		// Pin the canonical destination explicitly so the path builder
+		// cannot recreate legacy category/video subfolders.
 		DestinationFolderID: func() string {
 			if artifact.RootFolderResolved {
-				return strings.TrimSpace(artifact.RootFolderOverride)
+				return strings.TrimSpace(artifact.ResolvedFolderID)
 			}
 			return ""
 		}(),

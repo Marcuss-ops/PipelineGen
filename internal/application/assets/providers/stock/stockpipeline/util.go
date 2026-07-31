@@ -10,7 +10,7 @@ import (
 
 // F2.10: resolveFolderTarget RETIRED (override brutal). Folder
 // resolution now goes through `s.publisher.ResolveFolder(ctx,
-// delivery.PublishRequest{Group: seg, RootFolderOverride: currentID})`
+// delivery.PublishRequest{Group: seg, DestinationFolderID: currentID})`
 // in stockpipeline.run.go, which uses DestinationStock's PathBuilder
 // to compute the canonical folder hierarchy. The legacy
 // driveutil.EnsureFolderPath walking is gone; the legacy

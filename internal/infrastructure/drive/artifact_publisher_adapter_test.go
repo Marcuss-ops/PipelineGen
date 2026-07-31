@@ -185,6 +185,30 @@ func TestArtifactPublisherAdapter_Publish_StockMetadata_UsesRunFingerprintPath(t
 	}
 }
 
+func TestArtifactPublisherAdapter_Publish_UnverifiedResolvedFolderFailsClosed(t *testing.T) {
+	content := "unverified folder artifact"
+	localPath, sha := writeTempFile(t, content)
+
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	_, err := adapter.Publish(context.Background(), finalization.VerifiedArtifact{
+		ArtifactID:       "stock:unverified-folder:video:0",
+		Kind:             finalization.KindVideo,
+		Filename:         "clip.mp4",
+		LocalPath:        localPath,
+		SHA256:           sha,
+		Requirement:      finalization.ArtifactRequirementRequired,
+		ResolvedFolderID: "unchecked-drive-folder",
+	})
+	if !errors.Is(err, ErrResolvedFolderNotVerified) {
+		t.Fatalf("Publish() error = %v, want ErrResolvedFolderNotVerified", err)
+	}
+	if stub.lastReq != nil {
+		t.Fatal("publisher must not be called for an unverified resolved folder")
+	}
+}
+
 func TestArtifactPublisherAdapter_Publish_ExplicitTimestamp_UsesTimestampPath(t *testing.T) {
 	content := `{"timestamp":true}`
 	localPath, sha := writeTempFile(t, content)

@@ -73,7 +73,7 @@ func publishMetadataPhase(
 	fp string,
 	explicitTimestamps bool,
 	rootFolderName string,
-	rootFolderOverride string,
+	resolvedFolderID string,
 	timestampGroupName string,
 	chunks []ChunkState,
 ) (MetadataState, error) {
@@ -131,12 +131,12 @@ func publishMetadataPhase(
 		SHA256:         metaHash,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: metaIdem,
-		// DRIVE-IS-DRIVE (July 2026): stock now passes the explicit
-		// drive_folder_id as the Drive root override when provided.
-		// FolderID remains the workflow identifier; the override is
-		// the actual Drive root selector.
+		// DRIVE-IS-DRIVE (July 2026): stock passes the semantically
+		// resolved drive_folder_id through ResolvedFolderID. The
+		// adapter may use it directly only when DriveFolderResolved
+		// proves that the folder was already verified.
 		RootFolderName:     rootFolderName,
-		RootFolderOverride: rootFolderOverride,
+		ResolvedFolderID:   resolvedFolderID,
 		RootFolderResolved: in != nil && in.DriveFolderResolved,
 		PathLeafName:       metaLeafName,
 	}
