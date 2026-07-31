@@ -17,6 +17,23 @@ SPEC.loader.exec_module(runner_policy)
 
 
 class RunnerPolicyTest(unittest.TestCase):
+    def test_scenario_07_blocked_result_is_a_non_post_dependency_outcome(self):
+        scenario = json.loads((ROOT / "scenarios" / "top5_financial_stories_multilang.json").read_text())
+        self.assertEqual(scenario["_runner"]["mode"], "smoke")
+        self.assertTrue(all(
+            binding["asset_id"].startswith("{{stock.")
+            for item in scenario["items"]
+            for binding in item["output"]["stock_bindings"]
+        ))
+        blocked = {"status": "BLOCKED", "missing": [
+            {"subject": "Floyd Mayweather", "role": "fight", "reason": "NO_ACTIVE_ASSET"},
+            {"subject": "Sugar Ray Robinson", "role": "fight", "reason": "NO_ACTIVE_ASSET"},
+        ]}
+        self.assertEqual(blocked["status"], "BLOCKED")
+        self.assertEqual(len(blocked["missing"]), 2)
+        self.assertNotIn("job_id", blocked)
+        self.assertNotIn("voiceover_requests", blocked)
+
     def test_every_scenario_declares_a_valid_runner_mode(self):
         scenarios = sorted((ROOT / "scenarios").glob("*.json"))
         self.assertTrue(scenarios)
