@@ -1,0 +1,148 @@
+{
+  "scenario": "drive_database_reconciliation",
+  "assets": [
+    {
+      "asset_id": "asset_mike_tyson_verified",
+      "boxer": "Mike Tyson",
+      "scene_id": "scene-mike-tyson",
+      "drive_file_id": "verified1",
+      "drive_link": "https://drive.google.com/file/d/verified1/view",
+      "expected_state": "VERIFIED",
+      "drive": {
+        "id": "verified1",
+        "name": "mike-tyson-fight.mp4",
+        "mime_type": "video/mp4",
+        "size": 1024,
+        "web_view_link": "https://drive.google.com/file/d/verified1/view",
+        "parents": ["controlled-reconciliation-folder"],
+        "trashed": false
+      }
+    },
+    {
+      "asset_id": "asset_muhammad_ali_updated",
+      "boxer": "Muhammad Ali",
+      "scene_id": "scene-muhammad-ali",
+      "drive_file_id": "ali1",
+      "drive_link": "https://drive.google.com/file/d/oldali1/view",
+      "expected_state": "UPDATED",
+      "drive": {
+        "id": "ali1",
+        "name": "muhammad-ali-interview.mp4",
+        "mime_type": "video/mp4",
+        "size": 2048,
+        "web_view_link": "https://drive.google.com/file/d/ali1/view",
+        "parents": ["controlled-reconciliation-folder"],
+        "trashed": false
+      }
+    },
+    {
+      "asset_id": "asset_manny_pacquiao_trashed",
+      "boxer": "Manny Pacquiao",
+      "scene_id": "scene-manny-pacquiao",
+      "drive_file_id": "trashed1",
+      "drive_link": "https://drive.google.com/file/d/trashed1/view",
+      "expected_state": "TRASHED",
+      "drive": {
+        "id": "trashed1",
+        "name": "manny-pacquiao-training.mp4",
+        "mime_type": "video/mp4",
+        "size": 4096,
+        "web_view_link": "https://drive.google.com/file/d/trashed1/view",
+        "parents": ["controlled-reconciliation-folder"],
+        "trashed": true
+      }
+    },
+    {
+      "asset_id": "asset_floyd_mayweather_inaccessible",
+      "boxer": "Floyd Mayweather",
+      "scene_id": "scene-floyd-mayweather",
+      "drive_file_id": "inaccessible1",
+      "drive_link": "https://drive.google.com/file/d/inaccessible1/view",
+      "expected_state": "INACCESSIBLE",
+      "drive": {
+        "id": "",
+        "name": "",
+        "mime_type": "",
+        "size": 0,
+        "web_view_link": "",
+        "parents": [],
+        "trashed": false,
+        "error_status": 403
+      }
+    },
+    {
+      "asset_id": "asset_sugar_ray_robinson_missing",
+      "boxer": "Sugar Ray Robinson",
+      "scene_id": "scene-sugar-ray-robinson",
+      "drive_file_id": "missing1",
+      "drive_link": "https://drive.google.com/file/d/missing1/view",
+      "expected_state": "MISSING",
+      "drive": {
+        "id": "",
+        "name": "",
+        "mime_type": "",
+        "size": 0,
+        "web_view_link": "",
+        "parents": [],
+        "trashed": false,
+        "error_status": 404
+      }
+    }
+  ],
+  "script": {
+    "id": "controlled-reconciliation-script",
+    "title": "Five boxers controlled Drive reconciliation",
+    "scenes": [
+      {
+        "id": "scene-mike-tyson",
+        "index": 0,
+        "boxer": "Mike Tyson",
+        "binding": {
+          "asset_id": "asset_mike_tyson_verified",
+          "drive_file_id": "verified1",
+          "drive_link": "https://drive.google.com/file/d/verified1/view"
+        }
+      },
+      {
+        "id": "scene-muhammad-ali",
+        "index": 1,
+        "boxer": "Muhammad Ali",
+        "binding": {
+          "asset_id": "asset_muhammad_ali_updated",
+          "drive_file_id": "ali1",
+          "drive_link": "https://drive.google.com/file/d/oldali1/view"
+        }
+      },
+      {
+        "id": "scene-manny-pacquiao",
+        "index": 2,
+        "boxer": "Manny Pacquiao",
+        "binding": {
+          "asset_id": "asset_manny_pacquiao_trashed",
+          "drive_file_id": "trashed1",
+          "drive_link": "https://drive.google.com/file/d/trashed1/view"
+        }
+      },
+      {
+        "id": "scene-floyd-mayweather",
+        "index": 3,
+        "boxer": "Floyd Mayweather",
+        "binding": {
+          "asset_id": "asset_floyd_mayweather_inaccessible",
+          "drive_file_id": "inaccessible1",
+          "drive_link": "https://drive.google.com/file/d/inaccessible1/view"
+        }
+      },
+      {
+        "id": "scene-sugar-ray-robinson",
+        "index": 4,
+        "boxer": "Sugar Ray Robinson",
+        "binding": {
+          "asset_id": "asset_sugar_ray_robinson_missing",
+          "drive_file_id": "missing1",
+          "drive_link": "https://drive.google.com/file/d/missing1/view"
+        }
+      }
+    ]
+  }
+}
