@@ -152,17 +152,18 @@ var (
 // ──── step error sentinels (was orchestrator_step_errors.go) ────
 
 var (
-	ErrStockPublishArtifactFailed       = types.ErrStockPublishArtifactFailed
-	ErrStockFinalizeSpineFailed         = types.ErrStockFinalizeSpineFailed
-	ErrStockComposeChunksAllFailed      = types.ErrStockComposeChunksAllFailed
-	ErrStockExtractClipsCutterRequired  = types.ErrStockExtractClipsCutterRequired
-	ErrStockExtractClipsLocalFSRequired = types.ErrStockExtractClipsLocalFSRequired
-	ErrStockFinalizeLeaseMissing        = types.ErrStockFinalizeLeaseMissing
-	ErrStockFinalizeStateLost           = types.ErrStockFinalizeStateLost
-	ErrStockFnRequired                  = types.ErrStockFnRequired
-	ErrStockPublishStateLost            = types.ErrStockPublishStateLost
-	ErrStockResumeStateInvalid          = types.ErrStockResumeStateInvalid
-	ErrStockStageSourcesAllFailed       = types.ErrStockStageSourcesAllFailed
-	ErrStockStageSourcesIncomplete      = types.ErrStockStageSourcesIncomplete
-	ErrFinalizerAbsent                  = types.ErrFinalizerAbsent
+	ErrStockPublishArtifactFailed          = types.ErrStockPublishArtifactFailed
+	ErrStockFinalizeSpineFailed            = types.ErrStockFinalizeSpineFailed
+	ErrStockComposeChunksAllFailed         = types.ErrStockComposeChunksAllFailed
+	ErrStockExtractClipsCutterRequired     = types.ErrStockExtractClipsCutterRequired
+	ErrStockExtractClipsLocalFSRequired    = types.ErrStockExtractClipsLocalFSRequired
+	ErrStockExtractClipsDurableStateFailed = types.ErrStockExtractClipsDurableStateFailed
+	ErrStockFinalizeLeaseMissing           = types.ErrStockFinalizeLeaseMissing
+	ErrStockFinalizeStateLost              = types.ErrStockFinalizeStateLost
+	ErrStockFnRequired                     = types.ErrStockFnRequired
+	ErrStockPublishStateLost               = types.ErrStockPublishStateLost
+	ErrStockResumeStateInvalid             = types.ErrStockResumeStateInvalid
+	ErrStockStageSourcesAllFailed          = types.ErrStockStageSourcesAllFailed
+	ErrStockStageSourcesIncomplete         = types.ErrStockStageSourcesIncomplete
+	ErrFinalizerAbsent                     = types.ErrFinalizerAbsent
 )

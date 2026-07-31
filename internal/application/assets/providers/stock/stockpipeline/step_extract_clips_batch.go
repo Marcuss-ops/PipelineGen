@@ -2,16 +2,17 @@ package stockpipeline
 
 import (
 	"context"
-
-	"go.uber.org/zap"
+	"fmt"
 )
 
 // prepareBatchState ensures batch, group, and artifact rows exist in the
-// durable batch repository. Returns batchEnsured=true after first call.
-func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, groupPlans []ClipPlan, numGroups, numPlans int, batchID string, batchEnsured bool) bool {
+// durable batch repository. Any durable write error aborts the step instead
+// of allowing the orchestrator to mark stock.extract_clips completed while
+// its lifecycle rows are incomplete.
+func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, groupPlans []ClipPlan, numGroups, numPlans int, batchID string, batchEnsured bool) (bool, error) {
 	batchRepo := runner.BatchRepository()
 	if batchRepo == nil {
-		return batchEnsured
+		return batchEnsured, nil
 	}
 
 	if !batchEnsured {
@@ -22,9 +23,8 @@ func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, 
 			Status:         BatchStateRunning,
 			ExpectedGroups: numGroups,
 			ExpectedClips:  numPlans,
-		}); batchErr != nil && runner.Log() != nil {
-			runner.Log().Warn("orchestrator: stock.extract_clips: failed to create batch row",
-				zap.String("batch_id", batchID), zap.Error(batchErr))
+		}); batchErr != nil {
+			return false, fmt.Errorf("%w: create batch %s: %w", ErrStockExtractClipsDurableStateFailed, batchID, batchErr)
 		}
 		batchEnsured = true
 	}
@@ -36,9 +36,8 @@ func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, 
 		GroupKey:      sourceID,
 		Status:        GroupStateRunning,
 		ExpectedClips: len(groupPlans),
-	}); groupErr != nil && runner.Log() != nil {
-		runner.Log().Warn("orchestrator: stock.extract_clips: failed to create group row",
-			zap.String("group_id", groupID), zap.Error(groupErr))
+	}); groupErr != nil {
+		return false, fmt.Errorf("%w: create group %s: %w", ErrStockExtractClipsDurableStateFailed, groupID, groupErr)
 	}
 
 	for clipIdx, plan := range groupPlans {
@@ -53,23 +52,25 @@ func prepareBatchState(ctx context.Context, runner StepRunner, sourceID string, 
 			StartSec:    plan.StartSec,
 			EndSec:      plan.EndSec,
 			Status:      ArtifactStatePlanned,
-		}); artErr != nil && runner.Log() != nil {
-			runner.Log().Warn("orchestrator: stock.extract_clips: failed to create artifact row",
-				zap.String("artifact_id", artifactID), zap.Error(artErr))
+		}); artErr != nil {
+			return false, fmt.Errorf("%w: create artifact %s: %w", ErrStockExtractClipsDurableStateFailed, artifactID, artErr)
 		}
 	}
 
-	return batchEnsured
+	return batchEnsured, nil
 }
 
 // markArtifactsExtracting marks all artifacts for a source group as EXTRACTING.
-func markArtifactsExtracting(ctx context.Context, runner StepRunner, batchID, sourceID string, groupPlans []ClipPlan) {
+func markArtifactsExtracting(ctx context.Context, runner StepRunner, batchID, sourceID string, groupPlans []ClipPlan) error {
 	batchRepo := runner.BatchRepository()
 	if batchRepo == nil {
-		return
+		return nil
 	}
 	for clipIdx := range groupPlans {
 		artifactID := StockArtifactID(batchID, sourceID, clipIdx)
-		_ = batchRepo.MarkArtifactExtracting(ctx, artifactID)
+		if err := batchRepo.MarkArtifactExtracting(ctx, artifactID); err != nil {
+			return fmt.Errorf("%w: mark artifact %s extracting: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
+		}
 	}
+	return nil
 }

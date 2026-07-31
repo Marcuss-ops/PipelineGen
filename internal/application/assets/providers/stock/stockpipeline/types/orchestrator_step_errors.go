@@ -95,6 +95,13 @@ var (
 	// typed error. PR-STOCK-NOOPFS-REMOVAL (P0.1, July 2026).
 	ErrStockExtractClipsLocalFSRequired = errors.New("stock.extract_clips: LocalFSPort nil — filesystem must be wired for production runs")
 
+	// ErrStockExtractClipsDurableStateFailed is raised when the extract
+	// step cannot persist its batch/group/artifact lifecycle state. A
+	// successful extract step without these writes would allow the
+	// orchestrator to mark the step completed while durable state still
+	// says planned, extracting, or otherwise incomplete.
+	ErrStockExtractClipsDurableStateFailed = errors.New("stock.extract_clips: durable lifecycle state write failed")
+
 	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
 	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
 	// every chunk failed to render (zero string paths appended to the
