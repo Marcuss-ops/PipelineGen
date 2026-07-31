@@ -41,7 +41,7 @@ var _ hashutil.HashFunc = testFakeHasher
 // NOT the real SHA-256. This is the failure mode godlike/07
 // no-fake-availability FORBIDS: production code must NEVER observe a
 // fake-injected path if the composition root is correctly wiring
-// files.NewSHA256Hasher.
+// the standard-library SHA256String default.
 func TestMakeArtifactIdempotencyKey_FakeHash_ProducesFakeBytes(t *testing.T) {
 	derive := remote.MakeArtifactIdempotencyKey(testFakeHasher)
 	got := derive("j-1", "a-1", "h-1")
@@ -167,6 +167,22 @@ func TestMakeCompleteJobIdempotencyKey_PanicOnNilHash(t *testing.T) {
 		}
 	}()
 	_ = remote.MakeCompleteJobIdempotencyKey(hashutil.HashFunc(nil))
+}
+
+func TestArtifactIdempotencyKey_DefaultMatchesInjectedHasher(t *testing.T) {
+	derive := remote.MakeArtifactIdempotencyKey(hashutil.SHA256String)
+	want := derive("j-1", "a-1", "h-1")
+	if got := remote.ArtifactIdempotencyKey("j-1", "a-1", "h-1"); got != want {
+		t.Fatalf("legacy artifact key = %q, injected default = %q; compatibility drift", got, want)
+	}
+}
+
+func TestCompleteJobIdempotencyKey_DefaultMatchesInjectedHasher(t *testing.T) {
+	derive := remote.MakeCompleteJobIdempotencyKey(hashutil.SHA256String)
+	want := derive("j-1", 2, "h-1")
+	if got := remote.CompleteJobIdempotencyKey("j-1", 2, "h-1"); got != want {
+		t.Fatalf("legacy complete-job key = %q, injected default = %q; compatibility drift", got, want)
+	}
 }
 
 // TestArtifactIdempotencyKey_LegacyFreeFunction_StillWorks pins the
