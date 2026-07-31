@@ -20,15 +20,15 @@
 //  1. Set up ClipEvidence with 4 canonical drive_file IDs + URLs.
 //  2. Build a SpecScene with 4 scenes (no bindings).
 //  3. Run ClipBindingsProcessor.Process with the canonical ProcessInput.
-//  4. Render the post-walk SpecScene through BuildGenerationDocumentHTML
-//     with includeSpecSceneBlock=true (the canonical production renderer).
+//  4. Render the post-walk SpecScene through BuildSpecSceneDocumentHTML
+//     (the canonical production renderer).
 //  5. Marshal model.SpecScene to JSON bytes (the response writer's wire shape).
 //  6. Extract per-scene drive_links from BOTH byte streams.
 //  7. Assert scene-by-scene equality: docLink[i] == wireLink[i].
 //
 // PR-G.2 BACKFILL (June 2026): package moved from `scripts` (root facade)
 // to `adapters_test` (external). The ClipBindingsProcessor /
-// ProcessInput / BuildGenerationDocumentHTML / BuildClipEvidence
+// ProcessInput / BuildSpecSceneDocumentHTML / BuildClipEvidence
 // symbols are no longer reached via the `scripts.` facade; they are
 // imported directly from the canonical `adapters` and `usecase`
 // subpackages. The test's assertions are unchanged.
@@ -69,7 +69,7 @@ type wireScene struct {
 
 // ── Doc-side mirror ─────────────────────────────────────────────────────────
 //
-// BuildGenerationDocumentHTML with includeSpecSceneBlock=true renders a
+// BuildSpecSceneDocumentHTML renders a
 // `<h2>SpecScene JSON</h2><pre>...</pre>` block whose inner content is
 // a json.MarshalIndent of the canonical scriptpkg.SpecSceneOutput shape.
 // The mirrors here match that exact shape so the parse path is faithful
@@ -81,7 +81,7 @@ type wireScene struct {
 //
 // docSpecDocRendererVersion is the schema version the doc builder
 // is expected to embed in the rendered JSON. If a future refactor
-// to BuildGenerationDocumentHTML bumps the version (e.g. a
+// to BuildSpecSceneDocumentHTML bumps the version (e.g. a
 // `prompt` field gets added), this test will assert against the
 // unchanged version and fail loudly — the docSpecDoc mirror below
 // would otherwise silently drop or add empty fields, and the
@@ -175,7 +175,7 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
 	}
-	docHTML := adapters.BuildGenerationDocumentHTML(model, "PR 7 Test Title", "", nil, nil, true)
+	docHTML := adapters.BuildSpecSceneDocumentHTML(model, "PR 7 Test Title")
 
 	// ── JSON response writer view: marshal the actual wire shape. ──
 	wireRaw, err := json.Marshal(model.SpecScene)
@@ -234,16 +234,16 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 }
 
 // extractDocLinksFromDocHTML parses the doc HTML body, finds the
-// `<h2>SpecScene JSON</h2><pre>...</pre>` block that the doc renderer
-// embeds (rendered via json.MarshalIndent in
-// BuildGenerationDocumentHTML), parses its inner JSON via the
+// `<h2>SpecScene JSON</h2><pre>...</pre>` block that the canonical
+// renderer embeds (rendered via json.MarshalIndent in
+// BuildSpecSceneDocumentHTML), parses its inner JSON via the
 // docSpecDoc/docSceneDoc/docSceneBindings/docClip typed mirror, and
 // returns the per-scene `bindings.clip.drive_link` sequence. Errors
 // fail the test.
 //
 // Implementation choice: regex match the `<h2>SpecScene JSON</h2><pre>`
-// block that BuildGenerationDocumentHTML (includeSpecSceneBlock=true)
-// emits and unescape the four HTML entities that html.EscapeString
+// block that BuildSpecSceneDocumentHTML emits and unescape the four HTML
+// entities that html.EscapeString
 // generates so json.Unmarshal can re-parse the embedded JSON.
 func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []string {
 	t.Helper()
@@ -251,12 +251,12 @@ func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []stri
 	matches := re.FindStringSubmatch(html)
 	if len(matches) < 2 {
 		t.Fatalf("doc HTML body has no <h2>SpecScene JSON</h2><pre>...</pre> block; "+
-			"either the test design assumption broke (BuildGenerationDocumentHTML includeSpecSceneBlock=true no longer emits one) "+
+			"either the test design assumption broke (BuildSpecSceneDocumentHTML no longer emits one) "+
 			"or the binder never wrote canonical bindings into SpecScene.\n"+
 			"first 800 chars of HTML: %s", truncateForFailure(html, 800))
 	}
 
-	// BuildGenerationDocumentHTML calls html.EscapeString on the
+	// BuildSpecSceneDocumentHTML calls html.EscapeString on the
 	// JSON bytes; unescape the four escapes it produces so
 	// json.Unmarshal can re-parse the inner block.
 	inner := matches[1]
@@ -281,7 +281,7 @@ func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []stri
 	// is the canary.
 	if docDoc.Version != docSpecDocRendererVersion {
 		t.Fatalf("doc-rendered SpecScene JSON has unexpected version %d "+
-			"(test pinned to %d) — BuildGenerationDocumentHTML bumped the "+
+			"(test pinned to %d) — BuildSpecSceneDocumentHTML bumped the "+
 			"embedded schema; update the typed mirror and the renderer-version "+
 			"constant together, then re-pin the diff test.\n"+
 			"first 800 chars of inner JSON: %s",
