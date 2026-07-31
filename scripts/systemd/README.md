@@ -44,6 +44,13 @@ commands do not use sudo. The command waits for the service to become active,
 probes `/ready` with a bounded timeout, and sanitizes journal output so
 passwords, tokens, Drive URLs, and Drive identifiers are not printed.
 
+`restart-verify` additionally runs the authenticated Drive canary against
+`/api/admin/drive/canary-upload` with the canonical `folder_alias` value
+`Boxe`. Credentials are loaded only by `scripts/with-velox-auth`; the token
+and canary response are kept inside the helper boundary. This command emits
+only one verdict line — `PASS` or `FAIL` — and never prints the response body,
+Drive IDs, Drive URLs, or token material.
+
 ## Restricted operator access
 
 The versioned policy in `sudoers/pipelinegen-operator` grants the configured
@@ -89,6 +96,8 @@ Optional environment variables:
 - `PIPELINEGEN_READY_TIMEOUT` — readiness wait in seconds (default `60`)
 - `PIPELINEGEN_RESTART_TIMEOUT` — bounded restart timeout (default `30`)
 - `PIPELINEGEN_LOG_LINES` — sanitized journal lines (default `80`)
+- `WITH_VELOX_AUTH_BIN` — auth wrapper override for isolated tests (default `scripts/with-velox-auth`)
+- `JQ_BIN` — jq command override for isolated tests (default `jq`)
 
 The isolated contract test is:
 

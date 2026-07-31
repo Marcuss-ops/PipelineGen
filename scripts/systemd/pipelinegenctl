@@ -16,33 +16,45 @@
 #   - only pipelinegen.service is addressable;
 #   - only restart uses sudo, and always with -n;
 #   - no password, token, response body, Drive URL, or Drive ID is printed;
+#   - restart-verify emits only PASS or FAIL;
 #   - command paths may be overridden for isolated tests, but arguments are
 #     always passed as separate shell words (never through eval).
 
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SERVICE="pipelinegen.service"
 readonly DEFAULT_BASE_URL="http://127.0.0.1:8000"
 readonly DEFAULT_READY_TIMEOUT="60"
 readonly DEFAULT_RESTART_TIMEOUT="30"
 readonly DEFAULT_LOG_LINES="80"
+readonly CANARY_PATH="/api/admin/drive/canary-upload"
 
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
 SUDO_BIN="${SUDO_BIN:-sudo}"
 CURL_BIN="${CURL_BIN:-curl}"
 JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
+JQ_BIN="${JQ_BIN:-jq}"
+WITH_VELOX_AUTH_BIN="${WITH_VELOX_AUTH_BIN:-$SCRIPT_DIR/../with-velox-auth}"
 BASE_URL="${PIPELINEGEN_BASE_URL:-$DEFAULT_BASE_URL}"
 READY_TIMEOUT="${PIPELINEGEN_READY_TIMEOUT:-$DEFAULT_READY_TIMEOUT}"
 RESTART_TIMEOUT="${PIPELINEGEN_RESTART_TIMEOUT:-$DEFAULT_RESTART_TIMEOUT}"
 LOG_LINES="${PIPELINEGEN_LOG_LINES:-$DEFAULT_LOG_LINES}"
 
+QUIET_VERDICT=0
+
 log() {
+    (( QUIET_VERDICT == 1 )) && return 0
     printf '[pipelinegenctl] %s\n' "$*"
 }
 
 fail() {
-    printf '[pipelinegenctl] ERROR: %s\n' "$*" >&2
+    if (( QUIET_VERDICT == 1 )); then
+        printf 'FAIL\n'
+    else
+        printf '[pipelinegenctl] ERROR: %s\n' "$*" >&2
+    fi
     exit 1
 }
 
@@ -119,6 +131,46 @@ check_ready() {
     fail "/ready did not return HTTP 200 within ${READY_TIMEOUT}s"
 }
 
+check_drive_canary() {
+    local canary_url="${BASE_URL}${CANARY_PATH}"
+
+    [[ -x "$WITH_VELOX_AUTH_BIN" ]] ||
+        fail 'Drive canary authentication helper is unavailable'
+    command -v "$JQ_BIN" >/dev/null 2>&1 ||
+        fail 'jq command is required for the Drive canary'
+
+    # The auth helper owns token loading and validation. The nested command
+    # receives only non-secret arguments; all helper/curl/jq output stays
+    # redirected so neither credentials nor Drive metadata can escape.
+    local auth_script
+    auth_script=$(cat <<'CANARY_AUTH_SCRIPT'
+set -eu
+curl_bin="$1"
+jq_bin="$2"
+url="$3"
+response="$(
+    printf '%s\n' \
+        "request = \"POST\"" \
+        "header = \"Authorization: Bearer ${VELOX_ADMIN_TOKEN}\"" \
+        "header = \"Content-Type: application/json\"" \
+        "data = \"{\\\"folder_alias\\\":\\\"Boxe\\\"}\"" |
+    "$curl_bin" \
+        --silent \
+        --show-error \
+        --fail \
+        --max-time 15 \
+        --config - \
+        "$url"
+)"
+printf '%s' "$response" | "$jq_bin" -e ".ok == true" >/dev/null
+CANARY_AUTH_SCRIPT
+    )
+    if ! "$WITH_VELOX_AUTH_BIN" sh -c "$auth_script" -- \
+        "$CURL_BIN" "$JQ_BIN" "$canary_url" >/dev/null 2>&1; then
+        fail 'Drive canary failed'
+    fi
+}
+
 restart_service() {
     command -v "$TIMEOUT_BIN" >/dev/null 2>&1 ||
         fail 'timeout command is required for a bounded restart'
@@ -149,6 +201,9 @@ main() {
         exit 2
     }
 
+    if [[ "$1" == "restart-verify" ]]; then
+        QUIET_VERDICT=1
+    fi
     validate_configuration
 
     case "$1" in
@@ -170,6 +225,8 @@ main() {
         restart-verify)
             restart_service
             check_ready
+            check_drive_canary
+            printf 'PASS\n'
             ;;
         logs)
             show_logs
