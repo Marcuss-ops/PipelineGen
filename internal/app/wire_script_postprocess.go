@@ -41,7 +41,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 // assetServiceLookupAdapter wraps asset.Service to satisfy the
 // drive.AssetStoreLookup interface needed by LocationVerifier
 // for deep Drive+SQLite cross-reference.
