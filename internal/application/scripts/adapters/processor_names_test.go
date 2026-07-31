@@ -58,12 +58,12 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorTranslation,
 		adapterspkg.ProcessorClipBindings,
 		adapterspkg.ProcessorStockBindings,
-		adapterspkg.ProcessorAssetLocationReconciliation,
 		adapterspkg.ProcessorVisualPlanning,
 		adapterspkg.ProcessorVisualSlots,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorInternetImages,
+		adapterspkg.ProcessorAssetLocationReconciliation,
 		adapterspkg.ProcessorPersistence,
 		adapterspkg.ProcessorDocument,
 	}

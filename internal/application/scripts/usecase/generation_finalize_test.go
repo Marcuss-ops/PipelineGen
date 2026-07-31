@@ -336,3 +336,25 @@ func TestClassifyGenerationStatus_BindingWarningsFilteredOnTextPlan(t *testing.T
 			got, scriptpkg.ItemStatusSucceeded)
 	}
 }
+
+func TestClassifyGenerationStatus_ReconciliationWarningIsPartial(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Quality: &scriptpkg.GenerationQuality{Passed: true},
+		Warnings: []string{
+			"asset_location_reconciliation: clip link in scene-0 is MISSING (link cleared)",
+		},
+	}
+	if got := ClassifyGenerationStatus(result, false); got != scriptpkg.ItemStatusPartiallySucceeded {
+		t.Errorf("reconciliation warning status = %q, want %q", got, scriptpkg.ItemStatusPartiallySucceeded)
+	}
+}
+
+func TestClassifyGenerationStatus_NonReconciliationWarningRemainsWarningSuccess(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Quality:  &scriptpkg.GenerationQuality{Passed: true},
+		Warnings: []string{"voiceover skipped: provider unavailable"},
+	}
+	if got := ClassifyGenerationStatus(result, false); got != scriptpkg.ItemStatusSucceededWithWarnings {
+		t.Errorf("ordinary warning status = %q, want %q", got, scriptpkg.ItemStatusSucceededWithWarnings)
+	}
+}

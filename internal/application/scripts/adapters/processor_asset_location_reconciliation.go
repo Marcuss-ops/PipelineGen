@@ -12,7 +12,8 @@
 //     as warnings.
 //
 // The processor is BestEffort: transport errors are surfaced as
-// warnings rather than hard failures. A nil verifier is still a
+// warnings rather than hard failures, but every unverified link is
+// cleared before downstream publication. A nil verifier is still a
 // hard composition error.
 package adapters
 
@@ -22,6 +23,7 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // AssetLocationReconciliationProcessor verifies every drive_link
@@ -50,6 +52,9 @@ func (p *AssetLocationReconciliationProcessor) Name() ProcessorName {
 func (p *AssetLocationReconciliationProcessor) Policy(
 	_ *scriptpkg.ResolvedGenerationPlan,
 ) ProcessorPolicy {
+	if p == nil || p.verifier == nil {
+		return ProcessorRequired
+	}
 	return ProcessorBestEffort
 }
 
@@ -67,7 +72,17 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	_ = plan
 
 	if p.verifier == nil {
-		return nil, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
+		// Configuration failure is required, but still return a
+		// fail-closed scene so a registry that is already running the
+		// plan cannot forward stale links to later processors before
+		// the required error is surfaced.
+		reconciled := cloneSpecScenes(input.SpecScene.Scenes)
+		clearUnverifiedSceneLinks(reconciled)
+		return &PostProcessResult{
+			Changed:          len(reconciled) > 0,
+			UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+			Warnings:         []string{"asset_location_reconciliation: verifier is not configured (all Drive links cleared)"},
+		}, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
 	scenes := input.SpecScene.Scenes
@@ -169,6 +184,38 @@ func (p *AssetLocationReconciliationProcessor) Process(
 			}
 		}
 
+		// ── Drive-backed image binding ──────────────────────
+		// Image URLs may be provider URLs, so only Google Drive URLs
+		// enter this verifier. Non-Drive provider URLs are left intact;
+		// Drive-backed image URLs are held to the same fail-closed rule
+		// as every other published location.
+		if bindings.Image != nil {
+			if link := strings.TrimSpace(bindings.Image.URL); link != "" {
+				if fileID, fileIDErr := urlutil.FileIDFromDriveLink(link); fileIDErr == nil && fileID != "" {
+					result, err := p.verifyAndReconcile(
+						ctx, bindings.Image.ImageID, fileID, link,
+						&bindings.Image.URL, "image", scene.ID,
+					)
+					if err != nil {
+						return nil, err
+					}
+					changed = changed || result.changed
+					okCount += result.ok
+					updatedCount += result.updated
+					missingCount += result.missing
+					trashedCount += result.trashed
+					inaccessibleCount += result.inaccessible
+					malformedCount += result.malformed
+					if result.warning != "" {
+						warnings = append(warnings, result.warning)
+					}
+					if result.changed && strings.TrimSpace(bindings.Image.URL) == "" {
+						bindings.Image.Status = string(scriptpkg.ImageStatusFailed)
+					}
+				}
+			}
+		}
+
 		// ── Voiceover binding ───────────────────────────────
 		if bindings.Voiceover != nil {
 			if link := strings.TrimSpace(bindings.Voiceover.Link); link != "" {
@@ -245,8 +292,8 @@ type reconcileResult struct {
 // updates the link pointer in place. Returns a reconcileResult
 // with counters and an optional warning string.
 // Transport errors (network timeout, Drive API 5xx) are surfaced
-// as warnings per the ProcessorBestEffort contract — the generation
-// continues with the link preserved as-is.
+// as warnings per the ProcessorBestEffort contract, while the
+// unverified link is cleared fail-closed before publication.
 func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	ctx context.Context,
 	assetID string,
@@ -258,16 +305,27 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 ) (reconcileResult, error) {
 	verified, err := p.verifier.Verify(ctx, assetID, fileID, link)
 	if err != nil {
-		// BestEffort: transport errors become warnings, link preserved.
+		// BestEffort keeps generation running, but fails closed for
+		// publication: an unverified link must never reach the
+		// document, manifest, or persisted SpecScene.
+		*linkPtr = ""
 		return reconcileResult{
+			changed: true,
 			warning: fmt.Sprintf(
-				"asset_location_reconciliation: transport error verifying %s link in %s (link preserved): %v",
+				"asset_location_reconciliation: transport error verifying %s link in %s (link cleared): %v",
 				label, sceneID, err),
 		}, nil
 	}
 	if verified == nil {
-		// No link to verify — no-op.
-		return reconcileResult{}, nil
+		// A verifier that cannot produce a result has not established
+		// that the link is usable. Fail closed rather than publishing
+		// an unverified location.
+		*linkPtr = ""
+		return reconcileResult{
+			changed: true,
+			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state (verifier returned no result; link cleared): asset=%s",
+				label, sceneID, assetID),
+		}, nil
 	}
 
 	switch verified.State {
@@ -342,15 +400,21 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		}, nil
 
 	default:
-		return reconcileResult{}, nil
+		// New or corrupt verifier states must never bypass the gate.
+		// Preserve generation as best-effort, but clear the link and
+		// expose the degraded outcome to status classification.
+		*linkPtr = ""
+		return reconcileResult{
+			changed: true,
+			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state %q (link cleared): asset=%s",
+				label, sceneID, verified.State, assetID),
+		}, nil
 	}
 }
 
-// cloneSpecScenes returns a shallow copy of the scenes slice for
-// safe in-place mutation during reconciliation. Copies all
-// binding types including Media (which cloneSceneBindings does
-// not yet handle — forward-pointer to merge back when
-// cloneSceneBindings gains Media support).
+// cloneSpecScenes returns a copy of the scenes slice for safe
+// in-place mutation during reconciliation. It preserves every
+// binding type, including Media.
 func cloneSpecScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 	out := make([]scriptpkg.SpecScene, len(scenes))
 	for i, sc := range scenes {
@@ -360,12 +424,33 @@ func cloneSpecScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 			out[i].Metadata = &meta
 		}
 		out[i].Bindings = cloneSceneBindings(sc.Bindings)
-		// Clone Media bindings (cloneSceneBindings currently only
-		// handles Clip/Image/Voiceover/Stock).
-		if len(sc.Bindings.Media) > 0 {
-			out[i].Bindings.Media = make([]scriptpkg.ResolvedMediaBinding, len(sc.Bindings.Media))
-			copy(out[i].Bindings.Media, sc.Bindings.Media)
-		}
 	}
 	return out
+}
+
+// clearUnverifiedSceneLinks removes every publishable Drive-backed
+// location from a scene copy. It is used only for configuration
+// failures, where verification cannot start at all.
+func clearUnverifiedSceneLinks(scenes []scriptpkg.SpecScene) {
+	for i := range scenes {
+		bindings := &scenes[i].Bindings
+		if bindings.Clip != nil {
+			bindings.Clip.DriveLink = ""
+			bindings.Clip.SubtitleLink = ""
+			bindings.Clip.SubtitleFileID = ""
+		}
+		if bindings.Stock != nil {
+			bindings.Stock.DriveLink = ""
+		}
+		if bindings.Image != nil {
+			bindings.Image.URL = ""
+			bindings.Image.Status = string(scriptpkg.ImageStatusFailed)
+		}
+		if bindings.Voiceover != nil {
+			bindings.Voiceover.Link = ""
+		}
+		for j := range bindings.Media {
+			bindings.Media[j].DriveLink = ""
+		}
+	}
 }

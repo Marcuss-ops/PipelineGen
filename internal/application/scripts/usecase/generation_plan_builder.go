@@ -144,13 +144,47 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualSlots)
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
 	}
-	if item.Source.Type != scriptpkg.SourceClips &&
-		item.Source.Type != scriptpkg.SourceSearch &&
-		item.Source.Type != scriptpkg.SourceCatalog &&
-		item.Source.Type != scriptpkg.SourceCurate {
-		return processors
+	if item.Source.Type == scriptpkg.SourceClips ||
+		item.Source.Type == scriptpkg.SourceSearch ||
+		item.Source.Type == scriptpkg.SourceCatalog ||
+		item.Source.Type == scriptpkg.SourceCurate {
+		processors = ensureInlineClipArtifacts(processors)
 	}
-	return ensureInlineClipArtifacts(processors)
+	// Asset reconciliation is the final binding gate. It must run after
+	// every producer (clip/stock, visual media, images, and voiceover) and
+	// immediately before persistence/document so both durable outputs see
+	// the same verified SpecScene.
+	return ensureAssetLocationReconciliation(processors)
+}
+
+// ensureAssetLocationReconciliation places the canonical Drive-link gate
+// after all binding producers and before persistence/document. Keeping the
+// terminal processors separate prevents a document or manifest from
+// consuming the pre-reconciliation ProcessInput.
+func ensureAssetLocationReconciliation(processors []adapters.ProcessorName) []adapters.ProcessorName {
+	result := make([]adapters.ProcessorName, 0, len(processors)+1)
+	needsPersistence := false
+	needsDocument := false
+	for _, processor := range processors {
+		switch processor {
+		case adapters.ProcessorAssetLocationReconciliation:
+			// Reinsert at the canonical gate position below.
+		case adapters.ProcessorPersistence:
+			needsPersistence = true
+		case adapters.ProcessorDocument:
+			needsDocument = true
+		default:
+			result = append(result, processor)
+		}
+	}
+	result = append(result, adapters.ProcessorAssetLocationReconciliation)
+	if needsPersistence {
+		result = append(result, adapters.ProcessorPersistence)
+	}
+	if needsDocument {
+		result = append(result, adapters.ProcessorDocument)
+	}
+	return result
 }
 
 // buildPostprocessorList builds the normal output-driven processor list.

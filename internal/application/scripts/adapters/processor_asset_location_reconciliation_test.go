@@ -99,6 +99,15 @@ func sceneWithMedia(assetID, driveLink string) scriptpkg.SpecScene {
 	}
 }
 
+func sceneWithImage(imageID, url string) scriptpkg.SpecScene {
+	return scriptpkg.SpecScene{
+		ID: "scene-0", Index: 0, Text: "narrative", Kind: scriptpkg.SceneImage,
+		Bindings: scriptpkg.SceneBindings{
+			Image: &scriptpkg.ImageBinding{ImageID: imageID, URL: url, Status: string(scriptpkg.ImageStatusGenerated)},
+		},
+	}
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 // 1. Link valido conservato
@@ -349,7 +358,7 @@ func TestAssetLocationReconciliation_InaccessibleLinkCleared(t *testing.T) {
 	}
 }
 
-// 8. Transport error → warning (BestEffort contract)
+// 8. Transport error → warning and cleared link (BestEffort, fail-closed publication contract)
 func TestAssetLocationReconciliation_TransportErrorWarning(t *testing.T) {
 	link := "https://drive.google.com/file/d/netfail/view"
 	r := newStubVerifier()
@@ -366,16 +375,20 @@ func TestAssetLocationReconciliation_TransportErrorWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BestEffort: transport error must NOT be a hard error, got %v", err)
 	}
-	// Link preserved as-is (BestEffort degrades gracefully).
-	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != link {
-		t.Fatalf("link should be preserved on transport error, got %q",
+	// Generation remains best-effort, but publication fails closed:
+	// an unverified link must not reach downstream outputs.
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != "" {
+		t.Fatalf("link should be cleared on transport error, got %q",
 			got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink)
+	}
+	if !got.Changed {
+		t.Fatal("clearing an unverified link must report Changed")
 	}
 	if len(got.Warnings) != 1 {
 		t.Fatalf("expected 1 warning for transport error, got %d: %v", len(got.Warnings), got.Warnings)
 	}
-	if !strings.Contains(got.Warnings[0], "transport error") {
-		t.Fatalf("warning should mention transport error, got %q", got.Warnings[0])
+	if !strings.Contains(got.Warnings[0], "transport error") || !strings.Contains(got.Warnings[0], "link cleared") {
+		t.Fatalf("warning should mention transport error and link clearing, got %q", got.Warnings[0])
 	}
 }
 
@@ -474,7 +487,56 @@ func TestAssetLocationReconciliation_VoiceoverLink(t *testing.T) {
 	}
 }
 
-// 12. Media binding verified
+// 12. Drive-backed image missing → URL cleared and status failed.
+func TestAssetLocationReconciliation_DriveImageMissingCleared(t *testing.T) {
+	link := "https://drive.google.com/file/d/image-gone/view"
+	r := newStubVerifier()
+	r.stubResult(link, &scriptpkg.VerifiedLocation{
+		AssetID: "image-1", DriveFileID: "image-gone", State: scriptpkg.LocationStateMissing,
+	})
+
+	p := NewAssetLocationReconciliationProcessor(r)
+	got, err := p.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithImage("image-1", link),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	image := got.UpdatedSpecScene.Scenes[0].Bindings.Image
+	if image.URL != "" {
+		t.Fatalf("Drive image URL should be cleared, got %q", image.URL)
+	}
+	if image.Status != string(scriptpkg.ImageStatusFailed) {
+		t.Fatalf("Drive image status = %q, want %q", image.Status, scriptpkg.ImageStatusFailed)
+	}
+	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "MISSING") {
+		t.Fatalf("expected one image MISSING warning, got %v", got.Warnings)
+	}
+}
+
+// 13. Non-Drive provider image URL is not sent to the Drive verifier.
+func TestAssetLocationReconciliation_ExternalImageURLPreserved(t *testing.T) {
+	link := "https://images.example.test/generated/image-1.png"
+	p := NewAssetLocationReconciliationProcessor(newStubVerifier())
+	got, err := p.Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithImage("image-1", link),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Image.URL != link {
+		t.Fatalf("external image URL should be preserved, got %q", got.UpdatedSpecScene.Scenes[0].Bindings.Image.URL)
+	}
+	if len(got.Warnings) != 0 {
+		t.Fatalf("external image URL should not produce Drive warnings, got %v", got.Warnings)
+	}
+}
+
+// 14. Media binding verified
 func TestAssetLocationReconciliation_MediaBinding(t *testing.T) {
 	link := "https://drive.google.com/file/d/media1/view"
 	r := newStubVerifier()
@@ -512,6 +574,57 @@ func TestAssetLocationReconciliation_NilVerifierError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("nil verifier must produce an error")
+	}
+}
+
+type reconciliationDownstreamRecorder struct {
+	calls int
+}
+
+func (p *reconciliationDownstreamRecorder) Name() ProcessorName {
+	return ProcessorDocument
+}
+
+func (p *reconciliationDownstreamRecorder) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	return ProcessorBestEffort
+}
+
+func (p *reconciliationDownstreamRecorder) Process(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan, _ ProcessInput) (*PostProcessResult, error) {
+	p.calls++
+	return &PostProcessResult{Changed: true}, nil
+}
+
+// A missing verifier is a required composition failure: the registry must
+// propagate the fail-closed scene and stop before document publication.
+func TestAssetLocationReconciliation_MissingVerifierStopsDownstreamPublication(t *testing.T) {
+	reconciliation := NewAssetLocationReconciliationProcessor(nil)
+	downstream := &reconciliationDownstreamRecorder{}
+	registry := NewPostProcessorRegistry(nil)
+	if !registry.Register(reconciliation) || !registry.Register(downstream) {
+		t.Fatal("expected reconciliation and downstream processors to register")
+	}
+
+	link := "https://drive.google.com/file/d/stale-before-gate/view"
+	result, err := registry.Run(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		Postprocessors: []string{
+			string(ProcessorAssetLocationReconciliation),
+			string(ProcessorDocument),
+		},
+	}, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{sceneWithClip("clip-1", link)},
+	}})
+	if err == nil {
+		t.Fatal("missing verifier must fail the pipeline")
+	}
+	if downstream.calls != 0 {
+		t.Fatalf("downstream document processor called %d times after gate failure", downstream.calls)
+	}
+	if result == nil || len(result.FinalSpecScene.Scenes) != 1 {
+		t.Fatalf("expected fail-closed final scene, got %#v", result)
+	}
+	if got := result.FinalSpecScene.Scenes[0].Bindings.Clip.DriveLink; got != "" {
+		t.Fatalf("stale link reached final pipeline surface: %q", got)
 	}
 }
 

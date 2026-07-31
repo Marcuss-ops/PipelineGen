@@ -17,11 +17,17 @@
 // NOT invoked on that path so the canonical pre-set Status
 // remains authoritative.
 //
-// Rules (verbatim from the verdict):
+// Rules:
 //   - result == nil                                       → FAILED
+//   - reconciliation warning present                     → PARTIALLY_SUCCEEDED
 //   - qualitySkipped == true                              → SUCCEEDED_WITH_WARNINGS
 //   - len(result.Warnings) > 0                            → SUCCEEDED_WITH_WARNINGS
 //   - otherwise                                           → SUCCEEDED
+//
+// Reconciliation warnings are special: the pipeline may still return
+// prose and a durable result, but one or more Drive locations were
+// cleared or could not be verified. PARTIALLY_SUCCEEDED prevents that
+// degraded output from being reported as a clean generation success.
 //
 // godlike/06 SSOT: the canonical constants live in
 // internal/domain/script/generation_result.go (ItemStatus*).
@@ -31,6 +37,8 @@
 package usecase
 
 import (
+	"strings"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -47,14 +55,16 @@ import (
 // nil branch is the defensive return for callers that invoke
 // this helper before the build phase produced a result.
 func ClassifyGenerationStatus(result *scriptpkg.GenerationResult, qualitySkipped bool) string {
-	switch {
-	case result == nil:
+	if result == nil {
 		return scriptpkg.ItemStatusFailed
-	case qualitySkipped:
-		return scriptpkg.ItemStatusSucceededWithWarnings
-	case len(result.Warnings) > 0:
-		return scriptpkg.ItemStatusSucceededWithWarnings
-	default:
-		return scriptpkg.ItemStatusSucceeded
 	}
+	for _, warning := range result.Warnings {
+		if strings.HasPrefix(warning, "asset_location_reconciliation:") {
+			return scriptpkg.ItemStatusPartiallySucceeded
+		}
+	}
+	if qualitySkipped || len(result.Warnings) > 0 {
+		return scriptpkg.ItemStatusSucceededWithWarnings
+	}
+	return scriptpkg.ItemStatusSucceeded
 }

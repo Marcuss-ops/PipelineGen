@@ -102,9 +102,27 @@ func (r *PostProcessorRegistry) Run(
 			result.StageDurations[string(name)] = elapsed
 			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
 			warnings = append(warnings, warn)
+			if ppResult != nil && !ppResult.IsEmpty() {
+				// A processor may return a fail-closed UpdatedSpecScene
+				// together with its error. Merge that safe surface before
+				// deciding whether the walk can continue.
+				mergePostProcessResult(result, ppResult, &input)
+				if len(ppResult.Warnings) > 0 {
+					warnings = append(warnings, ppResult.Warnings...)
+				}
+			}
 			if policy == ProcessorRequired {
 				requiredRequested++
 				requiredFails = append(requiredFails, string(name)+" (failed: "+err.Error()+")")
+				if name == ProcessorAssetLocationReconciliation {
+					// A failed location gate must never allow document or
+					// persistence to publish the pre-gate bindings. The
+					// processor has already supplied the fail-closed scene;
+					// return immediately with the typed error.
+					result.Warnings = warnings
+					return result, fmt.Errorf("%w: required postprocessor failure: %s",
+						scriptpkg.ErrPostprocessFailed, strings.Join(requiredFails, "; "))
+				}
 			}
 			if r.log != nil {
 				r.log.Warn("postprocessor outcome",
@@ -240,6 +258,10 @@ func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput
 // do not affect another Run sharing the same underlying scene.
 func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 	out := scriptpkg.SceneBindings{}
+	if len(b.Media) > 0 {
+		out.Media = make([]scriptpkg.ResolvedMediaBinding, len(b.Media))
+		copy(out.Media, b.Media)
+	}
 	if b.Clip != nil {
 		c := *b.Clip
 		out.Clip = &c
