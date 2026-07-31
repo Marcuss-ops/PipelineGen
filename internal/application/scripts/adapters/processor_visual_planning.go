@@ -49,7 +49,7 @@ func (p *VisualPlanningProcessor) Policy(*scriptpkg.ResolvedGenerationPlan) Proc
 }
 
 func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if plan == nil || plan.MediaPlan.Mode == mediadomain.MediaPlanModeDisabled || !mediaPlanRequested(plan.MediaPlan) || len(input.SpecScene.Scenes) == 0 {
+	if plan == nil || plan.MediaPlan.Mode == mediadomain.MediaPlanModeDisabled || !mediadomain.IsActiveMediaPlanMode(plan.MediaPlan.Mode) || len(input.SpecScene.Scenes) == 0 {
 		return &PostProcessResult{}, nil
 	}
 
@@ -154,12 +154,6 @@ func (p *VisualPlanningProcessor) materializeLayers(ctx context.Context, plans [
 			}
 		}
 	}
-}
-
-// Deprecated local helper kept only for backward compatibility.
-// Use media.IsActiveMediaPlanMode from the domain package instead.
-func mediaPlanRequested(plan mediadomain.MediaPlanSpec) bool {
-	return mediadomain.IsActiveMediaPlanMode(plan.Mode)
 }
 
 func plannerLimit(plan *scriptpkg.ResolvedGenerationPlan) int {
