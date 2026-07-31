@@ -41,17 +41,28 @@ fi
 
 printf 'Using database: %s%s%s\n' "$CYAN" "$DB_PATH" "$RESET"
 
-# 2. Load Tyson clip data from fixtures, falling back to SQLite.
-#   fixtures/mike_tyson_clip_ids.json — pre-computed clip IDs + drive links
-#   fixtures/mike_tyson_stock_bindings.json — Pacquiao stock binding data
+# 2. Load Tyson clip data from the dedicated clip fixture, falling back to SQLite.
 #   Env vars: TYSON_VIDEO_ID (SQLite fallback), TYSON_FOLDER_NAME (default: Mike Tyson)
 FIXTURES_DIR="$DIR/fixtures"
+REGISTRY_FILE="$FIXTURES_DIR/boxers_stock_registry.json"
+RESOLVED_STOCK_FILE="$WORK_DIR/resolved_stock.json"
 TYSON_CLIPS=()
 TYSON_LINKS=()
-PACQUIAO_CLIPS=()
-PACQUIAO_LINKS=()
 TYSON_VIDEO_ID="${TYSON_VIDEO_ID:-}"
 TYSON_FOLDER_NAME="${TYSON_FOLDER_NAME:-Mike Tyson}"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+    python3 "$DIR/stock_registry.py" resolve \
+        --registry "$REGISTRY_FILE" \
+        --output "$RESOLVED_STOCK_FILE"
+elif ! python3 "$DIR/stock_registry.py" resolve \
+        --db "$DB_PATH" \
+        --registry "$REGISTRY_FILE" \
+        --output "$RESOLVED_STOCK_FILE"; then
+    printf '%ssetup error: stock registry resolution failed%s\\n' "$RED" "$RESET" >&2
+    exit 2
+fi
+printf 'Resolved boxer stock registry: %s\\n' "$RESOLVED_STOCK_FILE"
 
 if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
     printf 'Loading Tyson clips from fixtures/%s\n' "mike_tyson_clip_ids.json"
@@ -72,24 +83,6 @@ if [[ "$DRY_RUN" != "1" && -f "$FIXTURES_DIR/mike_tyson_clip_ids.json" ]]; then
     fi
     printf 'Loaded %d Tyson clips from fixtures: %s\n' "${#TYSON_CLIPS[@]}" "${TYSON_CLIPS[*]}"
 
-    # Load Pacquiao stock bindings from fixture (optional — falls back to Tyson clips).
-    if [[ -f "$FIXTURES_DIR/mike_tyson_stock_bindings.json" ]]; then
-        printf 'Loading Pacquiao stock bindings from fixtures/%s\n' "mike_tyson_stock_bindings.json"
-        while IFS=$'\t' read -r asset_id drive_link; do
-            [[ -z "$asset_id" ]] && continue
-            if [[ "$asset_id" =~ PLACEHOLDER || "$asset_id" =~ PACQUIAO ]]; then
-                printf '%swarn: stock bindings fixture has PLACEHOLDER/PACQUIAO values — falling back to Tyson clips for Pacquiao%s\n' \
-                    "$YELLOW" "$RESET" >&2
-                PACQUIAO_CLIPS=()
-                break
-            fi
-            PACQUIAO_CLIPS+=("$asset_id")
-            PACQUIAO_LINKS+=("$drive_link")
-        done < <(jq -r '.[] | "\(.asset_id)\t\(.drive_link)"' "$FIXTURES_DIR/mike_tyson_stock_bindings.json")
-        if (( ${#PACQUIAO_CLIPS[@]} >= 3 )); then
-            printf 'Loaded %d Pacquiao stock bindings from fixtures\n' "${#PACQUIAO_CLIPS[@]}"
-        fi
-    fi
 elif [[ "$DRY_RUN" != "1" ]]; then
     # SQLite fallback
     if [[ -n "$TYSON_VIDEO_ID" ]]; then
@@ -117,22 +110,13 @@ else
     TYSON_LINKS=("http://drive.com/1" "http://drive.com/2" "http://drive.com/3" "http://drive.com/4" "http://drive.com/5" "http://drive.com/6")
 fi
 
-# 3. Load top5 boxer stock fixtures for multilang scenarios (07, 08).
-#    top5_boxers_stock.json — aggregated fixture with 5 boxers × 2 assets each.
-TOP5_STOCK_FILE="$FIXTURES_DIR/top5_boxers_stock.json"
-if [[ -f "$TOP5_STOCK_FILE" ]]; then
-    printf 'Loading top5 boxer stock fixture from %s\n' "$TOP5_STOCK_FILE"
-    TOP5_TYSON_FIGHT=$(jq -r '.mike_tyson.fight.asset_id' "$TOP5_STOCK_FILE")
-    TOP5_ALI_FIGHT=$(jq -r '.muhammad_ali.fight.asset_id' "$TOP5_STOCK_FILE")
-    TOP5_PACQUIAO_FIGHT=$(jq -r '.manny_pacquiao.fight.asset_id' "$TOP5_STOCK_FILE")
-    TOP5_MAYWEATHER_FIGHT=$(jq -r '.floyd_mayweather.fight.asset_id' "$TOP5_STOCK_FILE")
-    TOP5_ROBINSON_FIGHT=$(jq -r '.sugar_ray_robinson.fight.asset_id' "$TOP5_STOCK_FILE")
-    printf 'Top5 stock assets: Tyson=%s Ali=%s Pacquiao=%s Mayweather=%s Robinson=%s\n' \
-        "$TOP5_TYSON_FIGHT" "$TOP5_ALI_FIGHT" "$TOP5_PACQUIAO_FIGHT" \
-        "$TOP5_MAYWEATHER_FIGHT" "$TOP5_ROBINSON_FIGHT"
+# Top-five stock bindings are materialized from resolved_stock.json in prepare_payload.
+# No scenario-specific asset IDs are copied into this runner.
+VOICEOVER_FOLDER="${BOXERS_VOICEOVER_FOLDER_ID:-}"
+if [[ -z "$VOICEOVER_FOLDER" ]]; then
+    printf '%ssetup error: BOXERS_VOICEOVER_FOLDER_ID is required%s\n' "$RED" "$RESET" >&2
+    exit 2
 fi
-
-VOICEOVER_FOLDER="1Cph0ypa_tBgRW_2PgTrzqy1RWW-fPe5X"
 REPORTS_DIR="$DIR/reports"
 mkdir -p "$REPORTS_DIR"
 
@@ -141,9 +125,16 @@ prepare_payload() {
     local scenario_file="$1"
     local temp_json="$WORK_DIR/payload.json"
     
-    cp "$scenario_file" "$temp_json"
+    if ! python3 "$DIR/stock_registry.py" materialize \
+        --resolved "$RESOLVED_STOCK_FILE" \
+        --input "$scenario_file" \
+        --output "$temp_json"; then
+        printf '%ssetup error: scenario stock binding is not present in resolved registry: %s%s\n' \
+            "$RED" "$scenario_file" "$RESET" >&2
+        return 1
+    fi
     
-    # Perform string replacements for Tyson placeholders
+    # Perform string replacements for Tyson clip placeholders
     for i in {0..5}; do
         local idx=$((i + 1))
         local placeholder="TYSON_CLIP_ID_${idx}"
@@ -152,24 +143,6 @@ prepare_payload() {
     
     # Replace Voiceover Folder
     sed -i "s/REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID/$VOICEOVER_FOLDER/g" "$temp_json"
-    
-    # Replace Pacquiao placeholder IDs and links.
-    # Prefer Pacquiao-specific fixture data; fall back to Tyson clips.
-    if (( ${#PACQUIAO_CLIPS[@]} >= 3 )); then
-        sed -i "s/PACQUIAO_FIGHT_ASSET_ID/${PACQUIAO_CLIPS[0]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_FIGHT_DRIVE_LINK|${PACQUIAO_LINKS[0]}|g" "$temp_json"
-        sed -i "s/PACQUIAO_INTERVIEW_ASSET_ID/${PACQUIAO_CLIPS[1]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_INTERVIEW_DRIVE_LINK|${PACQUIAO_LINKS[1]}|g" "$temp_json"
-        sed -i "s/PACQUIAO_TRAINING_ASSET_ID/${PACQUIAO_CLIPS[2]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_TRAINING_DRIVE_LINK|${PACQUIAO_LINKS[2]}|g" "$temp_json"
-    else
-        sed -i "s/PACQUIAO_FIGHT_ASSET_ID/${TYSON_CLIPS[0]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_FIGHT_DRIVE_LINK|${TYSON_LINKS[0]}|g" "$temp_json"
-        sed -i "s/PACQUIAO_INTERVIEW_ASSET_ID/${TYSON_CLIPS[1]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_INTERVIEW_DRIVE_LINK|${TYSON_LINKS[1]}|g" "$temp_json"
-        sed -i "s/PACQUIAO_TRAINING_ASSET_ID/${TYSON_CLIPS[2]}/g" "$temp_json"
-        sed -i "s|PACQUIAO_TRAINING_DRIVE_LINK|${TYSON_LINKS[2]}|g" "$temp_json"
-    fi
     
     cat "$temp_json"
 }
@@ -310,8 +283,10 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
         cp "$SMOKE_LAST_BODY" "$full_body_file"
     fi
     
-    # Persist Report
-    cp "$full_body_file" "$REPORTS_DIR/${num}_${name}_report.json"
+    # Keep raw job evidence separate. The canonical report is published only
+    # after all assertions below have passed.
+    mkdir -p "$REPORTS_DIR/raw"
+    local raw_report_file="$REPORTS_DIR/raw/${num}_${name}_job.json"
     
     # Assertions
     local job_status
@@ -588,15 +563,20 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
 
         "07")
             # Scenario 7: Multi-boxer, multi-stock, multi-lang E2E pipeline
-            if ! python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH"; then
+            if ! python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --registry "$RESOLVED_STOCK_FILE"; then
                 printf '%sFAIL: Scenario 7 multilang verification failed%s\n' "$RED" "$RESET" >&2
                 return 1
             fi
 
             # Generate structured report from aggregated job response
             local report_file="$REPORTS_DIR/07_Top5 multilang_report.json"
-            if ! python3 "$DIR/generate_report.py" "$full_body_file" "$report_file"; then
-                printf '%sWARN: Report generation failed (non-fatal)%s\n' "$YELLOW" "$RESET" >&2
+            if ! python3 "$DIR/generate_report.py" "$full_body_file" "$report_file" --registry "$RESOLVED_STOCK_FILE"; then
+                printf '%sFAIL: Report generation failed%s\n' "$RED" "$RESET" >&2
+                return 1
+            fi
+            if ! jq -e '.final == "PASS"' "$report_file" >/dev/null; then
+                printf '%sFAIL: Generated report did not pass its final gate%s\n' "$RED" "$RESET" >&2
+                return 1
             fi
             
             # Idempotency Replay Verifications
@@ -636,8 +616,10 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
         "07b")
             # Scenario 7b: Negative check — swapped stock in multilang scenario
             # (Tyson scene gets Ali's asset; verify_multilang.py --negative exits 3 on mismatch)
-            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
+            set +e
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" >/dev/null 2>&1
             local exit_code=$?
+            set -e
             if [[ "$exit_code" != "3" ]]; then
                 printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
                 return 1
@@ -662,8 +644,10 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
 
         "08")
             # Scenario 8: Negative check — swapped stock detection
-            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative >/dev/null 2>&1
+            set +e
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" >/dev/null 2>&1
             local exit_code=$?
+            set -e
             if [[ "$exit_code" != "3" ]]; then
                 printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
                 return 1
@@ -672,6 +656,14 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             ;;
     esac
     
+    cp "$full_body_file" "$raw_report_file"
+    if [[ "$num" != "07" ]]; then
+        local canonical_report="$REPORTS_DIR/${num}_${name}_report.json"
+        local temporary_report="$REPORTS_DIR/.${num}_${name}_report.json.tmp"
+        cp "$full_body_file" "$temporary_report"
+        mv "$temporary_report" "$canonical_report"
+    fi
+
     printf '%sSUCCESS: Scenario %s passed!%s\n\n' "$GREEN" "$num" "$RESET"
     return 0
 }
