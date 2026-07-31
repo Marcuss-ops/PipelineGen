@@ -149,23 +149,39 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		}
 	}
 
-	// Write status/processing step if present
+	// Write status/processing step if present. Processing state is part of
+	// the lifecycle contract: an asset write must not report success when
+	// its corresponding transition was not persisted.
 	if rec.Status != "" {
 		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
 			step = string(asset.StageDownload)
 		}
-		if rec.Status == "failed" {
-			_ = a.processing.Start(ctx, rec.ID, step)
-			_ = a.processing.Fail(ctx, rec.ID, step, rec.Error)
-		} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
-			_ = a.processing.Start(ctx, rec.ID, step)
-			_ = a.processing.Complete(ctx, rec.ID, step)
-		} else {
-			_ = a.processing.Start(ctx, rec.ID, step)
+		if err := persistProcessingState(ctx, a.processing, rec, step); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+func persistProcessingState(ctx context.Context, processing asset.ProcessingRepository, rec *artifacts.MediaRecord, step string) error {
+	if processing == nil {
+		return fmt.Errorf("clip store adapter: processing repository not configured")
+	}
+	if err := processing.Start(ctx, rec.ID, step); err != nil {
+		return fmt.Errorf("clip store adapter: start processing %s/%s: %w", rec.ID, step, err)
+	}
+	switch rec.Status {
+	case "failed":
+		if err := processing.Fail(ctx, rec.ID, step, rec.Error); err != nil {
+			return fmt.Errorf("clip store adapter: fail processing %s/%s: %w", rec.ID, step, err)
+		}
+	case "ACTIVE", "completed":
+		if err := processing.Complete(ctx, rec.ID, step); err != nil {
+			return fmt.Errorf("clip store adapter: complete processing %s/%s: %w", rec.ID, step, err)
+		}
+	}
 	return nil
 }
 

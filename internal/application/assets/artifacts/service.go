@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -62,18 +63,17 @@ func (s *Service) CreateAndVerify(ctx context.Context, input CreateInput) (*Arti
 
 	writer, err := s.blobs.Stage(ctx, input.ID)
 	if err != nil {
-		_ = s.repo.UpdateStatus(ctx, input.ID, StatusFailed, "", 0)
-		return nil, fmt.Errorf("artifacts: begin stage: %w", err)
+		return nil, fmt.Errorf("artifacts: begin stage: %w", s.markFailed(ctx, input.ID, "", 0, err))
 	}
 
 	stagingKey := writer.Key()
 
 	// Stream content to staging
-	written, err := io.Copy(writer, input.Reader)
-	writer.Close()
-	if err != nil {
-		_ = s.repo.UpdateStatus(ctx, input.ID, StatusFailed, "", 0)
-		return nil, fmt.Errorf("artifacts: write stage: %w", err)
+	written, copyErr := io.Copy(writer, input.Reader)
+	closeErr := writer.Close()
+	if copyErr != nil || closeErr != nil {
+		cause := errors.Join(copyErr, closeErr)
+		return nil, fmt.Errorf("artifacts: write stage: %w", s.markFailed(ctx, input.ID, "", 0, cause))
 	}
 	s.log.Info("staged artifact content",
 		zap.String("id", input.ID),
@@ -81,12 +81,13 @@ func (s *Service) CreateAndVerify(ctx context.Context, input CreateInput) (*Arti
 	)
 
 	// Phase 2: Verify (SHA-256) and promote to canonical storage
-	_ = s.repo.UpdateStatus(ctx, input.ID, StatusVerifying, "", 0)
+	if err := s.repo.UpdateStatus(ctx, input.ID, StatusVerifying, "", 0); err != nil {
+		return nil, fmt.Errorf("artifacts: update verifying status: %w", s.markFailed(ctx, input.ID, "", 0, err))
+	}
 
 	result, err := s.blobs.VerifyAndPromote(ctx, stagingKey, input.ExpectedSHA256)
 	if err != nil {
-		_ = s.repo.UpdateStatus(ctx, input.ID, StatusFailed, result.SHA256, result.SizeBytes)
-		return nil, fmt.Errorf("artifacts: verify/promote: %w", err)
+		return nil, fmt.Errorf("artifacts: verify/promote: %w", s.markFailed(ctx, input.ID, result.SHA256, result.SizeBytes, err))
 	}
 
 	// Phase 3: Mark READY
@@ -116,6 +117,17 @@ func (s *Service) CreateAndVerify(ctx context.Context, input CreateInput) (*Arti
 		UpdatedAt:      now,
 		VerifiedAt:     &now,
 	}, nil
+}
+
+// markFailed records the terminal failure state and preserves both the
+// operation error and any persistence error. A failure to record FAILED is
+// itself part of the returned error; callers must not see a persistence
+// failure as if the lifecycle state were durable.
+func (s *Service) markFailed(ctx context.Context, id string, sha256 string, sizeBytes int64, cause error) error {
+	if statusErr := s.repo.UpdateStatus(ctx, id, StatusFailed, sha256, sizeBytes); statusErr != nil {
+		return errors.Join(cause, fmt.Errorf("artifacts: persist failed status: %w", statusErr))
+	}
+	return cause
 }
 
 // Get retrieves an artifact by ID.

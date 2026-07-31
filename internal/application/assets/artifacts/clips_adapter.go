@@ -142,23 +142,38 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		}
 	}
 
-	// Write status/processing step if present
+	// Write status/processing step if present. Processing state is part of
+	// the lifecycle contract and must be durable before reporting success.
 	if rec.Status != "" {
 		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
 			step = string(asset.StageDownload)
 		}
-		if rec.Status == "failed" {
-			_ = r.processing.Start(ctx, rec.ID, step)
-			_ = r.processing.Fail(ctx, rec.ID, step, rec.Error)
-		} else if rec.Status == "ACTIVE" || rec.Status == "completed" {
-			_ = r.processing.Start(ctx, rec.ID, step)
-			_ = r.processing.Complete(ctx, rec.ID, step)
-		} else {
-			_ = r.processing.Start(ctx, rec.ID, step)
+		if err := persistMediaProcessingState(ctx, r.processing, rec, step); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+func persistMediaProcessingState(ctx context.Context, processing asset.ProcessingRepository, rec *MediaRecord, step string) error {
+	if processing == nil {
+		return fmt.Errorf("clips registry: processing repository not configured")
+	}
+	if err := processing.Start(ctx, rec.ID, step); err != nil {
+		return fmt.Errorf("clips registry: start processing %s/%s: %w", rec.ID, step, err)
+	}
+	switch rec.Status {
+	case "failed":
+		if err := processing.Fail(ctx, rec.ID, step, rec.Error); err != nil {
+			return fmt.Errorf("clips registry: fail processing %s/%s: %w", rec.ID, step, err)
+		}
+	case "ACTIVE", "completed":
+		if err := processing.Complete(ctx, rec.ID, step); err != nil {
+			return fmt.Errorf("clips registry: complete processing %s/%s: %w", rec.ID, step, err)
+		}
+	}
 	return nil
 }
 
