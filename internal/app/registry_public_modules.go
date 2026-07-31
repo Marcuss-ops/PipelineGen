@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
@@ -293,11 +294,18 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 
 	// *config.Config satisfies middleware.AuthSecurityPort via its
 	// EnableAuth() / AdminToken() / WorkerToken() methods.
+	// Construct the canonical resolver once at the composition boundary;
+	// the handler receives the typed resolver and never reads YAML itself.
+	aliasResolver, err := clipfolder.NewFolderAliasResolverFromFile("config/folder_aliases.yaml")
+	if err != nil {
+		return fmt.Errorf("wire registry: admin: load folder alias resolver: %w", err)
+	}
 	adminDesc, err := admin.Build(admin.Dependencies{
-		Publisher:   root.Drive.Publisher,
-		EnabledFunc: func() bool { return true },
-		ModuleOpts:  []module.RouteModuleOption{module.WithMiddleware(middleware.RequireAdminToken(cfg, log))},
-		Logger:      log,
+		Publisher:           root.Drive.Publisher,
+		FolderAliasResolver: aliasResolver,
+		EnabledFunc:         func() bool { return true },
+		ModuleOpts:          []module.RouteModuleOption{module.WithMiddleware(middleware.RequireAdminToken(cfg, log))},
+		Logger:              log,
 	})
 	if err != nil {
 		return fmt.Errorf("wire registry: admin: %w", err)

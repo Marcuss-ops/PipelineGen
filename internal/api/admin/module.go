@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -25,6 +26,10 @@ type Dependencies struct {
 	// Publisher is the canonical delivery.Publisher for Drive upload.
 	// MANDATORY — Build returns an error when nil.
 	Publisher delivery.Publisher
+
+	// FolderAliasResolver is the canonical YAML-backed alias resolver.
+	// MANDATORY — Build returns an error when nil.
+	FolderAliasResolver *clipfolder.FolderAliasResolver
 
 	// EnabledFunc is the closure that decides whether the module's
 	// routes are mounted. MANDATORY.
@@ -52,6 +57,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	if deps.Publisher == nil {
 		return nil, fmt.Errorf("admin.Build: Publisher is required (composition root must wire delivery.Publisher before calling Build)")
 	}
+	if deps.FolderAliasResolver == nil {
+		return nil, fmt.Errorf("admin.Build: FolderAliasResolver is required (composition root must wire the canonical folder alias resolver)")
+	}
 	if deps.EnabledFunc == nil {
 		return nil, fmt.Errorf("admin.Build: EnabledFunc is required")
 	}
@@ -61,7 +69,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	handler := NewDriveCanaryHandler(deps.Publisher, log)
+	handler := NewDriveCanaryHandler(deps.Publisher, deps.FolderAliasResolver, log)
 
 	mod := api.NewRouteModule(
 		"admin",
