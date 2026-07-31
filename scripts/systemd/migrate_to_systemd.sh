@@ -298,8 +298,8 @@ ok "migration complete"
 log "Next steps:"
 log "  1. update the forward-pointer architecture/current.yaml#PR-SYSTEMD-RESTART-SUDO-NOPASSDEP"
 log "     to reflect that the operator migration script is available"
-log "  2. (optional) add a NOPASSWD line to /etc/sudoers.d/pierone-pipelinegen for fully automated"
-log "     restart:  pierone ALL=(root) NOPASSWD: /usr/bin/systemctl {restart,start,stop,status,enable,disable,daemon-reload} pipelinegen.service, /usr/bin/systemctl {restart,start,stop,status,enable,disable,daemon-reload} artlist-scraper.service"
+log "  2. (optional) install the restricted daily operator policy:"
+log "     sudo scripts/systemd/sudoers/install_operator_access.sh --install"
 log "  3. (optional) configure log rotation: see scripts/systemd/README.md"
 
 exit 0

@@ -1,0 +1,11 @@
+# PipelineGen routine operator access.
+#
+# Install as /etc/sudoers.d/pipelinegen-operator with mode 0440.
+# The command arguments are intentionally exact: no wildcard service name,
+# extra systemctl verbs, or access to any other service is granted.
+Cmnd_Alias PIPELINEGEN_SERVICE_CONTROL = \
+    /usr/bin/systemctl restart pipelinegen.service, \
+    /usr/bin/systemctl start pipelinegen.service, \
+    /usr/bin/systemctl stop pipelinegen.service
+
+pierone ALL=(root) NOPASSWD: PIPELINEGEN_SERVICE_CONTROL
