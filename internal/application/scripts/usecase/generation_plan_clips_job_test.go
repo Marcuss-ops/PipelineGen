@@ -24,6 +24,7 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 		string(adapters.ProcessorTranslation),
 		string(adapters.ProcessorClipBindings),
 		string(adapters.ProcessorVoiceover),
+		string(adapters.ProcessorAssetLocationReconciliation),
 		string(adapters.ProcessorPersistence),
 	}
 	if len(plan.Postprocessors) != len(want) {
@@ -32,6 +33,68 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 	for i := range want {
 		if plan.Postprocessors[i] != want[i] {
 			t.Fatalf("postprocessors[%d]=%q, want %q; full=%v", i, plan.Postprocessors[i], want[i], plan.Postprocessors)
+		}
+	}
+}
+
+func TestBuildPlan_ReconciliationRunsBeforePersistenceAndDocument(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		Docs:   scriptpkg.DocumentsSpec{Enabled: true},
+		Output: scriptpkg.OutputSpec{SaveToDB: true, VoiceoverFolderID: "voiceover-folder"},
+	})
+
+	want := []string{
+		string(adapters.ProcessorClipBindings),
+		string(adapters.ProcessorVoiceover),
+		string(adapters.ProcessorAssetLocationReconciliation),
+		string(adapters.ProcessorPersistence),
+		string(adapters.ProcessorDocument),
+	}
+	if len(plan.Postprocessors) != len(want) {
+		t.Fatalf("postprocessors=%v, want %v", plan.Postprocessors, want)
+	}
+	for i := range want {
+		if plan.Postprocessors[i] != want[i] {
+			t.Fatalf("postprocessors[%d]=%q, want %q; full=%v", i, plan.Postprocessors[i], want[i], plan.Postprocessors)
+		}
+	}
+}
+
+func TestBuildPlan_ReconciliationIsPresentOnceWithMediaAndImages(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source:    scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		MediaPlan: media.MediaPlanSpec{Mode: "hybrid"},
+		Output: scriptpkg.OutputSpec{
+			GenerateSceneImages: scriptpkg.ToggleEnabled,
+			VoiceoverFolderID:   "voiceover-folder",
+			SaveToDB:            true,
+		},
+	})
+
+	count := 0
+	gateIndex := -1
+	for i, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorAssetLocationReconciliation) {
+			count++
+			gateIndex = i
+		}
+	}
+	if count != 1 {
+		t.Fatalf("reconciliation must appear exactly once, got %d in %v", count, plan.Postprocessors)
+	}
+	for i, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorPersistence) || processor == string(adapters.ProcessorDocument) {
+			if i <= gateIndex {
+				t.Fatalf("terminal processor %q appears before reconciliation: %v", processor, plan.Postprocessors)
+			}
+		}
+	}
+	for i, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorImages) || processor == string(adapters.ProcessorVisualPlanning) || processor == string(adapters.ProcessorVisualSlots) || processor == string(adapters.ProcessorVoiceover) {
+			if i >= gateIndex {
+				t.Fatalf("binding producer %q appears after reconciliation: %v", processor, plan.Postprocessors)
+			}
 		}
 	}
 }

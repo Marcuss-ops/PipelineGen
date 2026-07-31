@@ -143,6 +143,21 @@ func TestMergePostProcessResult_PropagatesTranslatedToCurrentInput(t *testing.T)
 	}
 }
 
+func TestCloneSceneBindings_PreservesMediaBindings(t *testing.T) {
+	original := scriptpkg.SceneBindings{
+		Media: []scriptpkg.ResolvedMediaBinding{{Slot: "background", AssetID: "asset-1", DriveLink: "https://drive.google.com/file/d/media-1/view"}},
+	}
+
+	cloned := cloneSceneBindings(original)
+	if len(cloned.Media) != 1 || cloned.Media[0] != original.Media[0] {
+		t.Fatalf("cloneSceneBindings lost Media binding: got %#v, want %#v", cloned.Media, original.Media)
+	}
+	cloned.Media[0].DriveLink = ""
+	if original.Media[0].DriveLink == "" {
+		t.Fatal("cloneSceneBindings must isolate the Media slice from the source")
+	}
+}
+
 // TestMergePostProcessResult_ImageBinding_FailClosed (Commit 7, July 2026) is the
 // canonical regression guard for the fail-closed image-bind rule.
 //
