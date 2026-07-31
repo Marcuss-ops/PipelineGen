@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# scripts/systemd/pipelinegenctl
+#
+# Small, non-interactive operator CLI for the systemd-managed PipelineGen
+# service. Routine restart is deliberately fail-closed: sudo must already
+# have a restricted NOPASSWD rule, otherwise sudo -n exits immediately.
+#
+# Usage:
+#   scripts/systemd/pipelinegenctl status
+#   scripts/systemd/pipelinegenctl restart
+#   scripts/systemd/pipelinegenctl verify
+#   scripts/systemd/pipelinegenctl restart-verify
+#   scripts/systemd/pipelinegenctl logs
+#
+# Security contract:
+#   - only pipelinegen.service is addressable;
+#   - only restart uses sudo, and always with -n;
+#   - no password, token, response body, Drive URL, or Drive ID is printed;
+#   - command paths may be overridden for isolated tests, but arguments are
+#     always passed as separate shell words (never through eval).
+
+set -Eeuo pipefail
+
+readonly SERVICE="pipelinegen.service"
+readonly DEFAULT_BASE_URL="http://127.0.0.1:8000"
+readonly DEFAULT_READY_TIMEOUT="60"
+readonly DEFAULT_RESTART_TIMEOUT="30"
+readonly DEFAULT_LOG_LINES="80"
+
+SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
+SUDO_BIN="${SUDO_BIN:-sudo}"
+CURL_BIN="${CURL_BIN:-curl}"
+JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"
+TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
+BASE_URL="${PIPELINEGEN_BASE_URL:-$DEFAULT_BASE_URL}"
+READY_TIMEOUT="${PIPELINEGEN_READY_TIMEOUT:-$DEFAULT_READY_TIMEOUT}"
+RESTART_TIMEOUT="${PIPELINEGEN_RESTART_TIMEOUT:-$DEFAULT_RESTART_TIMEOUT}"
+LOG_LINES="${PIPELINEGEN_LOG_LINES:-$DEFAULT_LOG_LINES}"
+
+log() {
+    printf '[pipelinegenctl] %s\n' "$*"
+}
+
+fail() {
+    printf '[pipelinegenctl] ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: %s {status|restart|verify|restart-verify|logs}\n' "$0" >&2
+}
+
+validate_configuration() {
+    [[ "$READY_TIMEOUT" =~ ^[1-9][0-9]*$ ]] ||
+        fail 'PIPELINEGEN_READY_TIMEOUT must be a positive integer'
+    [[ "$RESTART_TIMEOUT" =~ ^[1-9][0-9]*$ ]] ||
+        fail 'PIPELINEGEN_RESTART_TIMEOUT must be a positive integer'
+    [[ "$LOG_LINES" =~ ^[1-9][0-9]*$ ]] ||
+        fail 'PIPELINEGEN_LOG_LINES must be a positive integer'
+    [[ "$BASE_URL" =~ ^https?://[^[:space:]/]+(:[0-9]+)?$ ]] ||
+        fail 'PIPELINEGEN_BASE_URL must be an http(s) URL without a path'
+}
+
+# Redact sensitive material before it reaches stdout or stderr. The log
+# stream is untrusted: application errors may include JSON, URLs, or
+# key=value diagnostics. Keep this function deliberately format-agnostic.
+sanitize_output() {
+    sed -E \
+        -e "s#https?://drive\\.google\\.com[^[:space:]\"<>)]*#<DRIVE_URL_REDACTED>#gI" \
+        -e "s#(drive_link|file_id|folder_id|drive_file_id|drive_folder_id|webViewLink|fileId|folderId|driveFileId|driveFolderId|driveId|driveID)[=:][[:space:]]*\"?[^,<[:space:]}\"]+\"?#\\1=<DRIVE_ID_REDACTED>#gI" \
+        -e "s#(\"(drive_link|file_id|folder_id|drive_file_id|drive_folder_id|webViewLink|fileId|folderId|driveFileId|driveFolderId|driveId|driveID)\"[[:space:]]*:[[:space:]]*\")[^\"<][^\"]*\"#\\1<DRIVE_ID_REDACTED>\"#gI" \
+        -e "s#(Authorization:[[:space:]]*(Bearer|Basic)[[:space:]]+|Bearer[[:space:]]+)[^[:space:]]+#\\1<REDACTED>#gI" \
+        -e "s#(VELOX_ADMIN_TOKEN|VELOX_WORKER_TOKEN|METRICS_AUTH_TOKEN|TOKEN)[=:][^[:space:]]+#\\1=<REDACTED>#gI" \
+        -e "s#(\"(password|secret|token|authorization)\"[[:space:]]*:[[:space:]]*\")[^\"]*\"#\\1<REDACTED>\"#gI" |
+    awk '
+        /(^|[^[:alnum:]])(drive|folder|file|asset|resource|location|url|id|token|secret|password|authorization|credential|oauth|bearer)([^[:alnum:]]|$)/ {
+            print "<SENSITIVE_LOG_REDACTED>"
+            next
+        }
+        { print }
+    '
+}
+
+is_active() {
+    "$SYSTEMCTL_BIN" is-active --quiet "$SERVICE" 2>/dev/null
+}
+
+wait_active() {
+    local deadline=$((SECONDS + READY_TIMEOUT))
+    while (( SECONDS < deadline )); do
+        if is_active; then
+            log "$SERVICE is active"
+            return 0
+        fi
+        sleep 1
+    done
+    fail "$SERVICE did not become active within ${READY_TIMEOUT}s"
+}
+
+check_ready() {
+    local ready_url="${BASE_URL}/ready"
+    local deadline=$((SECONDS + READY_TIMEOUT))
+    local code
+
+    while (( SECONDS < deadline )); do
+        code="$("$CURL_BIN" \
+            --silent \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            --max-time 5 \
+            "$ready_url" 2>/dev/null || true)"
+        if [[ "$code" == "200" ]]; then
+            log '/ready returned HTTP 200'
+            return 0
+        fi
+        sleep 2
+    done
+
+    fail "/ready did not return HTTP 200 within ${READY_TIMEOUT}s"
+}
+
+restart_service() {
+    command -v "$TIMEOUT_BIN" >/dev/null 2>&1 ||
+        fail 'timeout command is required for a bounded restart'
+
+    log "Restarting $SERVICE"
+    if ! "$TIMEOUT_BIN" --signal=TERM --kill-after=5s "${RESTART_TIMEOUT}s" \
+        "$SUDO_BIN" -n "$SYSTEMCTL_BIN" restart "$SERVICE" >/dev/null 2>/dev/null; then
+        fail 'restart denied, failed, or timed out; install the restricted sudoers rule'
+    fi
+    wait_active
+}
+
+show_logs() {
+    # Do not expose journalctl's unit status metadata or unfiltered output.
+    # The sanitizer is the final stage, including for command failures.
+    if ! "$JOURNALCTL_BIN" \
+        --unit "$SERVICE" \
+        --lines "$LOG_LINES" \
+        --no-pager \
+        --output cat 2>&1 | sanitize_output; then
+        fail 'unable to read PipelineGen logs'
+    fi
+}
+
+main() {
+    [[ $# -eq 1 ]] || {
+        usage
+        exit 2
+    }
+
+    validate_configuration
+
+    case "$1" in
+        status)
+            if is_active; then
+                log "$SERVICE is active"
+            else
+                log "$SERVICE is inactive"
+                return 1
+            fi
+            ;;
+        restart)
+            restart_service
+            ;;
+        verify)
+            wait_active
+            check_ready
+            ;;
+        restart-verify)
+            restart_service
+            check_ready
+            ;;
+        logs)
+            show_logs
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

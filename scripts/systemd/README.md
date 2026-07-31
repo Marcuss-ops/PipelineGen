@@ -26,6 +26,37 @@ sudo systemctl enable --now artlist-scraper.service
 systemctl is-active pipelinegen.service artlist-scraper.service
 ```
 
+## Daily operator command
+
+Use the repository command for routine PipelineGen operations:
+
+```bash
+scripts/systemd/pipelinegenctl status
+scripts/systemd/pipelinegenctl restart
+scripts/systemd/pipelinegenctl verify
+scripts/systemd/pipelinegenctl restart-verify
+scripts/systemd/pipelinegenctl logs
+```
+
+`restart` uses only `sudo -n systemctl restart pipelinegen.service` and
+fails closed when the restricted NOPASSWD rule is not installed. The other
+commands do not use sudo. The command waits for the service to become active,
+probes `/ready` with a bounded timeout, and sanitizes journal output so
+passwords, tokens, Drive URLs, and Drive identifiers are not printed.
+
+Optional environment variables:
+
+- `PIPELINEGEN_BASE_URL` — local HTTP base URL (default `http://127.0.0.1:8000`)
+- `PIPELINEGEN_READY_TIMEOUT` — readiness wait in seconds (default `60`)
+- `PIPELINEGEN_RESTART_TIMEOUT` — bounded restart timeout (default `30`)
+- `PIPELINEGEN_LOG_LINES` — sanitized journal lines (default `80`)
+
+The isolated contract test is:
+
+```bash
+scripts/systemd/pipelinegenctl_test.sh
+```
+
 ## Why this exists
 
 **Symptom** (observed during E2E verification, 2026-07-07/08): the
@@ -97,9 +128,10 @@ script will execute the sudo commands itself.
 ## Long-term follow-ups (forward-pointers)
 
 - **`PR-SYSTEMD-RESTART-SUDO-NOPASSDEP`** (architecture/current.yaml#E2E-VERIFICATION-BLOCKED-2026-07-07)
-  Add a NOPASSWD sudoers entry for `pierone` to allow
-  `/usr/bin/systemctl {restart,start,stop,status,enable,disable,daemon-reload} pipelinegen.service, /usr/bin/systemctl {restart,start,stop,status,enable,disable,daemon-reload} artlist-scraper.service`
-  without password. Operator action; cannot be automated by the agent.
+  Add a restricted NOPASSWD sudoers entry for `pierone` to allow only
+  `/usr/bin/systemctl restart pipelinegen.service` without a password.
+  Operator action; cannot be automated by the agent. Read-only status,
+  readiness, and journal access remain unprivileged.
 
 - **`PR-PIPELINEGEN-LOGROTATE`**
   Configure `journalctl --vacuum-time=7d` or a `logrotate` rule for
