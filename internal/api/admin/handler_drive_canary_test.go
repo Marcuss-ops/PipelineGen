@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,13 +30,22 @@ type canaryPublisherFake struct {
 	publishReq   delivery.PublishRequest
 	resolveReq   delivery.PublishRequest
 	resolveID    string
+	resolveErr   error
+	publishErr   error
+	nilResult    bool
 }
 
 func (f *canaryPublisherFake) Publish(_ context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
 	f.publishCalls++
 	f.publishReq = req
+	if f.publishErr != nil {
+		return nil, f.publishErr
+	}
 	if _, err := os.Stat(req.LocalPath); err != nil {
 		return nil, err
+	}
+	if f.nilResult {
+		return nil, nil
 	}
 	return &delivery.PublishResult{
 		FileID:      "canary-file-id",
@@ -47,16 +57,28 @@ func (f *canaryPublisherFake) Publish(_ context.Context, req delivery.PublishReq
 func (f *canaryPublisherFake) ResolveFolder(_ context.Context, req delivery.PublishRequest) (string, error) {
 	f.resolveCalls++
 	f.resolveReq = req
+	if f.resolveErr != nil {
+		return "", f.resolveErr
+	}
 	return f.resolveID, nil
 }
 
 func newCanaryTestHandler(t *testing.T, publisher delivery.Publisher) *DriveCanaryHandler {
 	t.Helper()
+	return NewDriveCanaryHandler(publisher, newCanaryTestResolver(t), zap.NewNop())
+}
+
+func newCanaryTestResolver(t *testing.T) *clipfolder.FolderAliasResolver {
+	t.Helper()
 	resolver, err := clipfolder.NewFolderAliasResolverFromBytes([]byte(canaryTestAliasesYAML))
 	if err != nil {
 		t.Fatalf("build resolver: %v", err)
 	}
-	return NewDriveCanaryHandler(publisher, resolver, zap.NewNop())
+	return resolver
+}
+
+func canaryJSON(fields string) string {
+	return "{" + strings.ReplaceAll(fields, `\"`, `"`) + "}"
 }
 
 func performCanaryRequest(t *testing.T, handler *DriveCanaryHandler, body string) *httptest.ResponseRecorder {
@@ -89,8 +111,8 @@ func TestCanaryUploadRequiresExactlyOneFolderSelector(t *testing.T) {
 		body string
 	}{
 		{name: "neither", body: `{}`},
-		{name: "whitespace-only", body: `{"folder_id":"  ","folder_alias":"\t"}`},
-		{name: "both", body: `{"folder_id":"explicit-id","folder_alias":"boxe"}`},
+		{name: "whitespace-only", body: canaryJSON(`"folder_id":"  ","folder_alias":"\t"`)},
+		{name: "both", body: canaryJSON(`"folder_id":"explicit-id","folder_alias":"boxe"`)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			publisher := &canaryPublisherFake{}
@@ -108,9 +130,21 @@ func TestCanaryUploadRequiresExactlyOneFolderSelector(t *testing.T) {
 	}
 }
 
+func TestCanaryUploadRejectsMalformedJSON(t *testing.T) {
+	publisher := &canaryPublisherFake{}
+	body := canaryJSON(`"folder_id":"explicit-folder-id"`)
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), body[:len(body)-1])
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	if publisher.publishCalls != 0 || publisher.resolveCalls != 0 {
+		t.Fatalf("malformed JSON invoked publisher: publish=%d resolve=%d", publisher.publishCalls, publisher.resolveCalls)
+	}
+}
+
 func TestCanaryUploadWithFolderIDPublishesExplicitRoot(t *testing.T) {
 	publisher := &canaryPublisherFake{}
-	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), `{"folder_id":"explicit-folder-id"}`)
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_id":"explicit-folder-id"`))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
@@ -124,7 +158,7 @@ func TestCanaryUploadWithFolderIDPublishesExplicitRoot(t *testing.T) {
 
 func TestCanaryUploadWithFolderAliasUsesCanonicalResolverAndPublisher(t *testing.T) {
 	publisher := &canaryPublisherFake{resolveID: "resolved-boxe-folder-id"}
-	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), `{"folder_alias":" Boxe "}`)
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_alias":" Boxe "`))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
@@ -143,11 +177,65 @@ func TestCanaryUploadWithFolderAliasUsesCanonicalResolverAndPublisher(t *testing
 
 func TestCanaryUploadRejectsUnknownFolderAliasBeforeDriveWrite(t *testing.T) {
 	publisher := &canaryPublisherFake{}
-	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), `{"folder_alias":"unknown"}`)
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_alias":"unknown"`))
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
 	}
 	if publisher.publishCalls != 0 || publisher.resolveCalls != 0 {
 		t.Fatalf("unknown alias invoked publisher: publish=%d resolve=%d", publisher.publishCalls, publisher.resolveCalls)
+	}
+}
+
+func TestCanaryUploadFailsClosedWhenPublisherIsMissing(t *testing.T) {
+	response := performCanaryRequest(t, NewDriveCanaryHandler(nil, newCanaryTestResolver(t), zap.NewNop()), canaryJSON(`"folder_id":"explicit-folder-id"`))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusServiceUnavailable, response.Body.String())
+	}
+	if got := responseError(t, response); got != "Drive publisher not wired — check composition root" {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestCanaryUploadFailsClosedWhenAliasResolverIsMissing(t *testing.T) {
+	publisher := &canaryPublisherFake{}
+	response := performCanaryRequest(t, NewDriveCanaryHandler(publisher, nil, zap.NewNop()), canaryJSON(`"folder_alias":"Boxe"`))
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusServiceUnavailable, response.Body.String())
+	}
+	if publisher.resolveCalls != 0 || publisher.publishCalls != 0 {
+		t.Fatalf("missing resolver invoked publisher: resolve=%d publish=%d", publisher.resolveCalls, publisher.publishCalls)
+	}
+}
+
+func TestCanaryUploadFailsClosedWhenAliasFolderResolutionFails(t *testing.T) {
+	publisher := &canaryPublisherFake{resolveErr: errors.New("resolver backend unavailable")}
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_alias":"Boxe"`))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusInternalServerError, response.Body.String())
+	}
+	if publisher.resolveCalls != 1 || publisher.publishCalls != 0 {
+		t.Fatalf("resolution failure continued to publish: resolve=%d publish=%d", publisher.resolveCalls, publisher.publishCalls)
+	}
+}
+
+func TestCanaryUploadFailsClosedWhenPublishFails(t *testing.T) {
+	publisher := &canaryPublisherFake{publishErr: errors.New("drive write refused")}
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_id":"explicit-folder-id"`))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusInternalServerError, response.Body.String())
+	}
+	if publisher.publishCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", publisher.publishCalls)
+	}
+}
+
+func TestCanaryUploadFailsClosedWhenPublisherReturnsNilResult(t *testing.T) {
+	publisher := &canaryPublisherFake{nilResult: true}
+	response := performCanaryRequest(t, newCanaryTestHandler(t, publisher), canaryJSON(`"folder_id":"explicit-folder-id"`))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusInternalServerError, response.Body.String())
+	}
+	if publisher.publishCalls != 1 {
+		t.Fatalf("publish calls = %d, want 1", publisher.publishCalls)
 	}
 }
