@@ -38,6 +38,8 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+
+	stockpublish "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline/publish"
 )
 
 // StockPublishStep is the canonical implementation of
@@ -137,3 +139,35 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 	return nil
 }
+
+// Compatibility wrappers keep existing same-package callers stable while the
+// pure naming implementation is owned by the publish capability package.
+func stockRootFolderName(in *RunInput) string { return stockpublish.RootFolderName(in) }
+
+func stockResolvedFolderID(in *RunInput) string { return stockpublish.ResolvedFolderID(in) }
+
+func sanitizedRootName(s string) string { return stockpublish.SanitizedRootName(s) }
+
+func sanitizeLegacyQuery(queries []string) string { return stockpublish.LegacyQuery(queries) }
+
+func sanitizeLegacyURLBasename(urls []string) string { return stockpublish.LegacyURLBasename(urls) }
+
+func sanitizedURLBasename(rawURL string) string { return stockpublish.SanitizedURLBasename(rawURL) }
+
+func stockTimestampGroupName(in *RunInput) string { return stockpublish.TimestampGroupName(in) }
+
+func stockClipFolderName(in *RunInput, plan ClipPlan, fallback string) string {
+	return stockpublish.ClipFolderName(in, plan, fallback)
+}
+
+func stockTimestampParentGroupName(in *RunInput) string {
+	return stockpublish.TimestampParentGroupName(in)
+}
+
+func perClipLeafName(plan ClipPlan) string { return stockpublish.PerClipLeafName(plan) }
+
+func timestampParentLeafName(plan ClipPlan) string {
+	return stockpublish.TimestampParentLeafName(plan)
+}
+
+func slugifyTitle(title string) string { return stockpublish.SlugifyTitle(title) }
