@@ -36,12 +36,10 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
@@ -227,17 +225,6 @@ func (p *TranslationProcessor) Process(
 		Text:          input.Text,
 	}
 
-	// Adapt the typed port to the translation.TranslatorFunc signature
-	// that the pure function expects. Nil-port → returns
-	// ErrTranslationTranslatorMissing via the adapter closure so the
-	// pure function fails fast with the canonical typed sentinel.
-	funcAdapter := translationpkg.TranslatorFunc(func(ctx context.Context, text, lang string) (string, error) {
-		if p.translator == nil {
-			return "", errors.New("translate script: translator port nil")
-		}
-		return p.translator.Translate(ctx, text, lang)
-	})
-
 	// Invoke the canonical TranslateScriptSpec pure function via the
 	// typed ports.TranslationUseCase port (composition root wires
 	// usecase.NewTranslationUseCaseAdapter at construction time,
@@ -252,13 +239,6 @@ func (p *TranslationProcessor) Process(
 		targetLang,
 		p.translator,
 	)
-	// Silently swallow the unused funcAdapter variable so the Go
-	// compiler doesn't complain (the useCase adapter internally
-	// re-wraps the port into a function value). The closure
-	// remains defined for future use-cases that may need the
-	// function-value shape (e.g. a future per-segment
-	// override path).
-	_ = funcAdapter
 	if tErr != nil {
 		// Typed-error chain: classify for bounded-reason metric, then
 		// wrap with %w to preserve the chain for callers
