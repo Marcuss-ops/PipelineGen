@@ -20,6 +20,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -30,7 +31,8 @@ import (
 // in the SpecScene bindings and reconciles them against the
 // canonical AssetLocationVerifier.
 type AssetLocationReconciliationProcessor struct {
-	verifier scriptpkg.AssetLocationVerifier
+	verifier  scriptpkg.AssetLocationVerifier
+	committer scriptpkg.AssetLocationCommitter
 }
 
 // NewAssetLocationReconciliationProcessor creates the processor.
@@ -41,18 +43,29 @@ func NewAssetLocationReconciliationProcessor(
 	return &AssetLocationReconciliationProcessor{verifier: verifier}
 }
 
+// NewDurableAssetLocationReconciliationProcessor adds the canonical
+// SQLite/outbox commit port. Keeping this as a separate constructor makes
+// the durable dependency explicit and prevents silently ignoring a second
+// committer at composition time.
+func NewDurableAssetLocationReconciliationProcessor(
+	verifier scriptpkg.AssetLocationVerifier,
+	committer scriptpkg.AssetLocationCommitter,
+) *AssetLocationReconciliationProcessor {
+	return &AssetLocationReconciliationProcessor{verifier: verifier, committer: committer}
+}
+
 func (p *AssetLocationReconciliationProcessor) Name() ProcessorName {
 	return ProcessorAssetLocationReconciliation
 }
 
-// Policy classifies asset_location_reconciliation as BestEffort:
-// transport errors during verification are surfaced as warnings
-// rather than hard failures, allowing generation to complete with
-// degraded link integrity.
+// Policy is BestEffort for verification-only composition. A configured
+// committer makes the complete reconciliation Required because the
+// downstream SpecScene must not be published when its durable asset
+// mutation and Qdrant outbox event could not be committed.
 func (p *AssetLocationReconciliationProcessor) Policy(
 	_ *scriptpkg.ResolvedGenerationPlan,
 ) ProcessorPolicy {
-	if p == nil || p.verifier == nil {
+	if p == nil || p.verifier == nil || p.committer != nil {
 		return ProcessorRequired
 	}
 	return ProcessorBestEffort
@@ -99,6 +112,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		trashedCount      int
 		inaccessibleCount int
 		malformedCount    int
+		assetChanges      = make(map[string]scriptpkg.AssetLocationChange)
 	)
 
 	// Work on a copy of the scenes so we can mutate in place.
@@ -129,6 +143,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 				malformedCount += result.malformed
 				if result.warning != "" {
 					warnings = append(warnings, result.warning)
+				}
+				if result.assetChange != nil {
+					assetChanges[result.assetChange.AssetID] = *result.assetChange
 				}
 			}
 			if link := strings.TrimSpace(bindings.Clip.SubtitleLink); link != "" {
@@ -181,6 +198,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 				if result.warning != "" {
 					warnings = append(warnings, result.warning)
 				}
+				if result.assetChange != nil {
+					assetChanges[result.assetChange.AssetID] = *result.assetChange
+				}
 			}
 		}
 
@@ -208,6 +228,9 @@ func (p *AssetLocationReconciliationProcessor) Process(
 					malformedCount += result.malformed
 					if result.warning != "" {
 						warnings = append(warnings, result.warning)
+					}
+					if result.assetChange != nil {
+						assetChanges[result.assetChange.AssetID] = *result.assetChange
 					}
 					if result.changed && strings.TrimSpace(bindings.Image.URL) == "" {
 						bindings.Image.Status = string(scriptpkg.ImageStatusFailed)
@@ -265,7 +288,27 @@ func (p *AssetLocationReconciliationProcessor) Process(
 				if result.warning != "" {
 					warnings = append(warnings, result.warning)
 				}
+				if result.assetChange != nil {
+					assetChanges[result.assetChange.AssetID] = *result.assetChange
+				}
 			}
+		}
+	}
+
+	if p.committer != nil && len(assetChanges) > 0 {
+		changes := make([]scriptpkg.AssetLocationChange, 0, len(assetChanges))
+		for _, change := range assetChanges {
+			changes = append(changes, change)
+		}
+		sort.Slice(changes, func(i, j int) bool {
+			return changes[i].AssetID < changes[j].AssetID
+		})
+		if err := p.committer.CommitAssetLocations(ctx, changes); err != nil {
+			return &PostProcessResult{
+				Changed:          changed,
+				UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+				Warnings:         warnings,
+			}, fmt.Errorf("%w: asset_location_reconciliation commit failed: %w", scriptpkg.ErrPostprocessFailed, err)
 		}
 	}
 
@@ -278,22 +321,26 @@ func (p *AssetLocationReconciliationProcessor) Process(
 
 // reconcileResult captures the outcome of a single link verification.
 type reconcileResult struct {
-	changed      bool
-	ok           int
-	updated      int
-	missing      int
-	trashed      int
-	inaccessible int
-	malformed    int
-	warning      string
+	changed         bool
+	ok              int
+	updated         int
+	missing         int
+	trashed         int
+	inaccessible    int
+	malformed       int
+	warning         string
+	durableMutation bool
+	assetChange     *scriptpkg.AssetLocationChange
+	driveFileID     string
 }
 
 // verifyAndReconcile calls the verifier for a single link and
 // updates the link pointer in place. Returns a reconcileResult
 // with counters and an optional warning string.
-// Transport errors (network timeout, Drive API 5xx) are surfaced
-// as warnings per the ProcessorBestEffort contract, while the
-// unverified link is cleared fail-closed before publication.
+// Transport errors (network timeout, Drive API 5xx) are surfaced as
+// warnings and clear only the downstream link. Confirmed invalid states
+// produce durable mutations; the injected committer persists those
+// changes together with the Qdrant outbox event.
 func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	ctx context.Context,
 	assetID string,
@@ -302,7 +349,22 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	linkPtr *string,
 	label string,
 	sceneID string,
-) (reconcileResult, error) {
+) (result reconcileResult, err error) {
+	defer func() {
+		if !result.durableMutation || strings.TrimSpace(assetID) == "" || strings.HasPrefix(assetID, "voiceover:") || label == "subtitle" || linkPtr == nil {
+			return
+		}
+		fileID := strings.TrimSpace(result.driveFileID)
+		if strings.TrimSpace(*linkPtr) == "" {
+			fileID = ""
+		}
+		result.assetChange = &scriptpkg.AssetLocationChange{
+			AssetID:     strings.TrimSpace(assetID),
+			DriveFileID: fileID,
+			DriveLink:   strings.TrimSpace(*linkPtr),
+		}
+	}()
+
 	verified, err := p.verifier.Verify(ctx, assetID, fileID, link)
 	if err != nil {
 		// BestEffort keeps generation running, but fails closed for
@@ -328,19 +390,22 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		}, nil
 	}
 
+	result.driveFileID = verified.DriveFileID
 	switch verified.State {
 	case scriptpkg.LocationStateVerified:
 		return reconcileResult{ok: 1}, nil
 
 	case scriptpkg.LocationStateUpdated:
 		*linkPtr = verified.DriveLink
-		return reconcileResult{changed: true, updated: 1}, nil
+		return reconcileResult{changed: true, durableMutation: true, updated: 1, driveFileID: verified.DriveFileID}, nil
 
 	case scriptpkg.LocationStateMissing:
 		*linkPtr = ""
 		return reconcileResult{
-			changed: true,
-			missing: 1,
+			changed:         true,
+			durableMutation: true,
+			missing:         1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is MISSING (Drive file not found): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -348,8 +413,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateTrashed:
 		*linkPtr = ""
 		return reconcileResult{
-			changed: true,
-			trashed: 1,
+			changed:         true,
+			durableMutation: true,
+			trashed:         1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is TRASHED (file in Drive trash): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -357,8 +424,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateInaccessible:
 		*linkPtr = ""
 		return reconcileResult{
-			changed:      true,
-			inaccessible: 1,
+			changed:         true,
+			durableMutation: true,
+			inaccessible:    1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is INACCESSIBLE (permission denied): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -366,8 +435,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateMalformed:
 		*linkPtr = ""
 		return reconcileResult{
-			changed:   true,
-			malformed: 1,
+			changed:         true,
+			durableMutation: true,
+			malformed:       1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is MALFORMED (cannot extract file ID): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -375,8 +446,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateOrphanDriveFile:
 		*linkPtr = ""
 		return reconcileResult{
-			changed: true,
-			missing: 1,
+			changed:         true,
+			durableMutation: true,
+			missing:         1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is an ORPHAN (file on Drive but no SQLite record): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -384,8 +457,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateBrokenAssetLocation:
 		*linkPtr = ""
 		return reconcileResult{
-			changed: true,
-			missing: 1,
+			changed:         true,
+			durableMutation: true,
+			missing:         1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has a BROKEN location (SQLite references missing Drive file): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -393,8 +468,10 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	case scriptpkg.LocationStateDuplicate:
 		*linkPtr = ""
 		return reconcileResult{
-			changed:   true,
-			malformed: 1,
+			changed:         true,
+			durableMutation: true,
+			malformed:       1,
+			driveFileID:     verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s is a DUPLICATE (multiple assets share same drive_file_id): asset=%s",
 				label, sceneID, assetID),
 		}, nil
@@ -405,7 +482,8 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		// expose the degraded outcome to status classification.
 		*linkPtr = ""
 		return reconcileResult{
-			changed: true,
+			changed:     true,
+			driveFileID: verified.DriveFileID,
 			warning: fmt.Sprintf("asset_location_reconciliation: %s link in %s has UNKNOWN verification state %q (link cleared): asset=%s",
 				label, sceneID, verified.State, assetID),
 		}, nil
