@@ -81,6 +81,42 @@ class RunnerPolicyTest(unittest.TestCase):
         self.assertNotIn("_runner", prepared)
         self.assertTrue(prepared["items"][0]["script_params"]["skip_quality_gate"])
 
+    def test_invalid_drive_link_cannot_be_reported_as_overall_success(self):
+        response = {
+            "status": "SUCCEEDED",
+            "final": "PASS",
+            "generation_status": "completed",
+            "drive_reconciliation_status": "failed",
+            "overall_status": "succeeded",
+            "drive_verification": {"invalid_links": 1},
+        }
+        errors = runner_policy.validate_response(response, "smoke")
+        self.assertTrue(any("invalid_drive_links=1" in error for error in errors))
+        self.assertTrue(any("contradicts" in error for error in errors))
+
+    def test_clean_drive_reconciliation_allows_overall_success(self):
+        response = {
+            "status": "SUCCEEDED",
+            "final": "PASS",
+            "generation_status": "completed",
+            "drive_reconciliation_status": "passed",
+            "overall_status": "succeeded",
+            "drive_verification": {"invalid_links": 0},
+        }
+        self.assertEqual(runner_policy.validate_response(response, "strict"), [])
+
+    def test_top_level_invalid_drive_links_also_block_success(self):
+        response = {
+            "status": "SUCCEEDED",
+            "final": "PASS",
+            "generation_status": "completed",
+            "drive_reconciliation_status": "passed",
+            "overall_status": "succeeded",
+            "invalid_drive_links": 1,
+        }
+        errors = runner_policy.validate_response(response, "strict")
+        self.assertTrue(any("invalid_drive_links=1" in error for error in errors))
+
     def test_smoke_accepts_only_explicitly_allowed_warning(self):
         response = {
             "status": "SUCCEEDED_WITH_WARNINGS",
