@@ -4,6 +4,7 @@
 import copy
 import importlib.util
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +44,93 @@ class StockRegistryTest(unittest.TestCase):
         payload = {"output": {"stock_bindings": [{"asset_id": "asset-from-another-subject"}]}}
         with self.assertRaisesRegex(ValueError, "outside resolved registry"):
             stock_registry.materialize(payload, self.resolved)
+
+    def test_pacquiao_requires_all_three_roles(self):
+        incomplete = copy.deepcopy(self.registry)
+        del incomplete["boxers"]["manny_pacquiao"]["assets"]["training"]
+        with self.assertRaisesRegex(ValueError, "requires three validated stock assets"):
+            stock_registry.validate_registry(incomplete)
+
+    def test_pacquiao_fixture_uses_canonical_asset_ids(self):
+        assets = self.registry["boxers"]["manny_pacquiao"]["assets"]
+        self.assertEqual(assets["fight"]["asset_id"], "yt_6VtSrG1hs9U_119_164_v1")
+        self.assertEqual(assets["interview"]["asset_id"], "yt_6VtSrG1hs9U_299_350_v1")
+        self.assertEqual(assets["training"]["asset_id"], "yt_6VtSrG1hs9U_196_239_v1")
+
+    def test_direct_pacquiao_scenario_materializes_without_tyson_ids(self):
+        source = ROOT / "scenarios" / "04_direct_stock_bindings.json"
+        payload = stock_registry.materialize(stock_registry.load_json(source), self.resolved)
+        bindings = payload["items"][0]["output"]["stock_bindings"]
+        self.assertEqual(
+            [binding["asset_id"] for binding in bindings],
+            [
+                "yt_6VtSrG1hs9U_119_164_v1",
+                "yt_6VtSrG1hs9U_299_350_v1",
+                "yt_6VtSrG1hs9U_196_239_v1",
+            ],
+        )
+        self.assertTrue(all(not binding.get("fallback", False) for binding in bindings))
+
+    def _pacquiao_only_registry(self):
+        registry = copy.deepcopy(self.registry)
+        registry["scene_order"] = ["manny_pacquiao"]
+        registry["boxers"] = {"manny_pacquiao": registry["boxers"]["manny_pacquiao"]}
+        return registry
+
+    def _write_pacquiao_db(self, directory, *, bad_role=None, bad_value=None, bad_field=None):
+        registry = self._pacquiao_only_registry()
+        db_path = Path(directory) / "assets.sqlite"
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                """CREATE TABLE media_assets (
+                    id TEXT PRIMARY KEY,
+                    lifecycle_state TEXT NOT NULL,
+                    lifecycle_status TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    drive_link TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL DEFAULT '{}'
+                )"""
+            )
+            for role, asset in registry["boxers"]["manny_pacquiao"]["assets"].items():
+                is_bad_role = bad_role == role
+                source = bad_value if is_bad_role and bad_field == "source" else "youtube"
+                drive_link = bad_value if is_bad_role and bad_field == "drive_link" else asset["drive_link"]
+                lifecycle_state = bad_value if is_bad_role and bad_field == "lifecycle_state" else "ACTIVE"
+                connection.execute(
+                    "INSERT INTO media_assets "
+                    "(id, lifecycle_state, lifecycle_status, source, drive_link, name, metadata_json) "
+                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, '{}')",
+                    (asset["asset_id"], lifecycle_state, source, drive_link, f"Manny Pacquiao {role}"),
+                )
+            connection.commit()
+        return registry, db_path
+
+    def test_pacquiao_requires_active_state_not_shadow_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, db_path = self._write_pacquiao_db(
+                directory,
+                bad_role="training",
+                bad_value="DELETED",
+                bad_field="lifecycle_state",
+            )
+            with self.assertRaisesRegex(ValueError, "lifecycle_state.*expected ACTIVE"):
+                stock_registry.resolve_registry(registry, str(db_path))
+
+    def test_pacquiao_rejects_wrong_source_and_empty_drive_link(self):
+        for bad_role, bad_value, expected in (
+            ("fight", "artlist", "source"),
+            ("interview", "", "empty drive_link"),
+        ):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:
+                registry, db_path = self._write_pacquiao_db(
+                    directory,
+                    bad_role=bad_role,
+                    bad_value=bad_value,
+                    bad_field="source" if expected == "source" else "drive_link",
+                )
+                with self.assertRaisesRegex(ValueError, expected):
+                    stock_registry.resolve_registry(registry, str(db_path))
 
     def test_positive_scenario_materializes_by_scene_order(self):
         source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"

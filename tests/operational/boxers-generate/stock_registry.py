@@ -13,11 +13,7 @@ from typing import Any
 
 
 ROLES = {"fight", "interview", "training"}
-LEGACY_ASSET_PLACEHOLDERS = {
-    "PACQUIAO_FIGHT_ASSET_ID",
-    "PACQUIAO_INTERVIEW_ASSET_ID",
-    "PACQUIAO_TRAINING_ASSET_ID",
-}
+REQUIRED_PACQUIAO_ROLES = ("fight", "interview", "training")
 
 
 def _text(value: Any) -> str:
@@ -99,6 +95,14 @@ def _asset_entries(registry: dict[str, Any]):
 def validate_registry(registry: dict[str, Any]) -> None:
     """Reject missing identity, unsupported roles, and duplicate assets."""
     list(_asset_entries(registry))
+    pacquiao = registry["boxers"].get("manny_pacquiao", {})
+    assets = pacquiao.get("assets", {}) if isinstance(pacquiao, dict) else {}
+    missing = [role for role in REQUIRED_PACQUIAO_ROLES if not isinstance(assets.get(role), dict)]
+    if missing:
+        raise ValueError(
+            "manny_pacquiao requires three validated stock assets; "
+            f"missing roles: {', '.join(missing)}"
+        )
 
 
 def load_resolved_stock(path: str | os.PathLike[str]) -> dict[str, Any]:
@@ -169,11 +173,9 @@ def _materialize_binding(binding: dict[str, Any], resolved: dict[str, Any], look
         output["drive_link"] = lookup[asset_id].get("drive_link", "")
         return output
 
-    # Legacy non-stock scenarios use symbolic placeholders such as
-    # PACQUIAO_FIGHT_ASSET_ID. They are not concrete IDs and are left for
-    # their scenario-specific setup. Any concrete asset ID in a stock binding
-    # must come from this registry.
-    if raw_asset_id not in lookup and raw_asset_id not in LEGACY_ASSET_PLACEHOLDERS:
+    # Every stock binding must use a registry asset. No symbolic or
+    # cross-subject fallback values are accepted.
+    if raw_asset_id not in lookup:
         raise ValueError(
             f"scenario references asset outside resolved registry: {raw_asset_id!r}"
         )
