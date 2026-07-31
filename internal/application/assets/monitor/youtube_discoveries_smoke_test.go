@@ -274,3 +274,67 @@ func TestYoutubeDiscoveries_MaxDiscoveredAt_EmptyChannel(t *testing.T) {
 		t.Errorf("MaxDiscoveredAt on empty ledger should return empty string, got %q", wm)
 	}
 }
+
+func TestMonitorOutbox_DrainDispatchedReclaimsExpiredLease(t *testing.T) {
+	repo, db, cleanup := newInMemoryLedger(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE monitor_enqueue_outbox (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			discovery_id TEXT NOT NULL,
+			idempotency_key TEXT NOT NULL UNIQUE,
+			payload_json TEXT NOT NULL,
+			state TEXT NOT NULL DEFAULT 'pending',
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			dispatched_at TEXT,
+			job_id TEXT,
+			error TEXT,
+			retry_count INTEGER NOT NULL DEFAULT 0,
+			next_retry_at TEXT,
+			lease_id TEXT NOT NULL DEFAULT '',
+			lease_until TEXT
+		)`); err != nil {
+		t.Fatalf("create monitor outbox schema: %v", err)
+	}
+
+	expiredLease := time.Now().UTC().Add(-time.Hour).Format("2006-01-02 15:04:05")
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO monitor_enqueue_outbox
+			(discovery_id, idempotency_key, payload_json, state, lease_id, lease_until)
+		VALUES (?, ?, ?, 'dispatching', ?, ?)`,
+		"disc-reclaim", "youtube-extract:disc-reclaim:v1", `{}`, "stale-drainer", expiredLease); err != nil {
+		t.Fatalf("insert expired outbox entry: %v", err)
+	}
+
+	reclaimed, err := repo.DrainDispatched(ctx, 10, "reclaimer", time.Now().UTC().Add(time.Minute).Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("DrainDispatched: %v", err)
+	}
+	if len(reclaimed) != 1 {
+		t.Fatalf("reclaimed entries = %d, want 1", len(reclaimed))
+	}
+	if reclaimed[0].State != "pending" {
+		t.Fatalf("reclaimed state = %q, want pending", reclaimed[0].State)
+	}
+
+	var state, leaseID string
+	var leaseUntil sql.NullString
+	if err := db.QueryRowContext(ctx, `
+		SELECT state, lease_id, lease_until FROM monitor_enqueue_outbox WHERE id = ?`, reclaimed[0].ID).
+		Scan(&state, &leaseID, &leaseUntil); err != nil {
+		t.Fatalf("inspect reclaimed row: %v", err)
+	}
+	if state != "pending" || leaseID != "" || leaseUntil.Valid {
+		t.Fatalf("reclaimed row = state=%q lease_id=%q lease_until=%v, want pending with cleared lease", state, leaseID, leaseUntil)
+	}
+
+	claimed, err := repo.DrainPendingOutbox(ctx, 10, "new-drainer", time.Now().UTC().Add(time.Minute).Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("DrainPendingOutbox after reclaim: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != reclaimed[0].ID || claimed[0].State != "dispatching" {
+		t.Fatalf("reclaimed entry was not claimable again: %+v", claimed)
+	}
+}

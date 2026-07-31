@@ -85,7 +85,7 @@ func (r *YoutubeDiscoveriesRepository) CommitEnqueueOutbox(
 		return fmt.Errorf("monitor_outbox.CommitEnqueueOutbox: ensure table: %w", err)
 	}
 
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -374,7 +374,7 @@ func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limi
 // with the resulting durable-job ID. Requires the row to be in
 // 'dispatching' state (the drainer claims it before dispatching).
 func (r *YoutubeDiscoveriesRepository) MarkOutboxDispatched(ctx context.Context, outboxID int64, jobID string) error {
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := time.Now().UTC().Format("2006-01-02 15:04:05")
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE monitor_enqueue_outbox
 		SET state = 'dispatched',
@@ -445,7 +445,7 @@ func (r *YoutubeDiscoveriesRepository) MarkOutboxFailed(ctx context.Context, out
 
 	// Retryable: set back to pending with exponential backoff.
 	backoff := time.Duration(5*newRetryCount) * time.Second
-	nextRetryAt := now.Add(backoff).Format(time.RFC3339)
+	nextRetryAt := now.Add(backoff).Format("2006-01-02 15:04:05")
 
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE monitor_enqueue_outbox

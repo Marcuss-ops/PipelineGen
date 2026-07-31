@@ -27,6 +27,7 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -70,7 +71,10 @@ func (m *ChannelMonitor) drainOutboxOnce(ctx context.Context) {
 	// lease can be reclaimed by the next cycle.
 	now := time.Now().UTC()
 	leaseID := fmt.Sprintf("outbox-drainer-%d", now.UnixNano()%100000)
-	leaseUntil := now.Add(30 * time.Second).Format(time.RFC3339)
+	// The SQLite outbox compares lease_until with datetime('now').
+	// Use SQLite's space-separated timestamp format so expired leases
+	// are reclaimable; RFC3339's 'T' would sort after SQLite's space.
+	leaseUntil := now.Add(30 * time.Second).Format("2006-01-02 15:04:05")
 
 	// Step 1: Reclaim stuck entries (crashed drainer recovery).
 	reclaimed, err := m.discoveries.DrainDispatched(ctx, 5, leaseID, leaseUntil)
@@ -93,20 +97,23 @@ func (m *ChannelMonitor) drainOutboxOnce(ctx context.Context) {
 	m.log.Debug("outbox drainer: draining entries", zap.Int("count", len(entries)))
 
 	for _, entry := range entries {
-		m.dispatchOutboxEntry(ctx, entry)
+		if err := m.dispatchOutboxEntry(ctx, entry); err != nil {
+			m.log.Error("outbox drainer: entry dispatch did not complete durably",
+				zap.Int64("outbox_id", entry.ID),
+				zap.Error(err))
+		}
 	}
 }
 
 // dispatchOutboxEntry deserializes the outbox payload and emits a
 // durable job via the JobEnqueuer port. On success, marks the outbox
 // entry as dispatched; on failure, marks it as failed.
-func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry OutboxEntry) {
+func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry OutboxEntry) error {
 	if m.enqueuer == nil {
 		m.log.Warn("outbox drainer: enqueuer port not wired, cannot dispatch entry",
 			zap.Int64("outbox_id", entry.ID),
 			zap.String("discovery_id", entry.DiscoveryID))
-		_ = m.discoveries.MarkOutboxFailed(ctx, entry.ID, "enqueuer port not wired")
-		return
+		return m.markOutboxFailed(ctx, entry.ID, "enqueuer port not wired", fmt.Errorf("outbox drainer: enqueuer port not wired for entry %d", entry.ID))
 	}
 
 	// Deserialize the payload back into an EnqueueExtractRequest.
@@ -115,8 +122,7 @@ func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry OutboxEn
 		m.log.Error("outbox drainer: failed to deserialize payload",
 			zap.Int64("outbox_id", entry.ID),
 			zap.Error(err))
-		_ = m.discoveries.MarkOutboxFailed(ctx, entry.ID, fmt.Sprintf("deserialize: %v", err))
-		return
+		return m.markOutboxFailed(ctx, entry.ID, fmt.Sprintf("deserialize: %v", err), err)
 	}
 
 	// Emit the durable job.
@@ -126,20 +132,26 @@ func (m *ChannelMonitor) dispatchOutboxEntry(ctx context.Context, entry OutboxEn
 			zap.String("discovery_id", entry.DiscoveryID),
 			zap.String("video_id", req.VideoID),
 			zap.Error(err))
-		_ = m.discoveries.MarkOutboxFailed(ctx, entry.ID, err.Error())
-		return
+		return m.markOutboxFailed(ctx, entry.ID, err.Error(), err)
 	}
 
 	// Record successful dispatch.
 	if markErr := m.discoveries.MarkOutboxDispatched(ctx, entry.ID, req.VideoID); markErr != nil {
-		m.log.Warn("outbox drainer: MarkOutboxDispatched failed",
-			zap.Int64("outbox_id", entry.ID),
-			zap.Error(markErr))
-		// The job WAS emitted; the outbox audit row just didn't
-		// flip. Loud log so an operator can reconcile.
+		// The job WAS emitted, but the durable audit transition failed.
+		// Return the error so the caller cannot mistake this for a fully
+		// completed dispatch; retry/reconciliation remains operator-visible.
+		return fmt.Errorf("outbox drainer: mark entry %d dispatched: %w", entry.ID, markErr)
 	}
 	m.log.Debug("outbox drainer: dispatched entry",
 		zap.Int64("outbox_id", entry.ID),
 		zap.String("video_id", req.VideoID),
 		zap.String("discovery_id", entry.DiscoveryID))
+	return nil
+}
+
+func (m *ChannelMonitor) markOutboxFailed(ctx context.Context, entryID int64, reason string, cause error) error {
+	if markErr := m.discoveries.MarkOutboxFailed(ctx, entryID, reason); markErr != nil {
+		return errors.Join(cause, fmt.Errorf("outbox drainer: mark entry %d failed: %w", entryID, markErr))
+	}
+	return cause
 }

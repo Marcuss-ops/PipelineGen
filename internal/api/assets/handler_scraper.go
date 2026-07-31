@@ -3,7 +3,9 @@ package assets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -66,7 +68,10 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 	}
 
 	var req searchRequest
-	_ = c.ShouldBindJSON(&req)
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		apiutil.BadRequest(c, "invalid JSON payload: "+err.Error())
+		return
+	}
 
 	term := strings.TrimSpace(req.SearchTerm)
 	if term == "" {
