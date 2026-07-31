@@ -749,3 +749,40 @@ func TestAssetLocationReconciliation_DocumentRefreshStructurePreserved(t *testin
 		t.Fatalf("no warnings expected for fully valid bindings: %v", got.Warnings)
 	}
 }
+
+// 20. Broken asset location → link cleared + warning
+func TestAssetLocationReconciliation_BrokenAssetLocationCleared(t *testing.T) {
+	link := "https://drive.google.com/file/d/broken1/view"
+	r := newStubVerifier()
+	r.stubResult(link, &scriptpkg.VerifiedLocation{
+		AssetID:     "clip-broken",
+		DriveFileID: "broken1",
+		State:       scriptpkg.LocationStateBrokenAssetLocation,
+		ErrorCode:   "DRIVE_FILE_NOT_FOUND",
+	})
+
+	p := NewAssetLocationReconciliationProcessor(r)
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			sceneWithClip("clip-broken", link),
+		}},
+	}
+
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink != "" {
+		t.Fatalf("broken location link should be cleared, got %q",
+			got.UpdatedSpecScene.Scenes[0].Bindings.Clip.DriveLink)
+	}
+	if !got.Changed {
+		t.Fatal("Changed should be true for cleared broken location link")
+	}
+	if len(got.Warnings) != 1 {
+		t.Fatalf("expected 1 warning for broken location, got %d: %v", len(got.Warnings), got.Warnings)
+	}
+	if !strings.Contains(got.Warnings[0], "BROKEN") {
+		t.Fatalf("warning should mention BROKEN, got %q", got.Warnings[0])
+	}
+}
