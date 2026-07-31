@@ -341,6 +341,13 @@ def canonical_folder_id(item):
     return ""
 
 
+def _voiceover_link(voiceover):
+    """Return the canonical Drive link while accepting legacy link output."""
+    if not isinstance(voiceover, dict):
+        return ""
+    return str(voiceover.get("drive_link") or voiceover.get("link") or "").strip()
+
+
 def validate_voiceover(voiceover, expected_language, expected_folder_id):
     """Return descriptive failures for one voiceover binding."""
     errors = []
@@ -350,7 +357,7 @@ def validate_voiceover(voiceover, expected_language, expected_folder_id):
     status = str(voiceover.get("status", "")).strip()
     if status.casefold() not in {"completed", "succeeded"}:
         errors.append(f"status={status or '(missing)'}, expected terminal positive status")
-    if not str(voiceover.get("drive_link", "")).strip():
+    if not _voiceover_link(voiceover):
         errors.append("drive_link is empty")
     if not str(voiceover.get("voice", "")).strip():
         errors.append("voice is empty")
@@ -392,6 +399,11 @@ def main():
     parser.add_argument("response_json", help="Path to full job JSON response file")
     parser.add_argument("db_path", help="Path to SQLite database")
     parser.add_argument("--registry", required=True, help="Path to resolved_stock.json")
+    parser.add_argument(
+        "--voiceover-folder-id",
+        required=True,
+        help="Runtime BOXERS_VOICEOVER_FOLDER_ID used by payload and output validation",
+    )
     parser.add_argument("--negative", action="store_true",
                         help="Negative test mode: expect STOCK_SUBJECT_MISMATCH")
     args = parser.parse_args()
@@ -413,6 +425,10 @@ def main():
         expectations = scene_expectations(resolved)
     except (OSError, ValueError) as exc:
         print(f"Error loading resolved stock registry: {exc}")
+        sys.exit(2)
+    runtime_folder_id = str(args.voiceover_folder_id or "").strip()
+    if not runtime_folder_id:
+        print("Error: --voiceover-folder-id must not be empty")
         sys.exit(2)
     expected_assets = [entry["asset_id"] for entry in expectations]
     boxer_names = [entry["subject"] for entry in expectations]
@@ -524,6 +540,12 @@ def main():
         expected_folder_id = canonical_folder_id(item)
         if expected_folder_id:
             canonical_folders.add(expected_folder_id)
+        if expected_folder_id != runtime_folder_id:
+            add_error(
+                f"Test 6 [{item_id}]: payload folder_id={expected_folder_id or '(missing)'}, "
+                f"expected BOXERS_VOICEOVER_FOLDER_ID={runtime_folder_id}"
+            )
+        expected_folder_id = runtime_folder_id
 
         if not output:
             add_error(f"Missing output for {item_id}")
@@ -628,10 +650,12 @@ def main():
             if term in text_lower:
                 add_error(f"Test 9 [{item_id}]: Editorial integrity — found '{term}'")
 
-    if len(canonical_folders) > 1:
+    if canonical_folders != {runtime_folder_id}:
         add_error(
-            "Voiceover folder is not canonical across items: "
-            + ", ".join(sorted(canonical_folders))
+            "Voiceover folder is not canonical across items: expected "
+            + runtime_folder_id
+            + ", got "
+            + (", ".join(sorted(canonical_folders)) or "(missing)")
         )
 
     # ── Test 4: Stock coherence across languages ──────────────────────

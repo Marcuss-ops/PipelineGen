@@ -46,6 +46,10 @@ class GenerateReportRegistryTest(unittest.TestCase):
                             "voiceover": {
                                 "status": "completed",
                                 "link": f"https://example.invalid/voice/{language}/{expected['index']}",
+                                "voice": f"{language}-voice",
+                                "language": language,
+                                "folder_id": "test-folder",
+                                "duration_seconds": 12.5,
                             },
                         },
                     }
@@ -73,7 +77,7 @@ class GenerateReportRegistryTest(unittest.TestCase):
             report_path = Path(directory) / "report.json"
             job_path.write_text(json.dumps(data), encoding="utf-8")
             _generate_report.generate_report(
-                str(job_path), str(report_path), str(REGISTRY_PATH)
+                str(job_path), str(report_path), str(REGISTRY_PATH), "test-folder"
             )
             return json.loads(report_path.read_text(encoding="utf-8"))
 
@@ -101,6 +105,47 @@ class GenerateReportRegistryTest(unittest.TestCase):
         report = self.generate(data)
         self.assertEqual(report["final"], "PASS")
         self.assertEqual(report["drive_verification"]["invalid_links"], 0)
+
+    def test_report_rejects_voiceover_folder_or_voice_drift(self):
+        data = self.make_successful_job()
+        voiceover = data["result"]["data"]["items"][0]["result"]["output"]["specscene"]["scenes"][0]["bindings"]["voiceover"]
+        voiceover["voice"] = ""
+        voiceover["folder_id"] = "other-folder"
+        report = self.generate(data)
+        self.assertEqual(report["final"], "FAIL")
+        self.assertEqual(report["voiceovers"]["failed"], 1)
+        self.assertIn("invalid_voiceovers=1", report["_failures"])
+        self.assertTrue(any("voice is empty" in error for error in report["voiceovers"]["invalid"][0]["errors"]))
+        self.assertTrue(any("folder_id" in error for error in report["voiceovers"]["invalid"][0]["errors"]))
+
+    def test_report_requires_runtime_folder(self):
+        with self.assertRaises(ValueError):
+            with tempfile.TemporaryDirectory() as directory:
+                job_path = Path(directory) / "job.json"
+                job_path.write_text(json.dumps(self.make_successful_job()), encoding="utf-8")
+                _generate_report.generate_report(
+                    str(job_path), "--stdout", str(REGISTRY_PATH), ""
+                )
+
+    def test_report_uses_parent_translate_to_for_voiceover_language(self):
+        data = self.make_successful_job()
+        item = data["result"]["data"]["items"][0]
+        item["item_id"] = "top5-boxers-it"
+        for scene in item["result"]["output"]["specscene"]["scenes"]:
+            scene["bindings"]["voiceover"]["language"] = "en"
+        data["job"] = {
+            "payload": {
+                "items": [{
+                    "id": "top5-boxers-it",
+                    "language": "it",
+                    "output": {"translate_to": "en"},
+                    "docs": {"languages": ["en"]},
+                }]
+            }
+        }
+        report = self.generate(data)
+        self.assertEqual(report["final"], "PASS")
+        self.assertEqual(report["voiceovers"]["failed"], 0)
 
     def test_each_admin_audit_detail_state_blocks_pass(self):
         for state in ("MISSING", "TRASHED", "INACCESSIBLE"):

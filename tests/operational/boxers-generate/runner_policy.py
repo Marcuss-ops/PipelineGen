@@ -94,6 +94,85 @@ def prepare_payload(payload: dict[str, Any], mode: str) -> dict[str, Any]:
     return prepared
 
 
+def validate_voiceover_folder_config(folder_id: str) -> list[str]:
+    """Validate the single runtime voiceover-folder configuration value."""
+    if not str(folder_id or "").strip():
+        return ["BOXERS_VOICEOVER_FOLDER_ID is required"]
+    return []
+
+
+def validate_payload_voiceover_folder(
+    payload: dict[str, Any], folder_id: str
+) -> list[str]:
+    """Ensure every payload folder declaration uses the runtime folder."""
+    errors = validate_voiceover_folder_config(folder_id)
+    expected = str(folder_id or "").strip()
+    if not expected:
+        return errors
+    for obj in _walk(payload):
+        for key in ("voiceover_folder_id", "folder_id"):
+            if key not in obj:
+                continue
+            value = str(obj.get(key) or "").strip()
+            if value != expected:
+                errors.append(
+                    f"payload {key}={value!r} does not match BOXERS_VOICEOVER_FOLDER_ID"
+                )
+    return errors
+
+
+def voiceover_db_preflight(db_path: str, folder_id: str) -> list[str]:
+    """Fail closed on invalid voice/folder rows for the runtime folder."""
+    errors = validate_voiceover_folder_config(folder_id)
+    if errors or not db_path:
+        return errors
+    connection = sqlite3.connect(db_path)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        # Minimal test databases may not have voiceovers yet. The verifier
+        # remains authoritative for the generated response in that case.
+        if "voiceovers" not in tables:
+            return []
+        rows = connection.execute(
+            """
+            SELECT id, language, COALESCE(voice, ''), COALESCE(folder_id, ''), status
+            FROM voiceovers
+            WHERE lower(status) IN ('generated', 'completed', 'succeeded')
+            """,
+        ).fetchall()
+        expected = str(folder_id).strip()
+        folders = set()
+        for row_id, language, voice, row_folder, status in rows:
+            voice = str(voice or "").strip()
+            row_folder = str(row_folder or "").strip()
+            if not voice:
+                errors.append(
+                    f"voiceover {row_id!r} ({language}/{status}) has empty voice"
+                )
+            if not row_folder:
+                errors.append(f"voiceover {row_id!r} has empty folder_id")
+            elif row_folder != expected:
+                errors.append(
+                    f"voiceover {row_id!r} folder_id={row_folder!r} "
+                    f"does not match BOXERS_VOICEOVER_FOLDER_ID"
+                )
+            folders.add(row_folder)
+        folders.discard("")
+        if len(folders) > 1:
+            errors.append(
+                "voiceover database contains incoherent folder_id values: "
+                + ", ".join(sorted(folders))
+            )
+    finally:
+        connection.close()
+    return errors
+
+
 def validate_response(
     response: dict[str, Any],
     mode: str,
@@ -166,12 +245,33 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--response", required=True, type=Path)
     validate.add_argument("--db", default="")
     validate.add_argument("--allowed-warning-regex", default="")
+    folder = sub.add_parser("validate-folder")
+    folder.add_argument("--payload", required=True, type=Path)
+    folder.add_argument("--folder-id", required=True)
+    db_preflight = sub.add_parser("voiceover-preflight")
+    db_preflight.add_argument("--db", required=True, type=Path)
+    db_preflight.add_argument("--folder-id", required=True)
     prepare = sub.add_parser("prepare")
     prepare.add_argument("--mode", required=True, choices=sorted(MODES))
     prepare.add_argument("--input", required=True, type=Path)
     prepare.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
+        if args.command == "validate-folder":
+            payload = json.loads(args.payload.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("payload JSON must be an object")
+            errors = validate_payload_voiceover_folder(payload, args.folder_id)
+            for error in errors:
+                print(f"runner policy: {error}", file=sys.stderr)
+            return 1 if errors else 0
+
+        if args.command == "voiceover-preflight":
+            errors = voiceover_db_preflight(str(args.db), args.folder_id)
+            for error in errors:
+                print(f"runner policy: {error}", file=sys.stderr)
+            return 1 if errors else 0
+
         if args.command == "prepare":
             payload = json.loads(args.input.read_text(encoding="utf-8"))
             if not isinstance(payload, dict):
