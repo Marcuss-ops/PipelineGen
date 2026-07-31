@@ -78,16 +78,17 @@ type VectorStorePort interface {
 
 // VectorSearchRequest is the input for an ANN vector search.
 type VectorSearchRequest struct {
-	QueryVector []float32
-	VectorName  string
-	Limit       int
-	MinScore    float64
-	Source      string
-	Category    string
-	MediaType   string
-	Language    string
-	WorkspaceID string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
-	IsSystem    bool   // ADMIN scope bypass — skips workspace isolation for admin users
+	QueryVector    []float32
+	VectorName     string
+	Limit          int
+	MinScore       float64
+	Source         string
+	Category       string
+	MediaType      string
+	Language       string
+	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
+	WorkspaceID    string   // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem       bool     // ADMIN scope bypass — skips workspace isolation for admin users
 }
 
 // VectorSearchResult is a single match from a vector search.
@@ -146,15 +147,16 @@ type HybridSearchRequest struct {
 	// SparseVector (PR2 legacy): pre-computed sparse vector from the
 	// deprecated client-side bm25.Tokenize. Used only when SparseText
 	// is empty.
-	SparseVector *bm25.SparseVector
-	Limit        int
-	MinScore     float64
-	Source       string
-	Category     string
-	MediaType    string
-	Language     string
-	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
-	IsSystem     bool   // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
+	SparseVector   *bm25.SparseVector
+	Limit          int
+	MinScore       float64
+	Source         string
+	Category       string
+	MediaType      string
+	Language       string
+	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
+	WorkspaceID    string   // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem       bool     // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
 }
 
 // ── Local search ports ────────────────────────────────────────────────

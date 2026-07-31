@@ -7,9 +7,9 @@ import (
 )
 
 // resultToResponse converts the canonical search.Result into the
-// handler's response DTO (searchResponse). Items map 1:1 from
-// search.Candidate with no lossy translation — every field on
-// Candidate is projected. OK flips to false only when Partial &&
+// handler's public response DTO (searchResponse). Public items retain
+// searchable metadata and signed delivery URLs while intentionally
+// omitting internal SQLite/Drive locators. OK flips to false only when Partial &&
 // zero items (no fake availability).
 // PR-AGENTE2-TRUTHFUL (Agente 2, Azione 3): Degraded is true when
 // Partial && len(items) > 0 (at least one backend returned results
@@ -45,7 +45,6 @@ func resultToResponse(r *search.Result, query string, mode search.SearchMode, in
 				Title:     c.Title,
 				Source:    c.Source,
 				MediaType: c.MediaType,
-				DriveLink: c.DriveLink,
 				// PreviewURL passes through UNCHANGED:
 				// search.Candidate.PreviewURL is the canonical
 				// signed delivery URL produced by the only

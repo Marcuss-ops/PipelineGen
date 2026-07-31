@@ -26,9 +26,10 @@ type searchRequestFilter struct {
 	DurationMsMin int      `json:"duration_ms_min,omitempty"`
 }
 
-// searchResponse is the response DTO derived directly from
-// search.Result. Fields are a 1:1 projection of search.Candidate —
-// no lossy translation, no legacy envelope. OK flips to false only
+// searchResponse is the response DTO derived from
+// search.Result. Public items intentionally omit raw Drive locators;
+// they may exist on the internal Candidate for SQLite hydration but
+// never cross this HTTP boundary. OK flips to false only
 // when the result is partial AND has zero items (no fake availability).
 // Degraded is true when the result is partial but has at least one
 // hit (the search "worked" but some backends are down).
@@ -59,15 +60,15 @@ type searchResponse struct {
 	IndexVersion  string             `json:"index_version,omitempty"`
 }
 
-// searchResultItem is the per-result item in the response,
-// projected directly from search.Candidate.
+// searchResultItem is the public per-result item. Raw Drive locators
+// are deliberately absent: only signed delivery URLs may be returned
+// to search clients.
 type searchResultItem struct {
 	AssetID    string  `json:"asset_id"`
 	Score      float64 `json:"score"`
 	Title      string  `json:"title"`
 	Source     string  `json:"source"`
 	MediaType  string  `json:"media_type"`
-	DriveLink  string  `json:"drive_link,omitempty"` // PR-SEARCH-DRIVELINK: from SQLite hydration
 	PreviewURL string  `json:"preview_url"`
 }
 
