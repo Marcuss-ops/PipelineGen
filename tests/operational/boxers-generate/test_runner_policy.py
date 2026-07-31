@@ -176,6 +176,57 @@ class RunnerPolicyTest(unittest.TestCase):
             errors = runner_policy.validate_response(response, "strict", str(db_path))
         self.assertTrue(any("missing from SQLite" in error for error in errors))
 
+    def test_voiceover_preflight_rejects_empty_voice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "voiceovers.sqlite"
+            with sqlite3.connect(db_path) as connection:
+                connection.execute(
+                    "CREATE TABLE voiceovers (id TEXT, language TEXT, voice TEXT, "
+                    "folder_id TEXT, status TEXT)"
+                )
+                connection.execute(
+                    "INSERT INTO voiceovers VALUES "
+                    "('vo-empty', 'it', '', 'canonical-folder', 'generated')"
+                )
+                connection.commit()
+            errors = runner_policy.voiceover_db_preflight(
+                str(db_path), "canonical-folder"
+            )
+        self.assertTrue(any("empty voice" in error for error in errors))
+
+    def test_voiceover_preflight_rejects_folder_drift_and_incoherence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = Path(directory) / "voiceovers.sqlite"
+            with sqlite3.connect(db_path) as connection:
+                connection.execute(
+                    "CREATE TABLE voiceovers (id TEXT, language TEXT, voice TEXT, "
+                    "folder_id TEXT, status TEXT)"
+                )
+                connection.executemany(
+                    "INSERT INTO voiceovers VALUES (?, ?, ?, ?, ?)",
+                    [
+                        ("vo-good", "it", "voice-it", "canonical-folder", "completed"),
+                        ("vo-drift", "en", "voice-en", "other-folder", "generated"),
+                    ],
+                )
+                connection.commit()
+            errors = runner_policy.voiceover_db_preflight(
+                str(db_path), "canonical-folder"
+            )
+        self.assertTrue(any("does not match BOXERS_VOICEOVER_FOLDER_ID" in error for error in errors))
+        self.assertTrue(any("incoherent folder_id" in error for error in errors))
+
+    def test_runner_scenarios_do_not_store_real_voiceover_folder_ids(self):
+        source = (ROOT / "run.sh").read_text(encoding="utf-8")
+        scenario_files = sorted((ROOT / "scenarios").glob("*.json"))
+        self.assertNotIn("1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4", source)
+        for path in scenario_files:
+            with self.subTest(scenario=path.name):
+                self.assertNotIn(
+                    "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4",
+                    path.read_text(encoding="utf-8"),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

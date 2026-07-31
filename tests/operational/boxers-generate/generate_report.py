@@ -7,6 +7,8 @@ import argparse
 import json
 import os
 import sqlite3
+import math
+import sys
 from typing import Any
 
 from stock_registry import load_resolved_stock, scene_expectations
@@ -24,14 +26,50 @@ def deep_get(value: Any, *keys: str, default: Any = None) -> Any:
     return value
 
 
+def _request_items(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Index request metadata so translated children retain their target language."""
+    candidates = (
+        deep_get(data, "job", "payload", "items", default=[]),
+        deep_get(data, "payload", "items", default=[]),
+        deep_get(data, "result", "data", "payload", "items", default=[]),
+    )
+    indexed: dict[str, dict[str, Any]] = {}
+    for candidate_items in candidates:
+        if not isinstance(candidate_items, list):
+            continue
+        for candidate in candidate_items:
+            if not isinstance(candidate, dict):
+                continue
+            item_id = candidate.get("id") or candidate.get("item_id")
+            if item_id:
+                indexed[str(item_id)] = candidate
+    return indexed
+
+
+def _attach_request_metadata(
+    items: list[dict[str, Any]], request_items: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("item_id") or deep_get(item, "result", "item_id", default="")
+        request = request_items.get(str(item_id)) if item_id else None
+        if request:
+            item = {**item, "_request": request}
+        enriched.append(item)
+    return enriched
+
+
 def extract_items(data: dict[str, Any], db_path: str = "data/media/media.db.sqlite") -> list[dict[str, Any]]:
+    request_items = _request_items(data)
     items = deep_get(data, "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "items", default=[])
     if not items:
         items = deep_get(data, "job", "result", "data", "data", "items", default=[])
     if items:
-        return items
+        return _attach_request_metadata(items, request_items)
 
     child_ids = (
         deep_get(data, "result", "child_job_ids", default=[])
@@ -70,6 +108,7 @@ def extract_items(data: dict[str, Any], db_path: str = "data/media/media.db.sqli
                         specscene = {}
                 reconstructed.append({
                     "item_id": item.get("id", ""),
+                    "_request": item,
                     "result": {
                         "status": status,
                         "script_id": script_id,
@@ -113,7 +152,95 @@ def _drive_state_counts(data: dict[str, Any], items: list[dict[str, Any]]) -> di
     return counts
 
 
-def generate_report(job_path: str, report_path: str, registry_path: str) -> dict[str, Any]:
+def _voiceover_link(voiceover: dict[str, Any]) -> str:
+    return str(voiceover.get("drive_link") or voiceover.get("link") or "").strip()
+
+
+def _voiceover_errors(
+    voiceover: Any, expected_language: str, expected_folder_id: str
+) -> list[str]:
+    if not isinstance(voiceover, dict):
+        return ["voiceover binding is missing"]
+    errors: list[str] = []
+    status = str(voiceover.get("status", "")).strip().casefold()
+    if status not in {"completed", "succeeded"}:
+        errors.append("status is not terminal-positive")
+    if not _voiceover_link(voiceover):
+        errors.append("drive_link is empty")
+    if not str(voiceover.get("voice", "")).strip():
+        errors.append("voice is empty")
+    actual_language = str(voiceover.get("language", "")).strip()
+    if not actual_language or actual_language.casefold() != expected_language.casefold():
+        errors.append(
+            f"language={actual_language or '(missing)'}, expected {expected_language}"
+        )
+    actual_folder = str(voiceover.get("folder_id", "")).strip()
+    if actual_folder != expected_folder_id:
+        errors.append(
+            f"folder_id={actual_folder or '(missing)'}, expected {expected_folder_id}"
+        )
+    try:
+        duration = float(voiceover.get("duration_seconds", 0))
+    except (TypeError, ValueError):
+        duration = 0
+    if not math.isfinite(duration) or duration <= 0:
+        errors.append("duration_seconds must be > 0")
+    return errors
+
+
+def _first_language(value: Any) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, list):
+        for language in value:
+            if isinstance(language, str) and language.strip():
+                return language.strip()
+    return ""
+
+
+def _item_language(item: dict[str, Any]) -> str:
+    """Resolve report language with verifier-compatible precedence."""
+    containers = [item]
+    request = item.get("_request")
+    if isinstance(request, dict):
+        containers.append(request)
+    result = item.get("result")
+    if isinstance(result, dict):
+        containers.append(result)
+        data = result.get("data")
+        if isinstance(data, dict):
+            containers.append(data)
+
+    for container in containers:
+        output = container.get("output")
+        if isinstance(output, dict):
+            language = _first_language(output.get("translate_to"))
+            if language:
+                return language
+    for container in containers:
+        docs = container.get("docs")
+        if isinstance(docs, dict):
+            language = _first_language(docs.get("languages"))
+            if language:
+                return language
+    for container in containers:
+        language = _first_language(container.get("language"))
+        if language:
+            return language
+    item_id = str(item.get("item_id", ""))
+    return item_id.rsplit("-", 1)[-1].strip()
+
+
+def generate_report(
+    job_path: str,
+    report_path: str,
+    registry_path: str,
+    voiceover_folder_id: str,
+) -> dict[str, Any]:
+    """Generate a report using the single runtime voiceover folder value."""
+    voiceover_folder_id = str(voiceover_folder_id or "").strip()
+    if not voiceover_folder_id:
+        raise ValueError("BOXERS_VOICEOVER_FOLDER_ID is required")
     with open(job_path, encoding="utf-8") as handle:
         data = json.load(handle)
 
@@ -134,7 +261,13 @@ def generate_report(job_path: str, report_path: str, registry_path: str) -> dict
             "expected": expected_scenes, "verified": 0, "wrong_subject": 0,
             "fallback": 0, "artlist": 0,
         },
-        "voiceovers": {"expected": expected_scenes, "completed": 0, "failed": 0},
+        "voiceovers": {
+            "expected": expected_scenes,
+            "completed": 0,
+            "failed": 0,
+            "invalid": [],
+            "folder_id": voiceover_folder_id,
+        },
         "documents": {"expected": expected_items, "created": 0, "wrong_folder": 0},
         "sqlite": {"scripts": 0, "completed": 0},
         "drive_verification": _drive_state_counts(data, items),
@@ -174,11 +307,18 @@ def generate_report(job_path: str, report_path: str, registry_path: str) -> dict
                 if stock.get("source", "") == "artlist":
                     report["stock_bindings"]["artlist"] += 1
             voiceover = deep_get(scene, "bindings", "voiceover", default={})
-            if isinstance(voiceover, dict):
-                if voiceover.get("status") == "completed" and voiceover.get("link"):
-                    report["voiceovers"]["completed"] += 1
-                else:
-                    report["voiceovers"]["failed"] += 1
+            voiceover_errors = _voiceover_errors(
+                voiceover, _item_language(item), voiceover_folder_id
+            )
+            if voiceover_errors:
+                report["voiceovers"]["failed"] += 1
+                report["voiceovers"]["invalid"].append({
+                    "item_id": item_id,
+                    "scene": scene_index,
+                    "errors": voiceover_errors,
+                })
+            else:
+                report["voiceovers"]["completed"] += 1
         if deep_get(item, "result", "artifacts", "document", "doc_link") or deep_get(
             item, "result", "data", "artifacts", "document", "doc_link"
         ):
@@ -196,6 +336,10 @@ def generate_report(job_path: str, report_path: str, registry_path: str) -> dict
             failures.append(f"{key}={report['stock_bindings'][key]}")
     if report["voiceovers"]["completed"] != expected_scenes:
         failures.append(f"voiceovers={report['voiceovers']['completed']}/{expected_scenes}")
+    if report["voiceovers"]["invalid"]:
+        failures.append(
+            f"invalid_voiceovers={len(report['voiceovers']['invalid'])}"
+        )
     if report["documents"]["created"] != expected_items:
         failures.append(f"documents={report['documents']['created']}/{expected_items}")
     if report["sqlite"]["completed"] != expected_items:
@@ -225,9 +369,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("job_path")
     parser.add_argument("report_path", nargs="?", default="--stdout")
     parser.add_argument("--registry", required=True)
+    parser.add_argument(
+        "--voiceover-folder-id",
+        required=True,
+        help="Runtime BOXERS_VOICEOVER_FOLDER_ID used by report validation",
+    )
     args = parser.parse_args(argv)
     try:
-        generate_report(args.job_path, args.report_path, args.registry)
+        generate_report(
+            args.job_path,
+            args.report_path,
+            args.registry,
+            args.voiceover_folder_id,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"report generation error: {exc}", file=sys.stderr)
         return 2

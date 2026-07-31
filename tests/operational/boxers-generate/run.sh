@@ -115,8 +115,138 @@ if [[ -z "$VOICEOVER_FOLDER" ]]; then
     printf '%ssetup error: BOXERS_VOICEOVER_FOLDER_ID is required%s\n' "$RED" "$RESET" >&2
     exit 2
 fi
-REPORTS_DIR="$DIR/reports"
-mkdir -p "$REPORTS_DIR"
+REPORTS_DIR="${BOXERS_REPORTS_DIR:-$DIR/reports}"
+PENDING_REPORTS_DIR="$REPORTS_DIR/.pending"
+INCOMPLETE_REPORTS_DIR="$REPORTS_DIR/incomplete"
+mkdir -p "$REPORTS_DIR" "$PENDING_REPORTS_DIR" "$INCOMPLETE_REPORTS_DIR"
+
+atomic_publish_file() {
+    local source="$1"
+    local destination="$2"
+    local temporary="${destination}.tmp"
+    mkdir -p "$(dirname "$destination")"
+    cp "$source" "$temporary"
+    mv -f "$temporary" "$destination"
+}
+
+archive_pending_reports() {
+    local num="$1"
+    local stamp
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    local archived=0
+    local path
+    for path in "$PENDING_REPORTS_DIR/${num}_"*; do
+        [[ -e "$path" ]] || continue
+        mv -f "$path" "$INCOMPLETE_REPORTS_DIR/${stamp}_$(basename "$path")"
+        archived=$((archived + 1))
+    done
+    if (( archived > 0 )); then
+        printf '%sArchived %d incomplete report artifact(s) for scenario %s%s\\n' \
+            "$YELLOW" "$archived" "$num" "$RESET" >&2
+    fi
+}
+
+refresh_parent_full_until_terminal() {
+    local job_id="$1"
+    local destination="$2"
+    local deadline=$(( $(date +%s) + SMOKE_POLL_TIMEOUT_SECONDS ))
+    local status=""
+    while (( $(date +%s) < deadline )); do
+        smoke_wallclock_check
+        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
+        if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
+            return 1
+        fi
+        cp "$SMOKE_LAST_BODY" "$destination"
+        status=$(jq -r '.status // .job.status // .result.status // .job.result.status // ""' "$destination")
+        case "$status" in
+            completed|SUCCEEDED|SUCCEEDED_WITH_WARNINGS|failed|FAILED|cancelled|CANCELLED|dead_letter|DEAD_LETTER)
+                return 0
+                ;;
+        esac
+        sleep "$SMOKE_POLL_INTERVAL_SECONDS"
+    done
+    return 124
+}
+
+refresh_parent_full_until_children() {
+    local job_id="$1"
+    local destination="$2"
+    local deadline=$(( $(date +%s) + SMOKE_POLL_TIMEOUT_SECONDS ))
+    local child_ids=""
+    while (( $(date +%s) < deadline )); do
+        smoke_wallclock_check
+        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
+        if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
+            return 1
+        fi
+        cp "$SMOKE_LAST_BODY" "$destination"
+        child_ids=$(jq -r '
+            (.result.data.child_job_ids // .result.child_job_ids
+             // .job.result.data.child_job_ids // .job.result.child_job_ids // [])
+            | map(select(type == "string" and length > 0)) | .[]
+        ' "$destination")
+        if [[ -n "$child_ids" ]]; then
+            return 0
+        fi
+        sleep "$SMOKE_POLL_INTERVAL_SECONDS"
+    done
+    return 124
+}
+
+publish_scenario_reports() {
+    local num="$1"
+    local name="$2"
+    local pending_raw="$PENDING_REPORTS_DIR/${num}_${name}_job.json"
+    local pending_verification="$PENDING_REPORTS_DIR/${num}_${name}_verification_report.json"
+    local raw_destination="$REPORTS_DIR/raw/${num}_${name}_job.json"
+    local verification_destination="$REPORTS_DIR/${num}_${name}_verification_report.json"
+    local raw_tmp="${raw_destination}.tmp"
+    local verification_tmp="${verification_destination}.tmp"
+    local raw_backup="${raw_destination}.bak.$$"
+    local verification_backup="${verification_destination}.bak.$$"
+    local had_raw=0
+    local had_verification=0
+
+    mkdir -p "$(dirname "$raw_destination")" "$(dirname "$verification_destination")"
+    # Stage both files before touching canonical paths. Keep backups of both
+    # existing reports so a failure publishing either file restores the prior
+    # valid pair rather than destroying evidence.
+    if [[ -e "$raw_destination" ]]; then
+        cp "$raw_destination" "$raw_backup" || return 1
+        had_raw=1
+    fi
+    if [[ -e "$verification_destination" ]]; then
+        cp "$verification_destination" "$verification_backup" || {
+            rm -f "$raw_backup"
+            return 1
+        }
+        had_verification=1
+    fi
+    if ! cp "$pending_raw" "$raw_tmp" || ! cp "$pending_verification" "$verification_tmp"; then
+        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
+        return 1
+    fi
+    if ! mv -f "$raw_tmp" "$raw_destination"; then
+        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
+        return 1
+    fi
+    if ! mv -f "$verification_tmp" "$verification_destination"; then
+        if (( had_raw )); then
+            mv -f "$raw_backup" "$raw_destination" || true
+        else
+            rm -f "$raw_destination"
+        fi
+        if (( had_verification )); then
+            mv -f "$verification_backup" "$verification_destination" || true
+        else
+            rm -f "$verification_destination"
+        fi
+        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
+        return 1
+    fi
+    rm -f "$pending_raw" "$pending_verification" "$raw_backup" "$verification_backup"
+}
 
 # Helper function to preprocess JSON scenarios
 prepare_payload() {
@@ -139,8 +269,31 @@ prepare_payload() {
         sed -i "s/$placeholder/${TYSON_CLIPS[$i]}/g" "$temp_json"
     done
     
-    # Replace Voiceover Folder
-    sed -i "s/REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID/$VOICEOVER_FOLDER/g" "$temp_json"
+    # Inject the sole runtime voiceover folder value into every payload
+    # declaration. Scenario fixtures never own a Drive folder ID.
+    local runtime_payload="$temp_json.runtime"
+    jq --arg folder "$VOICEOVER_FOLDER" '
+        walk(
+            if type == "object" then
+                with_entries(
+                    if .key == "voiceover_folder_id" or .key == "folder_id"
+                    then .value = $folder
+                    else .
+                    end
+                )
+            else .
+            end
+        )
+    ' "$temp_json" > "$runtime_payload"
+    mv "$runtime_payload" "$temp_json"
+
+    if ! python3 "$DIR/runner_policy.py" validate-folder \
+        --payload "$temp_json" \
+        --folder-id "$VOICEOVER_FOLDER"; then
+        printf '%ssetup error: payload voiceover folder is inconsistent with BOXERS_VOICEOVER_FOLDER_ID%s\n' \
+            "$RED" "$RESET" >&2
+        return 1
+    fi
 
     # Scenario metadata is runner-only and must never be sent to the API.
     # runner_policy.py is also the testable source of the mode contract.
@@ -209,6 +362,18 @@ run_scenario() {
         return 1
     fi
 
+    # Validate voiceover prerequisites only after stock BLOCKED handling.
+    # This preserves the dependency-gated, no-POST outcome when stock is absent.
+    if [[ "$DRY_RUN" != "1" ]]; then
+        if ! python3 "$DIR/runner_policy.py" voiceover-preflight \
+            --db "$DB_PATH" \
+            --folder-id "$VOICEOVER_FOLDER"; then
+            printf '%sFAIL: voiceover DB preflight rejected empty voices or folder drift%s\n' \
+                "$RED" "$RESET" >&2
+            return 1
+        fi
+    fi
+
     # Only a ready scenario reaches SQLite validation and payload creation.
     # This keeps a BLOCKED preflight side-effect free.
     if [[ "$DRY_RUN" != "1" ]]; then
@@ -264,10 +429,22 @@ run_scenario() {
             return 1
         fi
 
-        # Fetch parent job and save as the full_body_file
+        # Fetch /full until child IDs are present. The first response can be
+        # stale RUNNING even though the parent status endpoint is terminal.
         local full_body_file="$WORK_DIR/full_job_$num.json"
-        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
-        cp "$SMOKE_LAST_BODY" "$full_body_file"
+        if ! refresh_parent_full_until_children "$job_id" "$full_body_file"; then
+            if [[ -s "$full_body_file" ]]; then
+                mkdir -p "$PENDING_REPORTS_DIR"
+                cp "$full_body_file" "$PENDING_REPORTS_DIR/${num}_${name}_job.json"
+            fi
+            printf '%sFAIL: Scenario %s parent /full did not expose child_job_ids%s\\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+
+        # Preserve the latest discovery response immediately; later checks can
+        # replace it with the final refreshed parent response.
+        mkdir -p "$PENDING_REPORTS_DIR"
+        cp "$full_body_file" "$PENDING_REPORTS_DIR/${num}_${name}_job.json"
 
         # Extract child job IDs and poll each one
         local child_job_ids
@@ -288,12 +465,16 @@ run_scenario() {
         while IFS= read -r cid; do
             [[ -z "$cid" ]] && continue
             smoke_wallclock_check
-            smoke_poll_terminal "$cid" || true
+            if ! smoke_poll_terminal "$cid"; then
+                child_fail=$((child_fail + 1))
+                printf '  %sFAIL: Child %s polling failed or timed out%s\n' "$RED" "$cid" "$RESET" >&2
+                continue
+            fi
             smoke_curl GET "/api/jobs/$cid/full" >/dev/null
             if [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
                 cp "$SMOKE_LAST_BODY" "$children_dir/$cid.json"
                 local cstatus
-                cstatus=$(jq -r '.status // "UNKNOWN"' "$children_dir/$cid.json")
+                cstatus=$(jq -r '.status // .job.status // .result.status // .job.result.status // "UNKNOWN"' "$children_dir/$cid.json")
                 if [[ "$cstatus" == "SUCCEEDED" || "$cstatus" == "completed" ]]; then
                     child_ok=$((child_ok + 1))
                 else
@@ -312,6 +493,28 @@ run_scenario() {
                 printf '%sFAIL: %s child job(s) failed%s\n' "$RED" "$child_fail" "$RESET" >&2
                 return 1
             fi
+        fi
+
+        # Refresh parent /full after every child has been polled. This is
+        # intentionally separate from smoke_poll_terminal: /full can lag
+        # behind /status and return a stale RUNNING snapshot.
+        local expected_child_ids="$WORK_DIR/child_ids_$num.txt"
+        printf '%s\n' "$child_job_ids" > "$expected_child_ids"
+        local raw_parent_file="$WORK_DIR/raw_parent_$num.json"
+        if ! refresh_parent_full_until_terminal "$job_id" "$raw_parent_file"; then
+            printf '%sFAIL: Scenario %s parent /full never reached a terminal state%s\\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+        cp "$raw_parent_file" "$full_body_file"
+        # Keep the latest unmodified parent response available even when
+        # child/result validation rejects publication.
+        cp "$raw_parent_file" "$PENDING_REPORTS_DIR/${num}_${name}_job.json"
+        if ! python3 "$DIR/report_publication.py" validate \
+            --parent "$raw_parent_file" \
+            --children-dir "$children_dir" \
+            --expected-child-ids "$expected_child_ids"; then
+            printf '%sFAIL: Scenario %s parent/child result validation failed%s\\n' "$RED" "$num" "$RESET" >&2
+            return 1
         fi
 
         # Build aggregated response with all child items embedded into the parent
@@ -340,15 +543,22 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             return 1
         fi
         local full_body_file="$WORK_DIR/full_job_$num.json"
-        smoke_curl GET "/api/jobs/$job_id/full" >/dev/null
-        cp "$SMOKE_LAST_BODY" "$full_body_file"
+        if ! refresh_parent_full_until_terminal "$job_id" "$full_body_file"; then
+            if [[ -s "$full_body_file" ]]; then
+                cp "$full_body_file" "$PENDING_REPORTS_DIR/${num}_${name}_job.json"
+            fi
+            printf '%sFAIL: Scenario %s /full never reached a terminal state%s\\n' "$RED" "$num" "$RESET" >&2
+            return 1
+        fi
+        mkdir -p "$PENDING_REPORTS_DIR"
+        cp "$full_body_file" "$PENDING_REPORTS_DIR/${num}_${name}_job.json"
     fi
-    
-    # Keep raw job evidence separate. The canonical report is published only
-    # after all assertions below have passed.
-    mkdir -p "$REPORTS_DIR/raw"
-    local raw_report_file="$REPORTS_DIR/raw/${num}_${name}_job.json"
-    
+
+    # Keep raw job evidence separate. Both raw and verification reports stay
+    # pending until every assertion has passed, then publish atomically.
+    mkdir -p "$PENDING_REPORTS_DIR"
+    local pending_verification="$PENDING_REPORTS_DIR/${num}_${name}_verification_report.json"
+
     # Assertions shared by both modes. The policy helper is the single gate
     # for terminal status, warnings, fallback bindings, and strict asset
     # lifecycle validation.
@@ -626,14 +836,18 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
 
         "07")
             # Scenario 7: Multi-boxer, multi-stock, multi-lang E2E pipeline
-            if ! python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --registry "$RESOLVED_STOCK_FILE"; then
+            if !            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" \
+                --registry "$RESOLVED_STOCK_FILE" \
+                --voiceover-folder-id "$VOICEOVER_FOLDER"; then
                 printf '%sFAIL: Scenario 7 multilang verification failed%s\n' "$RED" "$RESET" >&2
                 return 1
             fi
 
             # Generate structured report from aggregated job response
-            local report_file="$REPORTS_DIR/07_Top5 multilang_report.json"
-            if ! python3 "$DIR/generate_report.py" "$full_body_file" "$report_file" --registry "$RESOLVED_STOCK_FILE"; then
+            local report_file="$pending_verification"
+            if ! python3 "$DIR/generate_report.py" "$full_body_file" "$report_file" \
+                --registry "$RESOLVED_STOCK_FILE" \
+                --voiceover-folder-id "$VOICEOVER_FOLDER"; then
                 printf '%sFAIL: Report generation failed%s\n' "$RED" "$RESET" >&2
                 return 1
             fi
@@ -680,7 +894,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             # Scenario 7b: Negative check — swapped stock in multilang scenario
             # (Tyson scene gets Ali's asset; verify_multilang.py --negative exits 3 on mismatch)
             set +e
-            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" >/dev/null 2>&1
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" --voiceover-folder-id "$VOICEOVER_FOLDER" >/dev/null 2>&1
             local exit_code=$?
             set -e
             if [[ "$exit_code" != "3" ]]; then
@@ -708,7 +922,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
         "08")
             # Scenario 8: Negative check — swapped stock detection
             set +e
-            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" >/dev/null 2>&1
+            python3 "$DIR/verify_multilang.py" "$full_body_file" "$DB_PATH" --negative --registry "$RESOLVED_STOCK_FILE" --voiceover-folder-id "$VOICEOVER_FOLDER" >/dev/null 2>&1
             local exit_code=$?
             set -e
             if [[ "$exit_code" != "3" ]]; then
@@ -719,13 +933,10 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
             ;;
     esac
     
-    cp "$full_body_file" "$raw_report_file"
     if [[ "$num" != "07" ]]; then
-        local canonical_report="$REPORTS_DIR/${num}_${name}_report.json"
-        local temporary_report="$REPORTS_DIR/.${num}_${name}_report.json.tmp"
-        cp "$full_body_file" "$temporary_report"
-        mv "$temporary_report" "$canonical_report"
+        cp "$full_body_file" "$pending_verification"
     fi
+    publish_scenario_reports "$num" "$name"
 
     printf '%sSUCCESS: Scenario %s passed!%s\n\n' "$GREEN" "$num" "$RESET"
     return 0
@@ -747,7 +958,10 @@ run_test() {
         else
             export SMOKE_POLL_TIMEOUT_SECONDS=180
         fi
-        run_scenario "$num" "$name" "$fname" || return 1
+        if ! run_scenario "$num" "$name" "$fname"; then
+            archive_pending_reports "$num"
+            return 1
+        fi
         if [[ "$SCENARIO_BLOCKED" == "1" ]]; then
             blocked_scenarios=$((blocked_scenarios + 1))
             SCENARIO_BLOCKED=0
