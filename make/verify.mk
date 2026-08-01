@@ -149,11 +149,17 @@ verify-images:
 	$(GO) test -race ./internal/api/images/...
 	@echo "✅ Images verification passed"
 
-# verify-stock — quick verification dedicated to the Stock module.
-verify-stock:
-	$(GO) test -race ./internal/application/assets/providers/stock/stockpipeline/... && \
-	$(GO) test -race ./internal/api/assets/stock/...
-	@echo "✅ Stock verification passed"
+# verify-main-stock — daily fast gate for Stock-focused changes.
+# Uses standard tests (not the full race gate) across the Stock pipeline,
+# Stock API, and script binding adapters, then applies the shared foundation
+# and architecture checks. The existing verify-stock target remains the
+# explicit race-tested Stock gate.
+verify-main-stock: verify-fast verify-architecture
+	$(GO) test -count=1 \
+		./internal/application/assets/providers/stock/stockpipeline/... \
+		./internal/api/assets/stock/... \
+		./internal/application/scripts/adapters/...
+	@echo "✅ verify-main-stock passed"
 
 # verify-release — pre-deploy gate: the complete headless gate plus the
 # slow ./tests/... integration suite, which may depend on external services
