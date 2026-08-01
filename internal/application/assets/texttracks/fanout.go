@@ -32,7 +32,6 @@ package texttracks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -42,14 +41,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-func mustMarshalMaterializePayload(payload MaterializeJobPayload) []byte {
-	b, err := json.Marshal(payload)
-	if err != nil {
-		panic(fmt.Sprintf("texttracks: marshal materialize payload: %v", err))
-	}
-	return b
-}
 
 // MaterializeEnqueuer is the narrow port surface a fanout
 // producer needs from the broker. Defining this interface
@@ -257,8 +248,12 @@ func (f *MaterializeFanOut) EnqueueAcquireOne(
 	}
 
 	_, err := f.jobs.Enqueue(ctx, &job.EnqueueRequest{
-		Type:      asset.TypeTextMaterialize,
-		Payload:   mustMarshalMaterializePayload(payload),
+		Type: asset.TypeTextMaterialize,
+		// Pass the typed payload through the broker. The application job
+		// service owns the single JSON marshal; pre-marshalling here would
+		// persist a JSON string (base64 in SQLite) and the worker would
+		// reject it as an invalid MaterializeJobPayload.
+		Payload:   payload,
 		Priority:  5,
 		ActiveKey: fmt.Sprintf("asset.text.acquire:%s:%s", assetID, sourceLanguage),
 	})

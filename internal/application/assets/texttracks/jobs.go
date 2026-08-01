@@ -6,6 +6,7 @@ package texttracks
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,8 +70,8 @@ func (h *MaterializeJobHandler) HandleJob(
 	pf(0, "starting asset.text.materialize")
 	defer pf(100, "asset.text.materialize done")
 
-	var cmd MaterializeJobPayload
-	if err := json.Unmarshal(j.Payload, &cmd); err != nil {
+	cmd, err := decodeMaterializeJobPayload(j.Payload)
+	if err != nil {
 		return nil, fmt.Errorf("texttracks.materialize: payload decode: %w", err)
 	}
 	h.log.Info("texttracks.materialize.job.start",
@@ -175,6 +176,33 @@ func (h *MaterializeJobHandler) HandleJob(
 		zap.Int64("total_duration_ms", result["total_duration_ms"].(int64)),
 	)
 	return result, nil
+}
+
+// decodeMaterializeJobPayload accepts the canonical object form and the
+// legacy double-encoded form written by the pre-fix fanout. The latter is
+// decoded only as a compatibility bridge for already persisted retry jobs;
+// producers must continue to pass MaterializeJobPayload to the broker.
+func decodeMaterializeJobPayload(raw json.RawMessage) (MaterializeJobPayload, error) {
+	var cmd MaterializeJobPayload
+	if err := json.Unmarshal(raw, &cmd); err == nil {
+		return cmd, nil
+	} else {
+		var encoded string
+		if stringErr := json.Unmarshal(raw, &encoded); stringErr != nil {
+			return cmd, err
+		}
+		decoded, decodeErr := base64.RawStdEncoding.DecodeString(encoded)
+		if decodeErr != nil {
+			decoded, decodeErr = base64.StdEncoding.DecodeString(encoded)
+		}
+		if decodeErr != nil {
+			return cmd, err
+		}
+		if legacyErr := json.Unmarshal(decoded, &cmd); legacyErr != nil {
+			return cmd, err
+		}
+		return cmd, nil
+	}
 }
 
 func (h *MaterializeJobHandler) validatePayload(cmd *MaterializeJobPayload) error {
