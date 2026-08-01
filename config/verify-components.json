@@ -66,5 +66,131 @@
     "timeout_seconds": 300,
     "race_enabled": true,
     "live_tests": []
+  },
+  "database": {
+    "paths": [
+      "internal/infrastructure/database/"
+    ],
+    "go_packages": [
+      "./internal/infrastructure/database/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "qdrant": {
+    "paths": [
+      "internal/domain/qdrantdr/",
+      "internal/application/qdrant/",
+      "internal/infrastructure/qdrant/"
+    ],
+    "go_packages": [
+      "./internal/domain/qdrantdr/...",
+      "./internal/application/qdrant/...",
+      "./internal/infrastructure/qdrant/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database"],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "indexing": {
+    "paths": [
+      "internal/application/indexing/",
+      "internal/infrastructure/indexing/"
+    ],
+    "go_packages": [
+      "./internal/application/indexing/...",
+      "./internal/infrastructure/indexing/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "qdrant"],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "research": {
+    "paths": [
+      "internal/application/scripts/usecase/",
+      "internal/infrastructure/webresearch/",
+      "internal/infrastructure/database/sqlite/scripts/"
+    ],
+    "go_packages": [
+      "./internal/application/scripts/usecase",
+      "./internal/infrastructure/webresearch",
+      "./internal/infrastructure/database/sqlite/scripts/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "script"],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "docs": {
+    "paths": [
+      "internal/domain/document/",
+      "internal/application/document/",
+      "internal/application/documents/",
+      "internal/api/assets/document/",
+      "internal/api/script-docs/",
+      "internal/infrastructure/scriptdocs/"
+    ],
+    "go_packages": [
+      "./internal/domain/document/...",
+      "./internal/application/document/...",
+      "./internal/application/documents/...",
+      "./internal/api/assets/document/...",
+      "./internal/api/script-docs/...",
+      "./internal/infrastructure/scriptdocs/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "drive"],
+    "timeout_seconds": 300,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "voiceover": {
+    "paths": [
+      "internal/domain/voiceover/",
+      "internal/application/voiceover/",
+      "internal/api/assets/voiceover/"
+    ],
+    "go_packages": [
+      "./internal/domain/voiceover/...",
+      "./internal/application/voiceover/...",
+      "./internal/api/assets/voiceover/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "drive"],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "jobs": {
+    "paths": [
+      "internal/application/jobs/",
+      "internal/api/jobs/",
+      "internal/infrastructure/database/sqlite/jobs/"
+    ],
+    "go_packages": [
+      "./internal/application/jobs/...",
+      "./internal/api/jobs/...",
+      "./internal/infrastructure/database/sqlite/jobs/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database"],
+    "timeout_seconds": 600,
+    "race_enabled": true,
+    "live_tests": []
   }
 }
