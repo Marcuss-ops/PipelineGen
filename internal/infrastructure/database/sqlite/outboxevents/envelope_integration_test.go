@@ -61,6 +61,7 @@ func setupOutboxTable(t *testing.T) *sql.DB {
 			status          TEXT    NOT NULL DEFAULT 'pending',
 			attempt_count   INTEGER NOT NULL DEFAULT 0,
 			max_attempts    INTEGER NOT NULL DEFAULT 3,
+			priority        INTEGER NOT NULL DEFAULT 5,
 			last_error      TEXT    NOT NULL DEFAULT '',
 			worker_id       TEXT    NOT NULL DEFAULT '',
 			lease_id        TEXT    NOT NULL DEFAULT '',

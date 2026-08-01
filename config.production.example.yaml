@@ -210,6 +210,19 @@ qdrant:
 clip_indexer:
   enabled: true
 
+# Outbox events worker pool (asset.index.requested / drive / delivery).
+# workers=4 is the July 2026 CPU-only tuning (was 2); watch CPU/RAM/
+# SQLite busy_timeout before raising further. Env override:
+# VELOX_OUTBOX_WORKERS. Priority column (migration 186) lets
+# script-required index requests jump the bulk-folder-sync queue.
+outbox:
+  workers: 4
+  poll_interval_ms: 500
+  batch_size: 10
+  process_timeout_seconds: 300
+  reclaim_interval_seconds: 60
+  max_attempts: 5
+
 linguistics:
   lexicon_root: "config/lexicons"
   required_languages:

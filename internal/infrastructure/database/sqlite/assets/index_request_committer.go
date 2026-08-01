@@ -25,6 +25,17 @@ type IndexRequestOutbox interface {
 	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
 }
 
+// priorityIndexRequestOutbox is the OPTIONAL priority-aware extension of
+// IndexRequestOutbox. Production *outboxevents.Repository implements it
+// (EnqueueWithPriority, migration 186); test fakes that only implement
+// Enqueue keep working — CommitIndexRequestTx falls back to Enqueue when
+// the optional method is absent. A script-required index request therefore
+// jumps the outbox queue only when the backing repository supports
+// priorities, never by silently dropping the event.
+type priorityIndexRequestOutbox interface {
+	EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*outboxevents.EnqueueResult, error)
+}
+
 // IndexRequest describes one canonical indexing request emitted after the
 // corresponding media_assets write has succeeded in the same transaction.
 type IndexRequest struct {
@@ -42,6 +53,14 @@ type IndexRequest struct {
 	// only to the idempotency key; source_version remains the canonical
 	// asset fingerprint used by the supersede gate.
 	EventKeySuffix string
+	// Priority is the outbox scheduling priority (migration 186). 0 means
+	// "use the default normal priority" (PriorityNormal). Producers whose
+	// assets unblock script generation (stock pipeline finalizer) set
+	// outboxevents.PriorityHigh so ClaimNext picks them before a
+	// bulk-folder-sync backlog. Requires the backing repository to
+	// implement EnqueueWithPriority; otherwise the request is enqueued at
+	// the default priority (never dropped).
+	Priority int
 }
 
 // IndexRequestCommitResult reports the durable outbox write performed by
@@ -150,15 +169,38 @@ func CommitIndexRequestTx(
 		}
 	}
 
-	enqueueResult, err := box.Enqueue(
-		ctx,
-		tx,
-		outboxevents.EventAssetIndexRequested,
-		req.AssetID,
-		"media_asset",
-		string(payload),
-		eventKey,
-	)
+	// Prefer the priority-aware enqueue when the producer requested a
+	// non-default priority AND the backing repository supports it.
+	// Fallback to plain Enqueue keeps structural fakes (and repositories
+	// without priority support) fully compatible.
+	enqueue := func() (*outboxevents.EnqueueResult, error) {
+		return box.Enqueue(
+			ctx,
+			tx,
+			outboxevents.EventAssetIndexRequested,
+			req.AssetID,
+			"media_asset",
+			string(payload),
+			eventKey,
+		)
+	}
+	if req.Priority > 0 {
+		if prioBox, ok := box.(priorityIndexRequestOutbox); ok {
+			enqueue = func() (*outboxevents.EnqueueResult, error) {
+				return prioBox.EnqueueWithPriority(
+					ctx,
+					tx,
+					outboxevents.EventAssetIndexRequested,
+					req.AssetID,
+					"media_asset",
+					string(payload),
+					eventKey,
+					req.Priority,
+				)
+			}
+		}
+	}
+	enqueueResult, err := enqueue()
 	if err != nil {
 		return IndexRequestCommitResult{}, fmt.Errorf("asset committer: enqueue outbox event: %w", err)
 	}

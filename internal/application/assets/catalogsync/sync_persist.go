@@ -18,7 +18,16 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 		return nil
 	}
 
+	var alreadyIndexedUnchanged bool
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
+		// Capture the freshly computed remote fingerprint (set by
+		// sync_recursive.go via remoteFileFingerprint) BEFORE the
+		// preserve-existing overwrite below. The re-index guard must
+		// compare the CURRENT Drive fingerprint against the stored one
+		// — comparing after the overwrite would compare the existing
+		// row against itself and skip re-indexing even when the remote
+		// content actually changed.
+		freshFingerprint := clip.FileHash()
 		if existing.FileHash() != "" {
 			clip.SetFileHash(existing.FileHash())
 		}
@@ -32,6 +41,20 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 			clip.CreatedAt = existing.CreatedAt
 		}
 		clip.Tags = mergeTags(clip.Tags, existing.Tags)
+
+		// Producer-side re-index guard (July 2026): a bulk folder
+		// re-sync must NOT re-enqueue asset.index.requested for rows
+		// that are already INDEXED with unchanged content. The outbox
+		// event_key dedup would suppress the duplicate event anyway, but
+		// skipping it producer-side avoids the wasted upsert+enqueue
+		// round-trip on every catalog re-sync of a large tree. When the
+		// remote fingerprint differs from the stored one, the content
+		// changed and the row must be re-indexed normally.
+		if existing.FileHash() != "" && existing.FileHash() == freshFingerprint {
+			if state, stErr := repo.GetIndexState(ctx, clip.ID); stErr == nil && state == asset.StateIndexed {
+				alreadyIndexedUnchanged = true
+			}
+		}
 	}
 
 	if s.dispatcher == nil {
@@ -57,6 +80,14 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 	// source of truth. Callers that need the asset_index view should
 	// derive it from media_assets (the canonical projection), not
 	// duplicate the write here.
+	if alreadyIndexedUnchanged {
+		// Refresh the row (drive links, names, timestamps) but skip the
+		// redundant index request — see the guard above.
+		if err := s.dispatcher.UpsertClipNoIndex(ctx, clip); err != nil {
+			return fmt.Errorf("dispatcher.UpsertClipNoIndex %s: %w", clip.ID, err)
+		}
+		return nil
+	}
 	if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
 		return fmt.Errorf("dispatcher.EnqueueAndIndex %s: %w", clip.ID, err)
 	}

@@ -26,8 +26,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Enqueue inserts a new outbox event. Call this inside a transaction.
-// Uses ON CONFLICT(event_key) DO NOTHING for idempotency.
+// Enqueue inserts a new outbox event at the default normal priority.
+// Call this inside a transaction. Uses ON CONFLICT(event_key) DO NOTHING
+// for idempotency.
+//
+// The INSERT intentionally does NOT reference the priority column so
+// legacy minimal fixtures (and repositories that predate migration 186)
+// keep working — the column default (PriorityNormal) applies. Producers
+// that need script-required ordering must use EnqueueWithPriority.
 //
 // Returns EnqueueResult with Inserted=true + EventID when the INSERT
 // lands. When ON CONFLICT suppresses the insert, returns Inserted=false
@@ -74,6 +80,55 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggrega
 	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus}, nil
 }
 
+// EnqueueWithPriority inserts a new outbox event with an explicit
+// scheduling priority (migration 186). ClaimNext claims higher
+// priorities first, so a script-required asset.index.requested can
+// jump ahead of a bulk-folder-sync backlog. All other semantics are
+// identical to Enqueue (idempotent ON CONFLICT(event_key)).
+//
+// Requires the backing table to carry the priority column (migration
+// 186). In-memory test fixtures that omit the column must use Enqueue
+// (column default applies) or add the column to their CREATE TABLE.
+func (r *Repository) EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error) {
+	now := timeutil.FormatRFC3339(time.Now())
+	exec := r.exec(ctx, tx)
+	result, err := exec(ctx,
+		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, priority, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`,
+		eventType, aggregateID, aggregateType, payloadJSON, eventKey, priority, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("outboxevents.EnqueueWithPriority(%s, %s): %w", eventType, aggregateID, err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected > 0 {
+		id, _ := result.LastInsertId()
+		return &EnqueueResult{EventID: id, Inserted: true}, nil
+	}
+	// ON CONFLICT suppressed the insert — query the existing row's
+	// status so the producer knows whether the event was squelched
+	// by a completed, dead_letter, or superseded row.
+	//
+	// IMPORTANT: use the same handle as the INSERT (tx when provided,
+	// db otherwise). A detached r.db.QueryRowContext can open a NEW
+	// connection to :memory:, which sees an entirely different database.
+	// With SetMaxOpenConns(1) this deadlocks (the only connection is
+	// already held by the caller's tx).
+	var existingID int64
+	var existingStatus string
+	queryRow := r.db.QueryRowContext
+	if tx != nil {
+		queryRow = tx.QueryRowContext
+	}
+	if scanErr := queryRow(ctx,
+		`SELECT id, status FROM outbox_events WHERE event_key = ?`, eventKey,
+	).Scan(&existingID, &existingStatus); scanErr != nil {
+		return nil, fmt.Errorf("outboxevents.EnqueueWithPriority(%s, %s): ON CONFLICT suppressed, but query existing row: %w", eventType, aggregateID, scanErr)
+	}
+	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus}, nil
+}
+
 // ClaimNext claims the oldest pending event atomically using CTE.
 func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration) (*Claim, error) {
 	now := timeutil.FormatRFC3339(time.Now())
@@ -83,12 +138,16 @@ func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL ti
 
 	// Atomic CTE claim: WITH candidate AS (...) UPDATE ... RETURNING id.
 	// SQLite doesn't support RETURNING universally, so we use claim+refetch.
+	// Claim ordering is (priority DESC, next_attempt_at ASC, id ASC): a
+	// script-required index request (priority=10) is claimed before an
+	// older bulk-folder-sync event (priority=5) even when the latter has
+	// waited longer (migration 186).
 	result, err := r.db.ExecContext(ctx, `
 		WITH candidate AS (
 			SELECT id FROM outbox_events
 			WHERE status = 'pending'
 			  AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-			ORDER BY next_attempt_at ASC, id ASC
+			ORDER BY priority DESC, next_attempt_at ASC, id ASC
 			LIMIT 1
 		)
 		UPDATE outbox_events
@@ -112,7 +171,7 @@ func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL ti
 		SELECT id, event_type, aggregate_id, aggregate_type, payload_json,
 		       status, attempt_count, max_attempts, last_error,
 		       event_key, worker_id, lease_id, lease_expiry, completed_at,
-		       created_at, updated_at
+		       created_at, updated_at, priority
 		FROM outbox_events
 		WHERE worker_id = ? AND lease_id = ? AND status = 'processing'
 		ORDER BY updated_at DESC LIMIT 1

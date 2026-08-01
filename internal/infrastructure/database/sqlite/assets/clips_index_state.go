@@ -2,6 +2,8 @@ package assets
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -58,6 +60,36 @@ func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state as
 		return fmt.Errorf("clips.SetIndexState(%s, %s): %w", id, state, err)
 	}
 	return nil
+}
+
+// GetIndexState reads the canonical media_assets.index_state column
+// (migration 094). Returns StateDiscovered when the row is missing or
+// the column is empty (the migration DEFAULT sentinel) so producers can
+// branch on "already indexed" without error-handling ceremony.
+//
+// Producer-side guard (July 2026): catalogsync uses this to skip
+// re-emitting asset.index.requested for assets that are already
+// INDEXED with unchanged content — the outbox event_key dedup would
+// suppress the duplicate anyway, but the producer-side check avoids
+// the wasted upsert+enqueue round-trip on every bulk folder re-sync.
+func (r *ClipsRepository) GetIndexState(ctx context.Context, id string) (asset.IndexState, error) {
+	if id == "" {
+		return asset.StateDiscovered, fmt.Errorf("clips.GetIndexState: id is required")
+	}
+	var state string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(index_state, '') FROM media_assets WHERE id = ?`, id,
+	).Scan(&state)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return asset.StateDiscovered, nil
+		}
+		return asset.StateDiscovered, fmt.Errorf("clips.GetIndexState(%s): %w", id, err)
+	}
+	if state == "" {
+		return asset.StateDiscovered, nil
+	}
+	return asset.IndexState(state), nil
 }
 
 // DeleteClipByDriveLink soft-deletes by drive/download link.

@@ -25,13 +25,16 @@ type QdrantConfig struct {
 }
 
 // OutboxConfig tunes the outbox_events worker pool. Defaults follow the
-// CPU-only tuning from the PR-2 design review: 500ms poll, batch 10,
-// 2 workers, 5min per-entry timeout, 60s reclaim cadence, 360s stale
-// threshold (2× process timeout), 5 max attempts. Env vars take precedence
+// CPU-only tuning from the PR-2 design review plus the July 2026
+// stock-acquisition tuning: 500ms poll, batch 10, 4 workers (raised
+// from 2 after the boxer stock runs observed a ~75-event pending
+// backlog with only 2 processing), 5min per-entry timeout, 60s reclaim
+// cadence, 360s stale threshold (2× process timeout), 5 max attempts.
+// Env vars take precedence.
 type OutboxConfig struct {
 	PollIntervalMs         int `yaml:"poll_interval_ms" env:"VELOX_OUTBOX_POLL_MS" default:"500"`
 	BatchSize              int `yaml:"batch_size" env:"VELOX_OUTBOX_BATCH_SIZE" default:"10"`
-	Workers                int `yaml:"workers" env:"VELOX_OUTBOX_WORKERS" default:"2"`
+	Workers                int `yaml:"workers" env:"VELOX_OUTBOX_WORKERS" default:"4"`
 	ProcessTimeoutSeconds  int `yaml:"process_timeout_seconds" env:"VELOX_OUTBOX_PROCESS_TIMEOUT_S" default:"300"`
 	ReclaimIntervalSeconds int `yaml:"reclaim_interval_seconds" env:"VELOX_OUTBOX_RECLAIM_INTERVAL_S" default:"60"`
 	StaleThresholdSeconds  int `yaml:"stale_threshold_seconds" env:"VELOX_OUTBOX_STALE_THRESHOLD_S" default:"360"`

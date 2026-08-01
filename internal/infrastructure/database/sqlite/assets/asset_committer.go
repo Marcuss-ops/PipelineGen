@@ -235,6 +235,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 			RequestedAt:           requestedAt,
 			UseProviderEventKey:   req.Source == "artlist",
 			IncludeSourceMetadata: req.Source == "artlist",
+			Priority:              req.IndexPriority,
 		})
 		if err != nil {
 			return persistence.CommitResult{}, err

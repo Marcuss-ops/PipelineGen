@@ -78,9 +78,12 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 
 	_, err = sqlTx.ExecContext(ctx, `
 		UPDATE media_assets
-		SET width = ?, height = ?, local_path = ?, source_provider = ?, source_version = ?
+		SET width = ?, height = ?, local_path = ?, source_provider = ?, source_version = ?,
+			drive_file_id = ?, drive_link = ?, download_link = ?, folder_id = ?, folder_path = ?
 		WHERE id = ?
-	`, width, height, localPath, sourceProvider, sourceVersion, artifact.ArtifactID)
+	`, width, height, localPath, sourceProvider, sourceVersion,
+		artifact.Location.FileID, artifact.Location.WebViewLink, artifact.Location.DownloadLink,
+		artifact.Location.FolderID, artifact.Location.FolderPath, artifact.ArtifactID)
 	if err != nil {
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: update media_assets backward compat: %w", err)
 	}
@@ -126,6 +129,27 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		PublishAction: string(artifact.Location.Action),
 		SizeBytes:     artifact.SizeBytes,
 	}
+	if value, ok := artifact.ArtifactMetadata["source_provider"].(string); ok {
+		metadata.SourceProvider = value
+	}
+	if value, ok := artifact.ArtifactMetadata["source_video_id"].(string); ok {
+		metadata.SourceVideoID = value
+	}
+	var sourceURL string
+	if value, ok := artifact.ArtifactMetadata["source_url"].(string); ok {
+		sourceURL = value
+		metadata.Extra = ensureMetadataExtra(metadata.Extra)
+		metadata.Extra["source_url"] = value
+	}
+	if value, ok := artifact.ArtifactMetadata["category"].(string); ok {
+		metadata.Category = value
+	}
+	if value, ok := artifact.ArtifactMetadata["start_sec"].(float64); ok {
+		metadata.StartSec = value
+	}
+	if value, ok := artifact.ArtifactMetadata["end_sec"].(float64); ok {
+		metadata.EndSec = value
+	}
 	if len(artifact.ArtifactMetadata) > 0 {
 		metadata.Extra = make(map[string]any, len(artifact.ArtifactMetadata))
 		for k, v := range artifact.ArtifactMetadata {
@@ -158,24 +182,51 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	}
 
 	_, initIndex := asset.NewIndexableAssetState()
+	lifecycleState := string(asset.StatePublished)
+	if source == "youtube" {
+		lifecycleState = string(asset.StateActive)
+	}
+	// Script-required acquisition: the stock pipeline finalizer emits
+	// asset.index.requested events whose assets unblock script
+	// generation. Stamp the outbox event with the high priority so
+	// ClaimNext claims it before a bulk-folder-sync backlog (migration
+	// 186 / outboxevents.PriorityHigh).
+	indexPriority := 0
+	if source == "youtube" || source == "stock" {
+		indexPriority = persistence.IndexPriorityHigh
+	}
 	return persistence.CommitRequest{
 		AssetID:        artifact.ArtifactID,
 		Source:         source,
 		Name:           artifact.Filename,
 		Filename:       artifact.Filename,
 		MediaType:      mediaType,
+		Category:       metadata.Category,
 		ContentHash:    artifact.SHA256,
 		Description:    artifact.Description,
 		DurationMs:     durationMs,
-		LifecycleState: string(asset.StatePublished),
+		LifecycleState: lifecycleState,
 		IndexState:     string(initIndex),
 		FolderID:       artifact.Location.FolderID,
 		FolderPath:     artifact.Location.FolderPath,
+		SourceURL:      sourceURL,
+		SourceProvider: metadata.SourceProvider,
+		SourceVideoID:  metadata.SourceVideoID,
+		StartMs:        int64(metadata.StartSec * 1000),
+		EndMs:          int64(metadata.EndSec * 1000),
 		Metadata:       metadata,
 		Locations:      locations,
 		EmitIndexEvent: true,
 		RequestedAt:    time.Now(),
+		IndexPriority:  indexPriority,
 	}
+}
+
+func ensureMetadataExtra(extra map[string]any) map[string]any {
+	if extra == nil {
+		return make(map[string]any)
+	}
+	return extra
 }
 
 func primaryURI(loc finalization.AssetLocation) string {
