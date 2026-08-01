@@ -43,7 +43,29 @@ type StockStageSourcesStep struct{}
 
 func (StockStageSourcesStep) Name() string { return StepKeyStockStageSources }
 
-func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
+func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err error) {
+	phaseMetric := startStockPhase(ctx, runner, "stock.stage_sources")
+	defer func() {
+		plans := runner.State().Plan
+		staged := runner.State().StagedAssets
+		uniqueSourceCount := countUniquePlanSources(plans)
+		var bytes int64
+		for _, asset := range staged {
+			if asset != nil {
+				bytes += asset.Bytes
+			}
+		}
+		if phaseMetric != nil {
+			phaseMetric.SetItems(int64(len(plans)), int64(len(staged)))
+			phaseMetric.SetBytes(0, bytes)
+			phaseMetric.SetDetails(map[string]any{
+				"videos_found":      uniqueSourceCount,
+				"videos_downloaded": len(staged),
+				"download_bytes":    bytes,
+			})
+		}
+		finishStockPhase(runner, phaseMetric, "stock.stage_sources", err)
+	}()
 	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
 	// July 2026): runner.SourceStager() is non-nil. The canonical
 	// composition root (stockpipeline.NewService + orchestrator.RunResilient)
