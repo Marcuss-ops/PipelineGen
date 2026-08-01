@@ -5,6 +5,7 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
+      "baseline_files": 104,
       "baseline": {
         "files": 104,
         "max_loc": 17092
@@ -24,6 +25,7 @@
       "path": "cmd/archcheck/scan",
       "owner": "cmd/archcheck architecture enforcement",
       "deadline": "2026-09-30",
+      "baseline_files": 42,
       "baseline": {
         "files": 42,
         "max_loc": 13718
@@ -43,6 +45,7 @@
       "path": "internal/app",
       "owner": "internal/app composition root",
       "deadline": "2026-09-30",
+      "baseline_files": 132,
       "baseline": {
         "files": 132,
         "max_loc": 26637
@@ -62,6 +65,7 @@
       "path": "internal/application/assets/providers/stock/stockpipeline",
       "owner": "stock pipeline orchestration",
       "deadline": "2026-09-30",
+      "baseline_files": 52,
       "baseline": {
         "files": 52,
         "max_loc": 11473
@@ -82,6 +86,7 @@
       "path": "internal/application/images",
       "owner": "internal/application/images",
       "deadline": "2026-10-15",
+      "baseline_files": 55,
       "baseline": {
         "files": 55,
         "max_loc": 6760
@@ -101,6 +106,7 @@
       "path": "internal/application/jobs",
       "owner": "internal/application/jobs",
       "deadline": "2026-09-15",
+      "baseline_files": 41,
       "baseline": {
         "files": 41,
         "max_loc": 5218
@@ -120,6 +126,7 @@
       "path": "internal/application/voiceover",
       "owner": "internal/application/voiceover",
       "deadline": "2026-10-15",
+      "baseline_files": 41,
       "baseline": {
         "files": 41,
         "max_loc": 8135
@@ -139,6 +146,7 @@
       "path": "internal/domain/asset",
       "owner": "internal/domain/asset",
       "deadline": "2026-10-31",
+      "baseline_files": 45,
       "baseline": {
         "files": 45,
         "max_loc": 4500
@@ -159,6 +167,7 @@
       "path": "internal/infrastructure/database/sqlite/assets",
       "owner": "internal/infrastructure/database/sqlite/assets",
       "deadline": "2026-09-30",
+      "baseline_files": 63,
       "baseline": {
         "files": 63,
         "max_loc": 9659
