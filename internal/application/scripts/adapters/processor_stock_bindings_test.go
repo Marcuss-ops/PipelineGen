@@ -106,6 +106,29 @@ func TestStockBindingsProcessorRejectsEmptyAssetAndLink(t *testing.T) {
 	}
 }
 
+func TestStockBindingsProcessorUsesFolderLinkWithoutClipLink(t *testing.T) {
+	folderID := "1xxnNHfperYJ6sZiLcNadgvYIR6wG_jB8"
+	folderLink := "https://drive.google.com/drive/folders/" + folderID + "?usp=drive_link"
+	got, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, Source: "youtube", FolderID: folderID, FolderLink: folderLink,
+			Name: "Sugar Ray Robinson stock folder", StartMs: 0, EndMs: 5000,
+		}},
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Kind: scriptpkg.SceneClip}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stock := got.UpdatedSpecScene.Scenes[0].Bindings.Stock
+	if stock == nil || stock.FolderLink != folderLink || stock.FolderID != folderID {
+		t.Fatalf("folder binding = %#v", stock)
+	}
+	if stock.DriveLink != "" || stock.AssetID != "" {
+		t.Fatalf("folder-only binding must not contain a clip reference: %#v", stock)
+	}
+}
+
 func TestStockBindingsProcessorDisabledClearsStock(t *testing.T) {
 	got, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
 		StockEnabled: scriptpkg.ToggleDisabled,

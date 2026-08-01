@@ -182,7 +182,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		}
 
 		// ── Stock binding ───────────────────────────────────
-		if bindings.Stock != nil {
+		if bindings.Stock != nil && strings.TrimSpace(bindings.Stock.FolderLink) == "" {
 			assetID := strings.TrimSpace(bindings.Stock.AssetID)
 			link := strings.TrimSpace(bindings.Stock.DriveLink)
 			// Direct YouTube stock bindings may carry the canonical Drive

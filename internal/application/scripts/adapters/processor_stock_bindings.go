@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // StockBindingsProcessor applies caller-supplied stock assets to the
@@ -57,7 +58,16 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 			return nil, fmt.Errorf("%w: stock binding index %d targets segment_id %q, want %q", scriptpkg.ErrPostprocessFailed, in.Index, in.SegmentID, scene.SegmentID)
 		}
 		if strings.TrimSpace(in.AssetID) == "" && strings.TrimSpace(in.DriveLink) == "" {
-			return nil, fmt.Errorf("%w: stock binding index %d requires asset_id or drive_link", scriptpkg.ErrPostprocessFailed, in.Index)
+			if strings.TrimSpace(in.FolderLink) != "" {
+				// A folder-only stock binding is valid without a file asset.
+			} else {
+				return nil, fmt.Errorf("%w: stock binding index %d requires asset_id or drive_link", scriptpkg.ErrPostprocessFailed, in.Index)
+			}
+		}
+		folderID := strings.TrimSpace(in.FolderID)
+		folderLink := strings.TrimSpace(in.FolderLink)
+		if folderLink != "" && urlutil.FolderIDFromDriveLink(folderLink) != folderID {
+			return nil, fmt.Errorf("%w: stock binding index %d folder_link does not match folder_id", scriptpkg.ErrPostprocessFailed, in.Index)
 		}
 		if in.StartMs < 0 || in.EndMs <= in.StartMs {
 			return nil, fmt.Errorf("%w: stock binding index %d requires end_ms > start_ms", scriptpkg.ErrPostprocessFailed, in.Index)
@@ -68,12 +78,12 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		// ID in both the asset and link fields. Normalize that transport
 		// shape to a candidate URL; the Drive reconciliation processor still
 		// verifies the file before publication.
-		if in.Source == "youtube" && assetID != "" && (driveLink == "" || driveLink == assetID) {
+		if folderLink == "" && in.Source == "youtube" && assetID != "" && (driveLink == "" || driveLink == assetID) {
 			driveLink = "https://drive.google.com/file/d/" + assetID + "/view"
 		}
 		scene.Bindings.Stock = &scriptpkg.StockBinding{
 			AssetID: assetID, Name: in.Name, Source: in.Source,
-			DriveLink: driveLink, FolderID: strings.TrimSpace(in.FolderID), Score: in.Score, Fallback: in.Fallback,
+			DriveLink: driveLink, FolderID: folderID, FolderLink: folderLink, Score: in.Score, Fallback: in.Fallback,
 			StartMs: in.StartMs, EndMs: in.EndMs, DurationMs: in.EndMs - in.StartMs,
 		}
 		scene.Kind = scriptpkg.SceneStock

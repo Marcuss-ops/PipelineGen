@@ -66,6 +66,11 @@ func BuildSpecSceneDocumentHTML(
 					b.WriteString("</p>")
 				}
 			}
+			if stock := scene.Bindings.Stock; stock != nil && strings.TrimSpace(stock.FolderLink) != "" {
+				b.WriteString("<p><strong>Stock folder:</strong> ")
+				b.WriteString(renderDocumentLink(stock.FolderLink, stock.FolderID, stock.FolderID))
+				b.WriteString("</p>")
+			}
 			// Render the Stock binding drive_link as a visible "Clip" link
 			// so the scene-N section mirrors what the JSON SpecScene
 			// block already carries: stock bindings were previously only

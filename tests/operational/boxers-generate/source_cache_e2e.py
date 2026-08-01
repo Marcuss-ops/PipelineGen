@@ -122,8 +122,8 @@ def item(key: str, subject: str, topic: str, stock: dict[str, dict[str, str]], w
             "asset_id": asset["asset_id"],
             "name": f"{subject} {role}",
             "source": "youtube",
-            "drive_link": asset["drive_link"],
             "folder_id": asset["folder_id"],
+            "folder_link": f"https://drive.google.com/drive/folders/{asset['folder_id']}?usp=drive_link",
             "fallback": False,
             "start_ms": 0,
             "end_ms": 5000,
@@ -230,7 +230,8 @@ def validate_wave(name: str, full: dict, children: list[dict], expected: list[di
         for scene, role in zip(scenes, ROLES):
             binding = scene.get("bindings", {}).get("stock") or {}
             asset = expected_item["stock"][role]
-            if binding.get("asset_id") != asset["asset_id"] or binding.get("drive_link") != asset["drive_link"] or binding.get("source") != "youtube" or binding.get("fallback", False):
+            expected_folder_link = f"https://drive.google.com/drive/folders/{asset['folder_id']}?usp=drive_link"
+            if binding.get("folder_link") != expected_folder_link or binding.get("folder_id") != asset["folder_id"] or binding.get("drive_link") or binding.get("source") != "youtube" or binding.get("fallback", False):
                 raise RuntimeError(f"{name}: wrong stock binding {expected_item['subject']}.{role}")
         source_report = out.get("research_report") or result.get("research") or {}
         if first_web and cache_mode == "web" and not source_report:

@@ -56,8 +56,9 @@ type StockBinding struct {
 	Source string `json:"source,omitempty"`
 
 	// DriveLink is the Google Drive URL of the stock asset.
-	DriveLink string `json:"drive_link,omitempty"`
-	FolderID  string `json:"folder_id,omitempty"`
+	DriveLink  string `json:"drive_link,omitempty"`
+	FolderID   string `json:"folder_id,omitempty"`
+	FolderLink string `json:"folder_link,omitempty"`
 
 	// Score is the cosine-similarity from the vector search.
 	Score float64 `json:"score,omitempty"`
