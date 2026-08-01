@@ -2,27 +2,19 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"io"
-	"io/fs"
-	"net"
 	"net/http"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/web"
 	"go.uber.org/zap"
 )
 
@@ -224,6 +216,22 @@ func buildCORSConfig(corsOrigins []string) cors.Config {
 
 // Setup configures and returns the gin engine with all middleware, static routes,
 // health endpoints, and dynamically registered module routes.
+//
+// The per-domain wiring lives in sibling files of this package:
+//   - routes_admin.go    — /admin SPA static surface + /api/admin/auth login.
+//   - routes_health.go   — /health, /ready, /models, /qdrant/* health surface.
+//   - routes_api.go      — /api module-registry surface (media, jobs, ...).
+//   - routes_internal.go — /internal/v1 WorkerAuth surface (worker/jobs,
+//     media sync, outbox monitoring, media search).
+//   - routes_metrics.go  — /metrics (PR-METRICS-FAILCLOSED).
+//
+// Ordering contracts that MUST survive the split:
+//  1. Global middleware mounts first (RequestID → Logger → Recovery →
+//     gzip); CORS is added after registerVLMRoutes.
+//  2. The WireRegistry is built AFTER every route is registered, then the
+//     /ready handler and the /api/capabilities route receive it —
+//     /api/capabilities is intentionally mounted last so it reflects the
+//     actual routed surface.
 func (r *Router) Setup() *gin.Engine {
 	log := zap.L().Named("router")
 	gin.SetMode(r.cfg.ServerGinMode)
@@ -241,25 +249,8 @@ func (r *Router) Setup() *gin.Engine {
 		c.Redirect(http.StatusMovedPermanently, "/health")
 	})
 
-	// Serve admin UI static files on /admin. The SPA itself is public so
-	// that the browser can load the login page; the API routes remain
-	// protected by RequireAdminToken / Auth. The static assets are
-	// embedded at build time via web.DistFS().
-	adminUIFS := web.DistFS()
-	adminUIGroup := engine.Group("/admin")
-	{
-		adminUIGroup.StaticFS("/", http.FS(adminUIFS))
-	}
-	engine.NoRoute(func(c *gin.Context) {
-		// RouterGroup has no NoRoute hook in Gin. Serve the SPA fallback
-		// for any unknown path under /admin so react-router can handle
-		// client-side routing.
-		if strings.HasPrefix(c.Request.URL.Path, "/admin/") || c.Request.URL.Path == "/admin" {
-			serveAdminUISPA(c, adminUIFS)
-			return
-		}
-		c.Status(http.StatusNotFound)
-	})
+	// Admin SPA static surface + engine-level NoRoute SPA fallback.
+	r.registerAdminUIRoutes(engine)
 
 	registerVLMRoutes(engine)
 
@@ -271,208 +262,25 @@ func (r *Router) Setup() *gin.Engine {
 		log.Info("CORS disabled - no origins configured")
 	}
 
-	// Unified health check (PR1, June 2026): single /health with ?deep=true
-	// for aggregated DB+Drive+Qdrant+JobBroker checks. The health service
-	// lives in ComposeRoot.Utility.HealthService and is wired via
-	// SetHealthService before Setup() runs.
-	// codex/health-ready-contract (June 2026): ReadyChecker is now wired
-	// via SetReadyChecker — /ready no longer receives nil in production.
-	var healthHandler *transport.HealthHandler
-	if r.healthSvc != nil {
-		if svc, svcOk := r.healthSvc.(*systemhealth.Service); svcOk {
-			healthHandler = transport.NewHealthHandler(svc, r.readyChecker)
-		}
-	}
-	if healthHandler == nil {
-		log.Warn("health service not wired, health endpoints will return 503")
-		healthHandler = transport.NewHealthHandler(nil, nil /* nil-by-design; integration stub only */)
-	}
-	engine.GET("/health", healthHandler.Health)
-	engine.GET("/ready", healthHandler.Ready)
+	// Health surface (/health, /ready, /models, /qdrant/*). Returns the
+	// handler so the WireRegistry can be attached once all routes mount.
+	healthHandler := r.registerHealthRoutes(engine, log)
 
-	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
-
-	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
-	// nil-safe: returns 503 when the handler is not wired.
-	modelsHandler := r.modelsHandler
-	if modelsHandler == nil {
-		log.Warn("models handler not wired, /models will return 503")
-		modelsHandler = transport.NewModelsHandler("") // empty URL -> 503 responses
-	}
-	engine.GET("/models", modelsHandler.Models)
-
-	// Qdrant health endpoints — /qdrant/live (liveness) and
-	// /qdrant/ready (deep readiness with alias + collection + schema
-	// + semantic canary). HIGH #7, July 2026.
-	if r.qdrantHealth != nil {
-		if qh, ok := r.qdrantHealth.(interface {
-			Live(*gin.Context)
-			Ready(*gin.Context)
-		}); ok {
-			engine.GET("/qdrant/live", qh.Live)
-			engine.GET("/qdrant/ready", qh.Ready)
-		} else {
-			log.Warn("qdrantHealth handler does not satisfy Live/Ready interface, routes not registered")
-		}
-	}
-
-	// Prometheus metrics endpoint — FAIL-CLOSED in release mode (PR-METRICS-FAILCLOSED).
-	// In release mode, METRICS_AUTH_TOKEN MUST be set; otherwise the route
-	// is NOT registered and the server emits a startup WARN. In dev/local
-	// modes the route is mounted as before (with token if set, without
-	// if not) so local dev workflows don't break.
-	metricsHandler := gin.WrapH(promhttp.Handler())
-	token := os.Getenv("METRICS_AUTH_TOKEN")
-	isRelease := r.cfg.ServerGinMode == gin.ReleaseMode
-
-	switch {
-	case token != "":
-		// Authenticated regardless of mode.
-		engine.GET("/metrics", func(c *gin.Context) {
-			if c.GetHeader("Authorization") != "Bearer "+token {
-				c.AbortWithStatus(http.StatusUnauthorized)
-				return
-			}
-			metricsHandler(c)
-		})
-	case isRelease:
-		// FAIL-CLOSED: token MUST be set in release mode. Route not mounted.
-		log.Warn("/metrics not mounted: METRICS_AUTH_TOKEN is required in release mode (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart to enable.")
-	default:
-		// Dev/local (non-release): loopback-only restriction.
-		// Uses c.Request.RemoteAddr (NOT c.ClientIP()) because ClientIP
-		// respects X-Forwarded-For / X-Real-Ip headers that a non-loopback
-		// client could spoof to bypass the restriction. RemoteAddr is the
-		// raw TCP peer address and cannot be header-spoofed.
-		engine.GET("/metrics", func(c *gin.Context) {
-			host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-			var ip net.IP
-			if err == nil {
-				ip = net.ParseIP(host)
-			}
-			if ip != nil && ip.IsLoopback() {
-				metricsHandler(c)
-				return
-			}
-			c.AbortWithStatus(http.StatusForbidden)
-		})
-	}
+	// /metrics — fail-closed in release mode (PR-METRICS-FAILCLOSED).
+	r.registerMetricsRoute(engine, log)
 
 	// Serve static assets (images, etc.)
 	assetsDir := filepath.Join(r.cfg.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
 	engine.Static("/media/google-accounting", r.cfg.DownloadDir)
 
-	// API routes
-	api := engine.Group("/api")
-	{
-		// Admin authentication surface for the React SPA. Login/logout are
-		// intentionally public; /me is protected by RequireAdminToken so the
-		// frontend can verify its session cookie.
-		adminAuth := api.Group("/admin/auth")
-		{
-			secureCookie := r.cfg.ServerGinMode == gin.ReleaseMode
+	// Public /api surface (admin auth + protected module registry).
+	// Returns the group so /api/capabilities can mount AFTER the
+	// WireRegistry exists.
+	api := r.registerAPIRoutes(engine, log)
 
-			adminAuth.POST("/login", func(c *gin.Context) {
-				var req struct {
-					Token string `json:"token"`
-				}
-				if err := c.ShouldBindJSON(&req); err != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request body"})
-					return
-				}
-				if r.cfg.Auth == nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "auth not configured"})
-					return
-				}
-				if !middleware.CompareTokens(req.Token, r.cfg.Auth.AdminToken()) {
-					c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "invalid token"})
-					return
-				}
-				c.SetSameSite(http.SameSiteLaxMode)
-				c.SetCookie(
-					"velox_admin_session",
-					req.Token,
-					86400,
-					"/",
-					"",
-					secureCookie,
-					true,
-				)
-				c.JSON(http.StatusOK, gin.H{"ok": true})
-			})
-
-			adminAuth.POST("/logout", func(c *gin.Context) {
-				c.SetSameSite(http.SameSiteLaxMode)
-				c.SetCookie(
-					"velox_admin_session",
-					"",
-					-1,
-					"/",
-					"",
-					secureCookie,
-					true,
-				)
-				c.JSON(http.StatusOK, gin.H{"ok": true})
-			})
-
-			adminAuth.GET("/me", middleware.RequireAdminToken(r.cfg.Auth, r.cfg.Log), func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{"ok": true, "role": "admin"})
-			})
-		}
-
-		// Protected routes — Auth + RateLimit + WorkspaceScope
-		protected := api.Group("")
-		protected.Use(middleware.Auth(r.cfg.Auth, r.cfg.Log))
-		r.rateLimitMiddleware = middleware.RateLimit(r.cfg.Rate, middleware.NewOSEnvReader())
-		protected.Use(r.rateLimitMiddleware.Handler)
-		protected.Use(middleware.WorkspaceScopeMiddleware())
-		{
-			// Use module registry for route registration
-			if r.registry != nil {
-				log.Info("using module registry for route registration")
-				r.registry.RegisterAllRoutes(protected)
-			} else {
-				log.Warn("no module registry available, no routes registered")
-			}
-		}
-	}
-
-	// QDRANT-002 + QDRANT-004 (June 2026): the internal-worker-broker
-	// prefix is "/internal/v1" — historically `remoteshared.InternalPathPrefix`.
-	// The Wave 14 PR5 cleanup hardcodes it here so internal/api stops
-	// importing internal/infrastructure/remote/shared (a transport concern,
-	// not a capability concern). Anti-regression test
-	// internal/api/routes_test.go::TestRoutes_NoApiInternalV1Prefix enforces
-	// no /api/internal/v1/* route should ever leak.
-	internalGroup := engine.Group("/internal/v1")
-	internalGroup.Use(middleware.WorkerAuth(r.cfg.Auth, r.cfg.Log))
-	{
-		if r.workerHandler != nil {
-			r.workerHandler.RegisterRoutes(internalGroup)
-		}
-		// QDRANT-001 /internal/v1/media/* surface — server-to-server.
-		// WorkerAuth above enforces Bearer token (rejects admin tokens —
-		// see middleware_worker_auth_test.go). nil-tolerant if not wired.
-		if r.internalMediaHandler != nil {
-			r.internalMediaHandler.RegisterInternalMediaRoutes(internalGroup)
-		}
-		// QDRANT-002 /internal/v1/outbox/* surface — server-to-server
-		// outbox monitoring (GET /status, GET /events). Mounted on the
-		// SAME WorkerAuth internalGroup as worker routes; anti-regression
-		// test TestRoutes_NoApiInternalV1Prefix forbids ever moving this
-		// under /api.
-		if r.outboxHandler != nil {
-			outboxGroup := internalGroup.Group("/outbox")
-			r.outboxHandler.RegisterRoutes(outboxGroup)
-		}
-		// QDRANT-004 /internal/v1/media/search — server-to-server
-		// semantic search. Mounted on the SAME WorkerAuth internalGroup.
-		if r.mediasearchHandler != nil {
-			mediaSearchGroup := internalGroup.Group("/media")
-			r.mediasearchHandler.RegisterRoutes(mediaSearchGroup)
-		}
-	}
+	// WorkerAuth-protected /internal/v1 surface (worker, media, outbox).
+	r.registerInternalRoutes(engine)
 
 	// Log all registered routes
 	for _, route := range engine.Routes() {
@@ -512,30 +320,6 @@ func (r *Router) Setup() *gin.Engine {
 	api.GET("/capabilities", transport.NewCapabilitiesHandler(wireReg, "", "v2").Capabilities)
 
 	return engine
-}
-
-// serveAdminUISPA serves the embedded index.html for SPA fallback.
-func serveAdminUISPA(c *gin.Context, fsys fs.FS) {
-	file, err := fsys.Open("index.html")
-	if err != nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	defer file.Close()
-	stat, err := file.Stat()
-	if err != nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	// http.ServeContent sets Content-Type, handles Range requests,
-	// and respects If-Modified-Since headers. fs.File is not guaranteed
-	// to implement io.ReadSeeker, so serve an in-memory reader.
-	http.ServeContent(c.Writer, c.Request, "index.html", stat.ModTime(), bytes.NewReader(data))
 }
 
 // Stop cleans up resources used by the router (rate limiter goroutines)
