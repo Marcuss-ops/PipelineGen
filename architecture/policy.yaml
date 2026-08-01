@@ -156,11 +156,15 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # internal/kernel/job) are now retired. The domain/ root still
 # exists on disk for sibling subtrees (transcription, voiceover,
 # translation, etc.) but the kernel/job surface is fully canonical.
-# Remaining legacy zones still exist on disk
-# (api, app, application, infrastructure) but no longer
-# receive policy cover; each retirement is a follow-up commit.
-# cmd/archcheck treats unknown first-level internal/ dirs as a warn
-# violation (`unknown_internal_root` rule).
+# RE-REGISTERED 2026-08-01 (strict-gate governance): the four surviving
+# legacy zones (api, application, infrastructure, domain) are re-added
+# as GOVERNED roots via `legacy_internal_roots` below so the --strict
+# gate (max_lines_per_file_strict=600, hard-gated) covers them. Each
+# zone carries an owner/deadline/targets in
+# architecture/package_hotspots.json (root_migrations) so the
+# migration stays observable. cmd/archcheck treats unknown first-level
+# internal/ dirs as an error (`unknown_internal_root` rule); the
+# re-registration keeps these zones governed instead of unmanaged.
 # + P1-4 step 3 (internal/scriptgeneration -> internal/application/scripts/legacy)
 #   is also retired in this same wave (CUTOVER phase per godlike/07
 #   Zero-Legacy; verbatim body, package scriptgeneration preserved for
@@ -174,6 +178,12 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 #   percheck_legacy_root_ban hard_gates entry in hard_gates below)
 #   catches new imports of the deleted legacy root.
 target_internal_roots: app, kernel, capabilities, platform
+# Governed legacy zones (re-registered 2026-08-01): first-level
+# internal/ roots that the layout policy treats as known so the
+# --strict 600-LOC forward-prevention gate covers their files. Each
+# root also has an owner/deadline in architecture/package_hotspots.json
+# (root_migrations) — the migration registry is the governance SSOT.
+legacy_internal_roots: application, api, infrastructure, domain
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
 # entry is a free-form comment consumed by the human reviewer; the binary
