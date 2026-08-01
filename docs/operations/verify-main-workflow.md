@@ -47,6 +47,12 @@ The target definitions live in `make/*.mk`, included by the root
 `Makefile`. This document describes the contract; the Make fragments are the
 executable source of truth.
 
+`verify-main` uses the registry-driven `verify-changed-components` runner for
+changed-component selection. The older `verify-changed` shell target remains
+available as a compatibility/diagnostic command for direct package checks; it
+is not an additional dependency of the pre-push gate and must not be treated as
+a second source of truth for component ownership.
+
 ## Verification rules
 
 All gates fail closed. `verify-unit` covers Go unit packages and excludes
