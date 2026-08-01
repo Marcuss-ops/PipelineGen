@@ -29,12 +29,13 @@ type ResolvedGenerationPlan struct {
 	ID string `json:"id,omitempty"`
 
 	// ── Identity ──────────────────────────────────────────────────────
-	Title    string `json:"title"`
-	Topic    string `json:"topic"`
-	Language string `json:"language"`
-	Tone     string `json:"tone"`
-	Model    string `json:"model"`
-	Mode     string `json:"mode"` // "text", "clip_to_script", "batch"
+	Title     string    `json:"title"`
+	Topic     string    `json:"topic"`
+	Language  string    `json:"language"`
+	Tone      string    `json:"tone"`
+	Model     string    `json:"model"`
+	Mode      string    `json:"mode"` // "text", "clip_to_script", "batch"
+	MediaMode MediaMode `json:"media_mode,omitempty"`
 
 	// ── Source text ───────────────────────────────────────────────────
 	// SourceText is the canonical resolved text fed to the engine.

@@ -63,6 +63,10 @@ type GenerationItemV2 struct {
 	Style    string `json:"style,omitempty"`
 	Model    string `json:"model,omitempty"`
 
+	// MediaMode explicitly selects the media contract for this item.
+	// Mixed media is never inferred from the presence of references.
+	MediaMode MediaMode `json:"media_mode,omitempty"`
+
 	// ── Source ────────────────────────────────────────────────────────
 	// Source declares where the generation input comes from.
 	// Must have a valid Type and the corresponding fields populated.
