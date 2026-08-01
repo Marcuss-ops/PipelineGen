@@ -161,6 +161,20 @@ verify-main-stock: verify-fast verify-architecture
 		./internal/application/scripts/adapters/...
 	@echo "✅ verify-main-stock passed"
 
+# verify-main-clip — daily fast gate for Clip-focused changes.
+# Uses standard tests (not the full race gate) across the canonical Clip
+# domain/application/API packages, then applies the shared foundation and
+# architecture checks. Script clip-binding/source-resolution changes have
+# their own package-level tests and are intentionally excluded here when
+# their working tree is mid-refactor, so this gate stays independent from
+# uncommitted adapter decomposition.
+verify-main-clip: verify-fast verify-architecture
+	$(GO) test -count=1 \
+		./internal/domain/clips/... \
+		./internal/application/clips/... \
+		./internal/api/assets/clips/...
+	@echo "✅ verify-main-clip passed"
+
 # verify-release — pre-deploy gate: the complete headless gate plus the
 # slow ./tests/... integration suite, which may depend on external services
 # (Drive, Qdrant, scraper). Run before deploy, NOT on every routine push.
