@@ -228,7 +228,10 @@ func publishChunkPhase(
 			RootFolderResolved: in != nil && in.DriveFolderResolved,
 			PathLeafName:       leafName,
 		}
-		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
+		published, prepErr := prepareStockDriveArtifact(ctx, runner, va, map[string]any{
+			"assets_generated":        1,
+			"output_duration_seconds": cs.EndSec - cs.StartSec,
+		})
 		if prepErr != nil {
 			return nil, fmt.Errorf("%w: chunk %d (artifact=%s): %v",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, prepErr)
@@ -287,7 +290,9 @@ func publishChunkPhase(
 				RootFolderResolved: in != nil && in.DriveFolderResolved,
 				PathLeafName:       leafName,
 			}
-			if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
+			if _, clipMetaPrepErr := prepareStockDriveArtifact(ctx, runner, clipMetaVA, map[string]any{
+				"documents_created": 1,
+			}); clipMetaPrepErr != nil {
 				return nil, fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %w",
 					ErrStockPublishArtifactFailed, i, clipMetaArtifactID, clipMetaPrepErr)
 			}

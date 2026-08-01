@@ -95,7 +95,11 @@ func writeTimestampGroups(
 			RootFolderResolved: in != nil && in.DriveFolderResolved,
 			PathLeafName:       group.leafName,
 		}
-		if _, metaPrepErr := artifactPrep.Prepare(ctx, metaVA); metaPrepErr != nil {
+		_, metaPrepErr := prepareStockDriveArtifact(ctx, runner, metaVA, map[string]any{
+			"documents_created": 1,
+			"assets_generated":  1,
+		})
+		if metaPrepErr != nil {
 			return fmt.Errorf("%w: parent metadata upload for %s (artifact=%s): %w",
 				ErrStockPublishArtifactFailed, group.leafName, metaArtifactID, metaPrepErr)
 		}
