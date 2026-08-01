@@ -1,0 +1,70 @@
+{
+  "script": {
+    "paths": [
+      "internal/domain/script/",
+      "internal/application/scripts/",
+      "internal/api/script/"
+    ],
+    "go_packages": [
+      "./internal/domain/script/...",
+      "./internal/application/scripts/...",
+      "./internal/api/script/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "stock": {
+    "paths": [
+      "internal/application/assets/providers/stock/",
+      "internal/api/assets/stock/"
+    ],
+    "go_packages": [
+      "./internal/application/assets/providers/stock/...",
+      "./internal/api/assets/stock/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "clips": {
+    "paths": [
+      "internal/domain/clips/",
+      "internal/application/clips/",
+      "internal/api/assets/clips/"
+    ],
+    "go_packages": [
+      "./internal/domain/clips/...",
+      "./internal/application/clips/...",
+      "./internal/api/assets/clips/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "drive": {
+    "paths": [
+      "internal/domain/drive/",
+      "internal/infrastructure/drive/"
+    ],
+    "go_packages": [
+      "./internal/domain/drive/...",
+      "./internal/infrastructure/drive/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_enabled": true,
+    "live_tests": []
+  }
+}
