@@ -55,10 +55,11 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 // switch-case detection (godlike/06 SSOT co-located structural
 // validation: each handler encapsulates one SourceType's invariants).
 var validateSourceHandlers = map[scriptpkg.SourceType]func(src scriptpkg.SourceSpec, ref string) []string{
-	scriptpkg.SourceText:    validateSourceText,
-	scriptpkg.SourceClips:   validateSourceClips,
-	scriptpkg.SourceCatalog: validateSourceCatalogOrSearch,
-	scriptpkg.SourceSearch:  validateSourceCatalogOrSearch,
+	scriptpkg.SourceText:     validateSourceText,
+	scriptpkg.SourceClips:    validateSourceClips,
+	scriptpkg.SourceCatalog:  validateSourceCatalogOrSearch,
+	scriptpkg.SourceSearch:   validateSourceCatalogOrSearch,
+	scriptpkg.SourceResearch: validateSourceResearch,
 	// SourceCurate: handler-less; the resolver validates at runtime.
 }
 
@@ -87,6 +88,13 @@ func validateSourceCatalogOrSearch(src scriptpkg.SourceSpec, ref string) []strin
 		d = append(d, ref+": "+string(src.Type)+" source requires max_clips > 0")
 	}
 	return d
+}
+
+func validateSourceResearch(src scriptpkg.SourceSpec, ref string) []string {
+	if strings.TrimSpace(src.Topic) == "" && strings.TrimSpace(src.Query) == "" {
+		return []string{ref + ": research source requires topic or query"}
+	}
+	return nil
 }
 
 func validateSource(src scriptpkg.SourceSpec, ref string) []string {

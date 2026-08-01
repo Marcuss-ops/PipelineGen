@@ -32,4 +32,5 @@ type ResolvedSource struct {
 	SearchResults   []SearchResultItem `json:"search_results,omitempty"`
 	GroundingPolicy string             `json:"grounding_policy,omitempty"`
 	Fingerprint     string             `json:"fingerprint,omitempty"`
+	ResearchReport  *ResearchReport    `json:"research_report,omitempty"`
 }

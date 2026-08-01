@@ -71,7 +71,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			}
 		}
 
-		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) {
+		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) && item.Source.Type != SourceResearch {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{
@@ -79,7 +79,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
-		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips {
+		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips && item.Source.Type != SourceResearch {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{

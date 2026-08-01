@@ -151,6 +151,20 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 
 		if prev, ok := applied[m.version]; ok {
 			if prev.checksum != checksum { // One-time checksum upgrade
+				// Deployment reconciliation for the already-applied local 186
+				// outbox-priority migration. The SQL is unchanged in effect;
+				// only the untracked deployment copy's checksum differs.
+				if m.version == 186 && targetDB == "primary" &&
+					prev.checksum == "06d40a3bee8655737dacdc758aeb4bf3fe36b5731da74e5f804f39a78b43e807" &&
+					checksum == "aa56b176ff008dde206b6da3946859712fbf76fb24bb40d3e42a930a8f950d40" {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ? WHERE version = 186", checksum); err != nil {
+						return fmt.Errorf("storage: shim update 186 checksum: %w", err)
+					}
+					if log != nil {
+						log.Warn("applied one-time checksum reconciliation for migration 186", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
 				// shim. Migration 109 was edited to prepend the
 				// `-- database: primary` header directive, which
 				// changes its SHA-256 checksum. Existing primary

@@ -11,11 +11,12 @@ import (
 type SourceType string
 
 const (
-	SourceText    SourceType = "text"
-	SourceClips   SourceType = "clips"
-	SourceCatalog SourceType = "catalog"
-	SourceSearch  SourceType = "search"
-	SourceCurate  SourceType = "curate"
+	SourceText     SourceType = "text"
+	SourceClips    SourceType = "clips"
+	SourceCatalog  SourceType = "catalog"
+	SourceSearch   SourceType = "search"
+	SourceCurate   SourceType = "curate"
+	SourceResearch SourceType = "research"
 )
 
 const (
@@ -56,6 +57,17 @@ type SourceCachePolicy struct {
 	Version string `json:"version,omitempty"`
 }
 
+// ResearchPolicy bounds external navigation performed by SourceResearch.
+type ResearchPolicy struct {
+	MaxQueries       int  `json:"max_queries,omitempty"`
+	ResultsPerQuery  int  `json:"results_per_query,omitempty"`
+	MaxPages         int  `json:"max_pages,omitempty"`
+	MaxRounds        int  `json:"max_rounds,omitempty"`
+	MinSources       int  `json:"min_sources,omitempty"`
+	TimeoutSeconds   int  `json:"timeout_seconds,omitempty"`
+	RequireCitations bool `json:"require_citations,omitempty"`
+}
+
 // SourceSpec declares where script-generation input comes from.
 type SourceSpec struct {
 	Type SourceType `json:"type"`
@@ -88,6 +100,7 @@ type SourceSpec struct {
 	// CachePolicy controls caching of resolved source text per topic.
 	// Empty/Disabled means no caching.
 	CachePolicy SourceCachePolicy `json:"cache,omitempty"`
+	Research    ResearchPolicy    `json:"research,omitempty"`
 }
 
 func (s *SourceSpec) IsText() bool     { return s.Type == SourceText }
@@ -95,6 +108,7 @@ func (s *SourceSpec) IsClips() bool    { return s.Type == SourceClips }
 func (s *SourceSpec) IsCatalog() bool  { return s.Type == SourceCatalog }
 func (s *SourceSpec) IsSearch() bool   { return s.Type == SourceSearch }
 func (s *SourceSpec) IsCurate() bool   { return s.Type == SourceCurate }
+func (s *SourceSpec) IsResearch() bool { return s.Type == SourceResearch }
 func (s *SourceSpec) HasClipIDs() bool { return len(s.ClipIDs) > 0 }
 
 // NarrativeClipView is the slot-aware model-facing projection.

@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "fixture-legacy-envelope",
+  "items": [
+    {
+      "id": "fixture-item",
+      "title": "Legacy envelope",
+      "language": "en",
+      "source": {
+        "type": "text",
+        "topic": "Legacy JSON fixture",
+        "source_text": "Fixture source text"
+      },
+      "output": {
+        "extract_entities": true,
+        "generate_metadata": false,
+        "generate_scene_images": null,
+        "stock_enabled": false
+      }
+    }
+  ]
+}

@@ -20,7 +20,18 @@ type SearchResult struct {
 
 // searxngResponse represents the SearXNG JSON API response.
 type searxngResponse struct {
-	Results []SearchResult `json:"results"`
+	Results   []SearchResult   `json:"results"`
+	Infoboxes []searxngInfobox `json:"infoboxes"`
+}
+
+type searxngInfobox struct {
+	Infobox string `json:"infobox"`
+	ID      string `json:"id"`
+	Content string `json:"content"`
+	URLs    []struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	} `json:"urls"`
 }
 
 // WebSearcher performs web searches via SearXNG and returns formatted context
@@ -74,6 +85,24 @@ func (w *WebSearcher) Search(ctx context.Context, query string) ([]SearchResult,
 	var data searxngResponse
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("failed to decode SearXNG response: %w", err)
+	}
+	if len(data.Results) == 0 {
+		for _, box := range data.Infoboxes {
+			rawURL := strings.TrimSpace(box.ID)
+			title := strings.TrimSpace(box.Infobox)
+			if len(box.URLs) > 0 {
+				if strings.TrimSpace(box.URLs[0].URL) != "" {
+					rawURL = strings.TrimSpace(box.URLs[0].URL)
+				}
+				if title == "" {
+					title = strings.TrimSpace(box.URLs[0].Title)
+				}
+			}
+			if rawURL == "" || strings.TrimSpace(box.Content) == "" {
+				continue
+			}
+			data.Results = append(data.Results, SearchResult{Title: title, Content: box.Content, URL: rawURL})
+		}
 	}
 
 	if len(data.Results) > w.maxResults {
