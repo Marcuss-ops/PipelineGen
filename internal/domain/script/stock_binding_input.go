@@ -9,8 +9,9 @@ type StockBindingInput struct {
 	Name      string  `json:"name,omitempty"`
 	Source    string  `json:"source,omitempty"`
 	DriveLink string  `json:"drive_link,omitempty"`
+	FolderID  string  `json:"folder_id,omitempty"`
 	Score     float64 `json:"score,omitempty"`
-	Fallback  bool    `json:"fallback,omitempty"`
+	Fallback  bool    `json:"fallback"`
 	StartMs   int64   `json:"start_ms,omitempty"`
 	EndMs     int64   `json:"end_ms,omitempty"`
 }

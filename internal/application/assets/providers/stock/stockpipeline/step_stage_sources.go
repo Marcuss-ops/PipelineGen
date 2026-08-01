@@ -101,20 +101,17 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	// (orchestrator.go::RunResilient), fired after ALL steps complete.
 
 	for _, plan := range plans {
+		// Stage the complete source once. In sections_only mode the clip
+		// timestamps are cut locally by stock.extract_clips; using StageKey
+		// or DownloadSection here would create a distinct cache key per
+		// clip and invoke yt-dlp repeatedly for the same YouTube video.
 		stageKey := plan.SourceID
-		if in := runner.RunInput(); in != nil && in.DownloadMode == "sections_only" {
-			stageKey = plan.StageKey
-		}
 		if seen[stageKey] {
 			continue
 		}
 		seen[stageKey] = true
 
 		ref := assets.SourceRef{URL: stagingSourceURL(plan)}
-		if runner.RunInput() != nil && runner.RunInput().DownloadMode == "sections_only" {
-			ref.DownloadSection = fmt.Sprintf("*%s-%s", formatDuration(plan.StartSec), formatDuration(plan.EndSec))
-			ref.MergeFormat = "mp4"
-		}
 		sa, stageErr := stager.StageSource(ctx, ref)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
@@ -138,8 +135,8 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 			}
 			continue
 		}
-		// Phase 1 (July 2026): stamp the SourceID on the StagedAsset
-		// so downstream steps can map ClipPlan.SourceID → LocalPath.
+		// Stamp the original SourceID on the staged asset so downstream
+		// extraction can map every clip plan for this video to one file.
 		sa.SourceID = stageKey
 		staged = append(staged, sa)
 		// Publish immediately to the shared RunState so the
@@ -196,6 +193,16 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 // the acquisition stager. The stager rejects query-string variants
 // such as `...?pp=...`; the stock pipeline keeps the original SourceID
 // for downstream grouping, but downloads use the canonical watch URL.
+func countUniquePlanSources(plans []ClipPlan) int {
+	seen := make(map[string]struct{}, len(plans))
+	for _, plan := range plans {
+		if plan.SourceID != "" {
+			seen[plan.SourceID] = struct{}{}
+		}
+	}
+	return len(seen)
+}
+
 func stagingSourceURL(plan ClipPlan) string {
 	raw := strings.TrimSpace(plan.SourceID)
 	if raw == "" {

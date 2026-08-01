@@ -43,9 +43,17 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	searchText += fmt.Sprintf(" start_sec: %.0f", plan.StartSec)
 	searchText += fmt.Sprintf(" end_sec: %.0f", plan.EndSec)
 
+	provider := plan.SourceProvider
+	if provider == "" {
+		provider = "stock"
+	}
 	a := &asset.Asset{
-		ID:         plan.OutputLogicalID,
-		Source:     asset.Source("stock"),
+		ID: plan.OutputLogicalID,
+		// Preserve the provider identity of the source URL. YouTube stock
+		// acquisitions are consumed by the canonical YouTube asset resolver;
+		// labelling them only as "stock" loses source_video_id and makes the
+		// resulting row unusable for subject/role validation.
+		Source:     asset.Source(provider),
 		Name:       name,
 		Filename:   filename,
 		Category:   plan.Category,
@@ -76,6 +84,15 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	// godlike/06 SSOT: both sha256 and file_hash keys for
 	// downstream consumers that probe either key.
 	a.SetMetadataString("sha256", hash)
+	if plan.SourceProvider != "" {
+		a.SetMetadataString("source_provider", plan.SourceProvider)
+	}
+	if plan.SourceVideoID != "" {
+		a.SetMetadataString("source_video_id", plan.SourceVideoID)
+	}
+	if plan.SourceID != "" {
+		a.SetMetadataString("source_url", plan.SourceID)
+	}
 
 	return a
 }

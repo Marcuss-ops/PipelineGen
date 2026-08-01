@@ -98,7 +98,15 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 // codec/preset/crf allow using hardware encoders (e.g. h264_nvenc); pass "" for defaults.
 func (p *Processor) CutReencode(ctx context.Context, input, output, start, end string, noAudio bool, codec string, preset string, crf int) error {
 	canonical := canonicalClipProfile()
-	codec, preset, crf = canonical.Codec, canonical.Preset, canonical.CRF
+	if codec == "" {
+		codec = canonical.Codec
+	}
+	if preset == "" {
+		preset = canonical.Preset
+	}
+	if crf <= 0 {
+		crf = canonical.CRF
+	}
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
@@ -230,7 +238,15 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 		return nil
 	}
 	canonical := canonicalClipProfile()
-	codec, preset, crf = canonical.Codec, canonical.Preset, canonical.CRF
+	if codec == "" {
+		codec = canonical.Codec
+	}
+	if preset == "" {
+		preset = canonical.Preset
+	}
+	if crf <= 0 {
+		crf = canonical.CRF
+	}
 
 	if len(jobs) == 1 {
 		return p.cutReencodeSingle(ctx, input, jobs[0].Output,

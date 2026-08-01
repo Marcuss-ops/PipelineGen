@@ -226,12 +226,18 @@ func (a *ArtifactPublisherAdapter) Publish(
 func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subject, provider string) {
 	// When the stock orchestrator already resolved the root folder
 	// (run_orchestratorResilient created the folder_name subfolder),
-	// return empty segments so clips land directly in the resolved
-	// folder. Without this, stockRootFolderName + stockTimestampGroupName
-	// both return folder_name, causing double nesting and extra
-	// subfolders under the already-resolved root.
+	// preserve semantic group/subject values for the delivery mapper.
+	// The resolved destination ID still pins the physical location, so
+	// these values are validation metadata and do not create another
+	// Drive path. Returning empty values here makes the canonical mapper
+	// reject the run-level metadata artifact before publication.
 	if artifact.RootFolderResolved {
-		return "", "", ""
+		group := strings.TrimSpace(artifact.RootFolderName)
+		subject := stockFolderLeafName(artifact.PathLeafName)
+		if subject == "" {
+			subject = stockFolderLeafName(artifact.Filename)
+		}
+		return group, subject, "youtube"
 	}
 	parts := strings.Split(artifact.ArtifactID, ":")
 	group = stockRunFolderName(artifact.RootFolderName)

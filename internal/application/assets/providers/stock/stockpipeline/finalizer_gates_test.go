@@ -418,10 +418,10 @@ func TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip(t *testi
 		t.Fatalf("artifacts count=%d, want 2 (1 metadata + 1 chunk)", len(req.Artifacts))
 	}
 
-	// ── Assert Source='stock' on BOTH artifacts ────────────────────
+	// ── Assert the provider source on BOTH artifacts ────────────────
 	for i, a := range req.Artifacts {
-		if a.Source != "stock" {
-			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "stock")
+		if a.Source != "youtube" {
+			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "youtube")
 		}
 	}
 

@@ -70,8 +70,10 @@ type jobRunnerDeps struct {
 // fallback. 0 or negative cfg values map to 1 worker — the pre-PR4.8
 // inline behaviour.
 func workerDefault(cfg *config.Config) int {
-	if cfg == nil || cfg.Jobs.MaxParallelPerProject <= 0 {
-		return 1
+	if cfg == nil || cfg.Jobs.MaxParallelPerProject < 4 {
+		// Stock acquisition is I/O- and GPU-bound; a single worker silently
+		// serialized every media.stock job despite bounded client parallelism.
+		return 4
 	}
 	return cfg.Jobs.MaxParallelPerProject
 }

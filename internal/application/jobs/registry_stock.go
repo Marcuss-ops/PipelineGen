@@ -20,7 +20,7 @@ func registerStockEntries(r *Registry) {
 	// (UpdateJobToSucceededCAS + InsertResultOnConflict + PersistArtifactMap +
 	// InsertOutboxEnvelope per Pattern 11 in AGENTS.md). The spine call IS the
 	// terminal-flip seam for this job type — NOT the legacy SQLiteStore.Complete.
-	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, Concurrency: 4, ProducesArtifacts: true})
 	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
 	// TypeMediaGenerate is an orphaned registry entry — no production handler
 	// is statically registered.

@@ -55,6 +55,13 @@ func BuildFinalizationRequest(
 	}
 
 	arts := make([]finalization.PublishedArtifact, 0, 1+len(chunks))
+	sourceProvider := "stock"
+	for _, c := range chunks {
+		if c.SourceProvider != "" {
+			sourceProvider = c.SourceProvider
+			break
+		}
+	}
 
 	// (1) Metadata artifact (always present, Required:true).
 	metaIdemKey, errMeta := asset.SHA256IdempotencyKey("stock", metadata.SHA256)
@@ -84,7 +91,7 @@ func BuildFinalizationRequest(
 			FolderPath:   "",
 			Action:       finalization.PublishCreated,
 		},
-		Source: "stock",
+		Source: sourceProvider,
 	})
 
 	// (2) Chunk artifacts (one per ChunkState, Required:true).
@@ -140,6 +147,10 @@ func BuildFinalizationRequest(
 			chunkMeta["slug"] = c.Slug
 		}
 
+		chunkSource := c.SourceProvider
+		if chunkSource == "" {
+			chunkSource = "stock"
+		}
 		arts = append(arts, finalization.PublishedArtifact{
 			ArtifactID:       c.ArtifactID,
 			Kind:             finalization.KindVideo,
@@ -152,7 +163,7 @@ func BuildFinalizationRequest(
 			IdempotencyKey:   chunkIdemKey,
 			Description:      c.Description,
 			ArtifactMetadata: chunkMeta,
-			Source:           "stock",
+			Source:           chunkSource,
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,

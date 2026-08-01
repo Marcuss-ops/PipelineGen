@@ -63,10 +63,11 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 			return nil, fmt.Errorf("%w: stock binding index %d requires end_ms > start_ms", scriptpkg.ErrPostprocessFailed, in.Index)
 		}
 		scene.Bindings.Stock = &scriptpkg.StockBinding{
-			AssetID: in.AssetID, Name: in.Name, Source: in.Source,
-			DriveLink: in.DriveLink, Score: in.Score, Fallback: in.Fallback,
+			AssetID: strings.TrimSpace(in.AssetID), Name: in.Name, Source: in.Source,
+			DriveLink: strings.TrimSpace(in.DriveLink), FolderID: strings.TrimSpace(in.FolderID), Score: in.Score, Fallback: in.Fallback,
 			StartMs: in.StartMs, EndMs: in.EndMs, DurationMs: in.EndMs - in.StartMs,
 		}
+		scene.Kind = scriptpkg.SceneStock
 	}
 	return &PostProcessResult{Changed: true, UpdatedSpecScene: input.SpecScene}, nil
 }

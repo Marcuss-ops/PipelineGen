@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -40,6 +39,7 @@ func (StockExtractClipsStep) Name() string { return StepKeyStockExtractClips }
 
 func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	cutter := runner.Cutter()
+
 	plans := runner.State().Plan
 
 	if runner.Log() != nil {
@@ -77,13 +77,10 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	}
 
 	in := runner.RunInput()
-	// In sections_only mode each plan has its own staged file. The original
-	// source URL remains on the plan for provenance; StageKey selects the
-	// section-local file used by the cutter.
+	// Staging is source-scoped even in sections_only mode. The source file
+	// is downloaded once; each plan keeps its original timestamps for the
+	// local cutter below.
 	grouped := groupPlans(plans)
-	if in != nil && in.DownloadMode == "sections_only" {
-		grouped = groupPlansByStageKey(plans)
-	}
 	noAudio := in != nil && in.NoAudio
 	batchID := runner.JobID()
 	rootFolderName := stockRootFolderName(in)
@@ -114,10 +111,6 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 			continue
 		}
 		sourcePath := staged.LocalPath
-		// In sections_only mode sourceID is the section-local staging key.
-		// Durable batch/artifact identity must remain tied to the original
-		// source URL, otherwise extraction creates rows under the staging key
-		// and publication looks them up under the source URL.
 		durableSourceID := durableSourceIDForGroup(sourceID, groupPlans)
 
 		// Fase 2 durable state: batch/group/artifact rows.
@@ -129,15 +122,6 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 
 		// Pre-cut duration validation.
 		cutPlans := groupPlans
-		if in != nil && in.DownloadMode == "sections_only" {
-			cutPlans = make([]ClipPlan, len(groupPlans))
-			copy(cutPlans, groupPlans)
-			for i := range cutPlans {
-				d := cutPlans[i].EndSec - cutPlans[i].StartSec
-				cutPlans[i].StartSec = 0
-				cutPlans[i].EndSec = d
-			}
-		}
 		sourceDuration, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, cutPlans)
 		if validationErr != nil {
 			return validationErr
@@ -222,18 +206,6 @@ func durableSourceIDForGroup(stageKey string, plans []ClipPlan) string {
 	return stageKey
 }
 
-func groupPlansByStageKey(plans []ClipPlan) map[string][]ClipPlan {
-	grouped := make(map[string][]ClipPlan)
-	for _, plan := range plans {
-		key := plan.StageKey
-		if key == "" {
-			key = plan.SourceID
-		}
-		grouped[key] = append(grouped[key], plan)
-	}
-	return grouped
-}
-
 // groupPlans groups ClipPlan entries by SourceID.
 func groupPlans(plans []ClipPlan) map[string][]ClipPlan {
 	grouped := make(map[string][]ClipPlan)
@@ -242,5 +214,3 @@ func groupPlans(plans []ClipPlan) map[string][]ClipPlan {
 	}
 	return grouped
 }
-
-var _ = time.Time{} // pin import

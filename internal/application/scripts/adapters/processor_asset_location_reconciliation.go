@@ -183,11 +183,22 @@ func (p *AssetLocationReconciliationProcessor) Process(
 
 		// ── Stock binding ───────────────────────────────────
 		if bindings.Stock != nil {
-			if link := strings.TrimSpace(bindings.Stock.DriveLink); link != "" {
-				assetID := bindings.Stock.AssetID
+			assetID := strings.TrimSpace(bindings.Stock.AssetID)
+			link := strings.TrimSpace(bindings.Stock.DriveLink)
+			// Direct YouTube stock bindings may carry the canonical Drive
+			// file ID as asset_id while drive_link is absent or malformed.
+			// Resolve that ID through the same verifier and let Drive return
+			// the canonical webViewLink; never publish the raw ID as a URL.
+			fileID := ""
+			if link == "" || link == assetID {
+				fileID = assetID
+				if link == assetID {
+					link = ""
+				}
+			}
+			if link != "" || fileID != "" {
 				result, err := p.verifyAndReconcile(
-					ctx, assetID,
-					"", link,
+					ctx, assetID, fileID, link,
 					&bindings.Stock.DriveLink,
 					"stock", scene.ID,
 				)
