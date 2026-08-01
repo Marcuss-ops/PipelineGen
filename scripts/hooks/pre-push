@@ -29,6 +29,10 @@
 #     normal pre-push runs. SKIP_FORMAT is a one-off diagnostic only;
 #     a green verify-main with SKIP_FORMAT=1 is NOT a proxy for a
 #     green CI signal (CI does not pass that flag).
+#   - Work directly on `main`. This hook rejects pushes initiated from
+#     another local branch or a detached HEAD; routine repository work
+#     does not use feature branches or pull requests. See
+#     docs/operations/component-verification.md.
 #
 # Why a hook (not just operator discipline): the AGENTS.md rule is
 # trivially bypassed by --no-verify on the operator CLI, by a shell
@@ -112,6 +116,36 @@
 
 set -euo pipefail
 
+# Routine repository work is intentionally performed directly on main.
+# Reject branch-based workflows before spending time on verification.
+if ! CURRENT_BRANCH=$(git symbolic-ref --quiet --short HEAD); then
+    echo "❌ pre-push blocked: HEAD is detached; expected branch 'main'." >&2
+    echo "   Work directly on main; do not create or push feature branches." >&2
+    echo "   See docs/operations/component-verification.md." >&2
+    exit 1
+fi
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+    echo "❌ pre-push blocked: current branch is '${CURRENT_BRANCH:-DETACHED}', expected 'main'." >&2
+    echo "   Work directly on main; do not create or push feature branches." >&2
+    echo "   See docs/operations/component-verification.md." >&2
+    exit 1
+fi
+
+# Git supplies one line per pushed ref on stdin:
+#   local_ref local_sha remote_ref remote_sha
+# Routine work may push tags, but it must never publish a branch other than
+# refs/heads/main. This protects the no-feature-branches rule even when the
+# local checkout is correctly on main (for example: `git push origin main:tmp`).
+while IFS=$' \t' read -r _LOCAL_REF _LOCAL_SHA REMOTE_REF _REMOTE_SHA; do
+    [[ -z "$REMOTE_REF" ]] && continue
+    if [[ "$REMOTE_REF" == refs/heads/* && "$REMOTE_REF" != refs/heads/main ]]; then
+        echo "❌ pre-push blocked: remote branch '$REMOTE_REF' is not allowed." >&2
+        echo "   Push only refs/heads/main; do not publish feature branches." >&2
+        echo "   See docs/operations/component-verification.md." >&2
+        exit 1
+    fi
+done
+
 # Calculate fingerprint
 FINGERPRINT=$(bash scripts/ci/get-fingerprint.sh)
 CACHE_DIR=".cache/verify"
@@ -128,6 +162,8 @@ echo
 
 if [ -f "$CACHE_FILE" ]; then
     echo "✅ Identical source fingerprint already verified. Proceeding with push."
+    echo "   report: artifacts/verify/latest.json"
+    echo "   changed-components report: artifacts/verify/changed-components.json"
     exit 0
 fi
 
@@ -138,11 +174,15 @@ if make verify-main; then
     touch "$CACHE_FILE"
     echo
     echo "✅ verify-main passed — proceeding with push."
+    echo "   report: artifacts/verify/latest.json"
+    echo "   changed-components report: artifacts/verify/changed-components.json"
     exit 0
 else
     rc=$?
     echo
     echo "❌ verify-main FAILED (exit $rc) — push BLOCKED."
+    echo "   Inspect: artifacts/verify/latest.json"
+    echo "   Changed components: artifacts/verify/changed-components.json"
     echo
     echo "   Fix the failing step and retry. Diagnostic bypass (gofmt only):"
     echo "     SKIP_FORMAT=1 make verify-main"
