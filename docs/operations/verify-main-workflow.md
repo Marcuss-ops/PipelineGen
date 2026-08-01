@@ -10,8 +10,8 @@ The four requested gates form one explicit escalation chain:
 
 | Gate | Composition | Purpose | External/live services |
 |---|---|---|---|
-| `make verify-main` | `verify-push + verify-node-native + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
-| `make verify-race` | `verify-unit-race` | Explicit race-detector Go gate with bounded unit concurrency | None; headless |
+| `make verify-main` | `foundation + static + unit-fast + changed-components + verify-node-native + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
+| `make verify-race` | `foundation + verify-unit-race + all registered components (race)` | Explicit race-detector gate | None; headless |
 | `make verify-full` | `verify-main + verify-race + verify-node-tests` | Complete headless gate | None; headless |
 | `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive/Qdrant battery |
 
@@ -27,11 +27,11 @@ explicit heavier gates and are not implicit dependencies of `verify-main`.
   executed once per aggregate Make invocation. It intentionally excludes the
   complete race suite and full Node test suite so it remains suitable for
   routine pushes.
-- `make verify-main-stock`: `verify-fast`, standard targeted tests for the
-  Stock pipeline/API/script adapters, and architecture checks. Use it for
+- `make verify-main-stock`: foundation, static analysis, standard targeted
+  tests for the Stock pipeline/API/script adapters, and architecture checks. Use it for
   Stock-focused changes without running the full project unit suite.
-- `make verify-main-clip`: `verify-fast`, standard targeted tests for the
-  canonical Clip domain/application/API packages, and architecture checks.
+- `make verify-main-clip`: foundation, static analysis, standard targeted
+  tests for the canonical Clip domain/application/API packages, and architecture checks.
   Use it for Clip-focused changes without running the full project unit suite
   or depending on an unrelated in-progress adapter decomposition.
 - `make verify-race`: explicit race-tested Go packages plus all registered

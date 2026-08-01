@@ -54,6 +54,30 @@ class VerifyComponentTests(unittest.TestCase):
             },
         }
 
+    def test_all_flag_executes_every_registry_component(self) -> None:
+        registry = self.registry()
+        with tempfile.TemporaryDirectory() as directory:
+            registry_path = Path(directory) / "registry.json"
+            report_path = Path(directory) / "report.json"
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
+            code = verify_component.main([
+                "--all",
+                "--dry-run",
+                "--registry",
+                str(registry_path),
+                "--report",
+                str(report_path),
+            ])
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(code, 0)
+        self.assertEqual(report["resolved_components"], ["base", "child"])
+        self.assertEqual(report["final"], "PASS")
+
+    def test_all_flag_is_supported_without_positional_components(self) -> None:
+        args = verify_component.parse_args(["--all", "--dry-run"])
+        self.assertTrue(args.all)
+        self.assertEqual(args.components, [])
+
     def test_resolves_dependencies_once_in_stable_order(self) -> None:
         registry = self.registry()
         self.assertEqual(

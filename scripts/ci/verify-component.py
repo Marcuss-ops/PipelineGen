@@ -10,6 +10,7 @@ Examples:
     python3 scripts/ci/verify-component.py stock
     python3 scripts/ci/verify-component.py clips --race
     python3 scripts/ci/verify-component.py stock clips --dry-run
+    python3 scripts/ci/verify-component.py --all --dry-run
 
 The default mode is ``fast``.  ``--race`` adds ``-race`` to Go tests only when
 the component opts in with ``race_enabled``.  Live tests are never executed by
@@ -523,7 +524,12 @@ def run_components(
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("components", nargs="+", help="registered component names")
+    parser.add_argument("components", nargs="*", help="registered component names")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="verify every component declared in the registry",
+    )
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY, help="component registry JSON")
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT, help="JSON report destination")
     parser.add_argument("--repo-root", type=Path, default=None, help="working tree used for commands")
@@ -546,9 +552,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     repo_root = args.repo_root or Path.cwd()
     try:
         registry = load_registry(registry_path)
+        requested = list(registry) if args.all else args.components
+        if not requested:
+            raise RegistryError("provide component names or use --all")
         report, exit_code = run_components(
             registry,
-            args.components,
+            requested,
             mode=mode,
             repo_root=repo_root,
             report_path=report_path,

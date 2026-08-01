@@ -7,6 +7,17 @@
 PYTHON ?= python3
 VERIFY_COMPONENT_RUNNER ?= $(PYTHON) scripts/ci/verify-component.py
 VERIFY_COMPONENT_FLAGS ?=
+VERIFY_CHANGED_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-changed-components.py
+VERIFY_CHANGED_COMPONENTS_FLAGS ?=
+
+verify-changed-components:
+	@$(VERIFY_CHANGED_COMPONENTS_RUNNER) $(VERIFY_CHANGED_COMPONENTS_FLAGS)
+
+verify-components:
+	@$(VERIFY_COMPONENT_RUNNER) --all $(VERIFY_COMPONENT_FLAGS)
+
+verify-race-components:
+	@$(VERIFY_COMPONENT_RUNNER) --all --race $(VERIFY_COMPONENT_FLAGS)
 
 verify-script:
 	@$(VERIFY_COMPONENT_RUNNER) script $(VERIFY_COMPONENT_FLAGS)

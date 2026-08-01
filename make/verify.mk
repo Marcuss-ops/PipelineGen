@@ -70,28 +70,31 @@ verify-dev: verify-foundation verify-static
 verify-changed:
 	@GO="$(GO)" bash scripts/ci/verify-changed.sh
 
-verify-push: verify-fast verify-unit-fast verify-changed
+# verify-push — daily foundation/static/unit gate plus registry-driven
+# verification of only the components impacted by the current Git changes.
+# Component targets never depend on verify-fast; foundation is a direct shared
+# prerequisite and GNU Make executes it once per aggregate invocation.
+verify-push: verify-foundation verify-static verify-unit-fast verify-changed-components
 	@echo "✅ verify-push passed"
 
 verify-unit-race: verify-unit
 
-# verify-main — canonical daily fail-closed gate.
-# Keep this gate headless and bounded for routine commits: standard Go unit
-# tests, the native Node binding probe, and architecture checks. The complete
-# race suite and npm test suite are explicit heavier gates below, rather than
-# being repeated on every verify-main run.
+# verify-main — canonical daily fail-closed headless gate. The push tier
+# owns foundation, static analysis, standard units, and changed components;
+# this tier adds the native Node probe and architecture checks. It does not
+# pull the full race suite or npm test suite.
 verify-main: verify-push verify-node-native verify-architecture
 	@echo "✅ verify-main passed"
 
-# verify-race — explicit race-detector gate. Kept separate from verify-main
-# so CPU-only development and routine pushes do not pay the full race-suite
-# cost. verify-unit-race retains the existing per-area race-tested coverage.
-verify-race: verify-unit-race
+# verify-race — explicit race-detector gate. Foundation runs as a shared
+# prerequisite once, while unit and registry component suites use their
+# race-enabled commands. It is independent of verify-main for direct use.
+verify-race: verify-foundation verify-unit-race verify-race-components
 	@echo "✅ verify-race passed"
 
-# verify-full — complete headless gate: the daily gate plus race-tested Go
-# packages and the full node-scraper test suite. Release verification adds
-# integration tests on top of this target.
+# verify-full — complete headless gate: verify-main, the explicit race gate,
+# and the full Node test suite. Shared prerequisites such as foundation are
+# deduplicated by GNU Make within this aggregate invocation.
 verify-full: verify-main verify-race verify-node-tests
 	@echo "✅ verify-full passed"
 
@@ -154,7 +157,7 @@ verify-images:
 # Stock API, and script binding adapters, then applies the shared foundation
 # and architecture checks. The existing verify-stock target remains the
 # explicit race-tested Stock gate.
-verify-main-stock: verify-fast verify-architecture
+verify-main-stock: verify-foundation verify-static verify-architecture
 	$(GO) test -count=1 \
 		./internal/application/assets/providers/stock/stockpipeline/... \
 		./internal/api/assets/stock/... \
@@ -168,7 +171,7 @@ verify-main-stock: verify-fast verify-architecture
 # their own package-level tests and are intentionally excluded here when
 # their working tree is mid-refactor, so this gate stays independent from
 # uncommitted adapter decomposition.
-verify-main-clip: verify-fast verify-architecture
+verify-main-clip: verify-foundation verify-static verify-architecture
 	$(GO) test -count=1 \
 		./internal/domain/clips/... \
 		./internal/application/clips/... \

@@ -7,7 +7,7 @@
 # naturally via Make's recursive target resolution.
 # Root Makefile contains include make/*.mk plus all: build.
 
-#   verify-<area>          Go unit tests for the area (HEADLESS, part of verify-main)
+#   verify-<area>          Registered component checks (HEADLESS, part of verify-main/full)
 #   verify-<area>-live     Operational battery for the area (BROWSER+DRIVE+QDRANT,
 #                          NOT part of verify-main — run only post-deploy)
 # Examples: verify-images (Go tests) vs verify-images-live (images_e2e.sh battery).
