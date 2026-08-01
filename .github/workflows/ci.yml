@@ -41,13 +41,11 @@ jobs:
           cache-dependency-path: node-scraper/package-lock.json
 
       - name: Run `make verify-main` (fail-closed)
-        # Mirror the local-mirror contract: same command, same chain,
-        # same fail-closed semantics. The Makefile's `verify-main`
-        # target chains gofmt + go vet + go test + go build + the
-        # aggregate + archcheck + ci-architectural-checks in ONE shell
-        # invocation via \-continuation + `&&`. The first failing step
-        # aborts the chain and its stdout goes verbatim into the GH
-        # Actions step log; re-running locally shows the same output.
+        # Mirror the local-mirror contract: the Makefile owns the graph
+        # (`verify-push + verify-node-native + verify-architecture`) and
+        # fail-closed behavior. The first failing prerequisite aborts this
+        # step; re-running `make verify-main` locally reproduces the same
+        # target composition.
         run: make verify-main
 
   build:
@@ -131,9 +129,9 @@ jobs:
           exit 1
         fi
 
-    # The race-tested unit gate is owned by the explicit verify-race and
-    # verify-full jobs above. This job keeps only the supplemental coverage
-    # threshold after the canonical gates pass.
+    # The race-tested unit gate is owned by the explicit manual
+    # verify-race/verify-full workflows. This push/PR job keeps only the
+    # supplemental coverage threshold after verify-main passes.
     - name: Run Coverage Check
       run: make coverage-check
 
