@@ -13,8 +13,8 @@
 # BLOCKS the push atomically. DO NOT bypass via git push --no-verify
 # on NORMAL pushes (canonical exception: CI emergencies only, paired
 # with a fixup! commit plus git rebase --autosquash once the red gate is
-# fixed). The split-refactor keeps this contract on the fast verify-main
-# gate while exposing heavier checks through verify-race and verify-full.
+# fixed). The split-refactor keeps this contract on the registry-driven
+# verify-main gate while exposing heavier checks through verify-race and verify-full.
 
 # Consolidated .PHONY declaration for the make/*.mk split. Declaring
 # every public target up-front prevents a stray file in cwd named `build`,
@@ -27,7 +27,7 @@
 	go-version-guard go-version-check node-version-check build clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
-	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-unit-race verify-race verify-full \
+	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
 	verify-images verify-script verify-stock verify-clips verify-drive verify-main verify-main-stock verify-main-clip verify-release \
 	regen-routes-yaml archcheck-strict \
@@ -75,19 +75,21 @@ help:
 	@echo "  make fmt              go fmt ./..."
 	@echo "  make vet              go vet ./..."
 	@echo ""
-	@echo "VERIFY (gate chain; verify-fast first, then verify-main pre-push)"
+	@echo "VERIFY (registry-driven gate chain; foundation once per aggregate)"
 	@echo "  make verify-fast      Foundation (toolchain + secrets + format + tidy) + static (vet + build)"
-	@echo "  make verify-main      Daily headless gate: standard unit + native Node + architecture"
+	@echo "  make verify-main      Daily headless gate: changed components + unit + Node + architecture"
 	@echo "  make verify-main-stock  Fast Stock gate: targeted tests + architecture"
 	@echo "  make verify-main-clip   Fast Clip gate: targeted tests + architecture"
-	@echo "  make verify-race      Explicit race-detector gate (slower)"
-	@echo "  make verify-full      Full gate: verify-main + race + Node tests"
+	@echo "  make verify-race      Explicit race gate: unit + all registered components"
+	@echo "  make verify-full      Full headless gate: main + race + Node tests"
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
 	@echo "  make verify-live      Post-deploy operational battery (needs live external stack)"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
 	@echo "  make verify-node      Node toolchain gate (native probe + Node tests)"
 	@echo "  make verify-node-native  Fast better-sqlite3 native-binding probe"
 	@echo "  make verify-node-tests   Full node-scraper test suite"
+	@echo "  make verify-components   All registered components (fast)"
+	@echo "  make verify-race-components  All registered components (race)"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
@@ -100,6 +102,7 @@ help:
 include make/build.mk
 include make/test.mk
 include make/verify.mk
+include make/verify.components.mk
 include make/verify.components.mk
 include make/youtube_stock.mk
 include make/artlist.mk

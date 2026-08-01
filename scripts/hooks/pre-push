@@ -46,11 +46,9 @@
 #     pushing" and the HONOUR-RULE block above):
 #
 #         verify-main                                            (Make SSOT)
-#         ├── verify-fast       = foundation + static            (Make L595)
-#         │     ├── verify-foundation   go/node version + secrets +
-#         │     │                     format + tidy + hook syntax lint
-#         │     └── verify-static       go vet ./... + go build ./...
+#         ├── verify-foundation + verify-static                  (shared base)
 #         ├── verify-unit-fast  = standard Go unit tests across
+#         ├── verify-changed-components = registry-mapped changed components
 #         │                       internal/domain, application,
 #         │                       infrastructure, api, cmd, and pkg
 #         ├── verify-node-native = better-sqlite3 binding probe only
