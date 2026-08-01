@@ -12,14 +12,19 @@
       "subject": "Mike Tyson",
       "assets": {
         "fight": {
-          "asset_id": "yt_0vnOfawuQF4_20_24_v1",
+          "asset_id": "planner:5b3a1399ac0b3c23:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/147z3Qq-MYbxwolcg8ApWOy9WRyMNQlEN/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1eb7qqEQE1JHq7fMvV8Q3jmvgIMopiWR3/view?usp=drivesdk"
         },
         "interview": {
-          "asset_id": "yt_0vnOfawuQF4_50_54_v1",
+          "asset_id": "planner:5c2abb360a7d1b8d:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/1SqFLAuvej_Y0446ql5hWtBjID6yk5E7k/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1KL-R33j4AFuwitCfWjWnGlAvfLuFsOFF/view"
+        },
+        "training": {
+          "asset_id": "planner:783cff00c98db318:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1-JnG8JSbvp9J6tLpDQB69O8QTbMxU9Hk/view"
         }
       }
     },
@@ -27,14 +32,19 @@
       "subject": "Muhammad Ali",
       "assets": {
         "fight": {
-          "asset_id": "yt_6kEmuFoEy54_8_12_v1",
+          "asset_id": "planner:96d07f0da43de615:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/19tkVa-S8JgZtQad9CPYGm6pKIGzfwPZd/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/15ymEj0EDKUr9gg3uTC2bKhOtZ7Y6WsgT/view"
         },
         "interview": {
-          "asset_id": "yt_RtINcMrdKY0_8_12_v1",
+          "asset_id": "planner:5dd5aaeae12105f0:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/1XlsDWVk8chRBl64jxXciEYMdEGqMB-kj/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1UvIWgKih0h3wkGgR7QQcovDmDxVgFheB/view"
+        },
+        "training": {
+          "asset_id": "planner:afa1036ac338e518:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1_A1Rhr__GfCL1r5ipjwXcttM9iW2siTf/view"
         }
       }
     },
@@ -60,11 +70,43 @@
     },
     "floyd_mayweather": {
       "subject": "Floyd Mayweather",
-      "assets": {}
+      "assets": {
+        "fight": {
+          "asset_id": "planner:33a65feeb627695e:3",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1kiFpDrNpxENu1m62lMA2Jqc2qh_BhF52/view?usp=drivesdk"
+        },
+        "interview": {
+          "asset_id": "planner:5e2d38ea738900c7:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1hq9pronPfLbws9GzjH2icBlV8JrsKp2S/view?usp=drivesdk"
+        },
+        "training": {
+          "asset_id": "planner:5ed6d8be4522c746:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1w-JBddImWDYZKGeGjRrD1n_M2U00KTlb/view?usp=drivesdk"
+        }
+      }
     },
     "sugar_ray_robinson": {
       "subject": "Sugar Ray Robinson",
-      "assets": {}
+      "assets": {
+        "fight": {
+          "asset_id": "planner:c7074c575f1975fb:3",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1qaBv8WDKxb7C37l-apKOT6r2lFwfqEu2/view?usp=drivesdk"
+        },
+        "interview": {
+          "asset_id": "planner:4e682bc70fb1a841:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1p5vldiw4RDo5CXfNOggkFKoqqQbpNTlh/view?usp=drivesdk"
+        },
+        "training": {
+          "asset_id": "planner:5de851e34742d4bb:0",
+          "expected_source": "youtube",
+          "drive_link": "https://drive.google.com/file/d/1iGwXNnbZklOQp0Wd0Hp2lOqKBjCbxI6d/view?usp=drivesdk"
+        }
+      }
     }
   }
 }

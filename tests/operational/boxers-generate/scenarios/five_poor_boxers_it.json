@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "_runner": {"mode": "strict"},
+  "preset": "custom",
+  "items": [
+    {
+      "id": "five-poor-boxers-it",
+      "title": "Cinque pugili tra carriera e difficoltà finanziarie",
+      "language": "it",
+      "tone": "documentary",
+      "source": {
+        "type": "text",
+        "topic": "Cinque pugili e il rapporto tra carriera, ricchezza e difficoltà finanziarie",
+        "source_text": "Scrivi cinque brevi segmenti, uno per ciascun pugile. Riassumi la carriera e descrivi con prudenza la situazione finanziaria senza inventare cifre, citazioni o fatti non forniti.",
+        "guidelines": "Mantieni l'ordine e i marker SRC_. Distingui sempre fatti documentati, difficoltà professionali e interpretazioni editoriali."
+      },
+      "script_params": {
+        "target_words": 500,
+        "skip_quality_gate": false,
+        "use_memory": false,
+        "segments": [
+          {"id": "boxer-mike-tyson", "topic": "Mike Tyson", "target_words": 100, "source_text": "SRC_MIKE_TYSON_01. Riassumi brevemente l'ascesa di Mike Tyson nella boxe professionistica e descrivi con cautela la bancarotta e le difficoltà finanziarie documentate."},
+          {"id": "boxer-muhammad-ali", "topic": "Muhammad Ali", "target_words": 100, "source_text": "SRC_MUHAMMAD_ALI_02. Riassumi brevemente la carriera di Muhammad Ali e separa le difficoltà economiche dalle sospensioni, dalle spese legali e dalle conseguenze professionali documentate."},
+          {"id": "boxer-manny-pacquiao", "topic": "Manny Pacquiao", "target_words": 100, "source_text": "SRC_MANNY_PACQUIAO_03. Riassumi brevemente la carriera di Manny Pacquiao e descrivi soltanto le difficoltà economiche e fiscali documentate, senza aggiungere dettagli non presenti."},
+          {"id": "boxer-floyd-mayweather", "topic": "Floyd Mayweather", "target_words": 100, "source_text": "SRC_FLOYD_MAYWEATHER_04. Riassumi brevemente la carriera di Floyd Mayweather e descrivi con equilibrio il contrasto documentato tra ricchezza pubblica e contenziosi fiscali, senza definirlo povero."},
+          {"id": "boxer-sugar-ray-robinson", "topic": "Sugar Ray Robinson", "target_words": 100, "source_text": "SRC_SUGAR_RAY_ROBINSON_05. Riassumi brevemente la carriera di Sugar Ray Robinson e descrivi soltanto le difficoltà patrimoniali e di salute documentate, senza introdurre fatti esterni."}
+        ]
+      },
+      "output": {
+        "extract_entities": "enabled",
+        "generate_metadata": "enabled",
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {"index": 0, "scene_id": "scene-0", "segment_id": "boxer-mike-tyson", "asset_id": "{{stock.mike_tyson.fight.asset_id}}", "name": "Mike Tyson fight", "source": "youtube", "drive_link": "{{stock.mike_tyson.fight.drive_link}}", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 1, "scene_id": "scene-1", "segment_id": "boxer-muhammad-ali", "asset_id": "{{stock.muhammad_ali.fight.asset_id}}", "name": "Muhammad Ali fight", "source": "youtube", "drive_link": "{{stock.muhammad_ali.fight.drive_link}}", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 2, "scene_id": "scene-2", "segment_id": "boxer-manny-pacquiao", "asset_id": "{{stock.manny_pacquiao.fight.asset_id}}", "name": "Manny Pacquiao fight", "source": "youtube", "drive_link": "{{stock.manny_pacquiao.fight.drive_link}}", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 3, "scene_id": "scene-3", "segment_id": "boxer-floyd-mayweather", "asset_id": "{{stock.floyd_mayweather.fight.asset_id}}", "name": "Floyd Mayweather fight", "source": "youtube", "drive_link": "{{stock.floyd_mayweather.fight.drive_link}}", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 4, "scene_id": "scene-4", "segment_id": "boxer-sugar-ray-robinson", "asset_id": "{{stock.sugar_ray_robinson.fight.asset_id}}", "name": "Sugar Ray Robinson fight", "source": "youtube", "drive_link": "{{stock.sugar_ray_robinson.fight.drive_link}}", "fallback": false, "start_ms": 0, "end_ms": 5000}
+        ],
+        "save_to_db": true,
+        "voiceover_folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"
+      },
+      "docs": {"enabled": true, "languages": ["it"], "folder_id": "REPLACE_WITH_TEST_VOICEOVER_FOLDER_ID"}
+    }
+  ]
+}

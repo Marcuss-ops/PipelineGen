@@ -985,6 +985,7 @@ run_test "07b" "Negative swapped stock (multilang variant)" "top5_financial_stor
 run_test "07c" "Negative language fail (FR voiceover invalid)" "top5_financial_stories_multilang_fail_fr.json" || failures=$((failures + 1))
 
 run_test "08" "Negative swapped stock (single-item)" "top5_neg_swapped_stock.json" || failures=$((failures + 1))
+run_test "09" "Five poor boxers Italian strict" "five_poor_boxers_it.json" || failures=$((failures + 1))
 
 if (( failures > 0 )); then
     printf '%sFAIL: %d scenario(s) failed.%s\n' "$RED" "$failures" "$RESET" >&2
