@@ -11,7 +11,7 @@
       "source": {
         "type": "text",
         "topic": "Muhammad Ali and his public legacy",
-        "source_text": "Muhammad Ali became known not only for movement and speed in the ring, but also for the confidence with which he spoke in public. The documentary must distinguish sporting analysis from broader cultural interpretation."
+        "source_text": "Write a documentary about Muhammad Ali in three sections, using exclusively the facts provided in this source. Muhammad Ali, born Cassius Clay in Louisville, Kentucky, was a heavyweight boxer who won an Olympic gold medal before turning professional. In the ring he was famous for his footwork, hand speed and rhythm: he moved around the ring with unusual lightness, kept his distance, dodged punches and changed tempo constantly. His speed and movement surprised heavier opponents such as Sonny Liston, George Foreman and Joe Frazier. Ali was also known for the confidence with which he spoke in public: he used words to promote fights, to answer critics and to build his public image, and his phrases and predictions became part of boxing history. Beyond the ring, his career mixed sporting success with cultural significance: he refused the Vietnam draft on principle and lost years of his career, later reflecting as a public figure on his choices and on the meaning of his legacy."
       },
       "script_params": {
         "target_words": 360,
@@ -21,25 +21,25 @@
           {
             "id": "ali-movement",
             "topic": "Movement and speed",
-            "source_text": "ALI-SOURCE-01. Explain movement, distance and rhythm.",
+            "source_text": "ALI-SOURCE-01. Include the literal token 'ALI-SOURCE-01' at the beginning. The segment must explain movement, distance and rhythm: Muhammad Ali, born in Louisville, Kentucky, was famous for his footwork, hand speed and control of distance inside the ring.",
             "target_words": 120
           },
           {
             "id": "ali-voice",
             "topic": "Public voice",
-            "source_text": "ALI-SOURCE-02. Explain how public communication became part of his image.",
+            "source_text": "ALI-SOURCE-02. Include the literal token 'ALI-SOURCE-02' at the beginning. The segment must explain how public communication became part of his image: confident words, answers to critics, phrases and predictions that became part of boxing history.",
             "target_words": 120
           },
           {
             "id": "ali-legacy",
             "topic": "Legacy",
-            "source_text": "ALI-SOURCE-03. Explain the difference between sporting legacy and cultural memory.",
+            "source_text": "ALI-SOURCE-03. Include the literal token 'ALI-SOURCE-03' at the beginning. The segment must distinguish sporting legacy from cultural memory: success in the ring, the refusal of the Vietnam draft on principle, and his later reflections as a public figure.",
             "target_words": 120
           }
         ]
       },
       "output": {
-        "extract_entities": "enabled",
+        "extract_entities": "disabled",
         "generate_metadata": "enabled",
         "save_to_db": true,
         "translate_to": "it",
