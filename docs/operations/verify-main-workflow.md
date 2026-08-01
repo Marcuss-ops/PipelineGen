@@ -12,6 +12,9 @@ live scraper.
   Node binding probe, and architecture checks. It intentionally excludes the
   complete race suite and full Node test suite so it remains suitable for
   routine pushes.
+- `make verify-main-stock`: `verify-fast`, standard targeted tests for the
+  Stock pipeline/API/script adapters, and architecture checks. Use it for
+  Stock-focused changes without running the full project unit suite.
 - `make verify-race`: explicit race-tested Go packages.
 - `make verify-full`: `verify-main` plus `verify-race` and the full Node test
   suite.

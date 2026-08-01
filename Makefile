@@ -29,7 +29,7 @@
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-unit-race verify-race verify-full \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
-	verify-images verify-stock verify-main verify-release \
+	verify-images verify-script verify-stock verify-clips verify-drive verify-main verify-main-stock verify-release \
 	regen-routes-yaml archcheck-strict \
 	verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream \
 	verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index \
@@ -70,6 +70,7 @@ help:
 	@echo "VERIFY (gate chain; verify-fast first, then verify-main pre-push)"
 	@echo "  make verify-fast      Foundation (toolchain + secrets + format + tidy) + static (vet + build)"
 	@echo "  make verify-main      Daily headless gate: standard unit + native Node + architecture"
+	@echo "  make verify-main-stock  Fast Stock gate: targeted tests + architecture"
 	@echo "  make verify-race      Explicit race-detector gate (slower)"
 	@echo "  make verify-full      Full gate: verify-main + race + Node tests"
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
@@ -90,6 +91,7 @@ help:
 include make/build.mk
 include make/test.mk
 include make/verify.mk
+include make/verify.components.mk
 include make/artlist.mk
 include make/live.mk
 include make/docker.mk
