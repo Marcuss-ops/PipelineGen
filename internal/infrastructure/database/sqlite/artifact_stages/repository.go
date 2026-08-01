@@ -41,10 +41,17 @@
 // attempt_count + last_error in a single UPDATE (the per-publisher
 // path uses 2 calls today; combining them is a perf + atomicity
 // win but out of scope for 3.1a).
+//
+// File layout (split by domain, July 2026):
+//
+//	repository.go            core: struct, constructor, shared helpers + sentinels
+//	repository_artifacts.go  artifact CRUD: Insert / GetByID / ListByJob / ListByState
+//	repository_stages.go     state machine: MarkPublished / MarkSucceeded /
+//	                         MarkFailedPermanent / IncrementAttemptCount + fenced CAS
+//	repository_outbox.go     outbox co-emission: InsertWithOutbox
 package artifactstages
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -52,7 +59,6 @@ import (
 	"time"
 
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Compile-time assertion: *Repository satisfies the domain port.
@@ -223,274 +229,6 @@ func parseRFC3339Nano(s, columnName string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("%w: column=%s value=%q parse_err=%v", ErrTimestampParse, columnName, s, err)
 	}
 	return t.UTC(), nil
-}
-
-// ── Insert ──────────────────────────────────────────────────────────────
-
-// Insert appends a new ArtifactStage row. State is forced to STAGED
-// (the initial state of the saga); callers MAY supply a non-STAGED
-// value but the repository will surface ErrInvalidArtifactStageState
-// unless the state is in the canonical 4-value set.
-func (r *Repository) Insert(ctx context.Context, stage *artifact.ArtifactStage) error {
-	if err := validateForWrite(stage); err != nil {
-		return err
-	}
-	now := r.now()
-	if stage.CreatedAt.IsZero() {
-		stage.CreatedAt = now
-	}
-	stage.UpdatedAt = now
-
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO artifact_stages (`+selectColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		stage.ID, stage.JobID, stage.LocalPath, stage.Hash, stage.Size, stage.Mime,
-		string(stage.Requirement), stage.Destination, string(stage.State),
-		stage.AttemptCount, stage.LastError, stage.PublishedLocation,
-		timeutil.FormatPtrRFC3339Nano(stage.PublishedAt),
-		timeutil.FormatRFC3339Nano(stage.CreatedAt),
-		timeutil.FormatRFC3339Nano(stage.UpdatedAt),
-	)
-	if err != nil {
-		return fmt.Errorf("artifact_stages.Insert (id=%s): %w", stage.ID, err)
-	}
-	return nil
-}
-
-// ── GetByID ──────────────────────────────────────────────────────────────
-
-func (r *Repository) GetByID(ctx context.Context, id string) (*artifact.ArtifactStage, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT `+selectColumns+` FROM artifact_stages WHERE id = ?`, id)
-	stage, err := scanRow(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, artifact.WrapArtifactStageNotFound(id)
-		}
-		return nil, fmt.Errorf("artifact_stages.GetByID (id=%s): %w", id, err)
-	}
-	return &stage, nil
-}
-
-// ── ListByJob ───────────────────────────────────────────────────────────
-
-func (r *Repository) ListByJob(ctx context.Context, jobID string) ([]artifact.ArtifactStage, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+selectColumns+` FROM artifact_stages WHERE job_id = ? ORDER BY created_at ASC`,
-		jobID)
-	if err != nil {
-		return nil, fmt.Errorf("artifact_stages.ListByJob (job_id=%s): %w", jobID, err)
-	}
-	defer rows.Close()
-	var out []artifact.ArtifactStage
-	for rows.Next() {
-		stage, scanErr := scanRow(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("artifact_stages.ListByJob: scan: %w", scanErr)
-		}
-		out = append(out, stage)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("artifact_stages.ListByJob: rows: %w", err)
-	}
-	return out, nil
-}
-
-// ── ListByState ─────────────────────────────────────────────────────────
-
-func (r *Repository) ListByState(ctx context.Context, state artifact.ArtifactStageState, limit int) ([]artifact.ArtifactStage, error) {
-	if !state.IsValid() {
-		return nil, fmt.Errorf("%w: %q", artifact.ErrInvalidArtifactStageState, state)
-	}
-	if limit <= 0 {
-		limit = 100 // safe default
-	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+selectColumns+` FROM artifact_stages WHERE state = ? ORDER BY created_at ASC LIMIT ?`,
-		string(state), limit)
-	if err != nil {
-		return nil, fmt.Errorf("artifact_stages.ListByState (state=%s): %w", state, err)
-	}
-	defer rows.Close()
-	var out []artifact.ArtifactStage
-	for rows.Next() {
-		stage, scanErr := scanRow(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("artifact_stages.ListByState: scan: %w", scanErr)
-		}
-		out = append(out, stage)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("artifact_stages.ListByState: rows: %w", err)
-	}
-	return out, nil
-}
-
-// ── MarkPublished ───────────────────────────────────────────────────────
-
-func (r *Repository) MarkPublished(ctx context.Context, id, publishedLocation string, publishedAt time.Time) error {
-	now := r.now()
-	publishedAt = publishedAt.UTC()
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE artifact_stages SET state = 'PUBLISHED', published_location = ?, published_at = ?, updated_at = ? WHERE id = ? AND state NOT IN ('PUBLISHED', 'SUCCEEDED', 'FAILED_PERMANENT')`,
-		publishedLocation, timeutil.FormatRFC3339Nano(publishedAt), timeutil.FormatRFC3339Nano(now), id)
-	if err != nil {
-		return fmt.Errorf("artifact_stages.MarkPublished (id=%s): %w", id, err)
-	}
-	return r.checkFencedCAS(ctx, res, id, "MarkPublished")
-}
-
-// ── MarkSucceeded ───────────────────────────────────────────────────────
-func (r *Repository) MarkSucceeded(ctx context.Context, id string) error {
-	now := r.now()
-	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE artifact_stages SET state = 'SUCCEEDED', updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
-		timeutil.FormatRFC3339Nano(now), id)
-	if err != nil {
-		return fmt.Errorf("artifact_stages.MarkSucceeded (id=%s): %w", id, err)
-	}
-	return r.checkFencedCAS(ctx, res, id, "MarkSucceeded")
-}
-
-// ── MarkFailedPermanent ─────────────────────────────────────────────────
-func (r *Repository) MarkFailedPermanent(ctx context.Context, id, lastError string) error {
-	now := r.now()
-	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE artifact_stages SET state = 'FAILED_PERMANENT', last_error = ?, updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
-		lastError, timeutil.FormatRFC3339Nano(now), id)
-	if err != nil {
-		return fmt.Errorf("artifact_stages.MarkFailedPermanent (id=%s): %w", id, err)
-	}
-	return r.checkFencedCAS(ctx, res, id, "MarkFailedPermanent")
-}
-
-// ── InsertWithOutbox ───────────────────────────────────────────────────
-
-// InsertWithOutbox atomically writes a new artifact_stages row AND
-// co-emits a corresponding outbox_events row in a SINGLE SQLite
-// transaction. The event_key convention is
-// `stage:<jobID>:<stageID>` so consumers can dedupe re-deliveries
-// via the ux_outbox_events_event_key unique index.
-//
-// godlike/07 atomicity: BOTH inserts commit together or NEITHER
-// commits. A partial commit would orphan an event without its
-// stage row (or vice versa); the TX wrapper + defer-rollback
-// prevents this. Returns the canonical event_key on success so
-// application-layer services can log it for observability.
-//
-// The deferred Rollback() is a no-op if the TX has already been
-// committed (Commit() detaches the deferred allocation) —
-// idiomatic Go pattern. A nil-driver error path (e.g.
-// sql.ErrConnDone after ctx cancel) surfaces via the wrapped
-// ExecContext error, which preserves errors.Is(err, ctx.Err())
-// chains for the caller.
-func (r *Repository) InsertWithOutbox(ctx context.Context, stage *artifact.ArtifactStage, eventType string, payload []byte) (string, error) {
-	if err := validateForWrite(stage); err != nil {
-		return "", err
-	}
-	if eventType == "" {
-		return "", fmt.Errorf("%w: eventType is required (cannot be empty)", artifact.ErrOutboxEmit)
-	}
-	if len(payload) == 0 {
-		return "", fmt.Errorf("%w: payload is required (cannot be empty bytes)", artifact.ErrOutboxEmit)
-	}
-
-	now := r.now()
-	if stage.CreatedAt.IsZero() {
-		stage.CreatedAt = now
-	}
-	stage.UpdatedAt = now
-
-	eventKey := fmt.Sprintf("stage:%s:%s", stage.JobID, stage.ID)
-
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: begin tx (id=%s): %w", stage.ID, err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	// 1. INSERT INTO artifact_stages (canonical column set).
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO artifact_stages (`+selectColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		stage.ID, stage.JobID, stage.LocalPath, stage.Hash, stage.Size, stage.Mime,
-		string(stage.Requirement), stage.Destination, string(stage.State),
-		stage.AttemptCount, stage.LastError, stage.PublishedLocation,
-		timeutil.FormatPtrRFC3339Nano(stage.PublishedAt),
-		timeutil.FormatRFC3339Nano(stage.CreatedAt),
-		timeutil.FormatRFC3339Nano(stage.UpdatedAt),
-	); err != nil {
-		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: insert stage (id=%s): %w", stage.ID, err)
-	}
-
-	// 2. INSERT INTO outbox_events (event_type + payload + event_key).
-	//    aggregate_type='artifact_stage' so consumers can filter by
-	//    stage aggregate. created_at + updated_at populated for
-	//    canonical observability.
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		eventType, stage.ID, "artifact_stage", string(payload),
-		eventKey, "pending",
-		timeutil.FormatRFC3339Nano(now), timeutil.FormatRFC3339Nano(now),
-	); err != nil {
-		// godlike/07 typed wrap: callers errors.Is-probe ErrOutboxEmit.
-		return "", fmt.Errorf("%w: insert outbox event (event_key=%q event_type=%q): %v", artifact.ErrOutboxEmit, eventKey, eventType, err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: commit (event_key=%q): %w", eventKey, err)
-	}
-	committed = true
-	return eventKey, nil
-}
-
-// ── IncrementAttemptCount ───────────────────────────────────────────────
-func (r *Repository) IncrementAttemptCount(ctx context.Context, id string) error {
-	now := r.now()
-	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE artifact_stages SET attempt_count = attempt_count + 1, updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
-		timeutil.FormatRFC3339Nano(now), id)
-	if err != nil {
-		return fmt.Errorf("artifact_stages.IncrementAttemptCount (id=%s): %w", id, err)
-	}
-	return r.checkFencedCAS(ctx, res, id, "IncrementAttemptCount")
-}
-
-// ── Fenced CAS disambiguation ───────────────────────────────────────────
-
-// checkFencedCAS converts a 0-rowsAffected UPDATE into a typed
-// error. The disambiguation probe (SELECT state FROM artifact_stages
-// WHERE id = ?) costs one extra round-trip on the failure path;
-// the success path stays single-roundtrip (godlike/07: never
-// silently accept a fence-mismatch as success).
-//
-// The ctx is threaded through so a cancelled request aborts the
-// disambiguation probe too (otherwise a slow probe would leak past
-// the ctx deadline).
-func (r *Repository) checkFencedCAS(ctx context.Context, res sql.Result, id, op string) error {
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("artifact_stages.%s: rows-affected (id=%s): %w", op, id, err)
-	}
-	if affected > 0 {
-		return nil
-	}
-	// Disambiguate: row absent vs row already-terminal.
-	var state string
-	scanErr := r.db.QueryRowContext(ctx, `SELECT state FROM artifact_stages WHERE id = ?`, id).Scan(&state)
-	if errors.Is(scanErr, sql.ErrNoRows) {
-		return artifact.WrapArtifactStageNotFound(id)
-	}
-	if scanErr != nil {
-		return fmt.Errorf("artifact_stages.%s: disambiguate probe (id=%s): %w", op, id, scanErr)
-	}
-	return fmt.Errorf("%w: id=%s current_state=%s op=%s", artifact.ErrTerminalStateRejection, id, state, op)
 }
 
 // ── JSON helper (placeholder for future typed PublishedLocation) ─────────
