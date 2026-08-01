@@ -66,6 +66,11 @@ func (p *ClipBindingsProcessor) Process(
 	input ProcessInput,
 ) (*PostProcessResult, error) {
 	_ = ctx
+	if plan != nil && plan.MediaMode == scriptpkg.MediaModeClipOnly {
+		for i := range input.SpecScene.Scenes {
+			input.SpecScene.Scenes[i].Bindings.Stock = nil
+		}
+	}
 
 	clipIDs, driveLinks := acceptedClipIDs(plan)
 
@@ -171,12 +176,22 @@ func (p *ClipBindingsProcessor) Process(
 					}
 				}
 				scenes[i].Bindings.Clip = binding
+				if plan.MediaMode == scriptpkg.MediaModeClipOnly {
+					scenes[i].Kind = scriptpkg.SceneClip
+				}
 			} else if i < clipCount {
 				// Safety: a scene within the clip range should always
 				// have a binding; if it does not, leave it untouched.
 				continue
 			} else {
 				scenes[i].Bindings.Clip = nil
+			}
+		}
+	}
+	if plan.MediaMode == scriptpkg.MediaModeClipOnly {
+		for i := range scenes {
+			if scenes[i].Bindings.Clip != nil {
+				scenes[i].Kind = scriptpkg.SceneClip
 			}
 		}
 	}

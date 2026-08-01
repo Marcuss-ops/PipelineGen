@@ -21,6 +21,11 @@ func (p *StockBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Pro
 }
 
 func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
+	if plan != nil && plan.MediaMode == scriptpkg.MediaModeStockOnly {
+		for i := range input.SpecScene.Scenes {
+			input.SpecScene.Scenes[i].Bindings.Clip = nil
+		}
+	}
 	// Explicit segment payloads define the canonical scene cardinality for
 	// direct stock bindings. The LLM may legally return prose grouped into a
 	// different number of scenes; accepting that shape would make a valid

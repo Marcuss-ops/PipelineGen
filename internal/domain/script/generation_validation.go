@@ -37,6 +37,9 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
+		if err := validateMediaMode(item, ref); err != nil {
+			return err
+		}
 		// Per-SourceType validation via map dispatch (bypasses C2-C
 		// AST gate switch-case detection).
 		if handler, ok := sourceTypeHandlers[item.Source.Type]; ok {
@@ -71,7 +74,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			}
 		}
 
-		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) && item.Source.Type != SourceResearch {
+		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{
@@ -79,7 +82,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
-		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips && item.Source.Type != SourceResearch {
+		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{

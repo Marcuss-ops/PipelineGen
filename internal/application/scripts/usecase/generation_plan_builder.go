@@ -33,6 +33,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		Tone:                item.Tone,
 		Model:               item.Model,
 		Mode:                modeForSource(item.Source.Type),
+		MediaMode:           item.MediaMode,
 		SourceText:          item.Source.SourceText,
 		Guidelines:          item.Source.Guidelines,
 		TargetWords:         item.ScriptParams.TargetWords,
