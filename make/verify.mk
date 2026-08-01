@@ -57,9 +57,10 @@ verify-static: go-version-check
 # verify-fast — dev-loop gate: foundation + static. Runs in <1min on a
 # clean tree and is the cheapest fail-closed chain that catches the
 # most common errors (toolchain mismatch, leaked secrets, formatting
-# drift, vet/build break). Used during active development. verify-main
-# and verify-release add the heavier gates (unit, node, integration,
-# architecture, artlist).
+# drift, vet/build break). Used during active development. verify-main adds
+# standard Go tests, the native Node probe, and architecture checks;
+# verify-full and verify-release add the heavier race, Node, and integration
+# gates.
 verify-fast: verify-foundation verify-static
 	@echo "✅ verify-fast passed"
 
@@ -74,9 +75,25 @@ verify-push: verify-fast verify-unit-fast verify-changed
 
 verify-unit-race: verify-unit
 
-# verify-main — canonical fail-closed pre-push chain.
-verify-main: verify-push verify-unit-race verify-node verify-architecture
+# verify-main — canonical daily fail-closed gate.
+# Keep this gate headless and bounded for routine commits: standard Go unit
+# tests, the native Node binding probe, and architecture checks. The complete
+# race suite and npm test suite are explicit heavier gates below, rather than
+# being repeated on every verify-main run.
+verify-main: verify-push verify-node-native verify-architecture
 	@echo "✅ verify-main passed"
+
+# verify-race — explicit race-detector gate. Kept separate from verify-main
+# so CPU-only development and routine pushes do not pay the full race-suite
+# cost. verify-unit-race retains the existing per-area race-tested coverage.
+verify-race: verify-unit-race
+	@echo "✅ verify-race passed"
+
+# verify-full — complete headless gate: the daily gate plus race-tested Go
+# packages and the full node-scraper test suite. Release verification adds
+# integration tests on top of this target.
+verify-full: verify-main verify-race verify-node-tests
+	@echo "✅ verify-full passed"
 
 # verify-go-core — domain and application logic tests. Isolates failures
 # in the core business packages so a domain test failure is immediately
@@ -96,13 +113,10 @@ verify-node-native:
 # and so verify-node-native can be run in isolation during Node upgrades.
 verify-node-tests: test-js
 
-# verify-node — Node toolchain gate. Composes the fast native-binding
-# probe (verify-node-native, <1s once installed) and the Node test suite
-# (verify-node-tests, npm install + npm test).
-#
-# Order is meaningful: verify-node-native runs first so an ABI mismatch
-# surfaces immediately and the operator does not wait through a 30s+ npm
-# install only to hit the same failure mode inside npm test.
+# verify-node — complete Node toolchain gate. Composes the fast native
+# binding probe and the full Node test suite. verify-main intentionally uses
+# verify-node-native directly; callers that need the complete Node gate can
+# use verify-node or verify-full.
 verify-node: verify-node-native verify-node-tests
 	@echo "✅ Node verification passed"
 
@@ -141,13 +155,10 @@ verify-stock:
 	$(GO) test -race ./internal/api/assets/stock/...
 	@echo "✅ Stock verification passed"
 
-# verify-release — pre-deploy gate (STEP 3/4 of the verify-main
-# refactor): verify-main + verify-integration. Adds the slow
-# ./tests/... integration suite which may depend on external services
-# (Drive, Qdrant, scraper). Run before deploy, NOT on every push
-# (too slow for the pre-push gate). verify-fast / verify-main remain
-# the dev-loop / pre-push gates.
-verify-release: verify-main verify-integration
+# verify-release — pre-deploy gate: the complete headless gate plus the
+# slow ./tests/... integration suite, which may depend on external services
+# (Drive, Qdrant, scraper). Run before deploy, NOT on every routine push.
+verify-release: verify-full verify-integration
 	@echo "✅ Release verification passed"
 
 # Aggregate pre-flight check. Runs both toolchain guards plus two

@@ -8,9 +8,14 @@ live scraper.
 
 - `make verify-fast`: foundation, static analysis, and build for the local
   development loop.
-- `make verify-main`: `verify-push`, race-tested unit packages, Node tests,
-  and architecture checks.
-- `make verify-release`: `verify-main` plus the integration suite.
+- `make verify-main`: `verify-push`, standard unit packages, the native
+  Node binding probe, and architecture checks. It intentionally excludes the
+  complete race suite and full Node test suite so it remains suitable for
+  routine pushes.
+- `make verify-race`: explicit race-tested Go packages.
+- `make verify-full`: `verify-main` plus `verify-race` and the full Node test
+  suite.
+- `make verify-release`: `verify-full` plus the integration suite.
 - `make verify-artlist-live`, `make verify-images-live`,
   `make verify-script-live`, and `make verify-vidrush-live`: authenticated
   live batteries, each with its own operational script.

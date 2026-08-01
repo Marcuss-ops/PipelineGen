@@ -20,7 +20,7 @@ else
         BASE_REF="HEAD~1"
     else
         echo "⚠️ No base ref (origin/main, main, or HEAD~1) found. Running all checks."
-        make verify-node verify-architecture
+        make verify-node-native verify-architecture
         exit 0
     fi
 fi
@@ -53,7 +53,7 @@ for file in $CHANGED_FILES; do
         break
     fi
 
-    # node-scraper/** -> verify-node
+    # node-scraper/** -> fast native-binding verification
     if [[ "$file" =~ ^node-scraper/ ]]; then
         RUN_NODE=true
     fi
@@ -76,8 +76,8 @@ if [ "$RUN_ALL" = true ]; then
 fi
 
 if [ "$RUN_NODE" = true ]; then
-    echo "📦 node-scraper changed. Running node verification..."
-    make verify-node
+    echo "📦 node-scraper changed. Running native Node verification..."
+    make verify-node-native
 fi
 
 if [ "$RUN_ARCH" = true ]; then

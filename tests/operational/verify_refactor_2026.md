@@ -2,10 +2,12 @@
 
 The pre-push verification chain on `main` has been split into four
 fail-closed tiers: `verify-fast` (foundation + static, ~30s),
-`verify-main` (headless, ~5min — `verify-fast + verify-unit +
-verify-node + verify-architecture`, no browser/Drive/Qdrant live),
-`verify-release` (pre-deploy, = `verify-main + verify-integration`
-ONLY), and `verify-live` (post-deploy, the ONLY gate requiring the
+`verify-main` (headless daily gate — `verify-push + verify-node-native +
+verify-architecture`, with standard Go tests and no full race/npm suite;
+no browser/Drive/Qdrant live), `verify-race` (explicit race-tested Go
+packages), `verify-full` (verify-main + verify-race + verify-node-tests),
+`verify-release` (pre-deploy, = `verify-full + verify-integration` ONLY),
+and `verify-live` (post-deploy, the ONLY gate requiring the
 full operational stack via `verify-{images,script,vidrush,artlist}-live`).
 `verify-main` does NOT pull any script under `tests/operational/`,
 so operators iterating on `/detail` or `/search` can run

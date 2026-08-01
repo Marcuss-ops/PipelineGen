@@ -45,21 +45,17 @@
 #     pre-push gate per AGENTS.md "Run `make verify-main` before
 #     pushing" and the HONOUR-RULE block above):
 #
-#         verify-main                                            (Make L932)
+#         verify-main                                            (Make SSOT)
 #         ├── verify-fast       = foundation + static            (Make L595)
 #         │     ├── verify-foundation   go/node version + secrets +
 #         │     │                     format + tidy + hook syntax lint
 #         │     └── verify-static       go vet ./... + go build ./...
-#         ├── verify-unit       = race-tested Go unit tests      (no L;
-#         │                       see `grep -nE '^verify-unit:' Makefile`)
-#         │                       (4 sub-areas: verify-go-{core,
-#         │                       infrastructure,api,commands};
-#         │                       EXCLUDES ./tests/... per AGENTS.md
-#         │                       pre-push headless contract)
-#         ├── verify-node       = verify-node-native (better-sqlite3
-#         │                       binding probe, <1s after install) +
-#         │                       verify-node-tests (npm test in
-#         │                       node-scraper/)
+#         ├── verify-unit-fast  = standard Go unit tests across
+#         │                       internal/domain, application,
+#         │                       infrastructure, api, cmd, and pkg
+#         ├── verify-node-native = better-sqlite3 binding probe only
+#         │                       (the full npm test suite is reserved
+#         │                       for verify-full)
 #         └── verify-architecture = cmd/architecture-aggregate
 #                                   + cmd/archcheck (governance + AST
 #                                   cross-package invariant scan;
@@ -76,8 +72,8 @@
 
 #     This hook invokes ONLY the umbrella recipe `make verify-main`;
 #     the transitive composition above is what the Makefile SSOT
-#     (line numbers in the table above) actually executes on every
-#     push.
+#     actually executes on every push. The explicit heavy gates are
+#     `make verify-race` and `make verify-full`.
 #
 # CI-parity caveat (binding): ci.yml runs `make verify-main` in the
 # blocking job, THEN runs `bash scripts/ci-architectural-checks.sh`
@@ -126,7 +122,7 @@ CACHE_FILE="$CACHE_DIR/${FINGERPRINT}.ok"
 # Print a visible banner so the operator sees the gate running
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  pre-push gate: make verify-push (AGENTS.md fail-closed)"
+echo "  pre-push gate: make verify-main (AGENTS.md fail-closed)"
 echo "  source: scripts/hooks/pre-push (canonical version-controlled)"
 echo "  fingerprint: $FINGERPRINT"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -137,21 +133,21 @@ if [ -f "$CACHE_FILE" ]; then
     exit 0
 fi
 
-if make verify-push; then
+if make verify-main; then
     mkdir -p "$CACHE_DIR"
     # Prune old verification cache results
     rm -rf "$CACHE_DIR"/*
     touch "$CACHE_FILE"
     echo
-    echo "✅ verify-push passed — proceeding with push."
+    echo "✅ verify-main passed — proceeding with push."
     exit 0
 else
     rc=$?
     echo
-    echo "❌ verify-push FAILED (exit $rc) — push BLOCKED."
+    echo "❌ verify-main FAILED (exit $rc) — push BLOCKED."
     echo
     echo "   Fix the failing step and retry. Diagnostic bypass (gofmt only):"
-    echo "     SKIP_FORMAT=1 make verify-push"
+    echo "     SKIP_FORMAT=1 make verify-main"
     echo
     echo "   Bypass-of-last-resort (skips this hook entirely; HONOUR-RULE:"
     echo "   reserved for unblocking CI emergencies, NOT normal workflow):"
@@ -161,7 +157,7 @@ else
     echo "   follow-up fixup! commit + git rebase --autosquash once the"
     echo "   underlying test failure is fixed."
     echo
-    echo "   The pre-push gate is make verify-push without any bypass; do"
+    echo "   The pre-push gate is make verify-main without any bypass; do"
     echo "   not push if the unflagged gate is red."
     exit 1
 fi
