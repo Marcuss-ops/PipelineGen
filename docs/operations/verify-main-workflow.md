@@ -15,6 +15,10 @@ live scraper.
 - `make verify-main-stock`: `verify-fast`, standard targeted tests for the
   Stock pipeline/API/script adapters, and architecture checks. Use it for
   Stock-focused changes without running the full project unit suite.
+- `make verify-main-clip`: `verify-fast`, standard targeted tests for the
+  canonical Clip domain/application/API packages, and architecture checks.
+  Use it for Clip-focused changes without running the full project unit suite
+  or depending on an unrelated in-progress adapter decomposition.
 - `make verify-race`: explicit race-tested Go packages.
 - `make verify-full`: `verify-main` plus `verify-race` and the full Node test
   suite.
