@@ -1,0 +1,41 @@
+name: Verify Full
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for complete headless verification"
+        required: false
+        default: "manual full verification"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-full:
+    name: verify-full (complete headless gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: node-scraper/package-lock.json
+
+      - name: Run `make verify-full` (fail-closed)
+        # Make is the source of truth: verify-full expands to
+        # verify-main + verify-race + verify-node-tests. Do not duplicate
+        # that dependency graph in workflow steps.
+        run: make verify-full

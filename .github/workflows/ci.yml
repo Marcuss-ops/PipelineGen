@@ -9,10 +9,10 @@ on:
 jobs:
   # verify-main (Cleanup Plan P0-4, June 2026): fail-closed local-mirror
   # gate. Mirrors the `make verify-main` target committed by P0-3 —
-  # same chain, same fail-on-first-failure semantics. Every other job
-  # in this workflow has `needs: verify-main` so the gate is a per-PR
-  # blocker; a red `verify-main` blocks the entire CI run before any
-  # narrower check (lint / vuln / build) executes.
+  # same chain, same fail-on-first-failure semantics. The daily
+  # supplemental jobs depend on this gate; a red `verify-main` blocks the
+  # routine CI path before narrower checks execute. Heavier race and release
+  # gates are explicit targets below or in their manual workflows.
   #
   # Failure mode: any non-zero exit from `make verify-main` aborts the
   # step. Make's native output surfaces the failing command verbatim
@@ -33,6 +33,13 @@ jobs:
           go-version: '1.25.x'
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: node-scraper/package-lock.json
+
       - name: Run `make verify-main` (fail-closed)
         # Mirror the local-mirror contract: same command, same chain,
         # same fail-closed semantics. The Makefile's `verify-main`
@@ -44,7 +51,7 @@ jobs:
         run: make verify-main
 
   build:
-    name: Build & Test
+    name: Build, generated docs & coverage (supplemental)
     runs-on: ubuntu-latest
     needs: verify-main
 
@@ -124,9 +131,9 @@ jobs:
           exit 1
         fi
 
-    - name: Run Unit Tests (with race detector)
-      run: go test -race -v ./internal/... ./pkg/...
-
+    # The race-tested unit gate is owned by the explicit verify-race and
+    # verify-full jobs above. This job keeps only the supplemental coverage
+    # threshold after the canonical gates pass.
     - name: Run Coverage Check
       run: make coverage-check
 
@@ -214,41 +221,6 @@ jobs:
       # godlike/07 NO-FAKE-AVAILABILITY: a fail is a fail.
       timeout-minutes: 5
       run: make verify-no-secrets
-
-  verify-node-scraper:
-    name: Verify node-scraper installs cleanly on Node 22
-    # Mirrors the audit's recommendation: Dependabot already runs
-    # weekly against /node-scraper, so the runner's npm contract is
-    # exercised here too. `make node-version-check` is the single
-    # source-of-truth check against node-scraper/package.json's
-    # `engines.node` field, so the failure message in CI matches the
-    # one developers see locally.
-    runs-on: ubuntu-latest
-    needs: verify-main
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Verify Node toolchain contract
-        run: make node-version-check
-
-      - name: Install node-scraper dependencies
-        working-directory: node-scraper
-        run: npm ci
-
-      - name: Run node-scraper test suite (node --test)
-        # Pin to `npm test` exactly per the Wave 19 / P1-9-namespace
-        # spec; if a future agent wants to expand the gate to also
-        # fail on lint warnings, switch this invocation to
-        # `npm run check` (which is `lint && test` per
-        # node-scraper/package.json).
-        working-directory: node-scraper
-        run: npm test
 
   fase-b-clip-smoke:
     name: FASE B clip pipeline smoke (dry-mode constraint)

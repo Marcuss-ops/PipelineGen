@@ -1,0 +1,42 @@
+name: Verify Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for pre-deploy verification"
+        required: false
+        default: "manual release certification"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release:
+    name: verify-release (pre-deploy gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: node-scraper/package-lock.json
+
+      - name: Run `make verify-release` (fail-closed)
+        # Make is the source of truth: verify-release expands to
+        # verify-full + verify-integration, and verify-full expands to
+        # verify-main + verify-race + verify-node-tests. Do not duplicate
+        # that graph in workflow steps.
+        run: make verify-release
