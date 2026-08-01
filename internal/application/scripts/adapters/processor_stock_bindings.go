@@ -62,9 +62,18 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		if in.StartMs < 0 || in.EndMs <= in.StartMs {
 			return nil, fmt.Errorf("%w: stock binding index %d requires end_ms > start_ms", scriptpkg.ErrPostprocessFailed, in.Index)
 		}
+		driveLink := strings.TrimSpace(in.DriveLink)
+		assetID := strings.TrimSpace(in.AssetID)
+		// Some existing direct YouTube stock records carry the Drive file
+		// ID in both the asset and link fields. Normalize that transport
+		// shape to a candidate URL; the Drive reconciliation processor still
+		// verifies the file before publication.
+		if in.Source == "youtube" && assetID != "" && (driveLink == "" || driveLink == assetID) {
+			driveLink = "https://drive.google.com/file/d/" + assetID + "/view"
+		}
 		scene.Bindings.Stock = &scriptpkg.StockBinding{
-			AssetID: strings.TrimSpace(in.AssetID), Name: in.Name, Source: in.Source,
-			DriveLink: strings.TrimSpace(in.DriveLink), FolderID: strings.TrimSpace(in.FolderID), Score: in.Score, Fallback: in.Fallback,
+			AssetID: assetID, Name: in.Name, Source: in.Source,
+			DriveLink: driveLink, FolderID: strings.TrimSpace(in.FolderID), Score: in.Score, Fallback: in.Fallback,
 			StartMs: in.StartMs, EndMs: in.EndMs, DurationMs: in.EndMs - in.StartMs,
 		}
 		scene.Kind = scriptpkg.SceneStock
