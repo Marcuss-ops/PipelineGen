@@ -13,21 +13,27 @@
 // standalone composable bundles; they are internal to BuildDomainBundle
 // (build_bundles_domain.go) which aggregates their output into
 // wiring.ComposeRoot.Domains.
+//
+// File layout (domain split, July 2026):
+//   - this file: buildVoiceoverService orchestrator
+//   - build_voiceover_tts.go: TTS provider chain construction
+//   - build_voiceover_destinations.go: destination resolver adapters
+//     (+ nopDestinationResolver test-bootstrap fallback)
+//   - build_voiceover_jobs.go: wireVoiceoverJobBindings
+//   - build_voiceover_validators.go: appendVoiceoverCriticalValidators
 package app
 
 import (
 	"context"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
-	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -216,29 +222,10 @@ func buildVoiceoverService(
 		log,               // *zap.Logger
 	)
 
-	// P1-2 (June 2026): the application layer no longer constructs
-	// the production *audioasset.Processor. Construction moves UP to
-	// the composition root (this file) so the voiceover package can
-	// stay free of any internal/infrastructure/* import. The
-	// processor is wrapped by newUseCaseTTSAdapter so the
-	// voiceover.Service only sees the canonical TTSProvider port.
-	if cfg.Paths.PythonScriptsDir == "" {
-		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
-	}
-	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
-
-	// FASE 6 (July 2026): wrap TTS provider with exponential-backoff
-	// retry + circuit breaker. The retry fires INSIDE the rate limiter
-	// (each semaphore slot owns its retries). Circuit breaker opens
-	// after N consecutive failures across all calls.
-	ttsProvider = newRetryableTTSProvider(ttsProvider, cfg.Voiceover, log)
-
-	// FASE 8 (July 2026): wrap adapters with bounded concurrency,
-	// per-call timeouts, and Drive-upload retry. The voiceover package
-	// stays unaware of rate-limiting; the composition root swaps the
-	// raw adapters with these wrappers in-place.
-	ttsProvider = newRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log)
+	// TTS chain — raw processor → use-case adapter → retryable → rate-limited.
+	// Extracted to build_voiceover_tts.go (shared by the legacy batch
+	// service and the canonical per-item use case).
+	audioProcessor, ttsProvider := buildVoiceoverTTSProvider(cfg, log)
 
 	// Azione #1 (July 2026): construct the shared per-item pipeline
 	// runner. The legacy batch path (process.go::processLanguage) now
@@ -295,18 +282,10 @@ func buildVoiceoverService(
 	// composition-time fail-fast panics when ProcessItem is nil. The
 	// use case itself tolerates nil DestinationResolver + nil
 	// DefaultFolderResolver via the canonical short-circuit path.
-	var destResolverAdapter voiceover.DestinationResolver
-	var defaultFolderResolver voiceover.VoiceoverDefaultFolderResolver
-	if destResolver != nil {
-		destResolverAdapter = newUseCaseDestResolverAdapter(destResolver)
-		defaultFolderResolver = newUseCaseDefaultFolderResolverAdapter(
-			cfg.Drive.VoiceoverFolder(),
-			voDir,
-		)
-	} else {
-		destResolverAdapter = nopDestinationResolver{}
-		log.Warn("voiceover: using nopDestinationResolver (no asset.Resolver wired); processItemUseCase will fail-closed with missing_folder_id for requests without explicit Destination (typical of internal/app/*_test.go stub-bootstrap helpers)")
-	}
+	// Destination resolver adapters — extracted to
+	// build_voiceover_destinations.go (includes the nil-tolerant
+	// nopDestinationResolver fallback for stub-bootstrap helpers).
+	destResolverAdapter, defaultFolderResolver := buildVoiceoverDestResolvers(destResolver, cfg, voDir, log)
 
 	// Adapter (E1 cutover): VoiceoverPublisher port — wraps
 	// driveUploader.Admin() directly. The legacy AssetLifecycle
@@ -397,158 +376,4 @@ func buildVoiceoverService(
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	return voService, voRepo, processItemUseCase, audioProcessor, nil
-}
-
-// nopDestinationResolver is a nil-tolerant DestinationResolver used
-// by the composition root when no asset.Resolver is wired (typical
-// of `internal/app/*_test.go` stub-bootstrap helpers that exercise
-// the composition root without the full asset resolution chain).
-//
-// The ProcessVoiceoverItemUseCase constructor panics on nil
-// DestinationResolver (a composition-time fail-closed guard), so the
-// composition root cannot pass a literal nil interface. The nop
-// resolver returns (nil, nil) — a value that the downstream
-// ResolveDestinationWithFallback function correctly maps to the
-// canonical "missing_folder_id" short-circuit, so the use case
-// surfaces a typed failure on every Execute call rather than
-// silently falling back to /tmp or some other unspecified
-// destination.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: this is a TEST-BOOTSTRAP-ONLY
-// degradation. Production composition root paths always wire a
-// real asset.Resolver (the `else` branch in
-// buildVoiceoverService logs a Warn so operators see the
-// dev-mode shortcut). The Warn + the "missing_folder_id" failure
-// mode together preserve the no-fake-availability invariant: a
-// misconfigured composition root fails loud, not silent.
-type nopDestinationResolver struct{}
-
-// Compile-time assertion (AGENTS.md Pattern 0): the nop resolver
-// must structurally satisfy the narrow voiceover.DestinationResolver
-// port so a future port drift triggers a compile error here.
-var _ voiceover.DestinationResolver = nopDestinationResolver{}
-
-// Resolve is the canonical nop implementation: returns (nil, nil) so
-// the use case's ResolveDestinationWithFallback short-circuits to
-// "missing_folder_id" via the canonical Rule 2 + Rule 3 path
-// (destReq == nil AND defaultResolver is nil → return nil).
-func (nopDestinationResolver) Resolve(_ context.Context, _ *voiceover.DestinationRequest) (*voiceover.ResolvedDestination, error) {
-	return nil, nil
-}
-
-// wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +
-// voiceover.generate_item (BLOC5.3 child fanout) handlers into jobs.Service.
-// Extracted from NewComposition per PG-028 (July 2026).
-func wireVoiceoverJobBindings(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, log *zap.Logger) error {
-	// Voiceover registration moved to the new GenerateJobHandler path
-	// (P0.1, June 2026) — see buildVoiceoverService.
-	// The legacy Service.RegisterHandler hook (which registered
-	// voiceover.batch + voiceover.promo) is intentionally removed here;
-	// the legacy codes will be retired in the next refactor (P0.3).
-	if domains.VoiceoverGenerateHandler != nil && jobs.Service != nil {
-		// Catena A P0 (June 2026): the canonical `voiceover.generate`
-		// job type is now backfilled with the typed-port GenerateJobHandler.
-		// The boot smoke test at internal/app/voiceover_wiring_test.go
-		// fails closed if this registration is absent — the failure mode
-		// of HEAD pre-Catena-A was /api/voiceover/generate → 202 → job
-		// queued → no consumer → silence.
-		//
-		// Audit P0 #2 (July 2026): Register now returns error so this
-		// wiring step fails loud at boot instead of silently dropping
-		// jobs onto an unsigned dispatcher.
-		if err := domains.VoiceoverGenerateHandler.Register(jobs.Service); err != nil {
-			return fmt.Errorf("voiceover.generate handler wiring (Catena A P0): %w", err)
-		}
-		log.Info("voiceover.generate handler registered (Catena A P0 wiring complete)")
-	} else {
-		log.Warn("voiceover.generate handler NOT registered (typed-port chain incomplete — Drive / destResolver / outbox / lifecycle / repo / audio / db must all be wired)",
-			zap.Bool("generate_handler_built", domains.VoiceoverGenerateHandler != nil),
-			zap.Bool("jobs_service_available", jobs.Service != nil))
-	}
-	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): construct the
-	// parent GenerateJobHandler (Fanout-bound) and the child
-	// GenerateItemJobHandler (per-language) at composition time, where
-	// jobs.Service is available for both FanoutUseCase construction AND
-	// the late-binding Register calls.
-	//
-	// Audit P0 #2 (July 2026): both Register calls now return error;
-	// NewComposition aborts if either fails (fail-closed at boot).
-	// Pre-P0 #2 a silent-Warn here would lose the parent-child wiring
-	// and the parent fan-out would dead-letter every N children.
-	if jobs.Service != nil && domains.VoiceoverProcessItem != nil {
-		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
-			Enqueuer: jobs.Service,
-			Logger:   log,
-		})
-		parentHandler := voiceoverjobs.NewGenerateJobHandler(fanout, log)
-		// Audit P0 #2 (July 2026): the dispatcher's duplicate-
-		// Register contract is not part of its surface. Block A above
-		// may have already bound a handler for TypeVoiceoverGenerate
-		// when BuildDomainBundle succeeded. The pre-P0 #2 silent-Warn
-		// path masked this; Post-P0 #2 must explicitly preserve
-		// idempotency via dispatcher's HasHandler probe (canonical per
-		// internal/app/voiceover_wiring_test.go).
-		// If already bound, skip the re-Register — the domains field
-		// is still overwritten with the BLOC5.3 fanout-bound handler
-		// for downstream state-tracking consumers.
-		if !jobs.Service.HasHandler(domainvoiceover.TypeGenerate) {
-			if err := parentHandler.Register(jobs.Service); err != nil {
-				return fmt.Errorf("voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
-			}
-		} else {
-			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
-				zap.String("job_type", domainvoiceover.TypeGenerate))
-		}
-		domains.VoiceoverGenerateHandler = parentHandler
-
-		// TypeVoiceoverGenerateItem is NOT pre-registered by Block A
-		// (Block A only touches TypeVoiceoverGenerate). Per-language
-		// child handler registration is uniquely owned by this block;
-		// any failure surfaces as a typed error and aborts composition
-		// (fail-closed at boot, audit P0.2).
-		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessItem, log)
-		if err := childHandler.Register(jobs.Service); err != nil {
-			return fmt.Errorf("voiceover.generate_item child handler Register (BLOC5.3 commit-2): %w", err)
-		}
-		domains.VoiceoverGenerateItemHandler = childHandler
-		log.Info("BLOC5.3 commit-2 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
-	}
-	return nil
-}
-
-// appendVoiceoverCriticalValidators populates the critical-handler
-// validators slice with voiceover.generate + voiceover.generate_item bindings.
-// Extracted from NewComposition per PG-028 (July 2026).
-func appendVoiceoverCriticalValidators(domains *wiring.DomainBundle, jobs *wiring.JobsBundle, validators *[]CriticalHandler) {
-	// voiceover.generate: literal Register re-call gated by
-	// HasHandler check to preserve BLOC5.3 + Catena A P0 idempotency
-	// (parent gate at late-bindings time). If the dispatcher already
-	// holds a Catena A P0 binding, the validator no-ops so we don't
-	// overwrite it with the BLOC5.3 caller-reference handler.
-	if jobs.Service != nil {
-		vh := domains.VoiceoverGenerateHandler
-		if vh != nil {
-			*validators = append(*validators,
-				CriticalHandler{
-					Name: "voiceover.generate",
-					Bind: func(svc *appjobs.Service) error {
-						if svc.HasHandler(domainvoiceover.TypeGenerate) {
-							return nil // idempotent: Catena A P0 bind preserved
-						}
-						return vh.Register(svc)
-					},
-				},
-			)
-		}
-	}
-	if gih := domains.VoiceoverGenerateItemHandler; gih != nil && jobs.Service != nil {
-		*validators = append(*validators,
-			CriticalHandler{
-				Name: "voiceover.generate_item",
-				Bind: func(svc *appjobs.Service) error {
-					return gih.Register(svc)
-				},
-			},
-		)
-	}
 }
