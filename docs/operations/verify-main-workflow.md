@@ -6,10 +6,25 @@ live scraper.
 
 ## Gate family
 
+The four requested gates form one explicit escalation chain:
+
+| Gate | Composition | Purpose | External/live services |
+|---|---|---|---|
+| `make verify-main` | `verify-push + verify-node-native + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
+| `make verify-race` | `verify-unit-race` | Explicit race-detector Go gate with bounded unit concurrency | None; headless |
+| `make verify-full` | `verify-main + verify-race + verify-node-tests` | Complete headless gate | None; headless |
+| `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive/Qdrant battery |
+
+`verify-main` is the only one of these gates wired into the normal
+pre-push hook. `verify-race`, `verify-full`, and `verify-release` are
+explicit heavier gates and are not implicit dependencies of `verify-main`.
+
 - `make verify-fast`: foundation, static analysis, and build for the local
   development loop.
-- `make verify-main`: `verify-push`, standard unit packages, the native
-  Node binding probe, and architecture checks. It intentionally excludes the
+- `make verify-main`: the registry-driven changed-component gate, standard
+  unit packages, the native Node binding probe, and architecture checks.
+  Foundation/static prerequisites are direct shared dependencies and are
+  executed once per aggregate Make invocation. It intentionally excludes the
   complete race suite and full Node test suite so it remains suitable for
   routine pushes.
 - `make verify-main-stock`: `verify-fast`, standard targeted tests for the
@@ -19,9 +34,10 @@ live scraper.
   canonical Clip domain/application/API packages, and architecture checks.
   Use it for Clip-focused changes without running the full project unit suite
   or depending on an unrelated in-progress adapter decomposition.
-- `make verify-race`: explicit race-tested Go packages.
+- `make verify-race`: explicit race-tested Go packages plus all registered
+  components through the shared component runner.
 - `make verify-full`: `verify-main` plus `verify-race` and the full Node test
-  suite.
+  suite. GNU Make deduplicates shared prerequisites such as foundation.
 - `make verify-release`: `verify-full` plus the integration suite.
 - `make verify-artlist-live`, `make verify-images-live`,
   `make verify-script-live`, and `make verify-vidrush-live`: authenticated

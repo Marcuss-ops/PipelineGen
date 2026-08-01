@@ -135,9 +135,10 @@ ownership of the `Extract` followup.
 
 ## Verification matrix (`verify-*`)
 
-The Makefile gates that journal commits + deployments have been split into a
-**four-tier fail-closed chain** (July 2026, `build(make): split verify-main
-into fast/main/release/live gates`). Each tier runs sequentially; an earlier
+The Makefile gates that journal commits + deployments are split into a
+**six-gate fail-closed chain** (July 2026). The four headless gates escalate
+from daily development to pre-deploy certification; the live gate remains a
+separate post-deploy surface. Each gate fails closed; an earlier dependency
 failure halts the chain.
 
 > **Migration note.** The `verify-*` tier gates are the **canonical pre-push
@@ -145,17 +146,19 @@ failure halts the chain.
 > Operators must use `make verify-artlist-*`, `make verify-script-live`, or
 > `make verify-vidrush-live`; removed smoke aliases are not supported.
 
-| Tier             | Make target          | When to run                       | Browser / Drive / Qdrant live? | Headless? | Typical runtime |
-|------------------|----------------------|-----------------------------------|--------------------------------|-----------|-----------------|
-| dev loop         | `verify-fast`        | During active development         | No                             | Yes       | ~30 s           |
-| **pre-push gate**| `verify-main`        | Before every `git push` to `main` | **No**                         | Yes       | ~5 min          |
-| pre-deploy gate  | `verify-release`     | Before every release              | No (adds `verify-integration`) | Yes       | ~10 min         |
-| post-deploy gate | `verify-live`        | After deploy / on operational hosts | **Yes** (scraper + Drive + Qdrant + browser) | No (full stack) | 10–30 min |
+| Tier / gate      | Make target          | Composition                                      | When to run                       | Browser / Drive / Qdrant live? | Headless? |
+|------------------|----------------------|--------------------------------------------------|-----------------------------------|--------------------------------|-----------|
+| dev loop         | `verify-fast`        | foundation + static                              | During active development         | No                             | Yes       |
+| **daily gate**   | `verify-main`        | `verify-push + verify-node-native + verify-architecture` | Before every `git push` to `main` | **No**                         | Yes       |
+| explicit race    | `verify-race`        | `verify-unit-race`                               | Release/concurrency-sensitive changes | No                         | Yes       |
+| complete headless| `verify-full`        | `verify-main + verify-race + verify-node-tests` | CI/release certification          | No                             | Yes       |
+| pre-deploy       | `verify-release`     | `verify-full + verify-integration`              | Before every release              | No                             | Yes       |
+| post-deploy      | `verify-live`        | live operational batteries                       | After deploy / operational hosts  | **Yes**                        | No        |
 
-**Failure isolation.** None of `verify-fast`, `verify-main`, or
-`verify-release` pulls any script under `tests/operational/artlist/`
-(validated via `make -n` plus a manual absence grep). Only `verify-live`
-composes the four live batteries:
+**Failure isolation.** None of `verify-fast`, `verify-main`, `verify-race`,
+`verify-full`, or `verify-release` pulls any script under
+`tests/operational/artlist/` (validated via `make -n` plus a manual absence
+grep). Only `verify-live` composes the live batteries:
 
 - `tests/operational/images_e2e.sh`
 - `tests/operational/generate/run.sh` (canonical runner; `basic.json` scenario)\n- `tests/operational/script_generate_smoke.sh` (compatibility wrapper for the canonical runner)
