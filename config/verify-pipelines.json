@@ -1,0 +1,48 @@
+{
+  "stock-only": {
+    "components": [
+      "script",
+      "stock",
+      "drive"
+    ],
+    "operational_tests": [
+      {
+        "name": "stock-only-e2e",
+        "command": [
+          "python3",
+          "tests/operational/boxers-generate/stock_only_e2e.py",
+          "--subject",
+          "sugar_ray_robinson",
+          "--scenes",
+          "1"
+        ],
+        "timeout_seconds": 900,
+        "dry_run_supported": true
+      }
+    ],
+    "timeout_seconds": 1200
+  },
+  "clip-only": {
+    "components": [
+      "script",
+      "clips",
+      "drive"
+    ],
+    "operational_tests": [
+      {
+        "name": "clip-only-e2e",
+        "command": [
+          "python3",
+          "tests/operational/boxers-generate/clip_only_e2e.py",
+          "--subject",
+          "sugar_ray_robinson",
+          "--clips",
+          "1"
+        ],
+        "timeout_seconds": 900,
+        "dry_run_supported": true
+      }
+    ],
+    "timeout_seconds": 1200
+  }
+}
