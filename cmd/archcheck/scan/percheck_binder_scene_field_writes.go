@@ -92,6 +92,17 @@ var sceneFieldWriteSkipPathPrefixes = []string{
 // test-file exempt surface.
 const binderScenePlannerCanonical = "internal/application/scripts/scene/scene_planner.go"
 
+// binderScenePlannerFamilyPrefix matches every file in the
+// canonical ScenePlanner family (scene_planner*.go). The planner
+// was split by concern (July 2026) into scene_planner.go /
+// scene_planner_evidence.go / scene_planner_kinds.go —
+// assignKindsByPosition (the intro/clip/outro policy owner)
+// lives in scene_planner_kinds.go and legitimately writes
+// scene.Kind. godlike/06 SSOT: the canonical owner is the
+// ScenePlanner TYPE, not a single file, so the whole family is
+// exempt.
+const binderScenePlannerFamilyPrefix = "internal/application/scripts/scene/scene_planner"
+
 // binderSceneFilerScopedDir is the package directory that this
 // gate scopes to: anything inside internal/application/scripts/
 // scene/. Other packages MAY have their own SpecScene writes
@@ -193,9 +204,12 @@ func ScanBinderSceneFieldWrites(root string, pol *policy.Policy, r *report.Repor
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
-		// Canonical ScenePlanner is exempt — that's the SOLE
-		// owner of every banned field write.
-		if relSlash == binderScenePlannerCanonical {
+		// Canonical ScenePlanner (and its by-concern sibling files
+		// scene_planner_evidence.go / scene_planner_kinds.go) are
+		// exempt — the ScenePlanner is the SOLE owner of every
+		// banned field write, and the family split keeps that
+		// ownership intact.
+		if relSlash == binderScenePlannerCanonical || strings.HasPrefix(relSlash, binderScenePlannerFamilyPrefix) {
 			return nil
 		}
 		// Test files are exempt — regression-guard surface
