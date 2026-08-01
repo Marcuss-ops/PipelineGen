@@ -24,20 +24,33 @@
 // TextTrackVersion, TranscriptHash) populated by
 // buildClipEvidence from the FIRST non-nil track.
 //
-// Commit (refactor Step 7 — clip_source_builder split, July 2026):
-// buildClipEvidence / appendClipSourceText / appendClipDetail moved
-// to clip_source_evidence.go (single-orchestrator-invariants — these
-// are the canonical evidence-construction surface; SSOT lives in the
-// sibling file). cross-refs intra-package preserved.
+// Layout (July 2026, clip_source_builder LONG-FILES split):
+//
+//   - clip_source_builder.go: the ClipSourceBuilder orchestrator —
+//     struct + options + constructor + setters + BuildClipContext +
+//     enrichClipSubtitle (this file).
+//   - clip_source_resolve.go: the resolution domain — typedClipResolverPort,
+//     resolveOneClip, resolveClipContextResult, clipContextRecord /
+//     clipContextResult, clipResolveReason.
+//   - clip_source_text.go: the text domain — truncateExcerpt,
+//     clipDisplayName, chronologicalSortKey, clipTimeline,
+//     parseMetadataMs, dedupTrimmedClipIDs, opts helpers, clipParallelism.
+//   - clip_source_evidence.go: the evidence domain — buildClipEvidence /
+//     appendClipSourceText / appendNarrativeClipText / appendClipDetail
+//     (canonical evidence-construction surface; SSOT lives in the sibling).
+//   - clip_source_builder_transcript.go: the transcript-resolution path.
+//   - clip_source_builder_errors.go: the typed error surface.
+//
+// Single-orchestrator-invariant: BuildClipContext is the ONLY entry
+// point that assembles the *scriptpkg.ClipEvidence surface — the
+// sibling files expose helpers, never a second orchestrator.
 package usecase
 
 import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -49,11 +62,6 @@ import (
 
 // ── ClipSourceBuilder ───────────────────────────────────────────────────
 
-type typedClipResolverPort interface {
-	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
-	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
-}
-
 type ClipSourceBuilder struct {
 	clipsRepo    typedClipResolverPort
 	ollamaClient any // *client.Client
@@ -64,8 +72,8 @@ type ClipSourceBuilder struct {
 	// 2026). The canonical post-cutover contract is that this
 	// reader is ALWAYS wired by composition (production) or by
 	// test fixture. A nil reader surfaces ErrTextTrackNotReady
-	// — there is no `metadata_json[\"transcript\"]` /
-	// `metadata_json[\"clean_transcript\"]` fallback path.
+	// — there is no `metadata_json[\\"transcript\\"]` /
+	// `metadata_json[\\"clean_transcript\\"]` fallback path.
 	textTrackReader   ports.TextTrackReader
 	subtitleArtifacts asset.SubtitleArtifactRepository
 }
@@ -121,7 +129,7 @@ func (c *ClipSourceBuilder) SetReranker(r any) { c.reranker = r }
 // `internal/app/wire_script_resolvers.go::buildScriptSourceResolvers`.
 // The Fase 4 contract is TextTrackReader-only — there is no
 // second parameter because there is no longer a legacy
-// `metadata_json[\"transcript\"]` fallback to gate.
+// `metadata_json[\\"transcript\\"]` fallback to gate.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a nil reader surfaces the
 // lazy `*ErrTextTrackNotReady` (AssetID populated, the rest
@@ -137,29 +145,6 @@ func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 // used to enrich clip evidence before the Google Doc is rendered.
 func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r asset.SubtitleArtifactRepository) {
 	c.subtitleArtifacts = r
-}
-
-const excerptMaxRunes = 500
-const defaultClipParallelism = 4
-
-// truncateExcerpt returns s if its rune count is at most maxRunes;
-// otherwise it returns s truncated to exactly maxRunes runes followed by
-// the U+2026 HORIZONTAL ELLIPSIS.
-func truncateExcerpt(s string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return ""
-	}
-	if utf8.RuneCountInString(s) <= maxRunes {
-		return s
-	}
-	runes := make([]rune, 0, maxRunes+1)
-	for _, r := range s {
-		if len(runes) == maxRunes {
-			break
-		}
-		runes = append(runes, r)
-	}
-	return string(runes) + "\u2026"
 }
 
 // BuildClipContext resolves the supplied clip IDs into assets, builds
@@ -326,236 +311,4 @@ func (c *ClipSourceBuilder) enrichClipSubtitle(ctx context.Context, details map[
 		details[clipID] = detail
 		return
 	}
-}
-
-type clipContextRecord struct {
-	id         string
-	clip       *asset.Asset
-	transcript string
-	track      *asset.TextTrack
-}
-
-type clipContextResult struct {
-	record  clipContextRecord
-	missing *scriptpkg.MissingClipID
-}
-
-func chronologicalSortKey(clip *asset.Asset, id string) int64 {
-	if clip != nil {
-		startMs, _ := clipTimeline(clip)
-		if startMs >= 0 {
-			return startMs
-		}
-	}
-	for i := 0; i < len(id); i++ {
-		if id[i] < '0' || id[i] > '9' {
-			continue
-		}
-		j := i + 1
-		for j < len(id) && id[j] >= '0' && id[j] <= '9' {
-			j++
-		}
-		if n, err := strconv.ParseInt(id[i:j], 10, 64); err == nil {
-			return n
-		}
-		i = j - 1
-	}
-	return int64(^uint64(0) >> 1)
-}
-
-// clipTimeline is the single timestamp projection for indexed clips. Ingested
-// boxing chunks commonly carry chunk_index + chunk_duration_sec instead of
-// explicit millisecond offsets; both representations must produce the same
-// binding contract downstream.
-func clipTimeline(clip *asset.Asset) (int64, int64) {
-	if clip == nil {
-		return -1, -1
-	}
-	startMs := int64(clip.GetMetadataInt("start_ms"))
-	endMs := int64(clip.GetMetadataInt("end_ms"))
-	if endMs > startMs {
-		return startMs, endMs
-	}
-	chunkIndex := int64(clip.GetMetadataInt("chunk_index"))
-	chunkDurationSec := int64(clip.GetMetadataInt("chunk_duration_sec"))
-	if chunkIndex >= 0 && chunkDurationSec > 0 {
-		startMs = chunkIndex * chunkDurationSec * 1000
-		return startMs, startMs + chunkDurationSec*1000
-	}
-	return -1, -1
-}
-
-// clipResolveReason is the typed return value of resolveOneClip.
-type clipResolveReason string
-
-const (
-	clipResolveOK       clipResolveReason = "ok"
-	clipResolveNotFound clipResolveReason = "not_found"
-)
-
-func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*asset.Asset, clipResolveReason) {
-	clip, err := c.clipsRepo.ResolveByMediaAssetID(ctx, id)
-	if err != nil && c.log != nil {
-		c.log.Warn("clip source builder: failed to fetch clip by media asset id",
-			zap.String("clip_id", id),
-			zap.Error(err))
-	}
-	if clip == nil {
-		list, driveErr := c.clipsRepo.ResolveByDriveFileID(ctx, id)
-		if driveErr != nil {
-			if c.log != nil {
-				c.log.Warn("clip source builder: failed to fetch clip by drive file id",
-					zap.String("clip_id", id),
-					zap.Error(driveErr))
-			}
-			return nil, clipResolveNotFound
-		}
-		if len(list) > 0 {
-			clip = list[0]
-		}
-	}
-	if clip == nil {
-		return nil, clipResolveNotFound
-	}
-	return clip, clipResolveOK
-}
-
-func (c *ClipSourceBuilder) resolveClipContextResult(
-	ctx context.Context,
-	id string,
-	language string,
-	requireDriveLink bool,
-) clipContextResult {
-	clip, reason := c.resolveOneClip(ctx, id)
-	switch reason {
-	case clipResolveOK:
-		// fall through to the drive-link / transcript checks below.
-	case clipResolveNotFound:
-		return clipContextResult{
-			missing: &scriptpkg.MissingClipID{
-				ClipID: id,
-				Reason: scriptpkg.MissingClipReasonNotFound,
-			},
-		}
-	default:
-		if c.log != nil {
-			c.log.Warn("clip source builder: unknown resolve reason", zap.String("clip_id", id), zap.String("reason", string(reason)))
-		}
-		return clipContextResult{
-			missing: &scriptpkg.MissingClipID{
-				ClipID: id,
-				Reason: scriptpkg.MissingClipReasonNotFound,
-			},
-		}
-	}
-
-	if requireDriveLink && clip.DriveLink() == "" {
-		if c.log != nil {
-			c.log.Warn("clip source builder: clip lacks drive link (missing — Issue #2 bucket)",
-				zap.String("clip_id", id))
-		}
-		return clipContextResult{
-			missing: &scriptpkg.MissingClipID{
-				ClipID: id,
-				Reason: scriptpkg.MissingClipReasonDriveNotFound,
-			},
-		}
-	}
-
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
-	// resolveTranscript is called EXACTLY ONCE per clip.
-	// The signature is (string, *asset.TextTrack, error) —
-	// transcript string first, resolved track second,
-	// error third. The resolved transcript feeds both
-	// the assembled source text (via appendClipSourceText)
-	// and the per-clip ClipDetail.Transcript (via
-	// appendClipDetail). The resolved *asset.TextTrack
-	// feeds the 3 new fingerprint fields (via the
-	// resolvedTracks accumulator + buildClipEvidence).
-	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
-	if resolveErr != nil && c.log != nil {
-		// godlike/07 minimum-blast-radius: the typed error is
-		// logged but NOT propagated (the existing BuildClipContext
-		// signature is preserved; strict-error surfacing lands in a
-		// follow-up PR that threads the error up to the HTTP handler).
-		c.log.Warn("clip source builder: text track resolve returned error (continuing with empty transcript)",
-			zap.String("clip_id", id),
-			zap.String("language", language),
-			zap.Error(resolveErr))
-	}
-
-	return clipContextResult{
-		record: clipContextRecord{
-			id:         id,
-			clip:       clip,
-			transcript: transcript,
-			track:      track,
-		},
-	}
-}
-
-func clipDisplayName(clip *asset.Asset, id string) string {
-	if name := strings.TrimSpace(clip.Name); name != "" {
-		return name
-	}
-	if name := strings.TrimSpace(clip.Filename); name != "" {
-		return name
-	}
-	return id
-}
-
-func parseMetadataMs(s string) int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	ms, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return ms
-}
-
-func dedupTrimmedClipIDs(clipIDs []string) ([]string, error) {
-	seen := make(map[string]struct{}, len(clipIDs))
-	uniqueIDs := make([]string, 0, len(clipIDs))
-	for _, id := range clipIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
-	}
-	if len(uniqueIDs) == 0 {
-		return nil, fmt.Errorf("clip source builder: no valid clip IDs provided")
-	}
-	return uniqueIDs, nil
-}
-
-func optsRequireDriveLink(opts *ClipGenerationOptions) bool {
-	if opts == nil {
-		return true
-	}
-	return opts.RequireDriveLink
-}
-
-func optsResolveLanguage(opts *ClipGenerationOptions) string {
-	if opts == nil {
-		return ""
-	}
-	return strings.TrimSpace(opts.Language)
-}
-
-func clipParallelism(count int) int {
-	if count <= 0 {
-		return 1
-	}
-	if count < defaultClipParallelism {
-		return count
-	}
-	return defaultClipParallelism
 }
