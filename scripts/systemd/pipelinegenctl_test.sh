@@ -60,7 +60,7 @@ cat > "$FAKE_BIN/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
 set -u
 args="$*"
-if [[ "$args" == *"/api/admin/drive/canary-upload"* ]]; then
+if [[ "$args" == *"/api/drive/canary-upload"* ]]; then
     config="$(cat)"
     auth_present=0
     boxe_present=0

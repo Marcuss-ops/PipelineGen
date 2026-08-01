@@ -1,0 +1,88 @@
+{
+  "scenario": "boxers_strict_it_e2e",
+  "status": "BLOCKED",
+  "five_poor_boxers_it": {
+    "runner_scenario": "09",
+    "status": "BLOCKED",
+    "post_script_generate": "NOT_ATTEMPTED",
+    "missing_stock": ["Manny Pacquiao", "Floyd Mayweather", "Sugar Ray Robinson"]
+  },
+  "preflight": {
+    "pipelinegen_ready": "PASS",
+    "qdrant": "PASS",
+    "drive_canary_boxe": "PASS",
+    "stock_resolver": "BLOCKED",
+    "post_script_generate": "NOT_ATTEMPTED",
+    "registry_tyson_ali": "PASS",
+    "registry_manny_pacquiao": "BLOCKED_WRONG_SUBJECT"
+  },
+  "stock_pipeline_regression_fix": {
+    "producer_payload": "PASS",
+    "legacy_payload_decoder": "PASS",
+    "post_fix_canary_media_stock": "PASS",
+    "post_fix_canary_text_materialize": "PASS"
+  },
+  "subjects": {
+    "mike_tyson": "BLOCKED",
+    "muhammad_ali": "BLOCKED",
+    "manny_pacquiao": "BLOCKED",
+    "floyd_mayweather": "BLOCKED",
+    "sugar_ray_robinson": "BLOCKED"
+  },
+  "blockers": [
+    {
+      "subject": "Manny Pacquiao",
+      "asset_ids": [
+        "yt_6VtSrG1hs9U_119_164_v1",
+        "yt_6VtSrG1hs9U_299_350_v1",
+        "yt_6VtSrG1hs9U_196_239_v1"
+      ],
+      "reason": "wrong_subject",
+      "evidence": "source video 6VtSrG1hs9U resolves to Mike Tyson: Where all my money went"
+    },
+    {
+      "subject": "Mike Tyson",
+      "reason": "final_scene_roles_incomplete",
+      "evidence": "fresh fight/interview/training stock is ACTIVE and INDEXED, but crisis/fall and transformation roles are not verified"
+    },
+    {
+      "subject": "Muhammad Ali",
+      "reason": "final_scene_roles_incomplete",
+      "evidence": "fresh fight/interview/training stock is ACTIVE and INDEXED, but speed/style and legacy roles are not verified"
+    },
+    {
+      "subject": "Floyd Mayweather",
+      "reason": "explicitly_blocked_until_verified_active_stock"
+    },
+    {
+      "subject": "Sugar Ray Robinson",
+      "reason": "explicitly_blocked_until_verified_active_stock"
+    }
+  ],
+  "fresh_acquisitions": [
+    {"subject": "Mike Tyson", "role": "interview", "asset_id": "planner:5c2abb360a7d1b8d:0", "source_video_id": "iHaK0M-207o", "lifecycle_state": "ACTIVE", "index_state": "INDEXED"},
+    {"subject": "Mike Tyson", "role": "training", "asset_id": "planner:783cff00c98db318:0", "source_video_id": "ItX74qZf2o0", "lifecycle_state": "ACTIVE", "index_state": "INDEXED"},
+    {"subject": "Muhammad Ali", "role": "interview", "asset_id": "planner:5dd5aaeae12105f0:0", "source_video_id": "8CQTVRwi9Fk", "lifecycle_state": "ACTIVE", "index_state": "INDEXED"},
+    {"subject": "Muhammad Ali", "role": "training", "asset_id": "planner:afa1036ac338e518:0", "source_video_id": "75fPUKEP7Ws", "lifecycle_state": "ACTIVE", "index_state": "INDEXED"}
+  ],
+  "scripts": {"expected": 3, "completed": 0},
+  "scenes": {"expected": 10, "completed": 0},
+  "stock_bindings": {
+    "expected": 10,
+    "verified": 0,
+    "wrong_subject": 3,
+    "fallback": 0,
+    "deleted": 0,
+    "missing": 7
+  },
+  "voiceovers": {"expected": 10, "completed": 0},
+  "documents": {"expected": 3, "created": 0},
+  "jobs": {
+    "failed": 0,
+    "running": 0,
+    "pending": 0,
+    "warnings": 0,
+    "created_by_this_run": 0
+  },
+  "final": "BLOCKED"
+}

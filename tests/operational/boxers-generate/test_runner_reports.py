@@ -76,13 +76,15 @@ printf '%s' "$code"
                 connection.execute(
                     "CREATE TABLE media_assets ("
                     "id TEXT PRIMARY KEY, lifecycle_state TEXT NOT NULL, "
-                    "source TEXT NOT NULL, drive_link TEXT NOT NULL, name TEXT NOT NULL)"
+                    "index_state TEXT NOT NULL, source TEXT NOT NULL, "
+                    "drive_file_id TEXT NOT NULL, drive_link TEXT NOT NULL, "
+                    "name TEXT NOT NULL)"
                 )
                 for boxer in registry["boxers"].values():
                     for role, asset in boxer.get("assets", {}).items():
                         connection.execute(
-                            "INSERT INTO media_assets VALUES (?, 'ACTIVE', 'youtube', ?, ?)",
-                            (asset["asset_id"], asset["drive_link"], f"{boxer['subject']} {role}"),
+                            "INSERT INTO media_assets VALUES (?, 'ACTIVE', 'INDEXED', 'youtube', ?, ?, ?)",
+                            (asset["asset_id"], "drive-file-" + role, asset["drive_link"], f"{boxer['subject']} {role}"),
                         )
                 connection.commit()
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run and audit the real YouTube stock chain for one boxer.
 
-The runner submits one segment per source job, with a bounded number of
-source jobs in flight. A green HTTP enqueue is never treated as success:
+The runner submits one bounded multi-clip stock job per source, with a
+bounded number of source jobs in flight. A green HTTP enqueue is never treated as success:
 every job is polled, then SQLite and Drive are checked for the selected
 profile's counts and canonical provenance.
 """
@@ -34,7 +34,7 @@ TARGET_CLIPS_PER_VIDEO = 15
 CLIP_DURATION_SECONDS = 4
 CLIP_DURATION_MIN_SEC = 3.8             # ffprobe tolerance
 CLIP_DURATION_MAX_SEC = 4.2
-MAX_CONCURRENCY = 2                      # keep YouTube/Drive/SQLite load bounded
+MAX_CONCURRENCY = 4                      # matches the media.stock worker budget
 
 
 class RunnerProfile(NamedTuple):
@@ -249,7 +249,7 @@ def describe(video_id: str, category: str) -> dict[str, Any]:
         "--dump-single-json", "--skip-download"
     )
     try:
-        item = json.loads(subprocess.check_output(command, text=True, timeout=90, stderr=subprocess.DEVNULL))
+        item = json.loads(subprocess.check_output(command, text=True, timeout=30, stderr=subprocess.DEVNULL))
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"YouTube manifest video {video_id} unavailable: {exc}") from exc
     duration = float(item.get("duration", 0) or 0)
@@ -405,7 +405,12 @@ def _select_manifest(
             for category, video_id in manifest_videos
             if category == "fight"
         ][:profile.videos]
-    selected = [describe(video_id, category) for category, video_id in manifest_videos]
+    # Manifest validation is read-only and independent per source. Keep it
+    # bounded so a transient YouTube stall on one video cannot serialize the
+    # entire 20-video preflight behind repeated 90-second timeouts.
+    with ThreadPoolExecutor(max_workers=min(4, len(manifest_videos))) as pool:
+        futures = [pool.submit(describe, video_id, category) for category, video_id in manifest_videos]
+        selected = [future.result() for future in futures]
     if len(selected) != profile.videos or len({item["video_id"] for item in selected}) != profile.videos:
         raise RuntimeError(f"{label} manifest is not exactly {profile.videos} unique videos for {profile.name}")
     return selected
@@ -453,6 +458,15 @@ def folder(base: str, token: str, root_id: str, boxer: str) -> str:
         return str(matches[0]["id"])
     created = http(base, token, "POST", "/api/drive/folders", {"parent_id": root_id, "folders": [boxer]})
     return str(created.get("created", {}).get(boxer, ""))
+
+
+def resolve_boxe_folder(base: str, token: str) -> str:
+    """Resolve Boxe through the canonical alias resolver and publisher canary."""
+    result = http(base, token, "POST", "/api/drive/canary-upload", {"folder_alias": "Boxe"})
+    folder_id = str(result.get("folder_id") or "")
+    if not result.get("ok") or not folder_id:
+        raise RuntimeError("Drive canary alias resolution for Boxe failed")
+    return folder_id
 
 
 def segments(video: dict[str, Any], profile: RunnerProfile | None = None) -> list[dict[str, Any]]:
@@ -516,48 +530,71 @@ def asset_complete(db: Path, asset_id: str) -> bool:
 
 
 def run_source(
-    base: str, token: str, db: Path, boxer: str, folder_id: str,
-    video: dict[str, Any], index: int, profile: RunnerProfile | None = None,
+    base: str,
+    token: str,
+    db: Path,
+    boxer: str,
+    folder_id: str,
+    video: dict[str, Any],
+    index: int,
+    profile: RunnerProfile | None = None,
 ) -> None:
     profile = profile or PROFILES["full"]
+    run_id = os.environ.get("VELOX_STOCK_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    source_url = video["url"]
+    clip_specs = []
     for clip_index, segment in enumerate(segments(video, profile), 1):
-        asset_id = clip_id(video["video_id"], segment)
-        if asset_complete(db, asset_id):
-            print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} CACHED")
-            continue
-        payload = {"url": video["url"], "segments": [segment], "strategy": "replace",
-                   "destination": {"folder_id": folder_id, "folder_path": boxer, "create_subfolder": False}}
-        # One segment per job is intentional.  The multi-segment fan-out
-        # currently has a reproducible RUNNING-at-5% deadlock; atomising the
-        # work preserves the selected profile's clips/video contract and makes retries exact.
-        last_error = ""
-        for attempt in range(1, 4):
-            request_id = f"youtube-stock-{boxer.casefold().replace(' ', '-')}-{video['video_id']}-{clip_index:02d}-v17-a{attempt}"
-            submitted_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-            accepted = http(base, token, "POST", "/api/clips/process", payload, request_id)
-            job_id = str(accepted.get("job_id") or accepted.get("id") or accepted.get("job", {}).get("id") or "")
-            if not job_id:
-                job_id = latest_job(db, video, segment, submitted_at)
-            deadline = time.monotonic() + 600
-            while time.monotonic() < deadline:
-                result = http(base, token, "GET", f"/api/jobs/{job_id}/full")
-                state = str(result.get("status", result.get("state", ""))).upper()
-                if state in TERMINAL:
-                    if state in {"SUCCEEDED", "COMPLETED"}:
-                        wait_asset(db, asset_id)
-                        print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} SUCCEEDED")
-                        break
-                    last_error = f"job {job_id} ended {state}: {result.get('error', '')}"
-                    break
-                time.sleep(3)
-            else:
-                last_error = f"timeout waiting for {job_id}"
-            if asset_complete(db, asset_id):
-                break
-            if attempt < 3:
-                print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clip {clip_index:02d}/{profile.clips_per_video} retry {attempt + 1}/3: {last_error}")
-        else:
-            raise RuntimeError(f"{video['video_id']} clip {clip_index}: {last_error}")
+        def seconds(value: str) -> int:
+            parts = [int(part) for part in value.split(":")]
+            return parts[-1] + (parts[-2] * 60 if len(parts) > 1 else 0)
+        clip_specs.append({
+            "title": video.get("title", video["video_id"]),
+            "description": segment["description"],
+            "url": source_url,
+            "start_sec": seconds(segment["start"]),
+            "end_sec": seconds(segment["end"]),
+            "category": video["category"],
+            "tags": [boxer, video["category"]],
+            "slug": f"{run_id}-{index:02d}-{video['video_id']}-{clip_index:02d}",
+        })
+    payload = {
+            "direct_urls": [source_url],
+            "clips": clip_specs,
+            "total_minutes": 1,
+            "target_total_duration_seconds": profile.clips_per_video * CLIP_DURATION_SECONDS,
+            "target_duration_per_source_seconds": profile.clips_per_video * CLIP_DURATION_SECONDS,
+            "clips_per_source": profile.clips_per_video,
+            "clip_duration_seconds": CLIP_DURATION_SECONDS,
+            "download_mode": "sections_only",
+            "clip_duration": CLIP_DURATION_SECONDS,
+            "folder_name": boxer,
+            "drive_folder_id": folder_id,
+            "subfolder": f"{run_id}/{index:02d}/{video['category']}/{video['video_id']}",
+            "metadata": {
+                "title": video.get("title", video["video_id"]),
+                "description": f"{video['category']} stock for {boxer}.",
+                "category": "Boxe",
+                "tags": [boxer, video["category"]],
+            },
+            "async": True,
+        }
+    request_id = f"youtube-stock-{run_id}-{boxer_slug(boxer)}-{index:02d}-{video['video_id']}"
+    accepted = http(base, token, "POST", "/api/stock-pipeline/run", payload, request_id)
+    job_id = str(accepted.get("job_id") or accepted.get("run_id") or "")
+    if not job_id:
+        raise RuntimeError(f"stock pipeline source {video['video_id']} returned no job_id")
+    deadline = time.monotonic() + 1800
+    while time.monotonic() < deadline:
+        result = http(base, token, "GET", f"/api/jobs/{job_id}/full")
+        state = str(result.get("status", result.get("state", ""))).upper()
+        if state in TERMINAL:
+            if state not in {"SUCCEEDED", "COMPLETED"}:
+                raise RuntimeError(f"stock pipeline {job_id} ended {state}: {result.get('error', '')}")
+            print(f"[{index:02d}/{profile.videos}] {video['category']:<9} {video['video_id']} clips {profile.clips_per_video} SUCCEEDED")
+            break
+        time.sleep(5)
+    else:
+        raise RuntimeError(f"timeout waiting for stock pipeline {job_id}")
 
 
 def verify(
@@ -566,25 +603,28 @@ def verify(
     boxer: str,
     profile: RunnerProfile | None = None,
     expected_source_video_ids: set[str] | None = None,
+    wait_for_index_seconds: int = 180,
+    expected_run_id: str | None = None,
 ) -> None:
     profile = profile or PROFILES["full"]
-    scope = (
-        "source='youtube' AND lifecycle_state='ACTIVE' "
-        "AND folder_id=? AND LOWER(folder_path)=LOWER(?)"
-    )
-    scope_params: list[Any] = [folder_id, boxer]
+    scope = "source='youtube' AND lifecycle_state='ACTIVE'"
+    scope_params: list[Any] = []
     if expected_source_video_ids is not None:
         if not expected_source_video_ids:
             raise RuntimeError("verification requires at least one expected source video ID")
         placeholders = ",".join("?" for _ in expected_source_video_ids)
         scope += f" AND source_video_id IN ({placeholders})"
         scope_params.extend(sorted(expected_source_video_ids))
+    if expected_run_id:
+        scope += " AND json_extract(metadata_json, '$.slug') LIKE ?"
+        scope_params.append(f"{expected_run_id}-%")
     params = tuple(scope_params)
     with sqlite3.connect(db) as conn:
         row = conn.execute(
             f"""SELECT COUNT(*), COUNT(DISTINCT source_video_id), COALESCE(SUM(duration_ms),0),
                  COUNT(DISTINCT file_hash), SUM(CASE WHEN drive_file_id='' THEN 1 ELSE 0 END),
-                 SUM(CASE WHEN source_video_id='' OR source_url='' OR category='' OR duration_ms<=0 THEN 1 ELSE 0 END)
+                 SUM(CASE WHEN source_video_id='' OR source_url='' OR category='' OR duration_ms<=0 THEN 1 ELSE 0 END),
+                 SUM(CASE WHEN index_state != 'INDEXED' THEN 1 ELSE 0 END)
           FROM media_assets WHERE {scope}""",
             params,
         ).fetchone()
@@ -592,12 +632,6 @@ def verify(
             f"SELECT source_video_id, COUNT(*) FROM media_assets WHERE {scope} GROUP BY source_video_id",
             params,
         ).fetchall()
-        paths = [
-            row[0]
-            for row in conn.execute(
-                f"SELECT local_path FROM media_assets WHERE {scope}", params
-            )
-        ]
         per_dur = conn.execute(
             f"""SELECT source_video_id, COUNT(*) AS clip_count, SUM(duration_ms) AS total_duration_ms
               FROM media_assets WHERE {scope}
@@ -605,7 +639,10 @@ def verify(
               HAVING COUNT(*) != ? OR SUM(duration_ms) < ? OR SUM(duration_ms) > ?""",
             params + (profile.clips_per_video, profile.per_source_min_ms, profile.per_source_max_ms),
         ).fetchall()
-    count, videos, duration, hashes, missing_drive, incomplete = row
+    count, videos, duration, hashes, missing_drive, incomplete, missing_index = row
+    if missing_index and wait_for_index_seconds > 0:
+        time.sleep(5)
+        return verify(db, folder_id, boxer, profile, expected_source_video_ids, wait_for_index_seconds - 5, expected_run_id)
     expected = profile.total_clips
     if (
         count != expected
@@ -614,32 +651,21 @@ def verify(
         or hashes != expected
         or missing_drive
         or incomplete
+        or missing_index
     ):
         raise RuntimeError(
             f"SQLite gate failed: clips={count}, videos={videos}, duration_ms={duration}, "
             f"expected_duration_ms={profile.total_min_ms}..{profile.total_max_ms}, "
-            f"hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}"
+            f"hashes={hashes}, missing_drive={missing_drive}, incomplete={incomplete}, missing_index={missing_index}"
         )
     if any(n > profile.clips_per_video for _, n in per_source):
         raise RuntimeError(f"more than {profile.clips_per_video} clips found for a source video")
     if per_dur:
         offenders = [f"{r[0]} clips={r[1]} dur_ms={r[2]}" for r in per_dur]
         raise RuntimeError(f"per-source duration gate failed ({len(offenders)} sources): {'; '.join(offenders[:5])}")
-    bad_files = []
-    for path in paths:
-        clip = Path(path) if path else None
-        if clip is None or not clip.is_file() or clip.stat().st_size <= 0:
-            bad_files.append(f"missing:{path}")
-            continue
-        probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], capture_output=True, text=True, check=False)
-        try:
-            duration_sec = float(probe.stdout.strip())
-        except ValueError:
-            duration_sec = 0
-        if probe.returncode != 0 or not CLIP_DURATION_MIN_SEC <= duration_sec <= CLIP_DURATION_MAX_SEC:
-            bad_files.append(f"duration:{path}:{duration_sec:.3f}")
-    if bad_files:
-        raise RuntimeError(f"physical clip gate failed ({len(bad_files)} files): {bad_files[:3]}")
+    # Local media is deliberately removed after canonical Drive publication.
+    # The durable physical gate is therefore the SQLite/Drive contract above:
+    # ACTIVE + INDEXED + non-empty Drive identity/link + valid duration/hash.
     print(
         f"SQLite gate: {profile.total_clips} clips, {profile.videos} videos, "
         f"{profile.target_total_ms // 1000} nominal seconds, complete provenance"
@@ -669,6 +695,8 @@ def main() -> int:
     # Keep the display name used for Drive/folder_path separate from the
     # deterministic slug used in idempotency keys and reports.
     args.boxer = canonical_boxer_name(args.boxer)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    os.environ["VELOX_STOCK_RUN_ID"] = run_id
     token = os.environ.get("VELOX_ADMIN_TOKEN", "")
     if not token:
         raise SystemExit("VELOX_ADMIN_TOKEN is required")
@@ -690,10 +718,8 @@ def main() -> int:
             expected_source_video_ids=expected_sources,
         )
         return 0
-    if not args.root_id:
-        raise SystemExit("YOUTUBE_STOCK_ROOT_ID is required")
     selected = select(args.base, token, args.boxer, profile)
-    target = folder(args.base, token, args.root_id, args.boxer)
+    target = resolve_boxe_folder(args.base, token)
     if not target:
         raise SystemExit("could not resolve/create boxer Drive folder")
     print(
@@ -715,6 +741,7 @@ def main() -> int:
         args.boxer,
         profile,
         expected_source_video_ids={video["video_id"] for video in selected},
+        expected_run_id=run_id,
     )
     return 0
 

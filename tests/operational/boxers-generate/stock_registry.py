@@ -282,12 +282,26 @@ def _table_columns(connection: sqlite3.Connection) -> set[str]:
 
 def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str, role: str, expected_source: str) -> dict[str, Any]:
     columns = _table_columns(connection)
-    required = {"id", "lifecycle_state", "source", "drive_link"}
+    required = {
+        "id",
+        "lifecycle_state",
+        "index_state",
+        "source",
+        "drive_file_id",
+        "drive_link",
+    }
     missing = required - columns
     if missing:
         raise ValueError(f"media_assets missing resolver columns: {sorted(missing)}")
-    selected = ["id", "lifecycle_state", "source", "drive_link"]
-    for optional in ("name", "folder_path", "filename", "search_text", "folder_id", "metadata_json", "source_provider"):
+    selected = [
+        "id",
+        "lifecycle_state",
+        "index_state",
+        "source",
+        "drive_file_id",
+        "drive_link",
+    ]
+    for optional in ("name", "folder_path", "filename", "search_text", "folder_id", "category", "metadata_json", "source_provider"):
         if optional in columns:
             selected.append(optional)
     row = connection.execute(
@@ -298,6 +312,8 @@ def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str
     record = dict(zip(selected, row))
     if _text(record.get("lifecycle_state")).upper() != "ACTIVE":
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} lifecycle_state is {record.get('lifecycle_state')!r}, expected ACTIVE")
+    if _text(record.get("index_state")).upper() != "INDEXED":
+        raise ValueError(f"{subject}.{role}: asset {asset_id!r} index_state is {record.get('index_state')!r}, expected INDEXED")
     if "source_provider" in record:
         provider = _text(record.get("source_provider"))
         if _norm(provider) != _norm(expected_source):
@@ -308,8 +324,8 @@ def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} source is {record.get('source')!r}, expected {expected_source!r}")
     if not _text(record.get("drive_link")):
         raise ValueError(f"{subject}.{role}: asset {asset_id!r} has empty drive_link")
-    searchable = " ".join(_text(record.get(column)) for column in ("name", "folder_path", "filename", "search_text") if column in record)
-    searchable_normalized = _norm(searchable)
+    if not _text(record.get("drive_file_id")):
+        raise ValueError(f"{subject}.{role}: asset {asset_id!r} has empty drive_file_id")
     metadata: dict[str, Any] = {}
     metadata_raw = record.get("metadata_json")
     if _text(metadata_raw):
@@ -320,6 +336,19 @@ def _resolve_from_db(connection: sqlite3.Connection, asset_id: str, subject: str
         if not isinstance(decoded_metadata, dict):
             raise ValueError(f"{subject}.{role}: asset {asset_id!r} metadata_json must be an object")
         metadata = decoded_metadata
+
+    metadata_terms: list[str] = []
+    for key in ("subject", "subject_name", "asset_subject", "title", "source_title", "description", "source_channel", "category", "tags", "topics", "search_text"):
+        value = metadata.get(key)
+        if isinstance(value, list):
+            metadata_terms.extend(_text(item) for item in value)
+        elif isinstance(value, (str, int, float)):
+            metadata_terms.append(_text(value))
+    searchable = " ".join(
+        [_text(record.get(column)) for column in ("name", "folder_path", "filename", "search_text", "category") if column in record]
+        + metadata_terms
+    )
+    searchable_normalized = _norm(searchable)
 
     declared_subject = next(
         (_text(metadata.get(key)) for key in ("subject", "subject_name", "asset_subject") if _text(metadata.get(key))),

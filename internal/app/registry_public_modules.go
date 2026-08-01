@@ -279,7 +279,7 @@ func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.
 	return tryRegisterModuleStrict(registry, log, sdd, WithRegistrationPoint("register.ScriptDocs"))
 }
 
-// registerAdminModule wires the /api/admin/* capability via admin.Build.
+// registerAdminModule wires the admin Drive canary capability via admin.Build.
 //
 // The admin module hosts operational readiness endpoints (Drive canary).
 // Routes are protected by RequireAdminToken middleware using the
@@ -315,7 +315,7 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 		return fmt.Errorf("wire registry: admin: %w", err)
 	}
 
-	log.Info("admin module registered (drive canary: /api/admin/drive/canary-upload)")
+	log.Info("admin module registered (drive canary: /api/drive/canary-upload)")
 	return nil
 }
 

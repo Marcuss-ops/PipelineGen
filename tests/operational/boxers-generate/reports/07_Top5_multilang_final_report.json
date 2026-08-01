@@ -1,0 +1,101 @@
+{
+  "scenario": "drive_database_reconciliation",
+  "variant": "top5_boxers_multilang",
+  "requested_languages": ["it", "en", "es", "pt", "fr", "de", "nl", "pl", "ro", "tr"],
+  "run": {
+    "target_scenario": "07",
+    "status": "BLOCKED",
+    "generation_status": "not_started",
+    "drive_reconciliation_status": "not_started",
+    "overall_status": "blocked",
+    "generation_attempted": false,
+    "post_sent": false,
+    "job_id": null,
+    "reason": "The runner stopped during dependency preflight because no ACTIVE stock asset was available for any of the five required subjects."
+  },
+  "assets": {
+    "expected": 5,
+    "inspected": 5,
+    "controlled_active_rows_found": 0,
+    "verified": 0,
+    "updated": 0,
+    "missing_active_assets": 5,
+    "drive_api_verified": 0,
+    "missing": null,
+    "trashed": null,
+    "inaccessible": null,
+    "invalid_links": null
+  },
+  "sqlite": {
+    "controlled_asset_rows": 0,
+    "stale_links": null,
+    "duplicate_locations": null,
+    "orphan_active_assets": null,
+    "scripts_expected": 10,
+    "scripts_verified": 0,
+    "persistence_verified": false
+  },
+  "qdrant": {
+    "stale_links": null,
+    "missing_asset_ids": null,
+    "payloads_verified": 0,
+    "searches_verified": 0
+  },
+  "specscene": {
+    "documents_expected": 10,
+    "scenes_expected": 50,
+    "bindings_expected": 50,
+    "scenes_verified": 0,
+    "bindings_verified": 0,
+    "invalid_links": null,
+    "stale_links": null
+  },
+  "documents": {
+    "expected": 10,
+    "created": 0,
+    "refreshed": 0,
+    "doc_ids_verified": 0,
+    "duplicate_documents": null,
+    "invalid_links": null,
+    "hrefs_verified": 0
+  },
+  "languages": {
+    "expected": 10,
+    "completed": 0,
+    "scene_count_expected": 50,
+    "scene_count_verified": 0,
+    "binding_count_expected": 50,
+    "binding_count_verified": 0,
+    "invalid_links": null
+  },
+  "idempotency": {
+    "first_run_executed": false,
+    "second_run_executed": false,
+    "second_run_changes": null,
+    "sqlite_changes": null,
+    "qdrant_changes": null,
+    "document_changes": null,
+    "upload_changes": null
+  },
+  "invalidity_gate": {
+    "invalid_drive_links": null,
+    "stale_qdrant_links": null,
+    "trashed_document_links": null,
+    "missing_document_links": null,
+    "invalid_specscene_links": null,
+    "invalid_manifest_links": null,
+    "invalid_document_links": null,
+    "all_invalidity_counters_verified_zero": false,
+    "unverified_counters_are_failures": true
+  },
+  "blockers": [
+    "NO_ACTIVE_ASSET: Mike Tyson",
+    "NO_ACTIVE_ASSET: Muhammad Ali",
+    "NO_ACTIVE_ASSET: Manny Pacquiao",
+    "NO_ACTIVE_ASSET: Floyd Mayweather",
+    "NO_ACTIVE_ASSET: Sugar Ray Robinson",
+    "The live runner intentionally sent no POST and created no generation job.",
+    "The ten-language output, Drive API verification, Qdrant convergence, Google Doc href audit, persistence, and idempotency checks therefore remain unverified."
+  ],
+  "final": "BLOCKED"
+}

@@ -28,7 +28,7 @@ readonly DEFAULT_BASE_URL="http://127.0.0.1:8000"
 readonly DEFAULT_READY_TIMEOUT="60"
 readonly DEFAULT_RESTART_TIMEOUT="30"
 readonly DEFAULT_LOG_LINES="80"
-readonly CANARY_PATH="/api/admin/drive/canary-upload"
+readonly CANARY_PATH="/api/drive/canary-upload"
 
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
 SUDO_BIN="${SUDO_BIN:-sudo}"

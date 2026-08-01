@@ -88,6 +88,8 @@ class StockRegistryTest(unittest.TestCase):
                     lifecycle_status TEXT NOT NULL,
                     source TEXT NOT NULL,
                     source_provider TEXT,
+                    index_state TEXT NOT NULL,
+                    drive_file_id TEXT NOT NULL,
                     drive_link TEXT NOT NULL,
                     name TEXT NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}'
@@ -98,16 +100,19 @@ class StockRegistryTest(unittest.TestCase):
                 source = bad_value if is_bad_role and bad_field == "source" else "youtube"
                 drive_link = bad_value if is_bad_role and bad_field == "drive_link" else asset["drive_link"]
                 lifecycle_state = bad_value if is_bad_role and bad_field == "lifecycle_state" else "ACTIVE"
+                index_state = bad_value if is_bad_role and bad_field == "index_state" else "INDEXED"
+                drive_file_id = bad_value if is_bad_role and bad_field == "drive_file_id" else "drive-file-" + role
                 metadata = "{}"
                 if metadata_role is not None and is_bad_role:
                     metadata = json.dumps({"role": metadata_role})
                 connection.execute(
                     "INSERT INTO media_assets "
-                    "(id, lifecycle_state, lifecycle_status, source, source_provider, drive_link, name, metadata_json) "
-                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, ?)",
+                    "(id, lifecycle_state, lifecycle_status, index_state, source, source_provider, drive_file_id, drive_link, name, metadata_json) "
+                    "VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        asset["asset_id"], lifecycle_state, source,
+                        asset["asset_id"], lifecycle_state, index_state, source,
                         source_provider if is_bad_role and source_provider is not None else "youtube",
+                        drive_file_id,
                         drive_link, f"Manny Pacquiao {role}", metadata,
                     ),
                 )
@@ -123,6 +128,28 @@ class StockRegistryTest(unittest.TestCase):
                 bad_field="lifecycle_state",
             )
             with self.assertRaisesRegex(ValueError, "lifecycle_state.*expected ACTIVE"):
+                stock_registry.resolve_registry(registry, str(db_path))
+
+    def test_pacquiao_requires_indexed_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, db_path = self._write_pacquiao_db(
+                directory,
+                bad_role="training",
+                bad_value="DISCOVERED",
+                bad_field="index_state",
+            )
+            with self.assertRaisesRegex(ValueError, "index_state.*expected INDEXED"):
+                stock_registry.resolve_registry(registry, str(db_path))
+
+    def test_pacquiao_requires_drive_file_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, db_path = self._write_pacquiao_db(
+                directory,
+                bad_role="fight",
+                bad_value="",
+                bad_field="drive_file_id",
+            )
+            with self.assertRaisesRegex(ValueError, "empty drive_file_id"):
                 stock_registry.resolve_registry(registry, str(db_path))
 
     def test_pacquiao_rejects_wrong_source_and_empty_drive_link(self):
@@ -162,22 +189,10 @@ class StockRegistryTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "metadata role.*expected 'training'"):
                 stock_registry.resolve_registry(registry, str(db_path))
 
-    def test_top_five_preflight_reports_all_unavailable_subjects(self):
+    def test_top_five_preflight_resolves_registered_subjects(self):
         source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
         result = stock_registry.preflight(stock_registry.load_json(source), self.resolved)
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertEqual(result["missing"], [
-            {
-                "subject": "Floyd Mayweather",
-                "role": "fight",
-                "reason": "NO_ACTIVE_ASSET",
-            },
-            {
-                "subject": "Sugar Ray Robinson",
-                "role": "fight",
-                "reason": "NO_ACTIVE_ASSET",
-            },
-        ])
+        self.assertEqual(result, {"status": "PASS", "missing": []})
 
     def test_direct_pacquiao_preflight_passes(self):
         source = ROOT / "scenarios" / "04_direct_stock_bindings.json"
@@ -195,10 +210,10 @@ class StockRegistryTest(unittest.TestCase):
                     "--input", str(source),
                     "--output", str(output),
                 ]),
-                3,
+                0,
             )
             result = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(result["status"], "BLOCKED")
+            self.assertEqual(result["status"], "PASS")
             self.assertNotIn("job_id", result)
             self.assertNotIn("voiceover_requests", result)
 
@@ -235,17 +250,23 @@ class StockRegistryTest(unittest.TestCase):
             }],
         })
 
-    def test_top_five_materialization_remains_blocked_after_preflight(self):
+    def test_top_five_materialization_uses_registered_stock_tokens(self):
         source = ROOT / "scenarios" / "top5_financial_stories_multilang.json"
-        with self.assertRaisesRegex(ValueError, "unknown stock token"):
-            stock_registry.materialize(stock_registry.load_json(source), self.resolved)
+        materialized = stock_registry.materialize(stock_registry.load_json(source), self.resolved)
+        self.assertEqual(len(materialized["items"]), 10)
 
-    def test_floyd_and_sugar_ray_remain_blocked(self):
-        self.assertEqual(self.registry["boxers"]["floyd_mayweather"]["assets"], {})
-        self.assertEqual(self.registry["boxers"]["sugar_ray_robinson"]["assets"], {})
+    def test_floyd_and_sugar_ray_use_verified_stock(self):
+        self.assertEqual(
+            self.registry["boxers"]["floyd_mayweather"]["assets"]["fight"]["asset_id"],
+            "planner:33a65feeb627695e:3",
+        )
+        self.assertEqual(
+            self.registry["boxers"]["sugar_ray_robinson"]["assets"]["fight"]["asset_id"],
+            "planner:c7074c575f1975fb:3",
+        )
         self.assertEqual(
             [entry["boxer_key"] for entry in stock_registry.scene_expectations(self.resolved)],
-            ["mike_tyson", "muhammad_ali", "manny_pacquiao"],
+            ["mike_tyson", "muhammad_ali", "manny_pacquiao", "floyd_mayweather", "sugar_ray_robinson"],
         )
 
     def test_cross_subject_swap_resolves_only_declared_subject(self):
@@ -260,7 +281,7 @@ class StockRegistryTest(unittest.TestCase):
         materialized = stock_registry.materialize(payload, self.resolved)
         self.assertEqual(
             materialized["output"]["stock_bindings"][0]["asset_id"],
-            "yt_6kEmuFoEy54_8_12_v1",
+            "planner:96d07f0da43de615:0",
         )
 
     def test_materialize_cli_writes_resolved_payload(self):
