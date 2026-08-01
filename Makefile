@@ -34,6 +34,14 @@
 	verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream \
 	verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index \
 	verify-artlist-cache verify-artlist-errors verify-artlist-live \
+	verify-youtube-url verify-youtube-metadata verify-youtube-transcript verify-highlight-selection \
+	verify-stock-download verify-stock-cut verify-stock-cache verify-stock-dedupe verify-stock-index \
+	verify-stock-recovery verify-stock-youtube-e2e benchmark-stock-download \
+	verify-stock-acquisition verify-stock-indexing verify-pipeline-youtube-stock \
+	verify-youtube-highlights verify-stock-download-plan verify-stock-partial-download verify-stock-drive \
+	verify-stock-concurrency verify-race-youtube-stock verify-youtube-stock-fast verify-youtube-stock-local \
+	verify-youtube-stock-resilience verify-youtube-stock-live verify-youtube-stock-release benchmark-youtube-stock \
+	doctor-youtube-stock \
 	verify-images-live verify-script-live verify-vidrush-live verify-artlist-scale-live verify-live \
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
 	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
@@ -93,6 +101,7 @@ include make/build.mk
 include make/test.mk
 include make/verify.mk
 include make/verify.components.mk
+include make/youtube_stock.mk
 include make/artlist.mk
 include make/live.mk
 include make/docker.mk

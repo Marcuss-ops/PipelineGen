@@ -7,22 +7,31 @@ import (
 
 // defaultResolver is the canonical PlanResolver.
 type defaultResolver struct {
-	sampler ClipSampler
+	sampler    ClipSampler
+	highlights *HighlightRegistry
 }
 
 // NewDefaultResolver returns a PlanResolver that uses the canonical
 // deterministic sampler.
 func NewDefaultResolver() PlanResolver {
 	return &defaultResolver{
-		sampler: NewDeterministicSampler(),
+		sampler:    NewDeterministicSampler(),
+		highlights: NewHighlightRegistry(),
 	}
 }
 
 // NewResolverWithSampler returns a PlanResolver backed by a custom sampler.
 func NewResolverWithSampler(sampler ClipSampler) PlanResolver {
 	return &defaultResolver{
-		sampler: sampler,
+		sampler:    sampler,
+		highlights: NewHighlightRegistry(),
 	}
+}
+
+// HighlightSelector resolves the provider sampler from the same resolver
+// used by batch planning; handlers and workers must not duplicate this choice.
+func (r *defaultResolver) HighlightSelector(provider string) (HighlightSelector, bool) {
+	return r.highlights.Resolve(provider)
 }
 
 // Resolve implements PlanResolver.
