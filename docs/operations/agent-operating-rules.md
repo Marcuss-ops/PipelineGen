@@ -123,14 +123,28 @@ con comando, errore e componente responsabile.
 - Non utilizzare fallback tra soggetti (es. clip di Tyson al posto di Pacquiao).
 - Non produrre falsi PASS.
 
-## 10. Report finale (solo questi elementi)
+## 10. Report finale (standardizzato, SOLO questi elementi)
+
+Ogni run termina con UN report nel formato fisso qui sotto. Niente altro:
+niente analisi libere, niente cronologia, niente riassunti di esplorazione.
 
 ```text
-1. Durata totale
-2. Risultato (PASS / BLOCKED / FAIL)
-3. Fase più lenta
-4. Job falliti
-5. Prossimo intervento concreto
+RUN N — <nome run>
+Durata totale:      <mm:ss>
+Risultato:          PASS oppure blocker
+Fase più lenta:     <fase> (<durata>)
+Job falliti:        per ciascuno:
+  - job_id | comando | errore | componente responsabile
+Prossimo intervento: <azione concreta e verificabile, con comando>
+```
+
+Regole obbligatorie del report:
+
+```text
+Nessun fallback tra soggetti (es. clip di Tyson al posto di Pacquiao).
+Niente falsi PASS: SUCCEEDED_WITH_WARNINGS in strict mode NON è un PASS;
+un gate eluso o un job con warning non può essere dichiarato PASS.
+Blocker = motivo tecnico verificato con comando, errore e componente.
 ```
 
 ---
