@@ -18,13 +18,17 @@
 // types.go) via errors.Is. No silent zero-value returns on a
 // miss, no swallowed IO errors. The pair (errors.Is pattern +
 // typed sentinels) is the lingua franca of the whole package.
+//
+// File layout (split by kind, July 2026):
+//
+//	ports.go             interfaces only (the port surface)
+//	ports_telemetry.go   telemetry implementations (noopLogger, realClock, noopMetrics)
+//	ports_types.go       port-level data shapes (envelopes, options, verdicts)
 package mediamemory
 
 import (
 	"context"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Logger port ────────────────────────────────────────────────────
@@ -38,32 +42,10 @@ type Logger interface {
 	Error(msg string, keysAndValues ...any)
 }
 
-// noopLogger swallows every call. Used when callers pass nil and
-// in tests where noise must be zero. Mirrors search.noopLogger.
-type noopLogger struct{}
-
-func (noopLogger) Info(string, ...any)  {}
-func (noopLogger) Warn(string, ...any)  {}
-func (noopLogger) Debug(string, ...any) {}
-func (noopLogger) Error(string, ...any) {}
-
-// NoopLogger returns a Logger that drops every message. Convenience
-// for tests.
-func NoopLogger() Logger { return noopLogger{} }
-
 // Clock port — defined narrowly so tests can pin time deterministically.
 type Clock interface {
 	Now() time.Time
 }
-
-// realClock delegates to time.Now.
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now().UTC() }
-
-// RealClock returns a Clock backed by time.Now. Composition-root uses
-// this in production; tests inject a fake.
-func RealClock() Clock { return realClock{} }
 
 // MetricsSink is the narrow observability port. Implementations
 // should match the existing assets/middleware.MetricsSink contract
@@ -72,15 +54,6 @@ type MetricsSink interface {
 	IncCounter(name string, labels ...string)
 	ObserveHistogram(name string, value float64, labels ...string)
 }
-
-// noopMetrics drops every metric. Used in unit tests.
-type noopMetrics struct{}
-
-func (noopMetrics) IncCounter(string, ...string)                {}
-func (noopMetrics) ObserveHistogram(string, float64, ...string) {}
-
-// NoopMetrics returns a MetricsSink that drops every observation.
-func NoopMetrics() MetricsSink { return noopMetrics{} }
 
 // ── ConceptRepository ──────────────────────────────────────────────
 
@@ -180,22 +153,6 @@ type QueryCacheRepository interface {
 	Invalidate(ctx context.Context, fingerprint string) error
 }
 
-// QueryCacheEntry is the persisted shape of one cache hit. Kept here
-// (not in types.go) because it is a port-level envelope, not a
-// canonical business entity.
-type QueryCacheEntry struct {
-	ID                string
-	PhraseFingerprint string
-	Language          string
-	RequestJSON       string
-	ResultJSON        string
-	ProviderStateJSON string
-	HitCount          int
-	ExpiresAt         *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-}
-
 // ── CandidateRepository ────────────────────────────────────────────
 
 // CandidateRepository owns media_candidates. Used by the discovery
@@ -274,27 +231,6 @@ type UsageRepository interface {
 // resolver can branch on partial / no-backend / all-failed.
 type SearchFanOut interface {
 	Search(ctx context.Context, q SearchFanOutQuery) (SearchFanOutResult, error)
-}
-
-// SearchFanOutQuery is the narrow input shape consumed by MediaMemory.
-// The production adapter translates it into search.Query.
-type SearchFanOutQuery struct {
-	Text         string
-	Language     string
-	MediaTypes   []string
-	Sources      []string
-	Limit        int
-	SearchPolicy media.ResolutionSearchPolicy
-}
-
-// SearchFanOutResult is the narrow output shape consumed by
-// MediaMemory. The production adapter translates search.Result into
-// this shape.
-type SearchFanOutResult struct {
-	Candidates    []MediaCandidate
-	Partial       bool
-	BackendNames  []string
-	BackendErrors map[string]string
 }
 
 // SemanticLookup is the Level 1 (semantic) port. The production
@@ -379,20 +315,7 @@ type StockPipelineAcquirer interface {
 	Materialize(ctx context.Context, candidate MediaCandidate, opts MaterializeOptions) (MediaCandidate, error)
 }
 
-// MaterializeOptions configures the acquire call.
-type MaterializeOptions struct {
-	// TargetSlot hints the stockpipeline which segment quality to
-	// prefer ("primary_video" → higher bitrate, "secondary_image"
-	// → thumbnail-grade, ...).
-	TargetSlot SlotKind
-	// HotCache controls whether the bytes are staged locally
-	// (Hot) or only stored on Drive (Warm). Cold is the default.
-	HotCache bool
-	// MaxDurationMs caps the segment download window.
-	MaxDurationMs int64
-	// ProjectID scopes the materialization for rights enforcement.
-	ProjectID string
-} // RightsValidator is the rights brand-check port. The production
+// RightsValidator is the rights brand-check port. The production
 // adapter reads the metadata registry for license_basis /
 // allowed_channels / allowed_regions / expiration.
 type RightsValidator interface {
@@ -403,38 +326,6 @@ type RightsValidator interface {
 // acquisition_planner.go (godlike/06 SSOT — single canonical home).
 // It owns the Cold→Warm→Hot tiering decision; concrete impl is
 // defaultAcquisitionPlanner in that file.
-
-// RightsDecision is the verdict produced by the rights port.
-// godlike/07 NO-FAKE-AVAILABILITY: Verdict == AllowConditional
-// requires non-empty Conditions, otherwise the ranker MUST apply
-// full rights_penalty.
-type RightsDecision struct {
-	Verdict    RightsVerdict
-	Reason     string
-	Conditions []string
-}
-
-// RightsVerdict enum (godlike/06 closed set).
-type RightsVerdict string
-
-const (
-	RightsVerdictAllow            RightsVerdict = "allow"
-	RightsVerdictAllowConditional RightsVerdict = "allow_conditional"
-	RightsVerdictDeny             RightsVerdict = "deny"
-)
-
-// IsKnownRightsVerdict reports whether v is in the canonical closed set.
-// godlike/06 SSOT: predicate lives NEXT TO its enum (this file), keeping
-// every RightsVerdict surface (constant + predicate + future typed-
-// sentinel) co-located for grep + drift-pinning.
-func IsKnownRightsVerdict(v RightsVerdict) bool {
-	switch v {
-	case RightsVerdictAllow, RightsVerdictAllowConditional, RightsVerdictDeny:
-		return true
-	default:
-		return false
-	}
-}
 
 // ── Fase 3.2 linker ports (godlike/06 SSOT: narrow doctrine) ────
 
