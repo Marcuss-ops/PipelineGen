@@ -60,7 +60,7 @@ func (r *Repository) ListPending(ctx context.Context) ([]Event, error) {
 		SELECT id, event_type, aggregate_id, aggregate_type, payload_json,
 		       status, attempt_count, max_attempts, last_error,
 		       event_key, worker_id, lease_id, lease_expiry, completed_at,
-		       created_at, updated_at
+		       created_at, updated_at, priority
 		FROM outbox_events
 		WHERE status IN ('pending', 'processing')
 		ORDER BY created_at ASC
@@ -95,7 +95,7 @@ func (r *Repository) ListByStatus(ctx context.Context, status string) ([]Event, 
 		SELECT id, event_type, aggregate_id, aggregate_type, payload_json,
 		       status, attempt_count, max_attempts, last_error,
 		       event_key, worker_id, lease_id, lease_expiry, completed_at,
-		       created_at, updated_at
+		       created_at, updated_at, priority
 		FROM outbox_events
 		WHERE status = ?
 		ORDER BY created_at DESC

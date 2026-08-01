@@ -92,6 +92,41 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	})
 }
 
+// UpsertClipNoIndex upserts the clip row in a transaction WITHOUT
+// emitting an asset.index.requested event. Producer-side guard for
+// bulk-folder-sync: when the existing row is already INDEXED with
+// unchanged content (verified by the caller via
+// *assets.ClipsRepository.GetIndexState), re-enqueueing the index
+// request would be a wasted round-trip that the outbox event_key dedup
+// would otherwise suppress. The metadata refresh (drive links, names,
+// timestamps) still commits atomically; only the redundant index
+// request is skipped.
+func (d *Dispatcher) UpsertClipNoIndex(ctx context.Context, clip *asset.Asset) error {
+	if d == nil {
+		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.txmgr == nil {
+		return errors.New("outbox.Dispatcher: txmgr not configured")
+	}
+	if d.clips == nil {
+		return errors.New("outbox.Dispatcher: clips repo not configured")
+	}
+	if clip == nil || clip.ID == "" {
+		return errors.New("clip with non-empty ID is required")
+	}
+	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
+		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
+			return fmt.Errorf("dispatcher upsert clip (no index) %s: %w", clip.ID, err)
+		}
+		if d.log != nil {
+			d.log.Debug("dispatcher skipped redundant index request (already indexed, unchanged content)",
+				zap.String("asset_id", clip.ID),
+			)
+		}
+		return nil
+	})
+}
+
 // SaveDiscoveredAsset is the discovery-only upsert path. It writes the clip
 // row with the supplied lifecycle and index states but deliberately emits no
 // indexing request. The processing finalizer emits one only after the clip has

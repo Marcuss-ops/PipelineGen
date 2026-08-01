@@ -178,10 +178,25 @@ type CommitRequest struct {
 	// true; discovery-only paths may set false.
 	EmitIndexEvent bool
 
+	// IndexPriority is the outbox scheduling priority stamped on the
+	// emitted asset.index.requested event (migration 186). 0 means the
+	// adapter default (normal). Producers whose assets unblock script
+	// generation (stock pipeline finalizer) set persistence.IndexPriorityHigh
+	// so ClaimNext claims their index request before a bulk-folder-sync
+	// backlog.
+	IndexPriority int
+
 	// RequestedAt is the timestamp used for the outbox event. When
 	// zero, the adapter uses time.Now().
 	RequestedAt time.Time
 }
+
+// IndexPriorityHigh is the outbox scheduling priority for
+// script-required asset.index.requested events. Mirrors
+// outboxevents.PriorityHigh (infra owns the canonical constant; this
+// is the application-layer alias so application producers do not
+// import the infrastructure package).
+const IndexPriorityHigh = 10
 
 // CommitResult carries the outcome of a successful commit.
 type CommitResult struct {

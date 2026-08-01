@@ -64,7 +64,23 @@ type Event struct {
 	CompletedAt   *time.Time
 	CreatedAt     string
 	UpdatedAt     string
+	// Priority is the scheduling priority stamped by the producer
+	// (migration 186). ClaimNext claims higher values first; default 5.
+	Priority int
 }
+
+// Priority constants for outbox event scheduling (migration 186).
+// ClaimNext orders by (priority DESC, next_attempt_at ASC, id ASC).
+//
+//   - PriorityNormal (5)  : bulk-folder-sync / catalog re-sync — the
+//     default for producers that do not stamp an explicit priority.
+//   - PriorityHigh (10)   : script-required index requests (stock
+//     pipeline finalizer emitting asset.index.requested for assets a
+//     script generation job is blocked on).
+const (
+	PriorityNormal = 5
+	PriorityHigh   = 10
+)
 
 // Claim is the fencing token returned by ClaimNext.
 type Claim struct {
@@ -116,7 +132,7 @@ func scanEvent(s scanner) (*Event, error) {
 		&e.ID, &e.EventType, &e.AggregateID, &e.AggregateType,
 		&e.PayloadJSON, &e.Status, &e.AttemptCount, &e.MaxAttempts, &e.LastError,
 		&e.EventKey, &e.WorkerID, &e.LeaseID, &leaseExpiryStr, &completedAtStr,
-		&e.CreatedAt, &e.UpdatedAt,
+		&e.CreatedAt, &e.UpdatedAt, &e.Priority,
 	)
 	if err != nil {
 		return nil, err

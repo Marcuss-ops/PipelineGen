@@ -79,7 +79,7 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 						"payload_json", "event_key", "status", "attempt_count",
 						"max_attempts", "last_error", "next_attempt_at", "worker_id",
 						"lease_id", "lease_expiry", "completed_at", "created_at",
-						"updated_at",
+						"updated_at", "priority", // migration 186 appends priority
 					},
 					outboxCols,
 					"outbox_events column order MUST match canonical order in 092 (Repository.Enqueue projection)",

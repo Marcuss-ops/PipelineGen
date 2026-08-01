@@ -267,6 +267,20 @@ qdrant:
 clip_indexer:
   enabled: false
 
+# Outbox events worker pool (asset.index.requested / drive / delivery).
+# workers raised to 4 (July 2026, CPU-only server tuning) after stock
+# runs observed ~75 pending with only 2 processing; monitor CPU/RAM/
+# SQLite busy_timeout errors before raising further. Env override:
+# VELOX_OUTBOX_WORKERS. Priority column (migration 186) lets
+# script-required index requests jump the bulk-folder-sync queue.
+outbox:
+  workers: 4
+  poll_interval_ms: 500
+  batch_size: 10
+  process_timeout_seconds: 300
+  reclaim_interval_seconds: 60
+  max_attempts: 5
+
 # Centralized linguistic lexicons (PR-LEXICON-SSOT, July 2026).
 # Each subdirectory under lexicon_root is a language tag (e.g. en, it).
 # Required files per language: stopwords.txt, function_words.txt,

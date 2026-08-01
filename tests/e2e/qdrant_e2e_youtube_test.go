@@ -488,6 +488,7 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 	status TEXT NOT NULL DEFAULT 'pending',
 	attempt_count INTEGER NOT NULL DEFAULT 0,
 	max_attempts INTEGER NOT NULL DEFAULT 10,
+	priority INTEGER NOT NULL DEFAULT 5,
 	-- Production outboxevents.Repository.ClaimNext refetches the row
 	-- after the optimistic UPDATE and scans every TEXT column into a
 	-- plain "string" Go target (NOT sql.NullString). Any column that
