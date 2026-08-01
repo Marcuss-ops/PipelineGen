@@ -116,7 +116,7 @@ func TestAssetLocationReconciliationStockCanonicalURLAndQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.args) != 1 || r.args[0].fileID != "" || r.args[0].link != link {
+	if len(r.args) != 1 || r.args[0].fileID != assetID || r.args[0].link != link {
 		t.Fatalf("verifier args = %+v", r.args)
 	}
 }
