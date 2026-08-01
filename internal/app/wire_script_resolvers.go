@@ -35,6 +35,8 @@
 //   - internal/infrastructure/embeddings: OllamaEmbedderAdapter.
 package app
 
+import "time"
+
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -43,8 +45,10 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/webresearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -148,6 +152,21 @@ func buildScriptSourceResolvers(
 
 	// Text resolver — always available (no external dep).
 	sourceReg.Register(scriptpkg.SourceText, usecase.NewTextSourceResolver())
+
+	// Research resolver — the only source resolver that can navigate the
+	// public web. It is registered only when SearXNG is wired; absence is
+	// intentionally fail-closed for source.type=research.
+	if gen != nil && gen.GetClient() != nil && gen.GetClient().WebSearcher() != nil {
+		researchResolver := usecase.NewWebResearchResolver(
+			ollamaWebSearcherAdapter{searcher: gen.GetClient().WebSearcher()},
+			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
+		)
+		if root.DB != nil {
+			researchResolver.SetCache(topicsourcecache.NewRepository(root.DB.DB))
+		}
+		sourceReg.Register(scriptpkg.SourceResearch, researchResolver)
+		log.Info("SourceResearch resolver wired", zap.String("research_version", "web-research-v1"))
+	}
 
 	// Clips resolver — gated on clipSourceBuilder (requires ollamaClient).
 	if clipSourceBuilder != nil {

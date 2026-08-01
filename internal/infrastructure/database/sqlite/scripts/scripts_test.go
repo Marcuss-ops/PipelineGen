@@ -70,6 +70,13 @@ const testSchema = `
 		language TEXT NOT NULL,
 		max_steps INTEGER NOT NULL,
 		source_text TEXT NOT NULL,
+		source_text_hash TEXT NOT NULL DEFAULT '',
+		research_report_json TEXT NOT NULL DEFAULT '',
+		sources_count INTEGER NOT NULL DEFAULT 0,
+		claims_verified INTEGER NOT NULL DEFAULT 0,
+		claims_rejected INTEGER NOT NULL DEFAULT 0,
+		search_query_count INTEGER NOT NULL DEFAULT 0,
+		pages_fetched INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
 		last_used TEXT NOT NULL DEFAULT (datetime('now')),
 		concept_id TEXT,
@@ -451,7 +458,9 @@ func TestSaveResearchCache_OverwritesExistingKey(t *testing.T) {
 
 	rec := scriptpkg.ResearchCacheRecord{
 		Key: "shared", Topic: "topic1", Language: "en", MaxSteps: 3,
-		SourceText: "first", SourceFingerprint: "fp-1", ResearchVersion: "v1",
+		SourceText: "first", SourceTextHash: "hash-1", ResearchReportJSON: `{ "sources": 1 }`,
+		SourcesCount: 1, ClaimsVerified: 2, SearchQueryCount: 3, PagesFetched: 1,
+		SourceFingerprint: "fp-1", ResearchVersion: "v1", HitCount: 7,
 	}
 	if err := repo.SaveResearchCache(ctx, rec); err != nil {
 		t.Fatal(err)
@@ -467,6 +476,14 @@ func TestSaveResearchCache_OverwritesExistingKey(t *testing.T) {
 	}
 	if got != "second" {
 		t.Errorf("expected latest value 'second', got %q", got)
+	}
+	var hitCount int
+	var sourceHash, report string
+	if err := repo.db.QueryRow("SELECT hit_count, source_text_hash, research_report_json FROM research_cache WHERE key = ?", "shared").Scan(&hitCount, &sourceHash, &report); err != nil {
+		t.Fatal(err)
+	}
+	if hitCount != 8 || sourceHash != "hash-1" || report == "" {
+		t.Fatalf("refresh must preserve hit_count and provenance: hits=%d hash=%q report=%q", hitCount, sourceHash, report)
 	}
 }
 

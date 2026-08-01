@@ -171,6 +171,9 @@ services:
       SEARXNG_BASE_URL: "http://127.0.0.1:8080/"
       SEARXNG_INSTANCE_NAME: "pipelinegen-searxng"
       SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"  # override via secrets/pipelinegen.env
+      SEARXNG_FORMATS: "html,json"
+      SEARXNG_METHOD: "GET"
+      SEARXNG_LIMITER: "false"
     networks:
       - backend
 

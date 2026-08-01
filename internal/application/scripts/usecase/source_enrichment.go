@@ -54,6 +54,13 @@ func (e *sourceTextEnricher) Enrich(ctx context.Context, item *scriptpkg.Generat
 		// fingerprint and keeps output-cache replay stable.
 		return scriptports.EnrichBypass, nil
 	}
+	if item.Source.Type == scriptpkg.SourceResearch {
+		// SourceResearch owns its cache policy because it must distinguish
+		// cache-only, disabled search, stale refresh and forced refresh.
+		// Letting this generic text enricher run first would make those
+		// modes share a different key and bypass the web resolver.
+		return scriptports.EnrichBypass, nil
+	}
 
 	mode := normalizeCacheMode(item.Source.CachePolicy.Mode)
 	if mode == scriptpkg.SourceCacheModeDisabled || mode == scriptpkg.SourceCacheModeForceRefresh {
@@ -94,6 +101,9 @@ func (e *sourceTextEnricher) Save(ctx context.Context, item scriptpkg.Generation
 		return nil
 	}
 	if item.Source.Type == scriptpkg.SourceClips {
+		return nil
+	}
+	if item.Source.Type == scriptpkg.SourceResearch {
 		return nil
 	}
 
@@ -164,7 +174,7 @@ func computeSourceCacheKey(item *scriptpkg.GenerationItemV2) string {
 		topic,
 		strings.ToLower(strings.TrimSpace(item.Language)),
 		strings.TrimSpace(item.Source.CachePolicy.Version),
-		string(item.Source.Type)+":"+normalizeCacheMode(item.Source.CachePolicy.Mode),
+		string(item.Source.Type),
 		0,
 	)
 }

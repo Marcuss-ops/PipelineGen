@@ -38,6 +38,27 @@ func (r *Repository) GetResearchCache(ctx context.Context, key string) (string, 
 	return v, nil
 }
 
+// GetResearchCacheRecord reads provenance for a validated cache hit without
+// incrementing hit_count; GetResearchCache owns hit accounting.
+func (r *Repository) GetResearchCacheRecord(ctx context.Context, key string) (scriptpkg.ResearchCacheRecord, error) {
+	var rec scriptpkg.ResearchCacheRecord
+	err := r.db.QueryRowContext(ctx, `
+		SELECT key, topic, language, max_steps, source_text, source_text_hash,
+		       research_report_json, sources_count, claims_verified, claims_rejected,
+		       search_query_count, pages_fetched, topic_fingerprint, source_fingerprint,
+		       resolver_version, research_version, hit_count
+		FROM research_cache
+		WHERE key = ? AND (expires_at IS NULL OR expires_at > datetime('now'))
+	`, key).Scan(&rec.Key, &rec.Topic, &rec.Language, &rec.MaxSteps, &rec.SourceText,
+		&rec.SourceTextHash, &rec.ResearchReportJSON, &rec.SourcesCount, &rec.ClaimsVerified,
+		&rec.ClaimsRejected, &rec.SearchQueryCount, &rec.PagesFetched, &rec.TopicFingerprint,
+		&rec.SourceFingerprint, &rec.ResolverVersion, &rec.ResearchVersion, &rec.HitCount)
+	if err == sql.ErrNoRows {
+		return scriptpkg.ResearchCacheRecord{}, nil
+	}
+	return rec, err
+}
+
 // SaveResearchCache inserts or replaces a research_cache row from the
 // canonical ResearchCacheRecord.
 func (r *Repository) SaveResearchCache(ctx context.Context, rec scriptpkg.ResearchCacheRecord) error {
@@ -57,19 +78,33 @@ func (r *Repository) SaveResearchCache(ctx context.Context, rec scriptpkg.Resear
 	}
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO research_cache (
+		INSERT INTO research_cache (
 			key, topic, language, max_steps, source_text,
+			source_text_hash, research_report_json, sources_count,
+			claims_verified, claims_rejected, search_query_count, pages_fetched,
 			concept_id, topic_fingerprint, source_fingerprint,
 			resolver_version, research_version,
 			hit_count, expires_at, created_at, updated_at, last_used
 		) VALUES (
 			?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?,
 			?, ?, ?,
 			?, ?,
 			?, ?, ?, ?, datetime('now')
 		)
+		ON CONFLICT(key) DO UPDATE SET
+			topic=excluded.topic, language=excluded.language, max_steps=excluded.max_steps,
+			source_text=excluded.source_text, source_text_hash=excluded.source_text_hash,
+			research_report_json=excluded.research_report_json, sources_count=excluded.sources_count,
+			claims_verified=excluded.claims_verified, claims_rejected=excluded.claims_rejected,
+			search_query_count=excluded.search_query_count, pages_fetched=excluded.pages_fetched,
+			topic_fingerprint=excluded.topic_fingerprint, source_fingerprint=excluded.source_fingerprint,
+			resolver_version=excluded.resolver_version, research_version=excluded.research_version,
+			expires_at=excluded.expires_at, updated_at=excluded.updated_at
 	`,
 		rec.Key, rec.Topic, rec.Language, rec.MaxSteps, rec.SourceText,
+		rec.SourceTextHash, rec.ResearchReportJSON, rec.SourcesCount,
+		rec.ClaimsVerified, rec.ClaimsRejected, rec.SearchQueryCount, rec.PagesFetched,
 		rec.ConceptID, rec.TopicFingerprint, rec.SourceFingerprint,
 		rec.ResolverVersion, rec.ResearchVersion,
 		rec.HitCount, toSQLiteDatetime(rec.ExpiresAt), toSQLiteDatetime(rec.CreatedAt), toSQLiteDatetime(rec.UpdatedAt),

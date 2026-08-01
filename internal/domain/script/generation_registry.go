@@ -4,11 +4,12 @@ package script
 // values. Map lookup bypasses the C2-C AST gate's switch-case
 // detection (godlike/06 SSOT co-located structural validation).
 var knownSourceTypes = map[SourceType]struct{}{
-	SourceText:    {},
-	SourceClips:   {},
-	SourceCatalog: {},
-	SourceSearch:  {},
-	SourceCurate:  {},
+	SourceText:     {},
+	SourceClips:    {},
+	SourceCatalog:  {},
+	SourceSearch:   {},
+	SourceCurate:   {},
+	SourceResearch: {},
 }
 
 // clipSourceTypes is the canonical set of SourceType values that

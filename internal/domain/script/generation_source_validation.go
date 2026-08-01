@@ -6,10 +6,18 @@ import "strings"
 // GenerationEnvelopeV2.Validate via map lookup (bypasses C2-C AST
 // gate switch-case detection).
 var sourceTypeHandlers = map[SourceType]func(item GenerationItemV2, ref string) error{
-	SourceText:    validateGenerationSourceText,
-	SourceClips:   validateGenerationSourceClips,
-	SourceCatalog: validateGenerationSourceCatalogOrSearch,
-	SourceSearch:  validateGenerationSourceCatalogOrSearch,
+	SourceText:     validateGenerationSourceText,
+	SourceClips:    validateGenerationSourceClips,
+	SourceCatalog:  validateGenerationSourceCatalogOrSearch,
+	SourceSearch:   validateGenerationSourceCatalogOrSearch,
+	SourceResearch: validateGenerationSourceResearch,
+}
+
+func validateGenerationSourceResearch(item GenerationItemV2, ref string) error {
+	if strings.TrimSpace(item.Source.Topic) == "" && strings.TrimSpace(item.Source.Query) == "" {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": research source requires topic or query"}}
+	}
+	return nil
 }
 
 // validateGenerationSourceText validates a text-source item.

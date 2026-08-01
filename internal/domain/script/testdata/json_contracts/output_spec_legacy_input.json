@@ -1,0 +1,8 @@
+{
+  "extract_entities": true,
+  "generate_metadata": false,
+  "generate_scene_images": null,
+  "stock_enabled": false,
+  "save_to_db": true,
+  "output_fmt": "json"
+}
