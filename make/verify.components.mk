@@ -8,7 +8,10 @@ PYTHON ?= python3
 VERIFY_COMPONENT_RUNNER ?= $(PYTHON) scripts/ci/verify-component.py
 VERIFY_COMPONENT_FLAGS ?=
 VERIFY_CHANGED_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-changed-components.py
-VERIFY_CHANGED_COMPONENTS_FLAGS ?=
+# Aggregate gates fail closed at the component level while still covering
+# the current working tree when the registry has not yet claimed every path.
+# Direct CLI users retain strict unmapped-file behavior unless they opt in.
+VERIFY_CHANGED_COMPONENTS_FLAGS ?= --run-all-when-unmapped
 
 verify-changed-components:
 	@$(VERIFY_CHANGED_COMPONENTS_RUNNER) $(VERIFY_CHANGED_COMPONENTS_FLAGS)
