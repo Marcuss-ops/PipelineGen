@@ -144,6 +144,8 @@ Regole obbligatorie del report:
 Nessun fallback tra soggetti (es. clip di Tyson al posto di Pacquiao).
 Niente falsi PASS: SUCCEEDED_WITH_WARNINGS in strict mode NON è un PASS;
 un gate eluso o un job con warning non può essere dichiarato PASS.
+Ogni esito diverso da PASS si riporta come blocker, sempre con
+comando + errore + componente responsabile.
 Blocker = motivo tecnico verificato con comando, errore e componente.
 ```
 
