@@ -24,6 +24,9 @@ const (
 	// SceneClip — the scene is anchored to a selected YouTube clip.
 	SceneClip SceneKind = "clip"
 
+	// SceneStock — the scene is anchored to a direct stock binding.
+	SceneStock SceneKind = "stock"
+
 	// SceneImage — the scene is illustrated by an AI-generated image.
 	SceneImage SceneKind = "image"
 
@@ -35,7 +38,7 @@ const (
 // Valid reports whether k is a known scene kind.
 func (k SceneKind) Valid() bool {
 	switch k {
-	case SceneNarration, SceneIntro, SceneOutro, SceneClip, SceneImage, SceneMixed:
+	case SceneNarration, SceneIntro, SceneOutro, SceneClip, SceneStock, SceneImage, SceneMixed:
 		return true
 	}
 	return false

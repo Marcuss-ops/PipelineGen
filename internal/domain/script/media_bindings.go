@@ -57,13 +57,14 @@ type StockBinding struct {
 
 	// DriveLink is the Google Drive URL of the stock asset.
 	DriveLink string `json:"drive_link,omitempty"`
+	FolderID  string `json:"folder_id,omitempty"`
 
 	// Score is the cosine-similarity from the vector search.
 	Score float64 `json:"score,omitempty"`
 
 	// Fallback is true when the drive_link comes from the scene's
 	// ClipBinding.DriveLink because no stock match was found.
-	Fallback   bool  `json:"fallback,omitempty"`
+	Fallback   bool  `json:"fallback"`
 	StartMs    int64 `json:"start_ms,omitempty"`
 	EndMs      int64 `json:"end_ms,omitempty"`
 	DurationMs int64 `json:"duration_ms,omitempty"`

@@ -159,6 +159,13 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
+		// A Drive catalog sync discovers already-published remote files. The
+		// file is therefore online immediately; indexing is tracked separately
+		// by index_state and the transactional outbox. Folders remain metadata
+		// nodes and are never made indexable below.
+		if child.MimeType != folderMimeType {
+			clip.LifecycleState = asset.StateActive
+		}
 		clip.SetFolderID(child.ID)
 		clip.SetParentFolderID(folderID)
 		clip.SetDepth(0)

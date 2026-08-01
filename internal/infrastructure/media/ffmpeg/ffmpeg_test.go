@@ -325,8 +325,8 @@ func TestCutReencode_NoAudio_False_AddsAAC(t *testing.T) {
 		"noAudio=false must add -b:a 128k; got argv: %v", argv)
 }
 
-// TestCutReencode_CanonicalProfile verifies that caller encoding overrides
-// cannot create a second persisted clip profile.
+// TestCutReencode_CodecAndPreset verifies that an explicit stock profile is
+// preserved while empty arguments still use the canonical fallback.
 func TestCutReencode_CodecAndPreset(t *testing.T) {
 	runner := &captureRunner{}
 	p := &Processor{path: "ffmpeg", runner: runner}
@@ -338,8 +338,8 @@ func TestCutReencode_CodecAndPreset(t *testing.T) {
 	argv := runner.lastArgv
 	assert.True(t, hasArgPair(argv, "-c:v", "libx264"),
 		"codec must be passed as -c:v; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
-		"canonical preset must be passed; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-preset", "medium"),
+		"explicit preset must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-crf", "23"),
 		"crf must be passed; got argv: %v", argv)
 }
