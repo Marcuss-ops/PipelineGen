@@ -194,6 +194,11 @@ func (p *AssetLocationReconciliationProcessor) Process(
 				fileID = assetID
 				link = "https://drive.google.com/file/d/" + assetID + "/view"
 				bindings.Stock.DriveLink = link
+			} else if parsedID, parseErr := urlutil.FileIDFromDriveLink(link); parseErr == nil {
+				// LocationVerifier requires the Drive file ID explicitly and
+				// does not infer it from the link. Use the canonical shared
+				// parser for /file/d/... and query-based Drive URLs.
+				fileID = parsedID
 			}
 			if link != "" || fileID != "" {
 				result, err := p.verifyAndReconcile(
