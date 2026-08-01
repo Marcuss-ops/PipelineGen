@@ -29,7 +29,7 @@
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
-	verify-images verify-script verify-stock verify-clips verify-drive verify-main verify-main-stock verify-main-clip verify-release \
+	verify-images verify-script verify-stock verify-clips verify-drive verify-research verify-qdrant verify-indexing verify-docs verify-voiceover verify-database verify-jobs verify-main verify-main-stock verify-main-clip verify-release \
 	regen-routes-yaml archcheck-strict \
 	verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream \
 	verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index \
@@ -43,6 +43,13 @@
 	verify-youtube-stock-resilience verify-youtube-stock-live verify-youtube-stock-release benchmark-youtube-stock \
 	doctor-youtube-stock \
 	verify-images-live verify-script-live verify-vidrush-live verify-artlist-scale-live verify-live \
+	verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning \
+	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
+	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \
+	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \
+	verify-vidrush-binding verify-vidrush-dedupe verify-vidrush-cache verify-vidrush-recovery verify-vidrush-concurrency \
+	verify-vidrush-fast verify-vidrush-local verify-vidrush-resilience verify-vidrush-release \
+	verify-vidrush-artlist-live verify-vidrush-images-live verify-vidrush-full-live benchmark-vidrush doctor-vidrush \
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
 	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
@@ -90,6 +97,17 @@ help:
 	@echo "  make verify-node-tests   Full node-scraper test suite"
 	@echo "  make verify-components   All registered components (fast)"
 	@echo "  make verify-race-components  All registered components (race)"
+	@echo "  make verify-script       Script component"
+	@echo "  make verify-stock        Stock component"
+	@echo "  make verify-clips        Clips component"
+	@echo "  make verify-drive        Drive component"
+	@echo "  make verify-research     Research component"
+	@echo "  make verify-qdrant       Qdrant component"
+	@echo "  make verify-indexing     Indexing component"
+	@echo "  make verify-docs         Documents component"
+	@echo "  make verify-voiceover    Voiceover component"
+	@echo "  make verify-database     Database component"
+	@echo "  make verify-jobs         Jobs component"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
@@ -103,10 +121,10 @@ include make/build.mk
 include make/test.mk
 include make/verify.mk
 include make/verify.components.mk
-include make/verify.components.mk
 include make/youtube_stock.mk
 include make/artlist.mk
 include make/live.mk
+include make/vidrush.mk
 include make/docker.mk
 include make/operations.auth.mk
 include make/operations.smoke.mk

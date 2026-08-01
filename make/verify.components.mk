@@ -35,3 +35,24 @@ verify-clips:
 
 verify-drive:
 	@$(VERIFY_COMPONENT_RUNNER) drive $(VERIFY_COMPONENT_FLAGS)
+
+verify-research:
+	@$(VERIFY_COMPONENT_RUNNER) research $(VERIFY_COMPONENT_FLAGS)
+
+verify-qdrant:
+	@$(VERIFY_COMPONENT_RUNNER) qdrant $(VERIFY_COMPONENT_FLAGS)
+
+verify-indexing:
+	@$(VERIFY_COMPONENT_RUNNER) indexing $(VERIFY_COMPONENT_FLAGS)
+
+verify-docs:
+	@$(VERIFY_COMPONENT_RUNNER) docs $(VERIFY_COMPONENT_FLAGS)
+
+verify-voiceover:
+	@$(VERIFY_COMPONENT_RUNNER) voiceover $(VERIFY_COMPONENT_FLAGS)
+
+verify-database:
+	@$(VERIFY_COMPONENT_RUNNER) database $(VERIFY_COMPONENT_FLAGS)
+
+verify-jobs:
+	@$(VERIFY_COMPONENT_RUNNER) jobs $(VERIFY_COMPONENT_FLAGS)
