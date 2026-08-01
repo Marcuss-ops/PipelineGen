@@ -68,7 +68,7 @@ verify-dev: verify-foundation verify-static
 	@echo "✅ verify-dev passed"
 
 verify-changed:
-	@bash scripts/ci/verify-changed.sh
+	@GO="$(GO)" bash scripts/ci/verify-changed.sh
 
 verify-push: verify-fast verify-unit-fast verify-changed
 	@echo "✅ verify-push passed"
