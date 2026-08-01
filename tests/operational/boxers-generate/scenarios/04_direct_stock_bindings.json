@@ -11,15 +11,15 @@
       "source": {
         "type": "text",
         "topic": "Manny Pacquiao",
-        "source_text": "Genera tre sezioni: velocita nel combattimento, intervista e allenamento."
+        "source_text": "Genera un documentario su Manny Pacquiao articolato in tre sezioni distinte, usando esclusivamente i fatti forniti in questa fonte. Prima sezione — velocita nel combattimento: Manny Pacquiao è un pugile filippino, mancino, celebre per la velocità delle mani e le combinazioni fulminee. Sul ring la sua rapidità lo rendeva imprevedibile: colpi rapidi, spostamenti laterali, pressione costante sugli avversari. Ha vinto titoli in otto diverse categorie di peso, un primato che nessun altro pugile aveva raggiunto. Nel 2009 ha sconfitto Miguel Cotto in un incontro che ha mostrato la sua potenza e la sua resistenza. Seconda sezione — riflessioni nelle interviste: nelle interviste Pacquiao parla della sua storia di povertà nelle Filippine, della fede e della disciplina. Racconta di essere partito da condizioni difficili prima di diventare campione del mondo e, più tardi, senatore delle Filippine. Terza sezione — allenamento: l'allenamento di Pacquiao era rigoroso e metodico: corsa mattutina all'alba, lunghe sessioni di sparring, lavoro al sacco, esercizi per le gambe e la velocità, e una disciplina ferrea nella dieta e nel riposo. Questa preparazione gli permetteva di mantenere la velocità e la pressione fino all'ultimo round, anche in incontri difficili come quello contro Floyd Mayweather nel 2015."
       },
       "script_params": {
-        "target_words": 300,
+        "target_words": 420,
         "skip_quality_gate": false,
         "segments": [
-          {"id": "pac-fight", "topic": "Velocita sul ring", "target_words": 100},
-          {"id": "pac-interview", "topic": "Riflessione in intervista", "target_words": 100},
-          {"id": "pac-training", "topic": "Allenamento", "target_words": 100}
+          {"id": "pac-fight", "topic": "Velocita sul ring", "target_words": 140},
+          {"id": "pac-interview", "topic": "Riflessione in intervista", "target_words": 140},
+          {"id": "pac-training", "topic": "Allenamento", "target_words": 140}
         ]
       },
       "output": {

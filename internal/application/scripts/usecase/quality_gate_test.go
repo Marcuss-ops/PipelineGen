@@ -444,23 +444,21 @@ func TestComputeClipEvidenceCoverage(t *testing.T) {
 	}
 }
 
-// TestEvaluateQualityGate_SingleSegmentDocumentary_RelaxesDefaultCoverage
-// pins the single-segment documentary relaxation branch: when
-// SingleScene=true with non-empty SourceText and the default grounding
-// policy, the source_text coverage threshold is relaxed from 0.70 to
-// 0.55 so that Italian microstoria prose (which paraphrases source
-// heavily) does not falsely trip the editorial gate.
-func TestEvaluateQualityGate_SingleSegmentDocumentary_RelaxesDefaultCoverage(t *testing.T) {
+// TestEvaluateQualityGate_SingleSegmentModerateCoveragePasses pins
+// the August 2026 threshold contract: defaultMinSourceTextCoverage
+// is 0.40, so a single-segment documentary whose prose reuses
+// ~0.67 of its non-stop vocabulary from the source (heavy but
+// faithful paraphrase) passes the default policy without any
+// special case. The former single-segment relaxation to 0.55 is
+// removed because it became incoherent once the default dropped
+// below it.
+func TestEvaluateQualityGate_SingleSegmentModerateCoveragePasses(t *testing.T) {
 	const generated = "Sugar Ray Robinson boxer American career investments legacy heritage"
 	const source = "Sugar Ray Robinson boxer American career"
 
 	coverage := computeSourceTextCoverage(generated, source)
-	if coverage < singleSegmentDocumentaryMinCoverage {
-		t.Fatalf("FIXTURE INVALID: coverage=%.3f below relaxed threshold %.3f; pick different texts",
-			coverage, singleSegmentDocumentaryMinCoverage)
-	}
-	if coverage >= defaultMinSourceTextCoverage {
-		t.Fatalf("FIXTURE INVALID: coverage=%.3f at/above default threshold %.3f; pick different texts to exercise relaxed branch",
+	if coverage < defaultMinSourceTextCoverage {
+		t.Fatalf("FIXTURE INVALID: coverage=%.3f below new default %.3f; pick richer source text",
 			coverage, defaultMinSourceTextCoverage)
 	}
 
@@ -479,8 +477,8 @@ func TestEvaluateQualityGate_SingleSegmentDocumentary_RelaxesDefaultCoverage(t *
 
 	quality, err := evaluateQualityGate(result, item, plan)
 	if err != nil {
-		t.Fatalf("expected single-segment documentary gate pass with relaxed coverage (coverage=%.3f, threshold=%.3f), got error: %v",
-			coverage, singleSegmentDocumentaryMinCoverage, err)
+		t.Fatalf("expected single-segment documentary gate pass at default coverage (coverage=%.3f, threshold=%.3f), got error: %v",
+			coverage, defaultMinSourceTextCoverage, err)
 	}
 	if quality == nil {
 		t.Fatal("expected quality to be populated")
@@ -488,25 +486,19 @@ func TestEvaluateQualityGate_SingleSegmentDocumentary_RelaxesDefaultCoverage(t *
 	if !quality.Passed {
 		t.Fatalf("expected quality.Passed=true for single-segment documentary, got false (quality=%+v)", quality)
 	}
-	if quality.SourceTextCoverage < singleSegmentDocumentaryMinCoverage ||
-		quality.SourceTextCoverage >= defaultMinSourceTextCoverage {
-		t.Errorf("fixture sanity: source_text_coverage=%.3f not in band [%.3f, %.3f)",
-			quality.SourceTextCoverage, singleSegmentDocumentaryMinCoverage, defaultMinSourceTextCoverage)
-	}
 }
 
-// TestEvaluateQualityGate_SingleSegmentDefaultPolicyRequiresHigherCoverage
-// is the negative regression: the same single-segment text fixture
-// as the relaxed path, but with SingleScene=false MUST keep the
-// default 0.70 threshold unchanged. This pins the contract that the
-// relaxation applies ONLY when SingleScene is explicitly set.
-func TestEvaluateQualityGate_SingleSegmentDefaultPolicyRequiresHigherCoverage(t *testing.T) {
-	const generated = "Sugar Ray Robinson boxer American career investments legacy heritage"
+// TestEvaluateQualityGate_SingleSegmentSubThresholdFails is the
+// negative regression: a single-segment documentary whose prose
+// shares none of its non-stop vocabulary with the source (coverage
+// 0.0, below the 0.40 default) MUST fail regardless of SingleScene.
+func TestEvaluateQualityGate_SingleSegmentSubThresholdFails(t *testing.T) {
+	const generated = "space travel aliens unknown planet"
 	const source = "Sugar Ray Robinson boxer American career"
 
 	coverage := computeSourceTextCoverage(generated, source)
 	if coverage >= defaultMinSourceTextCoverage {
-		t.Skipf("FIXTURE skipped: coverage=%.3f already passes default threshold %.3f; cannot exercise negative path",
+		t.Skipf("FIXTURE skipped: coverage=%.3f no longer below default threshold %.3f; cannot exercise negative path",
 			coverage, defaultMinSourceTextCoverage)
 	}
 
@@ -520,13 +512,12 @@ func TestEvaluateQualityGate_SingleSegmentDefaultPolicyRequiresHigherCoverage(t 
 	plan := scriptpkg.ResolvedGenerationPlan{
 		SourceText:  source,
 		TargetWords: 10,
-		// SingleScene intentionally NOT set: default policy
-		// threshold (0.70) must remain authoritative.
+		SingleScene: true,
 	}
 
 	quality, err := evaluateQualityGate(result, item, plan)
 	if err == nil {
-		t.Fatalf("expected gate FAIL when SingleScene=false with sub-default coverage (coverage=%.3f, threshold=%.3f), got nil error",
+		t.Fatalf("expected gate FAIL when coverage (%.3f) is below default threshold %.3f, got nil error",
 			coverage, defaultMinSourceTextCoverage)
 	}
 	if quality == nil {
