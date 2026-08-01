@@ -14,6 +14,16 @@ type documentServiceStub struct {
 	content []string
 }
 
+type emptyDocumentReferenceStub struct{}
+
+func (*emptyDocumentReferenceStub) CreateDoc(context.Context, string, string, FolderResolver, string, string, bool) (string, string) {
+	return "", ""
+}
+
+func (*emptyDocumentReferenceStub) UpdateDoc(context.Context, string, string, string) error {
+	return nil
+}
+
 func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string, _ FolderResolver, folderID, key string, forceRefresh bool) (string, string) {
 	s.titles = append(s.titles, title+"|"+folderID+"|"+key)
 	s.content = append(s.content, content)
@@ -73,6 +83,15 @@ func TestDocumentsProcessor_PublishesExplicitLanguages(t *testing.T) {
 	}
 	if len(stub.titles) != 1 || stub.titles[0] != "Test_it|folder-1|run-1-it" {
 		t.Fatalf("unexpected publisher call: %v", stub.titles)
+	}
+}
+
+func TestDocumentProcessorRejectsEmptyPublisherReference(t *testing.T) {
+	processor := NewDocumentsProcessor(&emptyDocumentReferenceStub{})
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-empty", Title: "Test", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}}
+	_, err := processor.Process(context.Background(), plan, ProcessInput{Text: "generated text"})
+	if err == nil || !strings.Contains(err.Error(), "empty reference") {
+		t.Fatalf("expected empty document reference error, got %v", err)
 	}
 }
 

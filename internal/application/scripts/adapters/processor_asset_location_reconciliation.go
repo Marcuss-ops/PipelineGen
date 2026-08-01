@@ -190,11 +190,10 @@ func (p *AssetLocationReconciliationProcessor) Process(
 			// Resolve that ID through the same verifier and let Drive return
 			// the canonical webViewLink; never publish the raw ID as a URL.
 			fileID := ""
-			if link == "" || link == assetID {
+			if assetID != "" && (link == "" || link == assetID) {
 				fileID = assetID
-				if link == assetID {
-					link = ""
-				}
+				link = "https://drive.google.com/file/d/" + assetID + "/view"
+				bindings.Stock.DriveLink = link
 			}
 			if link != "" || fileID != "" {
 				result, err := p.verifyAndReconcile(
