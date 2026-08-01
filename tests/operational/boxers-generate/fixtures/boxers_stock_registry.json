@@ -52,19 +52,19 @@
       "subject": "Manny Pacquiao",
       "assets": {
         "fight": {
-          "asset_id": "yt_6VtSrG1hs9U_119_164_v1",
+          "asset_id": "planner:a939c7d455e8de9c:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/1dqD5m_3k0YUIhPKWYTSKc9BwPPGqrSic/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1Lxa9ceXlsaXJpfq2KbP9RXquG9by0xdt/view?usp=drivesdk"
         },
         "interview": {
-          "asset_id": "yt_6VtSrG1hs9U_299_350_v1",
+          "asset_id": "planner:b18b1f6266b28963:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/1g2jydV_tKqgUjAICu2efadrSNSkUNLB7/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1DnqM2nRXrd5D_rba5DcQzCoCyCtD3pw7/view?usp=drivesdk"
         },
         "training": {
-          "asset_id": "yt_6VtSrG1hs9U_196_239_v1",
+          "asset_id": "planner:9e14c0f403d24000:0",
           "expected_source": "youtube",
-          "drive_link": "https://drive.google.com/file/d/1ivBEEKi3_lJpNj-2F1SGeEi365yNeuBe/view?usp=drivesdk"
+          "drive_link": "https://drive.google.com/file/d/1CZ-wfsajRnvflU1hT2SLIkFOnyrylBHK/view?usp=drivesdk"
         }
       }
     },
