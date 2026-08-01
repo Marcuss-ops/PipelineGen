@@ -20,6 +20,16 @@
 //     Qdrant-derivable media-processing bundle + the typed-port
 //     conformance gates).
 //
+// July 2026 sub-section extraction: the inline blocks of
+// BuildOutboxBundle were extracted to sibling files of this package
+// per the documented layout in build_process_qdrant.go:
+//   - internal/app/build_outbox_handlers.go (buildOutboxDeps +
+//     registerOutboxCoreHandlers + registerOutboxWorkers +
+//     noopIndexClipper — the outbox deps + handler-registration
+//     sub-blocks)
+//   - internal/app/build_media_processor.go (wireMediaProcessor +
+//     newVLMClient — the media-processor + VLM-client construction)
+//
 // This file now owns ONLY:
 //   - BuildOutboxBundle (canonical ingestion-path outbox.Dispatcher +
 //     outbox_events.Pool, registration of core + optional handlers)
@@ -35,26 +45,17 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
-	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
-	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
-	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -152,205 +153,18 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 
-	// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the outbox http.Client
-	// construction through internal/infrastructure/httpclient.NewDefaultClient
-	// (the canonical owner of *http.Client construction for the application
-	// port surface). The result satisfies ports.Client, which is the
-	// field type of InfraDeps.HTTPClient (consumed by the DeliveryHandler).
-	httpClient := httpclient.NewDefaultClient(30 * time.Second)
-
-	var hmacSecrets [][]byte
-	if cur := strings.TrimSpace(cfg.Security.DeliveryHMACSecret); cur != "" {
-		hmacSecrets = append(hmacSecrets, []byte(cur))
+	// Deps + handler registration sub-blocks (extracted July 2026 to
+	// build_outbox_handlers.go). Same order as the pre-split flat
+	// body: deps construction → core handlers → optional/worker
+	// handlers.
+	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, log)
+	if err := registerOutboxCoreHandlers(eventsRegistry, cfg, repos, qd, outboxDeps, log); err != nil {
+		return nil, nil, err
 	}
-	if prev := strings.TrimSpace(cfg.Security.DeliveryHMACSecretPrevious); prev != "" {
-		hmacSecrets = append(hmacSecrets, []byte(prev))
+	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	// SourceVersionQuerier is the narrow port consumed by the
-	// IndexingHandler source_version supersede gate (PR 11 follow-up,
-	// June 2026). The production concrete is *assets.ClipsRepository
-	// (already wired into the dispatcher's MultiClipsUpserter; same
-	// instance also implements SourceVersionQuerier via a thin
-	// delegating method). nil ClipsRepo → nil SourceVersionQuerier →
-	// IndexingHandler skips the supersede gate (acceptable in test
-	// dbs; production always wires non-nil).
-	//
-	// Wave 16 (June 2026): typed-port direct assignment per
-	// AGENTS.md Pattern 0. The previous
-	// `any(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
-	// raw cast is replaced because *assets.ClipsRepository
-	// statically implements the port (compile-time assertion at
-	// internal/infrastructure/database/sqlite/assets/clips_repository.go).
-	// Dropping the `, ok` form is safe: the assertion fails the build
-	// if port drift ever breaks the static implementation contract.
-	// PR 11 follow-up extends the assertion to SourceVersionQuerier
-	// (single-method port) — the previous AssetSourceChecker port
-	// (GetClip → walk Asset) is removed entirely.
-	var sourceQuerier jobsoutbox.SourceVersionQuerier
-	if repos.ClipsRepo != nil {
-		sourceQuerier = repos.ClipsRepo
-	}
-
-	// Step 2 (June 2026): pre-build the canonical MetadataExportHandler
-	// via the new typed-port adapters. The composition root is the ONLY
-	// place infra concrete types meet application ports — the
-	// outbox.Deps struct no longer needs MetadataDir because the
-	// handler gets its output dir as part of HandlerDeps at wire time.
-	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
-	metadataExportWriter := &filesmetadataexport.FileWriter{}
-	metadataExportDeps := metadataexport.HandlerDeps{
-		Resolver:  metadataExportResolver,
-		Writer:    metadataExportWriter,
-		OutputDir: cfg.Storage.FullPath("asset_metadata"),
-		Log:       log,
-	}
-	metadataExportHandler := metadataexport.NewMetadataExportHandler(metadataExportDeps)
-
-	outboxDeps := &jobsoutbox.Deps{
-		Infra: jobsoutbox.InfraDeps{
-			DB:          dbs.DualPool.Writer,
-			HTTPClient:  httpClient,
-			HMACSecrets: hmacSecrets,
-			InsecureDev: cfg.Security.DeliveryInsecureDev,
-		},
-		Jobs: jobsoutbox.JobDeps{
-			Jobs:                 jobs.Service,
-			SourceVersionQuerier: sourceQuerier,
-		},
-	}
-	// PR 4 (June 2026, refactor/single-qdrant-runtime): wire
-	// qd.QdrantDeleter (outbox.VectorPointDeleter; == qd.Runtime.Writer
-	// when Qdrant is enabled) directly into outbox.Deps.Jobs.VectorPointDeleter.
-	// The previous `any` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
-	// is gone: the compile-time assertion at
-	// internal/infrastructure/qdrant/index_writer.go pins the
-	// conformance (`_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`),
-	// and qd.QdrantDeleter's field type is already
-	// jobsoutbox.VectorPointDeleter so direct assignment is type-safe.
-	if qd.QdrantDeleter != nil {
-		outboxDeps.Jobs.VectorPointDeleter = qd.QdrantDeleter
-	}
-	// PR 3 fix/qdrant-outbox-fail-closed (#4): wire the canonical
-	// AssetDeleter so IndexDeleteHandler has BOTH its dep slots
-	// populated. *assets.ClipsRepository statically implements the
-	// local outbox.AssetDeleter port (compile-time assertion at the
-	// top of this file pins GetClip + SoftDelete + SetIndexState
-	// conformance). Before this wiring, IndexDeleteHandler
-	// registered in a partially-wired state whenever
-	// Qdrant.Enabled=true but composer's ClipsRepo wiring failed —
-	// every asset.index.delete_requested event then dead-lettered
-	// with "no handler for event type X". Fail-closed wiring: only
-	// when cfg.Qdrant.Enabled AND ClipsRepo is present.
-	if cfg.Qdrant.Enabled && repos.ClipsRepo != nil {
-		outboxDeps.Jobs.AssetDeleter = repos.ClipsRepo
-	}
-	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
-	// driver (production concrete = drive.Admin, which saturates the
-	// narrow VoiceoverCleanupDriver port via its DeleteFile method
-	// — structural conformance, no wrapper needed). nil is
-	// tolerated — RegisterOptionalHandlers unconditionally registers
-	// the handler, and the handler's driver==nil branch logs+skips
-	// the Drive delete step (local file removal still runs via
-	// stdlib os.Remove, no port ceremony). Production wiring always
-	// supplies a non-nil adapter via composition.go (built from
-	// driveBundle.Admin).
-	if voiceoverDriver != nil {
-		outboxDeps.Jobs.VoiceoverCleanupDriver = voiceoverDriver
-	}
-	// PR 3 fix/qdrant-outbox-fail-closed (#4 + #5): core handlers are
-	// fail-closed when Qdrant is enabled. The previous
-	// `log.Warn("failed to register outbox events handlers", err)`
-	// silently downgraded a wiring bug to a runtime dead-letter on
-	// the first asset.index.requested event. Now: cfg.Qdrant.Enabled
-	// AND any core dep missing → return err which BuildOutboxBundle
-	// propagates up to NewComposition so an operator
-	// misconfiguration aborts boot rather than running with a broken
-	// outbox.
-	if cfg.Qdrant.Enabled {
-		if err := jobsoutbox.RegisterCoreHandlers(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: register core outbox handlers (fail-closed): %w", err)
-		}
-	} else {
-		// Dev / qdrant-off mode: still register a no-op asset.index.requested
-		// consumer so image-generation jobs do not dead-letter their indexing
-		// event. The handler preserves the envelope validation + supersede
-		// checks but routes the final IndexClip call to a no-op concrete.
-		sourceQuerier := jobsoutbox.SourceVersionQuerier(nil)
-		if repos != nil && repos.ClipsRepo != nil {
-			sourceQuerier = repos.ClipsRepo
-		}
-		if err := eventsRegistry.Register(jobsoutbox.NewIndexingHandler(noopIndexClipper{}, sourceQuerier, log)); err != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: register qdrant-off indexing handler: %w", err)
-		}
-		log.Info("outbox indexing handler registered in no-op mode because qdrant is disabled")
-	}
-	// Optional handlers: best-effort. Missing deps here are logged
-	// and skipped; missing deps do NOT abort boot (delivery,
-	// metadata_export, provider_sync are non-essential at boot).
-	// Step 2 (June 2026): the pre-built metadataexport.MetadataExportHandler
-	// (composition-root owned) is passed to RegisterOptionalHandlers via
-	// a new metadataExportHandler arg.
-	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps, metadataExportHandler); err != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
-	}
-	queuedHandler, queuedErr := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
-	if queuedErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: script.generate.queued handler: %w", queuedErr)
-	}
-	if regErr := eventsRegistry.Register(queuedHandler); regErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: register script.generate.queued handler: %w", regErr)
-	}
-
-	// FASE 3 Push 3.1c (July 2026): register the canonical
-	// Promote→Publisher worker. Drains
-	// `artifact.publish_requested.v1` events from outbox_events
-	// and forwards them to staging.Store.Stage (which then
-	// co-emits `artifact.staged.v1` via
-	// Repository.InsertWithOutbox — the canonical atomic
-	// primitive). Fail-closed: a nil/errored handler
-	// registration aborts boot — a half-wired publisher would
-	// dead-letter every publish_requested event on the first
-	// emission, which is a worse failure mode than a clean
-	// compose-time abort.
-	publisherHandler, pubErr := publishoutbox.NewHandler(stagingSvc, log)
-	if pubErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_outbox.NewHandler (fail-fast at construction): %w", pubErr)
-	}
-	if regErr := eventsRegistry.Register(publisherHandler); regErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_outbox handler (fail-closed): %w", regErr)
-	}
-	log.Info("outbox publish handler registered: artifact.publish_requested.v1 → staging.Store.Stage (FASE 3 Push 3.1c)")
-
-	// FASE 3 Push 3.1e (July 2026): register the canonical
-	// Stage→Publish worker. Drains `artifact.staged.v1` events
-	// (atomically co-emitted by Repository.InsertWithOutbox in
-	// Push 3.1c) and forwards each event to
-	// delivery.Publisher.Publish (the canonical Drive upload
-	// canal) + Repository.MarkPublished with a canonical JSON
-	// PublishedLocation payload. Fail-closed: a nil/errored
-	// handler registration aborts boot — a half-wired
-	// DriveUploader would dead-letter every staged.v1 event on
-	// the first emission, which is a worse failure mode than a
-	// clean compose-time abort.
-	//
-	// The handler consumes the SAME artifact.Repository port
-	// that staging.StoreService.Stage uses (canonical single-
-	// writer; the Repository is the typed cursor to the same
-	// underlying *artifactstages.Repository concrete — godlike/06
-	// SSOT per FASE 3 Spina Dorsale). Threading the Repository
-	// explicitly into BuildOutboxBundle (rather than re-fetching
-	// from a downstream service) keeps the wiring fail-closed:
-	// a NULL repo at compose-time is a typed-error abort, not a
-	// silent runtime nil-deref.
-	driveUploadHandler, driveErr := publishdrive.NewHandler(repo, drivePublisher, log)
-	if driveErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_drive.NewHandler (fail-fast at construction): %w", driveErr)
-	}
-	if regErr := eventsRegistry.Register(driveUploadHandler); regErr != nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_drive handler (fail-closed): %w", regErr)
-	}
-	log.Info("outbox publish_drive handler registered: artifact.staged.v1 → delivery.Publisher.Publish + Repository.MarkPublished (FASE 3 Push 3.1e)")
 
 	// ── Dispatcher + pool construction (post fail-closed). ────────
 	multiClipsUp := outbox.NewMultiClipsUpserter(
@@ -401,10 +215,6 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	}, startClosure, nil
 }
 
-type noopIndexClipper struct{}
-
-func (noopIndexClipper) IndexClip(context.Context, string) error { return nil }
-
 // startOutboxEventsPool performs the side-effecting outbox events pool
 // initialisation.
 //
@@ -437,55 +247,4 @@ func startOutboxEventsPool(
 	})
 	log.Info("outbox events pool started", zap.Duration("poll_interval", cfg.PollInterval))
 	return nil
-}
-
-// ── Media-processor wiring (moved from build_media_processor.go, Phase 5 consolidation, June 2026) ──
-
-// F2.8 (June 2026): the trailing arg swaps from `*drive.Uploader`
-// to `delivery.Publisher`. The Publisher is the canonical canal for
-// every Drive write from the processor; the legacy direct-uploader
-// bypass is closed. Compile-time assertion
-// `var _ delivery.Publisher = (*drive.Uploader)(nil)` lives in
-// internal/infrastructure/drive/publisher.go (already pinned there)
-// so this wiring is type-safe.
-func wireMediaProcessor(
-	outbox *wiring.OutboxBundle,
-	repos *wiring.RepoBundle,
-	dbs *wiring.Databases,
-	cfg *config.Config,
-	publisher delivery.Publisher,
-	log *zap.Logger,
-) (asset.Processor, error) {
-	if outbox == nil || outbox.Dispatcher == nil {
-		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
-		return nil, nil
-	}
-	mutationsDisp, err := newMutationsDispatcherAdapter(outbox.Dispatcher)
-	if err != nil {
-		return nil, fmt.Errorf("wireMediaProcessor: mutations dispatcher adapter: %w", err)
-	}
-	mp := wiring.InitMediaProcessor(
-		cfg,
-		dbs.Main,
-		repos.Assets.Repository(),
-		repos.Assets,
-		repos.Assets.LocationRepository(),
-		repos.Assets.ProcessingRepository(),
-		mutationsDisp,
-		log,
-		publisher,
-	)
-	log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher (F2.8: publisher wired)")
-	return mp, nil
-}
-
-func newVLMClient(cfg *config.Config) *vlm.Client {
-	return vlm.NewClient(vlm.Config{
-		Enabled:      cfg.VLM.Enabled,
-		Endpoint:     cfg.VLM.URL,
-		Model:        cfg.VLM.Model,
-		ModelVersion: cfg.VLM.ModelVersion,
-		TimeoutMs:    cfg.VLM.TimeoutMs,
-		Weight:       cfg.VLM.Weight,
-	})
 }
