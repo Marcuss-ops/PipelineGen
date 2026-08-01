@@ -19,6 +19,16 @@ type stubVerifier struct {
 	byError map[string]error
 }
 
+type recordingVerifier struct {
+	args   []struct{ assetID, fileID, link string }
+	result *scriptpkg.VerifiedLocation
+}
+
+func (s *recordingVerifier) Verify(_ context.Context, assetID, fileID, link string) (*scriptpkg.VerifiedLocation, error) {
+	s.args = append(s.args, struct{ assetID, fileID, link string }{assetID, fileID, link})
+	return s.result, nil
+}
+
 func newStubVerifier() *stubVerifier {
 	return &stubVerifier{
 		byLink:  make(map[string]*scriptpkg.VerifiedLocation),
@@ -66,10 +76,82 @@ func sceneWithClipAndSub(id, driveLink, subLink, subFileID string) scriptpkg.Spe
 
 func sceneWithStock(stockID, driveLink string) scriptpkg.SpecScene {
 	return scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "narrative", Kind: scriptpkg.SceneClip,
+		ID: "scene-0", Index: 0, Text: "narrative", Kind: scriptpkg.SceneStock,
 		Bindings: scriptpkg.SceneBindings{
 			Stock: &scriptpkg.StockBinding{AssetID: stockID, DriveLink: driveLink},
 		},
+	}
+}
+
+func TestAssetLocationReconciliationStockMissingLinkUsesAssetID(t *testing.T) {
+	assetID := "1TwVU-11JCggSBuHtavhKMevMZna-xr51"
+	r := &recordingVerifier{result: &scriptpkg.VerifiedLocation{
+		AssetID: assetID, DriveFileID: assetID,
+		DriveLink: "https://drive.google.com/file/d/" + assetID + "/view",
+		State:     scriptpkg.LocationStateVerified,
+	}}
+	got, err := NewAssetLocationReconciliationProcessor(r).Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{sceneWithStock(assetID, "")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.args) != 1 || r.args[0].fileID != assetID || r.args[0].link != "https://drive.google.com/file/d/"+assetID+"/view" {
+		t.Fatalf("verifier args = %+v", r.args)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Stock.DriveLink != r.result.DriveLink {
+		t.Fatalf("drive_link = %q, want %q", got.UpdatedSpecScene.Scenes[0].Bindings.Stock.DriveLink, r.result.DriveLink)
+	}
+}
+
+func TestAssetLocationReconciliationStockCanonicalURLAndQuery(t *testing.T) {
+	assetID := "1TwVU-11JCggSBuHtavhKMevMZna-xr51"
+	link := "https://drive.google.com/file/d/" + assetID + "/view?usp=drivesdk"
+	r := &recordingVerifier{result: &scriptpkg.VerifiedLocation{
+		AssetID: assetID, DriveFileID: assetID, DriveLink: link, State: scriptpkg.LocationStateVerified,
+	}}
+	_, err := NewAssetLocationReconciliationProcessor(r).Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{sceneWithStock(assetID, link)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.args) != 1 || r.args[0].fileID != "" || r.args[0].link != link {
+		t.Fatalf("verifier args = %+v", r.args)
+	}
+}
+
+func TestAssetLocationReconciliationStockRejectsFolderURL(t *testing.T) {
+	assetID := "1TwVU-11JCggSBuHtavhKMevMZna-xr51"
+	r := &recordingVerifier{result: &scriptpkg.VerifiedLocation{State: scriptpkg.LocationStateMalformed}}
+	got, err := NewAssetLocationReconciliationProcessor(r).Process(context.Background(), nil, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{sceneWithStock(assetID, "https://drive.google.com/drive/folders/folder-boxe")}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "MALFORMED") {
+		t.Fatalf("warnings = %v", got.Warnings)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Stock.DriveLink != "" {
+		t.Fatal("folder URL must not remain as a file link")
+	}
+}
+
+func TestAssetLocationReconciliationStockKeepsFolderID(t *testing.T) {
+	scene := sceneWithStock("1TwVU-11JCggSBuHtavhKMevMZna-xr51", "")
+	scene.Bindings.Stock.FolderID = "folder-boxe"
+	r := &recordingVerifier{result: &scriptpkg.VerifiedLocation{
+		DriveFileID: "1TwVU-11JCggSBuHtavhKMevMZna-xr51",
+		DriveLink:   "https://drive.google.com/file/d/1TwVU-11JCggSBuHtavhKMevMZna-xr51/view",
+		State:       scriptpkg.LocationStateVerified,
+	}}
+	got, err := NewAssetLocationReconciliationProcessor(r).Process(context.Background(), nil, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{scene}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Bindings.Stock.FolderID != "folder-boxe" {
+		t.Fatal("folder_id was not preserved")
 	}
 }
 

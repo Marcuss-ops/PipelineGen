@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -32,6 +33,76 @@ func TestStockBindingsProcessorBindsPerSceneAndKeepsClip(t *testing.T) {
 	stock := got.UpdatedSpecScene.Scenes[0].Bindings.Stock
 	if stock == nil || stock.AssetID != "stock-1" || stock.DurationMs != 4000 {
 		t.Fatalf("unexpected stock binding: %#v", stock)
+	}
+}
+
+func TestStockBindingsProcessorTrimsYouTubeFieldsSetsStockAndBuildsDriveURL(t *testing.T) {
+	got, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, SceneID: "scene-0", Source: "youtube",
+			AssetID:   "  1TwVU-11JCggSBuHtavhKMevMZna-xr51  ",
+			DriveLink: "  1TwVU-11JCggSBuHtavhKMevMZna-xr51  ",
+			FolderID:  "  folder-boxe  ", Name: " Sugar Ray Robinson fight ",
+			StartMs: 0, EndMs: 5000, Fallback: false,
+		}},
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", Kind: scriptpkg.SceneClip,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scene := got.UpdatedSpecScene.Scenes[0]
+	stock := scene.Bindings.Stock
+	if scene.Kind != scriptpkg.SceneStock {
+		t.Fatalf("scene kind = %q, want stock", scene.Kind)
+	}
+	if stock == nil {
+		t.Fatal("stock binding is nil")
+	}
+	if stock.AssetID != "1TwVU-11JCggSBuHtavhKMevMZna-xr51" {
+		t.Errorf("asset_id = %q, want trimmed ID", stock.AssetID)
+	}
+	if stock.DriveLink != "https://drive.google.com/file/d/1TwVU-11JCggSBuHtavhKMevMZna-xr51/view" {
+		t.Errorf("drive_link = %q, want canonical URL", stock.DriveLink)
+	}
+	if stock.FolderID != "folder-boxe" {
+		t.Errorf("folder_id = %q, want trimmed folder", stock.FolderID)
+	}
+	if stock.Fallback {
+		t.Fatal("fallback must remain false")
+	}
+}
+
+func TestStockBindingsProcessorSerializesFallbackFalse(t *testing.T) {
+	stock := scriptpkg.StockBinding{AssetID: "asset-1234567890", Fallback: false}
+	payload, err := json.Marshal(stock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) == "{}" || !containsJSONField(payload, "fallback") {
+		t.Fatalf("fallback=false must be explicit in JSON: %s", payload)
+	}
+}
+
+func containsJSONField(payload []byte, field string) bool {
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return false
+	}
+	_, ok := decoded[field]
+	return ok
+}
+
+func TestStockBindingsProcessorRejectsEmptyAssetAndLink(t *testing.T) {
+	_, err := NewStockBindingsProcessor().Process(context.Background(), nil, ProcessInput{
+		StockEnabled:  scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{Index: 0, StartMs: 0, EndMs: 1000}},
+		SpecScene:     scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{ID: "scene-0"}}},
+	})
+	if err == nil {
+		t.Fatal("expected empty asset_id and drive_link to fail closed")
 	}
 }
 
