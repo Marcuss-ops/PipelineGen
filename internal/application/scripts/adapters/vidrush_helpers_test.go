@@ -102,6 +102,45 @@ func TestFinalizeVidRushBindings_UsesDurableL2AcrossL1Restart(t *testing.T) {
 	}
 }
 
+func TestFinalizeVidRushBindings_ImageOnlyUsesDurableImagesAsBinding(t *testing.T) {
+	image := scriptpkg.SegmentAssetCandidate{
+		AssetID:            "commons-image-1",
+		Provider:           scriptpkg.VidRushProviderInternetImages,
+		SourceURL:          "https://upload.wikimedia.org/wikipedia/commons/image.jpg",
+		DriveLink:          "https://drive.google.com/file/d/commons-image-1/view",
+		Score:              0.9,
+		RightsStatus:       "verified",
+		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		IndexStatus:        scriptpkg.VidRushStatusIndexed,
+		FileHash:           "hash-commons-image-1",
+	}
+
+	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{{
+		SegmentID: "image-only-segment",
+		TextHash:  "image-only-text",
+		Assets:    scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{image}},
+	}}, false)
+
+	if len(got) != 1 {
+		t.Fatalf("segments = %d, want 1", len(got))
+	}
+	seg := got[0]
+	if seg.Assets.PrimaryVideo != nil {
+		t.Fatalf("primary video = %+v, want nil for image-only binding", seg.Assets.PrimaryVideo)
+	}
+	if len(seg.Assets.SecondaryImages) != 1 || seg.Assets.SecondaryImages[0].AssetID != image.AssetID {
+		t.Fatalf("secondary images = %+v, want durable image binding", seg.Assets.SecondaryImages)
+	}
+	if seg.Assets.SelectionReason != "highest scored provenance-valid secondary images for image fallback" {
+		t.Fatalf("selection reason = %q, want explicit image fallback binding reason", seg.Assets.SelectionReason)
+	}
+	if seg.Cache.Binding != "MISS" {
+		t.Fatalf("binding cache = %q, want MISS", seg.Cache.Binding)
+	}
+}
+
 func TestFinalizeVidRushBindings_DropsRemoteCandidatesWithoutLifecycle(t *testing.T) {
 	segments := []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-remote-only",

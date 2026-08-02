@@ -351,6 +351,11 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			seg.Assets.PrimaryVideo = primary
 			lastAssetByProvider[primary.Provider] = primary.AssetID
 			seg.Assets.SelectionReason = primary.SelectionReason
+		} else if len(seg.Assets.SecondaryImages) > 0 {
+			// Image-only plans have no primary video by design. The durable,
+			// rights-verified secondary image set is nevertheless the scene's
+			// definitive VidRush binding and must be surfaced as such.
+			seg.Assets.SelectionReason = "highest scored provenance-valid secondary images for image fallback"
 		} else {
 			seg.Assets.PrimaryVideo = nil
 			seg.Assets.SelectionReason = "no provenance-valid candidate available"
