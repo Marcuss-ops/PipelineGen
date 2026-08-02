@@ -29,14 +29,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// stopwordMapRe matches Go map literal lines that look like stop-word
-// definitions: `map[string]struct{}{` or `map[string]bool{` followed
-// by quoted words like "the", "a", "an", "and", "or", "for".
-// This pattern is characteristic of hardcoded linguistic data.
-var stopwordMapRe = regexp.MustCompile(`map\[string\](struct\{\}|bool)\{`)
+// stopwordMapOpenRe matches a line that OPENS a hardcoded stop-word map
+// literal: `map[string]struct{}{`, `map[string]bool{`, or the nested
+// `map[string]map[string]struct{}{` form used by per-language marker
+// maps. The pattern is deliberately loose (`map[string]...{struct{}|bool}{`)
+// so expanded multi-line literals (one quoted word per line — the
+// codebase norm) are tracked by the brace-depth state machine in
+// scanStopwordMapFile instead of requiring words on the opener line.
+var stopwordMapOpenRe = regexp.MustCompile(`map\[string\].*?(?:struct\{\}|bool)\{`)
 
-// stopwordWordRe matches common stop-word-like quoted strings on the
-// same line as a map literal.
+// stopwordWordRe matches common stop-word-like quoted strings that
+// appear as keys inside a hardcoded stop-word map literal.
 var stopwordWordRe = regexp.MustCompile(`"the"|"and"|"for"|"with"|"from"|"that"|"this"`)
 
 // stopwordCanonicalPaths are paths where stop-word maps are legitimately
@@ -122,32 +125,67 @@ func scanStopwordMapFile(path, relPath string, r *report.Report) {
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
 	lineNo := 0
+	inMap := false
+	mapOpenLine := 0
+	reported := false
+	braceDepth := 0
 
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
-		// Must match the map literal pattern AND contain stop-word-like strings.
-		if !stopwordMapRe.MatchString(line) {
-			continue
-		}
-		if !stopwordWordRe.MatchString(line) {
-			continue
-		}
 		trimmed := strings.TrimLeft(line, " \t")
+		// Comment-only lines carry no structural map state; skip them
+		// (godlike/07: descriptive prose is non-fatal residue).
 		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
 			continue
 		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     pkgFromStopwordMapRel(relPath),
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        stopwordMapRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "stopword_maps_ssot_gate",
-			Note:        stopwordMapNote + " | snippet: " + truncateStopwordMap(line),
-		})
+
+		if !inMap {
+			if !stopwordMapOpenRe.MatchString(line) {
+				continue
+			}
+			// Opener line: a single-line literal with stop-words on the
+			// same line is a direct violation.
+			if stopwordWordRe.MatchString(line) {
+				appendStopwordMapViolation(r, relPath, lineNo, line)
+			}
+			braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
+			if braceDepth > 0 {
+				// Expanded multi-line literal: track the body until the
+				// closing brace so one-word-per-line maps are caught.
+				inMap = true
+				mapOpenLine = lineNo
+				reported = stopwordWordRe.MatchString(line)
+			}
+			continue
+		}
+
+		// Inside an opened stop-word map literal body.
+		if !reported && stopwordWordRe.MatchString(line) {
+			appendStopwordMapViolation(r, relPath, mapOpenLine, line)
+			reported = true
+		}
+		braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
+		if braceDepth <= 0 {
+			inMap = false
+		}
 	}
+}
+
+// appendStopwordMapViolation emits one per-map violation anchored at the
+// map opener line with the offending stop-word line as the snippet.
+func appendStopwordMapViolation(r *report.Report, relPath string, line int, snippet string) {
+	r.Violations = append(r.Violations, report.Violation{
+		Package:     pkgFromStopwordMapRel(relPath),
+		File:        relPath,
+		Line:        line,
+		Rule:        stopwordMapRule,
+		Severity:    string(report.SeverityError),
+		MatchedRule: "stopword_maps_ssot_gate",
+		Note:        stopwordMapNote + " | snippet: " + truncateStopwordMap(snippet),
+	})
 }
 
 func pkgFromStopwordMapRel(rel string) string {
