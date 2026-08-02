@@ -119,6 +119,14 @@ func normalizeScenesForExplicitSegments(existing []scriptpkg.SpecScene, segments
 		} else if strings.TrimSpace(scenes[i].SegmentID) == "" {
 			scenes[i].SegmentID = fmt.Sprintf("segment-%d", i+1)
 		}
+		// Explicit source_text is the caller's segment boundary. If the
+		// prose synthesizer merged a neighbouring topic, dropped the
+		// subject, or produced an unusably short slot, restore that
+		// segment's own source text instead of publishing cross-subject
+		// narration under the wrong stock binding.
+		if explicitSegmentTextNeedsRepair(scenes[i].Text, segment, segments) {
+			scenes[i].Text = strings.TrimSpace(segment.SourceText)
+		}
 		if strings.TrimSpace(scenes[i].Text) == "" {
 			scenes[i].Text = strings.TrimSpace(segment.SourceText)
 			if scenes[i].Text == "" {
@@ -130,4 +138,28 @@ func normalizeScenesForExplicitSegments(existing []scriptpkg.SpecScene, segments
 		}
 	}
 	return scenes
+}
+
+func explicitSegmentTextNeedsRepair(text string, segment scriptpkg.ScriptSegment, segments []scriptpkg.ScriptSegment) bool {
+	if strings.TrimSpace(segment.SourceText) == "" {
+		return strings.TrimSpace(text) == ""
+	}
+	body := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(text)), " "))
+	if len(strings.Fields(body)) < 100 {
+		return true
+	}
+	primary := strings.ToLower(strings.TrimSpace(segment.Topic))
+	if strings.Contains(segment.ID, "boxer-") && primary != "" && !strings.Contains(body, primary) {
+		return true
+	}
+	for _, other := range segments {
+		if other.ID == segment.ID || !strings.Contains(other.ID, "boxer-") {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(other.Topic))
+		if name != "" && strings.Contains(body, name) {
+			return true
+		}
+	}
+	return false
 }
