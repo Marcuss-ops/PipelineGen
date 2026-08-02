@@ -144,7 +144,7 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 	}
 
 	if p.cfg.ServerURL != "" {
-		resp, err := p.searchViaServer(ctx, term, req.Limit)
+		resp, err := p.searchViaServer(ctx, term, req.Limit, req.ForceRefresh)
 		if err != nil {
 			if errors.Is(err, artapp.ErrTransportFallback) {
 				if p.log != nil {
@@ -184,7 +184,7 @@ func (p *Provider) acquireSearchSlot(ctx context.Context) (func(), error) {
 	}
 }
 
-func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) (*Response, error) {
+func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, forceRefresh bool) (*Response, error) {
 	type searchReq struct {
 		Query        string         `json:"query"`
 		Term         string         `json:"term"`
@@ -199,7 +199,7 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 		Page:         1,
 		Limit:        limit,
 		Filters:      map[string]any{},
-		ForceRefresh: false,
+		ForceRefresh: forceRefresh,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("artlist server: marshal request: %w", err)

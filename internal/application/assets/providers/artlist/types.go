@@ -285,10 +285,14 @@ type Stats struct {
 // PreferRemote=false so existing cache-first semantics for "discover
 // fresh content" runs is preserved.
 type SearchRequest struct {
-	Term         string `json:"term"`
-	Limit        int    `json:"limit"`
-	PreferDB     bool   `json:"prefer_db"`
-	PreferRemote bool   `json:"prefer_remote,omitempty"`
+	Term     string `json:"term"`
+	Limit    int    `json:"limit"`
+	PreferDB bool   `json:"prefer_db"`
+	// ForceRefresh bypasses provider-side search caches. It is used by
+	// provider-enabled VidRush discovery so a stale stream URL cannot be
+	// promoted into the acquisition pipeline.
+	ForceRefresh bool `json:"force_refresh,omitempty"`
+	PreferRemote bool `json:"prefer_remote,omitempty"`
 }
 
 // ImportClipRequest represents a request to import a single Artlist clip

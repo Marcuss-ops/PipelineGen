@@ -128,6 +128,30 @@ func TestSearchViaServerConsumesStableEnvelope(t *testing.T) {
 	}
 }
 
+func TestSearchViaServerForwardsForceRefresh(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload["force_refresh"] != true {
+			t.Fatalf("expected force_refresh true, got %#v", payload["force_refresh"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"provider":"artlist","query":"fresh query","clips":[{"clip_id":"fresh-1","primary_url":"https://cdn.example/fresh-1.m3u8","clip_page_url":"https://artlist.io/clip/fresh-1"}]}`))
+	}))
+	defer server.Close()
+
+	provider := New(Config{ServerURL: server.URL, HTTPTimeout: time.Second}, zap.NewNop())
+	clips, err := provider.Search(context.Background(), artapp.SearchRequest{Term: "fresh query", Limit: 1, ForceRefresh: true})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(clips) != 1 || clips[0].ID != "fresh-1" {
+		t.Fatalf("unexpected clips: %+v", clips)
+	}
+}
+
 func TestSearchSerializesBrowserRequests(t *testing.T) {
 	var active, maxActive int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

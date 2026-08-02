@@ -90,11 +90,12 @@ type ChromeImageProvider struct {
 	profileID  int
 	log        *zap.Logger
 
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  *bufio.Scanner
-	started bool
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     *bufio.Scanner
+	stdoutPipe io.ReadCloser
+	started    bool
 }
 
 // NewChromeImageProvider creates a new ChromeImageProvider.

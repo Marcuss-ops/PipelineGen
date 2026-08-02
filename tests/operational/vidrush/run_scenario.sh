@@ -372,9 +372,9 @@ run_concurrency_wave() {
     done
     if (( failures > 0 )); then
         wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
-        jq -n --arg label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
+        jq -c -n --arg wave_label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
             --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
-            '{label:$label,width:$width,dispatch_failures:$dispatch_failures,terminal:[],wall_ms:$wall_ms}'
+            '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:[],wall_ms:$wall_ms}'
         return 1
     fi
 
@@ -405,10 +405,10 @@ run_concurrency_wave() {
         terminal+=("$status")
     done
     wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
-    jq -n --arg label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
+    jq -c -n --arg wave_label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
         --argjson terminal "$(printf '%s\n' "${terminal[@]}" | jq -R . | jq -s .)" \
         --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
-        '{label:$label,width:$width,dispatch_failures:$dispatch_failures,terminal:$terminal,failed_terminal:'"$failed_terminal"',wall_ms:$wall_ms}'
+        '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:$terminal,failed_terminal:'"$failed_terminal"',wall_ms:$wall_ms}'
     (( failed_terminal == 0 ))
 }
 

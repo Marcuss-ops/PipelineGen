@@ -73,7 +73,14 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 }
 
 func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
-	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote)
+	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, false)
+}
+
+// SearchLiveForceRefresh is the live-search surface used by VidRush. It
+// preserves the ordinary SearchLive behavior for legacy callers while
+// forcing the remote provider to resolve a fresh stream URL.
+func (ss *SearchService) SearchLiveForceRefresh(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
+	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote, true)
 }
 
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
@@ -301,7 +308,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 	return toDomainPtrSlice(clips)
 }
 
-func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
+func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote, forceRefresh bool) ([]Candidate, error) {
 	normalizedTerm := normalizeSearchTerm(term)
 	if normalizedTerm == "" {
 		return nil, fmt.Errorf("term is required")
@@ -320,7 +327,7 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 	if chain == nil {
 		return nil, fmt.Errorf("no search providers configured")
 	}
-	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit, PreferRemote: preferRemote})
+	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit, PreferRemote: preferRemote, ForceRefresh: forceRefresh})
 	if err != nil {
 		ss.service.log.Warn("all search providers failed",
 			zap.String("term", term),

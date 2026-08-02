@@ -40,7 +40,10 @@ func (materializationFinalizerStub) Finalize(_ context.Context, artifact scriptp
 	return candidate, nil
 }
 
-type generationMaterializationProviderStub struct{ calls int }
+type generationMaterializationProviderStub struct {
+	calls int
+	fail  bool
+}
 
 func (s *generationMaterializationProviderStub) Name() string {
 	return scriptpkg.VidRushProviderImageGeneration
@@ -50,6 +53,9 @@ func (s *generationMaterializationProviderStub) Search(context.Context, scriptpo
 }
 func (s *generationMaterializationProviderStub) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	s.calls++
+	if s.fail {
+		return scriptports.LocalArtifact{}, errors.New("generation unavailable")
+	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/generated.png", MIMEType: "image/png", SizeBytes: 10, FileHash: candidate.AssetID}, nil
 }
@@ -109,6 +115,39 @@ func TestVidRushMaterializationGeneratesOnlyMissingImagesAndWarmsCache(t *testin
 	if provider.calls != 2 {
 		t.Fatalf("warm generation calls = %d, want 2", provider.calls)
 	}
+}
+
+func TestVidRushMaterializationReportsRequiredImageCountFailure(t *testing.T) {
+	provider := &generationMaterializationProviderStub{fail: true}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "required-count-v1", ImagesPerScene: 2}
+	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
+	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "required-count-segment", Text: "fallback image", TextHash: "required-count-hash",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.VidRushSegments[0].Assets.SecondaryImages) != 0 {
+		t.Fatalf("secondary images = %#v, want none after failed generation", result.VidRushSegments[0].Assets.SecondaryImages)
+	}
+	if !containsWarning(result.Warnings, "FAILED_REQUIRED_IMAGE_COUNT: required=2 verified=0 segment=required-count-segment") {
+		t.Fatalf("warnings = %#v, want FAILED_REQUIRED_IMAGE_COUNT", result.Warnings)
+	}
+}
+
+func containsWarning(warnings []string, want string) bool {
+	for _, warning := range warnings {
+		if warning == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestVidRushMaterializationFailsClosedWhenEnabledDependenciesAreMissing(t *testing.T) {
