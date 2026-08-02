@@ -189,7 +189,7 @@ func (s *CachedSearcher) Search(ctx context.Context, req SearchRequest) ([]Candi
 	term := req.Term
 
 	// Check cache first
-	if s.cache != nil && s.cache.isFresh(term, s.ttl) {
+	if !req.ForceRefresh && s.cache != nil && s.cache.isFresh(term, s.ttl) {
 		cached, _ := s.cache.get(term)
 		if s.log != nil {
 			s.log.Info("artlist search: cache HIT", zap.String("term", term), zap.Int("clips", len(cached)))

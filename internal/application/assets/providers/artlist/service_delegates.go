@@ -32,6 +32,13 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int, prefer
 	return s.searchService.SearchLive(ctx, term, limit, preferRemote)
 }
 
+// SearchLiveForceRefresh is the VidRush live-search surface. It bypasses
+// provider-side result caches while leaving legacy SearchLive semantics
+// unchanged for other callers.
+func (s *Service) SearchLiveForceRefresh(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
+	return s.searchService.SearchLiveForceRefresh(ctx, term, limit, preferRemote)
+}
+
 // DiscoverAndQueueRun scopre clip e accoda un'esecuzione.
 func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
 	return s.searchService.DiscoverAndQueueRun(ctx, term, limit)

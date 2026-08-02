@@ -113,6 +113,10 @@ func (p *ChromeImageProvider) resetWorker() <-chan struct{} {
 		_ = p.stdin.Close()
 		p.stdin = nil
 	}
+	if p.stdoutPipe != nil {
+		_ = p.stdoutPipe.Close()
+		p.stdoutPipe = nil
+	}
 	p.stdout = nil
 
 	if p.cmd != nil && p.cmd.Process != nil {

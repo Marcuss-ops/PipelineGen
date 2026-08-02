@@ -99,6 +99,7 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
+	p.stdoutPipe = stdoutPipe
 	p.stdout = bufio.NewScanner(stdoutPipe)
 	// The worker writes one JSON line per response; the default 64 KB
 	// bufio buffer is ample — a response is at most ~500 bytes.
@@ -164,6 +165,11 @@ func (p *ChromeImageProvider) Stop() error {
 
 	if p.stdin != nil {
 		_ = p.stdin.Close()
+		p.stdin = nil
+	}
+	if p.stdoutPipe != nil {
+		_ = p.stdoutPipe.Close()
+		p.stdoutPipe = nil
 	}
 
 	if p.cmd != nil && p.cmd.Process != nil {

@@ -214,6 +214,12 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		materialized := updated.Assets.Candidates
 		updated.Assets.SecondaryImages = durableVidRushImages(materialized)
 		updated.Assets.GeneratedImages = filterVidRushGeneratedImages(materialized)
+		if plan != nil && plan.ImagesPerScene > 0 && len(updated.Assets.SecondaryImages) < plan.ImagesPerScene {
+			warnings = append(warnings, fmt.Sprintf(
+				"FAILED_REQUIRED_IMAGE_COUNT: required=%d verified=%d segment=%s",
+				plan.ImagesPerScene, len(updated.Assets.SecondaryImages), segment.SegmentID,
+			))
+		}
 		updated.Assets.PrimaryVideo = nil
 		for i := range materialized {
 			candidate := materialized[i]

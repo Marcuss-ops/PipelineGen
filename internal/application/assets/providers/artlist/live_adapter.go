@@ -18,6 +18,10 @@ type liveSearcher interface {
 	SearchLive(context.Context, string, int, bool) ([]Candidate, error)
 }
 
+type forceRefreshLiveSearcher interface {
+	SearchLiveForceRefresh(context.Context, string, int, bool) ([]Candidate, error)
+}
+
 // NewLiveAdapter creates a provider-registry adapter backed by Service's
 // live search path. Composition remains the only place that selects the
 // live-vs-catalog behavior.
@@ -42,7 +46,15 @@ func (a *LiveAdapter) Search(ctx context.Context, req providers.SearchRequest) (
 	if req.Limit <= 0 {
 		req.Limit = 8
 	}
-	candidates, err := a.src.SearchLive(ctx, req.Query, req.Limit, true)
+	var candidates []Candidate
+	var err error
+	if fresh, ok := a.src.(forceRefreshLiveSearcher); ok {
+		candidates, err = fresh.SearchLiveForceRefresh(ctx, req.Query, req.Limit, true)
+	} else {
+		// Keep test and legacy implementations compatible, but production
+		// Service wiring always takes the force-refresh path above.
+		candidates, err = a.src.SearchLive(ctx, req.Query, req.Limit, true)
+	}
 	if err != nil {
 		return providers.SearchResult{}, err
 	}

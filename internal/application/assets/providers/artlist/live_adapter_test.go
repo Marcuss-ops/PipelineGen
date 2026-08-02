@@ -36,6 +36,33 @@ func TestLiveAdapterUsesLiveSearchPath(t *testing.T) {
 	}
 }
 
+type forceRefreshFakeLiveSearcher struct {
+	forceRefresh bool
+}
+
+func (f *forceRefreshFakeLiveSearcher) SearchLive(context.Context, string, int, bool) ([]Candidate, error) {
+	return nil, nil
+}
+
+func (f *forceRefreshFakeLiveSearcher) SearchLiveForceRefresh(context.Context, string, int, bool) ([]Candidate, error) {
+	f.forceRefresh = true
+	return []Candidate{{ID: "fresh-clip"}}, nil
+}
+
+func TestLiveAdapterUsesForceRefreshSurfaceWhenAvailable(t *testing.T) {
+	fake := &forceRefreshFakeLiveSearcher{}
+	result, err := (&LiveAdapter{src: fake}).Search(context.Background(), providers.SearchRequest{Query: "fresh query", Limit: 3})
+	if err != nil {
+		t.Fatalf("Search() error: %v", err)
+	}
+	if !fake.forceRefresh {
+		t.Fatal("VidRush live adapter did not select the force-refresh search surface")
+	}
+	if len(result.Candidates) != 1 || result.Candidates[0].ID != "fresh-clip" {
+		t.Fatalf("unexpected candidates: %+v", result.Candidates)
+	}
+}
+
 func TestLiveAdapterDefaultsLimit(t *testing.T) {
 	fake := &fakeLiveSearcher{}
 	if _, err := (&LiveAdapter{src: fake}).Search(context.Background(), providers.SearchRequest{Query: "x"}); err != nil {
