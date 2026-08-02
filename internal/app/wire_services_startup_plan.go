@@ -132,15 +132,15 @@ func buildStartupPlan(cfg *config.Config, root *wiring.ComposeRoot, jobs *backgr
 	// browser-launch + login + slides.new latency to the FIRST image
 	// generation request after boot.
 	//
-	// Convert the prewarm into a synchronous Required StartupStep.
-	// serverLifecycle.Start runs the plan in order and BLOCKS until
-	// every step succeeds; the HTTP listener bind in cmd/server/main.go
-	// happens AFTER Start returns, so the server cannot advertise a
-	// "running" state until every chrome pool worker has reported
-	// ready. Falls into the canonical order:
+	// Prewarm synchronously, but keep the capability optional at global boot.
+	// Image generation is a per-job provider policy: an unavailable Google
+	// Slides backend must fail the generation job closed, while Artlist and
+	// internet_images remain usable. Making this step globally Required would
+	// incorrectly take unrelated VidRush providers offline.
+	// Falls into the canonical order:
 	//
 	//   drive-init → qdrant-collection → outbox-pool
-	//   → chrome-pool-prewarm    [REQUIRED, only when ImagesEnabled]
+	//   → chrome-pool-prewarm    [OPTIONAL, only when ImagesEnabled]
 	//   → background services (scanner, monitor, sweepers)
 	//   → job runner (always last)
 	//
@@ -152,7 +152,7 @@ func buildStartupPlan(cfg *config.Config, root *wiring.ComposeRoot, jobs *backgr
 		imgSvc := root.Domains.ImageService
 		poolSize := cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations
 		plan = append(plan, StartupStep{
-			Name: "chrome-pool-prewarm", Required: true,
+			Name: "chrome-pool-prewarm", Required: false,
 			Start: func(ctx context.Context) error {
 				log.Info("StartupStep: prewarming ChromeImageProviderPool", zap.Int("pool_size", poolSize))
 				imgSvc.TriggerPrewarm(ctx, "startup-prewarm", poolSize)

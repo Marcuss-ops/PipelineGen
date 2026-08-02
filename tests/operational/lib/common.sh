@@ -116,6 +116,22 @@ SMOKE_LAST_HTTP=""
 SMOKE_LAST_BODY=""
 SMOKE_LAST_STATUS=""
 
+# Keep the per-run capture directory available even if an inherited EXIT/TERM
+# trap cleaned it up while a helper was executing in a subshell. The caller
+# owns this directory and it is always recreated with the same private mode;
+# this prevents a missing last.code/last.body from masking the real HTTP
+# result of a long-running poll.
+smoke_ensure_work_dir() {
+    if [[ -z "${WORK_DIR:-}" ]]; then
+        printf '%ssetup error: smoke work directory is unset%s\n' "$RED" "$RESET" >&2
+        return 2
+    fi
+    if [[ ! -d "$WORK_DIR" ]]; then
+        mkdir -p "$WORK_DIR"
+        chmod 700 "$WORK_DIR"
+    fi
+}
+
 # ── CLI flags ─────────────────────────────────────────────────────────────
 # SMOKE_DRY_RUN=1 env var is honoured so callers can flip dry mode without
 # passing --dry explicitly (e.g. `SMOKE_DRY_RUN=1 make smoke-dry`).
@@ -256,6 +272,7 @@ smoke_gen_uuid() {
 # Diagnostics are routed through smoke_log_response (redacted) when SMOKE_LOG_DIR is set.
 smoke_curl() {
     local method="$1"; shift
+    smoke_ensure_work_dir
     local url_path="$1"; shift
     local out_file="$WORK_DIR/last.body"
     local code_file="$WORK_DIR/last.code"
