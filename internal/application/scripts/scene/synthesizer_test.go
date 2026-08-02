@@ -170,6 +170,27 @@ func TestSceneSynthesizer_FromProse_SentenceAwareChunking(t *testing.T) {
 	}
 }
 
+func TestSceneSynthesizer_FromProse_PreservesExplicitParagraphBoundaries(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	prose := "Mike Tyson resta al centro del primo blocco.\n\nMuhammad Ali guida il secondo blocco.\n\nSugar Ray Robinson chiude il racconto."
+
+	got := s.FromProse(prose, 3)
+	if len(got) != 3 {
+		t.Fatalf("FromProse returned %d scenes, want 3", len(got))
+	}
+	want := []string{
+		"Mike Tyson resta al centro del primo blocco.",
+		"Muhammad Ali guida il secondo blocco.",
+		"Sugar Ray Robinson chiude il racconto.",
+	}
+	for i := range want {
+		if got[i].Text != want[i] {
+			t.Errorf("scene[%d] = %q, want %q", i, got[i].Text, want[i])
+		}
+	}
+}
+
 // TestSceneSynthesizer_FromProse_ThreeScenesIntroClipOutro verifies
 // the canonical n=3 case: scene[0]=SceneIntro, scene[1]=SceneClip,
 // scene[2]=SceneOutro. Also pins the ID='scene-0' + Index=0

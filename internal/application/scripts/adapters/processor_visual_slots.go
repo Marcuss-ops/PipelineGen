@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	visual "github.com/Marcuss-ops/PipelineGen/internal/application/visual"
@@ -44,7 +45,14 @@ func NewVisualSlotsProcessor(planner visual.Planner) *VisualSlotsProcessor {
 }
 
 func (p *VisualSlotsProcessor) Name() ProcessorName { return ProcessorVisualSlots }
-func (p *VisualSlotsProcessor) Policy(*scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+func (p *VisualSlotsProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	if plan != nil && (plan.MediaPlan.Intro != nil || len(plan.MediaPlan.PostSegments) > 0) {
+		// A requested timeline is part of the caller's media contract. Invalid
+		// manual positions, duplicates, or unavailable closed candidates must
+		// fail the job instead of producing a successful document with missing
+		// visual assignments.
+		return ProcessorRequired
+	}
 	return ProcessorBestEffort
 }
 
@@ -94,13 +102,28 @@ func resolveSlot(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, in
 			candidates = append(candidates, visual.Candidate{AssetID: id})
 		}
 	}
-	return visual.Resolve(ctx, visual.Request{SceneID: sceneIDForSegment(input.SpecScene.Scenes, segmentID), SegmentID: segmentID, Slot: slot, Plan: spec, Candidates: candidates, Seed: seed, PromptVersion: plan.PromptVersion, ForceRefresh: plan.MediaPlan.ForceRefreshBindings}, planner)
+	return visual.Resolve(ctx, visual.Request{SceneID: sceneIDForSegment(input.SpecScene.Scenes, plan.Segments, segmentID), SegmentID: segmentID, Slot: slot, Plan: spec, Candidates: candidates, Seed: seed, PromptVersion: plan.PromptVersion, ForceRefresh: plan.MediaPlan.ForceRefreshBindings}, planner)
 }
 
-func sceneIDForSegment(scenes []scriptpkg.SpecScene, segmentID string) string {
+func sceneIDForSegment(scenes []scriptpkg.SpecScene, segments []scriptpkg.ScriptSegment, segmentID string) string {
 	for _, scene := range scenes {
 		if segmentID != "" && scene.SegmentID == segmentID {
 			return scene.ID
+		}
+	}
+	// Explicit segments are normalized into scene slots by the stock
+	// bindings processor, which runs after this processor. Resolve the
+	// scene identity by the canonical segment order instead of falling back
+	// to scene-0 while that normalization is still pending.
+	for i, segment := range segments {
+		if segmentID != "" && segment.ID == segmentID {
+			if i < len(scenes) {
+				return scenes[i].ID
+			}
+			// The generated prose may contain fewer scenes than the
+			// explicit segment contract. Stock binding normalization
+			// creates the missing canonical slot as scene-i later.
+			return fmt.Sprintf("scene-%d", i)
 		}
 	}
 	if len(scenes) > 0 {

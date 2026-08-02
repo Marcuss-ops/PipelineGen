@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "five-boxers-stock-with-final-clips-001",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "five-boxers-stock-post-clips",
+      "title": "Cinque grandi pugili",
+      "language": "it",
+      "tone": "documentary",
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Cinque grandi pugili",
+        "source_text": "Apri con un'introduzione forte: cinque campioni, cinque carriere leggendarie e cinque modi diversi di trasformare la boxe in storia. Dietro la gloria ci sono sacrifici, pressioni, cadute e scelte che cambiano per sempre il destino di un atleta. Poi sviluppa cinque sezioni, nell'ordine indicato. Prima Mike Tyson: la potenza, la velocità e l'ascesa nel pugilato. Poi Muhammad Ali: il movimento, la personalità e l'impatto culturale. Poi Evander Holyfield: la resistenza, le rivalità e la disciplina. Poi Floyd Mayweather: la difesa, la precisione e la carriera imbattuta. Infine Sugar Ray Robinson: la tecnica, la longevità e l'eredità sportiva.",
+        "fallback_policy": "strict"
+      },
+      "script_params": {
+        "target_words": 850,
+        "segment_words": 150,
+        "use_memory": false,
+        "force_refresh": true,
+        "skip_quality_gate": true,
+        "guidelines": "Ogni segmento deve trattare esclusivamente il soggetto indicato nel relativo topic. Non anticipare il soggetto del segmento successivo. Non spostare paragrafi tra segmenti. Non inserire conclusioni generali prima dell'ultimo segmento. Ogni segmento deve contenere almeno 100 parole. Usa transizioni brevi soltanto se restano dentro il segmento corrente; non nominare né descrivere altri pugili. Mantieni l'italiano e un tono documentaristico chiaro.",
+        "segments": [
+          {"id": "intro-hook", "topic": "Introduzione forte", "source_text": "Cinque campioni, cinque carriere leggendarie e cinque modi diversi di trasformare la boxe in storia. Dietro i titoli, le luci e gli applausi esistono sacrifici enormi, pressioni continue, cadute inattese e decisioni capaci di cambiare il destino di un atleta. Questa introduzione prepara il pubblico a guardare il ring oltre lo spettacolo: ogni movimento racconta disciplina, paura, ambizione e carattere. Le immagini iniziali devono creare tensione e curiosità, mostrando la grandezza dello sport senza anticipare il ritratto di un singolo campione. Prima di entrare nelle storie personali, il tono deve essere forte, chiaro e documentaristico. La domanda è semplice: quanto può costare diventare una leggenda?", "target_words": 100},
+          {"id": "boxer-mike-tyson", "topic": "Mike Tyson", "source_text": "Mike Tyson costruì la propria leggenda attraverso una potenza esplosiva, una velocità sorprendente e una pressione psicologica capace di cambiare un incontro in pochi secondi. La sua ascesa nel pugilato professionistico fu rapidissima e trasformò ogni ingresso sul ring in un evento. Nei primi anni, Tyson appariva come un campione dominante: avanzava con disciplina, cercava la distanza corta e rendeva ogni combinazione estremamente pericolosa. Dietro questa immagine di forza assoluta restavano però difficoltà personali e professionali che complicarono il percorso e ne cambiarono la traiettoria. Il ritratto deve concentrarsi sul contrasto tra il talento devastante, l'ambizione del giovane campione e il peso delle scelte che seguirono. La storia di Tyson è potenza, ascesa e fragilità dentro una sola carriera.", "target_words": 150},
+          {"id": "boxer-muhammad-ali", "topic": "Muhammad Ali", "source_text": "Muhammad Ali trasformò il pugilato in una combinazione di movimento, ritmo, gioco di gambe e controllo della distanza. Sul ring non cercava soltanto di colpire: costringeva l'avversario a inseguire un tempo deciso da lui, alternando rapidità, equilibrio e improvvise accelerazioni. La sua personalità pubblica ampliò ancora di più la sua presenza. Ali comunicava con carisma, ironia e sicurezza, usando la propria voce per diventare un'icona riconoscibile anche fuori dall'arena. Il suo impatto culturale nacque dall'unione tra risultati sportivi, identità personale e capacità di parlare a un pubblico enorme. Il segmento deve mostrare come stile, comunicazione e coraggio abbiano costruito una memoria duratura. Muhammad Ali resta al centro come atleta brillante e figura pubblica impossibile da ignorare.", "target_words": 150},
+          {"id": "boxer-evander-holyfield", "topic": "Evander Holyfield", "source_text": "Evander Holyfield rappresenta la resistenza fisica e mentale portata al limite. La sua carriera si fondò sulla disciplina quotidiana, sulla preparazione e sulla capacità di continuare a combattere quando la pressione diventava enorme. Holyfield affrontava le rivalità con una tenacia concreta: assorbiva la fatica, restava concentrato e cercava soluzioni anche nelle battaglie più dure. La sua forza non dipendeva soltanto dalla potenza dei colpi, ma dalla capacità di mantenere lucidità e impegno per tutta la durata dell'incontro. Il soprannome The Real Deal riassume una reputazione costruita attraverso continuità, coraggio e disponibilità al confronto. Il ritratto deve seguire Holyfield nelle difficoltà e nella disciplina, mostrando perché la sua resistenza sia diventata il tratto più riconoscibile della sua storia sportiva.", "target_words": 150},
+          {"id": "boxer-floyd-mayweather", "topic": "Floyd Mayweather", "source_text": "Floyd Mayweather costruì il proprio successo sulla difesa, sulla precisione e sulla lettura dell'avversario. Il suo stile controllava la distanza, riduceva i rischi e trasformava ogni errore altrui in un'occasione calcolata. Mayweather non affidava il risultato alla forza casuale: preparava il combattimento, studiava i tempi e sceglieva con attenzione quando attaccare, arretrare o cambiare ritmo. Questa disciplina tecnica sostenne una carriera professionistica imbattuta e diventò parte della sua identità pubblica. Anche la gestione dell'immagine, degli allenamenti e degli incontri contribuì alla costruzione del personaggio. Il segmento deve restare concentrato sul metodo di Mayweather, sulla sua efficienza e sulla strategia che rendeva il ring un problema da risolvere. La sua storia è il racconto di una precisione trasformata in sistema vincente.", "target_words": 150},
+          {"id": "boxer-sugar-ray-robinson", "topic": "Sugar Ray Robinson", "source_text": "Sugar Ray Robinson chiude il documentario come simbolo di completezza tecnica, velocità, ritmo e longevità. Il suo stile univa movimenti fluidi, combinazioni rapide e una potenza capace di cambiare l'inerzia di un incontro. Robinson non rappresentava una sola qualità: il suo valore nasceva dall'equilibrio tra talento naturale, preparazione e capacità di adattarsi alle situazioni. La lunga presenza ai vertici rafforzò l'idea di un riferimento studiato da generazioni di appassionati e atleti. In questo ultimo segmento la narrazione può collegare gloria e sacrificio, spiegando perché l'eredità di Robinson continui a vivere oltre i risultati. La conclusione deve essere forte ma precisa: una leggenda non è soltanto chi vince, è chi lascia un modello tecnico e umano capace di resistere al tempo.", "target_words": 150}
+        ]
+      },
+      "output": {
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {"index": 1, "segment_id": "boxer-mike-tyson", "name": "Mike Tyson B-roll", "source": "youtube", "folder_id": "1jz2Y_EWtSck-CcZssDQ5PLsIO6Aa0M03", "folder_link": "https://drive.google.com/drive/folders/1jz2Y_EWtSck-CcZssDQ5PLsIO6Aa0M03?usp=drive_link", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 2, "segment_id": "boxer-muhammad-ali", "name": "Muhammad Ali B-roll", "source": "youtube", "folder_id": "1umtTRm4Aw9_pjPl0jkWkHpsBBnwWnanJ", "folder_link": "https://drive.google.com/drive/folders/1umtTRm4Aw9_pjPl0jkWkHpsBBnwWnanJ?usp=drive_link", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 3, "segment_id": "boxer-evander-holyfield", "name": "Evander Holyfield B-roll", "source": "youtube", "folder_id": "1dbVj0SUd0c2tBSLKHIXkKqp-4S-6LTgB", "folder_link": "https://drive.google.com/drive/folders/1dbVj0SUd0c2tBSLKHIXkKqp-4S-6LTgB?usp=drive_link", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 4, "segment_id": "boxer-floyd-mayweather", "name": "Floyd Mayweather B-roll", "source": "youtube", "folder_id": "1EL7rpQsl-PkmhrPpFgMKGBadmAek1_fR", "folder_link": "https://drive.google.com/drive/folders/1EL7rpQsl-PkmhrPpFgMKGBadmAek1_fR?usp=drive_link", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 5, "segment_id": "boxer-sugar-ray-robinson", "name": "Sugar Ray Robinson B-roll", "source": "youtube", "folder_id": "1xxnNHfperYJ6sZiLcNadgvYIR6wG_jB8", "folder_link": "https://drive.google.com/drive/folders/1xxnNHfperYJ6sZiLcNadgvYIR6wG_jB8?usp=drive_link", "fallback": false, "start_ms": 0, "end_ms": 5000}
+        ],
+        "save_to_db": true,
+        "generate_timeline": true
+      },
+      "docs": {
+        "enabled": true,
+        "languages": ["it"],
+        "folder_id": "1EqeAE3H_h1Q12-DYBTZQfIGHoWGftK3I"
+      },
+      "media_plan": {
+        "mode": "manual",
+        "intro": {
+          "mode": "manual",
+          "target_duration_ms": 5000,
+          "max_clips": 1,
+          "clips": [
+            {"asset_id": "1dqD5m_3k0YUIhPKWYTSKc9BwPPGqrSic", "start_ms": 0, "duration_ms": 5000, "locked": true, "position": 0}
+          ]
+        },
+        "post_segments": [
+          {"segment_id": "intro-hook", "mode": "manual", "target_duration_ms": 5000, "max_clips": 1, "clips": [{"asset_id": "1Fjhxg2TE0mGcoUURnQjsf9biCJFaaORm", "start_ms": 0, "duration_ms": 5000, "locked": true, "position": 0}]},
+          {"segment_id": "boxer-mike-tyson", "mode": "manual", "target_duration_ms": 7000, "max_clips": 1, "clips": [{"asset_id": "1HFkluM6tikQ-usiyuwP3Brg1SQe8r-RM", "start_ms": 0, "duration_ms": 7000, "locked": true, "position": 0}]},
+          {"segment_id": "boxer-muhammad-ali", "mode": "manual", "target_duration_ms": 7000, "max_clips": 1, "clips": [{"asset_id": "1dIqRQ47h1ZyK6Yf94Lg3ipfjlldsxA25", "start_ms": 0, "duration_ms": 7000, "locked": true, "position": 0}]},
+          {"segment_id": "boxer-evander-holyfield", "mode": "manual", "target_duration_ms": 7000, "max_clips": 1, "clips": [{"asset_id": "1bMB5j6jAQmPU_nY9WXZSUtPJcB_VDHxf", "start_ms": 0, "duration_ms": 7000, "locked": true, "position": 0}]},
+          {"segment_id": "boxer-floyd-mayweather", "mode": "manual", "target_duration_ms": 7000, "max_clips": 1, "clips": [{"asset_id": "1HMnwah01A6fdAmCjf1d25DqqBZn4jiA2", "start_ms": 0, "duration_ms": 7000, "locked": true, "position": 0}]},
+          {"segment_id": "boxer-sugar-ray-robinson", "mode": "manual", "target_duration_ms": 12000, "max_clips": 2, "clips": [
+            {"asset_id": "1g2jydV_tKqgUjAICu2efadrSNSkUNLB7", "start_ms": 0, "duration_ms": 6000, "locked": true, "position": 0},
+            {"asset_id": "1zJx3uZpiaQZh2hpbtbfbKj1YXCJrAVfQ", "start_ms": 0, "duration_ms": 6000, "locked": true, "position": 1}
+          ]}
+        ],
+        "force_refresh_bindings": true,
+        "include_trace": true
+      }
+    }
+  ]
+}

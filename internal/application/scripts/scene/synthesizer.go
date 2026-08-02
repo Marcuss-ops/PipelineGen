@@ -61,12 +61,13 @@ func CleanProseFallbackText(text string) string {
 	return cleanProseFallbackText(text)
 }
 
-// FromProse heuristically partitions the supplied prose into N
-// scenes using sentence-aware balanced distribution (sentences are
-// grouped into contiguous chunks sized by word count, with a
-// word-level fallback only when the input has no recognizable
-// sentence breaks). Returns nil when N <= 0 or when the cleaned
-// text is empty after JSON-envelope stripping.
+// FromProse partitions the supplied prose into N scenes. When the
+// caller supplied exactly N non-empty paragraphs, those paragraphs
+// are authoritative scene boundaries. Otherwise it uses the legacy
+// sentence-aware balanced distribution (with a word-level fallback
+// when no recognizable sentence breaks exist). Returns nil when
+// N <= 0 or when the cleaned text is empty after JSON-envelope
+// stripping.
 //
 // Kind assignment (matches the canonical scene-kind taxonomy in
 // model_output.go):
@@ -175,6 +176,18 @@ func buildScenesFromProse(text string, n int) []scriptpkg.SpecScene {
 	if len(words) == 0 {
 		return nil
 	}
+	if paragraphs := splitProseParagraphs(trimmed); len(paragraphs) == n {
+		scenes := make([]scriptpkg.SpecScene, n)
+		for i, paragraph := range paragraphs {
+			scenes[i] = scriptpkg.SpecScene{
+				ID:    fmt.Sprintf("scene-%d", i),
+				Index: i,
+				Text:  paragraph,
+				Kind:  kindForPosition(i, n),
+			}
+		}
+		return scenes
+	}
 
 	sentences := splitProseSentences(trimmed)
 	segments := sentences
@@ -232,6 +245,21 @@ func buildScenesFromProse(text string, n int) []scriptpkg.SpecScene {
 		}
 	}
 	return scenes
+}
+
+// splitProseParagraphs returns non-empty paragraphs while preserving their
+// internal sentence order. It is intentionally strict at the caller: the
+// paragraph path is selected only when the model emitted exactly one
+// paragraph for every explicit segment.
+func splitProseParagraphs(text string) []string {
+	raw := strings.Split(strings.TrimSpace(text), "\n\n")
+	paragraphs := make([]string, 0, len(raw))
+	for _, paragraph := range raw {
+		if paragraph = strings.TrimSpace(paragraph); paragraph != "" {
+			paragraphs = append(paragraphs, paragraph)
+		}
+	}
+	return paragraphs
 }
 
 // cleanProseFallbackText strips an obvious JSON wrapper from prose

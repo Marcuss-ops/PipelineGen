@@ -124,6 +124,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	// Footer canonical — DoD-driven contract emitted once.
 	b.WriteString("\n\nWrite one continuous narrative.\n")
 	b.WriteString("Follow the segment order strictly. Do not skip, merge, or reorder topics.\n")
+	b.WriteString("Emit exactly one prose paragraph for each segment, in the declared order, with one blank line between paragraphs. Never merge two segments into one paragraph and never move content across paragraph boundaries.\n")
 	b.WriteString("Write for a modern video voiceover: conversational, youthful, fluid, energetic, and easy to listen to. Use short natural transitions and concrete details instead of explaining the structure of the story.\n")
 	b.WriteString("Paraphrase the supplied source naturally, preserving every name, date, score, result, and supported statement. Do not imitate the speaker or turn the narration into first-person dialogue.\n")
 	b.WriteString("Do not invent names, dates, scores, results, or events.\n")

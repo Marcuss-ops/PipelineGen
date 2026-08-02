@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -197,5 +198,34 @@ func TestStockBindingsProcessorNormalizesExplicitSegmentsOneToOne(t *testing.T) 
 	}
 	if got.UpdatedSpecScene.Scenes[1].Text != segments[1].SourceText {
 		t.Fatalf("missing generated scene must use segment source text, got %q", got.UpdatedSpecScene.Scenes[1].Text)
+	}
+}
+
+func TestStockBindingsProcessorRepairsCrossSegmentNarrative(t *testing.T) {
+	segments := []scriptpkg.ScriptSegment{
+		{ID: "boxer-mike-tyson", Topic: "Mike Tyson", SourceText: strings.Repeat("Mike Tyson domina il racconto con potenza e disciplina. ", 20)},
+		{ID: "boxer-muhammad-ali", Topic: "Muhammad Ali", SourceText: strings.Repeat("Muhammad Ali costruisce il racconto con movimento e carisma. ", 20)},
+	}
+	input := ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{
+			{Index: 0, SegmentID: segments[0].ID, AssetID: "asset-tyson", StartMs: 0, EndMs: 4000},
+			{Index: 1, SegmentID: segments[1].ID, AssetID: "asset-ali", StartMs: 0, EndMs: 4000},
+		},
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: strings.Repeat("Mike Tyson parla della sua potenza. Muhammad Ali arriva nel blocco successivo. ", 12)},
+			{ID: "scene-1", Index: 1, Text: "Muhammad Ali"},
+		}},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: segments}
+	got, err := NewStockBindingsProcessor().Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedSpecScene.Scenes[0].Text != strings.TrimSpace(segments[0].SourceText) {
+		t.Fatal("scene 0 did not restore its explicit source text")
+	}
+	if got.UpdatedSpecScene.Scenes[1].Text != strings.TrimSpace(segments[1].SourceText) {
+		t.Fatal("short scene 1 did not restore its explicit source text")
 	}
 }

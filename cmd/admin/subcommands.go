@@ -61,6 +61,7 @@ var commandRegistry = map[string]commandHandler{
 	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,
 	"apply-additional-sound-effects": runApplyAdditionalSoundEffects,
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
+	"backfill-media-durations":       runBackfillMediaDurations,
 	"backfill-missing":               runBackfillMissing,
 	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
 	"benchmark":                      runBenchmark,
