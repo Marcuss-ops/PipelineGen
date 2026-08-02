@@ -119,6 +119,30 @@ func TestParseAndValidateCaps_FinalSetIsSorted(t *testing.T) {
 	}
 }
 
+// ── Doctor subcommand dispatch contract ─────────────────────────────────
+
+func TestIsDoctorSubcommand(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "positional doctor with flags", args: []string{"doctor", "--json"}, want: true},
+		{name: "bare positional doctor", args: []string{"doctor"}, want: true},
+		{name: "documented --mode=doctor form", args: []string{"--mode=doctor", "--json"}, want: true},
+		{name: "config flag is not a subcommand", args: []string{"--config", "config.yaml"}, want: false},
+		{name: "no args", args: nil, want: false},
+		{name: "doctor as second arg is not a subcommand", args: []string{"--json", "doctor"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isDoctorSubcommand(tc.args); got != tc.want {
+				t.Fatalf("isDoctorSubcommand(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────
 
 func equalStrings(a, b []string) bool {

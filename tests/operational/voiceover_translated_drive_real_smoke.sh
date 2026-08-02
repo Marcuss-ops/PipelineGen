@@ -347,12 +347,16 @@ main() {
         "$SMOKE_API_BASE" "$SMOKE_DB" "$PROJECT_ID" "$VELOX_DRIVE_VOICEOVER_ROOT" \
         "$SMOKE_DRIVE_TOKEN_FILE" "$TAG_PREFIX" "$RUN_ID" "$REQ_ID"
 
-    # Preflight (fail-fast before any state-mutating call)
-    precheck_go_server_up || true
-    precheck_token_file || true
-    precheck_drive_api_responsive || true
+    # Preflight (fail-fast before any state-mutating call).
+    # Each precheck prints its own error and records a specific tag in
+    # FAILURES; we propagate the return codes explicitly (no `|| true`
+    # masking) so the aggregate gate below is the single authority.
+    local preflight_rc=0
+    precheck_go_server_up || preflight_rc=1
+    precheck_token_file || preflight_rc=1
+    precheck_drive_api_responsive || preflight_rc=1
 
-    if (( ${#FAILURES[@]} > 0 )); then
+    if (( preflight_rc != 0 || ${#FAILURES[@]} > 0 )); then
         printf '%sFAIL: precheck(s) failed, aborting before POST%s\n' "$RED" "$RESET" >&2
         printf '  failures:\n'
         for f in "${FAILURES[@]}"; do
@@ -367,11 +371,15 @@ main() {
     post_3lang_batch || { fail "post_3lang_batch"; exit 1; }
     poll_parent_to_terminal || { fail "poll_parent_to_terminal"; }
 
-    # 3 children × 4 Drive assertions
-    verify_all_children_on_drive || true
+    # 3 children × 4 Drive assertions. verify_all_children_on_drive
+    # records per-child tags into FAILURES and returns non-zero on any
+    # child failure; propagate that rc explicitly (no `|| true` masking)
+    # so the aggregate report below remains the single authority.
+    local verify_rc=0
+    verify_all_children_on_drive || verify_rc=1
 
     echo
-    if (( ${#FAILURES[@]} == 0 )); then
+    if (( verify_rc == 0 && ${#FAILURES[@]} == 0 )); then
         printf '%sOK: voiceover 3-language Drive real smoke PASS (12/12 Drive assertions across 3 children)%s\n' \
             "$GREEN" "$RESET"
         exit 0
