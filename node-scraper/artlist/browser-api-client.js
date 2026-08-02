@@ -1,4 +1,4 @@
-import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../src/driver/cookies.js';
+import { importCookies } from '../src/driver/cookies.js';
 
 function buildRequestBody(endpoint, term, page, limit, filters) {
   if (endpoint.kind === 'graphql') {
@@ -26,7 +26,7 @@ function buildRequestBody(endpoint, term, page, limit, filters) {
 }
 
 export class ArtlistBrowserApiClient {
-  constructor({ browser, registry, logger = console, cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH }) {
+  constructor({ browser, registry, logger = console, cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '' }) {
     this.browser = browser;
     this.registry = registry;
     this.logger = logger;

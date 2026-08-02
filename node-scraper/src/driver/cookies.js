@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 
-// Default path for injected Artlist session cookies.
-// Override with the ARTLIST_COOKIE_FILE env var.
+// Legacy path retained for callers that explicitly opt in to cookie import.
+// The scraper no longer uses this path implicitly: anonymous Chrome is the
+// default and ARTLIST_COOKIE_FILE must be set explicitly to enable cookies.
 export const DEFAULT_COOKIE_FILE_PATH = '/tmp/artlist_cookies.txt';
 
 /**
@@ -10,9 +11,9 @@ export const DEFAULT_COOKIE_FILE_PATH = '/tmp/artlist_cookies.txt';
  *   - JSON: array of puppeteer-style cookie objects (name, value, domain, path, ...)
  *   - Netscape: tab-delimited cookie file (# comments + header)
  *
- * The file path is read from the ARTLIST_COOKIE_FILE env var
- * (default: /tmp/artlist_cookies.txt). This lets operators inject a
- * valid Artlist session without mounting an entire Chrome profile.
+ * Callers pass the explicit ARTLIST_COOKIE_FILE value when cookie import is
+ * enabled. An empty path is a no-op, which keeps anonymous Chrome as the
+ * default and avoids stale session files affecting Artlist search.
  *
  * @param {object} page - Puppeteer page
  * @param {string} filePath - Path to the cookie file
