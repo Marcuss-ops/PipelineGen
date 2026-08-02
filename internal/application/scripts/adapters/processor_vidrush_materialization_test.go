@@ -27,6 +27,19 @@ func (materializationProviderStub) Verify(_ context.Context, artifact scriptport
 	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, FileHash: artifact.FileHash, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
+type failingArtlistMaterializationProvider struct{}
+
+func (failingArtlistMaterializationProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
+func (failingArtlistMaterializationProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return nil, nil
+}
+func (failingArtlistMaterializationProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("Artlist download unavailable")
+}
+func (failingArtlistMaterializationProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("unreachable verifier")
+}
+
 type materializationFinalizerStub struct{}
 
 func (materializationFinalizerStub) Finalize(_ context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
@@ -198,6 +211,29 @@ func TestVidRushMaterializationFailsClosedWhenEnabledProviderIsNotRegistered(t *
 	}}})
 	if err == nil {
 		t.Fatal("expected an enabled but unregistered provider to fail closed")
+	}
+}
+
+func TestVidRushMaterializationArtlistOnlyFailsWhenPrimaryCannotBePersisted(t *testing.T) {
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(failingArtlistMaterializationProvider{}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	plan := &scriptpkg.ResolvedGenerationPlan{}
+	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
+	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "artlist-only-required-primary",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID:      "artlist-required",
+			Provider:     scriptpkg.VidRushProviderArtlist,
+			SourceURL:    "https://cdn.example/required.mp4",
+			RightsStatus: "unknown",
+		}}},
+	}}})
+	if err == nil {
+		t.Fatal("Artlist-only materialization must fail when no persisted primary is available")
 	}
 }
 

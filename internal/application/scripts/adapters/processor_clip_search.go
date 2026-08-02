@@ -37,7 +37,10 @@ func NewClipSearchProcessorWithCache(searcher ArtlistClipSearcher, cache scriptp
 
 func (p *ClipSearchProcessor) Name() ProcessorName { return ProcessorClipSearch }
 
-func (p *ClipSearchProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+func (p *ClipSearchProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	if vidRushArtlistOnlyPlan(plan) {
+		return ProcessorRequired
+	}
 	return ProcessorBestEffort
 }
 
@@ -58,6 +61,9 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, nil
 	}
 	if p.searcher == nil {
+		if vidRushArtlistOnlyPlan(plan) {
+			return nil, fmt.Errorf("clip_search: Artlist is required but the searcher is unavailable")
+		}
 		return &PostProcessResult{
 			Changed:  true,
 			Warnings: []string{"clip_search: ArtlistClipSearcher not configured"},
@@ -144,6 +150,9 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			}
 			segments = append(segments, updated)
 			warnings = append(warnings, fmt.Sprintf("clip_search: no matching Artlist clips found for segment %s", updated.SegmentID))
+			if vidRushArtlistOnlyPlan(plan) {
+				return nil, fmt.Errorf("clip_search: required Artlist candidates missing for segment %s", updated.SegmentID)
+			}
 			// Do not cache provider misses without a TTL: a transient empty
 			// result must remain discoverable on the next request.
 			continue

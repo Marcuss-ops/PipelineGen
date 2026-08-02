@@ -229,6 +229,12 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 				updated.Assets.PrimaryVideo = &selected
 			}
 		}
+		if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
+			return vidRushMaterializedSegment{}, fmt.Errorf(
+				"vidrush materialization: required persisted Artlist primary unavailable for segment %s",
+				segment.SegmentID,
+			)
+		}
 		updated.Assets.CandidateSetHash = candidateSetHash(materialized)
 		return vidRushMaterializedSegment{result: updated, warnings: warnings}, nil
 	})
