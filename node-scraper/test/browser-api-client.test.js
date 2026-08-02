@@ -4,6 +4,23 @@ import assert from 'node:assert/strict';
 import { ArtlistBrowserApiClient } from '../artlist/browser-api-client.js';
 
 describe('ArtlistBrowserApiClient', () => {
+  test('does not opt into the legacy cookie file by default', () => {
+    const previous = process.env.ARTLIST_COOKIE_FILE;
+    delete process.env.ARTLIST_COOKIE_FILE;
+
+    try {
+      const client = new ArtlistBrowserApiClient({
+        browser: {},
+        registry: {},
+      });
+
+      assert.equal(client.cookiePath, '');
+    } finally {
+      if (previous === undefined) delete process.env.ARTLIST_COOKIE_FILE;
+      else process.env.ARTLIST_COOKIE_FILE = previous;
+    }
+  });
+
   test('classifies a rate-limited browser API response without fallback', async () => {
     const page = {
       setViewport: async () => {},

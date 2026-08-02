@@ -1,5 +1,5 @@
 import { normalizeLinks, extractClipId } from './url.js';
-import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../driver/cookies.js';
+import { importCookies } from '../driver/cookies.js';
 
 /**
  * ArtlistDetailHydrator — extracts structured metadata from an Artlist
@@ -386,7 +386,7 @@ export async function fetchClipDetails(browser, clipPageUrl) {
       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
 
-  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '';
   await importCookies(detailPage, cookiePath);
 
   const streamSet = new Set();

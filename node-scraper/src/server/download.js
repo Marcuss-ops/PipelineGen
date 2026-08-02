@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { importCookies, DEFAULT_COOKIE_FILE_PATH } from '../driver/cookies.js';
+import { importCookies } from '../driver/cookies.js';
 import {
   normalizeSegmentConcurrency,
   spoolSegmentsToFile,
@@ -44,7 +44,7 @@ export async function downloadClipVideo(browser, clipPageUrl, clipId, outputDir)
   await page.setViewport({ width: 1440, height: 900 });
   await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-  const cookiePath = process.env.ARTLIST_COOKIE_FILE || DEFAULT_COOKIE_FILE_PATH;
+  const cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '';
   await importCookies(page, cookiePath);
 
   const streamUrls = new Set();

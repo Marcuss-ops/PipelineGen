@@ -27,9 +27,11 @@ overwrite) to avoid a partial-read race.
 
 ### 1.1 Default
 
-If `ARTLIST_COOKIE_FILE` is unset or empty, the scraper falls back to
-`DEFAULT_COOKIE_FILE_PATH = '/tmp/artlist_cookies.txt'`. The path is
-absolute; the file need not exist for the scraper to start.
+If `ARTLIST_COOKIE_FILE` is unset or empty, no cookie file is loaded. The
+scraper uses anonymous Chrome by default. Set `ARTLIST_COOKIE_FILE` explicitly
+when an authenticated session is required; the legacy
+`DEFAULT_COOKIE_FILE_PATH = '/tmp/artlist_cookies.txt'` remains available to
+callers that opt in to that path.
 
 ### 1.2 Accepted formats
 
