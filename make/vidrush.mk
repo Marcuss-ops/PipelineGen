@@ -4,6 +4,8 @@
 # providers. Live canaries remain explicit operator actions.
 
 VIDRUSH_GO_PACKAGES := ./internal/domain/script ./internal/application/scripts/adapters
+VIDRUSH_WORKER_PACKAGE := ./internal/application/jobs/worker
+VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 
 verify-vidrush-contract:
 	@$(GO) test -count=1 $(VIDRUSH_GO_PACKAGES) -run 'VidRush|CanonicalProcessorNames'
@@ -26,8 +28,13 @@ verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vid
 verify-vidrush-binding verify-vidrush-dedupe verify-vidrush-cache:
 	@$(GO) test -count=1 ./internal/application/scripts/adapters -run 'VidRush|Dedupe|Cache'
 
-verify-vidrush-recovery verify-vidrush-concurrency:
+verify-vidrush-recovery:
 	@$(GO) test -count=1 ./internal/application/scripts/adapters -run 'VidRush|Registry'
+	@$(GO) test -count=1 $(VIDRUSH_WORKER_PACKAGE) -run '$(VIDRUSH_LEASE_TESTS)'
+
+verify-vidrush-concurrency:
+	@$(GO) test -count=1 ./internal/application/scripts/adapters -run 'VidRush|Registry'
+	@$(GO) test -count=1 $(VIDRUSH_WORKER_PACKAGE) -run 'TestRunLease_'
 
 verify-vidrush-fast:
 	@$(MAKE) verify-vidrush-contract
