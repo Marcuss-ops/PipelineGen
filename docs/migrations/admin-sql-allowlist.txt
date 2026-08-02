@@ -271,3 +271,31 @@ internal/application/assets/providers/artlist/service_test.go
 internal/application/assets/persistence/asset_committer_ssot_test.go
 internal/application/assets/providers/artlist/dispatcher_stub_test.go
 internal/application/qdrant/dr/snapshot_test.go
+
+# ── Bucket 5: Azione 5 grandfathering (2026-08-02) — non-media_assets repo writes ──
+# Non-media_assets repository `.Upsert(` callers surfaced by the hard-fail
+# flip of the bypass-audit wrap (Azione 5). Each writes to its OWN
+# non-media_assets table (mediamemory concepts/bindings, stager cache,
+# texttracks, drive delivery catalog, assetindex) via the table's canonical
+# repository — the AssetMutationDispatcher SSOT governs media_assets writes
+# ONLY. Grandfathered with owner+deadline per the allowlist policy; re-audit
+# at the deadline to confirm the dispatcher scope has not widened.
+# owner=@mediamemory-team; deadline=2026-09-15; task=mediamemory concepts/bindings
+internal/application/mediamemory/feedback_service.go
+internal/application/mediamemory/linker_emit.go
+internal/application/mediamemory/linker_link.go
+# owner=@artlist-team; deadline=2026-09-15; task=artlist concept/binding link
+internal/application/assets/providers/artlist/concept_binding_linker.go
+# owner=@stock-team; deadline=2026-09-15; task=stock stager source cache
+internal/application/assets/providers/stock/stockpipeline/stager_cache.go
+# owner=@texttracks-team; deadline=2026-09-15; task=texttracks ASS materializer
+internal/application/assets/texttracks/ass_materializer.go
+# owner=@drive-team; deadline=2026-09-15; task=drive delivery catalog adapter
+internal/infrastructure/drive/catalog_adapter.go
+# owner=@app-team; deadline=2026-09-15; task=assetindex composition-root adapter
+internal/app/build_stock_adapters.go
+# owner=@arch-team; deadline=n/a; task=archcheck scanner self-reference
+# (banned-pattern string literal `"repo.Upsert("` — NOT a call; the scanner
+#  legitimately lists the pattern it detects. Grandfathered so the hard-fail
+#  gate does not trip on the scanner's own source.)
+cmd/archcheck/scan/percheck_brain_infra_ban.go

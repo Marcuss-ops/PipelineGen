@@ -18,15 +18,14 @@
 # The allowlist is the SINGLE SOURCE OF TRUTH for what bypass-survives.
 # Adding/removing a row must ship in the same PR as the corresponding
 # code change. See AGENTS.md §"Agenter Workflow" for the 1-PR rule.
-# NON-FATAL bypass-audit wrap. The file opens with `set -euo pipefail`;
-# without this wrap, a non-zero exit short-circuits every subsequent
-# check (Check 8 factory-only, ServiceDeps cap, engine SSOT gates,
-# final archcheck). The captured exit is logged below; do NOT remove
-# this wrap — every check added since Wave 22 PR-4 has implicitly
-# depended on bypass-audit being NON-FATAL.
-set +e
+#
+# HARD-FAIL since Azione 5 (2026-08-02): the NON-FATAL wrap was a
+# workaround masking a red bypass-audit (Check A flagged 9 non-allowlisted
+# .Upsert( callers). Those 9 legitimate non-media_assets repo writes are
+# now grandfathered in docs/migrations/admin-sql-allowlist.txt (Bucket 5,
+# owner+deadline). With the allowlist closed, any non-allowlisted hit is a
+# genuine regression and MUST fail the dispatcher — the wrap is removed so
+# a non-zero exit propagates under `set -euo pipefail`.
 bash "${REPO_ROOT}/scripts/ci-bypass-audit.sh"
-bypass_audit_rc=$?
-set -e
-echo "ci-bypass-audit exit code: ${bypass_audit_rc} (NON-FATAL)"
+echo "ci-bypass-audit: HARD-FAIL gate green (0 non-allowlisted hits)"
 

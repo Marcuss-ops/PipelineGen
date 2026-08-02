@@ -145,6 +145,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		// forward-pointer; deferred to a P0.5 wave that lands the
 		// Creator-side ArtifactUploader port abstraction. Today's
 		// sites stay unchanged.
+		// TODO(P0.5): ArtifactUploader port — NOT delivery.Publisher P0.4 target (grandfathered)
 		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
 			return nil, fmt.Errorf("upload required artifact %q (%s): %w", a.ID, a.Kind, uploadErr)
 		}
@@ -168,6 +169,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		}
 		// P2.6 forward-pointer (DRIVE-CUTOVER-P0-1): see companion
 		// comment at the required-artifact loop above.
+		// TODO(P0.5): ArtifactUploader port — NOT delivery.Publisher P0.4 target (grandfathered)
 		if uploadErr := r.assetClient.UploadFile(ctx, a.ID, a.Path); uploadErr != nil {
 			r.log.Warn("non-required artifact upload failed — skipping",
 				zap.String("artifact_id", a.ID), zap.String("kind", a.Kind), zap.Error(uploadErr))
