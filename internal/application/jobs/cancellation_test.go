@@ -72,6 +72,7 @@ import (
 type renewLoopMockJobBroker struct {
 	mu        sync.Mutex
 	renewFunc func(ctx context.Context, id, workerID string, leaseTTL time.Duration) (job.RenewLeaseResult, error)
+	getJob    *job.Job
 	renewHits int
 }
 
@@ -96,7 +97,7 @@ func (m *renewLoopMockJobBroker) hits() int {
 // not exercise the dispatcher / finalizer / claim path).
 func (m *renewLoopMockJobBroker) Create(_ context.Context, _ *job.Job) error { return nil }
 func (m *renewLoopMockJobBroker) Get(_ context.Context, _ string) (*job.Job, error) {
-	return nil, nil
+	return m.getJob, nil
 }
 func (m *renewLoopMockJobBroker) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
 	return nil, nil
@@ -252,6 +253,35 @@ func TestRenewLeaseLoopWith_LeaseLost_AbortsLoop(t *testing.T) {
 	// not cancelled. ctx.Err() should still be nil.
 	assert.Nil(t, jobCtx.Err(),
 		"LeaseStateLeaseLost: jobCtx must NOT be cancelled (worker is orphaned, not cancelled)")
+}
+
+// TestAttemptLeaseRenewal_CancelledTerminalStateCancelsHandler pins the
+// operator-cancel path. SQLite clears the lease fence when Cancel transitions
+// a running job to CANCELLED, so the renewal returns LeaseLost rather than
+// CancelRequested. The worker must distinguish that terminal cancellation
+// from a genuinely stolen lease and route it through the cancellation state.
+func TestAttemptLeaseRenewal_CancelledTerminalStateCancelsHandler(t *testing.T) {
+	mock := &renewLoopMockJobBroker{
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
+			return job.RenewLeaseResult{State: job.LeaseStateLeaseLost}, nil
+		},
+		getJob: &job.Job{Status: job.StatusCancelled},
+	}
+	w := NewWorker(WorkerDeps{
+		ID:         "cancelled-terminal-renew-test",
+		Repo:       mock,
+		Dispatcher: nil,
+		Log:        zap.NewNop(),
+		LeaseTTL:   time.Second,
+	})
+
+	result, shouldExit := w.attemptLeaseRenewal(context.Background(), "cancelled-job")
+	if result.State != job.LeaseStateCancelRequested {
+		t.Fatalf("state = %q, want %q", result.State, job.LeaseStateCancelRequested)
+	}
+	if !shouldExit {
+		t.Fatal("cancelled terminal job must stop the handler")
+	}
 }
 
 // ── Test 3: LeaseStateContinue is a no-op ─────────────────────────

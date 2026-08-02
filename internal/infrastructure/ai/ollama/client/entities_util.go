@@ -14,34 +14,9 @@ func tokenSet(text string) map[string]struct{} {
 	return set
 }
 
-var noisyExtractionCandidates = map[string]struct{}{
-	"he": {}, "her": {}, "him": {}, "his": {}, "i": {}, "it": {}, "its": {}, "me": {}, "my": {},
-	"our": {}, "ours": {}, "she": {}, "their": {}, "them": {}, "they": {}, "this": {}, "that": {},
-	"these": {}, "those": {}, "we": {}, "you": {}, "the": {}, "a": {}, "an": {}, "of": {}, "in": {},
-	"on": {}, "at": {}, "to": {}, "and": {}, "name": {}, "names": {},
-}
-
-var genericImportantWords = map[string]struct{}{
-	"will": {}, "would": {}, "could": {}, "should": {}, "might": {}, "must": {}, "just": {}, "very": {},
-	"also": {}, "then": {}, "into": {}, "over": {}, "from": {}, "with": {}, "that": {}, "this": {},
-	"law": {}, "laws": {}, "legal": {}, "religion": {}, "culture": {}, "society": {},
-	"empire": {}, "kingdom": {}, "republic": {}, "civilization": {}, "world": {}, "history": {},
-	"people": {}, "nations": {}, "government": {}, "state": {}, "power": {}, "war": {}, "peace": {},
-	"trade": {}, "economy": {}, "agriculture": {}, "military": {}, "art": {},
-}
-
 func isNoisyExtractionCandidate(text string) bool {
 	lower := strings.ToLower(text)
-	if lower == "" {
-		return true
-	}
-	_, ok := noisyExtractionCandidates[lower]
-	return ok
-}
-
-func isGenericImportantWord(word string) bool {
-	_, ok := genericImportantWords[word]
-	return ok
+	return lower == "" || textutil.IsStopWord(lower)
 }
 
 func splitSentences(text string) []string {

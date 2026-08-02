@@ -48,6 +48,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 			ArtlistEnabled: false,
 		},
 	}
+	cfg.Linguistics.LexiconRoot = testLexiconRoot()
 	log := zap.NewNop()
 
 	deps, err := WireServices(cfg, log, "test")
@@ -98,6 +99,7 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 			ArtlistEnabled: false,
 		},
 	}
+	cfg.Linguistics.LexiconRoot = testLexiconRoot()
 	log := zap.NewNop()
 
 	deps, err := WireServices(cfg, log, "test")
@@ -150,6 +152,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 			YouTubeEnabled: false,
 		},
 	}
+	cfg.Linguistics.LexiconRoot = testLexiconRoot()
 	log := zap.NewNop()
 
 	deps, err := WireServices(cfg, log, "test")
@@ -201,6 +204,7 @@ func TestStartupIntegration(t *testing.T) {
 			ArtlistEnabled: false,
 		},
 	}
+	cfg.Linguistics.LexiconRoot = testLexiconRoot()
 	log := zap.NewNop()
 
 	// Ensure system starts up cleanly and registers all modules without error

@@ -1,11 +1,19 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+func testLexiconRoot() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../config/lexicons"))
+}
 
 func TestInitLinguistics_FailsWhenRequiredLanguageMissing(t *testing.T) {
 	cfg := &config.Config{
@@ -13,6 +21,9 @@ func TestInitLinguistics_FailsWhenRequiredLanguageMissing(t *testing.T) {
 			LexiconRoot:       t.TempDir(),
 			RequiredLanguages: []string{"zz"},
 		},
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.Linguistics.LexiconRoot, "fallback"), 0755); err != nil {
+		t.Fatal(err)
 	}
 
 	err := initLinguistics(cfg, nil)

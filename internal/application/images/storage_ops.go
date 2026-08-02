@@ -82,6 +82,25 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 // SearchAndDownloadDetailed searches for an image locally and via web APIs
 // and returns the canonical asset plus the trace needed for HTTP callers.
 func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*SearchResult, error) {
+	return s.searchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags, "")
+}
+
+// SearchAndDownloadDetailedFromProvider runs the canonical retrieved-image
+// pipeline with one provider selected through the shared registry. It is
+// intentionally a narrow diagnostic/canary seam: acquisition, validation,
+// persistence, cache and metadata updates remain identical to the default
+// fallback path.
+func (s *ImageStorageService) SearchAndDownloadDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider) (*SearchResult, error) {
+	if provider == "" {
+		return s.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
+	}
+	if s.retrievalRegistry == nil || s.retrievalRegistry.SearchByName(provider) == nil {
+		return nil, fmt.Errorf("retrieved provider %q is not registered", provider)
+	}
+	return s.searchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags, provider)
+}
+
+func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider) (*SearchResult, error) {
 	slug := textutil.Slugify(subjectSlug)
 	if slug == "" {
 		slug = textutil.Slugify(query)
@@ -90,6 +109,9 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 		lang = "it"
 	}
 	policySignature := s.retrievalPolicySignature()
+	if provider != "" {
+		policySignature += ":explicit:" + string(provider)
+	}
 
 	qLower := strings.ToLower(query)
 	if qLower == "name" || qLower == "titolo" || len(query) < 2 {
@@ -99,6 +121,9 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err == nil && subject != nil {
 		if images, err := s.repo.ListImagesBySubject(ctx, slug); err == nil && len(images) > 0 {
+			if provider != "" {
+				images = filterCachedImagesByProvider(images, provider)
+			}
 			if cached, score := selectBestCachedImageAsset(query, images); cached != nil {
 				s.log.Info("Image cache hit from local database",
 					zap.String("subject", slug),
@@ -143,7 +168,7 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 
 	key := imageSearchCacheKey(query, lang, policySignature)
 	result, err, _ := s.dedup.Do(key, func() (any, error) {
-		return s.searchAndDownloadInnerDetailed(ctx, slug, displayName, query, lang, tags, subject)
+		return s.searchAndDownloadInnerDetailed(ctx, slug, displayName, query, lang, tags, subject, provider)
 	})
 	if err != nil {
 		return nil, err
@@ -154,7 +179,7 @@ func (s *ImageStorageService) SearchAndDownloadDetailed(ctx context.Context, sub
 	return nil, fmt.Errorf("singleflight: unexpected result type")
 }
 
-func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject) (*SearchResult, error) {
+func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context, slug, displayName, query, lang string, tags []string, subject *asset.Subject, provider asset.ImageProvider) (*SearchResult, error) {
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query), zap.String("lang", lang))
 	wikiTitle, qid, _ := s.searchWikidata(query, lang)
 	finalQuery := query
@@ -168,7 +193,7 @@ func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context
 	// Step 8: route the network search through the RetrievalProviderRegistry.
 	// Wikidata disambig above is preserved as it feeds the Wikipedia
 	// canonical title rather than performing a network round-trip.
-	imgURL, source, wikiURL := s.runRetrievalFallback(ctx, finalQuery, lang)
+	imgURL, source, wikiURL := s.runRetrievalFallbackForProvider(ctx, finalQuery, lang, provider)
 	if imgURL == "" {
 		return nil, fmt.Errorf("no image found for query: %s", finalQuery)
 	}

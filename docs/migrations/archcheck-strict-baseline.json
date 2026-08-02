@@ -101,23 +101,6 @@
       "owner": "doc-debt cleanup stream",
       "deadline": "2026-08-15",
       "removal_trigger": "Stems list shrinks as files genuinely rename. Trigger is rename-only — current prose rewrites cannot run ahead of the underlying rename; rewriting to a name that doesn't yet exist is doc drift per godlike/07."
-    },
-    {
-      "urgency": "primary",
-      "rule": "percheck_stopword_maps_in_app",
-      "failing_entries": [
-        {"file": "internal/application/images/search_scoring.go", "line": 153},
-        {"file": "internal/application/scripts/usecase/quality_gate.go", "line": 26},
-        {"file": "internal/application/scripts/usecase/source_resolver_research.go", "line": 461},
-        {"file": "internal/application/scripts/usecase/source_resolver_research.go", "line": 468},
-        {"file": "internal/application/youtube/dto/tagutil_extract.go", "line": 68},
-        {"file": "internal/application/youtube/dto/tagutil_normalize.go", "line": 169},
-        {"file": "internal/infrastructure/ai/ollama/client/entities_util.go", "line": 17},
-        {"file": "internal/infrastructure/ai/ollama/client/entities_util.go", "line": 24}
-      ],
-      "owner": "SSOT lexicon consolidation stream (Azione 2 — replace hardcoded stop-word maps with LexiconRegistry lookups)",
-      "deadline": "2026-08-10",
-      "removal_trigger": "All 8 hardcoded stop-word map sites replaced by LexiconRegistry lookups; percheck_stopword_maps_in_app reports zero violations."
     }
   ],
   "audit_ledger": [
@@ -186,6 +169,20 @@
         "P0-1 commit 1-5 (June 2026): god Service split into 4 use-case sub-packages"
       ],
       "removal_trigger_met": "sourcing.NewService now takes 5 args (youtube + batch + drivesync + localimport + log); well under the 8-param cap. The youtube sub-service (youtube/sourcing.NewService, 10 params) is a separate rule entry."
+    },
+    {
+      "ledger_kind": "transitional_retired",
+      "ledger_id": "stopword_maps_consolidated",
+      "rule": "percheck_stopword_maps_in_app",
+      "was_entries": 8,
+      "was_deadline": "2026-08-10",
+      "was_owner": "SSOT lexicon consolidation stream (Azione 2 — replace hardcoded stop-word maps with LexiconRegistry lookups)",
+      "retired_by": "Azione 2 (August 2026): all hardcoded stop-word maps replaced by LexiconRegistry/fallback lookups",
+      "retired_in_commit_chain": [
+        "Azione 1: percheck_stopword_maps_in_app registered + strengthened for multi-line maps",
+        "Azione 2: source_resolver_research.go, search_scoring.go, tagutil_extract.go, tagutil_normalize.go, quality_gate.go, entities_util.go, textutil.go now delegate to config/lexicons SSOT"
+      ],
+      "removal_trigger_met": "percheck_stopword_maps_in_app reports zero violations (verified 2026-08-02); 'e' present in config/lexicons/it/stopwords.txt:51 (SSOT, no manual patch)."
     }
   ]
 }

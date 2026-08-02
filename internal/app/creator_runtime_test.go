@@ -203,7 +203,8 @@ func TestCreatorRuntime_CompilePinDBOrphanResolved(t *testing.T) {
 // Mirrors the fixture in composition_test.go::minimalConfig.
 func minimalCreatorConfig(dataDir string) *config.Config {
 	return &config.Config{
-		Server: config.ServerConfig{Port: 8080},
+		Linguistics: config.LinguisticsConfig{LexiconRoot: testLexiconRoot()},
+		Server:      config.ServerConfig{Port: 8080},
 		External: config.ExternalConfig{
 			OllamaURL:            "http://localhost:11434",
 			OllamaModel:          "llama3.2",

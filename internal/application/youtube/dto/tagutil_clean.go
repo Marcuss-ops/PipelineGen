@@ -37,8 +37,8 @@ func CleanClipTranscript(transcript string) string {
 	return strings.TrimSpace(result)
 }
 
-// CleanYouTubeDescription strips link lines, HTML artifacts, and sponsor
-// boilerplate from a YouTube description. Returns compact prose.
+// CleanYouTubeDescription strips link lines and HTML artifacts from a
+// YouTube description. Returns compact prose without editorial exclusions.
 func CleanYouTubeDescription(desc string) string {
 	if desc == "" {
 		return ""
@@ -92,8 +92,8 @@ func CleanClipName(name string) string {
 	return name
 }
 
-// CompactYouTubeDescription keeps the first few non-sponsor, non-link lines
-// of a YouTube description up to a 500-character budget.
+// CompactYouTubeDescription keeps the first few non-link lines of a YouTube
+// description up to a 500-character budget.
 func CompactYouTubeDescription(desc string) string {
 	desc = CleanYouTubeDescription(desc)
 	if desc == "" {
@@ -102,25 +102,10 @@ func CompactYouTubeDescription(desc string) string {
 	parts := strings.Split(desc, "\n")
 	var kept []string
 	limitChars := 500
-	stopMarkers := []string{
-		"sponsored by", "tour dates", "new merch", "submit your", "hit the hotline",
-		"video hotline", "find theo", "producer:", "watch on spotify",
-	}
 	for _, part := range parts {
 		line := strings.TrimSpace(part)
 		if line == "" {
 			continue
-		}
-		lower := strings.ToLower(line)
-		stop := false
-		for _, marker := range stopMarkers {
-			if strings.Contains(lower, marker) {
-				stop = true
-				break
-			}
-		}
-		if stop {
-			break
 		}
 		if strings.Contains(line, "http://") || strings.Contains(line, "https://") || strings.Contains(line, "www.") {
 			continue

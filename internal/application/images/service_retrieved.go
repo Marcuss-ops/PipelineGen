@@ -26,6 +26,13 @@ func (s *Service) SearchAndDownloadDetailed(ctx context.Context, subjectSlug, di
 	return s.Store.SearchAndDownloadDetailed(ctx, subjectSlug, displayName, query, lang, tags)
 }
 
+// SearchAndDownloadDetailedFromProvider runs the same retrieved pipeline
+// while resolving one provider through the shared registry. It is used by
+// provider-specific live canaries; it never crosses into generated images.
+func (s *Service) SearchAndDownloadDetailedFromProvider(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string, provider asset.ImageProvider) (*SearchResult, error) {
+	return s.Store.SearchAndDownloadDetailedFromProvider(ctx, subjectSlug, displayName, query, lang, tags, provider)
+}
+
 // SearchWebImage performs a web image search (retrieved territory)
 // for a given prompt and slug. Delegates to the Store sub-service.
 func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags []string) (*asset.ImageAsset, error) {

@@ -119,6 +119,10 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	}
 
 	if err := p.cmd.Start(); err != nil {
+		// Start may have allocated pipes and a command handle even though
+		// no child was created. Clear both so a later attempt starts from a
+		// clean baseline.
+		p.resetWorker()
 		return fmt.Errorf("failed to start worker: %w", err)
 	}
 
@@ -129,14 +133,32 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	// Wait for the automatic startup "ready" response.
 	resp, err := p.readRawResponse()
 	if err != nil {
-		return fmt.Errorf("warmup response failed: %w", err)
+		return p.failWarmup(fmt.Errorf("warmup response failed: %w", err))
 	}
 	if resp["status"] != "ready" {
-		return fmt.Errorf("warmup: expected status=ready, got %v", resp["status"])
+		return p.failWarmup(fmt.Errorf("warmup: expected status=ready, got %v", resp["status"]))
 	}
 
 	p.log.Info("ChromeImageProvider: worker warmup complete, ready for generation")
 	return nil
+}
+
+// failWarmup tears down a child that started successfully but failed its
+// protocol handshake. The warmup path is outside Generate's retry seam, so
+// it must reap the child synchronously here; otherwise every failed prewarm
+// leaks a zombie until the parent process exits.
+//
+// Must be called while p.mu is held.
+func (p *ChromeImageProvider) failWarmup(err error) error {
+	waitDone := p.resetWorker()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-waitDone:
+	case <-timer.C:
+		p.log.Warn("ChromeImageProvider: warmup cleanup exceeded 5s", zap.Error(err))
+	}
+	return err
 }
 
 // Stop gracefully shuts down the persistent worker. Sends the quit

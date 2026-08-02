@@ -120,10 +120,6 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 	if fallback == nil {
 		return nil, fmt.Errorf("lexicon registry: required fallback profile is missing in %q", rootDir)
 	}
-	if len(profiles) == 1 {
-		return nil, fmt.Errorf("lexicon registry: no language profiles found in %q", rootDir)
-	}
-
 	return &LexiconRegistry{
 		profiles: profiles,
 		fallback: fallback,

@@ -104,6 +104,18 @@ func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (job.Ren
 		return result, true
 	}
 	if result.State == job.LeaseStateLeaseLost {
+		// Cancel() is a terminal operator transition: it clears the
+		// worker/lease fence before the running handler can observe the
+		// next renewal. The SQL adapter therefore reports LeaseLost for
+		// both a genuinely stolen lease and an explicitly cancelled job.
+		// Preserve the orphan rule for the former, but stop the handler
+		// for the latter so cancellation cannot leave provider subprocesses
+		// running after the job is already terminal.
+		if cancelled, getErr := w.repo.Get(ctx, jobID); getErr == nil && cancelled != nil && cancelled.Status == job.StatusCancelled {
+			w.log.Info("worker: lease renewal observed terminal cancellation; cancelling jobCtx",
+				zap.String("job_id", jobID))
+			return job.RenewLeaseResult{State: job.LeaseStateCancelRequested}, true
+		}
 		w.log.Warn("worker: lease lost during renewal (Fase 4(b) typed signal); aborting",
 			zap.String("job_id", jobID), zap.Error(err))
 		return result, true

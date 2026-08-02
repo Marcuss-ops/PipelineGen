@@ -168,7 +168,16 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 	}
 
-	builder := asset.NewCanonicalImageMetadataBuilder(source, generator).
+	// A retrieved download has a URL as its source, so classifying the URL
+	// alone cannot recover the concrete registry provider. Feed the resolved
+	// provider into the canonical builder when available; this keeps the
+	// metadata JSON and media_assets.provider aligned for DDG, Wikipedia,
+	// SearXNG and the other retrieved providers.
+	builderSource := source
+	if provider != asset.ProviderUnknown {
+		builderSource = string(provider)
+	}
+	builder := asset.NewCanonicalImageMetadataBuilder(builderSource, generator).
 		WithBaseInfo(description, style, hash, tags, width, height).
 		WithGenerator(generator)
 	if metaResult != nil && metaResult.Payload != nil {

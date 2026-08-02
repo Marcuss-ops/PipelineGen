@@ -63,7 +63,7 @@ type TranslationConfig struct {
 // (e.g. config/lexicons/en, config/lexicons/it). Each subdirectory may
 // contain stopwords.txt, function_words.txt, entity_blocklist.txt,
 // verb_morphology.txt, phrase_policy.txt, negative_particles.txt and
-// visual_verbs.txt. When empty, the registry falls back to built-in data.
+// visual_verbs.txt. An empty root is invalid and fails startup.
 //
 // RequiredLanguages lists the language codes that MUST have a profile
 // under LexiconRoot. If any required language is missing, the boot fails

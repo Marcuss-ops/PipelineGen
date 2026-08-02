@@ -51,7 +51,7 @@ func (p *DuckDuckGoProvider) Healthy(_ context.Context) error {
 }
 
 func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
-	if strings.TrimSpace(query) == "" {
+	if p == nil || p.bridge == nil || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
 	imgURL := p.bridge.SearchDDGWide(ctx, query)

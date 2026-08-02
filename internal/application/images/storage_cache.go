@@ -66,6 +66,23 @@ func selectBestCachedImageAsset(query string, images []asset.ImageAsset) (*asset
 	return best, bestScore
 }
 
+// filterCachedImagesByProvider keeps an explicit-provider canary from
+// accidentally reusing an asset produced by another retrieval source. The
+// provider column is canonical; source_name is retained as a compatibility
+// fallback for older rows written before provider was populated.
+func filterCachedImagesByProvider(images []asset.ImageAsset, provider asset.ImageProvider) []asset.ImageAsset {
+	if provider == "" {
+		return images
+	}
+	out := make([]asset.ImageAsset, 0, len(images))
+	for _, img := range images {
+		if img.Provider == provider || cachedImageMetadataField(img.MetadataJSON, "source_name") == string(provider) {
+			out = append(out, img)
+		}
+	}
+	return out
+}
+
 const minCachedImageScore = 80
 
 func scoreCachedImageAsset(query string, img asset.ImageAsset) int {

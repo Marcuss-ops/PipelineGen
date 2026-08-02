@@ -33,7 +33,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Enabled:               true,
 		ServerURL:             "http://127.0.0.1:8001",
-		ScriptPath:            "scripts/bridges/index_clips.py",
+		ScriptPath:            "scripts/start_embedding_server.sh",
 		PythonBin:             "python3",
 		AutoIndexAfterArtlist: true,
 		MaxConcurrentIndexing: 10,
@@ -95,12 +95,16 @@ func (s *Service) StartServer(ctx context.Context) error {
 		return nil
 	}
 
-	// Start server
-	serverScript := filepath.Join(filepath.Dir(s.scriptPath), "embedding_server.py")
+	// Start the compute-only sidecar launcher. The launcher is not a clip
+	// indexing bridge and has no database access.
+	serverScript, err := filepath.Abs(s.scriptPath)
+	if err != nil {
+		return fmt.Errorf("resolve embedding launcher: %w", err)
+	}
 	s.log.Info("starting embedding server", zap.String("script", serverScript))
 
-	cmd := exec.Command(s.cfg.PythonBin, serverScript)
-	cmd.Dir = filepath.Dir(s.scriptPath)
+	cmd := exec.CommandContext(ctx, serverScript)
+	cmd.Dir = filepath.Dir(serverScript)
 
 	// Start the process in the background
 	if err := cmd.Start(); err != nil {
