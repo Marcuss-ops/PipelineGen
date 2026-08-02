@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -143,6 +144,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			err        error
 		}
 		queryResults, mapErr := concurrent.Map(ctx, updated.Insights.ImageQueries, 4, func(ctx context.Context, _ int, query string) (queryResult, error) {
+			providerStart := time.Now()
 			results, err := p.searcher.SearchImages(ctx, InternetImageSearchRequest{
 				SegmentID: updated.SegmentID,
 				Query:     query,
@@ -152,6 +154,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				Limit:     perQueryLimit,
 				Provider:  "internet_images",
 			})
+			observeVidRushProviderDuration(p.metrics, "internet_images_search", time.Since(providerStart))
 			return queryResult{candidates: results, err: err}, nil
 		})
 		if mapErr != nil {

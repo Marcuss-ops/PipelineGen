@@ -67,6 +67,7 @@ func registerAIBackedProcessors(
 	log *zap.Logger,
 ) error {
 	vidrushMetrics := observability.NewVidRushMetricsAdapter()
+	ppReg.SetVidRushTimingMetrics(vidrushMetrics)
 	// ── Entities ──────────────────────────────────────────────────────
 	var entityAdapter adapters.EntityExtractor
 	if root.AI != nil && root.AI.ScriptGen != nil {

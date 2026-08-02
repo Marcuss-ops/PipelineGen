@@ -104,6 +104,9 @@ func (r *PostProcessorRegistry) Run(
 		ppResult, err := proc.Process(processorCtx, plan, input)
 		cancel()
 		elapsed := time.Since(start).Milliseconds()
+		if timing := r.vidRushTimingMetrics(); timing != nil {
+			timing.ObserveProcessorDuration(string(name), float64(elapsed)/1000)
+		}
 		// Concurrency safety: a processor may return a shared/cached
 		// PostProcessResult (common in stubs and caches). Clone before
 		// mutating DurationMs or passing to merge so concurrent Run

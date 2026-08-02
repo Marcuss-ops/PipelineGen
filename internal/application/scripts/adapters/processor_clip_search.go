@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -135,7 +136,9 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		segmentMatches := make([]ArtlistClipMatch, 0)
+		providerStart := time.Now()
 		matches, err := p.searcher.SearchClips(ctx, plan.Title, updated.Insights.ArtlistQueries)
+		observeVidRushProviderDuration(p.metrics, "artlist_search", time.Since(providerStart))
 		segmentMatches = append(segmentMatches, matches...)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("clip_search: Artlist provider search failed for segment %s: %v", updated.SegmentID, err))

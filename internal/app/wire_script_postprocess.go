@@ -218,7 +218,7 @@ func registerScriptPostProcessors(
 	// Register the processor even when concrete dependencies are unavailable:
 	// inactive plans remain compatible, while an active VidRush plan fails
 	// closed at runtime instead of becoming a successful no-op.
-	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache)) {
+	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache, ppReg.TimingMetrics())) {
 		return fmt.Errorf("register vidrush materialization processor: composition bug")
 	}
 	log.Info("VidRushMaterializationProcessor wired through the canonical provider registry")
