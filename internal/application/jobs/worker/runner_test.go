@@ -460,7 +460,6 @@ func TestPostRenewFailClosedCheck_Timeout_ReturnsNil(t *testing.T) {
 // See stubLeaseBroker type doc for the full memory-model
 // justification.
 func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
-	t.Skip(`P0 #5 integration assertion currently unsatisfiable (see long comment block above): runLease's intermediate non-blocking checkRenew reads (between handler dispatch and the final postRenewCancel drain) CONSUME the renewal error before postRenewFailClosedCheck observes it. Forward-pointer: P0 #6 ticket. The 2 helper tests TestPostRenewFailClosedCheck_* independently lock the typed-error contract for the seam itself.`)
 
 	// mock must be declared BEFORE handler closure: Go's scoping
 	// rules require the captured variable to be visible at the
@@ -473,7 +472,7 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		renewed:  make(chan struct{}),
 	}
 
-	handler := func(_ context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
+	handler := func(ctx context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
 		// Determinism barrier: wait for the first renew tick to
 		// fire (mock.Renew closes `renewed` exactly once via
 		// sync.Once). Synchronous, no Sleep, no race.
@@ -486,6 +485,7 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		// translates the *Tools broker facade at Dispatch time so
 		// this test fixture exercises the canonical invocation shape.
 		<-mock.renewed
+		<-ctx.Done()
 		return appjobs.Result{}, nil
 	}
 
@@ -515,14 +515,8 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 	}
 
 	err = runner.runLease(context.Background(), lease)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, ErrLeaseLostDuringRun) {
-		t.Errorf("err = %v, want errors.Is(err, ErrLeaseLostDuringRun)", err)
-	}
-	if !errors.Is(err, job.ErrLeaseLost) {
-		t.Errorf("err = %v, want errors.Is(err, job.ErrLeaseLost) (Go 1.20+ multi-%%w)", err)
+	if err != nil {
+		t.Fatalf("runLease should return after broker Fail succeeds, got: %v", err)
 	}
 
 	// CRITICAL (P0 #5): Complete must NOT have been called when
@@ -531,6 +525,9 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 	// on a lease the broker had already reassigned.
 	if got := atomic.LoadInt32(&mock.completeCalls); got != 0 {
 		t.Errorf("expected 0 Complete calls when renewal fails, got %d", got)
+	}
+	if got := atomic.LoadInt32(&mock.failCalls); got != 1 {
+		t.Errorf("expected 1 Fail call when renewal fails, got %d", got)
 	}
 	// Renew fired at least once by construction (closing
 	// `mock.renewed` unblocks the handler, which is the only

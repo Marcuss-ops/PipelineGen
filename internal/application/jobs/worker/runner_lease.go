@@ -169,7 +169,7 @@ func (r *Runner) Run(ctx context.Context) error {
 // blocks on send. The runner's checkRenew helper drains it between
 // phases. The cap of 1 is sufficient because the goroutine returns
 // immediately after the first send.
-func (r *Runner) renewLoop(ctx context.Context, tools *Tools, jobID string, errs chan<- error) {
+func (r *Runner) renewLoop(ctx context.Context, tools *Tools, jobID string, errs chan<- error, jobCancel context.CancelFunc) {
 	ticker := time.NewTicker(r.effectiveRenewInterval())
 	defer ticker.Stop()
 	for {
@@ -182,6 +182,15 @@ func (r *Runner) renewLoop(ctx context.Context, tools *Tools, jobID string, errs
 					zap.String("job_id", jobID),
 					zap.Error(err))
 				errs <- err
+				// A renewal failure means this worker can no longer prove
+				// ownership of the job. Publish the error first so the
+				// fail-closed terminal path cannot miss it, then cancel the
+				// handler context so in-flight provider calls and
+				// subprocesses stop instead of continuing after the lease
+				// has been lost or cancelled.
+				if jobCancel != nil {
+					jobCancel()
+				}
 				return
 			}
 			r.log.Debug("lease renewed",
