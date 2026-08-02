@@ -14,7 +14,13 @@
 // EXPAND-phase: minimal surface, full impl in Wave 1.5.
 package routing
 
-import "errors"
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
 
 // ErrUnknownTerritory is returned by Resolve when the territory
 // constant is invalid. Mirrors the Err* sentinel pattern in
@@ -96,4 +102,52 @@ func (r *ImageSearchResolverImpl) Resolve(territory ImageSearchTerritory) (Image
 	default:
 		return nil, ErrUnknownTerritory
 	}
+}
+
+// ResolveProvider returns a retrieved-territory searcher pinned to one
+// registered provider. It is intentionally an optional capability on the
+// resolver: legacy backends continue to support Resolve(TerritoryRetrieved),
+// while provider-enabled callers fail closed when explicit selection is not
+// available.
+func (r *ImageSearchResolverImpl) ResolveProvider(provider string) (ImageSearcher, error) {
+	if r == nil || r.retrieved == nil {
+		return nil, ErrUnknownTerritory
+	}
+	backend, ok := r.retrieved.(RetrievalProviderSearchBackend)
+	if !ok {
+		return nil, fmt.Errorf("routing.ResolveProvider: explicit provider selection unavailable")
+	}
+	return &retrievedProviderSearcher{backend: backend, provider: provider}, nil
+}
+
+type retrievedProviderSearcher struct {
+	backend  RetrievalProviderSearchBackend
+	provider string
+}
+
+func (s *retrievedProviderSearcher) Search(ctx context.Context, filter ImageFilter) ([]ImageSearchResult, error) {
+	if s == nil || s.backend == nil {
+		return nil, nil
+	}
+	hits, err := s.backend.SearchProvider(ctx, s.provider, filter.SubjectID, RetrievalSearchOptions{Limit: ResolvedLimit(filter.Limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ImageSearchResult, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, ImageSearchResult{
+			Origin:        asset.ImageOriginRetrieved,
+			Provider:      string(h.Provider),
+			Name:          h.Title,
+			PreviewURL:    h.PreviewURL,
+			SourcePageURL: h.PageURL,
+			Width:         h.Width,
+			Height:        h.Height,
+			Score:         1,
+			StyleID:       h.StyleID,
+			License:       h.License,
+			Author:        h.Author,
+		})
+	}
+	return out, nil
 }

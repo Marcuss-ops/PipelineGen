@@ -119,43 +119,45 @@ func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, sub
 	}
 
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
-	if err == nil && subject != nil {
-		if images, err := s.repo.ListImagesBySubject(ctx, slug); err == nil && len(images) > 0 {
-			if provider != "" {
-				images = filterCachedImagesByProvider(images, provider)
-			}
-			if cached, score := selectBestCachedImageAsset(query, images); cached != nil {
-				s.log.Info("Image cache hit from local database",
-					zap.String("subject", slug),
-					zap.String("cache_key", imageSearchCacheKey(query, lang, policySignature)),
-					zap.String("cache_source", "database"),
-					zap.String("retrieval_provider", string(cached.Provider)),
-					zap.String("asset_id", cached.Hash),
-					zap.Int("count", len(images)),
-					zap.Int("cache_score", score),
-				)
-				retProvider := string(cached.Provider)
-				if retProvider == "" || retProvider == "unknown" {
-					var meta map[string]any
-					if err := json.Unmarshal([]byte(cached.MetadataJSON), &meta); err == nil {
-						if src, ok := meta["source_name"].(string); ok && src != "" {
-							retProvider = src
-						}
-					}
-				}
-				return &SearchResult{
-					Asset:             cached,
-					CacheHit:          true,
-					CacheSource:       "database",
-					RetrievalProvider: retProvider,
-				}, nil
-			}
-			s.log.Info("Images found in local database but no semantic cache hit",
+	// media_assets.metadata_json.subject_id is the durable cache key. Do not
+	// gate this read on the optional/legacy subjects row: old databases can
+	// reject subject creation because of a historical uuid constraint while
+	// the image asset itself is already fully persisted.
+	if images, listErr := s.repo.ListImagesBySubject(ctx, slug); listErr == nil && len(images) > 0 {
+		if provider != "" {
+			images = filterCachedImagesByProvider(images, provider)
+		}
+		if cached, score := selectBestCachedImageAsset(query, images); cached != nil {
+			s.log.Info("Image cache hit from local database",
 				zap.String("subject", slug),
 				zap.String("cache_key", imageSearchCacheKey(query, lang, policySignature)),
+				zap.String("cache_source", "database"),
+				zap.String("retrieval_provider", string(cached.Provider)),
+				zap.String("asset_id", cached.Hash),
 				zap.Int("count", len(images)),
+				zap.Int("cache_score", score),
 			)
+			retProvider := string(cached.Provider)
+			if retProvider == "" || retProvider == "unknown" {
+				var meta map[string]any
+				if err := json.Unmarshal([]byte(cached.MetadataJSON), &meta); err == nil {
+					if src, ok := meta["source_name"].(string); ok && src != "" {
+						retProvider = src
+					}
+				}
+			}
+			return &SearchResult{
+				Asset:             cached,
+				CacheHit:          true,
+				CacheSource:       "database",
+				RetrievalProvider: retProvider,
+			}, nil
 		}
+		s.log.Info("Images found in local database but no semantic cache hit",
+			zap.String("subject", slug),
+			zap.String("cache_key", imageSearchCacheKey(query, lang, policySignature)),
+			zap.Int("count", len(images)),
+		)
 	}
 
 	if subject == nil {

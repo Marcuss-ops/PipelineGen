@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"html"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,16 +29,36 @@ import (
 // ── DuckDuckGo ─────────────────────────────────────────────────────────
 
 func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) string {
+	urls := s.searchDDGWideMany(ctx, query, 1)
+	if len(urls) == 0 {
+		return ""
+	}
+	return urls[0]
+}
+
+type ddgImageResult struct {
+	Image     string `json:"image"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Thumbnail string `json:"thumbnail"`
+}
+
+func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query string, limit int) []string {
+	if limit <= 0 {
+		limit = 10
+	}
 	vqdURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&iax=images&ia=images", url.QueryEscape(query))
 	body, err := httpjson.GetBytes(ctx, s.client, vqdURL, &httpjson.Options{UserAgent: userAgent})
 	if err != nil {
 		s.log.Warn("DDG vqd extraction failed", zap.Error(err))
-		return ""
+		return nil
 	}
 	vqd := extractVQD(string(body))
 	if vqd == "" {
-		return ""
+		return nil
 	}
+	all := make([]ddgImageResult, 0, limit)
+	seen := make(map[string]struct{}, limit)
 	for attempt := 0; attempt < 5; attempt++ {
 		apiURL := fmt.Sprintf("https://duckduckgo.com/i.js?l=en-us&o=json&q=%s&vqd=%s&f=,,,&p=%d",
 			url.QueryEscape(query), vqd, attempt)
@@ -61,27 +82,71 @@ func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) s
 		})
 		if err != nil {
 			if attempt == 4 {
-				return ""
+				break
 			}
 			continue
 		}
 		var payload struct {
-			Results []struct {
-				Image     string `json:"image"`
-				Width     int    `json:"width"`
-				Height    int    `json:"height"`
-				Thumbnail string `json:"thumbnail"`
-			} `json:"results"`
+			Results []ddgImageResult `json:"results"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil || len(payload.Results) == 0 {
 			continue
 		}
-		best := pickBestImage(payload.Results)
-		if best != "" {
-			return best
+		for _, result := range payload.Results {
+			candidate := result.Image
+			if candidate == "" {
+				candidate = result.Thumbnail
+			}
+			if !strings.HasPrefix(candidate, "http") {
+				continue
+			}
+			if _, ok := seen[candidate]; ok {
+				continue
+			}
+			seen[candidate] = struct{}{}
+			all = append(all, result)
+		}
+		if len(all) >= limit {
+			break
 		}
 	}
-	return ""
+	sort.SliceStable(all, func(i, j int) bool {
+		return ddgImageScore(all[i]) > ddgImageScore(all[j])
+	})
+	out := make([]string, 0, min(limit, len(all)*2))
+	seenOutput := make(map[string]struct{}, cap(out))
+	for _, result := range all {
+		// Keep the full image and its DDG thumbnail adjacent. If a host
+		// blocks hotlinking on the original image, acquisition can still
+		// use the normal thumbnail returned by the same search result.
+		for _, candidate := range []string{result.Image, result.Thumbnail} {
+			if !strings.HasPrefix(candidate, "http") {
+				continue
+			}
+			if _, ok := seenOutput[candidate]; ok {
+				continue
+			}
+			seenOutput[candidate] = struct{}{}
+			out = append(out, candidate)
+			if len(out) >= limit {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+func ddgImageScore(r ddgImageResult) int {
+	switch {
+	case r.Width >= 1920 && r.Height >= 1080:
+		return 100
+	case r.Width >= 1280 && r.Height >= 720:
+		return 70
+	case r.Width >= 800:
+		return 40
+	default:
+		return 10
+	}
 }
 
 // ── SearXNG ────────────────────────────────────────────────────────────

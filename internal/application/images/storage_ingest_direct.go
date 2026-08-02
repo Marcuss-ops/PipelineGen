@@ -242,9 +242,13 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Description:    description,
 		SourceURL:      storedSourceURL,
 		Metadata: persistence.TypedMetadata{
-			Title:         textutil.Truncate(description, 500),
-			Description:   description,
-			SourceVersion: defaults.VisualEmbeddingModelVersion,
+			Title:       textutil.Truncate(description, 500),
+			Description: description,
+			// The outbox supersede gate compares this value with the
+			// canonical metadata_json.content_hash. Keep both on the
+			// same asset fingerprint; the embedding model version is
+			// recorded separately below.
+			SourceVersion: hash,
 			Tags:          tags,
 			Slug:          slug,
 			SizeBytes:     int64(len(content)),
@@ -298,6 +302,21 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			}
 		}
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
+	}
+	// The canonical committer stores the provider in source_provider and
+	// metadata_json. Keep the legacy image projection in sync as well so
+	// older readers of media_assets.provider observe the same provenance.
+	// This is an UPDATE-only compatibility projection: it emits no second
+	// outbox event and does not replace the atomic commit above.
+	if result.Provider != asset.ProviderUnknown && s.repo != nil {
+		if err := s.repo.UpdateOrigin(ctx, hash, string(result.Origin), string(result.Provider)); err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				return nil, fmt.Errorf("image provider projection: %w", err)
+			}
+			if s.log != nil {
+				s.log.Warn("legacy image provider projection unavailable", zap.Error(err))
+			}
+		}
 	}
 	if result.Origin == asset.ImageOriginRetrieved && s.repo != nil {
 		detail := &asset.RetrievedImageDetail{

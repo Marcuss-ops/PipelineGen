@@ -22,6 +22,14 @@ type RetrievalSearchBackend interface {
 	SearchAll(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error)
 }
 
+// RetrievalProviderSearchBackend is the optional explicit-provider seam used
+// by canaries and provider-enabled workflows. Implementations must resolve
+// the provider through their existing registry; callers do not get a second
+// search implementation.
+type RetrievalProviderSearchBackend interface {
+	SearchProvider(ctx context.Context, provider, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error)
+}
+
 type ImageListRepository interface {
 	ListImages(ctx context.Context, filter ImageFilter) ([]ImageSearchResult, error)
 }
