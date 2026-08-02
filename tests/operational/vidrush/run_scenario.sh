@@ -332,8 +332,47 @@ run_preflight() {
 # ══════════════════════════════════════════════════════════════════════════
 # CONCURRENCY PATH (provider-enabled, bounded 1 → 2 → 5)
 # ══════════════════════════════════════════════════════════════════════════
+vidrush_metrics_snapshot() {
+    local metrics_url="${METRICS_URL:-http://${SMOKE_API_BASE}/metrics}"
+    local metrics_body
+
+    # The admin token is intentionally not accepted here. /metrics has its
+    # own fail-closed credential so a missing scrape is evidence of an
+    # unobservable run, not a reason to silently skip stop conditions.
+    if [[ -z "${METRICS_AUTH_TOKEN:-}" ]]; then
+        jq -c -n '{available:false,reason:"METRICS_AUTH_TOKEN is not configured"}'
+        return 0
+    fi
+    metrics_body=$(curl -fsS --max-time 8 \
+        -H "Authorization: Bearer ${METRICS_AUTH_TOKEN}" \
+        "$metrics_url" 2>/dev/null) || {
+        jq -c -n '{available:false,reason:"metrics endpoint unavailable"}'
+        return 0
+    }
+
+    awk '
+    BEGIN {
+        artlist_requests = 0; image_requests = 0
+        artlist_failures = 0; image_failures = 0
+        sqlite_busy = 0; queue_depth = 0
+        rss_bytes = 0; goroutines = 0
+    }
+    $1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ { artlist_requests = $2 }
+    $1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ { image_requests = $2 }
+    $1 ~ /^vidrush_provider_failures_total\{/ && $1 ~ /provider="artlist"/ { artlist_failures = $2 }
+    $1 ~ /^vidrush_provider_failures_total\{/ && $1 ~ /provider="internet_images"/ { image_failures = $2 }
+    $1 ~ /^sqlite_busy_total\{/ { sqlite_busy += $2 }
+    $1 ~ /^jobs_queue_depth\{/ { queue_depth += $2 }
+    $1 == "process_resident_memory_bytes" { rss_bytes = $2 }
+    $1 == "go_goroutines" { goroutines = $2 }
+    END {
+        printf "{\"available\":true,\"artlist_requests\":%s,\"image_requests\":%s,\"artlist_failures\":%s,\"image_failures\":%s,\"sqlite_busy\":%s,\"queue_depth\":%s,\"rss_bytes\":%s,\"goroutines\":%s}\n", \
+            artlist_requests, image_requests, artlist_failures, image_failures, sqlite_busy, queue_depth, rss_bytes, goroutines
+    }' <<<"$metrics_body"
+}
+
 run_concurrency_wave() {
-    local payload="$1" width="$2" label="$3" wave_dir="$4"
+    local payload="$1" width="$2" label="$3" wave_dir="$4" metrics_before="$5"
     local base_url="http://${SMOKE_API_BASE}"
     local wave_start_ms wave_end_ms
     wave_start_ms=$(date +%s%3N 2>/dev/null || date +%s000)
@@ -372,9 +411,12 @@ run_concurrency_wave() {
     done
     if (( failures > 0 )); then
         wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+        local metrics_after
+        metrics_after=$(vidrush_metrics_snapshot)
         jq -c -n --arg wave_label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
             --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
-            '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:[],wall_ms:$wall_ms}'
+            --argjson metrics_before "$metrics_before" --argjson metrics_after "$metrics_after" \
+            '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:[],wall_ms:$wall_ms,metrics_before:$metrics_before,metrics_after:$metrics_after}'
         return 1
     fi
 
@@ -405,10 +447,13 @@ run_concurrency_wave() {
         terminal+=("$status")
     done
     wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+    local metrics_after
+    metrics_after=$(vidrush_metrics_snapshot)
     jq -c -n --arg wave_label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
         --argjson terminal "$(printf '%s\n' "${terminal[@]}" | jq -R . | jq -s .)" \
         --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
-        '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:$terminal,failed_terminal:'"$failed_terminal"',wall_ms:$wall_ms}'
+        --argjson metrics_before "$metrics_before" --argjson metrics_after "$metrics_after" \
+        '{label:$wave_label,width:$width,dispatch_failures:$dispatch_failures,terminal:$terminal,failed_terminal:'"$failed_terminal"',wall_ms:$wall_ms,metrics_before:$metrics_before,metrics_after:$metrics_after}'
     (( failed_terminal == 0 ))
 }
 
@@ -485,18 +530,27 @@ run_idempotency() {
 
 run_concurrency() {
     echo "=== VidRush concurrency: $SCENARIO_ID ==="
-    local payload wave_dir levels_json level wave_json waves_json='[]' failed=0
+    local payload wave_dir levels_json level wave_json waves_json='[]' failed=0 metrics_before
     payload=$(jq -c '.payload' "$SCENARIO_FILE")
     wave_dir=$(mktemp -d "${TMPDIR:-/tmp}/vidrush-concurrency.XXXXXX")
+    metrics_before=$(vidrush_metrics_snapshot)
+    if ! jq -e '.available == true' <<<"$metrics_before" >/dev/null; then
+        local metrics_reason
+        metrics_reason=$(jq -r '.reason // "metrics unavailable"' <<<"$metrics_before")
+        rm -rf "$wave_dir"
+        report_json "BLOCKED" "" "" "{\"reason\":$(jq -Rn --arg v "$metrics_reason" '$v | @json'),\"required\":\"METRICS_AUTH_TOKEN and /metrics\"}" | jq '.'
+        return 1
+    fi
     levels_json=$(jq -c '[.concurrency_levels[] | select(.concurrent_jobs <= 5) | .concurrent_jobs]' "$SCENARIO_FILE")
     for level in $(jq -r '.[]' <<<"$levels_json"); do
         echo "  → bounded wave: ${level} job(s)"
-        wave_json=$(run_concurrency_wave "$payload" "$level" "measured-${level}" "$wave_dir" | tail -1)
+        wave_json=$(run_concurrency_wave "$payload" "$level" "measured-${level}" "$wave_dir" "$metrics_before" | tail -1)
         echo "  $(jq -c '.' <<<"$wave_json")"
         waves_json=$(jq -c --argjson wave "$wave_json" '. + [$wave]' <<<"$waves_json")
-        if ! jq -e '(.failed_terminal // 0) == 0 and (.dispatch_failures // 0) == 0' <<<"$wave_json" >/dev/null; then
+        if ! jq -e '(.failed_terminal // 0) == 0 and (.dispatch_failures // 0) == 0 and (.metrics_after.available == true) and ((.metrics_after.sqlite_busy - .metrics_before.sqlite_busy) == 0) and ((.metrics_after.artlist_failures - .metrics_before.artlist_failures) == 0) and ((.metrics_after.image_failures - .metrics_before.image_failures) == 0)' <<<"$wave_json" >/dev/null; then
             failed=1
         fi
+        metrics_before=$(jq -c '.metrics_after' <<<"$wave_json")
     done
     rm -rf "$wave_dir"
     if (( failed != 0 )); then
