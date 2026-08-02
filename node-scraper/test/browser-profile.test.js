@@ -17,6 +17,7 @@ import path from 'node:path';
 import {
   resolveChromeProfile,
   makeTempBrowserDir,
+  closeBrowserHandle,
 } from '../src/driver/browser.js';
 
 const tmpDirsCreated = [];
@@ -111,5 +112,31 @@ describe('resolveChromeProfile', () => {
       `expected ${dir} to be under /dev/shm or ${os.tmpdir()}`
     );
     assert.ok(stat.isDirectory());
+  });
+});
+
+describe('closeBrowserHandle', () => {
+  test('removes a temporary profile owned by the browser handle', async () => {
+    const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'velox-chrome-cleanup-'));
+    await closeBrowserHandle({
+      page: { close: async () => {} },
+      context: { close: async () => {} },
+      browser: { close: async () => {} },
+      connected: false,
+      userDataDir: profileDir,
+      ownsUserDataDir: true,
+    });
+    assert.equal(fs.existsSync(profileDir), false);
+  });
+
+  test('preserves a configured profile owned by the operator', async () => {
+    const profileDir = mkRealTmpDir('persistent-profile');
+    await closeBrowserHandle({
+      browser: { close: async () => {} },
+      connected: false,
+      userDataDir: profileDir,
+      ownsUserDataDir: false,
+    });
+    assert.equal(fs.existsSync(profileDir), true);
   });
 });
