@@ -105,7 +105,6 @@
       "internal/application/indexing/",
       "internal/infrastructure/indexing/",
       "internal/api/assets/clips/indexing/",
-      "scripts/bridges/index_clips.py",
       "scripts/services/embedding_server/"
     ],
     "go_packages": [
@@ -282,7 +281,9 @@
       "internal/application/jobs/",
       "internal/api/jobs/",
       "internal/infrastructure/jobs/",
-      "internal/infrastructure/database/sqlite/jobs/"
+      "internal/infrastructure/database/sqlite/jobs/",
+      "scripts/bridges/slide_worker_runtime/",
+      "scripts/worker-bootstrap-smoke.sh"
     ],
     "go_packages": [
       "./internal/application/jobs/...",
