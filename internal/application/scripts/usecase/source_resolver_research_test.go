@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -427,4 +429,42 @@ type researchSearchHitsFake struct{ hits []scriptports.WebSearchHit }
 
 func (f *researchSearchHitsFake) Search(_ context.Context, q string, _ int) ([]scriptports.WebSearchHit, error) {
 	return f.hits, nil
+}
+
+// TestResearchStopwordsComeFromSSOT pins the Azione 2 contract: the research
+// resolver must consume the canonical config/lexicons SSOT and never a
+// private hardcoded list. The original diff showed a manual "e" patch
+// drifting from the SSOT (the codebase list lacked it while the canonical
+// file had it). If the SSOT loses a language-gate word or a hardcoded copy
+// re-appears, this test fails closed.
+func TestResearchStopwordsComeFromSSOT(t *testing.T) {
+	registry := linguistics.DefaultLexicon()
+	it, err := registry.ResolveRequired("it")
+	if err != nil {
+		t.Fatalf("italian profile from SSOT: %v", err)
+	}
+	for _, word := range []string{"e", "che", "con", "per", "una", "sono"} {
+		if _, ok := it.StopWords[word]; !ok {
+			t.Fatalf("SSOT italian stopwords missing %q — the SSOT must own every language-gate word (no manual patches)", word)
+		}
+	}
+
+	// A topic made only of Italian stopwords must yield no significant
+	// terms: proves the resolver filters through the SSOT set.
+	page := scriptports.WebPage{Title: "Esempio", Text: "il che e di in con per una"}
+	valid, reason := validateResearchSourceWithLexicon("che con per una", "che con per una", "it", 0, page, registry)
+	if valid {
+		t.Fatalf("stopword-only topic accepted: %s", reason)
+	}
+	if !strings.Contains(reason, "no significant research terms") {
+		t.Fatalf("unexpected reason: %s", reason)
+	}
+
+	// A genuine Italian page with content plus stop-word markers passes
+	// the same SSOT-driven validation.
+	content := scriptports.WebPage{Title: "Esempio ricerca", Text: "il documento di storia contiene una analisi completa e dettagliata"}
+	valid, reason = validateResearchSourceWithLexicon("esempio ricerca storia", "esempio ricerca storia", "it", 0, content, registry)
+	if !valid {
+		t.Fatalf("matching italian page rejected: %s", reason)
+	}
 }
