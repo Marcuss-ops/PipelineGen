@@ -197,10 +197,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		// many generated images are actually missing. This keeps generation a
 		// true fallback instead of a parallel source that duplicates valid web
 		// assets.
-		imageTarget := 0
-		if plan != nil && plan.ImagesPerScene > 0 {
-			imageTarget = plan.ImagesPerScene
-		}
+		imageTarget := vidRushImageTarget(plan)
 		updated.Assets.Candidates = materialize(updated.Assets.Candidates, imageTarget)
 		generationCandidates, generationState := p.planGenerationFallback(plan, updated)
 		updated.Cache.ImageGeneration = generationState
@@ -214,10 +211,10 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		materialized := updated.Assets.Candidates
 		updated.Assets.SecondaryImages = durableVidRushImages(materialized)
 		updated.Assets.GeneratedImages = filterVidRushGeneratedImages(materialized)
-		if plan != nil && plan.ImagesPerScene > 0 && len(updated.Assets.SecondaryImages) < plan.ImagesPerScene {
+		if imageTarget > 0 && len(updated.Assets.SecondaryImages) < imageTarget {
 			warnings = append(warnings, fmt.Sprintf(
 				"FAILED_REQUIRED_IMAGE_COUNT: required=%d verified=%d segment=%s",
-				plan.ImagesPerScene, len(updated.Assets.SecondaryImages), segment.SegmentID,
+				imageTarget, len(updated.Assets.SecondaryImages), segment.SegmentID,
 			))
 		}
 		updated.Assets.PrimaryVideo = nil
@@ -309,32 +306,33 @@ func vidRushAcquireBudget(plan *scriptpkg.ResolvedGenerationPlan, provider strin
 	case scriptpkg.VidRushProviderArtlist:
 		return vidRushArtlistAcquireBudget
 	case scriptpkg.VidRushProviderInternetImages:
-		target := 2
-		if plan != nil && plan.ImagesPerScene > 0 {
-			target = plan.ImagesPerScene
+		target := vidRushImageTarget(plan)
+		if target == 0 {
+			target = vidRushDefaultImagesPerScene
 		}
 		return target + vidRushImageAcquireSlack
 	case scriptpkg.VidRushProviderImageGeneration:
-		if plan != nil && plan.ImagesPerScene > 0 {
-			return plan.ImagesPerScene
+		if target := vidRushImageTarget(plan); target > 0 {
+			return target
 		}
-		return 1
+		return vidRushDefaultImagesPerScene
 	default:
 		return 0
 	}
 }
 
 func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) ([]scriptpkg.SegmentAssetCandidate, string) {
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool() || plan.ImagesPerScene <= 0 {
+	if plan == nil || !plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool() {
 		return nil, "BYPASSED"
 	}
+	targetImages := vidRushImageTarget(plan)
 	verified := 0
 	for _, candidate := range segment.Assets.Candidates {
 		if (candidate.Provider == scriptpkg.VidRushProviderInternetImages || candidate.Provider == scriptpkg.VidRushProviderImageGeneration) && readyVidRushCandidate(candidate) {
 			verified++
 		}
 	}
-	missing := plan.ImagesPerScene - verified
+	missing := targetImages - verified
 	if missing <= 0 {
 		return nil, "HIT_EXACT"
 	}
@@ -347,7 +345,7 @@ func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg
 		key := VidRushGenerationCacheKey(VidRushGenerationRequest{
 			SegmentTextHash: segment.TextHash, Prompt: prompt, Style: "cinematic",
 			Width: 1920, Height: 1080, Provider: scriptpkg.VidRushProviderImageGeneration,
-			PromptVersion: plan.PromptVersion, TargetImages: plan.ImagesPerScene,
+			PromptVersion: plan.PromptVersion, TargetImages: targetImages,
 		})
 		out = append(out, scriptpkg.SegmentAssetCandidate{
 			AssetID: key + fmt.Sprintf("-%d", i), Provider: scriptpkg.VidRushProviderImageGeneration,
@@ -357,6 +355,21 @@ func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg
 		})
 	}
 	return out, "MISS"
+}
+
+const vidRushDefaultImagesPerScene = 2
+
+func vidRushImageTarget(plan *scriptpkg.ResolvedGenerationPlan) int {
+	if plan == nil {
+		return 0
+	}
+	if plan.ImagesPerScene > 0 {
+		return plan.ImagesPerScene
+	}
+	if plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() || plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool() {
+		return vidRushDefaultImagesPerScene
+	}
+	return 0
 }
 
 func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {

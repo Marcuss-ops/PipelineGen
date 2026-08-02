@@ -117,6 +117,31 @@ func TestVidRushMaterializationGeneratesOnlyMissingImagesAndWarmsCache(t *testin
 	}
 }
 
+func TestVidRushMaterializationUsesDefaultImageTargetForGeneration(t *testing.T) {
+	provider := &generationMaterializationProviderStub{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessor(registry, materializationFinalizerStub{})
+	plan := &scriptpkg.ResolvedGenerationPlan{PromptVersion: "default-target-v1"}
+	plan.MediaPlan.ProviderPolicy.ImageGeneration = "enabled"
+
+	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "default-generation-target", Text: "a city at sunrise", TextHash: "default-generation-target-hash",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.VidRushSegments[0].Assets.SecondaryImages); got != vidRushDefaultImagesPerScene {
+		t.Fatalf("generated image count = %d, want default %d", got, vidRushDefaultImagesPerScene)
+	}
+	if provider.calls != vidRushDefaultImagesPerScene {
+		t.Fatalf("generation calls = %d, want default %d", provider.calls, vidRushDefaultImagesPerScene)
+	}
+}
+
 func TestVidRushMaterializationReportsRequiredImageCountFailure(t *testing.T) {
 	provider := &generationMaterializationProviderStub{fail: true}
 	registry := NewVidRushAssetProviderRegistry()
