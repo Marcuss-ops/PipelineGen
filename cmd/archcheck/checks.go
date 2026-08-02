@@ -76,6 +76,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_slot_strings_ban", scan.ScanSlotStringsBan},
 		{"percheck_searchmode_forced_ban", scan.ScanSearchModeForcedBan},
 		{"percheck_version_strings_ban", scan.ScanVersionStringsBan},
+		{"percheck_stopword_maps_in_app", scan.ScanStopwordMapsInApp},
 		{"percheck_index_pending_writer_ban", scan.ScanIndexPendingWriterBan},
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
 		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
