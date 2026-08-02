@@ -8,8 +8,11 @@ import puppeteer from 'puppeteer-core';
  * @returns {string} Path to temp directory
  */
 export function makeTempBrowserDir() {
-  const baseDir = fs.existsSync('/dev/shm') ? '/dev/shm' : os.tmpdir();
-  return fs.mkdtempSync(path.join(baseDir, 'velox-chrome-'));
+  // Chromium is launched with --disable-dev-shm-usage, so keeping the user
+  // data directory in /dev/shm only makes abandoned sessions consume the
+  // finite shared-memory mount. Use the regular temp filesystem and let the
+  // owning browser handle remove it during cleanup.
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'velox-chrome-'));
 }
 
 /**
@@ -138,6 +141,7 @@ export async function openBrowser(profileDir) {
     }
   }
 
+  const ownsUserDataDir = !profileDir || !fs.existsSync(profileDir);
   const userDataDir = resolveChromeProfile(profileDir);
   const executablePath = pickChromeExecutable();
   if (!executablePath) {
@@ -170,12 +174,31 @@ export async function openBrowser(profileDir) {
       userDataDir,
       args,
     });
-    return { browser, connected: false, launchError: null };
+    return {
+      browser,
+      connected: false,
+      launchError: null,
+      userDataDir,
+      ownsUserDataDir,
+    };
   } catch (err) {
     const msg = `[artlist-browser] puppeteer.launch failed: ${err && err.message ? err.message : String(err)} ` +
                 `(executablePath=${executablePath}, args=${args.join(' ')})`;
     console.error(msg);
-    return { browser: null, connected: false, launchError: msg };
+    if (ownsUserDataDir) {
+      try {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      } catch (_cleanupErr) {
+        // Preserve the launch diagnostic; the next startup can retry cleanup.
+      }
+    }
+    return {
+      browser: null,
+      connected: false,
+      launchError: msg,
+      userDataDir: null,
+      ownsUserDataDir: false,
+    };
   }
 }
 
@@ -196,13 +219,26 @@ export async function openBrowser(profileDir) {
  * @returns {Promise<{browser: object, connected: boolean, context: object, page: object}>}
  */
 export async function createBrowserPage(profileDir) {
-  const { browser, connected, launchError } = await openBrowser(profileDir);
+  const {
+    browser,
+    connected,
+    launchError,
+    userDataDir,
+    ownsUserDataDir,
+  } = await openBrowser(profileDir);
   if (!browser) {
     throw new Error(launchError || '[artlist-browser] openBrowser returned no browser (no diagnostic available)');
   }
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
-  return { browser, connected, context, page };
+  return {
+    browser,
+    connected,
+    context,
+    page,
+    userDataDir,
+    ownsUserDataDir,
+  };
 }
 
 /**
@@ -224,6 +260,9 @@ export async function closeBrowserHandle(handle) {
       } else if (handle.browser.close) {
         await handle.browser.close().catch(() => {});
       }
+    }
+    if (handle?.ownsUserDataDir && handle.userDataDir) {
+      await fs.promises.rm(handle.userDataDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 }

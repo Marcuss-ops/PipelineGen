@@ -22,6 +22,7 @@
 // state mutators + injected deps) and dispatches every incoming
 // request via routes.dispatchRequest.
 import http from 'node:http';
+import fs from 'node:fs';
 
 import { openBrowser, evaluateBrowserPreflight } from '../driver/browser.js';
 import { searchArtlist } from '../../artlist_search.js';
@@ -83,6 +84,8 @@ let lastSearchAt = null;
 // Surfaced via /health.browser_pid so operators can run `ps`,
 // `kill -9`, or signal the spawned process directly.
 let globalBrowserPid = null;
+let globalBrowserUserDataDir = null;
+let globalBrowserOwnsUserDataDir = false;
 
 // ─── Browser Lifecycle ────────────────────────────────────────────────────────
 async function getBrowser() {
@@ -98,9 +101,17 @@ async function getBrowser() {
   }
 
   console.log('[artlist-server] Launching persistent Chromium browser...');
-  const { browser, connected, launchError } = await openBrowser(PROFILE_DIR);
+  const {
+    browser,
+    connected,
+    launchError,
+    userDataDir,
+    ownsUserDataDir,
+  } = await openBrowser(PROFILE_DIR);
   globalBrowser = browser;
   globalBrowserConnected = connected;
+  globalBrowserUserDataDir = userDataDir || null;
+  globalBrowserOwnsUserDataDir = ownsUserDataDir === true;
   // FASE 9 (June 2026): a successful launch clears the previous
   // launchError; a failed launch preserves the message for /health.
   if (browser !== null && launchError === null) {
@@ -141,6 +152,11 @@ async function cleanupBrowser() {
     } finally {
       globalBrowser = null;
       globalBrowserConnected = false;
+      if (globalBrowserOwnsUserDataDir && globalBrowserUserDataDir) {
+        await fs.promises.rm(globalBrowserUserDataDir, { recursive: true, force: true }).catch(() => {});
+      }
+      globalBrowserUserDataDir = null;
+      globalBrowserOwnsUserDataDir = false;
       // PR-HEALTHCHECK-FAILFAST (P2, July 2026): reset browser_pid
       // and session-alive alongside the handle pointer. We DO NOT
       // reset lastLaunchError here — the diagnostic value is precisely
