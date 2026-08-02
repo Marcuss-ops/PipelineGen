@@ -311,6 +311,17 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	return out
 }
 
+// vidRushArtlistOnlyPlan identifies the strict V1 contract. Hybrid plans must
+// keep Artlist best-effort so verified image or generation fallbacks can still
+// complete the scene when Artlist is unavailable.
+func vidRushArtlistOnlyPlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
+		return false
+	}
+	return !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
+		!plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
+}
+
 // FinalizeVidRushBindings is the single binding finalization step for the
 // per-segment result. It accepts only provider candidates with provenance,
 // computes a stable candidate-set hash, and records binding cache state.
