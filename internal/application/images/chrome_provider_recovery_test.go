@@ -39,10 +39,42 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.uber.org/zap"
 )
+
+func TestChromeProvider_WarmupFailureReapsWorker(t *testing.T) {
+	root := t.TempDir()
+	bridges := filepath.Join(root, "bridges")
+	if err := os.MkdirAll(bridges, 0o755); err != nil {
+		t.Fatalf("create bridges dir: %v", err)
+	}
+	workerScript := filepath.Join(bridges, "slide_worker.py")
+	if err := os.WriteFile(workerScript, []byte("# fixture\n"), 0o644); err != nil {
+		t.Fatalf("create worker marker: %v", err)
+	}
+
+	pythonStub := filepath.Join(t.TempDir(), "python3")
+	if err := os.WriteFile(pythonStub, []byte("#!/bin/sh\nprintf '%s\\n' '{\"status\":\"error\",\"error\":\"login required\"}'\n"), 0o755); err != nil {
+		t.Fatalf("create python stub: %v", err)
+	}
+	t.Setenv("PATH", filepath.Dir(pythonStub)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	p := NewChromeImageProvider(root, 0, zap.NewNop())
+	p.mu.Lock()
+	err := p.ensureStarted(context.Background())
+	p.mu.Unlock()
+	if err == nil || !strings.Contains(err.Error(), "expected status=ready") {
+		t.Fatalf("warmup failure: want protocol error, got %v", err)
+	}
+	if p.started || p.cmd != nil || p.stdin != nil || p.stdout != nil || p.stdoutPipe != nil {
+		t.Fatalf("warmup failure left worker state live: started=%v cmd=%v stdin=%v stdout=%v stdoutPipe=%v", p.started, p.cmd, p.stdin, p.stdout, p.stdoutPipe)
+	}
+}
 
 // TestChromeProvider_NegativePromptForwarded (P1.1 §a) verifies the
 // wire-level forwarding of the negative_prompt field plus the canonical

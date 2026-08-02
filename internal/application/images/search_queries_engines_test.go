@@ -2,13 +2,81 @@ package images
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
 	"go.uber.org/zap"
 )
+
+func TestSearchDDGWideUsesVQDAndImagesEndpoint(t *testing.T) {
+	var requests []*http.Request
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		requests = append(requests, req.Clone(req.Context()))
+		body := ""
+		if req.URL.Path == "/" {
+			body = `<html><script>vqd="12345-678"</script></html>`
+		} else if req.URL.Path == "/i.js" {
+			payload := struct {
+				Results []map[string]any `json:"results"`
+			}{Results: []map[string]any{{
+				"image":  "https://images.example/red-fox.jpg",
+				"width":  1920,
+				"height": 1080,
+			}}}
+			encoded, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("marshal DDG fixture: %v", err)
+			}
+			body = string(encoded)
+		} else {
+			t.Fatalf("unexpected DDG path %q", req.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	})}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+
+	got := service.searchDDGWide(context.Background(), "red fox in snow")
+	if got != "https://images.example/red-fox.jpg" {
+		t.Fatalf("searchDDGWide() = %q, want fixture image URL", got)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("DDG requests = %d, want homepage + /i.js", len(requests))
+	}
+	if requests[1].URL.Path != "/i.js" {
+		t.Fatalf("second DDG path = %q, want /i.js", requests[1].URL.Path)
+	}
+	values := requests[1].URL.Query()
+	if values.Get("vqd") != "12345-678" || values.Get("q") != "red fox in snow" {
+		t.Fatalf("/i.js query = %v, missing q/vqd", values)
+	}
+	if _, err := url.Parse(got); err != nil {
+		t.Fatalf("returned URL is invalid: %v", err)
+	}
+}
+
+func TestSearchDDGWideInvalidVQDResponseReturnsEmpty(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("<html>no token</html>")),
+			Request:    req,
+		}, nil
+	})}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+	if got := service.searchDDGWide(context.Background(), "broken response"); got != "" {
+		t.Fatalf("searchDDGWide() = %q, want empty result", got)
+	}
+}
 
 type commonsRESTRoundTripper func(*http.Request) (*http.Response, error)
 

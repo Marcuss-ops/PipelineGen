@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -137,6 +138,38 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 // to ~200ms (parallel — slowest wins). Cancellable, panic-safe
 // via pkg/concurrent.Group's per-goroutine panic-recover wrapper.
 func (s *ImageStorageService) runRetrievalFallback(ctx context.Context, query, lang string) (imgURL, source, pageURL string) {
+	return s.runRetrievalFallbackForProvider(ctx, query, lang, "")
+}
+
+// runRetrievalFallbackForProvider resolves an explicit provider from the
+// shared registry when requested. The empty provider preserves the normal
+// fan-out behavior. Explicit selection is used by live canaries and keeps
+// provider verification independent from whichever fallback wins first.
+func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Context, query, lang string, provider asset.ImageProvider) (imgURL, source, pageURL string) {
+	if provider != "" {
+		s.log.Info("explicit retrieved provider selected", zap.String("provider", string(provider)), zap.String("query", query))
+		if s.retrievalRegistry == nil {
+			return "", "", ""
+		}
+		p := s.retrievalRegistry.SearchByName(provider)
+		if p == nil {
+			return "", "", ""
+		}
+		results, err := p.Search(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
+		if err != nil || len(results) == 0 {
+			return "", "", ""
+		}
+		hit := results[0]
+		if hit.PreviewURL == "" {
+			return "", "", ""
+		}
+		pageURL = hit.PageURL
+		if pageURL == "" {
+			pageURL = hit.PreviewURL
+		}
+		return hit.PreviewURL, string(p.Name()), pageURL
+	}
+
 	var backends []retrievalBackend
 
 	if s.retrievalRegistry == nil {

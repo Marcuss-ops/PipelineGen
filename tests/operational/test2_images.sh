@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/operational/test2_images.sh — Test 2: real online images + cache hit + anti-collision.
 #
-# Verifies, against the live server and real providers:
+# Verifies, against the live DuckDuckGo provider and the canonical ingest path:
 #   1. First-run retrieval for three queries.
 #   2. Cached replay returns the same asset with cache_hit=true.
 #   3. Anti-collision: semantically different jaguar queries produce different assets.
@@ -58,18 +58,20 @@ fetch_image() {
         -H "Authorization: Bearer $SMOKE_TOKEN" \
         --data-urlencode "q=${query}" \
         --data-urlencode "lang=en" \
+        --data-urlencode "provider=duckduckgo" \
         "$BASE_URL/api/images/retrieved/search")
     printf '%s\t%s\n' "$code" "$out"
 }
 
 verify_db_row() {
     local asset_id="$1" query="$2"
-    local row file_hash local_path db_provider width height source_query source_image_url source_page_url source_name
+    local row file_hash local_path db_provider origin width height source_query source_image_url source_page_url source_name
     row=$(sqlite3 -readonly "$DB_PATH" "
         SELECT
             COALESCE(file_hash, '') AS file_hash,
             COALESCE(local_path, '') AS local_path,
             COALESCE(provider, '') AS provider,
+            COALESCE(origin, '') AS origin,
             COALESCE(width, 0) AS width,
             COALESCE(height, 0) AS height,
             COALESCE(json_extract(metadata_json, '$.source_query'), '') AS source_query,
@@ -83,7 +85,7 @@ verify_db_row() {
         log_fail "missing SQLite row for $asset_id"
         return 1
     fi
-    IFS='|' read -r file_hash local_path db_provider width height source_query source_image_url source_page_url source_name <<< "$row"
+    IFS='|' read -r file_hash local_path db_provider origin width height source_query source_image_url source_page_url source_name <<< "$row"
 
     if [ "$file_hash" != "$asset_id" ]; then
         log_fail "hash mismatch for '$query' (asset_id=$asset_id hash=$file_hash)"
@@ -91,6 +93,10 @@ verify_db_row() {
     fi
     if [ "$source_query" != "$query" ]; then
         log_fail "source_query mismatch for '$query' (got '$source_query')"
+        return 1
+    fi
+    if [ "$db_provider" != "duckduckgo" ] || [ "$origin" != "retrieved" ]; then
+        log_fail "provider/origin mismatch for '$query' (provider=$db_provider origin=$origin)"
         return 1
     fi
     if [ -z "$source_image_url" ] || [ -z "$source_page_url" ] || [ -z "$source_name" ]; then
@@ -183,11 +189,11 @@ run_anti_collision() {
 
     code1=$(curl -sS --max-time 60 -G -o "$out1" -w '%{http_code}' \
         -H "Authorization: Bearer $SMOKE_TOKEN" \
-        --data-urlencode "q=${q1}" --data-urlencode "lang=en" \
+        --data-urlencode "q=${q1}" --data-urlencode "lang=en" --data-urlencode "provider=duckduckgo" \
         "$BASE_URL/api/images/retrieved/search")
     code2=$(curl -sS --max-time 60 -G -o "$out2" -w '%{http_code}' \
         -H "Authorization: Bearer $SMOKE_TOKEN" \
-        --data-urlencode "q=${q2}" --data-urlencode "lang=en" \
+        --data-urlencode "q=${q2}" --data-urlencode "lang=en" --data-urlencode "provider=duckduckgo" \
         "$BASE_URL/api/images/retrieved/search")
 
     if [[ ! "$code1" =~ ^2[0-9][0-9]$ || ! "$code2" =~ ^2[0-9][0-9]$ ]]; then

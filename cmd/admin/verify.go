@@ -308,21 +308,6 @@ func verifyClipIndexing(cfg *config.Config) error {
 		return fmt.Errorf("no clips found in artlist database")
 	}
 
-	scriptsDir := cfg.Paths.PythonScriptsDir
-	if scriptsDir == "" {
-		scriptsDir = "scripts"
-	}
-	scriptPath := filepath.Join(scriptsDir, "index_clips.py")
-	if _, err := os.Stat(scriptPath); err != nil {
-		return fmt.Errorf("index_clips.py not found at %s: %w", scriptPath, err)
-	}
-
-	pythonCmd := exec.Command("python3", scriptPath, "--db", artlistDB, "--clip-id", clipID)
-	pythonOutput, err := pythonCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("index_clips.py failed: %w (output: %s)", err, string(pythonOutput))
-	}
-
 	verifyCmd := exec.Command("sqlite3", artlistDB, "SELECT search_text FROM clips WHERE id = ?", clipID)
 	verifyOutput, err := verifyCmd.Output()
 	if err != nil {

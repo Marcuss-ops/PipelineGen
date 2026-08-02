@@ -82,9 +82,6 @@ func fallbackSpecialNames(segment string, limit int) []string {
 		if !capPattern.MatchString(w) {
 			continue
 		}
-		if isGenericImportantWord(strings.ToLower(w)) {
-			continue
-		}
 		if _, ok := seen[strings.ToLower(w)]; ok {
 			continue
 		}
@@ -114,7 +111,7 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 	// Skip first 2 words to avoid sentence-start function words
 	startIdx := 0
 	for i := 0; i < len(words) && i < 3; i++ {
-		if !textutil.IsStopWord(strings.ToLower(words[i])) && !isGenericImportantWord(strings.ToLower(words[i])) {
+		if !textutil.IsStopWord(strings.ToLower(words[i])) {
 			startIdx = i
 			break
 		}
@@ -125,9 +122,6 @@ func fallbackArtlistPhrases(segment string, limit int) []string {
 
 		// Skip if either word is a stop word
 		if textutil.IsStopWord(w1) || textutil.IsStopWord(w2) {
-			continue
-		}
-		if isGenericImportantWord(w1) || isGenericImportantWord(w2) {
 			continue
 		}
 		// Skip if either word is a function word (article, preposition, etc.)
@@ -159,7 +153,7 @@ func extractSignificantWords(text string, limit int) []string {
 	var out []string
 	for _, w := range words {
 		wLower := strings.ToLower(w)
-		if len(w) < 3 || textutil.IsStopWord(wLower) || isGenericImportantWord(wLower) {
+		if len(w) < 3 || textutil.IsStopWord(wLower) {
 			continue
 		}
 		if _, ok := seen[wLower]; ok {

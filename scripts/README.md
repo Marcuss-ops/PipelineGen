@@ -11,7 +11,6 @@ scripts/
 │   ├── book_processor/     #   Pipeline riscrittura libri (PDF/EPUB)
 │   ├── book_summarizer.py  #   Entry point CLI per book_processor
 │   ├── generate_embedding.py  # One-shot embedding E5
-│   ├── index_clips.py      #   Indicizzazione clip (search_text + embedding)
 │   ├── semantic_tagger.py  #   Metadata semantico via Ollama + taxonomy
 │   └── tts_edge.py         #   Text-to-speech via Edge TTS
 ├── services/              # Server ML persistenti (FastAPI, chiamati via HTTP)
@@ -63,7 +62,6 @@ Chiamati dal backend Go via `exec.Command`.
 |--------|-------------|------------|
 | `book_summarizer.py` + `book_processor/` | `internal/media/books/service.go` | Ollama, PyMuPDF, ffmpeg |
 | `semantic_tagger.py` | `internal/media/semantic/tagger.go` | Ollama, PyYAML |
-| `index_clips.py` | `internal/media/clipindexer/service.go` | sentence-transformers, spacy, yake |
 | `generate_embedding.py` | `internal/media/association/embeddings.go` | sentence-transformers |
 | `tts_edge.py` | `internal/media/audioasset/processor.go` | edge-tts |
 | `animate_image.py` | `docs/images/animate.go` | ffmpeg |
@@ -105,5 +103,4 @@ Script standalone per operazioni batch o one-shot. **Non chiamati da Go.**
 | Variable | Default | Used by |
 |----------|---------|---------|
 | `OLLAMA_URL` | `http://localhost:11434` | `bridges/semantic_tagger.py` |
-| `EMBEDDING_SERVER_URL` | `http://127.0.0.1:8001` | `bridges/index_clips.py` |
-
+| `EMBEDDING_SERVER_URL` | `http://127.0.0.1:8001` | `start_embedding_server.sh` / Go clip indexer |

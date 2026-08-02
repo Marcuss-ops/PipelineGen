@@ -3,7 +3,8 @@
     "paths": [
       "internal/domain/script/",
       "internal/application/scripts/",
-      "internal/api/script/"
+      "internal/api/script/",
+      "start_server.sh"
     ],
     "go_packages": [
       "./internal/domain/script/...",
@@ -22,7 +23,8 @@
     "paths": [
       "internal/application/scripts/usecase/",
       "internal/infrastructure/webresearch/",
-      "internal/infrastructure/database/sqlite/scripts/"
+      "internal/infrastructure/database/sqlite/scripts/",
+      "config/lexicons/"
     ],
     "go_packages": [
       "./internal/application/scripts/usecase/...",
@@ -102,7 +104,9 @@
     "paths": [
       "internal/application/indexing/",
       "internal/infrastructure/indexing/",
-      "internal/api/assets/clips/indexing/"
+      "internal/api/assets/clips/indexing/",
+      "scripts/bridges/index_clips.py",
+      "scripts/services/embedding_server/"
     ],
     "go_packages": [
       "./internal/application/indexing/...",
@@ -139,6 +143,7 @@
   "docs": {
     "paths": [
       "docs/",
+      "scripts/README.md",
       "internal/domain/document/",
       "internal/application/document/",
       "internal/application/documents/",

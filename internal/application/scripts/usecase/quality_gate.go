@@ -4,7 +4,7 @@
 // The gate runs after generation and postprocessing are complete and
 // checks:
 //   - detected language == requested language
-//   - source_text coverage >= 0.30
+//   - source_text coverage meets the configured policy threshold
 //   - clip_evidence coverage == 1.00 for clips_primary
 //   - unsupported claims == 0
 //   - target words within 80-120% tolerance

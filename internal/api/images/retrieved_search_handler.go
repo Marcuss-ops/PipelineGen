@@ -10,6 +10,8 @@
 package images
 
 import (
+	applicationimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,8 @@ import (
 // ── GET /api/images/retrieved/search ────────────────────────────────
 
 // RetrievedSearch handles GET /api/images/retrieved/search?q=...&lang=...
+// An optional provider=... selects that provider through the shared registry
+// for explicit live canaries; the default remains the normal fallback path.
 // Mirrors the pre-Step-10 /api/images/search semantics but is
 // scoped explicitly to the Retrieved territory. Single-result
 // response (search-then-download pipeline today; multi-result
@@ -35,10 +39,18 @@ func (h *ImagesHandler) RetrievedSearch(c *gin.Context) {
 		slug = textutil.Slugify(query)
 	}
 
-	searchResult, err := h.service.SearchAndDownloadDetailed(
-		c.Request.Context(),
-		slug, query, query, lang, nil,
-	)
+	var searchResult *applicationimages.SearchResult
+	var err error
+	provider := asset.ImageProvider(c.Query("provider"))
+	if provider != "" {
+		searchResult, err = h.service.SearchAndDownloadDetailedFromProvider(
+			c.Request.Context(), slug, query, query, lang, nil, provider,
+		)
+	} else {
+		searchResult, err = h.service.SearchAndDownloadDetailed(
+			c.Request.Context(), slug, query, query, lang, nil,
+		)
+	}
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return

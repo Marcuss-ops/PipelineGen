@@ -90,7 +90,7 @@ func filterProperNouns(segment string, items []string, profile *linguistics.Lexi
 		for _, w := range words {
 			if strings.HasSuffix(w, "'s") || strings.HasSuffix(w, "'") {
 				base := strings.TrimSuffix(strings.TrimSuffix(w, "'s"), "'")
-				if isGenericImportantWord(strings.ToLower(base)) || isSentenceStartCapitalizedOnly(strings.ToLower(base), segLower, profile) {
+				if isSentenceStartCapitalizedOnly(strings.ToLower(base), segLower, profile) {
 					goto skipItem
 				}
 			}
@@ -164,7 +164,7 @@ func filterArtlistKeywords(segment string, items []string, profile *linguistics.
 
 		allStop := true
 		for _, w := range words {
-			if _, ok := profile.StopWords[strings.ToLower(w)]; !ok && !isGenericImportantWord(strings.ToLower(w)) {
+			if _, ok := profile.StopWords[strings.ToLower(w)]; !ok {
 				allStop = false
 				break
 			}
@@ -370,7 +370,7 @@ func filterExactStrings(segment string, items []string, names bool, profile *lin
 		if item == "" || isNoisyExtractionCandidate(item) {
 			continue
 		}
-		if names && len(strings.Fields(item)) == 1 && (isGenericImportantWord(strings.ToLower(item)) || isStopWord(strings.ToLower(item), profile)) {
+		if names && len(strings.Fields(item)) == 1 && isStopWord(strings.ToLower(item), profile) {
 			continue
 		}
 		if textutil.ContainsCI(segment, item) {
