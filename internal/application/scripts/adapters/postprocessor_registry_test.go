@@ -31,6 +31,16 @@ type countingProcessor struct {
 	// was dead. Use `warnings` for propagated state instead.
 }
 
+type timingMetrics struct {
+	processors []string
+}
+
+func (m *timingMetrics) ObserveProcessorDuration(processor string, _ float64) {
+	m.processors = append(m.processors, processor)
+}
+
+func (*timingMetrics) ObserveProviderDuration(string, float64) {}
+
 func (p *countingProcessor) Name() adapterspkg.ProcessorName { return p.name }
 
 // PR 2 (June 2026): countingProcessor satisfies the Policy method
@@ -175,6 +185,23 @@ func TestRegistry_RunCallsEnabledProcessors(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("persistence-row-1 marker not in result.Warnings: %v", result.Warnings)
+	}
+}
+
+func TestRegistry_RecordsVidRushProcessorTiming(t *testing.T) {
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
+	metrics := &timingMetrics{}
+	r.SetVidRushTimingMetrics(metrics)
+	r.Register(&countingProcessor{name: "entities"})
+
+	_, err := r.Run(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		ID: "item-timing", Postprocessors: []string{"entities"},
+	}, adapterspkg.ProcessInput{Text: "timed text"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(metrics.processors) != 1 || metrics.processors[0] != "entities" {
+		t.Fatalf("processor timing observations = %#v, want [entities]", metrics.processors)
 	}
 }
 

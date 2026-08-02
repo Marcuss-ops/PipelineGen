@@ -19,6 +19,7 @@ type VidRushMaterializationProcessor struct {
 	providers *VidRushAssetProviderRegistry
 	finalizer scriptports.VidRushArtifactFinalizer
 	cache     scriptports.VidRushCachePort
+	metrics   VidRushTimingMetrics
 }
 
 type vidRushMaterializedSegment struct {
@@ -42,12 +43,16 @@ const (
 	vidRushImageAcquireSlack = 8
 )
 
-func NewVidRushMaterializationProcessor(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer) *VidRushMaterializationProcessor {
-	return NewVidRushMaterializationProcessorWithCache(providers, finalizer, nil)
+func NewVidRushMaterializationProcessor(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
+	return NewVidRushMaterializationProcessorWithCache(providers, finalizer, nil, metrics...)
 }
 
-func NewVidRushMaterializationProcessorWithCache(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort) *VidRushMaterializationProcessor {
-	return &VidRushMaterializationProcessor{providers: providers, finalizer: finalizer, cache: cache}
+func NewVidRushMaterializationProcessorWithCache(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, cache scriptports.VidRushCachePort, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
+	var m VidRushTimingMetrics
+	if len(metrics) > 0 {
+		m = metrics[0]
+	}
+	return &VidRushMaterializationProcessor{providers: providers, finalizer: finalizer, cache: cache, metrics: m}
 }
 
 func (p *VidRushMaterializationProcessor) Name() ProcessorName {
@@ -147,7 +152,9 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
+				acquireStart := time.Now()
 				local, err := provider.Acquire(acquireCtx, candidate)
+				observeVidRushProviderDuration(p.metrics, providerName+"_acquire", time.Since(acquireStart))
 				cancelAcquire()
 				if err != nil {
 					candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
@@ -156,7 +163,9 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				verifyCtx, cancelVerify := context.WithTimeout(ctx, vidRushVerifyTimeout)
+				verifyStart := time.Now()
 				verified, err := provider.Verify(verifyCtx, local)
+				observeVidRushProviderDuration(p.metrics, providerName+"_verify", time.Since(verifyStart))
 				cancelVerify()
 				if err != nil {
 					candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
@@ -166,7 +175,9 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				cacheKey := vidRushCandidateIdentity(candidate)
+				finalizeStart := time.Now()
 				persisted, err := p.finalizer.Finalize(ctx, verified)
+				observeVidRushProviderDuration(p.metrics, "vidrush_finalize", time.Since(finalizeStart))
 				if err != nil {
 					verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
 					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))

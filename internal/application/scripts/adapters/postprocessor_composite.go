@@ -38,6 +38,34 @@ type PostProcessorRegistry struct {
 	frozen     bool
 	mu         sync.RWMutex
 	log        *zap.Logger
+	timing     VidRushTimingMetrics
+}
+
+// SetVidRushTimingMetrics attaches the optional latency recorder used by the
+// canonical postprocessor walk. Counter-only metrics implementations remain
+// valid and simply do not receive duration observations.
+func (r *PostProcessorRegistry) SetVidRushTimingMetrics(metrics VidRushTimingMetrics) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.timing = metrics
+}
+
+func (r *PostProcessorRegistry) vidRushTimingMetrics() VidRushTimingMetrics {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.timing
+}
+
+// TimingMetrics returns the optional VidRush latency recorder so composition
+// can pass the same recorder to processors registered after the AI-backed set.
+func (r *PostProcessorRegistry) TimingMetrics() VidRushTimingMetrics {
+	return r.vidRushTimingMetrics()
 }
 
 // NewPostProcessorRegistry creates an empty, unfrozen registry.
