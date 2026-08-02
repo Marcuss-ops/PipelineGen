@@ -112,3 +112,31 @@ func TestVisualPlanningLockedAssignmentSkipsResolverAndPlannerCannotInvent(t *te
 		t.Fatalf("invalid planner changed asset=%q", result.VisualPlans[1].Layers[0].AssetID)
 	}
 }
+
+func TestVisualPlanningArtlistDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
+	resolver := &countingVisualResolver{}
+	proc := NewVisualPlanningProcessor(resolver, nil, nil, nil)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:       "job",
+		Language: "en",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Mode: mediadomain.MediaPlanModeHybrid,
+			ProviderPolicy: mediadomain.MediaProviderPolicy{
+				Artlist: mediadomain.MediaToggleDisabled,
+			},
+		},
+	}
+	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
+		{ID: "s1", SegmentID: "seg-1", Text: "scene"},
+	}}}
+	result, err := proc.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("resolver calls=%d, want 0 when Artlist is explicitly disabled", resolver.calls)
+	}
+	if result.Changed {
+		t.Fatalf("result changed unexpectedly: %+v", result)
+	}
+}

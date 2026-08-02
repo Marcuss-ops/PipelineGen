@@ -293,6 +293,38 @@ func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
 	}
 }
 
+func TestIngestDirect_RetrievedURLPreservesResolvedProvider(t *testing.T) {
+	svc := testImageService(t)
+	committer := svc.committer.(*recordingCommitter)
+	ctx := context.WithValue(context.Background(), RetrieverKey, "duckduckgo")
+	content := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	hash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+	result, err := svc.ingestDirect(
+		ctx,
+		"ddg-test",
+		"",
+		"",
+		content,
+		"test.jpg",
+		"https://images.example/fox.jpg",
+		"Retrieved image for provider test",
+		nil,
+		hash,
+		true,
+		true,
+	)
+	if err != nil {
+		t.Fatalf("ingestDirect returned error: %v", err)
+	}
+	if result.Provider != "duckduckgo" || result.Origin != "retrieved" {
+		t.Fatalf("result provenance = provider=%q origin=%q, want duckduckgo/retrieved", result.Provider, result.Origin)
+	}
+	if got := committer.lastReq.Metadata.SourceProvider; got != "duckduckgo" {
+		t.Fatalf("CommitAsset SourceProvider = %q, want duckduckgo", got)
+	}
+}
+
 // TestIngestDirect_CommitAsset_AtomicSSOTContract pins the SSOT
 // invariant that the legacy 2-transaction crash-window is closed:
 // CommitAsset is the only canonical producer of (media_assets row,

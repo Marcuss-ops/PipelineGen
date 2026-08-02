@@ -105,6 +105,16 @@ func (s *ImageStorageService) SearchDDGWide(ctx context.Context, query string) s
 	return s.searchDDGWide(ctx, query)
 }
 
+// SearchDDGWideMany exposes the bounded multi-result form used by the
+// provider-enabled VidRush path. The provider remains the sole owner of DDG
+// selection; this bridge preserves alternatives for the common materializer.
+func (s *ImageStorageService) SearchDDGWideMany(ctx context.Context, query string, limit int) []string {
+	if s == nil {
+		return nil
+	}
+	return s.searchDDGWideMany(ctx, query, limit)
+}
+
 // Compile-time assertion: *ImageStorageService satisfies the
 // retrieved.StorageBridge contract. Drift between the contract
 // and the parent-package implementation surfaces at build time.

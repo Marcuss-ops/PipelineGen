@@ -278,7 +278,18 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	if a == nil || a.resolver == nil {
 		return nil, fmt.Errorf("internetImageSearchAdapter: resolver not wired")
 	}
-	searcher, err := a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
+	var searcher imagesrouting.ImageSearcher
+	var err error
+	// VidRush's retrieved provider is explicitly Wikimedia Commons. Resolve it
+	// through the same routing/registry seam so every selected image carries
+	// an explicit license before it can become a binding winner.
+	if explicit, ok := a.resolver.(interface {
+		ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+	}); ok {
+		searcher, err = explicit.ResolveProvider("wikimedia_commons")
+	} else {
+		searcher, err = a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
+	}
 	if err != nil {
 		return nil, err
 	}

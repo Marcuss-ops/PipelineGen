@@ -54,6 +54,22 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ routing
 	if p == nil || p.bridge == nil || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
+	if many, ok := p.bridge.(interface {
+		SearchDDGWideMany(context.Context, string, int) []string
+	}); ok {
+		urls := many.SearchDDGWideMany(ctx, query, 10)
+		out := make([]routing.RetrievalSearchResult, 0, len(urls))
+		for _, imgURL := range urls {
+			if strings.TrimSpace(imgURL) == "" {
+				continue
+			}
+			out = append(out, routing.RetrievalSearchResult{
+				Provider: asset.ProviderDuckDuckGo, Origin: asset.ImageOriginRetrieved,
+				PreviewURL: imgURL, PageURL: imgURL, License: "Unknown", Author: "Unknown",
+			})
+		}
+		return out, nil
+	}
 	imgURL := p.bridge.SearchDDGWide(ctx, query)
 	if imgURL == "" {
 		return nil, nil

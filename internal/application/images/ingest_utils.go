@@ -60,12 +60,7 @@ func extractVQD(html string) string {
 }
 
 // pickBestImage selects the largest image from DuckDuckGo results.
-func pickBestImage(results []struct {
-	Image     string `json:"image"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
-	Thumbnail string `json:"thumbnail"`
-}) string {
+func pickBestImage(results []ddgImageResult) string {
 	best := ""
 	bestScore := 0
 	for _, r := range results {
@@ -80,17 +75,7 @@ func pickBestImage(results []struct {
 		if !strings.HasPrefix(img, "http") {
 			continue
 		}
-		score := 0
-		switch {
-		case r.Width >= 1920 && r.Height >= 1080:
-			score = 100
-		case r.Width >= 1280 && r.Height >= 720:
-			score = 70
-		case r.Width >= 800:
-			score = 40
-		default:
-			score = 10
-		}
+		score := ddgImageScore(r)
 		if score > bestScore {
 			bestScore = score
 			best = img

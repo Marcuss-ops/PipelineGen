@@ -65,7 +65,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	open := make([]mediamemory.SceneSpec, 0, len(input.SpecScene.Scenes))
 	for i, scene := range input.SpecScene.Scenes {
 		segmentID := visualSegmentID(plan, scene, i)
-		slots := visualSlots(plan.MediaPlan, segmentID)
+		slots := visualSlotsForPolicy(plan.MediaPlan, segmentID)
 		openSlots := make([]mediadomain.SlotKind, 0, len(slots))
 		for _, slot := range slots {
 			if _, ok := locked[segmentID+"/"+string(slot)]; !ok {
@@ -84,7 +84,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			v.SceneID, v.SegmentID, v.Text = scene.ID, segmentID, scene.Text
 			plans = append(plans, v)
 		}
-		for _, slot := range visualSlots(plan.MediaPlan, segmentID) {
+		for _, slot := range visualSlotsForPolicy(plan.MediaPlan, segmentID) {
 			if slot == mediadomain.SlotPrimaryVideo {
 				continue
 			}
@@ -202,6 +202,26 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain
 		}
 	}
 	return out
+}
+
+// visualSlotsForPolicy applies the provider policy to implicit visual slots.
+// A hybrid plan with no explicit searches historically synthesized a
+// primary_video slot, which caused the generic MediaMemory resolver to fan out
+// to Artlist even when the caller explicitly disabled Artlist. Explicit locked
+// assignments remain authoritative and are handled separately by Process.
+func visualSlotsForPolicy(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain.SlotKind {
+	slots := visualSlots(plan, segmentID)
+	if plan.ProviderPolicy.Artlist != mediadomain.MediaToggleDisabled {
+		return slots
+	}
+	filtered := make([]mediadomain.SlotKind, 0, len(slots))
+	for _, slot := range slots {
+		if slot == mediadomain.SlotPrimaryVideo {
+			continue
+		}
+		filtered = append(filtered, slot)
+	}
+	return filtered
 }
 func candidateExists(c []mediamemory.CandidateOption, id string) bool {
 	for _, x := range c {

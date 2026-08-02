@@ -94,6 +94,21 @@ func (r *RetrievalProviderRegistry) SearchAll(ctx context.Context, query string,
 	return nil, nil
 }
 
+// SearchProvider invokes exactly one provider from this registry. Unlike
+// SearchAll it never falls through to another source, which makes explicit
+// provider canaries deterministic while preserving the shared provider code.
+func (r *RetrievalProviderRegistry) SearchProvider(ctx context.Context, provider, query string, opts routing.RetrievalSearchOptions) ([]routing.RetrievalSearchResult, error) {
+	if r == nil {
+		return nil, nil
+	}
+	name := asset.ImageProvider(provider)
+	p := r.SearchByName(name)
+	if p == nil {
+		return nil, fmt.Errorf("retrieval provider %q is not registered", provider)
+	}
+	return p.Search(ctx, query, opts)
+}
+
 // SearchByName returns the provider matched by a given ImageProvider
 // constant, or nil when the registry has no such provider registered.
 // Used by tests + diagnostics for explicit-provider lookups.

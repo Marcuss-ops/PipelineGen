@@ -680,7 +680,9 @@ run_script_generate() {
     local seg_count ent_count binding_count unresolved_count
     seg_count=$(jq '[.segments[]?] | length' <<<"$result")
     ent_count=$(jq '[.segments[]?.insights.entities[]?] | length' <<<"$result")
-    binding_count=$(jq '[.segments[]?.assets.primary_video? | select(. != null)] | length' <<<"$result")
+	# A VidRush scene is bound either by its verified primary video or, for an
+	# image-only plan, by at least one verified/persisted secondary image.
+	binding_count=$(jq '[.segments[]? | select(.assets.primary_video != null or ([.assets.secondary_images[]? | select(.drive_link != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed")] | length) > 0)] | length' <<<"$result")
     unresolved_count=$(jq '[.segments[]? | select(.assets.primary_video == null and (.assets.candidates | length) == 0)] | length' <<<"$result")
 
     # Per-segment assertions
@@ -739,7 +741,9 @@ run_script_generate() {
 
     # Live acceptance is deliberately fail-closed. The prose in a scenario
     # is not evidence: when a manifest requests durable media, require the
-    # lifecycle fields and a Drive link in the returned binding.
+    # lifecycle fields and a Drive link in the returned binding. Rights are
+    # intentionally not part of the retrieved-image canary: this scenario
+    # verifies technical retrieval and persistence, not licensing metadata.
     if [[ "$(jq -r '.expect.require_primary_per_segment // false' "$SCENARIO_FILE")" == "true" ]]; then
         if ! jq -e 'all(.segments[]; .assets.primary_video != null and (.assets.primary_video.drive_link | length) > 0 and .assets.primary_video.acquisition_status == "acquired" and .assets.primary_video.verification_status == "verified" and .assets.primary_video.persistence_status == "persisted" and .assets.primary_video.index_status == "indexed" and .assets.primary_video.rights_status == "verified")' <<<"$result" >/dev/null; then
             printf '%sFAIL%s live Artlist acceptance: every segment needs a persisted, indexed, verified primary video\n' "$RED" "$RESET"
@@ -749,8 +753,8 @@ run_script_generate() {
     if [[ "$(jq -r '.expect.min_secondary_images_per_segment // 0' "$SCENARIO_FILE")" -gt 0 ]]; then
         local min_images
         min_images=$(jq -r '.expect.min_secondary_images_per_segment' "$SCENARIO_FILE")
-        if ! jq -e --argjson min "$min_images" 'all(.segments[]; ([.assets.secondary_images[]? | select((.drive_link // "") != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed" and .rights_status == "verified")] | length) >= $min)' <<<"$result" >/dev/null; then
-            printf '%sFAIL%s live image acceptance: every segment needs at least %s durable verified images\n' "$RED" "$RESET" "$min_images"
+        if ! jq -e --argjson min "$min_images" 'all(.segments[]; ([.assets.secondary_images[]? | select((.drive_link // "") != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed")] | length) >= $min)' <<<"$result" >/dev/null; then
+            printf '%sFAIL%s live image acceptance: every segment needs at least %s durable technically valid images\n' "$RED" "$RESET" "$min_images"
             assert_fail=1
         fi
     fi
