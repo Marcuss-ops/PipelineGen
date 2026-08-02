@@ -27,9 +27,11 @@
 	go-version-guard go-version-check node-version-check build clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
-	verify-no-secrets verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
+	verify-no-secrets verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full verify-split \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
-	verify-images verify-script verify-stock verify-clips verify-drive verify-research verify-qdrant verify-indexing verify-docs verify-voiceover verify-database verify-jobs verify-main verify-main-stock verify-main-clip verify-release \
+	verify-images verify-script verify-research verify-clips verify-stock verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api verify-ollama verify-youtube verify-artlist verify-node-scraper verify-main verify-main-stock verify-main-clip verify-release \
+	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api verify-race-ollama verify-race-youtube verify-race-artlist verify-race-node-scraper \
+	verify-pipeline-stock-only verify-pipeline-clip-only verify-pipeline-research verify-pipeline-document verify-pipeline-voiceover verify-pipeline-script verify-pipeline-youtube-stock verify-pipeline-vidrush verify-component-coverage verify-reconciliation-contracts reconcile-pipeline verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
 	regen-routes-yaml archcheck-strict \
 	verify-artlist verify-artlist-startup verify-artlist-search verify-artlist-stream \
 	verify-artlist-download verify-artlist-pipeline verify-artlist-drive verify-artlist-index \
@@ -49,7 +51,7 @@
 	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \
 	verify-vidrush-binding verify-vidrush-dedupe verify-vidrush-cache verify-vidrush-recovery verify-vidrush-concurrency \
 	verify-vidrush-fast verify-vidrush-local verify-vidrush-resilience verify-vidrush-release \
-	verify-vidrush-artlist-live verify-vidrush-images-live verify-vidrush-full-live benchmark-vidrush doctor-vidrush \
+	verify-vidrush-artlist-live verify-vidrush-images-live verify-vidrush-generation-live verify-vidrush-full-live benchmark-vidrush doctor-vidrush \
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
 	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
@@ -84,7 +86,8 @@ help:
 	@echo ""
 	@echo "VERIFY (registry-driven gate chain; foundation once per aggregate)"
 	@echo "  make verify-fast      Foundation (toolchain + secrets + format + tidy) + static (vet + build)"
-	@echo "  make verify-main      Daily headless gate: changed components + unit + Node + architecture"
+	@echo "  make verify-split     Certify the separation and reuse of all verification gates"
+	@echo "  make verify-main      Daily headless gate: foundation + static + changed components + architecture"
 	@echo "  make verify-main-stock  Fast Stock gate: targeted tests + architecture"
 	@echo "  make verify-main-clip   Fast Clip gate: targeted tests + architecture"
 	@echo "  make verify-race      Explicit race gate: unit + all registered components"
@@ -108,6 +111,17 @@ help:
 	@echo "  make verify-voiceover    Voiceover component"
 	@echo "  make verify-database     Database component"
 	@echo "  make verify-jobs         Jobs component"
+	@echo "  make verify-component-coverage  Fail-closed registry coverage gate"
+	@echo "  make reconcile-pipeline  Run canonical Drive/Qdrant reconciliation (dry-run)"
+	@echo "  make verify-node-scraper Node scraper component"
+	@echo "  make verify-race-<component>  Race suite for one component"
+	@echo "  make verify-pipeline-stock-only  Stock-only pipeline"
+	@echo "  make verify-pipeline-clip-only   Clip-only pipeline"
+	@echo "  make verify-pipeline-research    Research pipeline"
+	@echo "  make verify-pipeline-document    Script-to-document pipeline"
+	@echo "  make verify-pipeline-voiceover   Script-to-voiceover pipeline"
+	@echo "  make verify-pipeline-youtube-stock YouTube/stock pipeline"
+	@echo "  make verify-pipeline-vidrush     Vidrush pipeline"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
 	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
@@ -120,7 +134,10 @@ help:
 include make/build.mk
 include make/test.mk
 include make/verify.mk
+include make/verify.policy.mk
 include make/verify.components.mk
+include make/verify.pipelines.mk
+include make/reconciliation.mk
 include make/youtube_stock.mk
 include make/artlist.mk
 include make/live.mk

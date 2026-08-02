@@ -62,6 +62,7 @@ import (
 	"go.uber.org/zap"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
@@ -87,6 +88,7 @@ type HandlerGenerate struct {
 	factory      *submission.SubmitRequestFactory
 	log          *zap.Logger
 	validator    *usecase.PayloadValidator
+	preflight    scriptports.ResearchPreflight
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
@@ -106,6 +108,7 @@ func NewHandlerGenerate(
 	factory *submission.SubmitRequestFactory,
 	log *zap.Logger,
 	validator *usecase.PayloadValidator,
+	preflight ...scriptports.ResearchPreflight,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
@@ -116,12 +119,17 @@ func NewHandlerGenerate(
 	if factory == nil {
 		factory = submission.NewSubmitRequestFactory()
 	}
+	var researchPreflight scriptports.ResearchPreflight
+	if len(preflight) > 0 {
+		researchPreflight = preflight[0]
+	}
 	return &HandlerGenerate{
 		submitter:    submitter,
 		scriptgenSvc: scriptgenSvc,
 		factory:      factory,
 		log:          log,
 		validator:    validator,
+		preflight:    researchPreflight,
 	}
 }
 
@@ -177,6 +185,14 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 	if h.submitter == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "operations service not initialized"})
 		return
+	}
+	if h.preflight != nil {
+		for _, item := range cmd.Envelope.Items {
+			if err := h.preflight.Validate(c.Request.Context(), item); err != nil {
+				bindGeneratePreflightError(c, err)
+				return
+			}
+		}
 	}
 
 	// Application-layer SubmitRequest assembly (policy, scope,

@@ -121,29 +121,20 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 		return fmt.Errorf("failed to read source_version for CAS fence on %s: %w", clipID, retry.WrapTransient(svErr))
 	}
 
-	if s.cfg.ServerURL != "" {
-		err := s.indexViaAPI(ctx, clipID)
-		if err == nil {
-			// Embeddings are now in SQLite — transition to EMBEDDED.
-			if setErr := s.setIndexState(ctx, clipID, asset.StateEmbedded, ""); setErr != nil {
-				s.log.Error("failed to persist EMBEDDED state", zap.String("clip_id", clipID), zap.Error(setErr))
-			}
-			return s.finalizeIndex(ctx, clipID, contentHash, sourceVersion)
-		}
-		s.log.Warn("embedding server failed, falling back to script",
-			zap.String("clip_id", clipID),
-			zap.String("server_url", s.cfg.ServerURL),
-			zap.Error(err))
+	if s.cfg.ServerURL == "" {
+		err := retry.WrapTransient(fmt.Errorf("embedding server is not configured"))
+		_ = s.setIndexState(ctx, clipID, asset.StateEmbeddingFailed, err.Error())
+		return err
 	}
 
-	err = s.indexViaScript(ctx, clipID)
+	err = s.indexViaAPI(ctx, clipID)
 	if err != nil {
 		if setErr := s.setIndexState(ctx, clipID, asset.StateEmbeddingFailed, err.Error()); setErr != nil {
 			s.log.Error("failed to persist embedding failed state", zap.String("clip_id", clipID), zap.Error(setErr))
 		}
-		return fmt.Errorf("indexViaScript failed for %s: %w", clipID, err)
+		return retry.WrapTransient(fmt.Errorf("embedding server failed for %s: %w", clipID, err))
 	}
-	// Embeddings are now in SQLite via the script — transition to EMBEDDED.
+	// Embeddings are now in SQLite via the canonical API — transition to EMBEDDED.
 	if setErr := s.setIndexState(ctx, clipID, asset.StateEmbedded, ""); setErr != nil {
 		s.log.Error("failed to persist EMBEDDED state after script", zap.String("clip_id", clipID), zap.Error(setErr))
 	}

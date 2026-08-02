@@ -328,7 +328,7 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 //
 // godlike/07 input-validation hygiene: TrimSpace is applied uniformly
 // to BOTH the request-level default AND per-clip overrides so whitespace-
-// only folder_id values cannot bypass the gate (e.g. `"   "` is treated
+// only folder_id values cannot skip validation (e.g. `"   "` is treated
 // as the canonical empty string). Otherwise an attacker could send
 // `{"folder_id":"   "}` and have the gate mistakenly pass.
 func effectiveFolderID(req *BatchRegisterRequest) string {

@@ -65,6 +65,7 @@ type ResearchPolicy struct {
 	MaxRounds        int  `json:"max_rounds,omitempty"`
 	MinSources       int  `json:"min_sources,omitempty"`
 	TimeoutSeconds   int  `json:"timeout_seconds,omitempty"`
+	FreshnessDays    int  `json:"freshness_days,omitempty"`
 	RequireCitations bool `json:"require_citations,omitempty"`
 }
 

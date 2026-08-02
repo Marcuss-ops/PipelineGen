@@ -5,11 +5,13 @@
 package usecase
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -25,6 +27,18 @@ func buildGenerationResult(
 	engineResult *EngineResult,
 	postResult *adapters.PipelineResult,
 	timings scriptpkg.GenerationTimings,
+) *scriptpkg.GenerationResult {
+	return buildGenerationResultWithCache(item, plan, engineResult, postResult, timings, nil, context.Background())
+}
+
+func buildGenerationResultWithCache(
+	item scriptpkg.GenerationItemV2,
+	plan scriptpkg.ResolvedGenerationPlan,
+	engineResult *EngineResult,
+	postResult *adapters.PipelineResult,
+	timings scriptpkg.GenerationTimings,
+	cache scriptports.VidRushCachePort,
+	ctx context.Context,
 ) *scriptpkg.GenerationResult {
 	cacheHit := engineResult.CacheStatus == "exact_hit"
 
@@ -101,7 +115,7 @@ func buildGenerationResult(
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
 		if len(postResult.VidRushSegments) > 0 {
-			result.Segments = adapters.FinalizeVidRushBindings(postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings)
+			result.Segments = adapters.FinalizeVidRushBindingsWithCache(ctx, postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings, cache)
 			if cacheHit {
 				promoteCachedVidRushStates(result.Segments)
 			}

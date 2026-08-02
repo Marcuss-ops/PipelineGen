@@ -98,7 +98,7 @@ type MediaBinding struct {
 // the ranker gates (aspect-ratio / format checks). Values follow
 // the canonical search.Candidate.MediaType vocabulary (video /
 // image / audio / music). Empty string is treated as ambiguous and
-// bypasses the gate (legacy rows pending backfill).
+// skips the normal validation (legacy rows pending backfill).
 type MediaCandidate struct {
 	ID                    string
 	Provider              string

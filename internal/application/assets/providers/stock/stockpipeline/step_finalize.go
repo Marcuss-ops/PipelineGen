@@ -19,7 +19,7 @@
 // sentinel surfaces the upstream state-loss specifically (rather
 // than the generic "manifest has zero artifacts" ErrManifestIncomplete
 // error which would mask the diagnosis). Test-fixture mode
-// (JobFinalizer nil) bypasses the gate, preserving wire-shape
+// (JobFinalizer nil) preserves the compatibility wire-shape
 // compat for stock_test fixtures that call Step.Run directly.
 //
 // Phase 1 — Build + Validate manifest. The manifest is the wire

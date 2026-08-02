@@ -51,6 +51,7 @@ func NewRetrievalProviderRegistry(log *zap.Logger, providers []RetrievalProvider
 func NewDefaultProviderRegistry(bridge StorageBridge, client httpDoer, log *zap.Logger, lang, searxngURL string) *RetrievalProviderRegistry {
 	return NewRetrievalProviderRegistry(log, []RetrievalProvider{
 		NewWikipediaProvider(bridge, client, log, lang),
+		NewWikimediaCommonsProvider(bridge, log),
 		NewSearXNGProvider(bridge, client, log, searxngURL),
 		NewDuckDuckGoProvider(bridge, client, log),
 		NewDriveImageProvider(bridge, log),

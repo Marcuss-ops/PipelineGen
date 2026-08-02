@@ -4,8 +4,8 @@ package linguistics
 // Phase 8 split: morphology domain. Suffixes drive lemma-stripping
 // heuristics in intent resolvers (e.g., "running" → "run" via "-ing"
 // stripping). Per-language suffixes live in the LexiconProfile.
-// VerbSuffixes field; the built-in fallback lexicon (lexicon_builtin.go)
-// supplies a cross-language union as the safety-net default.
+// VerbSuffixes field; missing language configuration is an error rather than
+// a synthesized cross-language safety net.
 func (r *LexiconRegistry) VerbSuffixes(language string) []string {
 	return r.Resolve(language).VerbSuffixes
 }

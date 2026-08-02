@@ -25,6 +25,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 DEFAULT_REGISTRY = Path("config/verify-components.json")
 DEFAULT_REPORT = Path("artifacts/verify/changed-components.json")
+DEFAULT_LATEST_REPORT = Path("artifacts/verify/latest.json")
 DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
 EXIT_CONFIG_ERROR = 2
 EXIT_FAILURE = 1
@@ -37,12 +38,26 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "Makefile",
         "go.mod",
         "go.sum",
+        "config.example.yaml",
         "config/verify-components.json",
+        "config/verify-pipelines.json",
         "scripts/ci/verify-component.py",
+        "scripts/ci/verify-all-components.py",
+        "scripts/ci/verify-pipeline.py",
         "scripts/ci/verify-changed-components.py",
     }
 )
-ALL_COMPONENT_PREFIXES = ("make/", "scripts/hooks/")
+ALL_COMPONENT_PREFIXES = (
+    "make/",
+    "scripts/hooks/",
+    "scripts/ci/",
+    "internal/",
+    "cmd/",
+    "pkg/",
+    "tests/",
+    "migrations/",
+)
+IGNORED_CHANGED_PREFIXES = ("artifacts/", "tmp/", "data/")
 
 
 class ChangedComponentsError(RuntimeError):
@@ -71,6 +86,21 @@ class Execution:
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _git_sha(repo_root: Path) -> str | None:
+    import subprocess
+
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo_root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else None
 
 
 def _load_component_runner(path: Path) -> ComponentRunner:
@@ -171,7 +201,13 @@ def collect_changed_files(repo_root: Path, base_ref: str | None) -> GitChanges:
     paths.update(_git_command(repo_root, ["diff", "--name-only", "-z"]))
     paths.update(_git_command(repo_root, ["diff", "--cached", "--name-only", "-z"]))
     paths.update(_git_command(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"]))
-    normalized = tuple(sorted(normalize_path(path) for path in paths if normalize_path(path)))
+    normalized = tuple(
+        sorted(
+            path
+            for path in (normalize_path(item) for item in paths)
+            if path and not path.startswith(IGNORED_CHANGED_PREFIXES)
+        )
+    )
     return GitChanges(
         files=normalized,
         base_ref=base_ref,
@@ -224,13 +260,15 @@ def map_changed_files(
 
     for raw_path in sorted({normalize_path(item) for item in changed_files if normalize_path(item)}):
         matches: list[str] = []
-        if _requires_all_components(raw_path):
+        for name, definition in component_items:
+            paths = definition.get("paths", [])
+            if any(_path_matches(raw_path, registered) for registered in paths):
+                matches.append(name)
+        # Global inputs and known repository source domains fall back to a
+        # complete run only when no narrower registry owner exists. A truly
+        # unknown path remains unmapped and fails closed.
+        if not matches and _requires_all_components(raw_path):
             matches = [name for name, _ in component_items]
-        else:
-            for name, definition in component_items:
-                paths = definition.get("paths", [])
-                if any(_path_matches(raw_path, registered) for registered in paths):
-                    matches.append(name)
         if not matches:
             unmapped.append(raw_path)
             if run_all_when_unmapped:
@@ -284,8 +322,10 @@ def run_changed_components(
     )
     all_components = list(registry)
     started = _now_utc()
+    git_sha = _git_sha(repo_root)
     if not changes.files:
         report: dict[str, Any] = {
+            "schema_version": 1,
             "mode": mode,
             "base_ref": changes.base_ref,
             "base_available": changes.base_available,
@@ -298,6 +338,8 @@ def run_changed_components(
             "skipped": all_components,
             "components": {},
             "started_at": started,
+            "finished_at": _now_utc(),
+            "git_sha": git_sha,
             "duration_ms": 0,
             "dry_run": dry_run,
             "final": "PASS",
@@ -316,12 +358,24 @@ def run_changed_components(
             mapping[path] = list(all_components)
         unmapped = []
 
+    if unmapped and run_all_when_unmapped:
+        # The caller explicitly chose the conservative fallback: every
+        # component is being verified, so these paths are not skipped or
+        # unverified. Keep the report fail-closed for the non-opt-in path,
+        # while making the opt-in result accurately report PASS/FAIL from the
+        # full component run itself.
+        impacted = all_components
+        for path in unmapped:
+            mapping[path] = list(all_components)
+        unmapped = []
+
     if unmapped and not run_all_when_unmapped:
         # A changed path with no registry owner is unsafe to silently skip,
         # even when another changed path mapped successfully. Operators can
         # opt into a conservative full run explicitly with
         # --run-all-when-unmapped.
         report = {
+            "schema_version": 1,
             "mode": mode,
             "base_ref": changes.base_ref,
             "base_available": changes.base_available,
@@ -334,6 +388,8 @@ def run_changed_components(
             "skipped": all_components,
             "components": {},
             "started_at": started,
+            "finished_at": _now_utc(),
+            "git_sha": git_sha,
             "duration_ms": 0,
             "dry_run": dry_run,
             "final": "FAIL",
@@ -345,6 +401,7 @@ def run_changed_components(
 
     if not impacted:
         report = {
+            "schema_version": 1,
             "mode": mode,
             "base_ref": changes.base_ref,
             "base_available": changes.base_available,
@@ -357,6 +414,8 @@ def run_changed_components(
             "skipped": all_components,
             "components": {},
             "started_at": started,
+            "finished_at": _now_utc(),
+            "git_sha": git_sha,
             "duration_ms": 0,
             "dry_run": dry_run,
             "final": "FAIL",
@@ -394,6 +453,7 @@ def run_changed_components(
     if code == 0 and not report_valid:
         code = EXIT_FAILURE
     report = {
+        "schema_version": 1,
         "mode": mode,
         "base_ref": changes.base_ref,
         "base_available": changes.base_available,
@@ -407,6 +467,8 @@ def run_changed_components(
         "components": component_report.get("components", {}),
         "component_report": component_report,
         "started_at": started,
+        "finished_at": _now_utc(),
+        "git_sha": git_sha,
         "duration_ms": component_report.get("duration_ms", 0),
         "dry_run": dry_run,
         "final": "PASS" if code == 0 else "FAIL",
@@ -473,6 +535,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_FAILURE
 
     report = execution.report
+    # Keep the standard global report path useful for the pre-push gate while
+    # retaining the richer changed-components report as a separate artifact.
+    _write_report(root / DEFAULT_LATEST_REPORT, report)
     print(
         f"verify-changed-components mode={report['mode']} "
         f"changed_files={len(report['changed_files'])} "

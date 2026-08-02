@@ -173,7 +173,7 @@ func NewReuploadUseCase(
 // destinationBySource is the canonical source → delivery.DestinationKey
 // map. The lookup is the SOLE canonical dispatcher for reupload
 // destination routing (F2.9, June 2026); future source extensions
-// add a row here. Map lookup bypasses the C2-C AST gate's
+// add a row here. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection (godlike/06 SSOT).
 var destinationBySource = map[string]delivery.DestinationKey{
 	"artlist": delivery.DestinationArtlist,

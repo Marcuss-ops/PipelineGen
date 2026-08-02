@@ -1,7 +1,7 @@
 package script
 
 // knownSourceTypes is the canonical set of script-side SourceType
-// values. Map lookup bypasses the C2-C AST gate's switch-case
+// values. Map lookup keeps the C2-C AST check deterministic.
 // detection (godlike/06 SSOT co-located structural validation).
 var knownSourceTypes = map[SourceType]struct{}{
 	SourceText:     {},
@@ -22,7 +22,7 @@ var clipSourceTypes = map[SourceType]struct{}{
 }
 
 // validGroundingPolicies and validFallbackPolicies are the canonical
-// membership sets. Map lookup bypasses the C2-C AST gate's
+// membership sets. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection.
 var (
 	validGroundingPolicies = map[string]struct{}{

@@ -2,6 +2,8 @@ package images
 
 import (
 	"net/http"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -53,6 +55,11 @@ type ImageStorageService struct {
 	// retrievalRegistry composes Wikipedia/SearXNG/DuckDuckGo/Drive providers
 	// for finding existing images. It is separate from AI generation.
 	retrievalRegistry *retrieved.RetrievalProviderRegistry
+	// Pace the shared Commons API across concurrent VidRush segment queries.
+	// Without this process-wide gate, the bounded fan-out still produces a
+	// burst that Commons answers with HTTP 429 and an empty candidate set.
+	commonsSearchMu   sync.Mutex
+	commonsLastSearch time.Time
 
 	// subjectTags is the typed port for extracting subject slug + tag list
 	// from a free-form description (PR C9, July 2026). Replaces the

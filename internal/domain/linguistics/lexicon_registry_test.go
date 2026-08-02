@@ -8,6 +8,19 @@ import (
 
 func writeLexiconFile(t *testing.T, dir, name string, lines ...string) {
 	t.Helper()
+	root := filepath.Dir(dir)
+	if filepath.Base(dir) != "fallback" {
+		fallbackDir := filepath.Join(root, "fallback")
+		if err := os.MkdirAll(fallbackDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		fallbackPath := filepath.Join(fallbackDir, "stopwords.txt")
+		if _, err := os.Stat(fallbackPath); os.IsNotExist(err) {
+			if err := os.WriteFile(fallbackPath, []byte("the\nand\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	path := filepath.Join(dir, name)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		t.Fatal(err)
@@ -79,7 +92,6 @@ func TestLexiconRegistry_ReturnsDefensiveCopies(t *testing.T) {
 
 func TestLexiconRegistry_Fallback(t *testing.T) {
 	dir := t.TempDir()
-	// Only create an "it" profile, no fallback.
 	itDir := filepath.Join(dir, "it")
 	writeLexiconFile(t, itDir, "stopwords.txt", "il", "la", "lo")
 
@@ -94,17 +106,8 @@ func TestLexiconRegistry_Fallback(t *testing.T) {
 		t.Error("expected 'il' in it stopwords")
 	}
 
-	// French has no profile; should use built-in fallback.
-	frProfile := r.Resolve("fr")
-	if frProfile == nil {
-		t.Fatal("expected non-nil profile for fr (fallback)")
-	}
-	if _, ok := frProfile.StopWords["the"]; !ok {
-		t.Error("expected 'the' in fallback stopwords")
-	}
-	// French-specific words should NOT be in the fallback.
-	if _, ok := frProfile.StopWords["le"]; !ok {
-		t.Error("expected 'le' in fallback stopwords")
+	if _, err := r.ResolveRequired("fr"); err == nil {
+		t.Fatal("expected missing language to return an error")
 	}
 }
 
@@ -230,68 +233,87 @@ func TestLexiconRegistry_PhrasePolicyStrictParsing(t *testing.T) {
 	}
 }
 
-func TestLexiconRegistry_FallbackHasBuiltInData(t *testing.T) {
-	// Create registry with NO directories at all.
+func TestLexiconRegistry_RequiresFallbackAndLanguageRoot(t *testing.T) {
 	dir := t.TempDir()
-	r, err := NewLexiconRegistry(dir)
-	if err != nil {
-		t.Fatalf("NewLexiconRegistry: %v", err)
+	if _, err := NewLexiconRegistry(dir); err == nil {
+		t.Fatal("expected missing fallback profile to fail")
+	}
+	if _, err := NewLexiconRegistry(""); err == nil {
+		t.Fatal("expected empty root to fail")
+	}
+	if _, err := NewLexiconRegistry(filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("expected missing root to fail")
 	}
 
-	// German resolves to the built-in fallback (no "de" directory in the empty dir).
-	p := r.Resolve("de")
-	if p == nil {
-		t.Fatal("expected non-nil profile (built-in fallback)")
+	if err := os.MkdirAll(filepath.Join(dir, "en"), 0755); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := p.StopWords["the"]; !ok {
-		t.Error("expected built-in fallback to contain 'the'")
+	if err := os.WriteFile(filepath.Join(dir, "en", "stopwords.txt"), []byte("the\n"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := p.StopWords["le"]; !ok {
-		t.Error("expected built-in fallback to contain 'le'")
+	if _, err := NewLexiconRegistry(dir); err == nil {
+		t.Fatal("expected fallback requirement to fail before fallback is created")
 	}
 }
 
-func TestDefaultLexicon_FallbackAvailable(t *testing.T) {
-	lex := DefaultLexicon()
-	if lex == nil {
-		t.Fatal("DefaultLexicon() returned nil")
+func TestLexiconConfigChangeChangesBehavior(t *testing.T) {
+	dir := t.TempDir()
+	enDir := filepath.Join(dir, "en")
+	writeLexiconFile(t, enDir, "stopwords.txt", "before")
+
+	first, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := first.StopWords("en")["before"]; !ok {
+		t.Fatal("initial configured word was not loaded")
 	}
 
-	// German has its own built-in profile with German-specific stop words.
-	deProfile := lex.Resolve("de")
-	if deProfile == nil {
-		t.Fatal("expected non-nil profile for de")
+	writeLexiconFile(t, enDir, "stopwords.txt", "after")
+	second, err := NewLexiconRegistry(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := deProfile.StopWords["der"]; !ok {
-		t.Error("expected 'der' in German profile stop words")
+	if _, ok := second.StopWords("en")["after"]; !ok {
+		t.Fatal("updated configured word was not loaded")
 	}
+	if _, ok := second.StopWords("en")["before"]; ok {
+		t.Fatal("stale configured word remained after reload")
+	}
+}
 
-	// An unresolvable language (e.g. Japanese) falls back to the union.
-	jaProfile := lex.Resolve("ja")
-	if jaProfile == nil {
-		t.Fatal("expected non-nil profile for ja (fallback)")
+func TestSetDefaultLexiconRejectsNil(t *testing.T) {
+	if err := SetDefaultLexicon(nil); err == nil {
+		t.Fatal("expected nil default registry to return an error")
 	}
-	if _, ok := jaProfile.StopWords["the"]; !ok {
-		t.Error("expected 'the' in fallback stop words for unresolvable language")
-	}
+}
+
+func TestDefaultLexiconFailsBeforeBootstrap(t *testing.T) {
+	defaultLexiconMu.Lock()
+	previous := defaultLexicon
+	defaultLexicon = nil
+	defaultLexiconMu.Unlock()
+	defer func() {
+		defaultLexiconMu.Lock()
+		defaultLexicon = previous
+		defaultLexiconMu.Unlock()
+	}()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected DefaultLexicon to fail fast")
+		}
+	}()
+	_ = DefaultLexicon()
 }
 
 func TestLexiconRegistry_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	// Create an empty directory structure.
+	// Create an empty directory structure without fallback.
 	os.MkdirAll(filepath.Join(dir, "en"), 0755)
 
-	r, err := NewLexiconRegistry(dir)
-	if err != nil {
-		t.Fatalf("NewLexiconRegistry: %v", err)
-	}
-
-	p := r.Resolve("en")
-	if p == nil {
-		t.Fatal("expected non-nil profile for en")
-	}
-	if len(p.StopWords) != 0 {
-		t.Errorf("expected empty stopwords, got %d", len(p.StopWords))
+	if _, err := NewLexiconRegistry(dir); err == nil {
+		t.Fatal("expected empty root without fallback to fail")
 	}
 }
 
@@ -371,8 +393,8 @@ func TestLexiconRegistry_HasProfileAndProfileCount(t *testing.T) {
 	if r.HasProfile("fr") {
 		t.Error("expected HasProfile(\"fr\") = false (only fallback available)")
 	}
-	if r.ProfileCount() != 1 {
-		t.Errorf("expected ProfileCount() = 1, got %d", r.ProfileCount())
+	if r.ProfileCount() != 2 {
+		t.Errorf("expected ProfileCount() = 2 including fallback, got %d", r.ProfileCount())
 	}
 }
 

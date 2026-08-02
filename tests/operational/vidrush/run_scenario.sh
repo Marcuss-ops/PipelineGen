@@ -69,6 +69,11 @@ SCENARIO_DESC=$(jq -r '.description // ""' <<<"$SCENARIO")
 SCENARIO_TYPE="script_generate"
 if [[ "$SCENARIO_ID" == 00_* ]]; then
     SCENARIO_TYPE="preflight"
+else
+    manifest_type=$(jq -r '.scenario_type // "script_generate"' <<<"$SCENARIO")
+    case "$manifest_type" in
+        idempotency|concurrency|failure_injection|render_handoff) SCENARIO_TYPE="$manifest_type" ;;
+    esac
 fi
 
 # Override poll timeout from scenario manifest (heavier scenarios need
@@ -97,7 +102,7 @@ report_json() {
         --arg status "$status" \
         --arg cache_mode "$cache_mode" \
         --argjson total_ms "$total_ms" \
-        --argjson extra "$extra" \
+        --arg extra_json "$extra" \
     '{
         scenario_id: $scenario_id,
         git_sha: $git_sha,
@@ -109,7 +114,7 @@ report_json() {
         counts: { segments: 0, entities: 0, provider_requests: 0, bindings: 0, unresolved: 0 },
         resources: { cpu_peak_pct: 0, rss_peak_mb: 0, goroutines_peak: 0 },
         artifacts: { sqlite_verified: false, qdrant_verified: false, drive_verified: false, render_verified: false }
-    } * $extra'
+    } * (($extra_json | fromjson?) // {})'
 }
 
 # ── Dry-run path ───────────────────────────────────────────────────────
@@ -122,8 +127,19 @@ if [[ "$DRY_MODE" == "1" ]]; then
         jq -r '.checks.dependencies[]? | "    \(.name) (\(.kind)) [obligatory=\(.obligatory)]"' "$SCENARIO_FILE" 2>/dev/null || true
         jq -r '.checks.system[]? | "    \(.name) (\(.kind)) [obligatory=\(.obligatory)]"' "$SCENARIO_FILE" 2>/dev/null || true
     else
-        echo "  endpoint: POST /api/script/generate"
-        echo "  items: $(jq '.payload.items | length' "$SCENARIO_FILE")"
+        if [[ "$SCENARIO_TYPE" == "concurrency" ]]; then
+            echo "  endpoint: POST /api/script/generate (provider-enabled waves: 1 → 2 → 5)"
+            echo "  levels: $(jq -r '[.concurrency_levels[] | select(.concurrent_jobs <= 5) | .concurrent_jobs] | join(", ")' "$SCENARIO_FILE")"
+        elif [[ "$SCENARIO_TYPE" == "idempotency" ]]; then
+            echo "  endpoint: POST /api/script/generate (replay/conflict/concurrent cases)"
+        elif [[ "$SCENARIO_TYPE" == "failure_injection" ]]; then
+            echo "  execution: BLOCKED until explicit provider/infra failure injection is configured"
+        elif [[ "$SCENARIO_TYPE" == "render_handoff" ]]; then
+            echo "  execution: BLOCKED until scene worker and jobs.submit credentials are configured"
+        else
+            echo "  endpoint: POST /api/script/generate"
+            echo "  items: $(jq '.payload.items | length' "$SCENARIO_FILE")"
+        fi
     fi
     report_json "DRY_RUN" "" "" "{}" | jq '.'
     exit 0
@@ -314,6 +330,208 @@ run_preflight() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
+# CONCURRENCY PATH (provider-enabled, bounded 1 → 2 → 5)
+# ══════════════════════════════════════════════════════════════════════════
+run_concurrency_wave() {
+    local payload="$1" width="$2" label="$3" wave_dir="$4"
+    local base_url="http://${SMOKE_API_BASE}"
+    local wave_start_ms wave_end_ms
+    wave_start_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+    local -a pids=() jobs=()
+    local i
+    for ((i=0; i<width; i++)); do
+        local response_file="$wave_dir/${label}-${i}.body"
+        local code_file="$wave_dir/${label}-${i}.code"
+        local error_file="$wave_dir/${label}-${i}.err"
+        local idem_key="vidrush-${SCENARIO_ID}-${label}-${i}-$(smoke_gen_uuid)"
+        (
+            curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
+                -X POST -o "$response_file" -w '%{http_code}' \
+                -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+                -H "Idempotency-Key: ${idem_key}" \
+                -H 'Content-Type: application/json' \
+                --data "$payload" "$base_url/api/script/generate" >"$code_file" 2>"$error_file" || true
+        ) &
+        pids+=("$!")
+    done
+    local pid
+    for pid in "${pids[@]}"; do
+        wait "$pid" || true
+    done
+
+    local failures=0
+    for ((i=0; i<width; i++)); do
+        local code job_id
+        code=$(cat "$wave_dir/${label}-${i}.code" 2>/dev/null || echo 0)
+        job_id=$(jq -r '.job_id // empty' "$wave_dir/${label}-${i}.body" 2>/dev/null || true)
+        if [[ "$code" != "202" || -z "$job_id" ]]; then
+            failures=$((failures + 1))
+            continue
+        fi
+        jobs+=("$job_id")
+    done
+    if (( failures > 0 )); then
+        wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+        jq -n --arg label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
+            --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
+            '{label:$label,width:$width,dispatch_failures:$dispatch_failures,terminal:[],wall_ms:$wall_ms}'
+        return 1
+    fi
+
+    local -a terminal=()
+    local job_id
+    local failed_terminal=0
+    for job_id in "${jobs[@]}"; do
+        local deadline=$(( $(date +%s) + SMOKE_POLL_TIMEOUT_SECONDS ))
+        local status="timeout"
+        while (( $(date +%s) < deadline )); do
+            local body_file="$wave_dir/${label}-${job_id}.poll"
+            local code
+            code=$(curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
+                -o "$body_file" -w '%{http_code}' \
+                -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+                "$base_url/api/jobs/${job_id}" 2>/dev/null || echo 0)
+            if [[ "$code" == "200" ]]; then
+                status=$(jq -r '.status // .job.status // "unknown"' "$body_file" 2>/dev/null || echo unknown)
+                case "$status" in
+                    completed|SUCCEEDED|failed|cancelled|dead_letter|FAILED) break ;;
+                esac
+            fi
+            sleep 1
+        done
+        if [[ "$status" != "completed" && "$status" != "SUCCEEDED" ]]; then
+            failed_terminal=$((failed_terminal + 1))
+        fi
+        terminal+=("$status")
+    done
+    wave_end_ms=$(date +%s%3N 2>/dev/null || date +%s000)
+    jq -n --arg label "$label" --argjson width "$width" --argjson dispatch_failures "$failures" \
+        --argjson terminal "$(printf '%s\n' "${terminal[@]}" | jq -R . | jq -s .)" \
+        --argjson wall_ms "$((wave_end_ms - wave_start_ms))" \
+        '{label:$label,width:$width,dispatch_failures:$dispatch_failures,terminal:$terminal,failed_terminal:'"$failed_terminal"',wall_ms:$wall_ms}'
+    (( failed_terminal == 0 ))
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# IDEMPOTENCY PATH
+# ══════════════════════════════════════════════════════════════════════════
+idempotency_post() {
+    local payload="$1" key="$2" label="$3" dir="$4"
+    curl -sS --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
+        -D "$dir/${label}.headers" \
+        -o "$dir/${label}.body" -w '%{http_code}' \
+        -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+        -H "Idempotency-Key: ${key}" \
+        -H 'Content-Type: application/json' \
+        --data "$payload" "http://${SMOKE_API_BASE}/api/script/generate" \
+        >"$dir/${label}.code" 2>"$dir/${label}.err" || true
+}
+
+run_idempotency() {
+    echo "=== VidRush idempotency: $SCENARIO_ID ==="
+    local payload payload_conflict test_dir first_job replay_job conflict_code
+    local replay_header_same="false" concurrent_ok="true" conflict_ok="false"
+    payload=$(jq -c '.payload' "$SCENARIO_FILE")
+    payload_conflict=$(jq -c '.payload | .items[0].source.source_text += " conflict-body"' "$SCENARIO_FILE")
+    test_dir=$(mktemp -d "${TMPDIR:-/tmp}/vidrush-idempotency.XXXXXX")
+
+    local key1="vidrush-idem-k1-$(smoke_gen_uuid)"
+    idempotency_post "$payload" "$key1" same-1 "$test_dir"
+    first_job=$(jq -r '.job_id // empty' "$test_dir/same-1.body" 2>/dev/null || true)
+    idempotency_post "$payload" "$key1" same-2 "$test_dir"
+    replay_job=$(jq -r '.job_id // empty' "$test_dir/same-2.body" 2>/dev/null || true)
+    if [[ -n "$first_job" && "$first_job" == "$replay_job" ]] && grep -Eqi '^X-Idempotency-Replay:[[:space:]]*true' "$test_dir/same-2.headers"; then
+        replay_header_same="true"
+    fi
+
+    local key2="vidrush-idem-k2-$(smoke_gen_uuid)"
+    idempotency_post "$payload" "$key2" conflict-1 "$test_dir"
+    idempotency_post "$payload_conflict" "$key2" conflict-2 "$test_dir"
+    conflict_code=$(cat "$test_dir/conflict-2.code" 2>/dev/null || echo 0)
+    if [[ "$conflict_code" == "409" ]] && jq -e '((.code // .error.code // "") | tostring | test("IDEMPOTENCY_KEY_CONFLICT")) or ((.error // "") | tostring | test("IDEMPOTENCY_KEY_CONFLICT"))' "$test_dir/conflict-2.body" >/dev/null 2>&1; then
+        conflict_ok="true"
+    fi
+
+    local key3="vidrush-idem-k3-$(smoke_gen_uuid)"
+    local -a pids=()
+    local i
+    for ((i=0; i<3; i++)); do
+        idempotency_post "$payload" "$key3" "concurrent-${i}" "$test_dir" &
+        pids+=("$!")
+    done
+    local pid
+    for pid in "${pids[@]}"; do wait "$pid" || true; done
+    local concurrent_jobs=""
+    for ((i=0; i<3; i++)); do
+        local code job
+        code=$(cat "$test_dir/concurrent-${i}.code" 2>/dev/null || echo 0)
+        job=$(jq -r '.job_id // empty' "$test_dir/concurrent-${i}.body" 2>/dev/null || true)
+        if [[ ! "$code" =~ ^2[0-9][0-9]$ || -z "$job" ]]; then
+            concurrent_ok="false"
+        fi
+        concurrent_jobs+="${job},"
+    done
+    local distinct_jobs
+    distinct_jobs=$(printf '%s\n' "$concurrent_jobs" | tr ',' '\n' | sed '/^$/d' | sort -u | wc -l)
+    if [[ "$distinct_jobs" != "1" ]]; then concurrent_ok="false"; fi
+
+    rm -rf "$test_dir"
+    if [[ "$replay_header_same" != "true" || "$conflict_ok" != "true" || "$concurrent_ok" != "true" ]]; then
+        report_json "FAILED" "" "" "{\"idempotency\":{\"replay\":$replay_header_same,\"conflict\":$conflict_ok,\"concurrent\":$concurrent_ok}}" | jq '.'
+        return 1
+    fi
+    report_json "SUCCEEDED" "" "warm" "{\"idempotency\":{\"replay\":true,\"conflict\":true,\"concurrent\":true}}" | jq '.'
+}
+
+run_concurrency() {
+    echo "=== VidRush concurrency: $SCENARIO_ID ==="
+    local payload wave_dir levels_json level wave_json waves_json='[]' failed=0
+    payload=$(jq -c '.payload' "$SCENARIO_FILE")
+    wave_dir=$(mktemp -d "${TMPDIR:-/tmp}/vidrush-concurrency.XXXXXX")
+    levels_json=$(jq -c '[.concurrency_levels[] | select(.concurrent_jobs <= 5) | .concurrent_jobs]' "$SCENARIO_FILE")
+    for level in $(jq -r '.[]' <<<"$levels_json"); do
+        echo "  → bounded wave: ${level} job(s)"
+        wave_json=$(run_concurrency_wave "$payload" "$level" "measured-${level}" "$wave_dir" | tail -1)
+        echo "  $(jq -c '.' <<<"$wave_json")"
+        waves_json=$(jq -c --argjson wave "$wave_json" '. + [$wave]' <<<"$waves_json")
+        if ! jq -e '(.failed_terminal // 0) == 0 and (.dispatch_failures // 0) == 0' <<<"$wave_json" >/dev/null; then
+            failed=1
+        fi
+    done
+    rm -rf "$wave_dir"
+    if (( failed != 0 )); then
+        report_json "FAILED" "" "cold" "{\"concurrency\":{\"levels\":$waves_json,\"verdict\":\"FAILED\"}}" | jq '.'
+        return 1
+    fi
+    report_json "SUCCEEDED" "" "warm" "{\"concurrency\":{\"levels\":$waves_json,\"verdict\":\"PASS\",\"provider_enabled\":true}}" | jq '.'
+}
+
+# These scenarios describe controlled external state changes that the runner
+# cannot safely manufacture. Returning BLOCKED is intentional: it preserves
+# fail-closed evidence and prevents a manifest from being mislabeled as a
+# successful provider or render run.
+run_external_prerequisite_block() {
+    local reason required_json
+    case "$SCENARIO_TYPE" in
+        failure_injection)
+            reason="requires explicit provider/Drive/Qdrant/Ollama failure injection; no chaos hook is configured"
+            required_json=$(jq -c '[.failure_cases[]?.case_id] // []' "$SCENARIO_FILE")
+            ;;
+        render_handoff)
+            reason="requires a connected scene.composite.v1@1 worker, jobs.submit M2M credentials and render destination"
+            required_json=$(jq -c '[.render_pipeline_steps[]?.name] // []' "$SCENARIO_FILE")
+            ;;
+        *)
+            reason="external prerequisite is not configured"
+            required_json='[]'
+            ;;
+    esac
+    printf '%sBLOCKED%s %s: %s\n' "$YELLOW" "$RESET" "$SCENARIO_ID" "$reason"
+    report_json "BLOCKED" "" "" "{\"reason\":$(jq -Rn --arg v "$reason" '$v | @json'),\"required_steps\":$required_json}" | jq '.'
+    return 1
+}
+
+# ══════════════════════════════════════════════════════════════════════════
 # SCRIPT.GENERATE PATH (01_* and later)
 # ══════════════════════════════════════════════════════════════════════════
 run_script_generate() {
@@ -465,9 +683,62 @@ run_script_generate() {
         fi
     fi
 
+    # Live acceptance is deliberately fail-closed. The prose in a scenario
+    # is not evidence: when a manifest requests durable media, require the
+    # lifecycle fields and a Drive link in the returned binding.
+    if [[ "$(jq -r '.expect.require_primary_per_segment // false' "$SCENARIO_FILE")" == "true" ]]; then
+        if ! jq -e 'all(.segments[]; .assets.primary_video != null and (.assets.primary_video.drive_link | length) > 0 and .assets.primary_video.acquisition_status == "acquired" and .assets.primary_video.verification_status == "verified" and .assets.primary_video.persistence_status == "persisted" and .assets.primary_video.index_status == "indexed" and .assets.primary_video.rights_status == "verified")' <<<"$result" >/dev/null; then
+            printf '%sFAIL%s live Artlist acceptance: every segment needs a persisted, indexed, verified primary video\n' "$RED" "$RESET"
+            assert_fail=1
+        fi
+    fi
+    if [[ "$(jq -r '.expect.min_secondary_images_per_segment // 0' "$SCENARIO_FILE")" -gt 0 ]]; then
+        local min_images
+        min_images=$(jq -r '.expect.min_secondary_images_per_segment' "$SCENARIO_FILE")
+        if ! jq -e --argjson min "$min_images" 'all(.segments[]; ([.assets.secondary_images[]? | select((.drive_link // "") != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed" and .rights_status == "verified")] | length) >= $min)' <<<"$result" >/dev/null; then
+            printf '%sFAIL%s live image acceptance: every segment needs at least %s durable verified images\n' "$RED" "$RESET" "$min_images"
+            assert_fail=1
+        fi
+    fi
+
     # Determine cache mode
     local cache_mode
     cache_mode=$(jq -r '[.segments[]?.cache.extraction // "UNKNOWN"] | if all(.[]; . == "HIT_EXACT") then "warm" elif all(.[]; . == "MISS") then "cold" else "mixed" end' <<<"$result")
+
+    # Derive durable-artifact evidence from the returned lifecycle contract.
+    # Do not report Drive/Qdrant as verified merely because the job succeeded:
+    # every returned media artifact must carry its own persistence/index proof.
+    local artifact_json
+    artifact_json=$(jq -c '
+      [
+        .segments[]?.assets.primary_video?,
+        .segments[]?.assets.secondary_images[]?,
+        .segments[]?.assets.generated_images[]?
+      ] | map(select(. != null))
+      | if length == 0 then
+          {sqlite_verified:false, qdrant_verified:false, drive_verified:false, render_verified:false}
+        else
+          {
+            sqlite_verified: all(.[]; .persistence_status == "persisted"),
+            qdrant_verified: all(.[]; .index_status == "indexed"),
+            drive_verified: all(.[]; ((.drive_link // "") | length) > 0),
+            render_verified: false
+          }
+        end' <<<"$result")
+
+    local provider_requests=0 artlist_after images_after
+    if [[ "$artlist_before" != "MISSING" ]]; then
+        artlist_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2}' | tail -1) || true
+        if [[ "$artlist_before" =~ ^[0-9]+$ && "$artlist_after" =~ ^[0-9]+$ ]]; then
+            provider_requests=$((provider_requests + artlist_after - artlist_before))
+        fi
+    fi
+    if [[ "$images_before" != "MISSING" ]]; then
+        images_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2}' | tail -1) || true
+        if [[ "$images_before" =~ ^[0-9]+$ && "$images_after" =~ ^[0-9]+$ ]]; then
+            provider_requests=$((provider_requests + images_after - images_before))
+        fi
+    fi
 
     # ── Final report ───────────────────────────────────────────────────
     local total_ms=$(( $(date +%s%3N 2>/dev/null || date +%s000) - TIMESTAMP_START ))
@@ -485,9 +756,9 @@ run_script_generate() {
         "$GREEN" "$RESET" "$SCENARIO_ID" "$job_id" "$seg_count" "$ent_count" "$cache_mode" "$total_ms"
 
     report_json "SUCCEEDED" "$job_id" "$cache_mode" "{
-        \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"provider_requests\":0,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
+        \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"provider_requests\":$provider_requests,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
         \"timing_ms\": {\"dispatch\":$dispatch_ms,\"poll\":$poll_ms,\"total\":$total_ms},
-        \"artifacts\": {\"sqlite_verified\":true,\"qdrant_verified\":false,\"drive_verified\":false,\"render_verified\":false}
+        \"artifacts\":$artifact_json
     }" | jq '.'
     return 0
 }
@@ -500,6 +771,18 @@ case "$SCENARIO_TYPE" in
         ;;
     script_generate)
         run_script_generate
+        exit $?
+        ;;
+    concurrency)
+        run_concurrency
+        exit $?
+        ;;
+    idempotency)
+        run_idempotency
+        exit $?
+        ;;
+    failure_injection|render_handoff)
+        run_external_prerequisite_block
         exit $?
         ;;
     *)

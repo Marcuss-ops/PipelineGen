@@ -149,6 +149,7 @@ const (
 	TypeSubtitleGenerate = subtitle.TypeGenerate
 	TypeRenderVideo      = video.TypeRender
 	TypeYouTubeUpload    = youtube.TypeUpload
+	TypeYouTubeStock     = youtube.TypeStock
 	TypeCatalogSync      = catalog.TypeSync
 	TypeArtlistRun       = media.TypeArtlistRun
 	TypeSystemCleanup    = system.TypeCleanup

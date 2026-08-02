@@ -47,6 +47,27 @@ func TestArtlistMatchesToCandidatesDeduplicatesDriveLinks(t *testing.T) {
 	}
 }
 
+func TestArtlistRemoteCandidateCannotBeBoundBeforePersistence(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-remote"}
+	matches := []ArtlistClipMatch{{
+		Phrase:         "mountain runner",
+		Remote:         true,
+		ClipNames:      []string{"runner"},
+		ClipDriveLinks: []string{"https://cdn.artlist.io/stream.m3u8"},
+	}}
+
+	got := artlistMatchesToCandidates(segment, matches)
+	if len(got) != 1 {
+		t.Fatalf("expected one remote candidate, got %d", len(got))
+	}
+	if got[0].AcquisitionStatus != scriptpkg.VidRushStatusCandidateFound {
+		t.Fatalf("acquisition_status = %q, want %q", got[0].AcquisitionStatus, scriptpkg.VidRushStatusCandidateFound)
+	}
+	if readyVidRushCandidate(got[0]) {
+		t.Fatal("remote candidate must not be binding-ready before acquisition, verification, persistence and indexing")
+	}
+}
+
 // TestArtlistMatchesToCandidates_AlwaysProviderArtlist verifies that
 // every candidate produced by the Artlist pipeline has provider="artlist",
 // regardless of what the searcher returns. This is the processor-level
@@ -85,9 +106,9 @@ type emptyArtlistSearcher struct {
 	calls int
 }
 
-func (s *emptyArtlistSearcher) SearchClips(context.Context, string, []string) []ArtlistClipMatch {
+func (s *emptyArtlistSearcher) SearchClips(context.Context, string, []string) ([]ArtlistClipMatch, error) {
 	s.calls++
-	return nil
+	return nil, nil
 }
 
 func TestClipSearchProcessorDoesNotCacheProviderMisses(t *testing.T) {
@@ -120,7 +141,7 @@ func TestClipSearchProcessorDoesNotCacheProviderMisses(t *testing.T) {
 // to verify the processor pipeline never produces provider=youtube.
 type multiClipArtlistSearcher struct{}
 
-func (multiClipArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) []ArtlistClipMatch {
+func (multiClipArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) ([]ArtlistClipMatch, error) {
 	out := make([]ArtlistClipMatch, 0)
 	for _, q := range queries {
 		out = append(out, ArtlistClipMatch{
@@ -130,7 +151,7 @@ func (multiClipArtlistSearcher) SearchClips(_ context.Context, _ string, queries
 			ClipDriveLinks: []string{"https://drive.example/valid-" + q[:minInt(8, len(q))]},
 		})
 	}
-	return out
+	return out, nil
 }
 
 // TestClipSearchProcessor_AllCandidatesAreArtlist verifies that after

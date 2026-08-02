@@ -29,6 +29,7 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
@@ -69,11 +70,12 @@ type ShortsDeps struct {
 // operations.SubmitRequest from the bound command. When nil,
 // the handler falls back to the legacy direct-submit flow.
 type GenerateDeps struct {
-	Submission    generationSubmitter
-	GenRunStarter *scriptgen.GenerationRunStarter
-	Factory       *submission.SubmitRequestFactory
-	Log           *zap.Logger
-	Validator     *usecase.PayloadValidator
+	Submission        generationSubmitter
+	GenRunStarter     *scriptgen.GenerationRunStarter
+	Factory           *submission.SubmitRequestFactory
+	Log               *zap.Logger
+	Validator         *usecase.PayloadValidator
+	ResearchPreflight scriptports.ResearchPreflight
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -163,7 +165,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
 		// with the optional GenerationRunStarter (P0 verdetto) and
 		// the SubmitRequestFactory (PR-SUBMISSION-FACTORY).
-		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Factory, deps.Generate.Log, deps.Generate.Validator),
+		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Factory, deps.Generate.Log, deps.Generate.Validator, deps.Generate.ResearchPreflight),
 
 		// PR-SHORTS-EXTRACT (July 2026): construct the dedicated
 		// HandlerShorts for /shorts/* routes.

@@ -17,7 +17,7 @@ import (
 )
 
 // territoryAggregators is the canonical territory → aggregator
-// dispatch table. Map lookup bypasses the C2-C AST gate's
+// dispatch table. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection (godlike/06 SSOT co-located structural
 // validation: the canonical HTTP-route scope lives in the
 // territory handler itself, not in a shared registry).

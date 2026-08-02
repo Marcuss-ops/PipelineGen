@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // internetImageCachePayload stores only the image-provider delta so a cache
@@ -19,14 +21,19 @@ type internetImageCachePayload struct {
 type InternetImagesProcessor struct {
 	searcher InternetImageSearcher
 	metrics  VidRushMetrics
+	cache    scriptports.VidRushCachePort
 }
 
 func NewInternetImagesProcessor(searcher InternetImageSearcher, metrics ...VidRushMetrics) *InternetImagesProcessor {
+	return NewInternetImagesProcessorWithCache(searcher, nil, metrics...)
+}
+
+func NewInternetImagesProcessorWithCache(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *InternetImagesProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &InternetImagesProcessor{searcher: searcher, metrics: m}
+	return &InternetImagesProcessor{searcher: searcher, metrics: m, cache: cache}
 }
 
 func (p *InternetImagesProcessor) Name() ProcessorName { return ProcessorInternetImages }
@@ -103,6 +110,21 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					continue
 				}
 			}
+			var persisted internetImageCachePayload
+			if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, &persisted); cacheErr != nil {
+				return nil, cacheErr
+			} else if hit {
+				persisted.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...)
+				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
+				updated.Assets.SecondaryImages = appendProviderCandidatesUnique(updated.Assets.SecondaryImages, persisted.Candidates)
+				updated.Cache.InternetImages = "HIT_EXACT"
+				cacheStore(&vidrushImageCache, cacheKey, persisted)
+				updatedSegments = append(updatedSegments, updated)
+				if p.metrics != nil {
+					p.metrics.IncAssetCache("internet_images", true)
+				}
+				continue
+			}
 		}
 
 		if p.metrics != nil {
@@ -116,7 +138,11 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		if len(updated.Insights.Entities) > 0 {
 			firstEntity = strings.TrimSpace(updated.Insights.Entities[0].Value)
 		}
-		for _, query := range updated.Insights.ImageQueries {
+		type queryResult struct {
+			candidates []scriptpkg.SegmentAssetCandidate
+			err        error
+		}
+		queryResults, mapErr := concurrent.Map(ctx, updated.Insights.ImageQueries, 4, func(ctx context.Context, _ int, query string) (queryResult, error) {
 			results, err := p.searcher.SearchImages(ctx, InternetImageSearchRequest{
 				SegmentID: updated.SegmentID,
 				Query:     query,
@@ -126,14 +152,20 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				Limit:     perQueryLimit,
 				Provider:  "internet_images",
 			})
-			if err != nil {
+			return queryResult{candidates: results, err: err}, nil
+		})
+		if mapErr != nil {
+			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
+		}
+		for _, queryResult := range queryResults {
+			if queryResult.err != nil {
 				if p.metrics != nil {
 					p.metrics.IncProviderFailure("internet_images")
 				}
-				warnings = append(warnings, fmt.Sprintf("internet_images: search failed for segment %s: %v", updated.SegmentID, err))
+				warnings = append(warnings, fmt.Sprintf("internet_images: search failed for segment %s: %v", updated.SegmentID, queryResult.err))
 				continue
 			}
-			for _, cand := range results {
+			for _, cand := range queryResult.candidates {
 				if cand.Provider == "" {
 					cand.Provider = "internet_images"
 				}
@@ -172,6 +204,11 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			cacheStore(&vidrushImageCache, cacheKey, internetImageCachePayload{
 				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 			})
+			if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, internetImageCachePayload{
+				Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+			}); cacheErr != nil {
+				return nil, cacheErr
+			}
 		}
 		// Empty provider results are deliberately not cached because these
 		// in-memory entries have no TTL and would otherwise become permanent.

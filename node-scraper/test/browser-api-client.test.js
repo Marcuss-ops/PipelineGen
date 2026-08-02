@@ -4,6 +4,32 @@ import assert from 'node:assert/strict';
 import { ArtlistBrowserApiClient } from '../artlist/browser-api-client.js';
 
 describe('ArtlistBrowserApiClient', () => {
+  test('classifies a rate-limited browser API response without fallback', async () => {
+    const page = {
+      setViewport: async () => {},
+      setUserAgent: async () => {},
+      goto: async () => ({ status: () => 429 }),
+      close: async () => {},
+    };
+    const browser = {
+      createBrowserContext: async () => ({
+        newPage: async () => page,
+        close: async () => {},
+      }),
+    };
+
+    const client = new ArtlistBrowserApiClient({
+      browser,
+      cookiePath: '',
+      registry: { footage_search: { enabled: true, method: 'POST', url: 'https://artlist.io/graphql' } },
+    });
+
+    await assert.rejects(
+      () => client.searchFootage({ term: 'rate limited query' }),
+      (err) => err.code === 'ARTLIST_RATE_LIMITED',
+    );
+  });
+
   test('posts the discovered endpoint from inside the browser context', async () => {
     const seen = {};
     const page = {

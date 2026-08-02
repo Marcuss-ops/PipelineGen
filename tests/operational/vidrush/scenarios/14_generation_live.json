@@ -1,0 +1,67 @@
+{
+  "scenario_id": "14_generation_live",
+  "description": "VidRush image-generation canary — Artlist e immagini web disabilitate; genera solo le immagini necessarie e verifica il percorso ArtifactManifest verso Drive, SQLite, outbox, Qdrant e binding.",
+  "version": 1,
+  "timeout_seconds": 900,
+  "expect": {
+    "http_status": 202,
+    "terminal_status": "SUCCEEDED",
+    "max_entities_per_segment": 5,
+    "max_image_queries_per_segment": 5,
+    "provider_requests_artlist": 0,
+    "provider_requests_internet_images": 0,
+    "min_secondary_images_per_segment": 2,
+    "require_persisted_images": true,
+    "cache_extraction": "MISS"
+  },
+  "payload": {
+    "version": 2,
+    "preset": "custom",
+    "correlation_id": "vidrush-14-generation-live",
+    "force_refresh": true,
+    "items": [
+      {
+        "id": "vidrush-14-generation-item",
+        "title": "VidRush generation fallback canary",
+        "language": "en",
+        "tone": "cinematic",
+        "style": "Write three concise, visually concrete cinematic scenes suitable for generated images.",
+        "model": "gemma2:2b",
+        "source": {
+          "type": "text",
+          "topic": "Generated visual fallback scenes",
+          "source_text": "A glass observatory floats above a cloud sea at sunrise, its metal ribs glowing amber.\n\nA quiet lunar research station sits beneath a violet aurora while scientists cross the ice.\n\nAn ancient library opens its roof to a river of stars, illuminating maps and dust in the air.\n\nOperational marker: vidrush-14-generation-live."
+        },
+        "script_params": {
+          "target_words": 220,
+          "min_words": 160,
+          "segment_words": 50,
+          "skip_quality_gate": true,
+          "use_memory": false
+        },
+        "output": {
+          "extract_entities": true,
+          "generate_metadata": true,
+          "save_to_db": true,
+          "stock_enabled": "disabled"
+        },
+        "media_plan": {
+          "mode": "hybrid",
+          "provider_policy": {
+            "artlist": "disabled",
+            "internet_images": "disabled",
+            "image_generation": "enabled"
+          },
+          "extraction": {
+            "enabled": true,
+            "max_entities_per_segment": 5,
+            "max_important_phrases_per_segment": 5,
+            "max_important_words_per_segment": 5,
+            "max_artlist_queries_per_segment": 0,
+            "max_image_queries_per_segment": 0
+          }
+        }
+      }
+    ]
+  }
+}

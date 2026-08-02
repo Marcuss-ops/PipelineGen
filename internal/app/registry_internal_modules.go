@@ -270,6 +270,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 			Jobs:          root.Jobs.Facade,
 			ToolChecker:   toolCheckerAdapter,
 			ClipStorePort: nil,
+			StockService:  root.Domains.YoutubeClipService.StockService(),
 		},
 		Search: youtubeapi.SearchDeps{
 			Service: searchSvc,

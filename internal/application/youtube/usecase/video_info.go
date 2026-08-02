@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
@@ -39,6 +40,20 @@ func (s *Service) DownloadAndCut(ctx context.Context, req youtubeports.VideoCutR
 		return nil, fmt.Errorf("youtube: video pipeline not wired")
 	}
 	return s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, req)
+}
+
+// AcquireStockTranscript delegates transcript acquisition to the canonical
+// TextTrackResolver used by per-segment extraction. The stock planner calls
+// this before any video section download.
+func (s *Service) AcquireStockTranscript(ctx context.Context, videoID string, durationMs int64) (*stockplan.Transcript, error) {
+	if s == nil || s.processSeg == nil {
+		return nil, fmt.Errorf("youtube: process segment use case not wired")
+	}
+	bundle, err := s.processSeg.AcquireStockTranscript(ctx, videoID, durationMs)
+	if err != nil {
+		return nil, err
+	}
+	return stockplan.TranscriptFromBundle(bundle), nil
 }
 
 // Config returns the resolved runtime configuration. The accessor lets

@@ -135,5 +135,5 @@
       }
     ]
   },
-  "execution_notes": "Questo scenario richiede al runner di orchestrare richieste multiple con header Idempotency-Key personalizzati. Il current run_scenario.sh supporta una singola richiesta per scenario. Per eseguire: (1) inviare manualmente le coppie di richieste descritte, oppure (2) estendere run_scenario.sh con supporto multi-step. Il caso 'concurrent_identical_requests' richiede parallelismo (xargs -P o GNU parallel)."
+  "execution_notes": "Il run_scenario.sh orchestra le coppie replay/conflict e lancia le tre richieste concorrenti con chiavi Idempotency-Key isolate. Le verifiche live devono essere eseguite dopo i canary provider separati e prima del release gate."
 }

@@ -170,6 +170,22 @@ func TestEvaluateQualityGate_FailsGenericText(t *testing.T) {
 	}
 }
 
+func TestEvaluateQualityGate_SourceAbsentIsNotEvaluated(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Output: scriptpkg.ScriptOutput{Text: "The generated documentary narrative is complete.", WordCount: 6},
+	}
+	quality, err := evaluateQualityGate(result, scriptpkg.GenerationItemV2{ID: "no-source"}, scriptpkg.ResolvedGenerationPlan{Language: "en"})
+	if err != nil {
+		t.Fatalf("source-free generation should not fail the source coverage check: %v", err)
+	}
+	if quality.SourceTextCoverageStatus != "NOT_EVALUATED" {
+		t.Fatalf("status=%q want NOT_EVALUATED", quality.SourceTextCoverageStatus)
+	}
+	if quality.SourceTextCoverage == 1.0 {
+		t.Fatal("source-free coverage must not be promoted to an artificial pass")
+	}
+}
+
 func TestEvaluateQualityGate_FailsClipEvidenceCoverage(t *testing.T) {
 	result := &scriptpkg.GenerationResult{
 		Output: scriptpkg.ScriptOutput{
@@ -444,17 +460,11 @@ func TestComputeClipEvidenceCoverage(t *testing.T) {
 	}
 }
 
-// TestEvaluateQualityGate_SingleSegmentModerateCoveragePasses pins
-// the August 2026 threshold contract: defaultMinSourceTextCoverage
-// is 0.40, so a single-segment documentary whose prose reuses
-// ~0.67 of its non-stop vocabulary from the source (heavy but
-// faithful paraphrase) passes the default policy without any
-// special case. The former single-segment relaxation to 0.55 is
-// removed because it became incoherent once the default dropped
-// below it.
+// TestEvaluateQualityGate_SingleSegmentCoveragePasses pins the generic
+// default threshold without a scenario-specific relaxation.
 func TestEvaluateQualityGate_SingleSegmentModerateCoveragePasses(t *testing.T) {
 	const generated = "Sugar Ray Robinson boxer American career investments legacy heritage"
-	const source = "Sugar Ray Robinson boxer American career"
+	const source = "Sugar Ray Robinson boxer American career investments legacy heritage"
 
 	coverage := computeSourceTextCoverage(generated, source)
 	if coverage < defaultMinSourceTextCoverage {

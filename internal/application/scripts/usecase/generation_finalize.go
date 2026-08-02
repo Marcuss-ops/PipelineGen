@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -27,9 +28,10 @@ import (
 // runs the quality gate. It is constructed once per use case and
 // reused across calls.
 type GenerationFinalizer struct {
-	log    *zap.Logger
-	cfg    adapters.NormalizationConfig
-	memSvc *adapters.Service
+	log          *zap.Logger
+	cfg          adapters.NormalizationConfig
+	memSvc       *adapters.Service
+	vidRushCache scriptports.VidRushCachePort
 }
 
 // NewGenerationFinalizer constructs a GenerationFinalizer.
@@ -42,6 +44,15 @@ func NewGenerationFinalizer(log *zap.Logger, cfg adapters.NormalizationConfig) *
 func (f *GenerationFinalizer) SetMemoryService(svc *adapters.Service) {
 	if f != nil {
 		f.memSvc = svc
+	}
+}
+
+// SetVidRushCache wires the durable binding L2 cache. It is optional for
+// compatibility with lightweight/unit-test compositions; provider caches and
+// binding correctness remain valid when it is absent.
+func (f *GenerationFinalizer) SetVidRushCache(cache scriptports.VidRushCachePort) {
+	if f != nil {
+		f.vidRushCache = cache
 	}
 }
 
@@ -77,7 +88,7 @@ func (f *GenerationFinalizer) Finalize(
 	provenance := inputs.Provenance
 	timings := inputs.Timings
 
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+	result := buildGenerationResultWithCache(item, plan, engineResult, postResult, timings, f.vidRushCache, ctx)
 
 	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
 		return nil, err
@@ -104,13 +115,14 @@ func (f *GenerationFinalizer) Finalize(
 	}
 	if quality != nil {
 		tracker.TrackEvent("quality.checked", "Editorial quality gate checked", map[string]any{
-			"item_id":                item.ID,
-			"passed":                 quality.Passed,
-			"source_text_coverage":   quality.SourceTextCoverage,
-			"clip_evidence_coverage": quality.ClipEvidenceCoverage,
-			"unsupported_claims":     quality.UnsupportedClaims,
-			"actual_words":           quality.ActualWords,
-			"target_words":           quality.TargetWords,
+			"item_id":                     item.ID,
+			"passed":                      quality.Passed,
+			"source_text_coverage":        quality.SourceTextCoverage,
+			"source_text_coverage_status": quality.SourceTextCoverageStatus,
+			"clip_evidence_coverage":      quality.ClipEvidenceCoverage,
+			"unsupported_claims":          quality.UnsupportedClaims,
+			"actual_words":                quality.ActualWords,
+			"target_words":                quality.TargetWords,
 		})
 	}
 	// Sprint 1.3 (godlike/08): centralize success classification.
@@ -123,6 +135,7 @@ func (f *GenerationFinalizer) Finalize(
 	if qErr != nil {
 		if item.ScriptParams.SkipQualityGate {
 			qualitySkipped = true
+			result.Quality.SourceTextCoverageStatus = "SKIPPED"
 			tracker.TrackEvent("quality.skipped", "Editorial quality gate failure ignored by request", map[string]any{
 				"item_id": item.ID,
 				"error":   qErr.Error(),

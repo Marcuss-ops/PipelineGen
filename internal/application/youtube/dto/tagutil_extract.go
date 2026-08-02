@@ -65,20 +65,6 @@ func ExtractConceptTags(text string, max int) []string {
 	if text == "" || max <= 0 {
 		return nil
 	}
-	stopwords := map[string]struct{}{
-		"the": {}, "and": {}, "for": {}, "with": {}, "that": {}, "this": {}, "from": {}, "you": {}, "your": {}, "are": {},
-		"was": {}, "were": {}, "has": {}, "have": {}, "had": {}, "his": {}, "her": {}, "him": {}, "she": {}, "they": {},
-		"them": {}, "their": {}, "there": {}, "here": {}, "what": {}, "when": {}, "where": {}, "why": {}, "how": {},
-		"who": {}, "into": {}, "onto": {}, "like": {}, "just": {}, "really": {}, "very": {}, "could": {},
-		"would": {}, "should": {}, "about": {}, "after": {}, "before": {}, "because": {}, "then": {}, "than": {},
-		"also": {}, "been": {}, "being": {}, "our": {}, "out": {}, "over": {}, "under": {}, "some": {},
-		"more": {}, "most": {}, "much": {}, "many": {}, "way": {}, "one": {}, "two": {}, "three": {}, "all": {},
-		"not": {}, "can": {}, "will": {}, "able": {}, "if": {}, "or": {}, "so": {}, "um": {}, "uh": {},
-		"https": {}, "http": {}, "www": {}, "com": {}, "nbsp": {}, "code": {}, "watch": {}, "listen": {}, "subscribe": {},
-		"channel": {}, "official": {}, "new": {}, "tour": {}, "dates": {}, "go": {}, "check": {}, "find": {}, "submit": {},
-		"merch": {}, "music": {}, "producer": {}, "facebook": {}, "instagram": {}, "twitter": {}, "spotify": {}, "live": {},
-		"wiltern": {}, "theater": {}, "los": {}, "angeles": {}, "video": {}, "videos": {}, "clip": {}, "clips": {},
-	}
 	freq := make(map[string]int)
 	order := make([]string, 0)
 	wordRe := regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9']+`)
@@ -90,10 +76,7 @@ func ExtractConceptTags(text string, max int) []string {
 			if len(w) < 6 {
 				continue
 			}
-			if _, ok := stopwords[w]; ok {
-				continue
-			}
-			if IsGenericClipTag(w) {
+			if IsGenericToken(w) || IsGenericClipTag(w) {
 				continue
 			}
 			if _, ok := freq[w]; !ok {

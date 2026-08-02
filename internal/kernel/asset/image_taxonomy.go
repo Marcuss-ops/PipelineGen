@@ -24,20 +24,21 @@ func (o ImageOrigin) IsValid() bool {
 type ImageProvider string
 
 const (
-	ProviderWikipedia    ImageProvider = "wikipedia"
-	ProviderDuckDuckGo   ImageProvider = "duckduckgo"
-	ProviderSearXNG      ImageProvider = "searxng"
-	ProviderDrive        ImageProvider = "drive"
-	ProviderGoogleSlides ImageProvider = "google-slides"
-	ProviderNVIDIA       ImageProvider = "nvidia"
-	ProviderFlux         ImageProvider = "flux"
-	ProviderUpload       ImageProvider = "upload"
-	ProviderUnknown      ImageProvider = "unknown"
+	ProviderWikipedia        ImageProvider = "wikipedia"
+	ProviderWikimediaCommons ImageProvider = "wikimedia_commons"
+	ProviderDuckDuckGo       ImageProvider = "duckduckgo"
+	ProviderSearXNG          ImageProvider = "searxng"
+	ProviderDrive            ImageProvider = "drive"
+	ProviderGoogleSlides     ImageProvider = "google-slides"
+	ProviderNVIDIA           ImageProvider = "nvidia"
+	ProviderFlux             ImageProvider = "flux"
+	ProviderUpload           ImageProvider = "upload"
+	ProviderUnknown          ImageProvider = "unknown"
 )
 
 func (p ImageProvider) IsValid() bool {
 	switch p {
-	case ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive,
+	case ProviderWikipedia, ProviderWikimediaCommons, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive,
 		ProviderGoogleSlides, ProviderNVIDIA, ProviderFlux, ProviderUpload, ProviderUnknown:
 		return true
 	default:
@@ -56,7 +57,7 @@ func (p ImageProvider) IsGenerated() bool {
 
 func (p ImageProvider) IsRetrieved() bool {
 	switch p {
-	case ProviderWikipedia, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive:
+	case ProviderWikipedia, ProviderWikimediaCommons, ProviderDuckDuckGo, ProviderSearXNG, ProviderDrive:
 		return true
 	default:
 		return false

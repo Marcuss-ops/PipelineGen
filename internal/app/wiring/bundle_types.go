@@ -115,6 +115,10 @@ type ArtlistWiring struct {
 	// (Artlist, Pexels, Pixabay). It is wired in WireArtlist and frozen
 	// before the module is returned.
 	ProviderAssets *providerassets.Registry
+	// ArtlistDownloader is exposed as the acquisition port used by the
+	// VidRush materializer. Search and persistence remain separate from this
+	// transport seam.
+	ArtlistDownloader artlistPkg.Downloader
 	// LicenseRepo and ReleaseRepo expose the compliance repositories for
 	// license/release tracking. They are wired in WireArtlist.
 	LicenseRepo asset.LicenseRepository

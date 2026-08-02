@@ -28,7 +28,7 @@
 //  3. valid_duration       — DurationMs >= 0
 //  4. supported_format     — MediaType ∈ {video, image, audio, music}
 //     (empty MediaType is the legacy ambiguous
-//     sentinel and bypasses the gate for
+//     sentinel and skips the normal validation for
 //     forward-compat)
 //  5. compatible_aspect    — AspectRatioW/AspectRatioH ∈ canonical set
 //  6. no_corruption        — IntegrityChecked == true
@@ -68,7 +68,7 @@ const (
 	GateValidDuration PreRankGate = "valid_duration"
 	// GateSupportedFormat — MediaType MUST be in the canonical
 	// set {video, image, audio, music}. Empty MediaType is the
-	// legacy ambiguous sentinel and bypasses the gate
+	// legacy ambiguous sentinel and skips the normal validation
 	// (forward-compat for pre-Fase-1.5 fixtures).
 	GateSupportedFormat PreRankGate = "supported_format"
 	// GateCompatibleAspect — AspectRatioW / AspectRatioH MUST

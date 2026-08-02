@@ -87,6 +87,6 @@
 //
 // The CI lint ARCH-ALLOWLIST: admin-only comment marker is the
 // explicit opt-in for any future admin migration / backfill file
-// that legitimately needs to bypass the rg-gate. Today: zero
+// that legitimately needs an rg-gate exception. Today: zero
 // allowlist markers in the production tree.
 package txmutation

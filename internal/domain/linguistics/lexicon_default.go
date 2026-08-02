@@ -1,6 +1,9 @@
 package linguistics
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // Phase 8 split: package-level global defaults isolated from the
 // LexiconRegistry struct (which lives in lexicon_registry.go). The
@@ -12,30 +15,25 @@ import "sync"
 // concurrent SetDefaultLexicon / DefaultLexicon calls.
 var defaultLexiconMu sync.RWMutex
 
-// defaultLexicon is the lazily-initialised package-level registry.
-// Initialised on first DefaultLexicon() call with newBuiltInLexicon()
-// if SetDefaultLexicon has not yet been called.
+// defaultLexicon is installed by the composition root. It is never
+// lazily manufactured because that would hide a broken deployment.
 var defaultLexicon *LexiconRegistry
 
 // SetDefaultLexicon installs the package-level default lexicon registry.
 // The composition root calls this once at bootstrap; tests may replace
-// it to exercise file-backed fixtures. A nil r is silently ignored
-// (matches pre-Phase-8 behaviour; composition sites rely on it).
-func SetDefaultLexicon(r *LexiconRegistry) {
+// it to exercise file-backed fixtures. Nil is rejected explicitly.
+func SetDefaultLexicon(r *LexiconRegistry) error {
 	if r == nil {
-		return
+		return fmt.Errorf("lexicon registry: nil default is not allowed")
 	}
 	defaultLexiconMu.Lock()
 	defer defaultLexiconMu.Unlock()
 	defaultLexicon = r
+	return nil
 }
 
-// DefaultLexicon returns the global default lexicon registry. If none
-// has been installed yet, it creates a built-in registry with
-// per-language profiles (en, it, es, fr, de) plus a union fallback.
-// That fallback exists only so tests and explicit dev bootstrap can
-// keep running before the composition root installs a file-backed
-// registry.
+// DefaultLexicon returns the global default lexicon registry. The
+// process must install it during composition-root bootstrap first.
 func DefaultLexicon() *LexiconRegistry {
 	defaultLexiconMu.RLock()
 	if defaultLexicon != nil {
@@ -48,7 +46,17 @@ func DefaultLexicon() *LexiconRegistry {
 	defaultLexiconMu.Lock()
 	defer defaultLexiconMu.Unlock()
 	if defaultLexicon == nil {
-		defaultLexicon = newBuiltInLexicon()
+		panic("lexicon registry: default registry has not been installed")
 	}
+	return defaultLexicon
+}
+
+// DefaultLexiconOrNil exposes the installed registry to low-level helpers
+// that can operate without linguistic filtering during isolated tests. It
+// never constructs fallback data; production composition still uses
+// DefaultLexicon and therefore fails fast when bootstrap is incomplete.
+func DefaultLexiconOrNil() *LexiconRegistry {
+	defaultLexiconMu.RLock()
+	defer defaultLexiconMu.RUnlock()
 	return defaultLexicon
 }

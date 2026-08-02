@@ -14,22 +14,26 @@
     "python_tests": [],
     "dependencies": [],
     "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
-  "stock": {
+  "research": {
     "paths": [
-      "internal/application/assets/providers/stock/",
-      "internal/api/assets/stock/"
+      "internal/application/scripts/usecase/",
+      "internal/infrastructure/webresearch/",
+      "internal/infrastructure/database/sqlite/scripts/"
     ],
     "go_packages": [
-      "./internal/application/assets/providers/stock/...",
-      "./internal/api/assets/stock/..."
+      "./internal/application/scripts/usecase/...",
+      "./internal/infrastructure/webresearch/...",
+      "./internal/infrastructure/database/sqlite/scripts/..."
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": [],
+    "dependencies": ["database", "script"],
     "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
@@ -48,36 +52,30 @@
     "python_tests": [],
     "dependencies": [],
     "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
-  "drive": {
+  "stock": {
     "paths": [
-      "internal/domain/drive/",
-      "internal/infrastructure/drive/"
+      "internal/application/assets/providers/stock/",
+      "internal/application/assets/providers/artlist/",
+      "internal/api/assets/stock/",
+      "internal/api/assets/artlist/",
+      "internal/infrastructure/artlist/"
     ],
     "go_packages": [
-      "./internal/domain/drive/...",
-      "./internal/infrastructure/drive/..."
-    ],
-    "node_tests": [],
-    "python_tests": [],
-    "dependencies": [],
-    "timeout_seconds": 300,
-    "race_enabled": true,
-    "live_tests": []
-  },
-  "database": {
-    "paths": [
-      "internal/infrastructure/database/"
-    ],
-    "go_packages": [
-      "./internal/infrastructure/database/..."
+      "./internal/application/assets/providers/stock/...",
+      "./internal/application/assets/providers/artlist/...",
+      "./internal/api/assets/stock/...",
+      "./internal/api/assets/artlist/...",
+      "./internal/infrastructure/artlist/..."
     ],
     "node_tests": [],
     "python_tests": [],
     "dependencies": [],
     "timeout_seconds": 600,
+    "race_timeout_seconds": 1200,
     "race_enabled": true,
     "live_tests": []
   },
@@ -96,45 +94,51 @@
     "python_tests": [],
     "dependencies": ["database"],
     "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
   "indexing": {
     "paths": [
       "internal/application/indexing/",
-      "internal/infrastructure/indexing/"
+      "internal/infrastructure/indexing/",
+      "internal/api/assets/clips/indexing/"
     ],
     "go_packages": [
       "./internal/application/indexing/...",
-      "./internal/infrastructure/indexing/..."
+      "./internal/infrastructure/indexing/...",
+      "./internal/api/assets/clips/indexing/..."
     ],
     "node_tests": [],
     "python_tests": [],
     "dependencies": ["database", "qdrant"],
     "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
-  "research": {
+  "drive": {
     "paths": [
-      "internal/application/scripts/usecase/",
-      "internal/infrastructure/webresearch/",
-      "internal/infrastructure/database/sqlite/scripts/"
+      "internal/domain/drive/",
+      "internal/infrastructure/drive/",
+      "internal/application/publish_drive/"
     ],
     "go_packages": [
-      "./internal/application/scripts/usecase",
-      "./internal/infrastructure/webresearch",
-      "./internal/infrastructure/database/sqlite/scripts/..."
+      "./internal/domain/drive/...",
+      "./internal/infrastructure/drive/...",
+      "./internal/application/publish_drive/..."
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "script"],
-    "timeout_seconds": 600,
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
   "docs": {
     "paths": [
+      "docs/",
       "internal/domain/document/",
       "internal/application/document/",
       "internal/application/documents/",
@@ -154,7 +158,8 @@
     "python_tests": [],
     "dependencies": ["database", "drive"],
     "timeout_seconds": 300,
-    "race_enabled": true,
+    "race_timeout_seconds": 900,
+    "race_enabled": false,
     "live_tests": []
   },
   "voiceover": {
@@ -172,6 +177,98 @@
     "python_tests": [],
     "dependencies": ["database", "drive"],
     "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "images": {
+    "paths": [
+      "internal/domain/image/",
+      "internal/application/images/",
+      "internal/api/images/",
+      "internal/api/fullimages/"
+    ],
+    "go_packages": [
+      "./internal/domain/image/...",
+      "./internal/application/images/...",
+      "./internal/api/images/...",
+      "./internal/api/fullimages/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "drive"],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "translation": {
+    "paths": [
+      "internal/application/translation/",
+      "internal/application/scripts/adapters/",
+      "internal/application/scripts/usecase/"
+    ],
+    "go_packages": [
+      "./internal/application/translation/...",
+      "./internal/application/scripts/adapters/...",
+      "./internal/application/scripts/usecase/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "ollama"],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "timeline": {
+    "paths": [
+      "internal/infrastructure/media/",
+      "internal/api/assets/storage/"
+    ],
+    "go_packages": [
+      "./internal/infrastructure/media/...",
+      "./internal/api/assets/storage/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["storage"],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "storage": {
+    "paths": [
+      "internal/application/assets/storage/",
+      "internal/api/assets/storage/",
+      "internal/infrastructure/drive/"
+    ],
+    "go_packages": [
+      "./internal/application/assets/storage/...",
+      "./internal/api/assets/storage/...",
+      "./internal/infrastructure/drive/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database"],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "database": {
+    "paths": [
+      "internal/infrastructure/database/"
+    ],
+    "go_packages": [
+      "./internal/infrastructure/database/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
   },
@@ -179,18 +276,114 @@
     "paths": [
       "internal/application/jobs/",
       "internal/api/jobs/",
+      "internal/infrastructure/jobs/",
       "internal/infrastructure/database/sqlite/jobs/"
     ],
     "go_packages": [
       "./internal/application/jobs/...",
       "./internal/api/jobs/...",
+      "./internal/infrastructure/jobs/...",
       "./internal/infrastructure/database/sqlite/jobs/..."
     ],
     "node_tests": [],
     "python_tests": [],
     "dependencies": ["database"],
     "timeout_seconds": 600,
+    "race_timeout_seconds": 900,
     "race_enabled": true,
+    "live_tests": []
+  },
+  "api": {
+    "paths": [
+      "internal/api/middleware/",
+      "internal/api/transport/"
+    ],
+    "go_packages": [
+      "./internal/api/middleware/...",
+      "./internal/api/transport/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "ollama": {
+    "paths": [
+      "internal/infrastructure/ai/ollama/"
+    ],
+    "go_packages": [
+      "./internal/infrastructure/ai/ollama/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "youtube": {
+    "paths": [
+      "internal/domain/youtube/",
+      "internal/application/youtube/",
+      "internal/application/assets/providers/youtube/",
+      "internal/application/assets/sourcing/youtube/",
+      "internal/infrastructure/youtube/",
+      "internal/api/assets/youtube/"
+    ],
+    "go_packages": [
+      "./internal/domain/youtube/...",
+      "./internal/application/youtube/...",
+      "./internal/application/assets/providers/youtube/...",
+      "./internal/application/assets/sourcing/youtube/...",
+      "./internal/infrastructure/youtube/...",
+      "./internal/api/assets/youtube/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "drive"],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "artlist": {
+    "paths": [
+      "internal/application/assets/providers/artlist/",
+      "internal/infrastructure/artlist/",
+      "internal/api/assets/artlist/"
+    ],
+    "go_packages": [
+      "./internal/application/assets/providers/artlist/...",
+      "./internal/infrastructure/artlist/...",
+      "./internal/api/assets/artlist/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": ["database", "drive"],
+    "timeout_seconds": 900,
+    "race_timeout_seconds": 1200,
+    "race_enabled": true,
+    "live_tests": []
+  },
+  "node-scraper": {
+    "paths": [
+      "node-scraper/"
+    ],
+    "go_packages": [
+      "./internal/infrastructure/artlist/scraper/..."
+    ],
+    "node_tests": [
+      ["npm", "--prefix", "node-scraper", "test"]
+    ],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 600,
+    "race_timeout_seconds": 600,
+    "race_enabled": false,
     "live_tests": []
   }
 }

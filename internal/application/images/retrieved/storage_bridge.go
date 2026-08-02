@@ -11,11 +11,17 @@
 // only the methods providers need.
 package retrieved
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
+)
 
 type StorageBridge interface {
 	SearchWikipedia(ctx context.Context, query, lang string) (imgURL string, wikiTitle string)
+	SearchWikimediaCommons(ctx context.Context, query string) routing.RetrievalSearchResult
 	SearchSearXNGImages(ctx context.Context, query string) string
+	SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []routing.RetrievalSearchResult
 	SearchDDGWide(ctx context.Context, query string) string
 	// SearchBySlug is the Drive-side list look-up; returns up to limit
 	// previously-ingested image URLs for the given subject slug. The

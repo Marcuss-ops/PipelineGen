@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -85,6 +86,9 @@ type Config struct {
 type Provider struct {
 	cfg Config
 	log *zap.Logger
+
+	searchGateMu sync.Mutex
+	searchGate   chan struct{}
 }
 
 // New returns a Provider wired with the canonical process runner as the
@@ -122,6 +126,12 @@ var _ artapp.DetailFetcher = (*Provider)(nil)
 // Trim only — the 4-word cap is the application's policy
 // (run_helpers.go::normalizeSearchTerm).
 func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]artapp.Candidate, error) {
+	release, err := p.acquireSearchSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
 	term := strings.TrimSpace(req.Term)
 	if term == "" {
 		return nil, artapp.ErrEmpty
@@ -151,6 +161,27 @@ func (p *Provider) Search(ctx context.Context, req artapp.SearchRequest) ([]arta
 		return toCandidates(resp.Clips), nil
 	}
 	return p.searchViaExec(ctx, term, req.Limit)
+}
+
+// acquireSearchSlot protects the browser-backed Artlist searcher from a
+// fan-out of simultaneous navigations. Artlist's anti-bot layer can return a
+// challenge page when several scene queries open at once; serializing this
+// provider call keeps the application-level workers bounded without changing
+// the shared VidRush worker policy. The wait remains context-aware.
+func (p *Provider) acquireSearchSlot(ctx context.Context) (func(), error) {
+	p.searchGateMu.Lock()
+	if p.searchGate == nil {
+		p.searchGate = make(chan struct{}, 1)
+	}
+	gate := p.searchGate
+	p.searchGateMu.Unlock()
+
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) (*Response, error) {
@@ -192,6 +223,9 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int) 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("%w: status %d", artapp.ErrRateLimited, resp.StatusCode)
+	}
 	if resp.StatusCode >= 500 {
 		return nil, fmt.Errorf("%w: status %d", artapp.ErrTransportFallback, resp.StatusCode)
 	}

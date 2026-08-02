@@ -54,6 +54,8 @@ type RetrievalSearchResult struct {
 	Origin     asset.ImageOrigin
 	PreviewURL string
 	PageURL    string
+	Width      int
+	Height     int
 	Title      string
 	License    string
 	Author     string

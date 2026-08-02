@@ -60,7 +60,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// It is NEVER sent to the model.
 	cacheKey := plan.CacheKey
 
-	// ForceRefresh bypasses the memory gate read.
+	// ForceRefresh skips the memory-cache lookup.
 	skipMemory := plan.ForceRefresh
 
 	if topic == "" {
@@ -211,16 +211,17 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	builtPrompt += plainTextInstruction
 
 	ollamaReq := ollamatypes.TextGenerationRequest{
-		Language:        language,
-		Tone:            tone,
-		Model:           model,
-		Prompt:          builtPrompt,
-		SourceText:      sourceText,
-		Title:           title,
-		MinWords:        minWords,
-		MaxChars:        plan.MaxChars,
-		Temperature:     plan.Temperature,
-		GroundingPolicy: plan.GroundingPolicy,
+		Language:         language,
+		Tone:             tone,
+		Model:            model,
+		Prompt:           builtPrompt,
+		SourceText:       sourceText,
+		Title:            title,
+		MinWords:         minWords,
+		MaxChars:         plan.MaxChars,
+		Temperature:      plan.Temperature,
+		GroundingPolicy:  plan.GroundingPolicy,
+		DisableWebSearch: plan.MediaMode == scriptpkg.MediaModeStockOnly || plan.MediaMode == scriptpkg.MediaModeClipOnly,
 		// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): flip
 		// from OutputModeScriptV1 to the canonical OutputModePlainText
 		// default. The engine ships raw narrative prose; the

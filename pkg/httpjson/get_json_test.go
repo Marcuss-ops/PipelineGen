@@ -110,6 +110,23 @@ func TestGetJSON_Non200_ReturnsStatusErrorWithCode(t *testing.T) {
 	}
 }
 
+func TestGetBytes_Non200_ParsesRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "18")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	_, err := GetBytes(context.Background(), newTestClient(server), server.URL, nil)
+	var statusErr *StatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("got %v, want StatusError", err)
+	}
+	if got := statusErr.RetryAfterDuration(); got != 18*time.Second {
+		t.Fatalf("RetryAfterDuration=%v, want 18s", got)
+	}
+}
+
 // ── Test 4: GetJSON invalid JSON → ErrDecodeFailed ────────────────────
 
 // TestGetJSON_InvalidJSON_ReturnsErrDecodeFailed verifies that a 200

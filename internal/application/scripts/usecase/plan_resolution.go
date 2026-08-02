@@ -83,6 +83,16 @@ func (uc *GenerateOneUseCase) SetMemoryService(svc *adapters.Service) {
 	uc.finalizer.SetMemoryService(svc)
 }
 
+// SetVidRushCache wires the durable binding cache into the finalization
+// phase. The processor-level provider caches are composed separately; this
+// setter closes the cross-process warm-replay gap for scene bindings.
+func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort) {
+	if uc == nil {
+		return
+	}
+	uc.finalizer.SetVidRushCache(cache)
+}
+
 // ── Plan-phase helpers ────────────────────────────────────────────────
 
 // buildResolutionContext constructs a SourceResolutionContext from a

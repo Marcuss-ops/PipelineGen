@@ -107,17 +107,10 @@ def get_txt_content(local_path, name=None):
     return ""
 
 def normalize_text(text):
-    """Lemmatise + strip stopwords/punct. Italian-aware via a tiny
-    stopword sniff; falls back to the en pipeline.
-    """
-    # Quick heuristic to detect Italian words
-    italian_stopwords = {"il", "la", "i", "gli", "le", "un", "una", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che"}
-    words = text.lower().split()
-    is_italian = any(w in italian_stopwords for w in words)
+    """Normalize using the explicitly selected NLP pipeline only."""
     nlp, nlp_it, _ = get_models()
-    target_nlp = nlp_it if (is_italian and nlp_it) else nlp
 
-    doc = target_nlp(text.lower())
+    doc = nlp(text.lower())
     return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
 def generate_search_text(parts):

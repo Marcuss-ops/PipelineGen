@@ -110,6 +110,7 @@ func buildScriptUseCases(
 
 	// ── GenerateOneUseCase (single-item pipeline) ───────────────
 	oneUC := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)
+	oneUC.SetVidRushCache(buildVidRushCache(root, log))
 	if root.AI.MemorySvc != nil {
 		oneUC.SetMemoryService(root.AI.MemorySvc)
 		log.Info("wireScriptFlow: gemmamemory service wired to GenerateOneUseCase")

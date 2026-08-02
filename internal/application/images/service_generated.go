@@ -35,6 +35,20 @@ func (s *Service) GenerateSmartImage(ctx context.Context, subject, topic, style 
 	return s.Gen.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive)
 }
 
+// GenerateArtifact runs the canonical registry-backed generation use case
+// without ingesting the result. Callers that own a larger workflow (such as
+// VidRush) receive the ArtifactManifest and must pass the staged artifact to
+// the shared finalizer; this method deliberately does not write media_assets.
+func (s *Service) GenerateArtifact(ctx context.Context, jobID, prompt, style string, width, height int, tags []string) (*UsecaseOutput, error) {
+	if s == nil || s.Gen == nil {
+		return nil, ErrImageGenNotImplemented
+	}
+	return RunUsage(ctx, UsecaseDeps{Registry: s.Gen.registry, Styles: s.Gen.styles, Log: s.Gen.log}, UsecaseCommand{
+		JobID: jobID, Prompt: prompt, Style: style, Width: width, Height: height,
+		Tags: tags, OutputPath: "",
+	})
+}
+
 // TriggerPrewarm warms up the Chrome/Playwright worker subprocess
 // ahead of a batch generation run.
 func (s *Service) TriggerPrewarm(ctx context.Context, jobID string, count int) {

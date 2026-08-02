@@ -124,8 +124,8 @@
         "media_plan": {
           "mode": "hybrid",
           "provider_policy": {
-            "artlist": "disabled",
-            "internet_images": "disabled"
+            "artlist": "enabled",
+            "internet_images": "enabled"
           },
           "extraction": {
             "enabled": false
@@ -155,5 +155,5 @@
     "deterministic_output": "output identico per payload identici anche sotto carico",
     "resource_cleanup": "dopo cool-down, CPU/RAM/goroutine tornano ai livelli idle"
   },
-  "execution_notes": "Questo scenario richiede: (1) GNU parallel o xargs -P per lancio parallelo, (2) accesso a /metrics Prometheus, (3) accesso diretto a SQLite per verifiche post-run, (4) server in stato controllato senza altri carichi. Non eseguibile dal run_scenario.sh corrente — richiede un runner specializzato o esecuzione manuale."
+  "execution_notes": "Il run_scenario.sh esegue le onde provider-enabled 1→2→5 con POST concorrenti, polling terminale e stop fail-closed su dispatch error, job non terminale o errore. I livelli 10 e 20 restano descrittivi e non vengono eseguiti dal gate iniziale. Accesso a /metrics e SQLite può essere aggiunto al report live senza cambiare il contratto del runner."
 }

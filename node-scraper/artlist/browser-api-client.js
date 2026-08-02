@@ -52,10 +52,16 @@ export class ArtlistBrowserApiClient {
         await importCookies(browserPage, this.cookiePath);
       }
 
-      await browserPage.goto(`https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`, {
+      const pageResponse = await browserPage.goto(`https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000,
       });
+
+      if (pageResponse?.status?.() === 429) {
+        const err = new Error('Artlist returned an anti-bot or rate-limit challenge page');
+        err.code = 'ARTLIST_RATE_LIMITED';
+        throw err;
+      }
 
       const requestBody = buildRequestBody(endpoint, term, page, limit, filters);
       const result = await browserPage.evaluate(
@@ -99,6 +105,14 @@ export class ArtlistBrowserApiClient {
       if (result.status === 401 || result.status === 403) {
         const err = new Error(`Artlist session unavailable: HTTP ${result.status}`);
         err.code = 'SESSION_EXPIRED';
+        throw err;
+      }
+
+      if (result.status === 429) {
+        const err = new Error('Artlist API request was rate limited');
+        err.code = 'ARTLIST_RATE_LIMITED';
+        err.status = result.status;
+        err.body = result.rawText || result.data;
         throw err;
       }
 

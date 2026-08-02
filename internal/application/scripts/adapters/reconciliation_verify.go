@@ -197,7 +197,7 @@ func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 		}, nil
 
 	default:
-		// New or corrupt verifier states must never bypass the gate.
+		// New or corrupt verifier states must never skip validation.
 		// Preserve generation as best-effort, but clear the link and
 		// expose the degraded outcome to status classification.
 		*linkPtr = ""

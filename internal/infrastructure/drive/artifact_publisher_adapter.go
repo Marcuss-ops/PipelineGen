@@ -172,6 +172,8 @@ func (a *ArtifactPublisherAdapter) Publish(
 		SourceVersion:  artifact.SourceVersion,
 		Group:          group,
 		Subject:        subject,
+		Category:       group,
+		Style:          "vidrush",
 		Provider:       provider,
 		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
 		// RootFolderOverride is retained only for legacy envelopes.
@@ -224,6 +226,14 @@ func (a *ArtifactPublisherAdapter) Publish(
 // so Drive paths remain per-run without recreating a redundant
 // "stock" subfolder under the stock root folder.
 func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subject, provider string) {
+	// VidRush assets carry their provider as the canonical source. Keep their
+	// Drive layout deterministic and independent from stock/youtube run IDs.
+	switch strings.ToLower(strings.TrimSpace(artifact.Source)) {
+	case "artlist", "internet_images", "image_generation":
+		group = "vidrush"
+		subject = stockFolderLeafName(firstNonEmpty(artifact.PathLeafName, artifact.Filename))
+		return group, subject, strings.ToLower(strings.TrimSpace(artifact.Source))
+	}
 	// When the stock orchestrator already resolved the root folder
 	// (run_orchestratorResilient created the folder_name subfolder),
 	// preserve semantic group/subject values for the delivery mapper.
@@ -322,6 +332,15 @@ func isHexString(s string) bool {
 		}
 	}
 	return true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // ── Kind → DestinationKey mapping ───────────────────────────────────

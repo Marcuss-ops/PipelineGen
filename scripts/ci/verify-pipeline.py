@@ -32,7 +32,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 DEFAULT_REGISTRY = Path("config/verify-pipelines.json")
 DEFAULT_COMPONENT_REGISTRY = Path("config/verify-components.json")
 DEFAULT_COMPONENT_RUNNER = Path("scripts/ci/verify-component.py")
-DEFAULT_REPORT = Path("artifacts/verify/pipelines/latest.json")
+DEFAULT_REPORT = Path("artifacts/verify/latest.json")
 EXIT_CONFIG_ERROR = 2
 EXIT_FAILURE = 1
 EXIT_TIMEOUT = 124
@@ -80,6 +80,19 @@ class ExecuteContext:
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _git_sha(root: Path) -> str | None:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(root),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else None
 
 
 def _positive_number(value: Any, field: str, context: str) -> float:
@@ -132,7 +145,16 @@ def load_pipeline_registry(path: Path) -> dict[str, PipelineDefinition]:
         if len(set(components)) != len(components):
             raise PipelineConfigError(f"{context}: duplicate components are not allowed")
 
-        raw_tests = value.get("operational_tests", value.get("tests", []))
+        raw_tests = value.get(
+            "operational_tests",
+            value.get("operational_test", value.get("tests", [])),
+        )
+        # Accept the compact registry form from the operational contract:
+        # "operational_test": ["python3", "tests/..."].
+        if isinstance(raw_tests, list) and raw_tests and all(
+            isinstance(item, str) for item in raw_tests
+        ):
+            raw_tests = [{"command": raw_tests, "dry_run_supported": True}]
         if not isinstance(raw_tests, list):
             raise PipelineConfigError(f"{context}: operational_tests must be an array")
         tests: list[OperationalTest] = []
@@ -174,13 +196,26 @@ def load_pipeline_registry(path: Path) -> dict[str, PipelineDefinition]:
 
 
 def load_component_names(path: Path) -> set[str]:
+    return set(load_component_registry(path))
+
+
+def load_component_registry(path: Path) -> dict[str, dict[str, Any]]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise PipelineConfigError(f"cannot load component registry {path}: {exc}") from exc
     if not isinstance(raw, dict) or not raw:
         raise PipelineConfigError("component registry must be a non-empty JSON object")
-    return set(raw)
+    for name, definition in raw.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(definition, dict):
+            raise PipelineConfigError("component registry contains an invalid definition")
+        dependencies = definition.get("dependencies", [])
+        if not isinstance(dependencies, list) or any(
+            not isinstance(dependency, str) or not dependency.strip()
+            for dependency in dependencies
+        ):
+            raise PipelineConfigError(f"component={name}: dependencies must be a string array")
+    return raw
 
 
 def resolve_pipeline_names(
@@ -196,19 +231,35 @@ def resolve_pipeline_names(
 
 
 def resolve_components(
-    registry: Mapping[str, PipelineDefinition], pipeline_names: Sequence[str], available: set[str]
+    registry: Mapping[str, PipelineDefinition],
+    pipeline_names: Sequence[str],
+    available: set[str] | Mapping[str, Mapping[str, Any]],
 ) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
+    visiting: set[str] = set()
+    available_names = set(available)
+    dependencies = available if isinstance(available, Mapping) else {}
+
+    def visit(component: str, pipeline_name: str) -> None:
+        if component not in available_names:
+            raise PipelineConfigError(
+                f"pipeline={pipeline_name}: unknown component={component}"
+            )
+        if component in seen:
+            return
+        if component in visiting:
+            raise PipelineConfigError(f"component dependency cycle at {component}")
+        visiting.add(component)
+        for dependency in dependencies.get(component, {}).get("dependencies", []):
+            visit(dependency, pipeline_name)
+        visiting.remove(component)
+        seen.add(component)
+        result.append(component)
+
     for pipeline_name in pipeline_names:
         for component in registry[pipeline_name].components:
-            if component not in available:
-                raise PipelineConfigError(
-                    f"pipeline={pipeline_name}: unknown component={component}"
-                )
-            if component not in seen:
-                seen.add(component)
-                result.append(component)
+            visit(component, pipeline_name)
     return result
 
 
@@ -372,7 +423,9 @@ def run_pipeline(
         component_report_valid = (
             isinstance(component_report, dict)
             and component_report.get("final") == "PASS"
-            and report_components == components
+            and isinstance(report_components, list)
+            and len(report_components) == len(components)
+            and set(report_components) == set(components)
             and isinstance(report_component_statuses, dict)
             and all(
                 isinstance(report_component_statuses.get(name), dict)
@@ -389,6 +442,11 @@ def run_pipeline(
             overall_code = EXIT_TIMEOUT
         elif components_status != "PASS":
             overall_code = EXIT_FAILURE
+        resolved_components = (
+            component_report.get("resolved_components", components)
+            if isinstance(component_report, dict)
+            else components
+        )
 
         for pipeline_name in pipeline_names:
             definition = pipeline_registry[pipeline_name]
@@ -445,9 +503,12 @@ def run_pipeline(
 
     final = "PASS" if overall_code == 0 else "FAIL"
     report: dict[str, Any] = {
+        "schema_version": 1,
         "requested": pipeline_names,
-        "resolved_components": components,
+        "resolved_components": resolved_components,
         "started_at": started_at,
+        "finished_at": _now_utc(),
+        "git_sha": _git_sha(repo_root),
         "duration_ms": int((time.monotonic() - started) * 1000),
         "dry_run": dry_run,
         "final": final,
@@ -491,7 +552,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_path = args.report if args.report.is_absolute() else root / args.report
     try:
         pipelines = load_pipeline_registry(registry_path)
-        components = load_component_names(component_registry_path)
+        components = load_component_registry(component_registry_path)
         report, code = run_pipeline(
             pipelines,
             components,

@@ -74,22 +74,21 @@ func (p *WikipediaProvider) Search(ctx context.Context, query string, opts routi
 	// baseHost reflects the requested lang so per-call overrides work.
 	p.baseHost = lang + ".wikipedia.org"
 	imgURL, wikiTitle := p.bridge.SearchWikipedia(ctx, query, lang)
-	if imgURL == "" {
-		return nil, nil
+	if imgURL != "" {
+		pageURL := ""
+		if wikiTitle != "" {
+			pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
+		}
+		return []routing.RetrievalSearchResult{{
+			Provider: asset.ProviderWikipedia, Origin: asset.ImageOriginRetrieved,
+			PreviewURL: imgURL, PageURL: pageURL, Title: wikiTitle,
+			License: "CC-BY-SA-4.0", Author: "Wikipedia Contributors",
+		}}, nil
 	}
-	pageURL := ""
-	if wikiTitle != "" {
-		pageURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
-	}
-	return []routing.RetrievalSearchResult{{
-		Provider:   asset.ProviderWikipedia,
-		Origin:     asset.ImageOriginRetrieved,
-		PreviewURL: imgURL,
-		PageURL:    pageURL,
-		Title:      wikiTitle,
-		License:    "CC-BY-SA-4.0",
-		Author:     "Wikipedia Contributors",
-	}}, nil
+	// Wikimedia Commons is a distinct provider in the shared registry. Keep
+	// it there instead of issuing a second Commons request from the Wikipedia
+	// adapter for every query that lacks a Wikipedia thumbnail.
+	return nil, nil
 }
 
 // ID returns the canonical string ID of this provider.

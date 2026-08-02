@@ -22,7 +22,6 @@
 //   - ProfileCount + Version + fingerprint helpers → lexicon_scoring.go
 //   - File loaders (loadWordSet, loadStringList, loadPhrasePolicy) →
 //     lexicon_loaders.go
-//   - Built-in language profiles + fallback → lexicon_builtin.go
 //   - cloneProfile + cloneStringSet → lexicon_clone.go
 //   - defaultLexiconMu + SetDefaultLexicon + DefaultLexicon →
 //     lexicon_default.go
@@ -57,21 +56,18 @@ type LexiconRegistry struct {
 //	entity_blocklist.txt — words never treated as entities, one per line
 //	phrase_policy.txt    — YAML or simple key=value lines (min_words, max_words, etc.)
 //
-// A "fallback" subdirectory provides defaults used when no language-
-// specific profile exists. If fallback is missing, the registry
-// builds a minimal fallback from built-in defaults.
+// A "fallback" subdirectory is required and is used only when callers
+// explicitly request the fallback profile. Missing configuration is an
+// error; the registry never manufactures linguistic data.
 func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 	if rootDir == "" {
-		return newBuiltInLexicon(), nil
+		return nil, fmt.Errorf("lexicon registry: root directory is required")
 	}
 
 	profiles := make(map[string]*LexiconProfile)
 
 	entries, err := os.ReadDir(rootDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return newBuiltInLexicon(), nil
-		}
 		return nil, fmt.Errorf("lexicon registry: read root %q: %w", rootDir, err)
 	}
 
@@ -122,7 +118,10 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 
 	fallback := profiles["fallback"]
 	if fallback == nil {
-		fallback = builtInFallbackProfile()
+		return nil, fmt.Errorf("lexicon registry: required fallback profile is missing in %q", rootDir)
+	}
+	if len(profiles) == 1 {
+		return nil, fmt.Errorf("lexicon registry: no language profiles found in %q", rootDir)
 	}
 
 	return &LexiconRegistry{
@@ -144,17 +143,31 @@ func MustNewLexiconRegistry(rootDir string) *LexiconRegistry {
 
 // Resolve returns the profile for the given language tag. Language
 // tags are normalised to a two-letter code with the region stripped
-// (e.g. "en-US" -> "en"). If no profile exists for the language,
-// the fallback profile is returned.
+// (e.g. "en-US" -> "en"). Missing profiles fail fast; callers that
+// need an error value can use ResolveRequired.
 func (r *LexiconRegistry) Resolve(language string) *LexiconProfile {
+	profile, err := r.ResolveRequired(language)
+	if err != nil {
+		panic(err)
+	}
+	return profile
+}
+
+// ResolveRequired returns the configured profile for a language or a
+// typed configuration error. There is deliberately no implicit fallback:
+// language selection is configuration, not a best-effort heuristic.
+func (r *LexiconRegistry) ResolveRequired(language string) (*LexiconProfile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	lang := normalizeLang(language)
-	if p, ok := r.profiles[lang]; ok {
-		return cloneProfile(p)
+	if lang == "" {
+		return nil, fmt.Errorf("lexicon registry: language is required")
 	}
-	return cloneProfile(r.fallback)
+	if p, ok := r.profiles[lang]; ok {
+		return cloneProfile(p), nil
+	}
+	return nil, fmt.Errorf("lexicon registry: language %q is not configured", language)
 }
 
 // HasProfile reports whether the registry has an explicit (non-fallback)

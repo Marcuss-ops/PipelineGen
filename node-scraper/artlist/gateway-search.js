@@ -318,11 +318,19 @@ export async function searchArtlistGateway({
   if (!forceRefresh) {
     const cached = cache.get(cacheKey);
     if (cached) {
-      return {
-        ...cached,
-        cache_hit: true,
-        source: cached.source || 'sqlite',
-      };
+      const cachedClips = Array.isArray(cached.clips)
+        ? cached.clips
+        : cached.results;
+      if (Array.isArray(cachedClips) && cachedClips.length > 0) {
+        return {
+          ...cached,
+          cache_hit: true,
+          source: cached.source || 'sqlite',
+        };
+      }
+      // Empty provider responses are misses, not durable availability. Drop
+      // legacy negative entries so a later run can retry the provider.
+      cache.delete(cacheKey);
     }
   }
 
@@ -346,6 +354,9 @@ export async function searchArtlistGateway({
     if (err && err.code === 'ARTLIST_ENDPOINT_INVALID') {
       throw err;
     }
+    if (err && err.code === 'ARTLIST_RATE_LIMITED') {
+      throw err;
+    }
     if (logger && typeof logger.warn === 'function') {
       logger.warn('artlist browser API search failed, falling back to legacy search', {
         error: err && err.message ? err.message : String(err),
@@ -362,12 +373,14 @@ export async function searchArtlistGateway({
     });
   }
 
-  cache.put(cacheKey, {
-    query: normalizedQuery,
-    filters,
-    page: normalizedPage,
-    limit: normalizedLimit,
-  }, envelope);
+  if (Array.isArray(envelope.clips) && envelope.clips.length > 0) {
+    cache.put(cacheKey, {
+      query: normalizedQuery,
+      filters,
+      page: normalizedPage,
+      limit: normalizedLimit,
+    }, envelope);
+  }
 
   return envelope;
 }

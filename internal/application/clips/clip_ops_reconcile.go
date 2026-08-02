@@ -48,7 +48,7 @@ func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string)
 }
 
 // knownCleanupSources is the canonical set of source names that
-// the cleanup job accepts. Map lookup bypasses the C2-C AST gate's
+// the cleanup job accepts. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection (godlike/06 SSOT co-located structural
 // validation: the canonical source surface is artifacts.SourceCatalog;
 // this map captures the cleanup-specific subset for jobs lifecycle).

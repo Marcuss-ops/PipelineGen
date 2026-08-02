@@ -29,10 +29,12 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -58,6 +60,9 @@ import (
 func registerAIBackedProcessors(
 	ppReg *adapters.PostProcessorRegistry,
 	root *wiring.ComposeRoot,
+	artlistWiring *wiring.ArtlistWiring,
+	vidRushProviders *adapters.VidRushAssetProviderRegistry,
+	vidRushCache ports.VidRushCachePort,
 	cfg *config.Config,
 	log *zap.Logger,
 ) error {
@@ -73,7 +78,7 @@ func registerAIBackedProcessors(
 	if entityAdapter == nil {
 		log.Warn("EntitiesProcessor: Ollama backend not available; postprocessor not registered (entities will be skipped)")
 	} else {
-		if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter, vidrushMetrics)) {
+		if !ppReg.Register(adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)) {
 			return fmt.Errorf("register entities processor: composition bug")
 		}
 	}
@@ -151,8 +156,21 @@ func registerAIBackedProcessors(
 		if root.Domains != nil && root.Domains.AssocService != nil {
 			clipSvc.AssocSvc = root.Domains.AssocService
 		}
-		clipSearchAdapter = &artlistClipSearchAdapter{
-			svc: clipSvc,
+		if vidRushProviders != nil {
+			if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
+				clipSearchAdapter = &adapters.VidRushRegistryClipSearcher{Registry: vidRushProviders}
+				log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
+			}
+		}
+		if clipSearchAdapter == nil {
+			remoteClipSearchAdapter := &artlistClipSearchAdapter{svc: clipSvc}
+			if artlistWiring != nil && artlistWiring.ProviderAssets != nil {
+				remoteClipSearchAdapter.remoteSearch = func(ctx context.Context, req providerassets.SearchRequest) (providerassets.SearchResult, error) {
+					return artlistWiring.ProviderAssets.Search(ctx, "artlist", req)
+				}
+				log.Info("ClipSearchProcessor wired through the canonical remote Artlist provider registry")
+			}
+			clipSearchAdapter = remoteClipSearchAdapter
 		}
 		log.Info("ClipSearchProcessor wired with rich ClipServices",
 			zap.Bool("drive_svc", clipSvc.DriveSvc != nil),
@@ -165,17 +183,26 @@ func registerAIBackedProcessors(
 	if clipSearchAdapter == nil {
 		log.Warn("ClipSearchProcessor: OllamaTranslator not available; postprocessor not registered (clip_search will be skipped)")
 	} else {
-		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter, vidrushMetrics)) {
+		if !ppReg.Register(adapters.NewClipSearchProcessorWithCache(clipSearchAdapter, vidRushCache, vidrushMetrics)) {
 			return fmt.Errorf("register clip_search processor: composition bug")
 		}
 	}
 
 	// ── Internet images ─────────────────────────────────────────────
-	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
-		if !ppReg.Register(adapters.NewInternetImagesProcessor(&internetImageSearchAdapter{resolver: root.Domains.ImageSearchResolver}, vidrushMetrics)) {
+	var imageSearcher adapters.InternetImageSearcher
+	if vidRushProviders != nil {
+		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderInternetImages); err == nil {
+			imageSearcher = &adapters.VidRushRegistryImageSearcher{Registry: vidRushProviders}
+		}
+	}
+	if imageSearcher == nil && root.Domains != nil && root.Domains.ImageSearchResolver != nil {
+		imageSearcher = newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
+	}
+	if imageSearcher != nil {
+		if !ppReg.Register(adapters.NewInternetImagesProcessorWithCache(imageSearcher, vidRushCache, vidrushMetrics)) {
 			return fmt.Errorf("register internet_images processor: composition bug")
 		}
-		log.Info("InternetImagesProcessor wired with canonical ImageSearchResolver")
+		log.Info("InternetImagesProcessor wired through the VidRush provider registry")
 	} else {
 		log.Warn("InternetImagesProcessor: ImageSearchResolver not available; postprocessor not registered (internet_images will be skipped)")
 	}

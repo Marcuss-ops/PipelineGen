@@ -210,8 +210,9 @@ func (t MediaToggle) AsBool() bool {
 // MediaProviderPolicy controls which visual providers may be used by
 // the VidRush pipeline.
 type MediaProviderPolicy struct {
-	Artlist        MediaToggle `json:"artlist,omitempty"`
-	InternetImages MediaToggle `json:"internet_images,omitempty"`
+	Artlist         MediaToggle `json:"artlist,omitempty"`
+	InternetImages  MediaToggle `json:"internet_images,omitempty"`
+	ImageGeneration MediaToggle `json:"image_generation,omitempty"`
 }
 
 // Clone returns a deep copy of MediaPlanSpec. Slice fields are

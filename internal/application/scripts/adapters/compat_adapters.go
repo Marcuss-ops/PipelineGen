@@ -67,6 +67,10 @@ type ArtlistClipMatch struct {
 	FolderName       string   `json:"folder_name,omitempty"`
 	FolderID         string   `json:"folder_id,omitempty"`
 	TranslationError string   `json:"translation_error,omitempty"`
+	// Remote marks a provider-registry result that still needs acquisition.
+	// It prevents a remote source URL from being mistaken for a durable Drive
+	// location by the binding gate.
+	Remote bool `json:"remote,omitempty"`
 }
 
 // ArtlistClipSearcher is the canonical port for searching Artlist
@@ -77,7 +81,7 @@ type ArtlistClipMatch struct {
 // godlike/06 SSOT: the port is declared ONLY here. No other package
 // may redefine ArtlistClipSearcher.
 type ArtlistClipSearcher interface {
-	SearchClips(ctx context.Context, title string, phrases []string) []ArtlistClipMatch
+	SearchClips(ctx context.Context, title string, phrases []string) ([]ArtlistClipMatch, error)
 }
 
 // InternetImageSearchRequest carries the canonical per-segment query

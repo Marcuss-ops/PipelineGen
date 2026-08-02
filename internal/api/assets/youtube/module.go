@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -22,6 +23,7 @@ type CoreDeps struct {
 	Jobs          jobs.Service
 	ClipStorePort ytports.ClipStorePort
 	ToolChecker   appassets.ToolChecker
+	StockService  *stockplan.StockService
 }
 
 // SearchDeps groups the optional search surfaces used by advanced search and
@@ -102,6 +104,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Search.Service,
 		deps.Search.FanOut,
 	)
+	handler.stockService = deps.Core.StockService
 
 	module := api.NewRouteModule(
 		"clips",

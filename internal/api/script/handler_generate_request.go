@@ -100,6 +100,21 @@ func bindGenerateEnvelope(c *gin.Context, validator *usecase.PayloadValidator) (
 	return &env, true
 }
 
+func bindGeneratePreflightError(c *gin.Context, err error) {
+	var pve *scriptpkg.PayloadValidationError
+	if errors.As(err, &pve) {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": gin.H{
+			"code": pve.Code, "message": pve.Message, "stage": pve.Stage,
+			"retryable": pve.Retryable, "extra": pve.Extra,
+		}})
+		return
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": gin.H{
+		"code": "INVALID_PAYLOAD", "message": err.Error(),
+		"stage": "request.validation", "retryable": false,
+	}})
+}
+
 // validateIdempotencyKey reads the Idempotency-Key header, normalises
 // whitespace, and applies the printable-ASCII + max-255 rule
 // (delegated to handler_generate_helpers.go::isValidIdempotencyKey).

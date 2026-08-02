@@ -58,6 +58,10 @@ function rejectIfNotMethod(req, res, allowedMethod, endpointLabel) {
   return false;
 }
 
+function isArtlistRateLimitedError(err) {
+  return err && err.code === 'ARTLIST_RATE_LIMITED';
+}
+
 // ─── /detail ─────────────────────────────────────────────────────────────────
 // Fetch rich structured metadata for a single Artlist clip detail page.
 // Body: { clip_page_url: string }
@@ -317,8 +321,9 @@ export async function handleSearch(req, res, ctx) {
   } catch (err) {
     const elapsed = Date.now() - t0;
     console.error(`[${new Date().toISOString()}] #${reqId} ERROR after ${elapsed}ms:`, err.message);
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: err.message || String(err) }));
+    const status = isArtlistRateLimitedError(err) ? 429 : 500;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: err.code || err.message || String(err) }));
   } finally {
     // §11.0 SCROLL_TIMEOUT budget backstop: cancel the timer on every code
     // path (success / budget-exceeded / unexpected throw). Without the
@@ -404,10 +409,11 @@ export async function handleV1ClipSearch(req, res, ctx) {
       return;
     }
 
-    res.writeHead(500, { 'Content-Type': 'application/json' });
+    const status = isArtlistRateLimitedError(err) ? 429 : 500;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       ok: false,
-      error: err.message || String(err),
+      error: err.code || err.message || String(err),
       _meta: { request_id: reqId, elapsed_ms: elapsed },
     }));
   }

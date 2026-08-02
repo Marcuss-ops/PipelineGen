@@ -426,6 +426,10 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 			zap.String("scraper_path", "raw"),
 			zap.Error(err),
 		)
+		if errors.Is(err, artlist.ErrRateLimited) {
+			apiutil.Error(c, http.StatusTooManyRequests, fmt.Sprintf("live search rate limited: %v", err))
+			return
+		}
 		apiutil.InternalError(c, fmt.Errorf("live search failed: %v", err))
 		return
 	}

@@ -64,6 +64,9 @@ type TextGenerationRequest struct {
 	ClipIDs         []string // For structured output: the expected clip_id values
 	Options         map[string]any
 	WebContext      string // Optional: pre-fetched web search results injected into the prompt
+	// DisableWebSearch prevents implicit SearXNG augmentation for isolated
+	// generation contracts such as stock_only and clip_only.
+	DisableWebSearch bool
 
 	// GroundingPolicy controls how source_text and clip evidence
 	// interact in the model prompt. Values: clips_primary,

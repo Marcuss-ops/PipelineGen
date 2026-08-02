@@ -11,6 +11,22 @@ import (
 	"strings"
 )
 
+func TestVidRushTimingFieldsProjectsCanonicalStages(t *testing.T) {
+	got := VidRushTimingFields(map[string]int64{
+		"entities":        11,
+		"clip_search":     22,
+		"internet_images": 33,
+		"images":          44,
+		"persistence":     55,
+		"clip_bindings":   66,
+	})
+	if got.SegmentExtractionMs != 11 || got.QueryGenerationMs != 11 ||
+		got.ArtlistSearchMs != 22 || got.InternetImageSearchMs != 33 ||
+		got.ImageGenerationMs != 44 || got.SQLiteMs != 55 || got.BindingMs != 66 {
+		t.Fatalf("unexpected VidRush timing projection: %+v", got)
+	}
+}
+
 // fakePostProcessor is a test double that returns a fixed result.
 type fakePostProcessor struct {
 	name   adapters.ProcessorName

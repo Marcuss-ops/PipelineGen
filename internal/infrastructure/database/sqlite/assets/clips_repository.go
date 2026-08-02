@@ -166,7 +166,7 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 // Rationale:
 //   1. Production-reachability ban. The presence of public methods on
 //      *assets.ClipsRepository made it trivial for non-canonical callers
-//      to bypass the outbox + the InternalAdminPurge safety gate. Removing
+//      to skip the outbox + the InternalAdminPurge safety validation. Removing
 //      them from this receiver breaks all direct-producer paths. The CI
 //      lint (`scripts/ci-architectural-checks.sh::Check 5`) bans any
 //      direct caller regardless.

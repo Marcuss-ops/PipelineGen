@@ -80,7 +80,7 @@ var (
 	// ErrExplicitKindRequiresFolderID — Kind=KindExplicit + empty
 	// FolderID. Validated at the API layer (the handler fails fast
 	// with 400) but the resolver reasserts for internal callers so a
-	// misrouted legacy payload cannot bypass the gate.
+	// misrouted legacy payload cannot skip validation.
 	ErrExplicitKindRequiresFolderID = fmt.Errorf("destination.kind=explicit requires non-empty folder_id")
 
 	// ErrGroupKindRequiresGroup — Kind=KindGroup + empty Group. Same

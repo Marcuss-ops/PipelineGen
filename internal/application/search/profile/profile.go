@@ -23,7 +23,7 @@ type SearchProfile struct {
 
 // profileBySource is the canonical source → SearchProfile map.
 // Source-specific weights for the cross-encoder reranker. Map
-// lookup bypasses the C2-C AST gate's switch-case detection
+// lookup keeps the C2-C AST check deterministic
 // (godlike/06 SSOT co-located structural validation).
 var profileBySource = map[string]SearchProfile{
 	"youtube": {

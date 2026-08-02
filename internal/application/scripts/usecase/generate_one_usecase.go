@@ -96,6 +96,14 @@ func (uc *GenerateOneUseCase) Execute(
 	}
 	postResult := processed.PostResult
 	timings.PostprocessMs = processed.PostprocessMs
+	vidrushTimings := VidRushTimingFields(processed.PostprocessMs)
+	timings.SegmentExtractionMs = vidrushTimings.SegmentExtractionMs
+	timings.QueryGenerationMs = vidrushTimings.QueryGenerationMs
+	timings.ArtlistSearchMs = vidrushTimings.ArtlistSearchMs
+	timings.InternetImageSearchMs = vidrushTimings.InternetImageSearchMs
+	timings.ImageGenerationMs = vidrushTimings.ImageGenerationMs
+	timings.SQLiteMs = vidrushTimings.SQLiteMs
+	timings.BindingMs = vidrushTimings.BindingMs
 	provenance := processed.Provenance
 
 	// ── Phase 7-9: Finalize ────────────────────────────────────────

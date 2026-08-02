@@ -19,31 +19,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
-
-var qualityGateEnglishSignals = map[string]struct{}{
-	"the": {}, "and": {}, "of": {}, "to": {}, "in": {}, "is": {}, "are": {}, "that": {}, "with": {}, "for": {},
-}
-
-var qualityGateItalianSignals = map[string]struct{}{
-	"il": {}, "la": {}, "di": {}, "e": {}, "che": {}, "non": {}, "per": {}, "con": {}, "su": {}, "una": {},
-}
-
-var qualityGateSpanishSignals = map[string]struct{}{
-	"el": {}, "la": {}, "de": {}, "y": {}, "que": {}, "no": {}, "por": {}, "con": {}, "sobre": {}, "una": {},
-}
-
-var qualityGateFrenchSignals = map[string]struct{}{
-	"le": {}, "la": {}, "de": {}, "et": {}, "que": {}, "non": {}, "pour": {}, "avec": {}, "sur": {}, "une": {},
-}
-
-var qualityGateGermanSignals = map[string]struct{}{
-	"der": {}, "die": {}, "das": {}, "und": {}, "zu": {}, "in": {}, "von": {}, "mit": {}, "auf": {}, "für": {},
-}
-
-var qualityGateVerbSuffixes = []string{"ing", "ed", "are", "ere", "ire", "ando", "endo", "ato", "uto", "ito"}
 
 // Quality thresholds.
 const (
@@ -51,21 +29,7 @@ const (
 	// ratio of generated content words that must be present in the
 	// source text or clip evidence.
 	//
-	// August 2026 (RUN3 boxers strict gate): lowered from 0.70 to
-	// 0.30. The editorial gate must separate paraphrase from
-	// hallucination, not reject heavy-but-faithful paraphrase: the
-	// LLM reuses at most ~0.41 of its vocabulary from a text source,
-	// and every operational scenario in the boxers suite measured
-	// coverage between 0.01 and 0.13 at the old 0.70 default, which
-	// made strict text-source scenarios unpassable. 0.30 leaves a
-	// margin below the observed 0.36-0.41 band for faithful
-	// documentary paraphrase (a 0.40 cut would sit exactly on the
-	// flaky boundary) while still rejecting off-topic prose, which
-	// measures ~0.0-0.1. The former
-	// singleSegmentDocumentaryMinCoverage (0.55) relaxation is
-	// removed: it became incoherent once the default dropped below
-	// it.
-	defaultMinSourceTextCoverage = 0.30
+	defaultMinSourceTextCoverage = 0.70
 
 	// minTargetWordsRatio is the lower bound of the target word
 	// tolerance (actual >= target * minTargetWordsRatio).
@@ -154,24 +118,12 @@ func evaluateQualityGate(
 	// Language detection.
 	q.LanguageDetected = detectLanguage(generatedText)
 
-	// Source text coverage. PRE-EXISTING-7 (FASE 13): when neither
-	// SourceText nor ClipEvidence is provided, the gate has no
-	// anchor for a coverage ratio (pure-prose free-form generation).
-	// Short-circuit to 1.0 instead of forcing the LLM-emitted text
-	// to overlap with an empty source (which always computes to 0.0
-	// and trips the editorial gate on pure-prose orchestrator paths).
-	//
-	// Operator-visibility gap (PRE-EXISTING-7 / FASE 13 PART 3): this
-	// skip is silent. A future PR can add a log.Warn emission at the
-	// orchestrator boundary (e.g., generation_result_mapper.go) when
-	// q.SourceTextCoverage == 1.0 && plan.ClipEvidence == nil — the
-	// signal would surface wildly-off-target LLM outputs on the pure-prose
-	// path WITHOUT triggering the editorial gate. For now the gate stays
-	// silent to honor the canonical godlike/07 no-blocking contract.
 	sourceText := buildSourceText(plan)
 	if strings.TrimSpace(sourceText) == "" {
-		q.SourceTextCoverage = 1.0
+		q.SourceTextCoverageStatus = "NOT_EVALUATED"
+		q.SourceTextCoverage = 0.0
 	} else {
+		q.SourceTextCoverageStatus = "EVALUATED"
 		q.SourceTextCoverage = computeSourceTextCoverage(generatedText, sourceText)
 	}
 
@@ -188,28 +140,12 @@ func evaluateQualityGate(
 	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
 		minClipCov = 0.00
 	}
-	// Clip-primary generations may be translated or heavily paraphrased:
-	// lexical overlap is then a weak proxy even when every accepted clip is
-	// bound and the narrative has textual anchors. In that case require an
-	// anchor (> 0) but do not impose an arbitrary lexical percentage; the
-	// structural clip evidence remains the authoritative coverage check.
-	if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary &&
-		q.ClipEvidenceCoverage >= 1.0 && q.SourceTextCoverage > 0 &&
-		q.SourceTextCoverage < minSourceTextCov {
-		minSourceTextCov = 0.0
-	}
-
-	// August 2026: the single-segment documentary relaxation is
-	// removed. defaultMinSourceTextCoverage (0.40) already sits
-	// below the former relaxed value (0.55), so the special case
-	// was both redundant and inverted for this shape.
-
 	var reasons []string
 	if q.LanguageDetected != "" && requestedLang != "" && q.LanguageDetected != requestedLang {
 		reasons = append(reasons,
 			"detected language "+q.LanguageDetected+" does not match requested language "+requestedLang)
 	}
-	if q.SourceTextCoverage < minSourceTextCov {
+	if q.SourceTextCoverageStatus == "EVALUATED" && q.SourceTextCoverage < minSourceTextCov {
 		reasons = append(reasons,
 			"source_text coverage below threshold")
 	}
@@ -395,23 +331,30 @@ func countUnsupportedClaims(result *scriptpkg.GenerationResult, sourceText strin
 }
 
 // detectLanguage returns the ISO-639-1 language code with the highest
-// overlap against a small built-in signal set. When no signals match,
-// it returns an empty string.
+// overlap against the configured registry profiles. When no profile
+// signals match, it returns an empty string.
 func detectLanguage(text string) string {
 	tokens := tokenize(text)
 	if len(tokens) == 0 {
 		return ""
 	}
 
-	scores := []struct {
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		return ""
+	}
+	var scores []struct {
 		code  string
 		score float64
-	}{
-		{"en", languageMatchScore(tokens, qualityGateEnglishSignals)},
-		{"it", languageMatchScore(tokens, qualityGateItalianSignals)},
-		{"es", languageMatchScore(tokens, qualityGateSpanishSignals)},
-		{"fr", languageMatchScore(tokens, qualityGateFrenchSignals)},
-		{"de", languageMatchScore(tokens, qualityGateGermanSignals)},
+	}
+	for _, code := range registry.Languages() {
+		if code == "fallback" {
+			continue
+		}
+		scores = append(scores, struct {
+			code  string
+			score float64
+		}{code, languageMatchScore(tokens, registry.StopWords(code))})
 	}
 
 	maxScore := 0.0
@@ -443,9 +386,13 @@ func languageMatchScore(tokens []string, stopWords map[string]struct{}) float64 
 
 // filterStopWords removes common stop words from a token list.
 func filterStopWords(tokens []string) []string {
+	stopWords := map[string]struct{}{}
+	if registry := linguistics.DefaultLexiconOrNil(); registry != nil {
+		stopWords = registry.StopWords("fallback")
+	}
 	out := make([]string, 0, len(tokens))
 	for _, t := range tokens {
-		if !textutil.IsStopWord(t) {
+		if _, ok := stopWords[t]; !ok {
 			out = append(out, t)
 		}
 	}
@@ -453,7 +400,11 @@ func filterStopWords(tokens []string) []string {
 }
 
 func isFunctionWord(word string) bool {
-	return textutil.IsStopWord(word)
+	if registry := linguistics.DefaultLexiconOrNil(); registry != nil {
+		_, ok := registry.FunctionWords("fallback")[strings.ToLower(word)]
+		return ok
+	}
+	return false
 }
 
 func looksLikeVerbBigram(words []string) bool {
@@ -461,9 +412,14 @@ func looksLikeVerbBigram(words []string) bool {
 		return false
 	}
 	verbCount := 0
+	registry := linguistics.DefaultLexiconOrNil()
+	var suffixes []string
+	if registry != nil {
+		suffixes = registry.VerbSuffixes("fallback")
+	}
 	for _, w := range words {
 		lower := strings.ToLower(w)
-		for _, suffix := range qualityGateVerbSuffixes {
+		for _, suffix := range suffixes {
 			if strings.HasSuffix(lower, suffix) {
 				verbCount++
 				break

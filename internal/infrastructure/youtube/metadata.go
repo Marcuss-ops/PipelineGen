@@ -33,6 +33,7 @@ import (
 type ytDLPJSON struct {
 	ID          string  `json:"id"`
 	Title       string  `json:"title"`
+	LiveStatus  string  `json:"live_status"`
 	Description string  `json:"description"`
 	Duration    float64 `json:"duration"`
 	Uploader    string  `json:"uploader"`
@@ -117,6 +118,7 @@ func (a *MetadataFetcherAdapter) GetVideoMetadata(ctx context.Context, videoURL 
 	dto := &youtubedto.DownloaderMetadata{
 		ID:           raw.ID,
 		Title:        raw.Title,
+		LiveStatus:   raw.LiveStatus,
 		URL:          videoURL,
 		Description:  raw.Description,
 		Duration:     raw.Duration,

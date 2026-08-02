@@ -77,6 +77,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -84,6 +85,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
+	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -112,7 +114,7 @@ import (
 // ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
 // depended on sectionRegen + cacheEviction (RegenerateSection +
 // EvictCache) are RETIRED in lockstep.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot, registry *module.Registry) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *wiring.ComposeRoot, registry *module.Registry, artlistWiring *wiring.ArtlistWiring) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -197,7 +199,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Step 2: Post-processor registration + freeze ────────────────────
 	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
-	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
+	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}
 	sourceReg.Freeze()
@@ -306,6 +308,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Factory:       submission.NewSubmitRequestFactory(),
 			Log:           log,
 			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
+			ResearchPreflight: func() scriptports.ResearchPreflight {
+				if root.DB == nil {
+					return nil
+				}
+				return usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.DB.DB))
+			}(),
 		},
 		Shorts: scriptapi.ShortsDeps{
 			Renderer: remotionRenderer,
@@ -356,8 +364,8 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 // Moved from registry_script.go (Phase 5 consolidation, June 2026).
 // Calls wireScriptFlow for the canonical use-case delegation and
 // registerScriptHistory for the script-history route module.
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
-	if err := wireScriptFlow(ctx, cfg, log, root, registry); err != nil {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot, artlistWiring *wiring.ArtlistWiring) error {
+	if err := wireScriptFlow(ctx, cfg, log, root, registry, artlistWiring); err != nil {
 		return err
 	}
 	return registerScriptHistory(registry, log, cfg, root)

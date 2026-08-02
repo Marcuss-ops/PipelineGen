@@ -37,6 +37,23 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 	}
 }
 
+func TestBuildPlan_ClipOnlySkipsVoiceoverSideEffect(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		MediaMode: scriptpkg.MediaModeClipOnly,
+		Source: scriptpkg.SourceSpec{
+			Type:    scriptpkg.SourceClips,
+			ClipIDs: []string{"clip-1"},
+		},
+		Output: scriptpkg.OutputSpec{SaveToDB: true},
+	})
+
+	for _, processor := range plan.Postprocessors {
+		if processor == string(adapters.ProcessorVoiceover) {
+			t.Fatalf("clip_only plan unexpectedly contains %q: %v", processor, plan.Postprocessors)
+		}
+	}
+}
+
 func TestBuildPlan_ReconciliationRunsBeforePersistenceAndDocument(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},

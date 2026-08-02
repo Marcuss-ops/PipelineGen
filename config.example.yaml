@@ -55,6 +55,8 @@ external:
   # The runtime still treats this as optional and falls back cleanly
   # if the service is absent.
   searxng_url: "http://127.0.0.1:8080"
+  searxng_language: "en"
+  searxng_engines: "bing,mwmbl,wiby"
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
   nvidia_api_key: ""

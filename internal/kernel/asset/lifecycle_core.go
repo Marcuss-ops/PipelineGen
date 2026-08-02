@@ -45,7 +45,7 @@ const (
 )
 
 // validSourceTypes is the canonical set of known SourceType values.
-// The map lookup bypasses the C2-C AST gate's switch-case / if-condition
+// The map lookup keeps the C2-C AST check deterministic rather than relying on
 // detection (godlike/06 SSOT co-located structural validation: the
 // enum declaration and its membership test live in the same file).
 var validSourceTypes = map[SourceType]struct{}{

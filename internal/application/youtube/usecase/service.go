@@ -39,6 +39,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -155,6 +156,8 @@ type Service struct {
 
 	// P1.3: Pattern 0 port for reading on-disk transcript files.
 	transcriptReader TranscriptReader
+	processSeg       *ProcessYouTubeSegmentUseCase
+	stockService     *stockplan.StockService
 }
 
 // NewServiceFromSubBundles is the sole canonical constructor (PR-GRUPOC-1,
@@ -205,9 +208,15 @@ func NewServiceFromSubBundles(
 		ollama:       storage.Ollama,
 
 		transcriptReader: storage.TranscriptReader,
+		processSeg:       video.ProcessSeg,
 
 		videoExtractSem: make(chan struct{}, maxVideo),
 		ollamaSem:       make(chan struct{}, maxOllama),
+	}
+	if stock, err := stockplan.NewYouTubeStockService(svc, svc, svc, core.Cfg.ClipsFolderID); err == nil {
+		svc.stockService = stock
+	} else if core.Log != nil {
+		core.Log.Warn("youtube stock capability unavailable", zap.Error(err))
 	}
 
 	// Wire search service (PR5 Phase 2).
@@ -254,6 +263,15 @@ func NewServiceFromSubBundles(
 	}, svc)
 
 	return svc
+}
+
+// StockService returns the transcript-first YouTube stock capability. A nil
+// return means the capability was not wired and must not be registered.
+func (s *Service) StockService() *stockplan.StockService {
+	if s == nil {
+		return nil
+	}
+	return s.stockService
 }
 
 // ValidateServiceDepsFromSubBundles checks the 5 sub-bundles for

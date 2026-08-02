@@ -27,6 +27,13 @@ fi
 if [[ -n "$CANONICAL_PORT" ]]; then
     VELOX_PORT="$CANONICAL_PORT"
 fi
+# Keep the repository lexicon as the operational default when an inherited
+# environment exports an empty override. An empty env value must not erase
+# the config.yaml path during a systemd restart.
+if [[ -z "${VELOX_LEXICON_ROOT:-}" ]]; then
+    VELOX_LEXICON_ROOT="$DIR/config/lexicons"
+fi
 export VELOX_FEATURE_IMAGES_ENABLED=true
+export VELOX_LEXICON_ROOT
 set +a
 exec "$DIR/bin/pipelinegen" --mode all
