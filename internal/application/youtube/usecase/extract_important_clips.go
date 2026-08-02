@@ -71,6 +71,7 @@ type DriveFolderCreatorPort interface {
 }
 
 type DriveUploaderPort interface {
+	// TODO(P0.4): migrate to delivery.Publisher.Publish (DRIVE-CUTOVER-P0-1)
 	UploadFile(ctx context.Context, localPath, folderID, fileName string) (*youtubeports.UploadResultDTO, error)
 }
 
@@ -290,6 +291,7 @@ func (uc *ExtractImportantClipsUseCase) publishOneSegment(
 	}
 
 	// (b) upload to per-video Drive subfolder
+	// TODO(P0.4): migrate to delivery.Publisher.Publish (DRIVE-CUTOVER-P0-1)
 	upload, err := uc.uploader.UploadFile(ctx, localPath, folderID, clipID+".mp4")
 	if err != nil || upload == nil || upload.FileID == "" {
 		item.ErrorMessage = fmt.Sprintf("drive upload: %v", err)
