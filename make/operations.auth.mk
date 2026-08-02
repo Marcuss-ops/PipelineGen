@@ -61,17 +61,20 @@ regenerate-token:
 # NOT part of verify-main — the sidecar requires Chrome + a non-trivial
 # Node startup; live-verify batteries (verify-artlist-live) invoke it
 # externally. Sidecar logs at /tmp/velox-scraper.log.
-# Operator stop: `pkill -f artlist_server.js` or systemd stop.
+# The process is detached from the make shell so it remains available to the
+# following live-verify command. Operator stop: terminate the exact PID from
+# `ss -ltnp '( sport = :9123 )'`, or use systemd stop.
 # NOT idempotent — invoke once, then `pkill -f artlist_server.js` before
 # retrying (a second invocation will hit EADDRINUSE on bind, but the
 # surviving first sidecar's /health will report green and mask the
 # EADDRINUSE).
 scraper-up:
 	@echo "→ Starting Node artlist scraper sidecar on $${ARTLIST_SCRAPER_BIND:-127.0.0.1}:$${ARTLIST_SCRAPER_PORT:-9123}..."
-	@CHROME_EXECUTABLE=$${CHROME_EXECUTABLE:-/usr/bin/google-chrome} \
+	@setsid env \
+	CHROME_EXECUTABLE=$${CHROME_EXECUTABLE:-/usr/bin/google-chrome} \
 	ARTLIST_SCRAPER_BIND=$${ARTLIST_SCRAPER_BIND:-127.0.0.1} \
 	ARTLIST_SCRAPER_PORT=$${ARTLIST_SCRAPER_PORT:-9123} \
-	$${SCRAPER_NODE_BIN:-/usr/bin/node} node-scraper/artlist_server.js > /tmp/velox-scraper.log 2>&1 &
+	$${SCRAPER_NODE_BIN:-node} node-scraper/artlist_server.js </dev/null > /tmp/velox-scraper.log 2>&1 &
 	@sleep 2 && curl -sf -m 3 "http://$${ARTLIST_SCRAPER_BIND:-127.0.0.1}:$${ARTLIST_SCRAPER_PORT:-9123}/health" >/dev/null && \
 		echo "✅ scraper-up: sidecar /health green" || { \
 		echo "❌ scraper-up: sidecar /health failed; see /tmp/velox-scraper.log" >&2; \
