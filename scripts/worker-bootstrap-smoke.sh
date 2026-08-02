@@ -11,7 +11,8 @@
 #
 # Exit codes:
 #   0 — worker binary boots, accepts --help, and reports version
-#   1 — worker binary crashes or is unreachable
+#   1 — worker binary crashes or is unreachable, OR the doctor subcommand
+#       (Check 5) produces no machine-readable JSON verdict
 #   2 — docker not available
 
 set -euo pipefail
@@ -73,18 +74,31 @@ else
     echo -e "  ${YELLOW}⚠ No version string detected in startup output${NC}"
 fi
 
-# ─── Check 5: Doctor probe (if available) ─────────────────────
+# ─── Check 5: Doctor probe (real gate) ────────────────────────
+# The doctor subcommand (cmd/worker/doctor_main.go) is dispatched from
+# cmd/worker/main.go and MUST emit a machine-readable verdict. A bare
+# worker image has no master, so a NOT_READY verdict (rc=1) is expected
+# and still proves the doctor is functional; a missing/crashed/unwired
+# doctor FAILS the smoke (previously masked by `|| true` + a soft WARN).
+# The exit code of the docker run is deliberately captured, not swallowed.
 echo ""
-echo "→ Doctor probe (if available)..."
+echo "→ Doctor probe (must emit a JSON verdict)..."
 # Override CMD to avoid --config /app/config/config.yaml (volume mount,
-# may not exist in the image). Use the bare entrypoint with doctor --json.
-DOCTOR_OUT=$(docker run --rm --entrypoint "/usr/local/bin/pipelinegen-worker" "$IMAGE" doctor --json 2>&1 || true)
-if echo "$DOCTOR_OUT" | grep -qE '"ok":\s*(true|false)'; then
-    OK_COUNT=$(echo "$DOCTOR_OUT" | grep -oE '"ok":\s*true' | wc -l)
-    echo -e "  ${GREEN}✓ Doctor reports $OK_COUNT passing probes${NC}"
-else
-    echo -e "  ${YELLOW}⚠ Doctor subcommand not available (expected — may require config)${NC}"
+# may not exist in the image). Use the extracted ENTRYPOINT from Check 2
+# with doctor --json. timeout guards against a hang (the wired doctor
+# completes in ~2s, so 45s is a generous ceiling). SIGKILL kills the
+# docker CLI; in the pathological hang case the container could linger,
+# which is why the ceiling exists in the first place.
+DOCTOR_OUT=$(timeout --signal=KILL 45 docker run --rm --entrypoint "$ENTRYPOINT" "$IMAGE" doctor --json 2>&1) && DOCTOR_RC=0 || DOCTOR_RC=$?
+if ! echo "$DOCTOR_OUT" | grep -qE '"ok":[[:space:]]*(true|false)'; then
+    echo -e "  ${RED}✗ Doctor subcommand produced no JSON verdict (rc=$DOCTOR_RC)${NC}"
+    echo "$DOCTOR_OUT" | tail -8
+    echo "  Wire the 'doctor' subcommand dispatch in cmd/worker/main.go before this gate can pass."
+    exit 1
 fi
+OK_COUNT=$(echo "$DOCTOR_OUT" | grep -oE '"ok":[[:space:]]*true' | wc -l)
+FAIL_COUNT=$(echo "$DOCTOR_OUT" | grep -oE '"ok":[[:space:]]*false' | wc -l)
+echo -e "  ${GREEN}✓ Doctor functional: $OK_COUNT passing / $FAIL_COUNT failing probes (rc=$DOCTOR_RC — NOT_READY is expected without a live master)${NC}"
 
 echo ""
 echo "==========================================================="
