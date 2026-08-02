@@ -231,53 +231,100 @@ func TestStockHandler_FolderNameClean_Allowed(t *testing.T) {
 	}
 }
 
-// ── 5. Token-not-leaked canary ─────────────────────────────────────────
+// ── 5. Token-not-leaked canary (PR-STOCK-ERROR-LEAKS-TOKEN, DoD §16 GAP-C) ─
 //
 // Definition of Done §16: "token mai nei log / errori yt-dlp
-// sanitizzati". The handler's current behavior at handler.go lines
-// 215 / 232 / 239 echoes the offending URL verbatim into the
-// response body (`Error: "invalid or insecure direct_url: " + u`).
-// An attacker can submit a URL with an embedded token and read it
-// back from the response. This test pins the current behavior so a
-// future PR that redacts tokens from the response body can flip
-// the assertion to a positive expectation.
-//
-// The injected token uses a canonical Bearer shape so the existing
-// redaction patterns in internal/infrastructure/process/process.go
-// wouldn't strip it under normal operation (test isolates handler.go
-// behavior, not the redaction pipeline).
+// sanitizzati". handler.go used to echo the offending URL verbatim
+// into the response body (`Error: "invalid or insecure direct_url: "
+// + u`), so an attacker could submit a URL with an embedded token
+// and read it back from the response. handler.go now renders every
+// URL through redactURL() (userinfo/query/fragment stripped, path
+// segments that look like credentials masked). This canary is an
+// ACTIVE gate: if the response body ever contains an injected token
+// again, the test fails closed.
 func TestStockHandler_TokenNotLeaked(t *testing.T) {
-	t.Skipf("PR-STOCK-ERROR-LEAKS-TOKEN (DoD §16 GAP-C): handler.go echoes raw URL into Error field at lines 215/232/239. This canary is INTENTIONALLY skipped to keep CI green while preserving the gap documentation. The forward-pointer PR (PR-STOCK-ERROR-LEAKS-TOKEN) will harden handler.go to redact token-bearing URLs; once that lands, remove this t.Skipf and the test becomes an active FAIL→PASS gate.") // KNOWN_GAP: see t.Skipf above for the rationale. The body below is preserved as documentation but never executes.
 	// Injected token: a sentinel string with a recognizable shape
 	// that no legitimate redaction rule would mistake for noise.
 	injectedToken := "Bearer test_injected_token_DO_NOT_LOG_12345"
 
-	// Build a URL containing the injected token in the path (the
-	// private-IP rejection path will fire BEFORE the body of the URL
-	// is examined, so this is the canonical attacker exfil vector).
-	payload := fmt.Sprintf(`{"direct_urls":["https://10.0.0.1/%s"]}`, injectedToken)
-
-	_, router := newStockHandler(nil, "job-test")
-	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(payload))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Must be 4xx, never 500.
-	if w.Code == http.StatusInternalServerError {
-		t.Fatalf("DoD §16 violation: 500 returned for token-bearing URL (must be 4xx)")
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		// Path-embedded token on a private IP: the private-IP rejection
+		// fires, and the error must not echo the token back.
+		{"path_token_private_ip", fmt.Sprintf(`{"direct_urls":["https://10.0.0.1/%s"]}`, injectedToken)},
+		// Query-string token (canonical signed-URL carrier) on a private IP.
+		{"query_token_private_ip", fmt.Sprintf(`{"drive_urls":["https://10.0.0.1/v.mp4?token=%s"]}`, injectedToken)},
+		// Userinfo credentials (https://user:pass@host).
+		{"userinfo_credentials", fmt.Sprintf(`{"direct_urls":["https://user:%s@10.0.0.1/v.mp4"]}`, injectedToken)},
+		// Token on an otherwise-valid host that fails the URL gate
+		// (unsupported scheme) — the error still must not leak.
+		{"query_token_bad_scheme", fmt.Sprintf(`{"direct_urls":["ftp://example.com/v.mp4?access_token=%s"]}`, injectedToken)},
+		// Token embedded in a clip URL (the third redaction site).
+		{"clip_url_token", fmt.Sprintf(`{"clips":[{"url":"https://10.0.0.1/%s","start_sec":0,"end_sec":4}]}`, injectedToken)},
+		// Unparseable URL (malformed escape) with a short opaque token in
+		// the query — the parse-failure branch must not echo it verbatim.
+		{"malformed_escape_query_token", fmt.Sprintf(`{"direct_urls":["https://example.com/%%zz?x=%s"]}`, "S"+strings.Repeat("e", 15))},
 	}
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for token-bearing URL, got %d", w.Code)
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, router := newStockHandler(nil, "job-test")
+			req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(tc.payload))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
 
-	// The handler's current behavior echoes the URL verbatim into the
-	// response body. Asserting this as a known-leak so the gap is
-	// operationalised: future hardening PR (PR-STOCK-ERROR-LEAKS-TOKEN)
-	// should redact tokens from the response body and flip this to FAIL.
-	if strings.Contains(w.Body.String(), injectedToken) {
-		t.Errorf("KNOWN_GAP canonical: PR-STOCK-ERROR-LEAKS-TOKEN — handler response body echoes the injected token verbatim. " +
-			"This is documented as §16-GAP-C (load-bearing contract for the future PR that hardens handler.go's error message construction at lines 215/232/239 to redact token-bearing URLs).")
+			// Must be 4xx, never 500.
+			if w.Code == http.StatusInternalServerError {
+				t.Fatalf("DoD §16 violation: 500 returned for token-bearing URL (must be 4xx)")
+			}
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("expected 400 for token-bearing URL, got %d (body: %s)", w.Code, w.Body.String())
+			}
+			if strings.Contains(w.Body.String(), injectedToken) {
+				t.Errorf("PR-STOCK-ERROR-LEAKS-TOKEN: handler response body echoes the injected token verbatim: %s", w.Body.String())
+			}
+		})
+	}
+}
+
+// ── 5b. redactURL unit gate (PR-STOCK-ERROR-LEAKS-TOKEN) ──────────────
+//
+// Pins the redaction contract directly so the masking rules can be
+// reviewed without exercising the whole HTTP stack.
+func TestRedactURL_NeverLeaksCredentials(t *testing.T) {
+	const secret = "s3cr3t-Bearer-TOKEN-value-DO-NOT-LOG-987654321"
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"query_token", "https://example.com/v.mp4?token=" + secret},
+		{"query_sig", "https://example.com/v.mp4?X-Amz-Signature=" + secret},
+		{"fragment_token", "https://example.com/v.mp4#access_token=" + secret},
+		{"userinfo", "https://user:" + secret + "@example.com/v.mp4"},
+		{"bearer_path", "https://example.com/" + secret},
+		{"jwt_path", "https://example.com/" + strings.Repeat("a", 80)},
+		{"file_uri_query", "file:///srv/media/v.mp4?key=" + secret},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := redactURL(tc.in)
+			if strings.Contains(got, secret) {
+				t.Fatalf("redactURL leaked secret: in=%q out=%q", tc.in, got)
+			}
+		})
+	}
+}
+
+// Redaction keeps operator-useful structure (host + benign path) intact.
+func TestRedactURL_KeepsEndpointReadable(t *testing.T) {
+	got := redactURL("https://example.com/videos/round-12.mp4?ref=42")
+	if !strings.Contains(got, "https://example.com/videos/round-12.mp4") {
+		t.Fatalf("benign URL lost operator context: %q", got)
+	}
+	if strings.Contains(got, "ref=42") {
+		t.Fatalf("query string not stripped: %q", got)
 	}
 }
 
