@@ -59,7 +59,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	renewCtx, renewCancel := context.WithCancel(jobCtx)
 	defer renewCancel()
 	renewErrs := make(chan error, 1)
-	go r.renewLoop(renewCtx, tools, job.ID, renewErrs)
+	go r.renewLoop(renewCtx, tools, job.ID, renewErrs, cancel)
 
 	// checkRenew non-blockingly reads any error that the renewal
 	// goroutine has already emitted.
