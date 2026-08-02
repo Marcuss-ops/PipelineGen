@@ -19,10 +19,10 @@
 # can validate ONE surface without paying the full battery cost
 # (e.g. `make verify-images-live` after a Drive-side change).
 #
-# verify-images-live — tests/operational/images_e2e.sh — image
+# verify-images-live — tests/operational/test2_images.sh — image
 # ingestion + Drive upload + Qdrant projection for the image surface.
 verify-images-live: auth-check
-	@scripts/with-velox-auth bash tests/operational/images_e2e.sh
+	@scripts/with-velox-auth bash tests/operational/test2_images.sh
 
 # verify-script-live — tests/operational/generate/run.sh basic.json —
 # end-to-end script.generate dispatch + worker pull + finalizer,
