@@ -10,7 +10,7 @@
 //
 // This module owns:
 //   - env-derived config (PORT, BIND, PROFILE_DIR, DEFAULT_LIMIT, MAX_LIMIT,
-//                         HB_INTERVAL_MS, HB_FRESH_WINDOW_MS)
+//                         SEARCH_TIMEOUT_MS, HB_INTERVAL_MS, HB_FRESH_WINDOW_MS)
 //   - process-level state (globalBrowser, lastLaunchError, ...)
 //   - browser lifecycle (getBrowser, cleanupBrowser, runBootWarmup)
 //   - heartbeat (startHeartbeat, stopHeartbeat)
@@ -43,6 +43,10 @@ const BIND = process.env.ARTLIST_SCRAPER_BIND || '0.0.0.0';
 const PROFILE_DIR = process.env.CHROME_PROFILE_DIR || '';
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 50;
+const SEARCH_TIMEOUT_SECONDS = Number.parseInt(process.env.SCROLL_TIMEOUT || '120', 10);
+const SEARCH_TIMEOUT_MS = (Number.isFinite(SEARCH_TIMEOUT_SECONDS) && SEARCH_TIMEOUT_SECONDS > 0
+  ? SEARCH_TIMEOUT_SECONDS
+  : 120) * 1000;
 
 // PR-HEALTHCHECK-FAILFAST (P2, July 2026): /health freshness contract.
 //   HB_INTERVAL_MS       = 30s heartbeat setInterval cadence.
@@ -294,6 +298,7 @@ function createCtx() {
       PROFILE_DIR,
       DEFAULT_LIMIT,
       MAX_LIMIT,
+      SEARCH_TIMEOUT_MS,
       HB_INTERVAL_MS,
       HB_FRESH_WINDOW_MS,
     }),
