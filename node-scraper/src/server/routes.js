@@ -17,7 +17,7 @@
 // The three ctx buckets:
 //   - ctx.config  — frozen env-derived constants
 //                   (PORT, BIND, PROFILE_DIR, DEFAULT_LIMIT, MAX_LIMIT,
-//                    HB_INTERVAL_MS, HB_FRESH_WINDOW_MS)
+//                    SEARCH_TIMEOUT_MS, HB_INTERVAL_MS, HB_FRESH_WINDOW_MS)
 //   - ctx.state   — read+mutate accessors for in-process state
 //                   (requestCount, lastSearchAt, globalBrowser, ...).
 //                   Mutators are explicit so handlers cannot mutate
@@ -370,18 +370,32 @@ export async function handleV1ClipSearch(req, res, ctx) {
   const reqId = ctx.state.incRequest();
   ctx.state.setLastSearchAt(new Date().toISOString());
   const t0 = Date.now();
+  const searchTimeoutMs = Number.isFinite(ctx.config.SEARCH_TIMEOUT_MS) && ctx.config.SEARCH_TIMEOUT_MS > 0
+    ? ctx.config.SEARCH_TIMEOUT_MS
+    : 120_000;
+  let searchTimeoutTimer = null;
+  const searchBudget = new Promise((_, reject) => {
+    searchTimeoutTimer = setTimeout(() => {
+      const err = new Error(`Artlist search budget ${Math.ceil(searchTimeoutMs / 1000)}s exceeded`);
+      err.code = 'ARTLIST_SEARCH_TIMEOUT';
+      reject(err);
+    }, searchTimeoutMs);
+  });
 
   try {
-    const browser = await ctx.deps.getBrowser();
-    const result = await ctx.deps.searchArtlistGateway({
-      browser,
-      query,
-      page,
-      limit,
-      filters,
-      forceRefresh,
-      profileDir: ctx.config.PROFILE_DIR,
-    });
+    const job = (async () => {
+      const browser = await ctx.deps.getBrowser();
+      return ctx.deps.searchArtlistGateway({
+        browser,
+        query,
+        page,
+        limit,
+        filters,
+        forceRefresh,
+        profileDir: ctx.config.PROFILE_DIR,
+      });
+    })();
+    const result = await Promise.race([job, searchBudget]);
 
     if (typeof ctx.state.setLastLaunchError === 'function') {
       ctx.state.setLastLaunchError(null);

@@ -117,4 +117,23 @@ describe('handleV1ClipSearch', () => {
     assert.equal(payload.cache_hit, false);
     assert.equal(lastLaunchError, null);
   });
+
+  test('fails closed when the provider search exceeds its budget', async () => {
+    const req = createReq(JSON.stringify({ query: 'provider hangs' }));
+    const res = createRes();
+    await handleV1ClipSearch(req, res, {
+      config: { DEFAULT_LIMIT: 8, PROFILE_DIR: '', SEARCH_TIMEOUT_MS: 5 },
+      state: {
+        incRequest: () => 1,
+        setLastSearchAt: () => {},
+      },
+      deps: {
+        getBrowser: async () => ({}),
+        searchArtlistGateway: () => new Promise(() => {}),
+      },
+    });
+
+    assert.equal(res.statusCode, 504);
+    assert.equal(JSON.parse(res.body).error, 'ARTLIST_SEARCH_TIMEOUT');
+  });
 });
