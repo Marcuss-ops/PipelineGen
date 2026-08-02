@@ -35,6 +35,7 @@ class VerifyComponentTests(unittest.TestCase):
     def registry() -> dict[str, dict]:
         return {
             "base": {
+                "paths": ["internal/base/"],
                 "go_packages": ["./internal/base/..."],
                 "node_tests": [],
                 "python_tests": [],
@@ -44,6 +45,7 @@ class VerifyComponentTests(unittest.TestCase):
                 "live_tests": [],
             },
             "child": {
+                "paths": ["internal/child/"],
                 "go_packages": ["./internal/base/...", "./internal/child/..."],
                 "node_tests": [["python3", "-c", "pass"]],
                 "python_tests": [],

@@ -75,7 +75,7 @@ func buildFilterFlags(
 		// 2. Aspect ratio / media-type mismatches (gate #4):
 		// primary_video expects "video" MediaType; secondary_image
 		// expects "image". An empty MediaType is allowed
-		// (legacy rows) and bypasses the gate.
+		// (legacy rows) and skips the normal validation.
 		aspectMismatch := aspectMismatchFor(slot, cc.MediaType)
 		// 3. Corrupted / failed materialization (gate #6).
 		contaminated := cc.MaterializationStatus == MaterializationFailed

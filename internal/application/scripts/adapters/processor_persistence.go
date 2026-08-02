@@ -43,6 +43,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -56,6 +57,8 @@ type PersistenceProcessor struct {
 	repo ScriptRepository
 	log  *zap.Logger
 }
+
+const persistenceOperationTimeout = 30 * time.Second
 
 // NewPersistenceProcessor creates a PersistenceProcessor.
 // repo must be non-nil (enforced at registration time).
@@ -84,6 +87,8 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	if input.Text == "" {
 		return &PostProcessResult{}, nil
 	}
+	operationCtx, cancel := context.WithTimeout(ctx, persistenceOperationTimeout)
+	defer cancel()
 
 	// Translation mutates the pipeline input before this processor runs.
 	// When a source surface is available, persist it as the requested
@@ -101,7 +106,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		originalInput.Text = input.OriginalText
 		originalInput.WordCount = len(strings.Fields(input.OriginalText))
 		originalInput.SpecScene = originalSpecSceneForPersistence(input)
-		if _, err := p.persistSourceLanguageRow(ctx, &originalPlan, originalInput); err != nil {
+		if _, err := p.persistSourceLanguageRow(operationCtx, &originalPlan, originalInput); err != nil {
 			return nil, err
 		}
 	}
@@ -117,7 +122,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	idemKey := computeIdempotencyKey(persistPlan)
 
 	// Look up the existing row first. Found = skip the insert.
-	existing, found, lookupErr := p.repo.FindScriptByIdempotencyKey(ctx,
+	existing, found, lookupErr := p.repo.FindScriptByIdempotencyKey(operationCtx,
 		persistPlan.ID, persistPlan.CacheKey, persistPlan.PromptVersion, persistPlan.TargetWords, persistPlan.Language)
 	if lookupErr != nil {
 		if p.log != nil {
@@ -189,7 +194,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 
 	sections := buildSectionsFromScenes(input.SpecScene.Scenes)
-	scriptID, err := p.repo.SaveScript(ctx, rec, sections, buildStockMatchRowsFromSpecScene(input.SpecScene))
+	scriptID, err := p.repo.SaveScript(operationCtx, rec, sections, buildStockMatchRowsFromSpecScene(input.SpecScene))
 	if err != nil {
 		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
@@ -210,7 +215,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	if marshalErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: manifest_v2 marshal failed: %w", scriptpkg.ErrPostprocessFailed, marshalErr)
 	}
-	if saveManifestErr := p.repo.SaveManifestV2(ctx, scriptID, manifestBytes); saveManifestErr != nil {
+	if saveManifestErr := p.repo.SaveManifestV2(operationCtx, scriptID, manifestBytes); saveManifestErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: SaveManifestV2 failed: %w", scriptpkg.ErrPostprocessFailed, saveManifestErr)
 	}
 

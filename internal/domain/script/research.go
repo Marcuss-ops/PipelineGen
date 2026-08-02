@@ -17,18 +17,21 @@ type ResearchClaim struct {
 }
 
 type ResearchReport struct {
-	Status          string              `json:"status"`
-	Mode            string              `json:"mode,omitempty"`
-	SearchEnabled   bool                `json:"search_enabled"`
-	Searched        bool                `json:"searched"`
-	CacheSaved      bool                `json:"cache_saved"`
-	CacheKey        string              `json:"cache_key,omitempty"`
-	ResearchVersion string              `json:"research_version,omitempty"`
-	Queries         []string            `json:"queries,omitempty"`
-	Sources         []ResearchWebSource `json:"sources,omitempty"`
-	Claims          []ResearchClaim     `json:"claims,omitempty"`
-	PagesRequested  int                 `json:"pages_requested"`
-	PagesFetched    int                 `json:"pages_fetched"`
-	PagesFailed     int                 `json:"pages_failed"`
-	CacheHit        bool                `json:"cache_hit"`
+	Status            string              `json:"status"`
+	Mode              string              `json:"mode,omitempty"`
+	SearchEnabled     bool                `json:"search_enabled"`
+	Searched          bool                `json:"searched"`
+	CacheSaved        bool                `json:"cache_saved"`
+	CacheKey          string              `json:"cache_key,omitempty"`
+	ResearchVersion   string              `json:"research_version,omitempty"`
+	Queries           []string            `json:"queries,omitempty"`
+	Sources           []ResearchWebSource `json:"sources,omitempty"`
+	Claims            []ResearchClaim     `json:"claims,omitempty"`
+	PagesRequested    int                 `json:"pages_requested"`
+	PagesFetched      int                 `json:"pages_fetched"`
+	PagesFailed       int                 `json:"pages_failed"`
+	AcceptedSources   int                 `json:"accepted_sources"`
+	RejectedSources   int                 `json:"rejected_sources"`
+	QualityGatePassed bool                `json:"quality_gate_passed"`
+	CacheHit          bool                `json:"cache_hit"`
 }

@@ -117,7 +117,7 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	// this method (after the typed error check on retry.Do) — SAFE because
 	// the staged source file is consumed by the cut within Step 4 and is
 	// unused by Steps 5a-10 which only touch the cut clip via localPath.
-	if u.media.Stager != nil && cmd.VideoURL != "" {
+	if u.media.Stager != nil && cmd.VideoURL != "" && cmd.Strategy != youtubetypes.StrategyYouTubeStockPartial {
 		staged, stageErr := u.media.Stager.StageSource(ctx, assets.SourceRef{
 			URL: cmd.VideoURL,
 		})

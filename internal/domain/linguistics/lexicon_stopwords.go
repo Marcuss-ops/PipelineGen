@@ -4,8 +4,7 @@ package linguistics
 // read-only accessors that downstream intent resolvers, entity
 // filters and language detectors use to filter out high-frequency /
 // low-semantic-value tokens from candidate phrase streams. Every
-// accessor delegates to r.Resolve(language) so the fallback profile
-// is transparent to callers.
+// accessor delegates to the explicitly configured language profile.
 
 // StopWords returns the stop-word set for the given language.
 func (r *LexiconRegistry) StopWords(language string) map[string]struct{} {

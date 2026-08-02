@@ -26,7 +26,7 @@
 // get the canonical fail-at-boot contract generalisable across Drive
 // (this gate) AND the 9 per-destination folder probe paths (P1.3
 // validator in build_bundles_drive.go:295). Operators opting into
-// soft-mode (StrictStartupValidation=false) bypass the gate but
+// soft-mode (StrictStartupValidation=false) reports the validation but
 // preserve the handler-level preflight at internal/api/assets/register/handler.go::BatchRegisterFromYouTube
 // (defense-in-depth: the request still surfaces HTTP 503 with an
 // actionable error instead of HTTP 500 nil-panic).
@@ -37,7 +37,7 @@
 // log.Warn("Google Drive client not initialized") pattern at
 // build_bundles_drive.go:60-66 — that warn-and-continue semantic is
 // RETAINED for diagnostics (operators want to know WHY Drive auth
-// failed at boot if they bypass this gate). The helper is called
+// failed at boot if they skip this validation). The helper is called
 // BEFORE the existing log.Warn block so the godlike/06 one-owner-per-fact
 // invariant holds: the gate decides first, the wire-up logs second.
 package app
@@ -55,7 +55,7 @@ import (
 // iff the Drive credentials + token files are MISSING from disk
 // (operator misconfiguration class) AND cfg.Drive.StrictStartupValidation
 // is true (operator opt-in for the fail-fast-at-boot contract).
-// Soft-mode (StrictStartupValidation=false) bypasses the gate so
+// Soft-mode (StrictStartupValidation=false) keeps this validation non-blocking so
 // staging / DR deployments can run without Drive availability — the
 // handler-level preflight at BatchRegisterFromYouTube still fail-closed
 // the actual user request, but boot itself is allowed to proceed.

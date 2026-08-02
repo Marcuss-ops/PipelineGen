@@ -10,8 +10,8 @@ The four requested gates form one explicit escalation chain:
 
 | Gate | Composition | Purpose | External/live services |
 |---|---|---|---|
-| `make verify-main` | `foundation + static + unit-fast + changed-components + verify-node-native + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
-| `make verify-race` | `foundation + verify-unit-race + all registered components (race)` | Explicit race-detector gate | None; headless |
+| `make verify-main` | `foundation + static + changed-components + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
+| `make verify-race` | `foundation + all registered components (race)` | Explicit race-detector gate | None; headless |
 | `make verify-full` | `verify-main + verify-race + verify-node-tests` | Complete headless gate | None; headless |
 | `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive/Qdrant battery |
 
@@ -21,12 +21,11 @@ explicit heavier gates and are not implicit dependencies of `verify-main`.
 
 - `make verify-fast`: foundation, static analysis, and build for the local
   development loop.
-- `make verify-main`: the registry-driven changed-component gate, standard
-  unit packages, the native Node binding probe, and architecture checks.
-  Foundation/static prerequisites are direct shared dependencies and are
-  executed once per aggregate Make invocation. It intentionally excludes the
-  complete race suite and full Node test suite so it remains suitable for
-  routine pushes.
+- `make verify-main`: foundation, static checks, the registry-driven
+  changed-component gate, and architecture checks. Foundation/static
+  prerequisites are direct shared dependencies and are executed once per
+  aggregate Make invocation. It intentionally excludes the complete race and
+  Node suites so it remains suitable for routine pushes.
 - `make verify-main-stock`: foundation, static analysis, standard targeted
   tests for the Stock pipeline/API/script adapters, and architecture checks. Use it for
   Stock-focused changes without running the full project unit suite.

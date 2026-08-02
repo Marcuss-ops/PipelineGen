@@ -23,25 +23,22 @@ class VerifyRegistryContractTests(unittest.TestCase):
         cls.makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
 
     def test_expanded_components_are_registered(self) -> None:
-        self.assertEqual(
-            {
-                "research",
-                "qdrant",
-                "indexing",
-                "docs",
-                "voiceover",
-                "database",
-                "jobs",
-            },
-            set(self.registry) - {"script", "stock", "clips", "drive"},
-        )
+        expected = {
+            "script", "research", "clips", "stock", "qdrant", "indexing",
+            "drive", "docs", "voiceover", "images", "translation", "timeline",
+            "storage", "database", "jobs", "api", "ollama", "youtube",
+            "artlist", "node-scraper",
+        }
+        self.assertEqual(len(self.registry), 20)
+        self.assertEqual(set(self.registry), expected)
 
     def test_entries_have_real_paths_and_go_packages(self) -> None:
         for name, definition in self.registry.items():
             self.assertTrue(definition["paths"], name)
-            self.assertTrue(definition["go_packages"], name)
+            if not definition.get("utility", False):
+                self.assertTrue(definition["go_packages"], name)
             self.assertGreater(definition["timeout_seconds"], 0, name)
-            self.assertIs(definition["race_enabled"], True, name)
+            self.assertIsInstance(definition["race_enabled"], bool, name)
             for registered_path in definition["paths"]:
                 self.assertTrue(
                     (ROOT / registered_path).exists(),

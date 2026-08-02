@@ -65,7 +65,7 @@ type ExternalConfig struct {
 
 	// SearXNG — strictly OPTIONAL sidecar for LLM RAG augmentation.
 	//
-	// Default URL is the canonical SearXNG dev URL (port 18080). The
+	// Default URL is the canonical SearXNG compose URL (port 8080). The
 	// runtime only calls SearXNG when:
 	//
 	//   1. SEARXNG_URL is non-empty after env + yaml resolution, AND
@@ -80,8 +80,10 @@ type ExternalConfig struct {
 	// and skip starting the sidecar (most production deployments). The
 	// system reports "SearXNG unavailable" in /api/system/doctor and the
 	// affected code paths are documented in AGENTS.md.
-	SearxngURL              string `yaml:"searxng_url" env:"SEARXNG_URL" default:"http://127.0.0.1:18080"`
+	SearxngURL              string `yaml:"searxng_url" env:"SEARXNG_URL" default:"http://127.0.0.1:8080"`
 	SearxngMaxResults       int    `yaml:"searxng_max_results"     env:"SEARXNG_MAX_RESULTS"     default:"5"`
+	SearxngLanguage         string `yaml:"searxng_language" env:"SEARXNG_LANGUAGE" default:"en"`
+	SearxngEngines          string `yaml:"searxng_engines" env:"SEARXNG_ENGINES" default:"bing,mwmbl,wiby"`
 	WebSearchTimeoutSeconds int    `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
 
 	// Artlist scraper optimizations

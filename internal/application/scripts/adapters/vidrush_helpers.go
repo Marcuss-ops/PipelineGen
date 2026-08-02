@@ -1,22 +1,54 @@
 package adapters
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
+func loadVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCachePort, namespace, key string, dst any) (bool, error) {
+	if cache == nil {
+		return false, nil
+	}
+	raw, hit, err := cache.Get(ctx, namespace, key)
+	if err != nil || !hit {
+		return false, err
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		return false, fmt.Errorf("vidrush cache %s/%s: decode: %w", namespace, key, err)
+	}
+	return true, nil
+}
+
+func storeVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCachePort, namespace, key string, value any) error {
+	if cache == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("vidrush cache %s/%s: encode: %w", namespace, key, err)
+	}
+	if err := scriptports.ValidateVidRushCachePayload(raw); err != nil {
+		return fmt.Errorf("vidrush cache %s/%s: validate: %w", namespace, key, err)
+	}
+	return cache.Put(ctx, namespace, key, raw)
+}
+
 var (
-	vidrushExtractionCache sync.Map
-	vidrushArtlistCache    sync.Map
-	vidrushImageCache      sync.Map
-	vidrushBindingCache    sync.Map
+	vidrushExtractionCache   sync.Map
+	vidrushArtlistCache      sync.Map
+	vidrushImageCache        sync.Map
+	vidrushBindingCache      sync.Map
+	vidrushMaterializedCache sync.Map
 )
 
 func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {
@@ -153,6 +185,9 @@ func uniqueLimitedStrings(values []string, limit int) []string {
 
 func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
 	candidates := make([]string, 0, 12)
+	if visual := compactVisualQuery(segmentText); visual != "" {
+		candidates = append(candidates, visual)
+	}
 	if topic = strings.TrimSpace(topic); topic != "" {
 		// Keep one query grounded in the plan context before the per-segment
 		// enrichment terms consume the provider query limit.
@@ -185,6 +220,9 @@ func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntit
 
 func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
 	candidates := make([]string, 0, 12)
+	if visual := compactVisualQuery(segmentText); visual != "" {
+		candidates = append(candidates, visual)
+	}
 	for _, entity := range entities {
 		v := strings.TrimSpace(entity.Value)
 		if v == "" {
@@ -204,6 +242,26 @@ func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity,
 		candidates = append(candidates, segmentText)
 	}
 	return uniqueLimitedStrings(candidates, 5)
+}
+
+// compactVisualQuery converts a source or narration sentence into a bounded
+// provider query. Retrieval providers rank short visual noun phrases more
+// reliably than model prose containing several clauses and editorial filler.
+// It is deterministic, language-agnostic at the tokenizer boundary, and
+// never replaces the original segment text or its hash.
+func compactVisualQuery(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if end := strings.IndexAny(text, ".!?\n"); end > 0 {
+		text = text[:end]
+	}
+	tokens := textutil.TokenizeWithStopWords(text)
+	if len(tokens) > 7 {
+		tokens = tokens[:7]
+	}
+	return strings.Join(tokens, " ")
 }
 
 func segmentCacheKey(parts ...string) string {
@@ -244,6 +302,7 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)
 	out.Assets.SecondaryImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.SecondaryImages...)
+	out.Assets.GeneratedImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.GeneratedImages...)
 	out.Assets.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.Candidates...)
 	if in.Assets.PrimaryVideo != nil {
 		primary := *in.Assets.PrimaryVideo
@@ -258,6 +317,15 @@ func cloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 // Provider processors remain responsible for searching; this function only
 // normalizes and selects from their closed candidate set.
 func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRefresh bool) []scriptpkg.VidRushSegmentResult {
+	return FinalizeVidRushBindingsWithCache(context.Background(), segments, forceRefresh, nil)
+}
+
+// FinalizeVidRushBindingsWithCache is the canonical binding finalizer used by
+// the generation use case. The in-memory map remains a fast L1 cache, while
+// cache provides the durable L2 replay surface across process restarts.
+// Cache failures are deliberately non-fatal: they must never turn a valid,
+// already-persisted binding into a false failure or a false cache hit.
+func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.VidRushSegmentResult, forceRefresh bool, cache scriptports.VidRushCachePort) []scriptpkg.VidRushSegmentResult {
 	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
 	lastAssetByProvider := make(map[string]string)
 	for _, original := range segments {
@@ -265,7 +333,7 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 		valid := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.Candidates))
 		seen := make(map[string]struct{}, len(seg.Assets.Candidates))
 		for _, candidate := range seg.Assets.Candidates {
-			if !validVidRushCandidate(candidate) {
+			if !validVidRushCandidate(candidate) || !readyVidRushCandidate(candidate) {
 				continue
 			}
 			key := strings.ToLower(strings.TrimSpace(candidate.Provider)) + "\x00" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
@@ -277,6 +345,7 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 		}
 		seg.Assets.Candidates = valid
 		seg.Assets.SecondaryImages = filterVidRushImages(valid)
+		seg.Assets.GeneratedImages = filterVidRushGeneratedImages(valid)
 		if primary := chooseVidRushPrimary(valid, lastAssetByProvider); primary != nil {
 			primary.SelectionReason = "highest scored provenance-valid candidate for segment"
 			seg.Assets.PrimaryVideo = primary
@@ -294,15 +363,19 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 		if len(valid) == 0 {
 			seg.Cache.Binding = "BYPASSED"
 		} else if !forceRefresh {
-			if _, ok := cacheLoad(&vidrushBindingCache, bindingKey); ok {
+			_, l1Hit := cacheLoad(&vidrushBindingCache, bindingKey)
+			l2Hit, _ := loadVidRushPersistentJSON(ctx, cache, "binding", bindingKey, new(bool))
+			if l1Hit || l2Hit {
 				seg.Cache.Binding = "HIT_EXACT"
 			} else {
 				seg.Cache.Binding = "MISS"
 				cacheStore(&vidrushBindingCache, bindingKey, true)
+				_ = storeVidRushPersistentJSON(ctx, cache, "binding", bindingKey, true)
 			}
 		} else {
 			seg.Cache.Binding = "REFRESHED"
 			cacheStore(&vidrushBindingCache, bindingKey, true)
+			_ = storeVidRushPersistentJSON(ctx, cache, "binding", bindingKey, true)
 		}
 		out = append(out, seg)
 	}
@@ -315,7 +388,6 @@ func FinalizeVidRushBindings(segments []scriptpkg.VidRushSegmentResult, forceRef
 var vidRushForbiddenProviders = map[string]bool{
 	"youtube":             true,
 	"generated_images":    true,
-	"image_generation":    true,
 	"local_youtube_stock": true,
 	"local_stock":         true,
 }
@@ -336,6 +408,15 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	if vidRushForbiddenProviders[provider] {
 		return false
 	}
+	// Generated assets are accepted only through the lifecycle-aware
+	// image.generate.google path. A legacy remote URL must never masquerade as
+	// a generated, durable artifact.
+	if provider == scriptpkg.VidRushProviderImageGeneration && candidate.IsLegacyCandidate() {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
+		return false
+	}
 	sourceURL := strings.ToLower(strings.TrimSpace(candidate.SourceURL))
 	for _, pattern := range vidRushForbiddenURLPatterns {
 		if strings.Contains(sourceURL, pattern) {
@@ -348,6 +429,59 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
 }
 
+func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
+	// Lifecycle-aware candidates are fail-closed. Legacy candidates remain
+	// readable during the migration window and are validated by the existing
+	// provenance predicate above.
+	if candidate.IsLegacyCandidate() {
+		// Legacy rows are readable during migration, but a remote search
+		// candidate without a durable Drive location is not legacy evidence.
+		// In particular, failed acquisition paths must not remain eligible
+		// merely because their lifecycle fields are empty.
+		return strings.TrimSpace(candidate.DriveLink) != ""
+	}
+	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.FileHash) != "" && strings.TrimSpace(candidate.DriveLink) != ""
+}
+
+// VidRushRankingWeights is the shared deterministic ranking policy used by
+// every provider. Scores are expected in the [0,1] range and are clamped.
+type VidRushRankingWeights struct {
+	Relevance           float64
+	TechnicalQuality    float64
+	Rights              float64
+	Diversity           float64
+	ProviderReliability float64
+}
+
+var defaultVidRushRankingWeights = VidRushRankingWeights{
+	Relevance: 0.40, TechnicalQuality: 0.20, Rights: 0.20, Diversity: 0.10, ProviderReliability: 0.10,
+}
+
+func ScoreVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, repeated bool) float64 {
+	if candidate.RelevanceScore == 0 && candidate.TechnicalQualityScore == 0 && candidate.RightsScore == 0 && candidate.DiversityScore == 0 && candidate.ProviderReliability == 0 {
+		return candidate.Score
+	}
+	clamp := func(v float64) float64 {
+		if v < 0 {
+			return 0
+		}
+		if v > 1 {
+			return 1
+		}
+		return v
+	}
+	w := defaultVidRushRankingWeights
+	score := w.Relevance*clamp(candidate.RelevanceScore) +
+		w.TechnicalQuality*clamp(candidate.TechnicalQualityScore) +
+		w.Rights*clamp(candidate.RightsScore) +
+		w.Diversity*clamp(candidate.DiversityScore) +
+		w.ProviderReliability*clamp(candidate.ProviderReliability)
+	if repeated {
+		score *= 0.75
+	}
+	return score
+}
+
 func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous map[string]string) *scriptpkg.SegmentAssetCandidate {
 	var best *scriptpkg.SegmentAssetCandidate
 	for i := range candidates {
@@ -355,9 +489,11 @@ func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous
 		if candidate.Provider != "artlist" {
 			continue
 		}
-		if previous[candidate.Provider] == candidate.AssetID && len(candidates) > 1 {
+		repeated := previous[candidate.Provider] == candidate.AssetID
+		if repeated && len(candidates) > 1 {
 			continue
 		}
+		candidate.Score = ScoreVidRushCandidate(candidate, repeated)
 		if best == nil || candidate.Score > best.Score {
 			selected := candidate
 			best = &selected
@@ -369,7 +505,17 @@ func chooseVidRushPrimary(candidates []scriptpkg.SegmentAssetCandidate, previous
 func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.Provider != "artlist" {
+		if candidate.Provider != "artlist" && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func filterVidRushGeneratedImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Provider == scriptpkg.VidRushProviderImageGeneration {
 			out = append(out, candidate)
 		}
 	}
@@ -379,7 +525,12 @@ func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptp
 func candidateSetHash(candidates []scriptpkg.SegmentAssetCandidate) string {
 	parts := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		parts = append(parts, strings.Join([]string{candidate.AssetID, candidate.Provider, candidate.Query, candidate.SourceURL, candidate.PreviewURL}, "\x00"))
+		parts = append(parts, strings.Join([]string{
+			candidate.AssetID, candidate.Provider, candidate.Query, candidate.SourceURL,
+			candidate.PreviewURL, candidate.FileHash, candidate.DriveLink,
+			candidate.AcquisitionStatus, candidate.VerificationStatus,
+			candidate.PersistenceStatus, candidate.IndexStatus,
+		}, "\x00"))
 	}
 	return segmentCacheKey(parts...)
 }

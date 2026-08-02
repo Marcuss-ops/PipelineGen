@@ -199,6 +199,10 @@ type GenerationQuality struct {
 	// words that appear in the source text or clip evidence.
 	SourceTextCoverage float64 `json:"source_text_coverage"`
 
+	// SourceTextCoverageStatus makes an absent source explicit instead of
+	// turning an unevaluated check into an artificial passing ratio.
+	SourceTextCoverageStatus string `json:"source_text_coverage_status"`
+
 	// ClipEvidenceCoverage is the ratio (0..1) of accepted clips
 	// that are bound to a scene. For non-clip sources this is 1.0.
 	ClipEvidenceCoverage float64 `json:"clip_evidence_coverage"`
@@ -328,6 +332,22 @@ type GenerationTimings struct {
 
 	// Per-postprocessor timings (keyed by processor name).
 	PostprocessMs map[string]int64 `json:"postprocess_ms,omitempty"`
+
+	// VidRush stage timings. They remain flat and machine-readable so an
+	// operator can compare cold/warm runs without parsing processor labels.
+	SegmentExtractionMs     int64 `json:"segment_extraction_ms,omitempty"`
+	QueryGenerationMs       int64 `json:"query_generation_ms,omitempty"`
+	ArtlistSearchMs         int64 `json:"artlist_search_ms,omitempty"`
+	ArtlistStreamResolveMs  int64 `json:"artlist_stream_resolve_ms,omitempty"`
+	ArtlistDownloadMs       int64 `json:"artlist_download_ms,omitempty"`
+	InternetImageSearchMs   int64 `json:"internet_image_search_ms,omitempty"`
+	InternetImageDownloadMs int64 `json:"internet_image_download_ms,omitempty"`
+	ImageGenerationQueueMs  int64 `json:"image_generation_queue_ms,omitempty"`
+	ImageGenerationMs       int64 `json:"image_generation_ms,omitempty"`
+	DriveUploadMs           int64 `json:"drive_upload_ms,omitempty"`
+	SQLiteMs                int64 `json:"sqlite_ms,omitempty"`
+	QdrantMs                int64 `json:"qdrant_ms,omitempty"`
+	BindingMs               int64 `json:"binding_ms,omitempty"`
 
 	TotalMs int64 `json:"total_ms"`
 }

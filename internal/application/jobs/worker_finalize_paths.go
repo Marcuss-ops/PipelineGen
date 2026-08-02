@@ -46,7 +46,12 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 		zap.String("job_id", j.ID),
 		zap.Error(dispatchErr))
 
-	if j.RetryCount < j.MaxRetries {
+	// A dispatch error is retryable only when its typed error contract
+	// explicitly identifies it as transient. Deterministic request/source
+	// failures (for example a missing clip in clip_only mode) must become
+	// terminal immediately; otherwise the broker exposes RETRY_WAIT for a
+	// permanent failure and can later re-run the same invalid request.
+	if retry.IsTransient(dispatchErr) && j.RetryCount < j.MaxRetries {
 		// Backoff math now routes through pkg/retry.BackoffFor
 		// (the canonical owner of "compute exponential backoff" —
 		// godlike/06 SSOT, see pkg/retry/options.go godlike/06

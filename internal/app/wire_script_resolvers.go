@@ -38,10 +38,12 @@ package app
 import "time"
 
 import (
+	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
@@ -161,6 +163,9 @@ func buildScriptSourceResolvers(
 			ollamaWebSearcherAdapter{searcher: gen.GetClient().WebSearcher()},
 			webresearch.NewPageFetcher(time.Duration(cfg.External.WebSearchTimeoutSeconds)*time.Second, 2<<20),
 		)
+		if err := researchResolver.SetLexicon(linguistics.DefaultLexicon()); err != nil {
+			panic(fmt.Sprintf("script research resolver: %v", err))
+		}
 		if root.DB != nil {
 			researchResolver.SetCache(topicsourcecache.NewRepository(root.DB.DB))
 		}

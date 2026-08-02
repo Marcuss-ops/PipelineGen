@@ -135,7 +135,7 @@ func BuildReindexEnvelopeV1(assetID, targetSchemaVersion, sourceVersion string, 
 // the same (assetID, schemaVersion, sourceVersion) tuple.
 //
 // The worker (IndexingHandler.Handle) reads payload.force and
-// bypasses the source_version supersede gate when force=true,
+// uses the source_version supersede exception when force=true,
 // re-running IndexClip unconditionally. This is the canonical
 // admin reindex path: the operator explicitly opts in to "reindex
 // regardless of current fingerprint" semantics, and the outbox

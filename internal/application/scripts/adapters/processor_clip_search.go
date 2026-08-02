@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -19,14 +20,19 @@ type artlistSegmentCachePayload struct {
 type ClipSearchProcessor struct {
 	searcher ArtlistClipSearcher
 	metrics  VidRushMetrics
+	cache    scriptports.VidRushCachePort
 }
 
 func NewClipSearchProcessor(searcher ArtlistClipSearcher, metrics ...VidRushMetrics) *ClipSearchProcessor {
+	return NewClipSearchProcessorWithCache(searcher, nil, metrics...)
+}
+
+func NewClipSearchProcessorWithCache(searcher ArtlistClipSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *ClipSearchProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &ClipSearchProcessor{searcher: searcher, metrics: m}
+	return &ClipSearchProcessor{searcher: searcher, metrics: m, cache: cache}
 }
 
 func (p *ClipSearchProcessor) Name() ProcessorName { return ProcessorClipSearch }
@@ -87,7 +93,7 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				if payload, ok := cached.(artlistSegmentCachePayload); ok {
 					payload = cloneArtlistSegmentCachePayload(payload)
 					updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, payload.Candidates)
-					if len(payload.Candidates) > 0 {
+					if len(payload.Candidates) > 0 && readyVidRushCandidate(payload.Candidates[0]) {
 						primary := payload.Candidates[0]
 						updated.Assets.PrimaryVideo = &primary
 					}
@@ -100,6 +106,21 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 					continue
 				}
 			}
+			var persisted artlistSegmentCachePayload
+			if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "artlist", cacheKey, &persisted); cacheErr != nil {
+				return nil, cacheErr
+			} else if hit {
+				persisted = cloneArtlistSegmentCachePayload(persisted)
+				updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
+				updated.Cache.Artlist = "HIT_EXACT"
+				cacheStore(&vidrushArtlistCache, cacheKey, persisted)
+				segments = append(segments, updated)
+				aggregated = append(aggregated, persisted.Matches...)
+				if p.metrics != nil {
+					p.metrics.IncAssetCache("artlist", true)
+				}
+				continue
+			}
 		}
 
 		if p.metrics != nil {
@@ -108,8 +129,10 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		segmentMatches := make([]ArtlistClipMatch, 0)
-		for _, query := range updated.Insights.ArtlistQueries {
-			segmentMatches = append(segmentMatches, p.searcher.SearchClips(ctx, plan.Title, []string{query})...)
+		matches, err := p.searcher.SearchClips(ctx, plan.Title, updated.Insights.ArtlistQueries)
+		segmentMatches = append(segmentMatches, matches...)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("clip_search: Artlist provider search failed for segment %s: %v", updated.SegmentID, err))
 		}
 		segmentMatches = dedupeArtlistMatches(segmentMatches)
 		candidates := artlistMatchesToCandidates(updated, segmentMatches)
@@ -127,8 +150,10 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		updated.Assets.Candidates = appendProviderCandidatesUnique(updated.Assets.Candidates, candidates)
-		primary := candidates[0]
-		updated.Assets.PrimaryVideo = &primary
+		if readyVidRushCandidate(candidates[0]) {
+			primary := candidates[0]
+			updated.Assets.PrimaryVideo = &primary
+		}
 		updated.Cache.Artlist = "MISS"
 		if plan.MediaPlan.ForceRefreshAssets {
 			updated.Cache.Artlist = "REFRESHED"
@@ -139,6 +164,12 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
 			Matches:    cloneArtlistMatches(segmentMatches),
 		})
+		if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "artlist", cacheKey, artlistSegmentCachePayload{
+			Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
+			Matches:    cloneArtlistMatches(segmentMatches),
+		}); cacheErr != nil {
+			return nil, cacheErr
+		}
 	}
 
 	return &PostProcessResult{
@@ -184,7 +215,7 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 			}
 			rank++
 			assetID := segmentCacheKey(seg.SegmentID, match.Phrase, name, link)
-			out = append(out, scriptpkg.SegmentAssetCandidate{
+			candidate := scriptpkg.SegmentAssetCandidate{
 				AssetID:         "artlist-" + assetID[:12],
 				Provider:        "artlist",
 				Query:           strings.TrimSpace(match.Phrase),
@@ -196,7 +227,14 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 				DriveLink:       link,
 				RightsStatus:    "unknown",
 				SelectionReason: "ranked Artlist clip matching a segment visual query",
-			})
+			}
+			if match.Remote {
+				candidate.AcquisitionStatus = scriptpkg.VidRushStatusCandidateFound
+				candidate.VerificationStatus = "pending"
+				candidate.PersistenceStatus = "pending"
+				candidate.IndexStatus = "pending"
+			}
+			out = append(out, candidate)
 		}
 	}
 	return out

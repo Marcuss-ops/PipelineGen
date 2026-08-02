@@ -93,6 +93,7 @@ func (a *assetServiceLookupAdapter) GetAsset(
 func registerScriptPostProcessors(
 	ppReg *adapters.PostProcessorRegistry,
 	root *wiring.ComposeRoot,
+	artlistWiring *wiring.ArtlistWiring,
 	cfg *config.Config,
 	log *zap.Logger,
 	scriptsRepoAdapter adapters.ScriptRepository,
@@ -201,11 +202,26 @@ func registerScriptPostProcessors(
 		}
 	}
 
+	// VidRush provider registry is built once and shared by discovery and
+	// materialization. Providers remain unavailable when their concrete
+	// dependencies are absent; no empty-success adapter is registered.
+	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(root, artlistWiring, log)
+	vidRushCache := buildVidRushCache(root, log)
+
 	// AI-backed processors (entities, metadata, translation,
 	// visual_planning, clip_search) — see wire_script_postprocess_ai.go.
-	if err := registerAIBackedProcessors(ppReg, root, cfg, log); err != nil {
+	if err := registerAIBackedProcessors(ppReg, root, artlistWiring, vidRushProviders, vidRushCache, cfg, log); err != nil {
 		return err
 	}
+	// VidRush search processors only discover remote candidates. The shared
+	// materialization phase owns Acquire → Verify → Drive/SQLite/outbox.
+	// Register the processor even when concrete dependencies are unavailable:
+	// inactive plans remain compatible, while an active VidRush plan fails
+	// closed at runtime instead of becoming a successful no-op.
+	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCache(vidRushProviders, vidRushFinalizer, vidRushCache)) {
+		return fmt.Errorf("register vidrush materialization processor: composition bug")
+	}
+	log.Info("VidRushMaterializationProcessor wired through the canonical provider registry")
 
 	return nil
 }

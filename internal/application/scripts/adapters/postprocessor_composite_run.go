@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const postprocessorOperationTimeout = 5 * time.Minute
+
 // ── Run: the canonical postprocessor pipeline ─────────────────────────
 
 // Run executes every processor whose name appears in the plan's
@@ -71,6 +73,14 @@ func (r *PostProcessorRegistry) Run(
 		name := ProcessorName(rawName)
 		proc, ok := procs[name]
 		policy := policies[name]
+		// A processor may require a stronger policy only for plans that
+		// explicitly activate its capability. Keep the registered default as
+		// the compatibility fallback for inactive plans.
+		if proc != nil {
+			if runtimePolicy := proc.Policy(plan); runtimePolicy != "" {
+				policy = runtimePolicy
+			}
+		}
 		if policy == "" {
 			policy = DefaultPolicyFor(name)
 		}
@@ -90,7 +100,9 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		start := time.Now()
-		ppResult, err := proc.Process(ctx, plan, input)
+		processorCtx, cancel := context.WithTimeout(ctx, postprocessorOperationTimeout)
+		ppResult, err := proc.Process(processorCtx, plan, input)
+		cancel()
 		elapsed := time.Since(start).Milliseconds()
 		// Concurrency safety: a processor may return a shared/cached
 		// PostProcessResult (common in stubs and caches). Clone before

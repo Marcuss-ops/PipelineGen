@@ -225,6 +225,8 @@ type SelectedSegment struct {
 	VisualVerified  bool    `json:"visual_verified"`
 	CacheKey        string  `json:"cache_key"`
 	LocalPath       string  `json:"local_path,omitempty"`
+	AssetID         string  `json:"asset_id,omitempty"`
+	FileHash        string  `json:"file_hash,omitempty"`
 	DriveLink       string  `json:"drive_link,omitempty"`
 	QdrantPointID   string  `json:"qdrant_point_id,omitempty"`
 	Status          string  `json:"status"`

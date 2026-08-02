@@ -127,6 +127,25 @@ func (p *GenerationPostprocessor) Process(
 	}, nil
 }
 
+// VidRushTimingFields projects the processor timings onto the stable flat
+// fields used by operational reports. The detailed map remains the source of
+// truth; this projection only names the stages that already exist in the
+// canonical postprocessor registry.
+func VidRushTimingFields(stageDurations map[string]int64) scriptpkg.GenerationTimings {
+	var timings scriptpkg.GenerationTimings
+	if stageDurations == nil {
+		return timings
+	}
+	timings.SegmentExtractionMs = stageDurations[string(adapters.ProcessorEntities)]
+	timings.QueryGenerationMs = timings.SegmentExtractionMs
+	timings.ArtlistSearchMs = stageDurations[string(adapters.ProcessorClipSearch)]
+	timings.InternetImageSearchMs = stageDurations[string(adapters.ProcessorInternetImages)]
+	timings.ImageGenerationMs = stageDurations[string(adapters.ProcessorImages)]
+	timings.SQLiteMs = stageDurations[string(adapters.ProcessorPersistence)]
+	timings.BindingMs = stageDurations[string(adapters.ProcessorClipBindings)]
+	return timings
+}
+
 func collapseSpecSceneOutput(text string, current scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
 	var bindings scriptpkg.SceneBindings
 	if len(current.Scenes) > 0 {

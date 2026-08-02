@@ -65,6 +65,17 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		}
 	}
 	if width == 0 {
+		width = metadataInt(artifact.ArtifactMetadata["width"])
+	}
+	if height == 0 {
+		height = metadataInt(artifact.ArtifactMetadata["height"])
+	}
+	if localPath == "" {
+		if value, ok := artifact.ArtifactMetadata["local_path"].(string); ok {
+			localPath = value
+		}
+	}
+	if width == 0 {
 		width = 1920
 	}
 	if height == 0 {
@@ -113,6 +124,23 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		zap.String("media_type", kindToMediaType(artifact.Kind)),
 	)
 	return ref, events, nil
+}
+
+func metadataInt(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case int32:
+		return int(v)
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	default:
+		return 0
+	}
 }
 
 // buildCommitRequest translates a PublishedArtifact into the canonical
@@ -173,11 +201,17 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	}
 
 	var durationMs int64
-	if raw, ok := artifact.ArtifactMetadata["chunk_duration_sec"]; ok {
-		if sec, conv := raw.(float64); conv && sec > 0 {
-			durationMs = int64(sec * 1000)
+	if raw, ok := artifact.ArtifactMetadata["duration_ms"]; ok {
+		durationMs = int64(metadataInt(raw))
+	}
+	if durationMs <= 0 {
+		if raw, ok := artifact.ArtifactMetadata["chunk_duration_sec"]; ok {
+			if sec, conv := raw.(float64); conv && sec > 0 {
+				durationMs = int64(sec * 1000)
+			}
 		}
-	} else if artifact.SizeBytes > 0 && artifact.MIMEType != "" {
+	}
+	if durationMs <= 0 && artifact.SizeBytes > 0 && artifact.MIMEType != "" {
 		durationMs = artifact.SizeBytes / 250000
 	}
 

@@ -7,6 +7,9 @@ const (
 	// (URL -> media_assets row + outbox).
 	TypeExtract = "youtube.extract"
 
+	// TypeStock is the transcript-first YouTube → stock clip workflow.
+	TypeStock = "youtube.stock"
+
 	// ── Commit 9.2 (PR-KERNEL-JOB-POPULATE follow-up, July 2026) ────
 	// The following constants are required by the back-compat
 	// alias layer in internal/domain/job/job.go (re-added by

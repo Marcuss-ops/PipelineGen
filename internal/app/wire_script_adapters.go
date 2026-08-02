@@ -50,7 +50,9 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -149,7 +151,8 @@ func validateScriptGenerateWiring(root *wiring.ComposeRoot, log *zap.Logger) err
 // godlike/06 SSOT one-canonical-owner-per-fact: this is the canonical
 // SOLE adapter between ArtlistClipSearcher and SearchArtlistClips.
 type artlistClipSearchAdapter struct {
-	svc usecase.ClipServices
+	svc          usecase.ClipServices
+	remoteSearch func(context.Context, providerassets.SearchRequest) (providerassets.SearchResult, error)
 }
 
 // sqliteRealtimeSearchAdapter exposes the canonical SQLite clip catalog to
@@ -193,13 +196,45 @@ func (a *sqliteRealtimeSearchAdapter) SearchClips(ctx context.Context, query, so
 var _ usecase.RealtimeSearchService = (*sqliteRealtimeSearchAdapter)(nil)
 
 // SearchClips satisfies adapters.ArtlistClipSearcher.
-func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) []adapters.ArtlistClipMatch {
+func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) ([]adapters.ArtlistClipMatch, error) {
 	if a == nil {
-		return nil
+		return nil, fmt.Errorf("ArtlistClipSearcher not configured")
+	}
+	if a.remoteSearch != nil {
+		matches := make([]adapters.ArtlistClipMatch, 0, len(phrases))
+		for _, phrase := range phrases {
+			phrase = strings.TrimSpace(phrase)
+			if phrase == "" {
+				continue
+			}
+			result, err := a.remoteSearch(ctx, providerassets.SearchRequest{Query: phrase, Limit: 10})
+			if err != nil {
+				return nil, fmt.Errorf("artlist query %q: %w", phrase, err)
+			}
+			match := adapters.ArtlistClipMatch{Phrase: phrase, Remote: true}
+			for _, candidate := range result.Assets {
+				link := strings.TrimSpace(candidate.SourceRef)
+				if link == "" {
+					link = strings.TrimSpace(candidate.PreviewURL)
+				}
+				if link == "" {
+					continue
+				}
+				match.ClipNames = append(match.ClipNames, candidate.Title)
+				match.ClipDriveLinks = append(match.ClipDriveLinks, link)
+				if match.FolderLink == "" {
+					match.FolderLink = candidate.PageURL
+				}
+			}
+			if len(match.ClipDriveLinks) > 0 {
+				matches = append(matches, match)
+			}
+		}
+		return matches, nil
 	}
 	suggestions := usecase.SearchArtlistClips(ctx, a.svc, title, phrases)
 	if len(suggestions) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Convert usecase.ScriptArtlistClipSuggestion → adapters.ArtlistClipMatch.
@@ -220,7 +255,7 @@ func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string
 		}
 		matches = append(matches, m)
 	}
-	return matches
+	return matches, nil
 }
 
 var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
@@ -229,6 +264,14 @@ var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
 // into the adapters.InternetImageSearcher port.
 type internetImageSearchAdapter struct {
 	resolver imagesrouting.ImageSearchResolver
+	log      *zap.Logger
+}
+
+func newInternetImageSearchAdapter(resolver imagesrouting.ImageSearchResolver, log *zap.Logger) *internetImageSearchAdapter {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &internetImageSearchAdapter{resolver: resolver, log: log}
 }
 
 func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -243,10 +286,26 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 		SubjectID: strings.TrimSpace(req.Query),
 		Limit:     req.Limit,
 	}
-	results, err := searcher.Search(ctx, filter)
+	// Every provider query gets a hard deadline. The common postprocessor
+	// deadline is intentionally longer because it also covers acquisition,
+	// verification and finalization; an unreachable retrieval backend must
+	// never consume that entire budget.
+	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	results, err := searcher.Search(queryCtx, filter)
 	if err != nil {
+		a.log.Warn("VidRush internet image search failed", zap.String("query", req.Query), zap.Error(err))
 		return nil, err
 	}
+	// Keep provider diagnostics at the VidRush boundary. The downstream
+	// materializer deliberately drops candidates that cannot be acquired,
+	// verified and persisted, so without this count an empty final binding
+	// cannot distinguish an empty search from an acquisition rejection.
+	if len(results) == 0 {
+		a.log.Info("VidRush internet image search returned no candidates", zap.String("query", req.Query))
+		return nil, nil
+	}
+	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
 	for _, r := range results {
 		assetID := strings.TrimSpace(r.AssetID)
@@ -268,10 +327,31 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			Score:         r.Score,
 			Width:         r.Width,
 			Height:        r.Height,
-			RightsStatus:  "unknown",
+			RightsStatus:  retrievedImageRightsStatus(r.License),
+			RightsBasis:   retrievedImageRightsBasis(r.License, r.Author),
 		})
 	}
 	return out, nil
+}
+
+func retrievedImageRightsStatus(license string) string {
+	license = strings.TrimSpace(license)
+	if license != "" && !strings.EqualFold(license, "unknown") && !strings.EqualFold(license, "unverified") {
+		return "verified"
+	}
+	return "unknown_allowed"
+}
+
+func retrievedImageRightsBasis(license, author string) string {
+	license = strings.TrimSpace(license)
+	author = strings.TrimSpace(author)
+	if license == "" || strings.EqualFold(license, "unknown") || strings.EqualFold(license, "unverified") {
+		return "source-license metadata required"
+	}
+	if author == "" {
+		return "source license metadata: " + license
+	}
+	return "source license metadata: " + license + "; author: " + author
 }
 
 var _ adapters.InternetImageSearcher = (*internetImageSearchAdapter)(nil)

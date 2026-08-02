@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 )
 
 func normalizeLookupTerm(value string) string {
@@ -150,9 +152,9 @@ func meaningfulLookupTokens(value string) []string {
 		return nil
 	}
 
-	stopwords := map[string]struct{}{
-		"d": {}, "de": {}, "di": {}, "da": {}, "del": {}, "della": {}, "dello": {}, "degli": {}, "delle": {},
-		"of": {}, "the": {}, "and": {}, "la": {}, "le": {}, "el": {}, "los": {}, "las": {}, "von": {}, "van": {},
+	stopwords := map[string]struct{}{}
+	if registry := linguistics.DefaultLexiconOrNil(); registry != nil {
+		stopwords = registry.StopWords("fallback")
 	}
 
 	parts := strings.Fields(value)

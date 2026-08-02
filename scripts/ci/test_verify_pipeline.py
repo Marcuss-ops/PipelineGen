@@ -251,9 +251,18 @@ class VerifyPipelineTests(unittest.TestCase):
     def test_real_registry_loads_initial_pipelines(self) -> None:
         path = Path(__file__).parents[2] / "config" / "verify-pipelines.json"
         registry = verify_pipeline.load_pipeline_registry(path)
-        self.assertEqual(set(registry), {"stock-only", "clip-only"})
-        self.assertEqual(registry["stock-only"].components, ("script", "stock", "drive"))
-        self.assertEqual(registry["clip-only"].components, ("script", "clips", "drive"))
+        self.assertEqual(
+            set(registry),
+            {"stock-only", "clip-only", "research", "document", "voiceover", "script", "youtube-stock", "vidrush"},
+        )
+        self.assertEqual(
+            registry["stock-only"].components,
+            ("script", "stock", "drive", "docs", "database", "jobs", "api"),
+        )
+        self.assertEqual(
+            registry["clip-only"].components,
+            ("script", "clips", "drive", "docs", "database", "jobs", "api"),
+        )
 
 
 if __name__ == "__main__":

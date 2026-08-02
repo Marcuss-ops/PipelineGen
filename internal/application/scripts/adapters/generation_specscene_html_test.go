@@ -174,37 +174,18 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 
 	out := adapters.BuildSpecSceneDocumentHTML(model, "Stock HTML test", nil)
 
-	// (1) The escaped stock drive_link MUST appear inside an anchor
-	// tag inside the per-scene <section>; the URL must be wrapped in
-	// <a href="..."> exactly once for this scene, and the visible
-	// label "Clip:" must precede it.
-	if !strings.Contains(out, escapedDriveLink) {
-		t.Errorf("expected canonical HTML to contain html.EscapeString(DriveLink) %q; HTML=%s",
-			escapedDriveLink, out)
+	// Stock metadata remains in the escaped JSON snapshot, but it must
+	// not be rendered as a synthetic visible Clip note or link.
+	if strings.Contains(out, escapedDriveLink) || strings.Contains(out, escapedLabel) {
+		t.Errorf("stock file metadata leaked into visible document HTML; HTML=%s", out)
 	}
-	// (2) The raw (unescaped) drive_link MUST NOT leak: a script-
-	// tag-bearing URL would otherwise become a valid anchor.
-	if strings.Contains(out, maliciousDriveLink) {
-		t.Errorf("raw DriveLink %q leaked into HTML; html.EscapeString must wrap it; HTML=%s",
-			maliciousDriveLink, out)
+	if strings.Contains(out, maliciousDriveLink) || strings.Contains(out, stockLabel) {
+		t.Errorf("raw stock metadata leaked into HTML; HTML=%s", out)
 	}
-	// (3) The visible label (stock.Name) MUST also be escaped so a
-	// payload-bearing Name cannot re-open the same injection.
-	if !strings.Contains(out, escapedLabel) {
-		t.Errorf("expected canonical HTML to contain html.EscapeString(Name) %q; HTML=%s",
-			escapedLabel, out)
+	// Only the actual Clip binding may produce a Clip label.
+	if got := strings.Count(out, "<strong>Clip:</strong>"); got != 1 {
+		t.Errorf("expected exactly one Clip label for the actual Clip binding, got %d; HTML=%s", got, out)
 	}
-	if strings.Contains(out, stockLabel) {
-		t.Errorf("raw Name %q leaked into HTML; html.EscapeString must wrap it; HTML=%s",
-			stockLabel, out)
-	}
-	// (4) The empty-DriveLink scene MUST trigger renderDocumentLink's
-	// "(no link)" fallback so the section is still discoverable.
-	if !strings.Contains(out, "(no link)") {
-		t.Errorf(`expected "(no link)" fallback for empty DriveLink to surface in HTML; HTML=%s`, out)
-	}
-	// (5) The Stock binding MUST render independently from the Clip
-	// binding: when both are present, BOTH drive_links appear.
 	if !strings.Contains(out, "https://drive.google.com/file/d/clip-9/view") {
 		t.Errorf("expected Clip binding drive_link in HTML; HTML=%s", out)
 	}

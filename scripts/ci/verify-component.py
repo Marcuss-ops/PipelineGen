@@ -94,6 +94,8 @@ class ComponentRun:
     name: str
     dependencies: list[str]
     commands: list[Command]
+    timeout_seconds: float
+    blocked_by: list[str]
     status: str = "PENDING"
     duration_ms: int = 0
     command_results: list[dict[str, Any]] | None = None
@@ -105,10 +107,12 @@ class ComponentRun:
         return {
             "status": self.status,
             "duration_ms": self.duration_ms,
+            "timeout_seconds": self.timeout_seconds,
             "commands": [command.display for command in self.commands],
             "packages": sum(command.kind == "go" for command in self.commands),
             "command_results": command_results,
             "dependencies": self.dependencies,
+            "blocked_by": self.blocked_by,
             "skipped_live": self.skipped_live or [],
             "race_skipped": self.race_skipped,
         }
@@ -162,6 +166,8 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
 
         paths = _require_list(value.get("paths"), "paths", name)
         packages = _require_list(value.get("go_packages"), "go_packages", name)
+        if not paths:
+            raise RegistryError(f"component={name}: paths must not be empty")
         for field, entries in (("paths", paths), ("go_packages", packages)):
             if any(not isinstance(entry, str) or not entry.strip() for entry in entries):
                 raise RegistryError(f"component={name}: {field} entries must be non-empty strings")
@@ -175,10 +181,16 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         timeout = value.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
             raise RegistryError(f"component={name}: timeout_seconds must be positive")
+        race_timeout = value.get("race_timeout_seconds", timeout)
+        if isinstance(race_timeout, bool) or not isinstance(race_timeout, (int, float)) or race_timeout <= 0:
+            raise RegistryError(f"component={name}: race_timeout_seconds must be positive")
 
         race_enabled = value.get("race_enabled", False)
         if not isinstance(race_enabled, bool):
             raise RegistryError(f"component={name}: race_enabled must be boolean")
+        utility = value.get("utility", False)
+        if not isinstance(utility, bool):
+            raise RegistryError(f"component={name}: utility must be boolean")
 
         # Validate command-bearing fields now, rather than after dependencies
         # have already started running.
@@ -190,12 +202,19 @@ def load_registry(path: Path) -> dict[str, dict[str, Any]]:
         registry[name]["go_packages"] = packages
         registry[name]["dependencies"] = dependencies
         registry[name]["timeout_seconds"] = float(timeout)
+        registry[name]["race_timeout_seconds"] = float(race_timeout)
         registry[name]["race_enabled"] = race_enabled
+        registry[name]["utility"] = utility
 
     for name, definition in registry.items():
         for dependency in definition["dependencies"]:
             if dependency not in registry:
                 raise RegistryError(f"component={name}: unknown dependency={dependency}")
+            if dependency == name:
+                raise RegistryError(f"component={name}: self dependency is not allowed")
+    # Validate the complete DAG at registry-load time.  A cycle must not remain
+    # latent merely because the current invocation did not request that branch.
+    resolve_components(registry, list(registry))
     return registry
 
 
@@ -408,6 +427,12 @@ def run_components(
             name=name,
             dependencies=list(definition["dependencies"]),
             commands=commands,
+            timeout_seconds=(
+                float(definition.get("race_timeout_seconds", definition["timeout_seconds"]))
+                if mode == "race"
+                else float(definition["timeout_seconds"])
+            ),
+            blocked_by=[],
             command_results=[],
             skipped_live=skipped_live,
             race_skipped=race_skipped,
@@ -420,13 +445,19 @@ def run_components(
             if component_runs[dependency].status != "PASS"
         ]
         if failed_dependencies:
+            component.blocked_by = failed_dependencies
             component.status = "BLOCKED"
             component.command_results = []
             diagnostics.append(f"component={name} blocked_by={','.join(failed_dependencies)}")
             continue
 
         component_started = time.monotonic()
-        deadline = component_started + float(definition["timeout_seconds"])
+        timeout_seconds = (
+            float(definition.get("race_timeout_seconds", definition["timeout_seconds"]))
+            if mode == "race"
+            else float(definition["timeout_seconds"])
+        )
+        deadline = component_started + timeout_seconds
         for command in commands:
             # A shared command may have been executed by a dependency.  Its
             # result is reusable, but the dependent component still has its
@@ -495,11 +526,16 @@ def run_components(
         component.duration_ms = int((time.monotonic() - component_started) * 1000)
 
     final_status = "PASS" if all(component_runs[name].status == "PASS" for name in ordered) else "FAIL"
+    finished_at = _now_utc()
     report: dict[str, Any] = {
+        "schema_version": 1,
         "mode": mode,
         "requested": list(dict.fromkeys(requested)),
+        "requested_components": list(dict.fromkeys(requested)),
         "resolved_components": ordered,
         "started_at": started_at,
+        "finished_at": finished_at,
+        "git_sha": _git_sha(root),
         "duration_ms": int((time.monotonic() - started) * 1000),
         "components": {name: component_runs[name].as_dict() for name in ordered},
         "skipped": [
@@ -520,6 +556,23 @@ def run_components(
     if any(component_runs[name].status == "TIMEOUT" for name in ordered):
         return report, EXIT_TIMEOUT
     return report, EXIT_FAILURE
+
+
+def _git_sha(root: Path) -> str | None:
+    """Return the current revision without making Git a verification dependency."""
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(root),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else None
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -565,6 +618,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
     except RegistryError as exc:
+        write_report(
+            report_path,
+            {
+                "schema_version": 1,
+                "mode": mode,
+                "requested": list(args.components),
+                "requested_components": list(args.components),
+                "resolved_components": [],
+                "started_at": _now_utc(),
+                "finished_at": _now_utc(),
+                "git_sha": _git_sha(repo_root.resolve()),
+                "components": {},
+                "skipped": [],
+                "final": "CONFIG_ERROR",
+                "error": str(exc),
+            },
+        )
         print(f"VERIFY_COMPONENT_CONFIG_ERROR {exc}", file=sys.stderr)
         return EXIT_CONFIG_ERROR
 
@@ -578,7 +648,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if exit_code == EXIT_TIMEOUT:
         for name, result in report["components"].items():
             if result["status"] == "TIMEOUT":
-                timeout = registry[name]["timeout_seconds"]
+                timeout_key = "race_timeout_seconds" if report["mode"] == "race" else "timeout_seconds"
+                timeout = registry[name][timeout_key]
                 print(
                     f"VERIFY_COMPONENT_TIMEOUT component={name} duration={int(timeout)}s",
                     file=sys.stderr,

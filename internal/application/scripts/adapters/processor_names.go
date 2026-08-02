@@ -46,6 +46,7 @@ const (
 	ProcessorVoiceover                   ProcessorName = "voiceover"
 	ProcessorImages                      ProcessorName = "images"
 	ProcessorInternetImages              ProcessorName = "internet_images"
+	ProcessorVidRushMaterialization      ProcessorName = "vidrush_materialization"
 	ProcessorPersistence                 ProcessorName = "persistence"
 	ProcessorDocument                    ProcessorName = "document"
 )
@@ -74,9 +75,10 @@ var canonicalDescriptors = []ProcessorDescriptor{
 	{Name: ProcessorVoiceover, Policy: ProcessorBestEffort, Order: 8, Active: true},
 	{Name: ProcessorImages, Policy: ProcessorBestEffort, Order: 9, Active: true},
 	{Name: ProcessorInternetImages, Policy: ProcessorBestEffort, Order: 10, Active: true},
-	{Name: ProcessorAssetLocationReconciliation, Policy: ProcessorBestEffort, Order: 11, Active: true},
-	{Name: ProcessorPersistence, Policy: ProcessorRequired, Order: 12, Active: true},
-	{Name: ProcessorDocument, Policy: ProcessorBestEffort, Order: 13, Active: true},
+	{Name: ProcessorVidRushMaterialization, Policy: ProcessorBestEffort, Order: 11, Active: true},
+	{Name: ProcessorAssetLocationReconciliation, Policy: ProcessorBestEffort, Order: 12, Active: true},
+	{Name: ProcessorPersistence, Policy: ProcessorRequired, Order: 13, Active: true},
+	{Name: ProcessorDocument, Policy: ProcessorBestEffort, Order: 14, Active: true},
 }
 
 // descriptorByName provides O(1) lookup over canonicalDescriptors.

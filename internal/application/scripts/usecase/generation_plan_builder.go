@@ -149,7 +149,14 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		item.Source.Type == scriptpkg.SourceSearch ||
 		item.Source.Type == scriptpkg.SourceCatalog ||
 		item.Source.Type == scriptpkg.SourceCurate {
-		processors = ensureInlineClipArtifacts(processors)
+		// Explicit clip_only is an isolated media contract: it produces
+		// clip bindings only and must not enqueue an unrelated voiceover
+		// side effect that can fail on a missing voiceover destination.
+		if item.MediaMode == scriptpkg.MediaModeClipOnly {
+			processors = ensureInlineClipArtifactsWithoutVoiceover(processors)
+		} else {
+			processors = ensureInlineClipArtifacts(processors)
+		}
 	}
 	// Asset reconciliation is the final binding gate. It must run after
 	// every producer (clip/stock, visual media, images, and voiceover) and
@@ -200,6 +207,8 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 		// as clip_search, so keep them in the same branch and let the
 		// processor enforce its own provider toggle.
 		processors = append(processors, adapters.ProcessorInternetImages)
+		// Discovery is followed by one shared materialization boundary.
+		processors = append(processors, adapters.ProcessorVidRushMaterialization)
 	}
 	if out.GenerateMetadata.AsBool() {
 		processors = append(processors, adapters.ProcessorMetadata)
@@ -243,6 +252,28 @@ func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.P
 		}
 	}
 	result = append(result, adapters.ProcessorVoiceover)
+	if persist {
+		result = append(result, adapters.ProcessorPersistence)
+	}
+	return result
+}
+
+// ensureInlineClipArtifactsWithoutVoiceover preserves the clip-source
+// persistence ordering for an explicit clip_only request without adding an
+// unrelated voiceover processor.
+func ensureInlineClipArtifactsWithoutVoiceover(processors []adapters.ProcessorName) []adapters.ProcessorName {
+	result := make([]adapters.ProcessorName, 0, len(processors)+1)
+	persist := false
+	for _, processor := range processors {
+		switch processor {
+		case adapters.ProcessorVoiceover:
+			// Explicit clip_only has no voiceover side effect.
+		case adapters.ProcessorPersistence:
+			persist = true
+		default:
+			result = append(result, processor)
+		}
+	}
 	if persist {
 		result = append(result, adapters.ProcessorPersistence)
 	}

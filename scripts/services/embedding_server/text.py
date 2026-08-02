@@ -21,24 +21,20 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from . import TEXT_MODEL_NAME, TEXT_MODEL_VERSION, _inference_sem, model, nlp, nlp_it
+from . import TEXT_MODEL_NAME, TEXT_MODEL_VERSION, _inference_sem, model, nlp
 from .models import EmbedRequest, IndexBulkRequest, IndexTextRequest
 
 router = APIRouter()
 
 
-def normalize_text(text: str) -> str:
-    """Lemmatize + stop-word removal. Italian is detected via stop-word
-    heuristics; falls back to the English pipeline if Italian is unavailable."""
-    italian_stopwords = {
-        "il", "la", "i", "gli", "le", "un", "una", "di", "a",
-        "da", "in", "con", "su", "per", "tra", "fra", "che",
-    }
-    words = text.lower().split()
-    is_italian = any(w in italian_stopwords for w in words)
-    target_nlp = nlp_it if (is_italian and nlp_it) else nlp
+def normalize_text(text: str, language: str = "") -> str:
+    """Normalize with the explicitly selected model only.
 
-    doc = target_nlp(text.lower())
+    Language classification belongs to the Go lexicon registry. The sidecar
+    never guesses a language from an embedded word list.
+    """
+    _ = language
+    doc = nlp(text.lower())
     return " ".join(
         [token.lemma_ for token in doc if not token.is_stop and not token.is_punct]
     )

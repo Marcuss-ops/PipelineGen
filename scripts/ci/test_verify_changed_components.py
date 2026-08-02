@@ -88,6 +88,21 @@ class VerifyChangedComponentsTests(unittest.TestCase):
                 ),
             )
 
+    def test_collects_deleted_tracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.git(root, "init", "-q")
+            self.git(root, "config", "user.email", "test@example.invalid")
+            self.git(root, "config", "user.name", "Test")
+            tracked = root / "internal" / "domain" / "clips" / "deleted.go"
+            tracked.parent.mkdir(parents=True)
+            tracked.write_text("package clips\n", encoding="utf-8")
+            self.git(root, "add", ".")
+            self.git(root, "commit", "-qm", "initial")
+            tracked.unlink()
+            changes = verify_changed.collect_changed_files(root, "HEAD")
+            self.assertEqual(changes.files, ("internal/domain/clips/deleted.go",))
+
     def test_run_changed_components_invokes_shared_runner_once(self) -> None:
         calls: list[tuple[str, ...]] = []
 
@@ -232,7 +247,7 @@ class VerifyChangedComponentsTests(unittest.TestCase):
         self.assertEqual(calls, [("script", "stock", "clips", "drive")])
         self.assertEqual(execution.exit_code, 0)
         self.assertEqual(execution.report["final"], "PASS")
-        self.assertEqual(execution.report["unmapped_files"], ["README.md"])
+        self.assertEqual(execution.report["unmapped_files"], [])
 
     def test_report_with_wrong_resolved_order_fails_closed(self) -> None:
         def fake_run_components(registry, requested, **kwargs):

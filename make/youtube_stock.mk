@@ -33,13 +33,23 @@ verify-youtube-stock-fast: verify-youtube-url verify-youtube-metadata verify-you
 verify-youtube-stock-local: verify-youtube-stock-fast verify-stock-partial-download verify-stock-cache verify-stock-dedupe verify-stock-index
 verify-youtube-stock-resilience: verify-stock-recovery verify-stock-concurrency
 verify-youtube-stock-live:
-	@echo "SKIP: live YouTube/Drive/Qdrant certification requires operator-provided stable canary and configured services"; exit 2
+	@scripts/with-velox-auth bash tests/operational/youtube_stock_live_e2e.sh
 verify-youtube-stock-release: verify-youtube-stock-local verify-youtube-stock-resilience verify-youtube-stock-live
 doctor-youtube-stock:
-	@command -v yt-dlp >/dev/null && echo '{"ytdlp":"PASS"}' || { echo '{"ytdlp":"FAIL","final":"BLOCKED"}'; exit 1; }
+	@set -eu; \
+	for tool in yt-dlp ffmpeg ffprobe sqlite3 curl jq; do \
+		command -v "$$tool" >/dev/null 2>&1 || { echo "FAIL: $$tool missing"; exit 2; }; \
+	done; \
+	echo "yt-dlp=$$(yt-dlp --version)"; \
+	ffmpeg -version | head -1; \
+	ffprobe -version | head -1; \
+	df -h .; \
+	: "$${YOUTUBE_CANARY_CAPTIONS_URL:?YOUTUBE_CANARY_CAPTIONS_URL is required}"; \
+	timeout 60 yt-dlp --skip-download --dump-single-json --no-playlist "$$YOUTUBE_CANARY_CAPTIONS_URL" > "$${TMPDIR:-/tmp}/youtube-canary-metadata.json"; \
+	jq -e '(.id|type=="string" and length>0) and (.duration|numbers and .>0) and ((.live_status // "unknown") != "is_live")' "$${TMPDIR:-/tmp}/youtube-canary-metadata.json" >/dev/null || { echo "FAIL: canary metadata is not a playable non-live video"; exit 1; }; \
+	jq '{id,title,duration,availability,live_status,subtitles:(.subtitles|keys),automatic_captions:(.automatic_captions|keys)}' "$${TMPDIR:-/tmp}/youtube-canary-metadata.json"; \
+	echo '{"final":"PASS"}'
 verify-stock-acquisition:
 	$(MAKE) verify-youtube-url verify-youtube-metadata verify-youtube-transcript verify-highlight-selection verify-stock-download verify-stock-cache
 verify-stock-indexing:
 	$(MAKE) verify-stock-index verify-stock-dedupe verify-stock-recovery
-verify-pipeline-youtube-stock:
-	$(MAKE) verify-stock-acquisition verify-stock-indexing verify-stock-youtube-e2e

@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockplan"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -67,6 +68,7 @@ type YouTubeClipHandler struct {
 	// searchFanOut (Wave 4, July 2026): canonical SearchFanOut decorator
 	// for Stats telemetry. When nil, Stats returns 503.
 	searchFanOut search.SearchFanOut
+	stockService *stockplan.StockService
 } // NewYouTubeClipHandler builds the YouTubeClipHandler.
 // service          - YouTube service used by this handler.
 // log              - zap logger for diagnostics.
@@ -99,6 +101,7 @@ func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc 
 		Idempotency:  idem,
 		searchSvc:    searchSvc,
 		searchFanOut: searchFanOut,
+		stockService: nil,
 	}
 }
 
@@ -114,6 +117,9 @@ func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc 
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Idempotency, h.Extract)
 	r.POST("/extract-important", h.Idempotency, h.ExtractImportant) // PR-GEMMA-EXTRACT-IMPORTANT Step 5
+	if h.stockService != nil {
+		r.POST("/stock", h.Idempotency, h.SubmitStock)
+	}
 	r.GET("/info", h.GetVideoInfo)
 	r.GET("/search", h.SearchByTopic)
 	r.POST("/search", h.SearchByTopic)

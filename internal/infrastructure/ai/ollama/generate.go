@@ -135,7 +135,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	}()
 
 	// Auto-retrieve web context if SearXNG is configured and query is derivable
-	if ws := g.client.WebSearcher(); ws != nil && req.WebContext == "" {
+	if ws := g.client.WebSearcher(); ws != nil && !req.DisableWebSearch && req.WebContext == "" {
 		searchQuery := SearchQueryForScript(req)
 		if searchQuery != "" {
 			searchStart := time.Now()

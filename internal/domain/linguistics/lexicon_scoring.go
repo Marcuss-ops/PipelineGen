@@ -8,6 +8,20 @@ import (
 	"sort"
 )
 
+// Languages returns the explicitly configured language profiles in stable
+// order. The registry owns language selection; callers do not maintain a
+// second language list in code.
+func (r *LexiconRegistry) Languages() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	langs := make([]string, 0, len(r.profiles))
+	for lang := range r.profiles {
+		langs = append(langs, lang)
+	}
+	sort.Strings(langs)
+	return langs
+}
+
 // ProfileCount returns the number of explicit (non-fallback) language
 // profiles currently loaded in the registry.
 //

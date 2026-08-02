@@ -29,7 +29,9 @@ func initLinguistics(cfg *config.Config, log *zap.Logger) error {
 		}
 	}
 
-	linguistics.SetDefaultLexicon(reg)
+	if err := linguistics.SetDefaultLexicon(reg); err != nil {
+		return fmt.Errorf("init linguistics: install default registry: %w", err)
+	}
 
 	if log != nil {
 		log.Info("linguistics: lexicon registry loaded",

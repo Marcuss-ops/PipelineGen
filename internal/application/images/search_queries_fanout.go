@@ -146,8 +146,8 @@ func (s *ImageStorageService) runRetrievalFallback(ctx context.Context, query, l
 		// is ctx-agnostic in its pre-Step-8 signature so we pass
 		// gctx indirectly through fanOutRetrieval's child ctx).
 		backends = []retrievalBackend{
-			{name: "wikipedia", fn: func(_ context.Context) (string, string) {
-				img, title := s.searchWikipedia(query, lang)
+			{name: "wikipedia", fn: func(c context.Context) (string, string) {
+				img, title := s.searchWikipedia(c, query, lang)
 				if img == "" {
 					return "", ""
 				}

@@ -224,6 +224,16 @@ func buildDefaultProviderRegistry() *ProviderRegistry {
 		MetadataMapper:      canonicalMetadataMapper(ProviderWikipedia, ImageOriginRetrieved),
 	})
 	mustRegister(ProviderDescriptor{
+		ID:                  ProviderWikimediaCommons,
+		Aliases:             []string{"commons.wikimedia.org", "wikimedia_commons"},
+		Origin:              ImageOriginRetrieved,
+		DefaultRightsStatus: "unknown",
+		DefaultAuthor:       "Unknown",
+		LicenseResolver:     providerLicenseResolver("unknown"),
+		Materializer:        providerMaterializer(ProviderWikimediaCommons, ImageOriginRetrieved),
+		MetadataMapper:      canonicalMetadataMapper(ProviderWikimediaCommons, ImageOriginRetrieved),
+	})
+	mustRegister(ProviderDescriptor{
 		ID:                  ProviderDuckDuckGo,
 		Aliases:             []string{"duckduckgo"},
 		Origin:              ImageOriginRetrieved,

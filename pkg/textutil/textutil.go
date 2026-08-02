@@ -6,34 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-)
 
-var genericStopWords = map[string]struct{}{
-	"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {}, "for": {}, "with": {},
-	"from": {}, "into": {}, "onto": {}, "about": {}, "above": {}, "across": {}, "after": {},
-	"against": {}, "along": {}, "among": {}, "around": {}, "at": {}, "before": {}, "behind": {},
-	"below": {}, "beneath": {}, "between": {}, "beyond": {}, "by": {}, "down": {}, "during": {},
-	"except": {}, "inside": {}, "instead": {}, "near": {}, "off": {}, "on": {}, "over": {},
-	"through": {}, "to": {}, "toward": {}, "towards": {}, "under": {}, "until": {}, "upon": {},
-	"within": {}, "without": {}, "is": {}, "are": {}, "was": {}, "were": {}, "be": {}, "been": {},
-	"being": {}, "have": {}, "has": {}, "had": {}, "do": {}, "does": {}, "did": {}, "will": {},
-	"would": {}, "could": {}, "should": {}, "may": {}, "might": {}, "must": {}, "shall": {},
-	"can": {}, "cannot": {}, "not": {}, "no": {}, "this": {}, "that": {}, "these": {}, "those": {},
-	"what": {}, "which": {}, "who": {}, "whom": {}, "whose": {}, "where": {}, "when": {}, "why": {},
-	"how": {}, "all": {}, "any": {}, "both": {}, "each": {}, "few": {}, "more": {}, "most": {},
-	"other": {}, "some": {}, "such": {}, "only": {}, "own": {}, "same": {}, "so": {}, "than": {},
-	"too": {}, "very": {}, "just": {}, "now": {}, "then": {}, "here": {}, "there": {}, "if": {},
-	"as": {}, "of": {}, "in": {}, "it": {}, "i": {},
-	"il": {}, "lo": {}, "la": {}, "gli": {}, "le": {}, "un": {}, "uno": {}, "una": {},
-	"dei": {}, "degli": {}, "della": {}, "delle": {}, "dello": {}, "di": {}, "da": {},
-	"con": {}, "su": {}, "per": {}, "tra": {}, "fra": {}, "al": {}, "allo": {}, "alla": {},
-	"ai": {}, "agli": {}, "alle": {}, "dal": {}, "dallo": {}, "dalla": {}, "dai": {}, "dagli": {},
-	"dalle": {}, "nel": {}, "nello": {}, "nella": {}, "nei": {}, "negli": {}, "nelle": {}, "col": {},
-	"coi": {}, "sul": {}, "sulla": {}, "sui": {}, "sulle": {}, "e": {}, "che": {}, "ma": {}, "se": {},
-	"anche": {}, "più": {}, "meno": {}, "quando": {}, "dove": {}, "perché": {}, "chi": {}, "cosa": {},
-	"quale": {}, "quali": {}, "tutto": {}, "tutti": {}, "ogni": {}, "qualche": {}, "molto": {},
-	"poco": {}, "troppo": {}, "abbastanza": {},
-}
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
+)
 
 // Slugify converts a string to a lowercase slug with hyphens.
 func Slugify(s string) string {
@@ -343,20 +318,30 @@ func Float64To32(in []float64) []float32 {
 	return out
 }
 
-// IsStopWord checks if a term is a common stop word. It uses a compact
-// built-in set so text processing stays dependency-free and does not
-// require any external lexicon registry.
+// IsStopWord checks the configured fallback lexicon. It returns false while
+// the composition root has not installed a registry; production startup
+// fails before this path is reachable without configuration.
 func IsStopWord(term string) bool {
-	_, ok := genericStopWords[strings.ToLower(term)]
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		return false
+	}
+	_, ok := registry.StopWords("fallback")[strings.ToLower(term)]
 	return ok
 }
 
-// IsStopWordForLanguage is kept for call sites that still pass a
-// language tag. The current implementation intentionally ignores the
-// language and uses the generic stop-word set.
+// IsStopWordForLanguage checks the requested configured language.
 func IsStopWordForLanguage(term string, language string) bool {
-	_ = language
-	return IsStopWord(term)
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		return false
+	}
+	profile, err := registry.ResolveRequired(language)
+	if err != nil {
+		return false
+	}
+	_, ok := profile.StopWords[strings.ToLower(term)]
+	return ok
 }
 
 // ── Script text stripping ───────────────────────────────────────────────

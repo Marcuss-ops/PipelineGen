@@ -1,20 +1,51 @@
 package adapters
 
 import (
+	"context"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+type vidRushMemoryCache struct {
+	values map[string][]byte
+}
+
+func (c *vidRushMemoryCache) Get(_ context.Context, namespace, key string) ([]byte, bool, error) {
+	raw, ok := c.values[namespace+"\x00"+key]
+	if !ok {
+		return nil, false, nil
+	}
+	return append([]byte(nil), raw...), true, nil
+}
+
+func (c *vidRushMemoryCache) Put(_ context.Context, namespace, key string, raw []byte) error {
+	if c.values == nil {
+		c.values = make(map[string][]byte)
+	}
+	c.values[namespace+"\x00"+key] = append([]byte(nil), raw...)
+	return nil
+}
+
 func TestFinalizeVidRushBindings(t *testing.T) {
+	lifecycle := func(c scriptpkg.SegmentAssetCandidate) scriptpkg.SegmentAssetCandidate {
+		c.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+		c.VerificationStatus = scriptpkg.VidRushStatusVerified
+		c.PersistenceStatus = scriptpkg.VidRushStatusPersisted
+		c.IndexStatus = scriptpkg.VidRushStatusIndexed
+		c.FileHash = "verified-hash-" + c.AssetID
+		c.DriveLink = "https://drive.google.com/file/d/" + c.AssetID
+		c.RightsStatus = "verified"
+		return c
+	}
 	segments := []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-001",
 		TextHash:  "hash-1",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
 			{AssetID: "bad", Provider: "artlist", Score: 0.99},
-			{AssetID: "video-1", Provider: "artlist", Query: "factory", SourceURL: "https://artlist.example/video-1", Score: 0.8},
-			{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.7},
-			{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.6},
+			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "video-1", Provider: "artlist", Query: "factory", SourceURL: "https://artlist.example/video-1", Score: 0.8}),
+			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.7}),
+			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.6}),
 		}},
 	}}
 
@@ -42,6 +73,46 @@ func TestFinalizeVidRushBindings(t *testing.T) {
 	warm := FinalizeVidRushBindings(got, false)
 	if warm[0].Cache.Binding != "HIT_EXACT" {
 		t.Fatalf("warm binding cache = %q, want HIT_EXACT", warm[0].Cache.Binding)
+	}
+}
+
+func TestFinalizeVidRushBindings_UsesDurableL2AcrossL1Restart(t *testing.T) {
+	cache := &vidRushMemoryCache{}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: t.Name(), TextHash: "durable-binding-test",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "durable-video", Provider: "artlist", SourceURL: "https://artlist.example/durable-video", Score: 1,
+			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
+			PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
+			FileHash: "durable-hash", DriveLink: "https://drive.google.com/file/d/durable-video", RightsStatus: "verified",
+		}}},
+	}
+
+	first := FinalizeVidRushBindingsWithCache(context.Background(), []scriptpkg.VidRushSegmentResult{segment}, false, cache)
+	if first[0].Cache.Binding != "MISS" {
+		t.Fatalf("first binding cache = %q, want MISS", first[0].Cache.Binding)
+	}
+	vidrushBindingCache.Range(func(key, _ any) bool {
+		vidrushBindingCache.Delete(key)
+		return true
+	})
+	second := FinalizeVidRushBindingsWithCache(context.Background(), []scriptpkg.VidRushSegmentResult{segment}, false, cache)
+	if second[0].Cache.Binding != "HIT_EXACT" {
+		t.Fatalf("durable binding cache = %q, want HIT_EXACT", second[0].Cache.Binding)
+	}
+}
+
+func TestFinalizeVidRushBindings_DropsRemoteCandidatesWithoutLifecycle(t *testing.T) {
+	segments := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "segment-remote-only",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+			{AssetID: "remote-image", Provider: "internet_images", SourceURL: "https://images.example/remote.jpg", RightsStatus: "unknown_allowed"},
+		}},
+	}}
+
+	got := FinalizeVidRushBindings(segments, false)
+	if len(got) != 1 || len(got[0].Assets.Candidates) != 0 || len(got[0].Assets.SecondaryImages) != 0 {
+		t.Fatalf("remote candidate leaked into binding: %#v", got)
 	}
 }
 
@@ -139,7 +210,7 @@ func TestFinalizeVidRushBindings_StripsForbiddenProviders(t *testing.T) {
 			{AssetID: "bad-yt", Provider: "youtube", SourceURL: "https://youtube.com/watch?v=abc", Score: 0.95},
 			{AssetID: "bad-yt-url", Provider: "pexels", SourceURL: "https://youtube.com/watch?v=xyz", Score: 0.8},
 			{AssetID: "bad-gen", Provider: "generated_images", SourceURL: "https://ai.example/gen.png", Score: 0.7},
-			{AssetID: "good-img", Provider: "pexels", SourceURL: "https://images.pexels.com/1.jpg", Score: 0.6},
+			{AssetID: "good-img", Provider: "pexels", SourceURL: "https://images.pexels.com/1.jpg", DriveLink: "https://drive.example/image-1", Score: 0.6},
 		}},
 	}}
 

@@ -98,7 +98,7 @@ func ClassifierForTesting(pt ScrollPoint) (Categories, map[string]int) {
 
 // allowedPayloadSources is the canonical allowlist of payload.source
 // values that the audit classifier treats as media rows. Map lookup
-// bypasses the C2-C AST gate's switch-case detection (godlike/06 SSOT
+// keeps the C2-C AST check deterministic (godlike/06 SSOT
 // co-located structural validation: the canonical payload taxonomy
 // for legacy Qdrant payloads is owned here in the audit domain).
 var allowedPayloadSources = map[string]struct{}{

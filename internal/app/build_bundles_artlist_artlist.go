@@ -342,7 +342,10 @@ func WireArtlist(
 	// Pexels and Pixabay. The registry is frozen before the module
 	// is returned so no provider can be added or removed at runtime.
 	providerAssetsRegistry := providerassets.NewRegistry()
-	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlist.NewAdapter(service))
+	// VidRush discovery is explicitly live: the registry adapter must enter
+	// Service.SearchLive so queries reach the scraper rather than the
+	// catalog-only Service.Search path.
+	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlist.NewLiveAdapter(service))
 	_ = providerAssetsRegistry.Register(artlistAdapter)
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pexels", providers.PexelsSearcher))
 	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pixabay", providers.PixabaySearcher))
@@ -354,12 +357,13 @@ func WireArtlist(
 		zap.Bool("godlike_06_ssot", true),
 	)
 	return &wiring.ArtlistWiring{
-		Module:         ad.Module,
-		Service:        ad.Service,
-		ProviderAssets: providerAssetsRegistry,
-		LicenseRepo:    repos.LicenseRepo,
-		ReleaseRepo:    repos.ReleaseRepo,
-		RenditionRepo:  repos.RenditionRepo,
+		Module:            ad.Module,
+		Service:           ad.Service,
+		ProviderAssets:    providerAssetsRegistry,
+		ArtlistDownloader: providers.ArtlistDownloader,
+		LicenseRepo:       repos.LicenseRepo,
+		ReleaseRepo:       repos.ReleaseRepo,
+		RenditionRepo:     repos.RenditionRepo,
 	}, nil
 }
 

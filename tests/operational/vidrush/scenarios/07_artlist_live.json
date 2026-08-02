@@ -9,6 +9,8 @@
     "max_artlist_queries_per_segment": 5,
     "provider_requests_artlist": -1,
     "provider_requests_internet_images": 0,
+    "require_primary_per_segment": true,
+    "require_persisted_bindings": true,
     "no_permanent_negative_cache": true,
     "cache_extraction": "MISS"
   },

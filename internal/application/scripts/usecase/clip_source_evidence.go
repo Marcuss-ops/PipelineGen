@@ -8,6 +8,31 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+func canonicalClipDriveLink(clip *asset.Asset) string {
+	if clip == nil {
+		return ""
+	}
+	if link := strings.TrimSpace(clip.DriveLink()); link != "" {
+		if strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://") {
+			return link
+		}
+		// Some live catalog rows expose the Drive file ID in the legacy
+		// drive_link field. Normalize that representation below.
+		if fileID := strings.TrimSpace(clip.DriveFileID()); fileID != "" {
+			return "https://drive.google.com/file/d/" + fileID + "/view"
+		}
+		return "https://drive.google.com/file/d/" + link + "/view"
+	}
+	// A few legacy catalog rows have neither locator metadata populated,
+	// while their canonical ID is the published Drive file ID. Restrict
+	// this compatibility fallback to Drive-sized IDs so arbitrary internal
+	// asset IDs are not exposed as fabricated links.
+	if id := strings.TrimSpace(clip.ID); len(id) >= 20 {
+		return "https://drive.google.com/file/d/" + id + "/view"
+	}
+	return ""
+}
+
 // appendClipSourceText writes the legacy technical per-clip source
 // text block used for provenance and compatibility consumers.
 func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript string) {
@@ -109,7 +134,7 @@ func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDe
 		Tags:        append([]string(nil), clip.Tags...),
 		StartMs:     startMs,
 		EndMs:       endMs,
-		DriveLink:   clip.DriveLink(),
+		DriveLink:   canonicalClipDriveLink(clip),
 	}
 }
 
@@ -138,7 +163,7 @@ func buildClipEvidence(
 ) *scriptpkg.ClipEvidence {
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
-		if link := clip.DriveLink(); link != "" {
+		if link := canonicalClipDriveLink(clip); link != "" {
 			canonicalID := clipToCanonical[clip.ID]
 			if canonicalID == "" {
 				canonicalID = clip.ID

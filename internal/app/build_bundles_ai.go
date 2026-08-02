@@ -11,6 +11,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -52,7 +54,12 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	)
 
 	if cfg.External.SearxngURL != "" {
-		ws := client.NewWebSearcher(cfg.External.SearxngURL, cfg.External.SearxngMaxResults)
+		ws := client.NewWebSearcherWithConfig(client.WebSearcherConfig{
+			BaseURL: cfg.External.SearxngURL, MaxResults: cfg.External.SearxngMaxResults,
+			Timeout:  time.Duration(cfg.External.WebSearchTimeoutSeconds) * time.Second,
+			Language: cfg.External.SearxngLanguage, Categories: "general", SafeSearch: 0,
+			Engines: strings.Split(cfg.External.SearxngEngines, ","),
+		})
 		ollamaClient.SetWebSearcher(ws)
 		log.Info("SearXNG web search enabled for LLM context",
 			zap.String("searxng_url", cfg.External.SearxngURL),

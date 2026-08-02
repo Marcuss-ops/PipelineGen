@@ -42,8 +42,8 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	//    index 5; internet_images added at index 9; document added
 	//    at index 11; see file godoc above
 	//    for EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 14 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 14: %v", len(names), names)
+	if len(names) != 15 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 15: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (entities → clip_search → metadata →
@@ -63,6 +63,7 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorImages,
 		adapterspkg.ProcessorInternetImages,
+		adapterspkg.ProcessorVidRushMaterialization,
 		adapterspkg.ProcessorAssetLocationReconciliation,
 		adapterspkg.ProcessorPersistence,
 		adapterspkg.ProcessorDocument,

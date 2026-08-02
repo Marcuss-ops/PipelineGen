@@ -201,7 +201,8 @@ func TestMeaningfulLookupTokens_RemovesStopwords(t *testing.T) {
 
 func TestMeaningfulLookupTokens_ItalianStopwords(t *testing.T) {
 	tokens := meaningfulLookupTokens("Della Rosa dei Venti")
-	// "della" is a stopword, "dei" is NOT in the stopword list, "venti" kept
+	// The fallback profile is the configured shared source for this
+	// language-neutral lookup helper.
 	expected := []string{"rosa", "dei", "venti"}
 	if len(tokens) != len(expected) {
 		t.Fatalf("expected %v, got %v", expected, tokens)
@@ -215,8 +216,8 @@ func TestMeaningfulLookupTokens_ItalianStopwords(t *testing.T) {
 
 func TestMeaningfulLookupTokens_ShortTokensRemoved(t *testing.T) {
 	tokens := meaningfulLookupTokens("a an the cat")
-	// "a" len<2 skip, "an" kept (len>=2, not in stopwords), "the" stopword, "cat" kept
-	expected := []string{"an", "cat"}
+	// "a" len<2 skip, configured stopwords are removed, "cat" kept.
+	expected := []string{"cat"}
 	if len(tokens) != len(expected) {
 		t.Fatalf("expected %v, got %v", expected, tokens)
 	}

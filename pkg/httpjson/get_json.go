@@ -26,6 +26,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -83,6 +85,7 @@ type StatusError struct {
 	URL        string
 	StatusCode int
 	Body       []byte // preview, capped at 4 KiB inside GetBytes
+	RetryAfter time.Duration
 }
 
 func (e *StatusError) Error() string {
@@ -94,6 +97,15 @@ func (e *StatusError) Error() string {
 // concrete *StatusError type recovered by errors.As.
 func (e *StatusError) Is(target error) bool {
 	return target == ErrNon200
+}
+
+// RetryAfterDuration lets the shared retry engine honor provider backpressure
+// without teaching each caller how to parse HTTP Retry-After headers.
+func (e *StatusError) RetryAfterDuration() time.Duration {
+	if e == nil || e.RetryAfter < 0 {
+		return 0
+	}
+	return e.RetryAfter
 }
 
 // ── GetBytes ───────────────────────────────────────────────────────────
@@ -148,12 +160,31 @@ func GetBytes(ctx context.Context, client *http.Client, targetURL string, opts *
 			URL:        targetURL,
 			StatusCode: resp.StatusCode,
 			Body:       preview,
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
 		}
 	}
 	if opts.MaxBodyBytes > 0 {
 		return io.ReadAll(io.LimitReader(resp.Body, opts.MaxBodyBytes))
 	}
 	return io.ReadAll(resp.Body)
+}
+
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0
+	}
+	if wait := time.Until(when); wait > 0 {
+		return wait
+	}
+	return 0
 }
 
 // ── GetJSON ────────────────────────────────────────────────────────────

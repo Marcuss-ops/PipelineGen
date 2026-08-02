@@ -54,9 +54,6 @@ type Service struct {
 	log         *zap.Logger
 	scriptPath  string
 	vectorStore VectorStoreIndexer
-
-	// Semaphore for concurrent Python indexing subprocesses, configured via Config.
-	scriptSem chan struct{}
 }
 
 // NewService constructs a clip indexer bound to a database path and script directory.
@@ -68,17 +65,12 @@ func NewService(cfg *Config, db *storage.SQLiteDB, dbPath string, log *zap.Logge
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	maxIndexing := cfg.MaxConcurrentIndexing
-	if maxIndexing <= 0 {
-		maxIndexing = 1
-	}
 	return &Service{
 		db:         db,
 		dbPath:     dbPath,
 		cfg:        cfg,
 		log:        log,
 		scriptPath: cfg.ScriptPath,
-		scriptSem:  make(chan struct{}, maxIndexing),
 	}
 }
 

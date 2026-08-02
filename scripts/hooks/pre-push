@@ -51,19 +51,13 @@
 #
 #         verify-main                                            (Make SSOT)
 #         ├── verify-foundation + verify-static                  (shared base)
-#         ├── verify-unit-fast  = standard Go unit tests across
 #         ├── verify-changed-components = registry-mapped changed components
-#         │                       internal/domain, application,
-#         │                       infrastructure, api, cmd, and pkg
-#         ├── verify-node-native = better-sqlite3 binding probe only
-#         │                       (the full npm test suite is reserved
-#         │                       for verify-full)
 #         └── verify-architecture = cmd/architecture-aggregate
-#                                   + cmd/archcheck (governance + AST
-#                                   cross-package invariant scan;
-#                                   cmd/archcheck runs WITHOUT --strict
-#                                   here — see archcheck-strict note
-#                                   below).
+#                                  + cmd/archcheck (governance + AST
+#                                  cross-package invariant scan;
+#                                  cmd/archcheck runs WITHOUT --strict
+#                                  here — see archcheck-strict note
+#                                  below).
 #
 # Sibling of verify-main (NOT a child of verify-architecture):
 #   `make archcheck-strict` — same cmd/archcheck binary with the

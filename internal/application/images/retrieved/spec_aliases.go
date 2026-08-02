@@ -72,6 +72,7 @@ var ErrProviderNotFound = errors.New("retrieved: provider id not found in regist
 // Compile-time assertions (user-spec literal shape).
 var (
 	_ Provider = (*WikipediaProvider)(nil)
+	_ Provider = (*WikimediaCommonsProvider)(nil)
 	_ Provider = (*SearXNGProvider)(nil)
 	_ Provider = (*DuckDuckGoProvider)(nil)
 	_ Provider = (*DriveImageProvider)(nil)

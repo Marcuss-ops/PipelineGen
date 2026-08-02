@@ -22,6 +22,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 )
 
 // SearchBySlug returns up to `limit` ImageAsset preview URLs that
@@ -61,7 +62,18 @@ func (s *ImageStorageService) SearchWikipedia(ctx context.Context, query, lang s
 	if s == nil {
 		return "", ""
 	}
-	return s.searchWikipedia(query, lang)
+	return s.searchWikipedia(ctx, query, lang)
+}
+
+// SearchWikimediaCommons exposes the explicit-license Commons fallback used
+// by the retrieved provider. Commons imageinfo carries the actual source
+// license and dimensions, so it is safe to classify these candidates as
+// verified only when that metadata is present.
+func (s *ImageStorageService) SearchWikimediaCommons(ctx context.Context, query string) routing.RetrievalSearchResult {
+	if s == nil {
+		return routing.RetrievalSearchResult{}
+	}
+	return s.searchWikimediaCommons(ctx, query)
 }
 
 // SearchSearXNGImages exposes the private helper used by the
@@ -72,6 +84,16 @@ func (s *ImageStorageService) SearchSearXNGImages(ctx context.Context, query str
 		return ""
 	}
 	return s.searchSearXNGImages(ctx, query)
+}
+
+// SearchSearXNGImagesMany exposes the bounded multi-result form used by the
+// VidRush image provider. The legacy singular method above remains the
+// compatibility surface for callers that intentionally want one best URL.
+func (s *ImageStorageService) SearchSearXNGImagesMany(ctx context.Context, query string, limit int) []routing.RetrievalSearchResult {
+	if s == nil {
+		return nil
+	}
+	return s.searchSearXNGImagesMany(ctx, query, limit)
 }
 
 // SearchDDGWide exposes the private helper used by the

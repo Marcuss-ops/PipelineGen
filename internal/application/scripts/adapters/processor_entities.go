@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -14,14 +16,24 @@ import (
 type EntitiesProcessor struct {
 	extractor EntityExtractor
 	metrics   VidRushMetrics
+	cache     scriptports.VidRushCachePort
+	// Ollama's configured local model is single-slot on this host. Keep the
+	// segment workers bounded at four for ordering/CPU work, but serialize the
+	// remote model call so requests do not queue indefinitely inside Ollama.
+	extractionGate     chan struct{}
+	extractionGateOnce sync.Once
 }
 
 func NewEntitiesProcessor(extractor EntityExtractor, metrics ...VidRushMetrics) *EntitiesProcessor {
+	return NewEntitiesProcessorWithCache(extractor, nil, metrics...)
+}
+
+func NewEntitiesProcessorWithCache(extractor EntityExtractor, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *EntitiesProcessor {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &EntitiesProcessor{extractor: extractor, metrics: m}
+	return &EntitiesProcessor{extractor: extractor, metrics: m, cache: cache, extractionGate: make(chan struct{}, 1)}
 }
 
 func (p *EntitiesProcessor) Name() ProcessorName { return ProcessorEntities }
@@ -45,6 +57,11 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	if len(canonical) == 0 {
 		return &PostProcessResult{}, nil
 	}
+	p.extractionGateOnce.Do(func() {
+		if p.extractionGate == nil {
+			p.extractionGate = make(chan struct{}, 1)
+		}
+	})
 
 	extractionLimit := 5
 	if plan.MediaPlan.Extraction.MaxEntitiesPerSegment > 0 {
@@ -75,74 +92,152 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		ImportantPhrases: []string{},
 		ImportantWords:   []string{},
 	}
-	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(canonical))
+	type extractionOutcome struct {
+		index       int
+		segment     scriptpkg.VidRushSegmentResult
+		cached      bool
+		unavailable error
+		err         error
+	}
 
-	for _, canonicalSeg := range canonical {
-		if p.metrics != nil {
-			p.metrics.IncSegments()
-		}
-		cacheKey := segmentCacheKey(
-			"extraction-v3",
-			canonicalSeg.TextHash,
-			plan.Language,
-			plan.Model,
-			plan.PromptVersion,
-			plan.Title,
-			plan.Topic,
-			fmt.Sprintf("%d", extractionLimit),
-			fmt.Sprintf("%d", phrasesLimit),
-			fmt.Sprintf("%d", wordsLimit),
-			fmt.Sprintf("%d", artlistLimit),
-			fmt.Sprintf("%d", imageLimit),
-		)
-		if !plan.MediaPlan.ForceRefreshExtraction {
-			if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
-				if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
-					seg = cloneVidRushSegmentResult(seg)
-					seg.Cache.Extraction = "HIT_EXACT"
-					segments = append(segments, seg)
-					mergeVidRushAggregate(agg, seg)
-					if p.metrics != nil {
-						p.metrics.IncExtractionCache(true)
+	// Extraction is provider/LLM I/O, not CPU-bound work. Keep the worker
+	// count bounded and preserve canonical segment order by storing outcomes
+	// by input index before aggregating them below.
+	workerCount := 4
+	if len(canonical) < workerCount {
+		workerCount = len(canonical)
+	}
+	jobs := make(chan int)
+	outcomes := make(chan extractionOutcome, len(canonical))
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wg sync.WaitGroup
+	for worker := 0; worker < workerCount; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				canonicalSeg := canonical[index]
+				if p.metrics != nil {
+					p.metrics.IncSegments()
+				}
+				cacheKey := segmentCacheKey(
+					"extraction-v3",
+					canonicalSeg.TextHash,
+					plan.Language,
+					plan.Model,
+					plan.PromptVersion,
+					plan.Title,
+					plan.Topic,
+					fmt.Sprintf("%d", extractionLimit),
+					fmt.Sprintf("%d", phrasesLimit),
+					fmt.Sprintf("%d", wordsLimit),
+					fmt.Sprintf("%d", artlistLimit),
+					fmt.Sprintf("%d", imageLimit),
+				)
+				if !plan.MediaPlan.ForceRefreshExtraction {
+					if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
+						if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
+							seg = cloneVidRushSegmentResult(seg)
+							seg.Cache.Extraction = "HIT_EXACT"
+							if p.metrics != nil {
+								p.metrics.IncExtractionCache(true)
+							}
+							outcomes <- extractionOutcome{index: index, segment: seg, cached: true}
+							continue
+						}
+					}
+					var persisted scriptpkg.VidRushSegmentResult
+					if hit, cacheErr := loadVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
+						outcomes <- extractionOutcome{index: index, err: cacheErr}
+						continue
+					} else if hit {
+						persisted = cloneVidRushSegmentResult(persisted)
+						persisted.Cache.Extraction = "HIT_EXACT"
+						cacheStore(&vidrushExtractionCache, cacheKey, persisted)
+						if p.metrics != nil {
+							p.metrics.IncExtractionCache(true)
+						}
+						outcomes <- extractionOutcome{index: index, segment: persisted, cached: true}
+						continue
+					}
+				}
+
+				select {
+				case p.extractionGate <- struct{}{}:
+				case <-workerCtx.Done():
+					outcomes <- extractionOutcome{index: index, err: workerCtx.Err()}
+					continue
+				}
+				res, err := p.extractor.ExtractEntities(workerCtx, scriptpkg.EntityExtractionRequest{
+					Text:        canonicalSeg.Text,
+					Title:       plan.Title,
+					Language:    plan.Language,
+					Model:       plan.Model,
+					EntityCount: extractionLimit,
+					SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
+				})
+				<-p.extractionGate
+				if err != nil {
+					if errors.Is(err, ErrEntityExtractorUnavailable) {
+						outcomes <- extractionOutcome{index: index, unavailable: err}
+					} else {
+						outcomes <- extractionOutcome{index: index, err: err}
 					}
 					continue
 				}
+				if res == nil {
+					res = &scriptpkg.EntityResult{}
+				}
+				seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
+				seg.Cache.Extraction = "MISS"
+				if plan.MediaPlan.ForceRefreshExtraction {
+					seg.Cache.Extraction = "REFRESHED"
+				}
+				if p.metrics != nil {
+					p.metrics.IncExtractionCache(false)
+				}
+				cacheStore(&vidrushExtractionCache, cacheKey, seg)
+				if cacheErr := storeVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
+					outcomes <- extractionOutcome{index: index, err: cacheErr}
+					continue
+				}
+				outcomes <- extractionOutcome{index: index, segment: seg}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for index := range canonical {
+			select {
+			case jobs <- index:
+			case <-workerCtx.Done():
+				return
 			}
 		}
+	}()
+	go func() {
+		wg.Wait()
+		close(outcomes)
+	}()
 
-		req := scriptpkg.EntityExtractionRequest{
-			Text:        canonicalSeg.Text,
-			Title:       plan.Title,
-			Language:    plan.Language,
-			Model:       plan.Model,
-			EntityCount: extractionLimit,
-			SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
+	outcomeByIndex := make(map[int]extractionOutcome, len(canonical))
+	for outcome := range outcomes {
+		outcomeByIndex[outcome.index] = outcome
+	}
+	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(canonical))
+	for index := range canonical {
+		outcome := outcomeByIndex[index]
+		if outcome.unavailable != nil {
+			cancel()
+			return &PostProcessResult{Changed: true, Warnings: []string{outcome.unavailable.Error()}}, nil
 		}
-		res, err := p.extractor.ExtractEntities(ctx, req)
-		if err != nil {
-			if errors.Is(err, ErrEntityExtractorUnavailable) {
-				return &PostProcessResult{
-					Changed:  true,
-					Warnings: []string{err.Error()},
-				}, nil
-			}
-			return nil, err
+		if outcome.err != nil {
+			cancel()
+			return nil, outcome.err
 		}
-		if res == nil {
-			res = &scriptpkg.EntityResult{}
-		}
-
-		seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit)
-		seg.Cache.Extraction = "MISS"
-		if plan.MediaPlan.ForceRefreshExtraction {
-			seg.Cache.Extraction = "REFRESHED"
-		}
-		if p.metrics != nil {
-			p.metrics.IncExtractionCache(false)
-		}
-		segments = append(segments, seg)
-		mergeVidRushAggregate(agg, seg)
-		cacheStore(&vidrushExtractionCache, cacheKey, seg)
+		segments = append(segments, outcome.segment)
+		mergeVidRushAggregate(agg, outcome.segment)
 	}
 
 	return &PostProcessResult{
@@ -203,6 +298,7 @@ func buildVidRushSegmentResult(
 	wordsLimit int,
 	artlistLimit int,
 	imageLimit int,
+	queryText ...string,
 ) scriptpkg.VidRushSegmentResult {
 	insights := scriptpkg.SegmentInsights{
 		SegmentID: canonicalSeg.ID,
@@ -246,15 +342,20 @@ func buildVidRushSegmentResult(
 	}
 	insights.ImportantWords = uniqueLimitedStrings(res.ImportantWords, wordsLimit)
 
-	// LLM-generated Artlist phrases are segment-scoped and visually validated;
-	// deterministic fallbacks only fill missing query slots.
+	// Deterministic source-grounded queries lead the bounded fan-out. Model
+	// phrases enrich the set only after a retrieval-safe visual query is
+	// present; this prevents poetic prose from consuming every provider slot.
+	visualText := canonicalSeg.Text
+	if len(queryText) > 0 && strings.TrimSpace(queryText[0]) != "" {
+		visualText = strings.TrimSpace(queryText[0])
+	}
+	fallbackArtlistQueries := buildArtlistQueries(visualText, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
 	llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
-	fallbackArtlistQueries := buildArtlistQueries(canonicalSeg.Text, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-	insights.ArtlistQueries = uniqueLimitedStrings(append(llmArtlistQueries, fallbackArtlistQueries...), artlistLimit)
+	insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
 
 	imagePhrases := append([]string(nil), res.ArtlistPhrases...)
 	imagePhrases = append(imagePhrases, insights.ImportantPhrases...)
-	insights.ImageQueries = buildImageQueries(canonicalSeg.Text, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
+	insights.ImageQueries = buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
 	insights.ImageQueries = uniqueLimitedStrings(insights.ImageQueries, imageLimit)
 
 	return scriptpkg.VidRushSegmentResult{
@@ -267,4 +368,41 @@ func buildVidRushSegmentResult(
 		Assets:    scriptpkg.SegmentAssetSelection{},
 		Cache:     scriptpkg.SegmentCacheState{},
 	}
+}
+
+// segmentQueryContext keeps visual retrieval grounded in the source supplied
+// by the caller when the model's prose is editorially embellished. Explicit
+// ScriptSegments are authoritative; paragraph-aligned source text is the
+// deterministic fallback used by segment_words plans. The emitted segment
+// text and text_hash remain the generated narration contract.
+func segmentQueryContext(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.CanonicalSegment) string {
+	if plan == nil {
+		return segment.Text
+	}
+	if len(plan.Segments) > 0 {
+		if segment.Position >= 0 && segment.Position < len(plan.Segments) {
+			if text := strings.TrimSpace(plan.Segments[segment.Position].SourceText); text != "" {
+				return text
+			}
+		}
+		for _, sourceSegment := range plan.Segments {
+			if strings.EqualFold(strings.TrimSpace(sourceSegment.ID), strings.TrimSpace(segment.ID)) {
+				if text := strings.TrimSpace(sourceSegment.SourceText); text != "" {
+					return text
+				}
+			}
+		}
+	}
+	if len(plan.SegmentTopics) > 0 && segment.Position >= 0 && segment.Position < len(plan.SegmentTopics) {
+		if topic := strings.TrimSpace(plan.SegmentTopics[segment.Position]); topic != "" {
+			return topic
+		}
+	}
+	paragraphs := splitParagraphSegments(plan.SourceText)
+	if segment.Position >= 0 && segment.Position < len(paragraphs) {
+		if text := strings.TrimSpace(paragraphs[segment.Position]); text != "" {
+			return text
+		}
+	}
+	return segment.Text
 }

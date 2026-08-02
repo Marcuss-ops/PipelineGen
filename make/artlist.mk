@@ -7,13 +7,6 @@
 # naturally via Make's recursive target resolution.
 # Root Makefile contains include make/*.mk plus all: build.
 
-verify-artlist:
-	$(GO) test -race ./internal/infrastructure/artlist/... && \
-	$(GO) test -race ./internal/application/assets/providers/artlist/... && \
-	$(GO) test -race ./internal/api/assets/artlist/... && \
-	cd node-scraper && npm test
-	@echo "✅ Artlist verification passed"
-
 # ─── Artlist operational batteries (granular, July 2026) ────────────────
 #
 # The Artlist battery is split into

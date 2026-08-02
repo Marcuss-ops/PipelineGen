@@ -36,6 +36,7 @@ var (
 	ErrEmpty             = errors.New("artlist: empty input")
 	ErrUnavailable       = errors.New("artlist: source unavailable")
 	ErrTimeout           = errors.New("artlist: source timeout")
+	ErrRateLimited       = errors.New("artlist: source rate limited")
 	ErrInvalidResponse   = errors.New("artlist: invalid response")
 	ErrEmptyResult       = errors.New("artlist: empty result")
 	ErrNotFound          = errors.New("artlist: not found")

@@ -5,7 +5,11 @@ executable sources of truth are:
 
 - `config/verify-components.json` — component paths, Go packages,
   dependencies, timeout budgets, race policy, and optional test commands.
+- `config/verify-pipelines.json` — aggregate pipeline component sets and
+  optional operational commands.
 - `scripts/ci/verify-component.py` — shared component runner.
+- `scripts/ci/verify-all-components.py` — fast/race all-component entry point.
+- `scripts/ci/verify-pipeline.py` — aggregate pipeline runner.
 - `scripts/ci/verify-changed-components.py` — changed-file ownership and
   impacted-component selection.
 - `make/verify.components.mk` — thin Make aliases.
@@ -34,6 +38,15 @@ invocation.
 | `make verify-voiceover` | `voiceover` | Voiceover domain, application, and API |
 | `make verify-database` | `database` | SQLite/database infrastructure and adapters |
 | `make verify-jobs` | `jobs` | Job application, API, and SQLite job persistence |
+| `make verify-images` | `images` | Image domain, application, and API |
+| `make verify-translation` | `translation` | Translation services and script adapters |
+| `make verify-timeline` | `timeline` | Media/timeline processing and storage API |
+| `make verify-storage` | `storage` | Storage application, API, and Drive storage adapter |
+| `make verify-api` | `api` | HTTP middleware and transport contracts |
+| `make verify-ollama` | `ollama` | Ollama client and structured-output adapters |
+| `make verify-youtube` | `youtube` | YouTube domain, sourcing, providers, API, and infrastructure |
+| `make verify-artlist` | `artlist` | Artlist provider, infrastructure, and API |
+| `make verify-node-scraper` | `node-scraper` | Node scraper tests and scraper integration package |
 
 The registry also exposes aggregate component targets:
 
@@ -41,6 +54,16 @@ The registry also exposes aggregate component targets:
 make verify-components       # all registered components, fast mode
 make verify-race-components  # all registered components, race mode
 make verify-changed-components
+make verify-race-stock       # race for one component
+make verify-race-qdrant
+
+# aggregate pipelines
+make verify-pipeline-stock-only
+make verify-pipeline-clip-only
+make verify-pipeline-research
+make verify-pipeline-document
+make verify-pipeline-voiceover
+make verify-pipeline-script
 ```
 
 `verify-changed-components` maps committed, staged, unstaged, and untracked
@@ -70,8 +93,8 @@ The aggregate gates are intentionally separate:
 | Gate | Composition | Use |
 |---|---|---|
 | `make verify-fast` | Foundation + static checks | Fast development loop |
-| `make verify-main` | Foundation + static + standard units + changed components + native Node probe + architecture | Normal fail-closed pre-push gate |
-| `make verify-race` | Foundation + race-tested units + all registered components in race mode | Explicit concurrency/race validation |
+| `make verify-main` | Foundation + static + changed components + architecture | Normal fail-closed pre-push gate |
+| `make verify-race` | Foundation + all registered components in race mode | Explicit concurrency/race validation |
 | `make verify-full` | `verify-main` + `verify-race` + full Node tests | Complete headless verification |
 | `make verify-release` | `verify-full` + integration tests | Pre-deploy certification |
 

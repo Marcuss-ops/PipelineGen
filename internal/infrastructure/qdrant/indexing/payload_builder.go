@@ -63,7 +63,7 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	// DOCUMENT is ALWAYS composed via buildCanonicalSearchDocument;
 	// the pre-existing pre-fill override
 	// (`if doc.Metadata.EmbeddingText != ""`) is REMOVED so no caller
-	// can bypass the forward-prevention gate by sneaking
+	// can evade the forward-prevention check by sneaking
 	// link/locator text into doc.Metadata.EmbeddingText. The
 	// canonical composer reads ONLY the 8 sanctioned fields and
 	// emits an empty string when none are populated; that is the

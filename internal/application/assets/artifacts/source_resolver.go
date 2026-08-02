@@ -102,7 +102,7 @@ func (a *clipsSourceAdapter) GetByDriveFileID(ctx context.Context, fileID string
 // path is DeleteClip; the typed-port surfaces it as Delete for
 // symmetry with the voiceover/images SourceRepo shape).
 //
-// CAUTION: This call BYPASSES the outbox soft-delete gate. The
+// CAUTION: This call intentionally uses the outbox soft-delete exception. The
 // canonical clips-source deletion path is
 // outbox.Dispatcher.EnqueueAndDelete(ctx, clipID) (QDRANT-002 PR7),
 // which atomically stamps index_state=DELETE_PENDING AND emits an

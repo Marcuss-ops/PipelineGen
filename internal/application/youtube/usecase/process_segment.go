@@ -67,6 +67,17 @@ type ProcessYouTubeSegmentUseCase struct {
 	observability ProcessSegmentObservabilityDeps
 }
 
+// AcquireStockTranscript exposes the existing resolver for the transcript-
+// first stock planner. It never downloads video bytes.
+func (u *ProcessYouTubeSegmentUseCase) AcquireStockTranscript(ctx context.Context, videoID string, durationMs int64) (*asset.ResolvedTextBundle, error) {
+	if u == nil || u.media.TextTrackResolver == nil {
+		return nil, nil
+	}
+	return u.media.TextTrackResolver.AcquireSegmentText(ctx, TextTrackAcquireRequest{
+		VideoID: videoID, StartSec: 0, EndSec: int(durationMs / 1000),
+	})
+}
+
 // Execute runs the canonical 9-step pipeline for one segment. The body
 // is decomposed into 6 step methods (see package-doc godoc for the
 // per-file ownership map). This function is the SOLE orchestrator —

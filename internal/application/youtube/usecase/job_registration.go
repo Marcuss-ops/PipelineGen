@@ -39,6 +39,12 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobyoutube.TypeClipExtract, err)
 	}
 	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobyoutube.TypeClipExtract))
+	if s.stockService != nil {
+		if err := jobsSvc.RegisterHandler(jobyoutube.TypeStock, jobtools.HandlerFunc(ytjobs.NewStockJobHandler(s.stockService, s.log).HandleJob)); err != nil {
+			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobyoutube.TypeStock, err)
+		}
+		s.log.Info("registered youtube.stock job handler", zap.String("type", jobyoutube.TypeStock))
+	}
 
 	// rebuild_search_text needs Clips to be wired so the rebuild can
 	// locate the indexed-clip rows. Guard keeps a half-wired bundle from

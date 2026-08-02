@@ -69,18 +69,25 @@ func (p *SearXNGProvider) Search(ctx context.Context, query string, opts routing
 	if p.baseURL == "" || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
-	imgURL := p.bridge.SearchSearXNGImages(ctx, query)
-	if imgURL == "" {
-		return nil, nil
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 10
 	}
-	return []routing.RetrievalSearchResult{{
-		Provider:   asset.ProviderSearXNG,
-		Origin:     asset.ImageOriginRetrieved,
-		PreviewURL: imgURL,
-		PageURL:    imgURL,
-		License:    "Unknown",
-		Author:     "Unknown",
-	}}, nil
+	results := p.bridge.SearchSearXNGImagesMany(ctx, query, limit)
+	for i := range results {
+		results[i].Provider = asset.ProviderSearXNG
+		results[i].Origin = asset.ImageOriginRetrieved
+		if strings.TrimSpace(results[i].PageURL) == "" {
+			results[i].PageURL = results[i].PreviewURL
+		}
+		if results[i].License == "" {
+			results[i].License = "Unknown"
+		}
+		if results[i].Author == "" {
+			results[i].Author = "Unknown"
+		}
+	}
+	return results, nil
 }
 
 // ID returns the canonical string ID of this provider.

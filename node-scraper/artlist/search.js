@@ -72,6 +72,34 @@ export function shouldUseFastPath(intercepted, limit) {
 }
 
 /**
+ * Detects the anti-bot interstitial before the DOM fallback turns it into an
+ * apparently valid empty search. The caller maps this to a typed HTTP 429 so
+ * the Go adapter does not spawn a second browser/CLI attempt for the same
+ * rate-limited query.
+ *
+ * @param {{status?: number, title?: string, bodyText?: string}|null} pageState
+ * @returns {{code: string, reason: string}|null}
+ */
+export function classifyChallengePage(pageState) {
+  if (!pageState || typeof pageState !== 'object') return null;
+  const status = Number(pageState.status || 0);
+  const title = String(pageState.title || '').toLowerCase();
+  const bodyText = String(pageState.bodyText || '').toLowerCase();
+  if (
+    status === 429 ||
+    title.includes('just a moment') ||
+    bodyText.includes('performing security verification') ||
+    bodyText.includes('verify you are human')
+  ) {
+    return {
+      code: 'ARTLIST_RATE_LIMITED',
+      reason: 'Artlist returned an anti-bot or rate-limit challenge page',
+    };
+  }
+  return null;
+}
+
+/**
  * Opens reachable detail pages for `clipPageUrls` in chunks of
  * `concurrency`. Uses `chunkArray` from search-dom.js so the chunking
  * logic is testable in isolation.
@@ -147,8 +175,19 @@ export async function searchArtlist(
   const responseHandler = setupApiInterception(page, apiResponses);
 
   try {
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 120000 });
+    const mainResponse = await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 120000 });
     await new Promise((resolve) => setTimeout(resolve, 800));
+
+    const challenge = classifyChallengePage({
+      status: mainResponse?.status?.(),
+      title: await page.title(),
+      bodyText: await page.evaluate(() => (document.body?.innerText || '').slice(0, 4000)),
+    });
+    if (challenge) {
+      const error = new Error(challenge.reason);
+      error.code = challenge.code;
+      throw error;
+    }
 
     const intercepted = extractClipsFromApiResponses(apiResponses, term);
 

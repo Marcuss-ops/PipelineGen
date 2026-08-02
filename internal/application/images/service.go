@@ -36,7 +36,10 @@ var (
 	_ catalog.CatalogSearch       = (*catalog.InMemoryCatalogSearch)(nil)
 )
 
-const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+// userAgent identifies the service to upstream Wikimedia and image providers.
+// A stable, descriptive agent is required for provider rate-limit handling;
+// browser impersonation makes upstream diagnostics and throttling worse.
+const userAgent = "PipelineGen/1.0 (VidRush asset retrieval; contact admin)"
 
 // SemanticMetadataPayload is a convenience alias for the canonical
 // semantic.Payload type. Kept here (thin file) for backward-compat

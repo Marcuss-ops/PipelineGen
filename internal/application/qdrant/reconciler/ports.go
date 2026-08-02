@@ -69,7 +69,7 @@ type AssetPointIDFunc func(assetID string) string
 // EnqueueReindex carries the `force` flag (Card 7.1, July 2026):
 // when true, the adapter routes through the canonical force
 // envelope variant (outboxevents.BuildReindexEnvelopeV1Force) so
-// the worker bypasses the source_version supersede gate. The
+// the worker uses the source_version supersede exception. The
 // canonical admin reindex path passes force=true. Production
 // reconciler --apply also passes force=true today (the operator's
 // --apply IS the admin opt-in).

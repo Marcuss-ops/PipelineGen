@@ -70,7 +70,7 @@ func configOnlyDestinations(cfg *config.Config) *wiring.DriveDestinations {
 // statements so the godlike/06 SSOT "one canonical owner per fact"
 // invariant holds: this composition site delegates the
 // Drive-availability decision to the sole canonical helper. Soft-mode
-// (cfg.Drive.StrictStartupValidation=false) bypasses the gate; the
+// (cfg.Drive.StrictStartupValidation=false) leaves startup validation soft; the
 // handler-level preflight at BatchRegisterFromYouTube still
 // fail-closed 503 at request time per godlike/07 defense-in-depth.
 func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.DriveBundle, wiring.IOpaqueStartFunc, error) {
@@ -80,7 +80,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 	// from disk (the canonical silent-failure mode that previously
 	// caused *drive.Uploader.Service to be nil and POST register-batch
 	// with folder_id non-empty to 500-panic). Soft-mode operators
-	// (StrictStartupValidation=false) bypass this gate; the
+	// (StrictStartupValidation=false) leaves this validation soft; the
 	// handler-level preflight at internal/api/assets/register/handler.go::BatchRegisterFromYouTube
 	// still fail-closes 503 at request time.
 	if err := validateDriveServiceAvailability(cfg); err != nil {

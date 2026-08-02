@@ -3,9 +3,12 @@ package scraper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -122,5 +125,54 @@ func TestSearchViaServerConsumesStableEnvelope(t *testing.T) {
 	}
 	if clip.SourceRef != "https://cdn/artlist/clip-1.mp4" {
 		t.Fatalf("unexpected source ref %q", clip.SourceRef)
+	}
+}
+
+func TestSearchSerializesBrowserRequests(t *testing.T) {
+	var active, maxActive int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := atomic.AddInt32(&active, 1)
+		for {
+			previous := atomic.LoadInt32(&maxActive)
+			if current <= previous || atomic.CompareAndSwapInt32(&maxActive, previous, current) {
+				break
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+		atomic.AddInt32(&active, -1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"provider":"artlist","query":"mountain sunrise","clips":[]}`))
+	}))
+	defer server.Close()
+
+	provider := New(Config{ServerURL: server.URL, HTTPTimeout: time.Second}, zap.NewNop())
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = provider.Search(context.Background(), artapp.SearchRequest{Term: "mountain sunrise", Limit: 1})
+		}()
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&maxActive); got != 1 {
+		t.Fatalf("concurrent Artlist searches = %d, want provider gate to keep it at 1", got)
+	}
+}
+
+func TestSearchDoesNotFallbackToExecWhenServerRateLimits(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"ok":false,"error":"ARTLIST_RATE_LIMITED"}`))
+	}))
+	defer server.Close()
+
+	provider := New(Config{ServerURL: server.URL, HTTPTimeout: time.Second}, zap.NewNop())
+	_, err := provider.Search(context.Background(), artapp.SearchRequest{Term: "mountain sunrise", Limit: 1})
+	if !errors.Is(err, artapp.ErrRateLimited) {
+		t.Fatalf("Search error = %v, want ErrRateLimited", err)
+	}
+	if errors.Is(err, artapp.ErrTransportFallback) {
+		t.Fatalf("rate-limited search must not trigger exec fallback: %v", err)
 	}
 }

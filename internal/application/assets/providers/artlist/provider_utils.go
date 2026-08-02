@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -27,6 +28,12 @@ func (fc *SearcherFallbackChain) Search(ctx context.Context, req SearchRequest) 
 			return candidates, nil
 		}
 		if err != nil {
+			// Rate limiting is a provider-wide condition, not a candidate
+			// miss. Do not fan the same query into fallback providers or
+			// overwrite the typed signal with a later empty result.
+			if errors.Is(err, ErrRateLimited) {
+				return nil, err
+			}
 			lastErr = err
 		}
 	}

@@ -29,6 +29,7 @@ import (
 type DownloaderMetadata struct {
 	ID           string           `json:"id"`
 	Title        string           `json:"title"`
+	LiveStatus   string           `json:"live_status,omitempty"`
 	URL          string           `json:"url,omitempty"`
 	Description  string           `json:"description"`
 	Duration     float64          `json:"duration"`

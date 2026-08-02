@@ -278,7 +278,7 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 //   - `tx` MUST be non-nil and open.
 //   - The caller decides whether to flip lifecycle_state without
 //     a Qdrant re-index (legacy admin behaviour: today the admin
-//     tooling Bypasses the outbox deliberately — see the gate
+//     tooling uses an explicit outbox exception — see the validation
 //     reference at admin.PurgeService.RestoreClip pkg-doc). This
 //     primitive does NOT emit a Qdrant re-index event; the caller
 //     can route a fresh outbox event if it wants vector rebuild.

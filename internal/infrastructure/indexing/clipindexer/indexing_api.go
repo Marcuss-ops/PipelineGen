@@ -18,7 +18,8 @@ import (
 // semantic (/index), transcript (/index_transcript), multi-frame visual
 // (/index_visual_multi), and audio (/embed_audio_from_file). Only Step 1
 // is fatal — Steps 2/3/4 are best-effort and fall through to the
-// script-based indexViaScript fallback when the API path fails.
+// The API is the only embedding path. If it is unavailable the caller
+// returns a transient error so the canonical job retry can recover it.
 //
 // QDRANT-001 (June 2026) closure contract:
 //   - The sidecar no longer reads from or writes to media.db.sqlite.

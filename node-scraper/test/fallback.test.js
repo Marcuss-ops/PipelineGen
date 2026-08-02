@@ -18,7 +18,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldUseFastPath } from '../artlist/search.js';
+import { classifyChallengePage, shouldUseFastPath } from '../artlist/search.js';
 
 describe('shouldUseFastPath', () => {
   test('returns false for empty intercepted array', () => {
@@ -104,5 +104,34 @@ describe('shouldUseFastPath', () => {
     //   - {primary:p2, page:undef} → 'p2' !== undefined → eligible
     // count = 2, gate = min(8, 2) = 2 → true
     assert.equal(shouldUseFastPath(clips, 8), true);
+  });
+});
+
+describe('classifyChallengePage', () => {
+  test('classifies a Cloudflare 429 interstitial', () => {
+    assert.deepEqual(
+      classifyChallengePage({
+        status: 429,
+        title: 'Just a moment...',
+        bodyText: 'Performing security verification',
+      }),
+      { code: 'ARTLIST_RATE_LIMITED', reason: 'Artlist returned an anti-bot or rate-limit challenge page' },
+    );
+  });
+
+  test('classifies a challenge page even when the transport status is 200', () => {
+    const result = classifyChallengePage({
+      status: 200,
+      title: 'Just a moment...',
+      bodyText: 'This website uses a security service to protect against malicious bots',
+    });
+    assert.equal(result?.code, 'ARTLIST_RATE_LIMITED');
+  });
+
+  test('does not classify a normal Artlist result page', () => {
+    assert.equal(
+      classifyChallengePage({ status: 200, title: 'Artlist search', bodyText: 'Mountain footage' }),
+      null,
+    );
   });
 });

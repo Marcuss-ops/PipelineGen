@@ -77,12 +77,15 @@ verify-changed:
 verify-push: verify-foundation verify-static verify-unit-fast verify-changed-components
 	@echo "✅ verify-push passed"
 
-verify-unit-race: verify-unit
+# Explicit race unit gate. Keep the race flag visible in the dry-run plan so
+# the verify-split contract can prove this gate is not an alias for fast unit
+# tests. The registry component race suite is owned by verify-race-components.
+verify-unit-race: go-version-check
+	$(GO) test -race ./internal/... ./cmd/... ./pkg/...
 
-# verify-main — canonical daily fail-closed headless gate. The push tier
-# owns foundation, static analysis, standard units, and changed components;
-# this tier adds the native Node probe and architecture checks. It does not
-# pull the full race suite or npm test suite.
+# verify-main — canonical daily fail-closed headless gate. It composes the
+# push gate, the native Node probe, and architecture checks. GNU Make
+# de-duplicates verify-foundation/verify-static inherited through verify-push.
 verify-main: verify-push verify-node-native verify-architecture
 	@echo "✅ verify-main passed"
 
@@ -115,11 +118,11 @@ verify-node-native:
 # native-binding probe can fail fast without paying the npm-install cost
 # and so verify-node-native can be run in isolation during Node upgrades.
 verify-node-tests: test-js
+	@echo "✅ verify-node-tests passed"
 
 # verify-node — complete Node toolchain gate. Composes the fast native
-# binding probe and the full Node test suite. verify-main intentionally uses
-# verify-node-native directly; callers that need the complete Node gate can
-# use verify-node or verify-full.
+# binding probe and the full Node test suite. Node verification is explicit;
+# verify-main delegates only to changed registry components.
 verify-node: verify-node-native verify-node-tests
 	@echo "✅ Node verification passed"
 
@@ -137,45 +140,12 @@ verify-architecture:
 	$(GO) run ./cmd/archcheck
 	@echo "✅ Architecture verification passed"
 
-# verify-artlist — quick verification dedicated to the Artlist module.
-# Runs the Go packages under infrastructure/artlist, providers/artlist,
-# api/assets/artlist, plus the node-scraper JS test suite.
-#
-# NOTE (July 2026, STEP 3/4): this target is REMOVED from verify-main
-# because the Artlist live battery requires Chrome + scraper +
-# Drive + Qdrant projections — all of which the headless pre-push gate
-# must NOT depend on. Use `make verify-artlist` as a developer
-# diagnostic, NOT as a pre-push gate.
-verify-images:
-	$(GO) test -race ./internal/domain/image/... && \
-	$(GO) test -race ./internal/application/images/... && \
-	$(GO) test -race ./internal/api/images/...
-	@echo "✅ Images verification passed"
-
-# verify-main-stock — daily fast gate for Stock-focused changes.
-# Uses standard tests (not the full race gate) across the Stock pipeline,
-# Stock API, and script binding adapters, then applies the shared foundation
-# and architecture checks. The existing verify-stock target remains the
-# explicit race-tested Stock gate.
-verify-main-stock: verify-foundation verify-static verify-architecture
-	$(GO) test -count=1 \
-		./internal/application/assets/providers/stock/stockpipeline/... \
-		./internal/api/assets/stock/... \
-		./internal/application/scripts/adapters/...
+# verify-main-stock — compatibility alias for the registry-backed Stock gate.
+verify-main-stock: verify-foundation verify-static verify-architecture verify-stock
 	@echo "✅ verify-main-stock passed"
 
-# verify-main-clip — daily fast gate for Clip-focused changes.
-# Uses standard tests (not the full race gate) across the canonical Clip
-# domain/application/API packages, then applies the shared foundation and
-# architecture checks. Script clip-binding/source-resolution changes have
-# their own package-level tests and are intentionally excluded here when
-# their working tree is mid-refactor, so this gate stays independent from
-# uncommitted adapter decomposition.
-verify-main-clip: verify-foundation verify-static verify-architecture
-	$(GO) test -count=1 \
-		./internal/domain/clips/... \
-		./internal/application/clips/... \
-		./internal/api/assets/clips/...
+# verify-main-clip — compatibility alias for the registry-backed Clips gate.
+verify-main-clip: verify-foundation verify-static verify-architecture verify-clips
 	@echo "✅ verify-main-clip passed"
 
 # verify-release — pre-deploy gate: the complete headless gate plus the
@@ -183,6 +153,12 @@ verify-main-clip: verify-foundation verify-static verify-architecture
 # (Drive, Qdrant, scraper). Run before deploy, NOT on every routine push.
 verify-release: verify-full verify-integration
 	@echo "✅ Release verification passed"
+
+# verify-split — structural gate for the verification graph. This is
+# intentionally independent from application test results: it checks that
+# each cost tier keeps its contract and shared prerequisites are not repeated.
+verify-split:
+	@bash scripts/ci/verify-split-contract.sh
 
 # Aggregate pre-flight check. Runs both toolchain guards plus two
 # sanity contracts that have historically drifted silently:

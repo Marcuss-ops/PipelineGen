@@ -230,7 +230,8 @@ const (
 	// StrategyReplace bypasses the cache lookup entirely so a
 	// re-extract under the same clipID always re-runs the full
 	// 9-step pipeline (used by the metadata-policy bump flow).
-	StrategyReplace ExtractionStrategy = "replace"
+	StrategyReplace             ExtractionStrategy = "replace"
+	StrategyYouTubeStockPartial ExtractionStrategy = "youtube_stock_partial"
 )
 
 // SegmentPolicy is the duration gate applied to every segment
