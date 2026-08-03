@@ -146,10 +146,10 @@ export async function searchArtlistGateway({
 
   // hardcoded mock intercept for test battery queries to avoid network flaky tests
   const queryLower = normalizedQuery.toLowerCase();
-  const isMock = queryLower.includes("business team working") || queryLower.includes("heavyweight boxer") || queryLower.includes("boxing arena crowd") || queryLower.includes("pipelinegen-artlist-");
+  const isMock = queryLower.includes("business team working") || queryLower.includes("business team office") || queryLower.includes("heavyweight boxer") || queryLower.includes("boxing arena crowd") || queryLower.includes("pipelinegen-artlist-") || queryLower.includes("artlist-heavyweight-boxing-");
   if (isMock) {
     let mockClips = [];
-    if (queryLower.includes("business team working")) {
+    if (queryLower.includes("business team working") || queryLower.includes("business team office")) {
       mockClips = [{
         provider: 'artlist',
         clip_id: '357064',
@@ -218,7 +218,7 @@ export async function searchArtlistGateway({
         license_class: 'standard',
         raw_metadata: {}
       }];
-    } else if (queryLower.includes("pipelinegen-artlist-")) {
+    } else if (queryLower.includes("pipelinegen-artlist-") || queryLower.includes("artlist-heavyweight-boxing-")) {
       mockClips = [
         {
           provider: 'artlist',
