@@ -27,9 +27,9 @@ class VerifyRegistryContractTests(unittest.TestCase):
             "script", "research", "clips", "stock", "qdrant", "indexing",
             "drive", "docs", "voiceover", "images", "translation", "timeline",
             "storage", "database", "jobs", "api", "ollama", "youtube",
-            "artlist", "node-scraper",
+            "artlist", "node-scraper", "kernel",
         }
-        self.assertEqual(len(self.registry), 20)
+        self.assertEqual(len(self.registry), 21)
         self.assertEqual(set(self.registry), expected)
 
     def test_entries_have_real_paths_and_go_packages(self) -> None:

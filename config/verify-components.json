@@ -142,6 +142,7 @@
   "docs": {
     "paths": [
       "docs/",
+      "README.md",
       "scripts/README.md",
       "internal/domain/document/",
       "internal/application/document/",
@@ -390,6 +391,21 @@
     "timeout_seconds": 600,
     "race_timeout_seconds": 600,
     "race_enabled": false,
+    "live_tests": []
+  },
+  "kernel": {
+    "paths": [
+      "internal/kernel/"
+    ],
+    "go_packages": [
+      "./internal/kernel/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 900,
+    "race_enabled": true,
     "live_tests": []
   }
 }
