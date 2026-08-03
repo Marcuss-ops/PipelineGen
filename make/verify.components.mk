@@ -82,6 +82,9 @@ verify-artlist:
 verify-node-scraper:
 	@$(VERIFY_COMPONENT_RUNNER) node-scraper $(VERIFY_COMPONENT_FLAGS)
 
+verify-kernel:
+	@$(VERIFY_COMPONENT_RUNNER) kernel $(VERIFY_COMPONENT_FLAGS)
+
 # Race is opt-in per component.  These aliases use the same resolver and only
 # differ in mode, so a race run cannot silently fall back to the fast suite.
 verify-race-script:
@@ -143,3 +146,6 @@ verify-race-artlist:
 
 verify-race-node-scraper:
 	@$(VERIFY_COMPONENT_RUNNER) node-scraper --race $(VERIFY_COMPONENT_FLAGS)
+
+verify-race-kernel:
+	@$(VERIFY_COMPONENT_RUNNER) kernel --race $(VERIFY_COMPONENT_FLAGS)
