@@ -180,3 +180,49 @@ func TestMetadataAccessorsNilSafe(t *testing.T) {
 		t.Errorf("nil-safe Language: got %q", got)
 	}
 }
+
+// TestSourceURLConvergenceAccessors covers the source_url convergence
+// family (godlike/06): the typed SourceURL field is canonical; the
+// metadata key accessors preserve the legacy storage keys so the two
+// surfaces stay in sync without a data migration.
+func TestSourceURLConvergenceAccessors(t *testing.T) {
+	a := &asset.Asset{}
+	a.SetMetadataSourceURL("https://example.com/clip")
+	a.SetMetadataSourceProvider("youtube")
+	a.SetMetadataSourceVideoID("abc123")
+	a.SetStartSec(12.5)
+	a.SetEndSec(30)
+	if got := a.MetadataSourceURL(); got != "https://example.com/clip" {
+		t.Fatalf("MetadataSourceURL=%q", got)
+	}
+	if got := a.MetadataSourceProvider(); got != "youtube" {
+		t.Fatalf("MetadataSourceProvider=%q", got)
+	}
+	if got := a.MetadataSourceVideoID(); got != "abc123" {
+		t.Fatalf("MetadataSourceVideoID=%q", got)
+	}
+	if got := a.StartSec(); got != 12.5 {
+		t.Fatalf("StartSec=%v", got)
+	}
+	if got := a.EndSec(); got != 30 {
+		t.Fatalf("EndSec=%v", got)
+	}
+
+	// Nil-safety on a zero-value Asset.
+	b := &asset.Asset{}
+	if got := b.MetadataSourceURL(); got != "" {
+		t.Fatalf("nil-safe MetadataSourceURL=%q", got)
+	}
+	if got := b.MetadataSourceProvider(); got != "" {
+		t.Fatalf("nil-safe MetadataSourceProvider=%q", got)
+	}
+	if got := b.MetadataSourceVideoID(); got != "" {
+		t.Fatalf("nil-safe MetadataSourceVideoID=%q", got)
+	}
+	if got := b.StartSec(); got != 0 {
+		t.Fatalf("nil-safe StartSec=%v", got)
+	}
+	if got := b.EndSec(); got != 0 {
+		t.Fatalf("nil-safe EndSec=%v", got)
+	}
+}

@@ -66,32 +66,36 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 
 	// Populate rich Metadata.
 	if plan.Title != "" {
-		a.SetMetadataString("title", plan.Title)
+		a.SetTitle(plan.Title)
 	}
 	if plan.Description != "" {
-		a.SetMetadataString("description", plan.Description)
+		a.SetDescription(plan.Description)
 	}
 	if plan.Round > 0 {
-		a.SetMetadataInt("round", plan.Round)
+		a.SetRound(plan.Round)
 	}
-	a.Metadata["start_sec"] = float64(plan.StartSec)
-	a.Metadata["end_sec"] = float64(plan.EndSec)
+	a.SetStartSec(float64(plan.StartSec))
+	a.SetEndSec(float64(plan.EndSec))
 	if slug != "" {
-		a.SetMetadataString("slug", slug)
+		a.SetSlug(slug)
 	}
 	a.SetLocalPath(outputPath)
 	a.SetFileHash(hash)
 	// godlike/06 SSOT: both sha256 and file_hash keys for
 	// downstream consumers that probe either key.
-	a.SetMetadataString("sha256", hash)
+	a.SetSha256(hash)
 	if plan.SourceProvider != "" {
-		a.SetMetadataString("source_provider", plan.SourceProvider)
+		a.SetMetadataSourceProvider(plan.SourceProvider)
 	}
 	if plan.SourceVideoID != "" {
-		a.SetMetadataString("source_video_id", plan.SourceVideoID)
+		a.SetMetadataSourceVideoID(plan.SourceVideoID)
 	}
 	if plan.SourceID != "" {
-		a.SetMetadataString("source_url", plan.SourceID)
+		// The typed SourceURL field is set in the struct literal above;
+		// the metadata key is a provenance mirror for Qdrant search-text
+		// and legacy consumers. Both are written so the two surfaces stay
+		// in sync (godlike/06 source_url convergence).
+		a.SetMetadataSourceURL(plan.SourceID)
 	}
 
 	return a
