@@ -427,8 +427,12 @@ export async function fetchClipDetails(browser, clipPageUrl) {
   detailPage.on('response', apiHandler);
 
   try {
+    // Artlist detail pages keep player/HLS requests open, so waiting for
+    // networkidle2 can consume the full navigation timeout even after the
+    // DOM and stream metadata are available. DOM readiness is sufficient;
+    // the selector wait and settle delay below preserve player hydration.
     await detailPage.goto(clipPageUrl, {
-      waitUntil: 'networkidle2',
+      waitUntil: 'domcontentloaded',
       timeout: DEFAULT_NAV_TIMEOUT,
     });
     await detailPage

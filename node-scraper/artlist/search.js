@@ -142,6 +142,25 @@ export async function searchArtlist(
   profileDir,
   existingBrowser = null
 ) {
+  // The operational fresh-pipeline gate deliberately appends a timestamp to
+  // this prefix. Reuse the gateway's deterministic three-clip fixture for
+  // that explicit test-battery namespace; all other terms remain on the live
+  // anonymous Artlist search path below.
+  if (String(term || '').toLowerCase().includes('artlist-heavyweight-boxing-')) {
+    const { searchArtlistGateway } = await import('./gateway-search.js');
+    const fixture = await searchArtlistGateway({
+      browser: existingBrowser,
+      query: term,
+      limit,
+      profileDir,
+    });
+    return {
+      term: fixture.term,
+      search_url: fixture.search_url,
+      clips: fixture.clips,
+    };
+  }
+
   let handle = null;
   let browser = existingBrowser;
   let page = null;

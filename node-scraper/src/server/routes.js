@@ -122,6 +122,14 @@ export async function handleDetail(req, res, ctx) {
           id: mockId,
           title: mockTitle,
           name: mockTitle,
+          tags: urlLower.includes("357064")
+            ? ["business", "team", "working", "office", "meeting"]
+            : (urlLower.includes("123456")
+              ? ["boxer", "training", "gym", "heavyweight", "boxing"]
+              : ["boxing", "arena", "crowd", "celebrating", "cheering"]),
+          categories: urlLower.includes("357064")
+            ? ["business", "office"]
+            : (urlLower.includes("123456") ? ["sports"] : ["sports", "crowd"]),
           clip_page_url: clipPageUrl,
           page_url: clipPageUrl,
           primary_url: 'https://artlist.io/mock-video.mp4',
@@ -424,12 +432,15 @@ export async function handleV1ClipSearch(req, res, ctx) {
     }
 
     const status = isArtlistRateLimitedError(err) ? 429 : 500;
-    res.writeHead(status, { 'Content-Type': 'application/json' });
+    const responseStatus = err && err.code === 'ARTLIST_SEARCH_TIMEOUT' ? 504 : status;
+    res.writeHead(responseStatus, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       ok: false,
       error: err.code || err.message || String(err),
       _meta: { request_id: reqId, elapsed_ms: elapsed },
     }));
+  } finally {
+    if (searchTimeoutTimer) clearTimeout(searchTimeoutTimer);
   }
 }
 
