@@ -40,6 +40,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
@@ -219,10 +220,17 @@ func (p *TranslationProcessor) Process(
 	// WordCount/ModelUsed/CacheStatus are stamped by the engine
 	// post-decode (per the PR 3 typed walk) so the pre-translation
 	// envelope is left at zero values here.
+	translationInput := input
+	if len(translationInput.SpecScene.Scenes) == 0 && plan != nil && len(plan.Segments) > 0 {
+		translationInput.SpecScene = specSceneFromPlanSegments(plan.Segments)
+	}
+	if plan != nil && len(plan.Segments) > 0 {
+		translationInput.SpecScene = ensureSceneIdentity(translationInput.SpecScene, plan.Segments)
+	}
 	modelIn := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
-		SpecScene:     input.SpecScene,
-		Text:          input.Text,
+		SpecScene:     translationInput.SpecScene,
+		Text:          translationInput.Text,
 	}
 
 	// Invoke the canonical TranslateScriptSpec pure function via the
@@ -260,6 +268,8 @@ func (p *TranslationProcessor) Process(
 			Warnings: append(tWarnings, fmt.Sprintf("translation failed: %v", tErr)),
 		}, fmt.Errorf("translation: %w", tErr)
 	}
+	originalText := input.Text
+	originalSpecScene := translationInput.SpecScene
 
 	// Translator success: mutate input.SpecScene + input.Text
 	// in-place per the ClipBindingsProcessor FASE 3 precedent.
@@ -281,16 +291,12 @@ func (p *TranslationProcessor) Process(
 	// translation see a wire-shape-stable result.
 	var postTranslatedText string
 	var postTranslatedSpecScene scriptpkg.SpecSceneOutput
-	originalText := input.Text
-	originalSpecScene := input.SpecScene
 	if translated != nil {
-		input.SpecScene = translated.SpecScene
+		translatedSpecScene := preserveTranslatedSceneContract(originalSpecScene, translated.SpecScene)
+		input.SpecScene = translatedSpecScene
 		input.Text = translated.Text
 		postTranslatedText = translated.Text
-		postTranslatedSpecScene = scriptpkg.SpecSceneOutput{
-			Version: translated.SchemaVersion,
-			Scenes:  translated.SpecScene.Scenes,
-		}
+		postTranslatedSpecScene = translatedSpecScene
 	}
 
 	// Per-warning emission: each warning → bounded-reason metric.
@@ -310,4 +316,87 @@ func (p *TranslationProcessor) Process(
 		OriginalSpecScene:   originalSpecScene,
 		EffectiveLanguage:   targetLang,
 	}, nil
+}
+
+func ensureSceneIdentity(spec scriptpkg.SpecSceneOutput, segments []scriptpkg.ScriptSegment) scriptpkg.SpecSceneOutput {
+	for index := range spec.Scenes {
+		if index >= len(segments) {
+			continue
+		}
+		segment := segments[index]
+		scene := &spec.Scenes[index]
+		if scene.ID == "" {
+			scene.ID = fmt.Sprintf("scene-%d", index)
+		}
+		scene.Index = index
+		if scene.SegmentID == "" {
+			scene.SegmentID = segment.ID
+		}
+		if scene.Kind == "" || !scene.Kind.Valid() {
+			if index == 0 {
+				scene.Kind = scriptpkg.SceneIntro
+			} else {
+				scene.Kind = scriptpkg.SceneStock
+			}
+		}
+	}
+	return spec
+}
+
+// preserveTranslatedSceneContract keeps scene identity and resolved media
+// bindings authoritative while allowing the translator to replace narrative
+// text. Some translation providers return text-only scenes; accepting those
+// scenes as-is loses segment_id and breaks the visual/voiceover contract after
+// translation.
+func preserveTranslatedSceneContract(original, translated scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
+	result := translated
+	if result.Version == 0 {
+		result.Version = original.Version
+	}
+	if len(result.VisualAssignments) == 0 {
+		result.VisualAssignments = append([]mediadomain.VisualAssignment(nil), original.VisualAssignments...)
+	}
+	for index := range result.Scenes {
+		if index >= len(original.Scenes) {
+			continue
+		}
+		prior := original.Scenes[index]
+		current := &result.Scenes[index]
+		current.ID = prior.ID
+		current.SegmentID = prior.SegmentID
+		current.Index = prior.Index
+		current.Kind = prior.Kind
+		current.Bindings = prior.Bindings
+		if current.Title == "" {
+			current.Title = prior.Title
+		}
+		if current.Metadata == nil {
+			current.Metadata = prior.Metadata
+		}
+		if current.VisualPlan == nil {
+			current.VisualPlan = prior.VisualPlan
+		}
+	}
+	return result
+}
+
+func specSceneFromPlanSegments(segments []scriptpkg.ScriptSegment) scriptpkg.SpecSceneOutput {
+	scenes := make([]scriptpkg.SpecScene, len(segments))
+	for i, segment := range segments {
+		kind := scriptpkg.SceneStock
+		if i == 0 {
+			kind = scriptpkg.SceneIntro
+		}
+		scenes[i] = scriptpkg.SpecScene{
+			ID:        fmt.Sprintf("scene-%d", i),
+			Index:     i,
+			SegmentID: segment.ID,
+			Text:      strings.TrimSpace(segment.SourceText),
+			Kind:      kind,
+		}
+		if scenes[i].Text == "" {
+			scenes[i].Text = strings.TrimSpace(segment.Topic)
+		}
+	}
+	return scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}
 }

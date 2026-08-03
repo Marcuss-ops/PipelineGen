@@ -165,13 +165,14 @@ For Shorts, the dedicated `POST /api/script/shorts/generate` endpoint returns
 indexed sound-effect cues; `include_sound_effects` controls whether the cues
 are emitted. It does not regenerate the script or select assets.
 
-Video rendering is available through `POST /api/script/shorts/render` for a
-synchronous smoke test, or `POST /api/script/shorts/render/async` for the
-production path. The async route returns `202` with a `job_id`; the
-`render.video` worker calls Remotion at `VELOX_REMOTION_URL` (default
-`http://127.0.0.1:4317`) and stores the output path in the completed job.
-Set `upload_to_drive: true` and pass `drive_folder_id` as either a folder ID
-or a full Google Drive folder URL to upload automatically after rendering.
+Video rendering is intentionally limited to the short-form YouTube path:
+`POST /api/script/shorts/render` for a synchronous smoke test, or
+`POST /api/script/shorts/render/async` for the production path. The async route
+returns `202` with a `job_id`; the `render.video` worker calls Remotion at
+`VELOX_REMOTION_URL` (default `http://127.0.0.1:4317`). Longform and compilation
+compositions are rejected before the renderer or worker is reached. Set
+`upload_to_drive: true` and pass `drive_folder_id` as either a folder ID or a
+full Google Drive folder URL to upload a permitted Shorts render.
 
 ## Architecture rules
 

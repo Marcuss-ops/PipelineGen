@@ -84,7 +84,36 @@ func (p *VisualSlotsProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 	updated := input.SpecScene
 	updated.VisualAssignments = append([]mediadomain.VisualAssignment(nil), all...)
+	projectPostSegmentClipBindings(updated.Scenes, all)
 	return &PostProcessResult{VisualAssignments: all, UpdatedSpecScene: updated, Warnings: warnings, Changed: len(all) > 0}, nil
+}
+
+// projectPostSegmentClipBindings exposes the primary post-segment clip in the
+// per-scene binding surface as well as in the independent timeline contract.
+// The timeline remains the authoritative place for multiple clips (for
+// example the two Sugar Ray Robinson outro clips); ClipBinding is singular,
+// so it carries the first clip while VisualAssignments retains every clip and
+// its exact position.
+func projectPostSegmentClipBindings(scenes []scriptpkg.SpecScene, assignments []mediadomain.VisualAssignment) {
+	for _, assignment := range assignments {
+		if assignment.Slot != mediadomain.VisualSlotPostSegment || assignment.AssetID == "" || assignment.Position != 0 {
+			continue
+		}
+		for i := range scenes {
+			matchesScene := assignment.SceneID != "" && scenes[i].ID == assignment.SceneID
+			matchesSegment := assignment.SegmentID != "" && scenes[i].SegmentID == assignment.SegmentID
+			if !matchesScene && !matchesSegment {
+				continue
+			}
+			scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{
+				ClipID:     assignment.AssetID,
+				StartMs:    assignment.StartMs,
+				EndMs:      assignment.StartMs + assignment.DurationMs,
+				DurationMs: assignment.DurationMs,
+			}
+			break
+		}
+	}
 }
 
 func resolveSlot(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, segmentID string, slot mediadomain.VisualSlot, spec mediadomain.VisualSlotPlan, seed int64, planner visual.Planner) (visual.Result, error) {

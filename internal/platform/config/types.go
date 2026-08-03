@@ -90,8 +90,8 @@ type VoiceoverConcurrencyConfig struct {
 
 	// MaxConcurrentTTS limits parallel text-to-speech synthesis calls.
 	// TTS is CPU-bound (ffmpeg/edge-tts spawn per-call processes); keeping
-	// this at 1-2 avoids I/O oversubscription. Default: 1.
-	MaxConcurrentTTS int `yaml:"max_concurrent_tts" default:"1"`
+	// this at 1-2 avoids I/O oversubscription. Default: 2.
+	MaxConcurrentTTS int `yaml:"max_concurrent_tts" default:"2"`
 
 	// Drive retry budget.
 

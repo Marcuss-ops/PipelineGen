@@ -39,6 +39,11 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-avoid_negative_ts", "make_zero")
 
 	if opts.Duration > 0 && !opts.DisableDuration {
+		// The canonical clip profile is an exact target duration, not merely
+		// an upper bound. Loop short sources so a one-second source still
+		// produces the required seven-second clip; longer sources remain
+		// bounded by -t below.
+		args = append(args, "-stream_loop", "-1")
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
 	}
 

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -50,6 +51,38 @@ func TestEvaluateQualityGate_PassesCleanGeneration(t *testing.T) {
 	}
 	if quality.ActualWords != 10 {
 		t.Errorf("actual_words=%d want 10", quality.ActualWords)
+	}
+}
+
+func TestEvaluateQualityGate_RejectsCrossBoxerSegmentText(t *testing.T) {
+	wordBlock := func(topic string) string {
+		return strings.Repeat(topic+" tecnica disciplina storia ", 25)
+	}
+	segments := []scriptpkg.ScriptSegment{
+		{ID: "boxer-mike-tyson", Topic: "Mike Tyson"},
+		{ID: "boxer-muhammad-ali", Topic: "Muhammad Ali"},
+		{ID: "boxer-evander-holyfield", Topic: "Evander Holyfield"},
+		{ID: "boxer-floyd-mayweather", Topic: "Floyd Mayweather"},
+		{ID: "boxer-sugar-ray-robinson", Topic: "Sugar Ray Robinson"},
+	}
+	scenes := make([]scriptpkg.SpecScene, len(segments))
+	for i, segment := range segments {
+		text := wordBlock(segment.Topic)
+		if segment.ID == "boxer-floyd-mayweather" {
+			text = wordBlock("Sugar Ray Robinson")
+		}
+		scenes[i] = scriptpkg.SpecScene{ID: "scene-" + string(rune('0'+i)), Index: i, SegmentID: segment.ID, Text: text}
+	}
+	result := &scriptpkg.GenerationResult{Output: scriptpkg.ScriptOutput{
+		Text: "boxers documentary", WordCount: 625,
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
+	}}
+	quality, err := evaluateQualityGate(result, scriptpkg.GenerationItemV2{ID: "boxers"}, scriptpkg.ResolvedGenerationPlan{Segments: segments})
+	if err == nil || quality.Passed {
+		t.Fatalf("cross-segment boxer text must fail the semantic gate: quality=%+v err=%v", quality, err)
+	}
+	if !strings.Contains(err.Error(), "boxer-floyd-mayweather") {
+		t.Fatalf("semantic gate error omitted failing segment: %v", err)
 	}
 }
 
@@ -226,7 +259,7 @@ func TestEvaluateQualityGate_FailsClipEvidenceCoverage(t *testing.T) {
 	}
 }
 
-func TestEvaluateQualityGate_FailsUnsupportedClaims(t *testing.T) {
+func TestEvaluateQualityGate_ReportsUnsupportedClaimsForGroundedSource(t *testing.T) {
 	result := &scriptpkg.GenerationResult{
 		Output: scriptpkg.ScriptOutput{
 			Text:      "Marco Polo visited Venice and discovered new lands.",
@@ -247,6 +280,7 @@ func TestEvaluateQualityGate_FailsUnsupportedClaims(t *testing.T) {
 	plan := scriptpkg.ResolvedGenerationPlan{
 		Language:   "en",
 		SourceText: "Marco Polo visited Venice and discovered new lands.",
+		SourceKind: string(scriptpkg.SourceResearch),
 	}
 
 	quality, err := evaluateQualityGate(result, item, plan)
@@ -255,6 +289,41 @@ func TestEvaluateQualityGate_FailsUnsupportedClaims(t *testing.T) {
 	}
 	if quality.UnsupportedClaims != 1 {
 		t.Errorf("unsupported_claims=%d want 1", quality.UnsupportedClaims)
+	}
+}
+
+func TestEvaluateQualityGate_TextUnsupportedClaimsAreDiagnostic(t *testing.T) {
+	result := &scriptpkg.GenerationResult{
+		Output: scriptpkg.ScriptOutput{
+			Text:      "Marco Polo visited Venice and discovered new lands.",
+			WordCount: 9,
+		},
+		Artifacts: scriptpkg.ArtifactResult{
+			Entities: &scriptpkg.EntityResult{
+				Persons: []scriptpkg.Entity{{Value: "Marco Polo"}},
+				Places:  []scriptpkg.Entity{{Value: "Venice"}},
+				Concepts: []scriptpkg.Entity{
+					{Value: "new lands"},
+					{Value: "unknown concept"},
+				},
+			},
+		},
+	}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		Language:   "en",
+		SourceText: "Marco Polo visited Venice and discovered new lands.",
+		SourceKind: string(scriptpkg.SourceText),
+	}
+
+	quality, err := evaluateQualityGate(result, scriptpkg.GenerationItemV2{ID: "item-9"}, plan)
+	if err != nil {
+		t.Fatalf("text generation should not fail only for unsupported claims: %v", err)
+	}
+	if quality.UnsupportedClaims != 1 {
+		t.Errorf("unsupported_claims=%d want 1", quality.UnsupportedClaims)
+	}
+	if !quality.Passed {
+		t.Fatal("quality gate should pass when unsupported claims are diagnostic for text")
 	}
 }
 

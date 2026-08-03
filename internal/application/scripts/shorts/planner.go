@@ -90,9 +90,12 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 			"volume": effect.Volume,
 		})
 	}
-	comp := "YouTubeShortComposition"
+	comp := remotionjob.YouTubeShortComposition
 	if req.Composition != "" {
 		comp = req.Composition
+	}
+	if err := remotionjob.ValidateShortFormComposition(comp); err != nil {
+		return remotionjob.RenderJob{}, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
 	clipProps := make([]map[string]any, 0, len(plan.Clips))
 	for _, c := range plan.Clips {

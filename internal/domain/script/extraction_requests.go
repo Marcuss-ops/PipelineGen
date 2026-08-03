@@ -29,6 +29,9 @@ type EntityExtractionRequest struct {
 	Title string `json:"title,omitempty"`
 	// Language is the canonical target language (ISO 639-1).
 	Language string `json:"language,omitempty"`
+	// Device selects the local inference backend: "auto", "cpu", or "gpu".
+	// GPU is optional and must never be represented by a silent CPU no-op.
+	Device string `json:"device,omitempty"`
 	// Model is the engine model identifier.
 	Model string `json:"model,omitempty"`
 	// EntityCount is the requested maximum named-entity count for this

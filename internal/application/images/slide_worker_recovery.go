@@ -120,8 +120,9 @@ func (p *ChromeImageProvider) resetWorker() <-chan struct{} {
 	p.stdout = nil
 
 	if p.cmd != nil && p.cmd.Process != nil {
-		// Best-effort kill — the process may already be dead.
-		_ = p.cmd.Process.Kill()
+		// Kill the worker process group so a failed Playwright startup cannot
+		// leave Chromium descendants orphaned under PID 1.
+		killWorkerProcessGroup(p.cmd.Process)
 		// Drain the Wait() to prevent zombie. Capture cmd into a local
 		// variable because we nil p.cmd on the next line — the goroutine
 		// must not dereference p.cmd after resetWorker returns.

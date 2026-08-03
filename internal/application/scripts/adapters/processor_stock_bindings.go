@@ -32,7 +32,7 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 	// binding for a later segment fail as "outside SpecScene". Normalize only
 	// this explicit contract, leaving model-emitted scenes untouched for all
 	// other jobs.
-	if plan != nil && len(plan.Segments) > 0 && len(input.StockBindings) > 0 {
+	if plan != nil && len(plan.Segments) > 0 {
 		input.SpecScene.Scenes = normalizeScenesForExplicitSegments(input.SpecScene.Scenes, plan.Segments)
 	}
 	stockEnabled := input.StockEnabled.AsBool() ||
@@ -91,8 +91,20 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 			DriveLink: driveLink, FolderID: folderID, FolderLink: folderLink, Score: in.Score, Fallback: in.Fallback,
 			StartMs: in.StartMs, EndMs: in.EndMs, DurationMs: in.EndMs - in.StartMs,
 		}
-		scene.Kind = scriptpkg.SceneStock
+		// The intro-hook segment keeps its narrative role (intro) even
+		// when its visual comes from a direct stock binding; the other
+		// scenes are anchored to stock as usual.
+		if scene.SegmentID == scriptpkg.IntroHookSegmentID {
+			scene.Kind = scriptpkg.SceneIntro
+		} else {
+			scene.Kind = scriptpkg.SceneStock
+		}
 	}
+	// Explicit segment normalization may create scene slots that were not
+	// present when the timeline processor first resolved its assignments.
+	// Re-project the now-canonical post-segment clips so every boxer scene
+	// exposes both bindings.stock and bindings.clip.
+	projectPostSegmentClipBindings(input.SpecScene.Scenes, input.SpecScene.VisualAssignments)
 	return &PostProcessResult{Changed: true, UpdatedSpecScene: input.SpecScene}, nil
 }
 

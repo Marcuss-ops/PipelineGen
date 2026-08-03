@@ -154,6 +154,10 @@ type SpecScene struct {
 	// Title is an optional human-readable scene title.
 	Title string `json:"title,omitempty"`
 
+	// Annotations contains deterministic, scene-local semantic annotations
+	// produced from the final scene text.
+	Annotations *SceneAnnotations `json:"annotations,omitempty"`
+
 	// Metadata carries technical details that must not be spoken in
 	// the voiceover text. It is optional and omitted when empty.
 	Metadata *SceneMetadata `json:"metadata,omitempty"`
@@ -171,6 +175,48 @@ type SpecScene struct {
 	// bound). Individual binding fields (clip, image, voiceover)
 	// use omitempty and are absent when nil.
 	Bindings SceneBindings `json:"bindings"`
+}
+
+// SceneAnnotations is the versioned semantic surface for one scene. Offsets
+// are Unicode-rune offsets into SpecScene.Text, never UTF-8 byte offsets.
+type SceneAnnotations struct {
+	Version           int               `json:"version"`
+	Language          string            `json:"language"`
+	ImportantPhrases  []AnnotationSpan  `json:"important_phrases,omitempty"`
+	PrimaryEntities   []AnnotatedEntity `json:"primary_entities,omitempty"`
+	SecondaryEntities []AnnotatedEntity `json:"secondary_entities,omitempty"`
+	ImportantWords    []AnnotationSpan  `json:"important_words,omitempty"`
+	Status            string            `json:"status,omitempty"`
+	Warnings          []string          `json:"warnings,omitempty"`
+}
+
+type AnnotationSpan struct {
+	ID        string  `json:"id,omitempty"`
+	Text      string  `json:"text"`
+	Lemma     string  `json:"lemma,omitempty"`
+	StartRune int     `json:"start_rune"`
+	EndRune   int     `json:"end_rune"`
+	Score     float64 `json:"score,omitempty"`
+	Kind      string  `json:"kind,omitempty"`
+}
+
+type AnnotatedEntity struct {
+	ID            string              `json:"id,omitempty"`
+	Text          string              `json:"text"`
+	CanonicalName string              `json:"canonical_name"`
+	Type          string              `json:"type"`
+	Confidence    float64             `json:"confidence,omitempty"`
+	Mentions      []AnnotationSpan    `json:"mentions,omitempty"`
+	Image         *EntityImageBinding `json:"image,omitempty"`
+}
+
+type EntityImageBinding struct {
+	Status      string `json:"status"`
+	AssetID     string `json:"asset_id,omitempty"`
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
+	Source      string `json:"source,omitempty"`
+	License     string `json:"license,omitempty"`
 }
 
 // Validate checks structural invariants on a single scene.

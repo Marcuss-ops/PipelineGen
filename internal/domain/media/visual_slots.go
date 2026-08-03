@@ -75,6 +75,12 @@ func (s VisualSlot) IsValid() bool {
 
 type VisualSelectedBy string
 
+// VisualMediaType identifies the media represented by a visual assignment.
+// Stock remains a scene binding; assignments are timeline clip placements.
+type VisualMediaType string
+
+const VisualMediaTypeClip VisualMediaType = "clip"
+
 const (
 	VisualSelectedByUser     VisualSelectedBy = "user"
 	VisualSelectedByGemma    VisualSelectedBy = "gemma"
@@ -87,6 +93,7 @@ const (
 // visual slot. It records the complete selection provenance.
 type VisualAssignment struct {
 	AssignmentID    string           `json:"assignment_id"`
+	MediaType       VisualMediaType  `json:"media_type"`
 	SceneID         string           `json:"scene_id,omitempty"`
 	SegmentID       string           `json:"segment_id,omitempty"`
 	Slot            VisualSlot       `json:"slot"`

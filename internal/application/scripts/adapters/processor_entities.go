@@ -71,6 +71,11 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	if plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment > 0 {
 		phrasesLimit = plan.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	}
+	// The annotation contract is scene-level: retain at most one key
+	// statement per scene, regardless of a wider legacy extraction limit.
+	if phrasesLimit > 1 {
+		phrasesLimit = 1
+	}
 	wordsLimit := 5
 	if plan.MediaPlan.Extraction.MaxImportantWordsPerSegment > 0 {
 		wordsLimit = plan.MediaPlan.Extraction.MaxImportantWordsPerSegment
@@ -118,22 +123,22 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 			defer wg.Done()
 			for index := range jobs {
 				canonicalSeg := canonical[index]
+				device := extractionDevice(plan)
 				if p.metrics != nil {
 					p.metrics.IncSegments()
 				}
 				cacheKey := segmentCacheKey(
-					"extraction-v3",
+					"extraction-v4-local-v1",
 					canonicalSeg.TextHash,
 					plan.Language,
 					plan.Model,
 					plan.PromptVersion,
-					plan.Title,
-					plan.Topic,
 					fmt.Sprintf("%d", extractionLimit),
 					fmt.Sprintf("%d", phrasesLimit),
 					fmt.Sprintf("%d", wordsLimit),
 					fmt.Sprintf("%d", artlistLimit),
 					fmt.Sprintf("%d", imageLimit),
+					device,
 				)
 				if !plan.MediaPlan.ForceRefreshExtraction {
 					if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
@@ -173,6 +178,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 					Text:        canonicalSeg.Text,
 					Title:       plan.Title,
 					Language:    plan.Language,
+					Device:      device,
 					Model:       plan.Model,
 					EntityCount: extractionLimit,
 					SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
@@ -240,10 +246,50 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		mergeVidRushAggregate(agg, outcome.segment)
 	}
 
+	// Text generation can reach semantic extraction before the clip-binding
+	// processor materializes its final scenes. Build a provisional scene
+	// envelope from the canonical segments so annotations are not discarded;
+	// the composite merge later carries them onto synthesized scenes.
+	sceneInput := input.SpecScene
+	if len(sceneInput.Scenes) == 0 && len(canonical) > 0 {
+		sceneInput.Version = 1
+		sceneInput.Scenes = make([]scriptpkg.SpecScene, 0, len(canonical))
+		for i, segment := range canonical {
+			sceneID := segment.SceneID
+			if sceneID == "" {
+				sceneID = fmt.Sprintf("scene-%d", i)
+			}
+			sceneInput.Scenes = append(sceneInput.Scenes, scriptpkg.SpecScene{
+				ID:        sceneID,
+				Index:     i,
+				SegmentID: segment.ID,
+				Text:      segment.Text,
+				Kind:      scriptpkg.SceneClip,
+			})
+		}
+	}
+	updated := cloneSpecSceneOutput(sceneInput)
+	language := strings.TrimSpace(input.EffectiveLanguage)
+	if language == "" {
+		language = strings.TrimSpace(plan.Language)
+	}
+	for i := range updated.Scenes {
+		for _, seg := range segments {
+			if (updated.Scenes[i].SegmentID != "" && updated.Scenes[i].SegmentID == seg.SegmentID) ||
+				(updated.Scenes[i].ID != "" && updated.Scenes[i].ID == seg.SceneID) ||
+				(updated.Scenes[i].SegmentID == "" && updated.Scenes[i].ID == "" && updated.Scenes[i].Index == seg.Position) {
+				updated.Scenes[i].Annotations = sceneAnnotations(updated.Scenes[i].Text, language, seg)
+				break
+			}
+		}
+	}
+
 	return &PostProcessResult{
-		Entities:        agg,
-		VidRushSegments: segments,
-		Changed:         true,
+		Entities:         agg,
+		VidRushSegments:  segments,
+		UpdatedSpecScene: updated,
+		SpecSceneChanged: len(updated.Scenes) > 0,
+		Changed:          true,
 	}, nil
 }
 
@@ -267,6 +313,24 @@ func segmentSpecSceneContext(input scriptpkg.SpecSceneOutput, segment scriptpkg.
 		return scriptpkg.SpecSceneOutput{Version: version, Scenes: []scriptpkg.SpecScene{localScene}}
 	}
 	return scriptpkg.SpecSceneOutput{Version: version, Scenes: []scriptpkg.SpecScene{}}
+}
+
+func extractionDevice(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return "auto"
+	}
+	device := strings.ToLower(strings.TrimSpace(plan.MediaPlan.Extraction.Device))
+	if device == "" {
+		// "local" is the existing semantic strategy and means automatic
+		// local hardware selection, not a separate device backend.
+		device = strings.ToLower(strings.TrimSpace(plan.MediaPlan.Extraction.Strategy))
+	}
+	switch device {
+	case "cpu", "gpu", "auto":
+		return device
+	default:
+		return "auto"
+	}
 }
 
 func mergeVidRushAggregate(dst *scriptpkg.EntityResult, seg scriptpkg.VidRushSegmentResult) {

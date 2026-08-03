@@ -110,7 +110,7 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := commandContext(ctx, name, args...)
 
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
@@ -126,7 +126,7 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 		result.Duration = time.Since(start)
 		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
 		result.ExitCode = exitCode(err)
-		result.TimedOut = isTimeout(err)
+		result.TimedOut = isTimeout(ctx, err)
 		if err != nil {
 			if shouldTryPythonFallback(name, err) {
 				if pyResult, pyErr := runViaPythonScript(ctx, name, args, opts, start); pyErr == nil {
@@ -146,7 +146,7 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 		result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
 		result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
 		result.ExitCode = exitCode(err)
-		result.TimedOut = isTimeout(err)
+		result.TimedOut = isTimeout(ctx, err)
 		if err != nil {
 			if shouldTryPythonFallback(name, err) {
 				if pyResult, pyErr := runViaPythonScript(ctx, name, args, opts, start); pyErr == nil {
@@ -176,7 +176,7 @@ func isNotFoundExecError(err error) bool {
 
 func runViaShell(ctx context.Context, name string, args []string, opts Options, start time.Time) (*Result, error) {
 	shellCmd := shellJoin(name, args)
-	sh := exec.CommandContext(ctx, "/bin/sh", "-lc", shellCmd)
+	sh := commandContext(ctx, "/bin/sh", "-lc", shellCmd)
 	if opts.WorkDir != "" {
 		sh.Dir = opts.WorkDir
 	}
@@ -189,7 +189,7 @@ func runViaShell(ctx context.Context, name string, args []string, opts Options, 
 		result.Duration = time.Since(start)
 		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
 		result.ExitCode = exitCode(err)
-		result.TimedOut = isTimeout(err)
+		result.TimedOut = isTimeout(ctx, err)
 		if err != nil {
 			return result, fmt.Errorf("command %s failed via shell fallback: %w (output: %s)", name, err, redactSecrets(result.Output))
 		}
@@ -203,7 +203,7 @@ func runViaShell(ctx context.Context, name string, args []string, opts Options, 
 	result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
 	result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
 	result.ExitCode = exitCode(err)
-	result.TimedOut = isTimeout(err)
+	result.TimedOut = isTimeout(ctx, err)
 	if err != nil {
 		return result, fmt.Errorf("command %s failed via shell fallback: %w (stdout: %s, stderr: %s)",
 			name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
@@ -240,7 +240,7 @@ func runViaPythonScript(ctx context.Context, name string, args []string, opts Op
 		}
 	}
 	pyArgs := append([]string{name}, args...)
-	sh := exec.CommandContext(ctx, pythonPath, pyArgs...)
+	sh := commandContext(ctx, pythonPath, pyArgs...)
 	if opts.WorkDir != "" {
 		sh.Dir = opts.WorkDir
 	}
@@ -253,7 +253,7 @@ func runViaPythonScript(ctx context.Context, name string, args []string, opts Op
 		result.Duration = time.Since(start)
 		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
 		result.ExitCode = exitCode(err)
-		result.TimedOut = isTimeout(err)
+		result.TimedOut = isTimeout(ctx, err)
 		if err != nil {
 			return result, fmt.Errorf("command %s failed via python fallback: %w (output: %s)", name, err, redactSecrets(result.Output))
 		}
@@ -267,12 +267,31 @@ func runViaPythonScript(ctx context.Context, name string, args []string, opts Op
 	result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
 	result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
 	result.ExitCode = exitCode(err)
-	result.TimedOut = isTimeout(err)
+	result.TimedOut = isTimeout(ctx, err)
 	if err != nil {
 		return result, fmt.Errorf("command %s failed via python fallback: %w (stdout: %s, stderr: %s)",
 			name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
 	}
 	return result, nil
+}
+
+// commandContext keeps a subprocess and descendants in one process group.
+// CommandContext's default cancellation kills only the direct child; browser
+// fallbacks such as node -> Chrome can otherwise leave headless descendants
+// orphaned when the timeout fires.
+func commandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil {
+			return nil
+		}
+		return cmd.Process.Kill()
+	}
+	return cmd
 }
 
 func looksLikePythonScript(name string) bool {
@@ -352,8 +371,8 @@ func exitCode(err error) int {
 	return -1
 }
 
-func isTimeout(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded)
+func isTimeout(ctx context.Context, err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 // ── Secret redaction ───────────────────────────────────────────────────

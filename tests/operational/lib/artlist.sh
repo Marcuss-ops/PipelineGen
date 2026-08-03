@@ -241,7 +241,7 @@ artlist_drive_resolve() {
     [[ -s "$out" ]] || return 1
     jq -e '.ok == true
         and (.resolved_count // 0) >= 1
-        and (.resolved[0].trashed == false)
+        and ((.resolved[0].trashed // false) == false)
         and ((.resolved[0].size // 0) > 0)' \
         "$out" >/dev/null 2>&1
 }
@@ -323,9 +323,12 @@ artlist_replay_run() {
                 concurrency:$cc, dry_run:false
             }')
     fi
-    local code
-    code=$(smoke_curl POST "/api/artlist/run" -d "$payload" 2>/dev/null || echo "")
-    local body="$SMOKE_LAST_BODY"
+    # Preserve smoke_curl's exported body/code in the current shell. A
+    # command substitution would run it in a subshell and lose the replay
+    # envelope needed by the cache gate.
+    smoke_curl POST "/api/artlist/run" -d "$payload" >/dev/null 2>/dev/null || true
+    local code="${SMOKE_LAST_HTTP:-}"
+    local body="${SMOKE_LAST_BODY:-}"
     [[ -n "$body" && -s "$body" ]] || body="$WORK_DIR/last.body"
     local jid
     jid=$(jq -r '.run_id // empty' "$body" 2>/dev/null || true)
@@ -337,9 +340,9 @@ artlist_replay_run() {
 #   CLIP_ID   asset id to look up via the media-search endpoint (typically
 #             the canonical asset.id emitted by Register-Batch).
 #   LIMIT     (optional positional, default 10) max results to request.
-# Returns: 0 → clip_id present in response.results[]
-#          1 → contract violation (HTTP 2xx but .ok=false OR .results[]
-#              absent/empty OR clip_id absent from .results[].id)
+# Returns: 0 → clip_id present in response.results[] or response.items[]
+#          1 → contract violation (HTTP 2xx but no result item contains the
+#              requested id)
 #          2 → transport / HTTP non-2xx
 # Body written to deterministic ${WORK_DIR:-/tmp}/artlist_media_search_${clip_id}.json
 # for downstream forensics. Honest fail-closed per AGENTS.md: dry-run emits
@@ -355,16 +358,21 @@ artlist_media_search() {
             '{ok:true, query:$id, limit:$lim, results:[{id:$id, score:1.0, snippet:"dry-run"}]}' > "$out"
         return 0
     fi
-    local code
-    code=$(smoke_curl POST "/api/media/search" \
+    # smoke_curl exports SMOKE_LAST_HTTP/SMOKE_LAST_BODY; do not wrap it in
+    # command substitution because that would discard those side effects in
+    # the subshell and leave the verifier without the response body.
+    smoke_curl POST "/api/media/search" \
         -d "$(jq -nc --arg id "$clip_id" --argjson lim "$limit" '{query:$id, limit:$lim}')" \
-        2>/dev/null || echo "")
-    code="${code:-${SMOKE_LAST_HTTP:-}}"
+        >/dev/null 2>/dev/null || true
+    local code="${SMOKE_LAST_HTTP:-}"
     [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
+    [[ -n "${SMOKE_LAST_BODY:-}" && -s "$SMOKE_LAST_BODY" ]] || return 1
+    cp "$SMOKE_LAST_BODY" "$out" 2>/dev/null || return 1
     [[ -s "$out" ]] || return 1
     jq -e --arg id "$clip_id" \
-        '.ok == true
-         and ((.results // []) | map(.id) | index($id) != null)' \
+        '((.results // .items // [])
+          | map(.id // .asset_id | tostring)
+          | index($id) != null)' \
         "$out" >/dev/null 2>&1 || return 1
     return 0
 }

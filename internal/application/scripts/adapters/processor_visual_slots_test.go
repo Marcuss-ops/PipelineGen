@@ -3,8 +3,37 @@ package adapters
 import (
 	"testing"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+func TestProjectPostSegmentClipBindingsKeepsTimelineAssignments(t *testing.T) {
+	scenes := []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "intro-hook"},
+		{ID: "scene-1", SegmentID: "boxer-mike-tyson"},
+		{ID: "scene-2", SegmentID: "boxer-sugar-ray-robinson"},
+	}
+	assignments := []mediadomain.VisualAssignment{
+		{SegmentID: "boxer-mike-tyson", Slot: mediadomain.VisualSlotPostSegment, AssetID: "tyson-clip", Position: 0, DurationMs: 7000},
+		{SegmentID: "boxer-sugar-ray-robinson", Slot: mediadomain.VisualSlotPostSegment, AssetID: "robinson-clip-1", Position: 0, DurationMs: 6000},
+		{SegmentID: "boxer-sugar-ray-robinson", Slot: mediadomain.VisualSlotPostSegment, AssetID: "robinson-clip-2", Position: 1, DurationMs: 6000},
+	}
+
+	projectPostSegmentClipBindings(scenes, assignments)
+
+	if got := scenes[1].Bindings.Clip; got == nil || got.ClipID != "tyson-clip" || got.DurationMs != 7000 {
+		t.Fatalf("Tyson clip binding = %#v", got)
+	}
+	if got := scenes[2].Bindings.Clip; got == nil || got.ClipID != "robinson-clip-1" {
+		t.Fatalf("Robinson clip binding = %#v", got)
+	}
+	if scenes[0].Bindings.Clip != nil {
+		t.Fatal("intro scene must not receive a post-segment clip binding")
+	}
+	if len(assignments) != 3 || assignments[2].Position != 1 {
+		t.Fatal("timeline assignments must remain unchanged")
+	}
+}
 
 func TestSceneIDForSegmentUsesExplicitSegmentOrderBeforeNormalization(t *testing.T) {
 	scenes := []scriptpkg.SpecScene{

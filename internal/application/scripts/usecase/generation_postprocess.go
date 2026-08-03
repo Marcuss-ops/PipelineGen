@@ -87,6 +87,7 @@ func (p *GenerationPostprocessor) Process(
 		Text:              engineResult.Output.Text,
 		WordCount:         engineResult.WordCount,
 		SpecScene:         engineResult.Output.SpecScene,
+		OriginalSpecScene: engineResult.Output.SpecScene,
 		ModelUsed:         engineResult.Model,
 		CacheStatus:       engineResult.CacheStatus,
 		SourceTrace:       engineResult.ClipEvidence,
@@ -94,6 +95,7 @@ func (p *GenerationPostprocessor) Process(
 		EffectiveLanguage: strings.TrimSpace(plan.Language),
 		StockEnabled:      plan.StockEnabled,
 		StockBindings:     append([]scriptpkg.StockBindingInput(nil), plan.StockBindings...),
+		ResearchSources:   append([]scriptpkg.SourceReference(nil), plan.ResearchSources...),
 	}
 
 	postResult, err := p.ppReg.Run(ctx, &plan, procInput)

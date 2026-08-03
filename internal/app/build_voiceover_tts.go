@@ -14,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -47,6 +48,13 @@ func buildVoiceoverTTSProvider(
 	// stays unaware of rate-limiting; the composition root swaps the
 	// raw adapters with these wrappers in-place.
 	ttsProvider = newRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log)
+	// Keep each provider request below the speech-service limit. The
+	// wrapper merges the ordered chunks back into one track per language.
+	ttsProvider = &chunkedTTSProvider{
+		inner:       ttsProvider,
+		merger:      ffmpeg.NewFromConfig(cfg),
+		concurrency: 2,
+	}
 
 	return audioProcessor, ttsProvider
 }

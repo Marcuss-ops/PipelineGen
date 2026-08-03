@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -34,6 +35,25 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 		if plan.Postprocessors[i] != want[i] {
 			t.Fatalf("postprocessors[%d]=%q, want %q; full=%v", i, plan.Postprocessors[i], want[i], plan.Postprocessors)
 		}
+	}
+}
+
+func TestBuildPlan_PreservesScriptParamsGuidelinesInPrompt(t *testing.T) {
+	guidelines := "Ogni segmento tratta esclusivamente il soggetto indicato e non anticipa il successivo."
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "Cinque pugili"},
+		ScriptParams: scriptpkg.ScriptSpec{
+			Guidelines: guidelines,
+			Segments: []scriptpkg.ScriptSegment{{
+				ID: "boxer-mike-tyson", Topic: "Mike Tyson", SourceText: "Testo autonomo.", TargetWords: 150,
+			}},
+		},
+	})
+	if plan.Guidelines != guidelines {
+		t.Fatalf("plan guidelines = %q, want %q", plan.Guidelines, guidelines)
+	}
+	if !strings.Contains(plan.RenderedPrompt, guidelines) {
+		t.Fatalf("rendered prompt omitted script_params.guidelines: %q", plan.RenderedPrompt)
 	}
 }
 

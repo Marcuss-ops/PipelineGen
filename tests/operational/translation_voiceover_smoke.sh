@@ -29,7 +29,7 @@
 #
 # Overridable env vars:
 #   BASE / ENV_FILE / DB_PATH / SMOKE_DB / TOPIC / LANGUAGE / TRANSLATE_TO /
-#   GENERATE_VOICEOVER / SMOKE_POLL_TIMEOUT_SECONDS
+#   GENERATE_VOICEOVER / VOICEOVER_FOLDER_ID / SMOKE_POLL_TIMEOUT_SECONDS
 #
 # Usage:
 #   bash tests/operational/translation_voiceover_smoke.sh
@@ -92,6 +92,23 @@ if [[ ! -f "$SMOKE_DB" ]]; then
 fi
 printf '  %sOK: DB exists (%s)%s\n' "$GREEN" "$SMOKE_DB" "$RESET"
 
+# VoiceoverProcessor is opt-in through the canonical output destination. The
+# public switch must therefore materialize a real Drive folder in the request;
+# otherwise the smoke could report "enabled" while the processor is never
+# registered. Prefer an explicit runtime destination, then the canonical
+# operator variable. The DB fallback is only for this local operational smoke
+# and reuses its latest non-empty voiceover folder; it never invents a success.
+VOICEOVER_FOLDER_ID="${VOICEOVER_FOLDER_ID:-${BOXERS_VOICEOVER_FOLDER_ID:-${VELOX_DRIVE_VOICEOVER_ROOT:-}}}"
+if [[ "$GENERATE_VOICEOVER" == "true" && -z "$VOICEOVER_FOLDER_ID" ]]; then
+    VOICEOVER_FOLDER_ID=$(sqlite3 "$SMOKE_DB" \
+      "SELECT folder_id FROM voiceovers WHERE TRIM(folder_id) <> '' ORDER BY created_at DESC LIMIT 1" 2>/dev/null) || VOICEOVER_FOLDER_ID=""
+fi
+if [[ "$GENERATE_VOICEOVER" == "true" && -z "$VOICEOVER_FOLDER_ID" ]]; then
+    printf '%ssetup error: VOICEOVER_FOLDER_ID (or canonical Drive voiceover root) is required when GENERATE_VOICEOVER=true%s\n' \
+        "$RED" "$RESET" >&2
+    exit 2
+fi
+
 # ── Phase 2: Enqueue GenerationEnvelopeV2 ───────────────────────────
 VO_LABEL="$GENERATE_VOICEOVER"
 [[ "$VO_LABEL" == "true" ]] && VO_LABEL="enabled" || VO_LABEL="disabled"
@@ -102,6 +119,7 @@ ENVELOPE=$(jq -n \
   --arg topic "$TOPIC" \
   --arg lang "$LANGUAGE" \
   --arg tx "$TRANSLATE_TO" \
+  --arg vo_folder "$VOICEOVER_FOLDER_ID" \
   --argjson generate_voiceover "$GENERATE_VOICEOVER" \
   '{
     version: 2,
@@ -111,11 +129,17 @@ ENVELOPE=$(jq -n \
       id: ($rid + "-item-1"),
       language: $lang,
       source: { type: "text", topic: $topic },
-      output: {
+      script_params: {
+        target_words: 300,
+        use_memory: false,
+        force_refresh: true,
+        skip_quality_gate: true
+      },
+      output: ({
         languages: [$lang],
         translate_to: $tx,
         save_to_db: true
-      }
+      } + (if $generate_voiceover then {voiceover_folder_id: $vo_folder} else {} end))
     }]
   }')
 
@@ -187,6 +211,12 @@ case "$SMOKE_LAST_STATUS" in
         exit 1
         ;;
 esac
+
+# The generation response is the canonical postprocessor output. The scripts
+# row is persisted by an earlier stage and may intentionally retain the source
+# document; translation must be checked from the final job output instead.
+smoke_curl GET "/api/jobs/$JOB_ID/full" >/dev/null
+FULL_JOB_BODY="$SMOKE_LAST_BODY"
 
 # ── Phase 4: 6 assertions ───────────────────────────────────────────
 smoke_log_section "Phase 4: 6-table/content assertions"
@@ -265,12 +295,18 @@ else
     assert_pass "A3: voiceover text skipped (generate_voiceover=false)"
 fi
 
-# A4: scripts.specscene is non-empty (translated or original SpecScene persisted)
+# A4: scripts.specscene is non-empty and the final job output, for the
+# requested Italian run, contains Italian markers.
 SPECSCENE=$(sqlite3 "$SMOKE_DB" \
   "SELECT COALESCE(specscene, '') FROM scripts WHERE id='$SCRIPT_ID' LIMIT 1" 2>/dev/null) || SPECSCENE=""
 SPEC_LEN=$(printf '%s' "$SPECSCENE" | wc -c | tr -d ' ')
 if [[ "$SPEC_LEN" -gt 10 ]]; then
-    assert_pass "A4: scripts.specscene populated ($SPEC_LEN bytes)"
+    FINAL_TEXT=$(jq -r '(.result.data.items[0].result.output // .job.result.data.items[0].result.output // .result.data.output).text // ""' "$FULL_JOB_BODY" 2>/dev/null || true)
+    if [[ "$TRANSLATE_TO" == "it" ]] && ! printf '%s' "$FINAL_TEXT" | grep -qEi '\b(della|dello|dalla|dalle|delle|dagli|del|dei|questo|questa|pugilato|nella|nello|degli|sono|siamo|carriera|campione)\b'; then
+        assert_fail "A4: scripts.specscene populated but final job text does not contain Italian markers"
+    else
+        assert_pass "A4: scripts.specscene populated ($SPEC_LEN bytes) and final translation is present"
+    fi
 else
     assert_fail "A4: scripts.specscene is empty or tiny ($SPEC_LEN bytes)"
 fi

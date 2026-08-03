@@ -229,3 +229,110 @@ func TestStockBindingsProcessorRepairsCrossSegmentNarrative(t *testing.T) {
 		t.Fatal("short scene 1 did not restore its explicit source text")
 	}
 }
+
+func TestStockBindingsProcessorRejectsWrongSegmentAtZeroSlot(t *testing.T) {
+	segments := []scriptpkg.ScriptSegment{
+		{ID: "intro-hook", Topic: "Introduzione", SourceText: strings.Repeat("Introduzione. ", 15)},
+		{ID: "boxer-mike-tyson", Topic: "Mike Tyson", SourceText: strings.Repeat("Tyson. ", 15)},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: segments}
+	_, err := NewStockBindingsProcessor().Process(context.Background(), plan, ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{
+			{Index: 0, SceneID: "scene-0", SegmentID: "boxer-mike-tyson", AssetID: "TYSON_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+		},
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: "intro", Kind: scriptpkg.SceneClip},
+		}},
+	})
+	if err == nil {
+		t.Fatal("binding segment_id at index 0 must match the intro-hook scene or fail")
+	}
+}
+
+func TestStockBindingsProcessorIntroHookKeepsIntroKindAndClip(t *testing.T) {
+	segments := []scriptpkg.ScriptSegment{
+		{ID: "intro-hook", Topic: "Introduzione", SourceText: strings.Repeat("Introduzione sui cinque pugili. ", 15)},
+		{ID: "boxer-mike-tyson", Topic: "Mike Tyson", SourceText: strings.Repeat("Mike Tyson e la sua potenza. ", 15)},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: segments}
+	got, err := NewStockBindingsProcessor().Process(context.Background(), plan, ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{
+			{Index: 0, SceneID: "scene-0", SegmentID: "intro-hook", AssetID: "INTRO_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+			{Index: 1, SceneID: "scene-1", SegmentID: "boxer-mike-tyson", AssetID: "TYSON_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+		},
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: strings.Repeat("Intro. ", 30), Kind: scriptpkg.SceneClip,
+				Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "post-intro-clip-0"}}},
+			{ID: "scene-1", Index: 1, Text: strings.Repeat("Tyson. ", 30), Kind: scriptpkg.SceneClip},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scenes := got.UpdatedSpecScene.Scenes
+	intro := scenes[0]
+	stock := intro.Bindings.Stock
+	if intro.SegmentID != "intro-hook" || intro.ID != "scene-0" {
+		t.Fatalf("intro scene identity = (%q, %q)", intro.ID, intro.SegmentID)
+	}
+	if intro.Kind != scriptpkg.SceneIntro {
+		t.Fatalf("intro-hook scene kind = %q, want intro", intro.Kind)
+	}
+	if stock == nil || stock.AssetID != "INTRO_STOCK_ASSET_ID" {
+		t.Fatalf("intro stock binding = %#v", stock)
+	}
+	if intro.Bindings.Clip == nil || intro.Bindings.Clip.ClipID != "post-intro-clip-0" {
+		t.Fatal("stock binding must not replace the intro clip binding")
+	}
+	if got := scenes[1]; got.Kind != scriptpkg.SceneStock || got.Bindings.Stock == nil || got.Bindings.Stock.AssetID != "TYSON_STOCK_ASSET_ID" {
+		t.Fatalf("boxer scene kind/stock = %q / %#v, want stock", got.Kind, got.Bindings.Stock)
+	}
+}
+
+func TestStockBindingsProcessorIntroHookDoesNotMoveBoxers(t *testing.T) {
+	segments := []scriptpkg.ScriptSegment{
+		{ID: "intro-hook", Topic: "Introduzione", SourceText: strings.Repeat("Introduzione. ", 15)},
+		{ID: "boxer-mike-tyson", Topic: "Mike Tyson", SourceText: strings.Repeat("Tyson. ", 15)},
+		{ID: "boxer-muhammad-ali", Topic: "Muhammad Ali", SourceText: strings.Repeat("Ali. ", 15)},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: segments}
+	got, err := NewStockBindingsProcessor().Process(context.Background(), plan, ProcessInput{
+		StockEnabled: scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{
+			{Index: 0, SegmentID: "intro-hook", AssetID: "INTRO_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+			{Index: 1, SegmentID: "boxer-mike-tyson", AssetID: "TYSON_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+			{Index: 2, SegmentID: "boxer-muhammad-ali", AssetID: "ALI_STOCK_ASSET_ID", StartMs: 0, EndMs: 7000},
+		},
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: "intro", Kind: scriptpkg.SceneClip},
+			{ID: "scene-1", Index: 1, Text: "tyson", Kind: scriptpkg.SceneClip},
+			{ID: "scene-2", Index: 2, Text: "ali", Kind: scriptpkg.SceneClip},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		sceneID, segmentID, assetID string
+		kind                        scriptpkg.SceneKind
+	}{
+		{"scene-0", "intro-hook", "INTRO_STOCK_ASSET_ID", scriptpkg.SceneIntro},
+		{"scene-1", "boxer-mike-tyson", "TYSON_STOCK_ASSET_ID", scriptpkg.SceneStock},
+		{"scene-2", "boxer-muhammad-ali", "ALI_STOCK_ASSET_ID", scriptpkg.SceneStock},
+	}
+	scenes := got.UpdatedSpecScene.Scenes
+	if len(scenes) != len(want) {
+		t.Fatalf("scene count = %d, want %d", len(scenes), len(want))
+	}
+	for i, w := range want {
+		scene := scenes[i]
+		if scene.ID != w.sceneID || scene.SegmentID != w.segmentID || scene.Kind != w.kind {
+			t.Fatalf("scene %d = (%q, %q, %q), want (%q, %q, %q)", i, scene.ID, scene.SegmentID, scene.Kind, w.sceneID, w.segmentID, w.kind)
+		}
+		if scene.Bindings.Stock == nil || scene.Bindings.Stock.AssetID != w.assetID {
+			t.Fatalf("scene %d stock = %#v, want asset %q", i, scene.Bindings.Stock, w.assetID)
+		}
+	}
+}

@@ -119,3 +119,18 @@ func TestBuildRenderJobNormalizesDriveFolderURL(t *testing.T) {
 		t.Fatalf("unexpected Drive render fields: %+v", job)
 	}
 }
+
+func TestBuildRenderJobRejectsLongformComposition(t *testing.T) {
+	req := Request{
+		ID: "longform-must-not-render", Text: "one", DurationMs: 1000,
+		Composition: "LongformCompilationComposition",
+		Clips:       []Clip{{ID: "clip-a"}},
+	}
+	plan, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildRenderJob(req, plan); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("expected invalid request for longform composition, got %v", err)
+	}
+}

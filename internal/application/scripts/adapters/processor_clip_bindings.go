@@ -102,16 +102,30 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	scenes := input.SpecScene.Scenes
+	if plan != nil && len(plan.Segments) > 0 {
+		// Explicit segment payloads are authoritative even when no clip
+		// evidence is present. Keep narrative slots stable for clip-only,
+		// stock-only, and text-only matrix cases alike.
+		input.SpecScene.Scenes = normalizeScenesForExplicitSegments(scenes, plan.Segments)
+		scenes = input.SpecScene.Scenes
+	}
 	// A text generation may legitimately have no accepted media clips.
 	// Preserve the narrative scene structure for persistence and downstream
 	// planning even in that case; clip binding is optional enrichment.
 	if len(clipIDs) == 0 {
-		if !hasSynthesized || len(scenes) == 0 {
+		// Preserve the historical no-op contract when the caller did not
+		// provide explicit segment slots. Explicit plans, however, still
+		// need their normalized scenes persisted for stock-only/text-only
+		// generation even when there are no clips to bind.
+		if plan == nil || len(plan.Segments) == 0 {
+			return &PostProcessResult{}, nil
+		}
+		if len(scenes) == 0 {
 			return &PostProcessResult{}, nil
 		}
 		return &PostProcessResult{
-			Changed:           true,
-			SynthesizedScenes: scenes,
+			Changed:          true,
+			UpdatedSpecScene: input.SpecScene,
 		}, nil
 	}
 

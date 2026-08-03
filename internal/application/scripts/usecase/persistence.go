@@ -57,6 +57,14 @@ func buildGenerationResultWithCache(
 	if postResult != nil && len(postResult.FinalSpecScene.Scenes) > 0 {
 		specScene = postResult.FinalSpecScene
 	}
+	for i := range specScene.Scenes {
+		if specScene.Scenes[i].Annotations != nil {
+			specScene.Scenes[i].Annotations = adapters.RebaseSceneAnnotations(
+				specScene.Scenes[i].Annotations,
+				specScene.Scenes[i].Text,
+			)
+		}
+	}
 	specScene = sanitizeSpecSceneOutputForResponse(specScene)
 
 	// PR-TRANSLATION-PIPELINE-2026-07-09: prefer translated text over

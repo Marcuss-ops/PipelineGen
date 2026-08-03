@@ -216,10 +216,18 @@ func buildDomainMediaServices(
 		ClipMetadataWriter: clipMetadataWriter,
 		MetadataService:    clipMetadataService,
 	}
+	var preferredLangs []string
+	for _, spec := range mlCfg.Languages {
+		if spec.Enabled && spec.TranslateClips {
+			preferredLangs = append(preferredLangs, spec.Code)
+		}
+	}
+
 	processSegObservability := youtube.ProcessSegmentObservabilityDeps{
-		Step10Metrics: observability.NewStep10MetricsAdapter(),
-		// Fase 5: see MultilingualConfig.RequireTranscriptReady.
-		RequireTranscriptReady: mlCfg.RequireTranscriptReady,
+		Step10Metrics:                  observability.NewStep10MetricsAdapter(),
+		RequireTranscriptReady:         mlCfg.RequireTranscriptReady,
+		RequireAllLanguagesBeforeVideo: mlCfg.Enabled,
+		PreferredLanguages:             preferredLangs,
 	}
 	processSeg := youtube.NewProcessYouTubeSegmentFromSubBundles(
 		processSegCore,

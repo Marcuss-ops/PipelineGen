@@ -77,7 +77,10 @@ func (p *VoiceoverProcessor) Name() ProcessorName { return ProcessorVoiceover }
 // Voiceover is an auxiliary deliverable; per PR 2 spec: "voiceover =
 // configurabile" (best-effort is the safe default). The plan arg is
 // accepted for interface uniformity but ignored.
-func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+func (p *VoiceoverProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	if plan != nil && (strings.TrimSpace(plan.VoiceoverFolderID) != "" || strings.TrimSpace(plan.VoiceoverGroup) != "") {
+		return ProcessorRequired
+	}
 	return ProcessorBestEffort
 }
 
@@ -104,6 +107,14 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	// PR 9: scenes sourced from canonical typed MSOV1.
 	scenes := specScenesFromInput(input)
+	// Translation is an explicit downstream contract. Prefer the retained
+	// translated scene surface over the mutable working envelope because
+	// binding processors may rebuild scenes from the original segment source
+	// while preserving their asset bindings. TTS must never silently receive
+	// the source-language text when the requested target translation exists.
+	if len(input.TranslatedSpecScene.Scenes) > 0 {
+		scenes = input.TranslatedSpecScene.Scenes
+	}
 	if len(scenes) == 0 {
 		if p.log != nil {
 			p.log.Debug("voiceover processor: no scenes to render (no specscene scenes)",
@@ -161,6 +172,18 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		if sceneText == "" {
 			sceneText = fmt.Sprintf("Scene %d", i+1)
 		}
+		// The translated scene surface is the authoritative TTS input. Run
+		// the sanitizer here as a final local boundary as well: a translated
+		// processor may rebuild the scene after the registry sanitizer pass,
+		// and source URLs must never reach the speech provider.
+		cleanText, _, sanitizeErr := scriptpkg.SanitizeNarration(sceneText)
+		if sanitizeErr != nil {
+			return nil, sanitizeErr
+		}
+		sceneText = cleanText
+		if err := scriptpkg.ValidateSpeakableText(sceneText); err != nil {
+			return nil, err
+		}
 
 		// Sanitize the title for use in a filename, then build a
 		// scene-stable filename: {title}_{scene_id}_{lang}.mp3.
@@ -182,7 +205,15 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		if serr != nil {
 			safeTitle = "scene"
 		}
-		filename := fmt.Sprintf("%s_%s_%s.mp3", safeTitle, safeSceneID, language)
+		filenameBase := fmt.Sprintf("%s_%s_%s", safeTitle, safeSceneID, language)
+		// A translated scene must not collide with a previously published
+		// source-language file. Drive deduplication is keyed by file identity;
+		// include the canonical text hash so a changed TTS surface gets its own
+		// durable file and SQLite row.
+		if translationRequested {
+			filenameBase += "_" + string(voiceover.ComputeTextHash(sceneText))
+		}
+		filename := filenameBase + ".mp3"
 		dest := &voiceover.DestinationRequest{Project: safeTitle}
 		if plan.VoiceoverFolderID != "" {
 			dest.FolderID = plan.VoiceoverFolderID

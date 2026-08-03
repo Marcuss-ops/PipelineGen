@@ -40,6 +40,12 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		if err := validateMediaMode(item, ref); err != nil {
 			return err
 		}
+		if details := validateIntroHookStock(item.ScriptParams.Segments, item.Output.StockBindings, ref); len(details) > 0 {
+			return &PlanInvalidError{
+				ItemID:  item.ID,
+				Details: details,
+			}
+		}
 		// Per-SourceType validation via map dispatch (bypasses C2-C
 		// AST gate switch-case detection).
 		if handler, ok := sourceTypeHandlers[item.Source.Type]; ok {

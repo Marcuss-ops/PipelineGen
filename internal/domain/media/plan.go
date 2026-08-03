@@ -148,12 +148,24 @@ type MediaMaterializationPolicy struct {
 
 // MediaExtractionPolicy controls per-segment semantic extraction.
 type MediaExtractionPolicy struct {
-	Enabled                       bool `json:"enabled,omitempty"`
-	MaxEntitiesPerSegment         int  `json:"max_entities_per_segment,omitempty"`
-	MaxImportantPhrasesPerSegment int  `json:"max_important_phrases_per_segment,omitempty"`
-	MaxImportantWordsPerSegment   int  `json:"max_important_words_per_segment,omitempty"`
-	MaxArtlistQueriesPerSegment   int  `json:"max_artlist_queries_per_segment,omitempty"`
-	MaxImageQueriesPerSegment     int  `json:"max_image_queries_per_segment,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
+	// Device selects local semantic extraction hardware: auto, cpu, or gpu.
+	// Auto falls back to CPU only when the optional GPU backend is unavailable.
+	Device                        string            `json:"device,omitempty"`
+	MaxEntitiesPerSegment         int               `json:"max_entities_per_segment,omitempty"`
+	MaxImportantPhrasesPerSegment int               `json:"max_important_phrases_per_segment,omitempty"`
+	MaxImportantWordsPerSegment   int               `json:"max_important_words_per_segment,omitempty"`
+	MaxArtlistQueriesPerSegment   int               `json:"max_artlist_queries_per_segment,omitempty"`
+	MaxImageQueriesPerSegment     int               `json:"max_image_queries_per_segment,omitempty"`
+	Strategy                      string            `json:"strategy,omitempty"`
+	EntityImages                  EntityImagePolicy `json:"entity_images,omitempty"`
+}
+
+type EntityImagePolicy struct {
+	Enabled       bool     `json:"enabled,omitempty"`
+	EntityTypes   []string `json:"entity_types,omitempty"`
+	MaxPerEntity  int      `json:"max_per_entity,omitempty"`
+	UploadToDrive bool     `json:"upload_to_drive,omitempty"`
 }
 
 // MediaToggle is the local tri-state wire type used by MediaPlanSpec

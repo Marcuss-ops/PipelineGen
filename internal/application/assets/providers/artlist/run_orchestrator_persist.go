@@ -169,6 +169,29 @@ func (o *RunOrchestratorService) linkMayaMediaMemory(ctx context.Context, item *
 // buildPublishedArtifact maps a processed RunTagItem into the canonical
 // finalization.PublishedArtifact consumed by AssetFinalizerTx.
 func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finalization.PublishedArtifact {
+	metadata := cloneMetadata(item.Metadata)
+	if metadata == nil {
+		metadata = make(map[string]any)
+	}
+	metadata["source"] = "artlist"
+	metadata["status"] = "processed"
+	metadata["filename"] = item.Filename
+	// The Artlist processor renders the canonical output at the configured
+	// video duration. Persist that interval explicitly so the finalizer can
+	// populate the canonical start/end and duration columns instead of
+	// leaving them at their zero-value defaults.
+	if o.svc.cfg != nil && o.svc.cfg.Video.Duration > 0 {
+		durationSec := float64(o.svc.cfg.Video.Duration)
+		if _, ok := metadata["start_sec"]; !ok {
+			metadata["start_sec"] = float64(0)
+		}
+		if _, ok := metadata["end_sec"]; !ok {
+			metadata["end_sec"] = durationSec
+		}
+		if _, ok := metadata["duration_ms"]; !ok {
+			metadata["duration_ms"] = int64(durationSec * 1000)
+		}
+	}
 	artifact := finalization.PublishedArtifact{
 		ArtifactID:  item.ClipID,
 		Kind:        finalization.KindVideo,
@@ -186,11 +209,7 @@ func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finali
 			FolderID:     o.svc.cfg.Drive.ArtlistFolder(),
 			Action:       finalization.PublishCreated,
 		},
-		ArtifactMetadata: map[string]any{
-			"source":   "artlist",
-			"status":   "processed",
-			"filename": item.Filename,
-		},
+		ArtifactMetadata: metadata,
 	}
 
 	for _, r := range item.Renditions {

@@ -106,8 +106,11 @@ gate_drive_resolve_per_clip() {
         # tolerant field-name fallback for mimeType (Drive API uses both
         # `mimeType` canonical + `MimeType` legacy shape).
         asset_id=$(jq -r '.resolved[0].id // empty' "$body" 2>/dev/null || echo "")
-        trashed=$(jq -r '.resolved[0].trashed // "?"' "$body" 2>/dev/null || echo "?")
-        mime_type=$(jq -r '.resolved[0].mimeType // .resolved[0].MimeType // empty' "$body" 2>/dev/null || echo "")
+        # PipelineGen's canonical transport schema uses snake_case
+        # (mime_type) and omits trashed when false; normalize those
+        # representation details before applying the semantic contract.
+        trashed=$(jq -r '.resolved[0].trashed // false' "$body" 2>/dev/null || echo "?")
+        mime_type=$(jq -r '.resolved[0].mime_type // .resolved[0].mimeType // .resolved[0].MimeType // empty' "$body" 2>/dev/null || echo "")
         size=$(jq -r '.resolved[0].size // 0' "$body" 2>/dev/null || echo "0")
         if [[ -z "$asset_id" || "$asset_id" != "$drive_file_id" ]]; then
             log_fail "clip $clip_id → id round-trip violated: response=${asset_id:-empty} query=${drive_file_id}"

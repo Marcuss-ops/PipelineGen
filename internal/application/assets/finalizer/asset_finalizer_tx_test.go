@@ -95,6 +95,23 @@ func setupTestDB(t *testing.T) *sql.DB {
 			updated_at TEXT NOT NULL DEFAULT '',
 			UNIQUE (asset_id, location_kind)
 		)`,
+		`CREATE TABLE IF NOT EXISTS asset_renditions (
+			id TEXT PRIMARY KEY,
+			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+			location_id INTEGER NOT NULL REFERENCES asset_locations(id),
+			kind TEXT NOT NULL,
+			container TEXT NOT NULL DEFAULT '',
+			codec TEXT NOT NULL DEFAULT '',
+			width INTEGER NOT NULL DEFAULT 0,
+			height INTEGER NOT NULL DEFAULT 0,
+			fps REAL NOT NULL DEFAULT 0,
+			bitrate INTEGER NOT NULL DEFAULT 0,
+			sha256 TEXT NOT NULL DEFAULT '',
+			size_bytes INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
+			UNIQUE (asset_id, kind)
+		)`,
 		`CREATE TABLE IF NOT EXISTS jobs (
 			id TEXT PRIMARY KEY,
 			status TEXT NOT NULL DEFAULT 'QUEUED',
@@ -291,6 +308,46 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+}
+
+func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	artifact := publishedArtifact("asset-rendition", "hash-rendition", "drive-rendition")
+	artifact.Renditions = []finalization.AssetRenditionLocation{{
+		Kind:     "master",
+		Provider: "local",
+		URI:      "/tmp/asset-rendition.mp4",
+		MimeType: "video/mp4",
+		FileHash: "hash-rendition",
+		Width:    1920,
+		Height:   1080,
+	}}
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), finalizer.WrapTx(tx), artifact); err != nil {
+		tx.Rollback()
+		t.Fatalf("FinalizeAsset with rendition: %v", err)
+	}
+	var locationKind, renditionKind string
+	if err := tx.QueryRowContext(context.Background(), `
+		SELECT al.location_kind, ar.kind
+		FROM asset_locations al
+		JOIN asset_renditions ar ON ar.location_id = al.id
+		WHERE al.asset_id = ?`, artifact.ArtifactID).Scan(&locationKind, &renditionKind); err != nil {
+		tx.Rollback()
+		t.Fatalf("read rendition location: %v", err)
+	}
+	if locationKind != "local" || renditionKind != "master" {
+		t.Fatalf("location_kind=%q rendition_kind=%q", locationKind, renditionKind)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 }
 

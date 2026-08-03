@@ -6,7 +6,7 @@
 //   - detected language == requested language
 //   - source_text coverage meets the configured policy threshold
 //   - clip_evidence coverage == 1.00 for clips_primary
-//   - unsupported claims == 0
+//   - unsupported claims == 0 for grounded sources (diagnostic for text)
 //   - target words within 80-120% tolerance
 //   - reject empty/generic text
 //
@@ -16,6 +16,7 @@
 package usecase
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -157,10 +158,16 @@ func evaluateQualityGate(
 		reasons = append(reasons,
 			"clip_evidence coverage below threshold for "+policyLabel)
 	}
-	if q.UnsupportedClaims > 0 {
+	// Unsupported-claim detection is useful telemetry for creative text,
+	// but it is not a reliable blocking criterion there: descriptive prose
+	// naturally adds details that are not literal tokens in the source text.
+	// Grounded sources and explicit grounding policies retain the strict
+	// behavior required by research and clip-native generation.
+	if q.UnsupportedClaims > 0 && unsupportedClaimsAreBlocking(plan) {
 		reasons = append(reasons,
 			"unsupported claims detected")
 	}
+	reasons = append(reasons, explicitSegmentNarrativeReasons(result, plan)...)
 	// PRE-EXISTING-7 / FASE 13 PART 2: target-word tolerance only
 	// enforces when a source anchor exists (plan.SourceText or clip
 	// evidence). Pure-prose free-form generation has no anchor —
@@ -186,6 +193,76 @@ func evaluateQualityGate(
 		}
 	}
 	return q, nil
+}
+
+// explicitSegmentNarrativeReasons is the post-generation semantic gate for
+// caller-declared segments. It runs on the final SpecScene surface, after
+// direct stock normalization has assigned canonical segment IDs. Boxer plans
+// additionally require the declared subject and reject another declared boxer
+// in the same scene, catching the Floyd/Sugar Ray boundary failure.
+func explicitSegmentNarrativeReasons(result *scriptpkg.GenerationResult, plan scriptpkg.ResolvedGenerationPlan) []string {
+	if result == nil || len(plan.Segments) == 0 {
+		return nil
+	}
+	scenes := result.Output.SpecScene.Scenes
+	if len(scenes) != len(plan.Segments) {
+		return []string{fmt.Sprintf("explicit segment scene count mismatch: got %d, want %d", len(scenes), len(plan.Segments))}
+	}
+
+	bySegmentID := make(map[string]scriptpkg.SpecScene, len(scenes))
+	for _, scene := range scenes {
+		if id := strings.TrimSpace(scene.SegmentID); id != "" {
+			bySegmentID[id] = scene
+		}
+	}
+	var reasons []string
+	for i, segment := range plan.Segments {
+		scene := scenes[i]
+		if id := strings.TrimSpace(segment.ID); id != "" {
+			if mapped, ok := bySegmentID[id]; ok {
+				scene = mapped
+			}
+		}
+		if len(strings.Fields(scene.Text)) < 100 {
+			reasons = append(reasons, fmt.Sprintf("segment %q contains fewer than 100 words", segment.ID))
+		}
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(segment.ID)), "boxer-") {
+			continue
+		}
+		body := strings.ToLower(strings.Join(strings.Fields(scene.Text), " "))
+		topic := strings.ToLower(strings.TrimSpace(segment.Topic))
+		if topic != "" && !strings.Contains(body, topic) {
+			reasons = append(reasons, fmt.Sprintf("segment %q does not mention its declared topic %q", segment.ID, segment.Topic))
+		}
+		for _, other := range plan.Segments {
+			if other.ID == segment.ID || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(other.ID)), "boxer-") {
+				continue
+			}
+			otherTopic := strings.ToLower(strings.TrimSpace(other.Topic))
+			if otherTopic != "" && strings.Contains(body, otherTopic) {
+				reasons = append(reasons, fmt.Sprintf("segment %q contains the declared topic of %q", segment.ID, other.ID))
+			}
+		}
+	}
+	return reasons
+}
+
+// unsupportedClaimsAreBlocking keeps the entity-based claim counter as
+// diagnostics for ordinary text generation while preserving a hard gate for
+// sources whose contract requires grounding. An explicit policy is treated as
+// grounded even when a lightweight test composition omits SourceKind.
+func unsupportedClaimsAreBlocking(plan scriptpkg.ResolvedGenerationPlan) bool {
+	if plan.GroundingPolicy != "" {
+		return true
+	}
+	switch plan.SourceKind {
+	case string(scriptpkg.SourceResearch), string(scriptpkg.SourceClips),
+		string(scriptpkg.SourceCatalog), string(scriptpkg.SourceSearch),
+		string(scriptpkg.SourceCurate):
+		return true
+	default:
+		return false
+	}
 }
 
 // buildSourceText assembles the canonical source text against which

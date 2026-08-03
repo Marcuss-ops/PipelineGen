@@ -143,3 +143,48 @@ func TestInternetImagesProcessor_RejectsNonInternetImagesProviders(t *testing.T)
 		}
 	}
 }
+
+type entityImageSearcher struct{ calls int }
+
+func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.calls++
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "asset-mike", Provider: "internet_images", Entity: req.Query,
+		Query: req.Query, SourceURL: "https://images.example/mike.jpg", Score: 1,
+	}}, nil
+}
+
+func TestInternetImagesProcessorProjectsAndCachesEntityImages(t *testing.T) {
+	searcher := &entityImageSearcher{}
+	processor := NewInternetImagesProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
+		Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
+			Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 1,
+		}},
+	}}
+	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-1", SegmentID: "seg-1", Index: 0, Text: "Mike Tyson", Annotations: &scriptpkg.SceneAnnotations{
+			Version: 1, Language: "it", PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON"}},
+		}},
+		{ID: "scene-2", SegmentID: "seg-2", Index: 1, Text: "Mike Tyson", Annotations: &scriptpkg.SceneAnnotations{
+			Version: 1, Language: "it", PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON"}},
+		}},
+	}}, VidRushSegments: []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "seg-1", SceneID: "scene-1", Position: 0, TextHash: "h1"},
+		{SegmentID: "seg-2", SceneID: "scene-2", Position: 1, TextHash: "h2"},
+	}}
+
+	first, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.calls != 1 {
+		t.Fatalf("image searches = %d, want 1 entity-cache lookup", searcher.calls)
+	}
+	for _, scene := range first.UpdatedSpecScene.Scenes {
+		image := scene.Annotations.PrimaryEntities[0].Image
+		if image == nil || image.Status != "resolved" || image.AssetID != "asset-mike" {
+			t.Fatalf("scene %s image = %+v", scene.ID, image)
+		}
+	}
+}

@@ -9,13 +9,20 @@ type ProcessInput struct {
 	SpecScene         scriptpkg.SpecSceneOutput
 	OriginalText      string
 	OriginalSpecScene scriptpkg.SpecSceneOutput
-	ModelUsed         string
-	CacheStatus       string
-	SourceTrace       *scriptpkg.ClipEvidence
-	PriorArtifacts    map[string]PostProcessResult
-	EffectiveLanguage string
-	StockEnabled      scriptpkg.Toggle
-	StockBindings     []scriptpkg.StockBindingInput
+	// TranslatedText and TranslatedSpecScene are the canonical translated
+	// surfaces retained across postprocessor write-back. Keeping them
+	// alongside the working envelope prevents a later binding processor from
+	// accidentally reintroducing the source-language scene text before TTS.
+	TranslatedText      string
+	TranslatedSpecScene scriptpkg.SpecSceneOutput
+	ModelUsed           string
+	CacheStatus         string
+	SourceTrace         *scriptpkg.ClipEvidence
+	PriorArtifacts      map[string]PostProcessResult
+	EffectiveLanguage   string
+	StockEnabled        scriptpkg.Toggle
+	StockBindings       []scriptpkg.StockBindingInput
+	ResearchSources     []scriptpkg.SourceReference
 
 	// Entities carries the entity-extraction result, populated by
 	// mergePostProcessResult when the entities processor produces

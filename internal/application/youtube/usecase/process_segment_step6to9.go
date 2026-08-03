@@ -230,12 +230,13 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 
 		superCmd := localized.CommitLocalizedClipCommand{
-			Clip:        clipAsset,
-			TextTracks:  tracks,
-			TimedTracks: timedTracks,
-			IndexEvent:  event,
-			// Fase 5: see MultilingualConfig.RequireTranscriptReady.
-			RequireTranscriptReady: u.observability.RequireTranscriptReady,
+			Clip:                           clipAsset,
+			TextTracks:                     tracks,
+			TimedTracks:                    timedTracks,
+			IndexEvent:                     event,
+			RequireTranscriptReady:         u.observability.RequireTranscriptReady,
+			RequireAllLanguagesBeforeVideo: u.observability.RequireAllLanguagesBeforeVideo,
+			PreferredLanguages:             u.observability.PreferredLanguages,
 		}
 
 		if wErr := u.metadata.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {

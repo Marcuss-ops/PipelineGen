@@ -44,7 +44,7 @@
 	verify-stock-concurrency verify-race-youtube-stock verify-youtube-stock-fast verify-youtube-stock-local \
 	verify-youtube-stock-resilience verify-youtube-stock-live verify-youtube-stock-release benchmark-youtube-stock \
 	doctor-youtube-stock \
-	verify-images-live verify-script-live verify-vidrush-live verify-artlist-scale-live verify-live \
+	verify-images-live verify-script-live verify-intro-hook-stock-live verify-vidrush-live verify-artlist-scale-live verify-live \
 	verify-vidrush-contract verify-vidrush-extraction verify-vidrush-query-planning \
 	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
 	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \

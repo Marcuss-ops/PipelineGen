@@ -26,6 +26,8 @@ smoke_require bash
 # Generate single shared search term and clip IDs hand-off file for all sub-scripts to share
 export FRESH_FIXTURE_TERM="pipelinegen-artlist-$$-$(date +%s)"
 export ARTLIST_TERM="$FRESH_FIXTURE_TERM"
+export CACHED_FIXTURE_TERM="$FRESH_FIXTURE_TERM"
+export CACHED_FIXTURE_LIMIT=3
 export CLIP_IDS_FILE="/tmp/artlist_shared_clip_ids_$$.txt"
 export CACHE_CLIP_IDS_FILE="$CLIP_IDS_FILE"
 export DRIVE_CLIP_IDS_FILE="$CLIP_IDS_FILE"
