@@ -77,6 +77,10 @@ func updateMediaAssetsMetadataTx(
 		meta["source_provider"] = m.SourceProvider
 	}
 	if m.VideoID != "" {
+		// source_video_id is the canonical provenance key; video_id is
+		// retained as a legacy alias for older consumers (e.g.
+		// texttracks backfill_acquire.go).
+		meta["source_video_id"] = m.VideoID
 		meta["video_id"] = m.VideoID
 	}
 	if m.Title != "" {
@@ -88,10 +92,15 @@ func updateMediaAssetsMetadataTx(
 	if m.SourceChannel != "" {
 		meta["source_channel"] = m.SourceChannel
 	}
+	// start_sec / end_sec are the canonical float-seconds keys read by
+	// asset.StartSec()/EndSec(); clip_start_sec/clip_end_sec are legacy
+	// aliases retained for history.
 	if m.ClipStartSec != 0 {
+		meta["start_sec"] = float64(m.ClipStartSec)
 		meta["clip_start_sec"] = m.ClipStartSec
 	}
 	if m.ClipEndSec != 0 {
+		meta["end_sec"] = float64(m.ClipEndSec)
 		meta["clip_end_sec"] = m.ClipEndSec
 	}
 	if m.ClipDurationSec != 0 {
