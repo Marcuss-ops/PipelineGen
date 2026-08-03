@@ -327,3 +327,43 @@ func (m *Asset) Composition() string        { return m.GetMetadataString("compos
 func (m *Asset) SetComposition(v string)    { m.SetMetadataString("composition", v) }
 func (m *Asset) DominantColors() string     { return m.GetMetadataString("dominant_colors") }
 func (m *Asset) SetDominantColors(v string) { m.SetMetadataString("dominant_colors", v) }
+
+// ── Source provenance accessors (source_url convergence) ───────────────
+// The typed field Asset.SourceURL (column url) is the canonical owner of
+// the source URL (godlike/06). The legacy metadata key "source_url" is a
+// provenance mirror: readers MUST prefer the field and fall back to this
+// key only for legacy rows that predate the url column. Go forbids a
+// method named after the struct field, so the metadata-key accessor
+// carries the Metadata prefix. Storage key is unchanged ("source_url").
+func (m *Asset) MetadataSourceURL() string      { return m.GetMetadataString("source_url") }
+func (m *Asset) SetMetadataSourceURL(v string)  { m.SetMetadataString("source_url", v) }
+func (m *Asset) MetadataSourceProvider() string { return m.GetMetadataString("source_provider") }
+func (m *Asset) SetMetadataSourceProvider(v string) {
+	m.SetMetadataString("source_provider", v)
+}
+func (m *Asset) MetadataSourceVideoID() string { return m.GetMetadataString("source_video_id") }
+func (m *Asset) SetMetadataSourceVideoID(v string) {
+	m.SetMetadataString("source_video_id", v)
+}
+func (m *Asset) StartSec() float64 { return MetadataFloat(m.Metadata, "start_sec") }
+func (m *Asset) SetStartSec(v float64) {
+	setMetadataFloat(m, "start_sec", v)
+}
+func (m *Asset) EndSec() float64 { return MetadataFloat(m.Metadata, "end_sec") }
+func (m *Asset) SetEndSec(v float64) {
+	setMetadataFloat(m, "end_sec", v)
+}
+
+// ── Clip/content accessors shared by stockpipeline + admin backfills ──
+func (m *Asset) Title() string       { return m.GetMetadataString("title") }
+func (m *Asset) SetTitle(v string)   { m.SetMetadataString("title", v) }
+func (m *Asset) Description() string { return m.GetMetadataString("description") }
+func (m *Asset) SetDescription(v string) {
+	m.SetMetadataString("description", v)
+}
+func (m *Asset) Round() int         { return MetadataInt(m.Metadata, "round") }
+func (m *Asset) SetRound(v int)     { m.SetMetadataInt("round", v) }
+func (m *Asset) Slug() string       { return m.GetMetadataString("slug") }
+func (m *Asset) SetSlug(v string)   { m.SetMetadataString("slug", v) }
+func (m *Asset) Sha256() string     { return m.GetMetadataString("sha256") }
+func (m *Asset) SetSha256(v string) { m.SetMetadataString("sha256", v) }

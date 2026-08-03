@@ -7,13 +7,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// metadataStringSlice reads a []string from Asset.Metadata via the canonical
-// asset.MetadataStringSlice accessor. Preserved as a thin wrapper for type
-// compatibility (callers pass *asset.Asset, not map[string]any).
-func metadataStringSlice(m *asset.Asset, key string) []string {
-	return asset.MetadataStringSlice(m.Metadata, key)
-}
-
 func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	if c == nil {
 		return nil
@@ -41,43 +34,34 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	// media_assets.metadata_json → Qdrant semantic search.
 	// Nil-safe: SetMetadataString initializes Metadata if nil.
 	if c.Summary != "" {
-		out.SetMetadataString("clip_summary", c.Summary)
+		out.SetClipSummary(c.Summary)
 	}
 	if len(c.Topics) > 0 {
-		if out.Metadata == nil {
-			out.Metadata = make(map[string]any)
-		}
-		out.Metadata["topics"] = append([]string(nil), c.Topics...)
+		out.SetTopics(append([]string(nil), c.Topics...))
 	}
 	if len(c.Speakers) > 0 {
-		if out.Metadata == nil {
-			out.Metadata = make(map[string]any)
-		}
-		out.Metadata["speakers"] = append([]string(nil), c.Speakers...)
+		out.SetSpeakers(append([]string(nil), c.Speakers...))
 	}
 	if len(c.MentionedPeople) > 0 {
-		if out.Metadata == nil {
-			out.Metadata = make(map[string]any)
-		}
-		out.Metadata["mentioned_people"] = append([]string(nil), c.MentionedPeople...)
+		out.SetMentionedPeople(append([]string(nil), c.MentionedPeople...))
 	}
 	if c.Hook != "" {
-		out.SetMetadataString("hook", c.Hook)
+		out.SetHook(c.Hook)
 	}
 	if c.SourceURL != "" {
-		out.SetMetadataString("source_url", c.SourceURL)
+		out.SetMetadataSourceURL(c.SourceURL)
 	}
 	if c.SourceProvider != "" {
-		out.SetMetadataString("source_provider", c.SourceProvider)
+		out.SetMetadataSourceProvider(c.SourceProvider)
 	}
 	if c.SourceVideoID != "" {
-		out.SetMetadataString("source_video_id", c.SourceVideoID)
+		out.SetMetadataSourceVideoID(c.SourceVideoID)
 	}
 	if c.StartSec != 0 {
-		out.Metadata["start_sec"] = c.StartSec
+		out.SetStartSec(c.StartSec)
 	}
 	if c.EndSec != 0 {
-		out.Metadata["end_sec"] = c.EndSec
+		out.SetEndSec(c.EndSec)
 	}
 	return out
 }
@@ -87,27 +71,31 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		return nil
 	}
 	return &sourcing.ExistingClip{
-		ID:             c.ID,
-		Name:           c.Name,
-		Filename:       c.Filename,
-		Duration:       c.Duration,
-		Source:         string(c.Source),
-		Category:       c.Category,
-		Tags:           append([]string(nil), c.Tags...),
-		LocalPath:      c.LocalPath(),
-		DriveLink:      c.DriveLink(),
-		DriveFileID:    c.DriveFileID(),
-		FileHash:       c.FileHash(),
-		SourceURL:      c.GetMetadataString("source_url"),
-		SourceProvider: c.GetMetadataString("source_provider"),
-		SourceVideoID:  c.GetMetadataString("source_video_id"),
-		StartSec:       asset.MetadataFloat(c.Metadata, "start_sec"),
-		EndSec:         asset.MetadataFloat(c.Metadata, "end_sec"),
+		ID:          c.ID,
+		Name:        c.Name,
+		Filename:    c.Filename,
+		Duration:    c.Duration,
+		Source:      string(c.Source),
+		Category:    c.Category,
+		Tags:        append([]string(nil), c.Tags...),
+		LocalPath:   c.LocalPath(),
+		DriveLink:   c.DriveLink(),
+		DriveFileID: c.DriveFileID(),
+		FileHash:    c.FileHash(),
+		// source_url convergence (godlike/06): the typed field is the
+		// canonical owner; the metadata key is a provenance mirror for
+		// legacy rows. Read field-first so a round-trip through the mapper
+		// never loses a URL that was persisted only in the url column.
+		SourceURL:      firstNonEmpty(c.ExternalURL(), c.MetadataSourceURL()),
+		SourceProvider: c.MetadataSourceProvider(),
+		SourceVideoID:  c.MetadataSourceVideoID(),
+		StartSec:       c.StartSec(),
+		EndSec:         c.EndSec(),
 		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
-		Summary:         c.GetMetadataString("clip_summary"),
-		Topics:          metadataStringSlice(c, "topics"),
-		Speakers:        metadataStringSlice(c, "speakers"),
-		MentionedPeople: metadataStringSlice(c, "mentioned_people"),
-		Hook:            c.GetMetadataString("hook"),
+		Summary:         c.ClipSummary(),
+		Topics:          c.Topics(),
+		Speakers:        c.Speakers(),
+		MentionedPeople: c.MentionedPeople(),
+		Hook:            c.Hook(),
 	}
 }

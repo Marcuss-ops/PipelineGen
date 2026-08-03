@@ -63,12 +63,18 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 	// that don't have a dedicated SearchTextInput slot. The youtubeStrategy
 	// reads these keys from Additional to produce the canonical search_text.
 	// godlike/06 SSOT: the key names here MUST match what youtubeStrategy reads.
+	//
+	// source_url convergence: AssetData.SourceURL (hydrated from the url
+	// column) is the canonical owner; the metadata_json key is a provenance
+	// mirror for legacy rows. Prefer the typed field so search text and the
+	// IndexDocument airlock use the same precedence.
+	sourceURL := firstNonEmpty(asset.SourceURL, assetpkg.MetadataString(asset.Metadata, "source_url"))
 	var additional map[string]string
 	switch asset.Source {
 	case "youtube":
 		additional = map[string]string{
 			"hook":             assetpkg.MetadataString(asset.Metadata, "hook"),
-			"source_url":       assetpkg.MetadataString(asset.Metadata, "source_url"),
+			"source_url":       sourceURL,
 			"speakers":         flattenMetadataSlice(asset.Metadata, "speakers"),
 			"mentioned_people": flattenMetadataSlice(asset.Metadata, "mentioned_people"),
 		}
@@ -84,7 +90,7 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 			"round":      fmtIntMetadata(asset.Metadata, "round"),
 			"subject":    assetpkg.MetadataString(asset.Metadata, "title"),
 			"action":     assetpkg.MetadataString(asset.Metadata, "description"),
-			"source_url": assetpkg.MetadataString(asset.Metadata, "source_url"),
+			"source_url": sourceURL,
 			"start_sec":  fmtFloatMetadata(asset.Metadata, "start_sec"),
 			"end_sec":    fmtFloatMetadata(asset.Metadata, "end_sec"),
 			// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent folder

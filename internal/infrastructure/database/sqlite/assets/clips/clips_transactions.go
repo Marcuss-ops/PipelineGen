@@ -36,11 +36,26 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 // the dispatcher MUST supply their own outbox event in the same tx.
 func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
+	// source_url convergence (godlike/06): the typed SourceURL field is the
+	// canonical owner of the source URL; the legacy metadata key is a
+	// provenance mirror. Stamp the mirror at the persistence boundary so
+	// every row's metadata_json carries source_url for legacy readers
+	// (FindBySourceURL dedup, Qdrant search-text) regardless of which
+	// producer wrote it. Additive: never overwrites an existing key.
+	if clip.SourceURL != "" && clip.MetadataSourceURL() == "" {
+		clip.SetMetadataSourceURL(clip.SourceURL)
+	}
 	tagsJSON, _ := json.Marshal(clip.Tags)
 	searchTermsJSON, _ := json.Marshal(clip.SearchTerms)
 	metadataJSON, _ := json.Marshal(clip.Metadata)
-	sourceProvider := clip.GetMetadataString("source_provider")
-	sourceVideoID := clip.GetMetadataString("source_video_id")
+	// Column writes prefer the field so url and source_url columns never
+	// diverge; the metadata key remains the fallback for legacy rows.
+	sourceProvider := clip.MetadataSourceProvider()
+	sourceVideoID := clip.MetadataSourceVideoID()
+	sourceURL := clip.SourceURL
+	if sourceURL == "" {
+		sourceURL = clip.MetadataSourceURL()
+	}
 	startMS := int64(asset.MetadataFloat(clip.Metadata, "start_sec") * 1000)
 	endMS := int64(asset.MetadataFloat(clip.Metadata, "end_sec") * 1000)
 	deletedAtStr := ""
@@ -105,7 +120,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
 		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
 		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.FileHash(),
-		sourceProvider, sourceVideoID, clip.GetMetadataString("source_url"), startMS, endMS,
+		sourceProvider, sourceVideoID, sourceURL, startMS, endMS,
 	)
 	return err
 }
