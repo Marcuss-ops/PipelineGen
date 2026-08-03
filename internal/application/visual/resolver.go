@@ -179,7 +179,7 @@ func samplerResult(req Request, allowed map[string]Candidate, used map[string]bo
 func assignment(req Request, id string, pos int, duration, start int64, locked bool, by media.VisualSelectedBy, reason string) media.VisualAssignment {
 	raw := fmt.Sprintf("%s|%s|%s|%s|%d|%d", req.SceneID, req.SegmentID, req.Slot, id, pos, req.Seed)
 	h := sha256.Sum256([]byte(raw))
-	return media.VisualAssignment{AssignmentID: hex.EncodeToString(h[:12]), SceneID: req.SceneID, SegmentID: req.SegmentID, Slot: req.Slot, AssetID: id, Position: pos, DurationMs: duration, StartMs: start, Locked: locked, SelectedBy: by, SelectionReason: reason, VariationSeed: req.Seed, PromptVersion: req.PromptVersion}
+	return media.VisualAssignment{AssignmentID: hex.EncodeToString(h[:12]), MediaType: media.VisualMediaTypeClip, SceneID: req.SceneID, SegmentID: req.SegmentID, Slot: req.Slot, AssetID: id, Position: pos, DurationMs: duration, StartMs: start, Locked: locked, SelectedBy: by, SelectionReason: reason, VariationSeed: req.Seed, PromptVersion: req.PromptVersion}
 }
 
 func uniqueCandidates(in []Candidate) []Candidate {

@@ -6,11 +6,10 @@
 //
 //  1. func (s *AssetTxFinalizer) upsertRenditionLocation — persist
 //     one rendition as TWO coupled rows inside the caller's tx:
-//     a) asset_locations (location_kind = "<provider>_<kind>",
-//     is_primary=0); ensures the (asset_id, location_kind) UNIQUE
-//     constraint never collides across renditions of the same
-//     asset — distinguishes the rendition from the primary
-//     location stored by asset_finalizer_locations.go.
+//     a) asset_locations (location_kind = the canonical physical
+//     location kind, is_primary=0). The database contract permits only
+//     local, drive, and object_storage; rendition kind belongs in
+//     asset_renditions.kind, not in location_kind.
 //     b) asset_renditions (ON CONFLICT(asset_id, kind) DO UPDATE),
 //     the canonical storage for technical variant metadata
 //     (container/codec/width/height/fps/bitrate/sha256/
@@ -61,14 +60,14 @@ func (s *AssetTxFinalizer) upsertRenditionLocation(
 		return nil
 	}
 
-	// Use a distinct location_kind per rendition so the
-	// (asset_id, location_kind) unique constraint never collides
-	// across renditions of the same asset.
+	// location_kind is a physical-location enum owned by the schema. Do
+	// not append rendition kind here: asset_renditions.kind is the
+	// canonical discriminator and asset_locations accepts only the three
+	// physical kinds below.
 	locationKind := r.Provider
-	if locationKind == "" {
+	if locationKind != "drive" && locationKind != "object_storage" {
 		locationKind = "local"
 	}
-	locationKind = fmt.Sprintf("%s_%s", locationKind, r.Kind)
 
 	// 1. Upsert the rendition's location.
 	_, err := tx.ExecContext(ctx, `

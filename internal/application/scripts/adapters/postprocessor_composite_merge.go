@@ -45,6 +45,11 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		dst.VisualAssignments = append(dst.VisualAssignments, src.VisualAssignments...)
 		if currentInput != nil {
 			currentInput.SpecScene.VisualAssignments = append([]mediadomain.VisualAssignment(nil), src.VisualAssignments...)
+			// Keep the scene-level clip binding and the independent timeline
+			// contract in sync. Timeline post-segment clips are also the
+			// primary clip for their narrative scene; the timeline still
+			// remains authoritative when multiple clips share one scene.
+			projectPostSegmentClipBindings(currentInput.SpecScene.Scenes, src.VisualAssignments)
 			dst.FinalSpecScene = currentInput.SpecScene
 		}
 	}
@@ -181,6 +186,38 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			prevScenes = append([]scriptpkg.SpecScene(nil), currentInput.SpecScene.Scenes...)
 		}
 		dst.SynthesizedScenes = src.SynthesizedScenes
+		// Scene synthesis may happen after local semantic extraction. Carry
+		// annotations forward by stable segment/scene identity so the final
+		// materialized scenes retain the spans computed from their text.
+		if len(prevScenes) > 0 {
+			bySegment := make(map[string]*scriptpkg.SceneAnnotations, len(prevScenes))
+			byScene := make(map[string]*scriptpkg.SceneAnnotations, len(prevScenes))
+			for i := range prevScenes {
+				if prevScenes[i].Annotations == nil {
+					continue
+				}
+				if key := strings.TrimSpace(prevScenes[i].SegmentID); key != "" {
+					bySegment[key] = prevScenes[i].Annotations
+				}
+				if key := strings.TrimSpace(prevScenes[i].ID); key != "" {
+					byScene[key] = prevScenes[i].Annotations
+				}
+			}
+			for i := range src.SynthesizedScenes {
+				if src.SynthesizedScenes[i].Annotations != nil {
+					src.SynthesizedScenes[i].Annotations = rebaseSceneAnnotations(src.SynthesizedScenes[i].Annotations, src.SynthesizedScenes[i].Text)
+					continue
+				}
+				if annotations := bySegment[strings.TrimSpace(src.SynthesizedScenes[i].SegmentID)]; annotations != nil {
+					src.SynthesizedScenes[i].Annotations = rebaseSceneAnnotations(annotations, src.SynthesizedScenes[i].Text)
+				} else if annotations := byScene[strings.TrimSpace(src.SynthesizedScenes[i].ID)]; annotations != nil {
+					src.SynthesizedScenes[i].Annotations = rebaseSceneAnnotations(annotations, src.SynthesizedScenes[i].Text)
+				} else if i < len(prevScenes) {
+					src.SynthesizedScenes[i].Annotations = rebaseSceneAnnotations(prevScenes[i].Annotations, src.SynthesizedScenes[i].Text)
+				}
+			}
+			dst.SynthesizedScenes = src.SynthesizedScenes
+		}
 		// Issue #1 (June 2026) WRITE-BACK. The registry passes
 		// the same `input` ProcessInput to every processor in
 		// the loop, so updating its SpecScene.Scenes here means
@@ -259,6 +296,7 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		// (Italian) text.
 		if currentInput != nil {
 			currentInput.Text = src.TranslatedText
+			currentInput.TranslatedText = src.TranslatedText
 		}
 	}
 	if len(src.TranslatedSpecScene.Scenes) > 0 {
@@ -268,6 +306,7 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		// downstream processors see translated scene text.
 		if currentInput != nil {
 			currentInput.SpecScene = src.TranslatedSpecScene
+			currentInput.TranslatedSpecScene = src.TranslatedSpecScene
 		}
 	}
 	if strings.TrimSpace(src.OriginalText) != "" && currentInput != nil {
@@ -280,6 +319,59 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		dst.EffectiveLanguage = strings.TrimSpace(src.EffectiveLanguage)
 		if currentInput != nil {
 			currentInput.EffectiveLanguage = strings.TrimSpace(src.EffectiveLanguage)
+		}
+	}
+}
+
+// reapplyTranslatedSceneText restores the translated narrative after a
+// downstream processor synthesizes or normalizes scene slots from the
+// original segment plan. Bindings are deliberately left untouched: this
+// function owns only translated text/title fields.
+func reapplyTranslatedSceneText(input *ProcessInput) {
+	if input == nil || len(input.SpecScene.Scenes) == 0 {
+		return
+	}
+	bySegment := make(map[string]scriptpkg.SpecScene, len(input.TranslatedSpecScene.Scenes)+len(input.OriginalSpecScene.Scenes))
+	byID := make(map[string]scriptpkg.SpecScene, len(input.TranslatedSpecScene.Scenes)+len(input.OriginalSpecScene.Scenes))
+	for _, scene := range input.TranslatedSpecScene.Scenes {
+		if scene.SegmentID != "" {
+			bySegment[scene.SegmentID] = scene
+		}
+		if scene.ID != "" {
+			byID[scene.ID] = scene
+		}
+	}
+	for _, scene := range input.OriginalSpecScene.Scenes {
+		if scene.SegmentID != "" {
+			if _, exists := bySegment[scene.SegmentID]; !exists {
+				bySegment[scene.SegmentID] = scene
+			}
+		}
+		if scene.ID != "" {
+			if _, exists := byID[scene.ID]; !exists {
+				byID[scene.ID] = scene
+			}
+		}
+	}
+	for i := range input.SpecScene.Scenes {
+		var translated scriptpkg.SpecScene
+		if input.SpecScene.Scenes[i].SegmentID != "" {
+			translated = bySegment[input.SpecScene.Scenes[i].SegmentID]
+		}
+		if translated.Text == "" && input.SpecScene.Scenes[i].ID != "" {
+			translated = byID[input.SpecScene.Scenes[i].ID]
+		}
+		if translated.Text == "" && i < len(input.TranslatedSpecScene.Scenes) {
+			translated = input.TranslatedSpecScene.Scenes[i]
+		}
+		if translated.Text == "" && i < len(input.OriginalSpecScene.Scenes) {
+			translated = input.OriginalSpecScene.Scenes[i]
+		}
+		if translated.Text != "" {
+			input.SpecScene.Scenes[i].Text = translated.Text
+		}
+		if translated.Title != "" {
+			input.SpecScene.Scenes[i].Title = translated.Title
 		}
 	}
 }

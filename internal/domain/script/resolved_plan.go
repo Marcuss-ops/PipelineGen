@@ -41,7 +41,8 @@ type ResolvedGenerationPlan struct {
 	// SourceText is the canonical resolved text fed to the engine.
 	// For text sources it's the topic+source_text+guidelines assembly.
 	// For clip/catalog/search sources it's the clip evidence text.
-	SourceText string `json:"source_text"`
+	SourceText      string            `json:"source_text"`
+	ResearchSources []SourceReference `json:"research_sources,omitempty"`
 
 	// Guidelines are the writing style constraints.
 	Guidelines string `json:"guidelines,omitempty"`

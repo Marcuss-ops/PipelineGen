@@ -36,16 +36,20 @@ func (r *PostProcessorRegistry) Run(
 	}
 	r.mu.RUnlock()
 
-	if len(plan.Postprocessors) == 0 {
-		return &PipelineResult{FinalSpecScene: input.SpecScene}, nil
-	}
-
 	// Concurrency safety: the caller's ProcessInput may share
 	// SpecScene slices with other goroutines (e.g. a cached
 	// engineResult.Output). Deep-clone before mergePostProcessResult
 	// mutates Scenes / Bindings in place so concurrent Runs cannot
 	// race on the same underlying memory.
 	input.SpecScene = cloneSpecSceneOutput(input.SpecScene)
+	if len(plan.Postprocessors) == 0 {
+		if sanitizer := procs[ProcessorNarrationSanitizer]; sanitizer != nil {
+			if err := runNarrationSanitizer(ctx, plan, sanitizer, &input, &PipelineResult{}); err != nil {
+				return nil, err
+			}
+		}
+		return &PipelineResult{FinalSpecScene: input.SpecScene}, nil
+	}
 
 	result := &PipelineResult{
 		StageDurations: make(map[string]int64),
@@ -62,6 +66,11 @@ func (r *PostProcessorRegistry) Run(
 	// currentInput.SpecScene acts as the canonical "last writer
 	// wins" snapshot at the post-walk time.
 	result.FinalSpecScene = input.SpecScene
+	if sanitizer := procs[ProcessorNarrationSanitizer]; sanitizer != nil {
+		if err := runNarrationSanitizer(ctx, plan, sanitizer, &input, result); err != nil {
+			return nil, err
+		}
+	}
 	var (
 		warnings          []string
 		requiredRequested int
@@ -99,6 +108,17 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
+		// Restore the translated scene surface before the next processor
+		// consumes it. This is deliberately before Process, never after the
+		// merge: the final entities pass must be able to annotate the exact
+		// text that will be persisted without being overwritten by an older
+		// translated snapshot.
+		reapplyTranslatedSceneText(&input)
+		if sanitizer := procs[ProcessorNarrationSanitizer]; sanitizer != nil && name != ProcessorNarrationSanitizer {
+			if err := runNarrationSanitizer(ctx, plan, sanitizer, &input, result); err != nil {
+				return nil, err
+			}
+		}
 		start := time.Now()
 		processorCtx, cancel := context.WithTimeout(ctx, postprocessorOperationTimeout)
 		ppResult, err := proc.Process(processorCtx, plan, input)
@@ -244,6 +264,15 @@ func (r *PostProcessorRegistry) Run(
 	return result, nil
 }
 
+func runNarrationSanitizer(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, proc PostProcessor, input *ProcessInput, result *PipelineResult) error {
+	ppResult, err := proc.Process(ctx, plan, *input)
+	if err != nil {
+		return err
+	}
+	mergePostProcessResult(result, ppResult, input)
+	return nil
+}
+
 // cloneSpecSceneOutput returns a deep copy of the specscene envelope.
 // Run() needs an independent copy because mergePostProcessResult
 // mutates Scenes and Bindings in place; without cloning, concurrent
@@ -261,9 +290,37 @@ func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput
 		out.Scenes[i] = sc
 		if sc.Metadata != nil {
 			meta := *sc.Metadata
+			meta.Tags = append([]string(nil), sc.Metadata.Tags...)
+			meta.Keywords = append([]string(nil), sc.Metadata.Keywords...)
+			meta.Sources = append([]scriptpkg.SourceReference(nil), sc.Metadata.Sources...)
 			out.Scenes[i].Metadata = &meta
 		}
+		if sc.Annotations != nil {
+			ann := *sc.Annotations
+			ann.ImportantPhrases = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantPhrases...)
+			ann.ImportantWords = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantWords...)
+			ann.Warnings = append([]string(nil), sc.Annotations.Warnings...)
+			ann.PrimaryEntities = cloneAnnotatedEntities(sc.Annotations.PrimaryEntities)
+			ann.SecondaryEntities = cloneAnnotatedEntities(sc.Annotations.SecondaryEntities)
+			out.Scenes[i].Annotations = &ann
+		}
 		out.Scenes[i].Bindings = cloneSceneBindings(sc.Bindings)
+	}
+	return out
+}
+
+func cloneAnnotatedEntities(in []scriptpkg.AnnotatedEntity) []scriptpkg.AnnotatedEntity {
+	if in == nil {
+		return nil
+	}
+	out := make([]scriptpkg.AnnotatedEntity, len(in))
+	for i := range in {
+		out[i] = in[i]
+		out[i].Mentions = append([]scriptpkg.AnnotationSpan(nil), in[i].Mentions...)
+		if in[i].Image != nil {
+			image := *in[i].Image
+			out[i].Image = &image
+		}
 	}
 	return out
 }

@@ -31,6 +31,9 @@ func (p *Producer) Enqueue(ctx context.Context, renderJob remotionjob.RenderJob)
 	if renderJob.SchemaVersion != remotionjob.SchemaVersion || strings.TrimSpace(renderJob.ID) == "" {
 		return nil, fmt.Errorf("video render producer: invalid remotion job")
 	}
+	if err := remotionjob.ValidateShortFormComposition(renderJob.Composition); err != nil {
+		return nil, fmt.Errorf("video render producer: %w", err)
+	}
 	return p.jobs.Enqueue(ctx, &job.EnqueueRequest{Type: RenderJobType, Payload: renderJob, CorrelationID: renderJob.ID, ActiveKey: "remotion:" + renderJob.ID, MaxRetries: 1})
 }
 
@@ -50,6 +53,9 @@ type HTTPRenderer struct {
 func (r *HTTPRenderer) Render(ctx context.Context, renderJob remotionjob.RenderJob) (RenderResult, error) {
 	if r == nil || r.Client == nil {
 		return RenderResult{}, fmt.Errorf("remotion renderer: http client is not configured")
+	}
+	if err := remotionjob.ValidateShortFormComposition(renderJob.Composition); err != nil {
+		return RenderResult{}, fmt.Errorf("remotion renderer: %w", err)
 	}
 	base, err := url.Parse(strings.TrimRight(r.BaseURL, "/"))
 	if err != nil || base.Scheme == "" || base.Host == "" {
@@ -115,6 +121,9 @@ func (h *Handler) Handle(ctx context.Context, j *job.Job, _ *appjobs.JobTools) (
 	var payload remotionjob.RenderJob
 	if err := json.Unmarshal(j.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("video render handler: decode payload: %w", err)
+	}
+	if err := remotionjob.ValidateShortFormComposition(payload.Composition); err != nil {
+		return nil, fmt.Errorf("video render handler: %w", err)
 	}
 	result, err := h.renderer.Render(ctx, payload)
 	if err != nil {

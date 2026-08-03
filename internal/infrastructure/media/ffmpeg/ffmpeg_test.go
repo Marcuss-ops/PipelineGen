@@ -726,6 +726,25 @@ func TestNormalize_VideoSettings(t *testing.T) {
 		"-movflags +faststart must be present; got argv: %v", argv)
 }
 
+// TestNormalize_TargetDurationLoopsShortSources pins the exact-duration
+// contract used by materialized clips: short sources must be looped before
+// the output duration limit is applied.
+func TestNormalize_TargetDurationLoopsShortSources(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	opts := defaultNormalizeOpts()
+	opts.Duration = 7
+	err := p.Normalize(context.Background(), "in.mp4", "out.mp4", opts)
+	require.NoError(t, err)
+
+	argv := runner.lastArgv
+	assert.True(t, hasArgPair(argv, "-stream_loop", "-1"),
+		"target duration must loop short sources; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-t", "7"),
+		"target duration must remain bounded by -t; got argv: %v", argv)
+}
+
 // TestNormalize_ContextCancellation verifies context cancellation propagates.
 func TestNormalize_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}

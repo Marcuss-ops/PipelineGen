@@ -2,7 +2,21 @@
 // to the sibling Remotion editor worker.
 package remotionjob
 
+import "fmt"
+
 const SchemaVersion = "remotion.render-job.v1"
+
+// YouTubeShortComposition is the only composition PipelineGen may submit to
+// the render boundary. Longform and compilation renders belong to a separate
+// explicitly managed workflow and must never be triggered by script jobs.
+const YouTubeShortComposition = "YouTubeShortComposition"
+
+func ValidateShortFormComposition(composition string) error {
+	if composition != YouTubeShortComposition {
+		return fmt.Errorf("unsupported video render composition %q: only %s is enabled", composition, YouTubeShortComposition)
+	}
+	return nil
+}
 
 // RenderJob is produced by PipelineGen after script, asset and timing
 // resolution. RemotionUpload only validates and renders this job; it must not

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -16,6 +18,11 @@ import (
 type internetImageCachePayload struct {
 	Candidates []scriptpkg.SegmentAssetCandidate
 }
+
+var (
+	entityImageCache sync.Map // canonical entity key -> []SegmentAssetCandidate
+	entityImageLocks sync.Map // canonical entity key -> *sync.Mutex
+)
 
 // InternetImagesProcessor searches web images per canonical segment and
 // attaches every unique result returned for the segment queries.
@@ -47,7 +54,8 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	if plan == nil {
 		return &PostProcessResult{}, nil
 	}
-	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+	entityImagesEnabled := plan.MediaPlan.Extraction.EntityImages.Enabled
+	if !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && !entityImagesEnabled {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
 			cloned := cloneVidRushSegmentResult(segment)
@@ -81,7 +89,13 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
 		updated := cloneVidRushSegmentResult(seg)
-		if len(updated.Insights.ImageQueries) == 0 {
+		imageQueries := updated.Insights.ImageQueries
+		if entityImagesEnabled {
+			if entityQueries := scenePrimaryEntityQueries(input.SpecScene, updated); len(entityQueries) > 0 {
+				imageQueries = entityQueries
+			}
+		}
+		if len(imageQueries) == 0 {
 			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
 			continue
@@ -95,7 +109,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			plan.Model,
 			plan.PromptVersion,
 			fmt.Sprintf("%d", perQueryLimit),
-			strings.Join(updated.Insights.ImageQueries, "\u0000"),
+			strings.Join(imageQueries, "\u0000"),
 		)
 		if !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
@@ -133,7 +147,7 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			p.metrics.IncProviderRequest("internet_images")
 		}
 
-		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, perQueryLimit*len(updated.Insights.ImageQueries))
+		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, perQueryLimit*len(imageQueries))
 		seen := make(map[string]struct{}, cap(candidates))
 		firstEntity := ""
 		if len(updated.Insights.Entities) > 0 {
@@ -141,9 +155,39 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 		type queryResult struct {
 			candidates []scriptpkg.SegmentAssetCandidate
+			query      string
 			err        error
 		}
-		queryResults, mapErr := concurrent.Map(ctx, updated.Insights.ImageQueries, 4, func(ctx context.Context, _ int, query string) (queryResult, error) {
+		queryResults, mapErr := concurrent.Map(ctx, imageQueries, 4, func(ctx context.Context, _ int, query string) (queryResult, error) {
+			entityCacheKey := segmentCacheKey("entity-image-v1", strings.ToLower(strings.TrimSpace(query)), plan.Language)
+			if entityImagesEnabled && !plan.MediaPlan.ForceRefreshAssets {
+				if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
+					if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query}, nil
+					}
+				}
+				var persisted []scriptpkg.SegmentAssetCandidate
+				if hit, err := loadVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, &persisted); err != nil {
+					return queryResult{}, err
+				} else if hit {
+					cacheStore(&entityImageCache, entityCacheKey, persisted)
+					return queryResult{candidates: persisted, query: query}, nil
+				}
+			}
+			var entityLock *sync.Mutex
+			if entityImagesEnabled {
+				actual, _ := entityImageLocks.LoadOrStore(entityCacheKey, &sync.Mutex{})
+				entityLock = actual.(*sync.Mutex)
+				entityLock.Lock()
+				defer entityLock.Unlock()
+				if !plan.MediaPlan.ForceRefreshAssets {
+					if cached, ok := cacheLoad(&entityImageCache, entityCacheKey); ok {
+						if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+							return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query}, nil
+						}
+					}
+				}
+			}
 			providerStart := time.Now()
 			results, err := p.searcher.SearchImages(ctx, InternetImageSearchRequest{
 				SegmentID: updated.SegmentID,
@@ -155,7 +199,13 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				Provider:  "internet_images",
 			})
 			observeVidRushProviderDuration(p.metrics, "internet_images_search", time.Since(providerStart))
-			return queryResult{candidates: results, err: err}, nil
+			if err == nil && entityImagesEnabled && len(results) > 0 {
+				cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
+				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+					return queryResult{}, cacheErr
+				}
+			}
+			return queryResult{candidates: results, query: query, err: err}, nil
 		})
 		if mapErr != nil {
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
@@ -171,6 +221,9 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			for _, cand := range queryResult.candidates {
 				if cand.Provider == "" {
 					cand.Provider = "internet_images"
+				}
+				if cand.Query == "" {
+					cand.Query = queryResult.query
 				}
 				// Defense-in-depth: reject candidates from forbidden providers.
 				// The binding gate (validVidRushCandidate) also rejects these,
@@ -218,9 +271,122 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		updatedSegments = append(updatedSegments, updated)
 	}
 
+	updatedSpecScene := projectEntityImageBindings(input.SpecScene, updatedSegments, plan.MediaPlan.Extraction.EntityImages)
 	return &PostProcessResult{
-		VidRushSegments: updatedSegments,
-		Warnings:        warnings,
-		Changed:         len(updatedSegments) > 0,
+		VidRushSegments:  updatedSegments,
+		UpdatedSpecScene: updatedSpecScene,
+		SpecSceneChanged: len(updatedSpecScene.Scenes) > 0,
+		Warnings:         warnings,
+		Changed:          len(updatedSegments) > 0,
 	}, nil
+}
+
+// projectEntityImageBindings attaches only provider candidates that are
+// explicitly relevant to the primary entity. Generic scene candidates are
+// never promoted to an entity image, preventing unrelated images from being
+// presented as a person/org/place match.
+func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scriptpkg.VidRushSegmentResult, policy mediadomain.EntityImagePolicy) scriptpkg.SpecSceneOutput {
+	if !policy.Enabled || len(spec.Scenes) == 0 {
+		return spec
+	}
+	out := cloneSpecSceneOutput(spec)
+	allowed := map[string]bool{"PERSON": true, "ORG": true, "GPE": true}
+	if len(policy.EntityTypes) > 0 {
+		allowed = make(map[string]bool, len(policy.EntityTypes))
+		for _, raw := range policy.EntityTypes {
+			allowed[normalizeAnnotationType(raw)] = true
+		}
+	}
+	for i := range out.Scenes {
+		if out.Scenes[i].Annotations == nil {
+			continue
+		}
+		seg := findSegmentForScene(out.Scenes[i], segments)
+		for entityIndex := range out.Scenes[i].Annotations.PrimaryEntities {
+			entity := &out.Scenes[i].Annotations.PrimaryEntities[entityIndex]
+			if !allowed[normalizeAnnotationType(entity.Type)] {
+				continue
+			}
+			entity.Image = &scriptpkg.EntityImageBinding{Status: "not_found"}
+			if seg == nil {
+				continue
+			}
+			if candidate, ok := findEntityImageCandidate(*entity, *seg); ok {
+				entity.Image = &scriptpkg.EntityImageBinding{
+					Status: "resolved", AssetID: candidate.AssetID,
+					DriveLink: candidate.DriveLink, Source: candidate.Provider,
+					License: candidate.RightsBasis,
+				}
+			}
+		}
+	}
+	return out
+}
+
+func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, segment scriptpkg.VidRushSegmentResult) []string {
+	for _, scene := range spec.Scenes {
+		if (scene.SegmentID != "" && scene.SegmentID != segment.SegmentID) ||
+			(scene.SegmentID == "" && scene.ID != "" && scene.ID != segment.SceneID) {
+			continue
+		}
+		if scene.Annotations == nil {
+			return nil
+		}
+		queries := make([]string, 0, len(scene.Annotations.PrimaryEntities))
+		seen := make(map[string]struct{}, len(queries))
+		for _, entity := range scene.Annotations.PrimaryEntities {
+			if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
+				continue
+			}
+			query := strings.TrimSpace(entity.CanonicalName)
+			if query == "" {
+				query = strings.TrimSpace(entity.Text)
+			}
+			key := strings.ToLower(query)
+			if query == "" {
+				continue
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			queries = append(queries, query)
+		}
+		return queries
+	}
+	return nil
+}
+
+func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRushSegmentResult) *scriptpkg.VidRushSegmentResult {
+	for i := range segments {
+		if scene.SegmentID != "" && scene.SegmentID == segments[i].SegmentID {
+			return &segments[i]
+		}
+		if scene.ID != "" && scene.ID == segments[i].SceneID {
+			return &segments[i]
+		}
+		if scene.SegmentID == "" && scene.ID == "" && scene.Index == segments[i].Position {
+			return &segments[i]
+		}
+	}
+	return nil
+}
+
+func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) (scriptpkg.SegmentAssetCandidate, bool) {
+	want := strings.ToLower(strings.TrimSpace(entity.CanonicalName))
+	if want == "" {
+		want = strings.ToLower(strings.TrimSpace(entity.Text))
+	}
+	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	for _, candidate := range all {
+		if !validVidRushCandidate(candidate) || strings.TrimSpace(candidate.AssetID) == "" {
+			continue
+		}
+		entityText := strings.ToLower(strings.TrimSpace(candidate.Entity))
+		query := strings.ToLower(strings.TrimSpace(candidate.Query))
+		if entityText == want || strings.Contains(query, want) || strings.Contains(entityText, want) {
+			return candidate, true
+		}
+	}
+	return scriptpkg.SegmentAssetCandidate{}, false
 }

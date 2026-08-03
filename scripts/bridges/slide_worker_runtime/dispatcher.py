@@ -90,6 +90,18 @@ class ProfileWorker(threading.Thread):
             self._warmup_error = str(e)
             self._warmed.set()
             _log(f"[profile-{self.profile_id}] warmup failed: {e}")
+            # BrowserSession.start() may have launched Chromium before
+            # failing (for example on an auth guard or navigation error).
+            # Close the session here so a failed warmup cannot orphan the
+            # browser when the parent worker is reaped by the Go supervisor.
+            try:
+                if self.session:
+                    self.session.close()
+            except Exception as close_error:
+                _log(
+                    f"[profile-{self.profile_id}] warmup cleanup failed: "
+                    f"{type(close_error).__name__}: {close_error}"
+                )
             return
 
         self._warmed.set()

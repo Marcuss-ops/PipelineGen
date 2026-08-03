@@ -2,10 +2,12 @@ package process
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -114,6 +116,55 @@ func TestRun_RedactsSecretsInErrorOutput(t *testing.T) {
 	if !strings.Contains(err.Error(), "[REDACTED]") {
 		t.Fatalf("expected redaction marker in error: %v", err)
 	}
+}
+
+func TestRun_KillsProcessGroupOnTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX process groups required")
+	}
+
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child.pid")
+	script := writeScript(t, dir, "spawn.sh", "#!/bin/sh\nsleep 30 &\nchild=$!\nprintf '%s' \"$child\" > \"$PID_FILE\"\nwait \"$child\"\n")
+
+	ctx := context.Background()
+	res, err := Run(ctx, script, nil, Options{
+		Timeout:        100 * time.Millisecond,
+		CombinedOutput: true,
+		Env:            []string{"PID_FILE=" + pidFile},
+	})
+	if err == nil {
+		t.Fatalf("expected timeout error, result=%#v", res)
+	}
+	if res == nil || !res.TimedOut {
+		t.Fatalf("expected timed-out result, got %#v", res)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, readErr := os.ReadFile(pidFile)
+		if readErr == nil {
+			pid := 0
+			if _, scanErr := fmt.Sscanf(string(data), "%d", &pid); scanErr == nil && pid > 0 {
+				if proc, findErr := os.FindProcess(pid); findErr == nil {
+					if signalErr := proc.Signal(syscall.Signal(0)); signalErr != nil {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("timed-out child process was not killed; pid file=%q", string(mustReadFile(t, pidFile)))
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return data
 }
 
 func TestRun_ShellFallbackIsOptIn(t *testing.T) {

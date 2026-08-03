@@ -173,6 +173,9 @@ func registerScriptPostProcessors(
 	if !ppReg.Register(adapters.NewStockBindingsProcessor()) {
 		return fmt.Errorf("register stock_bindings processor: composition bug")
 	}
+	if !ppReg.Register(adapters.NewNarrationSanitizer()) {
+		return fmt.Errorf("register narration_sanitizer processor: composition bug")
+	}
 
 	// AssetLocationReconciliationProcessor verifies every drive_link
 	// in the SpecScene bindings before the document is published.

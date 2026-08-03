@@ -36,6 +36,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -88,6 +89,10 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	// We use exec.Command (not CommandContext) because the worker outlives
 	// individual request contexts.
 	p.cmd = exec.Command("python3", scriptPath, "--profiles", "1", "--profile-id", strconv.Itoa(p.profileID))
+	// Keep the worker and every Chromium descendant in one process group.
+	// Recovery may need to terminate a wedged Python/Playwright startup;
+	// killing only the Python parent otherwise leaves Chrome orphaned.
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	var err error
 	p.stdin, err = p.cmd.StdinPipe()
@@ -208,7 +213,7 @@ func (p *ChromeImageProvider) Stop() error {
 			}
 		case <-time.After(5 * time.Second):
 			p.log.Warn("ChromeImageProvider: worker did not exit within 5s — killing")
-			_ = p.cmd.Process.Kill()
+			killWorkerProcessGroup(p.cmd.Process)
 			<-done // drain the Wait() goroutine
 		}
 	}
@@ -216,4 +221,18 @@ func (p *ChromeImageProvider) Stop() error {
 	p.started = false
 	p.log.Info("ChromeImageProvider: worker stopped")
 	return nil
+}
+
+// killWorkerProcessGroup terminates the worker and all descendants that it
+// launched (notably Chromium renderer processes). The process-group kill is
+// best effort; the direct kill remains the fallback for an already-exited or
+// externally launched process.
+func killWorkerProcessGroup(process *os.Process) {
+	if process == nil {
+		return
+	}
+	if err := syscall.Kill(-process.Pid, syscall.SIGKILL); err == nil {
+		return
+	}
+	_ = process.Kill()
 }

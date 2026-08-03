@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -40,7 +41,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		return &PostProcessResult{
 			Changed:          len(reconciled) > 0,
 			SpecSceneChanged: len(reconciled) > 0,
-			UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 			Warnings:         []string{"asset_location_reconciliation: verifier is not configured (all Drive links cleared)"},
 		}, fmt.Errorf("%w: asset_location_reconciliation processor: AssetLocationVerifier not configured", scriptpkg.ErrPostprocessFailed)
 	}
@@ -311,7 +312,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 		return &PostProcessResult{
 			Changed:          changed,
 			SpecSceneChanged: changed,
-			UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+			UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 			Warnings:         warnings,
 		}, conflictErr
 	}
@@ -328,7 +329,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 			return &PostProcessResult{
 				Changed:          changed,
 				SpecSceneChanged: changed,
-				UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+				UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 				Warnings:         warnings,
 			}, fmt.Errorf("%w: asset_location_reconciliation commit failed: %w", scriptpkg.ErrPostprocessFailed, err)
 		}
@@ -337,7 +338,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 	return &PostProcessResult{
 		Changed:          changed,
 		SpecSceneChanged: changed,
-		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+		UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 		Warnings:         warnings,
 	}, nil
 }
@@ -357,9 +358,21 @@ func reconciliationFailureResult(
 	return &PostProcessResult{
 		Changed:          changed,
 		SpecSceneChanged: changed,
-		UpdatedSpecScene: scriptpkg.SpecSceneOutput{Version: input.SpecScene.Version, Scenes: reconciled},
+		UpdatedSpecScene: reconciledSpecSceneOutput(input.SpecScene, reconciled),
 		Warnings:         warnings,
 	}, err
+}
+
+// reconciledSpecSceneOutput keeps timeline-level assignments intact while
+// replacing the scene bindings with their reconciled copy. These fields are
+// independent: post-segment/intro clips must survive the final Drive-link
+// verification pass even though they are not scene bindings.
+func reconciledSpecSceneOutput(input scriptpkg.SpecSceneOutput, scenes []scriptpkg.SpecScene) scriptpkg.SpecSceneOutput {
+	return scriptpkg.SpecSceneOutput{
+		Version:           input.Version,
+		Scenes:            scenes,
+		VisualAssignments: append([]mediadomain.VisualAssignment(nil), input.VisualAssignments...),
+	}
 }
 
 func isGoogleDriveURL(rawLink string) bool {

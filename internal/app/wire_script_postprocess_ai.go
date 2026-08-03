@@ -36,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
+	localnlp "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/nlp/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -69,20 +70,14 @@ func registerAIBackedProcessors(
 	vidrushMetrics := observability.NewVidRushMetricsAdapter()
 	ppReg.SetVidRushTimingMetrics(vidrushMetrics)
 	// ── Entities ──────────────────────────────────────────────────────
-	var entityAdapter adapters.EntityExtractor
-	if root.AI != nil && root.AI.ScriptGen != nil {
-		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-			entityAdapter = ollamaadapters.NewOllamaEntityExtractorAdapter(ollamaClient)
-			log.Info("EntitiesProcessor wired with real Ollama backend (ollama.Client)")
-		}
+	// Entity extraction is local and deterministic. It is intentionally
+	// registered independently of Ollama so extraction never becomes a
+	// second LLM call and never disappears when Ollama is unavailable.
+	entityAdapter := localnlp.NewHybridExtractor()
+	if !ppReg.Register(adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)) {
+		return fmt.Errorf("register entities processor: composition bug")
 	}
-	if entityAdapter == nil {
-		log.Warn("EntitiesProcessor: Ollama backend not available; postprocessor not registered (entities will be skipped)")
-	} else {
-		if !ppReg.Register(adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)) {
-			return fmt.Errorf("register entities processor: composition bug")
-		}
-	}
+	log.Info("EntitiesProcessor wired with local auto CPU/GPU extractor")
 
 	// ── Metadata ─────────────────────────────────────────────────────
 	var metadataAdapter adapters.MetadataGenerator

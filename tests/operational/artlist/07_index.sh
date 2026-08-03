@@ -27,7 +27,7 @@ source "$DIR/../lib/_artlist_common.sh"
 smoke_require curl jq
 
 # Canonical Qdrant v3 SSOT (architecture/qdrant/v3-schema.json).
-ARTLIST_QDRANT_COLLECTION="${ARTLIST_QDRANT_COLLECTION:-media_assets_v3_e5_768_siglip_768}"
+ARTLIST_QDRANT_COLLECTION="${ARTLIST_QDRANT_COLLECTION:-${QDRANT_COLLECTION:-media_assets_current}}"
 ARTLIST_QDRANT_ALIAS="${ARTLIST_QDRANT_ALIAS:-media_assets_current}"
 
 # Canonical 4 named vectors with their dimensions (from v3-schema.json _meta).
@@ -64,7 +64,7 @@ gate_qdrant_index() {
     fi
 
     smoke_log_section "Phase 7b: 4 named vectors per v3-schema.json (text/transcript/visual/audio)"
-    if [[ -n "$QDRANT_API_KEY" ]]; then
+    if [[ -n "${QDRANT_API_KEY:-}" ]]; then
         local collection_info
         if ! collection_info=$(smoke_curl GET "/collections/${ARTLIST_QDRANT_COLLECTION}" 2>/dev/null); then
             log_warn "Phase 7b smoke_curl short-circuited (server absent)"

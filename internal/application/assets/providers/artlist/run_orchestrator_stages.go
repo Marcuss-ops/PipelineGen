@@ -70,13 +70,17 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 	for _, clip := range clips {
 		item := RunTagItem{
-			ClipID:       clip.ID,
-			Name:         clip.Name,
-			DownloadLink: clip.GetMetadataString("_download_link"),
+			ClipID: clip.ID,
+			Name:   clip.Name,
+			// Search discovery persists the canonical download_link metadata
+			// key. Keep the underscored key as a compatibility fallback for
+			// older staged assets and test fixtures.
+			DownloadLink: defaults.String(clip.DownloadLink(), clip.GetMetadataString("_download_link")),
 			DriveLink:    clip.GetMetadataString("_drive_link"),
 			DriveFileID:  clip.GetMetadataString("_drive_file_id"),
 			LocalPath:    clip.GetMetadataString("_local_path"),
 			FileHash:     clip.GetMetadataString("_file_hash"),
+			Metadata:     cloneMetadata(clip.Metadata),
 		}
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
 		item.Name = defaults.String(item.Name, clip.Name)

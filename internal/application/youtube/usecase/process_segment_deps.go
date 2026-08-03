@@ -224,6 +224,16 @@ type ProcessSegmentObservabilityDeps struct {
 	// retryable=false) so the operator can decide whether to
 	// backfill or relax the policy.
 	RequireTranscriptReady bool
+
+	// RequireAllLanguagesBeforeVideo is a Fase 5 policy gate. When true, the
+	// YouTube segment pipeline's Step 9 super-tx fails PRE-TX with
+	// localized.ErrClipLocaleNotReady if any target language listed in
+	// PreferredLanguages is missing from the command's TextTracks.
+	RequireAllLanguagesBeforeVideo bool
+
+	// PreferredLanguages are the BCP-47 language codes that are required to
+	// be present when RequireAllLanguagesBeforeVideo is true.
+	PreferredLanguages []string
 }
 
 // NewProcessYouTubeSegmentFromSubBundles constructs the canonical

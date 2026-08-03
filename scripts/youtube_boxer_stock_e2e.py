@@ -43,6 +43,7 @@ class RunnerProfile(NamedTuple):
     name: str
     videos: int
     clips_per_video: int
+    clip_duration_seconds: int = CLIP_DURATION_SECONDS
 
     @property
     def total_clips(self) -> int:
@@ -50,28 +51,29 @@ class RunnerProfile(NamedTuple):
 
     @property
     def target_total_ms(self) -> int:
-        return self.total_clips * CLIP_DURATION_SECONDS * 1000
+        return self.total_clips * self.clip_duration_seconds * 1000
 
     @property
     def total_min_ms(self) -> int:
-        return self.total_clips * int(CLIP_DURATION_MIN_SEC * 1000)
+        return self.total_clips * int((self.clip_duration_seconds - 0.2) * 1000)
 
     @property
     def total_max_ms(self) -> int:
-        return self.total_clips * int(CLIP_DURATION_MAX_SEC * 1000)
+        return self.total_clips * int((self.clip_duration_seconds + 0.2) * 1000)
 
     @property
     def per_source_min_ms(self) -> int:
-        return self.clips_per_video * int(CLIP_DURATION_MIN_SEC * 1000)
+        return self.clips_per_video * int((self.clip_duration_seconds - 0.2) * 1000)
 
     @property
     def per_source_max_ms(self) -> int:
-        return self.clips_per_video * int(CLIP_DURATION_MAX_SEC * 1000)
+        return self.clips_per_video * int((self.clip_duration_seconds + 0.2) * 1000)
 
 
 PROFILES = {
     "canary": RunnerProfile("canary", videos=1, clips_per_video=3),
     "full": RunnerProfile("full", videos=TARGET_VIDEOS, clips_per_video=TARGET_CLIPS_PER_VIDEO),
+    "tyson_interviews_5s": RunnerProfile("tyson_interviews_5s", videos=10, clips_per_video=6, clip_duration_seconds=5),
 }
 
 PREFLIGHT_MIN_DURATION_SECONDS = 64.0
@@ -96,6 +98,14 @@ MIKE_TYSON_MANIFEST = (
     ("fight", ("0vnOfawuQF4", "pHXurRbFTss", "jfpUia2gJjg", "CfV8oYVYa_k", "O47EW2WWe28", "2Q-5DCL99JY", "lNPpojcSMgI", "3yYRQIQN8jQ", "isaR1SyVzoE", "tG2B90evafc", "aJ-AUIkBX_Y", "1ee-NU7Lp5Y")),
     ("interview", ("iHaK0M-207o", "LkWU9lB2zEQ", "OOhdx1TLutw", "7MNv4_rTkfU", "NrPWFWd8cVM", "pTrAokYX3CY")),
     ("training", ("ItX74qZf2o0", "K6i9tkWOXhs")),
+)
+
+MIKE_TYSON_INTERVIEW_MANIFEST = (
+    ("interview", (
+        "OOhdx1TLutw", "NrPWFWd8cVM", "GbdRsWmZDZ4", "EMtEuP7fu2M",
+        "xmR4qCYF3b8", "CE8OKwvlRkM", "aXG6RDT4wJI", "8PWAWj80JQQ",
+        "C_trSpg99yc", "S9MtJ164XJI",
+    )),
 )
 
 # Keep the pilot's source set deterministic.  Dynamic search is useful for
@@ -424,6 +434,8 @@ def select(
 ) -> list[dict[str, Any]]:
     profile = profile or PROFILES["full"]
     if boxer.casefold() == "mike tyson":
+        if profile.name == "tyson_interviews_5s":
+            return _select_manifest(MIKE_TYSON_INTERVIEW_MANIFEST, profile, "Mike Tyson interviews")
         return _select_manifest(MIKE_TYSON_MANIFEST, profile, "Mike Tyson")
     if boxer.casefold() == "muhammad ali":
         # July 2026: yt-dlp --dump-single-json is blocked by YouTube
@@ -475,16 +487,18 @@ def segments(video: dict[str, Any], profile: RunnerProfile | None = None) -> lis
     # Non-overlapping windows distributed over the source, avoiding the
     # first/last few seconds where intros/outros are commonly black.
     usable = max(60, duration - 8)
-    step = max(4, usable // (profile.clips_per_video + 1))
-    return [{"start": f"{start // 60:02d}:{start % 60:02d}",
-             "end": f"{end // 60:02d}:{end % 60:02d}",
+    step = max(profile.clip_duration_seconds, usable // (profile.clips_per_video + 1))
+    def stamp(total_seconds: int) -> str:
+        return f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
+    return [{"start": stamp(start),
+             "end": stamp(start + profile.clip_duration_seconds),
              "name": video.get("title", ""),
              "source_title": video.get("title", ""),
              "source_channel": video.get("channel", ""),
              "category": video["category"],
              "description": f"{video['category']} scene featuring {video.get('title') or video['video_id']}"}
             for i in range(profile.clips_per_video)
-            for start, end in [(8 + i * step, 12 + i * step)]]
+            for start in [8 + i * step]]
 
 
 def latest_job(db: Path, video: dict[str, Any], segment: dict[str, Any], submitted_at: str) -> str:
@@ -561,15 +575,15 @@ def run_source(
             "direct_urls": [source_url],
             "clips": clip_specs,
             "total_minutes": 1,
-            "target_total_duration_seconds": profile.clips_per_video * CLIP_DURATION_SECONDS,
-            "target_duration_per_source_seconds": profile.clips_per_video * CLIP_DURATION_SECONDS,
+            "target_total_duration_seconds": profile.clips_per_video * profile.clip_duration_seconds,
+            "target_duration_per_source_seconds": profile.clips_per_video * profile.clip_duration_seconds,
             "clips_per_source": profile.clips_per_video,
-            "clip_duration_seconds": CLIP_DURATION_SECONDS,
+            "clip_duration_seconds": profile.clip_duration_seconds,
             "download_mode": "sections_only",
-            "clip_duration": CLIP_DURATION_SECONDS,
+            "clip_duration": profile.clip_duration_seconds,
             "folder_name": boxer,
             "drive_folder_id": folder_id,
-            "subfolder": f"{run_id}/{index:02d}/{video['category']}/{video['video_id']}",
+            "subfolder": video["category"],
             "metadata": {
                 "title": video.get("title", video["video_id"]),
                 "description": f"{video['category']} stock for {boxer}.",
@@ -719,7 +733,17 @@ def main() -> int:
         )
         return 0
     selected = select(args.base, token, args.boxer, profile)
-    target = resolve_boxe_folder(args.base, token)
+    if args.folder_id:
+        target = args.folder_id
+        upload_parent = target
+    elif args.root_id:
+        target = folder(args.base, token, args.root_id, args.boxer)
+        # The stock endpoint owns creation/reuse of the boxer folder. Pass the
+        # explicit stock parent so it does not create Mike Tyson/Mike Tyson.
+        upload_parent = args.root_id
+    else:
+        target = resolve_boxe_folder(args.base, token)
+        upload_parent = target
     if not target:
         raise SystemExit("could not resolve/create boxer Drive folder")
     print(
@@ -731,7 +755,7 @@ def main() -> int:
     # and SQLite, even when a caller requests a larger value.
     workers = bounded_concurrency(args.concurrency)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="youtube-stock") as pool:
-        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, target, video, index, profile)
+        futures = [pool.submit(run_source, args.base, token, Path(args.db), args.boxer, upload_parent, video, index, profile)
                    for index, video in enumerate(selected, 1)]
         for future in as_completed(futures):
             future.result()

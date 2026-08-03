@@ -199,6 +199,12 @@ func (p *GenerationPreparer) Prepare(
 		if resolved.Type != "" {
 			plan.SourceKind = string(resolved.Type)
 		}
+		if resolved.ResearchReport != nil {
+			plan.ResearchSources = make([]scriptpkg.SourceReference, 0, len(resolved.ResearchReport.Sources))
+			for _, source := range resolved.ResearchReport.Sources {
+				plan.ResearchSources = append(plan.ResearchSources, scriptpkg.SourceReference{Title: source.Title, URL: source.URL, Type: "article"})
+			}
+		}
 		if item.Source.GroundingPolicy != "" {
 			plan.GroundingPolicy = item.Source.GroundingPolicy
 		}

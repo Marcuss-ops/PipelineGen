@@ -35,7 +35,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		Mode:                modeForSource(item.Source.Type),
 		MediaMode:           item.MediaMode,
 		SourceText:          item.Source.SourceText,
-		Guidelines:          item.Source.Guidelines,
+		Guidelines:          editorialGuidelines(item),
 		TargetWords:         item.ScriptParams.TargetWords,
 		SingleScene:         item.ScriptParams.SingleScene,
 		Duration:            item.ScriptParams.Duration,
@@ -199,29 +199,36 @@ func ensureAssetLocationReconciliation(processors []adapters.ProcessorName) []ad
 func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	var processors []adapters.ProcessorName
 	extractEntities := out.ExtractEntities.AsBool()
+	// Translation must run before local semantic extraction so annotations,
+	// spans, and keywords are aligned with the text sent to voiceover.
+	if strings.TrimSpace(out.TranslateTo) != "" {
+		processors = append(processors, adapters.ProcessorTranslation)
+	}
 	if extractEntities {
 		processors = append(processors, adapters.ProcessorEntities, adapters.ProcessorClipSearch)
 	}
 	if extractEntities {
-		// Internet images reuse the same per-segment extraction surface
-		// as clip_search, so keep them in the same branch and let the
-		// processor enforce its own provider toggle.
-		processors = append(processors, adapters.ProcessorInternetImages)
-		// Discovery is followed by one shared materialization boundary.
-		processors = append(processors, adapters.ProcessorVidRushMaterialization)
+		// Discovery runs before scene binding. Final annotations and image
+		// resolution are appended below, after the final scene text exists.
 	}
 	if out.GenerateMetadata.AsBool() {
 		processors = append(processors, adapters.ProcessorMetadata)
 	}
-	if strings.TrimSpace(out.TranslateTo) != "" {
-		processors = append(processors, adapters.ProcessorTranslation)
-	}
-
 	// Scene-normalisation must precede artifact producers so voiceover and the
 	// Google Doc consume the final translated, clip-bound SpecScene.
 	processors = append(processors, adapters.ProcessorClipBindings)
 	if out.StockEnabled == scriptpkg.ToggleEnabled || out.StockEnabled == scriptpkg.ToggleDisabled || len(out.StockBindings) > 0 {
 		processors = append(processors, adapters.ProcessorStockBindings)
+	}
+	if extractEntities {
+		processors = append(processors,
+			// Re-run the canonical local entities processor after all scene
+			// text normalization. Duplicate names are intentional: the first
+			// pass feeds clip discovery; this pass owns final annotations.
+			adapters.ProcessorEntities,
+			adapters.ProcessorInternetImages,
+			adapters.ProcessorVidRushMaterialization,
+		)
 	}
 	if out.GenerateSceneImages.AsBool() {
 		processors = append(processors, adapters.ProcessorImages)
@@ -288,8 +295,8 @@ func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
 	if item.Source.SourceText != "" {
 		parts = append(parts, "Source text:\n"+item.Source.SourceText)
 	}
-	if item.Source.Guidelines != "" {
-		parts = append(parts, "Guidelines:\n"+item.Source.Guidelines)
+	if guidelines := editorialGuidelines(item); guidelines != "" {
+		parts = append(parts, "Guidelines:\n"+guidelines)
 	}
 	if item.ScriptParams.TargetWords > 0 {
 		parts = append(parts, "Target words: "+strconv.Itoa(item.ScriptParams.TargetWords))
@@ -311,4 +318,26 @@ func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
 	}
 	parts = append(parts, "Do not include raw URLs, hyperlinks, or source citations in the prose output.")
 	return strings.Join(parts, "\n\n")
+}
+
+// editorialGuidelines bridges the two request surfaces that can carry
+// editorial instructions. New script-generation requests use
+// script_params.guidelines; source.guidelines remains valid for source
+// resolvers and older callers. Keep both when they are supplied so segment
+// isolation rules are not silently dropped while building the plan.
+func editorialGuidelines(item scriptpkg.GenerationItemV2) string {
+	seen := make(map[string]struct{}, 2)
+	parts := make([]string, 0, 2)
+	for _, raw := range []string{item.Source.Guidelines, item.ScriptParams.Guidelines} {
+		guidelines := strings.TrimSpace(raw)
+		if guidelines == "" {
+			continue
+		}
+		if _, ok := seen[guidelines]; ok {
+			continue
+		}
+		seen[guidelines] = struct{}{}
+		parts = append(parts, guidelines)
+	}
+	return strings.Join(parts, "\n")
 }

@@ -191,11 +191,15 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		// filenames, no sibling collision). cmd.Validate already gates
 		// Text/Language non-empty above, so the error path is unreachable
 		// in production; panic surfaces regressions loud-fast.
-		filename, ferr := voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
-			Text:     itemSpec.Text,
-			Language: itemSpec.Language,
-			TextHash: string(itemTextHash),
-		})
+		filename := itemSpec.Filename
+		var ferr error
+		if filename == "" {
+			filename, ferr = voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
+				Text:     itemSpec.Text,
+				Language: itemSpec.Language,
+				TextHash: string(itemTextHash),
+			})
+		}
 		if ferr != nil {
 			panic(fmt.Sprintf("voiceover.BuildVoiceoverFilename (FanoutUseCase.Execute): %v (item=%+v, parent_job_id=%s)",
 				ferr, itemSpec, parentJobID))

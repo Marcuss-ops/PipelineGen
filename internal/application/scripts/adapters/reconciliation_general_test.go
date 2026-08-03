@@ -9,6 +9,7 @@ import (
 	"context"
 	"testing"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -89,6 +90,35 @@ func TestAssetLocationReconciliation_NoLinks(t *testing.T) {
 	}
 	if got.Changed {
 		t.Fatal("no links should not report changed")
+	}
+}
+
+func TestAssetLocationReconciliation_PreservesVisualAssignments(t *testing.T) {
+	r := newStubVerifier()
+	p := NewAssetLocationReconciliationProcessor(r)
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID: "scene-0", Index: 0, Text: "text", Kind: scriptpkg.SceneStock,
+			}},
+			VisualAssignments: []mediadomain.VisualAssignment{{
+				SegmentID: "segment-0", Slot: mediadomain.VisualSlotPostSegment,
+				AssetID: "final-clip", Position: 0, DurationMs: 7000, Locked: true,
+			}},
+		},
+	}
+
+	got, err := p.Process(context.Background(), nil, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.UpdatedSpecScene.VisualAssignments) != 1 {
+		t.Fatalf("visual assignments=%d, want 1", len(got.UpdatedSpecScene.VisualAssignments))
+	}
+	assignment := got.UpdatedSpecScene.VisualAssignments[0]
+	if assignment.SegmentID != "segment-0" || assignment.AssetID != "final-clip" || !assignment.Locked {
+		t.Fatalf("visual assignment was changed: %#v", assignment)
 	}
 }
 

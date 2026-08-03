@@ -50,16 +50,38 @@ qdrant_required_args() {
 # qdrant_point_exists POINT_ID [COLLECTION]
 #   POINT_ID    qdrant point id (often = clip_id from the asset row)
 #   COLLECTION  (optional, default $QDRANT_COLLECTION)
-# Returns 0 if point exists, 1 if not (or not yet implemented).
+# Returns 0 if point exists, 1 if the contract is not met, and 2 for
+# transport failures.
 qdrant_point_exists() {
     qdrant_required_args 1 "$@"
-    local point_id="$1" collection="${2:-${QDRANT_COLLECTION:-}}"
+    local point_id="$1" collection="${QDRANT_COLLECTION:-media_assets_current}"
+    shift
+    local source="" media_type=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --source) source="${2:-}"; shift 2 ;;
+            --media-type) media_type="${2:-}"; shift 2 ;;
+            *) collection="$1"; shift ;;
+        esac
+    done
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         return 0
     fi
-    printf '%s[STUB]%s qdrant_point_exists(point_id=%q, collection=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$point_id" "$collection" >&2
-    return 1
+    local out="${WORK_DIR:-/tmp}/qdrant_point_${point_id}.json"
+    local must='[{"key":"asset_id","match":{"value":$id}}]'
+    [[ -n "$source" ]] && must="${must%]} ,{\"key\":\"source\",\"match\":{\"value\":\"$source\"}}]"
+    [[ -n "$media_type" ]] && must="${must%]} ,{\"key\":\"media_type\",\"match\":{\"value\":\"$media_type\"}}]"
+    local code
+    code=$(curl -sS --connect-timeout 5 --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" \
+        -X POST -o "$out" -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg id "$point_id" --argjson must "${must/\$id/\"$point_id\"}" \
+            '{filter:{must:$must},limit:1,with_payload:true,with_vector:false}')" \
+        "${QDRANT_URL:-http://127.0.0.1:6333}/collections/${collection}/points/scroll") || return 2
+    [[ "$code" =~ ^2[0-9][0-9]$ ]] || return 2
+    jq -e --arg id "$point_id" \
+        '((.result.points // []) | any(.[]; ((.payload.asset_id // "") | tostring) == $id))' \
+        "$out" >/dev/null 2>&1
 }
 
 # ── qdrant_collection_reachable — collection existence + liveness ────────
@@ -72,7 +94,9 @@ qdrant_collection_reachable() {
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         return 0
     fi
-    printf '%s[STUB]%s qdrant_collection_reachable(collection=%q) — not yet implemented\n' \
-        "$YELLOW" "$RESET" "$collection" >&2
-    return 1
+    local code
+    code=$(curl -sS --connect-timeout 5 --max-time "${SMOKE_HTTP_TIMEOUT_SECONDS:-8}" \
+        -o /dev/null -w '%{http_code}' \
+        "${QDRANT_URL:-http://127.0.0.1:6333}/collections/${collection}") || return 2
+    [[ "$code" =~ ^2[0-9][0-9]$ ]]
 }
