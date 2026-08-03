@@ -43,7 +43,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		durationSec = int(clip.Duration.Seconds())
 	}
 
-	youtubeURL := clip.GetMetadataString("youtube_url")
+	youtubeURL := clip.YouTubeURL()
 	if youtubeURL == "" && ym != nil && ym.ID != "" {
 		youtubeURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", ym.ID)
 	}
@@ -66,30 +66,30 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 
 	description := tagutil.CompactYouTubeDescription(ymDescriptionCanonical(ym, clip))
 	rawTitle := clip.Name
-	cleanTitle := clip.GetMetadataString("clean_title")
+	cleanTitle := clip.CleanTitle()
 	if cleanTitle == "" {
 		cleanTitle = clip.Name
 	}
-	shortTitle := clip.GetMetadataString("short_title")
-	clipSummary := clip.GetMetadataString("clip_summary")
-	hook := clip.GetMetadataString("hook")
-	topics := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "topics"))
-	speakers := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "speakers"))
-	mentionedPeople := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "mentioned_people"))
-	people := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "people"))
-	sourceTags := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "source_tags"))
-	clipTags := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "clip_tags"))
-	searchKeywords := tagutil.NormalizeClipTagList(asset.MetadataStringSlice(clip.Metadata, "search_keywords"))
-	embeddingText := clip.GetMetadataString("embedding_text")
-	rawTranscript := clip.GetMetadataString("raw_transcript")
+	shortTitle := clip.ShortTitle()
+	clipSummary := clip.ClipSummary()
+	hook := clip.Hook()
+	topics := tagutil.NormalizeClipTagList(clip.Topics())
+	speakers := tagutil.NormalizeClipTagList(clip.Speakers())
+	mentionedPeople := tagutil.NormalizeClipTagList(clip.MentionedPeople())
+	people := tagutil.NormalizeClipTagList(clip.People())
+	sourceTags := tagutil.NormalizeClipTagList(clip.SourceTags())
+	clipTags := tagutil.NormalizeClipTagList(clip.ClipTags())
+	searchKeywords := tagutil.NormalizeClipTagList(clip.SearchKeywords())
+	embeddingText := clip.EmbeddingText()
+	rawTranscript := clip.RawTranscript()
 	if rawTranscript == "" {
 		rawTranscript = transcript
 	}
-	storedCleanTranscript := clip.GetMetadataString("clean_transcript")
+	storedCleanTranscript := clip.CleanTranscript()
 	if storedCleanTranscript == "" {
 		storedCleanTranscript = cleanTranscriptText
 	}
-	videoTitle := clip.GetMetadataString("youtube_title")
+	videoTitle := clip.YouTubeTitle()
 	if videoTitle == "" && ym != nil && ym.Title != "" {
 		videoTitle = ym.Title
 	}
@@ -122,7 +122,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		embeddingText = tagutil.BuildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
 	}
 	qualityScore := asset.MetadataFloat(clip.Metadata, "quality_score")
-	searchVisibility := clip.GetMetadataString("search_visibility")
+	searchVisibility := clip.SearchVisibility()
 	if searchVisibility == "" {
 		searchVisibility = tagutil.DeriveSearchVisibility(qualityScore)
 	}
@@ -135,7 +135,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		ShortTitle:        shortTitle,
 		EmbeddingText:     embeddingText,
 		VideoTitle:        videoTitle,
-		Channel:           clip.GetMetadataString("youtube_uploader"),
+		Channel:           clip.YouTubeUploader(),
 		Description:       description,
 		RawTranscript:     rawTranscript,
 		Transcript:        rawTranscript,
@@ -149,17 +149,17 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		SourceTags:        sourceTags,
 		ClipTags:          clipTags,
 		SearchKeywords:    searchKeywords,
-		DuplicateGroupID:  clip.GetMetadataString("duplicate_group_id"),
-		DuplicateOf:       clip.GetMetadataString("duplicate_of"),
-		IsDuplicate:       asset.MetadataBool(clip.Metadata, "is_duplicate"),
-		IsBestVersion:     asset.MetadataBool(clip.Metadata, "is_best_version"),
-		DuplicateReason:   clip.GetMetadataString("duplicate_reason"),
-		DuplicateScore:    asset.MetadataFloat(clip.Metadata, "duplicate_score"),
-		TopicClusterID:    clip.GetMetadataString("topic_cluster_id"),
-		TopicClusterLabel: clip.GetMetadataString("topic_cluster_label"),
-		TopicClusterSize:  asset.MetadataInt(clip.Metadata, "topic_cluster_size"),
-		TopicClusterRank:  asset.MetadataInt(clip.Metadata, "topic_cluster_rank"),
-		Language:          clip.GetMetadataString("youtube_language"),
+		DuplicateGroupID:  clip.DuplicateGroupID(),
+		DuplicateOf:       clip.DuplicateOf(),
+		IsDuplicate:       clip.IsDuplicate(),
+		IsBestVersion:     clip.IsBestVersion(),
+		DuplicateReason:   clip.DuplicateReason(),
+		DuplicateScore:    clip.DuplicateScore(),
+		TopicClusterID:    clip.TopicClusterID(),
+		TopicClusterLabel: clip.TopicClusterLabel(),
+		TopicClusterSize:  clip.TopicClusterSize(),
+		TopicClusterRank:  clip.TopicClusterRank(),
+		Language:          clip.YouTubeLanguage(),
 		DurationSec:       durationSec,
 		StartSec:          startSec,
 		EndSec:            endSec,
@@ -208,7 +208,7 @@ func ymDescriptionCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Ass
 	if ym != nil && ym.Description != "" {
 		return tagutil.CompactYouTubeDescription(ym.Description)
 	}
-	desc := clip.GetMetadataString("youtube_description")
+	desc := clip.YouTubeDescription()
 	if desc != "" {
 		return tagutil.CompactYouTubeDescription(desc)
 	}
@@ -219,7 +219,7 @@ func ymTagsCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset) []s
 	if ym != nil && len(ym.Tags) > 0 {
 		return tagutil.NormalizeClipTagList(ym.Tags)
 	}
-	tagsJSON := clip.GetMetadataString("youtube_tags")
+	tagsJSON := asset.MetadataString(clip.Metadata, "youtube_tags")
 	if tagsJSON != "" && tagsJSON != "[]" {
 		var tags []string
 		if err := json.Unmarshal([]byte(tagsJSON), &tags); err == nil {
@@ -236,7 +236,7 @@ func ymCategoriesCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asse
 	if ym != nil && len(ym.Categories) > 0 {
 		return ym.Categories
 	}
-	catsJSON := clip.GetMetadataString("youtube_categories")
+	catsJSON := clip.YouTubeCategories()
 	if catsJSON != "" && catsJSON != "[]" {
 		var cats []string
 		json.Unmarshal([]byte(catsJSON), &cats)
@@ -249,7 +249,7 @@ func ymViewCountCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset
 	if ym != nil {
 		return ym.ViewCount
 	}
-	countStr := clip.GetMetadataString("youtube_view_count")
+	countStr := clip.YouTubeViewCount()
 	if countStr != "" {
 		if n, err := strconv.ParseInt(countStr, 10, 64); err == nil {
 			return n
@@ -262,12 +262,12 @@ func ymUploadDateCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asse
 	if ym != nil && ym.UploadDate != "" {
 		return ym.UploadDate
 	}
-	return clip.GetMetadataString("youtube_upload_date")
+	return clip.YouTubeUploadDate()
 }
 
 func ymThumbnailURLCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.ThumbnailURL != "" {
 		return ym.ThumbnailURL
 	}
-	return clip.GetMetadataString("youtube_thumbnail")
+	return clip.YouTubeThumbnail()
 }

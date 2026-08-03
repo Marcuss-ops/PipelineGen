@@ -26,11 +26,11 @@ var (
 // extractYouTubeVideoID extracts the YouTube video ID from a clip ID or clip metadata.
 func extractYouTubeVideoID(clipID string, existing *asset.Asset) string {
 	if existing != nil {
-		vid := existing.GetMetadataString("youtube_video_id")
+		vid := existing.YouTubeVideoID()
 		if vid != "" {
 			return vid
 		}
-		url := existing.GetMetadataString("youtube_url")
+		url := existing.YouTubeURL()
 		if url != "" {
 			if strings.Contains(url, "youtube.com/watch?v=") {
 				parts := strings.Split(url, "v=")

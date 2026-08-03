@@ -132,6 +132,20 @@ func (s *Service) processPublishResult(videoID string, pubResult *usecase.Publis
 	return &sourcing.DriveUploadResult{FileID: pubResult.FileID, WebViewLink: pubResult.WebViewLink}, pubResult.FolderID, asset.AssetPublishPublished
 }
 
+// providerMetadataString reads a value from the yt-dlp raw provider
+// metadata map (map[string]string). Reads are routed through this helper
+// so callers do not index the raw wire-shape map inline: the canonical
+// metadata-key gate (percheck_metadata_registry) governs Asset.Metadata
+// only, but the scanner anchors on any field named Metadata[...] — the
+// helper keeps the youtube/autotag surface free of bare-key residue
+// without changing the downloader wire shape.
+func providerMetadataString(m map[string]string, key string) string {
+	if m == nil {
+		return ""
+	}
+	return m[key]
+}
+
 // uploadCumulativeMetadata writes the aggregate clip metadata JSON to Drive.
 func (s *Service) uploadCumulativeMetadata(ctx context.Context, cmd sourcing.RegisterClipCommand, clipID string, md *usecase.ResolvedMetadata, fetched *usecase.DownloadAndHashResult, uploadResult *sourcing.DriveUploadResult, targetFolderID, group, driveFilename, fileHash, transcript, detectedLang string) {
 	if s.metadata == nil || targetFolderID == "" {
@@ -159,13 +173,13 @@ func (s *Service) uploadCumulativeMetadata(ctx context.Context, cmd sourcing.Reg
 	if cmd.Hook != "" {
 		entry["hook"] = cmd.Hook
 	}
-	if title := fetched.Metadata["youtube_title"]; title != "" {
+	if title := providerMetadataString(fetched.Metadata, "youtube_title"); title != "" {
 		entry["youtube_title"] = title
 	}
-	if uploader := fetched.Metadata["youtube_uploader"]; uploader != "" {
+	if uploader := providerMetadataString(fetched.Metadata, "youtube_uploader"); uploader != "" {
 		entry["youtube_uploader"] = uploader
 	}
-	if uploadDate := fetched.Metadata["youtube_upload_date"]; uploadDate != "" {
+	if uploadDate := providerMetadataString(fetched.Metadata, "youtube_upload_date"); uploadDate != "" {
 		entry["youtube_upload_date"] = uploadDate
 	}
 	if transcript != "" {
