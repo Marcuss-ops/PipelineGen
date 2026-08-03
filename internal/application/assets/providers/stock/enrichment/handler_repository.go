@@ -81,15 +81,24 @@ func NewSQLiteAssetRepository(db *sql.DB) (*SQLiteAssetRepository, error) {
 // the idempotency_key derivation fails with
 // ErrEnrichmentIdempotencyKeyConflict on an empty file_hash
 // (terminal, surfaces as a producer-side state gap).
+//
+// source_url/title/source_provider/drive_file_id/file_hash are
+// first-class columns; description/drive_path live in
+// metadata_json and start/end are stored as the millisecond
+// columns start_ms/end_ms (converted to seconds here, matching
+// the canonical AssetRow.StartSec/EndSec float-seconds contract).
 func (r *SQLiteAssetRepository) GetByID(ctx context.Context, id string) (*AssetRow, error) {
 	if r == nil || r.DB == nil {
 		return nil, WrapHandlerNotConfigured("repo")
 	}
 	row := r.DB.QueryRowContext(ctx, `
 		SELECT id, COALESCE(source_url, ''), COALESCE(title, ''),
-		       COALESCE(description, ''), COALESCE(start_sec, 0.0),
-		       COALESCE(end_sec, 0.0), COALESCE(source_provider, ''),
-		       COALESCE(drive_file_id, ''), COALESCE(drive_path, ''),
+		       COALESCE(json_extract(COALESCE(metadata_json, '{}'), '$.description'), ''),
+		       COALESCE(NULLIF(start_ms, 0), 0) / 1000.0,
+		       COALESCE(NULLIF(end_ms, 0), 0) / 1000.0,
+		       COALESCE(source_provider, ''),
+		       COALESCE(drive_file_id, ''),
+		       COALESCE(json_extract(COALESCE(metadata_json, '{}'), '$.drive_path'), ''),
 		       COALESCE(file_hash, '')
 		FROM media_assets
 		WHERE id = ?

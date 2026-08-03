@@ -63,6 +63,7 @@ var commandRegistry = map[string]commandHandler{
 	"backfill-asset-embeddings":      runBackfillAssetEmbeddings,
 	"backfill-media-durations":       runBackfillMediaDurations,
 	"backfill-missing":               runBackfillMissing,
+	"backfill-provider-timestamps":   runBackfillProviderTimestamps,
 	"backfill-source-url-metadata":   runBackfillSourceURLMetadata,
 	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
 	"benchmark":                      runBenchmark,

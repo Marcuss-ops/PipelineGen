@@ -134,12 +134,22 @@ func binarySHA256(asset youtubetypes.ClipAsset) string {
 
 func canonicalClipProvenanceJSON(asset youtubetypes.ClipAsset) string {
 	payload := map[string]any{
-		"category":          asset.Metadata.Category,
-		"source_provider":   asset.Metadata.SourceProvider,
-		"video_id":          asset.Metadata.VideoID,
-		"source_url":        asset.Metadata.SourceURL,
-		"source_title":      asset.Metadata.SourceTitle,
-		"source_channel":    asset.Metadata.SourceChannel,
+		"category":        asset.Metadata.Category,
+		"source_provider": asset.Metadata.SourceProvider,
+		// source_video_id is the canonical provenance key (SSOT with
+		// asset.MetadataSourceVideoID / the media_assets.source_video_id
+		// column). video_id is retained as a legacy alias for older
+		// consumers (e.g. texttracks backfill_acquire.go).
+		"source_video_id": asset.Metadata.VideoID,
+		"video_id":        asset.Metadata.VideoID,
+		"source_url":      asset.Metadata.SourceURL,
+		"source_title":    asset.Metadata.SourceTitle,
+		"source_channel":  asset.Metadata.SourceChannel,
+		// start_sec / end_sec are the canonical float-seconds metadata
+		// keys read by asset.StartSec()/EndSec(). The clip_* variants are
+		// retained as legacy aliases (no reader today; kept for history).
+		"start_sec":         float64(asset.Metadata.ClipStartSec),
+		"end_sec":           float64(asset.Metadata.ClipEndSec),
 		"clip_start_sec":    asset.Metadata.ClipStartSec,
 		"clip_end_sec":      asset.Metadata.ClipEndSec,
 		"clip_duration_sec": asset.Metadata.ClipDurationSec,

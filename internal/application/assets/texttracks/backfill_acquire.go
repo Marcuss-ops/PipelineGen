@@ -155,14 +155,18 @@ func extractLocalPath(a *asset.Asset) string {
 }
 
 // extractVideoID reads the YouTube video ID from the asset's
-// Metadata map. The canonical YouTube-pipeline field is
-// `source_id` (or `video_id` for legacy clips).
+// Metadata map. The canonical key is `source_video_id` (via the
+// typed accessor); `source_id` / `video_id` are legacy fallbacks
+// for clips written before the provenance-key convergence.
 //
 // godlike/06 SSOT: the metadata→video_id extraction lives ONLY
 // here. Inline lookups in other leaves would corrode the canon.
 func extractVideoID(a *asset.Asset) string {
 	if a == nil {
 		return ""
+	}
+	if v := a.MetadataSourceVideoID(); v != "" {
+		return v
 	}
 	if a.Metadata != nil {
 		if v, ok := a.Metadata["source_id"].(string); ok && v != "" {
