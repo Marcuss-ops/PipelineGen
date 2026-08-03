@@ -239,31 +239,31 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	clip.SearchText = item.EmbeddingText
 	clip.TranscriptTags = tagutil.MergeTagLists(item.Tags, item.SourceTags, item.ClipTags, item.Topics, item.Speakers, item.MentionedPeople, item.People)
 	clip.RebuildTags()
-	clip.SetMetadataString("clean_title", item.CleanTitle)
-	clip.SetMetadataString("short_title", item.ShortTitle)
-	clip.SetMetadataString("clip_summary", item.ClipSummary)
-	clip.SetMetadataString("hook", item.Hook)
-	clip.Metadata["topics"] = append([]string(nil), item.Topics...)
-	clip.Metadata["speakers"] = append([]string(nil), item.Speakers...)
-	clip.Metadata["mentioned_people"] = append([]string(nil), item.MentionedPeople...)
-	clip.Metadata["people"] = append([]string(nil), item.People...)
-	clip.Metadata["source_tags"] = append([]string(nil), item.SourceTags...)
-	clip.Metadata["clip_tags"] = append([]string(nil), item.ClipTags...)
-	clip.Metadata["search_keywords"] = append([]string(nil), item.SearchKeywords...)
-	clip.Metadata["clean_transcript"] = item.CleanTranscript
-	clip.Metadata["embedding_text"] = item.EmbeddingText
-	clip.Metadata["quality_score"] = item.QualityScore
-	clip.Metadata["search_visibility"] = item.SearchVisibility
-	clip.Metadata["duplicate_group_id"] = item.DuplicateGroupID
-	clip.Metadata["duplicate_of"] = item.DuplicateOf
-	clip.Metadata["is_duplicate"] = item.IsDuplicate
-	clip.Metadata["is_best_version"] = item.IsBestVersion
-	clip.Metadata["duplicate_reason"] = item.DuplicateReason
-	clip.Metadata["duplicate_score"] = item.DuplicateScore
-	clip.Metadata["topic_cluster_id"] = item.TopicClusterID
-	clip.Metadata["topic_cluster_label"] = item.TopicClusterLabel
-	clip.Metadata["topic_cluster_size"] = item.TopicClusterSize
-	clip.Metadata["topic_cluster_rank"] = item.TopicClusterRank
+	clip.SetCleanTitle(item.CleanTitle)
+	clip.SetShortTitle(item.ShortTitle)
+	clip.SetClipSummary(item.ClipSummary)
+	clip.SetHook(item.Hook)
+	clip.SetTopics(append([]string(nil), item.Topics...))
+	clip.SetSpeakers(append([]string(nil), item.Speakers...))
+	clip.SetMentionedPeople(append([]string(nil), item.MentionedPeople...))
+	clip.SetPeople(append([]string(nil), item.People...))
+	clip.SetSourceTags(append([]string(nil), item.SourceTags...))
+	clip.SetClipTags(append([]string(nil), item.ClipTags...))
+	clip.SetSearchKeywords(append([]string(nil), item.SearchKeywords...))
+	clip.SetCleanTranscript(item.CleanTranscript)
+	clip.SetEmbeddingText(item.EmbeddingText)
+	clip.SetQualityScore(item.QualityScore)
+	clip.SetSearchVisibility(item.SearchVisibility)
+	clip.SetDuplicateGroupID(item.DuplicateGroupID)
+	clip.SetDuplicateOf(item.DuplicateOf)
+	clip.SetIsDuplicate(item.IsDuplicate)
+	clip.SetIsBestVersion(item.IsBestVersion)
+	clip.SetDuplicateReason(item.DuplicateReason)
+	clip.SetDuplicateScore(item.DuplicateScore)
+	clip.SetTopicClusterID(item.TopicClusterID)
+	clip.SetTopicClusterLabel(item.TopicClusterLabel)
+	clip.SetTopicClusterSize(item.TopicClusterSize)
+	clip.SetTopicClusterRank(item.TopicClusterRank)
 
 	if err := s.clips.Upsert(ctx, clip); err != nil {
 		s.log.Debug("failed to persist clip intelligence", zap.String("clip_id", item.ID), zap.Error(err))

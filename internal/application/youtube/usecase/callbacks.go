@@ -324,7 +324,7 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 		return
 	}
 	// If already has YouTube metadata, skip
-	if existing.GetMetadataString("youtube_title") != "" {
+	if existing.YouTubeTitle() != "" {
 		return
 	}
 

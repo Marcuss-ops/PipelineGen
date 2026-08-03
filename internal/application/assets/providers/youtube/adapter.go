@@ -269,12 +269,12 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 	assetRecord.SetLocalPath(result.LocalPath)
 
 	if meta != nil {
-		assetRecord.SetMetadataString("youtube_title", meta.Title)
-		assetRecord.SetMetadataString("youtube_uploader", meta.Uploader)
-		assetRecord.SetMetadataString("youtube_description", meta.Description)
-		assetRecord.SetMetadataString("youtube_language", meta.Language)
+		assetRecord.SetYouTubeTitle(meta.Title)
+		assetRecord.SetYouTubeUploader(meta.Uploader)
+		assetRecord.SetYouTubeDescription(meta.Description)
+		assetRecord.SetYouTubeLanguage(meta.Language)
 		if meta.UploadDate != "" {
-			assetRecord.SetMetadataString("youtube_upload_date", meta.UploadDate)
+			assetRecord.SetYouTubeUploadDate(meta.UploadDate)
 		}
 		if meta.Duration > 0 {
 			assetRecord.Duration = time.Duration(meta.Duration * float64(time.Second))

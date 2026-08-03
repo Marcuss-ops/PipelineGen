@@ -162,3 +162,168 @@ func (m *Asset) GetManualTags() []string      { return m.ManualTags }
 func (m *Asset) SetManualTags(v []string)     { m.ManualTags = v }
 func (m *Asset) GetTranscriptTags() []string  { return m.TranscriptTags }
 func (m *Asset) SetTranscriptTags(v []string) { m.TranscriptTags = v }
+
+// setMetadataSlice/setMetadataBool/setMetadataFloat are nil-safe
+// setters shared by the typed accessors below. Setters assign the raw
+// typed value so the storage key alphabet is unchanged (godlike/07
+// migration-window discipline: no data backfill required).
+func setMetadataSlice(m *Asset, key string, v []string) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]any)
+	}
+	m.Metadata[key] = v
+}
+
+func setMetadataBool(m *Asset, key string, v bool) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]any)
+	}
+	m.Metadata[key] = v
+}
+
+func setMetadataFloat(m *Asset, key string, v float64) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]any)
+	}
+	m.Metadata[key] = v
+}
+
+// ── YouTube metadata accessors ───────────────────────────────────────────
+// Bare-key migration window (godlike/07): youtube-layer call sites MUST use
+// these typed accessors instead of GetMetadataString("youtube_*") literals
+// so the archcheck percheck_metadata_registry bare-key-residue bucket stays
+// empty for the youtube/autotag surface. Storage keys are unchanged.
+
+func (m *Asset) YouTubeTitle() string           { return m.GetMetadataString("youtube_title") }
+func (m *Asset) SetYouTubeTitle(v string)       { m.SetMetadataString("youtube_title", v) }
+func (m *Asset) YouTubeDescription() string     { return m.GetMetadataString("youtube_description") }
+func (m *Asset) SetYouTubeDescription(v string) { m.SetMetadataString("youtube_description", v) }
+func (m *Asset) YouTubeLanguage() string        { return m.GetMetadataString("youtube_language") }
+func (m *Asset) SetYouTubeLanguage(v string)    { m.SetMetadataString("youtube_language", v) }
+func (m *Asset) YouTubeUploader() string        { return m.GetMetadataString("youtube_uploader") }
+func (m *Asset) SetYouTubeUploader(v string)    { m.SetMetadataString("youtube_uploader", v) }
+func (m *Asset) YouTubeUploadDate() string      { return m.GetMetadataString("youtube_upload_date") }
+func (m *Asset) SetYouTubeUploadDate(v string)  { m.SetMetadataString("youtube_upload_date", v) }
+func (m *Asset) YouTubeViewCount() string       { return m.GetMetadataString("youtube_view_count") }
+func (m *Asset) SetYouTubeViewCount(v string)   { m.SetMetadataString("youtube_view_count", v) }
+func (m *Asset) YouTubeDuration() string        { return m.GetMetadataString("youtube_duration") }
+func (m *Asset) SetYouTubeDuration(v string)    { m.SetMetadataString("youtube_duration", v) }
+func (m *Asset) YouTubeVideoID() string         { return m.GetMetadataString("youtube_video_id") }
+func (m *Asset) SetYouTubeVideoID(v string)     { m.SetMetadataString("youtube_video_id", v) }
+func (m *Asset) YouTubeURL() string             { return m.GetMetadataString("youtube_url") }
+func (m *Asset) SetYouTubeURL(v string)         { m.SetMetadataString("youtube_url", v) }
+func (m *Asset) YouTubeCategories() string      { return m.GetMetadataString("youtube_categories") }
+func (m *Asset) SetYouTubeCategories(v string)  { m.SetMetadataString("youtube_categories", v) }
+func (m *Asset) YouTubeTags() []string          { return MetadataStringSlice(m.Metadata, "youtube_tags") }
+func (m *Asset) SetYouTubeTags(v []string)      { setMetadataSlice(m, "youtube_tags", v) }
+func (m *Asset) YouTubeChapters() string        { return m.GetMetadataString("youtube_chapters") }
+func (m *Asset) SetYouTubeChapters(v string)    { m.SetMetadataString("youtube_chapters", v) }
+func (m *Asset) YouTubeThumbnail() string       { return m.GetMetadataString("youtube_thumbnail") }
+func (m *Asset) SetYouTubeThumbnail(v string)   { m.SetMetadataString("youtube_thumbnail", v) }
+
+// ── Semantic enrichment accessors ────────────────────────────────────────
+
+func (m *Asset) ClipSummary() string          { return m.GetMetadataString("clip_summary") }
+func (m *Asset) SetClipSummary(v string)      { m.SetMetadataString("clip_summary", v) }
+func (m *Asset) Hook() string                 { return m.GetMetadataString("hook") }
+func (m *Asset) SetHook(v string)             { m.SetMetadataString("hook", v) }
+func (m *Asset) CleanTitle() string           { return m.GetMetadataString("clean_title") }
+func (m *Asset) SetCleanTitle(v string)       { m.SetMetadataString("clean_title", v) }
+func (m *Asset) ShortTitle() string           { return m.GetMetadataString("short_title") }
+func (m *Asset) SetShortTitle(v string)       { m.SetMetadataString("short_title", v) }
+func (m *Asset) EmbeddingText() string        { return m.GetMetadataString("embedding_text") }
+func (m *Asset) SetEmbeddingText(v string)    { m.SetMetadataString("embedding_text", v) }
+func (m *Asset) CleanTranscript() string      { return m.GetMetadataString("clean_transcript") }
+func (m *Asset) SetCleanTranscript(v string)  { m.SetMetadataString("clean_transcript", v) }
+func (m *Asset) RawTranscript() string        { return m.GetMetadataString("raw_transcript") }
+func (m *Asset) SetRawTranscript(v string)    { m.SetMetadataString("raw_transcript", v) }
+func (m *Asset) SearchVisibility() string     { return m.GetMetadataString("search_visibility") }
+func (m *Asset) SetSearchVisibility(v string) { m.SetMetadataString("search_visibility", v) }
+func (m *Asset) QualityTier() string          { return m.GetMetadataString("quality_tier") }
+func (m *Asset) SetQualityTier(v string)      { m.SetMetadataString("quality_tier", v) }
+func (m *Asset) Language() string             { return m.GetMetadataString("language") }
+func (m *Asset) SetLanguage(v string)         { m.SetMetadataString("language", v) }
+func (m *Asset) Topics() []string             { return MetadataStringSlice(m.Metadata, "topics") }
+func (m *Asset) SetTopics(v []string)         { setMetadataSlice(m, "topics", v) }
+func (m *Asset) Speakers() []string           { return MetadataStringSlice(m.Metadata, "speakers") }
+func (m *Asset) SetSpeakers(v []string)       { setMetadataSlice(m, "speakers", v) }
+func (m *Asset) MentionedPeople() []string {
+	return MetadataStringSlice(m.Metadata, "mentioned_people")
+}
+func (m *Asset) SetMentionedPeople(v []string) { setMetadataSlice(m, "mentioned_people", v) }
+func (m *Asset) People() []string              { return MetadataStringSlice(m.Metadata, "people") }
+func (m *Asset) SetPeople(v []string)          { setMetadataSlice(m, "people", v) }
+func (m *Asset) SourceTags() []string          { return MetadataStringSlice(m.Metadata, "source_tags") }
+func (m *Asset) SetSourceTags(v []string)      { setMetadataSlice(m, "source_tags", v) }
+func (m *Asset) ClipTags() []string            { return MetadataStringSlice(m.Metadata, "clip_tags") }
+func (m *Asset) SetClipTags(v []string)        { setMetadataSlice(m, "clip_tags", v) }
+func (m *Asset) SearchKeywords() []string      { return MetadataStringSlice(m.Metadata, "search_keywords") }
+func (m *Asset) SetSearchKeywords(v []string)  { setMetadataSlice(m, "search_keywords", v) }
+func (m *Asset) SemanticTags() []string        { return MetadataStringSlice(m.Metadata, "semantic_tags") }
+func (m *Asset) SetSemanticTags(v []string)    { setMetadataSlice(m, "semantic_tags", v) }
+func (m *Asset) IsSponsorSegment() bool        { return MetadataBool(m.Metadata, "is_sponsor_segment") }
+func (m *Asset) SetIsSponsorSegment(v bool)    { setMetadataBool(m, "is_sponsor_segment", v) }
+func (m *Asset) SponsorConfidence() string     { return m.GetMetadataString("sponsor_confidence") }
+func (m *Asset) SetSponsorConfidence(v string) { m.SetMetadataString("sponsor_confidence", v) }
+
+// ── Duplicate/topic-cluster accessors ────────────────────────────────────
+
+func (m *Asset) DuplicateGroupID() string      { return m.GetMetadataString("duplicate_group_id") }
+func (m *Asset) SetDuplicateGroupID(v string)  { m.SetMetadataString("duplicate_group_id", v) }
+func (m *Asset) DuplicateOf() string           { return m.GetMetadataString("duplicate_of") }
+func (m *Asset) SetDuplicateOf(v string)       { m.SetMetadataString("duplicate_of", v) }
+func (m *Asset) IsDuplicate() bool             { return MetadataBool(m.Metadata, "is_duplicate") }
+func (m *Asset) SetIsDuplicate(v bool)         { setMetadataBool(m, "is_duplicate", v) }
+func (m *Asset) IsBestVersion() bool           { return MetadataBool(m.Metadata, "is_best_version") }
+func (m *Asset) SetIsBestVersion(v bool)       { setMetadataBool(m, "is_best_version", v) }
+func (m *Asset) DuplicateReason() string       { return m.GetMetadataString("duplicate_reason") }
+func (m *Asset) SetDuplicateReason(v string)   { m.SetMetadataString("duplicate_reason", v) }
+func (m *Asset) DuplicateScore() float64       { return MetadataFloat(m.Metadata, "duplicate_score") }
+func (m *Asset) SetDuplicateScore(v float64)   { setMetadataFloat(m, "duplicate_score", v) }
+func (m *Asset) TopicClusterID() string        { return m.GetMetadataString("topic_cluster_id") }
+func (m *Asset) SetTopicClusterID(v string)    { m.SetMetadataString("topic_cluster_id", v) }
+func (m *Asset) TopicClusterLabel() string     { return m.GetMetadataString("topic_cluster_label") }
+func (m *Asset) SetTopicClusterLabel(v string) { m.SetMetadataString("topic_cluster_label", v) }
+func (m *Asset) TopicClusterSize() int         { return MetadataInt(m.Metadata, "topic_cluster_size") }
+func (m *Asset) SetTopicClusterSize(v int)     { m.SetMetadataInt("topic_cluster_size", v) }
+func (m *Asset) TopicClusterRank() int         { return MetadataInt(m.Metadata, "topic_cluster_rank") }
+func (m *Asset) SetTopicClusterRank(v int)     { m.SetMetadataInt("topic_cluster_rank", v) }
+
+// ── VLM autotag accessors ────────────────────────────────────────────────
+
+func (m *Asset) VLMTagged() string           { return m.GetMetadataString("vlm_tagged") }
+func (m *Asset) SetVLMTagged(v string)       { m.SetMetadataString("vlm_tagged", v) }
+func (m *Asset) VLMTagError() string         { return m.GetMetadataString("vlm_tag_error") }
+func (m *Asset) SetVLMTagError(v string)     { m.SetMetadataString("vlm_tag_error", v) }
+func (m *Asset) VLMModel() string            { return m.GetMetadataString("vlm_model") }
+func (m *Asset) SetVLMModel(v string)        { m.SetMetadataString("vlm_model", v) }
+func (m *Asset) VLMModelVersion() string     { return m.GetMetadataString("vlm_model_version") }
+func (m *Asset) SetVLMModelVersion(v string) { m.SetMetadataString("vlm_model_version", v) }
+func (m *Asset) VLMAnalysisDurationMs() int {
+	return MetadataInt(m.Metadata, "vlm_analysis_duration_ms")
+}
+func (m *Asset) SetVLMAnalysisDurationMs(v int) { m.SetMetadataInt("vlm_analysis_duration_ms", v) }
+func (m *Asset) VLMFramesAnalyzed() int         { return MetadataInt(m.Metadata, "vlm_frames_analyzed") }
+func (m *Asset) SetVLMFramesAnalyzed(v int)     { m.SetMetadataInt("vlm_frames_analyzed", v) }
+func (m *Asset) VLMSceneTypes() string          { return m.GetMetadataString("vlm_scene_types") }
+func (m *Asset) SetVLMSceneTypes(v string)      { m.SetMetadataString("vlm_scene_types", v) }
+func (m *Asset) VLMMoods() string               { return m.GetMetadataString("vlm_moods") }
+func (m *Asset) SetVLMMoods(v string)           { m.SetMetadataString("vlm_moods", v) }
+func (m *Asset) VLMVisualObjects() string       { return m.GetMetadataString("vlm_visual_objects") }
+func (m *Asset) SetVLMVisualObjects(v string)   { m.SetMetadataString("vlm_visual_objects", v) }
+func (m *Asset) VLMOCRText() string             { return m.GetMetadataString("vlm_ocr_text") }
+func (m *Asset) SetVLMOCRText(v string)         { m.SetMetadataString("vlm_ocr_text", v) }
+func (m *Asset) VLMAggregateDescription() string {
+	return m.GetMetadataString("vlm_aggregate_description")
+}
+func (m *Asset) SetVLMAggregateDescription(v string) {
+	m.SetMetadataString("vlm_aggregate_description", v)
+}
+func (m *Asset) TextOnScreen() string       { return m.GetMetadataString("text_on_screen") }
+func (m *Asset) SetTextOnScreen(v string)   { m.SetMetadataString("text_on_screen", v) }
+func (m *Asset) Lighting() string           { return m.GetMetadataString("lighting") }
+func (m *Asset) SetLighting(v string)       { m.SetMetadataString("lighting", v) }
+func (m *Asset) Composition() string        { return m.GetMetadataString("composition") }
+func (m *Asset) SetComposition(v string)    { m.SetMetadataString("composition", v) }
+func (m *Asset) DominantColors() string     { return m.GetMetadataString("dominant_colors") }
+func (m *Asset) SetDominantColors(v string) { m.SetMetadataString("dominant_colors", v) }

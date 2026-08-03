@@ -92,7 +92,7 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 		return
 	}
 
-	if !force && existing.GetMetadataString("youtube_title") != "" && existing.SearchText != "" {
+	if !force && existing.YouTubeTitle() != "" && existing.SearchText != "" {
 		return
 	}
 
@@ -119,12 +119,9 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 		s.log.Debug("no YouTube metadata available, building fallback search_text",
 			zap.String("clip_id", clipID))
 		s.buildFallbackSearchText(existing)
-		ytLang := existing.GetMetadataString("youtube_language")
+		ytLang := existing.YouTubeLanguage()
 		if ytLang != "" {
-			if existing.Metadata == nil {
-				existing.Metadata = make(map[string]any)
-			}
-			existing.Metadata["language"] = ytLang
+			existing.SetLanguage(ytLang)
 		}
 		if err := s.assetRepo.Upsert(ctx, existing); err != nil {
 			s.log.Warn("failed to save fallback search_text", zap.String("clip_id", clipID), zap.Error(err))
@@ -207,64 +204,49 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 	existing.Tags = tagutil.MergeYouTubeClipTags(existing.Tags, ym.Tags, clipMetadata)
 
 	if clipMetadata != nil {
-		if existing.Metadata == nil {
-			existing.Metadata = make(map[string]any)
-		}
-		existing.Metadata["clip_summary"] = clipMetadata.Summary
-		existing.Metadata["topics"] = clipMetadata.Topics
-		existing.Metadata["speakers"] = clipMetadata.Speakers
-		existing.Metadata["mentioned_people"] = clipMetadata.MentionedPeople
-		existing.Metadata["people"] = tagutil.MergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People)
-		existing.Metadata["source_tags"] = clipMetadata.SourceTags
-		existing.Metadata["clip_tags"] = clipMetadata.ClipTags
-		existing.Metadata["search_keywords"] = clipMetadata.SearchKeywords
-		existing.Metadata["hook"] = clipMetadata.Hook
-		existing.Metadata["clean_title"] = clipMetadata.CleanTitle
-		existing.Metadata["short_title"] = clipMetadata.ShortTitle
-		existing.Metadata["embedding_text"] = clipMetadata.EmbeddingText
-		existing.Metadata["semantic_tags"] = clipMetadata.Tags
-		existing.Metadata["quality_score"] = clipMetadata.QualityScore
+		existing.SetClipSummary(clipMetadata.Summary)
+		existing.SetTopics(clipMetadata.Topics)
+		existing.SetSpeakers(clipMetadata.Speakers)
+		existing.SetMentionedPeople(clipMetadata.MentionedPeople)
+		existing.SetPeople(tagutil.MergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People))
+		existing.SetSourceTags(clipMetadata.SourceTags)
+		existing.SetClipTags(clipMetadata.ClipTags)
+		existing.SetSearchKeywords(clipMetadata.SearchKeywords)
+		existing.SetHook(clipMetadata.Hook)
+		existing.SetCleanTitle(clipMetadata.CleanTitle)
+		existing.SetShortTitle(clipMetadata.ShortTitle)
+		existing.SetEmbeddingText(clipMetadata.EmbeddingText)
+		existing.SetSemanticTags(clipMetadata.Tags)
+		existing.SetQualityScore(clipMetadata.QualityScore)
 	}
 	if cleanedTranscript != "" {
-		if existing.Metadata == nil {
-			existing.Metadata = make(map[string]any)
-		}
-		existing.Metadata["clean_transcript"] = cleanedTranscript
+		existing.SetCleanTranscript(cleanedTranscript)
 	}
 	if ym.Language != "" {
-		if existing.Metadata == nil {
-			existing.Metadata = make(map[string]any)
-		}
-		existing.Metadata["language"] = ym.Language
+		existing.SetLanguage(ym.Language)
 	}
 
-	existing.SetMetadataString("youtube_title", ym.Title)
-	existing.SetMetadataString("youtube_description", ym.Description)
-	existing.SetMetadataString("youtube_language", ym.Language)
-	existing.SetMetadataString("youtube_uploader", ym.Uploader)
-	existing.SetMetadataString("youtube_upload_date", ym.UploadDate)
-	existing.SetMetadataString("youtube_view_count", fmt.Sprintf("%d", ym.ViewCount))
-	existing.SetMetadataString("youtube_duration", fmt.Sprintf("%.1f", ym.Duration))
-	existing.SetMetadataString("youtube_video_id", ym.ID)
-	existing.SetMetadataString("youtube_url", fmt.Sprintf("https://www.youtube.com/watch?v=%s", ym.ID))
+	existing.SetYouTubeTitle(ym.Title)
+	existing.SetYouTubeDescription(ym.Description)
+	existing.SetYouTubeLanguage(ym.Language)
+	existing.SetYouTubeUploader(ym.Uploader)
+	existing.SetYouTubeUploadDate(ym.UploadDate)
+	existing.SetYouTubeViewCount(fmt.Sprintf("%d", ym.ViewCount))
+	existing.SetYouTubeDuration(fmt.Sprintf("%.1f", ym.Duration))
+	existing.SetYouTubeVideoID(ym.ID)
+	existing.SetYouTubeURL(fmt.Sprintf("https://www.youtube.com/watch?v=%s", ym.ID))
 	if len(ym.Categories) > 0 {
 		catsJSON, _ := json.Marshal(ym.Categories)
-		existing.SetMetadataString("youtube_categories", string(catsJSON))
+		existing.SetYouTubeCategories(string(catsJSON))
 	}
 	if len(ym.Tags) > 0 {
-		if existing.Metadata == nil {
-			existing.Metadata = make(map[string]any)
-		}
-		existing.Metadata["youtube_tags"] = ym.Tags
+		existing.SetYouTubeTags(ym.Tags)
 	}
 
 	// Sponsor detection via canonical regex (P0.1 closure).
 	if clipTranscript != "" && ytmetadata.IsSponsorSegment(clipTranscript) {
-		if existing.Metadata == nil {
-			existing.Metadata = make(map[string]any)
-		}
-		existing.Metadata["is_sponsor_segment"] = true
-		existing.Metadata["sponsor_confidence"] = "high"
+		existing.SetIsSponsorSegment(true)
+		existing.SetSponsorConfidence("high")
 	} else if existing.Metadata != nil {
 		delete(existing.Metadata, "is_sponsor_segment")
 		delete(existing.Metadata, "sponsor_confidence")
@@ -272,19 +254,16 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 
 	// Quality score via canonical 40/40/20 formula (P0.2 closure).
 	qualityScore := clipQualityScore(cleanedTranscript, ym.Duration, clipMetadata)
-	if existing.Metadata == nil {
-		existing.Metadata = make(map[string]any)
-	}
-	existing.Metadata["quality_score"] = qualityScore
-	existing.Metadata["quality_tier"] = getQualityTier(qualityScore)
-	existing.Metadata["search_visibility"] = tagutil.DeriveSearchVisibility(qualityScore)
+	existing.SetQualityScore(qualityScore)
+	existing.SetQualityTier(getQualityTier(qualityScore))
+	existing.SetSearchVisibility(tagutil.DeriveSearchVisibility(qualityScore))
 
 	if len(ym.Chapters) > 0 {
 		chaptersJSON, _ := json.Marshal(ym.Chapters)
-		existing.SetMetadataString("youtube_chapters", string(chaptersJSON))
+		existing.SetYouTubeChapters(string(chaptersJSON))
 	}
 	if ym.ThumbnailURL != "" {
-		existing.SetMetadataString("youtube_thumbnail", ym.ThumbnailURL)
+		existing.SetYouTubeThumbnail(ym.ThumbnailURL)
 	}
 
 	if err := s.assetRepo.Upsert(ctx, existing); err != nil {
@@ -309,22 +288,22 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 // stub always returned nil, so we skip the Ollama path and build from
 // existing metadata only.
 func (s *Service) resolveExistingMetadata(existing *asset.Asset, cleanedTranscript string) *tagutil.CanonicalClipMetadata {
-	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
-	hasUserTopics := len(asset.MetadataStringSlice(existing.Metadata, "topics")) > 0
+	hasUserSummary := existing.ClipSummary() != ""
+	hasUserTopics := len(existing.Topics()) > 0
 
 	if hasUserSummary && hasUserTopics {
 		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment",
 			zap.String("clip_id", existing.ID))
 		cm := &tagutil.CanonicalClipMetadata{
-			Summary:          existing.GetMetadataString("clip_summary"),
-			Topics:           asset.MetadataStringSlice(existing.Metadata, "topics"),
-			Speakers:         asset.MetadataStringSlice(existing.Metadata, "speakers"),
-			MentionedPeople:  asset.MetadataStringSlice(existing.Metadata, "mentioned_people"),
-			Hook:             existing.GetMetadataString("hook"),
+			Summary:          existing.ClipSummary(),
+			Topics:           existing.Topics(),
+			Speakers:         existing.Speakers(),
+			MentionedPeople:  existing.MentionedPeople(),
+			Hook:             existing.Hook(),
 			QualityScore:     asset.MetadataFloat(existing.Metadata, "quality_score"),
-			CleanTitle:       existing.GetMetadataString("clean_title"),
-			ShortTitle:       existing.GetMetadataString("short_title"),
-			SearchVisibility: existing.GetMetadataString("search_visibility"),
+			CleanTitle:       existing.CleanTitle(),
+			ShortTitle:       existing.ShortTitle(),
+			SearchVisibility: existing.SearchVisibility(),
 			CleanTranscript:  cleanedTranscript,
 		}
 		if cm.CleanTitle == "" {

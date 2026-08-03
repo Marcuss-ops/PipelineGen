@@ -158,7 +158,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	md2, enrichErr := usecase.ResolveClipMetadata(usecase.ResolveMetadataCommand{
 		URL: md.RawURL, Name: cmd.Name, Description: cmd.Description,
 		Source: md.Source, StartSec: md.StartSec, EndSec: md.EndSec,
-		FetchedName: fetched.Name, FetchedDescription: fetched.Metadata["youtube_description"],
+		FetchedName: fetched.Name, FetchedDescription: providerMetadataString(fetched.Metadata, "youtube_description"),
 		FetchedDuration: fetched.Duration,
 	})
 	if enrichErr != nil {

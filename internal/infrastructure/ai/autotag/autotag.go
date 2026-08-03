@@ -150,8 +150,8 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 
 	frames, err := s.videoSampler.ExtractPercentageFrames(ctx, localPath, videoFramePercentages, jobDir)
 	if err != nil {
-		a.SetMetadataString("vlm_tag_error", err.Error())
-		a.SetMetadataString("vlm_tagged", "failed")
+		a.SetVLMTagError(err.Error())
+		a.SetVLMTagged("failed")
 		if derr := s.persistVLM(ctx, a); derr != nil {
 			return fmt.Errorf("vlm video sampler failed and dispatcher persistence failed: vlm=%w; dispatcher=%v", err, derr)
 		}
@@ -162,8 +162,8 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 	for i, f := range frames {
 		resp, err := s.visualVLM.Infer(ctx, f.Path)
 		if err != nil {
-			a.SetMetadataString("vlm_tag_error", err.Error())
-			a.SetMetadataString("vlm_tagged", "failed")
+			a.SetVLMTagError(err.Error())
+			a.SetVLMTagged("failed")
 			if derr := s.persistVLM(ctx, a); derr != nil {
 				return fmt.Errorf("vlm video inference failed (frame %d) and dispatcher persistence failed: vlm=%w; dispatcher=%v", i, err, derr)
 			}
@@ -233,12 +233,12 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 	a.RebuildTags()
 
 	// Persist aggregated metadata.
-	a.SetMetadataString("vlm_tagged", "success")
-	a.SetMetadataString("vlm_model", s.vlmClient.Model())
-	a.SetMetadataString("vlm_model_version", s.vlmClient.ModelVersion())
-	a.SetMetadataInt("vlm_analysis_duration_ms", int(duration.Milliseconds()))
-	a.SetMetadataInt("vlm_frames_analyzed", len(frames))
-	a.SetMetadataString("scene_type", dominantScene)
+	a.SetVLMTagged("success")
+	a.SetVLMModel(s.vlmClient.Model())
+	a.SetVLMModelVersion(s.vlmClient.ModelVersion())
+	a.SetVLMAnalysisDurationMs(int(duration.Milliseconds()))
+	a.SetVLMFramesAnalyzed(len(frames))
+	a.SetSceneType(dominantScene)
 
 	sceneTypes := sortedStringKeys(sceneTypeSet)
 	moods := sortedStringKeys(moodSet)
@@ -246,20 +246,20 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 	ocrTexts := sortedStringKeys(ocrSet)
 
 	if len(sceneTypes) > 0 {
-		a.SetMetadataString("vlm_scene_types", joinJSON(sceneTypes))
+		a.SetVLMSceneTypes(joinJSON(sceneTypes))
 	}
 	if len(moods) > 0 {
-		a.SetMetadataString("vlm_moods", joinJSON(moods))
+		a.SetVLMMoods(joinJSON(moods))
 	}
 	if len(visualObjects) > 0 {
-		a.SetMetadataString("vlm_visual_objects", joinJSON(visualObjects))
+		a.SetVLMVisualObjects(joinJSON(visualObjects))
 	}
 	if len(ocrTexts) > 0 {
-		a.SetMetadataString("vlm_ocr_text", joinJSON(ocrTexts))
-		a.SetMetadataString("text_on_screen", joinJSON(ocrTexts))
+		a.SetVLMOCRText(joinJSON(ocrTexts))
+		a.SetTextOnScreen(joinJSON(ocrTexts))
 	}
 	if text != "" {
-		a.SetMetadataString("vlm_aggregate_description", text)
+		a.SetVLMAggregateDescription(text)
 	}
 
 	// Embed frames and index each keyframe separately.
@@ -294,7 +294,7 @@ func (s *Service) indexKeyframes(ctx context.Context, a *asset.Asset, frames []i
 		return fmt.Errorf("embed frames: expected %d vectors, got %d", len(frames), len(vectors))
 	}
 
-	language := strings.ToLower(a.GetMetadataString("language"))
+	language := strings.ToLower(a.Language())
 	if language == "" {
 		language = "en"
 	}
@@ -346,8 +346,8 @@ func (s *Service) tagAssetSingle(ctx context.Context, a *asset.Asset) error {
 	duration := time.Since(start)
 	if err != nil {
 		// Mark as skipped in metadata so we don't keep retrying if it's a permanent failure (e.g. file corrupt)
-		a.SetMetadataString("vlm_tag_error", err.Error())
-		a.SetMetadataString("vlm_tagged", "failed")
+		a.SetVLMTagError(err.Error())
+		a.SetVLMTagged("failed")
 		if derr := s.persistVLM(ctx, a); derr != nil {
 			return fmt.Errorf("vlm autotag failed and dispatcher persistence failed: vlm=%w; dispatcher=%v", err, derr)
 		}
@@ -386,21 +386,21 @@ func (s *Service) tagAssetSingle(ctx context.Context, a *asset.Asset) error {
 	a.RebuildTags()
 
 	// 3. Update metadata with full structured VLM info
-	a.SetMetadataString("vlm_tagged", "success")
-	a.SetMetadataString("vlm_model", usedModel)
-	a.SetMetadataString("vlm_model_version", modelVersion)
-	a.SetMetadataInt("vlm_analysis_duration_ms", int(duration.Milliseconds()))
-	a.SetMetadataString("scene_type", vTags.SceneType)
-	a.SetMetadataString("lighting", vTags.Lighting)
-	a.SetMetadataString("composition", vTags.Composition)
+	a.SetVLMTagged("success")
+	a.SetVLMModel(usedModel)
+	a.SetVLMModelVersion(modelVersion)
+	a.SetVLMAnalysisDurationMs(int(duration.Milliseconds()))
+	a.SetSceneType(vTags.SceneType)
+	a.SetLighting(vTags.Lighting)
+	a.SetComposition(vTags.Composition)
 
 	if len(vTags.DominantColors) > 0 {
 		colors, _ := json.Marshal(vTags.DominantColors)
-		a.SetMetadataString("dominant_colors", string(colors))
+		a.SetDominantColors(string(colors))
 	}
 	if len(vTags.TextOnScreen) > 0 {
 		text, _ := json.Marshal(vTags.TextOnScreen)
-		a.SetMetadataString("text_on_screen", string(text))
+		a.SetTextOnScreen(string(text))
 	}
 
 	// 4. Persist atomically through the canonical mutation dispatcher.
