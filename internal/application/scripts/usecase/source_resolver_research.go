@@ -51,6 +51,13 @@ type WebResearchResolver struct {
 // ResearchSubmissionPreflight is the cache-only submission gate used by the
 // HTTP enqueue path. It shares the resolver's cache-key and policy semantics
 // without requiring a searcher or page fetcher.
+//
+// ResearchPreflight validates source-cache policies before script.generate is
+// enqueued. It never performs web search or page fetching.
+type ResearchPreflight interface {
+	Validate(ctx context.Context, item scriptpkg.GenerationItemV2) error
+}
+
 type ResearchSubmissionPreflight struct{ cache scriptports.TopicSourceCache }
 
 func NewResearchSubmissionPreflight(cache scriptports.TopicSourceCache) *ResearchSubmissionPreflight {
