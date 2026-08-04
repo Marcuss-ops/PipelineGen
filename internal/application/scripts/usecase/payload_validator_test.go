@@ -629,6 +629,37 @@ func TestPayloadValidator_VideoMetadataEmpty(t *testing.T) {
 	assert.Equal(t, "EMPTY_VIDEO_METADATA", pve.Code)
 }
 
+func TestPayloadValidator_VideoMetadataWhitespaceOnly(t *testing.T) {
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{{
+			ID:    "whitespace-metadata",
+			Title: "Whitespace Metadata",
+			Source: scriptpkg.SourceSpec{
+				Type:  scriptpkg.SourceText,
+				Topic: "topic",
+			},
+			ScriptParams: scriptpkg.ScriptSpec{TargetWords: 150},
+			VideoMetadata: &scriptpkg.VideoMetadata{
+				Language:    "   ",
+				Title:       "\t",
+				Description: "\n",
+				Tags:        []string{" ", "\t"},
+			},
+		}},
+	}
+
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	require.Equal(t, "EMPTY_VIDEO_METADATA", pve.Code)
+	require.Equal(t, "request.validation", pve.Stage)
+	require.False(t, pve.Retryable)
+}
+
 func TestPayloadValidator_VideoMetadataValid(t *testing.T) {
 	v := NewDefaultPayloadValidator()
 	env := &scriptpkg.GenerationEnvelopeV2{
