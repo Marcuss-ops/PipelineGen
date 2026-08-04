@@ -33,6 +33,7 @@ var (
 	markdownLinkRE   = regexp.MustCompile(`\[([^\]]+?)\]\((https?://[^)\s]+)\)`)
 	bracketSourceRE  = regexp.MustCompile(`(?i)\[(?:fonte|source)\s*:\s*([^\]]+?)\]`)
 	bareURLRE        = regexp.MustCompile(`(?i)(?:https?://|www\.)[^\s)\]}>]+`)
+	bareMarkerRE     = regexp.MustCompile(`(?i)https?://|www\.`)
 	sourceLineRE     = regexp.MustCompile(`(?im)^\s*(?:fonti|sources?)\s*:\s*.*$`)
 )
 
@@ -75,6 +76,10 @@ func SanitizeNarration(text string) (string, []SourceReference, error) {
 		add("", match)
 		return ""
 	})
+	// Models occasionally emit a truncated source marker such as a bare
+	// "https://" with no hostname. It is not matched by bareURLRE, but it
+	// must still never reach TTS.
+	clean = bareMarkerRE.ReplaceAllString(clean, "")
 	clean = strings.Join(strings.Fields(clean), " ")
 	clean = strings.TrimSpace(strings.Trim(clean, "-–—:; "))
 	clean = strings.ReplaceAll(clean, " ,", ",")

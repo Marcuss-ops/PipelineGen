@@ -65,6 +65,7 @@ import (
 type VoiceoverSceneInput struct {
 	SceneIndex  int
 	Text        string
+	Voice       string
 	Filename    string
 	Destination *voiceover.DestinationRequest
 }
@@ -153,6 +154,7 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			RequestID:     requestID,
 			Text:          item.Text,
 			Language:      voiceover.Language(language),
+			Voice:         item.Voice,
 			Filename:      item.Filename,
 			TextHash:      textHash,
 			Destination:   item.Destination, // nil-safe at the use case boundary

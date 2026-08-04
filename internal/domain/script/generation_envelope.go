@@ -97,6 +97,11 @@ type GenerationItemV2 struct {
 	// generated script. It is separate from SourceSpec because it
 	// describes media assets, not narrative content.
 	MediaPlan media.MediaPlanSpec `json:"media_plan,omitempty"`
+
+	// VideoMetadata contains caller-provided YouTube metadata.
+	// When present, these values are used directly and the metadata
+	// generator must not be called.
+	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
 }
 
 // DocumentsSpec is the transport-level document publication configuration.

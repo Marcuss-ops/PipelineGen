@@ -72,21 +72,11 @@ func TestExplicitFolderIDReachesPublisher(t *testing.T) {
 	result, err := adapter.Resolve(context.Background(), dest)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.NotNil(t, rec.lastReq, "resolver must have been called")
+	assert.Nil(t, rec.lastReq, "explicit destinations must bypass the resolver")
 
-	// ── Forwarding assertions: every field must reach asset.ResolveRequest ──
-	assert.Equal(t, "voiceover", rec.lastReq.Source, "Source must be 'voiceover'")
-	assert.Equal(t, "test-group", rec.lastReq.Group, "Group must be forwarded")
-	assert.Equal(t, "explicit-folder-abc123", rec.lastReq.FolderID,
-		"P0.2 fix: FolderID must be forwarded to ResolveRequest (was silently dropped pre-fix)")
-	assert.Equal(t, "/explicit/path", rec.lastReq.FolderPath,
-		"P0.2 fix: FolderPath must be forwarded to ResolveRequest")
-	assert.Equal(t, "my-subfolder", rec.lastReq.SubfolderName,
-		"P0.2 fix: SubfolderName must be forwarded to ResolveRequest")
-	assert.True(t, rec.lastReq.CreateSubfolder,
-		"P0.2 fix: CreateSubfolder must be forwarded to ResolveRequest")
-	assert.Equal(t, "style-cohort-1", rec.lastReq.StyleGroup,
-		"StyleGroup must be forwarded to ResolveRequest")
+	// The explicit plan destination is already fully resolved. No
+	// resolver request is expected: consulting it here would re-open
+	// the config/group/fallback chain that the plan deliberately bypasses.
 
 	// ── Mirror assertions: explicit fields take precedence on ResolvedDestination ──
 	// P0.2 fix: explicit FolderID overrides the resolver's returned FolderID.
@@ -133,9 +123,10 @@ func TestDestinationResolverExplicitFolderIDOverridesResolver(t *testing.T) {
 		"P0.2: explicit FolderID must override resolver's FolderID")
 	assert.Equal(t, "/my/explicit/path", result.FolderPath,
 		"P0.2: explicit FolderPath must override resolver's FolderPath")
-	// DriveLink still comes from the resolver (no explicit override).
-	assert.Equal(t, "https://drive.google.com/drive/folders/resolver-link", result.DriveLink,
-		"DriveLink must come from resolver (no explicit override)")
+	// Explicit resolution bypasses the resolver entirely, so there is
+	// no resolver-owned DriveLink to copy into the result.
+	assert.Empty(t, result.DriveLink,
+		"DriveLink must be empty when an explicit destination bypasses the resolver")
 }
 
 // ─────────────────────────────────────────────────────────────────────

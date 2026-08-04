@@ -2,14 +2,31 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+type multilingualVoiceRecorder struct {
+	items []*voiceover.GenerateVoiceoverItemCommand
+}
+
+func (r *multilingualVoiceRecorder) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
+	r.items = append(r.items, item)
+	return &voiceover.VoiceoverItemResult{Status: voiceover.StatusCompleted, Language: item.Language, DriveLink: "https://drive.test/" + item.Filename}, nil
+}
+
+type multilingualTextTranslator struct{}
+
+func (multilingualTextTranslator) Translate(_ context.Context, text, target string) (string, error) {
+	return fmt.Sprintf("%s [%s]", text, target), nil
+}
 
 // Test 1: traduzione riuscita
 func TestVoiceoverProcessor_UsesTranslatedTextAndLanguage(t *testing.T) {
@@ -143,4 +160,36 @@ func TestVoiceoverProcessor_AllowsSameSourceAndTargetLanguage(t *testing.T) {
 	require.Len(t, result.Voiceovers, 1)
 	assert.Equal(t, "completed", result.Voiceovers[0].Status)
 	assert.Equal(t, int32(1), stub.calls.Load())
+}
+
+func TestVoiceoverProcessor_FansOutLanguagesVoicesAndTranslations(t *testing.T) {
+	t.Parallel()
+	recorder := &multilingualVoiceRecorder{}
+	proc := NewVoiceoverProcessor(recorder, zap.NewNop())
+	proc.ConfigureMultilingual(map[string]string{
+		"it": "fr-FR-RemyMultilingualNeural",
+		"en": "en-US-ChristopherNeural",
+		"fr": "fr-FR-RemyMultilingualNeural",
+	}, multilingualTextTranslator{})
+
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", Index: 0, Text: "testo sorgente", Kind: scriptpkg.SceneNarration,
+	}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID: "multi-voice", Title: "Multi Voice", Language: "it", Languages: []string{"it", "en", "fr"},
+		VoiceoverFolderID: "folder-correct",
+	}
+	result, err := proc.Process(context.Background(), plan, ProcessInput{Text: "testo sorgente", SpecScene: spec})
+	require.NoError(t, err)
+	require.Len(t, recorder.items, 3)
+	require.Len(t, result.Voiceovers, 3)
+
+	voices := map[string]string{}
+	for _, item := range recorder.items {
+		voices[string(item.Language)] = item.Voice
+		require.Equal(t, "folder-correct", item.Destination.FolderID)
+	}
+	assert.Equal(t, "fr-FR-RemyMultilingualNeural", voices["it"])
+	assert.Equal(t, "en-US-ChristopherNeural", voices["en"])
+	assert.Equal(t, "fr-FR-RemyMultilingualNeural", voices["fr"])
 }

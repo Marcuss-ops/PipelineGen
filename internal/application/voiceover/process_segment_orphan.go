@@ -30,8 +30,8 @@ import (
 //
 // Cleanup event fields:
 //   - voiceoverID: cmd.ID (the voiceover row that was never inserted)
-//   - oldDriveFileID: "" (no prior row existed)
-//   - newDriveFileID: driveFileID (the orphaned Drive file to trash)
+//   - oldDriveFileID: driveFileID (cleanup target: the orphaned Drive file)
+//   - newDriveFileID: "" (no replacement was finalized)
 //   - oldLocalPaths: [localPath, cleanedPath] (local temp files)
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every failure in this method
@@ -62,8 +62,8 @@ func (u *ProcessSegmentUseCase) enqueueOrphanCleanup(ctx context.Context, voiceo
 
 	if err := u.deps.TxOutboxEnqueuer.EnqueueCleanupEvent(ctx, cleanupTx,
 		voiceoverID,
-		"",            // oldDriveFileID — no prior row existed
-		driveFileID,   // newDriveFileID — the orphaned Drive file
+		driveFileID,   // oldDriveFileID — cleanup target: the orphaned Drive file
+		"",            // newDriveFileID — no replacement was finalized
 		oldLocalPaths, // local temp files to remove
 	); err != nil {
 		log.Warn("FASE 4 orphan-cleanup: EnqueueCleanupEvent failed; orphan sweeper will recover",

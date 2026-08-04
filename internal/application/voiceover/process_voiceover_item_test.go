@@ -345,9 +345,10 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 //  3. result.DriveFileID is non-empty (Stage 3 succeeded).
 //  4. NO voiceovers row in SQLite (Finalize tx was rolled back).
 //  5. TxOutboxEnqueuer.cleanupEvents has exactly 1 entry — the FASE 4
-//     orphan-cleanup event for the orphaned Drive file (newDriveFileID
-//     matches the publisher's file ID; oldLocalPaths contains the
-//     TTS local path).
+//     orphan-cleanup event for the orphaned Drive file (oldDriveFileID
+//     is the cleanup target; newDriveFileID is empty because no
+//     replacement row was finalized; oldLocalPaths contains the TTS
+//     local path).
 //  6. The cleanup tx is non-nil (proves the production code opens a
 //     FRESH BeginTx independent of the rolled-back Finalize tx).
 //
@@ -441,12 +442,12 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 	require.Len(t, outboxStub.cleanupEvents, 1,
 		"FASE 4: orphan-cleanup event MUST be enqueued when Stage 3 OK + Stage 4 FAIL")
 	ce := outboxStub.cleanupEvents[0]
-	assert.Equal(t, "drive-peritem-123", ce.newDriveFileID,
-		"FASE 4: cleanup event's newDriveFileID must match the publisher's fileID")
+	assert.Equal(t, "drive-peritem-123", ce.oldDriveFileID,
+		"FASE 4: cleanup event's oldDriveFileID must match the publisher's orphaned fileID")
 	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/peritem-orphan.mp3",
 		"FASE 4: cleanup event's oldLocalPaths must contain the TTS local path")
-	assert.Empty(t, ce.oldDriveFileID,
-		"FASE 4: cleanup event's oldDriveFileID must be empty (per-item path — no prior row existed)")
+	assert.Empty(t, ce.newDriveFileID,
+		"FASE 4: cleanup event's newDriveFileID must be empty (per-item path — no replacement row was finalized)")
 
 	// Assertion 6: cleanup tx is non-nil (production code opens a FRESH BeginTx).
 	require.NotNil(t, ce.tx, "FASE 4: cleanup event must carry a non-nil tx (fresh BeginTx independent of Finalize)")

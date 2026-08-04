@@ -113,7 +113,15 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 				}
 				sc.Bindings.Voiceover.Status = v.Status
 				sc.Bindings.Voiceover.Link = v.Link
-				sc.Bindings.Voiceover.LocalPath = v.LocalPath
+				if strings.TrimSpace(v.Language) != "" && strings.TrimSpace(v.Link) != "" {
+					if sc.Bindings.Voiceover.Links == nil {
+						sc.Bindings.Voiceover.Links = make(map[string]string)
+					}
+					sc.Bindings.Voiceover.Links[strings.TrimSpace(v.Language)] = v.Link
+				}
+				// LocalPath is an internal filesystem detail and must never
+				// enter the document/API SpecScene surface.
+				sc.Bindings.Voiceover.LocalPath = ""
 			}
 		}
 	}

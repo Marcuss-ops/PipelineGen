@@ -175,7 +175,7 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{
 		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes},
 	}
-	docHTML := adapters.BuildSpecSceneDocumentHTML(model, "PR 7 Test Title")
+	docHTML := adapters.BuildSpecSceneDocumentHTML(model, "PR 7 Test Title", nil)
 
 	// ── JSON response writer view: marshal the actual wire shape. ──
 	wireRaw, err := json.Marshal(model.SpecScene)

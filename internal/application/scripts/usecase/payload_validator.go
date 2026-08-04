@@ -115,9 +115,31 @@ func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref str
 		return err
 	}
 
+	if err := validateProvidedVideoMetadata(item); err != nil {
+		return err
+	}
+
 	if err := v.validateSourceText(item, ref); err != nil {
 		return err
 	}
+	return nil
+}
+
+func validateProvidedVideoMetadata(item scriptpkg.GenerationItemV2) error {
+	metadata := item.VideoMetadata
+	if metadata == nil {
+		return nil
+	}
+
+	if !metadata.HasContent() {
+		return &scriptpkg.PayloadValidationError{
+			Code:      "EMPTY_VIDEO_METADATA",
+			Message:   "video_metadata must contain title, description, or tags",
+			Stage:     "request.validation",
+			Retryable: false,
+		}
+	}
+
 	return nil
 }
 

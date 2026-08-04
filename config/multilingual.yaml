@@ -12,33 +12,53 @@ media:
       - code: it
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: fr-FR-RemyMultilingualNeural
       - code: en
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: en-US-ChristopherNeural # Alternative options preferred by user: en-CA-LiamNeural, en-US-EricNeural
       - code: pl
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: pl-PL-MarekNeural
       - code: ru
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: ru-RU-DmitryNeural
       - code: de
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: de-DE-FlorianMultilingualNeural
       - code: es
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: es-ES-AlvaroNeural
       - code: pt-BR
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: pt-BR-AntonioNeural
       - code: fr
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: fr-FR-RemyMultilingualNeural # Alternative options preferred by user: fr-BE-GerardNeural
       - code: tr
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: tr-TR-AhmetNeural
       - code: id
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: id-ID-ArdiNeural
     # Translation policy: "auto" | "fast" | "quality"
     # Maps onto translation.TranslationPort's ModelPolicy.
     translation_policy: "auto"

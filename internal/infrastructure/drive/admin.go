@@ -97,7 +97,7 @@ func WrapDriveAdminError(cause error) error {
 // P0-1 (July 2026): added reLookup seam for post-create duplicate
 // detection, mirroring DriveFolderManagerAdapter's P0.7 contract.
 type AdminAdapter struct {
-	*Uploader // method promotion: all 11 other Admin port methods inherited
+	*Uploader // method promotion: folder/lifecycle/read methods inherited
 	log       *zap.Logger
 	// lookup is the P0.4 seam (folderLookupFunc) — shared type with
 	// DriveFolderManagerAdapter.lookup. The contract is identical:

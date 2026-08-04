@@ -2,7 +2,6 @@ package voiceover
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -10,8 +9,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
-
 	"go.uber.org/zap"
 )
 
@@ -58,12 +55,9 @@ type Service struct {
 	ttsProvider TTSProvider
 	outputDir   string
 	log         *zap.Logger
-	// (BLOC5.3 processItemUseCase field REMOVED June 2026 cutover:
-	// the canonical per-item voiceover pipeline was never committed
-	// in this branch — voiceover/promo.go now routes via legacy
-	// Service.GenerateWithDestination. The VoiceoverItemExecutor
-	// interface in ports.go is retained for the BLOC5.4 follow-up
-	// that will land the concrete pipeline.)
+	// processItem is the canonical per-item use case used by promo and
+	// child-job flows. The positional Service entry points are retired;
+	// all callers use command-driven use cases.
 	assetDestResolver asset.Resolver
 	semanticTagger    SemanticTaggerFunc
 	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
@@ -148,11 +142,8 @@ type VoiceoverPersistenceDeps struct {
 
 // VoiceoverGenerationDeps — TTS provider + semantic tagger.
 //
-// (June 2026 cutover): the BLOC5.3 ProcessItemUseCase field was
-// removed because the canonical per-item pipeline was never landed
-// in this branch. The VoiceoverItemExecutor interface in ports.go is
-// retained for the BLOC5.4 follow-up. The promo workflow
-// (voiceover/promo.go) routes through legacy Service.GenerateWithDestination.
+// The canonical per-item use case is injected separately and is the
+// only voiceover generation surface used by promo and child jobs.
 type VoiceoverGenerationDeps struct {
 	TTSProvider    TTSProvider
 	SemanticTagger SemanticTaggerFunc
@@ -196,9 +187,8 @@ type VoiceoverIntegrationDeps struct {
 	// GeneratePromo surfaces a typed error so the missing wire-up is
 	// visible at the first promo call rather than as a hidden soft
 	// no-op.
-	// LanguageRegistry is the canonical per-language capability
-	// surface used to resolve EdgeTTSVoice. nil-safe: a nil
-	// registry falls through to the bridge's emergency fallback.
+	// LanguageRegistry is the mandatory per-language capability surface
+	// used to resolve EdgeTTSVoice. Missing or incomplete entries fail closed.
 	LanguageRegistry asset.LanguageRegistry
 }
 
@@ -223,6 +213,9 @@ type VoiceoverExecutionDeps struct {
 func NewService(deps VoiceoverDeps) *Service {
 	if deps.Execution.ProcessItem == nil {
 		panic("voiceover.NewService: ProcessItem is required (P0-#3 — the canonical per-item use case ProcessVoiceoverItemUseCase must be wired via build_bundles_voiceover.go)")
+	}
+	if deps.Integration.LanguageRegistry == nil {
+		panic("voiceover.NewService: LanguageRegistry is required (the canonical voice registry must be wired at composition time)")
 	}
 	return &Service{
 		cfg:                deps.Core.Cfg,
@@ -250,50 +243,4 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 		jobsSvc.RegisterHandler(appjobs.TypeVoiceoverPromo, appjobs.HandlerFunc(s.HandleJob))
 		s.log.Info("registered voiceover job handlers (batch + promo)")
 	}
-}
-
-func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
-	project := "default"
-	if dest != nil && dest.Project != "" {
-		project = dest.Project
-	}
-
-	if s.log != nil {
-		s.log.Info("GenerateWithDestination: project selected", zap.String("project", project), zap.Any("dest", dest))
-	}
-
-	req := &BatchRequest{
-		Text:             text,
-		Languages:        []Language{Language(language)},
-		FilenameTemplate: filename,
-		RemoveSilence:    ptrutil.Bool(false),
-		Strategy:         "replace",
-		Destination:      dest,
-		Project:          project,
-	}
-	resp, err := s.GenerateBatch(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(resp.Items) == 0 {
-		return nil, fmt.Errorf("no voiceover generated")
-	}
-
-	item := resp.Items[0]
-	if !item.isSuccessful() {
-		msg := item.Error
-		if msg == "" {
-			msg = "voiceover generation did not complete"
-		}
-		return nil, fmt.Errorf("%s (status: %s)", msg, item.Status)
-	}
-
-	return &VoiceoverResult{
-		OK:          true,
-		Voice:       item.Voice,
-		Path:        item.LocalPath,
-		DriveLink:   item.DriveLink,
-		DriveFileID: item.DriveFileID,
-	}, nil
 }

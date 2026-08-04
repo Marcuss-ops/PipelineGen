@@ -94,7 +94,12 @@ func PersistGeneratedArtifacts(
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
-	scriptData, err := json.MarshalIndent(result, "", "  ")
+	// script.json is a public artifact. Keep local paths available on the
+	// in-memory result for the local artifact writer, but never expose them
+	// in the serialized contract.
+	publicResult := *result
+	publicResult.Output.SpecScene = stripVoiceoverLocalPaths(result.Output.SpecScene)
+	scriptData, err := json.MarshalIndent(&publicResult, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("artifacts_persistence: marshal script.json: %w", err)
 	}
@@ -119,7 +124,7 @@ func PersistGeneratedArtifacts(
 	// ── 2. scenes (OPTIONAL when generated) ────────────────────────────
 	if len(result.Output.SpecScene.Scenes) > 0 {
 		scenesJSONPath := filepath.Join(outDir, "scenes.json")
-		scenesData, marErr := json.MarshalIndent(result.Output.SpecScene, "", "  ")
+		scenesData, marErr := json.MarshalIndent(stripVoiceoverLocalPaths(result.Output.SpecScene), "", "  ")
 		if marErr != nil {
 			return nil, fmt.Errorf("artifacts_persistence: marshal scenes.json: %w", marErr)
 		}
@@ -204,6 +209,23 @@ func PersistGeneratedArtifacts(
 	}
 
 	return artifacts, nil
+}
+
+func stripVoiceoverLocalPaths(in domainScript.SpecSceneOutput) domainScript.SpecSceneOutput {
+	out := in
+	if len(in.Scenes) == 0 {
+		return out
+	}
+	out.Scenes = make([]domainScript.SpecScene, len(in.Scenes))
+	for i, scene := range in.Scenes {
+		out.Scenes[i] = scene
+		if scene.Bindings.Voiceover != nil {
+			binding := *scene.Bindings.Voiceover
+			binding.LocalPath = ""
+			out.Scenes[i].Bindings.Voiceover = &binding
+		}
+	}
+	return out
 }
 
 // workspaceOutputDir returns the job-workspace output directory.
