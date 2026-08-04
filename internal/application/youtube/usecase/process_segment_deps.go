@@ -49,7 +49,7 @@ package usecase
 import (
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
@@ -124,10 +124,9 @@ type ProcessSegmentMediaDeps struct {
 	// DriveFolderMgr is the OPTIONAL Drive-folder management
 	// port. nil → Drive upload step uses StageSource fallback.
 	DriveFolderMgr youtubeports.DriveFolderManagerPort
-	// Stager is the shared assets.SourceStager port (Step 9/12
-	// wire-up, July 2026). Optional. nil → Step 4 falls through
-	// to legacy per-segment yt-dlp.
-	Stager assets.SourceStager
+	// Stager is the canonical acquisition.SourceStager port. Optional.
+	// nil → Step 4 falls through to the per-segment yt-dlp path.
+	Stager acquisition.SourceStager
 	// FFProbe is the optional ffprobe validation port (audit
 	// 2026-07-03 BLOCKER #3). nil → Step 5a validation is
 	// silently skipped.
