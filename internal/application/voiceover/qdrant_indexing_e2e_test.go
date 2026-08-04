@@ -540,9 +540,17 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		Logger:           zap.NewNop(),
 	})
 
+	languageRegistry, err := asset.NewLanguageRegistry([]asset.LanguageSpec{{
+		Code: "en", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "en-US-TestNeural",
+	}})
+	if err != nil {
+		t.Fatalf("build voice registry: %v", err)
+	}
+
 	svc := &Service{
 		log:               zap.NewNop(),
 		outputDir:         outputDir,
+		languageRegistry:  languageRegistry,
 		voiceoverRepo:     voiceoverRepo,
 		finalizer:         e2eFinalizer,
 		outboxEnqueuer:    outboxDispatcher,
