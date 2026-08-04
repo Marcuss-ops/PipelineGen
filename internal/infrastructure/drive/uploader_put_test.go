@@ -19,10 +19,17 @@ package drive
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
@@ -211,5 +218,124 @@ func TestPutFileValidatesServiceUnchanged(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "drive service not configured") {
 		t.Errorf("expected 'drive service not configured', got: %v", err)
+	}
+}
+
+// postUploadVerificationServer is the minimal live-Drive-shaped seam for
+// PutFile's create → Files.Get verification sequence. It deliberately has
+// no move/rename endpoint: a destination mismatch must fail without any
+// repair call being possible from the upload path.
+type postUploadVerificationServer struct {
+	*httptest.Server
+	metadata  string
+	postCalls int
+	getCalls  int
+}
+
+func newPostUploadVerificationServer(metadata string) *postUploadVerificationServer {
+	s := &postUploadVerificationServer{metadata: metadata}
+	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/drive/v3/files") {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodPost:
+			s.postCalls++
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"uploaded-voiceover","webViewLink":"https://drive.google.com/file/d/uploaded-voiceover/view"}`))
+		case http.MethodGet:
+			s.getCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(s.metadata))
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	return s
+}
+
+func postUploadDriveService(t *testing.T, serverURL string) *driveapi.Service {
+	t.Helper()
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		t.Fatalf("parse verification server URL: %v", err)
+	}
+	client := &http.Client{Transport: &urlRewritingTransport{
+		mockHost: parsed.Host, mockScheme: parsed.Scheme,
+	}}
+	service, err := driveapi.NewService(context.Background(),
+		option.WithHTTPClient(client), option.WithoutAuthentication(),
+		option.WithScopes(driveapi.DriveScope))
+	if err != nil {
+		t.Fatalf("create Drive service: %v", err)
+	}
+	return service
+}
+
+func TestPutFile_PostUploadGate_VerifiesIDNameAndParent(t *testing.T) {
+	tests := []struct {
+		name       string
+		metadata   string
+		wantErr    error
+		wantStable error
+	}{
+		{
+			name:     "all metadata matches",
+			metadata: `{"id":"uploaded-voiceover","name":"voiceover.mp3","parents":["resolved-folder"],"trashed":false}`,
+		},
+		{
+			name:     "file id mismatch",
+			metadata: `{"id":"different-file","name":"voiceover.mp3","parents":["resolved-folder"],"trashed":false}`,
+			wantErr:  ErrDriveFileIDMismatch, wantStable: delivery.ErrDestinationParentMismatch,
+		},
+		{
+			name:     "name mismatch",
+			metadata: `{"id":"uploaded-voiceover","name":"wrong-name.mp3","parents":["resolved-folder"],"trashed":false}`,
+			wantErr:  ErrDriveFileNameMismatch, wantStable: delivery.ErrDestinationParentMismatch,
+		},
+		{
+			name:     "parent mismatch",
+			metadata: `{"id":"uploaded-voiceover","name":"voiceover.mp3","parents":["wrong-folder"],"trashed":false}`,
+			wantErr:  ErrDriveFileParentMismatch, wantStable: delivery.ErrDestinationParentMismatch,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newPostUploadVerificationServer(tt.metadata)
+			defer server.Close()
+			file, err := os.CreateTemp(t.TempDir(), "voiceover-*.mp3")
+			require.NoError(t, err)
+			_, err = file.WriteString("voiceover bytes")
+			require.NoError(t, err)
+			require.NoError(t, file.Close())
+
+			uploader := &Uploader{
+				Service: postUploadDriveService(t, server.URL),
+				Log:     zap.NewNop(),
+				lookupFunc: func(_ *Uploader, _ context.Context, _, _, _ string) (ExistingFileLookup, error) {
+					return ExistingFileLookup{}, nil
+				},
+			}
+			result, err := uploader.PutFile(context.Background(), PutFileRequest{
+				LocalPath: file.Name(), FolderID: "resolved-folder", Filename: "voiceover.mp3",
+				ConflictPolicy: delivery.ConflictOverwrite,
+			})
+
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, "uploaded-voiceover", result.FileID)
+			} else {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, tt.wantErr)
+				assert.ErrorIs(t, err, tt.wantStable)
+				assert.Nil(t, result)
+			}
+			assert.Equal(t, 1, server.postCalls, "the file must be uploaded exactly once")
+			assert.Equal(t, 1, server.getCalls, "the live Drive metadata gate must run exactly once")
+		})
 	}
 }

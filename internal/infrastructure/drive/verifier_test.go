@@ -285,8 +285,7 @@ func TestUploadVerifier_NameMismatch(t *testing.T) {
 	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
 	verifier := NewUploadVerifier(u)
 	_, err := verifier.Verify(context.Background(), "file-name-mismatch", VerificationParams{ExpectedName: "expected.mp3"})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "name mismatch")
+	require.ErrorIs(t, err, ErrDriveFileNameMismatch)
 }
 
 func TestUploadVerifier_IDMismatch(t *testing.T) {
@@ -311,7 +310,7 @@ func TestUploadVerifier_ParentMismatch(t *testing.T) {
 
 	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
 	verifier := NewUploadVerifier(u)
-	_, err := verifier.Verify(context.Background(), "file-wrong-parent", VerificationParams{ExpectedFolderID: "resolved-folder"})
+	_, err := verifier.Verify(context.Background(), "file-wrong-parent", VerificationParams{ExpectedName: "voice.mp3", ExpectedFolderID: "resolved-folder"})
 	if !errors.Is(err, ErrDriveFileParentMismatch) {
 		t.Fatalf("expected ErrDriveFileParentMismatch, got: %v", err)
 	}
