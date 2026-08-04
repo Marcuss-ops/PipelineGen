@@ -79,6 +79,12 @@ type Engine struct {
 	ollamaGen scriptOllamaGenerator
 	memorySvc memoryGateChecker
 	log       *zap.Logger
+
+	// Segment QA policy is configured at the composition root. Zero values
+	// use the canonical defaults in segment_validation.go.
+	segmentWordsTolerancePercent   float64
+	totalWordsTolerancePercent     float64
+	maxSegmentRegenerationAttempts int
 }
 
 // scriptOllamaGenerator is the narrow interface satisfied by both

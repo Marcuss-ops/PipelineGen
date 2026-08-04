@@ -185,6 +185,18 @@ func validateScriptSegmentShape(sp scriptpkg.ScriptSpec, ref string) []string {
 		if strings.TrimSpace(s.Topic) == "" {
 			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].topic is required", ref, i))
 		}
+		if s.TargetWords < 0 || s.MinWords < 0 || s.MaxWords < 0 {
+			d = append(d, fmt.Sprintf("%s: script_params.segments[%d] target_words/min_words/max_words cannot be negative", ref, i))
+		}
+		if s.MinWords > 0 && s.MaxWords > 0 && s.MinWords > s.MaxWords {
+			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].min_words cannot exceed max_words", ref, i))
+		}
+		if s.TargetWords > 0 && s.MinWords > 0 && s.MinWords > s.TargetWords {
+			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].min_words cannot exceed target_words", ref, i))
+		}
+		if s.TargetWords > 0 && s.MaxWords > 0 && s.MaxWords < s.TargetWords {
+			d = append(d, fmt.Sprintf("%s: script_params.segments[%d].max_words cannot be below target_words", ref, i))
+		}
 	}
 	return d
 }

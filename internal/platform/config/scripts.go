@@ -153,6 +153,16 @@ type ScriptsConfig struct {
 	// engine prompt. PR-CS-1 / FASE 6 (DoD #8).
 	MaxSegmentsCap int `yaml:"max_segments_cap" env:"VELOX_SCRIPTS_MAX_SEGMENTS_CAP" default:"50"`
 
+	// SegmentWordsTolerancePercent derives per-segment bounds when a
+	// segment does not provide explicit min_words/max_words. Default 15.
+	SegmentWordsTolerancePercent float64 `yaml:"segment_words_tolerance_percent" env:"VELOX_SCRIPTS_SEGMENT_WORDS_TOLERANCE_PERCENT" default:"15"`
+	// TotalWordsTolerancePercent derives the aggregate script bounds.
+	// Default 10, matching the strict final script contract.
+	TotalWordsTolerancePercent float64 `yaml:"total_words_tolerance_percent" env:"VELOX_SCRIPTS_TOTAL_WORDS_TOLERANCE_PERCENT" default:"10"`
+	// MaxSegmentRegenerationAttempts bounds retries after the initial
+	// generation. Default 2 (at most three provider calls total).
+	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"2"`
+
 	// Capability gates ScriptFlow wiring and the Remotion shorts renderer.
 	Capability ScriptCapabilityConfig `yaml:"capability"`
 }
@@ -230,6 +240,15 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.MaxSegmentsCap <= 0 {
 		s.MaxSegmentsCap = 50
+	}
+	if s.SegmentWordsTolerancePercent <= 0 {
+		s.SegmentWordsTolerancePercent = 15
+	}
+	if s.TotalWordsTolerancePercent <= 0 {
+		s.TotalWordsTolerancePercent = 10
+	}
+	if s.MaxSegmentRegenerationAttempts <= 0 {
+		s.MaxSegmentRegenerationAttempts = 2
 	}
 	if s.Capability.RenderTimeoutSeconds <= 0 {
 		s.Capability.RenderTimeoutSeconds = 1800

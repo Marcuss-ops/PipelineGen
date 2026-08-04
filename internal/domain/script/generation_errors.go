@@ -38,6 +38,11 @@ var ErrVoiceoverResolveFailed = errors.New("generation: voiceover resolve failed
 // (Ollama call, memory-gate error, script too short).
 var ErrGenerationFailed = errors.New("generation: engine failed")
 
+// ErrSegmentValidationFailed means generated segment text could not satisfy
+// its per-segment bounds or the aggregate word contract after bounded
+// regeneration attempts.
+var ErrSegmentValidationFailed = errors.New("generation: segment validation failed")
+
 // ErrPostprocessFailed wraps any failure from a postprocessor
 // (document creation, image generation, voiceover, entity extraction).
 var ErrPostprocessFailed = errors.New("generation: postprocess failed")
