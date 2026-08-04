@@ -28,10 +28,10 @@ func checkRoutesReal(_ context.Context, deps readinessDeps) checkStatus {
 		return checkStatus{Err: "production composition root is nil — routes check requires real handler wiring"}
 	}
 	if deps.Root.OutboxHandler == nil {
-		return checkStatus{Err: "outbox handler is nil — production wiring missing SetOutboxHandler"}
+		return checkStatus{Err: "outbox handler is nil — production ServerDeps wiring is missing"}
 	}
 	if deps.Root.MediasearchHandler == nil {
-		return checkStatus{Err: "mediasearch handler is nil — production wiring missing SetMediasearchHandler"}
+		return checkStatus{Err: "mediasearch handler is nil — production ServerDeps wiring is missing"}
 	}
 	engine := buildRouterWithProductionWiring(deps)
 	if !engineHasPath(engine, "GET", "/internal/v1/outbox/") {

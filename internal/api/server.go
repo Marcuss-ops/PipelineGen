@@ -152,10 +152,9 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 			router.SetInternalMediaHandler(internalMediaHandler)
 		}
 		// QDRANT-route-constructor (June 2026, PR 3): the outbox + mediasearch
-		// wiring MUST happen here, before Setup() runs. Post-Setup setters
-		// (Server.SetOutboxHandler / Server.SetMediasearchHandler) are
-		// retained for back-compat ONLY and are NOT used by the production
-		// server binary anymore — see cmd/server/main.go for the proof.
+		// wiring MUST happen here, before Setup() runs. ServerDeps is the
+		// sole server-level wiring path; Router receives these handlers
+		// before its route table is finalized.
 		if outboxHandler != nil {
 			router.SetOutboxHandler(outboxHandler)
 		}
@@ -206,7 +205,8 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		router.SetInternalMediaHandler(internalMediaHandler)
 	}
 	// QDRANT-route-constructor (June 2026, PR 3): same pre-Setup wiring as
-	// the cfg != nil branch above. Both branches register the routes
+	// the cfg != nil branch above. ServerDeps is the sole server-level
+	// wiring path. Both branches register the routes
 	// identically — verified by internal/api/routes_test.go::
 	// TestNewServerWithHealth_ProductionShapedRoutes (uses the no-cfg
 	// fallback branch because the test does not want a real *config.Config
@@ -380,39 +380,6 @@ func (s *Server) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 // holds the assets module after WireRegistry runs.
 func (s *Server) SetInternalMediaHandler(h MediaInternalRouter) {
 	s.appRouter.SetInternalMediaHandler(h)
-}
-
-// SetOutboxHandler wires the QDRANT-002 outbox monitoring handler onto
-// the WorkerAuth-protected /internal/v1/outbox/* group.
-// Delegates to Router.SetOutboxHandler.
-//
-// DEPRECATED (QDRANT-route-constructor, June 2026, PR 3):
-// post-Setup wiring is unsafe because router.Setup() has already
-// registered every route. The production binary delegates via
-// NewServerWithHealth with outboxHandler passed in the constructor;
-// callers that rely on this setter will silently 404 on
-// /internal/v1/outbox/*. Kept only for back-compat with the
-// pre-PR-3 binary that called it. Will be removed once
-// cmd/server/main.go has been promoted long enough that a sweep
-// of internal/api/** confirms no remaining caller.
-func (s *Server) SetOutboxHandler(h InternalOutboxRouter) {
-	if s.appRouter == nil {
-		return
-	}
-	s.appRouter.SetOutboxHandler(h)
-}
-
-// SetMediasearchHandler wires the QDRANT-004 mediasearch handler onto
-// the WorkerAuth-protected /internal/v1/media/search route.
-// Delegates to Router.SetMediasearchHandler.
-//
-// DEPRECATED (QDRANT-route-constructor, June 2026, PR 3): see
-// SetOutboxHandler doc for the deprecation rationale.
-func (s *Server) SetMediasearchHandler(h InternalMediaSearchRouter) {
-	if s.appRouter == nil {
-		return
-	}
-	s.appRouter.SetMediasearchHandler(h)
 }
 
 // GetRouter returns the gin router (for testing)
