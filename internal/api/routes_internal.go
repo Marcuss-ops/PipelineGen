@@ -7,10 +7,9 @@ import (
 )
 
 // registerInternalRoutes wires the WorkerAuth-protected /internal/v1
-// group: worker/jobs routes (SetWorkerHandler), the QDRANT-001 internal
-// media sync (SetInternalMediaHandler), the QDRANT-002 outbox monitoring
-// (SetOutboxHandler) and the QDRANT-004 media search
-// (SetMediasearchHandler). All are server-to-server surfaces and MUST
+// group: worker/jobs routes, the QDRANT-001 internal media sync,
+// the QDRANT-002 outbox monitoring and the QDRANT-004 media search.
+// All are server-to-server surfaces and MUST
 // stay on this group — anti-regression test
 // TestRoutes_NoApiInternalV1Prefix forbids any of them leaking under /api.
 func (r *Router) registerInternalRoutes(engine *gin.Engine) {

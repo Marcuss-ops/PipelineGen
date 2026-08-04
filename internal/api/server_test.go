@@ -60,21 +60,15 @@ func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 // (NewServerWithHealth with all 9 params) — NOT NewRouter — so this
 // test catches the exact supervision bug:
 //
-//	If the routes are mounted via server.SetOutboxHandler /
-//	server.SetMediasearchHandler SCREENED OUT of Setup() (because
-//	Setup() runs during the constructor, before the post-Setup
-//	setters are invoked), the gin engine never receives a
-//	HandlerFunc for the three paths. The post-Setup setter pattern
-//	silently drops them, and Gin itself returns 404 for any request
-//	to a path that has no HandlerFunc.
+//	If the routes are not supplied through ServerDeps before Setup()
+//	runs, the gin engine never receives a HandlerFunc for the three
+//	paths and returns 404 for any request to a path that has no
+//	HandlerFunc.
 //
-// The previous release shipped with that bug: cmd/server/main.go
-// called server.SetOutboxHandler / server.SetMediasearchHandler
-// after NewServerWithHealth returned, so /internal/v1/outbox/status,
-// /events, and /internal/v1/media/search all silently 404'd in
-// production. PR 3 fixes the wiring so the handlers are passed to
-// NewServerWithHealth as constructor parameters, where Setup() can
-// register them.
+// The previous release shipped with that bug because handlers were
+// assigned after NewServerWithHealth returned. PR 3 fixes the wiring
+// so the handlers are passed through ServerDeps before Setup(), where
+// the router can register them.
 //
 // Test surface:
 //
