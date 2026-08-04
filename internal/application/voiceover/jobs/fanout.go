@@ -77,14 +77,15 @@ type FanoutDeps struct {
 // parent job's result back into a typed FanoutResult without an
 // intermediate struct.
 type FanoutResult struct {
-	OK                 bool     `json:"ok"`
-	ParentJobID        string   `json:"parent_job_id"`
-	RequestID          string   `json:"request_id"`
-	TotalOutputs       int      `json:"total_outputs"`
-	EnqueuedCount      int      `json:"enqueued_count"`
-	FailedEnqueueCount int      `json:"failed_enqueue_count"`
-	ChildJobIDs        []string `json:"child_job_ids"`
-	PerLanguage        []string `json:"per_language"`
+	OK                 bool                         `json:"ok"`
+	ParentJobID        string                       `json:"parent_job_id"`
+	RequestID          string                       `json:"request_id"`
+	TotalOutputs       int                          `json:"total_outputs"`
+	EnqueuedCount      int                          `json:"enqueued_count"`
+	FailedEnqueueCount int                          `json:"failed_enqueue_count"`
+	ChildJobIDs        []string                     `json:"child_job_ids"`
+	PerLanguage        []string                     `json:"per_language"`
+	StageProgress      map[string]job.StageProgress `json:"stage_progress,omitempty"`
 }
 
 // Compile-time assertion: *appjobs.Service satisfies Enqueuer.
@@ -279,6 +280,21 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		zap.Int("enqueued", result.EnqueuedCount),
 		zap.Int("failed", result.FailedEnqueueCount))
 
+	stageStatuses := make([]job.StageLanguageStatus, 0, total)
+	for i, language := range result.PerLanguage {
+		status := job.StageQueued
+		childJobID := ""
+		if i < len(result.ChildJobIDs) {
+			childJobID = result.ChildJobIDs[i]
+		}
+		if childJobID == "" {
+			status = job.StageFailed
+		}
+		stageStatuses = append(stageStatuses, job.StageLanguageStatus{
+			Stage: job.StageVoiceover, Language: language, Status: status, JobID: childJobID,
+		})
+	}
+	result.StageProgress = job.AggregateStageProgressByStage(stageStatuses)
 	if !result.OK {
 		err := fmt.Errorf("FanoutVoiceoversUseCase.Execute: parent_job_id=%s partial fan-out (%d/%d failed)",
 			parentJobID, result.FailedEnqueueCount, total)

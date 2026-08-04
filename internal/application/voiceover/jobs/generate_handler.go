@@ -283,6 +283,7 @@ func toFanoutResultMap(res *FanoutResult, parentJobID string) map[string]any {
 		"failed_enqueue_count": res.FailedEnqueueCount,
 		"child_job_ids":        res.ChildJobIDs,
 		"per_language":         res.PerLanguage,
+		"stage_progress":       res.StageProgress,
 		"parent_state":         string(ps),
 	}
 	return m

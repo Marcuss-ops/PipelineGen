@@ -129,11 +129,17 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 
 	// Step 3: extract child job IDs.
 	childIDs := parentResult.ChildJobIDs
-	// Filter empty strings (failed-enqueue placeholders).
+	// Filter empty strings (failed-enqueue placeholders), retaining the
+	// original child→language relationship for post-aggregation telemetry.
+	childLanguages := make(map[string]string, len(childIDs))
 	filtered := make([]string, 0, len(childIDs))
-	for _, id := range childIDs {
-		if id != "" {
-			filtered = append(filtered, id)
+	for index, id := range childIDs {
+		if id == "" {
+			continue
+		}
+		filtered = append(filtered, id)
+		if index < len(parentResult.PerLanguage) {
+			childLanguages[id] = parentResult.PerLanguage[index]
 		}
 	}
 	childIDs = filtered
@@ -290,6 +296,27 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	// for optimistic locking. A concurrent FinalizeAggregateParent would have
 	// bumped revision, causing a 0 rows-affected → CAS conflict.
 
+	stageStatuses := make([]job.StageLanguageStatus, 0, len(childIDs))
+	for i, childID := range childIDs {
+		language := childLanguages[childID]
+		if language == "" && i < len(parentResult.PerLanguage) {
+			// Legacy parents may not have aligned per-language telemetry;
+			// retain the old positional fallback only when no explicit
+			// child mapping is available.
+			language = parentResult.PerLanguage[i]
+		}
+		status := job.StageFailed
+		for _, succeededID := range sm.Succeeded() {
+			if succeededID == childID {
+				status = job.StageCompleted
+				break
+			}
+		}
+		stageStatuses = append(stageStatuses, job.StageLanguageStatus{
+			Stage: job.StageVoiceover, Language: language, Status: status, JobID: childID,
+		})
+	}
+
 	aggResult := VoiceoverAggregateResult{
 		ParentState:         newPS,
 		TotalChildren:       len(childIDs),
@@ -298,6 +325,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		RequiredFailedCount: requiredFailed,
 		StateMachineVersion: j.Revision,
 		ChildIDs:            childIDs,
+		StageProgress:       job.AggregateStageProgressByStage(stageStatuses),
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil

@@ -51,6 +51,7 @@ func (a *ParentAggregator) finalizeParent(ctx context.Context, parentJobID strin
 		"succeeded_count":       agg.SucceededCount,
 		"failed_count":          agg.FailedCount,
 		"required_failed_count": agg.RequiredFailedCount,
+		"stage_progress":        agg.StageProgress,
 	}
 
 	targetStatus := job.StatusSucceeded
