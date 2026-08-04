@@ -30,6 +30,17 @@ type stubQdrantScanner struct {
 	err     error
 }
 
+type noCursorScanner struct {
+	page []ScrollPoint
+}
+
+func (s *noCursorScanner) ScrollPoints(_ context.Context, _ string, _ string, limit int) ([]ScrollPoint, error) {
+	if len(s.page) > limit {
+		return s.page[:limit], nil
+	}
+	return s.page, nil
+}
+
 func (s *stubQdrantScanner) ScrollPoints(_ context.Context, _ string, _ string, limit int) ([]ScrollPoint, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -350,6 +361,9 @@ func TestClassify_MultiPageWalk(t *testing.T) {
 	if len(r.Points) > 5 {
 		t.Errorf("maxPointAudits cap should bound sample: got %d, want ≤ 5", len(r.Points))
 	}
+	if !r.CompleteScan {
+		t.Fatal("cursor reached end-of-collection: expected complete scan")
+	}
 }
 
 func TestClassify_EmptyCollection(t *testing.T) {
@@ -364,6 +378,9 @@ func TestClassify_EmptyCollection(t *testing.T) {
 	if r.Audit.NonMediaRow != 0 || r.Audit.MetadataJSON != 0 {
 		t.Errorf("Empty collection: all counters must be zero")
 	}
+	if !r.CompleteScan {
+		t.Fatal("empty first page with no cursor must count as complete scan")
+	}
 }
 
 func TestClassify_ScannerErrorPropagates(t *testing.T) {
@@ -374,6 +391,20 @@ func TestClassify_ScannerErrorPropagates(t *testing.T) {
 	}
 	if r == nil {
 		t.Errorf("partial report should still be returned on scanner error")
+	}
+	if r.CompleteScan {
+		t.Error("failed scan must not be marked complete")
+	}
+}
+
+func TestClassify_NoCursorIsPartial(t *testing.T) {
+	scanner := &noCursorScanner{page: []ScrollPoint{makePayload(map[string]any{"source": "video"})}}
+	r, err := Classify(context.Background(), scanner, "media_assets_current", 10)
+	if err != nil {
+		t.Fatalf("Classify: %v", err)
+	}
+	if r.CompleteScan {
+		t.Fatal("scanner without a cursor cannot prove complete coverage")
 	}
 }
 

@@ -27,9 +27,10 @@ type RetentionResult = qdrantdr.RetentionResult
 
 // VerifyReport is the canonical pre-switch verification report.
 // Produced by Verifier.VerifyReindex; consumed by RestoreService to
-// gate the alias switch. Fields mirror qdrant.SwitchReport (the
-// infra-side type) — the VerifierAdapter in dr_adapter.go performs
-// the field-by-field translation.
+// gate the alias switch. It is intentionally narrower than
+// qdrant.schema.SwitchReport; the VerifierAdapter performs the explicit
+// boundary projection so the DR use case does not depend on infra-only
+// scan details.
 type VerifyReport struct {
 	Ready           bool     `json:"ready"`
 	ExpectedPoints  int      `json:"expected_points"`

@@ -152,19 +152,7 @@ func (a *qdrantCleanerAdapter) CleanLocators(ctx context.Context, apply bool) (*
 	if err != nil {
 		return nil, err
 	}
-	if res == nil {
-		return nil, nil
-	}
-	return &maintenance.LocatorCleanupReport{
-		Collection:          res.Collection,
-		TotalPointsScrolled: res.TotalPointsScrolled,
-		PointsWithDriveLink: res.PointsWithDriveLink,
-		PointsWithLocalPath: res.PointsWithLocalPath,
-		PointsAffected:      res.PointsAffected,
-		KeysRemoved:         res.KeysRemoved,
-		BatchCount:          res.BatchCount,
-		Errors:              res.Errors,
-	}, nil
+	return res, nil
 }
 
 // Compile-time pin (godlike/06 SSOT audit-pin discipline).

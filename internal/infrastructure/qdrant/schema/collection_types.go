@@ -24,6 +24,8 @@
 // reference resolves cleanly).
 package schema
 
+import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+
 // ── Config ───────────────────────────────────────────────────────────
 
 // Config holds Qdrant client configuration.
@@ -339,44 +341,7 @@ type GateDetail struct {
 	Description string `json:"description"`
 }
 
-// LocatorCleanupReport is the machine-readable result of a locator
-// payload cleanup scan (dry-run or apply). It is the canonical artefact
-// produced by LocatorCleaner.CleanLocators.
-type LocatorCleanupReport struct {
-	// DryRun is true when no mutations were performed.
-	DryRun bool `json:"dry_run"`
-
-	// Collection is the Qdrant collection that was scanned.
-	Collection string `json:"collection"`
-
-	// TotalPointsScrolled is the total number of points examined.
-	TotalPointsScrolled int `json:"total_points_scrolled"`
-
-	// PointsWithDriveLink is the count of points whose payload still
-	// contained the legacy "drive_link" key.
-	PointsWithDriveLink int `json:"points_with_drive_link"`
-
-	// PointsWithLocalPath is the count of points whose payload still
-	// contained the legacy "local_path" key.
-	PointsWithLocalPath int `json:"points_with_local_path"`
-
-	// PointsAffected is the number of distinct points with at least
-	// one legacy key (drive_link OR local_path).
-	PointsAffected int `json:"points_affected"`
-
-	// KeysRemoved is the total number of payload key deletions sent
-	// to the Qdrant API. In dry-run mode this is zero.
-	KeysRemoved int `json:"keys_removed"`
-
-	// BatchCount is the number of batch payload/delete calls made.
-	BatchCount int `json:"batch_count"`
-
-	// AllocCapacity records the final capacity of the affectedIDs slice
-	// after pre-allocation and ratio refinement (P4 PREALLOC-CLEANER).
-	// It is set by CleanLocators and asserted by tests.
-	AllocCapacity int `json:"alloc_capacity,omitempty"`
-
-	// Errors contains any non-fatal errors encountered during scroll
-	// or delete phases.
-	Errors []string `json:"errors,omitempty"`
-}
+// LocatorCleanupReport is a shared pure-data alias. The canonical shape
+// lives in internal/domain/qdrantdr so application maintenance and the
+// infrastructure cleaner can pass the report without manual field copies.
+type LocatorCleanupReport = qdrantdr.LocatorCleanupReport

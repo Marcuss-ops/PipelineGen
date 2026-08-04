@@ -55,6 +55,9 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 	if report == nil {
 		return nil
 	}
+	if !report.CompleteScan {
+		return fmt.Errorf("delete-invalid aborted: audit report is incomplete; no deletion events were dispatched")
+	}
 
 	// Filter: exclude points whose ONLY finding is LegacyLocatorPayload.
 	// Points with locator payload AND other categories are still included —

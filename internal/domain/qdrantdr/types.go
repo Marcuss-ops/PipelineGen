@@ -61,3 +61,24 @@ type RetentionResult struct {
 	// because of protected_rollback_target or keep_last_n floor.
 	ProtectedKept []string `json:"protected_kept,omitempty"`
 }
+
+// LocatorCleanupReport is the shared pure-data result of scanning Qdrant
+// points for legacy locator payload keys. Both the infrastructure cleaner
+// and the application maintenance port use this exact shape; keeping it in
+// the dependency-free domain package makes the adapter a pass-through rather
+// than a field-by-field projection.
+type LocatorCleanupReport struct {
+	DryRun bool `json:"dry_run"`
+	// CompleteScan is true only when the cleaner reached Qdrant's empty
+	// cursor without a scroll error. Consumers must fail closed when false.
+	CompleteScan        bool     `json:"complete_scan"`
+	Collection          string   `json:"collection"`
+	TotalPointsScrolled int      `json:"total_points_scrolled"`
+	PointsWithDriveLink int      `json:"points_with_drive_link"`
+	PointsWithLocalPath int      `json:"points_with_local_path"`
+	PointsAffected      int      `json:"points_affected"`
+	KeysRemoved         int      `json:"keys_removed"`
+	BatchCount          int      `json:"batch_count"`
+	AllocCapacity       int      `json:"alloc_capacity,omitempty"`
+	Errors              []string `json:"errors,omitempty"`
+}

@@ -126,6 +126,7 @@ func StringifyReport(r *Report) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Collection:        %s\n", r.Collection)
 	fmt.Fprintf(&b, "Points scrolled:   %d\n", r.TotalPoints)
+	fmt.Fprintf(&b, "Complete scan:     %t\n", r.CompleteScan)
 	fmt.Fprintf(&b, "Non-media rows:    %d\n", r.Audit.NonMediaRow)
 	fmt.Fprintf(&b, "metadata.json:     %d\n", r.Audit.MetadataJSON)
 	fmt.Fprintf(&b, "Hidden/temp:       %d\n", r.Audit.HiddenTempFiles)
