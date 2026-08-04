@@ -151,8 +151,12 @@ func reprocessSourceURL(clip *asset.Asset, source string) string {
 	if v := strings.TrimSpace(clip.SourceURL); v != "" && !isDerivedDriveURL(v, source) {
 		return v
 	}
-	for _, key := range []string{"source_url", "youtube_url", "url"} {
-		if v := strings.TrimSpace(clip.GetMetadataString(key)); v != "" && !isDerivedDriveURL(v, source) {
+	for _, v := range []string{
+		clip.MetadataSourceURL(),
+		clip.YouTubeURL(),
+		clip.GetMetadataString("url"), // legacy alias retained for pre-convergence rows
+	} {
+		if v = strings.TrimSpace(v); v != "" && !isDerivedDriveURL(v, source) {
 			return v
 		}
 	}

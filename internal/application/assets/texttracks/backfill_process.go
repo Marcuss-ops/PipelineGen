@@ -32,6 +32,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+// assetContentHash returns the canonical content fingerprint for
+// subtitle artifact identity. content_hash is the dispatcher-aware
+// Tier 1 value; file_hash remains the intentional legacy fallback for
+// rows written before content_hash was introduced.
+func assetContentHash(a *asset.Asset) string {
+	if a == nil {
+		return ""
+	}
+	if hash := a.ContentHash(); hash != "" {
+		return hash
+	}
+	return a.FileHash()
+}
+
 // ProcessAsset runs the per-clip backfill pipeline:
 //
 //  1. Look up the source track in asset_text_tracks for the
@@ -221,15 +235,7 @@ func (s *BackfillService) ProcessAsset(
 			}
 		}
 
-		clipContentHash := ""
-		if assetItem.Metadata != nil {
-			if ch, ok := assetItem.Metadata["content_hash"].(string); ok {
-				clipContentHash = ch
-			}
-		}
-		if clipContentHash == "" {
-			clipContentHash = assetItem.FileHash()
-		}
+		clipContentHash := assetContentHash(assetItem)
 		if clipContentHash == "" {
 			clipContentHash = assetItem.ID
 		}

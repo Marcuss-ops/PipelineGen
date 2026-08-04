@@ -95,15 +95,15 @@ func registerClip(
 	clip.SetDownloadLink(pubRes.DownloadLink)
 	clip.SetDriveFileID(pubRes.FileID)
 	if cand.Transcript != "" {
-		if clip.Metadata == nil {
-			clip.Metadata = make(map[string]any)
-		}
 		const maxLen = 200000
 		if len(cand.Transcript) > maxLen {
-			clip.Metadata["clean_transcript"] = cand.Transcript[:maxLen]
+			clip.SetCleanTranscript(cand.Transcript[:maxLen])
+			if clip.Metadata == nil {
+				clip.Metadata = make(map[string]any)
+			}
 			clip.Metadata["transcript_truncated"] = true
 		} else {
-			clip.Metadata["clean_transcript"] = cand.Transcript
+			clip.SetCleanTranscript(cand.Transcript)
 		}
 	}
 

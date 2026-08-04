@@ -28,7 +28,7 @@ func existingAssetToImportResponse(a *asset.Asset) *ImportClipResponse {
 		resp.Location, _ = a.Metadata["location"].(string)
 		resp.Categories = stringSliceFromMetadata(a.Metadata, "provider_categories")
 		resp.PreviewURL, _ = a.Metadata["preview_url"].(string)
-		resp.Description, _ = a.Metadata["description"].(string)
+		resp.Description = a.Description()
 	}
 	return resp
 }
@@ -105,7 +105,7 @@ func candidateToAsset(c *Candidate, clipPageURL string) *asset.Asset {
 	}
 	clip.RebuildTags()
 	if c.Description != "" {
-		clip.Metadata["description"] = c.Description
+		clip.SetDescription(c.Description)
 	}
 	if c.ThumbnailURL != "" {
 		clip.ThumbnailURL = c.ThumbnailURL
