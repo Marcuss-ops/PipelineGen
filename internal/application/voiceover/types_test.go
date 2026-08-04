@@ -1,6 +1,7 @@
 package voiceover
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -38,6 +39,9 @@ func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
 	if dest["folder_id"] != "folder-123" || dest["create_subfolder"] != true {
 		t.Fatalf("unexpected destination payload: %#v", dest)
 	}
+	if _, present := dest["kind"]; present {
+		t.Fatalf("legacy destination should omit empty kind, got %#v", dest["kind"])
+	}
 
 	meta, ok := payload["metadata"].(map[string]any)
 	if !ok {
@@ -45,6 +49,41 @@ func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
 	}
 	if meta["source"] != "manual" {
 		t.Fatalf("expected metadata to be preserved, got %#v", meta)
+	}
+}
+
+func TestBatchRequestPayloadMapPreservesExplicitDestinationKind(t *testing.T) {
+	req := &BatchRequest{Destination: &DestinationRequest{
+		Kind:     string(KindExplicit),
+		FolderID: "resolved-folder",
+	}}
+
+	payload := req.PayloadMap()
+	dest, ok := payload["destination"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected destination map, got %#v", payload["destination"])
+	}
+	if dest["kind"] != string(KindExplicit) {
+		t.Fatalf("destination kind was not preserved: got %#v", dest["kind"])
+	}
+}
+
+func TestBatchRequestPayloadMapExplicitKindSurvivesJSONRoundTrip(t *testing.T) {
+	req := &BatchRequest{Destination: &DestinationRequest{
+		Kind:     string(KindExplicit),
+		FolderID: "resolved-folder",
+	}}
+	payload := req.PayloadMap()
+	encoded, err := json.Marshal(payload["destination"])
+	if err != nil {
+		t.Fatalf("marshal destination: %v", err)
+	}
+	var roundTripped DestinationRequest
+	if err := json.Unmarshal(encoded, &roundTripped); err != nil {
+		t.Fatalf("unmarshal destination: %v", err)
+	}
+	if roundTripped.Kind != string(KindExplicit) || roundTripped.FolderID != "resolved-folder" {
+		t.Fatalf("destination intent changed after round-trip: %#v", roundTripped)
 	}
 }
 

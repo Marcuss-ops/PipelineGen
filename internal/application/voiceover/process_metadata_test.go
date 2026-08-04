@@ -176,6 +176,9 @@ func TestBatchRequest_RoundTripsStyleGroupAndMetadata(t *testing.T) {
 	if destPayload["style_group"] != "cinematic" {
 		t.Errorf("payload destination.style_group = %v; want %q", destPayload["style_group"], "cinematic")
 	}
+	if _, present := destPayload["kind"]; present {
+		t.Errorf("payload destination.kind should be omitted for legacy request, got %v", destPayload["kind"])
+	}
 	voiceOverrides, ok := payload["voice_overrides"].(map[string]string)
 	if !ok {
 		if raw, exists := payload["voice_overrides"]; exists {

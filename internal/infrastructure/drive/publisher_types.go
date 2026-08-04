@@ -90,7 +90,11 @@ type PutFileRequest struct {
 
 // PutFileResult is the structured return value.
 type PutFileResult struct {
-	FileID       string
+	FileID string
+	// Filename is the actual Drive name, including any conflict-rename
+	// suffix. It lets post-upload verification validate the name without
+	// comparing a renamed upload to the original requested name.
+	Filename     string
 	WebViewLink  string
 	DownloadLink string
 	MD5Checksum  string

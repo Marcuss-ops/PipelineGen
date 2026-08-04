@@ -32,16 +32,15 @@
 // per-item pipeline. Pre-DRY the per-item body carried the full 5-stage
 // inline code; post-DRY the per-item body just (1) validates, (2)
 // resolves destination with DefaultFolderResolver fallback, (3) builds
-// a ProcessSegmentCommand, (4) delegates to ProcessSegmentUseCase.Execute,
-// and (5) wraps the plain error in a typed PipelineError based on the
-// error-message prefix (preserves the per-item path's stage
-// classification contract pinned by P0.1 Fase 1b).
+// a ProcessSegmentCommand, and (4) delegates to ProcessSegmentUseCase.Execute.
+// The shared runner owns typed stage classification; this wrapper propagates
+// PipelineError without parsing human-readable error text.
 package voiceover
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
@@ -228,9 +227,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 //     invariant pins this at the caller layer).
 //  4. Builds a ProcessSegmentCommand neutral DTO and calls
 //     u.processSeg.Execute(ctx, cmd).
-//  5. Wraps the plain error in a typed PipelineError based on the
-//     error-message prefix (preserves the per-item path's stage
-//     classification contract pinned by P0.1 Fase 1b).
+//  5. Propagates the typed PipelineError produced by the shared runner.
 //
 // The pre-flight, destination resolution, and ID derivation are
 // caller-side concerns that BOTH the batch and per-item paths share
@@ -247,7 +244,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 // Stage 0 failures (nil item, validate, destination resolve) return
 // (nil or *VoiceoverItemResult, *PipelineError). Stage 1-4 failures
 // (delegated to ProcessSegmentUseCase) return (out, *PipelineError) with
-// the stage classification derived from the error-message prefix.
+// structured stage and retryability fields.
 func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error) {
 	// Pre-flight: nil-safe + validate gate.
 	if item == nil {
@@ -266,18 +263,25 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	dest, err := ResolveDestinationWithFallback(ctx, item.Destination,
 		u.deps.Pipeline.DestinationResolver, u.deps.Recovery.DefaultFolderResolver, u.deps.Logger)
 	if err != nil {
-		return &VoiceoverItemResult{
-			Language: item.Language,
-			Status:   StatusFailed,
-			Error:    fmt.Sprintf("destination_resolve_failed: %v", err),
-		}, newPipelineError(StageDestinationResolve, false, err)
+		out := &VoiceoverItemResult{
+			Language:  item.Language,
+			Status:    StatusFailed,
+			ErrorCode: string(FailureDestinationUnavailable),
+			Error:     fmt.Sprintf("destination_resolve_failed: %v", err),
+		}
+		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+			out.ErrorCode = VoiceoverDestinationUnavailableCode
+			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationUnavailableCode, err)
+		}
+		return out, newPipelineError(StageDestinationResolve, false, err)
 	}
 	if dest == nil || dest.FolderID == "" {
 		return &VoiceoverItemResult{
-			Language: item.Language,
-			Status:   StatusFailed,
-			Error:    "missing_folder_id: voiceover destination has no FolderID for upload",
-		}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_folder_id"))
+			Language:  item.Language,
+			Status:    StatusFailed,
+			ErrorCode: string(FailureMissingFolder),
+			Error:     "missing_folder_id: voiceover destination has no FolderID for upload",
+		}, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))
 	}
 
 	// PR-VO-PERITEM-OUTPUTDIR (July 2026): the resolved destination
@@ -333,45 +337,23 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 
 	out, err := u.processSeg.Execute(ctx, cmd)
 	if err != nil {
-		// Wrap the plain error from ProcessSegmentUseCase in a typed
-		// PipelineError based on the error prefix. The ProcessSegmentUseCase
-		// sets out.Error with a stable prefix per stage (see
-		// usecase/process_segment.go for the prefix table). The mapping
-		// preserves the pre-DRY per-item path's stage classification
-		// contract (P0.1 Fase 1b, July 2026).
-		var stage Stage
-		var retryable bool
-		switch {
-		case strings.HasPrefix(out.Error, "tts_failed:"):
-			stage, retryable = StageTTS, true
-		case strings.HasPrefix(out.Error, "audio_post_process_failed:"):
-			stage, retryable = StageAudioPost, false
-		case strings.HasPrefix(out.Error, "no_local_payload:"):
-			stage, retryable = StageTTS, false
-		case strings.HasPrefix(out.Error, "upload_failed:"):
-			stage, retryable = StageUpload, true
-		case strings.HasPrefix(out.Error, "tx_begin_failed:"):
-			stage, retryable = StageTxBegin, true
-		case strings.HasPrefix(out.Error, "finalize_failed:"):
-			stage, retryable = StageTxCommit, true
-		case strings.HasPrefix(out.Error, "tx_commit_failed:"):
-			stage, retryable = StageTxCommit, true
-		case strings.HasPrefix(out.Error, "missing_folder_id:"):
-			stage, retryable = StageDestinationResolve, false
-		default:
-			// Unknown prefix — surface as StageTxCommit (the closest
-			// generic stage) + retryable=true. Caller can re-classify
-			// by inspecting the error message if needed.
-			stage, retryable = StageTxCommit, true
+		// ProcessSegmentUseCase owns the stage classification. Propagate
+		// its typed PipelineError unchanged; no caller parses Error() text.
+		var pipelineErr *PipelineError
+		if errors.As(err, &pipelineErr) {
+			u.deps.Logger.Warn("voiceover.processItem: pipeline run failed",
+				zap.String("language", string(item.Language)),
+				zap.String("request_id", item.RequestID),
+				zap.String("stage", string(pipelineErr.Stage)),
+				zap.Bool("retryable", pipelineErr.Retryable),
+				zap.String("error_code", string(pipelineErr.FailureCode())),
+				zap.String("error", out.Error),
+				zap.Error(err))
+			return out, err
 		}
-		u.deps.Logger.Warn("voiceover.processItem: pipeline run failed",
-			zap.String("language", string(item.Language)),
-			zap.String("request_id", item.RequestID),
-			zap.String("stage", string(stage)),
-			zap.Bool("retryable", retryable),
-			zap.String("error", out.Error),
-			zap.Error(err))
-		return out, newPipelineError(stage, retryable, err)
+		// Every canonical runner failure must be typed. Keep this
+		// defensive branch fail-closed if a future implementation drifts.
+		return out, newPipelineError(StageTxCommit, true, err)
 	}
 
 	u.deps.Logger.Info("voiceover.processItem: success",

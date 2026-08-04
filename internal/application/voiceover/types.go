@@ -110,6 +110,9 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 			"subfolder_name":   r.Destination.SubfolderName,
 			"create_subfolder": r.Destination.CreateSubfolder,
 		}
+		if r.Destination.Kind != "" {
+			destPayload["kind"] = r.Destination.Kind
+		}
 		if r.Destination.StyleGroup != "" {
 			destPayload["style_group"] = string(r.Destination.StyleGroup)
 		}
@@ -213,6 +216,7 @@ type BatchResponse struct {
 	RequestID string      `json:"request_id"`
 	Items     []BatchItem `json:"items"`
 	Error     string      `json:"error,omitempty"`
+	ErrorCode string      `json:"error_code,omitempty"`
 }
 
 type BatchItem struct {
@@ -229,7 +233,7 @@ type BatchItem struct {
 	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
 	// byte-equivalent with the pre-refactor string field.
 	Language Language `json:"language"`
-	//
+	Status   Status   `json:"status"`
 	// PR-VO-AUDIT-P01 (June 2026): the legacy checks
 	// `if strings.TrimSpace(item.Status) == "failed"` (process.go)
 	// + `if item.Status == "failed"` (stages.go) silently missed
@@ -240,8 +244,13 @@ type BatchItem struct {
 	// + appends the specific FailureCode to item.Errors so the
 	// forensic trail is preserved without affecting the aggregate
 	// OK=false contract (ok = ok && item.Status == StatusCompleted && item.Error == "").
-	Status Status `json:"status"`
-	Error  string `json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
+	// ErrorCode is the stable machine-readable failure code propagated
+	// from the per-item pipeline. In particular, destination integrity
+	// failures must remain visible on the batch/API result and not only
+	// in the child-job envelope.
+	ErrorCode string `json:"error_code,omitempty"`
+
 	// Errors is the structured failure history. fail() appends the
 	// call's FailureCode so callers can correlate the canonical
 	// StatusFailed with the specific failure mode. omitempty so

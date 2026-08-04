@@ -119,6 +119,15 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 		AssetID:     cmd.ID,
 		ProjectID:   cmd.Project,
 		Language:    cmd.Language,
+		// FolderID is the request-local voiceover ROOT. Keep the canonical
+		// voiceover path builder active so the publisher creates
+		// <root>/<project>/<language> instead of uploading directly into
+		// the root and bypassing the language subdirectories.
+		RootFolderOverride: cmd.FolderID,
+		// Voiceover is an immutable/versioned artifact. Resolve the
+		// collision policy here so an already-resolved destination does
+		// not require the Publisher to consult its registry again.
+		ConflictPolicy: delivery.ConflictSkip,
 	}
 	res, err := a.publisher.Publish(ctx, req)
 	if err != nil {

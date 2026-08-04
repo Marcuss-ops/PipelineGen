@@ -17,6 +17,7 @@ package voiceover
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -220,6 +221,9 @@ func (u *GenerateVoiceoversUseCase) Execute(ctx context.Context, cmd *GenerateVo
 	if err != nil {
 		result.OK = false
 		result.Error = fmt.Sprintf("destination resolve: %v", err)
+		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+			result.ErrorCode = VoiceoverDestinationUnavailableCode
+		}
 		result.CompletedAt = time.Now().UTC()
 		return result, fmt.Errorf("GenerateVoiceoversUseCase.Execute: resolve destination: %w", err)
 	}

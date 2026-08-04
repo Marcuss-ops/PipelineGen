@@ -31,6 +31,7 @@ package voiceover
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -134,7 +135,15 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 				zap.String("restored", restoreIdent),
 				zap.Error(err))
 		}
-		return nil, fmt.Errorf("GenerateBatch: resolve destination: %w", err)
+		code := ""
+		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+			code = VoiceoverDestinationUnavailableCode
+		}
+		return &BatchResponse{
+			OK:        false,
+			Error:     fmt.Sprintf("GenerateBatch: resolve destination: %v", err),
+			ErrorCode: code,
+		}, fmt.Errorf("GenerateBatch: resolve destination: %w", err)
 	}
 	dest = d
 

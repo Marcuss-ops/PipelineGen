@@ -235,6 +235,35 @@ func TestResolveDestinationWithFallback(t *testing.T) {
 	}
 }
 
+// Explicit destination failures are terminal: the configured default must
+// never be consulted after an explicit request has been supplied.
+type failingDestinationResolver struct {
+	err error
+}
+
+func (r failingDestinationResolver) Resolve(context.Context, *DestinationRequest) (*ResolvedDestination, error) {
+	return nil, r.err
+}
+
+func TestResolveDestinationWithFallback_ExplicitFailureDoesNotUseDefault(t *testing.T) {
+	defaultResolver := &stubDefaultFolderResolver{folderID: "historical-root", ok: true}
+	resolverErr := errors.New("explicit Drive folder is unavailable")
+
+	resolved, err := ResolveDestinationWithFallback(
+		context.Background(),
+		&DestinationRequest{Kind: string(KindExplicit), FolderID: "requested-folder"},
+		failingDestinationResolver{err: resolverErr},
+		defaultResolver,
+		zap.NewNop(),
+	)
+
+	assert.Contains(t, err.Error(), resolverErr.Error())
+	assert.ErrorIs(t, err, ErrVoiceoverDestinationUnavailable)
+	assert.Nil(t, resolved)
+	assert.Zero(t, defaultResolver.resolveCalls,
+		"an explicit destination failure must not consult the configured default")
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Test 4: Execute full 4-stage success (TTS → AudioPost → Publish → Finalize)
 // ─────────────────────────────────────────────────────────────────────────

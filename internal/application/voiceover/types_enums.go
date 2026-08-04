@@ -69,6 +69,13 @@ const (
 	// an error (Python crash, edge-tts bridge failure, FFmpeg
 	// post-process error, etc.).
 	FailureTTS FailureCode = "tts_failed"
+	// FailureAudioPost — audio post-processing failed after synthesis.
+	FailureAudioPost FailureCode = "audio_post_process_failed"
+	// FailureVoiceRegistry — the canonical language registry was
+	// missing or did not authorize a usable TTS voice. This is a
+	// permanent configuration failure; the bridge must not invent a
+	// fallback voice.
+	FailureVoiceRegistry FailureCode = "voice_registry_unavailable"
 	// FailureLifecycleUnavailable — destinationStage: lifecycleService
 	// is nil (composition root did not wire it).
 	FailureLifecycleUnavailable FailureCode = "lifecycle_unavailable"
@@ -83,6 +90,14 @@ const (
 	// returned an error (Drive upload failed, dedupe gate hard-
 	// rejected, etc.).
 	FailureUpload FailureCode = "upload_failed"
+	// FailureDestinationMismatch — Drive confirmed that the uploaded
+	// file is not parented by the folder resolved for this voiceover.
+	// This is a hard integrity failure; no post-upload move is allowed.
+	FailureDestinationMismatch FailureCode = "VOICEOVER_DESTINATION_MISMATCH"
+	// FailureDestinationUnavailable — the requested voiceover destination
+	// could not be resolved. Explicit requests never fall back to config
+	// or historical roots.
+	FailureDestinationUnavailable FailureCode = "VOICEOVER_DESTINATION_UNAVAILABLE"
 	// FailureDBUnavailable — finalizeStage: voiceoverRepo is nil
 	// (composition root did not wire it).
 	FailureDBUnavailable FailureCode = "db_unavailable"
@@ -100,6 +115,9 @@ const (
 	FailureOutboxEnqueue FailureCode = "outbox_enqueue_failed"
 	// FailureTxCommit — finalizeStage: tx.Commit returned an error.
 	FailureTxCommit FailureCode = "tx_commit_failed"
+	// FailureFinalize — the finalizer rejected the atomic persistence
+	// command before commit. This is distinct from a commit failure.
+	FailureFinalize FailureCode = "finalize_failed"
 	// FailureReconciliationRequired (Audit P0.5, July 2026): the
 	// post-commit verification surfaced a severe divergence — the
 	// canonical voiceovers row itself is missing after the tx

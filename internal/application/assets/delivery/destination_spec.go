@@ -35,6 +35,15 @@
 // (godlike/06 SSOT).
 package delivery
 
+import "errors"
+
+// ErrDestinationParentMismatch is returned when a live Drive upload
+// verification reports that the uploaded file has no parent equal to
+// the already-resolved destination folder. Publishers and callers must
+// fail the operation; they must not repair the location by moving the
+// file after upload.
+var ErrDestinationParentMismatch = errors.New("delivery: uploaded file parent does not match resolved destination")
+
 // DestinationSpec is the typed seam for the canonical Drive publish
 // flow: RenditionSet + DestinationSpec → PublicationReceipt.
 //

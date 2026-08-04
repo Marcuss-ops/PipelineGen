@@ -97,8 +97,11 @@ type VoiceoverCleanupDriver interface {
 //     media_assets.id primary key)
 //
 // Conditional fields:
-//   - old_drive_file_id + new_drive_file_id: when both non-empty AND
-//     differ, the handler schedules a Drive delete on old_drive_file_id.
+//   - old_drive_file_id + new_drive_file_id: when old is non-empty
+//     and differs from new, the handler schedules a Drive delete on
+//     old_drive_file_id. For a post-publish orphan, old is the orphan
+//     and new is empty; this is intentionally distinct from a normal
+//     first-time finalize, which never emits cleanup with old set.
 //     Equal values → no-op (the swap landed on the same Drive file;
 //     there is no orphan). Both empty → no-op (no prior row existed).
 //   - old_local_paths: list of OLD audio paths (LocalPath +
@@ -169,8 +172,8 @@ func (h *VoiceoverCleanupHandler) IdempotencyKey() string {
 }
 
 // Handle parses the v1 envelope, performs the no-op gate
-// (old==new|both-empty), then deletes the OLD Drive file (only when
-// old != new AND old != "") and removes the OLD local audio paths.
+// (old==new|both-empty), then deletes the OLD/target Drive file (only
+// when old != new AND old != "") and removes the OLD local audio paths.
 // The pool retries transient errors per its exponential backoff.
 // Terminal schema errors dead-letter via outboxevents.NewTerminalError
 // (godlike/07 — retry cannot conjure a missing field).
