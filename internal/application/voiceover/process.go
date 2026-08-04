@@ -38,9 +38,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	"go.uber.org/zap"
-) // stageLog returns a closure that emits pipeline_stage_started now
+)
+
+// stageLog returns a closure that emits pipeline_stage_started now
 // and pipeline_stage_completed when invoked. Mirrors the
 // scripts/jobs/job_helpers.go canonical emission pattern (Pattern
 // 3, AGENTS.md).
@@ -93,86 +94,30 @@ func voiceOverrideFor(req *BatchRequest, language Language) string {
 }
 
 // resolveVoiceForLanguage returns the canonical voice for a language.
-// Resolution order:
-//  1. Explicit per-request voice override (VoiceOverrides).
-//  2. EdgeTTSVoice from the language registry when GenerateTTS is true.
-//  3. Empty string (the bridge will use its emergency fallback map).
-//
-// nil-safe: a nil registry or a missing language entry falls through
-// to the empty-string default.
-func resolveVoiceForLanguage(req *BatchRequest, language Language, registry asset.LanguageRegistry, log *zap.Logger) string {
+// Explicit per-request overrides are allowed; all registry-derived voices
+// are mandatory. Missing, disabled, or incomplete registry entries fail
+// closed instead of delegating voice selection to the TTS bridge.
+func resolveVoiceForLanguage(req *BatchRequest, language Language, registry asset.LanguageRegistry, log *zap.Logger) (string, error) {
 	if voice := voiceOverrideFor(req, language); voice != "" {
-		return voice
+		return voice, nil
 	}
 	if registry == nil {
-		return ""
+		return "", fmt.Errorf("voice registry is not configured for language %q", language)
 	}
 	spec, ok := registry.Resolve(string(language))
 	if !ok {
-		if log != nil {
-			log.Warn("voiceover: no language registry entry; using bridge fallback",
-				zap.String("language", string(language)))
-		}
-		return ""
+		return "", fmt.Errorf("voice registry has no entry for language %q", language)
+	}
+	if !spec.Enabled {
+		return "", fmt.Errorf("voice registry disabled language %q", language)
 	}
 	if !spec.GenerateTTS {
-		if log != nil {
-			log.Warn("voiceover: language has generate_tts=false; using bridge fallback",
-				zap.String("language", string(language)))
-		}
-		return ""
+		return "", fmt.Errorf("voice registry disables TTS for language %q", language)
 	}
 	if spec.EdgeTTSVoice == "" {
-		if log != nil {
-			log.Warn("voiceover: language registry has no EdgeTTSVoice; using bridge fallback",
-				zap.String("language", string(language)))
-		}
-		return ""
+		return "", fmt.Errorf("voice registry has no TTS voice for language %q", language)
 	}
-	return spec.EdgeTTSVoice
-}
-
-// PR-VO-AUDIT-P02 (June 2026): the inline cfg.Drive.VoiceoverFolder()
-// fallback that used to pre-populate req.Destination here has been
-// REMOVED. The fallback now lives in the canonical destination
-// resolver (destination_resolver.go::ResolveVoiceoverDestination)
-// so Service.Generate → Service.GenerateBatch → Service.resolveDestination
-// route identically with the worker-side call paths.
-func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
-	req := &BatchRequest{
-		Text: text,
-		// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string literal
-		// implicitly converts to the Language named type.
-		Languages:        []Language{Language(language)},
-		FilenameTemplate: filename,
-		RemoveSilence:    ptrutil.Bool(false),
-		Strategy:         "replace",
-	}
-	resp, err := s.GenerateBatch(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(resp.Items) == 0 {
-		return nil, fmt.Errorf("no voiceover generated")
-	}
-
-	item := resp.Items[0]
-	if !item.isSuccessful() {
-		msg := item.Error
-		if msg == "" {
-			msg = "voiceover generation did not complete"
-		}
-		return nil, fmt.Errorf("%s (status: %s)", msg, item.Status)
-	}
-
-	return &VoiceoverResult{
-		OK:          true,
-		Voice:       item.Voice,
-		Path:        item.LocalPath,
-		DriveLink:   item.DriveLink,
-		DriveFileID: item.DriveFileID,
-	}, nil
+	return spec.EdgeTTSVoice, nil
 }
 
 // processLanguage is the per-language orchestrator (Azione #1, July 2026).
@@ -186,15 +131,13 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 //   - Pre-read old record (replace-mode swap context)
 //   - Output dir + subfolder sanitization + SanitizeFilename
 //
-// Known limitations (Azione #1 migration):
-//   - Semantic tagging: item.SearchText is no longer populated by the
-//     batch path. The old processLanguage called s.semanticTagger after
-//     synthesizeStage; ProcessSegmentUseCase.Execute does its own meta
-//     building without semantic enrichment. Forward-pointer:
-//     inject semantic tags via cmd.Metadata before Execute, or add
-//     semantic tagging to ProcessSegmentUseCase in a future wave.
-//   - Per-language voice overrides are resolved here (voiceOverrideFor)
-//     and passed through ProcessSegmentCommand.Voice.
+// Semantic enrichment is owned by ProcessSegmentUseCase.publishStage,
+// the single shared path immediately before publish. The batch runner
+// supplies its configured SemanticTagger to that use case; callers that
+// do not wire a tagger intentionally retain the best-effort empty-metadata
+// behavior. Per-language voice overrides are resolved here (voiceOverrideFor)
+// and passed through ProcessSegmentCommand.Voice.
+
 func (s *Service) processLanguage(
 	ctx context.Context,
 	requestID string,
@@ -274,9 +217,12 @@ func (s *Service) processLanguage(
 	}
 
 	// Resolve the canonical Edge TTS voice for this language.
-	// Per-request VoiceOverrides win, then the language registry,
-	// then the Python bridge's emergency fallback map.
-	voice := resolveVoiceForLanguage(req, language, s.languageRegistry, s.log)
+	// Per-request VoiceOverrides win, then the language registry. Missing,
+	// disabled, or incomplete registry entries fail closed.
+	voice, voiceErr := resolveVoiceForLanguage(req, language, s.languageRegistry, s.log)
+	if voiceErr != nil {
+		return item.fail(FailureVoiceRegistry, voiceErr)
+	}
 
 	jobID := ""
 	if val, ok := ctx.Value("script_job_id").(string); ok {
@@ -328,44 +274,26 @@ func (s *Service) processLanguage(
 			zap.Error(runErr))
 	}
 
-	// Map VoiceoverItemResult back to BatchItem.
-	// Classify the error prefix to propagate the correct FailureCode
-	// into item.Errors[] (audit P0.1 contract — typed failure codes).
+	// Map VoiceoverItemResult back to BatchItem. The runner publishes
+	// ErrorCode as the canonical machine-readable failure classification;
+	// this boundary never parses human-readable Error text.
 	item.ID = out.ID
 	item.Language = out.Language
 	item.Voice = out.Voice
 	item.Filename = out.Filename
 	item.Status = out.Status
 	item.Error = out.Error
+	item.ErrorCode = out.ErrorCode
 	item.LocalPath = out.LocalPath
 	item.CleanedPath = out.CleanedPath
 	item.FileHash = out.FileHash
+	item.SearchText = out.SearchText
 	item.DriveLink = out.DriveLink
 	item.DriveFileID = out.DriveFileID
 	item.DownloadLink = out.DownloadLink
 
-	// Propagate FailureCode to Errors[] based on error prefix.
-	if out.Status == StatusFailed {
-		switch {
-		case hasPrefix(out.Error, "tts_failed:"):
-			item.Errors = append(item.Errors, FailureTTS)
-		case hasPrefix(out.Error, "audio_post_process_failed:"):
-			item.Errors = append(item.Errors, FailureTTS)
-		case hasPrefix(out.Error, "no_local_payload:"):
-			item.Errors = append(item.Errors, FailureNoLocalPayload)
-		case hasPrefix(out.Error, "upload_failed:"):
-			item.Errors = append(item.Errors, FailureUpload)
-		case hasPrefix(out.Error, "missing_folder_id:"):
-			item.Errors = append(item.Errors, FailureMissingFolder)
-		case hasPrefix(out.Error, "tx_begin_failed:"):
-			item.Errors = append(item.Errors, FailureTxBegin)
-		case hasPrefix(out.Error, "finalize_failed:"):
-			item.Errors = append(item.Errors, FailureTxBegin)
-		case hasPrefix(out.Error, "tx_commit_failed:"):
-			item.Errors = append(item.Errors, FailureTxCommit)
-		default:
-			item.Errors = append(item.Errors, FailureDBUnavailable)
-		}
+	if out.Status == StatusFailed && out.ErrorCode != "" {
+		item.Errors = append(item.Errors, FailureCode(out.ErrorCode))
 	}
 
 	return item
@@ -436,12 +364,6 @@ func (s *Service) ensureOutputDir(baseOutputDir string, dest *DestinationRequest
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create local subfolder %q: %w", outputDir, err)
 	}
-
 	return outputDir, nil
-}
 
-// hasPrefix returns true when s starts with prefix. Inline helper to
-// avoid importing the strings package.
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
