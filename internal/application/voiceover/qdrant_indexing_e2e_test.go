@@ -55,7 +55,6 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
@@ -305,29 +304,12 @@ func (s *e2eTTSProvider) Synthesize(_ context.Context, in TTSInput) (TTSOutput, 
 	}, nil
 }
 
-// e2eDriveAdmin implements drive.Admin with a working UploadFile and
-// no-ops for the rest (voiceover.UploadOnly only touches UploadFile;
-// the other methods are present to satisfy the structural interface).
+// e2eDriveAdmin implements the Drive lifecycle port and canonical
+// delivery.Publisher used by the voiceover test.
 type e2eDriveAdmin struct {
 	fileID string
 }
 
-func (s *e2eDriveAdmin) UploadFile(_ context.Context, _ string, _ string, _ string) (*drive.UploadResult, error) {
-	return &drive.UploadResult{
-		FileID:       s.fileID,
-		WebViewLink:  CanonicalDriveWebURL(s.fileID),
-		DownloadLink: "https://drive.google.com/uc?id=" + s.fileID + "&export=download",
-		MD5Checksum:  "",
-	}, nil
-}
-
-func (s *e2eDriveAdmin) UploadFileWithDescription(_ context.Context, _ string, _ string, _ string, _ string) (*drive.UploadResult, error) {
-	return s.UploadFile(nil, "", "", "")
-}
-func (s *e2eDriveAdmin) UploadFileIfChanged(_ context.Context, _ string, _ string, _ string) (*drive.UploadResult, bool, error) {
-	r, _ := s.UploadFile(nil, "", "", "")
-	return r, false, nil
-}
 func (s *e2eDriveAdmin) GetOrCreateFolder(_ context.Context, _ string, _ string) (string, error) {
 	return "stub-folder", nil
 }

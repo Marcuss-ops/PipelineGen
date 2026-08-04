@@ -355,16 +355,7 @@ func (f *fakeAdmin) TrashFile(context.Context, string) error                { re
 func (f *fakeAdmin) DeleteFile(context.Context, string) error               { return nil }
 func (f *fakeAdmin) MoveFile(context.Context, string, string, string) error { return nil }
 func (f *fakeAdmin) RenameFile(context.Context, string, string) error       { return nil }
-func (f *fakeAdmin) UploadFile(context.Context, string, string, string) (*driveutil.UploadResult, error) {
-	return nil, nil
-}
-func (f *fakeAdmin) UploadFileWithDescription(context.Context, string, string, string, string) (*driveutil.UploadResult, error) {
-	return nil, nil
-}
-func (f *fakeAdmin) UploadFileIfChanged(context.Context, string, string, string) (*driveutil.UploadResult, bool, error) {
-	return nil, false, nil
-}
-func (f *fakeAdmin) Ping(context.Context) error { return nil }
+func (f *fakeAdmin) Ping(context.Context) error                             { return nil }
 
 // Compile-time assertion: fakeAdmin satisfies drive.Admin.
 var _ driveutil.Admin = (*fakeAdmin)(nil)

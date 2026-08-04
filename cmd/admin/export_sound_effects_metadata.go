@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 const soundEffectsMetadataDriveFolderID = "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
@@ -51,8 +52,12 @@ func runExportSoundEffectsMetadata(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("database and Drive admin are required")
+	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil {
+		return fmt.Errorf("database and Drive publisher are required")
+	}
+	adminUpload, err := delivery.NewAdminUploadService(root.Drive.Publisher)
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -116,7 +121,11 @@ func runExportSoundEffectsMetadata(args []string) error {
 	}
 
 	filename := "sound_effects_metadata.json"
-	result, err := root.Drive.Admin.UploadFile(ctx, filepath.Clean(tmpPath), soundEffectsMetadataDriveFolderID, filename)
+	result, err := adminUpload.Publish(ctx, delivery.AdminUploadCommand{
+		LocalPath: filepath.Clean(tmpPath),
+		FolderID:  soundEffectsMetadataDriveFolderID,
+		Filename:  filename,
+	})
 	if err != nil {
 		return fmt.Errorf("upload metadata JSON: %w", err)
 	}

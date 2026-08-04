@@ -61,14 +61,6 @@ type Uploader struct {
 	openFile   OpenFileFunc
 }
 
-// UploadResult holds the result of a file upload.
-type UploadResult struct {
-	FileID       string `json:"file_id"`
-	WebViewLink  string `json:"web_view_link"`
-	DownloadLink string `json:"download_link"`
-	MD5Checksum  string `json:"md5_checksum"`
-}
-
 // RemoteFile describes a file already present on Google Drive.
 type RemoteFile struct {
 	FileID      string
@@ -109,8 +101,8 @@ type ExistingFileLookup struct {
 // ErrMissingFileUploader) — exported, errors.Is-friendly, surface-stable.
 var ErrAmbiguousDriveFile = errors.New("drive: ambiguous file match: multiple non-trashed files with the same name+parent exist on Drive")
 
-// UploadFile, UploadFileWithDescription, doUploadFile, UploadFileIfChanged
-// have moved to uploader_deprecated.go (Pattern 5 split, July 2026).
+// PutFile is the sole upload operation. Legacy path-based upload methods
+// were retired with the Drive Publisher cutover.
 // FindFileByName and FindFileByIdempotencyKey have moved to uploader_find.go
 // (Pattern 5 split, July 2026).
 // lookupExisting runs the file-existence lookup with lazy default
