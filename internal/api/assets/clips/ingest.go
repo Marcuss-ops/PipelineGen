@@ -20,8 +20,8 @@
 // never read after UploadVideoClip migrated to uploadUC.Execute).
 //
 // Pattern B (per-cluster RegisterRoutes with idem fn as parameter):
-// the orchestrator Handler.RegisterRoutes single-calls
-// ih.RegisterRoutes(r, h.idemWriter()). All 3 ingest routes have idem
+// the canonical ingest sub-descriptor calls
+// ih.RegisterRoutes(r, idem). All ingest routes have idem
 // installed before the handler per AGENTS.md Pattern 8 (writes are
 // atomic via Dispatcher + jobs media.enrich enqueue).
 package clips

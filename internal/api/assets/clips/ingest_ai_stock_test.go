@@ -116,7 +116,7 @@ func newAIStockTestHandler(t *testing.T) *Handler {
 			AIStockUC:  uc,
 			Log:        zap.NewNop(),
 		},
-	}, nil)
+	})
 }
 
 func TestCreateAIStockClip_NilUseCase_503(t *testing.T) {
@@ -127,7 +127,7 @@ func TestCreateAIStockClip_NilUseCase_503(t *testing.T) {
 			AIStockUC:  nil,
 			Log:        zap.NewNop(),
 		},
-	}, nil)
+	})
 
 	r := gin.New()
 	r.POST("/api/clips/ingest/ai-stock", h.CreateAIStockClip)
@@ -185,7 +185,7 @@ func TestCreateAIStockClip_ExecutionError_500(t *testing.T) {
 			AIStockUC:  uc,
 			Log:        zap.NewNop(),
 		},
-	}, nil)
+	})
 
 	r := gin.New()
 	r.POST("/api/clips/ingest/ai-stock", h.CreateAIStockClip)
@@ -308,47 +308,4 @@ func TestClipsModule_AIStockClip_Integration(t *testing.T) {
 	assert.True(t, resp["ok"].(bool))
 	assert.Equal(t, "underwater-sand-jumpscare-01", resp["clip_id"])
 	assert.Equal(t, "1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ", resp["drive_file_id"])
-}
-
-// TestRegisterRoutes_IncludesAIStockClip verifies that the ingest cluster
-// registers the POST /ingest/ai-stock route when Handler.RegisterRoutes is
-// called, and that the route is reachable (not 404). This is the structural
-// guard that the route is wired through the clips module and therefore
-// reachable at /api/clips/ingest/ai-stock once the module is mounted under
-// /api/clips.
-func TestRegisterRoutes_IncludesAIStockClip(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	h := NewHandler(Deps{
-		Ingest: IngestDeps{
-			Dispatcher: &handlerFakeDispatcher{},
-			AIStockUC:  nil,
-			Log:        zap.NewNop(),
-		},
-	}, nil)
-
-	router := gin.New()
-	h.RegisterRoutes(router.Group("/clips"))
-
-	found := false
-	for _, route := range router.Routes() {
-		if route.Method == "POST" && route.Path == "/clips/ingest/ai-stock" {
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "POST /clips/ingest/ai-stock should be registered by Handler.RegisterRoutes")
-
-	// Reachability guard: a request to the registered path must hit the
-	// handler. With AIStockUC nil the handler returns 503, which proves the
-	// route is wired to the correct handler.
-	body, _ := json.Marshal(map[string]any{
-		"document":  json.RawMessage(validAIStockDocument()),
-		"drive_url": "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
-	})
-	req := httptest.NewRequest("POST", "/clips/ingest/ai-stock", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusServiceUnavailable, w.Code, "POST /clips/ingest/ai-stock should be wired to the AI stock handler")
 }
