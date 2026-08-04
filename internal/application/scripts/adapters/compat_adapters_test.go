@@ -243,7 +243,7 @@ func TestMetadataProcessor_UsesAIFallbackWhenManualMetadataAbsent(t *testing.T) 
 	if generator.calls != 1 {
 		t.Fatalf("AI generator calls = %d, want 1", generator.calls)
 	}
-	if got == nil || len(got.Metadata) != 1 || got.Metadata[0].Title != "AI title" {
+	if got == nil || len(got.Metadata) != 1 || got.Metadata[0].Title != "AI title en" {
 		t.Fatalf("unexpected AI fallback result: %#v", got)
 	}
 }
@@ -266,15 +266,70 @@ func TestMetadataProcessor_NoManualMetadataWithoutGeneratorFailsClosed(t *testin
 }
 
 type fallbackMetadataGenerator struct {
-	calls int
+	calls     int
+	languages []string
 }
 
 func (g *fallbackMetadataGenerator) GenerateMetadata(
-	context.Context,
-	scriptpkg.MetadataGenerationRequest,
+	_ context.Context,
+	req scriptpkg.MetadataGenerationRequest,
 ) ([]scriptpkg.VideoMetadata, error) {
 	g.calls++
-	return []scriptpkg.VideoMetadata{{Language: "en", Title: "AI title"}}, nil
+	g.languages = append(g.languages, req.Language)
+	return []scriptpkg.VideoMetadata{{Language: req.Language, Title: "AI title " + req.Language}}, nil
+}
+
+func TestMetadataProcessor_UsesAIFallbackOncePerLanguage(t *testing.T) {
+	t.Parallel()
+	generator := &fallbackMetadataGenerator{}
+	processor := NewMetadataProcessor(generator)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:     "Script title",
+		Language:  "it",
+		Languages: []string{"it", "en", "fr"},
+	}
+
+	result, err := processor.Process(
+		context.Background(),
+		plan,
+		ProcessInput{Text: "Script body"},
+	)
+	if err != nil {
+		t.Fatalf("AI fallback returned an error: %v", err)
+	}
+	if generator.calls != 3 {
+		t.Fatalf("AI generator calls = %d, want one call per language", generator.calls)
+	}
+	if !sameStringSet(generator.languages, []string{"it", "en", "fr"}) {
+		t.Fatalf("AI fallback languages = %v, want it/en/fr", generator.languages)
+	}
+	if len(result.Metadata) != 3 {
+		t.Fatalf("metadata records = %d, want 3", len(result.Metadata))
+	}
+	for _, metadata := range result.Metadata {
+		if metadata.Title != "AI title "+metadata.Language {
+			t.Errorf("metadata for %q = %#v, unexpected title", metadata.Language, metadata)
+		}
+	}
+}
+
+func sameStringSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	counts := make(map[string]int, len(got))
+	for _, value := range got {
+		counts[value]++
+	}
+	for _, value := range want {
+		counts[value]--
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 type successfulMetadataGenerator struct {

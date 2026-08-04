@@ -8,11 +8,63 @@
 package usecase
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+func TestBuildGenerationResult_SerializesMetadataArtifactsAsJSON(t *testing.T) {
+	engineResult := &EngineResult{
+		Output: scriptpkg.ModelScriptOutputV1{
+			Text:      "Generated script text.",
+			SpecScene: scriptpkg.SpecSceneOutput{Version: 1},
+		},
+		WordCount: 3,
+	}
+	postResult := &adapters.PipelineResult{
+		VideoMetadata: []scriptpkg.VideoMetadata{{
+			Language:    "it",
+			Title:       "Titolo manuale",
+			Description: "Descrizione manuale",
+			Tags:        []string{"boxe", "analisi"},
+		}},
+	}
+
+	result := buildGenerationResult(
+		scriptpkg.GenerationItemV2{ID: "metadata-json-item"},
+		scriptpkg.ResolvedGenerationPlan{Title: "Internal title", Language: "it"},
+		engineResult,
+		postResult,
+		scriptpkg.GenerationTimings{},
+	)
+
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal GenerationResult: %v", err)
+	}
+
+	var wire struct {
+		Artifacts struct {
+			Metadata []scriptpkg.VideoMetadata `json:"metadata"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal GenerationResult JSON: %v", err)
+	}
+	if len(wire.Artifacts.Metadata) != 1 {
+		t.Fatalf("JSON artifacts.metadata length = %d, want 1; JSON=%s", len(wire.Artifacts.Metadata), raw)
+	}
+	metadata := wire.Artifacts.Metadata[0]
+	if metadata.Language != "it" || metadata.Title != "Titolo manuale" ||
+		metadata.Description != "Descrizione manuale" {
+		t.Fatalf("JSON metadata = %#v, want manual values; JSON=%s", metadata, raw)
+	}
+	if len(metadata.Tags) != 2 || metadata.Tags[0] != "boxe" || metadata.Tags[1] != "analisi" {
+		t.Fatalf("JSON metadata tags = %v, want [boxe analisi]; JSON=%s", metadata.Tags, raw)
+	}
+}
 
 func TestBuildGenerationResult_PrefersTranslatedOutput_StandaloneCases(t *testing.T) {
 	engineResult := &EngineResult{
