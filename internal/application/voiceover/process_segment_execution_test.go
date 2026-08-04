@@ -245,6 +245,33 @@ func (r failingDestinationResolver) Resolve(context.Context, *DestinationRequest
 	return nil, r.err
 }
 
+func TestResolveDestinationWithFallback_ExplicitFolderIDIsForwardedWithoutFallback(t *testing.T) {
+	resolver := &recordingDestResolver{folderID: "resolved-folder", folderPath: "/tmp/vo"}
+	defaultResolver := &stubDefaultFolderResolver{folderID: "historical-root", ok: true}
+	req := &DestinationRequest{
+		Kind:     string(KindExplicit),
+		FolderID: "payload-folder-id",
+		Project:  "payload-project",
+	}
+
+	resolved, err := ResolveDestinationWithFallback(
+		context.Background(), req, resolver,
+		defaultResolver, zap.NewNop(),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "resolved-folder", resolved.FolderID)
+	assert.Equal(t, 1, resolver.resolveCalls)
+	require.NotNil(t, resolver.lastRequest)
+	assert.Equal(t, "payload-folder-id", resolver.lastRequest.FolderID)
+	assert.Equal(t, string(KindExplicit), resolver.lastRequest.Kind)
+	assert.Equal(t, "payload-project", resolver.lastRequest.Project)
+
+	// The default resolver is intentionally not consulted when the
+	// payload carries an explicit folder.
+	assert.Zero(t, defaultResolver.resolveCalls)
+}
+
 func TestResolveDestinationWithFallback_ExplicitFailureDoesNotUseDefault(t *testing.T) {
 	defaultResolver := &stubDefaultFolderResolver{folderID: "historical-root", ok: true}
 	resolverErr := errors.New("explicit Drive folder is unavailable")

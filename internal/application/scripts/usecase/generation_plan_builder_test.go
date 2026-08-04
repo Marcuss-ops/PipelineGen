@@ -25,6 +25,23 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+func TestBuildPlan_PropagatesExplicitVoiceoverFolderID(t *testing.T) {
+	plan := BuildPlan(scriptpkg.GenerationItemV2{
+		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
+		Output: scriptpkg.OutputSpec{
+			VoiceoverGroup:    "configured-group-must-not-win",
+			VoiceoverFolderID: "payload-folder-id",
+		},
+	})
+
+	if plan.VoiceoverFolderID != "payload-folder-id" {
+		t.Fatalf("plan.VoiceoverFolderID = %q, want payload-folder-id", plan.VoiceoverFolderID)
+	}
+	if plan.VoiceoverGroup != "configured-group-must-not-win" {
+		t.Fatalf("plan.VoiceoverGroup = %q, want configured-group-must-not-win for diagnostics", plan.VoiceoverGroup)
+	}
+}
+
 // buildPostprocessorListTestScenarios enumerates OutputSpec
 // variants that cover the conditional branches of
 // buildPostprocessorList (ExtractEntities / GenerateMetadata /

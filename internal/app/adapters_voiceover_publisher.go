@@ -30,10 +30,10 @@ import (
 // the canonical Publisher seam shared by YouTube clips, stock, images,
 // sound effects, and books.
 //
-// VoiceoverPublishCommand.FolderID is passed as PublishRequest.RootFolderOverride
-// so the Publisher bypasses DestinationRegistry root-folder resolution
-// (the voiceover use case already resolved the canonical folder via
-// DestinationResolver).
+// VoiceoverPublishCommand.FolderID is passed as PublishRequest.DestinationFolderID
+// because the voiceover use case already resolved the canonical leaf folder via
+// DestinationResolver. The Publisher must consume that resolved destination
+// directly and must not re-resolve it through registry, config, or root overrides.
 //
 // Publish returns the canonical Drive file ID; downstream callers
 // (process_voiceover_item.go::Execute + usecase.go::processOneLanguage)
@@ -119,11 +119,11 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 		AssetID:     cmd.ID,
 		ProjectID:   cmd.Project,
 		Language:    cmd.Language,
-		// FolderID is the request-local voiceover ROOT. Keep the canonical
-		// voiceover path builder active so the publisher creates
-		// <root>/<project>/<language> instead of uploading directly into
-		// the root and bypassing the language subdirectories.
-		RootFolderOverride: cmd.FolderID,
+		// FolderID is already the resolved destination selected by the
+		// generation plan and DestinationResolver. DestinationFolderID
+		// makes the canonical Publisher bypass registry/config/root
+		// resolution and upload directly into this folder.
+		DestinationFolderID: cmd.FolderID,
 		// Voiceover is an immutable/versioned artifact. Resolve the
 		// collision policy here so an already-resolved destination does
 		// not require the Publisher to consult its registry again.
