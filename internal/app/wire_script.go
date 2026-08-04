@@ -77,7 +77,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -308,7 +307,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Factory:       submission.NewSubmitRequestFactory(),
 			Log:           log,
 			Validator:     usecase.NewPayloadValidator(cfg.Scripts),
-			ResearchPreflight: func() scriptports.ResearchPreflight {
+			ResearchPreflight: func() usecase.ResearchPreflight {
 				if root.DB == nil {
 					return nil
 				}

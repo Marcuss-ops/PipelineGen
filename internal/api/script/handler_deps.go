@@ -29,7 +29,6 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
@@ -75,7 +74,7 @@ type GenerateDeps struct {
 	Factory           *submission.SubmitRequestFactory
 	Log               *zap.Logger
 	Validator         *usecase.PayloadValidator
-	ResearchPreflight scriptports.ResearchPreflight
+	ResearchPreflight usecase.ResearchPreflight
 }
 
 // JobsDeps groups the canonical constructor inputs for the

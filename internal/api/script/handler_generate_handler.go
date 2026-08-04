@@ -62,7 +62,6 @@ import (
 	"go.uber.org/zap"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
@@ -88,7 +87,7 @@ type HandlerGenerate struct {
 	factory      *submission.SubmitRequestFactory
 	log          *zap.Logger
 	validator    *usecase.PayloadValidator
-	preflight    scriptports.ResearchPreflight
+	preflight    usecase.ResearchPreflight
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
@@ -108,7 +107,7 @@ func NewHandlerGenerate(
 	factory *submission.SubmitRequestFactory,
 	log *zap.Logger,
 	validator *usecase.PayloadValidator,
-	preflight ...scriptports.ResearchPreflight,
+	preflight ...usecase.ResearchPreflight,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
@@ -119,7 +118,7 @@ func NewHandlerGenerate(
 	if factory == nil {
 		factory = submission.NewSubmitRequestFactory()
 	}
-	var researchPreflight scriptports.ResearchPreflight
+	var researchPreflight usecase.ResearchPreflight
 	if len(preflight) > 0 {
 		researchPreflight = preflight[0]
 	}
