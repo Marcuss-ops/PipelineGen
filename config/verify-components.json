@@ -411,5 +411,24 @@
     "race_timeout_seconds": 900,
     "race_enabled": true,
     "live_tests": []
+  },
+  "web": {
+    "paths": [
+      "web/src/",
+      "web/index.html",
+      "web/package.json",
+      "web/tsconfig.json",
+      "web/vite.config.js"
+    ],
+    "go_packages": [],
+    "node_tests": [
+      ["npm", "--prefix", "web", "run", "build"]
+    ],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 300,
+    "race_enabled": false,
+    "live_tests": []
   }
 }
