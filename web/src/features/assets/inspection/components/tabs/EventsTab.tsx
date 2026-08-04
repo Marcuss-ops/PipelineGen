@@ -1,6 +1,9 @@
 import { AssetDetails, AssetProcessing, OutboxEventProjection } from '../../../../../api/assetTypes'
 import styles from '../../AssetInspector.module.css'
 
+// The admin console has no global SSE endpoint. This timeline is built from
+// the resource-specific REST projections returned with the asset detail.
+
 interface EventsTabProps {
   asset: AssetDetails
 }

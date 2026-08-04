@@ -1,5 +1,10 @@
 import { request } from './http'
 
+// Admin console contract: this UI uses the schema/entity REST resources below.
+// There is intentionally no global `/admin/events` stream; event timelines are
+// supplied by the resource-specific REST payloads (for example, asset details
+// expose processing and outbox projections).
+
 export interface AdminFieldDescriptor {
   key: string
   label: string
