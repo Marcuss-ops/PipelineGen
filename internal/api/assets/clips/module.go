@@ -114,7 +114,7 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 		idem = func(c *gin.Context) { c.Next() }
 	}
 
-	handler, err := NewHandlerStrict(deps.Handlers, idem)
+	handler, err := NewHandlerStrict(deps.Handlers)
 	if err != nil {
 		return nil, fmt.Errorf("clips.Build: %w", err)
 	}

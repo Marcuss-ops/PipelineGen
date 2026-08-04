@@ -14,8 +14,8 @@
 //     mapClipOpsError)
 //   - clip_maintenance_handler.go (deleteClip, TrashClip, DeleteClip)
 //
-// This file retains: OpsDeps, OpsHandler, NewOpsHandler, RegisterRoutes,
-// cleanupRequest type, and isEmptyJSONErr utility.
+// This file retains: OpsDeps, OpsHandler, NewOpsHandler, cleanupRequest
+// type, and isEmptyJSONErr utility.
 //
 // Route table (12 routes = 5 read + 5 write+idem + 2 DELETE+idem):
 //
@@ -40,7 +40,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
@@ -79,27 +78,6 @@ func NewOpsHandler(d OpsDeps) *OpsHandler {
 		assetTreeSvc:   d.AssetTreeSvc,
 		log:            d.Log,
 	}
-}
-
-// RegisterRoutes installs the 14 Ops routes on the supplied gin router
-// group. Read routes install no idem middleware; write routes install
-// it before the handler per AGENTS.md Pattern 8.
-func (oh *OpsHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
-	// Read-only routes (no idempotency)
-	r.GET("/:source/folders", oh.ListFolders)
-	r.GET("/:source/folders/:id", oh.FolderStatus)
-	r.GET("/:source/folders/:id/children", oh.GetFolderChildren)
-	r.GET("/:source/tree", oh.GetTree)
-	r.GET("/:source/breadcrumb", oh.GetBreadcrumb)
-
-	// Write routes (idempotency-protected per PR8, June 2026)
-	r.POST("/:source/clips/:id/verify", idem, oh.VerifyClip)
-	r.POST("/:source/clips/:id/fix-hash", idem, oh.HandleFixHash)
-	r.DELETE("/:source/clips/:id", idem, oh.TrashClip)
-	r.POST("/:source/reconcile", idem, oh.Reconcile)
-	r.POST("/:source/cleanup", idem, oh.Cleanup)
-	r.POST("/:source/folders/:id/manifest", idem, oh.RegenerateManifest)
-	r.DELETE("/:source/folders/:id", idem, oh.TrashFolder)
 }
 
 // cleanupRequest is the typed request body for POST /api/clips/:source/cleanup.

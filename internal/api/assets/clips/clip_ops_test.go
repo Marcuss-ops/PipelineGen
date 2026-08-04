@@ -133,7 +133,7 @@ func newOpsHandler(t *testing.T, svc *appclips.ClipOpsService) *Handler {
 	return NewHandler(Deps{
 		ClipOpsService: svc,
 		Log:            zap.NewNop(),
-	}, nil)
+	})
 }
 
 func newOpsRouter(t *testing.T, h *Handler) *gin.Engine {
@@ -278,7 +278,7 @@ func TestHandler_Cleanup_400_MalformedJSON(t *testing.T) {
 // TestHandler_Cleanup_503_NoService pins the composition-bug
 // guard: clipOpsService == nil → 503 Service Unavailable.
 func TestHandler_Cleanup_503_NoService(t *testing.T) {
-	h := NewHandler(Deps{Log: zap.NewNop()}, nil)
+	h := NewHandler(Deps{Log: zap.NewNop()})
 	r := newOpsRouter(t, h)
 
 	req := httptest.NewRequest("POST", "/api/clips/all/cleanup", strings.NewReader(`{}`))
@@ -352,7 +352,7 @@ func TestHandler_VerifyClip_200_ResponseShape(t *testing.T) {
 // TestHandler_VerifyClip_503_NoService pins the composition-bug
 // guard for VerifyClip.
 func TestHandler_VerifyClip_503_NoService(t *testing.T) {
-	h := NewHandler(Deps{Log: zap.NewNop()}, nil)
+	h := NewHandler(Deps{Log: zap.NewNop()})
 	r := newOpsRouter(t, h)
 
 	req := httptest.NewRequest("POST", "/api/clips/youtube/clips/v-1/verify", strings.NewReader(`{}`))
@@ -377,8 +377,8 @@ func TestHandler_VerifyClip_503_NoService(t *testing.T) {
 //	(c) hanging on the request goroutine.
 //
 // godlike/06 SSOT cross-check: this test exercises the contract end-to-end
-// through the canonical Handler.RegisterRoutes. The 503 sentinel is the
-// canonical fail-closed response (newClipsQueryPortAdapter returns nil
+// through the canonical OpsHandler route registration. The 503 sentinel is
+// the canonical fail-closed response (newClipsQueryPortAdapter returns nil
 // → Deps.ClipsRepo is the typed-nil interface → ops handler Method
 // entry does `if h.clipsRepo == nil { apiutil.Error(c, 503, ...); return }`).
 //
@@ -396,12 +396,12 @@ func TestClipsQueryPort_CompositionWiring(t *testing.T) {
 	// newClipsQueryPortAdapter(*assets.ClipsRepository), but here we
 	// simulate the failure modes (nil-repo bundle, partial deploy,
 	// test fixture) by leaving the field at the typed-zero.
-	h := NewHandler(Deps{Log: zap.NewNop()}, nil) // ClipsRepo == nil interface
+	h := NewHandler(Deps{Log: zap.NewNop()}) // ClipsRepo == nil interface
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	g := r.Group("/api/clips")
-	h.RegisterRoutes(g) // installs ALL routes — OpsHandler.ListFolders included
+	g.GET("/:source/folders", h.ops.ListFolders)
 
 	// Hit GET /api/clips/youtube/folders which routes through
 	// OpsHandler.ListFolders which calls oh.repoForSource which

@@ -12,8 +12,8 @@
 //   - ImagesRepo     (ListClips images source branch; nil-tolerated)
 //
 // Pattern B (per-cluster RegisterRoutes with idem fn as parameter):
-// the orchestrator Handler.RegisterRoutes single-calls
-// sh.RegisterRoutes(r, h.idemWriter()). Search routes are co-located
+// the canonical catalog sub-descriptor calls
+// sh.RegisterRoutes(r, idem). Search routes are co-located
 // here so cluster reads + writes are atomic in one file. Read routes
 // (GET) install no idem; write routes (POST) install idem before the
 // handler per AGENTS.md Pattern 8.

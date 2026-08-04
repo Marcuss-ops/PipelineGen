@@ -2,7 +2,7 @@
 // clips/ package per PR-CLIPS-NONOPS-EXTRACT (P0, deadline 2026-08-01).
 //
 // godlike/06 SSOT (one canonical owner per fact):
-//   - Handler interface (9 methods + RegisterRoutes) lives ONLY here.
+//   - Handler interface (9 methods) lives ONLY here.
 //   - applyBulkTagsDefaults helper lives ONLY in handler_bulk_tags.go.
 //   - Each method lives in its capability-specific sister file
 //     (handler_reprocess / handler_index / handler_download / handler_jobs).
@@ -59,9 +59,6 @@ type Handler interface {
 	// Job handlers (used by ClipsDescriptor.RegisterJobHandlers).
 	RegisterJobHandlers() error
 	HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobTools) (map[string]any, error)
-
-	// Route installation (called by the orchestrator Handler.RegisterRoutes).
-	RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc)
 }
 
 // Deps is the constructor bag for NonOpsHandler. The 8 fields below
@@ -177,26 +174,6 @@ func NewNonOpsHandlerStrict(d Deps) (*NonOpsHandler, error) {
 		return nil, err
 	}
 	return NewNonOpsHandler(d), nil
-}
-
-// RegisterRoutes installs the 6 NonOps HTTP routes on the supplied
-// gin router group. All routes are writes (idem-protected per PR8).
-//
-// Route table:
-//
-//	POST /:source/bulk/tags/add         -> BulkAddTags      (write+idem)
-//	POST /:source/bulk/tags/remove      -> BulkRemoveTags   (write+idem)
-//	POST /:source/clips/:id/reprocess   -> ReprocessClip    (write+idem)
-//	POST /:source/clips/:id/reindex     -> ReindexClip      (write+idem)
-//	POST /enrich                        -> EnrichMedia      (write+idem)
-//	POST /enrich/batch                  -> BatchReindex     (write+idem)
-func (h *NonOpsHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
-	r.POST("/:source/bulk/tags/add", idem, h.BulkAddTags)
-	r.POST("/:source/bulk/tags/remove", idem, h.BulkRemoveTags)
-	r.POST("/:source/clips/:id/reprocess", idem, h.ReprocessClip)
-	r.POST("/:source/clips/:id/reindex", idem, h.ReindexClip)
-	r.POST("/enrich", idem, h.EnrichMedia)
-	r.POST("/enrich/batch", idem, h.BatchReindex)
 }
 
 // Compile-time pin: *NonOpsHandler must implement Handler. Future

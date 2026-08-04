@@ -49,8 +49,8 @@ func newIngestTestHandler(dispatcher appclips.ClipIndexDispatcherPort) *Handler 
 		Ingest: IngestDeps{
 			Dispatcher: dispatcher,
 			Log:        zap.NewNop(),
-		},
-	}, nil)
+		}})
+
 }
 
 func TestPR6_CreateClip_NilDispatcher_503(t *testing.T) {

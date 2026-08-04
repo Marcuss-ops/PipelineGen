@@ -175,10 +175,3 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 	h.actions.FindDuplicates(c)
 }
-
-func (h *Handler) idemWriter() gin.HandlerFunc {
-	if h.Idempotency == nil {
-		return func(c *gin.Context) { c.Next() }
-	}
-	return h.Idempotency
-}
