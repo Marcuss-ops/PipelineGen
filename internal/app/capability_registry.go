@@ -173,7 +173,11 @@ func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod mod
 	if mod == nil {
 		return fmt.Errorf("compose: nil module passed (registration-point=%s)", collectRegPoint(opts))
 	}
-	if err := registry.Register(mod); err != nil {
+	runtimeModule, buildErr := module.RuntimeModuleFor(mod.Name(), collectRegPoint(opts), mod)
+	if buildErr != nil {
+		return fmt.Errorf("compose: capability=%q, descriptor-type=%T, registration-point=%s: %w", mod.Name(), mod, collectRegPoint(opts), buildErr)
+	}
+	if err := registry.RegisterRuntimeModule(runtimeModule); err != nil {
 		if log != nil {
 			log.Warn("strict-register failed",
 				zap.String("module", mod.Name()),
