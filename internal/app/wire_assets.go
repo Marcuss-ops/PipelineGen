@@ -106,15 +106,21 @@ func WireAssets(
 		zap.String("clipsDesc_type", fmt.Sprintf("%T", clipsDesc)),
 		zap.String("clipsDesc_ptr", fmt.Sprintf("%p", clipsDesc)),
 	)
-	if dj, ok := any(clipsDesc).(module.DescriptorJobs); ok {
-		log.Info("WireAssets: clipsDesc type-asserted as DescriptorJobs; calling RegisterJobHandlers")
+	if dj, ok := any(clipsDesc).(module.DescriptorJobHandlers); ok {
+		log.Info("WireAssets: clipsDesc type-asserted as runtime DescriptorJobHandlers; publishing owned jobs")
+		if err := module.RegisterRuntimeJobHandlers(jobs.Service, dj); err != nil {
+			return nil, fmt.Errorf("WireAssets: clips runtime job descriptors: %w", err)
+		}
+	} else if dj, ok := any(clipsDesc).(module.DescriptorJobs); ok {
+		// Compatibility fallback for descriptors that have not yet exposed
+		// enumerable handlers. New capability modules must prefer the
+		// descriptor list above so job ownership is inspectable before boot.
+		log.Info("WireAssets: clipsDesc uses compatibility DescriptorJobs slot")
 		if err := dj.RegisterJobHandlers(jobs.Service); err != nil {
-			log.Warn("failed to register clips job handlers", zap.Error(err))
-		} else {
-			log.Info("WireAssets: clips job handlers registered (descriptor-side ok)")
+			return nil, fmt.Errorf("WireAssets: clips compatibility job registration: %w", err)
 		}
 	} else {
-		log.Warn("WireAssets: clipsDesc does NOT implement module.DescriptorJobs — bulk_upload_youtube_clips will be unhandled (DIAG: this is bug-localisation signal A)",
+		log.Warn("WireAssets: clipsDesc does NOT expose runtime job descriptors — bulk_upload_youtube_clips will be unhandled",
 			zap.String("clipsDesc_type", fmt.Sprintf("%T", clipsDesc)),
 			zap.String("clipsDesc_ptr", fmt.Sprintf("%p", clipsDesc)),
 		)

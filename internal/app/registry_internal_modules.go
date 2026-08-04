@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -301,11 +302,10 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 }
 
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
+	jobsDescriptor, err := capjobs.Build(capjobs.Dependencies{
 		Service:     root.Jobs.Service,
 		Stats:       root.Jobs.Service,
 		EnabledFunc: func() bool { return true },
-		ModuleOpts:  nil,
 		Logger:      log,
 	})
 	if err != nil {

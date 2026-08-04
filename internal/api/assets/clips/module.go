@@ -89,6 +89,20 @@ func (m *ClipsModule) RegisterJobHandlers(svc api.JobRegistrar) error {
 	return m.jobReg.RegisterBulkUpload(svc, m)
 }
 
+// JobHandlers exposes the clips-owned worker handlers as runtime descriptors.
+// The composition root publishes this list through the canonical runtime
+// descriptor path; RegisterJobHandlers remains as a compatibility slot for
+// older callers and tests.
+func (m *ClipsModule) JobHandlers() []api.JobHandlerDescriptor {
+	if m == nil || m.jobReg == nil || m.jobReg.bulkUploadWorker == nil {
+		return nil
+	}
+	return []api.JobHandlerDescriptor{{
+		Type:    jobmedia.TypeBulkUploadYouTubeClips,
+		Handler: appjobs.HandlerFunc(m.jobReg.bulkUploadWorker.HandleJob),
+	}}
+}
+
 // Build constructs transport handlers from already-built application use
 // cases. No repository, processing or delivery orchestration occurs here.
 func Build(deps Dependencies) (*ClipsModule, error) {
@@ -235,6 +249,7 @@ func (a *subModuleAdapter) RegisterRoutes(rg *gin.RouterGroup) {
 }
 
 var (
-	_ api.Descriptor     = (*ClipsModule)(nil)
-	_ api.DescriptorJobs = (*ClipsModule)(nil)
+	_ api.Descriptor            = (*ClipsModule)(nil)
+	_ api.DescriptorJobs        = (*ClipsModule)(nil)
+	_ api.DescriptorJobHandlers = (*ClipsModule)(nil)
 )

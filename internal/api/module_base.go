@@ -27,9 +27,10 @@ type Module interface {
 
 // Registry holds all registered modules and manages route registration.
 type Registry struct {
-	mu      sync.Mutex
-	modules []Module
-	frozen  bool
+	mu             sync.Mutex
+	modules        []Module
+	runtimeModules []RuntimeModule
+	frozen         bool
 }
 
 // NewRegistry creates a new module registry.
@@ -123,9 +124,29 @@ func (r *Registry) GetEnabled() []Module {
 	return enabled
 }
 
-// RegisterAllRoutes registers routes for all enabled modules.
+// RegisterAllRoutes registers routes from the immutable runtime descriptors.
+// A registry populated by the composition root therefore uses the same
+// descriptor snapshot for publication and inspection. The module slice fallback
+// preserves direct test/legacy registrations that predate RuntimeModule.
 func (r *Registry) RegisterAllRoutes(apiGroup *gin.RouterGroup) {
-	for _, m := range r.GetEnabled() {
-		m.RegisterRoutes(apiGroup)
+	r.mu.Lock()
+	descriptors := append([]RuntimeModule(nil), r.runtimeModules...)
+	legacy := append([]Module(nil), r.modules...)
+	r.mu.Unlock()
+
+	if len(descriptors) > 0 {
+		for _, descriptor := range descriptors {
+			for _, route := range descriptor.Routes {
+				if route.Module != nil && route.Module.Enabled() {
+					route.Module.RegisterRoutes(apiGroup)
+				}
+			}
+		}
+		return
+	}
+	for _, m := range legacy {
+		if m.Enabled() {
+			m.RegisterRoutes(apiGroup)
+		}
 	}
 }

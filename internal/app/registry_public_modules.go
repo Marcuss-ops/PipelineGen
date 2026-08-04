@@ -25,16 +25,16 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
-	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	scriptdocsapi "github.com/Marcuss-ops/PipelineGen/internal/api/script-docs"
-	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
 
@@ -61,13 +61,18 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	if root.Drive != nil && root.Drive.DriveUploader != nil {
 		driveUploaderAdapter = root.Drive.DriveUploader
 	}
-	return tryRegisterModuleStrict(registry, log, systemapi.NewModule(
-		doctorConfigFrom(cfg),
-		log,
-		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
-		newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
-		nil,
-	), WithRegistrationPoint("register.System"))
+	capability := capsystem.NewModule(capsystem.Dependencies{
+		Config:        doctorConfigFrom(cfg),
+		Logger:        log,
+		ToolChecker:   toolCheckerAdapter,
+		ProcessRunner: processRunnerAdapter,
+		DBHealth:      dbHealthCheckerAdapter,
+		DriveOps:      newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
+	})
+	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
+		return fmt.Errorf("wire registry: system capability: %w", err)
+	}
+	return nil
 }
 
 // registerJobs wires the /jobs route module. PR0 (June 2026): signature
@@ -76,22 +81,15 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 // job.Service (orchestrator) AND the JobStatsReader port (via the
 // runtime type-assertion GetStats helper).
 func registerJobs(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
-		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both kerneljob.Service + appjobs.JobStatsReader
-		EnabledFunc: func() bool { return true }, // jobs is always on in production
-		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-13 wiring)
-		Logger:      log,
+	capability := capjobs.NewModule(capjobs.Dependencies{
+		Service: root.Jobs.Service, Stats: root.Jobs.Service,
+		EnabledFunc: func() bool { return true }, Logger: log,
 	})
-	if err != nil {
-		return fmt.Errorf("wire registry: jobs: %w", err)
+	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
+		return fmt.Errorf("wire registry: jobs capability: %w", err)
 	}
-	jd, ok := jobsDescriptor.(*jobsapi.JobsDescriptor)
-	if !ok || jd == nil {
-		return fmt.Errorf("wire registry: jobs: jobs.Build returned unexpected descriptor type %T (want *jobsapi.JobsDescriptor)", jobsDescriptor)
-	}
-	log.Info("created Jobs module")
-	return tryRegisterModuleStrict(registry, log, jd, WithRegistrationPoint("register.Jobs"))
+	log.Info("created Jobs capability module")
+	return nil
 }
 
 // registerImages wires the /images route module. Consumes
