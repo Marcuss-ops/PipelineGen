@@ -32,7 +32,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -156,6 +158,29 @@ func registerScriptPostProcessors(
 	// narrow-port surface.
 	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
 		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverProcessItem, log)
+		voiceMap := make(map[string]string)
+		if registry, registryErr := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg)); registryErr == nil {
+			for _, spec := range registry.EnabledLanguages() {
+				if spec.EdgeTTSVoice != "" {
+					voiceMap[spec.Code] = spec.EdgeTTSVoice
+				}
+			}
+		} else {
+			log.Warn("VoiceoverProcessor: multilingual voice registry unavailable", zap.Error(registryErr))
+		}
+		var translatorPort ports.ScriptTranslator
+		if root.AI != nil && root.AI.OllamaTranslator != nil {
+			translatorPort = ports.NewScriptTranslatorFromFunc(func(ctx context.Context, text, targetLanguage string) (string, error) {
+				result, err := root.AI.OllamaTranslator.Translate(ctx, translation.TranslationCommand{
+					Text: text, TargetLang: targetLanguage,
+				})
+				if err != nil {
+					return "", err
+				}
+				return result.TranslatedText, nil
+			})
+		}
+		voProc.ConfigureMultilingual(voiceMap, translatorPort)
 		if !ppReg.Register(voProc) {
 			return fmt.Errorf("register voiceover processor: composition bug or duplicate name")
 		}

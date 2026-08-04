@@ -60,7 +60,8 @@ func TestResolveVoiceForLanguage_VoiceOverrideWins(t *testing.T) {
 	})
 	require.NoError(t, err)
 	req := &BatchRequest{VoiceOverrides: map[string]string{"it": "it-IT-ElsaNeural"}}
-	got := resolveVoiceForLanguage(req, "it", reg, nil)
+	got, err := resolveVoiceForLanguage(req, "it", reg, nil)
+	require.NoError(t, err)
 	assert.Equal(t, "it-IT-ElsaNeural", got,
 		"explicit per-request override must win over registry voice")
 }
@@ -70,7 +71,8 @@ func TestResolveVoiceForLanguage_RegistryVoiceUsed(t *testing.T) {
 		{Code: "it", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "it-IT-DiegoNeural"},
 	})
 	require.NoError(t, err)
-	got := resolveVoiceForLanguage(nil, "it", reg, nil)
+	got, err := resolveVoiceForLanguage(nil, "it", reg, nil)
+	require.NoError(t, err)
 	assert.Equal(t, "it-IT-DiegoNeural", got,
 		"registry EdgeTTSVoice must be returned when no override is set")
 }
@@ -80,9 +82,10 @@ func TestResolveVoiceForLanguage_GenerateTTSFalse_FallsBack(t *testing.T) {
 		{Code: "it", Enabled: true, GenerateTTS: false, EdgeTTSVoice: "it-IT-DiegoNeural"},
 	})
 	require.NoError(t, err)
-	got := resolveVoiceForLanguage(nil, "it", reg, nil)
-	assert.Equal(t, "", got,
-		"language with generate_tts=false must not use EdgeTTSVoice")
+	got, err := resolveVoiceForLanguage(nil, "it", reg, nil)
+	require.Error(t, err)
+	assert.Empty(t, got,
+		"language with generate_tts=false must fail closed instead of using EdgeTTSVoice")
 }
 
 func TestResolveVoiceForLanguage_MissingRegistryEntry_FallsBack(t *testing.T) {
@@ -90,15 +93,17 @@ func TestResolveVoiceForLanguage_MissingRegistryEntry_FallsBack(t *testing.T) {
 		{Code: "it", Enabled: true, GenerateTTS: true, EdgeTTSVoice: "it-IT-DiegoNeural"},
 	})
 	require.NoError(t, err)
-	got := resolveVoiceForLanguage(nil, "fr", reg, nil)
-	assert.Equal(t, "", got,
-		"missing registry entry must fall back to empty string")
+	got, err := resolveVoiceForLanguage(nil, "fr", reg, nil)
+	require.Error(t, err)
+	assert.Empty(t, got,
+		"missing registry entry must fail closed")
 }
 
 func TestResolveVoiceForLanguage_NilRegistry_FallsBack(t *testing.T) {
-	got := resolveVoiceForLanguage(nil, "it", nil, nil)
-	assert.Equal(t, "", got,
-		"nil registry must fall back to empty string")
+	got, err := resolveVoiceForLanguage(nil, "it", nil, nil)
+	require.Error(t, err)
+	assert.Empty(t, got,
+		"nil registry must fail closed")
 }
 
 func TestE2E_VoiceOverrideReachesPython(t *testing.T) {

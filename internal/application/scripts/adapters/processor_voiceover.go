@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
@@ -50,8 +51,10 @@ import (
 // `internal/app/build_bundles_voiceover.go::buildVoiceoverService`).
 // Test doubles inject stubs that record invocations.
 type VoiceoverProcessor struct {
-	gen voiceover.VoiceoverItemExecutor
-	log *zap.Logger
+	gen        voiceover.VoiceoverItemExecutor
+	log        *zap.Logger
+	voices     map[string]string
+	translator ports.ScriptTranslator
 }
 
 // NewVoiceoverProcessor creates a VoiceoverProcessor.
@@ -67,6 +70,21 @@ type VoiceoverProcessor struct {
 // method.
 func NewVoiceoverProcessor(gen voiceover.VoiceoverItemExecutor, log *zap.Logger) *VoiceoverProcessor {
 	return &VoiceoverProcessor{gen: gen, log: log}
+}
+
+// ConfigureMultilingual wires the canonical language voice map and the
+// already-composed script translator into the inline voiceover processor.
+// The processor remains usable by existing tests and single-language callers
+// when either value is nil.
+func (p *VoiceoverProcessor) ConfigureMultilingual(voices map[string]string, translator ports.ScriptTranslator) {
+	if p == nil {
+		return
+	}
+	p.voices = make(map[string]string, len(voices))
+	for language, voice := range voices {
+		p.voices[strings.TrimSpace(language)] = strings.TrimSpace(voice)
+	}
+	p.translator = translator
 }
 
 func (p *VoiceoverProcessor) Name() ProcessorName { return ProcessorVoiceover }
@@ -128,130 +146,165 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}
 
 	sourceLanguage := strings.TrimSpace(plan.Language)
-	targetLanguage := strings.TrimSpace(plan.TranslateTo)
-	effectiveLanguage := strings.TrimSpace(input.EffectiveLanguage)
-
-	translationRequested :=
-		targetLanguage != "" &&
-			!strings.EqualFold(sourceLanguage, targetLanguage)
-
-	if translationRequested &&
-		!strings.EqualFold(effectiveLanguage, targetLanguage) {
-
-		warning := fmt.Sprintf(
-			"voiceover skipped: requested translation to %q was not completed; effective text language is %q",
-			targetLanguage,
-			effectiveLanguage,
-		)
-
-		voiceovers := make([]SceneVoiceover, len(scenes))
-		for i := range voiceovers {
-			voiceovers[i] = SceneVoiceover{
-				SceneIndex: i,
-				Status:     "skipped",
+	if sourceLanguage == "" {
+		sourceLanguage = defaults.DefaultScriptConfig().DefaultLanguage
+	}
+	primaryLanguage := strings.TrimSpace(input.EffectiveLanguage)
+	if primaryLanguage == "" {
+		primaryLanguage = sourceLanguage
+	}
+	requestedPrimary := strings.TrimSpace(plan.TranslateTo)
+	if requestedPrimary != "" && !strings.EqualFold(primaryLanguage, requestedPrimary) {
+		return &PostProcessResult{
+			Voiceovers: []SceneVoiceover{{SceneIndex: 0, Language: requestedPrimary, Status: "skipped"}},
+			Warnings: []string{fmt.Sprintf(
+				"voiceover skipped: requested translation to %q was not completed; effective text language is %q",
+				requestedPrimary, primaryLanguage,
+			)},
+		}, nil
+	}
+	languages := make([]string, 0, len(plan.Languages)+1)
+	seenLanguages := make(map[string]struct{})
+	appendLanguage := func(language string) {
+		language = strings.TrimSpace(language)
+		if language == "" {
+			return
+		}
+		key := strings.ToLower(language)
+		if _, ok := seenLanguages[key]; ok {
+			return
+		}
+		seenLanguages[key] = struct{}{}
+		languages = append(languages, language)
+	}
+	appendLanguage(primaryLanguage)
+	for _, requested := range plan.Languages {
+		appendLanguage(requested)
+	}
+	baseScenes := scenes
+	if len(input.OriginalSpecScene.Scenes) > 0 {
+		baseScenes = input.OriginalSpecScene.Scenes
+	}
+	voiceovers := make([]SceneVoiceover, 0, len(scenes)*len(languages))
+	var warnings []string
+	for _, language := range languages {
+		targetScenes := scenes
+		if !strings.EqualFold(language, primaryLanguage) {
+			if p.translator == nil {
+				warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: translator not configured", language))
+				continue
+			}
+			targetScenes = cloneVoiceoverScenes(baseScenes)
+			for i := range targetScenes {
+				translated, err := p.translator.Translate(ctx, targetScenes[i].Text, language)
+				if err != nil || strings.TrimSpace(translated) == "" {
+					if err == nil {
+						err = fmt.Errorf("translator returned empty text")
+					}
+					warnings = append(warnings, fmt.Sprintf("voiceover skipped for language %s: scene %d translation failed: %v", language, i, err))
+					targetScenes = nil
+					break
+				}
+				targetScenes[i].Text = translated
+			}
+			if targetScenes == nil {
+				continue
 			}
 		}
 
-		return &PostProcessResult{
-			Voiceovers: voiceovers,
-			Warnings:   []string{warning},
-		}, nil
-	}
+		items := make([]VoiceoverSceneInput, 0, len(targetScenes))
+		for i, scene := range targetScenes {
+			sceneText := scene.Text
+			if sceneText == "" {
+				sceneText = fmt.Sprintf("Scene %d", i+1)
+			}
+			// The translated scene surface is the authoritative TTS input. Run
+			// the sanitizer here as a final local boundary as well: a translated
+			// processor may rebuild the scene after the registry sanitizer pass,
+			// and source URLs must never reach the speech provider.
+			cleanText, _, sanitizeErr := scriptpkg.SanitizeNarration(sceneText)
+			if sanitizeErr != nil {
+				return nil, sanitizeErr
+			}
+			sceneText = cleanText
+			if err := scriptpkg.ValidateSpeakableText(sceneText); err != nil {
+				return nil, err
+			}
 
-	language := effectiveLanguage
-	if language == "" {
-		language = sourceLanguage
-	}
-	if language == "" {
-		language = defaults.DefaultScriptConfig().DefaultLanguage
-	}
+			// Sanitize the title for use in a filename, then build a
+			// scene-stable filename: {title}_{scene_id}_{lang}.mp3.
+			// VoiceoverProcessor used a local character-replacer (no .mp3,
+			// no path-traversal guard); now delegates to the canonical
+			// voiceover.SanitizeBasename which rejects path separators and
+			// normalises unsafe characters via textutil.SanitizeFilename.
+			sceneID := scene.ID
+			if sceneID == "" {
+				sceneID = fmt.Sprintf("%d", i+1)
+			}
+			// Sanitize sceneID too — it comes from model output and must
+			// not contain path separators or unsafe filename characters.
+			safeSceneID, serr2 := voiceover.SanitizeBasename(sceneID)
+			if serr2 != nil {
+				safeSceneID = fmt.Sprintf("s%d", i+1)
+			}
+			safeTitle, serr := voiceover.SanitizeBasename(plan.Title)
+			if serr != nil {
+				safeTitle = "scene"
+			}
+			filenameBase := fmt.Sprintf("%s_%s_%s", safeTitle, safeSceneID, language)
+			// A translated scene must not collide with a previously published
+			// source-language file. Drive deduplication is keyed by file identity;
+			// include the canonical text hash so a changed TTS surface gets its own
+			// durable file and SQLite row.
+			if !strings.EqualFold(language, primaryLanguage) {
+				filenameBase += "_" + string(voiceover.ComputeTextHash(sceneText))
+			}
+			filename := filenameBase + ".mp3"
+			// A request-local folder is an explicit routing decision. Mark it
+			// as such so the canonical resolver cannot fall back to the
+			// configured voiceover root.
+			dest := &voiceover.DestinationRequest{
+				Kind:    string(voiceover.KindExplicit),
+				Project: safeTitle,
+			}
+			if folderID := strings.TrimSpace(plan.VoiceoverFolderID); folderID != "" {
+				// A plan-level folder is a caller-explicit destination. Mark it
+				// explicitly so neither the group resolver nor any configured
+				// default can replace it downstream.
+				dest.Kind = string(voiceover.KindExplicit)
+				dest.FolderID = folderID
+			} else if plan.VoiceoverGroup != "" && p.log != nil {
+				p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
+					zap.String("voiceover_group", plan.VoiceoverGroup))
+			}
+			items = append(items, VoiceoverSceneInput{
+				SceneIndex:  i,
+				Text:        sceneText,
+				Voice:       p.voices[language],
+				Filename:    filename,
+				Destination: dest,
+			})
+		}
 
-	items := make([]VoiceoverSceneInput, 0, len(scenes))
-	for i, scene := range scenes {
-		sceneText := scene.Text
-		if sceneText == "" {
-			sceneText = fmt.Sprintf("Scene %d", i+1)
-		}
-		// The translated scene surface is the authoritative TTS input. Run
-		// the sanitizer here as a final local boundary as well: a translated
-		// processor may rebuild the scene after the registry sanitizer pass,
-		// and source URLs must never reach the speech provider.
-		cleanText, _, sanitizeErr := scriptpkg.SanitizeNarration(sceneText)
-		if sanitizeErr != nil {
-			return nil, sanitizeErr
-		}
-		sceneText = cleanText
-		if err := scriptpkg.ValidateSpeakableText(sceneText); err != nil {
-			return nil, err
-		}
-
-		// Sanitize the title for use in a filename, then build a
-		// scene-stable filename: {title}_{scene_id}_{lang}.mp3.
-		// VoiceoverProcessor used a local character-replacer (no .mp3,
-		// no path-traversal guard); now delegates to the canonical
-		// voiceover.SanitizeBasename which rejects path separators and
-		// normalises unsafe characters via textutil.SanitizeFilename.
-		sceneID := scene.ID
-		if sceneID == "" {
-			sceneID = fmt.Sprintf("%d", i+1)
-		}
-		// Sanitize sceneID too — it comes from model output and must
-		// not contain path separators or unsafe filename characters.
-		safeSceneID, serr2 := voiceover.SanitizeBasename(sceneID)
-		if serr2 != nil {
-			safeSceneID = fmt.Sprintf("s%d", i+1)
-		}
-		safeTitle, serr := voiceover.SanitizeBasename(plan.Title)
-		if serr != nil {
-			safeTitle = "scene"
-		}
-		filenameBase := fmt.Sprintf("%s_%s_%s", safeTitle, safeSceneID, language)
-		// A translated scene must not collide with a previously published
-		// source-language file. Drive deduplication is keyed by file identity;
-		// include the canonical text hash so a changed TTS surface gets its own
-		// durable file and SQLite row.
-		if translationRequested {
-			filenameBase += "_" + string(voiceover.ComputeTextHash(sceneText))
-		}
-		filename := filenameBase + ".mp3"
-		dest := &voiceover.DestinationRequest{Project: safeTitle}
-		if plan.VoiceoverFolderID != "" {
-			dest.FolderID = plan.VoiceoverFolderID
-		} else if plan.VoiceoverGroup != "" && p.log != nil {
-			p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
-				zap.String("voiceover_group", plan.VoiceoverGroup))
-		}
-		items = append(items, VoiceoverSceneInput{
-			SceneIndex:  i,
-			Text:        sceneText,
-			Filename:    filename,
-			Destination: dest,
-		})
-	}
-
-	// P0-#3 final closure (July 2026): the fanout now takes the
-	// canonical voiceover.VoiceoverItemExecutor port (the field
-	// `p.gen`); real failures surface as typed Go errors per scene.
-	outcomes := RunVoiceoverSceneFanout(ctx, p.gen, language, items, 4)
-	voiceovers := make([]SceneVoiceover, 0, len(outcomes))
-	var warnings []string
-	for _, out := range outcomes {
-		voiceovers = append(voiceovers, SceneVoiceover{
-			SceneIndex: out.SceneIndex,
-			Status:     out.Status,
-			Link:       out.Link,
-			LocalPath:  out.LocalPath,
-		})
-		if out.Status == "failed" {
-			warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d: %s", out.SceneIndex, out.Error))
+		outcomes := RunVoiceoverSceneFanout(ctx, p.gen, language, items, 4)
+		for _, out := range outcomes {
+			voiceovers = append(voiceovers, SceneVoiceover{
+				SceneIndex: out.SceneIndex,
+				Language:   language,
+				Status:     out.Status,
+				Link:       out.Link,
+				LocalPath:  out.LocalPath,
+			})
+			if out.Status == "failed" {
+				warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d (language %s): %s", out.SceneIndex, language, out.Error))
+			}
 		}
 	}
 
 	if len(warnings) > 0 && p.log != nil {
 		p.log.Warn("voiceover processor: partial failures",
-			zap.Int("total", len(items)),
+			zap.Int("total", len(voiceovers)),
 			zap.Int("failed", len(warnings)),
-			zap.Int("succeeded", CountCompletedSceneOutcomes(outcomes)),
 			zap.Strings("warnings", warnings))
 	}
 
@@ -264,6 +317,18 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		Voiceovers: voiceovers,
 		Warnings:   warnings,
 	}, nil
+}
+
+func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]scriptpkg.SpecScene, len(src))
+	copy(dst, src)
+	for i := range dst {
+		dst[i].Text = strings.Clone(src[i].Text)
+	}
+	return dst
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0, June 2026): the

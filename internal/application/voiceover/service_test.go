@@ -14,6 +14,14 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestNewService_RequiresLanguageRegistry(t *testing.T) {
+	assert.Panics(t, func() {
+		NewService(VoiceoverDeps{
+			Execution: VoiceoverExecutionDeps{ProcessItem: &stubItemExecutor{}},
+		})
+	}, "voice registry must be wired at composition time")
+}
+
 func TestNormalizeBatchRequestDefaults(t *testing.T) {
 	req := &BatchRequest{
 		Text:      "Hello world",

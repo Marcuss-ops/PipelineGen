@@ -34,6 +34,10 @@ type VoiceoverBinding struct {
 	// Link is the publicly-accessible URL of the generated audio.
 	Link string `json:"link,omitempty"`
 
+	// Links contains the published Drive link for each generated language.
+	// Link remains the compatibility/default-language surface.
+	Links map[string]string `json:"links,omitempty"`
+
 	// LocalPath is the local filesystem path to the generated audio.
 	LocalPath string `json:"local_path,omitempty"`
 

@@ -3,6 +3,7 @@ package voiceover
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -279,6 +280,30 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 	if cmd.Language != "" {
 		language = string(cmd.Language)
 	}
+
+	// Preserve semantic enrichment in the canonical asset projection as
+	// well as in the voiceovers row. The legacy finalizer already stores
+	// MetaJSON verbatim; the AssetCommitter path must not silently replace
+	// semantic search text/tags with the plain text preview.
+	var semanticMeta struct {
+		SearchText string   `json:"search_text"`
+		Tags       []string `json:"semantic_tags"`
+		Subjects   []string `json:"semantic_subjects"`
+		Mood       []string `json:"semantic_mood"`
+	}
+	_ = json.Unmarshal(cmd.MetaJSON, &semanticMeta)
+	searchText := textPreview
+	if semanticMeta.SearchText != "" {
+		searchText = semanticMeta.SearchText
+	}
+	extra := map[string]any{"language": language, "request_id": cmd.RequestID}
+	if len(semanticMeta.Subjects) > 0 {
+		extra["semantic_subjects"] = semanticMeta.Subjects
+	}
+	if len(semanticMeta.Mood) > 0 {
+		extra["semantic_mood"] = semanticMeta.Mood
+	}
+
 	locations := []assetspersistence.LocationCommit{}
 	if cmd.DriveFileID != "" {
 		locations = append(locations, assetspersistence.LocationCommit{
@@ -301,7 +326,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		MediaType:      "audio",
 		ContentHash:    cmd.FileHash,
 		Description:    textPreview,
-		SearchText:     textPreview,
+		SearchText:     searchText,
 		LifecycleState: string(asset.StatePublished),
 		IndexState:     string(initIndex),
 		LocalPath:      cmd.LocalPath,
@@ -312,8 +337,8 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 			Title:         textPreview,
 			Description:   textPreview,
 			SourceVersion: cmd.FileHash,
-			Tags:          nil,
-			Extra:         map[string]any{"language": language, "request_id": cmd.RequestID},
+			Tags:          semanticMeta.Tags,
+			Extra:         extra,
 		},
 		Locations:      locations,
 		EmitIndexEvent: cmd.FileHash != "",

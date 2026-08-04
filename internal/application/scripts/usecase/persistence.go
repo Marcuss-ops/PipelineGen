@@ -182,7 +182,24 @@ func buildGenerationResultWithCache(
 		}
 
 		if len(postResult.Voiceovers) > 0 {
+			voiceoverByLanguage := make(map[string]*scriptpkg.VoiceoverLanguageArtifact)
 			for _, v := range postResult.Voiceovers {
+				language := strings.TrimSpace(v.Language)
+				if language == "" {
+					language = plan.Language
+				}
+				entry := voiceoverByLanguage[language]
+				if entry == nil {
+					entry = &scriptpkg.VoiceoverLanguageArtifact{Language: language, Status: v.Status}
+					voiceoverByLanguage[language] = entry
+					result.Artifacts.Voiceovers = append(result.Artifacts.Voiceovers, *entry)
+				}
+				if strings.TrimSpace(v.Link) != "" {
+					entry.DriveLinks = append(entry.DriveLinks, v.Link)
+				}
+				if v.Status == "failed" {
+					entry.Status = v.Status
+				}
 				if v.SceneIndex < len(result.Output.SpecScene.Scenes) {
 					sc := &result.Output.SpecScene.Scenes[v.SceneIndex]
 					if sc.Bindings.Voiceover == nil {
@@ -190,6 +207,12 @@ func buildGenerationResultWithCache(
 					}
 					sc.Bindings.Voiceover.Status = v.Status
 					sc.Bindings.Voiceover.Link = v.Link
+				}
+			}
+			for i := range result.Artifacts.Voiceovers {
+				language := result.Artifacts.Voiceovers[i].Language
+				if entry := voiceoverByLanguage[language]; entry != nil {
+					result.Artifacts.Voiceovers[i] = *entry
 				}
 			}
 		}

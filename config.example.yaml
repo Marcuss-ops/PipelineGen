@@ -118,33 +118,53 @@ media:
       - code: it
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: fr-FR-RemyMultilingualNeural
       - code: en
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: en-US-ChristopherNeural # Options: en-CA-LiamNeural, en-US-EricNeural
       - code: pl
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: pl-PL-MarekNeural
       - code: ru
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: ru-RU-DmitryNeural
       - code: de
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: de-DE-FlorianMultilingualNeural
       - code: es
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: es-ES-AlvaroNeural
       - code: pt-BR
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: pt-BR-AntonioNeural
       - code: fr
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: fr-FR-RemyMultilingualNeural # Options: fr-BE-GerardNeural
       - code: tr
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: tr-TR-AhmetNeural
       - code: id
         enabled: true
         translate_clips: true
+        generate_tts: true
+        edge_tts_voice: id-ID-ArdiNeural
     translation_policy: "auto"
     require_language_certainty: true
     require_transcript_ready: false

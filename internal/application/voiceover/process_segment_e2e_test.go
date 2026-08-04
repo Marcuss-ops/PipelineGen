@@ -333,10 +333,10 @@ func TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCle
 		"FASE 4: EnqueueCleanupEvent MUST be called exactly once for the orphaned Drive file")
 	ce := outboxStub.cleanupEvents[0]
 	assert.Equal(t, "vo-fase4-orphan", ce.voiceoverID)
-	assert.Equal(t, "", ce.oldDriveFileID,
-		"FASE 4: oldDriveFileID must be empty (no prior row existed)")
-	assert.Equal(t, "drive-fase4-orphan", ce.newDriveFileID,
-		"FASE 4: newDriveFileID must be the orphaned Drive file ID")
+	assert.Equal(t, "drive-fase4-orphan", ce.oldDriveFileID,
+		"FASE 4: oldDriveFileID is the cleanup target when no row was finalized")
+	assert.Equal(t, "", ce.newDriveFileID,
+		"FASE 4: newDriveFileID must be empty because no replacement was finalized")
 	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-orphan.mp3",
 		"FASE 4: oldLocalPaths must contain the TTS local path")
 	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-orphan-cleaned.mp3",
@@ -608,8 +608,8 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupEnqueueFail_Warns(t *t
 		"FASE 4: EnqueueCleanupEvent must be attempted (BeginTx succeeded)")
 	ce := outboxStub.cleanupEvents[0]
 	assert.Equal(t, "vo-fase4-enqueue", ce.voiceoverID)
-	assert.Equal(t, "", ce.oldDriveFileID)
-	assert.Equal(t, "drive-fase4-enqueue", ce.newDriveFileID)
+	assert.Equal(t, "drive-fase4-enqueue", ce.oldDriveFileID)
+	assert.Equal(t, "", ce.newDriveFileID)
 
 	// Warn log emitted with the canonical message fragment.
 	logs := observed.FilterMessageSnippet("orphan-cleanup: EnqueueCleanupEvent failed").All()
@@ -948,10 +948,10 @@ func TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer(t *
 		"FASE 6 E2E: exactly 1 cleanup event must be emitted for the orphaned Drive file")
 	ce := outboxStub.cleanupEvents[0]
 	assert.Equal(t, "vo-fase6-orphan", ce.voiceoverID)
-	assert.Equal(t, "", ce.oldDriveFileID,
-		"FASE 6 E2E: oldDriveFileID must be empty (no prior row existed)")
-	assert.Equal(t, "drive-fase6-orphan", ce.newDriveFileID,
-		"FASE 6 E2E: newDriveFileID must be the orphaned Drive file ID")
+	assert.Equal(t, "drive-fase6-orphan", ce.oldDriveFileID,
+		"FASE 6 E2E: oldDriveFileID is the cleanup target when no row was finalized")
+	assert.Equal(t, "", ce.newDriveFileID,
+		"FASE 6 E2E: newDriveFileID must be empty because no replacement was finalized")
 	assert.NotNil(t, ce.tx, "FASE 6 E2E: cleanup event must carry a non-nil tx (separate BeginTx)")
 
 	// ── Assertion 4: oldLocalPaths contain both paths ───────────

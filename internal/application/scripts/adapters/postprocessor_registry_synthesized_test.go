@@ -215,8 +215,8 @@ func TestRegistry_Run_VoiceoverWriteBack(t *testing.T) {
 	if result.FinalSpecScene.Scenes[0].Bindings.Voiceover == nil {
 		t.Fatal("FinalSpecScene did not retain the voiceover binding")
 	}
-	if got := result.FinalSpecScene.Scenes[0].Bindings.Voiceover.LocalPath; got != "/tmp/voice-0.mp3" {
-		t.Fatalf("FinalSpecScene voiceover local path = %q, want %q", got, "/tmp/voice-0.mp3")
+	if got := result.FinalSpecScene.Scenes[0].Bindings.Voiceover.LocalPath; got != "" {
+		t.Fatalf("FinalSpecScene voiceover local path = %q, want empty public surface", got)
 	}
 }
 

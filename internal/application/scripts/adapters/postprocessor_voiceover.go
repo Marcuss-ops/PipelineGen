@@ -7,6 +7,7 @@ package adapters
 // 1:1 with stable indexes (matches engineResult.Output.SpecScene.Scenes).
 type SceneVoiceover struct {
 	SceneIndex int
+	Language   string
 	Status     string // "completed" | "failed" | "empty_result"
 	Link       string // DriveLink for the produced audio
 	LocalPath  string // local on-disk path (debugging)

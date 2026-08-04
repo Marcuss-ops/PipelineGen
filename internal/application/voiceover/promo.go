@@ -17,12 +17,8 @@
 //     NOT on *Service), so the promo path is testable via a stub
 //     executor without standing up the full voiceover Service surface.
 //
-// Companion callers (books.Service + scripts/adapters/voiceover_scene_fanout)
-// still call the legacy Service.Generate/GenerateWithDestination port
-// because their `Result.OK` checks are tightly coupled to the legacy
-// *VoiceoverResult shape. Migrating those callers is deferred to a
-// follow-up PR (a typed-error + *VoiceoverItemResult migration breaks
-// the books / scene-fanout surface simultaneously).
+// Companion callers use VoiceoverItemExecutor directly; no positional
+// Service generation API remains in the runtime.
 package voiceover
 
 import (
@@ -91,9 +87,8 @@ func (s *Service) GeneratePromo(ctx context.Context, req *promo.Request) (*promo
 // (voiceover.VoiceoverItemExecutor) to the promo workflow's narrow
 // VoiceoverGenerator port.
 //
-// P0-#3 (July 2026): replaces the legacy voiceoverGenBridge which
-// routed through Service.GenerateWithDestination (a positional API
-// that masked failures via Result{OK:false}). The adapter:
+// P0-#3 (July 2026): the adapter uses the command-driven per-item
+// pipeline and surfaces failures as typed Go errors. It:
 //
 //  1. Pre-computes TextHash via voiceover.ComputeTextHash (single
 //     source of truth — same shape as the canonical fanout).
