@@ -43,6 +43,7 @@ func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 	html := BuildSpecSceneDocumentHTML(
 		canonicalTranslatedDocumentFixture(),
 		"Translated Script",
+		nil,
 	)
 
 	for _, want := range []string{

@@ -95,6 +95,46 @@ func TestDocumentProcessorRejectsEmptyPublisherReference(t *testing.T) {
 	}
 }
 
+func TestDocumentsProcessor_RendersManualVideoMetadata(t *testing.T) {
+	stub := &documentServiceStub{}
+	processor := NewDocumentsProcessor(stub)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:            "run-metadata",
+		Title:         "Titolo interno",
+		Language:      "it",
+		DocsEnabled:   true,
+		DocsLanguages: []string{"it"},
+		VideoMetadata: &scriptpkg.VideoMetadata{
+			Title:       "Titolo YouTube",
+			Description: "Descrizione <manuale>",
+			Tags:        []string{"boxe", "analisi"},
+		},
+	}
+
+	_, err := processor.Process(context.Background(), plan, ProcessInput{Text: "Testo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.titles) != 1 || stub.titles[0] != "Titolo YouTube_it||run-metadata-it" {
+		t.Fatalf("manual metadata title must name the document, calls=%v", stub.titles)
+	}
+	if len(stub.content) != 1 {
+		t.Fatalf("expected one document body, got %d", len(stub.content))
+	}
+	content := stub.content[0]
+	for _, want := range []string{
+		"<h1>Titolo YouTube</h1>",
+		"<h2>Description</h2>",
+		"Descrizione &lt;manuale&gt;",
+		"<h2>Tags</h2>",
+		"boxe, analisi",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("document body missing %q: %s", want, content)
+		}
+	}
+}
+
 func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T) {
 	stub := &documentServiceStub{}
 	processor := NewDocumentsProcessor(stub)
