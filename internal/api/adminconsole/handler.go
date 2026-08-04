@@ -3,7 +3,6 @@ package adminconsoleapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +40,6 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/entities/:entity/:id", h.handleGet)
 	rg.PATCH("/entities/:entity/:id", h.handlePatch)
 	rg.POST("/entities/:entity/:id/actions/:action", h.handleAction)
-	rg.GET("/events", h.handleEvents)
 }
 
 func (h *Handler) handleListEntities(c *gin.Context) {
@@ -130,19 +128,6 @@ func (h *Handler) handleAction(c *gin.Context) {
 		return
 	}
 	apiutil.OK(c, result)
-}
-
-func (h *Handler) handleEvents(c *gin.Context) {
-	// SSE placeholder: sets headers and keeps the connection open.
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.WriteHeader(http.StatusOK)
-	// Flush is best-effort; the real event bus will replace this loop.
-	if f, ok := c.Writer.(interface{ Flush() }); ok {
-		fmt.Fprintf(c.Writer, ":ok\n\n")
-		f.Flush()
-	}
 }
 
 // withRequestMetadata injects request-scoped metadata into ctx so the
