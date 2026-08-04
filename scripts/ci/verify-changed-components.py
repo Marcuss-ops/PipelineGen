@@ -39,6 +39,8 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "go.mod",
         "go.sum",
         "config.example.yaml",
+        "config.production.example.yaml",
+        "config/multilingual.yaml",
         "config/verify-components.json",
         "config/verify-pipelines.json",
         "scripts/ci/verify-component.py",
@@ -54,8 +56,8 @@ ALL_COMPONENT_PREFIXES = (
     "internal/",
     "cmd/",
     "pkg/",
-    "tests/",
-    "migrations/",
+    "tests/",        "migrations/",
+        "architecture/",
 )
 IGNORED_CHANGED_PREFIXES = ("artifacts/", "tmp/", "data/")
 
