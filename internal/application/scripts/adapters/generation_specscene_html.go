@@ -1,14 +1,15 @@
 // Package scripts: generation_specscene_html.go renders the canonical
 // Google Doc body for generated scripts.
 //
-// The document surface is exactly one structured representation: SpecScene
-// JSON. Titles, prose, duplicate scene listings, and technical provenance are
-// intentionally excluded from the generated document.
+// The document surface combines caller-facing video metadata with one
+// structured SpecScene JSON representation. Technical provenance remains
+// excluded from the generated document.
 package adapters
 
 import (
 	"encoding/json"
 	"html"
+	"sort"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -16,28 +17,58 @@ import (
 
 // BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
 //
-// Visible section:
-//
-//	<h2>SpecScene JSON</h2><pre>...</pre>
+// Visible sections include the optional metadata title, description, and tags,
+// followed by the operational scene view and the SpecScene JSON snapshot.
 func BuildSpecSceneDocumentHTML(
 	model *scriptpkg.ModelScriptOutputV1,
 	title string,
+	metadata *scriptpkg.VideoMetadata,
 	provenance ...*scriptpkg.GenerationProvenance,
 ) string {
 	if model == nil {
 		return ""
 	}
-	// Keep the narrow compatibility signature for existing callers. These
-	// values are pipeline metadata, not document content.
-	_ = title
+	// Provenance remains an optional pipeline detail and is not rendered into
+	// the document body.
 	_ = provenance
 
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
-	if strings.TrimSpace(title) != "" {
+
+	documentTitle := strings.TrimSpace(title)
+
+	if metadata != nil && strings.TrimSpace(metadata.Title) != "" {
+		documentTitle = strings.TrimSpace(metadata.Title)
+	}
+
+	if documentTitle != "" {
 		b.WriteString("<h1>")
-		b.WriteString(html.EscapeString(strings.TrimSpace(title)))
+		b.WriteString(html.EscapeString(documentTitle))
 		b.WriteString("</h1>")
+	}
+
+	if metadata != nil {
+		if description := strings.TrimSpace(metadata.Description); description != "" {
+			b.WriteString("<h2>Description</h2>")
+			b.WriteString("<p>")
+			b.WriteString(html.EscapeString(description))
+			b.WriteString("</p>")
+		}
+
+		cleanTags := make([]string, 0, len(metadata.Tags))
+		for _, raw := range metadata.Tags {
+			tag := strings.TrimSpace(raw)
+			if tag != "" {
+				cleanTags = append(cleanTags, tag)
+			}
+		}
+
+		if len(cleanTags) > 0 {
+			b.WriteString("<h2>Tags</h2>")
+			b.WriteString("<p>")
+			b.WriteString(html.EscapeString(strings.Join(cleanTags, ", ")))
+			b.WriteString("</p>")
+		}
 	}
 
 	// Render the operational scene view before the JSON snapshot. Google
@@ -69,6 +100,21 @@ func BuildSpecSceneDocumentHTML(
 			if stock := scene.Bindings.Stock; stock != nil && strings.TrimSpace(stock.FolderLink) != "" {
 				b.WriteString("<p><strong>Stock folder:</strong> ")
 				b.WriteString(renderDocumentLink(stock.FolderLink, stock.FolderID, stock.FolderID))
+				b.WriteString("</p>")
+			}
+			if voiceover := scene.Bindings.Voiceover; voiceover != nil && len(voiceover.Links) > 0 {
+				b.WriteString("<p><strong>Voiceovers:</strong> ")
+				languages := make([]string, 0, len(voiceover.Links))
+				for language := range voiceover.Links {
+					languages = append(languages, language)
+				}
+				sort.Strings(languages)
+				for i, language := range languages {
+					if i > 0 {
+						b.WriteString(" · ")
+					}
+					b.WriteString(renderDocumentLink(voiceover.Links[language], language, language))
+				}
 				b.WriteString("</p>")
 			}
 			b.WriteString("</section>")

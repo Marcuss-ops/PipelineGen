@@ -68,7 +68,19 @@ func (p *DocumentsProcessor) Process(
 	if len(model.SpecScene.Scenes) == 1 && strings.TrimSpace(input.Text) != "" {
 		model.SpecScene.Scenes[0].Text = input.Text
 	}
-	content := BuildSpecSceneDocumentHTML(model, plan.Title, input.Provenance)
+	documentTitle := strings.TrimSpace(plan.Title)
+
+	if plan.VideoMetadata != nil &&
+		strings.TrimSpace(plan.VideoMetadata.Title) != "" {
+		documentTitle = strings.TrimSpace(plan.VideoMetadata.Title)
+	}
+
+	content := BuildSpecSceneDocumentHTML(
+		model,
+		documentTitle,
+		plan.VideoMetadata,
+		input.Provenance,
+	)
 	if strings.TrimSpace(content) == "" {
 		return nil, fmt.Errorf("document content is empty")
 	}
@@ -86,7 +98,7 @@ func (p *DocumentsProcessor) Process(
 		}
 		link, id := p.service.CreateDoc(
 			ctx,
-			plan.Title+"_"+language,
+			documentTitle+"_"+language,
 			content,
 			nil,
 			plan.DocsFolderID,
