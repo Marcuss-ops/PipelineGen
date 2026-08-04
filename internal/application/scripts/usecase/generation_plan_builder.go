@@ -67,6 +67,16 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		TranslateTo:         item.Output.TranslateTo,
 		FallbackPolicy:      item.Source.FallbackPolicy,
 		MediaPlan:           item.MediaPlan.Clone(),
+		VideoMetadata:       scriptpkg.CloneVideoMetadata(item.VideoMetadata),
+	}
+
+	if plan.VideoMetadata != nil {
+		if strings.TrimSpace(plan.VideoMetadata.Language) == "" {
+			plan.VideoMetadata.Language = plan.Language
+		}
+
+		// Il client non deve controllare lo stato interno.
+		plan.VideoMetadata.TranslationStatus = ""
 	}
 
 	plan.Postprocessors = adapters.ProcessorNamesToStrings(buildPostprocessorListForItem(item))
@@ -135,6 +145,13 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 	if !out.ExtractEntities.AsBool() && item.MediaPlan.Extraction.Enabled {
 		out.ExtractEntities = scriptpkg.ToggleEnabled
 	}
+
+	// Caller-provided metadata uses the existing metadata processor,
+	// but the processor will return it directly without calling Ollama.
+	if item.VideoMetadata != nil && item.VideoMetadata.HasContent() {
+		out.GenerateMetadata = scriptpkg.ToggleEnabled
+	}
+
 	processors := buildPostprocessorList(out)
 	if item.Docs.Enabled {
 		processors = append(processors, adapters.ProcessorDocument)
