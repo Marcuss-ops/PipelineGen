@@ -423,6 +423,9 @@ hard_gates:
   # consumers of `internal/domain/job`; the percheck now has a
   # zero legal-call-site footprint by construction.
   - percheck_legacy_root_ban
+  # P0 ownership integrity: every declared job must map to a canonical
+  # runtime registry entry and a production handler binding.
+  - percheck_job_ownership
   # Wave-24 forward-prevention: max_lines_per_file_strict promoted
   # from soft-warning (godlike/08 §"Mandatory checks" — Phase 0
   # report-only) to hard gate (Wave-24 evolution, see
