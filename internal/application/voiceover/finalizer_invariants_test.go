@@ -1,9 +1,9 @@
-// Package voiceover — finalizer_test.go (P0.4 Fase 3a, July 2026).
+// Package voiceover — finalizer_invariants_test.go (P0.4 Fase 3a, July 2026).
 //
-// Tests the unified VoiceoverFinalizer delegation through both paths.
+// Tests the unified VoiceoverFinalizer delegation and required-step
+// invariants through the canonical per-item and finalizer paths.
 // Uses in-memory SQLite for real tx lifecycle (BeginTx/Commit/Rollback)
-// so the test exercises the full finalizeStage flow without panicking
-// on a zero-value *sql.Tx.
+// so the tests exercise the caller-owned transaction contract.
 package voiceover
 
 import (
@@ -18,9 +18,8 @@ import (
 )
 
 // the panic string to "Finalizer is nil") surfaces at test time rather
-// than silently absorbing the change. Migrated from the legacy
-// TestFinalizeStage_NilFinalizer.
-func TestFinalizeStage_NilFinalizerConstructorPanic(t *testing.T) {
+// than silently absorbing the change.
+func TestFinalizer_NilConstructorPanic(t *testing.T) {
 	db := openFinalizerTestDB(t)
 	require.PanicsWithValue(
 		t, "voiceover.NewProcessSegmentUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)",
@@ -37,15 +36,9 @@ func TestFinalizeStage_NilFinalizerConstructorPanic(t *testing.T) {
 	)
 }
 
-// TestFinalizeStage_MigratedToExecute consolidates the 8 remaining
-// skipped tests (DelegatesToFinalizer, DedupeReuse, FinalizerError,
-// PostCommitVerification, PostCommitVerificationNilSafe,
-// PostCommitVerificationOK_StateCompleted,
-// PostCommitVerificationWarnOnly_StateCompletedUnverified,
-// PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired)
-// into a table-driven suite — each subtest asserts the migrated
-// invariant for that scenario via ProcessSegmentUseCase.Execute.
-func TestFinalizeStage_MigratedToExecute(t *testing.T) {
+// TestFinalizerDelegation_UsesProcessSegmentExecute pins the canonical delegation
+// invariants for ProcessSegmentUseCase.Execute.
+func TestFinalizerDelegation_UsesProcessSegmentExecute(t *testing.T) {
 	type expect struct {
 		err              bool
 		status           Status // production typed status (godlike/07 NO-FAKE-AVAILABILITY)
@@ -73,14 +66,9 @@ func TestFinalizeStage_MigratedToExecute(t *testing.T) {
 			finalizerErr: errors.New("simulated Finalizer error (migration)"),
 			want:         expect{err: true, status: StatusFailed, assertHit: true},
 		},
-		// Post-commit verification migration: the legacy test group had 5
-		// PostCommitVerification_ variants that asserted distinct verifier
-		// outcomes from the retired Service.finalizeStage path. Post-DRY the
-		// canonical per-item pipeline (ProcessSegmentUseCase.Execute) is
-		// verifier-unaware — the `VoiceoverPostCommitVerifier` port is NOT
-		// in ProcessSegmentDeps; verifier concerns live exclusively in the
-		// legacy batch finalizeStage path (per finalizer.go doc on
-		// CompletionState). All 5 legacy scenarios collapse to ONE invariant:
+		// The historical post-commit verifier cases belonged to a retired
+		// batch path. The canonical per-item pipeline is verifier-unaware,
+		// so this table pins only that current invariant:
 		// "Execute is verifier-unaware; StatusCompleted when Finalizer succeeds
 		// regardless of any verifier concern". Collapsed to a single subtest
 		// for falsifiability (the migration is NOT 5 copies of the same
@@ -170,67 +158,6 @@ func TestFinalizeStage_MigratedToExecute(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// P0.4 Fase 4a + Audit P0.5: PostCommitVerifier + CompletionState
-// ─────────────────────────────────────────────────────────────────────
-
-// stubPostCommitVerifier records invocations and surfaces canned
-// errors via err. The audit-P0.5 contract is:
-//
-//	err == nil                                          → CompletionState = StateCompleted
-//	errors.Is(err, ErrReconciliationRequired) == true  → CompletionState = StateReconciliationRequired
-//	any other non-nil err                                → CompletionState = StateCompletedUnverified
-type stubPostCommitVerifier struct {
-	verified []string
-	err      error
-}
-
-func (s *stubPostCommitVerifier) Verify(_ context.Context, voiceoverID string) error {
-	s.verified = append(s.verified, voiceoverID)
-	return s.err
-}
-
-var _ VoiceoverPostCommitVerifier = (*stubPostCommitVerifier)(nil)
-
-func TestFinalizeStage_PostCommitVerification(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
-
-func TestFinalizeStage_PostCommitVerificationNilSafe(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Audit P0.5 (July 2026): CompletionState 3-state mock-verifier tests.
-//
-// The contract (single source of truth: stages.go::finalizeStage):
-//
-//   verifier returns nil                                       → CompletionState = StateCompleted
-//   verifier returns err wrapping ErrReconciliationRequired    → CompletionState = StateReconciliationRequired
-//                                                                    + item.Status = StatusFailed
-//                                                                    ("must NOT report StatusCompleted")
-//   verifier returns any other non-nil err                     → CompletionState = StateCompletedUnverified
-//                                                                    + item.Status = StatusCompleted (warn)
-//   verifier unwired                                           → CompletionState stays "" (omitempty hides wire)
-//
-// Each test reads `cannedRes.CompletionState` AFTER finalizeStage
-// returns because the typed `FinalizeResult` returned by the stub
-// finalizer is the same pointer finalizeStage mutates — there is no
-// test-side recording wrapper required.
-// ─────────────────────────────────────────────────────────────────────
-
-func TestFinalizeStage_PostCommitVerificationOK_StateCompleted(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
-
-func TestFinalizeStage_PostCommitVerificationWarnOnly_StateCompletedUnverified(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
-
-func TestFinalizeStage_PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
-
-// ─────────────────────────────────────────────────────────────────────
 // Audit P0 #2 (July 2026): OptionalSteps + RequiredSteps tracking
 // ─────────────────────────────────────────────────────────────────────
 //
@@ -250,11 +177,11 @@ func TestFinalizeStage_PostCommitVerificationCanonicalRowMissing_StateReconcilia
 //     from Finalize() with the canonical errRequiredStepNotWired
 //     prefix — NOT a RequiredSteps "<step>: unwired" entry.
 
-// TestFinalizeResult_TracksOptionalAndRequiredSteps exercises the
+// TestFinalizerResult_TracksOptionalAndRequiredSteps exercises the
 // real voiceoverFinalizer with various dep configurations and
 // asserts the audit-P0 #2 split tracking contract. The test uses
 // in-memory SQLite so Commit/Rollback work.
-func TestFinalizeResult_TracksOptionalAndRequiredSteps(t *testing.T) {
+func TestFinalizerResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 	db := openFinalizerTestDB(t)
 	repo := &finalizerTestRepo{db: db}
 
@@ -434,11 +361,11 @@ func TestFinalizeResult_TracksOptionalAndRequiredSteps(t *testing.T) {
 //      "test didn't accidentally regress to always-erroring"
 //      tail-case).
 
-// TestFinalize_RequiredStepNotWired_FailsFast pins the audit-P0 #2
+// TestFinalizer_RequiredStepNotWired_FailsFast pins the audit-P0 #2
 // fail-fast contract: unwired required deps surface as a typed
 // error rather than degrading to SkippedSteps-style reports of
 // the form "<step>: unwired".
-func TestFinalize_RequiredStepNotWired_FailsFast(t *testing.T) {
+func TestFinalizer_RequiredStepNotWired_FailsFast(t *testing.T) {
 	db := openFinalizerTestDB(t)
 	repo := &finalizerTestRepo{db: db}
 
@@ -565,7 +492,7 @@ func TestFinalize_RequiredStepNotWired_FailsFast(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// stubOutboxEnqueuer + stubProjectionUpserter for SkippedSteps tests
+// stubOutboxEnqueuer for required-step invariant tests
 // ─────────────────────────────────────────────────────────────────────
 
 type stubOutboxEnqueuer struct{}
