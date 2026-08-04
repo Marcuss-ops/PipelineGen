@@ -1,10 +1,7 @@
-// Package voiceover — voice_override_test.go (Azione #1, July 2026).
+// Package voiceover — voice_override_test.go (July 2026).
 //
-// synthesizeStage removed from Service. TestTTSBridge_UsesPerLanguageVoice
-// is skipped — the voice-override behavior is now tested via
-// ProcessSegmentUseCase.Execute (which passes cmd.Voice through to
-// TTSProvider.Synthesize). voiceOverrideFor free function preserved in
-// process.go — the 4 unit-level tests below still pin the lookup contract.
+// Voice-override propagation is covered by ProcessSegmentUseCase.Execute;
+// these tests pin the lookup, registry fallback, and payload contracts.
 package voiceover
 
 import (
@@ -102,13 +99,6 @@ func TestResolveVoiceForLanguage_NilRegistry_FallsBack(t *testing.T) {
 	got := resolveVoiceForLanguage(nil, "it", nil, nil)
 	assert.Equal(t, "", got,
 		"nil registry must fall back to empty string")
-}
-
-// TestTTSBridge_UsesPerLanguageVoice — SKIPPED (Azione #1, July 2026).
-// synthesizeStage removed from Service; the voice-override propagation is
-// now tested via ProcessSegmentUseCase.Execute (cmd.Voice → TTSProvider).
-func TestTTSBridge_UsesPerLanguageVoice(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): synthesizeStage removed — voice override propagation now tested via ProcessSegmentUseCase.Execute")
 }
 
 func TestE2E_VoiceOverrideReachesPython(t *testing.T) {

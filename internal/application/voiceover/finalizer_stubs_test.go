@@ -1,9 +1,7 @@
-// Package voiceover — finalizer_test.go (P0.4 Fase 3a, July 2026).
+// Package voiceover — finalizer_stubs_test.go (P0.4 Fase 3a, July 2026).
 //
-// Tests the unified VoiceoverFinalizer delegation through both paths.
-// Uses in-memory SQLite for real tx lifecycle (BeginTx/Commit/Rollback)
-// so the test exercises the full finalizeStage flow without panicking
-// on a zero-value *sql.Tx.
+// Shared test doubles for the unified VoiceoverFinalizer and canonical
+// per-item pipeline tests. Uses in-memory SQLite for real tx lifecycle.
 package voiceover
 
 import (
@@ -132,11 +130,10 @@ func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx,
 var _ persistence.Repository = (*finalizerTestRepo)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
-// Azione #1 migration (July 2026): finalizeStage retired from Service.
+// Canonical per-item pipeline test support
 // ─────────────────────────────────────────────────────────────────────
 //
-// The 9 Service.finalizeStage tests previously skipped below are
-// MIGRATED to the canonical per-item pipeline
+// The former Service-level tests are covered by the canonical per-item pipeline
 // (ProcessSegmentUseCase.Execute) — via the shared stub ports defined
 // in process_voiceover_item_test.go (`stubProcessTTS`,
 // `stubProcessDestResolver`, `stubProcessPublisher`) plus the local
@@ -146,7 +143,7 @@ var _ persistence.Repository = (*finalizerTestRepo)(nil)
 // path so the regression guard does not depend on the retired Service
 // internals.
 //
-// godlike/06 SSOT: the post-DRY canonical per-item pipeline IS
+// godlike/06 SSOT: the canonical per-item pipeline IS
 // `newProcessSegmentUseCase(...).Execute(...)`. The FASE 2 test group at
 // the bottom of this file exercises the same behaviors against
 // `newVoiceoverFinalizer(...).Finalize(...)` directly — the two
