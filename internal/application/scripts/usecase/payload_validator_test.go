@@ -598,3 +598,84 @@ func TestPayloadValidator_LongSourceTextWithinLimit(t *testing.T) {
 
 	require.NoError(t, v.ValidateEnvelope(env))
 }
+
+func TestPayloadValidator_VideoMetadataEmpty(t *testing.T) {
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "empty-metadata",
+				Title: "Empty Metadata",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "topic",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{TargetWords: 150},
+				VideoMetadata: &scriptpkg.VideoMetadata{
+					Title:       "",
+					Description: "",
+					Tags:        []string{},
+				},
+			},
+		},
+	}
+
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	assert.Equal(t, "EMPTY_VIDEO_METADATA", pve.Code)
+}
+
+func TestPayloadValidator_VideoMetadataValid(t *testing.T) {
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "valid-metadata",
+				Title: "Valid Metadata",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "topic",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{TargetWords: 150},
+				VideoMetadata: &scriptpkg.VideoMetadata{
+					Title: "Some Video Title",
+				},
+			},
+		},
+	}
+
+	require.NoError(t, v.ValidateEnvelope(env))
+}
+
+func TestPayloadValidator_RejectsEmptyVideoMetadata(t *testing.T) {
+	validator := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID: "test-item",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "topic",
+				},
+				ScriptParams:  scriptpkg.ScriptSpec{TargetWords: 150},
+				VideoMetadata: &scriptpkg.VideoMetadata{},
+			},
+		},
+	}
+
+	err := validator.ValidateEnvelope(env)
+
+	require.Error(t, err)
+
+	var validationError *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &validationError)
+	require.Equal(t, "EMPTY_VIDEO_METADATA", validationError.Code)
+}
