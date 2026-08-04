@@ -127,8 +127,9 @@ func canonicalVoiceoverPublishCommand() voiceover.VoiceoverPublishCommand {
 // these fields. FolderID is treated as the request-local voiceover
 // root so the canonical publisher builds the project/language path.
 //
-// The request-local root must be forwarded as RootFolderOverride so
-// an explicit script folder still receives canonical subdirectories.
+// The already-resolved script folder must be forwarded as
+// DestinationFolderID so the canonical Publisher does not re-resolve
+// it through registry/config/root routing.
 func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testing.T) {
 	pub := canonicalRecordingPublisher()
 	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
@@ -158,10 +159,10 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 	assert.Equal(t, "storia-boxe", got.ProjectID,
 		"req.ProjectID must equal cmd.Project (canonical semantic routing)")
 	assert.Equal(t, "it-IT", got.Language)
-	assert.Empty(t, got.DestinationFolderID,
-		"voiceover root must not be treated as a leaf folder")
-	assert.Equal(t, "legacy-folder-DO-NOT-USE", got.RootFolderOverride,
-		"the request-local voiceover root must preserve project/language routing")
+	assert.Equal(t, "legacy-folder-DO-NOT-USE", got.DestinationFolderID,
+		"the plan-resolved folder must be forwarded as the canonical destination leaf")
+	assert.Empty(t, got.RootFolderOverride,
+		"voiceover publishing must not use the legacy root override or re-resolve the folder")
 }
 
 // TestPublisherAdapter_EmptyProject_FailsClosedWithTypedSentinel
