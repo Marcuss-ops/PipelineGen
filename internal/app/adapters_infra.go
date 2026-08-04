@@ -43,27 +43,6 @@ func (a *sfxClipsRepoAdapter) Upsert(ctx context.Context, clip *asset.Asset) err
 	return a.repo.Upsert(ctx, clip)
 }
 
-// ── Drive uploader adapter ───────────────────────────────────────────
-
-// sfxDriveUploaderAdapter wraps drive.Admin to satisfy
-// sfxports.DriveUploaderPort. FASE 9 Step 4 (June 2026): migrated
-// from *drive.Uploader to drive.Admin (Pattern 0 port). Only the
-// fields used by sfx are mapped; MD5Checksum + DownloadLink from
-// concrete drive.UploadResult are deliberately dropped.
-
-// F2.10: sfxDriveUploaderAdapter + its assertion + methods were
-// retired (override brutal). The sfx capability no longer reaches
-// into the legacy drive.Admin.UploadFile + GetOrCreateFolder surface;
-// every Drive write from sfx routes through delivery.Publisher.Publish
-// (DestinationSoundEffect). The matching sfxports.DriveUploaderPort
-// interface was removed from
-// internal/application/assets/soundeffect/ports.go in the same
-// commit — the structural compatibility check
-// `var _ sfxports.DriveUploaderPort = (*sfxDriveUploaderAdapter)(nil)`
-// would now fail to compile because the interface is gone.
-//
-// (per `97e6b71a`-era deletion): see git log for the exact diff.
-
 // ── Semantic writer adapter ──────────────────────────────────────────
 
 // sfxSemanticWriterAdapter wraps semantic.MetadataWriterPort to satisfy
