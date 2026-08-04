@@ -22,6 +22,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // TestResolveDestination_ExplicitKindUsesFolderID: when Kind=explicit
@@ -135,7 +137,7 @@ func TestResolveDestination_AllMissingReturnsMissingFolder(t *testing.T) {
 // and ResolvedDestination receives FolderID from the resolver +
 // StyleGroup mirrored verbatim from the input.
 func TestResolveDestination_GroupKindCallsResolver(t *testing.T) {
-	stub := &recordingResolver{}
+	stub := &recordingResolver{result: &asset.ResolveResult{FolderID: "resolved-folder-id", FolderPath: "/resolved/boxe"}}
 	dest := &DestinationRequest{
 		Kind:       string(KindGroup),
 		Group:      "boxe",
@@ -238,7 +240,7 @@ func TestResolveDestination_EmptyKindMapsToAuto(t *testing.T) {
 		Group: "boxe",
 		// Kind intentionally empty.
 	}
-	stub := &recordingResolver{}
+	stub := &recordingResolver{result: &asset.ResolveResult{FolderID: "resolved-folder-id", FolderPath: "/resolved/boxe"}}
 
 	rd, err := ResolveVoiceoverDestination(context.Background(), dest, stub, "default-folder-id")
 	if err != nil {

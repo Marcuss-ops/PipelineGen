@@ -52,6 +52,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"go.uber.org/zap"
 )
 
@@ -69,13 +71,12 @@ import (
 //  2. destReq == nil AND defaultResolver != nil AND Resolve returns
 //     ok=true AND folderID != "" → synthesise a minimal DestinationRequest
 //     from the resolved default and call destResolver Resolve.
-//  3. Otherwise → return (nil, nil). Caller decides to fail or
-//     defer the failure.
-//
+//  3. Otherwise → return a typed unavailable error. Callers must
+//     fail closed rather than inventing a destination.
+
 // godlike/07 fail-closed: the function NEVER silently invents a
-// destination. If both rules fail, the (nil, nil) return signals
-// "no destination available" to the caller, who can choose to
-// surface a permanent missing-destination error.
+// destination. If both rules fail, it returns a typed unavailable
+// error so the permanent missing-destination failure is explicit.
 func TestResolveDestinationWithFallback(t *testing.T) {
 	// recordingDestResolverWith allows per-row config of the destination
 	// stub's FolderID/FolderPath returned to caller; the stub ALSO records
@@ -195,10 +196,13 @@ func TestResolveDestinationWithFallback(t *testing.T) {
 				tt.defaultRes,
 				zap.NewNop(),
 			)
-			require.NoError(t, err)
 			if tt.want.wantNil {
-				assert.Nil(t, got, "Rule with no available destination must return nil")
+				require.Error(t, err, "no available destination must fail closed")
+				assert.ErrorIs(t, err, ErrVoiceoverDestinationUnavailable)
+				assert.Nil(t, got, "failed destination resolution must return no destination")
 			} else {
+				require.NoError(t, err)
+
 				require.NotNil(t, got, "Rule 1 or Rule 2 must return a non-nil ResolvedDestination")
 				assert.Equal(t, tt.want.folderID, got.FolderID)
 				assert.Equal(t, tt.want.folderPath, got.FolderPath)
@@ -726,6 +730,36 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_ForwardsLanguageAndProje
 		"VoiceoverPublishCommand.Filename must equal cmd.Filename")
 	assert.Equal(t, "dest-stage3", got.FolderID,
 		"VoiceoverPublishCommand.FolderID must equal resolvedDest.FolderID")
+}
+
+// TestProcessSegmentUseCase_Execute_DestinationParentMismatchFailsClosed
+// pins the hard post-upload integrity gate. A resolved destination mismatch
+// is not a retryable generic upload failure and must not reach finalization.
+func TestProcessSegmentUseCase_Execute_DestinationParentMismatchFailsClosed(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/vo/mismatch.mp3"}}
+	pub := &stubFailingPublisher{err: delivery.ErrDestinationParentMismatch}
+	finalizer := &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "must-not-finalize"}}
+	resolved := &ResolvedDestination{FolderID: "resolved-folder", FolderPath: "/tmp/vo"}
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+	out, err := uc.Execute(context.Background(), &ProcessSegmentCommand{
+		ID: "vo-parent-mismatch", Language: "en", Text: "integrity gate",
+		Filename: "mismatch.mp3", Dest: resolved,
+	})
+
+	require.Error(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Equal(t, VoiceoverDestinationMismatchCode, out.ErrorCode)
+	assert.Contains(t, out.Error, VoiceoverDestinationMismatchCode)
+	assert.Empty(t, finalizer.calls, "destination mismatch must fail before DB finalization")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
