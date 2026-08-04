@@ -30,7 +30,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -118,8 +118,11 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	// the staged source file is consumed by the cut within Step 4 and is
 	// unused by Steps 5a-10 which only touch the cut clip via localPath.
 	if u.media.Stager != nil && cmd.VideoURL != "" && cmd.Strategy != youtubetypes.StrategyYouTubeStockPartial {
-		staged, stageErr := u.media.Stager.StageSource(ctx, assets.SourceRef{
-			URL: cmd.VideoURL,
+		source := acquisition.SourceRef{URL: cmd.VideoURL, PolicyVersion: ProcessSegmentPolicyVersion}
+		staged, stageErr := u.media.Stager.Prepare(ctx, acquisition.PrepareRequest{
+			Source:         source,
+			IdempotencyKey: "youtube.segment." + acquisition.DeriveIdempotencyKey(source),
+			CallerRef:      "youtube.process_segment",
 		})
 		if stageErr != nil {
 			u.core.Log.Warn("shared SourceStager pre-stage failed (continuing with legacy per-segment yt-dlp)",
@@ -127,19 +130,25 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 				zap.String("video_url", cmd.VideoURL),
 				zap.Error(stageErr))
 		} else {
-			cutReq.PreDownloadedPath = staged.LocalPath
-			u.core.Log.Info("shared SourceStager pre-staged full video for -c copy slicing",
-				zap.String("clip_id", clipID),
-				zap.String("video_url", cmd.VideoURL),
-				zap.String("local_path", staged.LocalPath),
-				zap.Int64("bytes", staged.Bytes))
-			defer func(staged *assets.StagedAsset) {
-				if cleanupErr := u.media.Stager.Cleanup(ctx, staged); cleanupErr != nil {
-					u.core.Log.Warn("shared SourceStager cleanup failed (best-effort)",
-						zap.String("local_path", staged.LocalPath),
-						zap.Error(cleanupErr))
-				}
-			}(staged)
+			if staged == nil || !staged.HasLocal() {
+				u.core.Log.Warn("shared acquisition stager returned no local path",
+					zap.String("clip_id", clipID),
+					zap.String("video_url", cmd.VideoURL))
+			} else {
+				cutReq.PreDownloadedPath = staged.LocalPath
+				u.core.Log.Info("shared acquisition SourceStager pre-staged full video for -c copy slicing",
+					zap.String("clip_id", clipID),
+					zap.String("video_url", cmd.VideoURL),
+					zap.String("local_path", staged.LocalPath),
+					zap.Int64("bytes", staged.SizeBytes))
+				defer func(cleanupToken string) {
+					if cleanupErr := u.media.Stager.Release(context.WithoutCancel(ctx), cleanupToken); cleanupErr != nil {
+						u.core.Log.Warn("shared acquisition release failed (best-effort)",
+							zap.String("local_path", staged.LocalPath),
+							zap.Error(cleanupErr))
+					}
+				}(staged.CleanupToken)
+			}
 		}
 	}
 

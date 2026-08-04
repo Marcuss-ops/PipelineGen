@@ -130,8 +130,12 @@ type DBHealthChecker interface {
 // cross-call dedupe.
 //
 // CURRENT CONSUMERS (July 2026):
-//   - YouTube (usecase/process_segment.go Step 4a — pre-stage full video)
-//   - Artlist (stager_adapter.go — per-asset download)
+//   - Stock pipeline (legacy compatibility surface still used by the
+//     stock orchestrator and fixtures)
+//   - Images and jobs/assets (StageSourceV2 compatibility surface)
+//
+// MIGRATED CONSUMERS: YouTube and Artlist now use
+// acquisition.SourceStager directly. Do not add new consumers here.
 //
 // CANONICAL REPLACEMENT: acquisition.SourceStager
 //   - internal/application/acquisition/port.go
