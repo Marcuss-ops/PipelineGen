@@ -51,7 +51,9 @@ import (
 // former `internal/api/drive/` directory as a second receiver
 // (DriveHandler) sharing the same /drive sub-group. The ctor takes
 // driveUploader + reconcileSvc so /drive routes can answer (when
-// either is nil the corresponding handler returns 503).
+// either is nil the corresponding handler returns 503). The real Drive
+// reconciler is not wired yet; keep this dependency nil so the API fails
+// closed instead of returning a false empty success.
 func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *wiring.ComposeRoot) error {
 	// FASE 9 Step 2: use root.Drive.DriveUploader directly instead of
 	// constructing a redundant *drive.Uploader from DriveClient.
@@ -64,7 +66,7 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		log,
 		toolCheckerAdapter, processRunnerAdapter, dbHealthCheckerAdapter,
 		newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
-		&noopReconciler{},
+		nil,
 	), WithRegistrationPoint("register.System"))
 }
 

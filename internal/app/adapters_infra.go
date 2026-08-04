@@ -271,18 +271,6 @@ func (a *driveAdminAdapter) ResolveFileInfo(ctx context.Context, fileID string) 
 		Size:        meta.Size,
 		Trashed:     meta.Trashed,
 	}, nil
-} // ARCH-ALLOWLIST: noop-reconciler (forward-pointer: FASE 9 replacement with the real reconciler impl; intentional noop keeps /drive/reconcile + /drive/cleanup endpoints operationally reachable without surfacing a typed error per godlike/07 no-fake-availability)
-// ── Reconciler (no-op placeholder) ────────────────────────────────────────────
-
-// noopReconciler satisfies systemapi.Reconciler with a zero-result response.
-// Previously this was backed by the now-removed drivecleanup.Service compatibility
-// shim; the real Drive→SQLite reconciliation logic has not been implemented yet.
-// This keeps the /drive/reconcile and /drive/cleanup endpoints functional
-// (returning {deleted:0,kept:0}) while the feature is built out.
-type noopReconciler struct{}
-
-func (noopReconciler) Reconcile(_ context.Context, _, _ string, _ bool) (*systemapi.ReconcileResult, error) {
-	return &systemapi.ReconcileResult{}, nil
 }
 
 // middlewareRateLimitAdapter + middlewareFeatureFlagsAdapter + doctorConfigFrom
@@ -295,7 +283,6 @@ func (noopReconciler) Reconcile(_ context.Context, _, _ string, _ bool) (*system
 // runtime panic.
 var (
 	_ systemapi.DriveAdminOps = (*driveAdminAdapter)(nil)
-	_ systemapi.Reconciler    = (*noopReconciler)(nil)
 	_ searchpkg.QueryEmbedder = (*searchEmbedAdapter)(nil)
 )
 

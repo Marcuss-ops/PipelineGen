@@ -20,7 +20,9 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -46,6 +48,11 @@ type ReconcileResult struct {
 type Reconciler interface {
 	Reconcile(ctx context.Context, source, rootFolderID string, dryRun bool) (*ReconcileResult, error)
 }
+
+// ErrReconcilerNotWired is returned at the HTTP boundary when the real
+// Drive-to-SQLite reconciler is unavailable. The route remains explicit but
+// fail-closed instead of reporting a successful empty reconciliation.
+var ErrReconcilerNotWired = errors.New("system: drive reconciler not wired (godlike/07 fail-closed)")
 
 // DriveAdminOps is the port for the small set of Drive operations the
 // admin handlers need: create folders, move files, list files, rename,
@@ -169,7 +176,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 // Body: { "source": "artlist", "root_folder_id": "xxx", "dry_run": true }
 func (h *DriveHandler) Reconcile(c *gin.Context) {
 	if h.reconciler == nil {
-		apiutil.Error(c, 500, "reconcile service not configured")
+		apiutil.Error(c, http.StatusServiceUnavailable, ErrReconcilerNotWired.Error())
 		return
 	}
 
@@ -198,7 +205,7 @@ func (h *DriveHandler) Reconcile(c *gin.Context) {
 // Body: { "source": "artlist", "root_folder_id": "xxx" }
 func (h *DriveHandler) Cleanup(c *gin.Context) {
 	if h.reconciler == nil {
-		apiutil.Error(c, 500, "reconcile service not configured")
+		apiutil.Error(c, http.StatusServiceUnavailable, ErrReconcilerNotWired.Error())
 		return
 	}
 
