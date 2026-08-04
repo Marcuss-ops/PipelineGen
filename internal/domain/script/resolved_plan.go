@@ -175,6 +175,10 @@ type ResolvedGenerationPlan struct {
 	// It is copied from GenerationItemV2 and made available to the
 	// visual_planning postprocessor.
 	MediaPlan media.MediaPlanSpec `json:"media_plan,omitempty"`
+
+	// VideoMetadata is caller-provided YouTube metadata.
+	// It is output metadata and must never be sent to the script LLM.
+	VideoMetadata *VideoMetadata `json:"video_metadata,omitempty"`
 }
 
 // HasClips returns true when the plan carries clip evidence (the
@@ -247,5 +251,6 @@ func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan
 	if p.ClipEvidence != nil {
 		p.ClipEvidence = NewClipEvidence(*p.ClipEvidence)
 	}
+	p.VideoMetadata = CloneVideoMetadata(p.VideoMetadata)
 	return &p
 }
