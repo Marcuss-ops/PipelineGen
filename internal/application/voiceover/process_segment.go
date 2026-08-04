@@ -53,8 +53,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
@@ -178,6 +180,7 @@ type ProcessSegmentDeps struct {
 	VoiceoverRepository persistence.Repository
 	Finalizer           VoiceoverFinalizer // mandatory (P0.4 Fase 3a)
 	TxOutboxEnqueuer    TxOutboxEnqueuer   // optional (FASE 4 orphan-cleanup path; nil-safe)
+	SemanticTagger      SemanticTaggerFunc // optional; enriches canonical metadata when wired
 	Logger              *zap.Logger
 }
 
@@ -198,7 +201,9 @@ type ProcessSegmentUseCase struct {
 
 // NewProcessSegmentUseCase constructs the canonical use case. Mandatory
 // deps are fail-fast (panic on nil — per AGENTS.md WireUp pattern).
-// AudioPostProcessor is nil-safe.
+// AudioPostProcessor and SemanticTagger are nil-safe. SemanticTagger is
+// optional so the per-item child path can remain compatible while the
+// composition root enables semantic enrichment for the batch path.
 func NewProcessSegmentUseCase(deps ProcessSegmentDeps) *ProcessSegmentUseCase {
 	if deps.TTSProvider == nil {
 		panic("voiceover.NewProcessSegmentUseCase: TTSProvider is required (ProcessSegmentDeps.TTSProvider)")
@@ -231,20 +236,11 @@ func NewProcessSegmentUseCase(deps ProcessSegmentDeps) *ProcessSegmentUseCase {
 // ProcessSegmentUseCase opens the tx, calls Finalize, then commits.
 //
 // godlike/07 failure mode: every stage returns a VoiceoverItemResult
-// with typed Status + Error string. Stage 0 (nil input OR missing
-// destination) returns (out, error) where out is non-nil with
-// StatusFailed. All other stages also return (out, error) with
-// StatusFailed on failure; the caller can wrap the error in a
-// typed PipelineError if they need stage classification (the
-// per-item path does this; the batch path uses the string error
-// directly).
-//
-// godlike/07 minimal-blast-radius: the error message prefixes
-// ("tts_failed:" / "audio_post_process_failed:" / "no_local_payload:"
-// / "upload_failed:" / "tx_begin_failed:" / "finalize_failed:"
-// / "tx_commit_failed:") are byte-equivalent with the pre-DRY
-// per-item path's out.Error strings, so the per-item path's
-// prefix-based stage classification continues to work.
+// with typed Status + ErrorCode and a typed PipelineError. Stage 0
+// (nil input or missing destination) fails permanently; transient
+// provider and persistence failures carry their retry policy in the
+// PipelineError. Error remains human-readable diagnostics only and is
+// never used for stage classification.
 func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegmentCommand) (*VoiceoverItemResult, error) {
 	// Stage 0: nil-safe + required fields check.
 	if cmd == nil {
@@ -253,11 +249,12 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if cmd.Dest == nil || cmd.Dest.FolderID == "" {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out := &VoiceoverItemResult{
-			Language: cmd.Language,
-			Status:   StatusFailed,
-			Error:    "missing_folder_id: voiceover destination has no FolderID for upload",
+			Language:  cmd.Language,
+			Status:    StatusFailed,
+			ErrorCode: string(FailureMissingFolder),
+			Error:     "missing_folder_id: voiceover destination has no FolderID for upload",
 		}
-		return out, fmt.Errorf("%s", out.Error)
+		return out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("%s", out.Error))
 	}
 
 	out := &VoiceoverItemResult{
@@ -294,8 +291,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		emitTTS("failed")
 		observability.TTSFailuresTotal.Inc()
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-		out.Error = fmt.Sprintf("tts_failed: %v", err)
-		return out, err
+		out.ErrorCode = string(FailureTTS)
+		out.Error = fmt.Sprintf("%s: %v", FailureTTS, err)
+		return out, newPipelineErrorCode(StageTTS, true, FailureTTS, err)
 	}
 	emitTTS("completed")
 	out.LocalPath = ttsOut.LocalPath
@@ -316,8 +314,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		if err != nil {
 			emitPost("failed")
 			observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-			out.Error = fmt.Sprintf("audio_post_process_failed: %v", err)
-			return out, err
+			out.ErrorCode = string(FailureAudioPost)
+			out.Error = fmt.Sprintf("%s: %v", FailureAudioPost, err)
+			return out, newPipelineErrorCode(StageAudioPost, false, FailureAudioPost, err)
 		}
 		emitPost("completed")
 		if postOut.CleanedPath != "" {
@@ -327,8 +326,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 
 	if out.LocalPath == "" && out.CleanedPath == "" {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		out.ErrorCode = string(FailureNoLocalPayload)
 		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
-		return out, fmt.Errorf("%s", out.Error)
+		return out, newPipelineErrorCode(StageTTS, false, FailureNoLocalPayload, fmt.Errorf("%s", out.Error))
 	}
 	// Stage 3: VoiceoverPublisher.Publish — delegates to publishStage
 	// (process_segment_publish.go) for metadata building + idempotency
@@ -337,8 +337,14 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if err != nil {
 		observability.DriveUploadFailuresTotal.Inc()
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-		out.Error = fmt.Sprintf("upload_failed: %v", err)
-		return out, err
+		if errors.Is(err, delivery.ErrDestinationParentMismatch) {
+			out.ErrorCode = VoiceoverDestinationMismatchCode
+			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationMismatchCode, err)
+			return out, newPipelineErrorCode(StageUpload, false, FailureDestinationMismatch, err)
+		}
+		out.ErrorCode = string(FailureUpload)
+		out.Error = fmt.Sprintf("%s: %v", FailureUpload, err)
+		return out, newPipelineErrorCode(StageUpload, true, FailureUpload, err)
 	}
 
 	// Stage 4: BeginTx + Finalize + Commit (delegated to finalizer).
@@ -353,8 +359,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if err != nil {
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-		out.Error = fmt.Sprintf("tx_begin_failed: %v", err)
-		return out, err
+		out.ErrorCode = string(FailureTxBegin)
+		out.Error = fmt.Sprintf("%s: %v", FailureTxBegin, err)
+		return out, newPipelineErrorCode(StageTxBegin, true, FailureTxBegin, err)
 	}
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
@@ -389,7 +396,8 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if err != nil {
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-		out.Error = fmt.Sprintf("finalize_failed: %v", err)
+		out.ErrorCode = string(FailureFinalize)
+		out.Error = fmt.Sprintf("%s: %v", FailureFinalize, err)
 
 		// Rollback the transaction immediately to release the connection pool lock
 		_ = tx.Rollback()
@@ -414,7 +422,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
 		}
 
-		return out, err
+		return out, newPipelineErrorCode(StageTxCommit, true, FailureFinalize, err)
 	}
 
 	// If the dedupe gate matched an existing row (Reused=true),
@@ -426,8 +434,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if err := tx.Commit(); err != nil {
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
-		out.Error = fmt.Sprintf("tx_commit_failed: %v", err)
-		return out, err
+		out.ErrorCode = string(FailureTxCommit)
+		out.Error = fmt.Sprintf("%s: %v", FailureTxCommit, err)
+		return out, newPipelineErrorCode(StageTxCommit, true, FailureTxCommit, err)
 	}
 	emitFinalize("completed")
 

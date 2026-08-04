@@ -23,6 +23,8 @@ package voiceover
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 )
@@ -55,13 +57,31 @@ func ResolveDestinationWithFallback(
 	defaultResolver VoiceoverDefaultFolderResolver,
 	logger *zap.Logger,
 ) (*ResolvedDestination, error) {
-	// Rule 1: explicit destination.
+	// Rule 1: any caller-supplied destination is authoritative. This
+	// includes KindExplicit: an unavailable explicit request must fail,
+	// never fall through to defaults or historical roots.
 	if destReq != nil {
-		return destResolver.Resolve(ctx, destReq)
+		if destResolver == nil {
+			return nil, fmt.Errorf("%w: destination resolver is not configured", ErrVoiceoverDestinationUnavailable)
+		}
+		resolved, err := destResolver.Resolve(ctx, destReq)
+		if err != nil {
+			if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+				return nil, err
+			}
+			return nil, fmt.Errorf("%w: explicit destination resolver: %v", ErrVoiceoverDestinationUnavailable, err)
+		}
+		if resolved == nil || resolved.FolderID == "" {
+			return nil, fmt.Errorf("%w: destination resolver returned no folder", ErrVoiceoverDestinationUnavailable)
+		}
+		return resolved, nil
 	}
 
 	// Rule 2: default folder fallback.
 	if defaultResolver != nil {
+		if destResolver == nil {
+			return nil, fmt.Errorf("%w: destination resolver is not configured for default destination", ErrVoiceoverDestinationUnavailable)
+		}
 		folderID, localOutputDir, ok := defaultResolver.Resolve(ctx)
 		if ok && folderID != "" {
 			if logger != nil {
@@ -76,13 +96,24 @@ func ResolveDestinationWithFallback(
 			// output directory; the per-item path's
 			// ResolveVoiceoverDestination routes it through
 			// the direct() helper which preserves it.
-			return destResolver.Resolve(ctx, &DestinationRequest{
+			resolved, err := destResolver.Resolve(ctx, &DestinationRequest{
 				FolderID:   folderID,
 				FolderPath: localOutputDir,
 			})
+			if err != nil {
+				if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+					return nil, err
+				}
+				return nil, fmt.Errorf("%w: configured default destination resolver: %v", ErrVoiceoverDestinationUnavailable, err)
+			}
+			if resolved == nil || resolved.FolderID == "" {
+				return nil, fmt.Errorf("%w: configured default resolved to no folder", ErrVoiceoverDestinationUnavailable)
+			}
+			return resolved, nil
 		}
 	}
 
-	// Rule 3: no destination available.
-	return nil, nil
+	// Rule 3: no destination available. This is a hard, typed failure;
+	// callers must not interpret it as permission to use another root.
+	return nil, fmt.Errorf("%w: no destination supplied or configured", ErrVoiceoverDestinationUnavailable)
 }

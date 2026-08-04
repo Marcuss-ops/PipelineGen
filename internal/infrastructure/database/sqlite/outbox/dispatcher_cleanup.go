@@ -95,7 +95,7 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 	}
 
 	eventID := uuid.NewString()
-	eventKey := cleanupEventKey(voiceoverID, newDriveFileID)
+	eventKey := cleanupEventKey(voiceoverID, oldDriveFileID, newDriveFileID)
 	payload := cleanupRequestV1{
 		SchemaVersion:  VoiceoverCleanupSchemaVersion,
 		EventID:        eventID,
@@ -135,11 +135,15 @@ func (d *Dispatcher) EnqueueCleanupEvent(
 }
 
 // cleanupEventKey is the canonical event_key constructor for the
-// voiceover.cleanup.requested.v1 envelope. Derived deterministically
-// from the voiceoverID + the post-swap drive file id; this combination
-// is the most stable post-finalize fingerprint available so a re-run
-// of finalizeStage with the same canonical state produces the same
-// event_key (idempotent on retry).
-func cleanupEventKey(voiceoverID, newDriveFileID string) string {
-	return fmt.Sprintf("voiceover_cleanup:%s:%s", voiceoverID, newDriveFileID)
+// voiceover.cleanup.requested.v1 envelope. It uses the replacement
+// Drive ID for normal swap cleanup and falls back to the old/target
+// Drive ID for a post-publish orphan where no replacement was
+// finalized. This keeps retries deterministic without making an
+// orphan event collide on an empty suffix.
+func cleanupEventKey(voiceoverID, oldDriveFileID, newDriveFileID string) string {
+	driveFileID := newDriveFileID
+	if driveFileID == "" {
+		driveFileID = oldDriveFileID
+	}
+	return fmt.Sprintf("voiceover_cleanup:%s:%s", voiceoverID, driveFileID)
 }

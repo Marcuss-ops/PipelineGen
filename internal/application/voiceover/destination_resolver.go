@@ -63,34 +63,27 @@ const (
 	// ("") maps to KindAuto so pre-PR-VO-C1 callers continue to be
 	// handled identically.
 	KindAuto DestinationKind = "auto"
-)
-
-// Sentinel errors returned from ResolveVoiceoverDestination. The
-// `destinationStage` failure path surfaces the `missing_folder_id`
-// status code so callers can correlate via BatchItem.Status; the
-// wrapped message preserves the same surface for log lines / metrics.
+) // Sentinel errors returned from ResolveVoiceoverDestination. Destination
+// availability failures carry the stable machine-readable code so callers
+// can fail closed without parsing infrastructure-specific messages.
 var (
-	// ErrMissingFolder — every Kind/Field combination has been
-	// consulted and the configured default voiceover folder is also
-	// empty. Wrapped at the ResolveVoiceoverDestination call site as
-	// "missing_folder_id: …" to preserve the legacy log-marker
-	// surface.
-	ErrMissingFolder = fmt.Errorf("missing_folder_id: no destination resolved")
+	// ErrMissingFolder is retained for compatibility with callers that
+	// distinguish the legacy missing-folder condition. It unwraps to the
+	// canonical unavailable sentinel.
+	ErrMissingFolder = fmt.Errorf("%w: missing_folder_id: no destination resolved", ErrVoiceoverDestinationUnavailable)
 
-	// ErrExplicitKindRequiresFolderID — Kind=KindExplicit + empty
-	// FolderID. Validated at the API layer (the handler fails fast
-	// with 400) but the resolver reasserts for internal callers so a
-	// misrouted legacy payload cannot skip validation.
-	ErrExplicitKindRequiresFolderID = fmt.Errorf("destination.kind=explicit requires non-empty folder_id")
+	// ErrExplicitKindRequiresFolderID is the explicit-routing detail
+	// error. It unwraps to the stable unavailable sentinel and must never
+	// trigger configured-default or historical-root fallback.
+	ErrExplicitKindRequiresFolderID = fmt.Errorf("%w: destination.kind=explicit requires non-empty folder_id", ErrVoiceoverDestinationUnavailable)
 
-	// ErrGroupKindRequiresGroup — Kind=KindGroup + empty Group. Same
-	// rationale as ErrExplicitKindRequiresFolderID.
-	ErrGroupKindRequiresGroup = fmt.Errorf("destination.kind=group requires non-empty group")
+	// ErrGroupKindRequiresGroup — Kind=KindGroup + empty Group.
+	ErrGroupKindRequiresGroup = fmt.Errorf("%w: destination.kind=group requires non-empty group", ErrVoiceoverDestinationUnavailable)
 
 	// ErrInvalidDestinationKind — Kind is non-empty and not one of
 	// explicit|group|auto. Defensive — catches API drift before the
 	// resolver silently degrades to a wrong routing decision.
-	ErrInvalidDestinationKind = fmt.Errorf("destination.kind: unknown value (must be explicit|group|auto)")
+	ErrInvalidDestinationKind = fmt.Errorf("%w: destination.kind: unknown value (must be explicit|group|auto)", ErrVoiceoverDestinationUnavailable)
 )
 
 // ResolveVoiceoverDestination is the canonical destination resolver
@@ -157,7 +150,7 @@ func ResolveVoiceoverDestination(
 	// a folder-mapping layer and does NOT echo StyleGroup back.
 	groupResolve := func() (*ResolvedDestination, error) {
 		if resolver == nil {
-			return nil, fmt.Errorf("destination.resolver: nil asset.Resolver (composition root did not wire it)")
+			return nil, fmt.Errorf("%w: destination.resolver is not configured", ErrVoiceoverDestinationUnavailable)
 		}
 		result, err := resolver.Resolve(ctx, &asset.ResolveRequest{
 			Source: "voiceover",
@@ -167,13 +160,13 @@ func ResolveVoiceoverDestination(
 			StyleGroup: string(dest.StyleGroup),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("destination.resolver: %w", err)
+			return nil, fmt.Errorf("%w: destination.resolver: %v", ErrVoiceoverDestinationUnavailable, err)
 		}
 		if result == nil {
-			// Defensive: a misbehaving resolver might return (nil, nil).
-			// Fallback to an empty result so the rest of the merge
-			// proceeds with zero-valued folder fields.
-			result = &asset.ResolveResult{}
+			return nil, fmt.Errorf("%w: destination.resolver returned no folder", ErrVoiceoverDestinationUnavailable)
+		}
+		if result.FolderID == "" {
+			return nil, fmt.Errorf("%w: destination.resolver returned an empty folder", ErrVoiceoverDestinationUnavailable)
 		}
 		return &ResolvedDestination{
 			Group:         dest.Group,

@@ -222,6 +222,24 @@ func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
 	require.True(t, dest.CreateSubfolder)
 }
 
+func TestBuildVoiceoverDestination_MalformedExplicitURLDoesNotFallback(t *testing.T) {
+	dest := BuildVoiceoverDestination(
+		context.Background(),
+		nil,
+		zap.NewNop(),
+		"Fallback Title",
+		"https://drive.google.com/not-a-folder-url",
+		"configured-group",
+		"configured-root",
+		nil,
+	)
+
+	require.NotNil(t, dest)
+	require.Equal(t, string(voiceover.KindExplicit), dest.Kind)
+	require.Empty(t, dest.FolderID)
+	require.Empty(t, dest.Group)
+}
+
 // Bonus: nil resolver behaves the same as before refactor. Defensive
 // parity check to ensure the refactor preserves nil-resolver leg.
 func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {

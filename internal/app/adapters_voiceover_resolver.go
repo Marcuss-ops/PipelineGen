@@ -130,46 +130,10 @@ func (a *useCaseDestResolverAdapter) Resolve(ctx context.Context, dest *voiceove
 	if dest == nil {
 		return nil, fmt.Errorf("useCaseDestResolverAdapter.Resolve: nil DestinationRequest")
 	}
-	res, err := a.resolver.Resolve(ctx, &asset.ResolveRequest{
-		Source:          "voiceover",
-		Group:           dest.Group,
-		FolderID:        dest.FolderID,
-		FolderPath:      dest.FolderPath,
-		SubfolderName:   dest.SubfolderName,
-		CreateSubfolder: dest.CreateSubfolder,
-		StyleGroup:      string(dest.StyleGroup),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("useCaseDestResolverAdapter.Resolve: resolver failed: %w", err)
-	}
-	if res == nil {
-		// Defensive: a misbehaving resolver may return (nil, nil).
-		// Fallback to an empty result so downstream code can proceed
-		// with zero-valued folder fields (mirrors the legacy
-		// *Service.resolveDestination behavior in metadata.go).
-		res = &asset.ResolveResult{}
-	}
-	// P0.2 fix (July 2026): when dest.FolderID is explicitly set,
-	// use it directly instead of the resolver's result (explicit
-	// override). The resolver is a folder-resolution layer; an
-	// explicit FolderID from the caller means "use this exact folder,
-	// don't resolve through Group/SubfolderName".
-	folderID := res.FolderID
-	if dest.FolderID != "" {
-		folderID = dest.FolderID
-	}
-	folderPath := res.FolderPath
-	if dest.FolderPath != "" {
-		folderPath = dest.FolderPath
-	}
-	return &voiceover.ResolvedDestination{
-		Group:         dest.Group,
-		FolderID:      folderID,
-		FolderPath:    folderPath,
-		DriveLink:     res.DriveLink,
-		SubfolderName: dest.SubfolderName, // MIRROR verbatim (P0.2 fix)
-		StyleGroup:    dest.StyleGroup,    // MIRROR verbatim (NOT from resolver result).
-	}, nil
+	// Keep all precedence decisions in the application resolver. In
+	// particular, KindExplicit returns the caller's folder verbatim and
+	// never invokes the asset tree or configured root.
+	return voiceover.ResolveVoiceoverDestination(ctx, dest, a.resolver, "")
 }
 
 var _ voiceover.DestinationResolver = (*useCaseDestResolverAdapter)(nil)

@@ -143,11 +143,20 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	// leaking into the resolution pipeline as a silent fallback —
 	// the registry error is preserved verbatim.
 	if req.ConflictPolicy == delivery.ConflictPolicyUnset {
-		policy, pErr := p.registry.Resolve(req.Destination)
-		if pErr != nil {
-			return nil, pErr
+		// An explicit folder is already a resolved destination. Do not
+		// consult the registry merely to choose a collision policy; use
+		// the conservative immutable-artifact default. Voiceover and
+		// other pre-resolved flows must remain independent of configured
+		// roots and path builders.
+		if strings.TrimSpace(req.DestinationFolderID) != "" {
+			req.ConflictPolicy = delivery.ConflictSkip
+		} else {
+			policy, pErr := p.registry.Resolve(req.Destination)
+			if pErr != nil {
+				return nil, pErr
+			}
+			req.ConflictPolicy = policy.ConflictPolicy
 		}
-		req.ConflictPolicy = policy.ConflictPolicy
 	}
 
 	// Steps 1–4: resolution pipeline (delegated, P0 #2). The helper

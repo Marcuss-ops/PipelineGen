@@ -16,7 +16,27 @@
 // retry just the failed languages).
 package voiceover
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// VoiceoverDestinationUnavailableCode is the stable machine-readable code
+// emitted when the requested voiceover destination cannot be resolved.
+// This is a hard failure: configured defaults and historical roots must
+// never replace an explicit or otherwise unavailable destination.
+const VoiceoverDestinationUnavailableCode = "VOICEOVER_DESTINATION_UNAVAILABLE"
+
+// ErrVoiceoverDestinationUnavailable is the canonical destination
+// availability sentinel. Callers should use errors.Is rather than parsing
+// the human-readable error string.
+var ErrVoiceoverDestinationUnavailable = errors.New(VoiceoverDestinationUnavailableCode)
+
+// VoiceoverDestinationMismatchCode is the stable machine-readable code
+// emitted when Drive confirms an uploaded file is not parented by the
+// folder resolved for the voiceover plan. This is a hard failure; no
+// post-upload move/repair is permitted.
+const VoiceoverDestinationMismatchCode = "VOICEOVER_DESTINATION_MISMATCH"
 
 // Status values for VoiceoverItemResult now live in types.go as the
 // typed `Status` enum (PR-VO-AUDIT-P01, June 2026). See:
@@ -71,6 +91,11 @@ type GenerateVoiceoversResult struct {
 	// Empty when the per-item fan-out completed (regardless of overall
 	// OK status — per-item errors live in PerLanguage[].Error).
 	Error string
+
+	// ErrorCode is the stable machine-readable code for a cross-cutting
+	// failure. In particular, unavailable voiceover destinations must not
+	// be represented as an unclassified generic error.
+	ErrorCode string
 }
 
 // VoiceoverItemResult carries per-language detail correlated by language
@@ -96,6 +121,11 @@ type VoiceoverItemResult struct {
 
 	// Error is populated when Status == StatusFailed. Empty otherwise.
 	Error string
+
+	// ErrorCode is the stable machine-readable failure code. It is
+	// populated for destination integrity failures so job/API layers
+	// do not need to parse Error text.
+	ErrorCode string
 
 	// DriveFileID is the canonical Drive file id surfaced after upload.
 	DriveFileID string
@@ -128,6 +158,11 @@ type VoiceoverItemResult struct {
 	// (scripts/jobs consumers, admin UI, retention sweeps) can
 	// reach the file binary without re-deriving from DriveLink.
 	DownloadLink string
+
+	// SearchText is the semantic tagger's normalized search text. It is
+	// populated when SemanticTagger is wired and remains empty when
+	// semantic enrichment is unavailable.
+	SearchText string
 
 	// ID is the canonical voiceover row identifier (buildVoiceoverID
 	// shape: vo_<sha256[:16]>) — same value as voiceovers.id column.

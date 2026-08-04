@@ -90,6 +90,12 @@ var (
 	// than repair the location by moving the file after upload.
 	ErrDriveFileParentMismatch = errors.New("drive verifier: file parent does not match expected destination")
 
+	// ErrDriveFileIDMismatch is returned when Files.Get returns metadata
+	// for a different file ID than the one produced by the upload. Treat
+	// this as a hard verification failure rather than accepting a
+	// potentially stale or mis-correlated Drive response.
+	ErrDriveFileIDMismatch = errors.New("drive verifier: returned file ID does not match uploaded file ID")
+
 	// ErrDriveFileSizeMismatch (PR-CLIPINGEST-PIPELINE step 9,
 	// Commit 3, July 2026): the Drive-side file size does not
 	// match the caller's ExpectedSize. Treated as a hard upload
@@ -365,10 +371,20 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 		return nil, fmt.Errorf("drive verifier: Files.Get %q: %w", fileID, err)
 	}
 
+	if meta == nil || strings.TrimSpace(meta.ID) == "" {
+		return &UploadVerification{FileID: fileID}, ErrDriveFileNotFound
+	}
+	if strings.TrimSpace(meta.ID) != strings.TrimSpace(fileID) {
+		return &UploadVerification{FileID: fileID, Meta: meta}, fmt.Errorf(
+			"drive verifier: file_id=%q metadata_id=%q: %w",
+			fileID, meta.ID, ErrDriveFileIDMismatch,
+		)
+	}
+
 	v2 := &UploadVerification{
 		FileID:         fileID,
-		FileIDPresent:  meta != nil && meta.ID != "",
-		FileNotInTrash: meta != nil && !meta.Trashed,
+		FileIDPresent:  true,
+		FileNotInTrash: !meta.Trashed,
 		Meta:           meta,
 	}
 
@@ -383,6 +399,13 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 	// Parent verification is performed against the live Drive metadata
 	// returned by Files.Get. Do not move or repair a mismatch here: the
 	// caller must fail the job and preserve the evidence for reconciliation.
+	if expected := strings.TrimSpace(params.ExpectedName); expected != "" && strings.TrimSpace(meta.Name) != expected {
+		return v2, fmt.Errorf(
+			"drive verifier: file_id=%q name mismatch: actual=%q expected=%q",
+			fileID, meta.Name, expected,
+		)
+	}
+
 	if expected := strings.TrimSpace(params.ExpectedFolderID); expected != "" {
 		parentMatches := false
 		for _, parent := range meta.Parents {

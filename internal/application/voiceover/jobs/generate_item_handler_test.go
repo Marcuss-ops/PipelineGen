@@ -267,14 +267,8 @@ func TestChild_NilUseCase_Panics(t *testing.T) {
 // ────────────────────────────────────────────────────────────────────
 
 // Pins the canonical P0.1 false-success fix (July 2026): when
-// useCase.Execute returns (res, nil) with res.Status != StatusCompleted
-// (the per-item pipeline's pattern for stage failures like TTS crash,
-// upload timeout, DB commit error), the handler MUST return an error
-// to the dispatcher so the worker retries (DefaultMaxRetries: 2) or
-// marks FAILED. Pre-P0.1 the handler returned (resultMap, nil) here,
-// producing a silent false-success: broker marked SUCCEEDED, parent
-// aggregator saw SUCCEEDED, user never knew the voiceover was never
-// created. This test locks the new contract at the handler boundary.
+// useCase.Execute returns (res, nil) with res.Status != StatusCompleted,
+// the handler MUST return an error to the dispatcher.
 func TestGenerateItemHandler_FailedResultReturnsError(t *testing.T) {
 	// Simulate a TTS failure: Execute returns (result with
 	// Status=StatusFailed + Error="tts_failed: ...", nil).
@@ -284,7 +278,7 @@ func TestGenerateItemHandler_FailedResultReturnsError(t *testing.T) {
 			Status:   voiceover.StatusFailed,
 			Error:    "tts_failed: Edge TTS connection timeout",
 		},
-		cannedErr: nil, // key: no Go error, only the result.Status signals failure
+		cannedErr: nil,
 	}
 	h := NewGenerateItemJobHandler(exec, zap.NewNop())
 	item := makeItemCmd("parent-job-005", "vo_20260101_120400_ddd444", "en", "en-US-RogerNeural", "hello_en.mp3", "ddd444hash")
@@ -293,25 +287,37 @@ func TestGenerateItemHandler_FailedResultReturnsError(t *testing.T) {
 	j := &appjobs.Job{ID: "child-job-005", Payload: marshalItemCmd(t, item)}
 	resultMap, err := h.HandleJob(context.Background(), j, tools)
 
-	// P0.1 gate: the handler MUST return an error when the result
-	// status is not completed, even though the use case returned nil.
-	require.Error(t, err, "P0.1: handler must return error on non-completed result (false-success gate)")
-	assert.Contains(t, err.Error(), "tts_failed",
-		"P0.1: error message must carry the per-stage failure string so operators see which stage failed")
-
-	// The result map must carry ok=false so the parent aggregator can
-	// re-read the child result and see it was a failure (defense in
-	// depth on top of the broker status).
-	assert.NotNil(t, resultMap, "P0.1: result map must be non-nil even on failure (operators need per-language detail)")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tts_failed")
+	assert.NotNil(t, resultMap)
 	ok, hasOK := resultMap["ok"].(bool)
-	assert.True(t, hasOK, "P0.1: result map must have 'ok' field")
-	assert.False(t, ok, "P0.1: result map 'ok' must be false on non-completed status")
-	assert.Equal(t, voiceover.StatusFailed, resultMap["status"],
-		"P0.1: result map must surface the exact status the use case returned")
-	assert.Equal(t, "tts_failed: Edge TTS connection timeout", resultMap["error"],
-		"P0.1: result map must surface the per-stage error string verbatim")
+	assert.True(t, hasOK)
+	assert.False(t, ok)
+	assert.Equal(t, voiceover.StatusFailed, resultMap["status"])
+	assert.Equal(t, "tts_failed: Edge TTS connection timeout", resultMap["error"])
+	require.Len(t, exec.calls, 1)
+}
 
-	require.Len(t, exec.calls, 1, "recorder: handle dispatched exactly once")
+// TestGenerateItemHandler_DestinationMismatchCarriesErrorCode pins the
+// machine-readable job boundary for the hard parent-integrity failure.
+func TestGenerateItemHandler_DestinationMismatchCarriesErrorCode(t *testing.T) {
+	exec := &recordingVoiceoverItemExecutor{
+		cannedRes: &voiceover.VoiceoverItemResult{
+			Language:  "en",
+			Status:    voiceover.StatusFailed,
+			Error:     voiceover.VoiceoverDestinationMismatchCode + ": uploaded file parent differs",
+			ErrorCode: voiceover.VoiceoverDestinationMismatchCode,
+		},
+	}
+	h := NewGenerateItemJobHandler(exec, zap.NewNop())
+	item := makeItemCmd("parent-job-mismatch", "vo_mismatch", "en", "en-US-RogerNeural", "mismatch.mp3", "mismatch-hash")
+	resultMap, err := h.HandleJob(context.Background(), &appjobs.Job{ID: "child-mismatch", Payload: marshalItemCmd(t, item)}, &appjobs.JobTools{Progress: func(int, string) {}})
+
+	require.Error(t, err)
+	assert.Equal(t, voiceover.VoiceoverDestinationMismatchCode, resultMap["error_code"])
+	ok, hasOK := resultMap["ok"].(bool)
+	assert.True(t, hasOK)
+	assert.False(t, ok)
 }
 
 // ────────────────────────────────────────────────────────────────────

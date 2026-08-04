@@ -212,17 +212,11 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		return nil, fmt.Errorf("drive put failed after 3 attempts: %w", err)
 	}
 	// FASE 10 / Commit 1 (July 2026): post-upload verification
-	// gate. The verifier runs against the file ID the upload
-	// produced — for Created / Updated / Renamed branches ONLY.
-	// The Skipped branch is NOT verified: the lookup step
-	// (FindFileByIdempotencyKey / FindFileByName) already
-	// filters out trashed files via the canonical `trashed=false`
-	// Drive query predicate, so a Skipped result is
-	// guaranteed-non-trashed by construction. The user-spec
-	// literal "Ogni upload Drive deve essere verificato"
-	// scopes the verification to ACTUAL uploads (where bytes
-	// were sent) — Skipped is a no-upload path that reuses
-	// an existing file, not a fresh upload.
+	// runs for actual uploads (Created / Updated / Renamed).
+	// PutActionSkipped is intentionally excluded because no upload
+	// occurred; its lookup query already filters out trashed files.
+	// The user-spec verification gate therefore applies to the bytes
+	// sent by this call, not to an existing file reused by Skip.
 	//
 	// Why not verify Skipped too: pre-Commit-1 the P0.6
 	// idempotency tests (uploader_put_p0_6_test.go) inject a
@@ -242,7 +236,12 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	// doPutFile inherit the verification gate automatically
 	// without per-branch wiring.
 	if result.Action != PutActionSkipped {
-		if verr := u.verifyUploadedFile(ctx, result, req.Filename, req.FolderID); verr != nil {
+		if verr := u.verifyUploadedFile(ctx, result, req); verr != nil {
+			if errors.Is(verr, ErrDriveFileParentMismatch) {
+				// Preserve both the infrastructure sentinel and the
+				// application-facing destination mismatch sentinel.
+				return nil, fmt.Errorf("%w: %w", delivery.ErrDestinationParentMismatch, verr)
+			}
 			return nil, verr
 		}
 	}
@@ -262,17 +261,20 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 // substring matching. The wrapper context includes the
 // PutAction (Skipped/Created/Updated/Renamed) and the file
 // ID for log correlation.
-func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult, filename, folderID string) error {
+func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult, req PutFileRequest) error {
 	if u == nil || result == nil || strings.TrimSpace(result.FileID) == "" {
 		return fmt.Errorf("drive verifyUploadedFile: nil receiver or empty file_id (composition-root wiring misconfig)")
 	}
 	verifier := NewUploadVerifier(u)
+	filename := result.Filename
+	if strings.TrimSpace(filename) == "" {
+		filename = req.Filename
+	}
 	params := VerificationParams{
 		ExpectedName:     filename,
-		ExpectedFolderID: folderID,
-		// Commits 2-6 will populate the rest. Commit 1
-		// ignores them; the zero values mean "skip the
-		// check" for the corresponding future check.
+		ExpectedFolderID: req.FolderID,
+		ExpectedSize:     req.ExpectedSize,
+		ExpectedSHA256:   req.ExpectedSHA256,
 	}
 	v, verr := verifier.Verify(ctx, result.FileID, params)
 	if verr != nil {
@@ -307,6 +309,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	if (req.ConflictPolicy == delivery.ConflictSkip || req.ConflictPolicy == delivery.ConflictSkipByHash) && existing != nil && existing.FileID != "" {
 		return &PutFileResult{
 			FileID:       existing.FileID,
+			Filename:     existing.Name,
 			WebViewLink:  existing.WebViewLink,
 			DownloadLink: "https://drive.google.com/uc?id=" + existing.FileID,
 			MD5Checksum:  existing.MD5Checksum,
@@ -361,6 +364,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		}
 		return &PutFileResult{
 			FileID:       updated.Id,
+			Filename:     req.Filename,
 			WebViewLink:  updated.WebViewLink,
 			DownloadLink: "https://drive.google.com/uc?id=" + updated.Id,
 			MD5Checksum:  updated.Md5Checksum,
@@ -387,6 +391,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			// skip, not rename.
 			return &PutFileResult{
 				FileID:       existing.FileID,
+				Filename:     existing.Name,
 				WebViewLink:  existing.WebViewLink,
 				DownloadLink: "https://drive.google.com/uc?id=" + existing.FileID,
 				MD5Checksum:  existing.MD5Checksum,
@@ -415,6 +420,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		)
 		return &PutFileResult{
 			FileID:       created.Id,
+			Filename:     newName,
 			WebViewLink:  created.WebViewLink,
 			DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 			MD5Checksum:  created.Md5Checksum,
@@ -440,6 +446,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	}
 	return &PutFileResult{
 		FileID:       created.Id,
+		Filename:     req.Filename,
 		WebViewLink:  created.WebViewLink,
 		DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 		MD5Checksum:  created.Md5Checksum,

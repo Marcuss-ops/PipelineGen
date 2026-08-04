@@ -223,5 +223,8 @@ func toItemResultMap(res *voiceover.VoiceoverItemResult, item *voiceover.Generat
 	if res.Error != "" {
 		m["error"] = res.Error
 	}
+	if res.ErrorCode != "" {
+		m["error_code"] = res.ErrorCode
+	}
 	return m
 }

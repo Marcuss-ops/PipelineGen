@@ -45,12 +45,28 @@ func BuildVoiceoverDestination(
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
 	groupsResolver ports.VoiceoverGroupResolver,
 ) *voiceover.DestinationRequest {
-	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
+	rawVoiceoverFolderID := strings.TrimSpace(voiceoverFolderID)
+	voiceoverFolderID = clips.ExtractDriveFolderID(rawVoiceoverFolderID)
 	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
 	subfolderName := textutil.SlugifyWithMax(title, 40)
 
+	if rawVoiceoverFolderID != "" &&
+		(strings.HasPrefix(rawVoiceoverFolderID, "http://") || strings.HasPrefix(rawVoiceoverFolderID, "https://")) &&
+		voiceoverFolderID == rawVoiceoverFolderID {
+		// Preserve explicit caller intent as an explicit request, but
+		// leave FolderID empty so the canonical resolver fails closed.
+		// Never continue into group/config/default fallback for a
+		// malformed explicit Drive URL.
+		return &voiceover.DestinationRequest{
+			Kind:            string(voiceover.KindExplicit),
+			SubfolderName:   subfolderName,
+			CreateSubfolder: true,
+		}
+	}
+
 	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
 		return &voiceover.DestinationRequest{
+			Kind:            string(voiceover.KindExplicit),
 			FolderID:        folderID,
 			SubfolderName:   subfolderName,
 			CreateSubfolder: true,
@@ -68,6 +84,7 @@ func BuildVoiceoverDestination(
 					zap.String("parent_id", voRootID))
 			}
 			return &voiceover.DestinationRequest{
+				Kind:            string(voiceover.KindExplicit),
 				FolderID:        folderID,
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
@@ -92,6 +109,7 @@ func BuildVoiceoverDestination(
 		}
 		if resolvedVOFolder != "" {
 			return &voiceover.DestinationRequest{
+				Kind:            string(voiceover.KindExplicit),
 				FolderID:        resolvedVOFolder,
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
@@ -101,6 +119,7 @@ func BuildVoiceoverDestination(
 
 	if voRootID != "" {
 		return &voiceover.DestinationRequest{
+			Kind:            string(voiceover.KindExplicit),
 			FolderID:        voRootID,
 			SubfolderName:   subfolderName,
 			CreateSubfolder: true,

@@ -23,6 +23,18 @@ import (
 //  6. FolderManager.EnsureFolder (only if PathSegments is non-empty)
 
 func (p *Publisher) resolveDestination(ctx context.Context, req delivery.PublishRequest) (*ResolvedDriveDestination, error) {
+	// An explicit DestinationFolderID is already the resolved leaf folder.
+	// Do not consult the registry, path builders, catalog, or FolderManager:
+	// re-resolving here would let configuration or semantic path rules move
+	// an upload away from the folder selected by the application plan.
+	if folderID := strings.TrimSpace(req.DestinationFolderID); folderID != "" {
+		return &ResolvedDriveDestination{
+			Destination:  req.Destination,
+			RootFolderID: folderID,
+			FolderID:     folderID,
+		}, nil
+	}
+
 	// Step 1: Registry resolve.
 	policy, err := p.registry.Resolve(req.Destination)
 	if err != nil {

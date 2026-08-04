@@ -3,10 +3,12 @@ package drive
 // retry surface tests for the drive publisher.
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestYouTubeClipPath_IsDeterministic(t *testing.T) {
@@ -75,6 +77,50 @@ func TestYouTubeClipPath_CategoryBoxeSubjectPacquiaoVsBroner_DOD_9_1(t *testing.
 	// "Boxe" and "Pacquiao vs Broner" pass through unchanged.
 	require.Equal(t, []string{"Boxe", "Pacquiao vs Broner"}, segs,
 		"YouTubeClipPath must return canonical [{group},{subject}] segments — SafeFolderName preserves spaces and hyphens")
+}
+
+func TestPublisher_ExplicitDestinationFolderBypassesRegistryAndPathBuilder(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:         delivery.DestinationKey("unknown-destination"),
+		DestinationFolderID: "resolved-voiceover-folder",
+		LocalPath:           "/tmp/voiceover.mp3",
+		Filename:            "voiceover.mp3",
+		ConflictPolicy:      delivery.ConflictOverwrite,
+	})
+	require.NoError(t, err, "an already-resolved explicit folder must not require registry/path-builder resolution")
+	require.Equal(t, "resolved-voiceover-folder", result.FolderID)
+	require.Empty(t, result.PathSegments)
+	require.Len(t, folders.ensureCalls, 0, "explicit destination must not create a configured subpath")
+	require.Len(t, files.uploadCalls, 1)
+	require.Equal(t, "resolved-voiceover-folder", files.uploadCalls[0].folderID)
+}
+
+func TestPublisher_ExplicitDestinationFolderWithUnsetPolicyBypassesRegistry(t *testing.T) {
+	reg := testRegistry()
+	folders := &fakeFolderManager{}
+	files := &fakeFileUploader{}
+	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
+	require.NoError(t, err)
+
+	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
+		Destination:         delivery.DestinationKey("unknown-destination"),
+		DestinationFolderID: "resolved-voiceover-folder",
+		LocalPath:           "/tmp/voiceover.mp3",
+		Filename:            "voiceover.mp3",
+		// ConflictPolicyUnset must not force a registry lookup when
+		// the destination folder was already resolved by the plan.
+	})
+	require.NoError(t, err)
+	require.Equal(t, "resolved-voiceover-folder", result.FolderID)
+	require.Len(t, folders.ensureCalls, 0)
+	require.Equal(t, delivery.ConflictSkip, files.uploadCalls[0].policy,
+		"pre-resolved immutable voiceover destinations use the conservative skip default")
 }
 
 func TestYouTubeClipPath_WithDestinationFolderID_UsesFolderVerbatim(t *testing.T) {

@@ -124,15 +124,11 @@ func canonicalVoiceoverPublishCommand() voiceover.VoiceoverPublishCommand {
 // req.ProjectID + req.Language on the canonical PublishRequest.
 // This is the canonical semantic routing path — the Publisher's
 // VoiceoverPath will build {project}/{language}/ subpath from
-// these fields. No RootFolderOverride is set; no fallback warning
-// is logged.
+// these fields. FolderID is treated as the request-local voiceover
+// root so the canonical publisher builds the project/language path.
 //
-// PR-VOICEOVER-DRIVE-DRIFT (2026-08-08): the canonical test now also
-// verifies that FolderID is NOT forwarded to req.RootFolderOverride
-// (the legacy silent-fallback chain has been RETIRED). The
-// FolderID field on VoiceoverPublishCommand is now informational
-// only — it survives the wire-shape migration for backward-compat
-// with API DTOs, but the adapter no longer reads it.
+// The request-local root must be forwarded as RootFolderOverride so
+// an explicit script folder still receives canonical subdirectories.
 func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testing.T) {
 	pub := canonicalRecordingPublisher()
 	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
@@ -163,9 +159,9 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 		"req.ProjectID must equal cmd.Project (canonical semantic routing)")
 	assert.Equal(t, "it-IT", got.Language)
 	assert.Empty(t, got.DestinationFolderID,
-		"voiceover semantic routing must resolve Project/Language under the configured voiceover root")
-	assert.Empty(t, got.RootFolderOverride,
-		"req.RootFolderOverride MUST be empty when Project is set (semantic-first precedence)")
+		"voiceover root must not be treated as a leaf folder")
+	assert.Equal(t, "legacy-folder-DO-NOT-USE", got.RootFolderOverride,
+		"the request-local voiceover root must preserve project/language routing")
 }
 
 // TestPublisherAdapter_EmptyProject_FailsClosedWithTypedSentinel

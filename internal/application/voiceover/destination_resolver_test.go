@@ -23,6 +23,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -31,6 +34,8 @@ import (
 // calls the asset.Resolver. Passing nil resolver to this branch must
 // succeed (zero resolver calls in the explicit branch).
 func TestResolveDestination_ExplicitKindUsesFolderID(t *testing.T) {
+	// A raw non-empty folder ID is forwarded verbatim; validation of
+	// Drive existence belongs to the Drive resolver/publisher seam.
 	dest := &DestinationRequest{
 		Kind:          string(KindExplicit),
 		FolderID:      "explicit-folder-id",
@@ -61,6 +66,17 @@ func TestResolveDestination_ExplicitKindUsesFolderID(t *testing.T) {
 	if rd.DriveLink != "" {
 		t.Errorf("DriveLink = %q; want empty (explicit branch does not consult resolver)", rd.DriveLink)
 	}
+}
+
+func TestResolveDestination_ExplicitKindMissingFolderIsUnavailable(t *testing.T) {
+	rd, err := ResolveVoiceoverDestination(context.Background(), &DestinationRequest{
+		Kind: string(KindExplicit),
+	}, &recordingResolver{}, "historical-root")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrExplicitKindRequiresFolderID)
+	assert.ErrorIs(t, err, ErrVoiceoverDestinationUnavailable)
+	assert.Nil(t, rd)
 }
 
 // TestResolveDestination_GroupKindFallsThroughOnMissingGroup: when

@@ -37,6 +37,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
@@ -272,7 +273,51 @@ func TestUploadVerifier_Trashed(t *testing.T) {
 	}
 }
 
-// ── Test #4: nil reader → wiring error ─────────────────────────────────
+// ── Test #4: parent mismatch → typed destination-integrity error ───────
+
+func TestUploadVerifier_NameMismatch(t *testing.T) {
+	srv := newMockFilesGetServer()
+	defer srv.Server.Close()
+	srv.responses = []rawGetResp{
+		{status: http.StatusOK, body: `{"id":"file-name-mismatch","name":"actual.mp3","size":"1024","parents":["resolved-folder"],"trashed":false}`},
+	}
+
+	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
+	verifier := NewUploadVerifier(u)
+	_, err := verifier.Verify(context.Background(), "file-name-mismatch", VerificationParams{ExpectedName: "expected.mp3"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "name mismatch")
+}
+
+func TestUploadVerifier_IDMismatch(t *testing.T) {
+	srv := newMockFilesGetServer()
+	defer srv.Server.Close()
+	srv.responses = []rawGetResp{
+		{status: http.StatusOK, body: `{"id":"different-file","name":"voice.mp3","size":"1024","parents":["resolved-folder"],"trashed":false}`},
+	}
+
+	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
+	verifier := NewUploadVerifier(u)
+	_, err := verifier.Verify(context.Background(), "uploaded-file", VerificationParams{})
+	require.ErrorIs(t, err, ErrDriveFileIDMismatch)
+}
+
+func TestUploadVerifier_ParentMismatch(t *testing.T) {
+	srv := newMockFilesGetServer()
+	defer srv.Server.Close()
+	srv.responses = []rawGetResp{
+		{status: http.StatusOK, body: `{"id":"file-wrong-parent","name":"voice.mp3","size":"1024","parents":["actual-folder"],"trashed":false}`},
+	}
+
+	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
+	verifier := NewUploadVerifier(u)
+	_, err := verifier.Verify(context.Background(), "file-wrong-parent", VerificationParams{ExpectedFolderID: "resolved-folder"})
+	if !errors.Is(err, ErrDriveFileParentMismatch) {
+		t.Fatalf("expected ErrDriveFileParentMismatch, got: %v", err)
+	}
+}
+
+// ── Test #5: nil reader → wiring error ─────────────────────────────────
 
 // TestUploadVerifier_NilReader pins the composition-root
 // fail-closed contract: a verifier constructed with a nil
@@ -292,7 +337,7 @@ func TestUploadVerifier_NilReader(t *testing.T) {
 	}
 }
 
-// ── Test #5: Empty fileID → ErrDriveFileNotFound ───────────────────────
+// ── Test #6: Empty fileID → ErrDriveFileNotFound ───────────────────────
 
 // TestUploadVerifier_EmptyFileID pins the empty-input contract:
 // a zero-value fileID MUST surface as ErrDriveFileNotFound (NOT
