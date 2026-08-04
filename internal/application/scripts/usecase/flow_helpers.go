@@ -5,7 +5,7 @@
 //
 //   - flow_helpers.go           — shared: RealtimeMatchAsset,
 //     AssociationCandidatesRequest/Response,
-//     minInt, Phase 1b stubs
+//     minInt
 //   - flow_helpers_clips.go     — clips: AssetSearchTarget,
 //     ScriptAssetSuggestion,
 //     ScriptPhraseClipSuggestion,
@@ -14,11 +14,6 @@
 //     EntityScriptExtractor
 //   - flow_helpers_voiceover.go — voiceover: ScriptArtlistClipSuggestion
 package usecase
-
-import (
-	"context"
-	"fmt"
-)
 
 // ── Local type stubs for removed packages ───────────────────────────────────
 // realtime.MatchAsset and association.CandidatesRequest were defined in
@@ -69,13 +64,4 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// NewGenerateEnqueueRequest builds the request for the unified generate endpoint.
-// Phase 1b stub.
-func NewGenerateEnqueueRequest(payload any) any { return payload }
-
-// EnqueueGenerationJob is a Phase 1b stub.
-func EnqueueGenerationJob(ctx context.Context, jobsSvc any, req any, log any) (any, error) {
-	return nil, fmt.Errorf("enqueue not implemented (Phase 1b stub)")
 }
