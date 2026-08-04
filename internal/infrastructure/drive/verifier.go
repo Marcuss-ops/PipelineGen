@@ -84,6 +84,12 @@ var (
 	// Commit 1 closes this poison-file gap.
 	ErrDriveFileInTrash = errors.New("drive verifier: file is in Drive Trash bin (Trashed=true)")
 
+	// ErrDriveFileParentMismatch is returned when the live Drive metadata
+	// reports no parent equal to the caller's resolved destination folder.
+	// This is a hard integrity failure: callers must fail the job rather
+	// than repair the location by moving the file after upload.
+	ErrDriveFileParentMismatch = errors.New("drive verifier: file parent does not match expected destination")
+
 	// ErrDriveFileSizeMismatch (PR-CLIPINGEST-PIPELINE step 9,
 	// Commit 3, July 2026): the Drive-side file size does not
 	// match the caller's ExpectedSize. Treated as a hard upload
@@ -372,6 +378,25 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 		// envelope (so the caller can log the actual
 		// Trashed=true state if it wants).
 		return v2, ErrDriveFileInTrash
+	}
+
+	// Parent verification is performed against the live Drive metadata
+	// returned by Files.Get. Do not move or repair a mismatch here: the
+	// caller must fail the job and preserve the evidence for reconciliation.
+	if expected := strings.TrimSpace(params.ExpectedFolderID); expected != "" {
+		parentMatches := false
+		for _, parent := range meta.Parents {
+			if strings.TrimSpace(parent) == expected {
+				parentMatches = true
+				break
+			}
+		}
+		if !parentMatches {
+			return v2, fmt.Errorf(
+				"drive verifier: file_id=%q parent mismatch: actual=%v expected=%q: %w",
+				fileID, meta.Parents, expected, ErrDriveFileParentMismatch,
+			)
+		}
 	}
 
 	// Commit 3 (PR-CLIPINGEST-PIPELINE step 9, July 2026): size
