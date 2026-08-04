@@ -343,9 +343,12 @@ func TestGenerateBatch_NilDestination_NoDefault_ReturnsMissingFolder(t *testing.
 	// survives the existing `missing_folder_id` telemetry surface.
 	assert.Contains(t, err.Error(), "missing_folder_id",
 		"error must surface missing_folder_id for fleet monitoring parity")
-	if resp != nil {
-		t.Errorf("GenerateBatch must return nil response on resolve error; got %#v", resp)
+	if resp == nil {
+		t.Fatal("GenerateBatch must return a structured failure response on resolve error")
 	}
+	assert.False(t, resp.OK)
+	assert.Equal(t, VoiceoverDestinationUnavailableCode, resp.ErrorCode)
+	assert.Contains(t, resp.Error, "destination resolve")
 }
 
 // PR-VO-AUDIT-P02 (June 2026): pinning the GenerateBatch
