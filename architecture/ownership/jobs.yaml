@@ -9,9 +9,6 @@ job_handler_map:
   - job_type: script.generate_batch
     handler: BatchJobHandler.Handle
     owner: internal/application/scripts
-  - job_type: script.curate
-    handler: CurationJobServiceImpl.HandleCurateJob
-    owner: internal/application/scripts
   - job_type: artlist.run
     handler: ArtlistHandler.enqueueArtlistRun
     owner: internal/api/assets/artlist
