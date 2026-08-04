@@ -8,9 +8,11 @@
 //     false for permanent failures (validation, path traversal, missing
 //     destination) where retries would be wasteful.
 //
-//   - Stage: the canonical pipeline stage name ("validate", "tts",
-//     "audio_post", "upload", "tx_begin", "db_delete", "db_insert",
-//     "outbox_enqueue", "tx_commit", "destination_resolve").
+//   - Stage: the canonical pipeline stage name ("validate", "metadata",
+//     "tts", "audio_post", "upload", "tx_begin", "db_delete",
+//     "db_insert", "outbox_enqueue", "tx_commit", "destination_resolve").
+//
+//   - Code: the stable machine-readable FailureCode for the failure.
 //
 //   - Cause: the underlying error from the port adapter.
 //
@@ -34,6 +36,7 @@ type Stage string
 const (
 	StageValidate           Stage = "validate"
 	StageDestinationResolve Stage = "destination_resolve"
+	StageMetadata           Stage = "metadata"
 	StageTTS                Stage = "tts"
 	StageAudioPost          Stage = "audio_post"
 	StageUpload             Stage = "upload"
@@ -49,6 +52,10 @@ const (
 // so the worker can decide whether to retry (Retryable=true) or fail
 // permanently (Retryable=false).
 type PipelineError struct {
+	// Code is the stable machine-readable failure classification.
+	// Callers must use this field instead of parsing Error() text.
+	Code FailureCode
+
 	// Retryable is true for transient failures that may succeed on
 	// retry: TTS connection timeout, Drive upload network error,
 	// SQLite busy, outbox write race. The worker SHOULD retry.
@@ -90,11 +97,26 @@ func (e *PipelineError) IsRetryable() bool {
 // newPipelineError is the canonical unexported constructor used inside
 // the voiceover package (process_voiceover_item.go).
 func newPipelineError(stage Stage, retryable bool, cause error) *PipelineError {
+	return newPipelineErrorCode(stage, retryable, "", cause)
+}
+
+func newPipelineErrorCode(stage Stage, retryable bool, code FailureCode, cause error) *PipelineError {
 	return &PipelineError{
 		Stage:     stage,
 		Retryable: retryable,
+		Code:      code,
 		Cause:     cause,
 	}
+}
+
+// FailureCode returns the stable classification attached to the pipeline
+// error. It is intentionally separate from Error(), whose text is for
+// operators and backward-compatible job diagnostics only.
+func (e *PipelineError) FailureCode() FailureCode {
+	if e == nil {
+		return ""
+	}
+	return e.Code
 }
 
 // NewPipelineError is the exported constructor for tests and callers

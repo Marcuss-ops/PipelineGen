@@ -90,6 +90,10 @@ const (
 	// returned an error (Drive upload failed, dedupe gate hard-
 	// rejected, etc.).
 	FailureUpload FailureCode = "upload_failed"
+	// FailureMetadataSerialization — publishStage could not serialize
+	// the canonical metadata envelope. The pipeline must fail before
+	// publishing so a Drive asset is never created without durable metadata.
+	FailureMetadataSerialization FailureCode = "metadata_serialization_failed"
 	// FailureDestinationMismatch — Drive confirmed that the uploaded
 	// file is not parented by the folder resolved for this voiceover.
 	// This is a hard integrity failure; no post-upload move is allowed.
