@@ -53,7 +53,7 @@ var ownershipJobRuntimeAliases = map[string]string{
 	"catalog.sync":             "catalog.sync",
 }
 
-// runtimeJobEvidence lists the canonical identifier expressions accepted at
+// runtimeJobEvidenceByType lists the canonical identifier expressions accepted at
 // the registry and handler boundaries. The scanner compares AST expressions,
 // not source substrings, so comments and string literals cannot satisfy it.
 var runtimeJobEvidenceByType = map[string]jobRuntimeEvidence{
