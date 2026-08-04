@@ -39,9 +39,13 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
 	defer cancel()
-	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, ffmpeg.AdminMediaProcessor{}, uploader)
+	ffmpegPath := cfg.External.FfmpegPath
+	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, ffmpeg.NewAdminMediaProcessor(ffmpegPath), uploader)
 	if err != nil {
 		return err
+	}
+	for _, update := range report.Updates {
+		fmt.Printf("fixed %.3fs -> %.3fs: %s\n", update.Before.Seconds(), update.After.Seconds(), update.Filename)
 	}
 	fmt.Printf("Remote SFX checked=%d fixed=%d max_seconds=2.00\n", report.Checked, report.Changed)
 	return nil
