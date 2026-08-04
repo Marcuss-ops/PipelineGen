@@ -81,16 +81,20 @@ func registerAIBackedProcessors(
 
 	// ── Metadata ─────────────────────────────────────────────────────
 	var metadataAdapter adapters.MetadataGenerator
+
 	if root.AI != nil && root.AI.ScriptGen != nil {
-		metadataAdapter = ollamaadapters.NewOllamaMetadataGeneratorAdapter(root.AI.ScriptGen)
-		log.Info("MetadataProcessor wired with real Ollama backend (ollama.Generator)")
-	}
-	if metadataAdapter == nil {
-		log.Warn("MetadataProcessor: Ollama backend not available; postprocessor not registered (metadata will be skipped)")
+		metadataAdapter = ollamaadapters.NewOllamaMetadataGeneratorAdapter(
+			root.AI.ScriptGen,
+		)
+		log.Info("MetadataProcessor wired with optional Ollama backend")
 	} else {
-		if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
-			return fmt.Errorf("register metadata processor: composition bug")
-		}
+		log.Info(
+			"MetadataProcessor wired without Ollama; caller-provided metadata remains available",
+		)
+	}
+
+	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
+		return fmt.Errorf("register metadata processor: composition bug")
 	}
 
 	// ── Translation ──────────────────────────────────────────────────

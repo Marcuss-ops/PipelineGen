@@ -6,9 +6,9 @@
 // over `plan.Languages` so multi-language plans still produce multiple
 // records.
 //
-// Policy is ProcessorRequired per the PR 3 spec — composition must
-// wire a backend generator and the runtime preflight rejects plans
-// that request "metadata" without one.
+// Metadata generation is optional at composition time: caller-provided
+// metadata can be emitted without an AI backend. A nil generator remains
+// a runtime failure only when AI generation is actually requested.
 package adapters
 
 import (
@@ -25,26 +25,24 @@ import (
 // MetadataGenerator port. Enabled as "metadata" in the plan's
 // Postprocessors list.
 //
-// PR 3 (June 2026): promoted to ProcessorRequired (was BestEffort
-// in PR 2). Composition root fails closed without a wired backend;
-// the runtime preflight rejects plans that request "metadata"
-// without a registered adapter.
+// The processor is registered even when the AI backend is unavailable so
+// manual metadata remains usable. Plans that request generated metadata
+// without a generator fail closed during processing.
 type MetadataProcessor struct {
 	generator MetadataGenerator
 }
 
-// NewMetadataProcessor creates a MetadataProcessor. generator must be
-// non-nil at composition time (composition-side validation enforces
-// this via validateRequiredProcessors).
+// NewMetadataProcessor creates a MetadataProcessor. generator may be nil:
+// manual caller-provided metadata is handled without it, while AI-only
+// requests return a typed processing error.
 func NewMetadataProcessor(generator MetadataGenerator) *MetadataProcessor {
 	return &MetadataProcessor{generator: generator}
 }
 
 func (p *MetadataProcessor) Name() ProcessorName { return ProcessorMetadata }
 
-// Policy classifies metadata as ProcessorRequired. Static for now;
-// future PR can read plan.OutputSpec.GenerateMetadata (or similar
-// payload) and conditionally resolve.
+// Policy keeps metadata fail-closed when the processor is explicitly
+// requested. Manual metadata short-circuits before the generator check.
 func (p *MetadataProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorRequired
 }
@@ -61,14 +59,39 @@ func (p *MetadataProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Processo
 //
 // Returns the populated PostProcessResult on success.
 func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
-	if p.generator == nil {
-		return nil, fmt.Errorf("%w: metadata processor: MetadataGenerator not configured", scriptpkg.ErrPostprocessFailed)
+	if plan == nil {
+		return nil, fmt.Errorf(
+			"%w: metadata processor: nil ResolvedGenerationPlan",
+			scriptpkg.ErrPostprocessFailed,
+		)
 	}
-	if strings.TrimSpace(input.Text) == "" && strings.TrimSpace(plan.Title) == "" {
+
+	// Manual metadata always wins.
+	// No Gemma/Ollama call is performed.
+	if plan.VideoMetadata != nil && plan.VideoMetadata.HasContent() {
+		metadata := scriptpkg.CloneVideoMetadata(plan.VideoMetadata)
+
+		if strings.TrimSpace(metadata.Language) == "" {
+			metadata.Language = plan.Language
+		}
+
+		return &PostProcessResult{
+			Metadata: []scriptpkg.VideoMetadata{*metadata},
+			Changed:  true,
+		}, nil
+	}
+
+	// AI generation is used only when no manual metadata was provided.
+	if strings.TrimSpace(input.Text) == "" &&
+		strings.TrimSpace(plan.Title) == "" {
 		return &PostProcessResult{}, nil
 	}
-	if plan == nil {
-		return nil, fmt.Errorf("%w: metadata processor: nil ResolvedGenerationPlan", scriptpkg.ErrPostprocessFailed)
+
+	if p.generator == nil {
+		return nil, fmt.Errorf(
+			"%w: metadata processor: MetadataGenerator not configured",
+			scriptpkg.ErrPostprocessFailed,
+		)
 	}
 
 	langs := plan.Languages
