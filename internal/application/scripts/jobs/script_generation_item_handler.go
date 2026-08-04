@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -174,7 +175,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.Error(err))
 		pf(100, "script.generate_item execution failed")
-		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, err.Error(), nil), fmt.Errorf("script.generate_item: execute: %w", err)
+		return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, false, err.Error(), nil), fmt.Errorf("script.generate_item: execute: %w", err)
 	}
 
 	// Structural emptiness gate: no Text, ScriptID, or cache.Hit
@@ -187,12 +188,12 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.String("result_text_len", fmt.Sprintf("%d", len(res.Output.Text))))
 		pf(100, "script.generate_item semantic failure: ok=false")
-		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, errMsg, res),
+		return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, false, errMsg, res),
 			fmt.Errorf("%s", errMsg)
 	}
 
 	pf(100, "script.generate_item execution complete")
-	return toScriptItemResultMap(item.ID, j.ID, parentJobID, true, "", res), nil
+	return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, true, "", res), nil
 }
 
 // toScriptItemResultMap serialises a per-item outcome into the
@@ -202,11 +203,13 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 // and doc_id are propagated into the result map so downstream
 // consumers (aggregator, API handler) can surface the Google Doc
 // link to operators (2026-07-07 fix for the child-handler drop).
-func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errStr string, res *domainScript.GenerationResult) map[string]any {
+func toScriptItemResultMap(itemID, requestedLanguage, childJobID, parentJobID string, ok bool, errStr string, res *domainScript.GenerationResult) map[string]any {
 	m := map[string]any{
 		"item_id":       itemID,
 		"job_id":        childJobID,
 		"parent_job_id": parentJobID,
+		"stage":         string(job.StageScript),
+		"language":      scriptItemLanguage(requestedLanguage, res),
 		"ok":            ok,
 		"status":        scriptItemStatus(ok),
 	}
@@ -218,6 +221,16 @@ func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errS
 		m["doc_link"] = res.Artifacts.Document.DocLink
 	}
 	return m
+}
+
+// scriptItemLanguage returns the generated item's language when the
+// child result carries it. Empty is retained for legacy results that
+// predate per-language child telemetry.
+func scriptItemLanguage(requested string, res *domainScript.GenerationResult) string {
+	if res != nil && res.Language != "" {
+		return res.Language
+	}
+	return requested
 }
 
 // scriptItemStatus returns "completed" or "failed" based on the

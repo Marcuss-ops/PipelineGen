@@ -46,6 +46,7 @@ type FanoutResult struct {
 	TotalItems         int
 	FailedEnqueueCount int
 	ChildJobIDs        []string
+	PerLanguage        []string
 	TotalEnqueued      int
 }
 
@@ -69,9 +70,11 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 
 	n := len(env.Items)
 	childJobIDs := make([]string, n)
+	perLanguage := make([]string, n)
 	enqueueErrors := 0
 
 	for i, item := range env.Items {
+		perLanguage[i] = item.Language
 		itemID := item.ID
 		if itemID == "" {
 			itemID = fmt.Sprintf("item-%d", i)
@@ -125,6 +128,7 @@ func (uc *GenerateManyUseCase) ExecuteFanout(
 		TotalItems:         n,
 		FailedEnqueueCount: enqueueErrors,
 		ChildJobIDs:        childJobIDs,
+		PerLanguage:        perLanguage,
 		TotalEnqueued:      enqueued,
 	}, nil
 }

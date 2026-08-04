@@ -105,11 +105,31 @@ func (e *batchGenerationExecutor) Execute(
 		return nil, fmt.Errorf("script.generate fanout: ExecuteFanout returned nil result without error")
 	}
 
+	stageStatuses := make([]job.StageLanguageStatus, 0, fanout.TotalItems)
+	for i, language := range fanout.PerLanguage {
+		status := job.StageQueued
+		errorText := ""
+		childJobID := ""
+		if i < len(fanout.ChildJobIDs) {
+			childJobID = fanout.ChildJobIDs[i]
+		}
+		if childJobID == "" {
+			status = job.StageFailed
+			errorText = "script child job was not enqueued"
+		}
+		stageStatuses = append(stageStatuses, job.StageLanguageStatus{
+			Stage: job.StageScript, Language: language, Status: status,
+			JobID: childJobID, Error: errorText,
+		})
+	}
+
 	resultMap := map[string]any{
 		"parent_state":         "waiting_children",
 		"parent_job_id":        j.ID,
 		"total_items":          fanout.TotalItems,
 		"child_job_ids":        fanout.ChildJobIDs,
+		"per_language":         fanout.PerLanguage,
+		"stage_progress":       job.AggregateStageProgressByStage(stageStatuses),
 		"failed_enqueue_count": fanout.FailedEnqueueCount,
 		// The batch parent owns no local artifact files; its children do.
 		// Emit the canonical empty manifest so the artifact-producing worker

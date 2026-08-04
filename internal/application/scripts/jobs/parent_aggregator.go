@@ -58,13 +58,15 @@ var _ ScriptAggregatorJobsService = (*appjobs.Service)(nil)
 // for map[string]any access. Mirrors voiceover/jobs/result_dto.go
 // ::VoiceoverParentResult but adapted for script-batch semantics.
 type ScriptParentResult struct {
-	OK            bool     `json:"ok"`
-	ParentJobID   string   `json:"parent_job_id"`
-	TotalItems    int      `json:"total_items"`
-	ChildJobIDs   []string `json:"child_job_ids"`
-	ParentState   string   `json:"parent_state"`
-	RequestID     string   `json:"request_id,omitempty"`
-	FailedEnqueue int      `json:"failed_enqueue_count,omitempty"`
+	OK            bool                         `json:"ok"`
+	ParentJobID   string                       `json:"parent_job_id"`
+	TotalItems    int                          `json:"total_items"`
+	ChildJobIDs   []string                     `json:"child_job_ids"`
+	PerLanguage   []string                     `json:"per_language,omitempty"`
+	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
+	ParentState   string                       `json:"parent_state"`
+	RequestID     string                       `json:"request_id,omitempty"`
+	FailedEnqueue int                          `json:"failed_enqueue_count,omitempty"`
 	// AggregatorVersion is the StateMachine version at the last aggregator
 	// tick (zero when the fan-out handler wrote the result).
 	AggregatorVersion int `json:"_aggregator_version,omitempty"`
@@ -113,6 +115,8 @@ type ScriptAggregateResult struct {
 	FailedCount    int
 	ParentRevision int
 	ChildIDs       []string
+	PerLanguage    []string
+	StageProgress  map[string]job.StageProgress
 	// ChildDocLinks maps child item_id → doc_link for succeeded children
 	// that produced a Google Doc (2026-07-07 fix). Populated by aggregateOne
 	// and surfaced in the parent result via finalizeParent.
@@ -228,9 +232,10 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	childIDs := parentResult.ChildJobIDs
 	filtered := make([]string, 0, len(childIDs))
 	for _, id := range childIDs {
-		if id != "" {
-			filtered = append(filtered, id)
+		if id == "" {
+			continue
 		}
+		filtered = append(filtered, id)
 	}
 	childIDs = filtered
 
@@ -255,10 +260,30 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		return nil
 	}
 
-	// Query each child and count terminal outcomes.
+	// Query each child and count terminal outcomes. Keep one progress slot
+	// per requested item so failed-enqueue placeholders cannot shift the
+	// language associated with a later child.
 	succeeded := 0
 	failed := parentResult.FailedEnqueue
 	allTerminal := true
+	stageStatuses := make([]job.StageLanguageStatus, len(parentResult.ChildJobIDs))
+	childStageIndex := make(map[string]int, len(childIDs))
+	for index, childID := range parentResult.ChildJobIDs {
+		language := ""
+		if index < len(parentResult.PerLanguage) {
+			language = parentResult.PerLanguage[index]
+		}
+		status := job.StageQueued
+		if childID == "" {
+			status = job.StageFailed
+		}
+		stageStatuses[index] = job.StageLanguageStatus{
+			Stage: job.StageScript, Language: language, Status: status, JobID: childID,
+		}
+		if childID != "" {
+			childStageIndex[childID] = index
+		}
+	}
 	childDocLinks := make(map[string]string) // item_id → doc_link (2026-07-07 fix)
 	childDocIDs := make(map[string]string)   // item_id → doc_id (2026-07-07 fix)
 	for _, childID := range childIDs {
@@ -318,6 +343,12 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		}
 
 		// All script-batch children are OPTIONAL. Count terminal outcome.
+		if stageIndex, ok := childStageIndex[childID]; ok {
+			stageStatuses[stageIndex].Status = job.StageFailed
+			if status == job.StatusSucceeded && childOK {
+				stageStatuses[stageIndex].Status = job.StageCompleted
+			}
+		}
 		if (status == job.StatusSucceeded) && childOK {
 			succeeded++
 			// Collect doc_link/doc_id from succeeded children so the
@@ -362,6 +393,8 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		FailedCount:    failed,
 		ParentRevision: j.Revision,
 		ChildIDs:       childIDs,
+		PerLanguage:    parentResult.PerLanguage,
+		StageProgress:  job.AggregateStageProgressByStage(stageStatuses),
 		ChildDocLinks:  childDocLinks,
 		ChildDocIDs:    childDocIDs,
 	}
@@ -400,6 +433,8 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		"succeeded_count":     agg.SucceededCount,
 		"failed_count":        agg.FailedCount,
 		"child_job_ids":       agg.ChildIDs,
+		"per_language":        agg.PerLanguage,
+		"stage_progress":      agg.StageProgress,
 	}
 	if len(agg.ChildDocLinks) > 0 {
 		resultMap["child_doc_links"] = agg.ChildDocLinks

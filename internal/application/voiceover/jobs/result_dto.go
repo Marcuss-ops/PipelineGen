@@ -18,23 +18,27 @@
 // FinalizeAggregateParent.
 package jobs
 
-import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
 
 // VoiceoverParentResult is the typed parent job result. Field names
 // and JSON tags match toFanoutResultMap's map shape exactly so
 // json.Unmarshal(job.Result) into this struct is a drop-in replacement
 // for map[string]any access.
 type VoiceoverParentResult struct {
-	OK                 bool     `json:"ok"`
-	ParentJobID        string   `json:"parent_job_id"`
-	RequestID          string   `json:"request_id"`
-	TotalOutputs       int      `json:"total_outputs"`
-	ExpectedChildren   int      `json:"expected_children"`
-	EnqueuedCount      int      `json:"enqueued_count"`
-	FailedEnqueueCount int      `json:"failed_enqueue_count"`
-	ChildJobIDs        []string `json:"child_job_ids"`
-	PerLanguage        []string `json:"per_language"`
-	ParentState        string   `json:"parent_state"`
+	OK                 bool                         `json:"ok"`
+	ParentJobID        string                       `json:"parent_job_id"`
+	RequestID          string                       `json:"request_id"`
+	TotalOutputs       int                          `json:"total_outputs"`
+	ExpectedChildren   int                          `json:"expected_children"`
+	EnqueuedCount      int                          `json:"enqueued_count"`
+	FailedEnqueueCount int                          `json:"failed_enqueue_count"`
+	ChildJobIDs        []string                     `json:"child_job_ids"`
+	PerLanguage        []string                     `json:"per_language"`
+	StageProgress      map[string]job.StageProgress `json:"stage_progress,omitempty"`
+	ParentState        string                       `json:"parent_state"`
 	// AggregatorVersion is the StateMachine version at the last
 	// aggregator tick (set by aggregateOne, read by finalizeParent
 	// for version-based CAS). Zero when the fan-out handler wrote
@@ -112,5 +116,6 @@ type VoiceoverAggregateResult struct {
 	StateMachineVersion int
 
 	// ChildIDs is the list of child job IDs the aggregator observed.
-	ChildIDs []string
+	ChildIDs      []string
+	StageProgress map[string]job.StageProgress
 }
