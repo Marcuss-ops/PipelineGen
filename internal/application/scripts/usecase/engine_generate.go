@@ -231,7 +231,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		OutputMode: ollamatypes.OutputModePlainText,
 	}
 
-	genResult, err := e.ollamaGen.GenerateScript(ctx, ollamaReq)
+	genResult, err := e.generateSegments(ctx, plan, ollamaReq)
 	if err != nil {
 		return nil, fmt.Errorf("engine: ollama generation failed: %w", err)
 	}

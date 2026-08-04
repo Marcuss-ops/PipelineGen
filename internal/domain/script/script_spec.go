@@ -19,6 +19,11 @@ type ScriptSegment struct {
 	Topic       string `json:"topic"`
 	SourceText  string `json:"source_text,omitempty"`
 	TargetWords int    `json:"target_words,omitempty"`
+	// MinWords and MaxWords are optional explicit QA bounds. When omitted,
+	// the segment validator derives them from TargetWords and its configured
+	// tolerance.
+	MinWords int `json:"min_words,omitempty"`
+	MaxWords int `json:"max_words,omitempty"`
 }
 
 // ScriptSpec controls the generation behaviour: sizing, style, and

@@ -216,6 +216,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
 	engine := usecase.NewEngine(scriptGen, nil, log)
+	engine.ConfigureSegmentValidation(0, 0, 0)
 
 	log.Info("creator: script engine constructed")
 
