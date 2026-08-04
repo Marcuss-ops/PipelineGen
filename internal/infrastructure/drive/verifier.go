@@ -96,6 +96,12 @@ var (
 	// potentially stale or mis-correlated Drive response.
 	ErrDriveFileIDMismatch = errors.New("drive verifier: returned file ID does not match uploaded file ID")
 
+	// ErrDriveFileNameMismatch is returned when the live Drive name does
+	// not equal the name returned by the upload operation. This is a hard
+	// integrity failure: callers must not rename or otherwise repair the
+	// file after the verification gate fails.
+	ErrDriveFileNameMismatch = errors.New("drive verifier: returned file name does not match uploaded file name")
+
 	// ErrDriveFileSizeMismatch (PR-CLIPINGEST-PIPELINE step 9,
 	// Commit 3, July 2026): the Drive-side file size does not
 	// match the caller's ExpectedSize. Treated as a hard upload
@@ -401,8 +407,8 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 	// caller must fail the job and preserve the evidence for reconciliation.
 	if expected := strings.TrimSpace(params.ExpectedName); expected != "" && strings.TrimSpace(meta.Name) != expected {
 		return v2, fmt.Errorf(
-			"drive verifier: file_id=%q name mismatch: actual=%q expected=%q",
-			fileID, meta.Name, expected,
+			"drive verifier: file_id=%q name mismatch: actual=%q expected=%q: %w",
+			fileID, meta.Name, expected, ErrDriveFileNameMismatch,
 		)
 	}
 

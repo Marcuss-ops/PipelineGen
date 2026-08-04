@@ -237,9 +237,14 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	// without per-branch wiring.
 	if result.Action != PutActionSkipped {
 		if verr := u.verifyUploadedFile(ctx, result, req); verr != nil {
-			if errors.Is(verr, ErrDriveFileParentMismatch) {
-				// Preserve both the infrastructure sentinel and the
-				// application-facing destination mismatch sentinel.
+			// A post-upload identity, name, or parent divergence is one
+			// application-level destination-integrity failure. Preserve
+			// both the low-level verifier sentinel and the stable
+			// delivery sentinel; never move, rename, or otherwise repair
+			// the Drive file here.
+			if errors.Is(verr, ErrDriveFileIDMismatch) ||
+				errors.Is(verr, ErrDriveFileNameMismatch) ||
+				errors.Is(verr, ErrDriveFileParentMismatch) {
 				return nil, fmt.Errorf("%w: %w", delivery.ErrDestinationParentMismatch, verr)
 			}
 			return nil, verr
