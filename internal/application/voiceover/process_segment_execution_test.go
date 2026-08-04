@@ -846,6 +846,40 @@ func (s *stubFailingPublisher) Publish(_ context.Context, cmd VoiceoverPublishCo
 
 var _ VoiceoverPublisher = (*stubFailingPublisher)(nil)
 
+func TestProcessSegmentUseCase_Execute_MetadataSerializationFailureStopsBeforePublish(t *testing.T) {
+	db := openProcessTestDB(t)
+	pub := &stubProcessPublisher{fileID: "must-not-publish"}
+	finalizer := &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "must-not-finalize"}}
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/metadata-failure.mp3"}},
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	out, err := uc.Execute(context.Background(), &ProcessSegmentCommand{
+		ID:       "vo-metadata-failure",
+		Language: "en",
+		Text:     "metadata serialization failure",
+		Filename: "metadata-failure.mp3",
+		Metadata: map[string]any{"unsupported": make(chan int)},
+		Dest:     &ResolvedDestination{FolderID: "folder", FolderPath: "/tmp"},
+	})
+
+	require.Error(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Equal(t, FailureMetadataSerialization, FailureCode(out.ErrorCode))
+	var pipelineErr *PipelineError
+	require.ErrorAs(t, err, &pipelineErr)
+	assert.Equal(t, StageMetadata, pipelineErr.Stage)
+	assert.False(t, pipelineErr.Retryable)
+	assert.Empty(t, pub.published, "metadata serialization must fail before Drive publish")
+	assert.Empty(t, finalizer.calls, "metadata serialization must fail before DB finalization")
+}
+
 // TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_PropagatesSentinel
 // pins the FASE 2 contract #4: when the Publisher returns
 // ErrVoiceoverPublishLanguageRequired (the adapter's fail-closed

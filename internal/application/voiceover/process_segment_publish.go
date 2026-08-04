@@ -13,6 +13,7 @@ package voiceover
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -28,8 +29,9 @@ type publishStageResult struct {
 // derivation + VoiceoverPublisher.Publish (Drive upload).
 //
 // Returns publishStageResult carrying MetaJSON + IdemKey for Stage 4's
-// FinalizeCommand. On failure, returns a typed error that the orchestrator
-// maps to "upload_failed:" prefix for per-item stage classification.
+// FinalizeCommand. Metadata serialization failures are typed permanent
+// errors and stop the pipeline before Drive publish; publisher failures
+// retain their upload-stage classification.
 func (u *ProcessSegmentUseCase) publishStage(
 	ctx context.Context,
 	cmd *ProcessSegmentCommand,
@@ -49,7 +51,35 @@ func (u *ProcessSegmentUseCase) publishStage(
 		metaBuf["style_group"] = cmd.Dest.StyleGroup
 	}
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
-	metaJSON, _ := json.Marshal(metaBuf)
+
+	// Semantic enrichment belongs to the canonical pipeline, immediately
+	// before publish, so both batch and per-item callers persist the same
+	// metadata without maintaining a second tagging path. Tagging is
+	// intentionally best-effort to preserve the legacy batch contract:
+	// a tagger outage must not turn valid synthesized audio into a failed
+	// voiceover, but it is always visible in the structured logs.
+	if u.deps.SemanticTagger != nil {
+		semantic, err := u.deps.SemanticTagger(ctx, cmd.Text, "", "voiceover", "voiceover")
+		if err != nil {
+			u.deps.Logger.Warn("voiceover: semantic tagger failed; continuing without semantic enrichment", zap.Error(err))
+		} else if semantic != nil {
+			metaBuf["search_text"] = semantic.SearchText
+			metaBuf["semantic_tags"] = semantic.Tags
+			metaBuf["semantic_subjects"] = semantic.Subjects
+			metaBuf["semantic_mood"] = semantic.Mood
+			out.SearchText = semantic.SearchText
+		}
+	}
+
+	metaJSON, err := json.Marshal(metaBuf)
+	if err != nil {
+		return nil, newPipelineErrorCode(
+			StageMetadata,
+			false,
+			FailureMetadataSerialization,
+			fmt.Errorf("voiceover metadata serialization: %w", err),
+		)
+	}
 
 	// Derive deterministic idempotency key.
 	var idemKey string

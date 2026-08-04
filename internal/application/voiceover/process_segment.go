@@ -335,13 +335,20 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// key derivation + Drive upload.
 	pub, err := u.publishStage(ctx, cmd, out, log)
 	if err != nil {
-		observability.DriveUploadFailuresTotal.Inc()
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		var pipelineErr *PipelineError
+		if errors.As(err, &pipelineErr) {
+			out.ErrorCode = string(pipelineErr.FailureCode())
+			out.Error = pipelineErr.Error()
+			return out, err
+		}
 		if errors.Is(err, delivery.ErrDestinationParentMismatch) {
+			observability.DriveUploadFailuresTotal.Inc()
 			out.ErrorCode = VoiceoverDestinationMismatchCode
 			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationMismatchCode, err)
 			return out, newPipelineErrorCode(StageUpload, false, FailureDestinationMismatch, err)
 		}
+		observability.DriveUploadFailuresTotal.Inc()
 		out.ErrorCode = string(FailureUpload)
 		out.Error = fmt.Sprintf("%s: %v", FailureUpload, err)
 		return out, newPipelineErrorCode(StageUpload, true, FailureUpload, err)
