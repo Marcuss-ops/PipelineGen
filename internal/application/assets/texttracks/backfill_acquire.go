@@ -54,10 +54,10 @@ func (s *BackfillService) tryAcquire(
 	// A metadata summary is an honest source only for the summary kind. It
 	// keeps an asset searchable when the binary source is unavailable without
 	// mislabelling descriptive text as a transcript.
-	if opts.TextKind == asset.TextTrackSummary && assetItem.GetMetadataString("clip_summary") != "" {
+	if opts.TextKind == asset.TextTrackSummary && assetItem.ClipSummary() != "" {
 		acqResult = &AcquireResult{
 			AssetID:      assetItem.ID,
-			PlainText:    assetItem.GetMetadataString("clip_summary"),
+			PlainText:    assetItem.ClipSummary(),
 			LanguageCode: opts.SourceLanguage,
 			SourceType:   asset.TextSourceProvided,
 			Priority:     0,
@@ -135,9 +135,8 @@ func extractDriveFileID(a *asset.Asset) string {
 	return a.DriveFileID()
 }
 
-// extractLocalPath reads the local_path from the asset's
-// Metadata map (the canonical YouTube-pipeline field). Falls
-// back to the Filename field when Metadata is empty.
+// extractLocalPath reads the canonical local_path accessor from the
+// asset. Falls back to Filename when no local path was persisted.
 //
 // godlike/06 SSOT: the metadata→local_path extraction lives
 // ONLY here (youTube-pipeline metadata shape is owned
@@ -146,18 +145,16 @@ func extractLocalPath(a *asset.Asset) string {
 	if a == nil {
 		return ""
 	}
-	if a.Metadata != nil {
-		if lp, ok := a.Metadata["local_path"].(string); ok {
-			return lp
-		}
+	if localPath := a.LocalPath(); localPath != "" {
+		return localPath
 	}
 	return a.Filename
 }
 
-// extractVideoID reads the YouTube video ID from the asset's
-// Metadata map. The canonical key is `source_video_id` (via the
-// typed accessor); `source_id` / `video_id` are legacy fallbacks
-// for clips written before the provenance-key convergence.
+// extractVideoID reads the YouTube video ID through the canonical
+// provenance accessors first. `source_id` / `video_id` remain legacy
+// fallbacks for clips written before provenance-key convergence; URL
+// parsing also retains the historical `url` alias for old rows.
 //
 // godlike/06 SSOT: the metadata→video_id extraction lives ONLY
 // here. Inline lookups in other leaves would corrode the canon.
@@ -175,11 +172,9 @@ func extractVideoID(a *asset.Asset) string {
 		if v, ok := a.Metadata["video_id"].(string); ok && v != "" {
 			return v
 		}
-		for _, key := range []string{"source_url", "youtube_url", "url"} {
-			if raw, ok := a.Metadata[key].(string); ok {
-				if id := youtubeVideoID(raw); id != "" {
-					return id
-				}
+		for _, raw := range []string{a.MetadataSourceURL(), a.YouTubeURL(), a.GetMetadataString("url")} {
+			if id := youtubeVideoID(raw); id != "" {
+				return id
 			}
 		}
 	}

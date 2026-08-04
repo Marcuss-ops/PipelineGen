@@ -18,6 +18,8 @@ func (m *Asset) LocalPath() string          { return m.GetMetadataString("local_
 func (m *Asset) SetLocalPath(v string)      { m.SetMetadataString("local_path", v) }
 func (m *Asset) FileHash() string           { return m.GetMetadataString("file_hash") }
 func (m *Asset) SetFileHash(v string)       { m.SetMetadataString("file_hash", v) }
+func (m *Asset) ContentHash() string        { return m.GetMetadataString("content_hash") }
+func (m *Asset) SetContentHash(v string)    { m.SetMetadataString("content_hash", v) }
 func (m *Asset) FolderID() string           { return m.GetMetadataString("folder_id") }
 func (m *Asset) SetFolderID(v string)       { m.SetMetadataString("folder_id", v) }
 func (m *Asset) FolderPath() string         { return m.GetMetadataString("folder_path") }

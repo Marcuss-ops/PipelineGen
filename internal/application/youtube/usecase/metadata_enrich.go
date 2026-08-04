@@ -300,7 +300,7 @@ func (s *Service) resolveExistingMetadata(existing *asset.Asset, cleanedTranscri
 			Speakers:         existing.Speakers(),
 			MentionedPeople:  existing.MentionedPeople(),
 			Hook:             existing.Hook(),
-			QualityScore:     asset.MetadataFloat(existing.Metadata, "quality_score"),
+			QualityScore:     existing.QualityScore(),
 			CleanTitle:       existing.CleanTitle(),
 			ShortTitle:       existing.ShortTitle(),
 			SearchVisibility: existing.SearchVisibility(),

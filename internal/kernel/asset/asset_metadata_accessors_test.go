@@ -38,6 +38,7 @@ func TestMetadataStringAccessorsRoundTrip(t *testing.T) {
 		{"SearchVisibility", (*asset.Asset).SetSearchVisibility, (*asset.Asset).SearchVisibility},
 		{"QualityTier", (*asset.Asset).SetQualityTier, (*asset.Asset).QualityTier},
 		{"Language", (*asset.Asset).SetLanguage, (*asset.Asset).Language},
+		{"ContentHash", (*asset.Asset).SetContentHash, (*asset.Asset).ContentHash},
 		{"SponsorConfidence", (*asset.Asset).SetSponsorConfidence, (*asset.Asset).SponsorConfidence},
 		{"DuplicateGroupID", (*asset.Asset).SetDuplicateGroupID, (*asset.Asset).DuplicateGroupID},
 		{"DuplicateOf", (*asset.Asset).SetDuplicateOf, (*asset.Asset).DuplicateOf},

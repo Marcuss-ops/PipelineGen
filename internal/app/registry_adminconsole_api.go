@@ -387,24 +387,12 @@ func applyAssetChanges(a *asset.Asset, changes map[string]any) {
 		a.SearchTerms = toStringSlice(raw)
 	}
 	if raw, ok := changes["description"]; ok {
-		desc := ""
-		if s, ok := raw.(string); ok {
-			desc = s
-		}
-		if a.Metadata == nil {
-			a.Metadata = make(map[string]any)
-		}
-		a.Metadata["description"] = desc
+		desc, _ := raw.(string)
+		a.SetDescription(desc)
 	}
 	if raw, ok := changes["language"]; ok {
-		lang := ""
-		if s, ok := raw.(string); ok {
-			lang = s
-		}
-		if a.Metadata == nil {
-			a.Metadata = make(map[string]any)
-		}
-		a.Metadata["language"] = lang
+		lang, _ := raw.(string)
+		a.SetLanguage(lang)
 	}
 }
 
