@@ -23,8 +23,7 @@ import (
 // and liveness probing.
 //
 // Consumers: driveAdminAdapter, storageDriveAdapter, clipsDriveAdapter,
-// sfxDriveUploaderAdapter, sourcingDriveAdapter,
-// driveFolderMgrAdapter (YouTube).
+// sourcingDriveAdapter, driveFolderMgrAdapter (YouTube).
 type Admin interface {
 	// Folder operations
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
