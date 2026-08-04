@@ -89,11 +89,12 @@ type PointAudit struct {
 // step consumes. JSON-stable so --json mode (and CI dashboards) see a
 // schema-versioned shape across releases.
 type Report struct {
-	Collection  string       `json:"collection"`
-	TotalPoints int          `json:"total_points"`
-	Audit       Categories   `json:"audit"`
-	Points      []PointAudit `json:"points,omitempty"`
-	Errors      []string     `json:"errors,omitempty"`
+	Collection   string       `json:"collection"`
+	TotalPoints  int          `json:"total_points"`
+	CompleteScan bool         `json:"complete_scan"`
+	Audit        Categories   `json:"audit"`
+	Points       []PointAudit `json:"points,omitempty"`
+	Errors       []string     `json:"errors,omitempty"`
 }
 
 // Classify walks the collection via the Scanner port, classifies each
@@ -128,8 +129,9 @@ func Classify(ctx context.Context, scanner QdrantScanner, collection string, max
 			return r, fmt.Errorf("scroll %q at offset %q: %w", collection, offset, err)
 		}
 		if len(points) == 0 && offset == "" {
-			// Empty collection — return the zero-valued report so apply
-			// is a no-op. No error.
+			// Empty collection — the first page is a complete scan and
+			// apply is a no-op. No error.
+			r.CompleteScan = true
 			return r, nil
 		}
 		r.TotalPoints += len(points)
@@ -174,13 +176,13 @@ func Classify(ctx context.Context, scanner QdrantScanner, collection string, max
 		if ex, ok := scanner.(NextOffsetExtractor); ok {
 			next := ex.NextOffset(points)
 			if next == "" {
+				r.CompleteScan = true
 				break
 			}
 			offset = next
 		} else {
-			// Without a NextOffsetExtractor we can't paginate — break
-			// on first page so the loop terminates. This branch covers
-			// stubs that mock the first page only.
+			// Without a NextOffsetExtractor we can't paginate. Return a
+			// partial report; it must not count toward removal evidence.
 			break
 		}
 	}

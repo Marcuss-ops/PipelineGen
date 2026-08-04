@@ -19,6 +19,7 @@ package maintenance
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -55,6 +56,12 @@ func (s *Service) Audit(ctx context.Context, opts AuditOptions) error {
 		return err
 	}
 
+	if report == nil {
+		return fmt.Errorf("qdrant-maintenance audit: no report returned")
+	}
+	if !report.CompleteScan {
+		return fmt.Errorf("qdrant-maintenance audit: scan incomplete; zero-residue evidence is invalid")
+	}
 	if opts.JSON {
 		return s.cli.JSON(report)
 	}

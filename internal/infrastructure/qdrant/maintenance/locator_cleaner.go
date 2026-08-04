@@ -186,6 +186,12 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*schema
 		offset = page.NextOffset
 	}
 
+	// Reaching this point means every scroll page completed and Qdrant
+	// returned an empty cursor. Mark the report complete only now; any
+	// scroll error returned above leaves it false and consumers must fail
+	// closed.
+	report.CompleteScan = true
+
 	// In dry-run mode, report only — no mutations.
 	if !apply {
 		report.AllocCapacity = cap(affectedIDs)

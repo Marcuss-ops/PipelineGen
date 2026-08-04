@@ -2,29 +2,44 @@ deprecations:
     - id: PR-QDRANT-WIRE-MIRROR
       owner_capability: internal/infrastructure/qdrant + internal/application/qdrant/dr
       exact_symbol: |
-        Wire copy: qdrant.SnapshotDescription (types_dr.go:45).
-        Canonical: dr.SnapshotDescription (dr/types.go:38).
-        Bridge: dr_adapter.go 6 adapter types + manual field-copy.
-      file: internal/infrastructure/qdrant/types_dr.go + internal/application/qdrant/dr/types.go + internal/infrastructure/qdrant/dr_adapter.go
-      file_line: 45, 38, ~46+84+104+152+194+222
+        Shared aliases: qdrantdr.SnapshotDescription, RetentionConfig,
+        RetentionResult, and LocatorCleanupReport.
+        Application projection: dr.VerifyReport from schema.SwitchReport.
+        Adapter: internal/infrastructure/qdrant/maintenance/dr_adapter.go.
+      file: internal/domain/qdrantdr/types.go + internal/application/qdrant/dr/types.go + internal/infrastructure/qdrant/schema/collection_types.go + internal/infrastructure/qdrant/maintenance/dr_adapter.go
+      file_line: shared types ~24-82; aliases ~19-29; adapter ~50-220
       replacement: |
-        Single canonical pure-types package at internal/application/qdrant/types/
-        (pure-data leaf package). Both infrastructure/qdrant and application/qdrant/dr
-        may import it without forming an import cycle.
+        Single canonical pure-types package at internal/domain/qdrantdr/
+        (dependency-free pure-data leaf package). Infrastructure/qdrant and
+        application/qdrant/dr alias the shared SnapshotDescription,
+        RetentionConfig, RetentionResult, and LocatorCleanupReport directly.
+        VerifyReport remains a deliberate narrower application projection of
+        the infrastructure SwitchReport and is not part of this consolidation.
       introduction_date: 2026-06
       removal_date: 2026-Q4
       tracking_issue: PR-QDRANT-WIRE-MIRROR (deprecation ID self-reference; runbook 06 removed July 2026 — superseded by Check 5 CI gate + duplicate-types-allowlist.txt)
       compatibility_test: |
         See architecture/policy.yaml Check 5 for full canonical-evidence list (superseded runbook 06, removed July 2026).
       usage_metric: |
-        Today: 0 direct callers of canonical dr.<Mirror> struct outside dr package.
-        After BACKFILL the bridge becomes thin; after CUTOVER becomes passthrough;
-        after CONTRACT the bridge is deleted.
-      migration_phase: EXPAND
+        Shared-type adoption: SnapshotDescription, RetentionConfig,
+        RetentionResult, and LocatorCleanupReport have zero field-copy
+        adapters; compile-time aliases are the only compatibility surface.
+        Remaining bridge scope: VerifyReport only, by design.
+        Retirement evidence for the remaining legacy audit/cleanup surfaces
+        is evaluated by qdrantdr.EvaluateLegacyRemoval using complete zero-
+        finding scans, pending cleanup/outbox count, Qdrant-scoped
+        duplicate allowlist row count, legacy regression-test count,
+        reappearance count, and an observation window.
+      migration_phase: CONTRACT
       status: in_progress
       notes: |
-        Collapse is a structural simplification without simultaneous re-design.
-        Per godlike/07 §"Cross-file redeclaration", the wire-mirror pattern is an
-        EXPAND acknowledgement, not a CONTRACT shortcut. 4-phase sequence per
-        policy doc. Option B (per-shape WireShape + CanonicalShape in one types
-        package) preserves separation of concerns per JSON-tag leakage analysis.
+        The shared pure types are now in CONTRACT for the completed shapes;
+        the compatibility aliases remain until all external consumers are
+        migrated and the zero-baseline gate confirms removal is safe.
+        The active legacyaudit classifier, repair-locators cleanup, and their
+        regression tests remain operational until measured evidence is complete.
+        Removal requires, at minimum: 3 consecutive complete scans with zero
+        findings in every legacy category, zero pending cleanup/outbox actions,
+        zero duplicate-type allowlist entries, zero legacy regression tests,
+        zero reappearances, and 30 consecutive observation days. A single
+        successful scan never authorizes deletion.

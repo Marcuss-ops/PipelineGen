@@ -7,13 +7,11 @@
 // DRMetrics / RetentionExecutor ports.
 //
 // PR-QDRANT-WIRE-MIRROR (June 2026): the canonical DR/snapshot types
-// (schema.SnapshotDescription, collections.RetentionConfig, RetentionResult) live in
-// internal/domain/qdrantdr/ and are aliased through dr/. The wire-side
-// REST decoders in qdrant/types_dr.go keep a distinct struct family
-// (JSON tags mirror qdrantdr/, but Go treats them as separate types)
-// so the RPC decoders in client_dr.go don't pull in any application
-// dependency. The adapters below bridge the two at the boundary
-// via snapshotToDr / retentionToDr (see helpers).
+// (schema.SnapshotDescription, collections.RetentionConfig, RetentionResult,
+// LocatorCleanupReport) live in internal/domain/qdrantdr/ and are aliased
+// through their owning packages. The adapters below pass those shared
+// shapes through directly; only VerifyReport remains a deliberate
+// application projection of the richer infrastructure SwitchReport.
 //
 // Compile-time assertions on every adapter catch drift between the
 // dr/ port surface and the qdrant surface at build time.
@@ -37,7 +35,8 @@ import (
 
 // SnapshotStoreAdapter exposes qdrant.transport.Client snapshot methods to dr's
 // SnapshotStore port. Stateless — pass the same transport.Client through every
-// call. Field-by-field translation lives in snapshotToDr (see below).
+// call. Snapshot and retention values use shared domain aliases and are
+// returned directly; only the richer verifier report is projected below.
 type SnapshotStoreAdapter struct {
 	client *transport.Client
 }
@@ -54,11 +53,7 @@ func (a *SnapshotStoreAdapter) CreateSnapshot(ctx context.Context, collection st
 	if err != nil {
 		return nil, err
 	}
-	if snap == nil {
-		return nil, nil
-	}
-	out := snapshotToDr(*snap)
-	return &out, nil
+	return snap, nil
 }
 
 func (a *SnapshotStoreAdapter) ListSnapshots(ctx context.Context, collection string) ([]dr.SnapshotDescription, error) {
@@ -66,31 +61,7 @@ func (a *SnapshotStoreAdapter) ListSnapshots(ctx context.Context, collection str
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dr.SnapshotDescription, len(snaps))
-	for i := range snaps {
-		out[i] = snapshotToDr(snaps[i])
-	}
-	return out, nil
-}
-
-// snapshotToDr converts the wire-side qdrant.schema.SnapshotDescription (used
-// by client_dr.go REST decoders) to the canonical dr.SnapshotDescription
-// (alias for qdrantdr.SnapshotDescription). Field shapes are identical
-// (Name / CreationTime / Size / Checksum); the copy is required because
-// Go does not auto-convert between distinct named types in different
-// packages.
-//
-// PR-0 build cleanup (June 2026): re-introduced after the PR-QDRANT-WIRE-MIRROR
-// merge dropped the translation under a false-equivalence assumption —
-// the wire type and canonical type are distinct Go types despite
-// matching fields and JSON tags.
-func snapshotToDr(s schema.SnapshotDescription) dr.SnapshotDescription {
-	return dr.SnapshotDescription{
-		Name:         s.Name,
-		CreationTime: s.CreationTime,
-		Size:         s.Size,
-		Checksum:     s.Checksum,
-	}
+	return snaps, nil
 }
 
 func (a *SnapshotStoreAdapter) DeleteSnapshot(ctx context.Context, collection, snapshotName string) error {
@@ -152,12 +123,11 @@ func (a *CollectionCreatorAdapter) CreateCollection(ctx context.Context, name st
 // port. The translation lives here so the application-layer dr package
 // does NOT import the infrastructure schema.SwitchReport shape.
 //
-// Drift gate (June 2026): the field-by-field copy below is the single
-// spot where a new field on qdrant.schema.SwitchReport must land a mirror on
-// dr.VerifyReport. Go compilation will not catch the drift (both sides
-// are different types) so a shipping reminder is appended after the
-// switch summaries below — adding a field to one without the other is
-// a silent zero at runtime.
+// Drift gate (June 2026): the explicit copy below is the single spot
+// where fields selected for the DR contract are projected. A new field on
+// SwitchReport is intentionally not copied unless it belongs in the
+// narrower DR contract; the retirement evidence and tests keep this
+// boundary decision reviewable.
 type VerifierAdapter struct {
 	client     *transport.Client
 	assetStore indexing.AssetStore

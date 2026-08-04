@@ -14,8 +14,11 @@ package maintenance
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 )
 
 // RepairOptions is the typed-input envelope for Service.Repair.
@@ -25,29 +28,10 @@ type RepairOptions struct {
 	JSON bool
 }
 
-// LocatorCleanupReport is the canonical report envelope returned by the
-// QdrantCleaner port.
-//
-// FASE 1.2 PR-GODOBJ-12 honest scope-lock: the canonical concrete type
-// lives in internal/infrastructure/qdrant (locatorCleaner.CleanLocators).
-// The application-layer Service.Repair only needs a structural projection
-// of the report fields (collection + counts + errors); the projection
-// holds a *LocatorCleanupReport pointer so the concrete type is the
-// canonical SSOT surface (godlike/06 one-owner-per-fact).
-//
-// We mirror the field shape here so the application-layer can format the
-// report without importing internal/infrastructure/qdrant directly; the
-// concrete value is fed by the QdrantCleaner adapter at composition time.
-type LocatorCleanupReport struct {
-	Collection          string
-	TotalPointsScrolled int
-	PointsWithDriveLink int
-	PointsWithLocalPath int
-	PointsAffected      int
-	KeysRemoved         int
-	BatchCount          int
-	Errors              []string
-}
+// LocatorCleanupReport is the shared pure-data report returned by the
+// QdrantCleaner port. Its canonical definition lives in the dependency-free
+// domain package so application and infrastructure use the same type.
+type LocatorCleanupReport = qdrantdr.LocatorCleanupReport
 
 // Service.Repair handles the `repair-locators` mode of qdrant-maintenance.
 // Pre-conditions:
@@ -67,6 +51,9 @@ func (s *Service) Repair(ctx context.Context, opts RepairOptions) error {
 		return err
 	}
 
+	if report == nil || !report.CompleteScan {
+		return fmt.Errorf("repair-locators aborted: cleanup report is incomplete; no zero-residue claim is valid")
+	}
 	if opts.JSON {
 		return s.cli.JSON(report)
 	}

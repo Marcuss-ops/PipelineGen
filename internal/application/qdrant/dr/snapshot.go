@@ -8,10 +8,9 @@
 // QDRANT-005C PR3 (June 2026): constructed via NewSnapshotServiceFromDeps
 // so test fixtures can mock SnapshotStore + Logger. Panics on nil Store
 // (production wire-up MUST supply a concrete qdrant.Client wrapper).
-// Cycle break (June 2026): SnapshotService.Take/List return the
-// dr-owned SnapshotDescription (declared in dr/types.go), NOT
-// qdrant.SnapshotDescription. The SnapshotStoreAdapter in dr_adapter.go
-// translates at the infra boundary.
+// SnapshotService.Take/List return the shared domain SnapshotDescription
+// alias. The infrastructure adapter passes the same type through without
+// a field-by-field conversion.
 package dr
 
 import (

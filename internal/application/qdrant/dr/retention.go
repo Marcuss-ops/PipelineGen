@@ -13,12 +13,9 @@
 //   - The dr package stays cohesive: RestoreService + SnapshotService +
 //     RetentionService all share the same ServiceDeps pattern.
 //
-// Cycle break (June 2026): RetentionService.Apply takes the
-// dr-owned RetentionConfig (declared in dr/types.go). The
-// RetentionExecutor port interface declares CleanupWithConfig with
-// dr-local types. The RetentionExecutorAdapter in dr_adapter.go
-// translates dr.RetentionConfig → qdrant.RetentionConfig before
-// invoking qdrant.CollectionManager.CleanupWithConfig.
+// RetentionService.Apply takes the shared domain RetentionConfig alias.
+// The RetentionExecutor port and infrastructure adapter therefore use the
+// same Go type and the adapter delegates without conversion.
 //
 // Safe defaults enforced here (PR3 deviation from prior bool switch):
 //   - retentionDays > 0 is the polygon OWNER for "are we allowed to
