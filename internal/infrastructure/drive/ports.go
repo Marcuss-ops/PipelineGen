@@ -48,23 +48,6 @@ type Admin interface {
 	// Deprecated: use FileLifecycle.Rename instead.
 	RenameFile(ctx context.Context, fileID, newName string) error
 
-	// Upload (raw path-based, bypassing DestinationRegistry).
-	//
-	// Deprecated: use delivery.Publisher.Publish instead.
-	// P1-3 (July 2026): raw admin-only — DO NOT use in application
-	// code. The canonical write surface is delivery.Publisher.Publish
-	// (DestinationRegistry + ConflictPolicy + RetryWithJitter).
-	// These methods remain on Admin solely for cmd/admin one-shot
-	// commands that need raw Drive access without the full publish
-	// infrastructure.
-	UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResult, error)
-	// Deprecated: use delivery.Publisher.Publish instead.
-	// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
-	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error)
-	// Deprecated: use delivery.Publisher.Publish instead.
-	// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
-	UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error)
-
 	// Liveness probe (replaces direct About.Get on *gdrive.Service)
 	Ping(ctx context.Context) error
 }

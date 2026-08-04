@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 type shortRenderManifest struct {
@@ -133,10 +134,18 @@ func uploadRenderedShort(ctx context.Context, path, folderID, filename string) e
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.Drive == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive admin service is required for upload")
+	if root == nil || root.Drive == nil || root.Drive.Publisher == nil {
+		return fmt.Errorf("Drive publisher is required for upload")
 	}
-	result, err := root.Drive.Admin.UploadFile(ctx, path, folderID, filename)
+	adminUpload, err := delivery.NewAdminUploadService(root.Drive.Publisher)
+	if err != nil {
+		return err
+	}
+	result, err := adminUpload.Publish(ctx, delivery.AdminUploadCommand{
+		LocalPath: path,
+		FolderID:  folderID,
+		Filename:  filename,
+	})
 	if err != nil {
 		return fmt.Errorf("upload rendered short: %w", err)
 	}

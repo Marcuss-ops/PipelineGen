@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 func runUploadDriveFile(args []string) error {
@@ -47,15 +48,23 @@ func runUploadDriveFile(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root == nil || root.Drive == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive admin service is required for upload")
+	if root == nil || root.Drive == nil || root.Drive.Publisher == nil {
+		return fmt.Errorf("Drive publisher is required for upload")
+	}
+	adminUpload, err := delivery.NewAdminUploadService(root.Drive.Publisher)
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	fmt.Printf("Uploading %s to Drive folder %s as %s...\n", *input, *folderID, *filename)
-	result, err := root.Drive.Admin.UploadFile(ctx, *input, *folderID, *filename)
+	result, err := adminUpload.Publish(ctx, delivery.AdminUploadCommand{
+		LocalPath: *input,
+		FolderID:  *folderID,
+		Filename:  *filename,
+	})
 	if err != nil {
 		return fmt.Errorf("upload file: %w", err)
 	}

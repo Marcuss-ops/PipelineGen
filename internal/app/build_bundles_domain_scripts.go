@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -67,10 +68,16 @@ func buildDomainScriptServices(
 		Downloader: extractDl,
 		Folder:     &adminFolderManagerAdapter{admin: drive.Admin},
 		Files: func(ctx context.Context, req drivePutFnRequest) (*drivePutFnResult, error) {
-			if drive.DriveUploader == nil {
-				return nil, fmt.Errorf("compose domains: extract-important upload: drive.DriveUploader unwired")
+			if drive.Publisher == nil {
+				return nil, fmt.Errorf("compose domains: extract-important upload: drive.Publisher unwired")
 			}
-			res, err := drive.DriveUploader.UploadFile(ctx, req.LocalPath, req.FolderID, req.Filename)
+			res, err := drive.Publisher.Publish(ctx, delivery.PublishRequest{
+				Destination:         delivery.DestinationAdmin,
+				LocalPath:           req.LocalPath,
+				Filename:            req.Filename,
+				DestinationFolderID: req.FolderID,
+				ConflictPolicy:      delivery.ConflictOverwrite,
+			})
 			if err != nil {
 				return nil, fmt.Errorf("compose domains: extract-important upload: %w", err)
 			}

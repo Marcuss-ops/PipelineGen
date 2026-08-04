@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -30,8 +31,12 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive reader and admin are required")
+	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Publisher == nil {
+		return fmt.Errorf("Drive reader and publisher are required")
+	}
+	adminUpload, err := delivery.NewAdminUploadService(root.Drive.Publisher)
+	if err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
@@ -85,7 +90,11 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 		if err != nil || newDuration > 2*time.Second {
 			return fmt.Errorf("remote trim validation failed for %q: duration=%.3fs err=%v", item.file.Name, newDuration.Seconds(), err)
 		}
-		if _, err := root.Drive.Admin.UploadFile(ctx, localPath, item.folderID, item.file.Name); err != nil {
+		if _, err := adminUpload.Publish(ctx, delivery.AdminUploadCommand{
+			LocalPath: localPath,
+			FolderID:  item.folderID,
+			Filename:  item.file.Name,
+		}); err != nil {
 			return fmt.Errorf("update remote %q: %w", item.file.Name, err)
 		}
 		changed++
