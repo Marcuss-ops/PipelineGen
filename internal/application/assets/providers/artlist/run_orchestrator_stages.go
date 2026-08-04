@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -18,7 +18,7 @@ import (
 type clipWork struct {
 	item         RunTagItem
 	processInput *asset.ProcessInput
-	stagedAsset  *assets.StagedAsset
+	stagedAsset  *acquisition.PrepareContext
 }
 
 type pipelineState struct {
@@ -183,7 +183,12 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			}
 
 			if o.svc.stager != nil && arg.w.processInput.SourceURL != "" {
-				staged, stageErr := o.svc.stager.StageSource(ctx, assets.SourceRef{URL: arg.w.processInput.SourceURL})
+				source := acquisition.SourceRef{URL: arg.w.processInput.SourceURL, PolicyVersion: "artlist-v1"}
+				staged, stageErr := o.svc.stager.Prepare(ctx, acquisition.PrepareRequest{
+					Source:         source,
+					IdempotencyKey: "artlist.clip." + acquisition.DeriveIdempotencyKey(source),
+					CallerRef:      "artlist.run",
+				})
 				if stageErr != nil {
 					shortStatus := gateBlockShortCircuit(
 						&arg.w.item,
@@ -208,19 +213,25 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 						zap.String("source_url", arg.w.processInput.SourceURL),
 						zap.Error(stageErr))
 				} else {
-					arg.w.stagedAsset = staged
-					arg.w.processInput.LocalPath = staged.LocalPath
-					o.svc.log.Info("shared SourceStager replaced mediaProcessor download",
-						zap.String("clip_id", arg.w.item.ClipID),
-						zap.String("source_url", arg.w.processInput.SourceURL),
-						zap.String("local_path", staged.LocalPath),
-						zap.Int64("bytes", staged.Bytes))
+					if staged == nil || !staged.HasLocal() {
+						o.svc.log.Warn("acquisition stager returned no local path",
+							zap.String("clip_id", arg.w.item.ClipID),
+							zap.String("source_url", arg.w.processInput.SourceURL))
+					} else {
+						arg.w.stagedAsset = staged
+						arg.w.processInput.LocalPath = staged.LocalPath
+						o.svc.log.Info("shared acquisition SourceStager replaced mediaProcessor download",
+							zap.String("clip_id", arg.w.item.ClipID),
+							zap.String("source_url", arg.w.processInput.SourceURL),
+							zap.String("local_path", staged.LocalPath),
+							zap.Int64("bytes", staged.SizeBytes))
+					}
 				}
 			}
 			if arg.w.stagedAsset != nil {
-				defer func(staged *assets.StagedAsset) {
-					if cleanupErr := o.svc.stager.Cleanup(ctx, staged); cleanupErr != nil {
-						o.svc.log.Warn("shared SourceStager cleanup failed (best-effort)",
+				defer func(staged *acquisition.PrepareContext) {
+					if cleanupErr := o.svc.stager.Release(context.WithoutCancel(ctx), staged.CleanupToken); cleanupErr != nil {
+						o.svc.log.Warn("shared acquisition release failed (best-effort)",
 							zap.String("local_path", staged.LocalPath),
 							zap.Error(cleanupErr))
 					}

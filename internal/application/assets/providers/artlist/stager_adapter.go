@@ -1,105 +1,138 @@
-// Package artlist — stager_adapter.go (Step 9/12, July 2026).
-//
-// ArtlistStager implements assets.SourceStager by wrapping the Artlist
-// Downloader port. It translates SourceRef to DownloadRequest and
-// delegates to the concrete downloader.
 package artlist
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 )
 
-// Compile-time assertion: *ArtlistStager satisfies assets.SourceStager.
-var _ assets.SourceStager = (*ArtlistStager)(nil)
+var _ acquisition.SourceStager = (*ArtlistStager)(nil)
 
-// ArtlistStager adapts the Artlist Downloader port to the shared
-// assets.SourceStager interface. The downloader handles HLS (m3u8)
-// via yt-dlp and progressive MP4 via HTTP.
+var (
+	ErrArtlistStagerNotWired     = errors.New("artlist stager: downloader not wired")
+	ErrArtlistStagerEmptyURL     = errors.New("artlist stager: empty URL")
+	ErrArtlistStagerNoStagedFile = errors.New("artlist stager: no staged file produced")
+)
+
 type ArtlistStager struct {
 	downloader Downloader
+	mu         sync.Mutex
+	receipts   map[string]acquisition.PrepareContext
+	released   map[string]struct{}
 }
 
-// NewArtlistStager wraps an Artlist Downloader as an assets.SourceStager.
-// downloader must be non-nil.
 func NewArtlistStager(downloader Downloader) *ArtlistStager {
-	return &ArtlistStager{downloader: downloader}
+	return &ArtlistStager{downloader: downloader, receipts: make(map[string]acquisition.PrepareContext), released: make(map[string]struct{})}
 }
 
-// StageSource downloads the Artlist asset identified by ref.URL. The
-// Downloader handles the transport (HLS/yt-dlp or HTTP). The staged
-// file lands in the system temp directory.
-func (s *ArtlistStager) StageSource(ctx context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
-	if s.downloader == nil {
-		return nil, fmt.Errorf("artlist stagervc: downloader not wired")
+func (s *ArtlistStager) Prepare(ctx context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	if s == nil || s.downloader == nil {
+		return nil, ErrArtlistStagerNotWired
 	}
-	if ref.URL == "" {
-		return nil, fmt.Errorf("artlist stagervc: empty URL")
+	if req.Source.URL == "" {
+		return nil, ErrArtlistStagerEmptyURL
 	}
-
-	// Derive a safe filename from the URL path.
-	filename := filepath.Base(ref.URL)
-	if filename == "" || filename == "." {
-		filename = "artlist_asset"
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = acquisition.DeriveIdempotencyKey(req.Source)
 	}
-
-	req := DownloadRequest{
-		SourceRef:     ref.URL,
-		DestinationID: os.TempDir(),
-		Filename:      filename,
-	}
-
-	result, err := s.downloader.Download(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("artlist stagervc: download %q: %w", ref.URL, err)
-	}
-	if result == nil || result.LocalPath == "" {
-		return nil, fmt.Errorf("artlist stagervc: no staged file for %q", ref.URL)
-	}
-
-	return &assets.StagedAsset{
-		LocalPath: result.LocalPath,
-		Bytes:     result.Bytes,
-	}, nil
-}
-
-// Cleanup removes the staged file's parent temp directory.
-func (s *ArtlistStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
-	if staged == nil || staged.LocalPath == "" {
-		return nil
-	}
-	dir := filepath.Dir(staged.LocalPath)
-	if dir == "" || dir == "." || dir == "/" {
-		return nil
-	}
-	return os.RemoveAll(dir)
-}
-
-func (s *ArtlistStager) StageSourceV2(ctx context.Context, ref asset.SourceRef) (*asset.StagedSource, error) {
-	staged, err := s.StageSource(ctx, assets.SourceRef(ref))
-	if err != nil {
+	if err := req.Validate(); err != nil {
 		return nil, err
 	}
-	return &asset.StagedSource{
-		LocalPath: staged.LocalPath,
-		Bytes:     staged.Bytes,
-		SourceID:  ref.URL,
-		SourceRef: ref,
-	}, nil
+	if req.Timeout == 0 {
+		req.Timeout = 10 * time.Minute
+	}
+	if req.TTL == 0 {
+		req.TTL = 24 * time.Hour
+	}
+
+	token := acquisition.DeriveCleanupToken(req.Source)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if receipt, ok := s.receipts[token]; ok && !receipt.Expired() {
+		copy := receipt
+		return &copy, nil
+	}
+
+	filename := filepath.Base(req.Source.URL)
+	if filename == "" || filename == "." || filename == string(filepath.Separator) {
+		filename = "artlist_asset"
+	}
+	stageDir := filepath.Join(os.TempDir(), "pipelinegen-artlist-staging", token[:16])
+	result, err := s.downloader.Download(ctx, DownloadRequest{
+		SourceRef:     req.Source.URL,
+		DestinationID: stageDir,
+		Filename:      filename,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%w: artlist stager download %q: %v", acquisition.ErrAcquisitionPrepareFailed, req.Source.URL, err)
+	}
+	if result == nil || result.LocalPath == "" {
+		return nil, fmt.Errorf("%w: url=%q", ErrArtlistStagerNoStagedFile, req.Source.URL)
+	}
+	info, err := os.Stat(result.LocalPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: artlist stager stat %q: %v", acquisition.ErrAcquisitionPrepareFailed, result.LocalPath, err)
+	}
+	hash, err := hashFile(result.LocalPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: artlist stager hash %q: %v", acquisition.ErrAcquisitionPrepareFailed, result.LocalPath, err)
+	}
+	receipt := acquisition.PrepareContext{
+		ID:           acquisition.DeriveStageID(req.Source),
+		SourceRef:    req.Source,
+		LocalPath:    result.LocalPath,
+		SHA256:       hash,
+		SizeBytes:    info.Size(),
+		MIMEType:     req.Source.MIMETypeHint,
+		ExpiresAt:    time.Now().UTC().Add(req.TTL),
+		CleanupToken: token,
+	}
+	s.receipts[token] = receipt
+	delete(s.released, token)
+	return &receipt, nil
 }
 
-func (s *ArtlistStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
-	if staged == nil {
-		return nil
+func (s *ArtlistStager) Release(_ context.Context, cleanupToken string) error {
+	if s == nil {
+		return acquisition.ErrAcquisitionNotWired
 	}
-	staged.CleanedUp = true
-	return s.Cleanup(ctx, &assets.StagedAsset{
-		LocalPath: staged.LocalPath,
-		Bytes:     staged.Bytes,
-	})
+	if cleanupToken == "" {
+		return acquisition.ErrAcquisitionInvalidToken
+	}
+	s.mu.Lock()
+	receipt, ok := s.receipts[cleanupToken]
+	if ok {
+		delete(s.receipts, cleanupToken)
+		s.released[cleanupToken] = struct{}{}
+	} else {
+		_, wasReleased := s.released[cleanupToken]
+		s.mu.Unlock()
+		if wasReleased {
+			return acquisition.ErrAcquisitionAlreadyReleased
+		}
+		return acquisition.ErrAcquisitionInvalidToken
+	}
+	s.mu.Unlock()
+	stageDir := filepath.Dir(receipt.LocalPath)
+	if err := os.RemoveAll(stageDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("artlist stager: release %q: %w", receipt.LocalPath, err)
+	}
+	return nil
+}
+
+func hashFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }

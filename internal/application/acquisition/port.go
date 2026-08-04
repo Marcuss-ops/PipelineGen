@@ -6,8 +6,9 @@
 // lifecycle is persistent across calls: a stage lives until the caller
 // releases it (or it expires), with a deterministic CleanupToken for
 // idempotent release-on-retry. The legacy `assets.SourceStager` remains
-// active for YouTube/Artlist so §12-4 doesn't break them; §12-4.2
-// forward-pointer migrates them to consume this port.
+// active only for compatibility consumers that have not yet migrated
+// (stock, images, and jobs/assets). YouTube and Artlist now consume
+// this port directly.
 //
 // Why a NEW package? The acquisition namespace encapsulates the
 // persistent-staging concern (filesystem-backed registry + JSON
@@ -18,8 +19,9 @@
 // owns cleanup.
 //
 // Pattern 0 (AGENTS.md): the port + types live in application-layer so
-// the consumer pipeline (stock today; YouTube/Artlist tomorrow) can
-// declare compile-time dependencies without importing infrastructure.
+// consumer pipelines can declare compile-time dependencies without
+// importing infrastructure. Stock, YouTube, and Artlist use this port;
+// remaining compatibility consumers are migrated separately.
 // Concrete implementations live under `internal/infrastructure/acquisition/`.
 package acquisition
 

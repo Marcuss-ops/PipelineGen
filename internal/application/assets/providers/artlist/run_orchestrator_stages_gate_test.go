@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,26 +23,16 @@ type gateBlockFakeStager_SUTStageSource struct {
 	cleanupCalls atomic.Int32
 }
 
-var _ assets.SourceStager = (*gateBlockFakeStager_SUTStageSource)(nil)
+var _ acquisition.SourceStager = (*gateBlockFakeStager_SUTStageSource)(nil)
 
-func (f *gateBlockFakeStager_SUTStageSource) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
+func (f *gateBlockFakeStager_SUTStageSource) Prepare(_ context.Context, _ acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
 	f.stageCalls.Add(1)
 	return nil, f.err
 }
 
-func (f *gateBlockFakeStager_SUTStageSource) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
+func (f *gateBlockFakeStager_SUTStageSource) Release(_ context.Context, _ string) error {
 	f.cleanupCalls.Add(1)
 	return nil
-}
-
-// Cleanup implements assets.SourceStager (legacy method).
-func (f *gateBlockFakeStager_SUTStageSource) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
-	return nil
-}
-
-// StageSourceV2 implements assets.SourceStager.
-func (f *gateBlockFakeStager_SUTStageSource) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
-	return nil, nil
 }
 
 // panickingMediaProcessor_MustNotBeCalled returns a typed sentinel

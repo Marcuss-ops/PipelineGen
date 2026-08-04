@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
@@ -113,8 +113,8 @@ type Service struct {
 	// transaction passed to assetFinalizer.
 	mainDB *sql.DB
 
-	// stager is the shared SourceStager port (Step 9/12 wire-up). Optional.
-	stager assets.SourceStager
+	// stager is the canonical acquisition.SourceStager port. Optional.
+	stager acquisition.SourceStager
 
 	// isLiveProbe is the canonical runtime liveness probe port
 	// (PR-ARTLIST-LIVE-WIRE, July 2026). Wired via deps.IsLiveProbe.

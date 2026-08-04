@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
@@ -47,13 +47,11 @@ type ServicePorts struct {
 	// DetailFetcher fetches rich metadata for a single Artlist clip page.
 	// Optional — when nil the import endpoint returns ErrUnavailable.
 	DetailFetcher DetailFetcher
-	// Stager is the shared SourceStager port (Step 9/12 wire-up, July 2026).
-	// Optional — when non-nil, stageProcessBatch uses it as the canonical
-	// source-staging surface (wrapping the Artlist Downloader port) so
-	// Artlist demonstrates the same SourceStager contract used by YouTube
-	// and stock. When nil, stageProcessBatch falls through to the legacy
-	// mediaProcessor.Process pipeline without breaking.
-	Stager assets.SourceStager
+	// Stager is the canonical acquisition.SourceStager port. Optional —
+	// when non-nil, stageProcessBatch uses Prepare/Release before the
+	// media processor; when nil it falls through to the processor's
+	// regular download path.
+	Stager acquisition.SourceStager
 	// SearchStrategy controls the Pexels/Pixabay fallback chain (PR-AUDIT-5,
 	// July 2026). The strategy is wired from cfg.External.ArtlistSearchStrategy
 	// at composition time. Zero-value defaults to artlist_only (the safest
