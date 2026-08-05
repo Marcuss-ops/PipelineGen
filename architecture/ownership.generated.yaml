@@ -456,7 +456,7 @@ application_scripts:
     EXPAND → BACKFILL → CUTOVER → CONTRACT per godlike/07).
   target_subdirs:  # PR-G.1 EXPAND registered 2026-06-27
     - scripts/curation       # NEW per PR-G; owns MediaCurator + clip ports + scene stubs
-    - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job
+    - scripts/generation     # NEW per PR-G; owns Engine + Pipeline + html + enqueue + job + parity-covered plan builder (BACKFILL)
     - scripts/persistence    # NEW per PR-G; owns ScriptRepository contract + adapter
     - scripts/postprocess    # NEW per PR-G; owns PostprocessorRegistry + 7 processor_*.go
     - scripts/source         # NEW per PR-G; owns SourceRegistry + 6 source_resolver_*.go
@@ -465,7 +465,8 @@ application_scripts:
     - scripts/gemmamemory    # existing (gemma-based caching layer)
     - scripts/compat         # existing (legacy array→ModelScriptOutputV1 bridge)
   pr_g_status: in_progress (PR-G.1 EXPAND landed 2026-06-27;
-    PR-G.2 BACKFILL pending; deadline 2026-07-10)
+    PR-G.2 BACKFILL started 2026-08-05; generation plan builder is parity-covered;
+    legacy usecase path remains until CUTOVER; deadline 2026-09-30)
   current_drift: internal/application/scriptflow/ directory eliminated
     (flat-merged into internal/application/scripts/). The 5 pre-existing
     aspirational subdirs in the older target_subdirs list (batch,
