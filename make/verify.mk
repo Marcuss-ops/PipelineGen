@@ -44,7 +44,7 @@ verify-base: go-version-check verify-no-secrets verify-format tidy-check
 # NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
 # (the "non sostitutivi" constraint of the refactor). When adding/removing
 # a prereq here, mirror it in verify-base above to prevent drift between
-verify-foundation: go-version-check node-version-check verify-no-secrets verify-repository-integrity verify-format tidy-check
+verify-foundation: go-version-check node-version-check node-version-check-test verify-no-secrets verify-repository-integrity verify-format tidy-check
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
