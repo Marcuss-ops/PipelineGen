@@ -41,7 +41,7 @@ assert_graph verify-fast "verify-foundation verify-static"
 assert_graph verify-push "verify-foundation verify-static verify-unit-fast verify-changed-components"
 assert_graph verify-main "verify-push verify-node-native verify-architecture"
 assert_graph verify-race "verify-foundation verify-unit-race verify-race-components"
-assert_graph verify-full "verify-main verify-race verify-node-tests"
+assert_graph verify-full "verify-main verify-race verify-node-tests verify-clean-checkout-build"
 assert_graph verify-release "verify-full verify-integration"
 assert_graph verify-live "auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live"
 
@@ -93,9 +93,11 @@ forbid "$main" 'tests/operational|with-velox-auth|npm test|verify-live|scraper-u
 require "$race" '(^|[[:space:]])-race([[:space:]]|$)' "race detector"
 forbid "$race" 'tests/operational|with-velox-auth|verify-live' "live command"
 
-# FULL: main + race + complete Node tests, still headless.
+# FULL: main + race + complete Node tests + clean-checkout reproducibility,
+# still headless.
 require "$full" '(^|[[:space:]])-race([[:space:]]|$)' "race detector"
 require "$full" 'npm test|node --test' "complete Node tests"
+require "$full" 'ci-clean-checkout-build' "clean-checkout build"
 forbid "$full" 'tests/operational|with-velox-auth|verify-live' "live command"
 
 # RELEASE: integration is included, live/post-deploy batteries are not.
@@ -144,6 +146,18 @@ while IFS= read -r component; do
         fail "registry component $component has no verify-${target} Make alias"
     fi
 done <<< "$registry_components"
+
+clean_checkout_script=$ROOT/scripts/ci/ci-clean-checkout-build.sh
+require "$clean_checkout_script" 'npm ci --prefix web' "clean web dependency install"
+require "$clean_checkout_script" 'npm run build --prefix web' "embedded web build"
+require "$clean_checkout_script" 'vet ./\.\.\.' "full Go vet"
+require "$clean_checkout_script" 'test ./\.\.\.' "full Go tests"
+require "$clean_checkout_script" 'build -o pipelinegen ./cmd/server' "server build"
+require "$clean_checkout_script" 'build -o worker ./cmd/worker' "worker build"
+require "$clean_checkout_script" 'build -o admin ./cmd/admin' "admin build"
+require "$clean_checkout_script" 'GO_BIN=\$\{GO:-go\}' "configurable Go binary"
+require "$clean_checkout_script" 'GO_BIN=\$\(command -v' "absolute Go binary resolution"
+require "$clean_checkout_script" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkout-build\.sh' "Make Go forwarding"
 
 # Coverage is a separate fail-closed contract, not an implicit fallback in
 # verify-changed-components. Keep its reports in the temporary plan directory.
