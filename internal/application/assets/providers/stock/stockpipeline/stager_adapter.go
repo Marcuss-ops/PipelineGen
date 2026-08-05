@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -90,18 +89,13 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 
 	cacheKey := DeriveSourceCacheKey(ref.URL, ref.DownloadSection, ref.MergeFormat, ref.ForceKeyframes)
 	if sa, hit := s.checkSourceCache(ctx, cacheKey, ref, outputPath, fs); hit {
-		if isYouTubeSourceURL(ref.URL) && s.svc.metrics != nil {
-			jobID, _ := appmetrics.RunIDs(ctx)
-			cacheMetric := startServiceStockPhase(ctx, s.svc.metrics, "stock.youtube_download", jobID)
-			cacheMetric.SetItems(1, 1)
-			cacheMetric.SetBytes(0, 0)
-			cacheMetric.SetDetails(map[string]any{
-				"videos_downloaded":   0,
-				"download_bytes":      0,
-				"cache_hit":           true,
-				"singleflight_shared": false,
-			})
-			finishServiceStockPhase(s.svc.log, cacheMetric, nil)
+		if isYouTubeSourceURL(ref.URL) {
+			cacheMetric := startServiceStockPhase(ctx, "stock.youtube_download", "")
+			if cacheMetric != nil {
+				cacheMetric.SetItems(1, 1)
+				cacheMetric.SetBytes(0, 0)
+				finishServiceStockPhase(s.svc.log, cacheMetric, nil)
+			}
 		}
 		return sa, nil
 	}

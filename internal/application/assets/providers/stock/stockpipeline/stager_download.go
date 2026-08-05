@@ -3,47 +3,34 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref assets.SourceRef, dlReq *SourceDownloadRequest) (*assets.StagedAsset, error) {
+func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref assets.SourceRef, req *SourceDownloadRequest) (*assets.StagedAsset, error) {
 	v, sfErr, _ := s.sf.Do(cacheKey, func() (interface{}, error) {
 		var result *assets.StagedAsset
 		var downloadErr error
-		var metric *appmetrics.Handle
-		if s.svc != nil && s.svc.metrics != nil {
-			jobID, _ := appmetrics.RunIDs(ctx)
-			metric = startServiceStockPhase(ctx, s.svc.metrics, "stock.youtube_download", jobID)
+		h := (*kernobs.StageHandle)(nil)
+		if s.svc != nil {
+			h = startServiceStockPhase(ctx, "stock.youtube_download", "")
 			defer func() {
-				itemsOut := int64(0)
-				bytesOut := int64(0)
+				out, bytes := int64(0), int64(0)
 				if result != nil {
-					itemsOut = 1
-					bytesOut = result.Bytes
+					out, bytes = 1, result.Bytes
 				}
-				metric.SetItems(1, itemsOut)
-				metric.SetBytes(0, bytesOut)
-				metric.SetDetails(map[string]any{
-					"videos_downloaded":   itemsOut,
-					"download_bytes":      bytesOut,
-					"cache_hit":           false,
-					"singleflight_shared": false,
-				})
-				finishServiceStockPhase(s.svc.log, metric, downloadErr)
+				h.SetItems(1, out)
+				h.SetBytes(0, bytes)
+				h.SetItemsFailed(boolToInt64(downloadErr != nil))
+				finishServiceStockPhase(s.svc.log, h, downloadErr)
 			}()
 		}
-
-		dlResult, dlErr := s.downloader.Download(ctx, dlReq)
-		if dlErr != nil {
-			downloadErr = fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, dlErr)
+		dlResult, err := s.downloader.Download(ctx, req)
+		if err != nil {
+			downloadErr = fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, err)
 			return nil, downloadErr
 		}
-		result = &assets.StagedAsset{
-			LocalPath: dlResult.ResolvedPath,
-			Bytes:     dlResult.SizeBytes,
-		}
+		result = &assets.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes}
 		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return result, nil
 	})

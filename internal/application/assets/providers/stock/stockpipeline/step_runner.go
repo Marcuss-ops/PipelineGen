@@ -20,7 +20,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -113,15 +112,6 @@ func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparat
 }
 func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
 	return a.jobFinalizer
-}
-
-// MetricsRecorder exposes the optional common recorder without extending
-// StepRunner, preserving existing test fixtures and alternate runners.
-func (a *orchestratorRunner) MetricsRecorder() appmetrics.Recorder {
-	if a == nil || a.orch == nil {
-		return nil
-	}
-	return a.orch.metrics
 }
 
 func (a *orchestratorRunner) Log() *zap.Logger { return a.log }

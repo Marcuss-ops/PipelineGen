@@ -14,7 +14,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
@@ -66,7 +65,6 @@ type OrchestratorConfig struct {
 	// contract (MarkStarted → ErrStepAlreadyCompleted → skip-on-
 	// orchestrator-continue) takes effect.
 	StepStore steps.Store
-	Metrics   appmetrics.Recorder
 }
 
 // DefaultMaxConcurrentJobs is the orchestrator's fallback when
@@ -207,5 +205,4 @@ type Orchestrator struct {
 	// mode — steps fall back to os.* (the legacy path). Production
 	// wiring injects filesystem.NewLocal() via WithLocalFS.
 	localFS LocalFSPort
-	metrics appmetrics.Recorder
 }

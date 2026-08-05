@@ -83,10 +83,6 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 				}
 				databaseMetric.SetItems(1, out)
 				databaseMetric.SetBytes(item.SizeBytes, item.SizeBytes)
-				databaseMetric.SetDetails(map[string]any{
-					"assets_generated":        1,
-					"output_duration_seconds": item.DurationSec,
-				})
 			}
 			finishStockPhase(runner, databaseMetric, "stock.database_save", writeErr)
 
@@ -97,9 +93,6 @@ func publishCuts(ctx context.Context, runner StepRunner, sourceID string, source
 			indexMetric := startStockPhase(ctx, runner, "stock.index")
 			if indexMetric != nil {
 				indexMetric.SetItems(1, boolToInt64(writeErr == nil))
-				indexMetric.SetDetails(map[string]any{
-					"index_mode": "outbox_enqueue",
-				})
 			}
 			finishStockPhase(runner, indexMetric, "stock.index", writeErr)
 			if writeErr != nil {

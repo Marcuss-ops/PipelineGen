@@ -18,9 +18,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // runOrchestratorResilient is the canonical production entry point.
@@ -34,14 +34,26 @@ import (
 // Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
 // artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
 // manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
-func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (*RunSummary, error) {
+func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (summary *RunSummary, err error) {
+	var ownedRun *kernobs.Run
+	defer func() {
+		if ownedRun != nil {
+			ownedRun.FinishWithError(err)
+		}
+	}()
 	if s == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil receiver")
 	}
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *RunInput")
 	}
-	ctx = appmetrics.WithRun(ctx, jobID, "")
+	if kernobs.FromContext(ctx) == nil {
+		// The job runtime normally binds the canonical Run before entering
+		// the stock pipeline. Keep direct callers observable without creating
+		// a second timer owner when a run is already present.
+		ownedRun = kernobs.NewRunObserver(nil).StartRun(ctx, kernobs.RunInfo{JobID: jobID, AttemptID: kernobs.NewAttemptID()})
+		ctx = kernobs.WithRun(ctx, ownedRun)
+	}
 	// drive_folder_id is the operator-selected parent. Resolve the readable
 	// folder_name below it once, then publish round subfolders below that
 	// resolved folder. This keeps Drive hierarchy creation inside stock.
@@ -65,13 +77,10 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// the orchestrator, which only understands DirectURLs.
 	searchInputCount := len(input.SearchQueries)
 	searchURLCount := len(input.DirectURLs)
-	searchMetric := startServiceStockPhase(ctx, s.metrics, "stock.search", jobID)
+	searchMetric := startServiceStockPhase(ctx, "stock.search", jobID)
 	searchErr := s.resolveInputQueries(ctx, input)
 	if searchMetric != nil {
 		searchMetric.SetItems(int64(searchInputCount), int64(len(input.DirectURLs)-searchURLCount))
-		searchMetric.SetDetails(map[string]any{
-			"videos_found": len(input.DirectURLs) - searchURLCount,
-		})
 		finishServiceStockPhase(s.log, searchMetric, searchErr)
 	}
 	if searchErr != nil {
@@ -84,7 +93,6 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		PolicyVersion:    "v1",
 		ChunkDurationSec: effectiveChunkDurationSec(input, s),
 		ClipDurationSec:  effectiveClipDurationSec(input, s),
-		Metrics:          s.metrics,
 	}
 	// Phase 2 (July 2026): wire SQLite-backed step store for
 	// crash-resume across process restarts. When db is nil (stock
@@ -133,7 +141,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	if s.batchRepo != nil {
 		o.WithBatchRepository(s.batchRepo)
 	}
-	summary, err := o.RunResilient(ctx, input)
+	summary, err = o.RunResilient(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: orchestrator.RunResilient: %w", err)
 	}

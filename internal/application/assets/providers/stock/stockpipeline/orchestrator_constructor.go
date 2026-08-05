@@ -69,7 +69,6 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps Ex
 		projection:    noopProjection{},
 		stepStore:     stepStore,
 		dispatchSteps: DefaultStockSteps(),
-		metrics:       cfg.Metrics,
 	}
 }
 

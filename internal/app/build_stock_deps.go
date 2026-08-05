@@ -26,7 +26,6 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	stocksteps "github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -109,7 +108,6 @@ type StockRuntimeDeps struct {
 	Log        *zap.Logger
 	DB         *sql.DB // optional (nil → in-memory)
 	JobCreator stockpipeline.JobCreator
-	Metrics    appmetrics.Recorder
 	StepStore  stocksteps.Store
 }
 

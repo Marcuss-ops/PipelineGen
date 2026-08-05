@@ -2,114 +2,74 @@ package stockpipeline
 
 import (
 	"context"
-
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
 const stockProcessType = "stock"
 
-type metricsRunner interface {
-	MetricsRecorder() appmetrics.Recorder
+func startStockPhase(ctx context.Context, _ StepRunner, phase string) *kernobs.StageHandle {
+	return kernobs.BeginStage(ctx, kernobs.StageName(phase))
 }
-
-func recorderForRunner(runner StepRunner) appmetrics.Recorder {
-	if typed, ok := runner.(metricsRunner); ok {
-		return typed.MetricsRecorder()
-	}
-	return nil
-}
-
-func startStockPhase(ctx context.Context, runner StepRunner, phase string) *appmetrics.Handle {
-	return startStockPhaseWithRecorder(ctx, recorderForRunner(runner), phase, runner.JobID())
-}
-
-func startStockPhaseWithRecorder(ctx context.Context, recorder appmetrics.Recorder, phase, fallbackJobID string) *appmetrics.Handle {
-	if recorder == nil {
-		return nil
-	}
-	jobID, parentJobID := appmetrics.RunIDs(ctx)
-	if jobID == "" {
-		jobID = fallbackJobID
-	}
-	return recorder.Start(ctx, appmetrics.StartInput{
-		ProcessType: stockProcessType,
-		JobID:       jobID,
-		ParentJobID: parentJobID,
-		Phase:       phase,
-		Provider:    "stock",
-	})
-}
-
-func finishStockPhase(runner StepRunner, handle *appmetrics.Handle, phase string, phaseErr error) {
-	if handle == nil {
+func finishStockPhase(runner StepRunner, h *kernobs.StageHandle, phase string, err error) {
+	if h == nil {
 		return
 	}
-	if err := handle.End(phaseErr); err != nil && runner != nil && runner.Log() != nil {
-		runner.Log().Warn("stock: process phase metric persistence failed",
-			zap.String("phase", phase),
-			zap.Error(err))
+	report := h.End(err)
+	if err != nil && runner != nil && runner.Log() != nil {
+		runner.Log().Warn("stock: canonical process phase observation failed", zap.String("phase", phase), zap.String("status", report.Status), zap.Error(err))
 	}
 }
-
-func startServiceStockPhase(ctx context.Context, recorder appmetrics.Recorder, phase, jobID string) *appmetrics.Handle {
-	if recorder == nil {
-		return nil
-	}
-	return startStockPhaseWithRecorder(ctx, recorder, phase, jobID)
+func startServiceStockPhase(ctx context.Context, phase, _ string) *kernobs.StageHandle {
+	return kernobs.BeginStage(ctx, kernobs.StageName(phase))
 }
-
-func finishServiceStockPhase(log *zap.Logger, handle *appmetrics.Handle, phaseErr error) {
-	if handle == nil {
+func finishServiceStockPhase(log *zap.Logger, h *kernobs.StageHandle, err error) {
+	if h == nil {
 		return
 	}
-	if err := handle.End(phaseErr); err != nil && log != nil {
-		log.Warn("stock: process phase metric persistence failed", zap.Error(err))
+	report := h.End(err)
+	if err != nil && log != nil {
+		log.Warn("stock: canonical process phase observation failed", zap.String("status", report.Status), zap.Error(err))
 	}
 }
-
-// prepareStockDriveArtifact records the canonical Drive publication boundary.
-// All Stock ArtifactPreparation calls use this helper so video and metadata
-// uploads share one metric shape without duplicating timing logic.
-func prepareStockDriveArtifact(ctx context.Context, runner StepRunner, artifact finalization.VerifiedArtifact, details map[string]any) (published finalization.PublishedArtifact, err error) {
-	metric := startStockPhase(ctx, runner, "stock.drive_upload")
-	published, err = runner.ArtifactPreparation().Prepare(ctx, artifact)
-	if metric != nil {
-		out := int64(0)
-		if err == nil {
-			out = 1
-		}
-		metric.SetItems(1, out)
-		metric.SetBytes(artifact.SizeBytes, artifact.SizeBytes)
-		metric.SetDetails(details)
-		finishStockPhase(runner, metric, "stock.drive_upload", err)
+func prepareStockDriveArtifact(ctx context.Context, runner StepRunner, artifact finalization.VerifiedArtifact, _ map[string]any) (published finalization.PublishedArtifact, err error) {
+	prepare := func(operationCtx context.Context) error {
+		published, err = runner.ArtifactPreparation().Prepare(operationCtx, artifact)
+		return err
 	}
-	return published, err
+	if run := kernobs.FromContext(ctx); run != nil {
+		err = run.Operation(ctx, kernobs.OperationInfo{
+			Stage:     kernobs.StagePublish,
+			Component: kernobs.ComponentDrive,
+			Operation: kernobs.OperationUpload,
+			Items:     1,
+			Bytes:     artifact.SizeBytes,
+		}, prepare)
+		return published, err
+	}
+	return published, prepare(ctx)
 }
-
-func boolToInt64(value bool) int64 {
-	if value {
+func boolToInt64(v bool) int64 {
+	if v {
 		return 1
 	}
 	return 0
 }
-
 func sumPlanDuration(plans []ClipPlan) float64 {
 	var total float64
-	for _, plan := range plans {
-		if plan.EndSec > plan.StartSec {
-			total += plan.EndSec - plan.StartSec
+	for _, p := range plans {
+		if p.EndSec > p.StartSec {
+			total += p.EndSec - p.StartSec
 		}
 	}
 	return total
 }
-
 func sumChunkDuration(chunks []ChunkState) float64 {
 	var total float64
-	for _, chunk := range chunks {
-		if chunk.EndSec > chunk.StartSec {
-			total += chunk.EndSec - chunk.StartSec
+	for _, c := range chunks {
+		if c.EndSec > c.StartSec {
+			total += c.EndSec - c.StartSec
 		}
 	}
 	return total

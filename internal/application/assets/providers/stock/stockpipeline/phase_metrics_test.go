@@ -4,40 +4,30 @@ import (
 	"context"
 	"testing"
 
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-type phaseMetricRepository struct {
-	metrics []*appmetrics.Metric
-}
+func TestStartStockPhaseRecordsCanonicalStage(t *testing.T) {
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{
+		JobID: "job-stock-1", AttemptID: "attempt-stock-1",
+	})
+	ctx := kernobs.WithRun(context.Background(), run)
 
-func (r *phaseMetricRepository) Insert(_ context.Context, metric *appmetrics.Metric) error {
-	copyMetric := *metric
-	r.metrics = append(r.metrics, &copyMetric)
-	return nil
-}
-
-func TestStartStockPhaseWithRecorderUsesRunIdentifiers(t *testing.T) {
-	repo := &phaseMetricRepository{}
-	recorder := appmetrics.NewRecorder(repo)
-	ctx := appmetrics.WithRun(context.Background(), "job-stock-1", "parent-stock-1")
-
-	handle := startStockPhaseWithRecorder(ctx, recorder, "stock.search", "fallback-job")
+	handle := startStockPhase(ctx, nil, "stock.search")
 	if handle == nil {
-		t.Fatal("startStockPhaseWithRecorder returned nil")
+		t.Fatal("startStockPhase returned nil")
 	}
-	if err := handle.End(nil); err != nil {
-		t.Fatalf("End: %v", err)
+	handle.SetItems(3, 3)
+	handle.SetItemsFailed(0)
+	got := handle.End(nil)
+	if got.Name != "stock.search" || got.Status != kernobs.StageStatusCompleted {
+		t.Fatalf("stage = %#v, want completed stock.search", got)
 	}
-	if len(repo.metrics) != 1 {
-		t.Fatalf("persisted metrics = %d, want 1", len(repo.metrics))
+	if got.ItemsInput != 3 || got.ItemsCompleted != 3 {
+		t.Fatalf("stage counters = %d/%d, want 3/3", got.ItemsInput, got.ItemsCompleted)
 	}
-	got := repo.metrics[0]
-	if got.ProcessType != "stock" || got.Provider != "stock" || got.Phase != "stock.search" {
-		t.Fatalf("metric identity = process=%q provider=%q phase=%q", got.ProcessType, got.Provider, got.Phase)
-	}
-	if got.JobID != "job-stock-1" || got.ParentJobID != "parent-stock-1" {
-		t.Fatalf("run identifiers = job=%q parent=%q", got.JobID, got.ParentJobID)
+	if len(run.Report().Stages) != 1 {
+		t.Fatalf("canonical stage count = %d, want 1", len(run.Report().Stages))
 	}
 }
 
@@ -52,15 +42,21 @@ func TestCountUniquePlanSources(t *testing.T) {
 	}
 }
 
-func TestStartStockPhaseWithRecorderFallsBackToRunnerJobID(t *testing.T) {
-	repo := &phaseMetricRepository{}
-	recorder := appmetrics.NewRecorder(repo)
+func TestStartStockPhaseFailureUsesCanonicalError(t *testing.T) {
+	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{
+		JobID: "job-stock-2", AttemptID: "attempt-stock-2",
+	})
+	ctx := kernobs.WithRun(context.Background(), run)
 
-	handle := startStockPhaseWithRecorder(context.Background(), recorder, "stock.compose", "runner-job")
-	if err := handle.End(nil); err != nil {
-		t.Fatalf("End: %v", err)
+	handle := startStockPhase(ctx, nil, "stock.compose")
+	if handle == nil {
+		t.Fatal("startStockPhase returned nil")
 	}
-	if got := repo.metrics[0].JobID; got != "runner-job" {
-		t.Fatalf("fallback job id = %q, want runner-job", got)
+	got := handle.End(context.Canceled)
+	if got.Status != kernobs.StageStatusFailed {
+		t.Fatalf("stage status = %q, want failed", got.Status)
+	}
+	if got.ErrorCode == "" {
+		t.Fatal("failed canonical stage must include an error code")
 	}
 }
