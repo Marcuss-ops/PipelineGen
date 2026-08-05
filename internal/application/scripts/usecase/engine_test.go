@@ -689,7 +689,7 @@ func TestBuildEditorialPrompt_DoesNotIncludeFingerprint(t *testing.T) {
 		Language: "en",
 		Tone:     "neutral",
 	}
-	editorial := buildEditorialPrompt(item)
+	editorial := BuildPlan(item).RenderedPrompt
 	// P0 #1 (June 2026): BuildClipFingerprint replaces the Phase 1b
 	// stub BuildItemIdentity. The editorial prompt must never contain
 	// the source fingerprint — that was the pre-PR 2 anti-pattern
