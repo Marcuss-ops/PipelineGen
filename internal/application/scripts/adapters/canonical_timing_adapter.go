@@ -5,13 +5,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
-
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-// TimingParity is the bounded comparison record used while legacy timing
-// writers are being retired. The canonical duration is always authoritative;
-// LegacyMs is diagnostic input only and is never used to alter the report.
 type TimingParity struct {
 	Name        string
 	CanonicalMs int64
@@ -19,51 +15,39 @@ type TimingParity struct {
 	Match       bool
 }
 
-// TimingParitySink receives non-invasive dual-read comparisons.
 type TimingParitySink interface {
 	ObserveTimingParity(TimingParity)
 }
 
-// CanonicalTimingAdapter is the compatibility bridge for the old timing
-// surfaces. MeasureCanonical is the only production timing entry point. Once
-// a Run is bound to ctx it delegates to the kernel and projects that exact
-// observation to StageDurations, VidRushTimingMetrics, and processmetrics.
 type CanonicalTimingAdapter struct {
 	ProcessMetrics processmetrics.CanonicalRecorder
 	VidRush        VidRushTimingMetrics
 	Parity         TimingParitySink
 }
 
-// MeasureCanonical executes fn under the canonical Run timer. With no Run in
-// the context it deliberately passes through without inventing a duration;
-// callers may retain their pre-migration fallback for uninstrumented tests or
-// legacy entry points.
 func (a *CanonicalTimingAdapter) MeasureCanonical(ctx context.Context, name string, fn func(context.Context) error) (kernobs.StageReport, error) {
 	return kernobs.MeasureStageReport(ctx, kernobs.StageName(name), fn)
 }
 
-// ProjectStage copies one canonical observation to the compatibility sinks.
-// StageReport.DurationMs is the sole duration value used by every projection.
-// It does not claim parity because no independent legacy value was read.
-func (a *CanonicalTimingAdapter) ProjectStage(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport) {
-	a.projectStage(ctx, result, name, stage)
+func (a *CanonicalTimingAdapter) ProjectStage(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport) error {
+	return a.projectStage(ctx, result, name, stage)
 }
 
-// ProjectStageWithLegacy compares an independently supplied legacy value with
-// the canonical observation. The legacy value is diagnostic only and never
-// replaces the canonical duration.
-func (a *CanonicalTimingAdapter) ProjectStageWithLegacy(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport, legacyMs int64) {
-	a.projectStage(ctx, result, name, stage)
-	if a == nil || a.Parity == nil {
-		return
+func (a *CanonicalTimingAdapter) ProjectStageWithLegacy(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport, legacyMs int64) error {
+	if err := a.projectStage(ctx, result, name, stage); err != nil {
+		return err
+	}
+	if a == nil || a.Parity == nil || legacyMs <= 0 {
+		return nil
 	}
 	a.Parity.ObserveTimingParity(TimingParity{
 		Name: name, CanonicalMs: stage.DurationMs, LegacyMs: legacyMs,
 		Match: stage.DurationMs == legacyMs,
 	})
+	return nil
 }
 
-func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport) {
+func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *PipelineResult, name string, stage kernobs.StageReport) error {
 	if result != nil {
 		if result.StageDurations == nil {
 			result.StageDurations = make(map[string]int64)
@@ -71,13 +55,13 @@ func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *Pipel
 		result.StageDurations[name] = stage.DurationMs
 	}
 	if a == nil {
-		return
+		return nil
 	}
 	if a.VidRush != nil {
 		a.VidRush.ObserveProcessorDuration(name, float64(stage.DurationMs)/1000)
 	}
 	if a.ProcessMetrics != nil {
-		_ = a.ProcessMetrics.RecordCanonical(ctx, processmetrics.CanonicalMetric{
+		if err := a.ProcessMetrics.RecordCanonical(ctx, processmetrics.CanonicalMetric{
 			ProcessType: "script",
 			JobID:       stageJobID(ctx),
 			ParentJobID: stageParentJobID(ctx),
@@ -88,8 +72,11 @@ func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *Pipel
 			Status:      canonicalMetricStatus(stage.Status),
 			ErrorCode:   stage.ErrorCode,
 			CreatedAt:   stage.FinishedAt,
-		})
+		}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func stageJobID(ctx context.Context) string {
@@ -117,9 +104,6 @@ func canonicalMetricStatus(status string) string {
 	return "success"
 }
 
-// LegacyStageDuration is retained for callers that still need a fallback
-// measurement outside a canonical Run. It is intentionally isolated from
-// MeasureCanonical so production runs cannot accidentally use both timers.
 func LegacyStageDuration(start, end time.Time) int64 {
 	if end.Before(start) {
 		return 0

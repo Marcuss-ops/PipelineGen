@@ -160,7 +160,13 @@ func (r *PostProcessorRegistry) Run(
 		if adapter == nil {
 			adapter = &CanonicalTimingAdapter{VidRush: r.vidRushTimingMetrics()}
 		}
-		adapter.ProjectStage(ctx, result, string(name), stageReport)
+		if projectionErr := adapter.ProjectStage(ctx, result, string(name), stageReport); projectionErr != nil {
+			if r.log != nil {
+				r.log.Warn("canonical timing projection failed",
+					zap.String("name", string(name)),
+					zap.Error(projectionErr))
+			}
+		}
 		// Concurrency safety: a processor may return a shared/cached
 		// PostProcessResult (common in stubs and caches). Clone before
 		// mutating DurationMs or passing to merge so concurrent Run
