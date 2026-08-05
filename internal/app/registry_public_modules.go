@@ -33,7 +33,6 @@ import (
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
@@ -72,23 +71,6 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
 		return fmt.Errorf("wire registry: system capability: %w", err)
 	}
-	return nil
-}
-
-// registerJobs wires the /jobs route module. PR0 (June 2026): signature
-// is now (job.Service, JobStatsReader, *zap.Logger). *root.Jobs.Service
-// satisfies both interfaces — it implements the canonical domain
-// job.Service (orchestrator) AND the JobStatsReader port (via the
-// runtime type-assertion GetStats helper).
-func registerJobs(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	capability := capjobs.NewModule(capjobs.Dependencies{
-		Service: root.Jobs.Service, Stats: root.Jobs.Service,
-		EnabledFunc: func() bool { return true }, Logger: log,
-	})
-	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
-		return fmt.Errorf("wire registry: jobs capability: %w", err)
-	}
-	log.Info("created Jobs capability module")
 	return nil
 }
 
