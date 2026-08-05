@@ -83,7 +83,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	sqliteprocessmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/processmetrics"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"

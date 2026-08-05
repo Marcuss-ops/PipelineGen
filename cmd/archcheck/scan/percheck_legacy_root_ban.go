@@ -52,10 +52,10 @@ import (
 //
 // All four Wave-25 retired legacy roots are live. P1-4 step 3
 // (internal/scriptgeneration) is the final retirement closure:
-// the legacy root was git-mv'd to internal/application/scripts/legacy/
-// and its SQLite adapter moved to internal/infrastructure/database/sqlite/scripts/legacy/.
-// Both surfaces retain the verbatim body (CUTOVER phase per godlike/07 §"Migration
-// sequence"); the CONTRACT phase will follow in a follow-up commit.
+// the legacy root was git-mv'd to internal/capabilities/scripts/.
+// Its SQLite adapter remains under internal/infrastructure/database/sqlite/scripts/legacy/
+// because that path is infrastructure-owned. The capability cutover preserves the
+// scriptgeneration package API while removing the application legacy facade.
 var legacyRootImportBanned = []string{
 	"github.com/Marcuss-ops/PipelineGen/internal/transcription",
 	"github.com/Marcuss-ops/PipelineGen/internal/youtube",

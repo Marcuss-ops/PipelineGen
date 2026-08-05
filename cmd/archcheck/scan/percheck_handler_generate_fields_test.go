@@ -58,7 +58,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
 type generationSubmitter interface {
