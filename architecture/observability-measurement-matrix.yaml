@@ -1,0 +1,453 @@
+# PipelineGen — observability measurement classification matrix
+# Status: architectural inventory for the initial observability migration.
+# Authority: internal/kernel/observability for canonical types and semantics.
+# This is an inventory of current code surfaces, not a claim that migration is complete.
+#
+# Required columns from the approved architecture decision:
+# current_symbol, current_owner, current_writer, current_storage, current_metric,
+# canonical_type, canonical_stage, canonical_component, canonical_operation,
+# migration_adapter, removal_condition.
+#
+# Classification vocabulary:
+#   canonical_type: run | attempt | stage | operation | artifact | child_run |
+#                   counter | infrastructure_metric | wait_observation
+#   removal_condition: explicit, testable condition; no legacy type is removed
+#                      merely because the kernel package compiles.
+
+version: 1
+status: inventory
+last_reviewed: 2026-08-05
+source_of_truth: internal/kernel/observability
+
+measurements:
+  - current_symbol: "PipelineResult.StageDurations"
+    current_owner: "internal/application/scripts/adapters.PipelineResult"
+    current_writer: "PostProcessorRegistry.Run / postprocessor_composite_run.go"
+    current_storage: "In-memory map[string]int64; JSON field stage_durations"
+    current_metric: "None directly; consumed by script generation timings"
+    canonical_type: stage
+    canonical_stage: "processor-specific stage, mapped through observability.Registry"
+    canonical_component: "script"
+    canonical_operation: ""
+    migration_adapter: "StageDurationsAdapter: emit one stable Stage observation per processor execution; preserve repeated processor executions with observation IDs"
+    removal_condition: "All script consumers read RunReport.Stages; parity passes for success, failure, empty output, and repeated processors; no writer reads or populates StageDurations"
+
+  - current_symbol: "PipelineResult.StageProgress"
+    current_owner: "internal/application/scripts/adapters.PipelineResult"
+    current_writer: "postprocessor_progress.go"
+    current_storage: "In-memory map[string]job.StageProgress; progress projection"
+    current_metric: "Job progress/events, not canonical elapsed timing"
+    canonical_type: stage
+    canonical_stage: "processor-specific stage"
+    canonical_component: "script"
+    canonical_operation: ""
+    migration_adapter: "Project status and item counters into StageReport; do not treat progress events as duration measurements"
+    removal_condition: "All operator/API progress consumers distinguish progress from observability timing and read canonical stage status"
+
+  - current_symbol: "VidRushTimingMetrics.ObserveProcessorDuration"
+    current_owner: "internal/application/scripts/adapters"
+    current_writer: "postprocessor_composite_run.go"
+    current_storage: "Prometheus vidrush_processor_duration_seconds"
+    current_metric: "vidrush_processor_duration_seconds{processor}"
+    canonical_type: stage
+    canonical_stage: "processor execution stage"
+    canonical_component: "vidrush"
+    canonical_operation: ""
+    migration_adapter: "Canonical observer stage close projects a low-cardinality processor/stage metric; retain the existing metric only as a projection"
+    removal_condition: "Canonical observer is the sole timer; VidRush adapter no longer accepts a separate timing interface; parity and dashboard migration pass"
+
+  - current_symbol: "VidRushTimingMetrics.ObserveProviderDuration"
+    current_owner: "internal/application/scripts/adapters"
+    current_writer: "processor_clip_search.go, processor_internet_images.go, processor_vidrush_materialization.go"
+    current_storage: "Prometheus vidrush_provider_duration_seconds"
+    current_metric: "vidrush_provider_duration_seconds{provider}"
+    canonical_type: operation
+    canonical_stage: "acquire/process"
+    canonical_component: "provider from Registry (artlist, internet_images, etc.)"
+    canonical_operation: "search or acquire/verify operation"
+    migration_adapter: "Observed provider wrappers create OperationReport and project the canonical report to the temporary VidRush metric"
+    removal_condition: "Every provider boundary is observed exactly once through shared wrappers; no processor calls observeVidRushProviderDuration directly"
+
+  - current_symbol: "processmetrics.Metric"
+    current_owner: "internal/application/processmetrics"
+    current_writer: "processmetrics.RecorderImpl.Start/Handle.End"
+    current_storage: "process_phase_metrics SQLite rows"
+    current_metric: "No direct Prometheus family; durable process phase record"
+    canonical_type: stage
+    canonical_stage: "phase mapped from process_type/phase"
+    canonical_component: "process_type owner"
+    canonical_operation: ""
+    migration_adapter: "ProcessMetricsAdapter maps Metric fields to StageReport, Counters, and nested OperationReport where provider/phase ownership is technical"
+    removal_condition: "All processmetrics readers use RunReport and the canonical SQLite recorder; process_phase_metrics writer disabled after parity and query migration"
+
+  - current_symbol: "processmetrics.Metric.QueueWaitMs"
+    current_owner: "internal/application/processmetrics"
+    current_writer: "processmetrics.Handle.SetQueueWait"
+    current_storage: "process_phase_metrics.queue_wait_ms"
+    current_metric: "Durable per-phase queue_wait_ms"
+    canonical_type: wait_observation
+    canonical_stage: "phase containing the wait"
+    canonical_component: "runtime or phase owner"
+    canonical_operation: ""
+    migration_adapter: "Map only runtime attempt queue wait to RunReport.QueueWaitMs; classify internal phase waits as semaphore/rate-limit/dependency waits"
+    removal_condition: "Queue wait is persisted once at attempt scope and phase records no longer expose a competing queue wait"
+
+  - current_symbol: "processmetrics.Metric.DurationMs"
+    current_owner: "internal/application/processmetrics"
+    current_writer: "processmetrics.Handle.End"
+    current_storage: "process_phase_metrics.duration_ms"
+    current_metric: "Durable phase duration"
+    canonical_type: stage
+    canonical_stage: "phase"
+    canonical_component: "phase owner"
+    canonical_operation: "provider-specific phase operation when applicable"
+    migration_adapter: "Map phase duration to StageReport; split provider boundary duration into OperationReport only at the shared adapter boundary"
+    removal_condition: "No consumer depends on process_phase_metrics.duration_ms and canonical stage/operation parity passes"
+
+  - current_symbol: "processmetrics.Metric.ItemsIn/ItemsOut/BytesIn/BytesOut"
+    current_owner: "internal/application/processmetrics"
+    current_writer: "processmetrics.Handle.SetItems/SetBytes"
+    current_storage: "process_phase_metrics.items_in, items_out, bytes_in, bytes_out"
+    current_metric: "Durable process counters"
+    canonical_type: counter
+    canonical_stage: "phase"
+    canonical_component: "phase owner"
+    canonical_operation: ""
+    migration_adapter: "Map items to StageReport/RunCounters and bytes to canonical bytes_processed/artifact counters without adding IDs as labels"
+    removal_condition: "Canonical counters are persisted and queried by run/attempt; old columns are no longer written independently"
+
+  - current_symbol: "process_phase_metrics.details_json"
+    current_owner: "internal/infrastructure/database/sqlite/processmetrics"
+    current_writer: "processmetrics.SQLiteRepository.Insert/Update"
+    current_storage: "process_phase_metrics.details_json"
+    current_metric: "Free-form process-specific numeric details"
+    canonical_type: counter
+    canonical_stage: "phase owning the detail"
+    canonical_component: "phase owner"
+    canonical_operation: ""
+    migration_adapter: "Whitelist each durable detail into typed Counters, Artifact fields, or Operation attributes; reject timing-shaped shadow fields"
+    removal_condition: "All retained details have typed canonical destinations and no timing consumer reads details_json as a custom report"
+
+  - current_symbol: "job_claim_duration_seconds / JobClaimDurationSeconds"
+    current_owner: "internal/infrastructure/observability plus SQLite job claim path"
+    current_writer: "SQLiteStore.ClaimNext"
+    current_storage: "Prometheus histogram only"
+    current_metric: "job_claim_duration_seconds"
+    canonical_type: infrastructure_metric
+    canonical_stage: ""
+    canonical_component: "sqlite"
+    canonical_operation: "claim"
+    migration_adapter: "Keep as infrastructure metric; additionally derive attempt_available_at and attempt_started_at for persisted queue wait"
+    removal_condition: "Canonical queue wait is persisted for every attempt and this metric is either a canonical projection or explicitly retained as DB claim infrastructure latency"
+
+  - current_symbol: "RunInfo.AttemptID / worker_execution.go and worker/runner_execute.go"
+    current_owner: "internal/kernel/observability.RunInfo populated by internal/application/jobs runtimes"
+    current_writer: "Worker.runJob and worker.Runner.runLease"
+    current_storage: "In-memory RunReport.AttemptID; currently populated from lease_id"
+    current_metric: "Attempt identity compatibility field"
+    canonical_type: attempt
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: "claim"
+    migration_adapter: "Generate and persist a new AttemptID at claim; keep LeaseID as a separate fence and link it only as execution metadata"
+    removal_condition: "EVERY_ATTEMPT_HAS_ATTEMPT_ID=PASS and no runtime path assigns AttemptID from lease_id"
+
+  - current_symbol: "RunInfo.QueueWaitMs / worker claim calculation"
+    current_owner: "internal/kernel/observability.RunInfo and internal/application/jobs worker runtime"
+    current_writer: "Worker.runJob and worker.Runner.runLease"
+    current_storage: "In-memory RunReport.QueueWaitMs"
+    current_metric: "queue_wait_ms derived from jobs.created_at to StartedAt"
+    canonical_type: wait_observation
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: "claim"
+    migration_adapter: "Use AttemptAvailableAt: job_created_at for the first attempt and retry_available_at for later attempts; persist the resulting attempt queue wait"
+    removal_condition: "QUEUE_WAIT_PERSISTED=PASS and retry backoff is excluded from the next attempt queue wait"
+
+  - current_symbol: "jobs.created_at → jobs.StartedAt"
+    current_owner: "internal/application/jobs worker runtime"
+    current_writer: "ClaimNext and worker execution envelope"
+    current_storage: "jobs SQLite row; RunInfo.QueueWaitMs calculation"
+    current_metric: "queue_wait_ms on kernel RunReport (currently created_at to StartedAt)"
+    canonical_type: attempt
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: "claim"
+    migration_adapter: "Create durable AttemptID and AttemptAvailableAt; calculate queue wait from availability, not retry_count/lease proxy"
+    removal_condition: "EVERY_ATTEMPT_HAS_ATTEMPT_ID and retry attempts use retry_available_at as their availability boundary"
+
+  - current_symbol: "jobs.retry_count / Job.RetryCount"
+    current_owner: "internal/kernel/job and SQLite job repository"
+    current_writer: "ScheduleRetry, finalization and job row transitions"
+    current_storage: "jobs.retry_count"
+    current_metric: "Retry counter; currently used as attempt proxy in compatibility paths"
+    canonical_type: counter
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: ""
+    migration_adapter: "Persist a new AttemptID for each attempt; use retry_count only as a job retry counter and report counter"
+    removal_condition: "No RunInfo or report assigns AttemptID from retry_count; attempt identity/query tests pass"
+
+  - current_symbol: "retry.BackoffFor / ScheduleRetry backoff"
+    current_owner: "internal/application/jobs and pkg/retry"
+    current_writer: "worker_finalize_paths.go; SQLiteStore.ScheduleRetry"
+    current_storage: "jobs available_at/updated_at and logs; no canonical durable aggregate"
+    current_metric: "No canonical persisted retry_backoff_ms"
+    canonical_type: wait_observation
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: "retry backoff"
+    migration_adapter: "Persist previous attempt finish and retry availability; aggregate intervals into job-level RetryBackoffMs"
+    removal_condition: "RETRY_BACKOFF_PERSISTED=PASS and retry backoff is not included in later attempt QueueWaitMs"
+
+  - current_symbol: "internal/kernel/observability.RunReport"
+    current_owner: "internal/kernel/observability/report.go"
+    current_writer: "Run.Finish/FinishWithError/Cancel in run.go"
+    current_storage: "In-memory report; Recorder extension point"
+    current_metric: "Canonical JSON envelope, incomplete interval semantics"
+    canonical_type: run
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: ""
+    migration_adapter: "Extend the kernel report with attempt availability, retry backoff, interval-backed waits, degraded flag, and ABANDONED status"
+    removal_condition: "Kernel report satisfies the complete contract document and all persistence/gate tests pass"
+
+  - current_symbol: "Run.activeMs / Run.AddBlocked"
+    current_owner: "internal/kernel/observability/run.go"
+    current_writer: "recordStage and AddBlocked"
+    current_storage: "In-memory RunReport.active_ms and blocked_ms"
+    current_metric: "active_ms currently sums stages; blocked_ms currently sums explicit increments"
+    canonical_type: wait_observation
+    canonical_stage: "union of all active intervals"
+    canonical_component: "runtime"
+    canonical_operation: "semaphore/rate limiter/dependency/resource lock"
+    migration_adapter: "Replace additive accumulators with interval start/end collector and union calculation; preserve current API only as compatibility input"
+    removal_condition: "Parallel-stage tests prove active_ms and blocked_ms are interval unions; no consumer assumes stage sum semantics"
+
+  - current_symbol: "internal/infrastructure/process.Result.Duration"
+    current_owner: "internal/infrastructure/process"
+    current_writer: "process.Run"
+    current_storage: "In-memory subprocess result"
+    current_metric: "No direct canonical metric; callers consume Duration"
+    canonical_type: operation
+    canonical_stage: "process"
+    canonical_component: "process"
+    canonical_operation: "subprocess"
+    migration_adapter: "ObservedProcessRunner records one OperationReport; map FFmpeg commands to the ObservedFFmpeg specialization"
+    removal_condition: "All subprocess and FFmpeg callers use the observed wrapper and no caller creates a second timer around the same invocation"
+
+  - current_symbol: "media/render ffmpeg DurationMS"
+    current_owner: "internal/infrastructure/media/render"
+    current_writer: "FFmpeg render/cut helpers"
+    current_storage: "Render result structs and logs"
+    current_metric: "DurationMS fields"
+    canonical_type: operation
+    canonical_stage: "process"
+    canonical_component: "ffmpeg"
+    canonical_operation: "transcode/cut/normalize/merge"
+    migration_adapter: "ObservedFFmpeg wraps process execution and emits OperationReport plus bytes/artifact metadata"
+    removal_condition: "FFmpeg duration is emitted once by ObservedFFmpeg and legacy DurationMS fields become projections or are removed after consumer migration"
+
+  - current_symbol: "QdrantSearchLatency / QdrantRequestDuration / QdrantUpsertTotal"
+    current_owner: "internal/infrastructure/qdrant and internal/infrastructure/observability"
+    current_writer: "qdrant searcher, request, upsert and indexing paths"
+    current_storage: "Prometheus histograms/counters"
+    current_metric: "qdrant_* duration/request/upsert families"
+    canonical_type: operation
+    canonical_stage: "acquire/index"
+    canonical_component: "qdrant"
+    canonical_operation: "search/upsert/request"
+    migration_adapter: "ObservedQdrantClient records OperationReport; existing qdrant metrics project the same observation"
+    removal_condition: "All Qdrant search/upsert paths pass through one observed client and no direct timer/metric writer remains"
+
+  - current_symbol: "Drive upload/download/publish timing"
+    current_owner: "internal/infrastructure/drive and delivery adapters"
+    current_writer: "Drive publisher, upload/download and file lifecycle callers"
+    current_storage: "Logs, result structs and capability metrics; some timing is local"
+    current_metric: "Capability-specific Drive/delivery metrics where present"
+    canonical_type: operation
+    canonical_stage: "publish/acquire"
+    canonical_component: "drive"
+    canonical_operation: "upload/download/publish/fetch"
+    migration_adapter: "ObservedDrivePublisher wraps each canonical delivery publisher call and emits one operation"
+    removal_condition: "DRIVE_OBSERVED=PASS across stock, voiceover, VidRush, images, documents, YouTube and Artlist; no raw Drive timing remains in use cases"
+
+  - current_symbol: "Google Docs publisher timing"
+    current_owner: "document application and Drive/Docs infrastructure adapters"
+    current_writer: "Google Docs publish/update callers"
+    current_storage: "Logs, document result structs and capability metrics"
+    current_metric: "Capability-specific document publish timing where present"
+    canonical_type: operation
+    canonical_stage: "publish/persist"
+    canonical_component: "google_docs"
+    canonical_operation: "publish/update"
+    migration_adapter: "ObservedGoogleDocsPublisher delegates to the canonical delivery boundary and records one operation"
+    removal_condition: "Every Google Docs write is observed once and document consumers read canonical OperationReport projections"
+
+  - current_symbol: "TTS provider call timing"
+    current_owner: "internal/app voiceover wiring and internal/application/voiceover"
+    current_writer: "TTS wrappers and voiceover executor"
+    current_storage: "Logs, result durations, capability metrics"
+    current_metric: "TTS/voiceover duration and failure families"
+    canonical_type: operation
+    canonical_stage: "process"
+    canonical_component: "tts"
+    canonical_operation: "synthesize"
+    migration_adapter: "ObservedTTSProvider records provider_wait_ms as operation detail"
+    removal_condition: "TTS_OBSERVED=PASS with no double timing in voiceover use cases"
+
+  - current_symbol: "TTS/Ollama/download/FFmpeg semaphore acquisition"
+    current_owner: "internal/application concurrency adapters and internal/app wiring"
+    current_writer: "semaphore_usecase.go, voiceover executor and rate-limit/semaphore wrappers"
+    current_storage: "Logs and in-memory execution flow; no canonical durable wait record"
+    current_metric: "No single canonical semaphore-wait metric"
+    canonical_type: wait_observation
+    canonical_stage: "stage containing the acquire"
+    canonical_component: "resource owner"
+    canonical_operation: "semaphore.acquire"
+    migration_adapter: "Observed concurrency wrapper records interval-backed semaphore wait before invoking the shared operation wrapper"
+    removal_condition: "SEMAPHORE_WAIT_PERSISTED=PASS for TTS, Ollama, downloads and FFmpeg; no use case remeasures wrapper-owned wait"
+
+  - current_symbol: "Ollama request/generation durations"
+    current_owner: "internal/infrastructure/ai/ollama and stock/script callers"
+    current_writer: "Ollama client/generate paths and capability metrics"
+    current_storage: "Prometheus script/AI metrics, logs and result fields"
+    current_metric: "ScriptGenerationDuration and related Ollama metrics"
+    canonical_type: operation
+    canonical_stage: "generate/enrich"
+    canonical_component: "ollama"
+    canonical_operation: "generate/embed/classify"
+    migration_adapter: "ObservedOllamaClient owns the external-call timer; semaphore/rate-limit wrappers emit waits separately"
+    removal_condition: "OLLAMA_OBSERVED=PASS and all script/stock/enrichment consumers use the observed client"
+
+  - current_symbol: "Artlist provider/search/download timings"
+    current_owner: "internal/application/assets/providers/artlist and internal/infrastructure/artlist"
+    current_writer: "search processors, scraper/downloader and Artlist metrics"
+    current_storage: "Prometheus, audit rows, logs and result structs"
+    current_metric: "artlist_* and VidRush provider timing families"
+    canonical_type: operation
+    canonical_stage: "discover/acquire"
+    canonical_component: "artlist"
+    canonical_operation: "search/download/fetch"
+    migration_adapter: "ObservedArtlistProvider and ObservedDownloader wrap provider calls; cache status becomes operation attribute and cache counter"
+    removal_condition: "DOWNLOADERS_OBSERVED=PASS and Artlist/VidRush provider timers have one shared writer"
+
+  - current_symbol: "cache hit/miss measurements"
+    current_owner: "Artlist/VidRush/script/image cache adapters"
+    current_writer: "cache Get/Put callers and VidRush metrics adapter"
+    current_storage: "Prometheus counters, cache state and logs"
+    current_metric: "vidrush_*_cache_hits_total / misses_total and capability cache metrics"
+    canonical_type: counter
+    canonical_stage: "stage containing the lookup"
+    canonical_component: "cache owner/provider"
+    canonical_operation: "lookup/fetch"
+    migration_adapter: "Canonical OperationInfo.CacheStatus plus RunCounters.CacheHits/CacheMisses; project to legacy counters during migration"
+    removal_condition: "All cache events are emitted by the same observed operation and legacy cache writers are projections only"
+
+  - current_symbol: "application voiceover/translation child processing"
+    current_owner: "internal/application/voiceover and script translation jobs"
+    current_writer: "parent aggregators and child job handlers"
+    current_storage: "jobs rows, job_events, result records and parent aggregation state"
+    current_metric: "Child completion/failure counts and phase durations where available"
+    canonical_type: child_run
+    canonical_stage: "generate/process"
+    canonical_component: "voiceover or translation"
+    canonical_operation: ""
+    migration_adapter: "Create a ChildRun link with parent RunID, child JobID, child AttemptID and child RunID; aggregate counters without replacing child reports"
+    removal_condition: "CHILD_RUNS_LINKED=PASS and parent/child reports are queryable without reconstructing identity from row order"
+
+  - current_symbol: "job artifacts / complete-with-artifacts result"
+    current_owner: "internal/application/jobs and artifact/finalization adapters"
+    current_writer: "CompleteWithArtifacts and artifact staging/publication flow"
+    current_storage: "artifact_stages, media/assets catalog, outbox and result JSON"
+    current_metric: "Artifact counts and bytes in capability surfaces"
+    canonical_type: artifact
+    canonical_stage: "persist/publish"
+    canonical_component: "delivery/storage provider"
+    canonical_operation: "stage/publish/upload"
+    migration_adapter: "Record ArtifactReport with stable artifact reference, kind, stage, bytes, reused flag and publication metadata"
+    removal_condition: "ARTIFACTS_LINKED=PASS and report queries return artifact observations by run and attempt"
+
+  - current_symbol: "RunCounters and capability item/byte counts"
+    current_owner: "internal/kernel/observability plus individual capability result types"
+    current_writer: "Run.AddItems*, AddBytes*, artifact finalizers and capability aggregators"
+    current_storage: "RunReport counters, result JSON, database rows and Prometheus counters"
+    current_metric: "Capability-specific item/byte/artifact counters"
+    canonical_type: counter
+    canonical_stage: "stage that owns the count"
+    canonical_component: "capability/provider"
+    canonical_operation: ""
+    migration_adapter: "Map item, retry, cache, artifact and byte counts into RunCounters; project canonical counter events to legacy Prometheus families"
+    removal_condition: "COUNTERS_PERSISTED=PASS and no capability defines an equivalent aggregate counter solely for the report"
+
+  - current_symbol: "worker progress/event and runtime health metrics"
+    current_owner: "internal/infrastructure/observability and job worker runtime"
+    current_writer: "worker metrics, progress/event error paths, heartbeat and queue polling"
+    current_storage: "Prometheus gauges/counters/histograms and job_events"
+    current_metric: "worker_*, jobs_*, job_claim_duration_seconds, queue/backoff families"
+    canonical_type: infrastructure_metric
+    canonical_stage: ""
+    canonical_component: "runtime"
+    canonical_operation: "claim/renew/poll/finalize"
+    migration_adapter: "Keep runtime health and claim latency as infrastructure metrics; only execution-specific waits and outcomes enter Run/Attempt reports"
+    removal_condition: "Runtime metrics and job observability reports have disjoint ownership; no job identity appears as a Prometheus label"
+
+  - current_symbol: "health/readiness and admin diagnostic durations"
+    current_owner: "internal/api/system, internal/infrastructure health/diagnostics"
+    current_writer: "readiness probes, admin diagnostics, scraper/Drive/FFmpeg probes"
+    current_storage: "HTTP response JSON, logs and diagnostic report structs"
+    current_metric: "duration_ms fields in health/diagnostic responses"
+    canonical_type: infrastructure_metric
+    canonical_stage: ""
+    canonical_component: "probe target"
+    canonical_operation: "probe"
+    migration_adapter: "Retain as probe diagnostics; do not map to a business Run unless the probe itself is an explicitly enqueued job"
+    removal_condition: "Probe metrics remain clearly separated from job report timing and no consumer treats health duration as pipeline execution time"
+
+  - current_symbol: "transport/media search/asset DurationMs fields"
+    current_owner: "API DTOs, domain media/assets and search/ranking surfaces"
+    current_writer: "asset metadata and media search mappers"
+    current_storage: "SQLite asset/catalog records and HTTP JSON"
+    current_metric: "Media duration metadata, not execution timing"
+    canonical_type: artifact
+    canonical_stage: ""
+    canonical_component: "media catalog"
+    canonical_operation: ""
+    migration_adapter: "Do not migrate media content duration into observability timing; link it only as artifact metadata when a produced artifact is recorded"
+    removal_condition: "Content duration remains distinguishable from wall/provider/stage duration in all report and API schemas"
+
+  - current_symbol: "script generation timing fields (generation/prepare/engine/usecase timings)"
+    current_owner: "internal/application/scripts/usecase"
+    current_writer: "generation_prepare.go, generation_engine.go, generate_one_usecase.go"
+    current_storage: "In-memory timing/result structs and script generation logs"
+    current_metric: "TotalMs, sourceResolveMs, planBuildMs, engineMs and related fields"
+    canonical_type: stage
+    canonical_stage: "resolve/generate/process"
+    canonical_component: "script"
+    canonical_operation: "Ollama or other provider calls where the boundary is external"
+    migration_adapter: "Use canonical Stage scopes for orchestration and observed provider operations for external calls; preserve fields as compatibility projections"
+    removal_condition: "Script timing consumers read StageReport/OperationReport and no use case times a wrapper-owned operation twice"
+
+  - current_symbol: "voiceover process.Result.Duration and audio durations"
+    current_owner: "internal/application/voiceover and internal/infrastructure/audio"
+    current_writer: "audio processor/worker and voiceover result assembly"
+    current_storage: "Result structs, voiceover records and artifact metadata"
+    current_metric: "Subprocess/audio processing duration plus media content duration"
+    canonical_type: operation
+    canonical_stage: "process"
+    canonical_component: "ffmpeg or audio processor"
+    canonical_operation: "transcode/render/synthesize"
+    migration_adapter: "Separate execution duration (OperationReport) from produced audio content duration (Artifact metadata); link both to the run"
+    removal_condition: "No report field conflates media length with operation wall time"
+
+  - current_symbol: "Qdrant/search and Drive/media content Duration fields"
+    current_owner: "domain/media, search adapters and provider DTOs"
+    current_writer: "asset hydration and provider mapping"
+    current_storage: "Asset/catalog rows and JSON"
+    current_metric: "Content duration metadata"
+    canonical_type: artifact
+    canonical_stage: ""
+    canonical_component: "catalog/provider"
+    canonical_operation: ""
+    migration_adapter: "Keep as artifact/content metadata; only provider call elapsed time is an OperationReport"
+    removal_condition: "Content duration is never included in accumulated_operation_ms or wall_time_ms"
