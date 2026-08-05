@@ -47,6 +47,10 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "scripts/ci/verify-all-components.py",
         "scripts/ci/verify-pipeline.py",
         "scripts/ci/verify-changed-components.py",
+        "Dockerfile",
+        ".github/dependabot.yml",
+        "scripts/verify-ffmpeg.sh",
+        "comic-video-maker",
     }
 )
 ALL_COMPONENT_PREFIXES = (
@@ -58,6 +62,7 @@ ALL_COMPONENT_PREFIXES = (
     "pkg/",
     "tests/",        "migrations/",
         "architecture/",
+    ".github/workflows/",
 )
 IGNORED_CHANGED_PREFIXES = ("artifacts/", "tmp/", "data/")
 
