@@ -42,10 +42,8 @@ if [[ -n "$tracked_web_dist" ]]; then
     exit 1
 fi
 
-printf '%s\n' "→ Building embedded web console from the lockfile"
-npm ci --prefix web
-npm run build --prefix web
-test -f web/dist/index.html
+printf '%s\n' "→ Building embedded web console through canonical web-build"
+make web-build
 
 printf '%s\n' "→ Running Go vet"
 "$GO_BIN" vet ./...
