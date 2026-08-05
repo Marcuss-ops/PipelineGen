@@ -16,14 +16,21 @@
 # never use.
 
 # ─── admin-ui-builder ─────────────────────────────────────────────
-# Build the React/Vite admin UI so the Go server can embed it.
+# Build the React/Vite admin UI through the canonical web-build target so
+# Docker, local verification, and clean-checkout CI use the same lockfile,
+# Node-version guard, Vite build, and embed-entrypoint check.
 FROM --platform=$BUILDPLATFORM node:22-bookworm AS admin-ui-builder
 
-WORKDIR /src/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci --silent
-COPY web/ ./
-RUN npm run build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends make \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY make/build.mk ./make/build.mk
+COPY node-scraper/package.json ./node-scraper/package.json
+COPY web/ ./web/
+RUN make -f make/build.mk web-build
+
 
 # ─── builder ─────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
