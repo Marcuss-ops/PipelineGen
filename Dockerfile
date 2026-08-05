@@ -27,6 +27,7 @@ RUN apt-get update \
 
 WORKDIR /src
 COPY make/build.mk ./make/build.mk
+COPY scripts/ci/node-version-check.sh ./scripts/ci/node-version-check.sh
 COPY node-scraper/package.json ./node-scraper/package.json
 COPY web/ ./web/
 RUN make -f make/build.mk web-build

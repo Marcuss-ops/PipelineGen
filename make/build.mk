@@ -51,70 +51,15 @@ go-version-check:
 	    echo "✅ Go version $$HOST meets requirement $$REQ"; \
 	fi
 
-# Node toolchain guard. The canonical requirements are the `engines.node`
-# fields in node-scraper/package.json and web/package.json; both must declare
-# the same major and the host version must match it. This keeps the scraper,
-# embedded admin console, CI, and Dependabot npm updates on one runtime.
-#
-# Implementation notes (the three pitfalls wired into this gate):
-#
-#  1. awk vs node -p JSON.parse — awk is used because the latter
-#     suffered from a subtle Make variable-expansion issue (2026-07-03
-#     incident) where the second `[ -z ]` check saw REQ_RAW as empty
-#     even though the first saw it as populated. awk is a single-line
-#     field splitter with no module-system dependencies, agnostic to
-#     the `"type"` field of node-scraper/package.json (ESM or CJS,
-#     both work).
-#
-#  2. Anchored numeric extraction — REQ_MAJOR is derived via
-#     `sed -E 's/^[^0-9]*([0-9]+).*/\1/'` so operators like ^, >=,
-#     ranges, or pre-release tags degrade into a clear "unsupported
-#     format" error instead of a silent numeric-vs-string mismatch.
-#
-#  3. NO INLINE `#` COMMENTS in the recipe below. Make joins
-#     `\<newline>`-continued lines into a single physical shell line
-#     (with `<space>` between), and an inline `#` starts a shell
-#     comment that swallows the REST of the line — including the
-#     REQ_RAW / REQ_MAJOR / HOST / HOST_MAJOR assignments that this
-#     recipe depends on. All explanatory comments live in the header
-#     block above this target, never inside the recipe. (Bug-fix
-#     2026-07-21: this was the root cause of the verify-node regression
+# Node toolchain guard. The canonical implementation lives in the shared
+# script so Make, CI, Docker, and focused tests execute exactly one resolver.
+# It reads engines.node from both package manifests, requires equal majors,
+# and requires the host Node major to match them.
 node-version-check:
-	@if ! command -v node >/dev/null 2>&1; then \
-	    echo "❌ Node binary not found on PATH — install Node 22.x (nvm, fnm, asdf, or distro packages)"; \
-	    exit 1; \
-	fi; \
-	SCRAPER_REQ=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' node-scraper/package.json); \
-	WEB_REQ=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' web/package.json); \
-	HOST=$$(node --version 2>/dev/null | sed 's/^v//'); \
-	if [ -z "$$HOST" ]; then \
-	    echo "❌ node binary present but 'node --version' returned empty (broken install?)"; \
-	    exit 1; \
-	fi; \
-	if [ -z "$$SCRAPER_REQ" ] || [ -z "$$WEB_REQ" ]; then \
-	    echo "❌ both node-scraper/package.json and web/package.json must declare 'engines.node'"; \
-	    exit 1; \
-	fi; \
-	SCRAPER_MAJOR=$$(echo "$$SCRAPER_REQ" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
-	WEB_MAJOR=$$(echo "$$WEB_REQ" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
-	HOST_MAJOR=$$(echo "$$HOST" | cut -d. -f1); \
-	if ! echo "$$SCRAPER_MAJOR" | grep -qE '^[0-9]+$$' || ! echo "$$WEB_MAJOR" | grep -qE '^[0-9]+$$'; then \
-	    echo "❌ unsupported engines.node format: scraper=$$SCRAPER_REQ web=$$WEB_REQ"; \
-	    exit 1; \
-	fi; \
-	if [ "$$SCRAPER_MAJOR" != "$$WEB_MAJOR" ]; then \
-	    echo "❌ Node major mismatch: node-scraper requires $$SCRAPER_REQ, web requires $$WEB_REQ"; \
-	    exit 1; \
-	fi; \
-	if [ "$$HOST_MAJOR" != "$$SCRAPER_MAJOR" ]; then \
-	    echo "❌ Node version mismatch: both packages require major $$SCRAPER_MAJOR, host has $$HOST"; \
-	    echo "Remediation options:"; \
-	    echo "  1. Install Node $$SCRAPER_MAJOR.x (nvm, fnm, asdf, or distro packages)"; \
-	    echo "  2. Update both engines.node fields if the requirement changed"; \
-	    exit 1; \
-	else \
-	    echo "✅ Node version $$HOST meets scraper=$$SCRAPER_REQ and web=$$WEB_REQ"; \
-	fi
+	@NODE_VERSION_CHECK_ROOT="$$(pwd)" bash scripts/ci/node-version-check.sh
+
+node-version-check-test:
+	@bash scripts/ci/node-version-check_test.sh
 
 # Install the embedded admin console dependencies from the committed lockfile.
 web-install: node-version-check
