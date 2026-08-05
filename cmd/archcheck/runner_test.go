@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan"
 )
 
 // TestReportContract replaces the stale full-repository golden snapshot with
@@ -90,6 +95,42 @@ func runArchcheckForReport(t *testing.T, binPath, projectRoot string) []byte {
 		t.Fatalf("archcheck exit=%d, want 0 or %d", exitErr.ExitCode(), ExitViolations)
 	}
 	return out
+}
+
+func TestKernelSubzoneHardGatesFailClosed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "internal", "kernel", "observability"), 0o755); err != nil {
+		t.Fatalf("mkdir kernel fixture: %v", err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "kernel_subzones: asset\n" +
+		"hard_gates:\n" +
+		"  - kernel_subzone_undeclared\n" +
+		"  - kernel_subzone_missing\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o644); err != nil {
+		t.Fatalf("write policy fixture: %v", err)
+	}
+
+	pol, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatalf("load policy fixture: %v", err)
+	}
+	r := &report.Report{}
+	scan.ScanKernelSubzoneIntegrity(root, pol, r)
+	foundRule := false
+	for _, violation := range r.Violations {
+		if violation.Rule == "kernel_subzone_undeclared" || violation.Rule == "kernel_subzone_missing" {
+			foundRule = true
+			break
+		}
+	}
+	if !foundRule {
+		t.Fatalf("fixture must emit a kernel integrity rule, got %#v", r.Violations)
+	}
+
+	if code, err := Run(context.Background(), root, policyPath, "test", false, false); err != nil || code != ExitViolations {
+		t.Fatalf("kernel integrity hard gates must fail closed: code=%d err=%v", code, err)
+	}
 }
 
 func TestProjectRootContainsPolicyAndCatalog(t *testing.T) {
