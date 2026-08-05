@@ -57,6 +57,36 @@ class VerifyChangedComponentsTests(unittest.TestCase):
         self.assertEqual(mapping["Makefile"], impacted)
         self.assertEqual(unmapped, [])
 
+    def test_build_and_ci_files_impact_every_component(self) -> None:
+        mapping, impacted, unmapped = verify_changed.map_changed_files(
+            [
+                "Dockerfile",
+                ".github/dependabot.yml",
+                ".github/workflows/ci.yml",
+                ".github/workflows/smoke.yml",
+                "scripts/verify-ffmpeg.sh",
+                "comic-video-maker",
+            ],
+            self.registry(),
+        )
+        self.assertEqual(impacted, ["script", "stock", "clips", "drive"])
+        self.assertEqual(mapping["Dockerfile"], impacted)
+        self.assertEqual(mapping[".github/workflows/ci.yml"], impacted)
+        self.assertEqual(mapping["scripts/verify-ffmpeg.sh"], impacted)
+        self.assertEqual(mapping["comic-video-maker"], impacted)
+        self.assertEqual(unmapped, [])
+
+    def test_global_file_rules_do_not_match_near_misses(self) -> None:
+        mapping, impacted, unmapped = verify_changed.map_changed_files(
+            [".githubish/workflow.yml", "comic-video-maker/README.md", "random-input.txt"],
+            self.registry(),
+        )
+        self.assertEqual(impacted, [])
+        self.assertEqual(mapping[".githubish/workflow.yml"], [])
+        self.assertEqual(mapping["comic-video-maker/README.md"], [])
+        self.assertEqual(mapping["random-input.txt"], [])
+        self.assertEqual(unmapped, [".githubish/workflow.yml", "comic-video-maker/README.md", "random-input.txt"])
+
     def test_collects_committed_staged_unstaged_and_untracked_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
