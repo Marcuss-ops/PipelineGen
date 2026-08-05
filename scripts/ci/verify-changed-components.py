@@ -48,6 +48,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "scripts/ci/verify-pipeline.py",
         "scripts/ci/verify-changed-components.py",
         "Dockerfile",
+        ".dockerignore",
         ".github/dependabot.yml",
         "scripts/verify-ffmpeg.sh",
         "comic-video-maker",
