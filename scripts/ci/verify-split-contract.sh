@@ -166,6 +166,12 @@ require "$clean_checkout_script" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkou
 require "$ROOT/.github/workflows/ci.yml" 'run: make web-build' "CI web build"
 require "$ROOT/.github/workflows/preflight-ci.yml" 'make web-build' "preflight web build"
 require "$ROOT/Dockerfile" 'make -f make/build\.mk web-build' "Docker web build"
+require "$ROOT/scripts/ci/ci-submodule-integrity.sh" 'git ls-files --stage -z' "index gitlink scan"
+require "$ROOT/scripts/ci/ci-submodule-integrity.sh" 'no tracked gitlinks' "orphan gitlink rejection"
+for workflow in "$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml; do
+    [[ -f "$workflow" ]] || continue
+    require "$workflow" 'submodules: false' "explicit submodule policy"
+done
 
 # Coverage is a separate fail-closed contract, not an implicit fallback in
 # verify-changed-components. Keep its reports in the temporary plan directory.

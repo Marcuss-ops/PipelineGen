@@ -12,17 +12,16 @@
 #     is NOT present on main, so the recipe always failed at `cd` with
 #     "No such file or directory".
 #
-#   - comic-video-maker-run: `comic-video-maker/` IS present on main, so
-#     the project is still in use. But integrating it as a target in this
-#     root Makefile is the WRONG mechanism — when a developer needs to run
-#     comic-video-maker locally, they should `cd comic-video-maker &&
-#     npm run dev` directly, OR the project should be reintroduced as
-#     a docker-compose service / explicit git submodule.
+#   - comic-video-maker-run: `comic-video-maker/` is an ignored local
+#     directory, not a tracked project on main. It must not be treated as
+#     a root Make target or an implicit submodule. If the project becomes
+#     canonical again, reintroduce it explicitly as a tracked service,
+#     valid git submodule, or Compose component with its own contract.
 #
 # Phasing rule (binding): a top-level service that has its own
-# subdirectory MUST live as a separate service / submodule / Compose
-# component, NEVER as a target in this root Makefile. Reintroduce with
-# one of those mechanisms if the project becomes canonical again.
+# subdirectory MUST live as a separate service / explicit submodule / Compose
+# component, NEVER as a target in this root Makefile. The ignored local
+# directory is intentionally untouched by repository verification.
 
 # Install dependencies (download only, no go.mod modification)
 deps:
