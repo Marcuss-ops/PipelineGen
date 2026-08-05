@@ -74,6 +74,7 @@ forbid() {
 require "$fast" 'go-version-check|go version' "Go version check"
 require "$fast" 'node-version-check|node --version' "Node version check"
 require "$fast" 'ci-no-secrets' "secret audit"
+require "$fast" 'ci-submodule-integrity|verify-repository-integrity' "repository integrity"
 require "$fast" 'gofmt|format' "format check"
 require "$fast" 'go mod tidy|tidy' "module tidy"
 require "$fast" 'go vet' "Go vet"

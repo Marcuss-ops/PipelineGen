@@ -10,6 +10,12 @@
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
+# verify-repository-integrity — fail-closed repository metadata checks.
+# The canonical script validates every tracked mode-160000 gitlink against
+# .gitmodules without touching ignored local working-tree directories.
+verify-repository-integrity:
+	@bash scripts/ci/ci-submodule-integrity.sh
+
 # verify-base — fail-closed base gate: toolchain version, secrets,
 # formatting, and module tidiness. Kept cheap so the most common failures
 # surface in seconds. GO-ONLY (no node-version-check); use verify-foundation
@@ -38,7 +44,7 @@ verify-base: go-version-check verify-no-secrets verify-format tidy-check
 # NOTE: verify-base and verify-foundation share 4 of 5 prereqs by design
 # (the "non sostitutivi" constraint of the refactor). When adding/removing
 # a prereq here, mirror it in verify-base above to prevent drift between
-verify-foundation: go-version-check node-version-check verify-no-secrets verify-format tidy-check
+verify-foundation: go-version-check node-version-check verify-no-secrets verify-repository-integrity verify-format tidy-check
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
