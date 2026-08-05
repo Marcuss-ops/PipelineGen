@@ -1,5 +1,7 @@
 package observability
 
+import "time"
+
 // StageName identifies one canonical pipeline stage in the global
 // observability taxonomy.
 //
@@ -43,6 +45,26 @@ const (
 	ComponentGoogleDocs     ComponentName = "google_docs"
 	ComponentInternetImages ComponentName = "internet_images"
 )
+
+// WaitKind identifies a typed interval during which the run could not make progress.
+type WaitKind string
+
+const (
+	WaitSemaphore       WaitKind = "semaphore_wait"
+	WaitRateLimit       WaitKind = "rate_limit_wait"
+	WaitRetryBackoff    WaitKind = "retry_backoff"
+	WaitChildDependency WaitKind = "child_dependency_wait"
+	WaitResourceLock    WaitKind = "resource_lock"
+)
+
+// WaitInfo describes one blocked interval. The interval timestamps are
+// supplied by the owner of the wait; the kernel never guesses them.
+type WaitInfo struct {
+	Kind       WaitKind
+	Component  ComponentName
+	StartedAt  time.Time
+	FinishedAt time.Time
+}
 
 // OperationName identifies one operation at an external boundary.
 type OperationName string

@@ -265,8 +265,9 @@ func TestEnqueue_RegistersChildOnParentRun(t *testing.T) {
 	// Bind a parent run to the ctx (as a job handler would see it).
 	obs := kernobs.NewRunObserver(nil)
 	run := obs.StartRun(context.Background(), kernobs.RunInfo{
-		JobID:   "parent-1",
-		JobType: TypeScriptGenerate,
+		JobID:     "parent-1",
+		JobType:   TypeScriptGenerate,
+		AttemptID: "parent-attempt-1",
 	})
 	ctx := kernobs.WithRun(context.Background(), run)
 
@@ -319,7 +320,7 @@ func TestEnqueue_EnqueueErrorRegistersFailedChild(t *testing.T) {
 	}
 
 	obs := kernobs.NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "parent-2", JobType: TypeScriptGenerate})
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "parent-2", JobType: TypeScriptGenerate, AttemptID: "parent-attempt-2"})
 	ctx := kernobs.WithRun(context.Background(), run)
 
 	// Unregistered job type → strict typed lookup returns

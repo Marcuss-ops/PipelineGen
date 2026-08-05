@@ -120,7 +120,7 @@ func TestSQLiteRecorder_ChildLifecycleRefreshesParentIdempotently(t *testing.T) 
 	}
 	var requested, completed, failed int
 	var wall int64
-	if err := db.QueryRow(`SELECT json_extract(children_json,'$.requested'), json_extract(children_json,'$.completed'), json_extract(children_json,'$.failed'), json_extract(children_json,'$.wall_time_ms') FROM run_observability WHERE run_id=?`, parent.RunID).Scan(&requested, &completed, &failed, &wall); err != nil {
+	if err := db.QueryRow(`SELECT json_extract(children_json,'$.requested'), json_extract(children_json,'$.completed'), json_extract(children_json,'$.failed'), json_extract(children_json,'$.accumulated_child_ms') FROM run_observability WHERE run_id=?`, parent.RunID).Scan(&requested, &completed, &failed, &wall); err != nil {
 		t.Fatal(err)
 	}
 	if requested != 1 || completed != 1 || failed != 0 || wall != 42 {
