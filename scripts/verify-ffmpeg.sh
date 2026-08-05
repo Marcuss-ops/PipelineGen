@@ -86,7 +86,7 @@ if [ "$missing" -gt 0 ]; then
     echo "  Expected in Dockerfile worker-runtime target:"
     echo "    ffmpeg  — installed via apt-get (Dockerfile line ~89)"
     echo "    ffprobe — sibling of ffmpeg (same apt package)"
-    echo "    yt-dlp  — downloaded v2025.03.20 (Dockerfile line ~93-95)"
+    echo "    yt-dlp  — downloaded from the pinned Dockerfile release"
     echo "    python3 — installed via apt-get (Dockerfile line ~91)"
     exit 1
 fi
