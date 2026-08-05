@@ -263,6 +263,36 @@ func TestScanIndexedStateWriterSSOT_TestFileExempted(t *testing.T) {
 	}
 }
 
+// TestScanIndexedStateWriterSSOT_ReadProjectionIsNotAWriter verifies
+// that a qualified predicate in a SELECT-style projection is not
+// mistaken for a state transition. The operatorread projection is
+// allowed to describe INDEXED because it never assigns the column.
+func TestScanIndexedStateWriterSSOT_ReadProjectionIsNotAWriter(t *testing.T) {
+	tempDir := t.TempDir()
+	dir := filepath.Join(tempDir, "internal", "infrastructure", "database", "sqlite", "assets", "operatorread")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir projection dir: %v", err)
+	}
+	path := filepath.Join(dir, "state_projection.go")
+	body := "package operatorread\\n\\n" +
+		"func projection(alias string) string {\\n" +
+		"\\treturn \"CASE WHEN \" + alias + \".index_state = 'INDEXED' THEN 'INDEXED' END\"\\n" +
+		"}\\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write projection fixture: %v", err)
+	}
+
+	r := &report.Report{
+		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+	}
+	ScanIndexedStateWriterSSOT(tempDir, &policy.Policy{}, r)
+	for _, v := range r.Violations {
+		if v.Rule == indexedStateWriterSSOTRule {
+			t.Errorf("read-only projection MUST NOT trip writer check; got %s:%d %s", v.File, v.Line, v.Note)
+		}
+	}
+}
+
 // TestScanIndexedStateWriterSSOT_CommentOnlyIsResidue verifies
 // the godlike/07 residue accounting discipline: a comment-only
 // reference to the SQL pattern yields a WARN, not a violation.

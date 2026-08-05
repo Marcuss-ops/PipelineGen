@@ -86,11 +86,18 @@ const indexedStateWriterSSOTCanonicalPath = "internal/infrastructure/indexing/cl
 // are exempt (regression-guard surface).
 const indexedStateWriterSSOTScanScope = "internal/"
 
-// indexedStateWriterSSOTRe matches the SQL pattern that writes the
-// INDEXED state. The pattern is intentionally narrow: it matches
-// `index_state = 'INDEXED'` or `index_state = "INDEXED"` with optional
-// whitespace. This is the canonical SQL form for writing INDEXED.
-var indexedStateWriterSSOTRe = regexp.MustCompile(`index_state\s*=\s*['"]?INDEXED['"]?`)
+// indexedStateWriterSSOTRe matches a literal INDEXED assignment in an
+// SQL SET clause. Qualified read predicates such as
+// `alias.index_state = 'INDEXED'` are projections/filters, not state
+// transitions and must not be treated as writers.
+var indexedStateWriterSSOTRe = regexp.MustCompile(`(?i)\bSET\s+(?:[a-z_][a-z0-9_]*\.)?index_state\s*=\s*['"]?INDEXED['"]?`)
+var indexedStateWriterSSOTSetRe = regexp.MustCompile(`(?i)\bSET\b`)
+var indexedStateWriterSSOTAssignmentRe = regexp.MustCompile(`(?i)(?:[a-z_][a-z0-9_]*\.)?index_state\s*=\s*['"]?INDEXED['"]?`)
+
+// indexedStateWriterSSOTReferenceRe is used only for residue accounting in
+// comments. It intentionally remains broader than the write matcher so
+// descriptive references are still visible without becoming violations.
+var indexedStateWriterSSOTReferenceRe = regexp.MustCompile(`(?i)index_state\s*=\s*['"]?INDEXED['"]?`)
 
 // indexedStateWriterSSOTRule is the rule-family id the scanner emits.
 const indexedStateWriterSSOTRule = "percheck_indexed_state_writer_ssot"
@@ -165,10 +172,10 @@ func ScanIndexedStateWriterSSOT(root string, pol *policy.Policy, r *report.Repor
 
 // scanIndexedStateWriterSSOTFile opens a single .go file and emits
 // percheck_indexed_state_writer_ssot violations for any line whose
-// content matches indexedStateWriterSSOTRe. Comment-only references
-// are residue-accounted as WARN (godlike/07 discipline). Files with
-// the INDEXED_WRITER_SCOPE comment marker in their header are exempt
-// (documented allowlist for edge cases).
+// content matches an INDEXED assignment in a SQL SET clause.
+// Comment-only references are residue-accounted as WARN (godlike/07
+// discipline). Files with the INDEXED_WRITER_SCOPE comment marker in
+// their header are exempt (documented allowlist for edge cases).
 func scanIndexedStateWriterSSOTFile(path, relPath string, r *report.Report) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -188,6 +195,7 @@ func scanIndexedStateWriterSSOTFile(path, relPath string, r *report.Report) {
 
 	lineNo := 0
 	commentOnly := 0
+	insideSetClause := false
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
@@ -198,27 +206,33 @@ func scanIndexedStateWriterSSOTFile(path, relPath string, r *report.Report) {
 		if (strings.HasPrefix(trimmed, "//") ||
 			strings.HasPrefix(trimmed, "/*") ||
 			strings.HasPrefix(trimmed, "*")) &&
-			indexedStateWriterSSOTRe.MatchString(line) {
+			indexedStateWriterSSOTReferenceRe.MatchString(line) {
 			commentOnly++
 			continue
 		}
-		if !indexedStateWriterSSOTRe.MatchString(line) {
-			continue
+		isIndexedAssignment := indexedStateWriterSSOTRe.MatchString(line) ||
+			(insideSetClause && indexedStateWriterSSOTAssignmentRe.MatchString(line))
+		if isIndexedAssignment {
+			// Comment-marker allowlist: the file declares itself as
+			// an INDEXED writer (e.g. admin reconcile path).
+			if !hasScopeMarker {
+				r.Violations = append(r.Violations, report.Violation{
+					Package:     pkgFromIndexedStateWriterSSOTRel(relPath),
+					File:        relPath,
+					Line:        lineNo,
+					Rule:        indexedStateWriterSSOTRule,
+					Severity:    string(report.SeverityError),
+					MatchedRule: "indexed_state_writer_ssot",
+					Note:        indexedStateWriterSSOTNote + " | snippet: " + truncateIndexedStateWriterSSOT(line),
+				})
+			}
 		}
-		// Comment-marker allowlist: the file declares itself as
-		// an INDEXED writer (e.g. admin reconcile path).
-		if hasScopeMarker {
-			continue
+		if indexedStateWriterSSOTSetRe.MatchString(line) {
+			insideSetClause = true
 		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     pkgFromIndexedStateWriterSSOTRel(relPath),
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        indexedStateWriterSSOTRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "indexed_state_writer_ssot",
-			Note:        indexedStateWriterSSOTNote + " | snippet: " + truncateIndexedStateWriterSSOT(line),
-		})
+		if insideSetClause && strings.Contains(line, ";") {
+			insideSetClause = false
+		}
 	}
 	if commentOnly > 0 {
 		indexedStateWriterSSOTWarnBucket(r, "indexed-state-writer-comments:",
