@@ -61,9 +61,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
