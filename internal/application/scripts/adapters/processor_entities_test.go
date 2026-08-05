@@ -4,8 +4,50 @@ import (
 	"strings"
 	"testing"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+func TestResolveManualSegmentQueriesFiltersAndDeduplicates(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: mediadomain.MediaPlanSpec{Searches: []mediadomain.SegmentMediaSearch{
+			{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Query: " Maya temples ", Providers: []string{"ARTLIST"}, MediaTypes: []string{"video"}},
+			{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Query: "maya temples", Providers: []string{"artlist"}, MediaTypes: []string{"video"}},
+			{SegmentID: "main", Slot: mediadomain.SlotSecondaryImage, Query: "Maya pyramid", Providers: []string{"internet_images"}, MediaTypes: []string{"image"}},
+		}},
+	}
+	segment := scriptpkg.CanonicalSegment{ID: "main"}
+	if got := ResolveManualSegmentQueries(plan, segment, scriptpkg.VidRushProviderArtlist, mediadomain.SlotPrimaryVideo); len(got) != 1 || got[0] != "Maya temples" {
+		t.Fatalf("artlist queries = %v, want one stable deduplicated query", got)
+	}
+	if got := ResolveManualSegmentQueries(plan, segment, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage); len(got) != 1 || got[0] != "Maya pyramid" {
+		t.Fatalf("image queries = %v, want Maya pyramid", got)
+	}
+}
+
+func TestResolveManualSegmentQueriesLockedAssignmentWins(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		Assignments: []mediadomain.SegmentMediaAssignment{{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Locked: true}},
+		Searches:    []mediadomain.SegmentMediaSearch{{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Query: "manual query"}},
+	}}
+	if got := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: "main"}, scriptpkg.VidRushProviderArtlist, mediadomain.SlotPrimaryVideo); len(got) != 0 {
+		t.Fatalf("locked assignment queries = %v, want none", got)
+	}
+}
+
+func TestBuildVidRushSegmentResultPrefersManualQueries(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Topic: "fallback topic", MediaPlan: mediadomain.MediaPlanSpec{Searches: []mediadomain.SegmentMediaSearch{
+		{SegmentID: "main", Slot: mediadomain.SlotPrimaryVideo, Query: "ancient Maya temples jungle aerial cinematic", Providers: []string{"artlist"}, MediaTypes: []string{"video"}},
+		{SegmentID: "main", Slot: mediadomain.SlotSecondaryImage, Query: "Chichen Itza Maya pyramid Yucatan", Providers: []string{"internet_images"}, MediaTypes: []string{"image"}},
+	}}}
+	result := buildVidRushSegmentResult(plan, scriptpkg.CanonicalSegment{ID: "main", Text: "Maya temples"}, &scriptpkg.EntityResult{}, 8, 1, 5, 5, 5)
+	if !strings.Contains(strings.Join(result.Insights.ArtlistQueries, " | "), "ancient Maya temples jungle aerial cinematic") {
+		t.Fatalf("Artlist queries = %v, want manual query", result.Insights.ArtlistQueries)
+	}
+	if !strings.Contains(strings.Join(result.Insights.ImageQueries, " | "), "Chichen Itza Maya pyramid Yucatan") {
+		t.Fatalf("image queries = %v, want manual query", result.Insights.ImageQueries)
+	}
+}
 
 func TestSegmentSpecSceneContextIsolatesCurrentScene(t *testing.T) {
 	input := scriptpkg.SpecSceneOutput{

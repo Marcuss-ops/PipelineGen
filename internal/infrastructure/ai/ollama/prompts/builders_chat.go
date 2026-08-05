@@ -29,7 +29,7 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 		durationMinutes = 1
 	}
 
-	targetWords := durationMinutes * types.WordsPerMinute
+	targetWords := durationMinutes * resolvedWordsPerMinute(req.WordsPerMinute)
 	if req.MinWords > 0 {
 		targetWords = req.MinWords
 	}
@@ -168,7 +168,7 @@ func BuildTextPrompt(req *types.TextGenerationRequest) string {
 		durationMinutes = 1
 	}
 
-	targetWords := durationMinutes * types.WordsPerMinute
+	targetWords := durationMinutes * resolvedWordsPerMinute(req.WordsPerMinute)
 	if req.MinWords > 0 {
 		targetWords = req.MinWords
 	}

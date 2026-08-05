@@ -42,7 +42,7 @@ func (r *InventoryReader) list(ctx context.Context, query operator.AssetInventor
 		args = append(args, query.LifecycleState)
 	}
 	if query.AssetState != "" {
-		conds = append(conds, "m.asset_state = ?")
+		conds = append(conds, assetStateProjectionSQL("m")+" = ?")
 		args = append(args, query.AssetState)
 	}
 	if query.IndexState != "" {
@@ -130,7 +130,7 @@ SELECT
     m.provider,
     m.media_type,
     m.lifecycle_state,
-    m.asset_state,
+    %s AS asset_state,
     m.index_state,
     m.file_hash AS content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.indexed_content_hash') AS indexed_content_hash,
@@ -148,7 +148,7 @@ LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
 WHERE %s
 ORDER BY m.updated_at DESC, m.id DESC
-LIMIT ? OFFSET ?`, where)
+LIMIT ? OFFSET ?`, assetStateProjectionSQL("m"), where)
 }
 
 func listCountSQL(where string) string {

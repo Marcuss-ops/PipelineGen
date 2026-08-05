@@ -254,6 +254,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			ErrorCode: string(FailureMissingFolder),
 			Error:     "missing_folder_id: voiceover destination has no FolderID for upload",
 		}
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("%s", out.Error))
 	}
 
@@ -293,6 +294,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.ErrorCode = string(FailureTTS)
 		out.Error = fmt.Sprintf("%s: %v", FailureTTS, err)
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTTS, true, FailureTTS, err)
 	}
 	emitTTS("completed")
@@ -316,6 +318,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 			out.ErrorCode = string(FailureAudioPost)
 			out.Error = fmt.Sprintf("%s: %v", FailureAudioPost, err)
+			setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 			return out, newPipelineErrorCode(StageAudioPost, false, FailureAudioPost, err)
 		}
 		emitPost("completed")
@@ -328,6 +331,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.ErrorCode = string(FailureNoLocalPayload)
 		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTTS, false, FailureNoLocalPayload, fmt.Errorf("%s", out.Error))
 	}
 	// Stage 3: VoiceoverPublisher.Publish — delegates to publishStage
@@ -340,17 +344,20 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		if errors.As(err, &pipelineErr) {
 			out.ErrorCode = string(pipelineErr.FailureCode())
 			out.Error = pipelineErr.Error()
+			setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 			return out, err
 		}
 		if errors.Is(err, delivery.ErrDestinationParentMismatch) {
 			observability.DriveUploadFailuresTotal.Inc()
 			out.ErrorCode = VoiceoverDestinationMismatchCode
 			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationMismatchCode, err)
+			setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 			return out, newPipelineErrorCode(StageUpload, false, FailureDestinationMismatch, err)
 		}
 		observability.DriveUploadFailuresTotal.Inc()
 		out.ErrorCode = string(FailureUpload)
 		out.Error = fmt.Sprintf("%s: %v", FailureUpload, err)
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageUpload, true, FailureUpload, err)
 	}
 
@@ -368,6 +375,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.ErrorCode = string(FailureTxBegin)
 		out.Error = fmt.Sprintf("%s: %v", FailureTxBegin, err)
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTxBegin, true, FailureTxBegin, err)
 	}
 	defer func() { _ = tx.Rollback() }() // safe after Commit
@@ -443,11 +451,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.ErrorCode = string(FailureTxCommit)
 		out.Error = fmt.Sprintf("%s: %v", FailureTxCommit, err)
+		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTxCommit, true, FailureTxCommit, err)
 	}
 	emitFinalize("completed")
 
 	out.Status = StatusCompleted
+	setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 	observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
 	return out, nil
 }

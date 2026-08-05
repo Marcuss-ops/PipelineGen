@@ -46,8 +46,8 @@ func TestMigrations_157_AssetStateColumnRoundTrip(t *testing.T) {
 
 	const assetID = "rt-step7-1"
 	_, err := db.Exec(
-		`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state, asset_state)
-		 VALUES (?, 'artlist', 'step7 round-trip', 'video', 'ACTIVE', 'READY_MULTILINGUAL')`,
+		`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state, index_state)
+		 VALUES (?, 'artlist', 'step7 round-trip', 'video', 'ACTIVE', 'INDEXED')`,
 		assetID,
 	)
 	if err != nil {
@@ -60,7 +60,7 @@ func TestMigrations_157_AssetStateColumnRoundTrip(t *testing.T) {
 	).Scan(&got); err != nil {
 		t.Fatalf("select asset_state round-trip row: %v", err)
 	}
-	if got != "READY_MULTILINGUAL" {
-		t.Errorf("asset_state round-trip = %q, want %q", got, "READY_MULTILINGUAL")
+	if got != "READY" {
+		t.Errorf("asset_state projection = %q, want %q", got, "READY")
 	}
 }

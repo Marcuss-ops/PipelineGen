@@ -273,15 +273,18 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 			out.ErrorCode = VoiceoverDestinationUnavailableCode
 			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationUnavailableCode, err)
 		}
+		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
 		return out, newPipelineError(StageDestinationResolve, false, err)
 	}
 	if dest == nil || dest.FolderID == "" {
-		return &VoiceoverItemResult{
+		out := &VoiceoverItemResult{
 			Language:  item.Language,
 			Status:    StatusFailed,
 			ErrorCode: string(FailureMissingFolder),
 			Error:     "missing_folder_id: voiceover destination has no FolderID for upload",
-		}, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))
+		}
+		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
+		return out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))
 	}
 
 	// PR-VO-PERITEM-OUTPUTDIR (July 2026): the resolved destination

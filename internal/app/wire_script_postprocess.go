@@ -180,6 +180,7 @@ func registerScriptPostProcessors(
 				return result.TranslatedText, nil
 			})
 		}
+		voProc.ConfigureDefaults(cfg.Scripts.DefaultLanguage)
 		voProc.ConfigureMultilingual(voiceMap, translatorPort)
 		if !ppReg.Register(voProc) {
 			return fmt.Errorf("register voiceover processor: composition bug or duplicate name")

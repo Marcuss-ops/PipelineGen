@@ -48,16 +48,16 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 	const assetID = "rt-canon-1"
 	_, err := db.Exec(`
 		INSERT INTO media_assets (
-			id, source_provider, source_video_id, source_channel_id,
+			id, lifecycle_state, source_provider, source_video_id, source_channel_id,
 			source_url, start_ms, end_ms, original_language, title,
 			binary_sha256, semantic_hash, rights_status,
 			policy_version, lifecycle_status
 		) VALUES (
-			?, 'youtube', 'yt-consolidate-1', 'UC_consolidate',
+			?, 'ACTIVE', 'youtube', 'yt-consolidate-1', 'UC_consolidate',
 			'https://www.youtube.com/watch?v=yt-consolidate-1',
 			?, ?, 'en', 'Round-Trip Canonical Title',
 			?, 'semhash-from-asset-visual-summaries-0001',
-			'permission_granted', 'v1', 'READY_MULTILINGUAL'
+			'permission_granted', 'v1', 'ACTIVE'
 		)`,
 		assetID,
 		int64(32000), int64(37000),
@@ -110,7 +110,7 @@ func TestMigrations_152_CanonicalConsolidationColumnsRoundTrip(t *testing.T) {
 		"semantic_hash":     "semhash-from-asset-visual-summaries-0001",
 		"rights_status":     "permission_granted",
 		"policy_version":    "v1",
-		"lifecycle_status":  "READY_MULTILINGUAL",
+		"lifecycle_status":  "ACTIVE",
 	}
 	for col, got := range expectations {
 		if got != wants[col] {

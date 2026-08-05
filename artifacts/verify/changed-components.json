@@ -1,0 +1,2529 @@
+{
+  "schema_version": 1,
+  "mode": "fast",
+  "base_ref": "origin/main",
+  "base_available": true,
+  "base_fallback": false,
+  "changed_files": [
+    "architecture/deprecations/records/qdrant.yaml",
+    "cmd/admin/qdrant_maintenance.go",
+    "cmd/archcheck/scan/percheck_index_pending_writer_ban.go",
+    "internal/application/assets/operator/index_health_resolver.go",
+    "internal/application/assets/operator/index_health_resolver_test.go",
+    "internal/application/assets/operator/labels.go",
+    "internal/application/qdrant/dr/retention.go",
+    "internal/application/qdrant/dr/snapshot.go",
+    "internal/application/qdrant/dr/types.go",
+    "internal/application/qdrant/legacyaudit/audit_collection.go",
+    "internal/application/qdrant/legacyaudit/legacyaudit.go",
+    "internal/application/qdrant/legacyaudit/legacyaudit_test.go",
+    "internal/application/qdrant/maintenance/audit.go",
+    "internal/application/qdrant/maintenance/delete-invalid.go",
+    "internal/application/qdrant/maintenance/repair-locators.go",
+    "internal/application/scripts/adapters/pipeline_result.go",
+    "internal/application/scripts/adapters/postprocess_result.go",
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go",
+    "internal/application/scripts/adapters/postprocessor_composite_run.go",
+    "internal/application/scripts/adapters/postprocessor_progress.go",
+    "internal/application/scripts/jobs/generation_single_executor.go",
+    "internal/application/scripts/jobs/script_generation_item_handler.go",
+    "internal/application/scripts/usecase/generate_one_usecase_test.go",
+    "internal/application/scripts/usecase/generation_postprocess.go",
+    "internal/application/scripts/usecase/persistence.go",
+    "internal/application/scripts/usecase/progress.go",
+    "internal/application/scripts/usecase/progress_stage_test.go",
+    "internal/application/voiceover/jobs/generate_handler.go",
+    "internal/application/voiceover/jobs/generate_item_handler.go",
+    "internal/domain/qdrantdr/removal.go",
+    "internal/domain/qdrantdr/removal_test.go",
+    "internal/domain/qdrantdr/static_evidence.go",
+    "internal/domain/qdrantdr/static_evidence_test.go",
+    "internal/domain/qdrantdr/types.go",
+    "internal/domain/script/generation_result.go",
+    "internal/infrastructure/database/migrations_152_test.go",
+    "internal/infrastructure/database/migrations_157_test.go",
+    "internal/infrastructure/database/migrations_189_test.go",
+    "internal/infrastructure/database/migrations_splitter.go",
+    "internal/infrastructure/database/sqlite/assets/operatorread/detail_query.go",
+    "internal/infrastructure/database/sqlite/assets/operatorread/facets_query.go",
+    "internal/infrastructure/database/sqlite/assets/operatorread/list_query.go",
+    "internal/infrastructure/database/sqlite/assets/operatorread/repository_test.go",
+    "internal/infrastructure/database/sqlite/assets/operatorread/state_projection.go",
+    "internal/infrastructure/database/sqlite/assets/txmutation/primitives.go",
+    "internal/infrastructure/indexing/clipindexer/indexing_state_test.go",
+    "internal/infrastructure/qdrant/maintenance/dr_adapter.go",
+    "internal/infrastructure/qdrant/maintenance/locator_cleaner.go",
+    "internal/infrastructure/qdrant/schema/collection_types.go",
+    "internal/kernel/asset/index_state.go",
+    "internal/kernel/asset/index_state_skipped_test.go",
+    "internal/kernel/asset/index_state_test.go",
+    "internal/kernel/job/stage_progress.go",
+    "internal/kernel/job/stage_progress_test.go",
+    "migrations/sqlite/189_canonical_asset_state_constraints.sql"
+  ],
+  "file_components": {
+    "architecture/deprecations/records/qdrant.yaml": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "cmd/admin/qdrant_maintenance.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "cmd/archcheck/scan/percheck_index_pending_writer_ban.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/assets/operator/index_health_resolver.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/assets/operator/index_health_resolver_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/assets/operator/labels.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/qdrant/dr/retention.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/dr/snapshot.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/dr/types.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/legacyaudit/audit_collection.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/legacyaudit/legacyaudit.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/legacyaudit/legacyaudit_test.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/maintenance/audit.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/maintenance/delete-invalid.go": [
+      "qdrant"
+    ],
+    "internal/application/qdrant/maintenance/repair-locators.go": [
+      "qdrant"
+    ],
+    "internal/application/scripts/adapters/pipeline_result.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/postprocess_result.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/postprocessor_composite_merge.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/postprocessor_composite_run.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/adapters/postprocessor_progress.go": [
+      "script",
+      "translation"
+    ],
+    "internal/application/scripts/jobs/generation_single_executor.go": [
+      "script"
+    ],
+    "internal/application/scripts/jobs/script_generation_item_handler.go": [
+      "script"
+    ],
+    "internal/application/scripts/usecase/generate_one_usecase_test.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/scripts/usecase/generation_postprocess.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/scripts/usecase/persistence.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/scripts/usecase/progress.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/scripts/usecase/progress_stage_test.go": [
+      "script",
+      "research",
+      "translation"
+    ],
+    "internal/application/voiceover/jobs/generate_handler.go": [
+      "voiceover"
+    ],
+    "internal/application/voiceover/jobs/generate_item_handler.go": [
+      "voiceover"
+    ],
+    "internal/domain/qdrantdr/removal.go": [
+      "qdrant"
+    ],
+    "internal/domain/qdrantdr/removal_test.go": [
+      "qdrant"
+    ],
+    "internal/domain/qdrantdr/static_evidence.go": [
+      "qdrant"
+    ],
+    "internal/domain/qdrantdr/static_evidence_test.go": [
+      "qdrant"
+    ],
+    "internal/domain/qdrantdr/types.go": [
+      "qdrant"
+    ],
+    "internal/domain/script/generation_result.go": [
+      "script"
+    ],
+    "internal/infrastructure/database/migrations_152_test.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/migrations_157_test.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/migrations_189_test.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/migrations_splitter.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/operatorread/detail_query.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/operatorread/facets_query.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/operatorread/list_query.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/operatorread/repository_test.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/operatorread/state_projection.go": [
+      "database"
+    ],
+    "internal/infrastructure/database/sqlite/assets/txmutation/primitives.go": [
+      "database"
+    ],
+    "internal/infrastructure/indexing/clipindexer/indexing_state_test.go": [
+      "indexing"
+    ],
+    "internal/infrastructure/qdrant/maintenance/dr_adapter.go": [
+      "qdrant"
+    ],
+    "internal/infrastructure/qdrant/maintenance/locator_cleaner.go": [
+      "qdrant"
+    ],
+    "internal/infrastructure/qdrant/schema/collection_types.go": [
+      "qdrant"
+    ],
+    "internal/kernel/asset/index_state.go": [
+      "kernel"
+    ],
+    "internal/kernel/asset/index_state_skipped_test.go": [
+      "kernel"
+    ],
+    "internal/kernel/asset/index_state_test.go": [
+      "kernel"
+    ],
+    "internal/kernel/job/stage_progress.go": [
+      "kernel"
+    ],
+    "internal/kernel/job/stage_progress_test.go": [
+      "kernel"
+    ],
+    "migrations/sqlite/189_canonical_asset_state_constraints.sql": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ]
+  },
+  "impacted_components": [
+    "script",
+    "research",
+    "clips",
+    "stock",
+    "qdrant",
+    "indexing",
+    "drive",
+    "docs",
+    "voiceover",
+    "images",
+    "translation",
+    "timeline",
+    "storage",
+    "database",
+    "jobs",
+    "api",
+    "ollama",
+    "youtube",
+    "artlist",
+    "node-scraper",
+    "kernel",
+    "web"
+  ],
+  "resolved_components": [
+    "script",
+    "database",
+    "research",
+    "clips",
+    "stock",
+    "qdrant",
+    "indexing",
+    "drive",
+    "docs",
+    "voiceover",
+    "images",
+    "ollama",
+    "translation",
+    "storage",
+    "timeline",
+    "jobs",
+    "api",
+    "youtube",
+    "artlist",
+    "node-scraper",
+    "kernel",
+    "web"
+  ],
+  "unmapped_files": [],
+  "skipped": [],
+  "components": {
+    "script": {
+      "status": "PASS",
+      "duration_ms": 2670,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/domain/script/...",
+        "go test ./internal/application/scripts/...",
+        "go test ./internal/api/script/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 482,
+          "timed_out": false,
+          "command": "go test ./internal/domain/script/...",
+          "kind": "go",
+          "source": "./internal/domain/script/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1406,
+          "timed_out": false,
+          "command": "go test ./internal/application/scripts/...",
+          "kind": "go",
+          "source": "./internal/application/scripts/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 780,
+          "timed_out": false,
+          "command": "go test ./internal/api/script/...",
+          "kind": "go",
+          "source": "./internal/api/script/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "database": {
+      "status": "PASS",
+      "duration_ms": 3524,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/infrastructure/database/..."
+      ],
+      "packages": 1,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3524,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/database/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/database/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "research": {
+      "status": "PASS",
+      "duration_ms": 2312,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/application/scripts/usecase/...",
+        "go test ./internal/infrastructure/webresearch/...",
+        "go test ./internal/infrastructure/database/sqlite/scripts/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1214,
+          "timed_out": false,
+          "command": "go test ./internal/application/scripts/usecase/...",
+          "kind": "go",
+          "source": "./internal/application/scripts/usecase/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 539,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/webresearch/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/webresearch/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 557,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/database/sqlite/scripts/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "script"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "clips": {
+      "status": "PASS",
+      "duration_ms": 3765,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/domain/clips/...",
+        "go test ./internal/application/clips/...",
+        "go test ./internal/api/assets/clips/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 156,
+          "timed_out": false,
+          "command": "go test ./internal/domain/clips/...",
+          "kind": "go",
+          "source": "./internal/domain/clips/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 686,
+          "timed_out": false,
+          "command": "go test ./internal/application/clips/...",
+          "kind": "go",
+          "source": "./internal/application/clips/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2921,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/clips/...",
+          "kind": "go",
+          "source": "./internal/api/assets/clips/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "stock": {
+      "status": "PASS",
+      "duration_ms": 37725,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/application/assets/providers/stock/...",
+        "go test ./internal/application/assets/providers/artlist/...",
+        "go test ./internal/api/assets/stock/...",
+        "go test ./internal/api/assets/artlist/...",
+        "go test ./internal/infrastructure/artlist/..."
+      ],
+      "packages": 5,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 28264,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/providers/stock/...",
+          "kind": "go",
+          "source": "./internal/application/assets/providers/stock/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3884,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/providers/artlist/...",
+          "kind": "go",
+          "source": "./internal/application/assets/providers/artlist/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2409,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/stock/...",
+          "kind": "go",
+          "source": "./internal/api/assets/stock/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 568,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/artlist/...",
+          "kind": "go",
+          "source": "./internal/api/assets/artlist/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2597,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/artlist/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/artlist/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "qdrant": {
+      "status": "PASS",
+      "duration_ms": 3114,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/domain/qdrantdr/...",
+        "go test ./internal/application/qdrant/...",
+        "go test ./internal/infrastructure/qdrant/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 266,
+          "timed_out": false,
+          "command": "go test ./internal/domain/qdrantdr/...",
+          "kind": "go",
+          "source": "./internal/domain/qdrantdr/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1219,
+          "timed_out": false,
+          "command": "go test ./internal/application/qdrant/...",
+          "kind": "go",
+          "source": "./internal/application/qdrant/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1627,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/qdrant/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/qdrant/..."
+        }
+      ],
+      "dependencies": [
+        "database"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "indexing": {
+      "status": "PASS",
+      "duration_ms": 3464,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/application/indexing/...",
+        "go test ./internal/infrastructure/indexing/...",
+        "go test ./internal/api/assets/clips/indexing/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 981,
+          "timed_out": false,
+          "command": "go test ./internal/application/indexing/...",
+          "kind": "go",
+          "source": "./internal/application/indexing/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1997,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/indexing/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/indexing/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 484,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/clips/indexing/...",
+          "kind": "go",
+          "source": "./internal/api/assets/clips/indexing/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "qdrant"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "drive": {
+      "status": "PASS",
+      "duration_ms": 2535,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/domain/drive/...",
+        "go test ./internal/infrastructure/drive/...",
+        "go test ./internal/application/publish_drive/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 159,
+          "timed_out": false,
+          "command": "go test ./internal/domain/drive/...",
+          "kind": "go",
+          "source": "./internal/domain/drive/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1091,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/drive/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/drive/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1283,
+          "timed_out": false,
+          "command": "go test ./internal/application/publish_drive/...",
+          "kind": "go",
+          "source": "./internal/application/publish_drive/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "docs": {
+      "status": "PASS",
+      "duration_ms": 7825,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/domain/document/...",
+        "go test ./internal/application/document/...",
+        "go test ./internal/application/documents/...",
+        "go test ./internal/api/assets/document/...",
+        "go test ./internal/api/script-docs/...",
+        "go test ./internal/infrastructure/scriptdocs/..."
+      ],
+      "packages": 6,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 147,
+          "timed_out": false,
+          "command": "go test ./internal/domain/document/...",
+          "kind": "go",
+          "source": "./internal/domain/document/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1026,
+          "timed_out": false,
+          "command": "go test ./internal/application/document/...",
+          "kind": "go",
+          "source": "./internal/application/document/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 177,
+          "timed_out": false,
+          "command": "go test ./internal/application/documents/...",
+          "kind": "go",
+          "source": "./internal/application/documents/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1816,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/document/...",
+          "kind": "go",
+          "source": "./internal/api/assets/document/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2571,
+          "timed_out": false,
+          "command": "go test ./internal/api/script-docs/...",
+          "kind": "go",
+          "source": "./internal/api/script-docs/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2084,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/scriptdocs/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/scriptdocs/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "drive"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "voiceover": {
+      "status": "PASS",
+      "duration_ms": 5112,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/domain/voiceover/...",
+        "go test ./internal/application/voiceover/...",
+        "go test ./internal/api/assets/voiceover/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 165,
+          "timed_out": false,
+          "command": "go test ./internal/domain/voiceover/...",
+          "kind": "go",
+          "source": "./internal/domain/voiceover/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2170,
+          "timed_out": false,
+          "command": "go test ./internal/application/voiceover/...",
+          "kind": "go",
+          "source": "./internal/application/voiceover/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2775,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/voiceover/...",
+          "kind": "go",
+          "source": "./internal/api/assets/voiceover/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "drive"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "images": {
+      "status": "PASS",
+      "duration_ms": 4468,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/domain/image/...",
+        "go test ./internal/application/images/...",
+        "go test ./internal/api/images/...",
+        "go test ./internal/api/fullimages/..."
+      ],
+      "packages": 4,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 144,
+          "timed_out": false,
+          "command": "go test ./internal/domain/image/...",
+          "kind": "go",
+          "source": "./internal/domain/image/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 952,
+          "timed_out": false,
+          "command": "go test ./internal/application/images/...",
+          "kind": "go",
+          "source": "./internal/application/images/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2825,
+          "timed_out": false,
+          "command": "go test ./internal/api/images/...",
+          "kind": "go",
+          "source": "./internal/api/images/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 545,
+          "timed_out": false,
+          "command": "go test ./internal/api/fullimages/...",
+          "kind": "go",
+          "source": "./internal/api/fullimages/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "drive"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "ollama": {
+      "status": "PASS",
+      "duration_ms": 588,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/infrastructure/ai/ollama/..."
+      ],
+      "packages": 1,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 587,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/ai/ollama/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/ai/ollama/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "translation": {
+      "status": "PASS",
+      "duration_ms": 1288,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/application/translation/...",
+        "go test ./internal/application/scripts/adapters/...",
+        "go test ./internal/application/scripts/usecase/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 298,
+          "timed_out": false,
+          "command": "go test ./internal/application/translation/...",
+          "kind": "go",
+          "source": "./internal/application/translation/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 989,
+          "timed_out": false,
+          "command": "go test ./internal/application/scripts/adapters/...",
+          "kind": "go",
+          "source": "./internal/application/scripts/adapters/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1214,
+          "timed_out": false,
+          "command": "go test ./internal/application/scripts/usecase/...",
+          "kind": "go",
+          "source": "./internal/application/scripts/usecase/...",
+          "reused": true
+        }
+      ],
+      "dependencies": [
+        "database",
+        "ollama"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "storage": {
+      "status": "PASS",
+      "duration_ms": 3020,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/application/assets/storage/...",
+        "go test ./internal/api/assets/storage/...",
+        "go test ./internal/infrastructure/drive/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 193,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/storage/...",
+          "kind": "go",
+          "source": "./internal/application/assets/storage/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2826,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/storage/...",
+          "kind": "go",
+          "source": "./internal/api/assets/storage/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1091,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/drive/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/drive/...",
+          "reused": true
+        }
+      ],
+      "dependencies": [
+        "database"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "timeline": {
+      "status": "PASS",
+      "duration_ms": 2070,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/infrastructure/media/...",
+        "go test ./internal/api/assets/storage/..."
+      ],
+      "packages": 2,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2069,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/media/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/media/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2826,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/storage/...",
+          "kind": "go",
+          "source": "./internal/api/assets/storage/...",
+          "reused": true
+        }
+      ],
+      "dependencies": [
+        "storage"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "jobs": {
+      "status": "PASS",
+      "duration_ms": 7892,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/application/jobs/...",
+        "go test ./internal/api/jobs/...",
+        "go test ./internal/infrastructure/jobs/...",
+        "go test ./internal/infrastructure/database/sqlite/jobs/..."
+      ],
+      "packages": 4,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2320,
+          "timed_out": false,
+          "command": "go test ./internal/application/jobs/...",
+          "kind": "go",
+          "source": "./internal/application/jobs/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2919,
+          "timed_out": false,
+          "command": "go test ./internal/api/jobs/...",
+          "kind": "go",
+          "source": "./internal/api/jobs/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1312,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/jobs/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/jobs/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1339,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/database/sqlite/jobs/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/database/sqlite/jobs/..."
+        }
+      ],
+      "dependencies": [
+        "database"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "api": {
+      "status": "PASS",
+      "duration_ms": 2309,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/api/middleware/...",
+        "go test ./internal/api/transport/..."
+      ],
+      "packages": 2,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 507,
+          "timed_out": false,
+          "command": "go test ./internal/api/middleware/...",
+          "kind": "go",
+          "source": "./internal/api/middleware/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1801,
+          "timed_out": false,
+          "command": "go test ./internal/api/transport/...",
+          "kind": "go",
+          "source": "./internal/api/transport/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "youtube": {
+      "status": "PASS",
+      "duration_ms": 7122,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/domain/youtube/...",
+        "go test ./internal/application/youtube/...",
+        "go test ./internal/application/assets/providers/youtube/...",
+        "go test ./internal/application/assets/sourcing/youtube/...",
+        "go test ./internal/infrastructure/youtube/...",
+        "go test ./internal/api/assets/youtube/..."
+      ],
+      "packages": 6,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 148,
+          "timed_out": false,
+          "command": "go test ./internal/domain/youtube/...",
+          "kind": "go",
+          "source": "./internal/domain/youtube/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1580,
+          "timed_out": false,
+          "command": "go test ./internal/application/youtube/...",
+          "kind": "go",
+          "source": "./internal/application/youtube/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 558,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/providers/youtube/...",
+          "kind": "go",
+          "source": "./internal/application/assets/providers/youtube/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 873,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/sourcing/youtube/...",
+          "kind": "go",
+          "source": "./internal/application/assets/sourcing/youtube/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 935,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/youtube/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/youtube/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3024,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/youtube/...",
+          "kind": "go",
+          "source": "./internal/api/assets/youtube/..."
+        }
+      ],
+      "dependencies": [
+        "database",
+        "drive"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "artlist": {
+      "status": "PASS",
+      "duration_ms": 0,
+      "timeout_seconds": 900.0,
+      "commands": [
+        "go test ./internal/application/assets/providers/artlist/...",
+        "go test ./internal/infrastructure/artlist/...",
+        "go test ./internal/api/assets/artlist/..."
+      ],
+      "packages": 3,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3884,
+          "timed_out": false,
+          "command": "go test ./internal/application/assets/providers/artlist/...",
+          "kind": "go",
+          "source": "./internal/application/assets/providers/artlist/...",
+          "reused": true
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2597,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/artlist/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/artlist/...",
+          "reused": true
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 568,
+          "timed_out": false,
+          "command": "go test ./internal/api/assets/artlist/...",
+          "kind": "go",
+          "source": "./internal/api/assets/artlist/...",
+          "reused": true
+        }
+      ],
+      "dependencies": [
+        "database",
+        "drive"
+      ],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "node-scraper": {
+      "status": "PASS",
+      "duration_ms": 12894,
+      "timeout_seconds": 600.0,
+      "commands": [
+        "go test ./internal/infrastructure/artlist/scraper/...",
+        "npm --prefix node-scraper test"
+      ],
+      "packages": 1,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 2012,
+          "timed_out": false,
+          "command": "go test ./internal/infrastructure/artlist/scraper/...",
+          "kind": "go",
+          "source": "./internal/infrastructure/artlist/scraper/..."
+        },
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 10881,
+          "timed_out": false,
+          "command": "npm --prefix node-scraper test",
+          "kind": "node",
+          "source": "node_tests[0]"
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "kernel": {
+      "status": "PASS",
+      "duration_ms": 1894,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "go test ./internal/kernel/..."
+      ],
+      "packages": 1,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 1893,
+          "timed_out": false,
+          "command": "go test ./internal/kernel/...",
+          "kind": "go",
+          "source": "./internal/kernel/..."
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    },
+    "web": {
+      "status": "PASS",
+      "duration_ms": 3706,
+      "timeout_seconds": 300.0,
+      "commands": [
+        "npm --prefix web run build"
+      ],
+      "packages": 0,
+      "command_results": [
+        {
+          "status": "PASS",
+          "exit_code": 0,
+          "duration_ms": 3706,
+          "timed_out": false,
+          "command": "npm --prefix web run build",
+          "kind": "node",
+          "source": "node_tests[0]"
+        }
+      ],
+      "dependencies": [],
+      "blocked_by": [],
+      "skipped_live": [],
+      "race_skipped": false
+    }
+  },
+  "component_report": {
+    "schema_version": 1,
+    "mode": "fast",
+    "requested": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "requested_components": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "resolved_components": [
+      "script",
+      "database",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "ollama",
+      "translation",
+      "storage",
+      "timeline",
+      "jobs",
+      "api",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "started_at": "2026-08-04T13:34:06.949699Z",
+    "finished_at": "2026-08-04T13:36:06.255354Z",
+    "git_sha": "b040b1b296fa9d2348ca3ebcb5a669104f9ae7d1",
+    "duration_ms": 119309,
+    "components": {
+      "script": {
+        "status": "PASS",
+        "duration_ms": 2670,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/domain/script/...",
+          "go test ./internal/application/scripts/...",
+          "go test ./internal/api/script/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 482,
+            "timed_out": false,
+            "command": "go test ./internal/domain/script/...",
+            "kind": "go",
+            "source": "./internal/domain/script/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1406,
+            "timed_out": false,
+            "command": "go test ./internal/application/scripts/...",
+            "kind": "go",
+            "source": "./internal/application/scripts/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 780,
+            "timed_out": false,
+            "command": "go test ./internal/api/script/...",
+            "kind": "go",
+            "source": "./internal/api/script/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "database": {
+        "status": "PASS",
+        "duration_ms": 3524,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/infrastructure/database/..."
+        ],
+        "packages": 1,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3524,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/database/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/database/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "research": {
+        "status": "PASS",
+        "duration_ms": 2312,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/application/scripts/usecase/...",
+          "go test ./internal/infrastructure/webresearch/...",
+          "go test ./internal/infrastructure/database/sqlite/scripts/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1214,
+            "timed_out": false,
+            "command": "go test ./internal/application/scripts/usecase/...",
+            "kind": "go",
+            "source": "./internal/application/scripts/usecase/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 539,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/webresearch/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/webresearch/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 557,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/database/sqlite/scripts/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/database/sqlite/scripts/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "script"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "clips": {
+        "status": "PASS",
+        "duration_ms": 3765,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/domain/clips/...",
+          "go test ./internal/application/clips/...",
+          "go test ./internal/api/assets/clips/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 156,
+            "timed_out": false,
+            "command": "go test ./internal/domain/clips/...",
+            "kind": "go",
+            "source": "./internal/domain/clips/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 686,
+            "timed_out": false,
+            "command": "go test ./internal/application/clips/...",
+            "kind": "go",
+            "source": "./internal/application/clips/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2921,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/clips/...",
+            "kind": "go",
+            "source": "./internal/api/assets/clips/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "stock": {
+        "status": "PASS",
+        "duration_ms": 37725,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/application/assets/providers/stock/...",
+          "go test ./internal/application/assets/providers/artlist/...",
+          "go test ./internal/api/assets/stock/...",
+          "go test ./internal/api/assets/artlist/...",
+          "go test ./internal/infrastructure/artlist/..."
+        ],
+        "packages": 5,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 28264,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/providers/stock/...",
+            "kind": "go",
+            "source": "./internal/application/assets/providers/stock/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3884,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/providers/artlist/...",
+            "kind": "go",
+            "source": "./internal/application/assets/providers/artlist/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2409,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/stock/...",
+            "kind": "go",
+            "source": "./internal/api/assets/stock/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 568,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/artlist/...",
+            "kind": "go",
+            "source": "./internal/api/assets/artlist/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2597,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/artlist/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/artlist/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "qdrant": {
+        "status": "PASS",
+        "duration_ms": 3114,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/domain/qdrantdr/...",
+          "go test ./internal/application/qdrant/...",
+          "go test ./internal/infrastructure/qdrant/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 266,
+            "timed_out": false,
+            "command": "go test ./internal/domain/qdrantdr/...",
+            "kind": "go",
+            "source": "./internal/domain/qdrantdr/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1219,
+            "timed_out": false,
+            "command": "go test ./internal/application/qdrant/...",
+            "kind": "go",
+            "source": "./internal/application/qdrant/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1627,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/qdrant/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/qdrant/..."
+          }
+        ],
+        "dependencies": [
+          "database"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "indexing": {
+        "status": "PASS",
+        "duration_ms": 3464,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/application/indexing/...",
+          "go test ./internal/infrastructure/indexing/...",
+          "go test ./internal/api/assets/clips/indexing/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 981,
+            "timed_out": false,
+            "command": "go test ./internal/application/indexing/...",
+            "kind": "go",
+            "source": "./internal/application/indexing/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1997,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/indexing/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/indexing/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 484,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/clips/indexing/...",
+            "kind": "go",
+            "source": "./internal/api/assets/clips/indexing/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "qdrant"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "drive": {
+        "status": "PASS",
+        "duration_ms": 2535,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/domain/drive/...",
+          "go test ./internal/infrastructure/drive/...",
+          "go test ./internal/application/publish_drive/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 159,
+            "timed_out": false,
+            "command": "go test ./internal/domain/drive/...",
+            "kind": "go",
+            "source": "./internal/domain/drive/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1091,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/drive/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/drive/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1283,
+            "timed_out": false,
+            "command": "go test ./internal/application/publish_drive/...",
+            "kind": "go",
+            "source": "./internal/application/publish_drive/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "docs": {
+        "status": "PASS",
+        "duration_ms": 7825,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/domain/document/...",
+          "go test ./internal/application/document/...",
+          "go test ./internal/application/documents/...",
+          "go test ./internal/api/assets/document/...",
+          "go test ./internal/api/script-docs/...",
+          "go test ./internal/infrastructure/scriptdocs/..."
+        ],
+        "packages": 6,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 147,
+            "timed_out": false,
+            "command": "go test ./internal/domain/document/...",
+            "kind": "go",
+            "source": "./internal/domain/document/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1026,
+            "timed_out": false,
+            "command": "go test ./internal/application/document/...",
+            "kind": "go",
+            "source": "./internal/application/document/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 177,
+            "timed_out": false,
+            "command": "go test ./internal/application/documents/...",
+            "kind": "go",
+            "source": "./internal/application/documents/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1816,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/document/...",
+            "kind": "go",
+            "source": "./internal/api/assets/document/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2571,
+            "timed_out": false,
+            "command": "go test ./internal/api/script-docs/...",
+            "kind": "go",
+            "source": "./internal/api/script-docs/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2084,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/scriptdocs/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/scriptdocs/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "drive"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "voiceover": {
+        "status": "PASS",
+        "duration_ms": 5112,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/domain/voiceover/...",
+          "go test ./internal/application/voiceover/...",
+          "go test ./internal/api/assets/voiceover/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 165,
+            "timed_out": false,
+            "command": "go test ./internal/domain/voiceover/...",
+            "kind": "go",
+            "source": "./internal/domain/voiceover/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2170,
+            "timed_out": false,
+            "command": "go test ./internal/application/voiceover/...",
+            "kind": "go",
+            "source": "./internal/application/voiceover/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2775,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/voiceover/...",
+            "kind": "go",
+            "source": "./internal/api/assets/voiceover/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "drive"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "images": {
+        "status": "PASS",
+        "duration_ms": 4468,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/domain/image/...",
+          "go test ./internal/application/images/...",
+          "go test ./internal/api/images/...",
+          "go test ./internal/api/fullimages/..."
+        ],
+        "packages": 4,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 144,
+            "timed_out": false,
+            "command": "go test ./internal/domain/image/...",
+            "kind": "go",
+            "source": "./internal/domain/image/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 952,
+            "timed_out": false,
+            "command": "go test ./internal/application/images/...",
+            "kind": "go",
+            "source": "./internal/application/images/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2825,
+            "timed_out": false,
+            "command": "go test ./internal/api/images/...",
+            "kind": "go",
+            "source": "./internal/api/images/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 545,
+            "timed_out": false,
+            "command": "go test ./internal/api/fullimages/...",
+            "kind": "go",
+            "source": "./internal/api/fullimages/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "drive"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "ollama": {
+        "status": "PASS",
+        "duration_ms": 588,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/infrastructure/ai/ollama/..."
+        ],
+        "packages": 1,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 587,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/ai/ollama/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/ai/ollama/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "translation": {
+        "status": "PASS",
+        "duration_ms": 1288,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/application/translation/...",
+          "go test ./internal/application/scripts/adapters/...",
+          "go test ./internal/application/scripts/usecase/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 298,
+            "timed_out": false,
+            "command": "go test ./internal/application/translation/...",
+            "kind": "go",
+            "source": "./internal/application/translation/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 989,
+            "timed_out": false,
+            "command": "go test ./internal/application/scripts/adapters/...",
+            "kind": "go",
+            "source": "./internal/application/scripts/adapters/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1214,
+            "timed_out": false,
+            "command": "go test ./internal/application/scripts/usecase/...",
+            "kind": "go",
+            "source": "./internal/application/scripts/usecase/...",
+            "reused": true
+          }
+        ],
+        "dependencies": [
+          "database",
+          "ollama"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "storage": {
+        "status": "PASS",
+        "duration_ms": 3020,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/application/assets/storage/...",
+          "go test ./internal/api/assets/storage/...",
+          "go test ./internal/infrastructure/drive/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 193,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/storage/...",
+            "kind": "go",
+            "source": "./internal/application/assets/storage/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2826,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/storage/...",
+            "kind": "go",
+            "source": "./internal/api/assets/storage/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1091,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/drive/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/drive/...",
+            "reused": true
+          }
+        ],
+        "dependencies": [
+          "database"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "timeline": {
+        "status": "PASS",
+        "duration_ms": 2070,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/infrastructure/media/...",
+          "go test ./internal/api/assets/storage/..."
+        ],
+        "packages": 2,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2069,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/media/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/media/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2826,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/storage/...",
+            "kind": "go",
+            "source": "./internal/api/assets/storage/...",
+            "reused": true
+          }
+        ],
+        "dependencies": [
+          "storage"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "jobs": {
+        "status": "PASS",
+        "duration_ms": 7892,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/application/jobs/...",
+          "go test ./internal/api/jobs/...",
+          "go test ./internal/infrastructure/jobs/...",
+          "go test ./internal/infrastructure/database/sqlite/jobs/..."
+        ],
+        "packages": 4,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2320,
+            "timed_out": false,
+            "command": "go test ./internal/application/jobs/...",
+            "kind": "go",
+            "source": "./internal/application/jobs/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2919,
+            "timed_out": false,
+            "command": "go test ./internal/api/jobs/...",
+            "kind": "go",
+            "source": "./internal/api/jobs/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1312,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/jobs/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/jobs/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1339,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/database/sqlite/jobs/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/database/sqlite/jobs/..."
+          }
+        ],
+        "dependencies": [
+          "database"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "api": {
+        "status": "PASS",
+        "duration_ms": 2309,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/api/middleware/...",
+          "go test ./internal/api/transport/..."
+        ],
+        "packages": 2,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 507,
+            "timed_out": false,
+            "command": "go test ./internal/api/middleware/...",
+            "kind": "go",
+            "source": "./internal/api/middleware/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1801,
+            "timed_out": false,
+            "command": "go test ./internal/api/transport/...",
+            "kind": "go",
+            "source": "./internal/api/transport/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "youtube": {
+        "status": "PASS",
+        "duration_ms": 7122,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/domain/youtube/...",
+          "go test ./internal/application/youtube/...",
+          "go test ./internal/application/assets/providers/youtube/...",
+          "go test ./internal/application/assets/sourcing/youtube/...",
+          "go test ./internal/infrastructure/youtube/...",
+          "go test ./internal/api/assets/youtube/..."
+        ],
+        "packages": 6,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 148,
+            "timed_out": false,
+            "command": "go test ./internal/domain/youtube/...",
+            "kind": "go",
+            "source": "./internal/domain/youtube/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1580,
+            "timed_out": false,
+            "command": "go test ./internal/application/youtube/...",
+            "kind": "go",
+            "source": "./internal/application/youtube/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 558,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/providers/youtube/...",
+            "kind": "go",
+            "source": "./internal/application/assets/providers/youtube/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 873,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/sourcing/youtube/...",
+            "kind": "go",
+            "source": "./internal/application/assets/sourcing/youtube/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 935,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/youtube/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/youtube/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3024,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/youtube/...",
+            "kind": "go",
+            "source": "./internal/api/assets/youtube/..."
+          }
+        ],
+        "dependencies": [
+          "database",
+          "drive"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "artlist": {
+        "status": "PASS",
+        "duration_ms": 0,
+        "timeout_seconds": 900.0,
+        "commands": [
+          "go test ./internal/application/assets/providers/artlist/...",
+          "go test ./internal/infrastructure/artlist/...",
+          "go test ./internal/api/assets/artlist/..."
+        ],
+        "packages": 3,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3884,
+            "timed_out": false,
+            "command": "go test ./internal/application/assets/providers/artlist/...",
+            "kind": "go",
+            "source": "./internal/application/assets/providers/artlist/...",
+            "reused": true
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2597,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/artlist/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/artlist/...",
+            "reused": true
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 568,
+            "timed_out": false,
+            "command": "go test ./internal/api/assets/artlist/...",
+            "kind": "go",
+            "source": "./internal/api/assets/artlist/...",
+            "reused": true
+          }
+        ],
+        "dependencies": [
+          "database",
+          "drive"
+        ],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "node-scraper": {
+        "status": "PASS",
+        "duration_ms": 12894,
+        "timeout_seconds": 600.0,
+        "commands": [
+          "go test ./internal/infrastructure/artlist/scraper/...",
+          "npm --prefix node-scraper test"
+        ],
+        "packages": 1,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 2012,
+            "timed_out": false,
+            "command": "go test ./internal/infrastructure/artlist/scraper/...",
+            "kind": "go",
+            "source": "./internal/infrastructure/artlist/scraper/..."
+          },
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 10881,
+            "timed_out": false,
+            "command": "npm --prefix node-scraper test",
+            "kind": "node",
+            "source": "node_tests[0]"
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "kernel": {
+        "status": "PASS",
+        "duration_ms": 1894,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "go test ./internal/kernel/..."
+        ],
+        "packages": 1,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 1893,
+            "timed_out": false,
+            "command": "go test ./internal/kernel/...",
+            "kind": "go",
+            "source": "./internal/kernel/..."
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      },
+      "web": {
+        "status": "PASS",
+        "duration_ms": 3706,
+        "timeout_seconds": 300.0,
+        "commands": [
+          "npm --prefix web run build"
+        ],
+        "packages": 0,
+        "command_results": [
+          {
+            "status": "PASS",
+            "exit_code": 0,
+            "duration_ms": 3706,
+            "timed_out": false,
+            "command": "npm --prefix web run build",
+            "kind": "node",
+            "source": "node_tests[0]"
+          }
+        ],
+        "dependencies": [],
+        "blocked_by": [],
+        "skipped_live": [],
+        "race_skipped": false
+      }
+    },
+    "skipped": [],
+    "final": "PASS",
+    "dry_run": false,
+    "include_live": false
+  },
+  "started_at": "2026-08-04T13:34:06.946421Z",
+  "finished_at": "2026-08-04T13:36:06.260124Z",
+  "git_sha": "b040b1b296fa9d2348ca3ebcb5a669104f9ae7d1",
+  "duration_ms": 119309,
+  "dry_run": false,
+  "final": "PASS"
+}

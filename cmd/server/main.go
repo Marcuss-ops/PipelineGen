@@ -68,19 +68,16 @@ func main() {
 	// Fail-fast on malformed config (per audit P0 #5). Use
 	// config.GetFromPath (NOT config.Get) so a typo in config.yaml
 	// is not silently falling back to defaults.
-	cfg, err := config.GetFromPath(*cfgPth)
+	resolved, err := config.GetResolvedFromPath(*cfgPth)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "FATAL: failed to load config:", err)
 		os.Exit(2)
 	}
-	if cfg == nil {
-		fmt.Fprintln(os.Stderr, "FATAL: nil config from config.GetFromPath")
+	if resolved == nil {
+		fmt.Fprintln(os.Stderr, "FATAL: nil resolved config")
 		os.Exit(2)
 	}
-	if err := cfg.Validate(); err != nil {
-		fmt.Fprintln(os.Stderr, "FATAL: config validation failed:", err)
-		os.Exit(2)
-	}
+	cfg := resolved.View()
 
 	logging.Init(cfg.Logging.Level, cfg.Logging.Format)
 	log := logging.Get().Named("server")

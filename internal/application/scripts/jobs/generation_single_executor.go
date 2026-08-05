@@ -90,6 +90,8 @@ func (e *singleGenerationExecutor) Execute(
 	eventFn := appjobs.SafeEventFn(tools)
 	tracker := usecase.NewProgressTracker(progressFn, item.ID)
 	tracker.SetEventFn(eventFn)
+	tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageRunning), j.ID, "")
+	tracker.SetEventFn(eventFn)
 	eventFn("job.created", "Script generation job created", map[string]any{
 		"job_id":  j.ID,
 		"item_id": item.ID,
@@ -106,6 +108,11 @@ func (e *singleGenerationExecutor) Execute(
 
 	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
 	result, err := e.one.Execute(execCtx, item, env.Preset, tracker)
+	if err != nil {
+		tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageFailed), j.ID, err.Error())
+	} else {
+		tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageCompleted), j.ID, "")
+	}
 	diag := ClassifySingleOutcome(result, err)
 	if diag.Outcome == OutcomeCanceled {
 		if e.log != nil {

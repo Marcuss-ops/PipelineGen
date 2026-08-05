@@ -7,6 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PipelineResult aggregates the postprocessor outputs across the
@@ -27,7 +28,8 @@ type PipelineResult struct {
 	AlreadyPersisted  bool
 	// StageDurations maps processor name → wall-clock milliseconds
 	// consumed. Populated by Run() before merge. P1 #10 (June 2026).
-	StageDurations map[string]int64 `json:"stage_durations,omitempty"`
+	StageDurations map[string]int64             `json:"stage_durations,omitempty"`
+	StageProgress  map[string]job.StageProgress `json:"stage_progress,omitempty"`
 	// SynthesizedScenes mirrors PostProcessResult.SynthesizedScenes
 	// after mergePostProcessResult — the canonical pipeline-level
 	// surface for processors that reconstructed scenes from prose.

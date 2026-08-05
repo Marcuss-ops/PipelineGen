@@ -22,7 +22,12 @@
 // is a no-op" is now actually true.
 package usecase
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
 
 // ProgressFn is the callback signature for progress updates.
 // percent is 0-100; message is a human-readable description.
@@ -38,12 +43,19 @@ type ProgressTracker struct {
 	fn      ProgressFn
 	eventFn EventFn
 	item    string // item ID or name for log context
+
+	stageMu       sync.Mutex
+	stageProgress map[string]job.StageProgress
 }
 
 // NewProgressTracker creates a ProgressTracker. fn may be nil
 // (updates are silently dropped).
 func NewProgressTracker(fn ProgressFn, item string) *ProgressTracker {
-	return &ProgressTracker{fn: fn, item: item}
+	return &ProgressTracker{
+		fn:            fn,
+		item:          item,
+		stageProgress: make(map[string]job.StageProgress),
+	}
 }
 
 // SetEventFn wires an event callback. Callers may pass nil to
@@ -62,6 +74,97 @@ func (p *ProgressTracker) TrackEvent(eventType, message string, data map[string]
 		return
 	}
 	p.eventFn(eventType, message, data)
+}
+
+// TrackStage emits the canonical per-stage/per-language progress observation.
+// The event payload is intentionally aligned with kernel/job.StageLanguageStatus
+// so parent aggregators and API consumers can use one wire shape.
+func (p *ProgressTracker) TrackStage(stage, language string, status, jobID, errMsg string) {
+	if p == nil {
+		return
+	}
+	p.stageMu.Lock()
+	progress := p.stageProgress[stage]
+	progress.Stage = job.StageName(stage)
+	updated := false
+	for i := range progress.Languages {
+		if progress.Languages[i].Language == language && progress.Languages[i].JobID == jobID {
+			progress.Languages[i] = job.StageLanguageStatus{
+				Stage: job.StageName(stage), Language: language,
+				Status: job.StageStatus(status), JobID: jobID, Error: errMsg,
+			}
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		progress.Languages = append(progress.Languages, job.StageLanguageStatus{
+			Stage: job.StageName(stage), Language: language,
+			Status: job.StageStatus(status), JobID: jobID, Error: errMsg,
+		})
+	}
+	progress.Total = len(progress.Languages)
+	progress.Completed = 0
+	for _, item := range progress.Languages {
+		if item.Status == job.StageCompleted {
+			progress.Completed++
+		}
+	}
+	p.stageProgress[stage] = progress
+	snapshot := make(map[string]job.StageProgress, len(p.stageProgress))
+	for key, item := range p.stageProgress {
+		item.Languages = append([]job.StageLanguageStatus(nil), item.Languages...)
+		snapshot[key] = item
+	}
+	p.stageMu.Unlock()
+
+	p.TrackEvent("stage_progress", "Stage progress updated", map[string]any{
+		"stage":          stage,
+		"language":       language,
+		"status":         status,
+		"job_id":         jobID,
+		"stage_progress": snapshot,
+	})
+}
+
+// SetStageProgress replaces the current aggregate with a defensive copy
+// and emits one structured snapshot event. It is used when an inline
+// processor has its own detailed fan-out and returns the completed totals.
+func (p *ProgressTracker) SetStageProgress(progress map[string]job.StageProgress) {
+	if p == nil {
+		return
+	}
+	p.stageMu.Lock()
+	p.stageProgress = make(map[string]job.StageProgress, len(progress))
+	for key, item := range progress {
+		item.Languages = append([]job.StageLanguageStatus(nil), item.Languages...)
+		p.stageProgress[key] = item
+	}
+	snapshot := make(map[string]job.StageProgress, len(p.stageProgress))
+	for key, item := range p.stageProgress {
+		item.Languages = append([]job.StageLanguageStatus(nil), item.Languages...)
+		snapshot[key] = item
+	}
+	p.stageMu.Unlock()
+	p.TrackEvent("stage_progress", "Generation stage progress aggregated", map[string]any{
+		"item_id":        p.item,
+		"stage_progress": snapshot,
+	})
+}
+
+// StageProgress returns a defensive snapshot of the current counters.
+func (p *ProgressTracker) StageProgress() map[string]job.StageProgress {
+	if p == nil {
+		return nil
+	}
+	p.stageMu.Lock()
+	defer p.stageMu.Unlock()
+	out := make(map[string]job.StageProgress, len(p.stageProgress))
+	for key, item := range p.stageProgress {
+		item.Languages = append([]job.StageLanguageStatus(nil), item.Languages...)
+		out[key] = item
+	}
+	return out
 }
 
 // Emit sends a progress update if a callback is configured.
@@ -133,7 +236,20 @@ func (p *ProgressTracker) PhaseGenerateDone() {
 }
 
 func (p *ProgressTracker) PhasePostprocess(processor string) {
-	p.phase(90, "Running postprocessor: %s...", processor)
+	p.PhasePostprocessProgress(0, 1, processor)
+}
+
+// PhasePostprocessProgress maps the current processor onto the postprocess
+// window instead of emitting the same static 90% value for every processor.
+func (p *ProgressTracker) PhasePostprocessProgress(index, total int, processor string) {
+	if total <= 0 {
+		return
+	}
+	percent := 55 + ((index + 1) * 40 / total)
+	if percent > 95 {
+		percent = 95
+	}
+	p.phase(percent, "Running postprocessor %d/%d: %s...", index+1, total, processor)
 }
 
 func (p *ProgressTracker) PhaseComplete() {

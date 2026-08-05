@@ -168,7 +168,9 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 
 	allTerminal := true
 	requiredFailed := 0
+	childStageProgress := make(map[string]job.StageProgress)
 	for _, childID := range childIDs {
+		var childResult VoiceoverChildResult
 		// Step 4a (§15.2, July 2026): check the previously-terminal
 		// cache before hitting Get(). Children that were terminal on
 		// the previous tick are fed directly to the StateMachine
@@ -208,7 +210,6 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 
 			// P0.1 gate: typed child result.
 			if len(childJob.Result) > 0 {
-				var childResult VoiceoverChildResult
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
 					if childResult.OK != nil && !*childResult.OK {
 						if status == job.StatusSucceeded {
@@ -229,6 +230,10 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 					childRequired = childPayload.Required
 				}
 			}
+		}
+
+		if len(childResult.StageProgress) > 0 {
+			childStageProgress = job.MergeStageProgress(childStageProgress, childResult.StageProgress)
 		}
 
 		if !status.IsTerminal() {
@@ -325,7 +330,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		RequiredFailedCount: requiredFailed,
 		StateMachineVersion: j.Revision,
 		ChildIDs:            childIDs,
-		StageProgress:       job.AggregateStageProgressByStage(stageStatuses),
+		StageProgress:       job.MergeStageProgress(job.AggregateStageProgressByStage(stageStatuses), childStageProgress),
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil

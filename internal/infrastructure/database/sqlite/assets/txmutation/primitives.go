@@ -269,9 +269,9 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 
 // ── RestoreTx ──────────────────────────────────────────────────────────────
 
-// RestoreTx flips lifecycle_state back to 'ready' inside the
+// RestoreTx flips lifecycle_state back to 'ACTIVE' inside the
 // caller-owned *sql.Tx and clears `deleted_at`. Idempotent: a row
-// whose lifecycle_state is already 'ready' (or that has been hard-
+// whose lifecycle_state is already 'ACTIVE' (or that has been hard-
 // deleted already) is a no-op write.
 //
 // Caller contract (see doc.go):
@@ -291,12 +291,12 @@ func RestoreTx(ctx context.Context, tx *sql.Tx, id string) error {
 	}
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL WHERE id = ?`, id)
+		`UPDATE media_assets SET lifecycle_state = 'ACTIVE', deleted_at = NULL WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("txmutation.RestoreTx %s: update: %w", id, err)
 	}
 	affected, _ := res.RowsAffected()
-	logger.Load().Info("txmutation.RestoreTx: lifecycle_state -> ready",
+	logger.Load().Info("txmutation.RestoreTx: lifecycle_state -> ACTIVE",
 		zap.String("id", id),
 		zap.Int64("rows_affected", affected))
 	return nil

@@ -236,7 +236,6 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 				SourceURL:       link,
 				SourcePageURL:   strings.TrimSpace(match.FolderLink),
 				PreviewURL:      link,
-				DriveLink:       link,
 				RightsStatus:    "unknown",
 				SelectionReason: "ranked Artlist clip matching a segment visual query",
 			}
@@ -245,6 +244,11 @@ func artlistMatchesToCandidates(seg scriptpkg.VidRushSegmentResult, matches []Ar
 				candidate.VerificationStatus = "pending"
 				candidate.PersistenceStatus = "pending"
 				candidate.IndexStatus = "pending"
+			} else {
+				// A remote discovery URL is not a durable Drive location.
+				// Populate DriveLink only for legacy results that already
+				// represent a persisted location.
+				candidate.DriveLink = link
 			}
 			out = append(out, candidate)
 		}

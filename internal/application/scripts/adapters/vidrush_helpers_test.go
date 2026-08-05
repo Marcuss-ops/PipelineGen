@@ -7,6 +7,17 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+func TestBuildCanonicalSegments_SingleSceneUsesDeclaredMainSegment(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SingleScene: true,
+		Segments:    []scriptpkg.ScriptSegment{{ID: "main", Topic: "La civiltà Maya"}},
+	}
+	segments := buildCanonicalSegments(plan, []scriptpkg.SpecScene{{ID: "scene-0", Text: "Testo Maya"}}, "Testo Maya")
+	if len(segments) != 1 || segments[0].ID != "main" || segments[0].SceneID != "scene-0" {
+		t.Fatalf("canonical segments = %#v, want one main segment bound to scene-0", segments)
+	}
+}
+
 type vidRushMemoryCache struct {
 	values map[string][]byte
 }

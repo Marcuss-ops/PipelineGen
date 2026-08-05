@@ -117,6 +117,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	memGate := newScriptMemoryGate(scriptMemRepo)
 	memSvc := adapters.NewService(memGate, log)
 	engine := usecase.NewEngine(scriptGen, usecase.NewMemoryGateChecker(memSvc), log)
+	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(
 		cfg.Scripts.SegmentWordsTolerancePercent,
 		cfg.Scripts.TotalWordsTolerancePercent,

@@ -34,6 +34,35 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
+func TestMergeVidRushSegments_PreservesCandidatesAcrossProviderDeltas(t *testing.T) {
+	dst := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "main",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "artlist-clip-1", Provider: "artlist", SourceURL: "https://artlist.test/clip.m3u8",
+		}}},
+	}}
+	src := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "main",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "image-1", Provider: "internet_images", SourceURL: "https://images.test/maya.jpg",
+		}}},
+	}}
+
+	merged := mergeVidRushSegments(dst, src)
+	if len(merged) != 1 {
+		t.Fatalf("merged segments = %d, want 1", len(merged))
+	}
+	if len(merged[0].Assets.Candidates) != 2 {
+		t.Fatalf("merged candidates = %d, want 2", len(merged[0].Assets.Candidates))
+	}
+	if merged[0].Assets.Candidates[0].Provider != "artlist" {
+		t.Fatalf("first candidate provider = %q, want artlist", merged[0].Assets.Candidates[0].Provider)
+	}
+	if merged[0].Assets.Candidates[1].Provider != "internet_images" {
+		t.Fatalf("second candidate provider = %q, want internet_images", merged[0].Assets.Candidates[1].Provider)
+	}
+}
+
 // TestMergePostProcessResult_PropagatesTranslatedToCurrentInput is Phase 1 / Bug B2 regression guard.
 //
 // Canonical scenario:

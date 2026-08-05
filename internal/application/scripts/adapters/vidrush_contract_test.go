@@ -135,6 +135,10 @@ func TestVidRushLifecycleDoesNotBindUnpersistedOrUnverifiedRights(t *testing.T) 
 	if !candidate.ReadyForBinding() {
 		t.Fatal("fully persisted verified candidate should be binding-ready")
 	}
+	candidate.IndexStatus = "DISCOVERED"
+	if !candidate.ReadyForBinding() {
+		t.Fatal("persisted verified candidate awaiting derived indexing should be binding-ready")
+	}
 	candidate.IndexStatus = scriptpkg.VidRushStatusFailed
 	if candidate.ReadyForBinding() {
 		t.Fatal("failed index candidate must not be binding-ready")

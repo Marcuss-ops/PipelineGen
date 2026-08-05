@@ -31,13 +31,6 @@ func TestResolveIndexHealth_MapsAllCases(t *testing.T) {
 			wantTermin: false, wantRetryab: false,
 		},
 		{
-			name:      "legacy INDEX_PENDING maps to PENDING",
-			input:     IndexHealthInput{IndexState: asset.StateIndexPending},
-			wantCode:  IndexHealthPending,
-			wantLabel: "In attesa", wantSeverit: "warning",
-			wantTermin: false, wantRetryab: false,
-		},
-		{
 			name:      "EMBEDDING maps to EMBEDDING",
 			input:     IndexHealthInput{IndexState: asset.StateEmbedding},
 			wantCode:  IndexHealthEmbedding,
@@ -100,13 +93,6 @@ func TestResolveIndexHealth_MapsAllCases(t *testing.T) {
 		{
 			name:      "INDEXING_FAILED maps to FAILED",
 			input:     IndexHealthInput{IndexState: asset.StateIndexingFailed},
-			wantCode:  IndexHealthFailed,
-			wantLabel: "Fallito", wantSeverit: "error",
-			wantTermin: true, wantRetryab: true,
-		},
-		{
-			name:      "legacy INDEX_FAILED maps to FAILED",
-			input:     IndexHealthInput{IndexState: asset.StateIndexFailed},
 			wantCode:  IndexHealthFailed,
 			wantLabel: "Fallito", wantSeverit: "error",
 			wantTermin: true, wantRetryab: true,

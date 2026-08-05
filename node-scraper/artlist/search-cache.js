@@ -109,6 +109,42 @@ class ArtlistSearchCache {
     return response;
   }
 
+  getRelated(query, { maxAgeMs = 14 * 24 * 60 * 60 * 1000 } = {}) {
+    const wanted = new Set(String(query || '').toLowerCase().match(/[a-z0-9]{4,}/g) || []);
+    if (wanted.size === 0) return null;
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    let rows;
+    try {
+      rows = this.db.prepare(
+        `SELECT query, response_json, expires_at FROM artlist_search_cache
+         WHERE expires_at < @now AND expires_at >= @cutoff
+         ORDER BY expires_at DESC`,
+      ).all({ now: new Date().toISOString(), cutoff });
+    } catch {
+      return null;
+    }
+
+    let best = null;
+    for (const row of rows) {
+      let response;
+      try {
+        response = JSON.parse(row.response_json);
+      } catch {
+        continue;
+      }
+      const clips = Array.isArray(response?.clips) ? response.clips : response?.results;
+      if (!Array.isArray(clips) || clips.length === 0) continue;
+      const cachedTokens = new Set(String(row.query || '').toLowerCase().match(/[a-z0-9]{4,}/g) || []);
+      const overlap = [...wanted].filter((token) => cachedTokens.has(token)).length;
+      const clipText = JSON.stringify(clips).toLowerCase();
+      const contentOverlap = [...wanted].filter((token) => clipText.includes(token)).length;
+      const score = overlap * 10 + contentOverlap * 3;
+      if (overlap === 0 || (best && score <= best.score)) continue;
+      best = { overlap, score, query: row.query, response };
+    }
+    return best;
+  }
+
   put(cacheKey, request, response, ttlMs = this.ttlMs) {
     const now = Date.now();
     const expiresAt = new Date(now + ttlMs).toISOString();

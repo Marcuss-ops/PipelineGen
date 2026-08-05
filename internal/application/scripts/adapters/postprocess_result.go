@@ -6,6 +6,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PostProcessResult carries the output of a single processor.
@@ -55,12 +56,13 @@ type PostProcessResult struct {
 	// fields handle cross-Run observability + buildGenerationResult
 	// preference). omitempty so callers that did not request
 	// translation don't see a serialisation diff.
-	TranslatedText      string                    `json:"translated_text,omitempty"`
-	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
-	OriginalText        string                    `json:"original_text,omitempty"`
-	OriginalSpecScene   scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
-	EffectiveLanguage   string                    `json:"effective_language,omitempty"`
-	UpdatedSpecScene    scriptpkg.SpecSceneOutput `json:"updated_specscene,omitempty"`
+	TranslatedText      string                       `json:"translated_text,omitempty"`
+	TranslatedSpecScene scriptpkg.SpecSceneOutput    `json:"translated_specscene,omitempty"`
+	OriginalText        string                       `json:"original_text,omitempty"`
+	OriginalSpecScene   scriptpkg.SpecSceneOutput    `json:"original_specscene,omitempty"`
+	EffectiveLanguage   string                       `json:"effective_language,omitempty"`
+	StageProgress       map[string]job.StageProgress `json:"stage_progress,omitempty"`
+	UpdatedSpecScene    scriptpkg.SpecSceneOutput    `json:"updated_specscene,omitempty"`
 	// SpecSceneChanged is internal pipeline metadata used to force a
 	// document refresh after durable location reconciliation.
 	SpecSceneChanged bool `json:"-"`

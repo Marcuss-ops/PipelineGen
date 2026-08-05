@@ -23,6 +23,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -141,11 +142,12 @@ func NewGenerateVoiceoversUseCase(deps UseCaseDeps) *GenerateVoiceoversUseCase {
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
 	}
+	resolved := config.DefaultVoiceoverDefaults()
 	if deps.DefaultParallelism <= 0 {
-		deps.DefaultParallelism = 3
+		deps.DefaultParallelism = resolved.DefaultParallelism
 	}
-	if deps.MaxParallelism <= 0 || deps.MaxParallelism > 8 {
-		deps.MaxParallelism = 8
+	if deps.MaxParallelism <= 0 {
+		deps.MaxParallelism = resolved.MaxParallelism
 	}
 	return &GenerateVoiceoversUseCase{
 		deps:     deps,

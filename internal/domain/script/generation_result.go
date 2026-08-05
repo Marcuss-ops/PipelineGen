@@ -25,6 +25,8 @@
 // No durable field uses any, any, or map[string]any.
 package script
 
+import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+
 // EnvelopeVersion is the canonical schema_version of the
 // GenerationEnvelopeResult envelope. Bumped when the envelope shape
 // changes in an incompatible way. Always emitted in the result
@@ -100,6 +102,11 @@ type GenerationResult struct {
 
 	// Warnings (non-fatal per-postprocessor)
 	Warnings []string `json:"warnings,omitempty"`
+
+	// StageProgress exposes real completed/total counters by phase and
+	// language. It is populated from child and inline processor outcomes;
+	// percentages remain a compatibility presentation only.
+	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
 
 	// Status is the canonical per-item outcome status. It is
 	// ItemStatusSucceeded for a clean generation,

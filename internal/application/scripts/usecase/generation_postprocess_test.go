@@ -27,6 +27,28 @@ func TestVidRushTimingFieldsProjectsCanonicalStages(t *testing.T) {
 	}
 }
 
+func TestCollapseSpecSceneOutputPreservesEntityAnnotations(t *testing.T) {
+	annotations := &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+		Text: "Chichén Itzá", CanonicalName: "Chichén Itzá", Type: "GPE",
+	}}}
+	got := collapseSpecSceneOutput("testo finale", scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-source", SegmentID: "main", Index: 4,
+			Annotations: annotations,
+		}},
+	})
+	if len(got.Scenes) != 1 || got.Scenes[0].ID != "scene-0" || got.Scenes[0].SegmentID != "main" {
+		t.Fatalf("collapsed scene identity = %+v", got.Scenes)
+	}
+	if got.Scenes[0].Annotations == nil || len(got.Scenes[0].Annotations.PrimaryEntities) != 1 {
+		t.Fatalf("collapsed scene lost entity annotations: %+v", got.Scenes[0].Annotations)
+	}
+	if got.Scenes[0].Text != "testo finale" {
+		t.Fatalf("collapsed scene text = %q", got.Scenes[0].Text)
+	}
+}
+
 // fakePostProcessor is a test double that returns a fixed result.
 type fakePostProcessor struct {
 	name   adapters.ProcessorName

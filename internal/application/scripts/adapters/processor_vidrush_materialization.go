@@ -7,6 +7,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -32,7 +33,11 @@ const (
 	// Provider calls are bounded independently from the postprocessor context.
 	// A failed remote provider must not consume the whole VidRush run while its
 	// fallback scraper or browser waits on an unavailable upstream.
-	vidRushArtlistAcquireTimeout    = 25 * time.Second
+	// Browser-authenticated HLS downloads commonly need ~30 seconds before
+	// the scraper returns the verified local artifact. Keep this below the
+	// resolver's broader timeout while avoiding premature cancellation of a
+	// valid Artlist acquisition.
+	vidRushArtlistAcquireTimeout    = 120 * time.Second
 	vidRushImageAcquireTimeout      = 15 * time.Second
 	vidRushGenerationAcquireTimeout = 2 * time.Minute
 	vidRushVerifyTimeout            = 20 * time.Second
@@ -71,6 +76,13 @@ func (p *VidRushMaterializationProcessor) Policy(plan *scriptpkg.ResolvedGenerat
 func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p == nil {
 		return nil, fmt.Errorf("vidrush materialization: processor not configured")
+	}
+	if plan != nil && plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
+		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
+		for _, segment := range input.VidRushSegments {
+			segments = append(segments, cloneVidRushSegmentResult(segment))
+		}
+		return &PostProcessResult{VidRushSegments: segments, Changed: len(segments) > 0}, nil
 	}
 	if p.providers == nil || p.finalizer == nil {
 		if vidRushMaterializationRequested(plan, input) {

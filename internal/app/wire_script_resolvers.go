@@ -134,6 +134,8 @@ func buildScriptSourceResolvers(
 	normCfg := adapters.NormalizationConfig{
 		DefaultLanguage:            cfg.Scripts.DefaultLanguage,
 		DefaultTone:                cfg.Scripts.DefaultTone,
+		WordsPerMinute:             cfg.Scripts.Defaults.WordsPerMinute,
+		SafetyLanguage:             cfg.Scripts.Defaults.SafetyLanguage,
 		DefaultDurationSeconds:     cfg.Scripts.DefaultDurationSeconds,
 		OllamaModel:                cfg.External.OllamaModel,
 		ChannelID:                  cfg.Scripts.ChannelID,

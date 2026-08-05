@@ -2,11 +2,11 @@ package asset
 
 import "testing"
 
-// TestIndexState_ValidAcceptsCanonical12 locks in the exact 12-state
+// TestIndexState_ValidAcceptsCanonical10 locks in the canonical IndexState
 // alphabet (Task 2, July 2026). The old 7-state contract (pre-Task 2)
 // is expanded with EMBEDDING / EMBEDDED / EMBEDDING_FAILED /
 // INDEXING_FAILED, plus NOT_INDEXABLE (FASE 3b). INDEX_PENDING and
-// INDEX_FAILED remain valid for DB backward-compat.
+// Legacy INDEX_PENDING and INDEX_FAILED have been removed by migration 189.
 func TestIndexState_ValidAcceptsCanonical12(t *testing.T) {
 	canonical := []IndexState{
 		StateNotIndexable,
@@ -19,8 +19,6 @@ func TestIndexState_ValidAcceptsCanonical12(t *testing.T) {
 		StateIndexingFailed,
 		StateIndexDeletePending,
 		StateDELETED,
-		StateIndexPending, // deprecated, still valid
-		StateIndexFailed,  // deprecated, still valid
 	}
 	for _, s := range canonical {
 		t.Run(string(s), func(t *testing.T) {
@@ -79,7 +77,7 @@ func TestIndexState_ValidRejectsLegacyLowercase(t *testing.T) {
 // ready for Qdrant upsert".
 func TestIndexState_IsTerminal(t *testing.T) {
 	terminal := []IndexState{
-		StateNotIndexable, StateIndexed, StateIndexFailed, StateDELETED,
+		StateNotIndexable, StateIndexed, StateDELETED,
 		StateEmbeddingFailed, StateIndexingFailed,
 	}
 	for _, s := range terminal {
@@ -92,7 +90,7 @@ func TestIndexState_IsTerminal(t *testing.T) {
 
 	nonTerminal := []IndexState{
 		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
-		StateIndexDeletePending, StateIndexPending,
+		StateIndexDeletePending,
 	}
 	for _, s := range nonTerminal {
 		t.Run(string(s)+"_not_terminal", func(t *testing.T) {
@@ -108,7 +106,7 @@ func TestIndexState_IsTerminal(t *testing.T) {
 // terminals. INDEXED is a successful terminal; DELETED is an
 // intentional terminal (tombstone).
 func TestIndexState_IsFailedTerminal(t *testing.T) {
-	failed := []IndexState{StateIndexFailed, StateEmbeddingFailed, StateIndexingFailed}
+	failed := []IndexState{StateEmbeddingFailed, StateIndexingFailed}
 	for _, s := range failed {
 		t.Run(string(s)+"_is_failed", func(t *testing.T) {
 			if !s.IsFailedTerminal() {
@@ -120,7 +118,7 @@ func TestIndexState_IsFailedTerminal(t *testing.T) {
 	notFailed := []IndexState{
 		StateNotIndexable, StateIndexed, StateDELETED,
 		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
-		StateIndexDeletePending, StateIndexPending,
+		StateIndexDeletePending,
 	}
 	for _, s := range notFailed {
 		t.Run(string(s)+"_not_failed", func(t *testing.T) {
@@ -150,7 +148,7 @@ func TestIndexState_IsDeletedCanonical(t *testing.T) {
 
 	notDeleted := []IndexState{
 		StateDiscovered, StateEmbedding, StateEmbedded, StateIndexing,
-		StateIndexed, StateIndexPending, StateIndexFailed,
+		StateIndexed,
 		StateNotIndexable, StateEmbeddingFailed, StateIndexingFailed,
 	}
 	for _, s := range notDeleted {
@@ -182,8 +180,6 @@ func TestIndexState_StringLiteralValues(t *testing.T) {
 		{StateIndexDeletePending, "DELETE_PENDING"},
 		{StateDELETED, "DELETED"},
 		{StateNotIndexable, "NOT_INDEXABLE"},
-		{StateIndexPending, "INDEX_PENDING"},
-		{StateIndexFailed, "INDEX_FAILED"},
 	}
 	for _, c := range cases {
 		t.Run(c.want, func(t *testing.T) {

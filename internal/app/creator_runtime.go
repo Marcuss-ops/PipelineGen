@@ -216,7 +216,8 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
 	engine := usecase.NewEngine(scriptGen, nil, log)
-	engine.ConfigureSegmentValidation(0, 0, 0)
+	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
+	engine.ConfigureSegmentValidation(cfg.Scripts.SegmentWordsTolerancePercent, cfg.Scripts.TotalWordsTolerancePercent, cfg.Scripts.MaxSegmentRegenerationAttempts)
 
 	log.Info("creator: script engine constructed")
 
@@ -233,9 +234,11 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Build the minimal dependency chain for script.generate:
 	//   Engine -> GenerateOneUseCase -> GenerateManyUseCase -> GenerateJobHandler
 	normCfg := adapters.NormalizationConfig{
-		DefaultLanguage:            "en",
-		DefaultTone:                "professional",
-		DefaultDurationSeconds:     600,
+		DefaultLanguage:            cfg.Scripts.DefaultLanguage,
+		DefaultTone:                cfg.Scripts.DefaultTone,
+		WordsPerMinute:             cfg.Scripts.Defaults.WordsPerMinute,
+		SafetyLanguage:             cfg.Scripts.Defaults.SafetyLanguage,
+		DefaultDurationSeconds:     cfg.Scripts.DefaultDurationSeconds,
 		OllamaModel:                cfg.External.OllamaModel,
 		MinWordFloor:               200,
 		DefaultSentencesPerImage:   10,

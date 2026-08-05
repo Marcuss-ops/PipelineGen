@@ -114,14 +114,14 @@ func TestSetIndexState_WritesLastErrorSidecar(t *testing.T) {
 
 	mustInsertAsset(t, ctx, svc.db, "clip-2", `{}`)
 
-	if err := svc.setIndexState(ctx, "clip-2", asset.StateIndexFailed, "boom"); err != nil {
+	if err := svc.setIndexState(ctx, "clip-2", asset.StateIndexingFailed, "boom"); err != nil {
 		t.Fatalf("setIndexState: %v", err)
 	}
 
 	got := readStateAndMeta(t, ctx, svc.db, "clip-2")
-	if got.indexState != string(asset.StateIndexFailed) {
+	if got.indexState != string(asset.StateIndexingFailed) {
 		t.Errorf("index_state column: want %q got %q",
-			string(asset.StateIndexFailed), got.indexState)
+			string(asset.StateIndexingFailed), got.indexState)
 	}
 	meta := parseJSONMeta(got.metadataJSON)
 	if !hasMetaKey(meta, "last_index_error") {
@@ -290,7 +290,7 @@ func TestSetIndexState_LastErrorSidecarClearsOnEmpty(t *testing.T) {
 	mustInsertAsset(t, ctx, svc.db, "clip-clear", `{}`)
 
 	// First: transition to INDEX_FAILED with non-empty lastError.
-	if err := svc.setIndexState(ctx, "clip-clear", asset.StateIndexFailed, "boom"); err != nil {
+	if err := svc.setIndexState(ctx, "clip-clear", asset.StateIndexingFailed, "boom"); err != nil {
 		t.Fatalf("setIndexState INDEX_FAILED: %v", err)
 	}
 	got := readStateAndMeta(t, ctx, svc.db, "clip-clear")
@@ -348,7 +348,7 @@ func TestSetIndexState_MultiStateTransitions(t *testing.T) {
 		t.Fatalf("setIndexState EMBEDDING_FAILED: %v", err)
 	}
 	// Step 3: EMBEDDING_FAILED → INDEX_PENDING (waiting for retry)
-	if err := svc.setIndexState(ctx, "clip-6", asset.StateIndexPending, ""); err != nil {
+	if err := svc.setIndexState(ctx, "clip-6", asset.StateDiscovered, ""); err != nil {
 		t.Fatalf("setIndexState INDEX_PENDING: %v", err)
 	}
 	// Step 4: INDEX_PENDING → EMBEDDING (retry: embedding generation restarts)

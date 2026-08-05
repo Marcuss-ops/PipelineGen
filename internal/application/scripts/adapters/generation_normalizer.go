@@ -34,6 +34,8 @@ type NormalizationConfig struct {
 	// ── Identity defaults ────────────────────────────────────────────
 	DefaultLanguage        string // e.g. "it"
 	DefaultTone            string // e.g. "documentary"
+	WordsPerMinute         int    // resolved speech-rate default
+	SafetyLanguage         string // resolved safety language
 	DefaultDurationSeconds int    // e.g. 600
 	OllamaModel            string // e.g. "llama3.2"
 	ChannelID              string // memory-gate channel
@@ -84,7 +86,7 @@ func NormalizeItem(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset, cf
 	applyConfigDefaults(item, cfg)
 
 	// ── Step 3: safety defaults ────────────────────────────────────
-	applySafetyDefaults(item)
+	applySafetyDefaults(item, cfg)
 }
 
 // NormalizeEnvelope applies NormalizeItem to every item in the
@@ -133,7 +135,9 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 			// a hardcoded `150` literal; the SSOT now matches and
 			// the test TestNormalizeItemDurationToWords (300s × 150wpm
 			// / 60 = 750 words) continues to pass.
-			item.ScriptParams.TargetWords = (dur * defaults.DefaultScriptConfig().WordsPerMinute) / 60
+			if cfg.WordsPerMinute > 0 {
+				item.ScriptParams.TargetWords = (dur * cfg.WordsPerMinute) / 60
+			}
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {
@@ -192,7 +196,7 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 
 // ── Step 3 helpers ───────────────────────────────────────────────
 
-func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
+func applySafetyDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConfig) {
 	// Hard floor: every field that would break the engine if left at
 	// zero gets a safety default here.
 
@@ -205,10 +209,16 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 		// remain exploitable even when per-locale overrides change
 		// DefaultLanguage. Test TestNormalizeItemPrecedenceConfigBeatsHardDefault
 		// pins this precedence contract.
-		item.Language = defaults.DefaultScriptConfig().SafetyLanguage
+		item.Language = cfg.SafetyLanguage
+		if strings.TrimSpace(item.Language) == "" {
+			item.Language = defaults.DefaultScriptConfig().SafetyLanguage // compatibility for manually assembled test configs
+		}
 	}
 	if strings.TrimSpace(item.Tone) == "" {
-		item.Tone = defaults.DefaultScriptConfig().DefaultTone
+		item.Tone = cfg.DefaultTone
+		if strings.TrimSpace(item.Tone) == "" {
+			item.Tone = defaults.DefaultScriptConfig().DefaultTone // compatibility for manually assembled test configs
+		}
 	}
 	if strings.TrimSpace(item.Model) == "" {
 		item.Model = "llama3.2"
@@ -221,7 +231,10 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	// landed at zero; the normalizer still emits a non-empty
 	// bundle so downstream postprocessors don't trip Required-empty.
 	if item.ScriptParams.TargetWords <= 0 {
-		item.ScriptParams.TargetWords = defaults.DefaultScriptConfig().WordsPerMinute
+		item.ScriptParams.TargetWords = cfg.WordsPerMinute
+		if item.ScriptParams.TargetWords <= 0 {
+			item.ScriptParams.TargetWords = defaults.DefaultScriptConfig().WordsPerMinute // compatibility for manually assembled test configs
+		}
 	}
 
 	// Title defaults to topic.

@@ -71,13 +71,14 @@ func (r *VoiceoverParentResult) IsAwaitingAggregation() bool {
 // A plain `bool` would treat absent-as-false and break the legacy
 // edge case (TestParentHandlesChildResultWithoutOKField).
 type VoiceoverChildResult struct {
-	OK          *bool  `json:"ok,omitempty"`
-	Status      string `json:"status"`
-	Language    string `json:"language"`
-	JobID       string `json:"job_id"`
-	ParentJobID string `json:"parent_job_id"`
-	RequestID   string `json:"request_id"`
-	Error       string `json:"error,omitempty"`
+	OK            *bool                        `json:"ok,omitempty"`
+	Status        string                       `json:"status"`
+	Language      string                       `json:"language"`
+	JobID         string                       `json:"job_id"`
+	ParentJobID   string                       `json:"parent_job_id"`
+	RequestID     string                       `json:"request_id"`
+	Error         string                       `json:"error,omitempty"`
+	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
 }
 
 // VoiceoverChildPayload is the typed child job payload the aggregator

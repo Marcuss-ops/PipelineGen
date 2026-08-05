@@ -30,7 +30,7 @@ func resolveCode(input IndexHealthInput) IndexHealthCode {
 	case asset.StateNotIndexable:
 		return IndexHealthNotIndexable
 
-	case asset.StateDiscovered, asset.StateIndexPending:
+	case asset.StateDiscovered:
 		return IndexHealthPending
 
 	case asset.StateEmbedding:
@@ -55,7 +55,7 @@ func resolveCode(input IndexHealthInput) IndexHealthCode {
 		}
 		return IndexHealthIndexed
 
-	case asset.StateEmbeddingFailed, asset.StateIndexingFailed, asset.StateIndexFailed:
+	case asset.StateEmbeddingFailed, asset.StateIndexingFailed:
 		return IndexHealthFailed
 
 	case asset.StateIndexingSkippedNoIndexer:

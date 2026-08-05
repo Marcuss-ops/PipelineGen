@@ -34,7 +34,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
 )
@@ -51,10 +50,11 @@ import (
 // `internal/app/build_bundles_voiceover.go::buildVoiceoverService`).
 // Test doubles inject stubs that record invocations.
 type VoiceoverProcessor struct {
-	gen        voiceover.VoiceoverItemExecutor
-	log        *zap.Logger
-	voices     map[string]string
-	translator ports.ScriptTranslator
+	gen             voiceover.VoiceoverItemExecutor
+	log             *zap.Logger
+	voices          map[string]string
+	translator      ports.ScriptTranslator
+	defaultLanguage string
 }
 
 // NewVoiceoverProcessor creates a VoiceoverProcessor.
@@ -76,6 +76,13 @@ func NewVoiceoverProcessor(gen voiceover.VoiceoverItemExecutor, log *zap.Logger)
 // already-composed script translator into the inline voiceover processor.
 // The processor remains usable by existing tests and single-language callers
 // when either value is nil.
+func (p *VoiceoverProcessor) ConfigureDefaults(defaultLanguage string) {
+	if p == nil {
+		return
+	}
+	p.defaultLanguage = strings.TrimSpace(defaultLanguage)
+}
+
 func (p *VoiceoverProcessor) ConfigureMultilingual(voices map[string]string, translator ports.ScriptTranslator) {
 	if p == nil {
 		return
@@ -147,7 +154,10 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	sourceLanguage := strings.TrimSpace(plan.Language)
 	if sourceLanguage == "" {
-		sourceLanguage = defaults.DefaultScriptConfig().DefaultLanguage
+		sourceLanguage = strings.TrimSpace(p.defaultLanguage)
+	}
+	if sourceLanguage == "" {
+		return nil, fmt.Errorf("voiceover processor: default language is not resolved")
 	}
 	primaryLanguage := strings.TrimSpace(input.EffectiveLanguage)
 	if primaryLanguage == "" {

@@ -42,6 +42,25 @@ func (failingArtlistMaterializationProvider) Verify(context.Context, scriptports
 
 type materializationFinalizerStub struct{}
 
+func TestVidRushMaterializationMetadataOnlyPreservesCandidatesWithoutAcquisition(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{}
+	plan.MediaPlan.Materialization.Mode = "metadata_only"
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "main",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "maya-image", Provider: scriptpkg.VidRushProviderInternetImages,
+			Query: "Chichen Itza Maya pyramid Yucatan",
+		}}},
+	}}}
+	result, err := NewVidRushMaterializationProcessor(nil, nil).Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.VidRushSegments) != 1 || len(result.VidRushSegments[0].Assets.Candidates) != 1 {
+		t.Fatalf("metadata-only candidates = %#v, want one preserved candidate", result.VidRushSegments)
+	}
+}
+
 func (materializationFinalizerStub) Finalize(_ context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
 	candidate := artifact.Candidate
 	candidate.FileHash = artifact.FileHash

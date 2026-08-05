@@ -1,4 +1,4 @@
-// Package asset — index_state.go is the canonical 12-state enum that
+// Package asset — index_state.go is the canonical IndexState enum that
 // drives the media_assets.index_state column (migration 094).
 //
 // Lifecycle (companion, not replacement): LifecycleState in
@@ -80,22 +80,12 @@ const (
 	// StateDELETED — canonical tombstone. Qdrant point gone AND
 	// media_assets.lifecycle_state set to "deleted" or "DELETED".
 	StateDELETED IndexState = "DELETED"
-
-	// StateIndexPending — retained for DB backward-compat only.
-	// No production code should write this state. Use
-	// NewIndexableAssetState() instead. Valid() still accepts it.
-	StateIndexPending IndexState = "INDEX_PENDING"
-
-	// StateIndexFailed — retained for DB backward-compat only.
-	// No production code has ever written this state. Valid()
-	// still accepts it.
-	StateIndexFailed IndexState = "INDEX_FAILED"
 )
 
 // Valid returns true if s is one of the canonical IndexState values.
-// Both deprecated (pre-Task 2) and current states are accepted so
-// existing DB rows are not orphaned. Legacy lowercase values are
-// intentionally rejected.
+// Only the canonical states are accepted. Migration 189 backfills and
+// rejects the retired INDEX_PENDING and INDEX_FAILED values before this
+// alphabet is enforced by SQLite.
 func (s IndexState) Valid() bool {
 	switch s {
 	case StateNotIndexable,
@@ -104,8 +94,7 @@ func (s IndexState) Valid() bool {
 		StateIndexing, StateIndexed,
 		StateEmbeddingFailed, StateIndexingFailed,
 		StateIndexingSkippedNoIndexer,
-		StateIndexDeletePending, StateDELETED,
-		StateIndexPending, StateIndexFailed: // backward-compat only
+		StateIndexDeletePending, StateDELETED:
 		return true
 	}
 	return false
@@ -117,18 +106,16 @@ func (s IndexState) Valid() bool {
 func (s IndexState) IsTerminal() bool {
 	switch s {
 	case StateNotIndexable, StateIndexed, StateDELETED,
-		StateEmbeddingFailed, StateIndexingFailed,
-		StateIndexFailed: // backward-compat only
+		StateEmbeddingFailed, StateIndexingFailed:
 		return true
 	}
 	return false
 }
 
 // IsFailedTerminal returns true if the state is a failure terminal
-// (operator-must-intervene). Includes EMBEDDING_FAILED,
-// INDEXING_FAILED, and the backward-compat INDEX_FAILED.
+// (operator-must-intervene): EMBEDDING_FAILED or INDEXING_FAILED.
 func (s IndexState) IsFailedTerminal() bool {
-	return s == StateIndexFailed || s == StateEmbeddingFailed || s == StateIndexingFailed
+	return s == StateEmbeddingFailed || s == StateIndexingFailed
 }
 
 // IsDeletedCanonical returns true if the row is in a tombstone state

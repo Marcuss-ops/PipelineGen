@@ -334,6 +334,31 @@ export async function searchArtlistGateway({
     }
   }
 
+  // A forced live refresh can exceed the bounded VidRush discovery timeout
+  // when the Artlist browser/API is challenged. Prefer a recent, real
+  // related result in that case so discovery remains deterministic and the
+  // downstream materializer can still hydrate and verify the source.
+  if (forceRefresh) {
+    const related = cache.getRelated(normalizedQuery);
+    if (related) {
+      logger?.info?.('artlist stale related cache hit', {
+        requestedQuery: normalizedQuery,
+        matchedQuery: related.query,
+        clipCount: related.response?.clips?.length || 0,
+      });
+      return {
+        ...related.response,
+        query: normalizedQuery,
+        term: normalizedQuery,
+        page: normalizedPage,
+        limit: normalizedLimit,
+        cache_hit: true,
+        source: 'stale_related_cache',
+        stale_related_query: related.query,
+      };
+    }
+  }
+
   const registry = await loadArtlistEndpointRegistry(registryPath);
 
   let envelope = null;
@@ -371,6 +396,37 @@ export async function searchArtlistGateway({
       profileDir,
       browser,
     });
+  }
+
+  // Cloudflare can serve the search page while suppressing the result API.
+  // Reuse a recent, real Artlist result with deterministic token overlap as
+  // a bounded resilience path. The original query remains the caller's
+  // retrieval intent and the response is explicitly marked stale-related;
+  // downstream acquisition and verification still run normally.
+  const hasUsableClip = Array.isArray(envelope?.clips) && envelope.clips.some((clip) => {
+    const primary = String(clip?.primary_url || clip?.preview_url || '').trim();
+    const pageURL = String(clip?.clip_page_url || clip?.page_url || '').trim();
+    return primary !== '' && primary !== pageURL;
+  });
+  if (!hasUsableClip) {
+    const related = cache.getRelated(normalizedQuery);
+    if (related) {
+      logger?.info?.('artlist stale related cache hit', {
+        requestedQuery: normalizedQuery,
+        matchedQuery: related.query,
+        clipCount: related.response?.clips?.length || 0,
+      });
+      envelope = {
+        ...related.response,
+        query: normalizedQuery,
+        term: normalizedQuery,
+        page: normalizedPage,
+        limit: normalizedLimit,
+        cache_hit: true,
+        source: 'stale_related_cache',
+        stale_related_query: related.query,
+      };
+    }
   }
 
   if (Array.isArray(envelope.clips) && envelope.clips.length > 0) {

@@ -3,9 +3,11 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"golang.org/x/text/unicode/norm"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
@@ -90,7 +92,12 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 	for _, seg := range input.VidRushSegments {
 		updated := cloneVidRushSegmentResult(seg)
 		imageQueries := updated.Insights.ImageQueries
-		if entityImagesEnabled {
+		// Explicit media_plan.searches are the caller's retrieval intent and
+		// take precedence over entity-image expansion for the image slot.
+		manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: updated.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
+		if len(manualImageQueries) > 0 {
+			imageQueries = manualImageQueries
+		} else if entityImagesEnabled {
 			if entityQueries := scenePrimaryEntityQueries(input.SpecScene, updated); len(entityQueries) > 0 {
 				imageQueries = entityQueries
 			}
@@ -373,20 +380,32 @@ func findSegmentForScene(scene scriptpkg.SpecScene, segments []scriptpkg.VidRush
 }
 
 func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) (scriptpkg.SegmentAssetCandidate, bool) {
-	want := strings.ToLower(strings.TrimSpace(entity.CanonicalName))
+	want := normalizeEntityMatch(entity.CanonicalName)
 	if want == "" {
-		want = strings.ToLower(strings.TrimSpace(entity.Text))
+		want = normalizeEntityMatch(entity.Text)
 	}
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
 	for _, candidate := range all {
 		if !validVidRushCandidate(candidate) || strings.TrimSpace(candidate.AssetID) == "" {
 			continue
 		}
-		entityText := strings.ToLower(strings.TrimSpace(candidate.Entity))
-		query := strings.ToLower(strings.TrimSpace(candidate.Query))
+		entityText := normalizeEntityMatch(candidate.Entity)
+		query := normalizeEntityMatch(candidate.Query)
 		if entityText == want || strings.Contains(query, want) || strings.Contains(entityText, want) {
 			return candidate, true
 		}
 	}
 	return scriptpkg.SegmentAssetCandidate{}, false
+}
+
+func normalizeEntityMatch(value string) string {
+	decomposed := norm.NFD.String(strings.ToLower(strings.TrimSpace(value)))
+	var b strings.Builder
+	for _, r := range decomposed {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

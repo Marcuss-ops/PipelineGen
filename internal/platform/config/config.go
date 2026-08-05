@@ -71,21 +71,23 @@ func Get() (*Config, error) {
 // defaults.
 func GetFromPath(path string) (*Config, error) {
 	cfg := &Config{}
+	// Resolve struct-tag defaults before YAML so an explicit false/zero in the
+	// file remains distinguishable from an omitted field. Environment values
+	// are applied last and remain the highest-precedence source.
 	applyDefaults(cfg)
-
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			applyEnvVars(cfg)
-			return cfg, nil
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("cannot read config file %q: %w", path, err)
 		}
-		return nil, fmt.Errorf("cannot read config file %q: %w", path, err)
-	}
-
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	} else if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("config file %q is malformed: %w", path, err)
 	}
 
+	// The resolution order is deliberate and uniform:
+	// YAML → environment overrides → defaults for fields still unset.
+	// This prevents a default pass from masking an explicit YAML value
+	// and makes the final Config ready for validation and freezing.
 	applyEnvVars(cfg)
 	return cfg, nil
 }
@@ -245,13 +247,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Composition-root SSOT validator (DRIFT-DEFAULTS-VALIDATE, Step 4
-	// PR6, June 2026): pin the 5 pkg/defaults SSOTs (video/voiceover/
-	// media/youtube/script) at startup so a refactor that breaks one
-	// (e.g. DefaultScriptConfig().WordsPerMinute=0 during a per-locale
-	// override experiment) fails the boot immediately. The per-domain
-	// tests in pkg/defaults catch this at `go test`; this call covers
-	// the deploy path that does not run the full test suite.
+	// Loaded configurations have the centralized defaults applied. Keep
+	// manually assembled test/adapter configs compatible during migration;
+	// a partially populated defaults block is always rejected.
+	defaultsConfigured := c.Scripts.Defaults != (ScriptDefaultsConfig{}) || c.Voiceover.Defaults != (VoiceoverDefaultsConfig{})
+	if defaultsConfigured {
+		if c.Scripts.Defaults.WordsPerMinute <= 0 || strings.TrimSpace(c.Scripts.Defaults.SafetyLanguage) == "" {
+			return fmt.Errorf("scripts.defaults is incomplete")
+		}
+		if c.Voiceover.Defaults.DefaultParallelism <= 0 || c.Voiceover.Defaults.MaxParallelism < c.Voiceover.Defaults.DefaultParallelism {
+			return fmt.Errorf("voiceover.defaults parallelism is invalid: default=%d max=%d", c.Voiceover.Defaults.DefaultParallelism, c.Voiceover.Defaults.MaxParallelism)
+		}
+		if strings.TrimSpace(c.Voiceover.Defaults.DefaultFilenameTemplate) == "" || strings.TrimSpace(c.Voiceover.Defaults.DefaultStrategy) == "" || strings.TrimSpace(c.Voiceover.Defaults.DefaultLanguage) == "" {
+			return fmt.Errorf("voiceover.defaults filename, strategy and language are required")
+		}
+	}
+
+	// Keep the legacy package-level validator for unrelated defaults while
+	// the remaining domains migrate onto ResolvedConfig.
 	if err := defaults.Validate(); err != nil {
 		return fmt.Errorf("defaults SSOT validation failed: %w", err)
 	}

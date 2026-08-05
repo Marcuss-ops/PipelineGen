@@ -33,6 +33,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"go.uber.org/zap"
@@ -153,6 +154,7 @@ func (h *GenerateJobHandler) HandleJob(
 	// utility captures the canonical nil-tolerance gate so consumer
 	// sites can call pf(...) directly without per-call nil checks.
 	pf := appjobs.SafeProgressFn(tools)
+	ef := appjobs.SafeEventFn(tools)
 
 	pf(5, "starting voiceover.generate fan-out")
 
@@ -176,6 +178,17 @@ func (h *GenerateJobHandler) HandleJob(
 	}
 
 	res, err := h.useCase.Execute(ctx, j.ID, &cmd)
+	stageProgress := map[string]any{
+		"stage":          string(job.StageVoiceover),
+		"language":       "*",
+		"status":         string(job.StageRunning),
+		"job_id":         j.ID,
+		"stage_progress": nil,
+	}
+	if res != nil {
+		stageProgress["stage_progress"] = res.StageProgress
+	}
+	ef("stage_progress", "Voiceover fan-out progress aggregated", stageProgress)
 	if err != nil {
 		// PR-VO-AUDIT-P06 (June 2026): GUARD against FanoutVoiceoversUseCase
 		// returning (nil, err) — happens on cmd==nil, cmd.Validate()
