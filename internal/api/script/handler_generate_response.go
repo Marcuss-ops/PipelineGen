@@ -34,7 +34,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 )
 

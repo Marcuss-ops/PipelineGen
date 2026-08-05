@@ -165,18 +165,17 @@ platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, o
 # migration stays observable. cmd/archcheck treats unknown first-level
 # internal/ dirs as an error (`unknown_internal_root` rule); the
 # re-registration keeps these zones governed instead of unmanaged.
-# + P1-4 step 3 (internal/scriptgeneration -> internal/application/scripts/legacy)
-#   is also retired in this same wave (CUTOVER phase per godlike/07
-#   Zero-Legacy; verbatim body, package scriptgeneration preserved for
-#   importer alias stability). The SQLite adapter was mirrored to
-#   internal/infrastructure/database/sqlite/scripts/legacy/ to honor
-#   the godlike/06 SSOT mirror rule (application + infrastructure
-#   mirror). The CONTRACT phase that surgically distributes the 15
-#   stub files into canonical sub-packages (usecase/ ports/ dto/
-#   contracts/) is planned as a follow-up commit; this YAML docblock
-#   backfill lands with it. The Wave-25 hard gate (promoted via the
-#   percheck_legacy_root_ban hard_gates entry in hard_gates below)
-#   catches new imports of the deleted legacy root.
+# + P1-4 step 3 (internal/scriptgeneration -> internal/capabilities/scripts)
+#   is complete: the implementation and tests now live in the canonical
+#   scripts capability package, while package scriptgeneration is preserved
+#   for importer alias stability. The SQLite adapter remains under
+#   internal/infrastructure/database/sqlite/scripts/legacy/ because it is
+#   infrastructure-owned and imports the capability ports. The old
+#   application legacy facade has been removed only after all references
+#   were updated and the capability/package tests passed.
+#   The Wave-25 hard gate (promoted via the percheck_legacy_root_ban
+#   hard_gates entry in hard_gates below) continues to catch reintroduction
+#   of deleted legacy roots.
 target_internal_roots: app, kernel, capabilities, platform
 # Governed legacy zones (re-registered 2026-08-01): first-level
 # internal/ roots that the layout policy treats as known so the
