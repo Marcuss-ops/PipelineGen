@@ -151,7 +151,7 @@ archcheck_cli:
       - max_files_per_package / max_lines_per_file / cmd_main_max_lines
       - max_constructor_deps (8 per the CI-gates godlike/08 doc)
       - forbidden_top_level_dirs (service, repository, models, utils, helpers)
-      - kernel_subzones (asset, job, script, event, identity, errors)
+      - kernel_subzones (asset, job, script, event, identity, errors, observability)
       - capabilities + platform_subzones (forward-looking)
       - legacy_internal_roots + target_internal_roots (migration tracker)
       - data_ownership_doc / legacy_policy_doc / ci_gates_doc /

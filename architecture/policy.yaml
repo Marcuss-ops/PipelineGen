@@ -65,7 +65,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, identity, errors
+kernel_subzones: asset, job, script, event, identity, errors, observability
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -439,3 +439,7 @@ hard_gates:
   # Setting pol.MaxLinesPerFileStrict=0 opts the rule family out;
   # default 600 enforces a fail-closed forward-prevention gate.
   - max_lines_per_file_strict
+  # Kernel layout integrity: every on-disk internal/kernel subzone must be
+  # declared here, and every declared subzone must exist on disk.
+  - kernel_subzone_undeclared
+  - kernel_subzone_missing

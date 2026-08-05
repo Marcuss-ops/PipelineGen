@@ -1,5 +1,7 @@
 // Package observability is one of the kernel subzones declared in
-// docs/architecture/godlike/02_TARGET_STRUCTURE.md §"internal/kernel".
+// architecture/policy.yaml and described by ARCHITECTURE.md. Its normative
+// timing and identity contract is documented in
+// docs/architecture/job-attempt-run-observability-contract.md.
 //
 // It owns the canonical cross-capability observability contract shared by
 // every job family (script.generate, voiceover.generate, stock.run,
@@ -31,7 +33,7 @@
 //
 // The package is deliberately dependency-free: standard library only, no
 // repository implementation, no Gin, no database/sql, no transport-specific
-// type (kernel rules in 02_TARGET_STRUCTURE.md). Prometheus observation and
+// type (kernel rules in architecture/policy.yaml). Prometheus observation and
 // SQLite persistence are later-phase adapters; the only extension seam here
 // is the Recorder sink.
 package observability

@@ -19,6 +19,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"struct_deps", scan.ScanStructDeps},
 		{"forbidden_dirs", scan.ScanForbiddenDirs},
 		{"kernel_subzone_hints", scan.ScanKernelSubzoneHints},
+		{"kernel_subzone_integrity", scan.ScanKernelSubzoneIntegrity},
 		{"unknown_internal_roots", scan.ScanUnknownInternalRoots},
 		{"ownership_doc", scan.ScanOwnershipDoc},
 		{"legacy_policy_doc", scan.ScanLegacyPolicyDoc},
