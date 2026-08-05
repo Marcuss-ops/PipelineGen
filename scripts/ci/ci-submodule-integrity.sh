@@ -29,6 +29,9 @@ while IFS= read -r -d '' entry; do
 done < <(git ls-files --stage -z)
 
 if ((${#gitlinks[@]} == 0)); then
+    # The index is authoritative: ignored local directories, including any
+    # historical project checkout, do not become submodules and are never
+    # touched by this repository-level check.
     echo "✅ submodule integrity: no tracked gitlinks"
     exit 0
 fi

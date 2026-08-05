@@ -20,12 +20,21 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v7
+        with:
+          submodules: false
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: '1.25.x'
           cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Run `make verify-race` (fail-closed)
         # This is intentionally manual and separate from verify-main. The
