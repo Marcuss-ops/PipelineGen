@@ -135,9 +135,11 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 			// a hardcoded `150` literal; the SSOT now matches and
 			// the test TestNormalizeItemDurationToWords (300s × 150wpm
 			// / 60 = 750 words) continues to pass.
-			if cfg.WordsPerMinute > 0 {
-				item.ScriptParams.TargetWords = (dur * cfg.WordsPerMinute) / 60
+			wordsPerMinute := cfg.WordsPerMinute
+			if wordsPerMinute <= 0 {
+				wordsPerMinute = defaults.DefaultScriptConfig().WordsPerMinute
 			}
+			item.ScriptParams.TargetWords = (dur * wordsPerMinute) / 60
 		}
 	}
 	if item.ScriptParams.Duration <= 0 && cfg.DefaultDurationSeconds > 0 {
