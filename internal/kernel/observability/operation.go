@@ -35,15 +35,16 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 	}
 	start := r.now()
 	op := OperationReport{
-		Stage:       string(info.Stage),
-		Component:   string(info.Component),
-		Operation:   string(info.Operation),
-		Provider:    info.Provider,
-		Status:      StageStatusRunning,
-		Attempts:    1,
-		Items:       nonNegative(info.Items),
-		Bytes:       nonNegative(info.Bytes),
-		CacheStatus: info.CacheStatus,
+		ObservationID: NewObservationID(),
+		Stage:         string(info.Stage),
+		Component:     string(info.Component),
+		Operation:     string(info.Operation),
+		Provider:      info.Provider,
+		Status:        StageStatusRunning,
+		Attempts:      1,
+		Items:         nonNegative(info.Items),
+		Bytes:         nonNegative(info.Bytes),
+		CacheStatus:   info.CacheStatus,
 	}
 	if fn == nil {
 		op.Status = StageStatusCompleted

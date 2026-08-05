@@ -33,12 +33,13 @@ type PostProcessor interface {
 
 // PostProcessorRegistry runs enabled processors in order.
 type PostProcessorRegistry struct {
-	processors map[ProcessorName]PostProcessor
-	policies   map[ProcessorName]ProcessorPolicy
-	frozen     bool
-	mu         sync.RWMutex
-	log        *zap.Logger
-	timing     VidRushTimingMetrics
+	processors    map[ProcessorName]PostProcessor
+	policies      map[ProcessorName]ProcessorPolicy
+	frozen        bool
+	mu            sync.RWMutex
+	log           *zap.Logger
+	timing        VidRushTimingMetrics
+	timingAdapter *CanonicalTimingAdapter
 }
 
 // SetVidRushTimingMetrics attaches the optional latency recorder used by the
@@ -51,6 +52,25 @@ func (r *PostProcessorRegistry) SetVidRushTimingMetrics(metrics VidRushTimingMet
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.timing = metrics
+	if r.timingAdapter == nil {
+		r.timingAdapter = &CanonicalTimingAdapter{}
+	}
+	r.timingAdapter.VidRush = metrics
+}
+
+// SetCanonicalTimingAdapter installs the compatibility projection used by
+// canonical Run-backed registry executions. The adapter is optional so old
+// composition fixtures remain source-compatible.
+func (r *PostProcessorRegistry) SetCanonicalTimingAdapter(adapter *CanonicalTimingAdapter) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.timingAdapter = adapter
+	if adapter != nil {
+		r.timing = adapter.VidRush
+	}
 }
 
 func (r *PostProcessorRegistry) vidRushTimingMetrics() VidRushTimingMetrics {
@@ -60,6 +80,15 @@ func (r *PostProcessorRegistry) vidRushTimingMetrics() VidRushTimingMetrics {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.timing
+}
+
+func (r *PostProcessorRegistry) canonicalTimingAdapter() *CanonicalTimingAdapter {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.timingAdapter
 }
 
 // TimingMetrics returns the optional VidRush latency recorder so composition

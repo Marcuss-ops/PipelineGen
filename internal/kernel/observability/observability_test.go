@@ -555,6 +555,17 @@ func TestRun_AddArtifact(t *testing.T) {
 	}
 }
 
+func TestRun_RegisterChildIsIdempotentAndUpdatesStatus(t *testing.T) {
+	obs := NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "parent-job", RunID: "parent-run"})
+	run.RegisterChild(&RunReport{RunID: "child-run", JobID: "child-job", Status: StatusRunning})
+	run.RegisterChild(&RunReport{RunID: "child-run", JobID: "child-job", Status: StatusSucceeded, WallTimeMs: 25})
+	rep := run.Report()
+	if rep.Children == nil || rep.Children.Requested != 1 || rep.Children.Completed != 1 || rep.Children.Failed != 0 || rep.Children.WallTimeMs != 25 {
+		t.Fatalf("children = %#v", rep.Children)
+	}
+}
+
 func TestRun_RegisterChildSummary(t *testing.T) {
 	obs := NewRunObserver(nil)
 	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})

@@ -86,7 +86,8 @@ type IOpaqueStartFunc func() error
 
 // ComposeRoot is the assembled root tree. NewComposition returns this.
 type ComposeRoot struct {
-	DB *storage.SQLiteDB
+	DB              *storage.SQLiteDB
+	ObservabilityDB *storage.SQLiteDB
 
 	Drive      *DriveBundle
 	Repos      *RepoBundle

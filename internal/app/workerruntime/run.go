@@ -27,12 +27,14 @@ package workerruntime
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -64,12 +66,13 @@ import (
 //	                 shutdown, freeing the runner, then comp.Cleanup
 //	                 flushes any in-flight writes)
 type WorkerComposition struct {
-	Registry       *worker.Registry
-	RegisteredCaps []string
-	Caps           appjobs.WorkerCapabilities
-	Workspace      *worker.Workspace
-	WorkspaceRoot  string
-	Cleanup        func()
+	Registry        *worker.Registry
+	RegisteredCaps  []string
+	Caps            appjobs.WorkerCapabilities
+	Workspace       *worker.Workspace
+	WorkspaceRoot   string
+	Cleanup         func()
+	ObservabilityDB *storage.SQLiteDB
 }
 
 // buildWorkerComposition builds the canonical worker composition
@@ -146,12 +149,13 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}
 		registry.Freeze()
 		return &WorkerComposition{
-			Registry:       registry,
-			RegisteredCaps: registeredCaps,
-			Caps:           caps,
-			Workspace:      ws,
-			WorkspaceRoot:  workspaceRoot,
-			Cleanup:        cleanup,
+			Registry:        registry,
+			RegisteredCaps:  registeredCaps,
+			Caps:            caps,
+			Workspace:       ws,
+			WorkspaceRoot:   workspaceRoot,
+			Cleanup:         cleanup,
+			ObservabilityDB: compositionRoot.ObservabilityDB,
 		}, nil
 	}
 
@@ -187,12 +191,13 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		)
 		creatorRuntime.Registry.Freeze()
 		return &WorkerComposition{
-			Registry:       creatorRuntime.Registry,
-			RegisteredCaps: registeredCaps,
-			Caps:           creatorRuntime.Caps,
-			Workspace:      creatorRuntime.Workspace,
-			WorkspaceRoot:  creatorRuntime.Workspace.Root,
-			Cleanup:        cleanup,
+			Registry:        creatorRuntime.Registry,
+			RegisteredCaps:  registeredCaps,
+			Caps:            creatorRuntime.Caps,
+			Workspace:       creatorRuntime.Workspace,
+			WorkspaceRoot:   creatorRuntime.Workspace.Root,
+			Cleanup:         cleanup,
+			ObservabilityDB: nil,
 		}, nil
 
 	default:
@@ -236,12 +241,13 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}
 		registry.Freeze()
 		return &WorkerComposition{
-			Registry:       registry,
-			RegisteredCaps: registeredCaps,
-			Caps:           caps,
-			Workspace:      ws,
-			WorkspaceRoot:  workspaceRoot,
-			Cleanup:        cleanup,
+			Registry:        registry,
+			RegisteredCaps:  registeredCaps,
+			Caps:            caps,
+			Workspace:       ws,
+			WorkspaceRoot:   workspaceRoot,
+			Cleanup:         cleanup,
+			ObservabilityDB: compositionRoot.ObservabilityDB,
 		}, nil
 	}
 }
@@ -343,11 +349,20 @@ func Run(ctx context.Context, cfgPath string) error {
 	go HeartbeatLoop(runCtx, broker, identity.WorkerID, session.SessionID, log)
 
 	runner := worker.NewRunner(broker, comp.Registry, comp.Workspace, assetClient, log, identity.WorkerID, session.SessionID, comp.Caps.JobTypes)
-	// FASE 2 observability: every claimed lease executed by this remote
-	// worker gets a kernel Run (queue_wait_ms, wall_time_ms, status,
-	// attempts), exported to Prometheus by the collector; the durable
-	// SQLite recorder sink lands in the persistence phase (FASE 5).
-	runner.WithObserver(kernobs.NewRunObserverWithCollector(nil, obsmetrics.NewRunReportsCollector()))
+	// Canonical observability: durable run lifecycle is written to the
+	// dedicated observability DB; Prometheus remains a projection.
+	var recorder kernobs.Recorder
+	if comp.ObservabilityDB != nil && comp.ObservabilityDB.DB != nil {
+		recorder = obsmetrics.NewSQLiteRecorderWithLogger(comp.ObservabilityDB.DB, log)
+		if reconciler, ok := recorder.(kernobs.AbandonedRunReconciler); ok {
+			if _, err := reconciler.RecoverAbandoned(context.Background(), time.Now().UTC()); err != nil {
+				log.Warn("observability abandoned-run recovery failed", zap.Error(err))
+			}
+		}
+	} else {
+		log.Warn("observability recorder unavailable; using metrics-only projection")
+	}
+	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
 	if rErr := runner.Run(runCtx); rErr != nil && runCtx.Err() == nil {
 		log.Error("worker runner failed", zap.Error(rErr))
 		return fmt.Errorf("worker runner: %w", rErr)

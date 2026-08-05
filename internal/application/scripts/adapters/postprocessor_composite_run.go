@@ -9,6 +9,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -121,14 +122,45 @@ func (r *PostProcessorRegistry) Run(
 				return nil, err
 			}
 		}
-		start := time.Now()
-		processorCtx, cancel := context.WithTimeout(ctx, postprocessorOperationTimeout)
-		ppResult, err := proc.Process(processorCtx, plan, input)
-		cancel()
-		elapsed := time.Since(start).Milliseconds()
-		if timing := r.vidRushTimingMetrics(); timing != nil {
-			timing.ObserveProcessorDuration(string(name), float64(elapsed)/1000)
+		// The canonical Run owns timing whenever the worker has bound one to
+		// the context. The no-run branch is retained only for legacy callers
+		// and unit fixtures that execute the registry standalone.
+		var (
+			stageReport kernobs.StageReport
+			ppResult    *PostProcessResult
+			err         error
+		)
+		if kernobs.FromContext(ctx) != nil {
+			stageReport, err = kernobs.MeasureStageReport(ctx, kernobs.StageName(name), func(stageCtx context.Context) error {
+				processorCtx, cancel := context.WithTimeout(stageCtx, postprocessorOperationTimeout)
+				defer cancel()
+				var processErr error
+				ppResult, processErr = proc.Process(processorCtx, plan, input)
+				return processErr
+			})
+			// StageWithReport already returns the exact observation. The
+			// assignment is intentionally projection-only: no second clock.
+		} else {
+			start := time.Now()
+			processorCtx, cancel := context.WithTimeout(ctx, postprocessorOperationTimeout)
+			ppResult, err = proc.Process(processorCtx, plan, input)
+			cancel()
+			legacyMs := time.Since(start).Milliseconds()
+			stageReport = kernobs.StageReport{
+				Name:       string(name),
+				Status:     kernobs.StageStatusCompleted,
+				DurationMs: legacyMs,
+			}
+			if err != nil {
+				stageReport.Status = kernobs.StageStatusFailed
+			}
+
 		}
+		adapter := r.canonicalTimingAdapter()
+		if adapter == nil {
+			adapter = &CanonicalTimingAdapter{VidRush: r.vidRushTimingMetrics()}
+		}
+		adapter.ProjectStage(ctx, result, string(name), stageReport)
 		// Concurrency safety: a processor may return a shared/cached
 		// PostProcessResult (common in stubs and caches). Clone before
 		// mutating DurationMs or passing to merge so concurrent Run
@@ -136,7 +168,7 @@ func (r *PostProcessorRegistry) Run(
 		ppResult = clonePostProcessResult(ppResult)
 
 		if err != nil {
-			result.StageDurations[string(name)] = elapsed
+			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, err.Error())
 			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
 			warnings = append(warnings, warn)
@@ -171,7 +203,7 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		if ppResult == nil {
-			result.StageDurations[string(name)] = elapsed
+			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "nil result")
 			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
 			warnings = append(warnings, warn)
@@ -182,8 +214,8 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
-		ppResult.DurationMs = elapsed
-		result.StageDurations[string(name)] = elapsed
+		ppResult.DurationMs = stageReport.DurationMs
+		result.StageDurations[string(name)] = stageReport.DurationMs
 
 		if ppResult.IsEmpty() {
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "empty output")
