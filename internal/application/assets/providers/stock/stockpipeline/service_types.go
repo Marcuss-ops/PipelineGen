@@ -31,7 +31,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -120,7 +119,6 @@ type RuntimeDeps struct {
 	Log        *zap.Logger
 	JobCreator JobCreator
 	StepStore  steps.Store
-	Metrics    appmetrics.Recorder
 }
 
 // JobCreator is the minimal durable port needed by sync-mode stock runs.

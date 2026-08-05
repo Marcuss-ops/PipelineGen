@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -20,9 +19,8 @@ type TimingParitySink interface {
 }
 
 type CanonicalTimingAdapter struct {
-	ProcessMetrics processmetrics.CanonicalRecorder
-	VidRush        VidRushTimingMetrics
-	Parity         TimingParitySink
+	VidRush VidRushTimingMetrics
+	Parity  TimingParitySink
 }
 
 func (a *CanonicalTimingAdapter) MeasureCanonical(ctx context.Context, name string, fn func(context.Context) error) (kernobs.StageReport, error) {
@@ -60,48 +58,7 @@ func (a *CanonicalTimingAdapter) projectStage(ctx context.Context, result *Pipel
 	if a.VidRush != nil {
 		a.VidRush.ObserveProcessorDuration(name, float64(stage.DurationMs)/1000)
 	}
-	if a.ProcessMetrics != nil {
-		if err := a.ProcessMetrics.RecordCanonical(ctx, processmetrics.CanonicalMetric{
-			ProcessType: "script",
-			JobID:       stageJobID(ctx),
-			ParentJobID: stageParentJobID(ctx),
-			Phase:       name,
-			Provider:    "script",
-			StartedAt:   stage.StartedAt,
-			DurationMs:  stage.DurationMs,
-			Status:      canonicalMetricStatus(stage.Status),
-			ErrorCode:   stage.ErrorCode,
-			CreatedAt:   stage.FinishedAt,
-		}); err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-func stageJobID(ctx context.Context) string {
-	if run := kernobs.FromContext(ctx); run != nil {
-		if report := run.Report(); report != nil {
-			return report.JobID
-		}
-	}
-	return ""
-}
-
-func stageParentJobID(ctx context.Context) string {
-	if run := kernobs.FromContext(ctx); run != nil {
-		if report := run.Report(); report != nil {
-			return report.ParentJobID
-		}
-	}
-	return ""
-}
-
-func canonicalMetricStatus(status string) string {
-	if status == kernobs.StageStatusFailed {
-		return "failure"
-	}
-	return "success"
 }
 
 func LegacyStageDuration(start, end time.Time) int64 {

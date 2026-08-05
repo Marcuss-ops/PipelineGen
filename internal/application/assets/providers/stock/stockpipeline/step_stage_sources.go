@@ -56,13 +56,9 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 			}
 		}
 		if phaseMetric != nil {
-			phaseMetric.SetItems(int64(len(plans)), int64(len(staged)))
+			phaseMetric.SetItems(int64(uniqueSourceCount), int64(len(staged)))
+			phaseMetric.SetItemsFailed(int64(uniqueSourceCount - len(staged)))
 			phaseMetric.SetBytes(0, bytes)
-			phaseMetric.SetDetails(map[string]any{
-				"videos_found":      uniqueSourceCount,
-				"videos_downloaded": len(staged),
-				"download_bytes":    bytes,
-			})
 		}
 		finishStockPhase(runner, phaseMetric, "stock.stage_sources", err)
 	}()

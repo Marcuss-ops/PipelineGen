@@ -49,9 +49,7 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 			cutPaths := runner.State().CutPaths
 			composed := runner.State().ComposedPaths
 			phaseMetric.SetItems(int64(len(cutPaths)), int64(len(composed)))
-			phaseMetric.SetDetails(map[string]any{
-				"assets_generated": len(composed),
-			})
+			phaseMetric.SetItemsFailed(int64(len(cutPaths) - len(composed)))
 		}
 		finishStockPhase(runner, phaseMetric, "stock.compose", err)
 	}()

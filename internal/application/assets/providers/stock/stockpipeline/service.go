@@ -57,7 +57,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
@@ -141,7 +140,6 @@ type Service struct {
 	// PR-REFACTOR-P0-IO-BINDER keeps os.* calls out of this package;
 	// REQUIRED at ctor time (audit P0: no implicit fallback to real FS).
 	localFS LocalFSPort
-	metrics appmetrics.Recorder
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -268,6 +266,5 @@ func NewService(deps Deps) (*Service, error) {
 		sourceCacheReader: deps.SourceCache.Reader,
 		sourceCacheWriter: deps.SourceCache.Writer,
 		localFS:           deps.SourceCache.LocalFS,
-		metrics:           deps.Runtime.Metrics,
 	}, nil
 }

@@ -50,18 +50,8 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 	result, cutErr := cutter.Cut(ctx, req)
 	if metric != nil {
 		successful := result.SuccessfulItems()
-		var outputDuration float64
-		for _, item := range successful {
-			outputDuration += item.DurationSec
-		}
 		metric.SetItems(int64(len(jobs)), int64(len(successful)))
-		metric.SetDetails(map[string]any{
-			"segments_requested":      len(jobs),
-			"segments_completed":      len(successful),
-			"segments_failed":         len(jobs) - len(successful),
-			"source_duration_seconds": sourceDuration,
-			"output_duration_seconds": outputDuration,
-		})
+		metric.SetItemsFailed(int64(len(jobs) - len(successful)))
 		finishStockPhase(runner, metric, "stock.extract", cutErr)
 	}
 	return result, cutErr

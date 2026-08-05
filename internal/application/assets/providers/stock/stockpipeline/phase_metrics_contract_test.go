@@ -4,84 +4,87 @@ import (
 	"context"
 	"testing"
 
-	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
-// metricPublishRunner adapts the existing publish fixture with the optional
-// recorder seam used by the production orchestrator runner.
-type metricPublishRunner struct {
-	*publishFakeRunner
-	recorder appmetrics.Recorder
+// canonicalStageRecorder captures appended stage observations so contract
+// tests can assert what the canonical kernel recorder persisted. It
+// implements the LifecycleRecorder seam used by Run.recordStage.
+type canonicalStageRecorder struct {
+	stages     []kernobs.StageReport
+	operations []kernobs.OperationReport
 }
 
-func (r *metricPublishRunner) MetricsRecorder() appmetrics.Recorder { return r.recorder }
+func (r *canonicalStageRecorder) SaveReport(_ context.Context, _ *kernobs.RunReport) error {
+	return nil
+}
+func (r *canonicalStageRecorder) StartReport(_ context.Context, _ *kernobs.RunReport) error {
+	return nil
+}
+func (r *canonicalStageRecorder) AppendStage(_ context.Context, _ string, st kernobs.StageReport) error {
+	r.stages = append(r.stages, st)
+	return nil
+}
+func (r *canonicalStageRecorder) AppendOperation(_ context.Context, _ string, op kernobs.OperationReport) error {
+	r.operations = append(r.operations, op)
+	return nil
+}
+func (r *canonicalStageRecorder) RecordChild(_ context.Context, _ *kernobs.RunReport) error {
+	return nil
+}
 
 func TestStockPhaseMetricContract_AllRequestedPhases(t *testing.T) {
 	cases := []struct {
-		phase     string
-		detailKey string
-		detail    any
-		itemsIn   int64
-		itemsOut  int64
+		phase    string
+		itemsIn  int64
+		itemsOut int64
 	}{
-		{"stock.search", "videos_found", 3, 3, 3},
-		{"stock.stage_sources", "videos_downloaded", 2, 2, 2},
-		{"stock.youtube_download", "download_bytes", int64(285000000), 2, 2},
-		{"stock.extract", "segments_completed", 2, 2, 2},
-		{"stock.compose", "assets_generated", 2, 2, 2},
-		{"stock.drive_upload", "assets_generated", 2, 2, 2},
-		{"stock.database_save", "assets_generated", 2, 2, 2},
-		{"stock.index", "index_mode", "outbox_enqueue", 2, 2},
+		{"stock.search", 3, 3},
+		{"stock.stage_sources", 2, 2},
+		{"stock.youtube_download", 2, 2},
+		{"stock.extract", 2, 2},
+		{"stock.compose", 2, 2},
+		{"stock.database_save", 2, 2},
+		{"stock.index", 2, 2},
 	}
 
-	repo := &phaseMetricRepository{}
-	recorder := appmetrics.NewRecorder(repo)
+	recorder := &canonicalStageRecorder{}
+	run := kernobs.NewRunObserver(recorder).StartRun(context.Background(), kernobs.RunInfo{
+		JobID: "stock-contract-job", AttemptID: "stock-contract-attempt",
+	})
+	ctx := kernobs.WithRun(context.Background(), run)
 	for _, tc := range cases {
 		t.Run(tc.phase, func(t *testing.T) {
-			handle := startStockPhaseWithRecorder(context.Background(), recorder, tc.phase, "stock-contract-job")
+			handle := startStockPhase(ctx, nil, tc.phase)
 			if handle == nil {
-				t.Fatal("startStockPhaseWithRecorder returned nil")
+				t.Fatal("startStockPhase returned nil")
 			}
 			handle.SetItems(tc.itemsIn, tc.itemsOut)
-			handle.SetDetails(map[string]any{tc.detailKey: tc.detail})
-			if err := handle.End(nil); err != nil {
-				t.Fatalf("End: %v", err)
+			got := handle.End(nil)
+			if got.Name != tc.phase || got.Status != kernobs.StageStatusCompleted {
+				t.Fatalf("stage = %#v, want completed %s", got, tc.phase)
+			}
+			if got.ItemsInput != tc.itemsIn || got.ItemsCompleted != tc.itemsOut {
+				t.Fatalf("stage items = %d/%d, want %d/%d", got.ItemsInput, got.ItemsCompleted, tc.itemsIn, tc.itemsOut)
 			}
 		})
 	}
 
-	if got, want := len(repo.metrics), len(cases); got != want {
-		t.Fatalf("persisted metrics = %d, want %d", got, want)
-	}
-	for i, tc := range cases {
-		got := repo.metrics[i]
-		if got.ProcessType != stockProcessType || got.Provider != stockProcessType {
-			t.Errorf("metric[%d] identity = process=%q provider=%q, want stock/stock", i, got.ProcessType, got.Provider)
-		}
-		if got.Phase != tc.phase {
-			t.Errorf("metric[%d] phase = %q, want %q", i, got.Phase, tc.phase)
-		}
-		if got.Status != "success" || got.ErrorCode != "" {
-			t.Errorf("metric[%d] status/error = %q/%q, want success/empty", i, got.Status, got.ErrorCode)
-		}
-		if got.ItemsIn != tc.itemsIn || got.ItemsOut != tc.itemsOut {
-			t.Errorf("metric[%d] items = %d/%d, want %d/%d", i, got.ItemsIn, got.ItemsOut, tc.itemsIn, tc.itemsOut)
-		}
-		if _, ok := got.Details[tc.detailKey]; !ok {
-			t.Errorf("metric[%d] details = %#v, missing %q", i, got.Details, tc.detailKey)
-		}
+	if got, want := len(recorder.stages), len(cases); got != want {
+		t.Fatalf("persisted canonical stages = %d, want %d", got, want)
 	}
 }
 
-func TestPrepareStockDriveArtifact_RecordsCommonUploadMetric(t *testing.T) {
-	repo := &phaseMetricRepository{}
-	runner := &metricPublishRunner{
-		publishFakeRunner: &publishFakeRunner{
-			artifactPrep: &recordingArtifactPreparation{},
-			state:        &RunState{},
-		},
-		recorder: appmetrics.NewRecorder(repo),
+func TestPrepareStockDriveArtifact_UsesCanonicalStage(t *testing.T) {
+	recorder := &canonicalStageRecorder{}
+	run := kernobs.NewRunObserver(recorder).StartRun(context.Background(), kernobs.RunInfo{
+		JobID: "stock-drive-job", AttemptID: "stock-drive-attempt",
+	})
+	ctx := kernobs.WithRun(context.Background(), run)
+	runner := &publishFakeRunner{
+		artifactPrep: &recordingArtifactPreparation{},
+		state:        &RunState{},
 	}
 	artifact := finalization.VerifiedArtifact{
 		ArtifactID: "stock:contract:chunk:0",
@@ -89,26 +92,20 @@ func TestPrepareStockDriveArtifact_RecordsCommonUploadMetric(t *testing.T) {
 		SizeBytes:  4096,
 	}
 
-	if _, err := prepareStockDriveArtifact(context.Background(), runner, artifact, map[string]any{
-		"assets_generated":        1,
-		"output_duration_seconds": 5,
-	}); err != nil {
+	if _, err := prepareStockDriveArtifact(ctx, runner, artifact, nil); err != nil {
 		t.Fatalf("prepareStockDriveArtifact: %v", err)
 	}
-	if len(repo.metrics) != 1 {
-		t.Fatalf("persisted metrics = %d, want 1", len(repo.metrics))
+	if len(recorder.stages) != 0 {
+		t.Fatalf("persisted canonical stages = %d, want 0 for upload operation", len(recorder.stages))
 	}
-	got := repo.metrics[0]
-	if got.Phase != "stock.drive_upload" || got.Status != "success" {
-		t.Fatalf("metric identity/status = %q/%q, want stock.drive_upload/success", got.Phase, got.Status)
+	if len(recorder.operations) != 1 {
+		t.Fatalf("persisted canonical operations = %d, want 1", len(recorder.operations))
 	}
-	if got.ItemsIn != 1 || got.ItemsOut != 1 {
-		t.Fatalf("metric items = %d/%d, want 1/1", got.ItemsIn, got.ItemsOut)
+	got := recorder.operations[0]
+	if got.Stage != string(kernobs.StagePublish) || got.Component != string(kernobs.ComponentDrive) || got.Operation != string(kernobs.OperationUpload) || got.Status != kernobs.StageStatusCompleted {
+		t.Fatalf("operation = %#v, want completed drive upload", got)
 	}
-	if got.BytesIn != artifact.SizeBytes || got.BytesOut != artifact.SizeBytes {
-		t.Fatalf("metric bytes = %d/%d, want %d/%d", got.BytesIn, got.BytesOut, artifact.SizeBytes, artifact.SizeBytes)
-	}
-	if got.Details["assets_generated"] != 1 {
-		t.Fatalf("metric details = %#v, want assets_generated=1", got.Details)
+	if got.Items != 1 || got.Bytes != artifact.SizeBytes {
+		t.Fatalf("operation counters = %d/%d, want 1/%d", got.Items, got.Bytes, artifact.SizeBytes)
 	}
 }
