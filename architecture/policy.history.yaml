@@ -5,6 +5,16 @@
 # long historical narratives. Git history remains the authoritative archive.
 
 # Package-size cap history ---------------------------------------------------
+# Hotspot baseline ratchet history -------------------------------------------
+# The executable package_hotspots registry records the committed-tree counts
+# after the scripts/jobs capability cutovers. Owners, deadlines and target
+# packages are unchanged; this is a measured baseline update, not a global cap
+# increase.
+package_hotspot_baselines:
+  - date: "2026-08-05"
+    change: "cmd/admin 106 → 109; internal/app 136 → 137"
+    note: "Reconciled registered hotspot baselines with the committed production tree after the capability wiring increments; the global max_files_per_package cap remains 65."
+
 max_files_per_package:
   current: 65
   history:

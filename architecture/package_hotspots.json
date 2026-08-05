@@ -5,13 +5,13 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 106,
+      "baseline_files": 109,
       "baseline": {
-        "files": 106,
+        "files": 109,
         "max_loc": 17092
       },
       "current": {
-        "files": 106,
+        "files": 109,
         "max_loc": 14618
       },
       "target_packages": [
@@ -45,13 +45,13 @@
     "path": "internal/app",
     "owner": "internal/app composition root",
     "deadline": "2026-09-30",
-    "baseline_files": 136,
+    "baseline_files": 137,
     "baseline": {
-      "files": 136,
+      "files": 137,
       "max_loc": 26637
     },
   "current": {
-    "files": 136,
+    "files": 137,
     "max_loc": 23098
   },
       "target_packages": [
