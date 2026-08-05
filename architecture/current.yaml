@@ -55,3 +55,13 @@
   rationale: "Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root."
   cross_refs:
     package: "internal/application/assets/monitor"
+- id: "WAVE-23-ADMIN-CONSOLE-SEPARATION"
+  status: "pending"
+  owner: "admin-console"
+  deadline: "2026-10-31T00:00:00Z"
+  rationale: "Establish a temporary boundary for the embedded React admin console after the P0 and CI gates are green; this registration does not claim those gates are green and explicitly defers repository separation until the boundary and extraction conditions are satisfied."
+  cross_refs:
+    backend_boundary: "Backend decisions remain in Go application and infrastructure layers; current web-to-Go coupling is the finalized web/dist filesystem consumed by web/embed.go plus the backend-owned /admin static serving and /api/admin HTTP routes."
+    package: "web"
+    separation_conditions: "P0 and CI green; extract web/src, package manifests, lockfile, and Vite configuration into a dedicated repository; publish the console independently; retain only administrative APIs in PipelineGen; then remove web/embed.go, embedded static routes, and the Node dependency from the backend build."
+    temporary_boundary: "The web directory is an operational console only; it may render admin views and call backend HTTP APIs, but it must not own business logic, provider selection, pipeline orchestration, or direct SQLite, Qdrant, or Drive access."
