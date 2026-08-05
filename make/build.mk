@@ -162,7 +162,7 @@ build-server: go-version-check web-build
 clean:
 	rm -rf bin/
 	rm -rf web/dist
-	rm -f server admin pipelinegen
+	rm -f server admin pipelinegen worker
 	rm -f server.exe admin.exe pipelinegen.exe worker.exe
 	rm -f *.test.exe
 	rm -f nul
