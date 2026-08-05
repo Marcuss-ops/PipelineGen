@@ -51,11 +51,10 @@ go-version-check:
 	    echo "✅ Go version $$HOST meets requirement $$REQ"; \
 	fi
 
-# Node toolchain guard. The single source of truth is the
-# `engines.node` field in node-scraper/package.json, and the host version
-# comes from `node --version`. Mirrors the Go guard so CI and Dependabot
-# npm updates cannot silently drift from the runtime the operators
-# actually execute.
+# Node toolchain guard. The canonical requirements are the `engines.node`
+# fields in node-scraper/package.json and web/package.json; both must declare
+# the same major and the host version must match it. This keeps the scraper,
+# embedded admin console, CI, and Dependabot npm updates on one runtime.
 #
 # Implementation notes (the three pitfalls wired into this gate):
 #
@@ -85,31 +84,54 @@ node-version-check:
 	    echo "❌ Node binary not found on PATH — install Node 22.x (nvm, fnm, asdf, or distro packages)"; \
 	    exit 1; \
 	fi; \
-	REQ_RAW=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' node-scraper/package.json); \
+	SCRAPER_REQ=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' node-scraper/package.json); \
+	WEB_REQ=$$(awk -F'"' '/^[[:space:]]*"node"[[:space:]]*:[[:space:]]*"/ {print $$4; exit}' web/package.json); \
 	HOST=$$(node --version 2>/dev/null | sed 's/^v//'); \
 	if [ -z "$$HOST" ]; then \
 	    echo "❌ node binary present but 'node --version' returned empty (broken install?)"; \
 	    exit 1; \
 	fi; \
-	if [ -z "$$REQ_RAW" ]; then \
-	    echo "❌ node-scraper/package.json has no 'engines.node' field — set e.g. \"engines\": { \"node\": \"22.x\" }"; \
+	if [ -z "$$SCRAPER_REQ" ] || [ -z "$$WEB_REQ" ]; then \
+	    echo "❌ both node-scraper/package.json and web/package.json must declare 'engines.node'"; \
 	    exit 1; \
 	fi; \
-	REQ_MAJOR=$$(echo "$$REQ_RAW" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
+	SCRAPER_MAJOR=$$(echo "$$SCRAPER_REQ" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
+	WEB_MAJOR=$$(echo "$$WEB_REQ" | sed -E 's/^[^0-9]*([0-9]+).*/\1/'); \
 	HOST_MAJOR=$$(echo "$$HOST" | cut -d. -f1); \
-	if ! echo "$$REQ_MAJOR" | grep -qE '^[0-9]+$$'; then \
-	    echo "❌ Unsupported engines.node format: '$$REQ_RAW' — must reduce to a major version (e.g. '22', '22.x', '^22', '>=22.0.0')"; \
+	if ! echo "$$SCRAPER_MAJOR" | grep -qE '^[0-9]+$$' || ! echo "$$WEB_MAJOR" | grep -qE '^[0-9]+$$'; then \
+	    echo "❌ unsupported engines.node format: scraper=$$SCRAPER_REQ web=$$WEB_REQ"; \
 	    exit 1; \
 	fi; \
-	if [ "$$HOST_MAJOR" != "$$REQ_MAJOR" ]; then \
-	    echo "❌ Node version mismatch: node-scraper/package.json engines.node requires $$REQ_RAW, host has $$HOST"; \
+	if [ "$$SCRAPER_MAJOR" != "$$WEB_MAJOR" ]; then \
+	    echo "❌ Node major mismatch: node-scraper requires $$SCRAPER_REQ, web requires $$WEB_REQ"; \
+	    exit 1; \
+	fi; \
+	if [ "$$HOST_MAJOR" != "$$SCRAPER_MAJOR" ]; then \
+	    echo "❌ Node version mismatch: both packages require major $$SCRAPER_MAJOR, host has $$HOST"; \
 	    echo "Remediation options:"; \
-	    echo "  1. Install Node $$REQ_MAJOR.x (nvm, fnm, asdf, or distro packages)"; \
-	    echo "  2. Update the 'engines.node' field in node-scraper/package.json if the requirement changed"; \
+	    echo "  1. Install Node $$SCRAPER_MAJOR.x (nvm, fnm, asdf, or distro packages)"; \
+	    echo "  2. Update both engines.node fields if the requirement changed"; \
 	    exit 1; \
 	else \
-	    echo "✅ Node version $$HOST meets requirement $$REQ_RAW"; \
+	    echo "✅ Node version $$HOST meets scraper=$$SCRAPER_REQ and web=$$WEB_REQ"; \
 	fi
+
+# Install the embedded admin console dependencies from the committed lockfile.
+web-install: node-version-check
+	npm ci --prefix web
+
+# Build the embedded admin console and fail closed if the embed entrypoint is
+# missing. Keep installation and build in one canonical dependency chain so
+# local, CI, and Docker callers do not duplicate the frontend setup.
+web-build: web-install
+	npm run build --prefix web
+	test -f web/dist/index.html
+
+# Remove frontend dependencies and generated artifacts. The regular `clean`
+# target intentionally keeps node_modules so local Go-only rebuilds remain
+# fast; use `make web-clean` for a fully fresh frontend checkout.
+web-clean:
+	rm -rf web/node_modules web/dist
 
 # Build the entry-point binaries. Outputs land in ./bin/ to keep the project
 # root clean (see `make clean`).
@@ -123,15 +145,23 @@ node-version-check:
 #   - bin/worker      : cross-host worker (cmd/worker) — registers
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
-build: go-version-check
+build: go-version-check web-build
 	@mkdir -p bin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin            ./cmd/admin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/worker           ./cmd/worker
 
+# Build only the server binary and its embedded admin console. This is the
+# canonical target for server smoke checks and lightweight container builds.
+build-server: go-version-check web-build
+	@mkdir -p bin
+	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen ./cmd/server
+
 # Run Go unit tests (Go is the canonical test surface; tests here run
 # for every `make test` invocation and in CI without requiring Node).
 clean:
+	rm -rf bin/
+	rm -rf web/dist
 	rm -f server admin pipelinegen
 	rm -f server.exe admin.exe pipelinegen.exe worker.exe
 	rm -f *.test.exe

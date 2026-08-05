@@ -24,7 +24,7 @@
 # mapping is visible at-a-glance.
 .PHONY: \
 	help all \
-	go-version-guard go-version-check node-version-check build clean rebuild run dev \
+	go-version-guard go-version-check node-version-check web-install web-build web-clean build build-server clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
@@ -73,7 +73,11 @@ help:
 	@echo "PipelineGen Makefile - Command Cheat Sheet"
 	@echo ""
 	@echo "BUILD / RUN"
-	@echo "  make build            Build server, admin, and worker entry-point binaries"
+	@echo "  make build            Build web console, server, admin, and worker binaries"
+	@echo "  make build-server     Build web console and server binary"
+	@echo "  make web-install      Install web dependencies from package-lock.json"
+	@echo "  make web-build        Install dependencies and build the embedded web console"
+	@echo "  make web-clean        Remove web dependencies and generated dist"
 	@echo "  make run              Run server (HTTP + scheduler + maintenance via --mode all)"
 	@echo "  make rebuild          Clean + build (idempotent equivalent of clean && build)"
 	@echo ""
