@@ -9,7 +9,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
-	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
@@ -302,19 +301,15 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 }
 
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	jobsDescriptor, err := capjobs.Build(capjobs.Dependencies{
-		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service,
-		EnabledFunc: func() bool { return true },
-		Logger:      log,
-	})
-	if err != nil {
+	capability := capjobs.NewBundle(
+		root.Jobs.Service,
+		root.Jobs.Service,
+		func() bool { return true },
+		log,
+	)
+	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
 		return fmt.Errorf("wire registry: jobs: %w", err)
 	}
-	jd, ok := jobsDescriptor.(*jobsapi.JobsDescriptor)
-	if !ok || jd == nil {
-		return fmt.Errorf("wire registry: jobs: jobs.Build returned unexpected descriptor type %T (want *jobsapi.JobsDescriptor)", jobsDescriptor)
-	}
 	log.Info("created Jobs module")
-	return tryRegisterModuleStrict(registry, log, jd, WithRegistrationPoint("register.Jobs"))
+	return nil
 }
