@@ -101,7 +101,7 @@ verify-main: verify-push verify-node-native verify-architecture
 # verify-race — explicit race-detector gate. Foundation runs as a shared
 # prerequisite once, while unit and registry component suites use their
 # race-enabled commands. It is independent of verify-main for direct use.
-verify-race: verify-foundation verify-unit-race verify-race-components
+verify-race: verify-foundation web-build verify-unit-race verify-race-components
 	@echo "✅ verify-race passed"
 
 # verify-clean-checkout-build — reproducibility gate that materializes the
