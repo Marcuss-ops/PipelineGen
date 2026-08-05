@@ -101,10 +101,19 @@ verify-main: verify-push verify-node-native verify-architecture
 verify-race: verify-foundation verify-unit-race verify-race-components
 	@echo "✅ verify-race passed"
 
+# verify-clean-checkout-build — reproducibility gate that materializes the
+# current HEAD in a temporary clone, then builds the embedded frontend,
+# vets/tests all Go packages, and builds the three entry-point binaries.
+# The script owns temporary-directory cleanup and never writes to the caller's
+# working copy, including when a command fails.
+verify-clean-checkout-build:
+	@GO="$(GO)" bash scripts/ci/ci-clean-checkout-build.sh
+
 # verify-full — complete headless gate: verify-main, the explicit race gate,
-# and the full Node test suite. Shared prerequisites such as foundation are
-# deduplicated by GNU Make within this aggregate invocation.
-verify-full: verify-main verify-race verify-node-tests
+# the full Node test suite, and clean-checkout reproducibility. Shared
+# prerequisites such as foundation are deduplicated by GNU Make within this
+# aggregate invocation.
+verify-full: verify-main verify-race verify-node-tests verify-clean-checkout-build
 	@echo "✅ verify-full passed"
 
 # verify-go-core — domain and application logic tests. Isolates failures

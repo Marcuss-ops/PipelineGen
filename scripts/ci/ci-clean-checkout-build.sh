@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# scripts/ci/ci-clean-checkout-build.sh - reproducible checkout build gate
+#
+# Clone HEAD into a temporary directory and run the build-critical commands
+# there. This verifies what a clean checkout contains and leaves the caller's
+# working tree untouched by npm or Go build artifacts.
+
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+GO_BIN=${GO:-go}
+if [[ "$GO_BIN" == */* ]]; then
+    GO_BIN=$(cd "$(dirname "$GO_BIN")" && pwd)/$(basename "$GO_BIN")
+else
+    GO_BIN=$(command -v "$GO_BIN") || {
+        echo "❌ Go binary not found: ${GO:-go}" >&2
+        exit 1
+    }
+fi
+COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+CHECKOUT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pipelinegen-clean-checkout.XXXXXX")
+cleanup() {
+    rm -rf "$CHECKOUT_DIR"
+}
+trap cleanup EXIT
+
+printf '%s\n' "→ Materializing clean checkout from HEAD"
+git clone --no-local --no-checkout "$ROOT" "$CHECKOUT_DIR" >/dev/null
+git -C "$CHECKOUT_DIR" checkout --detach "$COMMIT" >/dev/null
+cd "$CHECKOUT_DIR"
+
+printf '%s\n' "→ Building embedded web console from the lockfile"
+npm ci --prefix web
+npm run build --prefix web
+test -f web/dist/index.html
+
+printf '%s\n' "→ Running Go vet"
+"$GO_BIN" vet ./...
+
+printf '%s\n' "→ Running Go tests"
+"$GO_BIN" test ./...
+
+printf '%s\n' "→ Building server, worker, and admin binaries"
+"$GO_BIN" build -o pipelinegen ./cmd/server
+"$GO_BIN" build -o worker ./cmd/worker
+"$GO_BIN" build -o admin ./cmd/admin
+
+echo "✅ Clean-checkout build passed"

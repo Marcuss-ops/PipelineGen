@@ -27,7 +27,7 @@
 	go-version-guard go-version-check node-version-check build clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
-	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full verify-split \
+	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips verify-stock verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main verify-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-node-scraper verify-race-kernel \
@@ -92,7 +92,8 @@ help:
 	@echo "  make verify-main-stock  Fast Stock gate: targeted tests + architecture"
 	@echo "  make verify-main-clip   Fast Clip gate: targeted tests + architecture"
 	@echo "  make verify-race      Explicit race gate: unit + all registered components"
-	@echo "  make verify-full      Full headless gate: main + race + Node tests"
+	@echo "  make verify-clean-checkout-build  Build frontend, vet, test, and binaries from a temporary checkout"
+	@echo "  make verify-full      Full headless gate: main + race + Node tests + clean checkout"
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
 	@echo "  make verify-live      Post-deploy operational battery (needs live external stack)"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
