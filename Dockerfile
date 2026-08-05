@@ -20,8 +20,8 @@
 FROM --platform=$BUILDPLATFORM node:22-bookworm AS admin-ui-builder
 
 WORKDIR /src/web
-COPY web/package.json web/package-lock.json* ./
-RUN npm install --silent
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --silent
 COPY web/ ./
 RUN npm run build
 

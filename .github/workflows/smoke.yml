@@ -73,13 +73,19 @@ jobs:
           go-version: '1.25.x'
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Build server binary
-        # Only the long-running HTTP server is needed for the smoke suite;
-        # workers (if any) run in-process under --mode all so external
-        # cmd/worker is NOT required.
+        # Make owns the frontend preparation and server build contract so
+        # smoke CI exercises the same path as local server smoke checks.
         run: |
-          mkdir -p bin
-          go build -o bin/pipelinegen ./cmd/server
+          set -o pipefail
+          make build-server 2>&1 | tee build.log
 
       - name: Boot server and run smoke suite
         env:
@@ -154,6 +160,7 @@ jobs:
           # files + directories in one step.
           path: |
             ${{ runner.temp }}/smoke-logs/
+            build.log
             server.log
           if-no-files-found: warn
           retention-days: 14

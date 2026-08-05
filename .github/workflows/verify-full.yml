@@ -32,7 +32,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: node-scraper/package-lock.json
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
 
       - name: Run `make verify-full` (fail-closed)
         # Make is the source of truth: verify-full expands to

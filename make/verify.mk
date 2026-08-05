@@ -48,22 +48,25 @@ verify-foundation: go-version-check node-version-check verify-no-secrets verify-
 	@bash -n scripts/hooks/pre-push scripts/hooks/pre-commit
 	@echo "✅ Foundation verification passed"
 
-# verify-static — Go static analysis + full build. No tests, no
-# integration, no Node. Catches vet regressions and compile errors in
-# <1min on a warm cache. Complementary to verify-go (which adds the
-# per-area race-tested suites); use it as a fail-fast smoke between full
-# builds. go-version-check is a hard prereq so a stale host Go fails
-# fast with the canonical version mismatch message rather than late and
-# opaquely inside `go vet` / `go build`.
-verify-static: go-version-check
+# verify-static — embedded web build, then Go static analysis + full build.
+# No tests or integration. Building the UI here is intentional: web/embed.go
+# requires web/dist, which is generated and ignored rather than committed.
+# This keeps verify-main reproducible from a clean checkout while preserving
+# the canonical npm ci -> Vite build chain owned by make/build.mk.
+# Complementary to verify-go (which adds the per-area race-tested suites);
+# use it as a fail-fast smoke between full builds. The Go and Node version
+# checks remain hard prerequisites so stale toolchains fail with their
+# canonical diagnostics rather than late inside the frontend or Go commands.
+verify-static: go-version-check web-build
+
 	$(GO) vet ./...
 	$(GO) build ./...
 	@echo "✅ Static verification passed"
 
-# verify-fast — dev-loop gate: foundation + static. Runs in <1min on a
-# clean tree and is the cheapest fail-closed chain that catches the
-# most common errors (toolchain mismatch, leaked secrets, formatting
-# drift, vet/build break). Used during active development. verify-main adds
+# verify-fast — dev-loop gate: foundation + static. On a warm dependency
+# cache it is the cheapest fail-closed chain that catches the most common
+# errors (toolchain mismatch, leaked secrets, formatting drift, embedded UI
+# build failure, vet/build break). Used during active development. verify-main adds
 # standard Go tests, the native Node probe, and architecture checks;
 # verify-full and verify-release add the heavier race, Node, and integration
 # gates.
