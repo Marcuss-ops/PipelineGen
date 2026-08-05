@@ -11,7 +11,8 @@ current:
     target_zero: 0
   cross_refs:
     package: internal/application/scripts
-    pr_g_phase: BACKFILL (July 2026) — 6 new subpackages exist on disk (curation, generation, persistence, postprocess, source, usecases); root facade re-exports from new packages; 5 root files migrated; remaining redistribution in CUTOVER phase.
+    pr_g_phase: BACKFILL (August 2026) — generation now owns a parity-covered plan builder while the legacy usecase implementation remains active as a compatibility path; root facade and remaining callers are unchanged pending CUTOVER.
+    backfill_increment: generation/plan_builder.go mirrors the legacy plan contract and is covered by package-local tests; CUTOVER is deferred until full parity and consumer migration.
 - id: WAVE-22-PR-D-SERVICE-DEPS-CAP
   status: in_progress
   owner: api-composition
