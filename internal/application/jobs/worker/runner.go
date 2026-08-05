@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // DefaultLeaseTTL is the canonical lease TTL used by the runner's
@@ -61,6 +62,12 @@ type Runner struct {
 	sessionID     string
 	caps          []string
 	renewInterval time.Duration // 0 → DefaultRenewInterval; clamped to >= minRenewInterval
+
+	// observer is the kernel observability entry point (FASE 2, August
+	// 2026). When non-nil, every claimed lease executed by runLease gets
+	// a Run (queue_wait, wall_time, status, attempts). nil = legacy
+	// un-instrumented behaviour (test fixtures keep working).
+	observer *kernobs.RunObserver
 }
 
 // NewRunner constructs a Runner with the default renewal cadence
@@ -79,6 +86,15 @@ func NewRunner(broker appjobs.Broker, registry *Registry, workspace *Workspace, 
 		caps:          caps,
 		renewInterval: DefaultRenewInterval,
 	}
+}
+
+// WithObserver attaches the kernel observability RunObserver to the
+// Runner (FASE 2, August 2026). Mirrors SetRenewInterval's fluent
+// receiver pattern; nil-tolerant so test fixtures that don't wire an
+// observer keep the legacy un-instrumented runLease path.
+func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
+	r.observer = observer
+	return r
 }
 
 // SetRenewInterval overrides the renewal cadence. Returns the

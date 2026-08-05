@@ -62,6 +62,7 @@ import (
 
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -124,6 +125,13 @@ type Worker struct {
 	// WithBroker() below + CompletionPort interface declaration at
 	// internal/application/jobs/broker.go:50 for the contract.
 	broker CompletionPort
+
+	// observer is the kernel observability entry point (FASE 2, August
+	// 2026). When non-nil, every claimed job in runJob gets a Run:
+	// queue_wait_ms (created_at → started_at), wall_time_ms, status and
+	// attempts. nil = legacy un-instrumented behaviour (test fixtures
+	// that don't wire an observer keep working). See WithObserver().
+	observer *kernobs.RunObserver
 }
 
 // WorkerDeps carries the dependencies for NewWorker. Grouping them
@@ -243,6 +251,25 @@ func (w *Worker) WithRegistry(reg *Registry) *Worker {
 // `internal/app/build_bundles_workers.go`.
 func (w *Worker) WithBroker(cp CompletionPort) *Worker {
 	w.broker = cp
+	return w
+}
+
+// WithObserver attaches the kernel observability RunObserver to the
+// Worker (FASE 2, August 2026). Mirrors the WithRegistry/WithBroker
+// fluent-setter precedent so the composition root uses builder-style
+// chaining:
+//
+//	jobs.NewWorker(...).WithRegistry(reg).WithBroker(cp).WithObserver(obs)
+//
+// Nil-tolerant: a nil observer means runJob skips instrumentation
+// entirely (legacy behaviour preserved for fixtures that don't build
+// an observer). Production wiring ALWAYS supplies a non-nil observer
+// via the Runner (Runner.WithObserver → buildWorkers propagation).
+//
+// Returns the receiver to allow builder-style chaining at the
+// composition site.
+func (w *Worker) WithObserver(observer *kernobs.RunObserver) *Worker {
+	w.observer = observer
 	return w
 }
 

@@ -391,6 +391,39 @@ func TestMeasureStage_FromContext(t *testing.T) {
 
 // ── body runner ──────────────────────────────────────────────────────
 
+func TestRunObserver_StartRunForClaim(t *testing.T) {
+	obs := NewRunObserver(nil)
+	createdAt := time.Unix(1700000000, 0)
+	startedAt := time.Unix(1700000005, 0)
+	run := obs.StartRunForClaim(context.Background(), ClaimRunInfo{
+		JobID:      "j",
+		JobType:    "stock.run",
+		AttemptID:  "lease-1",
+		CreatedAt:  createdAt,
+		StartedAt:  &startedAt,
+		RetryCount: 2,
+	})
+
+	rep := run.Finish()
+	if rep.QueueWaitMs != 5000 {
+		t.Fatalf("queue_wait_ms = %d, want 5000 (started_at − created_at)", rep.QueueWaitMs)
+	}
+	if rep.AttemptID != "lease-1" {
+		t.Fatalf("attempt_id = %q, want lease-1", rep.AttemptID)
+	}
+	if rep.Counters.Retries != 2 {
+		t.Fatalf("counters.retries = %d, want 2", rep.Counters.Retries)
+	}
+
+	// Nil StartedAt → zero queue wait (no panic).
+	nilStart := obs.StartRunForClaim(context.Background(), ClaimRunInfo{
+		JobID: "j2", JobType: "t", CreatedAt: createdAt, StartedAt: nil,
+	})
+	if rep2 := nilStart.Finish(); rep2.QueueWaitMs != 0 {
+		t.Fatalf("queue_wait_ms with nil started_at = %d, want 0", rep2.QueueWaitMs)
+	}
+}
+
 func TestRunObserver_RunSuccess(t *testing.T) {
 	obs := NewRunObserver(nil)
 	rep, err := obs.Run(context.Background(), RunInfo{JobID: "j", JobType: "t"}, func(ctx context.Context) error {
@@ -485,6 +518,25 @@ func TestRun_Counters(t *testing.T) {
 	}
 	if c.ArtifactsCreated != 1 || c.ArtifactsReused != 1 {
 		t.Fatalf("artifacts = %d/%d", c.ArtifactsCreated, c.ArtifactsReused)
+	}
+}
+
+func TestRun_SetRetries(t *testing.T) {
+	obs := NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+
+	// Snapshot semantics: overwrite (not accumulate) — the value is the
+	// canonical job.RetryCount at claim time.
+	run.SetRetries(2)
+	run.SetRetries(3)
+	if got := run.Report().Counters.Retries; got != 3 {
+		t.Fatalf("retries = %d, want 3 (last write wins)", got)
+	}
+
+	// Negative input is clamped.
+	run.SetRetries(-5)
+	if got := run.Report().Counters.Retries; got != 0 {
+		t.Fatalf("retries = %d, want 0 after negative clamp", got)
 	}
 }
 

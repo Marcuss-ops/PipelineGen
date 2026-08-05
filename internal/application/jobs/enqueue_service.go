@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -34,7 +35,39 @@ import (
 const correlationLookupTimeout = 2 * time.Second
 
 // Enqueue enqueues a job from a domain request. Implements job.Service.
-func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+//
+// FASE 2 observability (kernel/observability): when the enqueue happens
+// inside a parent run's execution context (job-handler fan-out — script
+// items, voiceover siblings, image siblings), the outcome is registered
+// on the parent run's children summary. A NEW row → requested child; an
+// enqueue error → failed child. Idempotent returns of an already-existing
+// job are NOT re-registered (no double counting). This is the single
+// canonical child-creation point: every child path routes through here
+// with the parent's ctx.
+func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *job.Job, retErr error) {
+	// Child-run linkage (nil-tolerant: no run bound = plain enqueue,
+	// e.g. API-triggered). The defer runs after the enqueue mutex is
+	// released (LIFO: the Unlock defer below is registered later).
+	parentRun := kernobs.FromContext(ctx)
+	created := false
+	if parentRun != nil {
+		defer func() {
+			switch {
+			case created && ret != nil:
+				parentRun.RegisterChild(&kernobs.RunReport{
+					JobID:   ret.ID,
+					JobType: ret.Type,
+					Status:  kernobs.StatusRunning,
+				})
+			case !created && retErr != nil && req != nil:
+				parentRun.RegisterChild(&kernobs.RunReport{
+					JobType: req.Type,
+					Status:  kernobs.StatusFailed,
+				})
+			}
+		}()
+	}
+
 	if err := validateEnqueueRequest(req); err != nil {
 		return nil, err
 	}
@@ -198,6 +231,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		}
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
+	created = true
 
 	s.log.Info("job enqueued",
 		zap.String("job_id", j.ID),
