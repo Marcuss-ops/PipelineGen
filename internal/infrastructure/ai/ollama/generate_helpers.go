@@ -7,12 +7,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
-// estimateDurationSeconds estimates speech duration from word count using WordsPerMinute (140 WPM)
+// estimateDurationSeconds uses the resolved WPM carried by the request.
 func estimateDurationSeconds(wordCount int) int {
+	return estimateDurationSecondsWithWPM(wordCount, 0)
+}
+
+func estimateDurationSecondsWithWPM(wordCount, wordsPerMinute int) int {
 	if wordCount <= 0 {
 		return 0
 	}
-	return (wordCount * 60) / types.WordsPerMinute
+	if wordsPerMinute <= 0 {
+		wordsPerMinute = types.WordsPerMinute // compatibility for non-pipeline callers
+	}
+	return (wordCount * 60) / wordsPerMinute
 }
 
 func setTextDefaults(req *types.TextGenerationRequest) {

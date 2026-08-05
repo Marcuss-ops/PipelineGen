@@ -23,7 +23,6 @@ func (r *InventoryReader) facets(ctx context.Context) (*operator.AssetInventoryF
 	}{
 		{name: "media_type", keyColumn: "media_type", out: mediaTypes},
 		{name: "lifecycle_state", keyColumn: "lifecycle_state", out: lifecycleStates},
-		{name: "asset_state", keyColumn: "asset_state", out: assetStates},
 		{name: "index_state", keyColumn: "index_state", out: indexStates},
 		{name: "source", keyColumn: "source", out: sources},
 		{name: "provider", keyColumn: "provider", out: providers},
@@ -34,6 +33,9 @@ func (r *InventoryReader) facets(ctx context.Context) (*operator.AssetInventoryF
 			return nil, fmt.Errorf("operatorread.facets %s: %w", q.name, err)
 		}
 	}
+	if err := r.runAssetStateFacetQuery(ctx, assetStates); err != nil {
+		return nil, fmt.Errorf("operatorread.facets asset_state: %w", err)
+	}
 
 	return &operator.AssetInventoryFacets{
 		MediaTypes:      mergeCanonical(mediaTypes, operator.MediaTypeLabels()),
@@ -43,6 +45,24 @@ func (r *InventoryReader) facets(ctx context.Context) (*operator.AssetInventoryF
 		Sources:         fromMap(sources),
 		Providers:       fromMap(providers),
 	}, nil
+}
+
+func (r *InventoryReader) runAssetStateFacetQuery(ctx context.Context, out map[string]int64) error {
+	q := fmt.Sprintf("SELECT %s AS k, COUNT(*) AS c FROM media_assets m WHERE m.lifecycle_state != 'DELETED' GROUP BY k", assetStateProjectionSQL("m"))
+	rows, err := r.db.QueryContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return err
+		}
+		out[key] = count
+	}
+	return rows.Err()
 }
 
 func (r *InventoryReader) runFacetQuery(ctx context.Context, name, keyColumn string, out map[string]int64) error {

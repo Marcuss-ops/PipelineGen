@@ -129,12 +129,18 @@ func registerAIBackedProcessors(
 	}
 
 	// ── ClipSearch ───────────────────────────────────────────────────
-	// ClipSearchProcessor wires OllamaTranslator so that artlist_phrases
-	// extracted by EntitiesProcessor trigger actual Artlist clip searches.
-	// PR-LEGACY-UNAVAILABLE-CLIPSEARCH (2026-07-10): when OllamaTranslator
-	// is nil, the processor is skipped entirely — no unavailable adapter.
+	// ClipSearchProcessor can use the canonical VidRush provider registry
+	// directly. Manual media_plan.searches and locally extracted phrases do
+	// not require Ollama translation; only the legacy ClipServices fallback
+	// does.
 	var clipSearchAdapter adapters.ArtlistClipSearcher
-	if root.AI != nil && root.AI.OllamaTranslator != nil {
+	if vidRushProviders != nil {
+		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
+			clipSearchAdapter = &adapters.VidRushRegistryClipSearcher{Registry: vidRushProviders}
+			log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
+		}
+	}
+	if clipSearchAdapter == nil && root.AI != nil && root.AI.OllamaTranslator != nil {
 		clipSvc := usecase.ClipServices{
 			TranslationPort: root.AI.OllamaTranslator,
 			Logger:          log,
@@ -156,12 +162,6 @@ func registerAIBackedProcessors(
 		if root.Domains != nil && root.Domains.AssocService != nil {
 			clipSvc.AssocSvc = root.Domains.AssocService
 		}
-		if vidRushProviders != nil {
-			if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
-				clipSearchAdapter = &adapters.VidRushRegistryClipSearcher{Registry: vidRushProviders}
-				log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
-			}
-		}
 		if clipSearchAdapter == nil {
 			remoteClipSearchAdapter := &artlistClipSearchAdapter{svc: clipSvc}
 			if artlistWiring != nil && artlistWiring.ProviderAssets != nil {
@@ -181,7 +181,7 @@ func registerAIBackedProcessors(
 		)
 	}
 	if clipSearchAdapter == nil {
-		log.Warn("ClipSearchProcessor: OllamaTranslator not available; postprocessor not registered (clip_search will be skipped)")
+		log.Warn("ClipSearchProcessor: Artlist searcher not available; postprocessor not registered (clip_search will be skipped)")
 	} else {
 		if !ppReg.Register(adapters.NewClipSearchProcessorWithCache(clipSearchAdapter, vidRushCache, vidrushMetrics)) {
 			return fmt.Errorf("register clip_search processor: composition bug")

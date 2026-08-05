@@ -85,6 +85,9 @@ type Engine struct {
 	segmentWordsTolerancePercent   float64
 	totalWordsTolerancePercent     float64
 	maxSegmentRegenerationAttempts int
+	defaultLanguage                string
+	defaultTone                    string
+	wordsPerMinute                 int
 }
 
 // scriptOllamaGenerator is the narrow interface satisfied by both

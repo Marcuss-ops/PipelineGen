@@ -7,6 +7,7 @@ import (
 	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
 )
@@ -53,6 +54,7 @@ func (r *PostProcessorRegistry) Run(
 
 	result := &PipelineResult{
 		StageDurations: make(map[string]int64),
+		StageProgress:  make(map[string]job.StageProgress),
 	}
 	// Issue #1 (June 2026): seed FinalSpecScene with the
 	// pre-walk envelope so buildGenerationResult's empty-aware
@@ -135,6 +137,7 @@ func (r *PostProcessorRegistry) Run(
 
 		if err != nil {
 			result.StageDurations[string(name)] = elapsed
+			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, err.Error())
 			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
 			warnings = append(warnings, warn)
 			if ppResult != nil && !ppResult.IsEmpty() {
@@ -169,6 +172,7 @@ func (r *PostProcessorRegistry) Run(
 
 		if ppResult == nil {
 			result.StageDurations[string(name)] = elapsed
+			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "nil result")
 			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
@@ -182,6 +186,7 @@ func (r *PostProcessorRegistry) Run(
 		result.StageDurations[string(name)] = elapsed
 
 		if ppResult.IsEmpty() {
+			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "empty output")
 			warn := fmt.Sprintf("postprocessor %q returned empty output", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
@@ -191,6 +196,7 @@ func (r *PostProcessorRegistry) Run(
 			continue
 		}
 
+		recordProcessorProgress(result, name, plan, input, job.StageCompleted, plan.ID, "")
 		if policy == ProcessorRequired {
 			requiredRequested++
 			requiredSucceeded++

@@ -49,7 +49,7 @@ func (r *InventoryReader) get(ctx context.Context, assetID string) (*operator.As
 }
 
 func (r *InventoryReader) getItem(ctx context.Context, assetID string) (*operator.AssetInventoryItem, error) {
-	const q = `WITH loc_flags AS (
+	q := `WITH loc_flags AS (
     SELECT
         asset_id,
         MAX(CASE WHEN location_kind = 'local' THEN 1 ELSE 0 END) AS has_local,
@@ -71,7 +71,7 @@ SELECT
     m.provider,
     m.media_type,
     m.lifecycle_state,
-    m.asset_state,
+    %s AS asset_state,
     m.index_state,
     m.file_hash AS content_hash,
     json_extract(COALESCE(m.metadata_json, '{}'), '$.indexed_content_hash') AS indexed_content_hash,
@@ -95,6 +95,7 @@ WHERE m.id = ? AND m.lifecycle_state != 'DELETED'`
 	var hasLocal, hasDrive, hasEmbedding int
 	var createdAt, updatedAt string
 
+	q = fmt.Sprintf(q, assetStateProjectionSQL("m"))
 	err := r.db.QueryRowContext(ctx, q, assetID).Scan(
 		&item.ID,
 		&item.Name,

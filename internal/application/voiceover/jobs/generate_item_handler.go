@@ -26,6 +26,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -127,6 +128,7 @@ func (h *GenerateItemJobHandler) HandleJob(
 	// utility captures the canonical nil-tolerance gate so consumer
 	// sites can call pf(...) directly without per-call nil checks.
 	pf := appjobs.SafeProgressFn(tools)
+	ef := appjobs.SafeEventFn(tools)
 
 	pf(5, "starting voiceover.generate_item")
 
@@ -134,6 +136,11 @@ func (h *GenerateItemJobHandler) HandleJob(
 	if err := json.Unmarshal(j.Payload, &item); err != nil {
 		return nil, fmt.Errorf("voiceover.generate_item: unmarshal payload: %w", err)
 	}
+
+	ef("stage_progress", "Stage progress updated", map[string]any{
+		"stage": string(job.StageVoiceover), "language": item.Language,
+		"status": string(job.StageRunning), "job_id": j.ID,
+	})
 
 	if err := item.Validate(); err != nil {
 		pf(100, "voiceover.generate_item validation failed")
@@ -155,6 +162,10 @@ func (h *GenerateItemJobHandler) HandleJob(
 			zap.String("language", string(item.Language)),
 			zap.Bool("retryable", isRetryable),
 			zap.Error(err))
+		ef("stage_progress", "Stage progress updated", map[string]any{
+			"stage": string(job.StageVoiceover), "language": item.Language,
+			"status": string(job.StageFailed), "job_id": j.ID, "error": err.Error(),
+		})
 		pf(100, "voiceover.generate_item execution failed")
 		return toItemResultMap(res, &item, j.ID), fmt.Errorf("voiceover.generate_item: execute: %w", err)
 	}
@@ -180,10 +191,18 @@ func (h *GenerateItemJobHandler) HandleJob(
 			zap.String("language", string(item.Language)),
 			zap.String("status", string(res.Status)),
 			zap.String("error", res.Error))
+		ef("stage_progress", "Stage progress updated", map[string]any{
+			"stage": string(job.StageVoiceover), "language": item.Language,
+			"status": string(job.StageFailed), "job_id": j.ID, "error": errMsg,
+		})
 		pf(100, "voiceover.generate_item pipeline failed: "+string(res.Status))
 		return toItemResultMap(res, &item, j.ID), fmt.Errorf("%s", errMsg)
 	}
 
+	ef("stage_progress", "Stage progress updated", map[string]any{
+		"stage": string(job.StageVoiceover), "language": item.Language,
+		"status": string(job.StageCompleted), "job_id": j.ID,
+	})
 	pf(100, "voiceover.generate_item execution complete")
 	return toItemResultMap(res, &item, j.ID), nil
 }
@@ -225,6 +244,9 @@ func toItemResultMap(res *voiceover.VoiceoverItemResult, item *voiceover.Generat
 	}
 	if res.ErrorCode != "" {
 		m["error_code"] = res.ErrorCode
+	}
+	if len(res.StageProgress) > 0 {
+		m["stage_progress"] = res.StageProgress
 	}
 	return m
 }

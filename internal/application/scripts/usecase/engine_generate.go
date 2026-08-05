@@ -69,16 +69,24 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	if title == "" {
 		title = topic
 	}
-	// cfg is the canonical script-generation SSOT (language, tone, WPM).
-	// All defaults flow from a single call so the intent is visible at a
-	// glance and the struct is stack-allocated once per generation.
-	cfg := defaults.DefaultScriptConfig()
-
+	// Defaults are injected by the composition root after the YAML/env/
+	// default/validate resolution pipeline. The package SSOT is retained
+	// only for isolated legacy fixtures that do not configure the engine.
 	if language == "" {
-		language = cfg.DefaultLanguage
+		language = e.defaultLanguage
+		if language == "" {
+			language = defaults.DefaultScriptConfig().DefaultLanguage
+		}
 	}
 	if tone == "" {
-		tone = cfg.DefaultTone
+		tone = e.defaultTone
+		if tone == "" {
+			tone = defaults.DefaultScriptConfig().DefaultTone
+		}
+	}
+	wordsPerMinute := e.wordsPerMinute
+	if wordsPerMinute <= 0 {
+		wordsPerMinute = defaults.DefaultScriptConfig().WordsPerMinute
 	}
 
 	if e.log != nil {
@@ -173,7 +181,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 				WordCount:    result.WordCount,
 				Model:        result.Model,
 				CacheStatus:  "exact_hit",
-				EstDuration:  (result.WordCount * 60) / cfg.WordsPerMinute,
+				EstDuration:  (result.WordCount * 60) / wordsPerMinute,
 				ClipEvidence: plan.ClipEvidence,
 			}, nil
 		}
@@ -227,8 +235,8 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		// default. The engine ships raw narrative prose; the
 		// downstream SceneSynthesizer + scene binder + postprocessor
 		// pipeline own all structured fields (schema_version /
-		// specscene / scene IDs / scene indexes / kind labels).
-		OutputMode: ollamatypes.OutputModePlainText,
+		// specscene / scene IDs / scene indexes / kind labels).		OutputMode:       ollamatypes.OutputModePlainText,
+		WordsPerMinute: wordsPerMinute,
 	}
 
 	genResult, err := e.generateSegments(ctx, plan, ollamaReq)

@@ -5,6 +5,7 @@ import (
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── mergePostProcessResult: aggregate helper ──────────────────────────
@@ -56,6 +57,14 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	// P1 #10 (June 2026): record per-processor wall-clock timing.
 	if dst.StageDurations == nil {
 		dst.StageDurations = make(map[string]int64)
+	}
+	if len(src.StageProgress) > 0 {
+		if dst.StageProgress == nil {
+			dst.StageProgress = make(map[string]job.StageProgress)
+		}
+		for stage, progress := range src.StageProgress {
+			dst.StageProgress[stage] = progress
+		}
 	}
 	// Concurrency safety: ProcessInput.SpecScene.Scenes may share
 	// its backing array with the engine result (or with another
@@ -402,11 +411,73 @@ func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg
 			continue
 		}
 		if i, ok := index[seg.SegmentID]; ok {
-			out[i] = seg
+			out[i] = mergeVidRushSegmentResult(out[i], seg)
 			continue
 		}
 		index[seg.SegmentID] = len(out)
 		out = append(out, seg)
+	}
+	return out
+}
+
+// mergeVidRushSegmentResult preserves provider discoveries when a later
+// processor returns only its own asset delta (for example, internet_images
+// returning an image candidate after clip_search returned Artlist clips).
+// Segment identity is shared, but provider assets are additive state and
+// must not be replaced by the last processor to touch the segment.
+func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
+	out := cloneVidRushSegmentResult(dst)
+	if src.SceneID != "" {
+		out.SceneID = src.SceneID
+	}
+	if src.Text != "" {
+		out.Text = src.Text
+	}
+	if src.TextHash != "" {
+		out.TextHash = src.TextHash
+	}
+	if len(src.Insights.Entities) > 0 {
+		out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), src.Insights.Entities...)
+	}
+	if len(src.Insights.ImportantPhrases) > 0 {
+		out.Insights.ImportantPhrases = append([]string(nil), src.Insights.ImportantPhrases...)
+	}
+	if len(src.Insights.ImportantWords) > 0 {
+		out.Insights.ImportantWords = append([]string(nil), src.Insights.ImportantWords...)
+	}
+	if len(src.Insights.ArtlistQueries) > 0 {
+		out.Insights.ArtlistQueries = append([]string(nil), src.Insights.ArtlistQueries...)
+	}
+	if len(src.Insights.ImageQueries) > 0 {
+		out.Insights.ImageQueries = append([]string(nil), src.Insights.ImageQueries...)
+	}
+	out.Assets.Candidates = appendProviderCandidatesUnique(out.Assets.Candidates, src.Assets.Candidates)
+	out.Assets.SecondaryImages = appendProviderCandidatesUnique(out.Assets.SecondaryImages, src.Assets.SecondaryImages)
+	out.Assets.GeneratedImages = appendProviderCandidatesUnique(out.Assets.GeneratedImages, src.Assets.GeneratedImages)
+	if src.Assets.PrimaryVideo != nil {
+		primary := *src.Assets.PrimaryVideo
+		out.Assets.PrimaryVideo = &primary
+	}
+	if src.Assets.SelectionReason != "" {
+		out.Assets.SelectionReason = src.Assets.SelectionReason
+	}
+	if src.Assets.CandidateSetHash != "" {
+		out.Assets.CandidateSetHash = src.Assets.CandidateSetHash
+	}
+	if src.Cache.Extraction != "" {
+		out.Cache.Extraction = src.Cache.Extraction
+	}
+	if src.Cache.Artlist != "" {
+		out.Cache.Artlist = src.Cache.Artlist
+	}
+	if src.Cache.InternetImages != "" {
+		out.Cache.InternetImages = src.Cache.InternetImages
+	}
+	if src.Cache.ImageGeneration != "" {
+		out.Cache.ImageGeneration = src.Cache.ImageGeneration
+	}
+	if src.Cache.Binding != "" {
+		out.Cache.Binding = src.Cache.Binding
 	}
 	return out
 }

@@ -95,7 +95,7 @@ func TestIndexState_StateMachineExt_IndexingSkippedNoIndexer(t *testing.T) {
 // TestIndexState_IsRetryPending_RejectsAllOtherStates pins that the
 // IsRetryPending() predicate is exclusive — only
 // StateIndexingSkippedNoIndexer returns true. Pre-existing alphabet
-// states (including the deprecated INDEX_PENDING) report false so a
+// states (including removed legacy states) report false so a
 // future "auto-promote INDEX_PENDING to retry-pending on retry" PR
 // cannot accidentally collide with the new state semantics.
 func TestIndexState_IsRetryPending_RejectsAllOtherStates(t *testing.T) {
@@ -110,8 +110,6 @@ func TestIndexState_IsRetryPending_RejectsAllOtherStates(t *testing.T) {
 		StateIndexingFailed,
 		StateIndexDeletePending,
 		StateDELETED,
-		StateIndexPending, // deprecated — must NOT collide with new state
-		StateIndexFailed,  // deprecated
 	}
 	for _, s := range nonRetryPending {
 		t.Run(string(s)+"_not_retry_pending", func(t *testing.T) {

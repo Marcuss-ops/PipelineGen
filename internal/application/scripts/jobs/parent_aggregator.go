@@ -89,13 +89,14 @@ func (r *ScriptParentResult) IsAwaitingAggregation() bool {
 // needed). "parent_state" remains a string rather than typed enum so
 // the wire shape stays JSON-stable across future refactors.
 type ScriptChildResult struct {
-	OK          *bool  `json:"ok,omitempty"`
-	Status      string `json:"status"`
-	ItemID      string `json:"item_id"`
-	JobID       string `json:"job_id"`
-	ParentJobID string `json:"parent_job_id"`
-	RequestID   string `json:"request_id,omitempty"`
-	Error       string `json:"error,omitempty"`
+	OK            *bool                        `json:"ok,omitempty"`
+	Status        string                       `json:"status"`
+	ItemID        string                       `json:"item_id"`
+	JobID         string                       `json:"job_id"`
+	ParentJobID   string                       `json:"parent_job_id"`
+	RequestID     string                       `json:"request_id,omitempty"`
+	Error         string                       `json:"error,omitempty"`
+	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
 	// DocLink and DocID are propagated from the child handler's
 	// toScriptItemResultMap (2026-07-07 fix). When the child generated
 	// a Google Doc, these fields carry the doc URL and ID so the
@@ -286,6 +287,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	}
 	childDocLinks := make(map[string]string) // item_id → doc_link (2026-07-07 fix)
 	childDocIDs := make(map[string]string)   // item_id → doc_id (2026-07-07 fix)
+	childStageProgress := make(map[string]job.StageProgress)
 	for _, childID := range childIDs {
 		var status job.Status
 		var childOK bool
@@ -349,6 +351,9 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 				stageStatuses[stageIndex].Status = job.StageCompleted
 			}
 		}
+		if len(childResult.StageProgress) > 0 {
+			childStageProgress = job.MergeStageProgress(childStageProgress, childResult.StageProgress)
+		}
 		if (status == job.StatusSucceeded) && childOK {
 			succeeded++
 			// Collect doc_link/doc_id from succeeded children so the
@@ -394,7 +399,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		ParentRevision: j.Revision,
 		ChildIDs:       childIDs,
 		PerLanguage:    parentResult.PerLanguage,
-		StageProgress:  job.AggregateStageProgressByStage(stageStatuses),
+		StageProgress:  job.MergeStageProgress(job.AggregateStageProgressByStage(stageStatuses), childStageProgress),
 		ChildDocLinks:  childDocLinks,
 		ChildDocIDs:    childDocIDs,
 	}

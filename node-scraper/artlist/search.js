@@ -127,6 +127,35 @@ export async function fetchClipDetailsBatch(
 }
 
 /**
+ * Preserve links observed in the Artlist result grid when detail hydration is
+ * blocked by an anti-bot challenge. These are discovery candidates, not
+ * verified streams; materialization still resolves and validates them.
+ */
+export function buildPageOnlyClips(term, pageUrls, limit) {
+  const seen = new Set();
+  const clips = [];
+  for (const rawURL of Array.isArray(pageUrls) ? pageUrls : []) {
+    const clipPageURL = String(rawURL || '').trim();
+    if (!clipPageURL || seen.has(clipPageURL)) continue;
+    seen.add(clipPageURL);
+    const clipID = extractClipId(clipPageURL);
+    clips.push({
+      clip_id: clipID,
+      id: clipID,
+      title: String(term || '').trim(),
+      name: String(term || '').trim(),
+      clip_page_url: clipPageURL,
+      page_url: clipPageURL,
+      primary_url: clipPageURL,
+      preview_url: clipPageURL,
+      stream_urls: [],
+    });
+    if (clips.length >= Math.max(1, Number(limit) || 1)) break;
+  }
+  return clips;
+}
+
+/**
  * Hybrid search (FAST PATH + DOM FALLBACK). Exits with a JSON-shaped
  * payload {term, search_url, clips: Array<Clip>}.
  *
@@ -193,8 +222,13 @@ export async function searchArtlist(
   const responseHandler = setupApiInterception(page, apiResponses);
 
   try {
-    const mainResponse = await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 120000 });
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    // Artlist keeps HLS media requests open after the result grid is ready,
+    // so networkidle2 can never be a reliable completion signal here. The
+    // search API responses and result links are available shortly after the
+    // document loads; stop waiting for the player streams and let the
+    // interception/parser phase run deterministically.
+    const mainResponse = await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 1800));
 
     const challenge = classifyChallengePage({
       status: mainResponse?.status?.(),
@@ -258,6 +292,7 @@ export async function searchArtlist(
     const interceptedPageUrls = intercepted
       .filter((c) => c.clip_page_url)
       .map((c) => c.clip_page_url);
+    const discoveredPageUrls = [...interceptedPageUrls];
     const seenUrls = new Set(interceptedPageUrls);
     const pendingUrls = [...interceptedPageUrls];
 
@@ -292,6 +327,7 @@ export async function searchArtlist(
         targetCandidates
       );
       pendingUrls.push(...fresh);
+      discoveredPageUrls.push(...fresh);
       return fresh;
     };
 
@@ -311,10 +347,15 @@ export async function searchArtlist(
       console.error('[artlist] cookie export failed:', e.message);
     }
 
+    let resultClips = overfetch.clips.map(({ score, ...clip }) => clip);
+    if (resultClips.length === 0) {
+      resultClips = buildPageOnlyClips(term, discoveredPageUrls, limit);
+    }
+
     return {
       term,
       search_url: searchUrl,
-      clips: overfetch.clips.map(({ score, ...clip }) => clip),
+      clips: resultClips,
     };
   } finally {
     try {

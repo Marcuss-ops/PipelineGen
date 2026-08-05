@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/immutability"
 )
 
@@ -63,12 +64,24 @@ func (i BatchItem) isSuccessful() bool {
 // BatchRequest value is byte-equivalent to its pre-call value for
 // all primitive fields; composite fields are freshly bound.
 func normalizeBatchRequest(req_in BatchRequest) BatchRequest {
+	return normalizeBatchRequestWithDefaults(req_in, config.DefaultVoiceoverDefaults())
+}
+
+func normalizeBatchRequestWithConfig(req_in BatchRequest, cfg *config.Config) BatchRequest {
+	defaults := config.DefaultVoiceoverDefaults()
+	if cfg != nil {
+		defaults = cfg.Voiceover.Defaults
+	}
+	return normalizeBatchRequestWithDefaults(req_in, defaults)
+}
+
+func normalizeBatchRequestWithDefaults(req_in BatchRequest, defaults config.VoiceoverDefaultsConfig) BatchRequest {
 	// INPUT-IMMUTABILITY-COPY-ON-WRITE-MIGRATION: see architecture/
 	// deprecations.yaml for the godlike/07 audit-pin + the godlike
 	// forward-pointer entry.
 	cloned := immutability.CloneWith(req_in, func(r *BatchRequest) {
 		if r.FilenameTemplate == "" {
-			r.FilenameTemplate = "{slug}_{lang}.mp3"
+			r.FilenameTemplate = defaults.DefaultFilenameTemplate
 		}
 		// PR-VO-A2: route through the canonical asset.PipelineStrategy
 		// normaliser so process.go's `req_in.Strategy == "replace"`
@@ -77,12 +90,13 @@ func normalizeBatchRequest(req_in BatchRequest) BatchRequest {
 		// inputs collapse to "verify" — the read-through-cache
 		// default — which is the historically documented "no force"
 		// behaviour of NormalizeStrategy.
-		r.Strategy = string(asset.NormalizeStrategy(r.Strategy, false))
-		if len(r.Languages) == 0 {
-			// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string
-			// literal implicitly converts to the Language named
-			// type — wire shape unchanged.
-			r.Languages = []Language{"en"}
+		if strings.TrimSpace(r.Strategy) == "" {
+			r.Strategy = defaults.DefaultStrategy
+		} else {
+			r.Strategy = string(asset.NormalizeStrategy(r.Strategy, false))
+		}
+		if len(r.Languages) == 0 && strings.TrimSpace(defaults.DefaultLanguage) != "" {
+			r.Languages = []Language{Language(defaults.DefaultLanguage)}
 		}
 		if len(r.VoiceOverrides) == 0 {
 			if hydrated := voiceOverridesFromMetadata(r.Metadata); len(hydrated) > 0 {

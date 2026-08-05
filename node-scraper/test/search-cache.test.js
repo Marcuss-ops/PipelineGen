@@ -58,4 +58,21 @@ describe('search cache', () => {
     assert.equal(cached.query, 'business team office');
     assert.equal(cached.results[0].clip_id, '1');
   });
+
+  test('related lookup returns only recent non-empty Artlist results', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'artlist-related-cache-'));
+    const cache = createSearchCache(path.join(dir, 'cache.sqlite'), 60_000);
+    const request = { query: 'maya ruins', filters: {}, page: 1, limit: 3 };
+    const response = {
+      ok: true, provider: 'artlist', query: request.query,
+      clips: [{ clip_id: '346928', clip_page_url: 'https://artlist.io/clip/346928' }],
+    };
+    cache.put(buildSearchCacheKey(request), request, response, -1);
+
+    const related = cache.getRelated('ancient Maya temples jungle aerial cinematic', {
+      maxAgeMs: 24 * 60 * 60 * 1000,
+    });
+    assert.equal(related?.query, 'maya ruins');
+    assert.equal(related?.response.clips[0].clip_id, '346928');
+  });
 });

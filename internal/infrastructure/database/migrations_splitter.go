@@ -39,6 +39,7 @@ func splitSQLStatements(body string) []string {
 		current    strings.Builder
 		inString   bool // tracks single-quoted SQL string literals
 		beginDepth int  // tracks BEGIN ... END nesting
+		caseDepth  int  // tracks CASE ... END nesting inside trigger bodies
 	)
 	flush := func() {
 		stmt := strings.TrimSpace(current.String())
@@ -80,6 +81,8 @@ func splitSQLStatements(body string) []string {
 			}
 			word := strings.ToUpper(string(runes[i:j]))
 			switch word {
+			case "CASE":
+				caseDepth++
 			case "BEGIN":
 				// Peek past whitespace at j: if the next word is one of SQLite's
 				// transaction modifiers (IMMEDIATE/TRANSACTION/EXCLUSIVE/DEFERRED),
@@ -92,7 +95,9 @@ func splitSQLStatements(body string) []string {
 					beginDepth++
 				}
 			case "END":
-				if beginDepth > 0 {
+				if caseDepth > 0 {
+					caseDepth--
+				} else if beginDepth > 0 {
 					beginDepth--
 				}
 			}
@@ -104,7 +109,7 @@ func splitSQLStatements(body string) []string {
 		}
 
 		// Statement boundary: `;` outside any BEGIN...END and outside strings.
-		if c == ';' && beginDepth == 0 {
+		if c == ';' && beginDepth == 0 && caseDepth == 0 {
 			current.WriteRune(c)
 			flush()
 			continue

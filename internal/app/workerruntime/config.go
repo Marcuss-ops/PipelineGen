@@ -32,15 +32,12 @@ import (
 // preserved here via Run()'s log-Fatal path — no silent fall-back
 // to defaults.
 func LoadConfig(cfgPath string) (*config.Config, error) {
-	cfg, err := config.GetFromPath(cfgPath)
+	resolved, err := config.GetResolvedFromPath(cfgPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config from %q: %w", cfgPath, err)
 	}
-	if cfg == nil {
-		return nil, fmt.Errorf("nil config from config.GetFromPath(%q)", cfgPath)
+	if resolved == nil {
+		return nil, fmt.Errorf("nil resolved config from %q", cfgPath)
 	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("config validation failed: %w", err)
-	}
-	return cfg, nil
+	return resolved.View(), nil
 }

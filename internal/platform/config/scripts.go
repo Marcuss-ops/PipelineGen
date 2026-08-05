@@ -40,6 +40,10 @@ type ScriptCapabilityConfig struct {
 //
 // Defaults match the previous hard-coded values to preserve behavior.
 type ScriptsConfig struct {
+	// Defaults is the canonical script-generation default set. It is
+	// resolved after YAML and environment overrides during bootstrap.
+	Defaults ScriptDefaultsConfig `yaml:"defaults"`
+
 	// BatchWebSearchConcurrency caps the parallel SearXNG searches in
 	// batch generation. Each search is a network call; 4 is a
 	// safe default for a single SearXNG instance. Raise for a clustered

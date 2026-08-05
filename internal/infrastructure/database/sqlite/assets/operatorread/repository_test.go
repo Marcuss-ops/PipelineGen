@@ -83,7 +83,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-1", "Beluga underwater", "beluga.mp4", "artlist", "artlist", "clip",
-		"ACTIVE", "READY", "INDEXED",
+		"ACTIVE", "DISCOVERED", "INDEXED",
 		"hash-1", `{"indexed_content_hash":"hash-1","embedding_model_version":"siglip-v2"}`,
 		"[0.1]", "media_assets_v3", "", now, now)
 
@@ -111,7 +111,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-4", "Stale asset", "stale.mp4", "artlist", "artlist", "clip",
-		"ACTIVE", "INDEXED", "INDEXED",
+		"ACTIVE", "DISCOVERED", "INDEXED",
 		"hash-4-new", `{"indexed_content_hash":"hash-4-old"}`, "", "", "", now, now)
 
 	// not indexable
@@ -120,7 +120,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-5", "Sound effect", "sfx.mp3", "artlist", "artlist", "sound_effect",
-		"ACTIVE", "READY", "NOT_INDEXABLE",
+		"ACTIVE", "UPLOADED", "NOT_INDEXABLE",
 		"hash-5", `{}`, "", "", "", now, now)
 
 	// deleted asset (should be excluded by default)
@@ -129,7 +129,7 @@ func seedTestData(t *testing.T, db *sql.DB) {
 		 file_hash, metadata_json, embedding_json, collection_version, error, created_at, updated_at)
 	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"asset-6", "Deleted asset", "deleted.mp4", "stock", "stock", "clip",
-		"DELETED", "READY", "DELETED",
+		"DELETED", "FAILED_PERMANENT", "DELETED",
 		"hash-6", `{}`, "", "", "", now, now)
 
 	// locations

@@ -214,7 +214,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	return &types.GenerationResult{
 		Script:      result,
 		WordCount:   wordCount,
-		EstDuration: estimateDurationSeconds(wordCount),
+		EstDuration: estimateDurationSecondsWithWPM(wordCount, req.WordsPerMinute),
 		Model:       req.Model,
 		Prompt:      prompts.BuildTextPrompt(&req),
 	}, nil
@@ -234,7 +234,7 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 	return &types.GenerationResult{
 		Script:      result,
 		WordCount:   wordCount,
-		EstDuration: estimateDurationSeconds(wordCount),
+		EstDuration: estimateDurationSecondsWithWPM(wordCount, 0),
 		Model:       req.Model,
 		Prompt:      req.OriginalScript,
 	}, nil

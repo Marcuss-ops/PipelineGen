@@ -202,7 +202,7 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 		"Follow the segment order strictly",
 		"Do not skip, merge, or reorder topics",
 		"Each segment must treat exclusively the subject named in its Topic",
-		"Every segment must contain at least 100 words.",
+		"Because this request declares one single-scene segment, write between 180 and 260 words",
 		"Do not invent names, dates, scores, results, or events",
 		"Do not print segment titles",
 		"Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene",

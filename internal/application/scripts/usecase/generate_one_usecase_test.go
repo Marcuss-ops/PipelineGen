@@ -536,6 +536,7 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 		"narrative.planned",
 		"script.generated",
 		"scenes.created",
+		"stage_progress",
 		"quality.checked",
 		"job.completed",
 	}

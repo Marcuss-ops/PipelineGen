@@ -83,61 +83,66 @@ type LinguisticsConfig struct {
 // adapters BEFORE the semaphore acquire so the timeout budget includes both
 // the queue-wait and the actual execution.
 type VoiceoverConcurrencyConfig struct {
+	// Defaults is the immutable voiceover request/pipeline policy resolved
+	// during bootstrap. Constructors consume these values; they do not
+	// synthesize local replacements when a field is zero.
+	Defaults VoiceoverDefaultsConfig `yaml:"defaults"`
+
 	// MaxConcurrentDriveUploads limits parallel Google Drive upload calls
 	// across the voiceover pipeline. Recommended range: 2-5.
 	// Default: 3.
-	MaxConcurrentDriveUploads int `yaml:"max_concurrent_drive_uploads" default:"3"`
+	MaxConcurrentDriveUploads int `yaml:"max_concurrent_drive_uploads" env:"VELOX_VOICEOVER_MAX_CONCURRENT_DRIVE_UPLOADS" default:"3"`
 
 	// MaxConcurrentTTS limits parallel text-to-speech synthesis calls.
 	// TTS is CPU-bound (ffmpeg/edge-tts spawn per-call processes); keeping
 	// this at 1-2 avoids I/O oversubscription. Default: 2.
-	MaxConcurrentTTS int `yaml:"max_concurrent_tts" default:"2"`
+	MaxConcurrentTTS int `yaml:"max_concurrent_tts" env:"VELOX_VOICEOVER_MAX_CONCURRENT_TTS" default:"2"`
 
 	// Drive retry budget.
 
 	// DriveUploadMaxRetries is the maximum number of Drive upload attempts
 	// (inclusive) before the call fails permanently. Default: 3.
-	DriveUploadMaxRetries int `yaml:"drive_upload_max_retries" default:"3"`
+	DriveUploadMaxRetries int `yaml:"drive_upload_max_retries" env:"VELOX_VOICEOVER_DRIVE_UPLOAD_MAX_RETRIES" default:"3"`
 
 	// DriveUploadRetryBackoffMs is the initial backoff in milliseconds
 	// before the first Drive upload retry. The pkg/retry loop applies
 	// exponential backoff with factor 2.0 capped at 10s. Default: 1000 (1s).
-	DriveUploadRetryBackoffMs int `yaml:"drive_upload_retry_backoff_ms" default:"1000"`
+	DriveUploadRetryBackoffMs int `yaml:"drive_upload_retry_backoff_ms" env:"VELOX_VOICEOVER_DRIVE_UPLOAD_RETRY_BACKOFF_MS" default:"1000"`
 
 	// Per-stage timeout budgets (seconds).
 
 	// TTSTimeoutSec is the per-call timeout for TTS synthesis.
 	// Default: 120 (2 min).
-	TTSTimeoutSec int `yaml:"tts_timeout_sec" default:"120"`
+	TTSTimeoutSec int `yaml:"tts_timeout_sec" env:"VELOX_VOICEOVER_TTS_TIMEOUT_SEC" default:"120"`
 
 	// DriveUploadTimeoutSec is the per-call timeout for a single Drive
 	// upload attempt (NOT the cumulative retry budget). Default: 300 (5 min).
-	DriveUploadTimeoutSec int `yaml:"drive_upload_timeout_sec" default:"300"`
+	DriveUploadTimeoutSec int `yaml:"drive_upload_timeout_sec" env:"VELOX_VOICEOVER_DRIVE_UPLOAD_TIMEOUT_SEC" default:"300"`
 
 	// OllamaTimeoutSec is the per-call timeout for Ollama translation calls
 	// from the voiceover pipeline. Default: 120 (2 min).
-	OllamaTimeoutSec int `yaml:"ollama_timeout_sec" default:"120"`
+	OllamaTimeoutSec int `yaml:"ollama_timeout_sec" env:"VELOX_VOICEOVER_OLLAMA_TIMEOUT_SEC" default:"120"`
 
 	// TTS retry + circuit breaker (FASE 6, July 2026).
 
 	// TTSMaxRetries is the maximum number of TTS synthesis attempts
 	// (inclusive) before the call fails permanently. Default: 3.
-	TTSMaxRetries int `yaml:"tts_max_retries" default:"3"`
+	TTSMaxRetries int `yaml:"tts_max_retries" env:"VELOX_VOICEOVER_TTS_MAX_RETRIES" default:"3"`
 
 	// TTSRetryBackoffMs is the initial backoff in milliseconds before
 	// the first TTS retry. Exponential backoff with factor 2.0.
 	// Default: 500 (0.5s).
-	TTSRetryBackoffMs int `yaml:"tts_retry_backoff_ms" default:"500"`
+	TTSRetryBackoffMs int `yaml:"tts_retry_backoff_ms" env:"VELOX_VOICEOVER_TTS_RETRY_BACKOFF_MS" default:"500"`
 
 	// TTSCircuitBreakerThreshold is the number of consecutive TTS
 	// failures after which the circuit breaker opens and TTS calls
 	// are rejected immediately (no attempt). Default: 5.
-	TTSCircuitBreakerThreshold int `yaml:"tts_circuit_breaker_threshold" default:"5"`
+	TTSCircuitBreakerThreshold int `yaml:"tts_circuit_breaker_threshold" env:"VELOX_VOICEOVER_TTS_CIRCUIT_BREAKER_THRESHOLD" default:"5"`
 
 	// TTSCircuitBreakerCooldownMs is the cooldown period in
 	// milliseconds before the circuit breaker transitions from
 	// open → half-open, allowing a single probe call. Default: 30000 (30s).
-	TTSCircuitBreakerCooldownMs int `yaml:"tts_circuit_breaker_cooldown_ms" default:"30000"`
+	TTSCircuitBreakerCooldownMs int `yaml:"tts_circuit_breaker_cooldown_ms" env:"VELOX_VOICEOVER_TTS_CIRCUIT_BREAKER_COOLDOWN_MS" default:"30000"`
 }
 
 // Config holds all configuration for the application.

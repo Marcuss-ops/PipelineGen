@@ -1,19 +1,15 @@
 // Package scan — percheck_index_pending_writer_ban.go
 //
-// Forward-prevention gate that BANS writing the deprecated
+// Forward-prevention gate that bans reintroducing the retired
 // asset.StateIndexPending value in production code under
 // internal/application/ and internal/infrastructure/.
 //
-// StateIndexPending is retained in the domain only for DB
-// backward-compat. New production code MUST use the canonical
+// StateIndexPending was retired by migration 189. New production code MUST use the canonical
 // asset lifecycle (asset.StateDiscovered / NewIndexableAssetState)
 // and MUST NOT introduce new writers of INDEX_PENDING.
 //
 // Exempt zones:
-//   - internal/kernel/asset/index_state.go — the canonical definition
-//     of the deprecated value.
-//   - internal/application/assets/operator/index_health_resolver.go —
-//     reads legacy state for backward-compat health reporting.
+//   - internal/kernel/asset/index_state.go — the canonical IndexState definition.
 //   - **/*_test.go — regression-guard surface.
 //   - cmd/archcheck/scan — the scanner's own source code.
 //
@@ -31,10 +27,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// indexPendingWriterRe matches any use of the deprecated state literal.
-// The gate is intentionally broad: new production code should not
-// reference the deprecated value at all; legitimate readers are
-// listed in the exemption set below.
+// indexPendingWriterRe matches any use of the retired state literal.
+// The gate remains broad so the removed symbol cannot be reintroduced.
 var indexPendingWriterRe = regexp.MustCompile(`\basset\.StateIndexPending\b`)
 
 const indexPendingWriterRule = "percheck_index_pending_writer_ban"
@@ -52,7 +46,8 @@ var indexPendingWriterSkipPathPrefixes = []string{
 }
 
 var indexPendingWriterExemptPaths = map[string]bool{
-	"internal/kernel/asset/index_state.go":                          true,
+	// The operator read-model resolver may still recognize the retired
+	// value for compatibility reads; it does not write the state.
 	"internal/application/assets/operator/index_health_resolver.go": true,
 }
 

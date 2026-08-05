@@ -168,9 +168,10 @@ export async function openBrowser(profileDir) {
     '--no-default-browser-check',
   ];
   try {
+    const headless = process.env.ARTLIST_HEADLESS === 'false' ? false : 'new';
     const browser = await puppeteer.launch({
       executablePath,
-      headless: 'new',
+      headless,
       userDataDir,
       args,
     });

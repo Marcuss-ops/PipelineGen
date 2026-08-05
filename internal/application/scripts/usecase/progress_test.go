@@ -153,7 +153,7 @@ func TestProgressTracker_PhaseHelper_VariadicArgs(t *testing.T) {
 	rec := &recordingProgressFn{}
 	tracker := NewProgressTracker(rec.record, "v-1")
 
-	tracker.phase(90, "Running postprocessor: %s...", "clip_bindings")
+	tracker.phase(95, "Running postprocessor: %s...", "clip_bindings")
 
 	_, gotMessage, _ := rec.snapshot()
 	assert.Equal(t, "[v-1] Running postprocessor: clip_bindings...", gotMessage,
@@ -267,7 +267,7 @@ func TestProgressTracker_HappyPath_PhaseMethodsEmit(t *testing.T) {
 		// bare method-value `(*ProgressTracker).PhasePostprocess`
 		// has type `func(*ProgressTracker, string)` and would NOT
 		// match the `fn func(*ProgressTracker)` case-table type.
-		{"PhasePostprocess", func(t *ProgressTracker) { t.PhasePostprocess("test") }, 90},
+		{"PhasePostprocess", func(t *ProgressTracker) { t.PhasePostprocess("test") }, 95},
 		{"PhaseComplete", (*ProgressTracker).PhaseComplete, 100},
 	}
 

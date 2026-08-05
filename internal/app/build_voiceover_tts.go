@@ -47,13 +47,12 @@ func buildVoiceoverTTSProvider(
 	// per-call timeouts, and Drive-upload retry. The voiceover package
 	// stays unaware of rate-limiting; the composition root swaps the
 	// raw adapters with these wrappers in-place.
-	ttsProvider = newRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log)
-	// Keep each provider request below the speech-service limit. The
-	// wrapper merges the ordered chunks back into one track per language.
+	ttsProvider = newRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log) // Keep each provider request below the speech-service limit. The
+	// wrapper merges ordered chunks back into one track per language.
 	ttsProvider = &chunkedTTSProvider{
 		inner:       ttsProvider,
 		merger:      ffmpeg.NewFromConfig(cfg),
-		concurrency: 2,
+		concurrency: cfg.Voiceover.Defaults.ChunkConcurrency,
 	}
 
 	return audioProcessor, ttsProvider

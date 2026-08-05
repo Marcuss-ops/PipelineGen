@@ -19,6 +19,8 @@ package voiceover
 import (
 	"errors"
 	"time"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // VoiceoverDestinationUnavailableCode is the stable machine-readable code
@@ -167,4 +169,10 @@ type VoiceoverItemResult struct {
 	// ID is the canonical voiceover row identifier (buildVoiceoverID
 	// shape: vo_<sha256[:16]>) — same value as voiceovers.id column.
 	ID string
+
+	// StageProgress exposes the real per-language stage counters produced
+	// by the child pipeline. It is serialized into child job results so
+	// parent aggregators can merge translation, voiceover, upload, and
+	// persistence outcomes without reconstructing them from percentages.
+	StageProgress map[string]job.StageProgress
 }

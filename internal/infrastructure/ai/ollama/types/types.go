@@ -55,6 +55,7 @@ type TextGenerationRequest struct {
 	Duration        int // Duration in seconds (kept for backward compat)
 	DurationMinutes int // Preferred: explicit duration in minutes
 	MinWords        int // Optional: override the duration-derived word count target
+	WordsPerMinute  int // Resolved script speech rate from bootstrap configuration
 	MaxChars        int // Optional: hard character limit per response; 0 = unlimited
 	Tone            string
 	Model           string

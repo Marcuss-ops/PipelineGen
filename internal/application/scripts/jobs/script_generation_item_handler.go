@@ -118,6 +118,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	// nil-tolerance gate so consumer sites can call pf(...) directly
 	// without per-call nil checks.
 	pf := appjobs.SafeProgressFn(tools)
+	ef := appjobs.SafeEventFn(tools)
 	pf(5, "starting script.generate_item")
 
 	// Decode the typed ScriptGenerateItemPayload. The fan-out adapter
@@ -133,6 +134,10 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	item := childPayload.Item
 	parentJobID := childPayload.ParentJobID
 	preset := childPayload.Preset
+	ef("stage_progress", "Stage progress updated", map[string]any{
+		"stage": string(job.StageScript), "language": item.Language,
+		"status": string(job.StageRunning), "job_id": j.ID,
+	})
 
 	h.logger.Info("decoded script.generate_item payload",
 		zap.String("job_id", j.ID),
@@ -170,6 +175,10 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 
 	res, err := h.oneUC.Execute(execCtx, item, preset, tracker)
 	if err != nil {
+		ef("stage_progress", "Stage progress updated", map[string]any{
+			"stage": string(job.StageScript), "language": item.Language,
+			"status": string(job.StageFailed), "job_id": j.ID, "error": err.Error(),
+		})
 		h.logger.Error("script.generate_item execution failure",
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),
@@ -192,6 +201,19 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			fmt.Errorf("%s", errMsg)
 	}
 
+	ef("stage_progress", "Stage progress updated", map[string]any{
+		"stage": string(job.StageScript), "language": item.Language,
+		"status": string(job.StageCompleted), "job_id": j.ID,
+	})
+	if res != nil {
+		if progress, ok := res.StageProgress[string(job.StagePersistence)]; ok {
+			ef("stage_progress", "Stage progress updated", map[string]any{
+				"stage": string(job.StagePersistence), "language": item.Language,
+				"status": map[bool]string{true: string(job.StageCompleted), false: string(job.StageFailed)}[progress.Completed == progress.Total && progress.Total > 0],
+				"job_id": j.ID, "stage_progress": res.StageProgress,
+			})
+		}
+	}
 	pf(100, "script.generate_item execution complete")
 	return toScriptItemResultMap(item.ID, item.Language, j.ID, parentJobID, true, "", res), nil
 }
@@ -215,6 +237,9 @@ func toScriptItemResultMap(itemID, requestedLanguage, childJobID, parentJobID st
 	}
 	if errStr != "" {
 		m["error"] = errStr
+	}
+	if res != nil {
+		m["stage_progress"] = res.StageProgress
 	}
 	if res != nil && res.Artifacts.Document != nil {
 		m["doc_id"] = res.Artifacts.Document.DocID

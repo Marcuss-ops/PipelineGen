@@ -12,7 +12,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Persist-phase helpers ─────────────────────────────────────────────
@@ -78,6 +80,12 @@ func buildGenerationResultWithCache(
 	}
 
 	result := &scriptpkg.GenerationResult{
+		StageProgress: func() map[string]job.StageProgress {
+			if postResult == nil {
+				return nil
+			}
+			return postResult.StageProgress
+		}(),
 		ItemID:   item.ID,
 		ScriptID: scriptIDFromPostprocess,
 		Title:    plan.Title,
@@ -123,7 +131,11 @@ func buildGenerationResultWithCache(
 	// Merge postprocessor results into canonical Artifacts.
 	if postResult != nil {
 		if len(postResult.VidRushSegments) > 0 {
-			result.Segments = adapters.FinalizeVidRushBindingsWithCache(ctx, postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings, cache)
+			if plan.MediaPlan.Materialization.Mode == mediadomain.MaterializationMetadataOnly {
+				result.Segments = append([]scriptpkg.VidRushSegmentResult(nil), postResult.VidRushSegments...)
+			} else {
+				result.Segments = adapters.FinalizeVidRushBindingsWithCache(ctx, postResult.VidRushSegments, plan.MediaPlan.ForceRefreshBindings, cache)
+			}
 			if cacheHit {
 				promoteCachedVidRushStates(result.Segments)
 			}

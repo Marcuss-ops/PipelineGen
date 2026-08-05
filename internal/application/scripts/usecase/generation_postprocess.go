@@ -79,8 +79,8 @@ func (p *GenerationPostprocessor) Process(
 		}, nil
 	}
 
-	for _, pp := range plan.Postprocessors {
-		tracker.PhasePostprocess(pp)
+	for index, pp := range plan.Postprocessors {
+		tracker.PhasePostprocessProgress(index, len(plan.Postprocessors), pp)
 	}
 
 	procInput := adapters.ProcessInput{
@@ -113,6 +113,9 @@ func (p *GenerationPostprocessor) Process(
 	postprocessMs := make(map[string]int64)
 	if postResult != nil && len(postResult.StageDurations) > 0 {
 		postprocessMs = maps.Clone(postResult.StageDurations)
+	}
+	if postResult != nil && len(postResult.StageProgress) > 0 {
+		tracker.SetStageProgress(postResult.StageProgress)
 	}
 
 	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
@@ -149,15 +152,22 @@ func VidRushTimingFields(stageDurations map[string]int64) scriptpkg.GenerationTi
 }
 
 func collapseSpecSceneOutput(text string, current scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
-	var bindings scriptpkg.SceneBindings
-	if len(current.Scenes) > 0 {
-		bindings = current.Scenes[0].Bindings
+	scene := scriptpkg.SpecScene{
+		ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
 	}
+	if len(current.Scenes) > 0 {
+		// Preserve annotations and segment identity produced by the entity and
+		// asset processors. The single-scene collapse changes only the public
+		// text envelope; rebuilding the scene here would silently discard the
+		// entity-image binding surface.
+		scene = current.Scenes[0]
+		scene.ID = "scene-0"
+		scene.Index = 0
+		scene.Kind = scriptpkg.SceneNarration
+	}
+	scene.Text = strings.TrimSpace(text)
 	return scriptpkg.SpecSceneOutput{
 		Version: 1,
-		Scenes: []scriptpkg.SpecScene{{
-			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
-			Text: strings.TrimSpace(text), Bindings: bindings,
-		}},
+		Scenes:  []scriptpkg.SpecScene{scene},
 	}
 }

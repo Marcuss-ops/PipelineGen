@@ -55,6 +55,27 @@ func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scr
 	if plan == nil {
 		return buildCanonicalSegmentsFromScenes(scenes, text)
 	}
+	if plan.SingleScene && len(plan.Segments) == 1 {
+		id := strings.TrimSpace(plan.Segments[0].ID)
+		if id == "" {
+			id = "main"
+		}
+		sceneID := ""
+		if len(scenes) > 0 {
+			sceneID = strings.TrimSpace(scenes[0].ID)
+		}
+		segText := strings.TrimSpace(text)
+		if segText == "" {
+			segText = strings.TrimSpace(plan.Segments[0].SourceText)
+		}
+		if segText == "" {
+			segText = strings.TrimSpace(plan.Segments[0].Topic)
+		}
+		return []scriptpkg.CanonicalSegment{{
+			ID: id, SceneID: sceneID, Position: 0, Text: segText,
+			TextHash: segmentTextHash(segText),
+		}}
+	}
 	if len(scenes) > 0 {
 		return buildCanonicalSegmentsFromScenes(scenes, text)
 	}

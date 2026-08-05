@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -413,14 +414,24 @@ func buildVidRushSegmentResult(
 	if len(queryText) > 0 && strings.TrimSpace(queryText[0]) != "" {
 		visualText = strings.TrimSpace(queryText[0])
 	}
-	fallbackArtlistQueries := buildArtlistQueries(visualText, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-	llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
-	insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
+	manualArtlistQueries := ResolveManualSegmentQueries(plan, canonicalSeg, scriptpkg.VidRushProviderArtlist, mediadomain.SlotPrimaryVideo)
+	if len(manualArtlistQueries) > 0 {
+		insights.ArtlistQueries = uniqueLimitedStrings(manualArtlistQueries, artlistLimit)
+	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotPrimaryVideo) {
+		fallbackArtlistQueries := buildArtlistQueries(visualText, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
+		llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
+		insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
+	}
 
 	imagePhrases := append([]string(nil), res.ArtlistPhrases...)
 	imagePhrases = append(imagePhrases, insights.ImportantPhrases...)
-	insights.ImageQueries = buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
-	insights.ImageQueries = uniqueLimitedStrings(insights.ImageQueries, imageLimit)
+	manualImageQueries := ResolveManualSegmentQueries(plan, canonicalSeg, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
+	if len(manualImageQueries) > 0 {
+		insights.ImageQueries = uniqueLimitedStrings(manualImageQueries, imageLimit)
+	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotSecondaryImage) {
+		insights.ImageQueries = buildImageQueries(visualText, insights.Entities, imagePhrases, insights.ImportantWords, plan.Topic)
+		insights.ImageQueries = uniqueLimitedStrings(insights.ImageQueries, imageLimit)
+	}
 
 	return scriptpkg.VidRushSegmentResult{
 		SegmentID: canonicalSeg.ID,

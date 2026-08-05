@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/stretchr/testify/require"
 )
 
 func TestArtlistMatchesToCandidatesExpandsEveryClip(t *testing.T) {
@@ -104,6 +105,40 @@ func TestArtlistMatchesToCandidates_AlwaysProviderArtlist(t *testing.T) {
 
 type emptyArtlistSearcher struct {
 	calls int
+}
+
+type recordingArtlistSearcher struct {
+	queries []string
+}
+
+func (s *recordingArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) ([]ArtlistClipMatch, error) {
+	s.queries = append([]string(nil), queries...)
+	return []ArtlistClipMatch{{
+		Phrase:         queries[0],
+		ClipNames:      []string{"Maya temple aerial"},
+		ClipDriveLinks: []string{"https://drive.google.com/file/d/test"},
+		FolderID:       "maya-folder",
+		FolderLink:     "https://drive.google.com/drive/folders/maya-folder",
+	}}, nil
+}
+
+func TestClipSearchProcessor_UsesManualMayaQuery(t *testing.T) {
+	searcher := &recordingArtlistSearcher{}
+	processor := NewClipSearchProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "La civiltà Maya", Language: "it", MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{Artlist: media.MediaToggleEnabled},
+	}}
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "main", Text: "Testo Maya", TextHash: "hash",
+		Insights: scriptpkg.SegmentInsights{SegmentID: "main", ArtlistQueries: []string{"ancient Maya temples jungle aerial cinematic"}},
+	}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ancient Maya temples jungle aerial cinematic"}, searcher.queries)
+	require.Len(t, result.VidRushSegments, 1)
+	require.NotEmpty(t, result.VidRushSegments[0].Assets.Candidates)
+	require.Equal(t, "artlist", result.VidRushSegments[0].Assets.Candidates[0].Provider)
 }
 
 func (s *emptyArtlistSearcher) SearchClips(context.Context, string, []string) ([]ArtlistClipMatch, error) {

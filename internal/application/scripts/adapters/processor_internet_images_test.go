@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/stretchr/testify/require"
 )
 
 type emptyInternetImageSearcher struct {
@@ -57,6 +58,37 @@ func (multipleInternetImageSearcher) SearchImages(_ context.Context, req Interne
 		})
 	}
 	return out, nil
+}
+
+type recordingInternetImageSearcher struct{ queries chan string }
+
+func (s recordingInternetImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.queries <- req.Query
+	return []scriptpkg.SegmentAssetCandidate{{AssetID: "manual-image", Provider: "internet_images", Query: req.Query, SourceURL: "https://images.example/manual.jpg"}}, nil
+}
+
+func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing.T) {
+	searcher := recordingInternetImageSearcher{queries: make(chan string, 1)}
+	processor := NewInternetImagesProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ForceRefresh: true,
+		MediaPlan: media.MediaPlanSpec{
+			ProviderPolicy:     media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+			ForceRefreshAssets: true,
+			Searches:           []media.SegmentMediaSearch{{SegmentID: "main", Slot: media.SlotSecondaryImage, Query: "Chichen Itza Maya pyramid Yucatan", Providers: []string{"internet_images"}, MediaTypes: []string{"image"}}},
+			Extraction:         media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"GPE"}}},
+		},
+	}
+	input := ProcessInput{
+		SpecScene:       scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{ID: "scene-0", SegmentID: "main", Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Tikal", Type: "GPE"}}}}}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: "main", SceneID: "scene-0", TextHash: "manual-image-query"}},
+	}
+	if _, err := processor.Process(context.Background(), plan, input); err != nil {
+		t.Fatalf("process failed: %v", err)
+	}
+	if got := <-searcher.queries; got != "Chichen Itza Maya pyramid Yucatan" {
+		t.Fatalf("provider query = %q, want manual image query", got)
+	}
 }
 
 func TestInternetImagesProcessorRetainsResultsAcrossAllQueries(t *testing.T) {
@@ -145,6 +177,41 @@ func TestInternetImagesProcessor_RejectsNonInternetImagesProviders(t *testing.T)
 }
 
 type entityImageSearcher struct{ calls int }
+
+type recordingImageSearcher struct {
+	requests []InternetImageSearchRequest
+}
+
+func (s *recordingImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.requests = append(s.requests, req)
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "img-chichen-itza", Provider: "internet_images", Query: req.Query, Entity: req.Entity,
+		SourceURL: "https://example.test/chichen-itza.jpg", PreviewURL: "https://example.test/chichen-itza.jpg", RightsStatus: "unknown",
+	}}, nil
+}
+
+func TestInternetImagesProcessor_SearchesPrimaryEntity(t *testing.T) {
+	searcher := &recordingImageSearcher{}
+	processor := NewInternetImagesProcessor(searcher)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
+		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
+		Extraction:     media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"GPE"}, MaxPerEntity: 1}},
+	}}
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-0", SegmentID: "main", Index: 0, Text: "Chichén Itzá fu una città Maya.",
+			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Chichén Itzá", Text: "Chichén Itzá", Type: "GPE"}}},
+		}}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: "main", SceneID: "scene-0", TextHash: "maya-hash", Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Chichén Itzá", Type: "GPE", Confidence: 0.90}}, ImageQueries: []string{"Chichén Itzá"}}}},
+	}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	require.NoError(t, err)
+	require.NotEmpty(t, searcher.requests)
+	require.Equal(t, "Chichén Itzá", searcher.requests[0].Query)
+	require.NotEmpty(t, result.VidRushSegments)
+	require.NotEmpty(t, result.VidRushSegments[0].Assets.Candidates)
+}
 
 func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	s.calls++

@@ -265,6 +265,12 @@ func (e *Engine) generateSegments(
 		return nil, err
 	}
 	texts := splitGeneratedSegmentParagraphs(first.Script)
+	// A single declared segment is the stable MVP container for one scene.
+	// Models may still add editorial paragraph breaks; they must not turn
+	// those breaks into additional canonical segments.
+	if len(plan.Segments) == 1 && len(texts) > 1 {
+		texts = []string{strings.Join(texts, " ")}
+	}
 	report := validateSegmentTexts(plan, texts, settings)
 	for attempt := 0; !report.Valid && attempt < settings.maxRegenerationAttempts; attempt++ {
 		regenReq := req
@@ -283,6 +289,20 @@ func (e *Engine) generateSegments(
 		}
 		texts = mergeRegeneratedSegments(texts, report.InvalidIndexes, regenerated)
 		report = validateSegmentTexts(plan, texts, settings)
+	}
+	// For the single-scene MVP, preserve a caller-provided source that already
+	// satisfies the canonical budget when the model cannot produce an
+	// in-range rewrite after bounded retries. This is source-grounded fallback
+	// content, not generated padding or an invented continuation.
+	if !report.Valid && len(plan.Segments) == 1 {
+		source := strings.TrimSpace(plan.Segments[0].SourceText)
+		if source != "" {
+			sourceReport := validateSegmentTexts(plan, []string{source}, settings)
+			if sourceReport.Valid {
+				texts = []string{source}
+				report = sourceReport
+			}
+		}
 	}
 	if !report.Valid {
 		return nil, fmt.Errorf("%w: %s", scriptpkg.ErrSegmentValidationFailed, strings.Join(report.Reasons, "; "))

@@ -18,7 +18,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyChallengePage, shouldUseFastPath } from '../artlist/search.js';
+import { buildPageOnlyClips, classifyChallengePage, shouldUseFastPath } from '../artlist/search.js';
 
 describe('shouldUseFastPath', () => {
   test('returns false for empty intercepted array', () => {
@@ -134,4 +134,15 @@ describe('classifyChallengePage', () => {
       null,
     );
   });
+});
+
+test('buildPageOnlyClips preserves observed result links for later materialization', () => {
+  const clips = buildPageOnlyClips('ancient Maya temples', [
+    'https://artlist.io/stock-footage/clip/maya-temple/346928',
+    'https://artlist.io/stock-footage/clip/maya-temple/346928',
+  ], 3);
+  assert.equal(clips.length, 1);
+  assert.equal(clips[0].clip_id, '346928');
+  assert.equal(clips[0].clip_page_url, clips[0].primary_url);
+  assert.deepEqual(clips[0].stream_urls, []);
 });

@@ -58,8 +58,6 @@ func IndexStateLabels() map[string]string {
 		"INDEXING_SKIPPED_NO_INDEXER": "Attesa retry",
 		"DELETE_PENDING":              "Eliminazione in corso",
 		"DELETED":                     "Eliminato",
-		"INDEX_PENDING":               "In attesa",
-		"INDEX_FAILED":                "Fallito",
 	}
 }
 
