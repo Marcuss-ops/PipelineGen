@@ -69,6 +69,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
@@ -79,6 +80,46 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 
 	if j.CorrelationID != "" {
 		ctx = corid.WithCorrelationID(ctx, j.CorrelationID)
+	}
+
+	// FASE 2 observability (kernel/observability): every claim is one
+	// Run (= one attempt). queue_wait_ms = claim-time started_at −
+	// enqueue created_at; the per-attempt token is the canonical lease
+	// (the runtime has no separate attempt_id table). The run is bound
+	// to ctx so handlers and adapters downstream can record stages /
+	// operations via MeasureStage / MeasureOperation; the run itself is
+	// finished in the deferred closure with the attempt outcome. The
+	// recorder/collector sink receives the parent ctx (not the
+	// timeout-bounded jobCtx) so final writes survive jobCtx
+	// cancellation.
+	var (
+		run         *kernobs.Run
+		dispatchErr error
+	)
+	if w.observer != nil {
+		run = w.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
+			JobID:      j.ID,
+			JobType:    j.Type,
+			AttemptID:  j.LeaseID, // canonical per-claim token (no attempt_id table)
+			CreatedAt:  j.CreatedAt,
+			StartedAt:  j.StartedAt,
+			RetryCount: j.RetryCount,
+		})
+		ctx = kernobs.WithRun(ctx, run)
+		defer func() {
+			if run == nil {
+				return
+			}
+			if rec := recover(); rec != nil {
+				run.FinishWithPanic(rec)
+				panic(rec)
+			}
+			if dispatchErr != nil {
+				run.FinishWithError(dispatchErr)
+			} else {
+				run.Finish()
+			}
+		}()
 	}
 
 	w.log.Info("running job",
@@ -177,6 +218,12 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// ::JobExecutionTools).
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
+
+	// FASE 2 observability: the attempt status mirrors the dispatcher
+	// outcome (dispatchErr != nil → the run closes as FAILED with the
+	// typed error; a retry scheduled by finalizeJob is still a failed
+	// attempt). The deferred closure above finishes the run after
+	// finalizeJob runs.
 
 	// ── finalizationCtx (AGENTS.md §context-util-table allowlist) ──
 	// MUST stay `context.WithTimeout(context.Background(),

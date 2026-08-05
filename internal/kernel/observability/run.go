@@ -62,6 +62,40 @@ func NewRunObserverWithCollector(recorder Recorder, collector Collector) *RunObs
 	return NewRunObserver(recorder).WithCollector(collector)
 }
 
+// ClaimRunInfo carries the per-claim identity the job runtimes attach to a
+// run. It is intentionally primitive (no kernel/job dependency): the
+// runtimes map job.Job fields onto it.
+type ClaimRunInfo struct {
+	JobID      string
+	JobType    string
+	AttemptID  string
+	CreatedAt  time.Time
+	StartedAt  *time.Time
+	RetryCount int
+}
+
+// StartRunForClaim starts a run for one claimed job attempt, computing
+// queue_wait_ms from StartedAt−CreatedAt and snapshotting the retry count
+// (attempt_number = RetryCount+1). Shared by BOTH job runtimes (orchestrator
+// runJob + remote worker runLease) so the claim→run mapping cannot drift
+// between the two. Nil-receiver tolerant (falls back to an in-memory run,
+// like StartRun).
+func (o *RunObserver) StartRunForClaim(ctx context.Context, info ClaimRunInfo) *Run {
+	queueWait := int64(0)
+	if info.StartedAt != nil && info.StartedAt.After(info.CreatedAt) {
+		queueWait = info.StartedAt.Sub(info.CreatedAt).Milliseconds()
+	}
+	run := o.StartRun(ctx, RunInfo{
+		JobID:       info.JobID,
+		JobType:     info.JobType,
+		AttemptID:   info.AttemptID,
+		CreatedAt:   info.CreatedAt,
+		QueueWaitMs: queueWait,
+	})
+	run.SetRetries(int64(info.RetryCount))
+	return run
+}
+
 // StartRun begins a new Run with the canonical report envelope. The returned
 // run must be finished exactly once (defer run.Finish() or the body-runner
 // Run method); Finish is idempotent.

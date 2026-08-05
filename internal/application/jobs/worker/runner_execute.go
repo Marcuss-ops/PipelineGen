@@ -12,6 +12,7 @@ import (
 	// `job := lease.Job`; using the bare package name would shadow it.
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // runLease is the main job execution pipeline. Called from the Run
@@ -25,7 +26,7 @@ import (
 // godlike/07 P0 #5 fail-closed: drains renewal-loop errors BEFORE
 // calling tools.Complete, preventing phantom completes on reassigned
 // leases.
-func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
+func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr error) {
 	job := lease.Job
 
 	// Defensive: the claim filter should prevent this, but verify the
@@ -41,8 +42,56 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	jobCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 
+	// FASE 2 observability (kernel/observability): every claimed lease
+	// is one Run (= one attempt). queue_wait_ms = server-side
+	// started_at − created_at (the broker's Claim populates StartedAt
+	// via ClaimNext); the per-attempt token is the canonical lease. The
+	// run is bound to jobCtx so the handler and adapters can record
+	// stages/operations.
+	//
+	// Terminal-status classification: tools.Fail / r.fail can return
+	// NIL when the broker accepts the failure report, so the return
+	// value alone cannot distinguish "attempt failed, broker
+	// accepted" from "attempt succeeded". terminalErr is set at each
+	// fail-return site; the deferred closure prefers retErr (a
+	// non-nil finalisation error, e.g. ErrLeaseLostDuringRun), then
+	// terminalErr, and only otherwise closes the run as SUCCEEDED.
+	var (
+		run         *kernobs.Run
+		terminalErr error
+	)
+	if r.observer != nil {
+		run = r.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
+			JobID:      job.ID,
+			JobType:    job.Type,
+			AttemptID:  lease.LeaseID, // canonical per-claim token (no attempt_id table)
+			CreatedAt:  job.CreatedAt,
+			StartedAt:  job.StartedAt,
+			RetryCount: job.RetryCount,
+		})
+		jobCtx = kernobs.WithRun(jobCtx, run)
+		defer func() {
+			if run == nil {
+				return
+			}
+			if rec := recover(); rec != nil {
+				run.FinishWithPanic(rec)
+				panic(rec)
+			}
+			switch {
+			case retErr != nil:
+				run.FinishWithError(retErr)
+			case terminalErr != nil:
+				run.FinishWithError(terminalErr)
+			default:
+				run.Finish()
+			}
+		}()
+	}
+
 	jobDir, err := r.workspace.Prepare(lease.Job.ID)
 	if err != nil {
+		terminalErr = err
 		return r.fail(jobCtx, lease, err)
 	}
 	defer func() {
@@ -78,6 +127,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	}
 
 	if err := checkRenew(); err != nil {
+		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
 	}
 
@@ -85,7 +135,9 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	if assets := ParseInputAssets(lease.Job.Payload); len(assets) > 0 {
 		for i, assetID := range assets {
 			if _, err := tools.DownloadAsset(jobCtx, assetID); err != nil {
-				return tools.Fail(jobCtx, fmt.Errorf("download asset %d (%s): %w", i, assetID, err).Error())
+				downloadErr := fmt.Errorf("download asset %d (%s): %w", i, assetID, err)
+				terminalErr = downloadErr
+				return tools.Fail(jobCtx, downloadErr.Error())
 			}
 			// FASE 0.2 (July 4 2026) silent-drop rewrite per
 			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
@@ -103,6 +155,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 				observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, "success").Inc()
 			}
 			if err := checkRenew(); err != nil {
+				terminalErr = err
 				return tools.Fail(jobCtx, err.Error())
 			}
 		}
@@ -111,9 +164,11 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	// Handler dispatch
 	handlerResult, err := r.registry.Dispatch(jobCtx, lease.Job, tools)
 	if err != nil {
+		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
 	}
 	if err := checkRenew(); err != nil {
+		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
 	}
 
@@ -133,6 +188,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		var upErr error
 		uploaded, upErr = r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
 		if upErr != nil {
+			terminalErr = upErr
 			return tools.Fail(jobCtx, upErr.Error())
 		}
 	}
@@ -144,9 +200,11 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		resultJSON, err = json.Marshal(handlerResult)
 	}
 	if err != nil {
+		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
 	}
 	if err := checkRenew(); err != nil {
+		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
 	}
 
@@ -166,6 +224,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		if uploaded != nil {
 			publishedJSON, err = json.Marshal(uploaded)
 			if err != nil {
+				terminalErr = err
 				return tools.Fail(jobCtx, err.Error())
 			}
 		}

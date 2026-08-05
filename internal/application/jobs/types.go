@@ -9,6 +9,7 @@ import (
 
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
 
@@ -216,6 +217,11 @@ type Runner struct {
 	registry   *Registry
 	workers    []*Worker
 	broker     CompletionPort
+
+	// observer is the kernel observability entry point propagated to
+	// every Worker built by buildWorkers (FASE 2, August 2026). nil =
+	// legacy un-instrumented workers (test fixtures keep working).
+	observer *kernobs.RunObserver
 }
 
 func NewRunner(repo jobs.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
@@ -249,6 +255,21 @@ func (r *Runner) WithBroker(cp CompletionPort) *Runner {
 	return r
 }
 
+// WithObserver attaches the kernel observability RunObserver to the
+// Runner (FASE 2, August 2026). The observer is propagated onto every
+// Worker constructed by buildWorkers so each claimed job produces a
+// Run (queue_wait, wall_time, status, attempts).
+//
+// Nil-tolerant: a nil observer means the workers skip instrumentation
+// entirely, preserving legacy test fixtures. Mirrors WithRegistry /
+// WithBroker.
+//
+// Returns the receiver for builder-style chaining.
+func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
+	r.observer = observer
+	return r
+}
+
 // buildWorkers constructs the worker pool with the attached Registry
 // wired onto each Worker (via Worker.WithRegistry). Called by Start;
 // kept package-private so tests can assert the binding without
@@ -275,6 +296,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		w.WithRegistry(r.registry)
 		if r.broker != nil {
 			w.WithBroker(r.broker)
+		}
+		if r.observer != nil {
+			w.WithObserver(r.observer)
 		}
 		workers = append(workers, w)
 	}

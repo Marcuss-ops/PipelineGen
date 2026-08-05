@@ -34,6 +34,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -341,6 +343,11 @@ func Run(ctx context.Context, cfgPath string) error {
 	go HeartbeatLoop(runCtx, broker, identity.WorkerID, session.SessionID, log)
 
 	runner := worker.NewRunner(broker, comp.Registry, comp.Workspace, assetClient, log, identity.WorkerID, session.SessionID, comp.Caps.JobTypes)
+	// FASE 2 observability: every claimed lease executed by this remote
+	// worker gets a kernel Run (queue_wait_ms, wall_time_ms, status,
+	// attempts), exported to Prometheus by the collector; the durable
+	// SQLite recorder sink lands in the persistence phase (FASE 5).
+	runner.WithObserver(kernobs.NewRunObserverWithCollector(nil, obsmetrics.NewRunReportsCollector()))
 	if rErr := runner.Run(runCtx); rErr != nil && runCtx.Err() == nil {
 		log.Error("worker runner failed", zap.Error(rErr))
 		return fmt.Errorf("worker runner: %w", rErr)

@@ -50,6 +50,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -177,6 +179,13 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 	if deps.root.Jobs.Broker != nil {
 		runner.WithBroker(deps.root.Jobs.Broker)
 	}
+	// FASE 2 observability: every claimed job gets a kernel Run
+	// (queue_wait_ms, wall_time_ms, status, attempts). The collector
+	// exports the finished reports to Prometheus (job_run_duration /
+	// queue_wait / retries) so the timings are observable immediately;
+	// the durable SQLite recorder sink lands in the persistence phase
+	// (FASE 5).
+	runner.WithObserver(kernobs.NewRunObserverWithCollector(nil, obsmetrics.NewRunReportsCollector()))
 	return runner
 }
 
