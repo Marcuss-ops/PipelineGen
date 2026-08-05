@@ -82,6 +82,18 @@ func AllStages() []StageName {
 	}
 }
 
+// AllOperations returns the canonical operation names in registry order.
+func AllOperations() []OperationName {
+	return []OperationName{
+		OperationSearch, OperationUpsert, OperationUpload, OperationDownload,
+		OperationTranscode, OperationCut, OperationNormalize, OperationMerge,
+		OperationGenerate, OperationSynthesize, OperationTranscribe,
+		OperationTransaction, OperationIndex, OperationEmbed, OperationPublish,
+		OperationProbe, OperationFetch, OperationExtract, OperationResolve,
+		OperationEnrich, OperationVerify,
+	}
+}
+
 // AllComponents returns the canonical component names in registry order.
 func AllComponents() []ComponentName {
 	return []ComponentName{

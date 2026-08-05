@@ -31,6 +31,28 @@ type captureRecorder struct {
 	reports []*RunReport
 }
 
+type captureCollector struct {
+	mu      sync.Mutex
+	reports []*RunReport
+	mutate  bool
+}
+
+func (c *captureCollector) Collect(_ context.Context, rep *RunReport) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.mutate {
+		rep.Status = "MUTATED"
+	}
+	c.reports = append(c.reports, rep)
+	return nil
+}
+
+func (c *captureCollector) count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.reports)
+}
+
 func (c *captureRecorder) SaveReport(_ context.Context, rep *RunReport) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -525,6 +547,23 @@ func TestRun_RecorderSinkCalledOnce(t *testing.T) {
 	}
 }
 
+func TestRun_CollectorSinkCalledOnce(t *testing.T) {
+	collector := &captureCollector{mutate: true}
+	obs := NewRunObserverWithCollector(nil, collector)
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run.Finish()
+	run.Finish()
+	if collector.count() != 1 {
+		t.Fatalf("collector calls = %d, want 1", collector.count())
+	}
+	if collector.reports[0].Status != "MUTATED" {
+		t.Fatalf("collector report status = %q", collector.reports[0].Status)
+	}
+	if run.Report().Status != StatusSucceeded {
+		t.Fatalf("collector mutation leaked into run report: %q", run.Report().Status)
+	}
+}
+
 // ── JSON ─────────────────────────────────────────────────────────────
 
 func TestRunReport_JSONRoundTrip(t *testing.T) {
@@ -613,6 +652,9 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	}
 	if len(AllComponents()) != 11 {
 		t.Fatalf("components = %d, want 11", len(AllComponents()))
+	}
+	if len(AllOperations()) != 21 {
+		t.Fatalf("operations = %d, want 21", len(AllOperations()))
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")
