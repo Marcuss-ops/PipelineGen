@@ -26,8 +26,7 @@ version: 2
 #      ecosystem (the v2 schema key — `open-pull-requests` is invalid
 #      and is silently ignored by GitHub).
 #   6. The yt-dlp Dockerfile ARG is explicitly ignored by the Docker
-#      ecosystem because we pin to a quarterly stable tag manually
-#      (see commit 62b605e for the 2024.08.06 -> 2025.03.20 bump).
+#      ecosystem because we pin a verified official release manually.
 updates:
   # ── Go modules ────────────────────────────────────────────────
   - package-ecosystem: "gomod"
@@ -129,7 +128,7 @@ updates:
       time: "08:00"
       timezone: "Europe/Rome"
     open-pull-requests-limit: 5
-    # yt-dlp release URL is manually pinned quarterly; suppress false-positive
+    # yt-dlp release URL is manually pinned; suppress false-positive
     # updates from Dependabot's dockerfile parser.
     ignore:
       - dependency-name: "yt-dlp"
