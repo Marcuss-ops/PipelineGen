@@ -1,7 +1,7 @@
 // Package observability is one of the kernel subzones declared in
-// architecture/policy.yaml and described by ARCHITECTURE.md. Its normative
-// timing and identity contract is documented in
-// docs/architecture/job-attempt-run-observability-contract.md.
+// architecture/policy.yaml. The canonical architecture references are
+// ARCHITECTURE.md, docs/architecture/godlike/INDEX.md, and
+// architecture/policy.yaml.
 //
 // It owns the canonical cross-capability observability contract shared by
 // every job family (script.generate, voiceover.generate, stock.run,

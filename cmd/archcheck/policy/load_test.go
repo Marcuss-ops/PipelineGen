@@ -20,9 +20,21 @@ func TestLoadCanonicalPolicyRoundTrip(t *testing.T) {
 	if p.MaxStructDeps != 8 {
 		t.Fatalf("MaxStructDeps=%d, want 8", p.MaxStructDeps)
 	}
+	if !contains(p.KernelSubzones, "observability") {
+		t.Fatalf("KernelSubzones=%v, want observability to be registered", p.KernelSubzones)
+	}
 	if len(p.HardGates) == 0 {
 		t.Fatal("hard_gates were not parsed")
 	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestLoadRejectsUnknownTopLevelKey(t *testing.T) {
