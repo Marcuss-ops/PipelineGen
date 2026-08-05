@@ -34,8 +34,9 @@ type RunInfo struct {
 // RunObserver is the composition entry point: it creates Runs and owns the
 // durable sink. One observer is shared process-wide.
 type RunObserver struct {
-	recorder Recorder
-	now      func() time.Time
+	recorder  Recorder
+	collector Collector
+	now       func() time.Time
 }
 
 // NewRunObserver constructs a RunObserver. A nil recorder makes the observer a
@@ -45,17 +46,35 @@ func NewRunObserver(recorder Recorder) *RunObserver {
 	return &RunObserver{recorder: recorder, now: time.Now}
 }
 
+// WithCollector attaches a best-effort metrics/report collector to the
+// observer. It is intended for composition-root wiring before StartRun is
+// called; the returned observer is the same pointer for fluent setup.
+func (o *RunObserver) WithCollector(collector Collector) *RunObserver {
+	if o != nil {
+		o.collector = collector
+	}
+	return o
+}
+
+// NewRunObserverWithCollector constructs an observer with both the durable
+// recorder and the metrics/report collector configured.
+func NewRunObserverWithCollector(recorder Recorder, collector Collector) *RunObserver {
+	return NewRunObserver(recorder).WithCollector(collector)
+}
+
 // StartRun begins a new Run with the canonical report envelope. The returned
 // run must be finished exactly once (defer run.Finish() or the body-runner
 // Run method); Finish is idempotent.
 func (o *RunObserver) StartRun(ctx context.Context, info RunInfo) *Run {
 	now := time.Now
 	var rec Recorder
+	var collector Collector
 	if o != nil {
 		if o.now != nil {
 			now = o.now
 		}
 		rec = o.recorder
+		collector = o.collector
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -70,10 +89,11 @@ func (o *RunObserver) StartRun(ctx context.Context, info RunInfo) *Run {
 		runID = NewRunID()
 	}
 	return &Run{
-		ctx:     ctx,
-		rec:     rec,
-		now:     now,
-		started: startedAt,
+		ctx:       ctx,
+		rec:       rec,
+		collector: collector,
+		now:       now,
+		started:   startedAt,
 		report: RunReport{
 			RunID:       runID,
 			JobID:       info.JobID,
@@ -106,6 +126,11 @@ func (o *RunObserver) Run(ctx context.Context, info RunInfo, body func(ctx conte
 			panic(rec)
 		}
 	}()
+	if body == nil {
+		err := errorCodeMissingBody
+		run.FinishWithError(err)
+		return run.Report(), err
+	}
 	err := body(runCtx)
 	run.FinishWithError(err)
 	return run.Report(), err
@@ -115,10 +140,11 @@ func (o *RunObserver) Run(ctx context.Context, info RunInfo, body func(ctx conte
 // stages, operations, counters and artifacts may be recorded from parallel
 // goroutines (child jobs, provider fan-out).
 type Run struct {
-	ctx     context.Context
-	rec     Recorder
-	now     func() time.Time
-	started time.Time
+	ctx       context.Context
+	rec       Recorder
+	collector Collector
+	now       func() time.Time
+	started   time.Time
 
 	mu       sync.Mutex
 	report   RunReport
@@ -140,8 +166,12 @@ func (r *Run) Finish() *RunReport {
 		return nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.finishLocked(nil, "")
+	out, emit := r.finishLocked(nil, "")
+	r.mu.Unlock()
+	if emit {
+		r.emit(out)
+	}
+	return out
 }
 
 // FinishWithError closes the run as FAILED with the error code/message.
@@ -150,8 +180,12 @@ func (r *Run) FinishWithError(err error) *RunReport {
 		return nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.finishLocked(err, "")
+	out, emit := r.finishLocked(err, "")
+	r.mu.Unlock()
+	if emit {
+		r.emit(out)
+	}
+	return out
 }
 
 // FinishWithPanic closes the run as FAILED from a recovered panic value. Used
@@ -161,8 +195,12 @@ func (r *Run) FinishWithPanic(v any) *RunReport {
 		return nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.finishLocked(panicError(v), "")
+	out, emit := r.finishLocked(panicError(v), "")
+	r.mu.Unlock()
+	if emit {
+		r.emit(out)
+	}
+	return out
 }
 
 // Cancel closes the run as CANCELLED.
@@ -171,14 +209,19 @@ func (r *Run) Cancel() *RunReport {
 		return nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.finishLocked(nil, StatusCancelled)
+	out, emit := r.finishLocked(nil, StatusCancelled)
+	r.mu.Unlock()
+	if emit {
+		r.emit(out)
+	}
+	return out
 }
 
-// finishLocked must be called with r.mu held. First call wins.
-func (r *Run) finishLocked(finalErr error, forcedStatus string) *RunReport {
+// finishLocked must be called with r.mu held. First call wins. The bool
+// reports whether the caller must emit the newly finalized report.
+func (r *Run) finishLocked(finalErr error, forcedStatus string) (*RunReport, bool) {
 	if r.finished {
-		return r.reportCopyLocked()
+		return r.reportCopyLocked(), false
 	}
 	r.finished = true
 	now := r.now()
@@ -198,15 +241,22 @@ func (r *Run) finishLocked(finalErr error, forcedStatus string) *RunReport {
 	default:
 		r.report.Status = StatusSucceeded
 	}
-	out := r.reportCopyLocked()
-	if r.rec != nil {
-		// Best-effort sink: a persistence failure is the sink's problem, never
-		// the job's. The SQLite writer (later phase) logs and retries. The sink
-		// receives a defensive copy so it can retain the report without racing
-		// with later in-flight mutations of the live run.
-		_ = r.rec.SaveReport(r.ctx, out)
+	return r.reportCopyLocked(), true
+}
+
+// emit sends independent defensive copies to each best-effort sink. Sink
+// implementations may retain or mutate their input without affecting the
+// caller or another sink.
+func (r *Run) emit(report *RunReport) {
+	if report == nil {
+		return
 	}
-	return out
+	if r.collector != nil {
+		_ = r.collector.Collect(r.ctx, cloneReport(report))
+	}
+	if r.rec != nil {
+		_ = r.rec.SaveReport(r.ctx, cloneReport(report))
+	}
 }
 
 // Report returns a defensive copy of the current report. When the run is not
@@ -221,12 +271,19 @@ func (r *Run) Report() *RunReport {
 }
 
 func (r *Run) reportCopyLocked() *RunReport {
-	out := r.report
-	out.Stages = append([]StageReport(nil), r.report.Stages...)
-	out.Operations = append([]OperationReport(nil), r.report.Operations...)
-	out.Artifacts = append([]ArtifactReport(nil), r.report.Artifacts...)
-	if r.report.Children != nil {
-		child := *r.report.Children
+	return cloneReport(&r.report)
+}
+
+func cloneReport(report *RunReport) *RunReport {
+	if report == nil {
+		return nil
+	}
+	out := *report
+	out.Stages = append([]StageReport(nil), report.Stages...)
+	out.Operations = append([]OperationReport(nil), report.Operations...)
+	out.Artifacts = append([]ArtifactReport(nil), report.Artifacts...)
+	if report.Children != nil {
+		child := *report.Children
 		out.Children = &child
 	}
 	return &out
@@ -316,6 +373,22 @@ func (r *Run) AddItemsFailed(n int64) {
 func (r *Run) IncCacheHit()  { r.addCounter(func(c *RunCounters) { c.CacheHits++ }) }
 func (r *Run) IncCacheMiss() { r.addCounter(func(c *RunCounters) { c.CacheMisses++ }) }
 func (r *Run) IncRetry()     { r.addCounter(func(c *RunCounters) { c.Retries++ }) }
+
+// SetRetries records the number of retries already consumed before this
+// attempt (the runtime's canonical job.RetryCount at claim time). Unlike the
+// additive counters it overwrites: the value is a snapshot from the job row,
+// not an in-run accumulation.
+func (r *Run) SetRetries(n int64) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return
+	}
+	r.report.Counters.Retries = nonNegative(n)
+}
 
 func (r *Run) AddBytesDownloaded(n int64) {
 	r.addCounter(func(c *RunCounters) { c.BytesDownloaded += nonNegative(n) })

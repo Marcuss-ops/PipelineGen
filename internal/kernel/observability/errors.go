@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+var errorCodeMissingBody = errors.New("observability: run body is required")
+
 // ErrorCoder lets typed errors provide a stable machine-readable code that is
 // persisted in reports (mirrors the processmetrics.ErrorCoder contract).
 type ErrorCoder interface {
