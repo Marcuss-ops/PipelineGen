@@ -235,7 +235,8 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		// default. The engine ships raw narrative prose; the
 		// downstream SceneSynthesizer + scene binder + postprocessor
 		// pipeline own all structured fields (schema_version /
-		// specscene / scene IDs / scene indexes / kind labels).		OutputMode:       ollamatypes.OutputModePlainText,
+		// specscene / scene IDs / scene indexes / kind labels).
+		OutputMode:     ollamatypes.OutputModePlainText,
 		WordsPerMinute: wordsPerMinute,
 	}
 
