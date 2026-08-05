@@ -3,8 +3,8 @@ current:
 - id: WAVE-21-PR-G-SCRIPTS-SUBPKG
   status: in_progress
   owner: scripts-capability
-  deadline: '2026-08-01T00:00:00Z'
-  rationale: Complete the scripts capability split while preserving the existing public contracts and registry-driven composition.
+  deadline: '2026-09-30T00:00:00Z'
+  rationale: Reschedule the scripts capability split to 2026-09-30 because 56 files remain in CUTOVER after the 2026-08-01 deadline; preserve the existing public contracts and registry-driven composition while completing the redistribution.
   count:
     baseline_initial: 64
     current: 56
