@@ -83,7 +83,7 @@ func TestRun_FinishSucceedsWithCanonicalEnvelope(t *testing.T) {
 	obs.now = newFakeClock().Now
 	run := obs.StartRun(context.Background(), RunInfo{
 		RunID: "run-1", JobID: "job-1", JobType: "script.generate",
-		QueueWaitMs: 450,
+		AttemptID: "attempt-1", QueueWaitMs: 450,
 	})
 
 	rep := run.Finish()
@@ -110,7 +110,7 @@ func TestRun_FinishSucceedsWithCanonicalEnvelope(t *testing.T) {
 
 func TestRun_StartRunGeneratesRunIDWhenEmpty(t *testing.T) {
 	obs := NewRunObserver(nil)
-	rep := obs.StartRun(context.Background(), RunInfo{JobID: "j"}).Finish()
+	rep := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"}).Finish()
 	if rep.RunID == "" {
 		t.Fatal("run_id must be generated when empty")
 	}
@@ -118,7 +118,7 @@ func TestRun_StartRunGeneratesRunIDWhenEmpty(t *testing.T) {
 
 func TestRun_FinishWithErrorMarksFailed(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	rep := run.FinishWithError(errors.New("qdrant offline"))
 	if rep.Status != StatusFailed {
 		t.Fatalf("status = %q, want %q", rep.Status, StatusFailed)
@@ -135,7 +135,7 @@ func (e codedError) ErrorCode() string { return e.code }
 
 func TestRun_FinishWithErrorPersistsTypedCode(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	rep := run.FinishWithError(codedError{code: "ffmpeg_probe_failed"})
 	if rep.ErrorCode != "ffmpeg_probe_failed" {
 		t.Fatalf("error_code = %q, want ffmpeg_probe_failed", rep.ErrorCode)
@@ -145,7 +145,7 @@ func TestRun_FinishWithErrorPersistsTypedCode(t *testing.T) {
 func TestRun_FinishIsIdempotent(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	first := run.Finish()
 	second := run.FinishWithError(errors.New("late"))
 	third := run.Cancel()
@@ -160,7 +160,7 @@ func TestRun_FinishIsIdempotent(t *testing.T) {
 
 func TestRun_ReportBeforeFinishIsRunning(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	if rep := run.Report(); rep.Status != StatusRunning {
 		t.Fatalf("pre-finish status = %q, want RUNNING", rep.Status)
 	}
@@ -188,7 +188,7 @@ func TestRun_NilReceiverSafety(t *testing.T) {
 func TestRun_StageMeasuresAndCompletes(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", CreatedAt: time.Unix(0, 0)})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j", CreatedAt: time.Unix(0, 0)})
 
 	if err := run.Stage(context.Background(), StageAcquire, func(context.Context) error {
 		return nil
@@ -207,14 +207,15 @@ func TestRun_StageMeasuresAndCompletes(t *testing.T) {
 	if st.DurationMs <= 0 {
 		t.Fatalf("duration_ms = %d, want > 0", st.DurationMs)
 	}
-	if rep.ActiveMs != st.DurationMs {
-		t.Fatalf("active_ms = %d, want %d (sum of stages)", rep.ActiveMs, st.DurationMs)
+	raw, err := run.JSON()
+	if err != nil || string(raw) == "" {
+		t.Fatalf("run JSON after stage: %v", err)
 	}
 }
 
 func TestRun_StageFailureRecordsErrorCode(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	err := run.Stage(context.Background(), StageAcquire, func(context.Context) error {
 		return codedError{code: "download_failed"}
 	})
@@ -229,7 +230,7 @@ func TestRun_StageFailureRecordsErrorCode(t *testing.T) {
 
 func TestRun_StageWithCounters(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	err := run.StageWith(context.Background(), StageInfo{
 		Stage:          StageProcess,
 		CacheStatus:    "hit",
@@ -253,7 +254,7 @@ func TestRun_StageWithCounters(t *testing.T) {
 func TestRun_StagePanicClosesTimerAndRepanics(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	mustPanic(t, func() {
 		_ = run.Stage(context.Background(), StageAcquire, func(context.Context) error {
@@ -276,7 +277,7 @@ func TestRun_StagePanicClosesTimerAndRepanics(t *testing.T) {
 
 func TestRun_UnlabelledStageIsNotMeasured(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	if err := run.Stage(context.Background(), "", func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("Stage: %v", err)
 	}
@@ -290,7 +291,7 @@ func TestRun_UnlabelledStageIsNotMeasured(t *testing.T) {
 func TestRun_OperationMeasuresAndAccumulates(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	err := run.Operation(context.Background(), OperationInfo{
 		Stage:     StageAcquire,
@@ -326,7 +327,7 @@ func TestRun_OperationMeasuresAndAccumulates(t *testing.T) {
 func TestRun_OperationPanicClosesTimerAndRepanics(t *testing.T) {
 	obs := NewRunObserver(nil)
 	obs.now = newFakeClock().Now
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	mustPanic(t, func() {
 		_ = run.Operation(context.Background(), OperationInfo{
@@ -345,7 +346,7 @@ func TestRun_OperationPanicClosesTimerAndRepanics(t *testing.T) {
 
 func TestMeasureOperation_FromContext(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	ctx := WithRun(context.Background(), run)
 
 	called := false
@@ -378,7 +379,7 @@ func TestMeasureOperation_NoRunIsPassThrough(t *testing.T) {
 
 func TestMeasureStage_FromContext(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	ctx := WithRun(context.Background(), run)
 
 	if err := MeasureStage(ctx, StageVerify, func(context.Context) error { return nil }); err != nil {
@@ -417,7 +418,7 @@ func TestRunObserver_StartRunForClaim(t *testing.T) {
 
 	// Nil StartedAt → zero queue wait (no panic).
 	nilStart := obs.StartRunForClaim(context.Background(), ClaimRunInfo{
-		JobID: "j2", JobType: "t", CreatedAt: createdAt, StartedAt: nil,
+		JobID: "j2", JobType: "t", AttemptID: "attempt-j2", CreatedAt: createdAt, StartedAt: nil,
 	})
 	if rep2 := nilStart.Finish(); rep2.QueueWaitMs != 0 {
 		t.Fatalf("queue_wait_ms with nil started_at = %d, want 0", rep2.QueueWaitMs)
@@ -426,7 +427,7 @@ func TestRunObserver_StartRunForClaim(t *testing.T) {
 
 func TestRunObserver_RunSuccess(t *testing.T) {
 	obs := NewRunObserver(nil)
-	rep, err := obs.Run(context.Background(), RunInfo{JobID: "j", JobType: "t"}, func(ctx context.Context) error {
+	rep, err := obs.Run(context.Background(), RunInfo{JobID: "j", JobType: "t", AttemptID: "attempt-j"}, func(ctx context.Context) error {
 		return MeasureStage(ctx, StageVerify, func(context.Context) error { return nil })
 	})
 	if err != nil {
@@ -442,7 +443,7 @@ func TestRunObserver_RunSuccess(t *testing.T) {
 
 func TestRunObserver_RunErrorMarksFailed(t *testing.T) {
 	obs := NewRunObserver(nil)
-	rep, err := obs.Run(context.Background(), RunInfo{JobID: "j"}, func(context.Context) error {
+	rep, err := obs.Run(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"}, func(context.Context) error {
 		return codedError{code: "engine_failed"}
 	})
 	if err == nil {
@@ -458,7 +459,7 @@ func TestRunObserver_RunBodyPanicClosesRunAndRepanics(t *testing.T) {
 	obs := NewRunObserver(rec)
 
 	mustPanic(t, func() {
-		_, _ = obs.Run(context.Background(), RunInfo{JobID: "j"}, func(context.Context) error {
+		_, _ = obs.Run(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"}, func(context.Context) error {
 			panic("body boom")
 		})
 	})
@@ -475,7 +476,7 @@ func TestRunObserver_RunBodyPanicClosesRunAndRepanics(t *testing.T) {
 
 func TestWithRun_FromContextRoundTrip(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	ctx := WithRun(context.Background(), run)
 
 	got, ok := RunFromContext(ctx)
@@ -494,7 +495,7 @@ func TestWithRun_FromContextRoundTrip(t *testing.T) {
 
 func TestRun_Counters(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	run.AddItemsRequested(20)
 	run.AddItemsCompleted(18)
 	run.AddItemsFailed(2)
@@ -523,7 +524,7 @@ func TestRun_Counters(t *testing.T) {
 
 func TestRun_SetRetries(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	// Snapshot semantics: overwrite (not accumulate) — the value is the
 	// canonical job.RetryCount at claim time.
@@ -542,7 +543,7 @@ func TestRun_SetRetries(t *testing.T) {
 
 func TestRun_AddArtifact(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	run.AddArtifact(ArtifactReport{Kind: "drive_file", Ref: "file-1", Stage: string(StagePublish), Bytes: 42})
 	run.AddArtifact(ArtifactReport{Kind: "drive_file", Ref: "file-2", Reused: true})
 
@@ -557,18 +558,18 @@ func TestRun_AddArtifact(t *testing.T) {
 
 func TestRun_RegisterChildIsIdempotentAndUpdatesStatus(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "parent-job", RunID: "parent-run"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "parent-job", RunID: "parent-run", AttemptID: "parent-attempt"})
 	run.RegisterChild(&RunReport{RunID: "child-run", JobID: "child-job", Status: StatusRunning})
 	run.RegisterChild(&RunReport{RunID: "child-run", JobID: "child-job", Status: StatusSucceeded, WallTimeMs: 25})
 	rep := run.Report()
-	if rep.Children == nil || rep.Children.Requested != 1 || rep.Children.Completed != 1 || rep.Children.Failed != 0 || rep.Children.WallTimeMs != 25 {
+	if rep.Children == nil || rep.Children.Requested != 1 || rep.Children.Completed != 1 || rep.Children.Failed != 0 || rep.Children.AccumulatedChildMs != 25 {
 		t.Fatalf("children = %#v", rep.Children)
 	}
 }
 
 func TestRun_RegisterChildSummary(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	run.RegisterChild(&RunReport{Status: StatusSucceeded, WallTimeMs: 1000})
 	run.RegisterChild(&RunReport{Status: StatusFailed, WallTimeMs: 500})
 
@@ -579,19 +580,30 @@ func TestRun_RegisterChildSummary(t *testing.T) {
 	if rep.Children.Requested != 2 || rep.Children.Completed != 1 || rep.Children.Failed != 1 {
 		t.Fatalf("children = %d/%d/%d", rep.Children.Requested, rep.Children.Completed, rep.Children.Failed)
 	}
-	if rep.Children.WallTimeMs != 1500 {
-		t.Fatalf("children wall = %d, want 1500 (summed, not averaged)", rep.Children.WallTimeMs)
+	if rep.Children.AccumulatedChildMs != 1500 {
+		t.Fatalf("children wall = %d, want 1500 (summed, not averaged)", rep.Children.AccumulatedChildMs)
 	}
 }
 
-func TestRun_AddBlocked(t *testing.T) {
+func TestRun_RecordWaitUsesTypedUnion(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
-	run.AddBlocked(1500 * time.Millisecond)
-	run.AddBlocked(-time.Second) // clamped away
-	if rep := run.Report(); rep.BlockedMs != 1500 {
-		t.Fatalf("blocked_ms = %d, want 1500", rep.BlockedMs)
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-wait"})
+	start := time.Unix(100, 0)
+	run.RecordWait(WaitInfo{Kind: WaitSemaphore, Component: ComponentTTS, StartedAt: start, FinishedAt: start.Add(1500 * time.Millisecond)})
+	run.RecordWait(WaitInfo{Kind: WaitRateLimit, Component: ComponentArtlist, StartedAt: start.Add(500 * time.Millisecond), FinishedAt: start.Add(2 * time.Second)})
+	rep := run.Report()
+	if rep.BlockedMs != 2000 {
+		t.Fatalf("blocked_ms = %d, want 2000 (union of overlapping waits)", rep.BlockedMs)
 	}
+	if len(rep.Waits) != 2 || rep.Waits[0].Kind != WaitSemaphore || rep.Waits[1].Kind != WaitRateLimit {
+		t.Fatalf("wait observations = %#v", rep.Waits)
+	}
+}
+
+func TestRun_StartRequiresAttemptID(t *testing.T) {
+	mustPanic(t, func() {
+		NewRunObserver(nil).StartRun(context.Background(), RunInfo{JobID: "j"})
+	})
 }
 
 // ── recorder sink ────────────────────────────────────────────────────
@@ -599,7 +611,7 @@ func TestRun_AddBlocked(t *testing.T) {
 func TestRun_RecorderSinkCalledOnce(t *testing.T) {
 	rec := &captureRecorder{}
 	obs := NewRunObserver(rec)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	run.Finish()
 	run.Finish()
 	if rec.count() != 1 {
@@ -613,7 +625,7 @@ func TestRun_RecorderSinkCalledOnce(t *testing.T) {
 func TestRun_CollectorSinkCalledOnce(t *testing.T) {
 	collector := &captureCollector{mutate: true}
 	obs := NewRunObserverWithCollector(nil, collector)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 	run.Finish()
 	run.Finish()
 	if collector.count() != 1 {
@@ -632,7 +644,7 @@ func TestRun_CollectorSinkCalledOnce(t *testing.T) {
 func TestRunReport_JSONRoundTrip(t *testing.T) {
 	obs := NewRunObserver(nil)
 	run := obs.StartRun(context.Background(), RunInfo{
-		RunID: "r1", JobID: "j1", JobType: "script.generate", QueueWaitMs: 450,
+		RunID: "r1", JobID: "j1", JobType: "script.generate", AttemptID: "attempt-r1", QueueWaitMs: 450,
 	})
 	_ = run.Stage(context.Background(), StageAcquire, func(context.Context) error { return nil })
 	run.Finish()
@@ -648,7 +660,7 @@ func TestRunReport_JSONRoundTrip(t *testing.T) {
 	for _, key := range []string{
 		"run_id", "job_id", "job_type", "status",
 		"created_at", "started_at", "finished_at",
-		"queue_wait_ms", "wall_time_ms", "active_ms",
+		"attempt_id", "queue_wait_ms", "wall_time_ms",
 		"stages", "counters",
 	} {
 		if _, ok := m[key]; !ok {
@@ -658,13 +670,16 @@ func TestRunReport_JSONRoundTrip(t *testing.T) {
 	if m["run_id"] != "r1" || m["status"] != StatusSucceeded {
 		t.Fatalf("envelope = %v/%v", m["run_id"], m["status"])
 	}
+	if _, ok := m["active_ms"]; ok {
+		t.Fatal("active_ms must be omitted until active interval union is implemented")
+	}
 }
 
 // ── concurrency ──────────────────────────────────────────────────────
 
 func TestRun_ConcurrentOperations(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -687,7 +702,7 @@ func TestRun_ConcurrentOperations(t *testing.T) {
 
 func TestRun_ConcurrentCounters(t *testing.T) {
 	obs := NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), RunInfo{JobID: "j"})
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
 
 	const n = 100
 	var wg sync.WaitGroup

@@ -23,7 +23,7 @@ type RunReport struct {
 	RunID                  string            `json:"run_id"`
 	JobID                  string            `json:"job_id"`
 	JobType                string            `json:"job_type"`
-	AttemptID              string            `json:"attempt_id,omitempty"`
+	AttemptID              string            `json:"attempt_id"`
 	LeaseID                string            `json:"lease_id,omitempty"`
 	ParentRunID            string            `json:"parent_run_id,omitempty"`
 	ParentJobID            string            `json:"parent_job_id,omitempty"`
@@ -36,13 +36,13 @@ type RunReport struct {
 	FinishedAt             time.Time         `json:"finished_at"`
 	QueueWaitMs            int64             `json:"queue_wait_ms"`
 	WallTimeMs             int64             `json:"wall_time_ms"`
-	ActiveMs               int64             `json:"active_ms"`
 	BlockedMs              int64             `json:"blocked_ms,omitempty"`
 	AccumulatedOperationMs int64             `json:"accumulated_operation_ms,omitempty"`
 	Stages                 []StageReport     `json:"stages,omitempty"`
 	Operations             []OperationReport `json:"operations,omitempty"`
 	Artifacts              []ArtifactReport  `json:"artifacts,omitempty"`
 	Counters               RunCounters       `json:"counters,omitempty"`
+	Waits                  []WaitReport      `json:"waits,omitempty"`
 	Children               *ChildrenSummary  `json:"children,omitempty"`
 	ErrorCode              string            `json:"error_code,omitempty"`
 	Error                  string            `json:"error,omitempty"`
@@ -102,11 +102,40 @@ type RunCounters struct {
 	ArtifactsReused  int64 `json:"artifacts_reused,omitempty"`
 }
 
+type WaitReport struct {
+	Kind       WaitKind  `json:"kind"`
+	Component  string    `json:"component,omitempty"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+	DurationMs int64     `json:"duration_ms"`
+}
+
 type ChildrenSummary struct {
-	Requested  int   `json:"requested"`
-	Completed  int   `json:"completed"`
-	Failed     int   `json:"failed"`
-	WallTimeMs int64 `json:"wall_time_ms,omitempty"`
+	Requested          int   `json:"requested"`
+	Completed          int   `json:"completed"`
+	Failed             int   `json:"failed"`
+	AccumulatedChildMs int64 `json:"accumulated_child_ms,omitempty"`
 }
 
 func (r *RunReport) JSON() ([]byte, error) { return json.Marshal(r) }
+
+// UnmarshalJSON accepts the retired child wall-time key for persisted report
+// compatibility while always exposing the canonical AccumulatedChildMs field.
+func (r *ChildrenSummary) UnmarshalJSON(data []byte) error {
+	type childSummary ChildrenSummary
+	var raw struct {
+		Requested          int   `json:"requested"`
+		Completed          int   `json:"completed"`
+		Failed             int   `json:"failed"`
+		AccumulatedChildMs int64 `json:"accumulated_child_ms"`
+		WallTimeMs         int64 `json:"wall_time_ms"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = ChildrenSummary(childSummary{Requested: raw.Requested, Completed: raw.Completed, Failed: raw.Failed, AccumulatedChildMs: raw.AccumulatedChildMs})
+	if r.AccumulatedChildMs == 0 {
+		r.AccumulatedChildMs = raw.WallTimeMs
+	}
+	return nil
+}

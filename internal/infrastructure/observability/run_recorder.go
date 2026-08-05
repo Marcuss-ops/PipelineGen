@@ -200,7 +200,7 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,active_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, p.ActiveMs, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), string(body), boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
+	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), string(body), boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
 	if err != nil {
 		return r.fail(p.RunID, "finish_run", err)
 	}
@@ -287,7 +287,7 @@ func refreshParentSummary(ctx context.Context, tx *sql.Tx, parentRunID string) e
 	}
 	now := time.Now().UTC()
 	var summary kernobs.ChildrenSummary
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN status IN ('FAILED','CANCELLED','ABANDONED') THEN 1 ELSE 0 END),0), COALESCE(SUM(wall_time_ms),0) FROM run_child_observations WHERE parent_run_id=?`, parentRunID).Scan(&summary.Requested, &summary.Completed, &summary.Failed, &summary.WallTimeMs); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN status IN ('FAILED','CANCELLED','ABANDONED') THEN 1 ELSE 0 END),0), COALESCE(SUM(wall_time_ms),0) FROM run_child_observations WHERE parent_run_id=?`, parentRunID).Scan(&summary.Requested, &summary.Completed, &summary.Failed, &summary.AccumulatedChildMs); err != nil {
 		return err
 	}
 	var parentJSON string
@@ -396,6 +396,7 @@ func cloneReport(p *kernobs.RunReport) *kernobs.RunReport {
 	c.Stages = append([]kernobs.StageReport(nil), p.Stages...)
 	c.Operations = append([]kernobs.OperationReport(nil), p.Operations...)
 	c.Artifacts = append([]kernobs.ArtifactReport(nil), p.Artifacts...)
+	c.Waits = append([]kernobs.WaitReport(nil), p.Waits...)
 	return &c
 }
 func nullable(s string) any {

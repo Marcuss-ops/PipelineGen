@@ -64,7 +64,7 @@ func (o *RunObserver) StartRunForClaim(ctx context.Context, info ClaimRunInfo) *
 		queueWait = info.StartedAt.Sub(info.CreatedAt).Milliseconds()
 	}
 	if info.AttemptID == "" {
-		info.AttemptID = NewAttemptID()
+		panic("observability: AttemptID is required")
 	}
 	r := o.StartRun(ctx, RunInfo{JobID: info.JobID, JobType: info.JobType, AttemptID: info.AttemptID, LeaseID: info.LeaseID, WorkerID: info.WorkerID, LeaseExpiresAt: info.LeaseExpiresAt, ParentRunID: info.ParentRunID, ParentJobID: info.ParentJobID, CreatedAt: info.CreatedAt, QueueWaitMs: queueWait})
 	r.SetRetries(int64(info.RetryCount))
@@ -73,7 +73,7 @@ func (o *RunObserver) StartRunForClaim(ctx context.Context, info ClaimRunInfo) *
 
 func (o *RunObserver) StartRun(ctx context.Context, info RunInfo) *Run {
 	if info.AttemptID == "" {
-		info.AttemptID = NewAttemptID()
+		panic("observability: AttemptID is required")
 	}
 	now := time.Now
 	var rec Recorder
@@ -130,7 +130,6 @@ type Run struct {
 	mu          sync.Mutex
 	report      RunReport
 	finished    bool
-	activeMs    int64
 	operationMs int64
 	children    map[string]RunReport
 }
@@ -174,7 +173,6 @@ func (r *Run) finish(status string, finalErr error) *RunReport {
 		r.report.FinishedAt = r.now()
 	}
 	r.report.WallTimeMs = nonNegative(r.report.FinishedAt.Sub(r.started).Milliseconds())
-	r.report.ActiveMs = r.activeMs
 	r.report.AccumulatedOperationMs = r.operationMs
 	if status != "" {
 		r.report.Status = status
@@ -224,6 +222,7 @@ func cloneReport(in *RunReport) *RunReport {
 	out.Stages = append([]StageReport(nil), in.Stages...)
 	out.Operations = append([]OperationReport(nil), in.Operations...)
 	out.Artifacts = append([]ArtifactReport(nil), in.Artifacts...)
+	out.Waits = append([]WaitReport(nil), in.Waits...)
 	if in.Children != nil {
 		c := *in.Children
 		out.Children = &c
@@ -238,15 +237,32 @@ func (r *Run) JSON() ([]byte, error) {
 	return json.Marshal(p)
 }
 
-func (r *Run) AddBlocked(d time.Duration) {
-	if r == nil || d <= 0 {
+// RecordWait records a typed blocked interval. BlockedMs is derived from
+// the union of all recorded wait intervals, so overlapping waits count once.
+func (r *Run) RecordWait(info WaitInfo) {
+	if r == nil || info.Kind == "" || info.StartedAt.IsZero() || info.FinishedAt.IsZero() || info.FinishedAt.Before(info.StartedAt) {
 		return
+	}
+	wait := WaitReport{
+		Kind:       info.Kind,
+		Component:  string(info.Component),
+		StartedAt:  info.StartedAt,
+		FinishedAt: info.FinishedAt,
+		DurationMs: info.FinishedAt.Sub(info.StartedAt).Milliseconds(),
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.finished {
-		r.report.BlockedMs += d.Milliseconds()
+	if r.finished {
+		return
 	}
+	r.report.Waits = append(r.report.Waits, wait)
+	blockedWaits := make([]WaitReport, 0, len(r.report.Waits))
+	for _, recorded := range r.report.Waits {
+		if recorded.Kind != WaitRetryBackoff {
+			blockedWaits = append(blockedWaits, recorded)
+		}
+	}
+	r.report.BlockedMs = blockedIntervalUnion(blockedWaits)
 }
 func (r *Run) SetRetries(n int64) {
 	if r == nil {
@@ -327,7 +343,7 @@ func (r *Run) RegisterChild(child *RunReport) {
 		}
 		wall += item.WallTimeMs
 	}
-	r.report.Children = &ChildrenSummary{Requested: requested, Completed: completed, Failed: failed, WallTimeMs: wall}
+	r.report.Children = &ChildrenSummary{Requested: requested, Completed: completed, Failed: failed, AccumulatedChildMs: wall}
 	persist = copyChild
 	r.mu.Unlock()
 	if recorder, ok := r.rec.(LifecycleRecorder); ok {
@@ -366,7 +382,6 @@ func (r *Run) recordStage(st StageReport) {
 		return
 	}
 	r.report.Stages = append(r.report.Stages, st)
-	r.activeMs += st.DurationMs
 	id := r.report.RunID
 	r.mu.Unlock()
 	if l, ok := r.rec.(LifecycleRecorder); ok {
@@ -411,6 +426,32 @@ func persistentID(prefix string) string {
 	}
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 }
+func blockedIntervalUnion(waits []WaitReport) int64 {
+	if len(waits) == 0 {
+		return 0
+	}
+	intervals := append([]WaitReport(nil), waits...)
+	for i := 1; i < len(intervals); i++ {
+		for j := i; j > 0 && intervals[j].StartedAt.Before(intervals[j-1].StartedAt); j-- {
+			intervals[j], intervals[j-1] = intervals[j-1], intervals[j]
+		}
+	}
+	start, end := intervals[0].StartedAt, intervals[0].FinishedAt
+	var total time.Duration
+	for _, interval := range intervals[1:] {
+		if interval.StartedAt.After(end) {
+			total += end.Sub(start)
+			start, end = interval.StartedAt, interval.FinishedAt
+			continue
+		}
+		if interval.FinishedAt.After(end) {
+			end = interval.FinishedAt
+		}
+	}
+	total += end.Sub(start)
+	return nonNegative(total.Milliseconds())
+}
+
 func nonNegative(v int64) int64 {
 	if v < 0 {
 		return 0
