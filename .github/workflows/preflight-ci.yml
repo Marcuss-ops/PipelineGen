@@ -30,8 +30,16 @@ jobs:
         with:
           go-version: "1.25.x"
 
+      - name: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: build-preflight-binary
         run: |
+          make web-build
           go build -o ./bin/admin ./cmd/admin/
           ls -la ./bin/admin
 
