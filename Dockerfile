@@ -19,7 +19,7 @@
 # Build the React/Vite admin UI through the canonical web-build target so
 # Docker, local verification, and clean-checkout CI use the same lockfile,
 # Node-version guard, Vite build, and embed-entrypoint check.
-FROM --platform=$BUILDPLATFORM node:22-bookworm AS admin-ui-builder
+FROM --platform=$BUILDPLATFORM node:25-bookworm AS admin-ui-builder
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends make \
