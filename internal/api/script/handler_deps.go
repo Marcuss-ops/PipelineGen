@@ -28,10 +28,10 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 
