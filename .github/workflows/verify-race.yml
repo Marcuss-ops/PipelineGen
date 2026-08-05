@@ -34,7 +34,9 @@ jobs:
         with:
           node-version: '22.x'
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            node-scraper/package-lock.json
+            web/package-lock.json
 
       - name: Run `make verify-race` (fail-closed)
         # This is intentionally manual and separate from verify-main. The
