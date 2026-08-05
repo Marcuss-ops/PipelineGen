@@ -148,8 +148,12 @@ while IFS= read -r component; do
 done <<< "$registry_components"
 
 clean_checkout_script=$ROOT/scripts/ci/ci-clean-checkout-build.sh
-require "$clean_checkout_script" 'npm ci --prefix web' "clean web dependency install"
-require "$clean_checkout_script" 'npm run build --prefix web' "embedded web build"
+web_build_makefile=$ROOT/make/build.mk
+require "$web_build_makefile" 'web-build: web-install' "canonical web-build target"
+require "$web_build_makefile" 'npm ci --prefix web' "web lockfile install"
+require "$web_build_makefile" 'npm run build --prefix web' "web production build"
+require "$web_build_makefile" 'test -f web/dist/index.html' "embedded web entrypoint"
+require "$clean_checkout_script" 'make web-build' "canonical clean web build"
 require "$clean_checkout_script" 'web/dist is committed|generated frontend artifacts must remain untracked' "generated web/dist rejection"
 require "$clean_checkout_script" 'vet ./\.\.\.' "full Go vet"
 require "$clean_checkout_script" 'test ./\.\.\.' "full Go tests"
@@ -159,6 +163,9 @@ require "$clean_checkout_script" 'build -o admin ./cmd/admin' "admin build"
 require "$clean_checkout_script" 'GO_BIN=\$\{GO:-go\}' "configurable Go binary"
 require "$clean_checkout_script" 'GO_BIN=\$\(command -v' "absolute Go binary resolution"
 require "$clean_checkout_script" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkout-build\.sh' "Make Go forwarding"
+require "$ROOT/.github/workflows/ci.yml" 'run: make web-build' "CI web build"
+require "$ROOT/.github/workflows/preflight-ci.yml" 'make web-build' "preflight web build"
+require "$ROOT/Dockerfile" 'make -f make/build\.mk web-build' "Docker web build"
 
 # Coverage is a separate fail-closed contract, not an implicit fallback in
 # verify-changed-components. Keep its reports in the temporary plan directory.
