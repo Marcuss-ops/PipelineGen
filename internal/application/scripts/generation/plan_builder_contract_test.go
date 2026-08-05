@@ -1,7 +1,7 @@
-// Package usecase — generation_plan_builder_test.go exercises
+// Package generation — plan_builder_contract_test.go exercises
 // the buildPostprocessorList helper at the package-internal
-// seam (buildPostprocessorList is UNEXPORTED, so this test
-// must live in `package usecase` not `package usecase_test`).
+// seam (buildPostprocessorList is unexported, so this test
+// stays in the canonical generation package).
 //
 // PR-TRANSLATE-SCRIPT-SPEC §2 (2026-08-08): forward-prevention
 // regression-guard. The contract pinned here is: every name
@@ -16,7 +16,7 @@
 // across 12 scenarios (all-flags-on, all-flags-off, 6
 // individual flag toggles, 2 flag-combination permutations,
 // 2 translate_to scenarios).
-package usecase
+package generation
 
 import (
 	"testing"
@@ -157,8 +157,7 @@ func TestBuildPostprocessorList_OnlyUsesCanonicalProcessorNames(t *testing.T) {
 		t.Run(sc.name, func(t *testing.T) {
 			got := buildPostprocessorList(sc.out)
 			if len(got) == 0 {
-				t.Fatalf("buildPostprocessorList(%q) returned 0 names; expected at least the "+"unconditional clip_bindings per the goddoc in "+
-					"generation_plan_builder.go", sc.name)
+				t.Fatalf("buildPostprocessorList(%q) returned 0 names; expected at least the "+"unconditional clip_bindings per the canonical plan builder", sc.name)
 			}
 			for i, name := range got {
 				if !canonical[name] {
