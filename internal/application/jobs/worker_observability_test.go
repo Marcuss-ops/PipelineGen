@@ -6,7 +6,7 @@
 //   - TestWorker_RunJob_ProducesRunReport        — runJob with an
 //     attached RunObserver produces one Run per claim: queue_wait_ms
 //     from created_at→started_at, wall_time_ms > 0, SUCCEEDED status,
-//     AttemptID = lease, Counters.Retries = job.RetryCount.
+//     AttemptID is a distinct persistent execution ID, while the lease remains the worker fence; Counters.Retries = job.RetryCount.
 //   - TestWorker_RunJob_FailedAttempt_FinishesFailed — a dispatcher
 //     error closes the run as FAILED (a scheduled retry is still a
 //     failed attempt).
@@ -136,8 +136,8 @@ func TestWorker_RunJob_ProducesRunReport(t *testing.T) {
 	if rep.Status != kernobs.StatusSucceeded {
 		t.Fatalf("status = %q, want SUCCEEDED", rep.Status)
 	}
-	if rep.AttemptID != "lease-obs-1" {
-		t.Fatalf("attempt_id = %q, want the canonical lease token", rep.AttemptID)
+	if rep.AttemptID == "" || rep.AttemptID == "lease-obs-1" {
+		t.Fatalf("attempt_id = %q, want a distinct persistent execution ID", rep.AttemptID)
 	}
 	if rep.QueueWaitMs != 5000 {
 		t.Fatalf("queue_wait_ms = %d, want 5000 (started_at − created_at)", rep.QueueWaitMs)

@@ -98,12 +98,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	)
 	if w.observer != nil {
 		run = w.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
-			JobID:      j.ID,
-			JobType:    j.Type,
-			AttemptID:  j.LeaseID, // canonical per-claim token (no attempt_id table)
-			CreatedAt:  j.CreatedAt,
-			StartedAt:  j.StartedAt,
-			RetryCount: j.RetryCount,
+			JobID:       j.ID,
+			JobType:     j.Type,
+			AttemptID:   kernobs.NewAttemptID(), // persistent execution identity; LeaseID remains the worker fence
+			CreatedAt:   j.CreatedAt,
+			StartedAt:   j.StartedAt,
+			ParentJobID: job.ParentLinkFromPayload(j.Payload).ParentJobID,
+			ParentRunID: job.ParentLinkFromPayload(j.Payload).ParentRunID,
+			RetryCount:  j.RetryCount,
 		})
 		ctx = kernobs.WithRun(ctx, run)
 		defer func() {

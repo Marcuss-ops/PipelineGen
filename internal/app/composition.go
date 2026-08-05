@@ -129,12 +129,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 	}
 
 	root := &wiring.ComposeRoot{
-		DB:         dbs.Main,
-		Drive:      driveBundle,
-		Repos:      repos,
-		Search:     search,
-		Process:    process,
-		TextTracks: textTracks,
+		DB:              dbs.Main,
+		ObservabilityDB: dbs.Logs,
+		Drive:           driveBundle,
+		Repos:           repos,
+		Search:          search,
+		Process:         process,
+		TextTracks:      textTracks,
 
 		AI:        ai,
 		Domains:   domains,

@@ -179,13 +179,20 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 	if deps.root.Jobs.Broker != nil {
 		runner.WithBroker(deps.root.Jobs.Broker)
 	}
-	// FASE 2 observability: every claimed job gets a kernel Run
-	// (queue_wait_ms, wall_time_ms, status, attempts). The collector
-	// exports the finished reports to Prometheus (job_run_duration /
-	// queue_wait / retries) so the timings are observable immediately;
-	// the durable SQLite recorder sink lands in the persistence phase
-	// (FASE 5).
-	runner.WithObserver(kernobs.NewRunObserverWithCollector(nil, obsmetrics.NewRunReportsCollector()))
+	// Canonical observability: the collector remains a live metrics
+	// projection while the SQLite recorder owns durable run lifecycle.
+	var recorder kernobs.Recorder
+	if deps.root.ObservabilityDB != nil && deps.root.ObservabilityDB.DB != nil {
+		recorder = obsmetrics.NewSQLiteRecorderWithLogger(deps.root.ObservabilityDB.DB, deps.log)
+		if reconciler, ok := recorder.(kernobs.AbandonedRunReconciler); ok {
+			if _, err := reconciler.RecoverAbandoned(context.Background(), time.Now().UTC()); err != nil {
+				deps.log.Warn("observability abandoned-run recovery failed", zap.Error(err))
+			}
+		}
+	} else {
+		deps.log.Warn("observability recorder unavailable; using metrics-only projection")
+	}
+	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
 	return runner
 }
 

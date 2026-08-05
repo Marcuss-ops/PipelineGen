@@ -76,6 +76,7 @@ import (
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	appmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/processmetrics"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
@@ -83,6 +84,7 @@ import (
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/legacy"
+	sqliteprocessmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/processmetrics"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -198,6 +200,13 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// ── Step 2: Post-processor registration + freeze ────────────────────
 	scriptsRepoAdapter := adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo)
 	ppReg := adapters.NewPostProcessorRegistry(log)
+	if root.DB != nil && root.DB.DB != nil {
+		legacyRepo := sqliteprocessmetrics.NewSQLiteRepository(root.DB.DB)
+		canonicalProjection := appmetrics.NewRecorder(sqliteprocessmetrics.NewApplicationRepository(legacyRepo))
+		ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{
+			ProcessMetrics: canonicalProjection,
+		})
+	}
 	if err := registerScriptPostProcessors(ppReg, root, artlistWiring, cfg, log, scriptsRepoAdapter, metaModel); err != nil {
 		return fmt.Errorf("wireScriptFlow: %w", err)
 	}

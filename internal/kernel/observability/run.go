@@ -9,97 +9,72 @@ import (
 	"time"
 )
 
-// RunInfo identifies and parameterises one job execution.
 type RunInfo struct {
-	// RunID is the canonical run identifier. When empty, StartRun generates
-	// one via NewRunID.
-	RunID string
-	// JobID is the canonical job identifier (jobs table row).
-	JobID string
-	// JobType is the canonical job type (script.generate, voiceover.generate,
-	// stock.run, youtube.clip.extract, ...).
-	JobType string
-	// AttemptID is the canonical job attempt owned by the runtime. Empty for
-	// first attempts on runtimes that have not materialised attempts yet.
-	AttemptID string
-	// ParentRunID links this run to its parent run (child jobs).
+	RunID       string
+	JobID       string
+	JobType     string
+	AttemptID   string
+	LeaseID     string
 	ParentRunID string
-	// CreatedAt is the job enqueue timestamp. Zero falls back to start time.
-	CreatedAt time.Time
-	// QueueWaitMs is the time the job spent waiting before processing started.
-	// Computed by the runtime at claim time (now - CreatedAt).
-	QueueWaitMs int64
+	ParentJobID string
+
+	WorkerID       string
+	LeaseExpiresAt time.Time
+	CreatedAt      time.Time
+	QueueWaitMs    int64
 }
 
-// RunObserver is the composition entry point: it creates Runs and owns the
-// durable sink. One observer is shared process-wide.
 type RunObserver struct {
 	recorder  Recorder
 	collector Collector
 	now       func() time.Time
 }
 
-// NewRunObserver constructs a RunObserver. A nil recorder makes the observer a
-// safe in-memory-only observer: reports are still produced and serialisable,
-// they are just not persisted.
 func NewRunObserver(recorder Recorder) *RunObserver {
 	return &RunObserver{recorder: recorder, now: time.Now}
 }
-
-// WithCollector attaches a best-effort metrics/report collector to the
-// observer. It is intended for composition-root wiring before StartRun is
-// called; the returned observer is the same pointer for fluent setup.
-func (o *RunObserver) WithCollector(collector Collector) *RunObserver {
+func (o *RunObserver) WithCollector(c Collector) *RunObserver {
 	if o != nil {
-		o.collector = collector
+		o.collector = c
 	}
 	return o
 }
-
-// NewRunObserverWithCollector constructs an observer with both the durable
-// recorder and the metrics/report collector configured.
-func NewRunObserverWithCollector(recorder Recorder, collector Collector) *RunObserver {
-	return NewRunObserver(recorder).WithCollector(collector)
+func NewRunObserverWithCollector(r Recorder, c Collector) *RunObserver {
+	return NewRunObserver(r).WithCollector(c)
 }
 
-// ClaimRunInfo carries the per-claim identity the job runtimes attach to a
-// run. It is intentionally primitive (no kernel/job dependency): the
-// runtimes map job.Job fields onto it.
 type ClaimRunInfo struct {
-	JobID      string
-	JobType    string
-	AttemptID  string
+	JobID          string
+	JobType        string
+	AttemptID      string
+	LeaseID        string
+	WorkerID       string
+	LeaseExpiresAt time.Time
+	ParentRunID    string
+	ParentJobID    string
+
 	CreatedAt  time.Time
 	StartedAt  *time.Time
 	RetryCount int
 }
 
-// StartRunForClaim starts a run for one claimed job attempt, computing
-// queue_wait_ms from StartedAt−CreatedAt and snapshotting the retry count
-// (attempt_number = RetryCount+1). Shared by BOTH job runtimes (orchestrator
-// runJob + remote worker runLease) so the claim→run mapping cannot drift
-// between the two. Nil-receiver tolerant (falls back to an in-memory run,
-// like StartRun).
 func (o *RunObserver) StartRunForClaim(ctx context.Context, info ClaimRunInfo) *Run {
 	queueWait := int64(0)
 	if info.StartedAt != nil && info.StartedAt.After(info.CreatedAt) {
 		queueWait = info.StartedAt.Sub(info.CreatedAt).Milliseconds()
 	}
-	run := o.StartRun(ctx, RunInfo{
-		JobID:       info.JobID,
-		JobType:     info.JobType,
-		AttemptID:   info.AttemptID,
-		CreatedAt:   info.CreatedAt,
-		QueueWaitMs: queueWait,
-	})
-	run.SetRetries(int64(info.RetryCount))
-	return run
+	if info.AttemptID == "" {
+		info.AttemptID = NewAttemptID()
+	}
+	r := o.StartRun(ctx, RunInfo{JobID: info.JobID, JobType: info.JobType, AttemptID: info.AttemptID, LeaseID: info.LeaseID, WorkerID: info.WorkerID, LeaseExpiresAt: info.LeaseExpiresAt, ParentRunID: info.ParentRunID, ParentJobID: info.ParentJobID, CreatedAt: info.CreatedAt, QueueWaitMs: queueWait})
+	r.SetRetries(int64(info.RetryCount))
+	return r
 }
 
-// StartRun begins a new Run with the canonical report envelope. The returned
-// run must be finished exactly once (defer run.Finish() or the body-runner
-// Run method); Finish is idempotent.
 func (o *RunObserver) StartRun(ctx context.Context, info RunInfo) *Run {
+	if info.AttemptID == "" {
+		info.AttemptID = NewAttemptID()
+	}
 	now := time.Now
 	var rec Recorder
 	var collector Collector
@@ -113,269 +88,260 @@ func (o *RunObserver) StartRun(ctx context.Context, info RunInfo) *Run {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	createdAt := info.CreatedAt
-	if createdAt.IsZero() {
-		createdAt = now()
+	created := info.CreatedAt
+	if created.IsZero() {
+		created = now()
 	}
-	startedAt := now()
-	runID := info.RunID
-	if runID == "" {
-		runID = NewRunID()
+	started := now()
+	id := info.RunID
+	if id == "" {
+		id = NewRunID()
 	}
-	return &Run{
-		ctx:       ctx,
-		rec:       rec,
-		collector: collector,
-		now:       now,
-		started:   startedAt,
-		report: RunReport{
-			RunID:       runID,
-			JobID:       info.JobID,
-			JobType:     info.JobType,
-			AttemptID:   info.AttemptID,
-			ParentRunID: info.ParentRunID,
-			Status:      StatusRunning,
-			CreatedAt:   createdAt,
-			StartedAt:   startedAt,
-			QueueWaitMs: nonNegative(info.QueueWaitMs),
-		},
-	}
+	run := &Run{ctx: ctx, rec: rec, collector: collector, now: now, started: started, children: make(map[string]RunReport), report: RunReport{RunID: id, JobID: info.JobID, JobType: info.JobType, AttemptID: info.AttemptID, LeaseID: info.LeaseID, ParentRunID: info.ParentRunID, ParentJobID: info.ParentJobID, WorkerID: info.WorkerID, LeaseExpiresAt: info.LeaseExpiresAt, Status: StatusRunning, CreatedAt: created, StartedAt: started, QueueWaitMs: nonNegative(info.QueueWaitMs)}}
+	run.startReport()
+	return run
 }
 
-// Run runs body under a fresh run bound to the context. It is the panic-safe
-// entry point: on panic the run is closed as FAILED (timer closed) and the
-// panic is re-raised. Equivalent to:
-//
-//	run := observer.StartRun(ctx, info)
-//	defer run.Finish()
-//	ctx = observability.WithRun(ctx, run)
-//
-// but guarantees the run is closed even when body panics or returns an error.
-func (o *RunObserver) Run(ctx context.Context, info RunInfo, body func(ctx context.Context) error) (*RunReport, error) {
-	run := o.StartRun(ctx, info)
-	runCtx := WithRun(ctx, run)
+func (o *RunObserver) Run(ctx context.Context, info RunInfo, body func(context.Context) error) (*RunReport, error) {
+	r := o.StartRun(ctx, info)
+	runCtx := WithRun(ctx, r)
 	defer func() {
-		if rec := recover(); rec != nil {
-			run.FinishWithPanic(rec)
-			panic(rec)
+		if v := recover(); v != nil {
+			r.FinishWithPanic(v)
+			panic(v)
 		}
 	}()
 	if body == nil {
 		err := errorCodeMissingBody
-		run.FinishWithError(err)
-		return run.Report(), err
+		r.FinishWithError(err)
+		return r.Report(), err
 	}
 	err := body(runCtx)
-	run.FinishWithError(err)
-	return run.Report(), err
+	r.FinishWithError(err)
+	return r.Report(), err
 }
 
-// Run is the per-job accumulation buffer. It is safe for concurrent use:
-// stages, operations, counters and artifacts may be recorded from parallel
-// goroutines (child jobs, provider fan-out).
 type Run struct {
-	ctx       context.Context
-	rec       Recorder
-	collector Collector
-	now       func() time.Time
-	started   time.Time
-
-	mu       sync.Mutex
-	report   RunReport
-	finished bool
-
-	// activeMs is the sum of stage durations; operationMs is the sum of
-	// operation durations (the parallelism diagnostic).
+	ctx         context.Context
+	rec         Recorder
+	collector   Collector
+	now         func() time.Time
+	started     time.Time
+	mu          sync.Mutex
+	report      RunReport
+	finished    bool
 	activeMs    int64
 	operationMs int64
+	children    map[string]RunReport
 }
 
-// Finish closes the run as SUCCEEDED (first call wins). Idempotent: later
-// calls return the same report. The report is flushed to the recorder sink
-// exactly once. After Finish the report is sealed: further stage/operation/
-// counter/child/artifact mutations are ignored (the finished report is the
-// canonical snapshot).
-func (r *Run) Finish() *RunReport {
+func (r *Run) startReport() {
+	if r == nil || r.rec == nil {
+		return
+	}
+	l, ok := r.rec.(LifecycleRecorder)
+	if !ok {
+		return
+	}
+	if err := l.StartReport(r.ctx, r.Report()); err != nil {
+		r.markRecorderFailure("start_report", err)
+	}
+}
+func (r *Run) markRecorderFailure(op string, err error) {
+	if r == nil || err == nil {
+		return
+	}
+	r.mu.Lock()
+	r.report.ObservabilityDegraded = true
+	id := r.report.RunID
+	r.mu.Unlock()
+	logger, _ := r.rec.(RecorderFailureLogger)
+	noteRecorderFailure(r.ctx, id, op, err, logger)
+}
+
+func (r *Run) finish(status string, finalErr error) *RunReport {
 	if r == nil {
 		return nil
 	}
 	r.mu.Lock()
-	out, emit := r.finishLocked(nil, "")
-	r.mu.Unlock()
-	if emit {
-		r.emit(out)
-	}
-	return out
-}
-
-// FinishWithError closes the run as FAILED with the error code/message.
-func (r *Run) FinishWithError(err error) *RunReport {
-	if r == nil {
-		return nil
-	}
-	r.mu.Lock()
-	out, emit := r.finishLocked(err, "")
-	r.mu.Unlock()
-	if emit {
-		r.emit(out)
-	}
-	return out
-}
-
-// FinishWithPanic closes the run as FAILED from a recovered panic value. Used
-// by the panic-safe body runner; the panic is re-raised by the caller.
-func (r *Run) FinishWithPanic(v any) *RunReport {
-	if r == nil {
-		return nil
-	}
-	r.mu.Lock()
-	out, emit := r.finishLocked(panicError(v), "")
-	r.mu.Unlock()
-	if emit {
-		r.emit(out)
-	}
-	return out
-}
-
-// Cancel closes the run as CANCELLED.
-func (r *Run) Cancel() *RunReport {
-	if r == nil {
-		return nil
-	}
-	r.mu.Lock()
-	out, emit := r.finishLocked(nil, StatusCancelled)
-	r.mu.Unlock()
-	if emit {
-		r.emit(out)
-	}
-	return out
-}
-
-// finishLocked must be called with r.mu held. First call wins. The bool
-// reports whether the caller must emit the newly finalized report.
-func (r *Run) finishLocked(finalErr error, forcedStatus string) (*RunReport, bool) {
 	if r.finished {
-		return r.reportCopyLocked(), false
+		out := cloneReport(&r.report)
+		r.mu.Unlock()
+		return out
 	}
 	r.finished = true
-	now := r.now()
 	if r.report.FinishedAt.IsZero() {
-		r.report.FinishedAt = now
+		r.report.FinishedAt = r.now()
 	}
 	r.report.WallTimeMs = nonNegative(r.report.FinishedAt.Sub(r.started).Milliseconds())
 	r.report.ActiveMs = r.activeMs
 	r.report.AccumulatedOperationMs = r.operationMs
-	switch {
-	case forcedStatus != "":
-		r.report.Status = forcedStatus
-	case finalErr != nil:
+	if status != "" {
+		r.report.Status = status
+	} else if finalErr != nil {
 		r.report.Status = StatusFailed
 		r.report.Error = finalErr.Error()
 		r.report.ErrorCode = errorCode(finalErr)
-	default:
+	} else {
 		r.report.Status = StatusSucceeded
 	}
-	return r.reportCopyLocked(), true
+	out := cloneReport(&r.report)
+	r.mu.Unlock()
+	r.emit(out)
+	return out
 }
+func (r *Run) Finish() *RunReport                   { return r.finish("", nil) }
+func (r *Run) FinishWithError(err error) *RunReport { return r.finish("", err) }
+func (r *Run) FinishWithPanic(v any) *RunReport     { return r.finish("", panicError(v)) }
+func (r *Run) Cancel() *RunReport                   { return r.finish(StatusCancelled, nil) }
 
-// emit sends independent defensive copies to each best-effort sink. Sink
-// implementations may retain or mutate their input without affecting the
-// caller or another sink.
 func (r *Run) emit(report *RunReport) {
-	if report == nil {
+	if r == nil || report == nil {
 		return
 	}
 	if r.collector != nil {
 		_ = r.collector.Collect(r.ctx, cloneReport(report))
 	}
 	if r.rec != nil {
-		_ = r.rec.SaveReport(r.ctx, cloneReport(report))
+		if err := r.rec.SaveReport(r.ctx, cloneReport(report)); err != nil {
+			r.markRecorderFailure("save_report", err)
+		}
 	}
 }
-
-// Report returns a defensive copy of the current report. When the run is not
-// yet finished, Status is RUNNING and FinishedAt is zero.
 func (r *Run) Report() *RunReport {
 	if r == nil {
 		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.reportCopyLocked()
-}
-
-func (r *Run) reportCopyLocked() *RunReport {
 	return cloneReport(&r.report)
 }
-
-func cloneReport(report *RunReport) *RunReport {
-	if report == nil {
+func cloneReport(in *RunReport) *RunReport {
+	if in == nil {
 		return nil
 	}
-	out := *report
-	out.Stages = append([]StageReport(nil), report.Stages...)
-	out.Operations = append([]OperationReport(nil), report.Operations...)
-	out.Artifacts = append([]ArtifactReport(nil), report.Artifacts...)
-	if report.Children != nil {
-		child := *report.Children
-		out.Children = &child
+	out := *in
+	out.Stages = append([]StageReport(nil), in.Stages...)
+	out.Operations = append([]OperationReport(nil), in.Operations...)
+	out.Artifacts = append([]ArtifactReport(nil), in.Artifacts...)
+	if in.Children != nil {
+		c := *in.Children
+		out.Children = &c
 	}
 	return &out
 }
-
-// JSON serialises the current report. A nil run yields (nil, nil).
 func (r *Run) JSON() ([]byte, error) {
-	rep := r.Report()
-	if rep == nil {
+	p := r.Report()
+	if p == nil {
 		return nil, nil
 	}
-	return json.Marshal(rep)
+	return json.Marshal(p)
 }
 
-// AddBlocked records time spent waiting (semaphore, rate-limit, retry
-// backoff). Negative values are clamped to zero. Mutations after Finish are
-// ignored: the finished report is the canonical sealed snapshot.
 func (r *Run) AddBlocked(d time.Duration) {
 	if r == nil || d <= 0 {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.finished {
-		return
+	if !r.finished {
+		r.report.BlockedMs += d.Milliseconds()
 	}
-	r.report.BlockedMs += d.Milliseconds()
 }
-
-// RegisterChild links a finished child run into the parent's children summary.
-// Requested/completed/failed counters and the summed child wall time are
-// updated; durations are never averaged, so parallel children sum correctly.
-func (r *Run) RegisterChild(report *RunReport) {
-	if r == nil || report == nil {
+func (r *Run) SetRetries(n int64) {
+	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.finished {
+	if !r.finished {
+		r.report.Counters.Retries = nonNegative(n)
+	}
+}
+func (r *Run) addCounter(fn func(*RunCounters)) {
+	if r == nil || fn == nil {
 		return
 	}
-	if r.report.Children == nil {
-		r.report.Children = &ChildrenSummary{}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.finished {
+		fn(&r.report.Counters)
 	}
-	r.report.Children.Requested++
-	switch report.Status {
-	case StatusSucceeded:
-		r.report.Children.Completed++
-	case StatusFailed, StatusCancelled:
-		r.report.Children.Failed++
-	}
-	r.report.Children.WallTimeMs += report.WallTimeMs
 }
+func (r *Run) AddItemsRequested(n int64) {
+	r.addCounter(func(c *RunCounters) { c.ItemsRequested += nonNegative(n) })
+}
+func (r *Run) AddItemsCompleted(n int64) {
+	r.addCounter(func(c *RunCounters) { c.ItemsCompleted += nonNegative(n) })
+}
+func (r *Run) AddItemsFailed(n int64) {
+	r.addCounter(func(c *RunCounters) { c.ItemsFailed += nonNegative(n) })
+}
+func (r *Run) IncCacheHit()  { r.addCounter(func(c *RunCounters) { c.CacheHits++ }) }
+func (r *Run) IncCacheMiss() { r.addCounter(func(c *RunCounters) { c.CacheMisses++ }) }
+func (r *Run) IncRetry()     { r.addCounter(func(c *RunCounters) { c.Retries++ }) }
+func (r *Run) AddBytesDownloaded(n int64) {
+	r.addCounter(func(c *RunCounters) { c.BytesDownloaded += nonNegative(n) })
+}
+func (r *Run) AddBytesUploaded(n int64) {
+	r.addCounter(func(c *RunCounters) { c.BytesUploaded += nonNegative(n) })
+}
+func (r *Run) IncArtifactCreated() { r.addCounter(func(c *RunCounters) { c.ArtifactsCreated++ }) }
+func (r *Run) IncArtifactReused()  { r.addCounter(func(c *RunCounters) { c.ArtifactsReused++ }) }
 
-// AddArtifact records one produced/reused artifact and updates the counters.
+func (r *Run) RegisterChild(child *RunReport) {
+	if r == nil || child == nil {
+		return
+	}
+	copyChild := cloneReport(child)
+	var persist *RunReport
+	r.mu.Lock()
+	if r.finished {
+		r.mu.Unlock()
+		return
+	}
+	if copyChild.ParentRunID == "" {
+		copyChild.ParentRunID = r.report.RunID
+	}
+	if copyChild.ParentJobID == "" {
+		copyChild.ParentJobID = r.report.JobID
+	}
+	key := copyChild.JobID
+	if key == "" {
+		key = copyChild.RunID
+	}
+	if key == "" {
+		key = fmt.Sprintf("anonymous-child-%d", len(r.children)+1)
+	}
+	if r.children == nil {
+		r.children = make(map[string]RunReport)
+	}
+	r.children[key] = *copyChild
+	requested, completed, failed, wall := 0, 0, 0, int64(0)
+	for _, item := range r.children {
+		requested++
+		if item.Status == StatusSucceeded {
+			completed++
+		} else if item.Status == StatusFailed || item.Status == StatusCancelled || item.Status == StatusAbandoned {
+			failed++
+		}
+		wall += item.WallTimeMs
+	}
+	r.report.Children = &ChildrenSummary{Requested: requested, Completed: completed, Failed: failed, WallTimeMs: wall}
+	persist = copyChild
+	r.mu.Unlock()
+	if recorder, ok := r.rec.(LifecycleRecorder); ok {
+		if err := recorder.RecordChild(r.ctx, persist); err != nil {
+			r.markRecorderFailure("record_child", err)
+		}
+	}
+}
 func (r *Run) AddArtifact(a ArtifactReport) {
 	if r == nil {
 		return
+	}
+	if a.ObservationID == "" {
+		a.ObservationID = NewObservationID()
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -390,89 +356,45 @@ func (r *Run) AddArtifact(a ArtifactReport) {
 	}
 }
 
-// Counter helpers. All are nil-safe and clamp negative increments to zero.
-
-func (r *Run) AddItemsRequested(n int64) {
-	r.addCounter(func(c *RunCounters) { c.ItemsRequested += nonNegative(n) })
-}
-
-func (r *Run) AddItemsCompleted(n int64) {
-	r.addCounter(func(c *RunCounters) { c.ItemsCompleted += nonNegative(n) })
-}
-
-func (r *Run) AddItemsFailed(n int64) {
-	r.addCounter(func(c *RunCounters) { c.ItemsFailed += nonNegative(n) })
-}
-
-func (r *Run) IncCacheHit()  { r.addCounter(func(c *RunCounters) { c.CacheHits++ }) }
-func (r *Run) IncCacheMiss() { r.addCounter(func(c *RunCounters) { c.CacheMisses++ }) }
-func (r *Run) IncRetry()     { r.addCounter(func(c *RunCounters) { c.Retries++ }) }
-
-// SetRetries records the number of retries already consumed before this
-// attempt (the runtime's canonical job.RetryCount at claim time). Unlike the
-// additive counters it overwrites: the value is a snapshot from the job row,
-// not an in-run accumulation.
-func (r *Run) SetRetries(n int64) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.finished {
-		return
-	}
-	r.report.Counters.Retries = nonNegative(n)
-}
-
-func (r *Run) AddBytesDownloaded(n int64) {
-	r.addCounter(func(c *RunCounters) { c.BytesDownloaded += nonNegative(n) })
-}
-
-func (r *Run) AddBytesUploaded(n int64) {
-	r.addCounter(func(c *RunCounters) { c.BytesUploaded += nonNegative(n) })
-}
-
-func (r *Run) IncArtifactCreated() { r.addCounter(func(c *RunCounters) { c.ArtifactsCreated++ }) }
-func (r *Run) IncArtifactReused()  { r.addCounter(func(c *RunCounters) { c.ArtifactsReused++ }) }
-
-func (r *Run) addCounter(fn func(*RunCounters)) {
-	if r == nil || fn == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.finished {
-		return
-	}
-	fn(&r.report.Counters)
-}
-
-// recordStage appends a closed stage report and accumulates active time.
-// Must be safe under concurrent Stage calls.
 func (r *Run) recordStage(st StageReport) {
+	if st.ObservationID == "" {
+		st.ObservationID = NewObservationID()
+	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.finished {
+		r.mu.Unlock()
 		return
 	}
 	r.report.Stages = append(r.report.Stages, st)
 	r.activeMs += st.DurationMs
+	id := r.report.RunID
+	r.mu.Unlock()
+	if l, ok := r.rec.(LifecycleRecorder); ok {
+		if err := l.AppendStage(r.ctx, id, st); err != nil {
+			r.markRecorderFailure("append_stage", err)
+		}
+	}
 }
-
-// recordOperation appends a closed operation report and accumulates the
-// operation time (parallelism diagnostic).
 func (r *Run) recordOperation(op OperationReport) {
+	if op.ObservationID == "" {
+		op.ObservationID = NewObservationID()
+	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.finished {
+		r.mu.Unlock()
 		return
 	}
 	r.report.Operations = append(r.report.Operations, op)
 	r.operationMs += op.DurationMs
+	id := r.report.RunID
+	r.mu.Unlock()
+	if l, ok := r.rec.(LifecycleRecorder); ok {
+		if err := l.AppendOperation(r.ctx, id, op); err != nil {
+			r.markRecorderFailure("append_operation", err)
+		}
+	}
 }
 
-// NewRunID returns a collision-resistant run identifier. Empty RunIDs in
-// RunInfo are replaced with this at StartRun time.
 func NewRunID() string {
 	var b [6]byte
 	if _, err := rand.Read(b[:]); err == nil {
@@ -480,7 +402,15 @@ func NewRunID() string {
 	}
 	return fmt.Sprintf("run_%d", time.Now().UnixNano())
 }
-
+func NewAttemptID() string     { return persistentID("attempt") }
+func NewObservationID() string { return persistentID("observation") }
+func persistentID(prefix string) string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return fmt.Sprintf("%s_%d_%x", prefix, time.Now().UnixNano(), b)
+	}
+	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
 func nonNegative(v int64) int64 {
 	if v < 0 {
 		return 0

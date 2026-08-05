@@ -1,21 +1,47 @@
 package observability
 
-import "context"
+import (
+	"context"
+	"log/slog"
+	"sync/atomic"
+	"time"
+)
 
-// Recorder is the durable sink for finished run reports. It is the only
-// extension seam of this package: the SQLite writer (later phase) implements
-// it, tests use in-memory captures, and production can chain it with a
-// Prometheus adapter.
-//
-// Implementations MUST be best-effort: a persistence failure is logged by the
-// implementation and never fails the job that produced the report.
 type Recorder interface {
-	SaveReport(ctx context.Context, report *RunReport) error
+	SaveReport(context.Context, *RunReport) error
 }
 
-// NoopRecorder discards reports. It is the default for observers constructed
-// without a sink and for tests that only inspect in-memory reports.
+type LifecycleRecorder interface {
+	StartReport(context.Context, *RunReport) error
+	AppendStage(context.Context, string, StageReport) error
+	AppendOperation(context.Context, string, OperationReport) error
+	RecordChild(context.Context, *RunReport) error
+}
+
+type AbandonedRunReconciler interface {
+	RecoverAbandoned(context.Context, time.Time) (int64, error)
+}
+
+type RecorderFailureLogger interface {
+	LogRecorderFailure(context.Context, string, string, error)
+}
+
+var recorderFailures atomic.Uint64
+
+func RecorderFailureCount() uint64 { return recorderFailures.Load() }
+
+func noteRecorderFailure(ctx context.Context, runID, operation string, err error, logger RecorderFailureLogger) {
+	if err == nil {
+		return
+	}
+	recorderFailures.Add(1)
+	if logger != nil {
+		logger.LogRecorderFailure(ctx, runID, operation, err)
+		return
+	}
+	slog.Default().ErrorContext(ctx, "observability recorder failure", "run_id", runID, "operation", operation, "error", err)
+}
+
 type NoopRecorder struct{}
 
-// SaveReport implements Recorder by discarding the report.
 func (NoopRecorder) SaveReport(context.Context, *RunReport) error { return nil }

@@ -134,7 +134,7 @@ func obsTestLease(createdAt time.Time, startedAt time.Time, retryCount int) *app
 
 // TestRunLease_ProducesRunReport — success path: runLease closes the
 // run as SUCCEEDED with queue_wait_ms (created_at → started_at),
-// wall_time_ms > 0, AttemptID = lease, Counters.Retries = RetryCount.
+// wall_time_ms > 0, AttemptID is distinct from the lease fence, Counters.Retries = RetryCount.
 func TestRunLease_ProducesRunReport(t *testing.T) {
 	rec := &obsCaptureRecorder{}
 	handler := func(_ context.Context, _ *job.Job, _ *appjobs.JobExecutionTools) (appjobs.Result, error) {
@@ -159,7 +159,7 @@ func TestRunLease_ProducesRunReport(t *testing.T) {
 	if rep.Status != kernobs.StatusSucceeded {
 		t.Fatalf("status = %q, want SUCCEEDED", rep.Status)
 	}
-	if rep.JobID != "obs-remote-job" || rep.AttemptID != "lease-obs-remote" {
+	if rep.JobID != "obs-remote-job" || rep.AttemptID == "" || rep.AttemptID == "lease-obs-remote" {
 		t.Fatalf("identity/attempt = %q/%q", rep.JobID, rep.AttemptID)
 	}
 	if rep.QueueWaitMs != 5000 {
