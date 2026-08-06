@@ -15,14 +15,11 @@
 //   - "webhook"  → real HTTP POST with HMAC-SHA256 (mandatory in
 //     production via config.Security.DeliveryHMACSecret; dev escape
 //     only with VELOX_ALLOW_INSECURE_DEV=true and operator warning).
-//   - "drive"    → responsibility of the upload pipeline
-//     (internal/upload/drive); the handler emits an audit-log
-//     acknowledgement ("upload_pipeline_handles_drive") and returns
-//     nil so the outbox event marks Completed. This avoids double
-//     logic: the upload pipeline is THE source of truth for
-//     Drive uploads; the outbox delivery row is a tracker.
-//   - "youtube"  → responsibility of the YouTube upload pipeline;
-//     same audit-ack pattern as drive.
+//   - "drive"    → legacy acknowledgement only when the envelope omits
+//     operation. New envelopes must explicitly choose
+//     register_remote_reference or materialize_local and use the narrow
+//     operation port wired at construction.
+//   - "youtube"  → same compatibility rule as drive.
 //   - unknown    → terminal error (no retry) so a producer typo is
 //     obvious in dead-letter rather than a silent re-route.
 //   - HMAC signing string is the canonical
@@ -60,6 +57,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
@@ -105,6 +103,24 @@ var ErrUnsupportedProvider = errors.New("delivery.requested: unsupported provide
 // branch; we never silently retry on what looks like a routine failure.
 var ErrSchemaVersionMismatch = errors.New("delivery.requested: schema_version mismatch (terminal)")
 
+// ErrOperationUnavailable is terminal: the producer requested a distinct
+// delivery operation, but the composition root did not provide its port.
+// Returning an error prevents an unavailable capability from becoming a
+// successful no-op.
+var ErrOperationUnavailable = errors.New("delivery.requested: requested operation is not configured (terminal)")
+
+// ErrUnsupportedOperation is terminal: operation values are part of the
+// envelope contract and must not silently fall back to another side effect.
+var ErrUnsupportedOperation = errors.New("delivery.requested: unsupported operation (terminal)")
+
+// ErrOperationProviderMismatch is terminal: asset operations must target a
+// provider pipeline, never the webhook transport path.
+var ErrOperationProviderMismatch = errors.New("delivery.requested: operation/provider mismatch (terminal)")
+
+// ErrRemoteURLRequired is terminal: explicit asset operations need a source
+// URL and cannot safely infer one from a destination identifier.
+var ErrRemoteURLRequired = errors.New("delivery.requested: remote_url is required for explicit operation (terminal)")
+
 // Artifact container — required so the receiver can verify integrity
 // before accepting the artifact's payload bytes.
 type Artifact struct {
@@ -113,6 +129,8 @@ type Artifact struct {
 	SHA256      string `json:"sha256"`
 	SizeBytes   int64  `json:"size_bytes,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
+	RemoteURL   string `json:"remote_url,omitempty"`
+	Filename    string `json:"filename,omitempty"`
 }
 
 // Destination is the dispatch spec. provider selects the path; for
@@ -151,6 +169,7 @@ type deliveryRequest struct {
 	Artifact       Artifact    `json:"artifact"`
 	Destination    Destination `json:"destination"`
 	IdempotencyKey string      `json:"idempotency_key"`
+	Operation      string      `json:"operation,omitempty"`
 	Attempt        int         `json:"attempt,omitempty"`
 
 	// Body is the producer-supplied payload that goes on the wire
@@ -173,11 +192,13 @@ type deliveryRequest struct {
 // application layer no longer touches *http.Client directly. Tests
 // inject a roundtripper-backed fake that satisfies ports.Client.
 type DeliveryHandler struct {
-	log         *zap.Logger
-	client      ports.Client
-	db          *sql.DB
-	hmacSecrets [][]byte
-	insecureDev bool
+	log             *zap.Logger
+	client          ports.Client
+	db              *sql.DB
+	hmacSecrets     [][]byte
+	insecureDev     bool
+	remoteRegistrar assetdelivery.RemoteReferenceRegistrar
+	materializer    assetdelivery.Materializer
 }
 
 // NewDeliveryHandler builds a DeliveryHandler.
@@ -200,6 +221,18 @@ type DeliveryHandler struct {
 //     POST so the dev escape hatch is impossible to mistake
 //     for production behaviour.
 func NewDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
+	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, DeliveryOperation{})
+}
+
+// NewDeliveryHandlerWithOperations constructs the delivery handler with the
+// explicit asset-operation ports. It is separate from NewDeliveryHandler so
+// the legacy constructor remains source-compatible without ambiguous variadic
+// dependency precedence.
+func NewDeliveryHandlerWithOperations(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, operations)
+}
+
+func newDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -209,13 +242,28 @@ func NewDeliveryHandler(log *zap.Logger, client ports.Client, db *sql.DB, hmacSe
 	if len(hmacSecrets) == 0 && !insecureDev {
 		log.Warn("delivery.requested constructed WITHOUT HMAC secrets and WITHOUT insecureDev — every event will be refused with a terminal error. Check VELOX_DELIVERY_HMAC_SECRET.")
 	}
-	return &DeliveryHandler{
+	h := &DeliveryHandler{
 		log:         log.Named("delivery"),
 		client:      client,
 		db:          db,
 		hmacSecrets: hmacSecrets,
 		insecureDev: insecureDev,
 	}
+	if operations.RemoteRegistrar != nil {
+		h.remoteRegistrar = operations.RemoteRegistrar
+	}
+	if operations.Materializer != nil {
+		h.materializer = operations.Materializer
+	}
+	return h
+}
+
+// DeliveryOperation groups the optional typed ports for the explicit
+// register/materialize operations. The legacy constructor does not inject
+// these ports; production wiring uses NewDeliveryHandlerWithOperations.
+type DeliveryOperation struct {
+	RemoteRegistrar assetdelivery.RemoteReferenceRegistrar
+	Materializer    assetdelivery.Materializer
 }
 
 // EventType implements outboxevents.Handler.
@@ -253,6 +301,18 @@ func validateDeliveryRequest(r *deliveryRequest) error {
 	if r.IdempotencyKey == "" {
 		return fmt.Errorf("delivery.requested: missing required field (idempotency_key)")
 	}
+	switch r.Operation {
+	case "", string(assetdelivery.OperationRegisterRemoteReference), string(assetdelivery.OperationMaterializeLocal):
+		// Empty is the legacy envelope; explicit operations are handled below.
+	default:
+		return fmt.Errorf("%w (got %q)", ErrUnsupportedOperation, r.Operation)
+	}
+	if r.Operation != "" && r.Artifact.RemoteURL == "" {
+		return ErrRemoteURLRequired
+	}
+	if r.Operation != "" && r.Destination.Provider == deliveryProviderWebhook {
+		return fmt.Errorf("%w: provider=%s operation=%s", ErrOperationProviderMismatch, r.Destination.Provider, r.Operation)
+	}
 	switch r.Destination.Provider {
 	case deliveryProviderWebhook, deliveryProviderDrive, deliveryProviderYouTube:
 		// OK
@@ -288,22 +348,22 @@ func (h *DeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		return err
 	}
 
+	if req.Operation != "" {
+		return h.handleAssetOperation(ctx, &req)
+	}
+
 	switch req.Destination.Provider {
 	case deliveryProviderDrive, deliveryProviderYouTube:
-		// The upload pipelines own drive|youtube delivery (they need
-		// access tokens, resumable upload sessions, etc.). Logging a
-		// "real" acknowledgement here means the operator-visible audit
-		// row exists, but the actual upload is a separate code path.
-		// This avoids the double-logic / future-wrapper anti-pattern of
-		// trying to mirror Drive upload behaviour from inside the
-		// outbox delivery handler.
-		h.log.Info("delivery.requested acknowledged — handled by upload pipeline",
+		// Compatibility only: historical envelopes represented a pipeline
+		// acknowledgement and did not carry a source URL. Once a remote
+		// source is present, an explicit operation is mandatory.
+		if req.Artifact.RemoteURL != "" {
+			return fmt.Errorf("%w: provider=%s", ErrRemoteURLRequired, req.Destination.Provider)
+		}
+		h.log.Info("delivery.requested legacy acknowledgement — handled by upload pipeline",
 			zap.String("provider", req.Destination.Provider),
 			zap.String("destination_id", req.Destination.DestinationID),
 			zap.String("idempotency_key", req.IdempotencyKey),
-			zap.String("event_id", req.EventID),
-			zap.Int64("outbox_id", evt.ID),
-			zap.Int("attempt", evt.AttemptCount),
 		)
 		return nil
 
@@ -314,6 +374,33 @@ func (h *DeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		// this branch is defensive only.
 		return fmt.Errorf("%w (got %q)", ErrUnsupportedProvider, req.Destination.Provider)
 	}
+}
+
+func (h *DeliveryHandler) handleAssetOperation(ctx context.Context, req *deliveryRequest) error {
+	base := assetdelivery.RemoteReferenceRequest{
+		AssetID: req.Artifact.ArtifactID, Provider: req.Destination.Provider,
+		RemoteURL: req.Artifact.RemoteURL, DestinationID: req.Destination.DestinationID,
+		AccountID: req.Destination.AccountID, SHA256: req.Artifact.SHA256,
+		SizeBytes: req.Artifact.SizeBytes, MIMEType: req.Artifact.ContentType,
+		IdempotencyKey: req.IdempotencyKey,
+	}
+	if req.Operation == string(assetdelivery.OperationRegisterRemoteReference) {
+		if h.remoteRegistrar == nil {
+			return fmt.Errorf("%w: operation=%s", ErrOperationUnavailable, req.Operation)
+		}
+		return h.remoteRegistrar.RegisterRemoteReference(ctx, base)
+	}
+	if h.materializer == nil {
+		return fmt.Errorf("%w: operation=%s", ErrOperationUnavailable, req.Operation)
+	}
+	return h.materializer.MaterializeLocal(ctx, assetdelivery.MaterializationRequest{
+		AssetID: req.Artifact.ArtifactID, Provider: req.Destination.Provider,
+		RemoteURL: req.Artifact.RemoteURL, StorageKey: req.Artifact.StorageKey,
+		DestinationID: req.Destination.DestinationID, AccountID: req.Destination.AccountID,
+		Filename: req.Artifact.Filename, SHA256: req.Artifact.SHA256,
+		SizeBytes: req.Artifact.SizeBytes, MIMEType: req.Artifact.ContentType,
+		IdempotencyKey: req.IdempotencyKey,
+	})
 }
 
 // deliverWebhook POSTs the producer-supplied body, with HMAC-SHA256
