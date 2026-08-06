@@ -119,6 +119,12 @@ require "$stock_live" 'auth-check|with-velox-auth' "Stock live auth"
 require "$stock_release" 'verify-stock-unit|test-youtube-stock-fast' "Stock release unit level"
 require "$stock_release" 'verify-stock-integration|test-youtube-stock-local' "Stock release integration level"
 require "$stock_release" 'verify-stock-live|stock_e2e_full_battery' "Stock release live level"
+require "$stock_release" 'verify-stock-receipt\.sh' "Stock release receipt validator"
+require "$stock_release" 'verify-stock-receipt\.sh' "Stock release invokes receipt validator"
+require "$ROOT/scripts/ci/verify-stock-receipt.sh" 'expected_verdict=.*14/14 PASS' "Stock release canonical receipt verdict"
+require "$ROOT/scripts/ci/verify-stock-receipt.sh" 'required_markers=\(route job outbox qdrant mp4 ffprobe\)' "Stock release route/job/outbox/Qdrant/MP4/ffprobe marker list"
+require "$ROOT/tests/operational/stock_e2e_download_smoke.sh" 'SIZE.*MIN_BYTES|SIZE.*100000' "Stock MP4 size assertion"
+require "$ROOT/tests/operational/stock_e2e_download_smoke.sh" 'ffprobe' "Stock ffprobe assertion"
 forbid "$stock_release" 'verify-youtube-stock-live|verify-stock-acquisition|verify-stock-indexing' "retired Stock verification alias"
 
 # GNU Make must reuse shared prerequisites within one aggregate invocation.
