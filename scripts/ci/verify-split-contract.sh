@@ -127,6 +127,62 @@ require "$ROOT/tests/operational/stock_e2e_download_smoke.sh" 'SIZE.*MIN_BYTES|S
 require "$ROOT/tests/operational/stock_e2e_download_smoke.sh" 'ffprobe' "Stock ffprobe assertion"
 forbid "$stock_release" 'verify-youtube-stock-live|verify-stock-acquisition|verify-stock-indexing' "retired Stock verification alias"
 
+# Hermetic receipt/claim contract: a valid attested receipt authorizes the
+# claim, while missing provenance, surface markers, a wrong run ID, or a
+# tampered attestation fail closed with empty stdout.
+receipt_test_dir="$PLAN_DIR/stock-receipt-contract"
+rm -rf "$receipt_test_dir"
+mkdir -p "$receipt_test_dir"
+cat >"$receipt_test_dir/valid.log" <<'EOF'
+RECEIPT: source=stock_e2e_full_battery.sh
+RECEIPT: execution=live
+RECEIPT: run_id=contract-test-run
+RECEIPT: attestation=PLACEHOLDER
+RECEIPT: route=PASS
+RECEIPT: job=PASS
+RECEIPT: outbox=PASS
+RECEIPT: qdrant=PASS
+RECEIPT: mp4=PASS
+RECEIPT: ffprobe=PASS
+VERDICT: 14/14 PASS (STOCK-E2E-BATTERY-2026-07-05 wave-flip eligible)
+EOF
+attestation_key='contract-test-key'
+attestation_payload='contract-test-run|STOCK-E2E-BATTERY-2026-07-05|14/14|route=PASS|job=PASS|outbox=PASS|qdrant=PASS|mp4=PASS|ffprobe=PASS'
+attestation=$(printf '%s' "$attestation_payload" | openssl dgst -sha256 -hmac "$attestation_key" -hex | sed 's/^.*= //')
+sed -i "s/RECEIPT: attestation=.*/RECEIPT: attestation=${attestation}/" "$receipt_test_dir/valid.log"
+if ! (cd "$ROOT" && STOCK_E2E_RECEIPT_KEY="$attestation_key" bash scripts/ci/verify-stock-receipt.sh "$receipt_test_dir/valid.log" "contract-test-run" >/dev/null); then
+    fail "valid attested 14/14 receipt was rejected"
+fi
+claim_output=$(cd "$ROOT" && STOCK_E2E_RECEIPT_KEY="$attestation_key" bash scripts/ci/verify-stock-claim.sh "$receipt_test_dir/valid.log" "contract-test" "contract-test-run")
+if [[ "$claim_output" != 'STOCK VERIFIED: contract-test '* ]]; then
+    fail "valid attested receipt did not emit the authoritative claim"
+fi
+for missing in source execution run_id route job outbox qdrant mp4 ffprobe; do
+    case "$missing" in
+        source) marker='RECEIPT: source=stock_e2e_full_battery.sh' ;;
+        execution) marker='RECEIPT: execution=live' ;;
+        run_id) marker='RECEIPT: run_id=contract-test-run' ;;
+        *) marker="RECEIPT: ${missing}=PASS" ;;
+    esac
+    sed "/${marker}/d" "$receipt_test_dir/valid.log" >"$receipt_test_dir/missing-${missing}.log"
+    if claim_output=$(cd "$ROOT" && STOCK_E2E_RECEIPT_KEY="$attestation_key" bash scripts/ci/verify-stock-claim.sh "$receipt_test_dir/missing-${missing}.log" "contract-test" "contract-test-run" 2>/dev/null); then
+        fail "receipt claim accepted missing ${missing} proof"
+    elif [[ -n "$claim_output" ]]; then
+        fail "invalid receipt emitted a claim for missing ${missing} proof"
+    fi
+done
+sed 's/RECEIPT: attestation=.*/RECEIPT: attestation=invalid/' "$receipt_test_dir/valid.log" >"$receipt_test_dir/invalid-attestation.log"
+if claim_output=$(cd "$ROOT" && STOCK_E2E_RECEIPT_KEY="$attestation_key" bash scripts/ci/verify-stock-claim.sh "$receipt_test_dir/invalid-attestation.log" "contract-test" "contract-test-run" 2>/dev/null); then
+    fail "receipt claim accepted an invalid attestation"
+elif [[ -n "$claim_output" ]]; then
+    fail "invalid attestation emitted an authoritative claim"
+fi
+if claim_output=$(cd "$ROOT" && STOCK_E2E_RECEIPT_KEY="$attestation_key" bash scripts/ci/verify-stock-claim.sh "$receipt_test_dir/valid.log" "contract-test" "wrong-run-id" 2>/dev/null); then
+    fail "receipt claim accepted a mismatched run ID"
+elif [[ -n "$claim_output" ]]; then
+    fail "mismatched run ID emitted an authoritative claim"
+fi
+
 # GNU Make must reuse shared prerequisites within one aggregate invocation.
 trace=$PLAN_DIR/verify-full.trace
 (cd "$ROOT" && make --trace -n --no-print-directory verify-full) >"$trace" 2>&1

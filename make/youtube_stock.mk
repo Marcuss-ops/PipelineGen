@@ -85,17 +85,18 @@ verify-stock-unit: test-stock-component test-youtube-stock-fast
 verify-stock-integration: test-youtube-stock-local test-youtube-stock-resilience
 	@echo "✅ verify-stock-integration passed"
 
-# This is the only stock live gate. It uses the canonical authenticated
-# operational battery rather than a local fixture or a package-only alias.
-# Keep the receipt in a caller-selectable location so release can validate the
-# exact output from this one live run without executing the battery twice.
-STOCK_E2E_RECEIPT ?= $(if $(TMPDIR),$(TMPDIR),/tmp)/pipelinegen-stock-e2e-receipt.$(shell date +%s%N).log
+# One run ID and one private key file are shared by battery, receipt, and claim.
+STOCK_E2E_RUN_ID := $(or $(STOCK_E2E_RUN_ID),stock-$(shell date +%s%N))
+STOCK_E2E_RECEIPT := $(or $(STOCK_E2E_RECEIPT),$(if $(TMPDIR),$(TMPDIR),/tmp)/pipelinegen-stock-e2e-receipt.$(STOCK_E2E_RUN_ID).log)
+STOCK_E2E_RECEIPT_KEY_FILE := $(STOCK_E2E_RECEIPT).key
 
 verify-stock-live: auth-check
-	@rm -f "$(STOCK_E2E_RECEIPT)"
-	@bash -o pipefail -c 'scripts/with-velox-auth bash tests/operational/stock_e2e_full_battery.sh 2>&1 | tee "$$1"' -- "$(STOCK_E2E_RECEIPT)"
-	@echo "✅ verify-stock-live passed (receipt: $(STOCK_E2E_RECEIPT))"
+	@rm -f "$(STOCK_E2E_RECEIPT)" "$(STOCK_E2E_RECEIPT_KEY_FILE)"
+	@umask 077; openssl rand -hex 32 > "$(STOCK_E2E_RECEIPT_KEY_FILE)"
+	@STOCK_E2E_RUN_ID="$(STOCK_E2E_RUN_ID)" STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash -o pipefail -c 'scripts/with-velox-auth bash tests/operational/stock_e2e_full_battery.sh 2>&1 | tee "$$1"' -- "$(STOCK_E2E_RECEIPT)"
+	@echo "✅ verify-stock-live passed (receipt: $(STOCK_E2E_RECEIPT); run_id: $(STOCK_E2E_RUN_ID))"
 
 verify-stock-release: verify-stock-unit verify-stock-integration verify-stock-live
-	@bash scripts/ci/verify-stock-receipt.sh "$(STOCK_E2E_RECEIPT)"
-	@echo "✅ verify-stock-release passed (canonical 14/14 receipt: $(STOCK_E2E_RECEIPT))"
+	@STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash scripts/ci/verify-stock-receipt.sh "$(STOCK_E2E_RECEIPT)" "$(STOCK_E2E_RUN_ID)"
+	@STOCK_E2E_RECEIPT_KEY_FILE="$(STOCK_E2E_RECEIPT_KEY_FILE)" bash scripts/ci/verify-stock-claim.sh "$(STOCK_E2E_RECEIPT)" "verify-stock-release" "$(STOCK_E2E_RUN_ID)"
+	@echo "✅ verify-stock-release passed (canonical 14/14 receipt: $(STOCK_E2E_RECEIPT); run_id: $(STOCK_E2E_RUN_ID))"
