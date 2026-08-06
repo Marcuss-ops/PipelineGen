@@ -901,7 +901,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
                 printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
                 return 1
             fi
-            printf '%sPASS: Negative swapped stock verified — STOCK_SUBJECT_MISMATCH correctly detected in multilang scenario.%s\n' "$GREEN" "$RESET"
+            printf '%sPASS: Negative swapped stock subject rejected — STOCK_SUBJECT_MISMATCH correctly detected in multilang scenario.%s\n' "$GREEN" "$RESET"
             ;;
 
         "07c")
@@ -929,7 +929,7 @@ print(f'Aggregated {len(all_items)} items from {len(os.listdir(children_dir))} c
                 printf '%sFAIL: Swapped stock negative check did not exit with code 3 (got exit code %d)%s\n' "$RED" "$exit_code" "$RESET" >&2
                 return 1
             fi
-            printf '%sPASS: Negative swapped stock verified (correctly detected STOCK_SUBJECT_MISMATCH)%s\n' "$GREEN" "$RESET"
+            printf '%sPASS: Negative swapped stock subject rejected (correctly detected STOCK_SUBJECT_MISMATCH)%s\n' "$GREEN" "$RESET"
             ;;
     esac
     

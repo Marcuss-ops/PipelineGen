@@ -51,6 +51,17 @@ PROBE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WAVE_ID="STOCK-E2E-BATTERY-2026-07-05"
 ARCHITECTURE_FILE="architecture/current.yaml"
 CO_AUTHOR="PipelineGen Agent <agent@pipelinegen.local>"
+RUN_ID="${STOCK_E2E_RUN_ID:-}"
+ATTESTATION_KEY="${STOCK_E2E_RECEIPT_KEY:-}"
+if [[ -n "${STOCK_E2E_RECEIPT_KEY_FILE:-}" ]]; then
+    [[ -r "$STOCK_E2E_RECEIPT_KEY_FILE" ]] || { echo "FAIL: STOCK_E2E_RECEIPT_KEY_FILE is unreadable" >&2; exit 2; }
+    ATTESTATION_KEY=$(<"$STOCK_E2E_RECEIPT_KEY_FILE")
+fi
+ATTESTATION_KEY=${ATTESTATION_KEY//$'\n'/}
+[[ -n "$RUN_ID" ]] || { echo "FAIL: STOCK_E2E_RUN_ID is required for an authoritative live receipt" >&2; exit 2; }
+[[ "$RUN_ID" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "FAIL: STOCK_E2E_RUN_ID contains unsupported characters" >&2; exit 2; }
+[[ -n "$ATTESTATION_KEY" ]] || { echo "FAIL: STOCK_E2E_RECEIPT_KEY is required for an authoritative live receipt" >&2; exit 2; }
+command -v openssl >/dev/null 2>&1 || { echo "FAIL: openssl is required for the authoritative live receipt" >&2; exit 2; }
 
 # Per-probe table: script|point-count (sum = 14).
 PROBES=(
@@ -146,12 +157,20 @@ probe_status() {
 }
 
 echo "=== STK-E2E-H: receipt coverage ==="
+echo "RECEIPT: source=stock_e2e_full_battery.sh"
+echo "RECEIPT: execution=live"
+echo "RECEIPT: run_id=$RUN_ID"
 echo "RECEIPT: route=$(probe_status STK-E2E-A)"
 echo "RECEIPT: job=$(probe_status STK-E2E-B)"
 echo "RECEIPT: outbox=$(probe_status STK-E2E-E)"
 echo "RECEIPT: qdrant=$(probe_status STK-E2E-F)"
 echo "RECEIPT: mp4=$(probe_status STK-E2E-G)"
 echo "RECEIPT: ffprobe=$(probe_status STK-E2E-G)"
+if [ "$passed_points" -eq "$TOTAL_POINTS" ]; then
+    attestation_payload="${RUN_ID}|${WAVE_ID}|14/14|route=PASS|job=PASS|outbox=PASS|qdrant=PASS|mp4=PASS|ffprobe=PASS"
+    attestation=$(printf '%s' "$attestation_payload" | openssl dgst -sha256 -hmac "$ATTESTATION_KEY" -hex | sed 's/^.*= //')
+    echo "RECEIPT: attestation=$attestation"
+fi
 echo
 
 # ------------------------------------------------------------------------------

@@ -13,7 +13,7 @@
 
 The stock pipeline (`search/direct URL → stage → cut → render → Drive → media_assets → outbox/Qdrant → search → download MP4`) is the canonical stock-side provider alongside Artlist (`ART-002`) and YouTube channel monitor (`QDRANT-CHAIN-VERIFY-2026-07-04`). This runbook is the operator-facing receipt that the rewrite is end-to-end functional against a live PipelineGen server.
 
-Per godlike/07 NO-FAKE-AVAILABILITY (canonical at `docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md`): a closure that marks "stock works" without a probe that **actually runs the surface** is invalid. The 9 phases A → I below are the canonical diagnostic surface; each phase is the receipt; each FAIL signal maps to a canonical `PR-STOCK-*` forward-pointer.
+Per godlike/07 NO-FAKE-AVAILABILITY (canonical at `docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md`): a closure that marks the Stock surface operational without a probe that **actually runs the surface** is invalid. The 9 phases A → I below are the canonical diagnostic surface; each phase is the receipt; each FAIL signal maps to a canonical `PR-STOCK-*` forward-pointer.
 
 Per AGENTS.md git lessons: each per-phase commit lands directly on `main` (no branch, no PR, no `--force`) per **Git-Lesson-2** + Git-Lesson-3 (Co-authored-by trailer) + Git-Lesson-4 (race-protect: `git fetch origin && git log --oneline HEAD..@{u}` must be empty) + Git-Lesson-5 (byte-equivalent-replay recovery).
 
@@ -48,13 +48,16 @@ for phase in A B C D E F G; do
     bash "$fn" || echo "PHASE $phase FAIL; consult §3 diagnosis decision tree"
 done
 
-# 4. Run phase H aggregator (verifier-only audit-pin pattern; default mode).
-bash tests/operational/stock_e2e_full_battery.sh
+# 4. Run the canonical release gate. It creates one run ID, captures the
+#    battery receipt, validates every required live surface, and emits the
+#    aggregate claim only after the attested receipt passes.
+make verify-stock-release
 
-# 5. If H reports 14/14 PASS and you want to flip the parent wave + exit_signal:
-WRAPPER_BOOKKEEPING=1 bash tests/operational/stock_e2e_full_battery.sh
-# (default mode without WRAPPER_BOOKKEEPING=1 prints the canonical 6-step recipe
-#  for the operator to copy-paste — per godlike/07 minimum-blast-radius discipline)
+# 5. Diagnostic-only Phase H execution requires an explicit run ID and key.
+#    Its output is evidence, not a release authorization.
+STOCK_E2E_RUN_ID="diagnostic-$(date +%s%N)" \\
+STOCK_E2E_RECEIPT_KEY="diagnostic-key" \\
+  bash tests/operational/stock_e2e_full_battery.sh
 
 # 6. Phase I = this runbook verification.
 #    (canonical: re-read this runbook + cross-verify §3 decision tree matches action plan §4)
@@ -112,8 +115,8 @@ Per action plan §4 ("Failure diagnosis table") + per-probe FAIL mappings from P
 
 **Decision dispatch**:
 
-1. Run Phase H aggregator: `bash tests/operational/stock_e2e_full_battery.sh`
-2. If exit 0 → all 14 points PASS → Phase H labelled PASS → wave-flip ready (operator invokes `WRAPPER_BOOKKEEPING=1` per the recipe in §1 step 5)
+1. Run the canonical release gate: `make verify-stock-release` (it owns the run ID, private receipt key, validator, and aggregate claim).
+2. If exit 0 → all 14 points PASS → the release gate emits the only authoritative aggregate claim; diagnostic output alone is insufficient.
 3. If exit 1 → per-Phase FAIL signal in §3 table → ship the canonical PR forward-pointer + bring-up + re-run Phase H
 4. If exit 2 → environment prerequisite missing (server down / token wrong / DB unwritable / tools absent) → consult §4 pre-flight gate
 5. If shell exit 124 → per-probe `set -euo pipefail` failure with diagnostic preserved at `$TMP_DIR` (cleanup-on-PASS trap pattern)
@@ -216,8 +219,8 @@ Adjacent waves (precedent / next-up):
 1. **Pre-flight**: `bash -n` on all 9 probe scripts (`stock_e2e_*_smoke.sh` + `stock_e2e_full_battery.sh`); confirm 0 syntax errors.
 2. **Env check**: yt-dlp / ffmpeg / ffprobe / jq / sqlite3 / curl on PATH; `data/media/media.db.sqlite` writable; PipelineGen server reachable on `:8000` (or `:8081`) + `VELOX_ADMIN_TOKEN` set.
 3. **Phase A → G individually**: run each probe; on FAIL consult §3 diagnosis table.
-4. **Phase H aggregator**: `bash tests/operational/stock_e2e_full_battery.sh` → expect 14/14 PASS verdict.
-5. **Conditional wave-flip** (only if Phase H reports 14/14 PASS): `WRAPPER_BOOKKEEPING=1 bash tests/operational/stock_e2e_full_battery.sh` → flips `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` to `status: shipped + exit_signal: true`.
+4. **Canonical release gate**: `make verify-stock-release` → expect an attested 14/14 live receipt and the authoritative aggregate claim.
+5. **Diagnostic Phase H**: use the explicit run ID/key command in §1; its output cannot authorize a release claim.
 6. **Phase I recurse**: re-read this runbook + cross-verify §3 decision tree matches `architecture/action-plans/2026-07-05-stock-e2e-battery.md §4`; if drift detected, file forward-pointer PR-+update the action plan + this runbook together per godlike/06 SSOT lockstep.
 
 ---
