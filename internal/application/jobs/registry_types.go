@@ -222,7 +222,7 @@ const (
 	//
 	// ProducesArtifacts=false because the enrichment pass updates
 	// media_assets.metadata_json inside a per-chunk tx and re-emits
-	// the existing asset.published outbox event (Wave 5
+	// the existing informational asset.published outbox event (Wave 5
 	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
 	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
 	TypeMediaStockRLMEnrich = media.TypeStockRLMEnrich

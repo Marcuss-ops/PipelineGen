@@ -37,8 +37,9 @@ func registerStockEntries(r *Registry) {
 	// Per chunk: handler reads media_assets row, calls
 	// EnrichmentLLMClient.Enrich (currently a stub in PR-011A — PR-011B
 	// wires the real ollama call + UPDATE), then re-emits the
-	// asset.published v1 outbox event (PR-011C) so the IndexingHandler
-	// re-upserts the chunk to Qdrant with the enriched fields.
+	// asset.published v1 outbox event (PR-011C) for informational audit
+	// receipt. Operational reindexing is emitted separately through the
+	// canonical asset.index.requested handler.
 	//
 	// Timeout: 2 minutes per chunk (LLM call + UPDATE + outbox emit).
 	// The 2-minute bound matches the ollama default timeout (cfg.External.OllamaTimeoutSeconds
@@ -51,5 +52,5 @@ func registerStockEntries(r *Registry) {
 	// ProducesArtifacts=false (the enrichment pass persists
 	// media_assets.metadata_json inside the per-chunk tx; no separate
 	// finalizer needed).
-	r.Register(JobPolicy{Type: TypeMediaStockRLMEnrich, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk: read media_assets -> ollama.Enrich -> UPDATE media_assets.metadata_json -> emit asset.published v1 outbox -> IndexingHandler re-upsert). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (enrichment tx owns its own media_assets write; broker legacy Complete is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
+	r.Register(JobPolicy{Type: TypeMediaStockRLMEnrich, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk: read media_assets -> ollama.Enrich -> UPDATE media_assets.metadata_json -> emit informational asset.published v1; operational reindexing uses asset.index.requested). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (enrichment tx owns its own media_assets write; broker legacy Complete is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
 }

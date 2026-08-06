@@ -48,8 +48,10 @@
 //
 // Producers MUST NOT include embeddings, raw search vectors, or any
 // payload that would make the event bloom to MBs. The handler
-// composes the SearchText locally via ComposeSearchText and passes
-// asset_id (NOT the whole payload) to the AssetPublisher port.
+// composes SearchText locally for audit/debug logging only; it does
+// not invoke a publisher or mutate an index. The composition root
+// registers asset.index.requested separately as the sole operational
+// indexing seam.
 package outbox
 
 // AssetPublishedSchemaVersion is the canonical, EXACT string the
@@ -73,5 +75,6 @@ type AssetPublishedRequestV1 struct {
 	ContentType    string   `json:"content_type,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key"`
+	SourceVersion  string   `json:"source_version"`
 	RequestedAt    string   `json:"requested_at,omitempty"`
 }
