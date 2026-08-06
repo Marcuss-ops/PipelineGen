@@ -70,8 +70,8 @@ sandboxed Linux runners that lack `/proc`.
 |---------------------------------|-----------------------------------|----------------------------------------------------------------------------------------|
 | `API_BASE`                      | `127.0.0.1:${VELOX_PORT:-8080}`   | `host:port` shape; the script prepends `http://` itself.                               |
 | `VELOX_PORT`                    | `8080`                            | Honoured by `API_BASE` resolution; matches the canonical default in `internal/platform/config/types.go`. |
-| `VELOX_ADMIN_TOKEN`             | (mandatory if `TOKEN_FILE` unset) | Bearer token. **Never echo the env var directly** — every output path runs through `smoke_echo_safe`. |
-| `TOKEN_FILE`                    | (unset)                           | Path to a file containing `VELOX_ADMIN_TOKEN=…`; used as a fallback when the env var is not set (compatible with the existing `scripts/diagnostics/marker_audit.sh` convention). |
+| `VELOX_ADMIN_TOKEN`             | (ignored by canonical wrapper)   | The canonical `scripts/with-velox-auth` loader reads the admin token from `TOKEN_FILE` and never trusts an inherited value. Scripts that do not use the wrapper may supply the token explicitly; **never echo it** — every output path runs through `smoke_echo_safe`. |
+| `TOKEN_FILE`                    | `/etc/pipelinegen/pipelinegen.env` | Path to the canonical env file containing `VELOX_ADMIN_TOKEN=…`; the wrapper reads this file authoritatively so callers cannot accidentally probe with a stale inherited token. |
 | `SMOKE_TIMEOUT_SECONDS`         | `180`                             | Per-script overall wall clock. Exceeding this exits 124.                              |
 | `SMOKE_POLL_TIMEOUT_SECONDS`    | `120`                             | Polling loop cap for `/api/jobs/<id>/full`. Exceeding this exits 124.                  |
 | `SMOKE_POLL_INTERVAL_SECONDS`   | `2`                               | Sleep between polls.                                                                   |
