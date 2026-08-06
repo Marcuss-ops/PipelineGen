@@ -69,6 +69,7 @@ var commandRegistry = map[string]commandHandler{
 	"backfill-visual-embeddings":     runBackfillVisualEmbeddings,
 	"benchmark":                      runBenchmark,
 	"check-drive-names":              runCheckDriveNames,
+	"clip-drive-audit":               runClipDriveAudit,
 	"check-indexed-ids":              runCheckIndexedIds,
 	"classify-sound-effects":         runClassifySoundEffects,
 	"cleanup-all-orphans":            runCleanupAllOrphans,
