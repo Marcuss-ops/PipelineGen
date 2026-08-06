@@ -46,16 +46,6 @@ func NewTestStockPipeline(deps Deps) (*Service, error) {
 	return service, nil
 }
 
-// NewService is retained as a compatibility entry point for existing
-// package-local callers. New production composition roots must use
-// NewProductionStockPipeline; tests that need fixture semantics must use
-// NewTestStockPipeline.
-//
-// Deprecated: use NewProductionStockPipeline or NewTestStockPipeline.
-func NewService(deps Deps) (*Service, error) {
-	return NewProductionStockPipeline(deps)
-}
-
 func newStockPipelineService(deps Deps) (*Service, error) {
 	return newService(deps)
 }

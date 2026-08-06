@@ -95,9 +95,9 @@ import (
 //   - *wiring.StockPipelineWiring (nil, non-nil) on success — caller registers
 //     the Module via tryRegisterModuleStrict.
 //   - (nil, ErrStockProduction*) on asymmetric wiring (gate fires
-//     before NewService).
+//     before NewProductionStockPipeline).
 //   - (nil, *typed sentinel from upload_orchestration.go) on missing
-//     required dep (NewService rejects Cfg/Log/SourceStager/ClipsRepo/
+//     required dep (NewProductionStockPipeline rejects Cfg/Log/SourceStager/ClipsRepo/
 //     AssetIndex/Dispatcher/Cutter/Renderer/Jobs).
 //   - (nil, stockapi.Build error) on missing UseCase / EnabledFunc.
 func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error) {

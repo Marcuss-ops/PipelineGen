@@ -4,13 +4,13 @@
 // SOLE owner of the public-facing struct types that compose the
 // stock pipeline Service constructor input (godlike/06 SSOT —
 // one canonical owner per fact). The constructor body lives in
-// service.go::NewService; the field-name list lives here.
+// service.go::NewProductionStockPipeline; the field-name list lives here.
 //
 // godlike/07 minimum-blast-radius: zero new types added; this
 // file is pure code-motion from the pre-split service.go. The
 // 4 types (PipelineConfig + StorageDeps + MediaDeps + Deps) are
 // unchanged byte-stable; the only delta is the file path. All
-// public API (ServiceDeps, NewService call sites, all internal
+// public API (ServiceDeps, constructor call sites, all internal
 // readers) compile without modification because Go resolves the
 // type identifier by symbol + package, not by source file.
 //
