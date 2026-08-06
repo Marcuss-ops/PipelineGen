@@ -11,6 +11,8 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -217,18 +219,243 @@ func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*Pipelin
 	return projectManifestToPipelineResult(summary.Manifest), nil
 }
 
+type projectedManifestVideo struct {
+	artifact job.Artifact
+	position int
+	index    int
+	hasIndex bool
+}
+
 func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineResult {
+	result := &PipelineResult{}
 	if manifest == nil {
-		return &PipelineResult{}
+		return result
 	}
-	return &PipelineResult{
-		SearchTerms:    nil, // manifest does not carry SearchTerms in C12 envelope
-		TotalClips:     0,   // Commit 4-7 hydrates from Manifest.Artifacts (chunk entries → chunk videos → clip count)
-		TotalChunks:    0,   // Commit 4-7 hydrates from Manifest.Artifacts (chunk entries count)
-		Chunks:         nil, // Commit 4-7 hydrates from Manifest.Artifacts (each Artifact entry → ChunkResult)
-		MetadataLink:   "",  // Commit 4-7 hydrates from Manifest.Artifacts[0].RemoteAssetID (metadata Artifact)
-		MetadataFileID: "",  // Commit 4-7 hydrates from Manifest.Artifacts[0].RemoteAssetID (metadata Artifact)
+
+	// The manifest is the canonical post-publication source. Keep the
+	// legacy result deterministic: metadata is identified by kind, while
+	// video artifacts are sorted by their explicit chunk index (not by
+	// producer append order, which can vary when uploads run concurrently).
+	var metadata *job.Artifact
+	videoArtifacts := make([]projectedManifestVideo, 0)
+	for position := range manifest.Artifacts {
+		artifact := manifest.Artifacts[position]
+		switch artifact.Kind {
+		case job.ArtifactKindMetadata:
+			if metadata == nil {
+				metadata = &manifest.Artifacts[position]
+			}
+		case string(finalization.KindVideo):
+			index, hasIndex := manifestIntValue(artifact.ArtifactMetadata, "chunk_index")
+			videoArtifacts = append(videoArtifacts, projectedManifestVideo{
+				artifact: artifact,
+				position: position,
+				index:    index,
+				hasIndex: hasIndex,
+			})
+		}
 	}
+
+	hasManifestClipCount := false
+	if metadata != nil {
+		result.MetadataFileID = firstNonEmpty(
+			metadata.RemoteFileID,
+			manifestString(metadata.ArtifactMetadata, "drive_file_id"),
+			manifestString(metadata.ArtifactMetadata, "file_id"),
+		)
+		result.MetadataLink = firstNonEmpty(
+			metadata.RemoteWebViewLink,
+			metadata.RemoteDownloadLink,
+			manifestString(metadata.ArtifactMetadata, "drive_link"),
+			manifestString(metadata.ArtifactMetadata, "drive_path"),
+		)
+		result.TotalClips = manifestInt(metadata.ArtifactMetadata, "total_clips")
+		hasManifestClipCount = result.TotalClips > 0
+	}
+
+	sort.SliceStable(videoArtifacts, func(i, j int) bool {
+		left, right := videoArtifacts[i], videoArtifacts[j]
+		switch {
+		case left.hasIndex && right.hasIndex:
+			return left.index < right.index
+		case left.hasIndex:
+			return true
+		case right.hasIndex:
+			return false
+		default:
+			return left.position < right.position
+		}
+	})
+
+	result.TotalChunks = len(videoArtifacts)
+	result.Chunks = make([]ChunkResult, 0, len(videoArtifacts))
+	usedChunkIndices := make(map[int]struct{}, len(videoArtifacts))
+	for position, projected := range videoArtifacts {
+		artifact := projected.artifact
+		metadata := artifact.ArtifactMetadata
+		index := projected.index
+		if !projected.hasIndex {
+			// Legacy manifests without chunk_index retain their stable
+			// output order and start with their positional index.
+			index = position
+		}
+		// A malformed manifest can contain duplicate explicit indices.
+		// Preserve the first sorted artifact's requested index and move
+		// later collisions to the next free deterministic index so the
+		// legacy DTO never exposes duplicate chunk identities.
+		for {
+			if _, exists := usedChunkIndices[index]; !exists {
+				break
+			}
+			index++
+		}
+		usedChunkIndices[index] = struct{}{}
+		clipCount := manifestInt(metadata, "clip_count")
+		if clipCount <= 0 {
+			clipCount = 1
+		}
+		if !hasManifestClipCount {
+			result.TotalClips += clipCount
+		}
+		driveFileID := firstNonEmpty(
+			artifact.RemoteFileID,
+			manifestString(metadata, "drive_file_id"),
+			manifestString(metadata, "file_id"),
+		)
+		driveLink := firstNonEmpty(
+			artifact.RemoteWebViewLink,
+			manifestString(metadata, "drive_link"),
+			manifestString(metadata, "drive_path"),
+			artifact.RemoteDownloadLink,
+		)
+		hash := firstNonEmpty(artifact.SHA256, manifestString(metadata, "sha256"))
+		uploaded := driveFileID != "" || driveLink != "" || artifact.RemoteDownloadLink != ""
+		chunk := ChunkResult{
+			Index:         index,
+			TimelineStart: manifestFloat(metadata, "start_sec"),
+			TimelineEnd:   manifestFloat(metadata, "end_sec"),
+			LocalPath:     artifact.Path,
+			DriveLink:     driveLink,
+			DownloadLink:  artifact.RemoteDownloadLink,
+			DriveFileID:   driveFileID,
+			SHA256:        hash,
+			Title:         manifestString(metadata, "title"), Rendered: artifact.Path != "",
+			Uploaded: uploaded,
+		}
+		chunk.SourceIDs = manifestStringSlice(metadata, "source_ids")
+		if len(chunk.SourceIDs) == 0 {
+			chunk.SourceIDs = manifestStringSlice(metadata, "source_urls")
+		}
+		if len(chunk.SourceIDs) == 0 {
+			if sourceURL := manifestString(metadata, "source_url"); sourceURL != "" {
+				chunk.SourceIDs = []string{sourceURL}
+			}
+		}
+		result.Chunks = append(result.Chunks, chunk)
+	}
+	if result.TotalClips == 0 {
+		// Older manifests did not carry per-artifact clip counts. The
+		// current stock pipeline emits one video artifact per clip, so
+		// the number of video artifacts is the safe compatibility fallback.
+		result.TotalClips = result.TotalChunks
+	}
+	return result
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func manifestString(values map[string]any, key string) string {
+	if values == nil {
+		return ""
+	}
+	value, ok := values[key]
+	if !ok {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return fmt.Sprint(value)
+}
+
+func manifestStringSlice(values map[string]any, key string) []string {
+	if values == nil {
+		return nil
+	}
+	switch typed := values[key].(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, value := range typed {
+			if text, ok := value.(string); ok && text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func manifestFloat(values map[string]any, key string) float64 {
+	if values == nil {
+		return 0
+	}
+	value, ok := values[key]
+	if !ok {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int8:
+		return float64(typed)
+	case int16:
+		return float64(typed)
+	case int32:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case uint:
+		return float64(typed)
+	case uint8:
+		return float64(typed)
+	case uint16:
+		return float64(typed)
+	case uint32:
+		return float64(typed)
+	case uint64:
+		return float64(typed)
+	default:
+		parsed, _ := strconv.ParseFloat(fmt.Sprint(value), 64)
+		return parsed
+	}
+}
+
+func manifestIntValue(values map[string]any, key string) (int, bool) {
+	if values == nil {
+		return 0, false
+	}
+	if _, ok := values[key]; !ok {
+		return 0, false
+	}
+	return int(manifestFloat(values, key)), true
+}
+
+func manifestInt(values map[string]any, key string) int {
+	return int(manifestFloat(values, key))
 }
 
 // resolveInputQueries converts text search queries in input.SearchQueries
