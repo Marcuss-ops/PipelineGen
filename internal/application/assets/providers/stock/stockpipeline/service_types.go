@@ -53,14 +53,19 @@ type PipelineConfig struct {
 	ClipDuration       int
 }
 
-// DefaultPipelineConfig returns a PipelineConfig with sensible defaults.
+// DefaultPipelineConfig returns the CPU-first stock rendering profile.
+//
+// libx264 is the canonical default because stock runs are headless and must
+// not require NVIDIA hardware or drivers. The infrastructure renderer still
+// accepts explicit hardware codec overrides (for example h264_nvenc), but
+// callers must opt into those profiles deliberately.
 func DefaultPipelineConfig() PipelineConfig {
 	return PipelineConfig{
 		ChunkDuration:  25,
 		MaxResults:     25,
 		EffectInterval: 4,
 		EffectsDir:     "assets/effects/EffettiVisiv",
-		Width:          1920, Height: 1080, FPS: 24, Codec: "h264_nvenc", Preset: "p1", CRF: 23,
+		Width:          1920, Height: 1080, FPS: 24, Codec: "libx264", Preset: "veryfast", CRF: 23,
 		KeyframeInterval: 48, TransitionInterval: 4, OverlayOpacity: 0.25, ClipDuration: 5,
 	}
 }

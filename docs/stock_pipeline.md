@@ -170,14 +170,14 @@ Every produced stock clip is normalized to the same canonical technical profile:
 |----------|-------|
 | Resolution | 1920×1080 |
 | Frame rate | 24 fps (constant frame rate) |
-| Video codec | H.264 (`libx264`) |
+| Video codec | H.264 (`libx264`, CPU-first default) |
 | Pixel format | `yuv420p` |
 | Audio codec | AAC |
 | Audio sample rate | 48 kHz |
 | Audio channels | stereo (2) |
 | Container | MP4 with faststart |
 
-Source material may have a different resolution, frame rate, or codec; the stock cutter re-encodes through a shared canonical FFmpeg filter chain (`scale/pad/fps/setpts`) so that all published clips share the same profile.
+Source material may have a different resolution, frame rate, or codec; the stock cutter re-encodes through a shared canonical FFmpeg filter chain (`scale/pad/fps/setpts`) so that all published clips share the same profile. The stock pipeline defaults to CPU-based `libx264` (`veryfast`, CRF 23) and does not require NVIDIA hardware. Hardware codecs such as `h264_nvenc` remain infrastructure-level overrides only when explicitly selected and supported by the host.
 
 ## VERIFIED state and ffprobe validation
 

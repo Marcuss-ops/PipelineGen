@@ -34,13 +34,14 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 		}
 	}
 
+	canonical := DefaultPipelineConfig()
 	req := CutRequest{
 		SourcePath:     sourcePath,
 		SourceDuration: sourceDuration,
 		Jobs:           jobs,
-		Codec:          "h264_nvenc",
-		Preset:         "p1",
-		CRF:            23,
+		Codec:          canonical.Codec,
+		Preset:         canonical.Preset,
+		CRF:            canonical.CRF,
 		NoAudio:        noAudio,
 		Logger:         runner.Log(),
 		SourceIdx:      sourceIdx,

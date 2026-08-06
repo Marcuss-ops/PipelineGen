@@ -34,6 +34,7 @@ type fakeStepRunner struct {
 	cfg      OrchestratorConfig
 	state    *RunState
 	planner  ClipPlanner
+	cutter   VideoCutter
 }
 
 func (f *fakeStepRunner) Cfg() OrchestratorConfig                                      { return f.cfg }
@@ -42,7 +43,7 @@ func (f *fakeStepRunner) JobID() string                                         
 func (f *fakeStepRunner) PolicyVersion() string                                        { return f.cfg.PolicyVersion }
 func (f *fakeStepRunner) Planner() ClipPlanner                                         { return f.planner }
 func (f *fakeStepRunner) SourceStager() assets.SourceStager                            { return nil }
-func (f *fakeStepRunner) Cutter() VideoCutter                                          { return nil }
+func (f *fakeStepRunner) Cutter() VideoCutter                                          { return f.cutter }
 func (f *fakeStepRunner) Renderer() StockRenderer                                      { return nil }
 func (f *fakeStepRunner) Builder() ManifestBuilder                                     { return nil }
 func (f *fakeStepRunner) Writer() TransactionalAssetWriter                             { return nil }
@@ -75,6 +76,46 @@ func newFakeRunner(clips []ClipSpec, clipDur int, policyVer string) *fakeStepRun
 		},
 		state:   &RunState{},
 		planner: NewDeterministicPlanner(),
+	}
+}
+
+// TestExecuteCuts_UsesCanonicalCPUCodec pins the stock.extract_clips
+// request assembly to the canonical CPU-first profile. This prevents a
+// local hardcoded hardware codec from bypassing DefaultPipelineConfig.
+func TestExecuteCuts_UsesCanonicalCPUCodec(t *testing.T) {
+	const sourceID = "https://example.com/source.mp4"
+	cutter := &mockCutter{
+		res: CutBatchResult{
+			SourcePath: "/tmp/source.mp4",
+			Items: []CutItemResult{{
+				JobID:      "/tmp/cut.mp4",
+				OutputPath: "/tmp/cut.mp4",
+				Status:     CutItemStatusSucceeded,
+			}},
+		},
+	}
+	runner := newFakeRunner(nil, 5, "")
+	runner.cutter = cutter
+	runner.state.StagedAssets = []*assets.StagedAsset{{
+		SourceID:    sourceID,
+		LocalPath:   "/tmp/source.mp4",
+		DurationSec: 10,
+	}}
+
+	_, err := executeCuts(context.Background(), runner, sourceID, "/tmp/source.mp4", 10, []ClipPlan{{
+		SourceID: sourceID,
+		StartSec: 0,
+		EndSec:   5,
+	}}, 0, true)
+	if err != nil {
+		t.Fatalf("executeCuts returned unexpected error: %v", err)
+	}
+
+	canonical := DefaultPipelineConfig()
+	if cutter.lastReq.Codec != canonical.Codec || cutter.lastReq.Preset != canonical.Preset || cutter.lastReq.CRF != canonical.CRF {
+		t.Fatalf("executeCuts codec profile = (%q, %q, %d), want (%q, %q, %d)",
+			cutter.lastReq.Codec, cutter.lastReq.Preset, cutter.lastReq.CRF,
+			canonical.Codec, canonical.Preset, canonical.CRF)
 	}
 }
 
