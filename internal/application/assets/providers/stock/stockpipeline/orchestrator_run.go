@@ -211,17 +211,24 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// We build a step-key → completed row map from the latest row
 	// per step (Design A: latest row per (job_id, step_key)).
 	completedRows, loadErr := o.loadCompletedStepRows(ctx, o.cfg.JobId)
-	if loadErr != nil && o.executorLog != nil {
-		o.executorLog.Warn("orchestrator: failed to load completed step rows for resume",
-			zap.String("job_id", o.cfg.JobId),
-			zap.Error(loadErr))
+	if loadErr != nil {
+		return nil, fmt.Errorf("orchestrator: load completed step rows: %w", loadErr)
 	}
 
+	var previousState *RunState
 	for _, step := range o.dispatchSteps {
+		fingerprint := stepInputFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState)
+		// Rows written before fingerprint v2 used jobID|stepKey. Keep
+		// those checkpoints resumable during the migration, but only
+		// fall back for that explicit legacy format; a mismatching v2
+		// fingerprint must create a new attempt instead of skipping work.
+		if row, ok := completedRows[step.Name()]; ok && row.Fingerprint == legacyStepInputFingerprint(o.cfg.JobId, step.Name()) && legacyCheckpointEligible(o.cfg, input, previousState) {
+			fingerprint = row.Fingerprint
+		}
 		key := steps.StepKey{
 			JobID:            o.cfg.JobId,
 			StepKey:          step.Name(),
-			InputFingerprint: stepInputFingerprint(o.cfg.JobId, step.Name()),
+			InputFingerprint: fingerprint,
 		}
 
 		if err := o.stepStore.MarkStarted(ctx, key); err != nil {
@@ -260,6 +267,11 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 							return nil, fmt.Errorf("orchestrator: %s resume: %w: %v", step.Name(), ErrStockResumeStateInvalid, rehydrateErr)
 						}
 						*state = rehydrated
+						var cloneErr error
+						previousState, cloneErr = cloneRunState(state)
+						if cloneErr != nil {
+							return nil, fmt.Errorf("orchestrator: %s resume clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
+						}
 						if o.executorLog != nil {
 							o.executorLog.Info("orchestrator: rehydrated RunState from completed step",
 								zap.String("step", step.Name()),
@@ -293,6 +305,11 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			return nil, fmt.Errorf("orchestrator: %s checkpoint: %w: %v", step.Name(), ErrStockResumeStateInvalid, marshalErr)
 		}
 
+		var cloneErr error
+		previousState, cloneErr = cloneRunState(state)
+		if cloneErr != nil {
+			return nil, fmt.Errorf("orchestrator: %s checkpoint clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
+		}
 		if err := o.stepStore.MarkCompleted(ctx, key, stateBytes, nil); err != nil {
 			// ErrStepAlreadyCompleted cannot fire here (we just
 			// MarkStarted the same key); any other error
@@ -391,6 +408,20 @@ func (o *Orchestrator) executorLogOrNop() *zap.Logger {
 // for each step key for the given job. It is used once per
 // RunResilient call so the resume path can rehydrate RunState
 // without querying the store inside the dispatch loop.
+func legacyCheckpointEligible(cfg OrchestratorConfig, input *RunInput, _ *RunState) bool {
+	if input == nil {
+		return false
+	}
+	return cfg.PolicyVersion == "" && input.PolicyVersion == "" && cfg.Lease.LeaseID == "" && cfg.Lease.JobID == "" && cfg.Lease.WorkerID == "" && cfg.Lease.Attempt == 0 && cfg.Lease.ExpiresAt.IsZero() && cfg.ChunkDurationSec == 0 && cfg.ClipDurationSec == 0 &&
+		len(input.SearchQueries) == 0 && len(input.DirectURLs) == 0 && len(input.DriveURLs) == 0 && len(input.Clips) == 0 &&
+		input.TotalMinutes == 0 && input.TargetTotalDurationSeconds == 0 && input.TargetDurationPerSourceSeconds == 0 &&
+		input.ClipsPerSource == 0 && input.ClipDurationSeconds == 0 && input.DownloadMode == "" && input.MaxVideos == 0 &&
+		input.ChunkDuration == 0 && input.ClipDuration == 0 && input.SecondsPerSegment == 0 && !input.NoAudio &&
+		!input.NoEffects && !input.NoTransitions && input.Subfolder == "" && input.FolderName == "" &&
+		input.DriveFolderID == "" && input.FolderID == "" && !input.DriveFolderResolved && input.Metadata == nil && !input.Persist &&
+		input.FinalizationLease.LeaseID == "" && input.FinalizationLease.JobID == "" && input.FinalizationLease.WorkerID == "" && input.FinalizationLease.Attempt == 0 && input.FinalizationLease.ExpiresAt.IsZero()
+}
+
 func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
 	if o.stepStore == nil {
 		return nil, steps.ErrStoreNotWired

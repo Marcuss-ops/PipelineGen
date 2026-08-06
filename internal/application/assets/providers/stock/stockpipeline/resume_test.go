@@ -80,7 +80,7 @@ func TestOrchestrator_PostRestart_StepStoreHasNoDuplicateRows(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(context.Background(), k))
 		require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil),
@@ -160,7 +160,7 @@ func TestOrchestrator_PostRestart_AllStepsCASPreserveAttempt1(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(context.Background(), k))
 		require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil))
@@ -225,7 +225,7 @@ func TestOrchestrator_PostRestart_ListRowCountMatchesDispatchSlice(t *testing.T)
 	k := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          prestageName,
-		InputFingerprint: stepInputFingerprint(jobID, prestageName),
+		InputFingerprint: legacyStepInputFingerprint(jobID, prestageName),
 	}
 	require.NoError(t, store.MarkStarted(context.Background(), k))
 	require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil))
