@@ -10,9 +10,11 @@ import (
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -159,7 +161,16 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: voiceover: %w", err)
 	}
 
-	soundeffectDesc, err := buildSoundeffectBundle(cfg, log, deps, metaWriter, driveUploader, dispatcher)
+	soundeffectDesc, err := buildSoundeffectBundle(buildSoundeffectParams{
+		Cfg: cfg,
+		Log: log,
+		Soundeffect: SoundeffectCapabilityDeps{
+			ClipsRepo:  deps.Core.Repositories.ClipsRepo,
+			MetaWriter: metaWriter,
+			Publisher:  deps.Delivery.Publisher,
+			Dispatcher: dispatcher,
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
@@ -196,20 +207,31 @@ func WireAssets(
 	}, nil
 }
 
-func buildSoundeffectBundle(
-	cfg *config.Config,
-	log *zap.Logger,
-	deps *AssetsModuleDeps,
-	metaWriter semantic.MetadataWriterPort,
-	driveUploader *driveutil.Uploader,
-	dispatcher *outbox.Dispatcher,
-) (*assetsfx.SoundeffectDescriptor, error) {
-	_ = driveUploader
+// SoundeffectCapabilityDeps contains only the ports consumed by the
+// soundeffect capability builder. WireAssets projects AssetsModuleDeps into
+// this bundle at the composition boundary; the broad module container does
+// not cross into the builder.
+type SoundeffectCapabilityDeps struct {
+	ClipsRepo  *assets.ClipsRepository
+	MetaWriter semantic.MetadataWriterPort
+	Publisher  delivery.Publisher
+	Dispatcher *outbox.Dispatcher
+}
 
-	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.Repositories.ClipsRepo}
-	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
+type buildSoundeffectParams struct {
+	Cfg         *config.Config
+	Log         *zap.Logger
+	Soundeffect SoundeffectCapabilityDeps
+}
+
+func buildSoundeffectBundle(params buildSoundeffectParams) (*assetsfx.SoundeffectDescriptor, error) {
+	if params.Cfg == nil {
+		return nil, fmt.Errorf("soundeffect: config is required")
+	}
+	sfxClips := &sfxClipsRepoAdapter{repo: params.Soundeffect.ClipsRepo}
+	sfxMeta := &sfxSemanticWriterAdapter{w: params.Soundeffect.MetaWriter}
 	sfxResolver := &sfxResolverAdapter{mediaRoot: "data"}
-	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
+	sfxDispatcher := newSfxDispatcherAdapter(params.Soundeffect.Dispatcher)
 
 	descriptor, err := assetsfx.Build(assetsfx.Dependencies{
 		Core: assetsfx.CoreDeps{
@@ -219,8 +241,8 @@ func buildSoundeffectBundle(
 		},
 		Delivery: assetsfx.DeliveryDeps{
 			Resolver:               sfxResolver,
-			Publisher:              deps.Delivery.Publisher,
-			SoundEffectsRootFolder: cfg.Drive.SoundEffectsRootFolder,
+			Publisher:              params.Soundeffect.Publisher,
+			SoundEffectsRootFolder: params.Cfg.Drive.SoundEffectsRootFolder,
 		},
 		Transport: assetsfx.TransportDeps{
 			Dispatcher:  sfxDispatcher,
@@ -228,14 +250,14 @@ func buildSoundeffectBundle(
 			ModuleOpts:  nil,
 		},
 		Observability: assetsfx.ObservabilityDeps{
-			Logger: log,
+			Logger: params.Log,
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
 	desc, ok := descriptor.(*assetsfx.SoundeffectDescriptor)
-	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: soundeffect (got %T, want *assetsfx.SoundeffectDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: soundeffect (got %T, want *assetsfx.SoundeffectDescriptor)", descriptor), !ok || desc == nil, DepRequired, params.Log); err != nil {
 		return nil, err
 	}
 	return desc, nil
