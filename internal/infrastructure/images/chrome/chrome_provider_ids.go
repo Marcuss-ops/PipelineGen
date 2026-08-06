@@ -14,7 +14,7 @@
 // (timestamp + PID) is RETAINED so a /dev/urandom EIO never
 // surfaces an empty correlation token. The fallback is non-empty
 // on every platform call path.
-package images
+package chrome
 
 import (
 	"crypto/rand"

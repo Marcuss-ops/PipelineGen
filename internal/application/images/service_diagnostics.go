@@ -54,9 +54,9 @@ func (s *Service) Repo() *imagesrepo.ImagesRepository { return s.Diag.Repo() }
 func (s *Service) SyncAssets() error { return s.Diag.SyncAssets() }
 
 // StopChromeProvider shuts down the persistent Chrome worker subprocess
-// (slide_worker.py) if it is wired. Nil-safe and idempotent — safe to
-// call even when the image generator is nil, not a ChromeImageProvider,
-// or already stopped.
+// (slide_worker.py) if the infrastructure adapter is wired. Nil-safe and
+// idempotent — safe to call even when the image generator is nil, a
+// different implementation, or already stopped.
 //
 // VO-DECOMPOSITION P0 #1 CUTOVER follow-up (July 2026): mirrors the TTS
 // worker Stop() pattern in DomainBundle.AudioProcessor.Stop(). Wired

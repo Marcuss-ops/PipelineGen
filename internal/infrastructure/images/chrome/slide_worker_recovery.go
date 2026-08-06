@@ -18,7 +18,7 @@
 // fields would all become arguments). godlike/06 SSOT: the
 // canonical owner of "the worker's process state
 // transitions" lives on the receiver itself.
-package images
+package chrome
 
 import (
 	"errors"

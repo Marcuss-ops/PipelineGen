@@ -33,12 +33,13 @@
 // are all accessible without import). They do NOT depend on Python
 // being installed.
 
-package images
+package chrome
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,7 +100,7 @@ func TestChromeProvider_NegativePromptForwarded(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:         "a peaceful valley at dawn",
 		Style:          "cinematic",
 		Width:          1920,
@@ -164,7 +165,7 @@ func TestChromeProvider_PromptSuffixForwarded(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:       rawPrompt,
 		Style:        "cinematic",
 		Width:        1920,
@@ -196,7 +197,7 @@ func TestChromeProvider_PromptSuffixForwarded(t *testing.T) {
 			"REPLACE", outputPath2,
 		),
 	})
-	_, err2 := fix2.p.Generate(context.Background(), GenerateImageRequest{
+	_, err2 := fix2.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt: rawPrompt,
 		Style:  "cinematic",
 		Width:  1920, Height: 1080,
@@ -231,7 +232,7 @@ func TestChromeProvider_RatioForwarded(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt: "a misty forest with sunlight",
 		Style:  "cinematic",
 		Width:  1920, Height: 1080,
@@ -281,7 +282,7 @@ func TestChromeProvider_RequestIDAliasOnly(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	_, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	_, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt: "a snow-capped peak at sunrise",
 		Style:  "watercolor",
 		Width:  1920, Height: 1080,
@@ -317,12 +318,12 @@ func TestChromeProvider_RequestIDAliasOnly(t *testing.T) {
 //   (a) window.fetch proxy-on-page (page.evaluate)
 //   (b) locator.screenshot() of the <img> element (slides never exported)
 // Both branches emit a method field for P2-diagnostics: blob-fetch OR
-// element-screenshot. The wire-level contract is: GeneratedImage.Data
+// element-screenshot. The wire-level contract is: appimages.GeneratedImage.Data
 // is non-empty + phash_hex is non-all-zeros after a blob-fetch response.
 
 // TestChromeProvider_P0_3_BlobFetchVisualContent pins the wire-level
 // guarantee: a worker response with method=blob-fetch (or
-// element-screenshot) + non-zero phash_hex produces a GeneratedImage
+// element-screenshot) + non-zero phash_hex produces a appimages.GeneratedImage
 // with non-empty data and a SourceHash that's non-empty.
 func TestChromeProvider_P0_3_BlobFetchVisualContent(t *testing.T) {
 	fix := newSmokeFixture(t)
@@ -337,7 +338,7 @@ func TestChromeProvider_P0_3_BlobFetchVisualContent(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "a blob-fetch visual content smoke",
 		Style:      "cinematic",
 		Width:      1920,
@@ -348,12 +349,12 @@ func TestChromeProvider_P0_3_BlobFetchVisualContent(t *testing.T) {
 		t.Fatalf("P0.3 blob-fetch test: want accept; got %v", err)
 	}
 	if g == nil {
-		t.Fatal("P0.3 blob-fetch test: want GeneratedImage; got nil")
+		t.Fatal("P0.3 blob-fetch test: want appimages.GeneratedImage; got nil")
 	}
-	// (a) GeneratedImage.Data MUST be non-empty (user spec:
+	// (a) appimages.GeneratedImage.Data MUST be non-empty (user spec:
 	// "produce un file con contenuto visivo").
 	if len(g.Data) == 0 {
-		t.Fatal("P0.3 blob-fetch test: GeneratedImage.Data is empty (worker returned blank bytes)")
+		t.Fatal("P0.3 blob-fetch test: appimages.GeneratedImage.Data is empty (worker returned blank bytes)")
 	}
 	// (b) SourceHash MUST be non-empty (proves the chrome provider
 	// read the bytes from outputPath and computed a real hash vs an
@@ -386,7 +387,7 @@ func TestChromeProvider_P0_3_ElementScreenshotFallbackContent(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "an element-screenshot fallback smoke",
 		Style:      "cinematic",
 		Width:      1920,
@@ -397,7 +398,7 @@ func TestChromeProvider_P0_3_ElementScreenshotFallbackContent(t *testing.T) {
 		t.Fatalf("P0.3 element-screenshot test: want accept; got %v", err)
 	}
 	if g == nil || len(g.Data) == 0 {
-		t.Fatal("P0.3 element-screenshot test: want GeneratedImage with bytes; got nil/empty")
+		t.Fatal("P0.3 element-screenshot test: want appimages.GeneratedImage with bytes; got nil/empty")
 	}
 	if g.SourceHash == "" {
 		t.Fatal("P0.3 element-screenshot test: SourceHash missing")
@@ -420,9 +421,9 @@ func TestChromeProvider_P0_3_ElementScreenshotFallbackContent(t *testing.T) {
 // Go-side wire-level coverage:
 //   - TestChromeProvider_P0_4_TimeoutTypedErrorPropagation: verify a
 //     worker response with code=ErrGenerationTimeout propagates as the
-//     typed ErrImageGenTimeout sentinel.
+//     typed appimages.ErrImageGenTimeout sentinel.
 //   - TestChromeProvider_P0_4_BlankPlaceholderTypErrPropagation: same
-//     for ErrBlankOrPlaceholder → ErrImageGenBlankOrPlaceholder.
+//     for ErrBlankOrPlaceholder → appimages.ErrImageGenBlankOrPlaceholder.
 //   - TestChromeProvider_P0_4_TwoConsecutiveDisjointCandidates: two
 //     consecutive generations on the same fixture; the first response
 //     surfaces a 2-image baseline (candidates_baseline=2); the second
@@ -446,7 +447,7 @@ func TestChromeProvider_P0_4_TimeoutTypedErrorPropagation(t *testing.T) {
 	fix.serveResponses([]string{
 		`{"id":"{GEN_ID}","status":"error","code":"ErrGenerationTimeout","error":"ErrGenerationTimeout: timed out after 60s","profile":0}`,
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "a peaceful valley at dawn",
 		Style:      "cinematic",
 		Width:      1920,
@@ -454,13 +455,13 @@ func TestChromeProvider_P0_4_TimeoutTypedErrorPropagation(t *testing.T) {
 		OutputPath: filepath.Join(t.TempDir(), "p04_timeout.png"),
 	})
 	if g != nil {
-		t.Fatalf("P0.4: want nil GeneratedImage on timeout; got %+v", g)
+		t.Fatalf("P0.4: want nil appimages.GeneratedImage on timeout; got %+v", g)
 	}
 	if err == nil {
 		t.Fatal("P0.4: want typed error on timeout; got nil")
 	}
-	if !errors.Is(err, ErrImageGenTimeout) {
-		t.Fatalf("P0.4: want ErrImageGenTimeout sentinel; got %v", err)
+	if !errors.Is(err, appimages.ErrImageGenTimeout) {
+		t.Fatalf("P0.4: want appimages.ErrImageGenTimeout sentinel; got %v", err)
 	}
 }
 
@@ -471,7 +472,7 @@ func TestChromeProvider_P0_4_BlankPlaceholderTypErrPropagation(t *testing.T) {
 	fix.serveResponses([]string{
 		`{"id":"{GEN_ID}","status":"error","code":"errblankorplaceholder","error":"errblankorplaceholder: white_pct>0.99","profile":0}`,
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "a misty forest with sunlight",
 		Style:      "cinematic",
 		Width:      1920,
@@ -479,13 +480,13 @@ func TestChromeProvider_P0_4_BlankPlaceholderTypErrPropagation(t *testing.T) {
 		OutputPath: outputPath,
 	})
 	if g != nil {
-		t.Fatalf("P0.4 (blank): want nil GeneratedImage; got %+v", g)
+		t.Fatalf("P0.4 (blank): want nil appimages.GeneratedImage; got %+v", g)
 	}
 	if err == nil {
 		t.Fatal("P0.4 (blank): want typed error; got nil")
 	}
-	if !errors.Is(err, ErrImageGenBlankOrPlaceholder) {
-		t.Fatalf("P0.4 (blank): want ErrImageGenBlankOrPlaceholder sentinel; got %v", err)
+	if !errors.Is(err, appimages.ErrImageGenBlankOrPlaceholder) {
+		t.Fatalf("P0.4 (blank): want appimages.ErrImageGenBlankOrPlaceholder sentinel; got %v", err)
 	}
 }
 
@@ -511,7 +512,7 @@ func TestChromeProvider_P0_4_TwoConsecutiveDisjointCandidates(t *testing.T) {
 				outputPath, baselineCount, candSrc, phash, prompt,
 			),
 		})
-		_, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		_, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 			Prompt: prompt, Style: "cinematic",
 			Width: 1920, Height: 1080, OutputPath: outputPath,
 		})
@@ -571,13 +572,13 @@ func TestChromeProvider_P0_4_TwoConsecutiveDisjointCandidates(t *testing.T) {
 // (a) the typed error is propagated to the caller (no crash, no
 // panic), (b) the worker's response code surfaced correctly. The
 // retry path itself is verified by reading the chrome_provider.go
-// Generate() block (the OR-list now includes ErrImageGenTimeout).
+// Generate() block (the OR-list now includes appimages.ErrImageGenTimeout).
 func TestChromeProvider_P0_4_RetryHonoursTimeoutOnSecondAttempt(t *testing.T) {
 	fix1 := newSmokeFixture(t)
 	fix1.serveResponses([]string{
 		`{"id":"{GEN_ID}","status":"error","code":"ErrGenerationTimeout","error":"ErrGenerationTimeout: timed out after 60s","profile":0}`,
 	})
-	g1, err1 := fix1.p.Generate(context.Background(), GenerateImageRequest{
+	g1, err1 := fix1.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt: "a peaceful valley at dawn",
 		Style:  "cinematic",
 		Width:  1920, Height: 1080,
@@ -586,8 +587,8 @@ func TestChromeProvider_P0_4_RetryHonoursTimeoutOnSecondAttempt(t *testing.T) {
 	if g1 != nil || err1 == nil {
 		t.Fatalf("P0.4 retry-test (first): want nil+err; got g=%v err=%v", g1, err1)
 	}
-	if !errors.Is(err1, ErrImageGenTimeout) {
-		t.Fatalf("P0.4 retry-test (first): want ErrImageGenTimeout; got %v", err1)
+	if !errors.Is(err1, appimages.ErrImageGenTimeout) {
+		t.Fatalf("P0.4 retry-test (first): want appimages.ErrImageGenTimeout; got %v", err1)
 	}
 
 	// Second fixture: surface a SUCCESS after retry path. This models
@@ -606,7 +607,7 @@ func TestChromeProvider_P0_4_RetryHonoursTimeoutOnSecondAttempt(t *testing.T) {
 			"REPLACE", outputPath2,
 		),
 	})
-	g2, err2 := fix2.p.Generate(context.Background(), GenerateImageRequest{
+	g2, err2 := fix2.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt: "retry-after-timeout",
 		Style:  "cinematic",
 		Width:  1920, Height: 1080,
@@ -616,6 +617,6 @@ func TestChromeProvider_P0_4_RetryHonoursTimeoutOnSecondAttempt(t *testing.T) {
 		t.Fatalf("P0.4 retry-test (second): want accept; got %v", err2)
 	}
 	if g2 == nil {
-		t.Fatal("P0.4 retry-test (second): want GeneratedImage; got nil")
+		t.Fatal("P0.4 retry-test (second): want appimages.GeneratedImage; got nil")
 	}
 }

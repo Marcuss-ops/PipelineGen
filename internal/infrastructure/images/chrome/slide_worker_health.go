@@ -16,7 +16,7 @@
 // stdlib fmt + the canonical ChromeImageProvider fields (p.started)
 // + the JSON protocol helpers (p.writeJSON, p.readRawResponse) declared
 // in slide_worker_protocol.go.
-package images
+package chrome
 
 import (
 	"fmt"

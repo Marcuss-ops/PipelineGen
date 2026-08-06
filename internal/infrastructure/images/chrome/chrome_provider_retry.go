@@ -20,11 +20,12 @@
 // reset mutates would all become arguments). godlike/06 SSOT:
 // single canonical ownership of "the worker's process state
 // transitions" lives on the receiver itself.
-package images
+package chrome
 
 import (
 	"context"
 	"errors"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 
 	"go.uber.org/zap"
 )
@@ -36,15 +37,15 @@ import (
 //   - isDeadWorkerError(err): broken pipe / EOF / dead-process
 //     recovery. Always retry-with-reset — the next attempt lands on
 //     a fresh subprocess.
-//   - ErrImageGenRatioNotSelected: P1.3 (July 2026). 16:9 mandatory
+//   - appimages.ErrImageGenRatioNotSelected: P1.3 (July 2026). 16:9 mandatory
 //     selection failures. The panel may be in a transient state
 //     where the dropdown collapses before the verify selector
 //     resolves; a fresh subprocess gives the panel a clean state.
-//   - ErrImageGenTimeout: P0.4 (July 2026). Worker hit the 60s
+//   - appimages.ErrImageGenTimeout: P0.4 (July 2026). Worker hit the 60s
 //     polling ceiling with NO candidate passing the baseline-diff
 //     filter. The panel is likely stale; fresh subprocess
 //     rehydrates the gallery state.
-//   - ErrImageGenBlankOrPlaceholder: P0.4 (July 2026).
+//   - appimages.ErrImageGenBlankOrPlaceholder: P0.4 (July 2026).
 //     visual_validate rejected the bytes — the panel may have
 //     rendered a placeholder that passed the worker's
 //     dim/complete filter but failed Go-side content invariants.
@@ -59,9 +60,9 @@ func (p *ChromeImageProvider) shouldRetryWorkerFailure(err error) bool {
 	if p.isDeadWorkerError(err) {
 		return true
 	}
-	return errors.Is(err, ErrImageGenRatioNotSelected) ||
-		errors.Is(err, ErrImageGenTimeout) ||
-		errors.Is(err, ErrImageGenBlankOrPlaceholder)
+	return errors.Is(err, appimages.ErrImageGenRatioNotSelected) ||
+		errors.Is(err, appimages.ErrImageGenTimeout) ||
+		errors.Is(err, appimages.ErrImageGenBlankOrPlaceholder)
 }
 
 // retryGenerationOnce executes one Generate attempt and, on a
@@ -78,7 +79,7 @@ func (p *ChromeImageProvider) shouldRetryWorkerFailure(err error) bool {
 // noise that obscures useful operator diagnostics.
 //
 // Must be called while p.mu is held (caller locks).
-func (p *ChromeImageProvider) retryGenerationOnce(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error) {
+func (p *ChromeImageProvider) retryGenerationOnce(ctx context.Context, req appimages.GenerateImageRequest) (*appimages.GeneratedImage, error) {
 	result, err := p.generateOnce(ctx, req)
 	if err == nil {
 		return result, nil
@@ -91,9 +92,9 @@ func (p *ChromeImageProvider) retryGenerationOnce(ctx context.Context, req Gener
 	p.log.Warn("ChromeImageProvider: recoverable worker failure, resetting and retrying once",
 		zap.Error(err),
 		zap.Bool("is_dead_worker", p.isDeadWorkerError(err)),
-		zap.Bool("is_ratio_error", errors.Is(err, ErrImageGenRatioNotSelected)),
-		zap.Bool("is_timeout_error", errors.Is(err, ErrImageGenTimeout)),
-		zap.Bool("is_blank_placeholder_error", errors.Is(err, ErrImageGenBlankOrPlaceholder)))
+		zap.Bool("is_ratio_error", errors.Is(err, appimages.ErrImageGenRatioNotSelected)),
+		zap.Bool("is_timeout_error", errors.Is(err, appimages.ErrImageGenTimeout)),
+		zap.Bool("is_blank_placeholder_error", errors.Is(err, appimages.ErrImageGenBlankOrPlaceholder)))
 	p.resetWorker()
 	result2, err2 := p.generateOnce(ctx, req)
 	if err2 == nil {

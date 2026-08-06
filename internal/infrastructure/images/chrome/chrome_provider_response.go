@@ -6,7 +6,7 @@
 // "what happens when the worker reports an unfavourable outcome
 // OR when we need to read back the saved PNG". The previous
 // inline blocks in generateOnce had 3 distinct concerns interlocked
-// (file cleanup, ClassifyError, os.ReadFile) — extracting them keeps
+// (file cleanup, appimages.ClassifyError, os.ReadFile) — extracting them keeps
 // each testable in isolation and surfaces the godlike/07 FAIL-CLOSED
 // contract on worker-asserted errors (the file MUST be removed
 // before propagating the typed error so the next retry starts from
@@ -19,10 +19,11 @@
 // failure → validateGeneratedOutput) both endpoint to
 // cleanupFailedOutput so any future addition follows the
 // shape byte-for-byte.
-package images
+package chrome
 
 import (
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"os"
 
 	"go.uber.org/zap"
@@ -35,7 +36,7 @@ import (
 // caller-side retry policy) lands on a clean output path.
 //
 // godlike/07 contract: on worker-asserted error, the caller MUST
-// NOT receive a GeneratedImage — the file is removed, the typed
+// NOT receive a appimages.GeneratedImage — the file is removed, the typed
 // sentinel is propagated. The os.IsNotExist swallow is intentional:
 // the canonical happy path from the worker's perspective is "the
 // worker never wrote anything" (the typed ErrNoImageCandidate code
@@ -46,7 +47,7 @@ func (p *ChromeImageProvider) handleWorkerError(resp *workerResponse, outputPath
 	if errMsg == "" {
 		errMsg = "unknown worker error"
 	}
-	return ClassifyError(errMsg)
+	return appimages.ClassifyError(errMsg)
 }
 
 // cleanupFailedOutput removes the output_path file and logs the
@@ -73,7 +74,7 @@ func (p *ChromeImageProvider) cleanupFailedOutput(outputPath string, requestID s
 // canonical fmt.Errorf wrap.
 //
 // godlike/07 fail-closed: a missing/empty file at outputPath is
-// a fatal error — we never return a synthetic GeneratedImage.
+// a fatal error — we never return a synthetic appimages.GeneratedImage.
 // The worker's bytes are the source of truth (preserved by the
 // CallSite's visual_validate.Validate pass that follows).
 func readGeneratedOutput(outputPath string) ([]byte, error) {

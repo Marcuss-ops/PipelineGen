@@ -24,20 +24,21 @@
 // struct keeps the type system honest about which fields are
 // required for which audit story and collapses the maintenance
 // surface area for "fields that change together".
-package images
+package chrome
 
 import (
 	"bytes"
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"image"
 	"math"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/images/visual_validate"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome/visual_validate"
 	"go.uber.org/zap"
 )
 
 // ComposedPrompt mirrors the internal shape returned by
-// internal/application/images/prompt_composer.go::ComposePrompt.
+// internal/application/images/prompt_composer.go::appimages.ComposePrompt.
 // We declare a local alias instead of importing the type because
 // this file's only use is field-access for the post-success
 // observability log; importing the concrete struct would force
@@ -132,7 +133,7 @@ type GenerationLogContext struct {
 func (p *ChromeImageProvider) validateGeneratedOutput(outputPath string, style string, requestID string) error {
 	if valErr := visual_validate.Validate(outputPath, style); valErr != nil {
 		p.cleanupFailedOutput(outputPath, requestID)
-		return fmt.Errorf("%w (validator: %v)", ErrImageGenBlankOrPlaceholder, valErr)
+		return fmt.Errorf("%w (validator: %v)", appimages.ErrImageGenBlankOrPlaceholder, valErr)
 	}
 	return nil
 }
@@ -144,7 +145,7 @@ func (p *ChromeImageProvider) validateGeneratedOutput(outputPath string, style s
 // godlike/07 audit-trail: the previous ChromeImageProvider
 // reported req.Width/Height — a lie when the worker produced e.g.
 // a 1280x720 image despite a 1920x1080 request. Real dims are now
-// what GeneratedImage.Width/Height carries; the requested w/h are
+// what appimages.GeneratedImage.Width/Height carries; the requested w/h are
 // preserved in the log line so operators can audit
 // requested-vs-actual ratio drift without code changes.
 func decodeGeneratedDimensions(data []byte, reqWidth, reqHeight int) (int, int, bool) {
@@ -171,8 +172,8 @@ func decodeGeneratedDimensions(data []byte, reqWidth, reqHeight int) (int, int, 
 // the success-path envelope. The compose-prompt audit fields are
 // NOT included here on purpose — they live in the
 // GenerationLogContext struct consumed by logGenerationDiagnostics.
-func buildGeneratedImage(data []byte, outputPath string, req GenerateImageRequest, realW, realH int, sourceHash string, format string) *GeneratedImage {
-	return &GeneratedImage{
+func buildGeneratedImage(data []byte, outputPath string, req appimages.GenerateImageRequest, realW, realH int, sourceHash string, format string) *appimages.GeneratedImage {
+	return &appimages.GeneratedImage{
 		Data:       data,
 		Format:     format,
 		Width:      realW,
@@ -294,7 +295,7 @@ func isWellFormedPhashHex(s string) bool {
 // synchronized.
 func computeGenerationLogContext(
 	requestID, generationID string,
-	req GenerateImageRequest,
+	req appimages.GenerateImageRequest,
 	composed ComposedPrompt,
 	resp *workerResponse,
 	data []byte,

@@ -58,7 +58,7 @@ func buildGeneratedImageDescription(promptUsed string) string {
 }
 
 // resolveGeneratedImageSource picks the canonical source string.
-// The ChromeImageProvider emits "google-slides" by default; an empty
+// The Chrome infrastructure adapter emits "google-slides" by default; an empty
 // provider field is interpreted as "not yet wired" — the canonical
 // fallback preserves prior-version behavior byte-byte.
 func resolveGeneratedImageSource(provider string) string {

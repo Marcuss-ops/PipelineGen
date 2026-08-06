@@ -5,7 +5,8 @@
 // Create/BatchUpdate/GetThumbnail) has been removed because it produced only
 // slide thumbnails containing text, not AI-generated images. The real AI
 // generation pipeline uses Playwright → Chrome → slides.new → Nano Banana Pro
-// and will be implemented by ChromeImageProvider (chrome_provider.go).
+// and is implemented by the infrastructure adapter in
+// internal/infrastructure/images/chrome.
 //
 // The port is structural (signature-bearing) so compile-time assertions
 // catch drift between the consumer and the concrete implementation.
@@ -112,7 +113,7 @@ type GeneratedImage struct {
 // ImageGenerator is the canonical port for AI image generation.
 //
 // The service layer depends on this interface, not on concrete providers.
-// Concrete implementations (ChromeImageProvider, etc.) satisfy this port
+// Concrete infrastructure implementations satisfy this port
 // and are injected at composition time.
 //
 // The Go service must never know about:
@@ -125,7 +126,7 @@ type GeneratedImage struct {
 type ImageGenerator interface {
 	// Generate produces an AI-generated image from the given request.
 	// Returns ErrImageGenNotImplemented if the provider is a stub waiting
-	// for real wiring (e.g. ChromeImageProvider before FASE 7-8).
+	// for real wiring.
 	Generate(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error)
 
 	// TriggerPrewarm asks the backend to start or warm its worker pool.
@@ -190,7 +191,7 @@ var ErrImageGenNoImageCandidate = fmt.Errorf("image generation: no image candida
 // so any blank PNG (a real artifact produced by the worker over an empty
 // slides.new page) was ingested as a valid GeneratedImage. We close
 // the gap by decoding + asserting content invariants in
-// internal/application/images/visual_validate.Validate. The path
+// the infrastructure adapter's visual validation package. The path
 // is FAIL-CLOSED: chrome_provider.Generate removes output_path, callers
 // see a typed error, the worker retry policy sees a deterministic
 // retryable (the page may have been stale; the same prompt with a
@@ -249,7 +250,7 @@ var ErrImageGenPolicy = fmt.Errorf("image generation: content policy rejection")
 var ErrImageGenRatioNotSelected = fmt.Errorf("image generation: 16:9 ratio not selected (mandatory UI step failed)")
 
 // ClassifyError maps a provider-level error string to the appropriate
-// typed sentinel. Used by ChromeImageProvider to wrap worker responses.
+// typed sentinel. Used by the Chrome infrastructure adapter to wrap worker responses.
 func ClassifyError(errMsg string) error {
 	lower := strings.ToLower(errMsg)
 	switch {
