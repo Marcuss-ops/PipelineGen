@@ -138,19 +138,19 @@ func (f *recordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*
 // stubbed via noopWriter / noopProjection / NewDeterministicPlanner;
 // cutter + renderer are not invoked in Step 3's invocation path).
 //
-// Note on signature: this helper is calibrated to origin/main's
-// 6-arg NewOrchestrator (cfg, planner, legacySteps, stager,
-// cutter, renderer) — no logger arg. Tests are t.Skip()-gated so
+// Note on signature: this helper is calibrated to the canonical
+// 5-arg NewOrchestrator (cfg, planner, stager, cutter, renderer) —
+// no logger arg. Tests are t.Skip()-gated so
 // they don't run against the current stub dispatchSteps[stock.stage_sources]
 // (Begin/Complete only); the helper compiles cleanly against origin/main.
 //
 // FRAGILITY NOTE for Stock Cutover §12-4 Commit 6 (STOCK-CUT-6 forward-pointer):
-// When Commit 6 lands and extends NewOrchestrator to add a logger arg
-// (or any new constructor argument), this helper signature MUST follow
-// the new arity. The compile-time var _ assets.SourceStager = (*recordingStager)(nil)
+// When Commit 6 extends NewOrchestrator with a new constructor
+// argument, this helper signature MUST follow the new arity. The
+// compile-time var _ assets.SourceStager = (*recordingStager)(nil)
 // assertion below will not catch constructor arity drift; only the
-// build itself does. Future maintainers: add the new ctor arg here
-// alongside nil / zap.NewNop() as appropriate when STOCK-CUT-6 lands.
+// build itself does. Future maintainers: update this helper alongside
+// the constructor when STOCK-CUT-6 lands.
 //
 // Returns the Orchestrator handle so each test can assert on stub
 // state via the returned recordingStager.
@@ -174,7 +174,6 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 			ClipDurationSec:  5,
 		},
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		rec,
 		fakeSucceedingCutter{},
 		successNoopRenderer(),

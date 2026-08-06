@@ -136,20 +136,13 @@ type stockConcreteDriveReader interface {
 
 // StockAcquisitionDeps groups the storage + dispatch layer the stock
 // pipeline reads from (SourceStager, ClipsRepo, AssetIndex,
-// Dispatcher, BatchRepository, DriveDownloader). Field count: 6.
+// Dispatcher, BatchRepository, DriveReader). Field count: 6.
 type StockAcquisitionDeps struct {
 	SourceStager    acquisition.SourceStager           // required
 	ClipsRepo       *sqassets.ClipsRepository          // required
 	AssetIndex      *assetindex.Service                // required
 	Dispatcher      *outbox.Dispatcher                 // required
 	BatchRepository stockpipeline.StockBatchRepository // optional; required in production via DB gate
-	// DriveDownloader enables staging of Google Drive source URLs.
-	// Optional — nil means Drive URLs fail with a typed error (no
-	// silent fallback to yt-dlp). Wraps a concrete drive type.
-	//
-	// Deprecated: DriveReader is the canonical field going forward.
-	// DriveDownloader is still accepted for backward compatibility.
-	DriveDownloader stockConcreteDriveReader
 	// DriveReader enables staging of Google Drive source URLs,
 	// including folder expansion. Optional — nil means Drive URLs
 	// fail with a typed error.

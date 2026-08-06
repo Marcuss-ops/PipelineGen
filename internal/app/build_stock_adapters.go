@@ -14,21 +14,13 @@ import (
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 )
 
-// chooseDriveReader returns the canonical DriveReaderPort to wire
-// into the stock pipeline. It prefers the explicit DriveReader field;
-// if nil, it falls back to DriveDownloader for backward compatibility.
-// Both are adapted through stockDriveReaderAdapter which converts the
-// concrete drive.DriveFileInfo to the application-layer
-// stockpipeline.DriveFileInfo (godlike/06 import-boundary discipline).
+// chooseDriveReader adapts the canonical DriveReader field to the
+// application-layer stockpipeline.DriveReaderPort.
 func chooseDriveReader(acq StockAcquisitionDeps) stockpipeline.DriveReaderPort {
-	raw := acq.DriveReader
-	if raw == nil {
-		raw = acq.DriveDownloader
-	}
-	if raw == nil {
+	if acq.DriveReader == nil {
 		return nil
 	}
-	return &stockDriveReaderAdapter{inner: raw}
+	return &stockDriveReaderAdapter{inner: acq.DriveReader}
 }
 
 // stockDriveReaderAdapter wraps a stockConcreteDriveReader and adapts

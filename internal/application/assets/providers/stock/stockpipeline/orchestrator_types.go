@@ -123,16 +123,11 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/s
 // that returns the manifest component of the RunSummary for legacy
 // callers (existing run_orchestrator_test.go tests).
 type Orchestrator struct {
-	cfg     OrchestratorConfig
-	planner ClipPlanner
-	// DEPRECATO: legacySteps is the pre-§12-5 in-process step store.
-	// PROSSIMO STEP: retire this field once Service.runOrchestrator
-	// callers migrate to runOrchestratorResilient (which uses stepStore).
-	// STATO ATTUALE: not referenced from any production path.
-	legacySteps ExecutionStepStore
-	stager      assets.SourceStager
-	cutter      VideoCutter
-	renderer    StockRenderer
+	cfg      OrchestratorConfig
+	planner  ClipPlanner
+	stager   assets.SourceStager
+	cutter   VideoCutter
+	renderer StockRenderer
 	// builder emits the typed *job.ArtifactManifest from (workflowID,
 	// jobID). Default: stockManifestBuilder wrapping buildStockManifest.
 	builder ManifestBuilder

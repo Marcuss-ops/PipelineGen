@@ -19,8 +19,8 @@ import (
 )
 
 // NewOrchestrator returns the canonical orchestrator. Caller-side
-// code is responsible for providing non-nil Planner, Steps, and
-// Stager — the lazy-default pattern is centralised in
+// code is responsible for providing non-nil Planner, Stager, Cutter,
+// and Renderer — the lazy-default pattern is centralised in
 // Service.runOrchestrator so production wiring can reach for
 // concrete deps without re-validating here.
 //
@@ -38,7 +38,7 @@ import (
 // is only used by non-broker callers (tests, CLI). Production wiring
 // that wants custom resilience ports MUST use
 // NewOrchestratorWithResilience instead.
-func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps ExecutionStepStore, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
@@ -60,7 +60,6 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps Ex
 	return &Orchestrator{
 		cfg:           cfg,
 		planner:       planner,
-		legacySteps:   legacySteps,
 		stager:        stager,
 		cutter:        cutter,
 		renderer:      renderer,
@@ -98,13 +97,12 @@ type ResilienceDeps struct {
 func NewOrchestratorWithResilience(
 	cfg OrchestratorConfig,
 	planner ClipPlanner,
-	legacySteps ExecutionStepStore,
 	stager assets.SourceStager,
 	cutter VideoCutter,
 	renderer StockRenderer,
 	resilience ResilienceDeps,
 ) *Orchestrator {
-	o := NewOrchestrator(cfg, planner, legacySteps, stager, cutter, renderer)
+	o := NewOrchestrator(cfg, planner, stager, cutter, renderer)
 	if resilience.Builder != nil {
 		o.builder = resilience.Builder
 	}

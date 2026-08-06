@@ -124,7 +124,6 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-a", Lease: testLease("test-a"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: w, Projection: noopProjection{}},
@@ -157,7 +156,6 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-b", Lease: testLease("test-b"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stubBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
@@ -190,7 +188,6 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{JobId: "test-c", Lease: testLease("test-c"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
 		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: stubProjection{}},

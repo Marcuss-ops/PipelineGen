@@ -349,7 +349,7 @@ func TestStock_RetryPolicy_DriveFailure_ResumesWithoutReRendering(t *testing.T) 
 	// MarkStarted → MarkCompleted path runs first.
 	failNext.Store(true)
 
-	o1 := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{},
+	o1 := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{},
 		fakeSucceedingCutter{}, noopRenderer{})
 	o1.dispatchSteps = dispatchSteps
 	_, run1Err := o1.RunResilient(ctx, &RunInput{})
@@ -390,7 +390,7 @@ func TestStock_RetryPolicy_DriveFailure_ResumesWithoutReRendering(t *testing.T) 
 	// no re-render) and ONLY re-run stock.publish.
 	failNext.Store(false)
 
-	o2 := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{},
+	o2 := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{},
 		fakeSucceedingCutter{}, noopRenderer{})
 	o2.dispatchSteps = dispatchSteps
 	_, run2Err := o2.RunResilient(ctx, &RunInput{})
@@ -608,7 +608,7 @@ func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{},
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{},
 		fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
