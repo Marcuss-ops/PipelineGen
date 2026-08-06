@@ -114,8 +114,8 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/s
 // Resilience ports (builder / writer / projection) are wired and
 // exercised by RunResilient. The fluent setters WithAssetPreparation
 // and WithJobFinalizer thread the finalizer-side ports. The ports
-// are wired to canonical default implementations
-// (stockManifestBuilder + noopWriter + noopProjection) by
+// use fixture-only defaults
+// (stockManifestBuilder + noopWriter + noopProjection) from
 // NewTestStockOrchestrator; production wiring uses NewProductionStockPipeline. RunResilient is the canonical entry
 // point that exercises the full resilience flow (manifest build →
 // gate → atomic dispatch → Qdrant projection); Run is a thin wrapper
@@ -131,8 +131,9 @@ type Orchestrator struct {
 	// jobID). Default: stockManifestBuilder wrapping buildStockManifest.
 	builder ManifestBuilder
 	// writer performs atomic UPSERT + outbox-enqueue per planned clip.
-	// Default: noopWriter. Production injection point is the
-	// SQLite-backed outbox adapter (NewOrchestratorWithResilience).
+	// Test fixture default: noopWriter. Production injection point is
+	// the SQLite-backed outbox adapter supplied through
+	// ProductionStockPipelineDeps.
 	writer TransactionalAssetWriter
 	// projection wraps the post-emission Qdrant sync. Default:
 	// noopProjection (returns nil => SUCCEEDED). Production wiring
@@ -154,8 +155,8 @@ type Orchestrator struct {
 	// Orchestrator iterates in RunResilient, in pipeline order.
 	// Default in NewTestStockOrchestrator is DefaultStockSteps() (the typed
 	// Steps declared in orchestrator_steps.go). Production wiring
-	// can inject a custom slice via the test-only NewOrchestratorWithResilience
-	// to thread fork-points (e.g. dry-run modes that skip
+	// uses the canonical DefaultStockSteps slice; test helpers may replace
+	// it in-package when exercising fork-points (e.g. dry-run modes that skip
 	// stock.publish).
 	dispatchSteps []Step
 	// executorLog is the per-orchestrator logger passed to each

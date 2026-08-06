@@ -6,7 +6,7 @@
 //     DefaultMaxConcurrentJobs, DefaultOrchestratorJobId,
 //     StockArtifactId*, ErrOrchestratorNilDeps
 //   - orchestrator_manifest.go: buildStockManifest (C12 5-artifact envelope)
-//   - orchestrator_constructor.go: NewTestStockOrchestrator, NewOrchestratorWithResilience,
+//   - orchestrator_constructor.go: NewTestStockOrchestrator,
 //     WithAssetPreparation, WithJobFinalizer, WithLocalFS, stepInputFingerprint, firstSource
 //   - orchestrator_run.go: Run, RunResilient, executorLogOrNop
 //   - orchestrator_defaults.go: DefaultStockSteps, compile-time Step assertions
