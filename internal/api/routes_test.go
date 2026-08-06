@@ -24,11 +24,13 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	youtubeModule := &mockModuleWithGroup{name: "clips", prefix: "/clips", enabled: true}
 	jobsModule := &mockModuleWithGroup{name: "jobs", prefix: "/jobs", enabled: true}
 	mediaModule := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
+	stockModule := &mockModuleWithGroup{name: "stock-pipeline", prefix: "/stock-pipeline", enabled: true}
 
 	registry.Register(artlistModule)
 	registry.Register(youtubeModule)
 	registry.Register(jobsModule)
 	registry.Register(mediaModule)
+	registry.Register(stockModule)
 
 	// Simulate what Router.Setup() does with registry
 	engine := gin.New()
@@ -63,6 +65,11 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 
 	// Media routes should be under /api/media/
 	assert.True(t, routeMap["POST /api/media/search"], "POST /api/media/search should be registered")
+	assert.True(t, routeMap["POST /api/media/:source/clips/:id/download"], "POST /api/media/:source/clips/:id/download should be registered")
+
+	// Stock routes must be published through the public /api registry.
+	assert.True(t, routeMap["POST /api/stock-pipeline/run"], "POST /api/stock-pipeline/run should be registered")
+	assert.True(t, routeMap["POST /api/stock-pipeline/search-and-run"], "POST /api/stock-pipeline/search-and-run should be registered")
 
 	// Ensure routes are NOT at wrong paths (without module prefix)
 	assert.False(t, routeMap["POST /api/run"], "POST /api/run should NOT be registered (missing artlist prefix)")
@@ -200,6 +207,10 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/:id", func(c *gin.Context) {})
 	case "media":
 		group.POST("/search", func(c *gin.Context) {})
+		group.POST("/:source/clips/:id/download", func(c *gin.Context) {})
+	case "stock-pipeline":
+		group.POST("/run", func(c *gin.Context) {})
+		group.POST("/search-and-run", func(c *gin.Context) {})
 	}
 }
 
