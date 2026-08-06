@@ -27,6 +27,7 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"go.uber.org/zap"
@@ -64,7 +65,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	}()
 	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
 	// July 2026): runner.SourceStager() is non-nil. The canonical
-	// composition root (stockpipeline.NewService + orchestrator.RunResilient)
+	// composition root (NewProductionStockPipeline + orchestrator.RunResilient)
 	// rejects nil stager with ErrStockPipelineNilSourceStager /
 	// ErrOrchestratorNilDeps BEFORE the step body runs. The previous
 	// runtime nil-check (test-fixture path) is RETIRED per godlike/07
@@ -89,6 +90,10 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 
 	seen := make(map[string]bool)
 	var staged []*assets.StagedAsset
+	state := runner.State()
+	if state.SourceErrors == nil {
+		state.SourceErrors = make(map[string]string)
+	}
 
 	// Phase 1 (July 2026): REMOVED defer Cleanup from this step.
 	// The staged source MUST survive for the entire orchestrator run
@@ -115,6 +120,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 			// The downstream extract_clips step can still proceed with
 			// cached/pre-staged sources if available; no staged asset
 			// for this URL means clips referencing it will fail at cut.
+			state.SourceErrors[plan.SourceID] = stageErr.Error()
 			if runner.Log() != nil {
 				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource failed — graceful degradation",
 					zap.String("source_id", plan.SourceID),
@@ -125,6 +131,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 		if sa == nil {
 			// Defensive nil-asset path: StageSource returned (nil, nil).
 			// Treated as soft failure (Warn + continue, no defer).
+			state.SourceErrors[plan.SourceID] = "source stager returned nil asset without an error"
 			if runner.Log() != nil {
 				runner.Log().Warn("orchestrator: stock.stage_sources: StageSource returned nil asset — defensive skip",
 					zap.String("source_id", plan.SourceID))
@@ -165,14 +172,14 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 	// above so partial successes still produce partial artifacts — only
 	// the all-failed case surfaces this sentinel.
 	if len(staged) == 0 {
-		return ErrStockStageSourcesAllFailed
+		return fmt.Errorf("%w: failed_sources=%s", ErrStockStageSourcesAllFailed, formatSourceErrors(state.SourceErrors))
 	}
 	// A multi-source stock request is only successful when every planned
 	// source is available. Previously the step treated partial staging as
 	// graceful degradation, allowing a 10-video request with one usable
 	// video to publish successfully while silently dropping the other nine.
 	if len(staged) < len(seen) {
-		return fmt.Errorf("%w: staged=%d requested=%d", ErrStockStageSourcesIncomplete, len(staged), len(seen))
+		return fmt.Errorf("%w: staged=%d requested=%d failed_sources=%s", ErrStockStageSourcesIncomplete, len(staged), len(seen), formatSourceErrors(state.SourceErrors))
 	}
 
 	runner.State().StagedAssets = staged
@@ -189,6 +196,22 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) (err er
 // the acquisition stager. The stager rejects query-string variants
 // such as `...?pp=...`; the stock pipeline keeps the original SourceID
 // for downstream grouping, but downloads use the canonical watch URL.
+func formatSourceErrors(sourceErrors map[string]string) string {
+	if len(sourceErrors) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(sourceErrors))
+	for key := range sourceErrors {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key+": "+sourceErrors[key])
+	}
+	return strings.Join(parts, "; ")
+}
+
 func countUniquePlanSources(plans []ClipPlan) int {
 	seen := make(map[string]struct{}, len(plans))
 	for _, plan := range plans {

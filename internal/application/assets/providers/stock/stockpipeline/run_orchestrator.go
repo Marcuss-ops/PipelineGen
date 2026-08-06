@@ -99,48 +99,50 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// Phase 2 (July 2026): wire SQLite-backed step store for
 	// crash-resume across process restarts. When db is nil (stock
 	// Service routed via imageSvc, WireStockPipeline stubbed), the
-	// orchestrator falls back to in-memory (NewOrchestrator default).
+	// orchestrator falls back to in-memory (test orchestrator default).
 	// PROSSIMO STEP: make DB required when WireStockPipeline is
 	// re-enabled.
 	if s.stepStore != nil {
 		cfg.StepStore = s.stepStore
 	}
-	o := NewOrchestrator(
-		cfg,
-		NewDeterministicPlanner(),
-		s.stagerForRun(),
-		s.cutter,
-		s.renderer,
-	)
-	// §12-7 (July 2026): thread the Finalizer-side ports via the
-	// orchestrator's fluent setters. AssetPreparation wraps the
-	// canonical delivery.Publisher so StockPublishStep's per-chunk
-	// + per-metadata.json ArtifactPreparation.Prepare calls land on
-	// the single canonical upload surface (godlike/06 SSOT one-owner-
-	// per-fact). JobFinalizer is the canonical single-TX spine-write
-	// service that StockFinalizeStep.CompleteWithArtifacts invokes.
-	if s.log != nil {
-		o.WithLogger(s.log)
-	}
-	if s.localFS != nil {
-		o.WithLocalFS(s.localFS)
-	}
-	if s.publisher != nil {
-		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
-			s.publisherPort, s.log))
-	}
-	o.WithJobFinalizer(s.finalizer)
-	// Production stock runs must persist each extracted clip through the
-	// canonical SQLite asset/outbox dispatcher. Leaving the resilient
-	// writer at its test-only noop default publishes Drive artifacts but
-	// drops the searchable media_assets row, so script source resolution
-	// cannot find the stock clips.
+	planner := NewDeterministicPlanner()
+	stager := s.stagerForRun()
+	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {
-		o.writer = stockDispatcherWriter{dispatcher: s.dispatcher, termUpdater: s.clipsRepo}
+		writer = stockDispatcherWriter{dispatcher: s.dispatcher, termUpdater: s.clipsRepo}
 	}
-	// Fase 2: wire durable batch state (nil-safe for tests/backcompat).
-	if s.batchRepo != nil {
-		o.WithBatchRepository(s.batchRepo)
+	artifactPreparation := finalization.ArtifactPreparationService(nil)
+	if s.publisher != nil {
+		artifactPreparation = finalizer.NewArtifactPreparation(s.publisherPort, s.log)
+	}
+	var o *Orchestrator
+	if s.runtimeMode == stockPipelineTestMode {
+		// Fixture services are intentionally routed through the fixture
+		// constructor. Its in-memory step store and noop resilience ports
+		// cannot leak into production because production services take the
+		// strict branch below.
+		o = NewTestStockOrchestrator(cfg, planner, stager, s.cutter, s.renderer)
+	} else {
+		var constructErr error
+		o, constructErr = newProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
+			Planner:             planner,
+			Stager:              stager,
+			Cutter:              s.cutter,
+			Renderer:            s.renderer,
+			Builder:             stockManifestBuilder{},
+			Writer:              writer,
+			Projection:          s.projection,
+			StepStore:           s.stepStore,
+			ArtifactPreparation: artifactPreparation,
+			JobFinalizer:        s.finalizer,
+			SourceProbe:         s.sourceProbe,
+			BatchRepository:     s.batchRepo,
+			LocalFS:             s.localFS,
+			Logger:              s.log,
+		})
+		if constructErr != nil {
+			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: construct production pipeline: %w", constructErr)
+		}
 	}
 	summary, err = o.RunResilient(ctx, input)
 	if err != nil {
@@ -159,6 +161,13 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 // projectManifestToPipelineResult converts the typed
 // *job.ArtifactManifest into the legacy *PipelineResult used by
 // pre-cutover callers via the ServiceRunner interface.
+//
+// Fail-closed (godlike/07 no-fake-availability): the function returns
+// ErrStockManifestUnprojectable when the manifest cannot be projected
+// into a meaningful result — nil manifest, zero artifacts, or no
+// projectable artifacts (no video chunk AND no metadata). This
+// prevents the silent-empty class where a SUCCEEDED job surfaced
+// total_clips=0/total_chunks=0/chunks=[] despite real uploads.
 //
 // DEPRECATO: tenere solo per back-compat ServiceRunner.
 
@@ -216,7 +225,11 @@ func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*Pipelin
 		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: %w", err)
 	}
 
-	return projectManifestToPipelineResult(summary.Manifest), nil
+	projected, err := projectManifestToPipelineResult(summary.Manifest)
+	if err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runSyncPersist: %w", err)
+	}
+	return projected, nil
 }
 
 type projectedManifestVideo struct {
@@ -226,10 +239,13 @@ type projectedManifestVideo struct {
 	hasIndex bool
 }
 
-func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineResult {
+func projectManifestToPipelineResult(manifest *job.ArtifactManifest) (*PipelineResult, error) {
 	result := &PipelineResult{}
 	if manifest == nil {
-		return result
+		return nil, ErrStockManifestUnprojectable
+	}
+	if len(manifest.Artifacts) == 0 {
+		return nil, fmt.Errorf("%w: manifest %q carries zero artifacts", ErrStockManifestUnprojectable, manifest.JobID)
 	}
 
 	// The manifest is the canonical post-publication source. Keep the
@@ -254,6 +270,14 @@ func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineRe
 				hasIndex: hasIndex,
 			})
 		}
+	}
+	// A manifest that is formally valid but carries neither a metadata
+	// artifact nor any video chunk cannot be projected into a meaningful
+	// legacy result (no links, no counts, no chunks). Failing closed here
+	// keeps the SUCCEEDED-but-empty response class impossible.
+	if metadata == nil && len(videoArtifacts) == 0 {
+		return nil, fmt.Errorf("%w: manifest %q has %d artifacts but none projectable (no video chunk, no metadata)",
+			ErrStockManifestUnprojectable, manifest.JobID, len(manifest.Artifacts))
 	}
 
 	hasManifestClipCount := false
@@ -359,7 +383,7 @@ func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineRe
 		// the number of video artifacts is the safe compatibility fallback.
 		result.TotalClips = result.TotalChunks
 	}
-	return result
+	return result, nil
 }
 
 func firstNonEmpty(values ...string) string {

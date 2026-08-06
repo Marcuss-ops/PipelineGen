@@ -8,9 +8,9 @@
 //   - The Service struct (private fields + 4 unexported port-shaped
 //     accessors: cutter / renderer / dispatcher / finalizer /
 //     sourceStager / channelLister / db).
-//   - The NewService constructor (12-step validation ladder that
-//     surfaces each missing dep as a typed sentinel from
-//     service_errors.go).
+//   - The shared service validation ladder (12 steps); public constructors
+//     live in service_constructors.go and surface each missing dep as a typed
+//     sentinel from service_errors.go.
 //   - The factory wiring that copies Deps fields into the
 //     unexported Service struct fields.
 //
@@ -83,6 +83,7 @@ import (
 // are REMOVED — dead code or port-abstracted. All infra imports are
 // eliminated from service.go (godlike/06 import-boundary discipline).
 type Service struct {
+	runtimeMode   stockPipelineRuntimeMode
 	runtime       *RuntimeConfig
 	log           *zap.Logger
 	publisher     delivery.Publisher
@@ -104,7 +105,9 @@ type Service struct {
 	dispatcher stockChunkDispatcher
 	// finalizer is the mandatory Spina Dorsale JobFinalizer for production
 	// completion and the single durable finalization path.
-	finalizer finalization.JobFinalizer
+	finalizer   finalization.JobFinalizer
+	projection  ProjectionPort
+	sourceProbe SourceDurationProbe
 	// sourceStager is the canonical acquisition.SourceStager port
 	// (Stock Cutover §12-4, July 2026). REQUIRED at ctor time — the
 	// None-checking ErrStockPipelineNilSourceStager gate surfaces
@@ -142,10 +145,13 @@ type Service struct {
 	localFS LocalFSPort
 }
 
-// NewService creates a stock pipeline service via the canonical Deps struct
-// (PR-D, June 2026). Returns *Service + error (the legacy signature returned
-// only *Service + relied on per-call nil guards; the new contract surfaces
-// missing deps at composition time, the only safe window).
+// newService validates and creates a stock pipeline service via the canonical
+// Deps struct. Public callers must choose NewProductionStockPipeline or
+// NewTestStockPipeline so the runtime mode is explicit.
+//
+// Returns *Service + error (the legacy signature returned only *Service +
+// relied on per-call nil guards; the new contract surfaces missing deps at
+// composition time, the only safe window).
 //
 // Validation order: pure data (Cfg, Log) → transport (Storage) →
 // ports (Media) → cross-cutting. Each missing dep surfaces its own
@@ -161,9 +167,9 @@ type Service struct {
 // Production wire-up lives in WireStockPipeline
 // (internal/app/module_sources.go::WireStockPipeline). The composition
 // root pre-rejects any nil dispatcher at the wire call-site (QDRANT-002
-// PR7 precedent on artlist.WireArtlist); NewService is the second
-// line of defence so accidental misuse from tests still fails loud.
-func NewService(deps Deps) (*Service, error) {
+// PR7 precedent on artlist.WireArtlist); the shared validation is the
+// second line of defence so accidental misuse still fails loud.
+func newService(deps Deps) (*Service, error) {
 	if deps.Runtime.Cfg == nil {
 		return nil, ErrStockPipelineNilCfg
 	}
@@ -203,6 +209,9 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Delivery.Finalizer == nil {
 		return nil, ErrStockPipelineNilFinalizer
 	}
+	if deps.Delivery.Projection == nil {
+		return nil, ErrStockProductionProjectionMissing
+	}
 	// P8 (July 2026): ClipIndexer + MetaWriter + YouTube validation RETIRED
 	// — dead code (zero call sites in the stockpipeline package).
 	// Jobs is required at ctor time per PR-D (Wave 22 §D3). Previously
@@ -222,6 +231,9 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Execution.SourceStager == nil {
 		return nil, ErrStockPipelineNilSourceStager
 	}
+	if deps.Execution.SourceProbe == nil {
+		return nil, ErrStockProductionSourceProbeMissing
+	}
 	if deps.Runtime.StepStore == nil {
 		return nil, ErrStockPipelineNilStepStore
 	}
@@ -234,6 +246,10 @@ func NewService(deps Deps) (*Service, error) {
 		return nil, ErrStockPipelineNilLocalFS
 	}
 
+	return serviceFromDeps(deps), nil
+}
+
+func serviceFromDeps(deps Deps) *Service {
 	v := deps.Runtime.Cfg
 	if v.ClipDurationSec <= 0 {
 		v.ClipDurationSec = DefaultPipelineConfig().ClipDuration
@@ -258,6 +274,8 @@ func NewService(deps Deps) (*Service, error) {
 		batchRepo:         deps.Storage.BatchRepository,
 		dispatcher:        deps.Storage.Dispatcher,
 		finalizer:         deps.Delivery.Finalizer,
+		projection:        deps.Delivery.Projection,
+		sourceProbe:       deps.Execution.SourceProbe,
 		sourceStager:      deps.Execution.SourceStager,
 		channelLister:     deps.Execution.ChannelLister,
 		driveReader:       deps.Delivery.DriveReader,
@@ -266,5 +284,5 @@ func NewService(deps Deps) (*Service, error) {
 		sourceCacheReader: deps.SourceCache.Reader,
 		sourceCacheWriter: deps.SourceCache.Writer,
 		localFS:           deps.SourceCache.LocalFS,
-	}, nil
+	}
 }

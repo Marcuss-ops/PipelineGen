@@ -4,7 +4,7 @@
 // godlike/07 fail-fast-at-composition: the asymmetric gate
 // (publisher≠nil + finalizer≠nil = production; publisher=nil +
 // finalizer=nil = backcompat/test; asymmetric = ErrStockProduction*)
-// runs BEFORE stockpipeline.NewService so wiring gaps surface at
+// runs BEFORE the strict stock production constructor so wiring gaps surface at
 // startup, not at first /run (orchestrator.go:478/480 mirrors this
 // gate but with harder-to-diagnose late-binding context).
 //
@@ -54,7 +54,8 @@ import (
 //
 //  1. validateStockSymmetricGate (godlike/07 fail-fast at composition time).
 //     1b. SQLite mandatory in production (Fase 2).
-//  2. stockpipeline.NewService (Deps{Publisher, Finalizer} both threaded).
+//  2. stockpipeline.NewProductionStockPipeline (strict runtime orchestrator
+//     construction is used by the Service execution path).
 //  3. stockpipeline.NewStockUseCase (ServiceRunner + narrowed jobsEnqueuer).
 //  4. stockapi.Build (API Descriptor with EnabledFunc closure).
 //
@@ -78,7 +79,7 @@ import (
 //
 // godlike/07 minimum-blast-radius: BuildStockBundle is the SINGLE
 // canonical site that builds a *stockpipeline.Service — composition
-// roots that previously called stockpipeline.NewService inline MUST
+// roots that previously constructed stock services inline MUST
 // refunnel through this entry point so the symmetric gate cannot be
 // bypassed by a future un-wired caller. The pre-§-extraction Step 8
 // stub at registry_internal_modules.go:215 references this function
@@ -118,7 +119,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 	}
 
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
-	svc, err := stockpipeline.NewService(stockpipeline.Deps{
+	svc, err := stockpipeline.NewProductionStockPipeline(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
 			Cfg:        stockRuntimeConfig(deps.Runtime.Cfg),
 			Log:        deps.Runtime.Log,
@@ -138,6 +139,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		Execution: stockpipeline.ExecutionDeps{
 			Jobs:          deps.Orchestration.Jobs,
 			SourceStager:  deps.Acquisition.SourceStager,
+			SourceProbe:   deps.Acquisition.SourceProbe,
 			ChannelLister: deps.Orchestration.ChannelLister,
 		},
 		SourceCache: stockpipeline.SourceCacheDeps{
@@ -151,10 +153,11 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 			FolderCreator: deps.Orchestration.FolderCreator,
 			DriveReader:   chooseDriveReader(deps.Acquisition),
 			Finalizer:     deps.Delivery.Finalizer,
+			Projection:    deps.Delivery.Projection,
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)
+		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewProductionStockPipeline: %w", err)
 	}
 
 	// ── Gate 3: construct the canonical stockpipeline.StockUseCase ─

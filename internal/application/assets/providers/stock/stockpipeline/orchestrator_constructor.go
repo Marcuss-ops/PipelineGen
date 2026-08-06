@@ -1,13 +1,14 @@
 // Package stockpipeline — orchestrator_constructor.go (split July 2026).
 //
-// This file owns the canonical constructors (NewOrchestrator,
-// NewOrchestratorWithResilience), fluent setters (WithAssetPreparation,
+// This file owns the canonical fixture constructors
+// (NewTestStockOrchestrator, NewOrchestratorWithResilience), fluent setters (WithAssetPreparation,
 // WithJobFinalizer), and pure helpers (stepInputFingerprint, firstSource).
 // Extracted from orchestrator.go per AGENTS.md Pattern 5.
 //
-// godlike/06 SSOT: NewOrchestrator is the single canonical constructor;
-// NewOrchestratorWithResilience is the single canonical resilience-port
-// injection constructor.
+// godlike/06 SSOT: NewProductionStockOrchestrator is the strict runtime
+// constructor and NewTestStockOrchestrator is the explicit fixture constructor.
+// Production orchestration is constructed by the strict constructor in
+// orchestrator_production.go; fixture orchestration remains explicit here.
 package stockpipeline
 
 import (
@@ -18,11 +19,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
-// NewOrchestrator returns the canonical orchestrator. Caller-side
-// code is responsible for providing non-nil Planner, Stager, Cutter,
-// and Renderer — the lazy-default pattern is centralised in
-// Service.runOrchestrator so production wiring can reach for
-// concrete deps without re-validating here.
+// NewTestStockOrchestrator builds the hermetic fixture orchestrator.
+//
+// Production code MUST use NewProductionStockOrchestrator. This builder keeps
+// the deliberately permissive fixture defaults (in-memory step store,
+// noop resilience ports) used by unit tests and never serves as a
+// production composition path.
+//
+// Caller-side tests are responsible for providing non-nil Planner, Stager,
+// Cutter, and Renderer when they exercise RunResilient.
 //
 // Default fallbacks (Stock Cutover Commit 2):
 //   - MaxConcurrentJobs<=0 ⇒ DefaultMaxConcurrentJobs (3)
@@ -38,7 +43,11 @@ import (
 // is only used by non-broker callers (tests, CLI). Production wiring
 // that wants custom resilience ports MUST use
 // NewOrchestratorWithResilience instead.
-func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+	return newStockPipeline(cfg, planner, stager, cutter, renderer)
+}
+
+func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
@@ -52,7 +61,7 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.
 		// steps.NewSQLiteStore(db) bound to the canonical
 		// execution_steps table). The godlike/06 "one owner per
 		// fact" invariant: caller is the sole injector and
-		// NewOrchestrator never overrides a non-nil store (the
+		// NewTestStockOrchestrator never overrides a non-nil store (the
 		// resume contract on retry-after-crash would be silently
 		// broken by the in-memory default taking over).
 		stepStore = cfg.StepStore
@@ -71,13 +80,11 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.
 	}
 }
 
-// NewOrchestratorWithResilience is the canonical constructor when
-// caller-side code wants to inject custom resilience ports (the
-// SQLite-backed outbox wrapper, the Qdrant-backed projection
-// adapter, an alternate ManifestBuilder for chunk-emission paths
-// that need richer envelopes). Defaults are inherited from
-// NewOrchestrator; nil arguments to this overload are silently
-// replaced by the canonical default implementations.
+// NewOrchestratorWithResilience is a test-only fixture builder for
+// injecting custom resilience ports (the SQLite-backed outbox wrapper,
+// a failing manifest builder, or a projection stub). Production code
+// MUST use NewProductionStockOrchestrator; nil resilience fields here retain
+// fixture compatibility and are never accepted by the production builder.
 //
 // The canonical test surface uses this constructor directly so the
 // 3 failure-mode tests in run_upload_indexing_test.go can inject
@@ -102,7 +109,7 @@ func NewOrchestratorWithResilience(
 	renderer StockRenderer,
 	resilience ResilienceDeps,
 ) *Orchestrator {
-	o := NewOrchestrator(cfg, planner, stager, cutter, renderer)
+	o := NewTestStockOrchestrator(cfg, planner, stager, cutter, renderer)
 	if resilience.Builder != nil {
 		o.builder = resilience.Builder
 	}
@@ -117,11 +124,12 @@ func NewOrchestratorWithResilience(
 
 // WithAssetPreparation threads the canonical ArtifactPreparationService
 // to the orchestrator's StockPublishStep. §12-7 fluent-setter pattern —
-// keeps NewOrchestrator + NewOrchestratorWithResilience signatures
+// keeps the explicit fixture constructor signatures
 // stable so test (a/b/c) compile unchanged (godlike/06 backward
 // minimal-surface-change principle). Composition-root production
-// wiring in run_orchestrator.go::runOrchestratorResilient calls this
-// once after NewOrchestrator returns. Returns the receiver for
+// wiring in run_orchestrator.go::runOrchestratorResilient uses the strict
+// production constructor directly; fixture callers may use this setter
+// after construction. Returns the receiver for
 // fluent chaining.
 func (o *Orchestrator) WithAssetPreparation(svc finalization.ArtifactPreparationService) *Orchestrator {
 	o.artifactPreparation = svc

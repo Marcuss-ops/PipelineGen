@@ -18,8 +18,8 @@ import (
 )
 
 // OrchestratorConfig parameterises Orchestrator at construction.
-// Zero values are NOT a valid runtime config — NewOrchestrator
-// applies defaults for the optional fields (JobID, MaxConcurrentJobs)
+// Zero values are NOT a valid runtime config — the explicit fixture
+// constructor applies defaults for the optional fields (JobID, MaxConcurrentJobs)
 // and forwards PolicyVersion + ChunkDurationSec + ClipDurationSec
 // verbatim to the planner.
 //
@@ -116,8 +116,7 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/s
 // and WithJobFinalizer thread the finalizer-side ports. The ports
 // are wired to canonical default implementations
 // (stockManifestBuilder + noopWriter + noopProjection) by
-// NewOrchestrator; production wiring can override them via
-// NewOrchestratorWithResilience. RunResilient is the canonical entry
+// NewTestStockOrchestrator; production wiring uses NewProductionStockPipeline. RunResilient is the canonical entry
 // point that exercises the full resilience flow (manifest build →
 // gate → atomic dispatch → Qdrant projection); Run is a thin wrapper
 // that returns the manifest component of the RunSummary for legacy
@@ -143,9 +142,9 @@ type Orchestrator struct {
 	// caller) so the Qdrant-reconciler task can retry asynchronously.
 	projection ProjectionPort
 	// stepStore is the canonical §12-3 ports.Store the Orchestrator
-	// uses for per-step checkpointing (MarkStarted / MarkCompleted /
-	// MarkFailed). Default in NewOrchestrator +
-	// NewOrchestratorWithResilience is steps.NewInMemoryStore() — a
+	// uses for per-step checkpointing (MarkStarted / MarkCompleted /	// MarkFailed). Default in NewTestStockOrchestrator +
+	// NewOrchestratorWithResilience use steps.NewInMemoryStore() — a
+
 	// production-grade in-memory impl that satisfies the canonical
 	// interface and survives concurrent goroutines. Forward-pointer:
 	// the SQLite-backed impl lands in a follow-up commit (the
@@ -153,9 +152,9 @@ type Orchestrator struct {
 	stepStore steps.Store
 	// dispatchSteps is the canonical 6-step typed []Step slice the
 	// Orchestrator iterates in RunResilient, in pipeline order.
-	// Default in NewOrchestrator is DefaultStockSteps() (the typed
+	// Default in NewTestStockOrchestrator is DefaultStockSteps() (the typed
 	// Steps declared in orchestrator_steps.go). Production wiring
-	// can inject a custom slice via NewOrchestratorWithResilience
+	// can inject a custom slice via the test-only NewOrchestratorWithResilience
 	// to thread fork-points (e.g. dry-run modes that skip
 	// stock.publish).
 	dispatchSteps []Step
@@ -167,7 +166,7 @@ type Orchestrator struct {
 
 	// §12-7 (July 2026): Finalizer-side ports threaded via fluent
 	// setters (WithAssetPreparation / WithJobFinalizer). Defaulted to
-	// nil in NewOrchestrator; production composition roots in
+	// nil in NewTestStockOrchestrator; production composition roots in
 	// run_orchestrator.go::runOrchestratorResilient wire the canonical
 	// finalizer.NewArtifactPreparation(s.publisher, s.log) and
 	// s.finalizer respectively. Test fixtures leave nil so the
