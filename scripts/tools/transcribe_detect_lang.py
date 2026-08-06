@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,69 @@ from typing import Optional
 # shared across all transcribe() calls. Avoids reloading for batch mode.
 # ---------------------------------------------------------------------------
 _MODEL_CACHE: dict = {}
+
+
+def _prepare_cuda_runtime() -> None:
+    """Expose a CUDA 12 runtime when ctranslate2 needs it.
+
+    ctranslate2 4.8 loads CUDA 12 libraries, while the host Python/Torch
+    installation may provide CUDA 13.  Ollama ships a compatible CUDA 12
+    runtime on this host.  Re-execing after changing LD_LIBRARY_PATH is
+    intentional: the dynamic loader reads that variable at process startup.
+    """
+    if os.environ.get("VELOX_WHISPER_CUDA_RUNTIME_READY") == "1":
+        return
+
+    library_path = os.environ.get("LD_LIBRARY_PATH", "")
+    search_dirs = [
+        os.environ.get("VELOX_WHISPER_CUDA_LIB_DIR", ""),
+        "/usr/local/lib/ollama/cuda_v12",
+        "/usr/local/cuda-12/lib64",
+        "/usr/local/cuda/lib64",
+    ]
+    for raw_dir in search_dirs:
+        if not raw_dir:
+            continue
+        directory = Path(raw_dir)
+        if not (directory / "libcublas.so.12").exists():
+            continue
+        if str(directory) in library_path.split(os.pathsep):
+            os.environ["VELOX_WHISPER_CUDA_RUNTIME_READY"] = "1"
+            return
+
+        paths = [str(directory)]
+        if library_path:
+            paths.append(library_path)
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(paths)
+        env["VELOX_WHISPER_CUDA_RUNTIME_READY"] = "1"
+        os.execve(sys.executable, [sys.executable, *sys.argv], env)
+
+
+def _resolve_device() -> tuple:
+    """Resolve the (device, compute_type) pair for faster-whisper.
+
+    Default "auto": use CUDA (float16) when ctranslate2 reports a
+    working GPU, otherwise fall back to CPU int8. Operators can force
+    either side with VELOX_WHISPER_DEVICE=cuda|cpu|auto.
+    """
+    choice = os.environ.get("VELOX_WHISPER_DEVICE", "auto").strip().lower()
+    if choice == "cpu":
+        return "cpu", "int8"
+    if choice in ("auto", "cuda"):
+        try:
+            _prepare_cuda_runtime()
+            from ctranslate2 import get_cuda_device_count
+
+            if get_cuda_device_count() > 0:
+                return "cuda", "float16"
+        except Exception:
+            pass
+        if choice == "cuda":
+            print(json.dumps({"error": "VELOX_WHISPER_DEVICE=cuda but no usable CUDA device"}), file=sys.stderr)
+            sys.exit(2)
+    return "cpu", "int8"
+
 
 def _get_model(model_size: str = "tiny") -> "WhisperModel":
     """Get or create a cached whisper model."""
@@ -41,8 +105,9 @@ def _get_model(model_size: str = "tiny") -> "WhisperModel":
             raise ImportError(
                 "faster-whisper not installed. Run: pip3 install faster-whisper"
             )
+        device, compute_type = _resolve_device()
         _MODEL_CACHE[model_size] = WhisperModel(
-            model_size, device="cpu", compute_type="int8"
+            model_size, device=device, compute_type=compute_type
         )
     return _MODEL_CACHE[model_size]
 
