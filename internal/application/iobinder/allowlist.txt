@@ -30,7 +30,6 @@ internal/application/document/usecase.go	database/sql	@agent/Codebuff	2026-08-31
 internal/application/execution/steps/sqlite_store.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/images/generated_image_ingest.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/images/storage_download.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
-internal/application/images/visual_validate/visual_validate.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/jobs/assets/service.go	os.Open	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/jobs/finalizer/artifact_writer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/jobs/finalizer/job_completion_writer.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
