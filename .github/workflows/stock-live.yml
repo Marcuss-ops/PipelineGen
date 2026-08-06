@@ -1,0 +1,70 @@
+name: Stock Live E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for running the stock live battery"
+        required: false
+        default: "manual stock live certification"
+        type: string
+  schedule:
+    # 04:30 UTC nightly, after the general smoke workflow.
+    - cron: "30 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-live-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stock-live:
+    name: stock live battery (14/14)
+    # The battery submits jobs and reads the same SQLite database populated by
+    # the running server/worker. A dedicated runner keeps BASE and DB_PATH in
+    # one environment; do not change this to ubuntu-latest or a remote BASE.
+    runs-on: [self-hosted, stock-live]
+    timeout-minutes: 45
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Verify stock-live runner prerequisites
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          QDRANT_BASE: ${{ vars.STOCK_LIVE_QDRANT_BASE || 'http://127.0.0.1:6333' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$VELOX_ADMIN_TOKEN"
+          for tool in bash curl jq sqlite3 ffprobe openssl; do
+            command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 2; }
+          done
+          test -f "$DB_PATH" || { echo "missing canonical DB_PATH: $DB_PATH" >&2; exit 2; }
+          curl -fsS --max-time 10 "$BASE/health" >/dev/null
+          curl -fsS --max-time 10 "$BASE/ready" >/dev/null
+          BASE="$BASE" VELOX_ADMIN_TOKEN="$VELOX_ADMIN_TOKEN" make auth-check
+          curl -fsS --max-time 10 "$QDRANT_BASE/healthz" >/dev/null
+          echo "stock-live runner ready: BASE=$BASE DB_PATH=$DB_PATH QDRANT_BASE=$QDRANT_BASE"
+
+      - name: Run stock live battery
+        env:
+          BASE: ${{ vars.STOCK_LIVE_BASE || 'http://127.0.0.1:8000' }}
+          DB_PATH: ${{ vars.STOCK_LIVE_DB_PATH || 'data/media/media.db.sqlite' }}
+          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          STOCK_E2E_RUN_ID: stock-${{ github.run_id }}
+        run: make verify-stock-live
+
+      - name: Upload stock receipt on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-live-receipt-${{ github.run_id }}
+          path: /tmp/pipelinegen-stock-e2e-receipt.*.log
+          if-no-files-found: warn
+          retention-days: 14

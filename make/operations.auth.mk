@@ -35,7 +35,7 @@ artlist:
 auth-check:
 	@scripts/with-velox-auth bash -c 'code=$$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 \
 		-H "Authorization: Bearer $$VELOX_ADMIN_TOKEN" \
-		http://127.0.0.1:$${VELOX_PORT:-8000}/api/artlist/job-consumer); \
+		$${BASE:-http://127.0.0.1:$${VELOX_PORT:-8000}}/api/artlist/job-consumer); \
 	if [ "$$code" != "200" ]; then \
 	    echo "❌ Velox authentication failed: HTTP $$code"; \
 	    exit 1; \
