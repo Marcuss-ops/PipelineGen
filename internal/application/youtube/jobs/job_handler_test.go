@@ -84,6 +84,23 @@ func TestHandleJob_ThreeSegmentPayload_ClassificationSuccess(t *testing.T) {
 	require.Equal(t, 3, res["stats"].(*youtubetypes.ExtractStats).Requested)
 }
 
+func TestHandleJob_ClassifiedFailure_PreservesEveryOriginalItemError(t *testing.T) {
+	extractor := &multiFailingExtractor{}
+	h := NewJobHandler(extractor, zap.NewNop())
+
+	res, err := h.HandleJob(context.Background(), &job.Job{ID: "job-multi-fail"}, &appjobs.JobTools{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrExtractionTerminal)
+	require.Equal(t, "terminal", res["failure_class"])
+
+	details := failureDetailsFromError(t, err)
+	require.Equal(t, float64(2), details["stats"].(map[string]any)["failed"])
+	items := details["items"].([]any)
+	require.Len(t, items, 2)
+	require.Equal(t, "first original failure", items[0].(map[string]any)["error"])
+	require.Equal(t, "second original failure", items[1].(map[string]any)["error"])
+}
+
 func TestHandleJob_ClassifiedFailure_PreservesOriginalCause(t *testing.T) {
 	extractor := &failingExtractor{itemErr: "writer_failed: writer rejected locale-not-ready: clip locale not ready: asset=yt_z_k1UGy4-qU_3_15_v1 reason=missing READY translations"}
 	h := NewJobHandler(extractor, zap.NewNop())
@@ -170,6 +187,19 @@ type nilResponseExtractor struct{}
 
 func (nilResponseExtractor) Extract(context.Context, *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
 	return nil, nil
+}
+
+type multiFailingExtractor struct{}
+
+func (multiFailingExtractor) Extract(context.Context, *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
+	return &youtubetypes.ExtractResponse{
+		Stats: &youtubetypes.ExtractStats{Requested: 2, Failed: 2},
+		Items: []youtubetypes.ExtractItem{
+			{Name: "first", Status: "failed", Error: "first original failure"},
+			{Name: "second", Status: "failed", Error: "second original failure"},
+		},
+		Error: "two segments failed",
+	}, nil
 }
 
 type failingExtractor struct {
