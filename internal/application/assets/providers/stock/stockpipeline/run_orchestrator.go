@@ -106,6 +106,10 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		cfg.StepStore = s.stepStore
 	}
 	planner := NewDeterministicPlanner()
+	// Resolve the application-layer stager adapter around the acquisition
+	// SourceStager injected by the composition root. This preserves the
+	// legacy assets.SourceStager shape required by the orchestrator while
+	// keeping Prepare/Release ownership in the canonical acquisition port.
 	stager := s.stagerForRun()
 	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {
@@ -124,7 +128,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		o = NewTestStockOrchestrator(cfg, planner, stager, s.cutter, s.renderer)
 	} else {
 		var constructErr error
-		o, constructErr = newProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
+		o, constructErr = NewProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
 			Planner:             planner,
 			Stager:              stager,
 			Cutter:              s.cutter,

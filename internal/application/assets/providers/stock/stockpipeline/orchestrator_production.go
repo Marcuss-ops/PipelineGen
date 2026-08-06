@@ -52,10 +52,9 @@ var (
 // NewProductionStockOrchestrator is the sole strict runtime constructor. It validates
 // the entire dependency graph before returning an executable pipeline;
 // no nil dependency can reach RunResilient and no test noop can be mistaken
-// for a live capability. NewTestStockOrchestrator is deliberately not called
-// by production composition except as the internal field initializer after
-// this validation has completed.
-func newProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStockPipelineDeps) (*Orchestrator, error) {
+// for a live capability. NewTestStockOrchestrator is never called by this
+// constructor.
+func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStockPipelineDeps) (*Orchestrator, error) {
 	checks := []struct {
 		value any
 		err   error

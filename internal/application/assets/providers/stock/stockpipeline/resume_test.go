@@ -102,7 +102,7 @@ func TestOrchestrator_PostRestart_StepStoreHasNoDuplicateRows(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(context.Background(), &RunInput{})
@@ -176,7 +176,7 @@ func TestOrchestrator_PostRestart_AllStepsCASPreserveAttempt1(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(context.Background(), &RunInput{})
@@ -239,7 +239,7 @@ func TestOrchestrator_PostRestart_ListRowCountMatchesDispatchSlice(t *testing.T)
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(context.Background(), &RunInput{})

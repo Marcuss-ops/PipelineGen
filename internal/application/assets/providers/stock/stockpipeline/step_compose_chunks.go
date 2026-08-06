@@ -70,7 +70,7 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 
 	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
 	// July 2026): runner.Renderer() is non-nil. The canonical
-	// composition root (stockpipeline.NewService + orchestrator.RunResilient)
+	// composition root (NewProductionStockPipeline + orchestrator.RunResilient)
 	// rejects nil renderer with ErrStockPipelineNilRenderer /
 	// ErrOrchestratorNilDeps BEFORE the step body runs. The previous
 	// runtime nil-check (test-fixture compat) is RETIRED per
