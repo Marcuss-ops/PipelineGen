@@ -13,7 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// SearchService coordinates Artlist database and live-provider searches.
+// SearchService coordinates the SQLite search adapter and live provider searchers.
+// Construction/wiring stays in the application service, while concrete
+// responsibility boundaries live in searcher_sqlite.go and searcher_cache.go.
 type SearchService struct {
 	service         *Service
 	assetRepo       asset.Repository
@@ -350,8 +352,16 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 func (ss *SearchService) buildSearcherChain(preferRemote bool) *SearcherFallbackChain {
 	s := ss.service
 	var searchers []Searcher
-	if !preferRemote && s.assetStore != nil {
-		searchers = append(searchers, NewDBSearcher(s.assetStore))
+	if !preferRemote {
+		localSearcher := s.localSearcher
+		// Compatibility for unit-level constructions that still provide only
+		// AssetStore. Production composition injects LocalSearcher explicitly.
+		if localSearcher == nil && s.assetStore != nil {
+			localSearcher = NewSQLiteSearcher(s.assetStore)
+		}
+		if localSearcher != nil {
+			searchers = append(searchers, localSearcher)
+		}
 	}
 
 	strategy := ss.searchStrategy

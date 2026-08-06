@@ -83,6 +83,7 @@ func buildSearcherChainWithMocks(t *testing.T, preferRemote bool) (*SearchServic
 			cfg:             &config.Config{},
 			log:             zap.NewNop(),
 			assetStore:      nil, // DB side tested separately via writeFakeArtlistScraper pattern
+			localSearcher:   nil,
 			scraperSearcher: scraper,
 			liveCache:       cache,
 			searchStrategy:  StrategyArtlistOnly,

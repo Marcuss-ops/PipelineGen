@@ -86,6 +86,10 @@ type Service struct {
 	// elsewhere use Publisher.Publish directly.
 	publisher delivery.Publisher
 
+	// LocalSearcher is the composed SQLite search adapter. The application
+	// consumes only the Searcher port; concrete SQL stays in infrastructure.
+	localSearcher Searcher
+
 	// PR2: infrastructure Searcher implementations for the fallback chain.
 	scraperSearcher Searcher
 	pixabaySearcher Searcher
@@ -225,6 +229,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		mediaProcessor:    deps.Domain.MediaProcessor,
 		assetDestResolver: deps.Domain.AssetDestResolver,
 		jobsSvc:           deps.Domain.JobsSvc,
+		localSearcher:     deps.LocalSearcher,
 		scraperSearcher:   deps.ScraperSearcher,
 		pixabaySearcher:   deps.PixabaySearcher,
 		pexelsSearcher:    deps.PexelsSearcher,

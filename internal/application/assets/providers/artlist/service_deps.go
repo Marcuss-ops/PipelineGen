@@ -39,7 +39,11 @@ type ServicePorts struct {
 	// NewService with ErrPublisherUnavailable (composition-time fail-
 	// closed; defense-in-depth with the WireArtlist pre-rejection).
 	Publisher delivery.Publisher
-	// PR2: Searcher implementations injected from infrastructure.
+	// Searcher implementations injected from infrastructure.
+	// LocalSearcher is the SQLite-backed adapter; nil means the local
+	// fallback is unavailable and is skipped honestly.
+	LocalSearcher Searcher
+	// PR2: remote searchers injected from infrastructure.
 	// Nil means that level is skipped in the fallback chain.
 	ScraperSearcher Searcher
 	PixabaySearcher Searcher

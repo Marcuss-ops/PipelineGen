@@ -38,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
+	sqliteSearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -207,6 +208,8 @@ func WireArtlist(
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
 	// (PR-ARTLIST-SEARCHERS closed 2026-07-04: 3 searchers wired inline).
+	localSearcher := sqliteSearch.NewArtlistSQLiteSearcher(bundle.ClipsRepo)
+
 	service, err := artlist.NewService(artlist.ServiceDeps{
 		ServicePorts: artlist.ServicePorts{
 			// ServicePorts (9) — 9 DIRECT (PR-ARTLIST-SEARCHERS closed: 3 searchers
@@ -214,6 +217,7 @@ func WireArtlist(
 			// returns ErrUnavailable when API keys are empty per godlike/07 graceful
 			// degradation, instead of nil-tolerated 503 at the handler layer).
 			AssetStore:      bundle.ClipsRepo,
+			LocalSearcher:   localSearcher,
 			Indexer:         bundle.ClipIndexerService,
 			MetadataWriter:  semanticEnricher,
 			Publisher:       bundle.Publisher,
