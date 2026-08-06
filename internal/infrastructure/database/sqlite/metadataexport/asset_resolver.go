@@ -1,8 +1,8 @@
 // Package metadataexport — concrete SQLite adapter for
-// metadataexport.AssetResolver.
+// assets/metadataexport.AssetResolver.
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the legacy
-// internal/application/jobs/outbox/metadata_export.go inlined SQL
+// internal/application/assets/metadataexport previously inlined SQL
 // against media_assets + outbox_events + delivery_log. After split,
 // those queries live here behind a typed-port adapter. Application
 // layer no longer imports database/sql — the import direction is
@@ -27,7 +27,7 @@ import (
 	"context"
 	"database/sql"
 
-	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
+	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
 )
 
 // Compile-time assertion: the concrete must satisfy the typed port.

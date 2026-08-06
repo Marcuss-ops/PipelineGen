@@ -2,7 +2,7 @@
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the validate
 // logic was previously a method on MetadataExportHandler
-// (internal/application/jobs/outbox/metadata_export.go::validate).
+// (the former outbox metadata export implementation).
 // After split, validation lives in its own file because the handler
 // needs to call it BEFORE any side-effecting port invocation
 // (resolver or writer); having a separate file ensures future

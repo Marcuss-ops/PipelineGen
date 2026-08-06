@@ -1,7 +1,7 @@
 // Package metadataexport — typed application-layer ports.
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the legacy
-// internal/application/jobs/outbox/metadata_export.go reached directly
+// the former outbox metadata export implementation reached directly
 // into `database/sql` (for asset_id resolution + section loading) and
 // into `os` (for FS writes) — both forbidden in the application
 // layer per AGENTS.md Pattern 0 + Pattern 8. After split, this file

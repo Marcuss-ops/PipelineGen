@@ -3,7 +3,7 @@
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the contract
 // was previously embedded inline in
-// internal/application/jobs/outbox/metadata_export.go (395 lines mixing
+// the former outbox metadata export implementation (395 lines mixing
 // contract + validator + handler + SQL queries + FS writers). The
 // split lifts the contract to its own file so the application package
 // has zero infra-shaped imports (database/sql, os, etc.) per AGENTS.md
@@ -36,6 +36,11 @@ import (
 // retry won't fix. Mirrors the IndexRequestSchemaVersion pattern in
 // internal/application/jobs/outbox/indexing.go.
 const metadataExportSchemaVersion = "asset.metadata_export.requested.v1"
+
+// MetadataExportRequestSchemaVersion is the public contract marker shared by
+// producers and the technical outbox adapter. The event remains stable while
+// the capability implementation moves out of jobs/outbox.
+const MetadataExportRequestSchemaVersion = metadataExportSchemaVersion
 
 // Format constants. Narrow allowlist: today's handler writes only JSON
 // (per-asset sidecar), and jsonl/csv combined files only when the

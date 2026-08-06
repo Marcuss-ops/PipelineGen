@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -127,7 +126,7 @@ func TestStubHandlers_EventType(t *testing.T) {
 		want string
 	}{
 		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false), outboxevents.EventDeliveryRequested},
-		{"metadata_export", metadataexport.NewMetadataExportHandler(metadataexport.HandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()}), outboxevents.EventAssetMetadataExportRequested},
+		{"metadata_export", outboxhandlers.NewMetadataExportHandler(outboxhandlers.MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()}), outboxevents.EventAssetMetadataExportRequested},
 		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil), outboxevents.EventProviderSyncRequested},
 	}
 	for _, tc := range cases {
@@ -153,7 +152,7 @@ func TestStubHandlers_ReturnError(t *testing.T) {
 		h    outboxevents.Handler
 	}{
 		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)},
-		{"metadata_export", metadataexport.NewMetadataExportHandler(metadataexport.HandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()})},
+		{"metadata_export", outboxhandlers.NewMetadataExportHandler(outboxhandlers.MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()})},
 		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil)},
 	}
 	for _, tc := range cases {
