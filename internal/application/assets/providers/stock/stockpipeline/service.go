@@ -145,6 +145,17 @@ type Service struct {
 	localFS LocalFSPort
 }
 
+// SourceDurationProbe returns the probe wired into the service's production
+// dependency graph. It is intentionally read-only: production composition
+// owns the concrete and tests may use this accessor to verify that the probe
+// crossed the composition boundary without invoking ffprobe.
+func (s *Service) SourceDurationProbe() SourceDurationProbe {
+	if s == nil {
+		return nil
+	}
+	return s.sourceProbe
+}
+
 // newService validates and creates a stock pipeline service via the canonical
 // Deps struct. Public callers must choose NewProductionStockPipeline or
 // NewTestStockPipeline so the runtime mode is explicit.
