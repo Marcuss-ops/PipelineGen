@@ -149,6 +149,112 @@ func (resumeStubStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSo
 }
 func (resumeStubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error { return nil }
 
+// failingResumeStore preserves the canonical Store surface while making
+// the one resume read fail. Embedding delegates every mutation to the
+// real store, so the test exercises RunResilient's read-failure handling
+// rather than a second store implementation.
+type failingResumeStore struct {
+	steps.Store
+	listErr error
+}
+
+func (s failingResumeStore) ListByJob(context.Context, string) ([]steps.StepState, error) {
+	return nil, s.listErr
+}
+
+// inconsistentResumeStore simulates a store that reports a terminal
+// step from MarkStarted while its history read cannot return that row.
+// This is a defensive race/corruption seam: RunResilient must not skip
+// the step without a canonical snapshot.
+type inconsistentResumeStore struct {
+	steps.Store
+	completedKey steps.StepKey
+}
+
+func (s inconsistentResumeStore) MarkStarted(_ context.Context, key steps.StepKey) error {
+	if key.JobID == s.completedKey.JobID && key.StepKey == s.completedKey.StepKey {
+		return steps.ErrStepAlreadyCompleted
+	}
+	return s.Store.MarkStarted(context.Background(), key)
+}
+
+var _ steps.Store = inconsistentResumeStore{}
+
+// TestOrchestrator_RunResilient_CheckpointReadFailsClosed verifies that
+// an unreadable canonical checkpoint store aborts before any step runs.
+func TestOrchestrator_RunResilient_CheckpointReadFailsClosed(t *testing.T) {
+	readErr := fmt.Errorf("checkpoint database unavailable")
+	store := failingResumeStore{
+		Store:   steps.NewInMemoryStore(),
+		listErr: readErr,
+	}
+	count := new(int32)
+	o := NewTestStockOrchestrator(
+		OrchestratorConfig{JobId: "checkpoint-read-failure", StepStore: store},
+		resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{},
+	)
+	o.dispatchSteps = []Step{
+		&stubRecorderStep{name: "stock.plan", count: count},
+		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+	}
+
+	_, err := o.RunResilient(context.Background(), &RunInput{})
+	require.Error(t, err, "checkpoint read failure must abort the run")
+	require.ErrorIs(t, err, ErrStockResumeStateReadFailed)
+	require.ErrorIs(t, err, readErr)
+	require.Zero(t, atomic.LoadInt32(count), "no step may run when canonical state cannot be read")
+}
+
+// TestOrchestrator_RunResilient_CompletedWithoutReadableRowFailsClosed
+// verifies that terminal state and readable checkpoint state are one
+// contract: a completed marker without its row cannot authorize a skip.
+func TestOrchestrator_RunResilient_CompletedWithoutReadableRowFailsClosed(t *testing.T) {
+	completedKey := steps.StepKey{
+		JobID:            "completed-row-missing",
+		StepKey:          "stock.plan",
+		InputFingerprint: legacyStepInputFingerprint("completed-row-missing", "stock.plan"),
+	}
+	base := steps.NewInMemoryStore()
+	store := inconsistentResumeStore{Store: base, completedKey: completedKey}
+	count := new(int32)
+	o := NewTestStockOrchestrator(
+		OrchestratorConfig{JobId: completedKey.JobID, StepStore: store},
+		resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{},
+	)
+	o.dispatchSteps = []Step{
+		&stubRecorderStep{name: completedKey.StepKey, count: count},
+		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+	}
+
+	_, err := o.RunResilient(context.Background(), &RunInput{})
+	require.Error(t, err, "a completed marker without a readable row must abort resume")
+	require.ErrorIs(t, err, ErrStockResumeStateReadFailed)
+	require.Zero(t, atomic.LoadInt32(count), "the unrehydrated completed step must not run")
+}
+
+// TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed
+// verifies that a newer failed fingerprint is not hidden by an older
+// completed checkpoint. Retry must execute the latest failed attempt.
+func TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "latest-failed-attempt"
+	completedKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: "fp-completed"}
+	failedKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: "fp-failed"}
+
+	require.NoError(t, store.MarkStarted(ctx, completedKey))
+	require.NoError(t, store.MarkCompleted(ctx, completedKey, []byte(`{"checkpoint_version":1,"Plan":[]}`), nil))
+	require.NoError(t, store.MarkStarted(ctx, failedKey))
+	require.NoError(t, store.MarkFailed(ctx, failedKey, "transient failure"))
+
+	o := &Orchestrator{stepStore: store}
+	completedRows, err := o.loadCompletedStepRows(ctx, jobID)
+	require.NoError(t, err)
+	_, exists := completedRows["stock.plan"]
+	require.False(t, exists, "a newer Failed row must prevent stale Completed resume")
+}
+
 // TestOrchestrator_RunResilient_SkipAlreadyCompleted verifies the
 // Step 10 C2/4 resume contract for the partial-progress case:
 //   - Pre-Complete 2 of 5 stages in the steps.Store (simulating a
@@ -177,7 +283,7 @@ func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 		}
 		require.NoError(t, store.MarkStarted(ctx, k),
 			"pre-Complete %q: MarkStarted", name)
-		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil),
+		require.NoError(t, store.MarkCompleted(ctx, k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)),
 			"pre-Complete %q: MarkCompleted", name)
 	}
 
@@ -271,7 +377,7 @@ func TestOrchestrator_RunResilient_AllPreCompletedSkipsAll(t *testing.T) {
 			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k))
-		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil))
+		require.NoError(t, store.MarkCompleted(ctx, k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)))
 	}
 
 	// Stub dispatchSteps (Run should never be called).
@@ -338,7 +444,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k))
-		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil))
+		require.NoError(t, store.MarkCompleted(ctx, k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)))
 	}
 
 	// Step 3 (NEW) throws; step 4 + 5 should NOT be called.
@@ -657,12 +763,9 @@ func (s *stateMutatingStep) Run(_ context.Context, runner StepRunner) error {
 	return nil
 }
 
-// TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible
-// verifies that a pre-completed step with an empty checkpoint
-// result does not abort the run. This preserves backward
-// compatibility with rows completed before state persistence was
-// introduced; downstream steps simply see the empty accumulator.
-func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testing.T) {
+// TestOrchestrator_RunResilient_EmptyResultFailsClosed verifies that
+// a pre-completed step with no checkpoint payload aborts resume.
+func TestOrchestrator_RunResilient_EmptyResultFailsClosed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
 	store := steps.NewSQLiteStoreWithDB(db)
 	ctx := context.Background()
@@ -703,8 +806,9 @@ func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testi
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
-	require.NoError(t, err)
-	require.True(t, stageSourcesCalled, "stock.stage_sources must run after empty-result resume")
+	require.Error(t, err, "an empty completed checkpoint must fail closed")
+	require.ErrorIs(t, err, ErrStockResumeStateReadFailed)
+	require.False(t, stageSourcesCalled, "downstream steps must not run without canonical checkpoint state")
 }
 
 // TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed verifies
@@ -746,9 +850,8 @@ func TestRunStateCheckpoint_CompatibilityShapes(t *testing.T) {
 	require.Len(t, versioned.Plan, 1)
 	require.Equal(t, "https://example.com/v.mp4", versioned.Plan[0].SourceID)
 
-	legacyEmpty, err := o.rehydrateRunState(json.RawMessage(`{}`))
-	require.NoError(t, err)
-	require.Empty(t, legacyEmpty.Plan, "legacy empty object remains a compatible empty checkpoint")
+	_, err = o.rehydrateRunState(json.RawMessage(`{}`))
+	require.Error(t, err, "an empty object has no canonical RunState fields")
 
 	_, err = o.rehydrateRunState(json.RawMessage(`null`))
 	require.Error(t, err, "JSON null is not a checkpoint object")

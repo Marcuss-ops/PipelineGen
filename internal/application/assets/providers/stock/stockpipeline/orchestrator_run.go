@@ -212,7 +212,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// per step (Design A: latest row per (job_id, step_key)).
 	completedRows, loadErr := o.loadCompletedStepRows(ctx, o.cfg.JobId)
 	if loadErr != nil {
-		return nil, fmt.Errorf("orchestrator: load completed step rows: %w", loadErr)
+		return nil, fmt.Errorf("orchestrator: load completed step rows: %w: %w", ErrStockResumeStateReadFailed, loadErr)
 	}
 
 	var previousState *RunState
@@ -252,15 +252,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 				// the state the step left behind.
 				if row, ok := completedRows[step.Name()]; ok {
 					if len(row.Result) == 0 {
-						// Backward compatibility: rows completed before
-						// checkpoint persistence stored an empty result.
-						// Continue with the current accumulator; later
-						// steps may fail closed if they need the state.
-						if o.executorLog != nil {
-							o.executorLog.Warn("orchestrator: completed step has empty checkpoint (legacy row); resuming without state",
-								zap.String("step", step.Name()),
-								zap.String("job_id", o.cfg.JobId))
-						}
+						return nil, fmt.Errorf("orchestrator: %s resume: %w: empty completed checkpoint", step.Name(), ErrStockResumeStateReadFailed)
 					} else {
 						rehydrated, rehydrateErr := o.rehydrateRunState(row.Result)
 						if rehydrateErr != nil {
@@ -278,6 +270,8 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 								zap.String("job_id", o.cfg.JobId))
 						}
 					}
+				} else {
+					return nil, fmt.Errorf("orchestrator: %s resume: %w: completed row missing", step.Name(), ErrStockResumeStateReadFailed)
 				}
 				continue
 			}
@@ -432,18 +426,20 @@ func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) 
 	}
 	latest := make(map[string]steps.StepState)
 	for _, row := range history {
-		if row.Status != steps.StatusCompleted {
-			continue
-		}
-		// Design A: latest row per (job_id, step_key) wins.
-		// Select the row with the greatest ID for each step_key
-		// so retries with the same fingerprint do not accidentally
-		// pick an older row.
+		// Design A: latest row per (job_id, step_key) wins, regardless
+		// of status. A newer Failed row must supersede an older Completed
+		// row so a retry executes the step instead of skipping stale work.
 		if existing, ok := latest[row.StepKey]; !ok || row.ID > existing.ID {
 			latest[row.StepKey] = row
 		}
 	}
-	return latest, nil
+	completed := make(map[string]steps.StepState, len(latest))
+	for stepKey, row := range latest {
+		if row.Status == steps.StatusCompleted {
+			completed[stepKey] = row
+		}
+	}
+	return completed, nil
 }
 
 const currentRunStateCheckpointVersion = 1
@@ -473,8 +469,7 @@ func marshalRunStateCheckpoint(state *RunState) ([]byte, error) {
 //   - checkpoints without checkpoint_version are legacy v0 and remain
 //     readable;
 //   - checkpoint_version=1 is the current flat envelope;
-//   - an empty object is a legacy empty checkpoint and resumes with an
-//     empty accumulator, matching rows written before state snapshots;
+//   - an empty object has no canonical RunState fields and is invalid;
 //   - a future, malformed, or non-object versioned payload fails closed.
 func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (RunState, error) {
 	if len(result) == 0 {
@@ -485,8 +480,8 @@ func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (RunState, erro
 	if err := json.Unmarshal(result, &fields); err != nil {
 		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
 	}
-	if fields == nil {
-		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint must be a JSON object")
+	if len(fields) == 0 {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint has no RunState fields")
 	}
 
 	versionRaw, versioned := fields["checkpoint_version"]

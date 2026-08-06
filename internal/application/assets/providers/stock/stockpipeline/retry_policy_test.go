@@ -584,7 +584,7 @@ func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {
 		}
 		require.NoError(t, store.MarkStarted(ctx, k),
 			"pre-Complete %q: MarkStarted", name)
-		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil),
+		require.NoError(t, store.MarkCompleted(ctx, k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)),
 			"pre-Complete %q: MarkCompleted", name)
 	}
 
