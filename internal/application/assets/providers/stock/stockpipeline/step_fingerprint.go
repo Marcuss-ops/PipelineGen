@@ -88,14 +88,15 @@ func legacyStepInputFingerprint(jobID, stepName string) string {
 }
 
 func stepInputFingerprint(jobID, stepName string, cfg OrchestratorConfig, input *RunInput, previous *RunState) string {
-	if input == nil {
-		input = &RunInput{}
+	runInput := input
+	if runInput == nil {
+		runInput = &RunInput{}
 	}
 	if cfg.JobId == "" {
 		cfg.JobId = jobID
 	}
 	if cfg.PolicyVersion == "" {
-		cfg.PolicyVersion = input.PolicyVersion
+		cfg.PolicyVersion = runInput.PolicyVersion
 	}
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
@@ -107,36 +108,35 @@ func stepInputFingerprint(jobID, stepName string, cfg OrchestratorConfig, input 
 		StepKey:       stepName,
 		PolicyVersion: cfg.PolicyVersion,
 		URLs: checkpointFingerprintURLs{
-			Direct: canonicalStrings(input.DirectURLs),
-			Drive:  canonicalStrings(input.DriveURLs),
-			Search: canonicalStrings(input.SearchQueries),
+			Direct: canonicalStrings(runInput.DirectURLs),
+			Drive:  canonicalStrings(runInput.DriveURLs),
+			Search: canonicalStrings(runInput.SearchQueries),
 		},
-		Timestamps: fingerprintWindows(input, previous),
+		Timestamps: fingerprintWindows(runInput, previous),
 		Configuration: checkpointFingerprintConfig{
-			OrchestratorMaxConcurrentJobs:  cfg.MaxConcurrentJobs,
-			TotalMinutes:                   input.TotalMinutes,
-			TargetTotalDurationSeconds:     input.TargetTotalDurationSeconds,
-			TargetDurationPerSourceSeconds: input.TargetDurationPerSourceSeconds,
-			ClipsPerSource:                 input.ClipsPerSource,
-			ClipDurationSeconds:            input.ClipDurationSeconds,
-			DownloadMode:                   input.DownloadMode,
-			MaxVideos:                      input.MaxVideos,
-			NoAudio:                        input.NoAudio,
-			NoEffects:                      input.NoEffects,
-			NoTransitions:                  input.NoTransitions,
-			Subfolder:                      input.Subfolder,
-			FolderName:                     input.FolderName,
-			DriveFolderID:                  input.DriveFolderID,
-			FolderID:                       input.FolderID,
-			DriveFolderResolved:            input.DriveFolderResolved,
-			Persist:                        input.Persist,
-			Metadata:                       input.Metadata,
-			Clips:                          fingerprintClips(input.Clips),
+			OrchestratorMaxConcurrentJobs: cfg.MaxConcurrentJobs, TotalMinutes: runInput.TotalMinutes,
+			TargetTotalDurationSeconds:     runInput.TargetTotalDurationSeconds,
+			TargetDurationPerSourceSeconds: runInput.TargetDurationPerSourceSeconds,
+			ClipsPerSource:                 runInput.ClipsPerSource,
+			ClipDurationSeconds:            runInput.ClipDurationSeconds,
+			DownloadMode:                   runInput.DownloadMode,
+			MaxVideos:                      runInput.MaxVideos,
+			NoAudio:                        runInput.NoAudio,
+			NoEffects:                      runInput.NoEffects,
+			NoTransitions:                  runInput.NoTransitions,
+			Subfolder:                      runInput.Subfolder,
+			FolderName:                     runInput.FolderName,
+			DriveFolderID:                  runInput.DriveFolderID,
+			FolderID:                       runInput.FolderID,
+			DriveFolderResolved:            runInput.DriveFolderResolved,
+			Persist:                        runInput.Persist,
+			Metadata:                       runInput.Metadata,
+			Clips:                          fingerprintClips(runInput.Clips),
 		},
 		Durations: checkpointFingerprintDurations{
-			ChunkDurationInputSeconds: input.ChunkDuration,
-			ClipDurationInputSeconds:  input.ClipDuration,
-			SecondsPerSegment:         input.SecondsPerSegment,
+			ChunkDurationInputSeconds: runInput.ChunkDuration,
+			ClipDurationInputSeconds:  runInput.ClipDuration,
+			SecondsPerSegment:         runInput.SecondsPerSegment,
 			ChunkDurationConfigSec:    cfg.ChunkDurationSec,
 			ClipDurationConfigSec:     cfg.ClipDurationSec,
 		},
