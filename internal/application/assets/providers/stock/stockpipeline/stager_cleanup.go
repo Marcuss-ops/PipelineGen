@@ -33,6 +33,7 @@ func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) err
 			}
 		}
 		if rerr := s.releaseSharedLease(leaseKey); rerr != nil {
+			s.assetLeases.Store(staged.LocalPath, leaseKey)
 			if s.svc != nil && s.svc.log != nil {
 				s.svc.log.Warn("stock stager: release shared lease failed",
 					zap.String("lease_key", leaseKey),
