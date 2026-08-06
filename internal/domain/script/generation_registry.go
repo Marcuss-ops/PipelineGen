@@ -49,6 +49,18 @@ func IsClipSourceType(st SourceType) bool {
 	return ok
 }
 
+// ModeForSource returns the engine mode for a canonical source type.
+// Clip-bearing source types share the clip-to-script path; all other
+// source types use the text path. Keeping this policy beside the
+// canonical SourceType registry prevents composition and plan builders
+// from maintaining separate switches or maps.
+func ModeForSource(st SourceType) string {
+	if IsClipSourceType(st) {
+		return "clip_to_script"
+	}
+	return "text"
+}
+
 // isValidGroundingPolicy returns true for the canonical policies.
 func isValidGroundingPolicy(p string) bool {
 	_, ok := validGroundingPolicies[p]
