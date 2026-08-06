@@ -5,7 +5,7 @@ PYTHON ?= python3
 VERIFY_PIPELINE_RUNNER ?= $(PYTHON) scripts/ci/verify-pipeline.py
 VERIFY_PIPELINE_FLAGS ?=
 
-verify-pipeline-stock-only:
+test-pipeline-stock-only:
 	@$(VERIFY_PIPELINE_RUNNER) stock-only $(VERIFY_PIPELINE_FLAGS)
 
 verify-pipeline-clip-only:
@@ -23,7 +23,7 @@ verify-pipeline-voiceover:
 verify-pipeline-script:
 	@$(VERIFY_PIPELINE_RUNNER) script $(VERIFY_PIPELINE_FLAGS)
 
-verify-pipeline-youtube-stock:
+test-pipeline-youtube-stock:
 	@$(VERIFY_PIPELINE_RUNNER) youtube-stock $(VERIFY_PIPELINE_FLAGS)
 
 verify-pipeline-vidrush:

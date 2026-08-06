@@ -29,14 +29,17 @@ class VerifyRegistryContractTests(unittest.TestCase):
             "storage", "database", "jobs", "api", "ollama", "youtube",
             "artlist", "node-scraper", "kernel",
         }
-        self.assertEqual(len(self.registry), 21)
+        expected.add("web")
+        self.assertEqual(len(self.registry), 22)
         self.assertEqual(set(self.registry), expected)
 
     def test_entries_have_real_paths_and_go_packages(self) -> None:
         for name, definition in self.registry.items():
             self.assertTrue(definition["paths"], name)
-            if not definition.get("utility", False):
+            if definition["go_packages"]:
                 self.assertTrue(definition["go_packages"], name)
+            else:
+                self.assertTrue(definition["node_tests"], name)
             self.assertGreater(definition["timeout_seconds"], 0, name)
             self.assertIsInstance(definition["race_enabled"], bool, name)
             for registered_path in definition["paths"]:
@@ -91,9 +94,10 @@ class VerifyRegistryContractTests(unittest.TestCase):
                 self.make_components,
                 rf"(?m)^verify-{component}:.*\n(?:\t.*\n)*\t.*verify-fast",
             )
+            target = f"verify-{component}"
             phony_section = self.makefile.split("# help", 1)[0]
-            self.assertIn(f"verify-{component}", phony_section)
-            self.assertIn(f'@echo "  make verify-{component}', self.makefile)
+            self.assertIn(target, phony_section)
+            self.assertIn(f'@echo "  make {target}', self.makefile)
 
     def test_registry_component_commands_are_available_in_dry_run(self) -> None:
         for name in (

@@ -26,9 +26,10 @@ explicit heavier gates and are not implicit dependencies of `verify-main`.
   prerequisites are direct shared dependencies and are executed once per
   aggregate Make invocation. It intentionally excludes the complete race and
   Node suites so it remains suitable for routine pushes.
-- `make verify-main-stock`: foundation, static analysis, standard targeted
-  tests for the Stock pipeline/API/script adapters, and architecture checks. Use it for
-  Stock-focused changes without running the full project unit suite.
+- `make test-main-stock`: diagnostic foundation, static analysis, architecture,
+  and Stock unit-level checks. The authoritative Stock gates are the four
+  explicit levels `make verify-stock-unit`, `make verify-stock-integration`,
+  `make verify-stock-live`, and `make verify-stock-release`.
 - `make verify-main-clip`: foundation, static analysis, standard targeted
   tests for the canonical Clip domain/application/API packages, and architecture checks.
   Use it for Clip-focused changes without running the full project unit suite

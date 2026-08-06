@@ -28,7 +28,7 @@ invocation.
 | Target | Registry component | Scope |
 |---|---|---|
 | `make verify-script` | `script` | Script domain, application, and API |
-| `make verify-stock` | `stock` | Stock providers, pipeline, and API |
+| `make test-stock-component` | `stock` | Stock providers, pipeline, and API diagnostic component runner |
 | `make verify-clips` | `clips` | Clip domain, application, and API |
 | `make verify-drive` | `drive` | Drive domain and infrastructure |
 | `make verify-research` | `research` | Research resolver, web fetcher, and research persistence |
@@ -58,7 +58,7 @@ make verify-race-stock       # race for one component
 make verify-race-qdrant
 
 # aggregate pipelines
-make verify-pipeline-stock-only
+make test-pipeline-stock-only
 make verify-pipeline-clip-only
 make verify-pipeline-research
 make verify-pipeline-document

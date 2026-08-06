@@ -158,9 +158,10 @@ verify-architecture:
 	$(GO) run ./cmd/archcheck
 	@echo "✅ Architecture verification passed"
 
-# verify-main-stock — compatibility alias for the registry-backed Stock gate.
-verify-main-stock: verify-foundation verify-static verify-architecture verify-stock
-	@echo "✅ verify-main-stock passed"
+# test-main-stock — diagnostic Stock-focused gate. The authoritative Stock
+# levels are verify-stock-unit/integration/live/release in youtube_stock.mk.
+test-main-stock: verify-foundation verify-static verify-architecture verify-stock-unit
+	@echo "✅ test-main-stock passed"
 
 # verify-main-clip — compatibility alias for the registry-backed Clips gate.
 verify-main-clip: verify-foundation verify-static verify-architecture verify-clips

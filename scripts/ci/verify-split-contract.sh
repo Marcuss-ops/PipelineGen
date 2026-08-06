@@ -44,8 +44,12 @@ assert_graph verify-race "verify-foundation web-build verify-unit-race verify-ra
 assert_graph verify-full "verify-main verify-race verify-node-tests verify-clean-checkout-build"
 assert_graph verify-release "verify-full verify-integration"
 assert_graph verify-live "auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live"
+assert_graph verify-stock-unit "test-stock-component test-youtube-stock-fast"
+assert_graph verify-stock-integration "test-youtube-stock-local test-youtube-stock-resilience"
+assert_graph verify-stock-live "auth-check"
+assert_graph verify-stock-release "verify-stock-unit verify-stock-integration verify-stock-live"
 
-for target in verify-fast verify-main verify-race verify-full verify-release verify-live; do
+for target in verify-fast verify-main verify-race verify-full verify-release verify-live verify-stock-unit verify-stock-integration verify-stock-live verify-stock-release; do
     (cd "$ROOT" && make -n --no-print-directory "$target") >"$PLAN_DIR/${target}.plan"
 done
 
@@ -108,6 +112,14 @@ forbid "$release" 'tests/operational|with-velox-auth|verify-live|scraper-up' "po
 # the canonical wrapper.
 require "$live" 'tests/operational' "operational battery"
 require "$live" 'with-velox-auth' "canonical auth wrapper"
+stock_live=$PLAN_DIR/verify-stock-live.plan
+stock_release=$PLAN_DIR/verify-stock-release.plan
+require "$stock_live" 'stock_e2e_full_battery|with-velox-auth' "Stock live battery"
+require "$stock_live" 'auth-check|with-velox-auth' "Stock live auth"
+require "$stock_release" 'verify-stock-unit|test-youtube-stock-fast' "Stock release unit level"
+require "$stock_release" 'verify-stock-integration|test-youtube-stock-local' "Stock release integration level"
+require "$stock_release" 'verify-stock-live|stock_e2e_full_battery' "Stock release live level"
+forbid "$stock_release" 'verify-youtube-stock-live|verify-stock-acquisition|verify-stock-indexing' "retired Stock verification alias"
 
 # GNU Make must reuse shared prerequisites within one aggregate invocation.
 trace=$PLAN_DIR/verify-full.trace
@@ -129,8 +141,10 @@ if [[ -n "$duplicates" ]]; then
     fail "duplicate heavy commands in verify-full: $duplicates"
 fi
 
-# Every registry component has an explicit Make alias. Underscores in a
-# registry key are normalized to the hyphenated Make spelling.
+# Every executable registry component has an explicit Make alias. Stock's
+# component runner is intentionally diagnostic (`test-stock-component`) and
+# the web utility is owned by the canonical `web-build` target, so neither
+# is a second public `verify-*` component gate.
 registry_components=$(cd "$ROOT" && python3 - <<'PY'
 import json
 from pathlib import Path
@@ -142,9 +156,23 @@ PY
 while IFS= read -r component; do
     [[ -n "$component" ]] || continue
     target=${component//_/-}
-    if ! grep -qE "^verify-${target}:" <<<"$graph"; then
-        fail "registry component $component has no verify-${target} Make alias"
-    fi
+    case "$component" in
+        stock)
+            if ! grep -qE '^test-stock-component:' <<<"$graph"; then
+                fail "registry component stock has no test-stock-component Make alias"
+            fi
+            ;;
+        web)
+            if ! grep -qE '^web-build:' <<<"$graph"; then
+                fail "registry component web has no web-build Make alias"
+            fi
+            ;;
+        *)
+            if ! grep -qE "^verify-${target}:" <<<"$graph"; then
+                fail "registry component $component has no verify-${target} Make alias"
+            fi
+            ;;
+    esac
 done <<< "$registry_components"
 
 clean_checkout_script=$ROOT/scripts/ci/ci-clean-checkout-build.sh
@@ -162,7 +190,7 @@ require "$clean_checkout_script" 'build -o worker ./cmd/worker' "worker build"
 require "$clean_checkout_script" 'build -o admin ./cmd/admin' "admin build"
 require "$clean_checkout_script" 'GO_BIN=\$\{GO:-go\}' "configurable Go binary"
 require "$clean_checkout_script" 'GO_BIN=\$\(command -v' "absolute Go binary resolution"
-require "$clean_checkout_script" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkout-build\.sh' "Make Go forwarding"
+require "$ROOT/make/verify.mk" 'GO="\$\(GO\)" bash scripts/ci/ci-clean-checkout-build\.sh' "Make Go forwarding"
 require "$ROOT/.github/workflows/ci.yml" 'run: make web-build' "CI web build"
 require "$ROOT/.github/workflows/preflight-ci.yml" 'make web-build' "preflight web build"
 require "$ROOT/Dockerfile" 'make -f make/build\.mk web-build' "Docker web build"
