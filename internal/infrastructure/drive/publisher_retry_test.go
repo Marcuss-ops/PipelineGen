@@ -123,6 +123,21 @@ func TestPublisher_ExplicitDestinationFolderWithUnsetPolicyBypassesRegistry(t *t
 		"pre-resolved immutable voiceover destinations use the conservative skip default")
 }
 
+func TestYouTubeClipPath_ExplicitActorFolderNeverCreatesUncategorizedSubfolders(t *testing.T) {
+	req := delivery.PublishRequest{
+		Destination:         delivery.DestinationYouTubeClip,
+		DestinationFolderID: "matt-damon-folder",
+		Group:               "Matt Damon",
+		Category:            "actor_clip",
+		Subject:             "e35PVH3ksFA",
+	}
+
+	segments, err := delivery.YouTubeClipPath(req)
+	require.NoError(t, err)
+	require.Empty(t, segments, "an explicit actor folder is already the leaf destination")
+	require.NotContains(t, segments, "youtube_uncategorized")
+}
+
 func TestYouTubeClipPath_WithDestinationFolderID_UsesFolderVerbatim(t *testing.T) {
 	req := delivery.PublishRequest{
 		DestinationFolderID: "explicit-root",

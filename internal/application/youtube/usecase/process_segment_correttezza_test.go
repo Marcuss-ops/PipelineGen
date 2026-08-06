@@ -112,8 +112,38 @@ func TestProcessSegment_SegmentPolicyEnforced(t *testing.T) {
 	require.False(t, ee.Retryable, "out-of-range duration is terminal (not retryable)")
 }
 
-// TestProcessSegment_SegmentPolicyTooShort also pin #3: a 1-second
-// segment is below the default 2s Min. The gate is symmetric.
+// TestProcessSegment_SegmentPolicyBoundaries pins the inclusive edges
+// on the actual Step 1 gate, without entering the download/Drive path.
+func TestProcessSegment_SegmentPolicyBoundaries(t *testing.T) {
+	uc := NewProcessYouTubeSegmentFromSubBundles(validProcessSegmentDeps())
+
+	for _, tc := range []struct {
+		name string
+		end  string
+	}{
+		{name: "minimum boundary", end: "0:04"},
+		{name: "maximum boundary", end: "1:00"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := youtubetypes.ProcessSegmentResult{Item: youtubetypes.ExtractItem{
+				Start: "0:00",
+				End:   tc.end,
+			}}
+			_, _, duration, _, _, err := uc.step1_BuildClipID(
+				youtubetypes.ProcessSegmentCommand{
+					VideoID: "boundary-video",
+					Segment: youtubetypes.Segment{Start: "0:00", End: tc.end, Name: tc.name},
+				},
+				&out,
+			)
+			require.NoError(t, err)
+			require.NotZero(t, duration)
+		})
+	}
+}
+
+// TestProcessSegment_SegmentPolicyTooShort also pins #3: a 1-second
+// segment is below the default 4s Min. The gate is symmetric.
 func TestProcessSegment_SegmentPolicyTooShort(t *testing.T) {
 	uc := NewProcessYouTubeSegmentFromSubBundles(validProcessSegmentDeps())
 	cmd := youtubetypes.ProcessSegmentCommand{
