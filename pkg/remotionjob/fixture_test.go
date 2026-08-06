@@ -10,7 +10,7 @@ import (
 
 func TestSharedRenderJobFixture(t *testing.T) {
 	_, source, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "RemotionUpload", "contracts", "remotion", "render-job.v1.json")
+	path := filepath.Join(filepath.Dir(source), "testdata", "render-job.v1.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read shared fixture %s: %v", path, err)
