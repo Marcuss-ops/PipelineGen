@@ -30,7 +30,7 @@ verify-images-live: auth-check
 verify-script-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/generate/run.sh basic.json
 
-# verify-intro-hook-stock-live — the intro-hook stock binding battery
+# test-intro-hook-stock-live — the intro-hook stock binding diagnostic battery
 # (boxers-generate). Runs the practical suite (intro_hook_suite.py): Tests
 # 1..9 prove the intro-hook rides the canonical stock_bindings contract as a
 # normal narrative segment — scene-0, kind intro, stock + timeline clip
@@ -38,7 +38,7 @@ verify-script-live: auth-check
 # and the full 6-scene/6-stock scenario; N1..N8 assert validator rejections;
 # the final scenario is saved to FULL and gate-checked. Render is never
 # invoked.
-verify-intro-hook-stock-live: auth-check
+test-intro-hook-stock-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/boxers-generate/run_intro_hook_stock.sh
 
 # verify-vidrush-live — tests/operational/vidrush_script_generate_e2e.sh —

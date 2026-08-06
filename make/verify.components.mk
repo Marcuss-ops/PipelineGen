@@ -31,7 +31,7 @@ verify-research:
 verify-clips:
 	@$(VERIFY_COMPONENT_RUNNER) clips $(VERIFY_COMPONENT_FLAGS)
 
-verify-stock:
+test-stock-component:
 	@$(VERIFY_COMPONENT_RUNNER) stock $(VERIFY_COMPONENT_FLAGS)
 
 verify-qdrant:
