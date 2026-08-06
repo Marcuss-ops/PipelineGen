@@ -13,8 +13,6 @@ package stockpipeline
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"strconv"
-	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -121,28 +119,26 @@ func (a *orchestratorRunner) JobFinalizer() finalization.JobFinalizer {
 func (a *orchestratorRunner) Log() *zap.Logger { return a.log }
 func (a *orchestratorRunner) State() *RunState { return a.state }
 
-// RunFingerprint returns the deterministic fingerprint for this run.
+// RunFingerprint returns the canonical content-addressed identity for this
+// run. It deliberately reuses the same structured payload projection as the
+// per-step checkpoint fingerprint instead of maintaining a second delimiter-
+// joined list of selected fields. This keeps artifact IDs, batch IDs, and
+// checkpoint keys sensitive to the same relevant inputs (including explicit
+// clips, Drive sources, metadata, and duration policy).
 func (a *orchestratorRunner) RunFingerprint() string {
 	if a == nil || a.orch == nil || a.in == nil {
 		return ""
 	}
-	in := a.in
-	parts := []string{
-		a.orch.cfg.PolicyVersion,
-		in.FolderID,
-		in.Subfolder,
-		in.FolderName,
-		strings.Join(in.DirectURLs, ","),
-		strings.Join(in.SearchQueries, ","),
-		strconv.Itoa(in.TotalMinutes),
-		strconv.Itoa(in.ChunkDuration),
-		strconv.Itoa(in.ClipDuration),
-		strconv.Itoa(in.MaxVideos),
-		strconv.FormatBool(in.NoAudio),
-		strconv.FormatBool(in.NoEffects),
-		strconv.FormatBool(in.NoTransitions),
-	}
-	return sha256String(strings.Join(parts, "|"))
+	a.fingerprintOnce.Do(func() {
+		a.cachedFingerprint = stepInputFingerprint(
+			a.orch.cfg.JobId,
+			"stock.run",
+			a.orch.cfg,
+			a.in,
+			nil,
+		)
+	})
+	return a.cachedFingerprint
 }
 
 // sha256String returns the lowercase hex-encoded SHA-256 digest of text.

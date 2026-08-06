@@ -89,3 +89,85 @@ func TestStepInputFingerprintLegacyHelperRemainsStable(t *testing.T) {
 		t.Fatalf("legacy helper = %q, want %q", got, want)
 	}
 }
+
+func TestRunFingerprintUsesCanonicalPayloadFields(t *testing.T) {
+	baseConfig := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1", ChunkDurationSec: 20, ClipDurationSec: 5}
+	baseInput := &RunInput{
+		DirectURLs:    []string{"https://example.com/source.mp4"},
+		SearchQueries: []string{"boxing highlights"},
+		FolderID:      "folder-1",
+		ChunkDuration: 20,
+		ClipDuration:  5,
+	}
+
+	fingerprint := func(cfg OrchestratorConfig, input *RunInput) string {
+		runner := &orchestratorRunner{
+			orch: &Orchestrator{cfg: cfg},
+			in:   input,
+		}
+		return runner.RunFingerprint()
+	}
+
+	base := fingerprint(baseConfig, baseInput)
+	if len(base) != 64 {
+		t.Fatalf("run fingerprint length = %d, want SHA-256 hex length 64", len(base))
+	}
+	if got := fingerprint(baseConfig, baseInput); got != base {
+		t.Fatalf("run fingerprint is not deterministic: first=%q second=%q", base, got)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*RunInput)
+	}{
+		{"drive-url", func(in *RunInput) { in.DriveURLs = []string{"https://drive.example/source.mp4"} }},
+		{"explicit-clip", func(in *RunInput) {
+			in.Clips = []ClipSpec{{URL: in.DirectURLs[0], StartSec: 3, EndSec: 9, Title: "round 1"}}
+		}},
+		{"metadata", func(in *RunInput) {
+			in.Metadata = &ChunkMetadataInput{Title: "Fight night", Tags: []string{"boxing"}}
+		}},
+		{"bounded-duration", func(in *RunInput) { in.TargetTotalDurationSeconds = 120 }},
+		{"render-option", func(in *RunInput) { in.NoAudio = true }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := *baseInput
+			input.DirectURLs = append([]string(nil), baseInput.DirectURLs...)
+			input.SearchQueries = append([]string(nil), baseInput.SearchQueries...)
+			tc.mutate(&input)
+			if got := fingerprint(baseConfig, &input); got == base {
+				t.Fatalf("run fingerprint did not change for relevant payload field %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestStepInputFingerprintChangesWhenPreviousOutputChanges(t *testing.T) {
+	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1"}
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	firstState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
+	secondState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}, CutPaths: []string{"/tmp/cut-2.mp4"}}
+
+	first := stepInputFingerprint("job-1", "stock.compose_chunks", cfg, input, firstState)
+	second := stepInputFingerprint("job-1", "stock.compose_chunks", cfg, input, secondState)
+	if first == second {
+		t.Fatalf("fingerprint did not change when previous step output changed")
+	}
+}
+
+func TestRunFingerprintCachesIdentityForRunnerLifetime(t *testing.T) {
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	runner := &orchestratorRunner{
+		orch: &Orchestrator{cfg: OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1"}},
+		in:   input,
+	}
+
+	first := runner.RunFingerprint()
+	input.DirectURLs[0] = "https://example.com/changed.mp4"
+	input.Clips = []ClipSpec{{URL: input.DirectURLs[0], StartSec: 1, EndSec: 4}}
+	second := runner.RunFingerprint()
+	if first != second {
+		t.Fatalf("cached run fingerprint changed after input mutation: first=%q second=%q", first, second)
+	}
+}
