@@ -7,11 +7,273 @@
 package stockpipeline
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+func TestProjectManifestToPipelineResult_HydratesAllFields(t *testing.T) {
+	manifest := &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		JobID:         "job-project-1",
+		Artifacts: []job.Artifact{
+			{
+				ID:                 "job-project-1:chunk:1",
+				Kind:               string(finalization.KindVideo),
+				Path:               "/tmp/chunk-1.mp4",
+				RemoteFileID:       "drive-chunk-1",
+				RemoteWebViewLink:  "https://drive.example/chunk-1",
+				RemoteDownloadLink: "https://drive.example/download/chunk-1",
+				SHA256:             "sha256-chunk-1",
+				ArtifactMetadata: map[string]any{
+					"chunk_index": 1, "clip_count": 2, "start_sec": 12.5,
+					"end_sec": 22.5, "title": "Round 2", "source_url": "https://youtu.be/source-1",
+				},
+			},
+			{
+				ID:                "job-project-1:metadata",
+				Kind:              job.ArtifactKindMetadata,
+				RemoteFileID:      "drive-metadata",
+				RemoteWebViewLink: "https://drive.example/metadata",
+				ArtifactMetadata:  map[string]any{"total_clips": 3},
+			},
+			{
+				ID:                "job-project-1:chunk:0",
+				Kind:              string(finalization.KindVideo),
+				Path:              "/tmp/chunk-0.mp4",
+				RemoteFileID:      "drive-chunk-0",
+				RemoteWebViewLink: "https://drive.example/chunk-0",
+				SHA256:            "sha256-chunk-0",
+				ArtifactMetadata: map[string]any{
+					"chunk_index": 0, "clip_count": 1, "start_sec": 0, "end_sec": 10,
+					"title": "Round 1", "source_url": "https://youtu.be/source-0",
+				},
+			},
+		},
+	}
+
+	result := projectManifestToPipelineResult(manifest)
+	if result.TotalChunks != 2 || result.TotalClips != 3 {
+		t.Fatalf("counts = clips:%d chunks:%d, want clips:3 chunks:2", result.TotalClips, result.TotalChunks)
+	}
+	if result.MetadataFileID != "drive-metadata" || result.MetadataLink != "https://drive.example/metadata" {
+		t.Fatalf("metadata projection = id:%q link:%q", result.MetadataFileID, result.MetadataLink)
+	}
+	if len(result.Chunks) != 2 || result.Chunks[0].Index != 0 || result.Chunks[1].Index != 1 {
+		t.Fatalf("chunks not sorted by manifest chunk index: %+v", result.Chunks)
+	}
+	if result.Chunks[1].DriveFileID != "drive-chunk-1" || result.Chunks[1].DriveLink != "https://drive.example/chunk-1" || result.Chunks[1].DownloadLink != "https://drive.example/download/chunk-1" || result.Chunks[1].SHA256 != "sha256-chunk-1" {
+		t.Fatalf("chunk publication fields not hydrated: %+v", result.Chunks[1])
+	}
+	if result.Chunks[1].TimelineStart != 12.5 || result.Chunks[1].TimelineEnd != 22.5 || result.Chunks[1].Title != "Round 2" {
+		t.Fatalf("chunk metadata not hydrated: %+v", result.Chunks[1])
+	}
+	if len(result.Chunks[1].SourceIDs) != 1 || result.Chunks[1].SourceIDs[0] != "https://youtu.be/source-1" {
+		t.Fatalf("source IDs not hydrated: %+v", result.Chunks[1].SourceIDs)
+	}
+	if !result.Chunks[1].Rendered || !result.Chunks[1].Uploaded {
+		t.Fatalf("published chunk status = rendered:%v uploaded:%v", result.Chunks[1].Rendered, result.Chunks[1].Uploaded)
+	}
+}
+
+func TestProjectManifestToPipelineResult_MixedIndexedAndLegacyChunksUseUniqueIndices(t *testing.T) {
+	manifest := &job.ArtifactManifest{Artifacts: []job.Artifact{
+		{ID: "legacy-first", Kind: string(finalization.KindVideo)},
+		{ID: "indexed-zero", Kind: string(finalization.KindVideo), ArtifactMetadata: map[string]any{"chunk_index": 0}},
+		{ID: "duplicate-index", Kind: string(finalization.KindVideo), ArtifactMetadata: map[string]any{"chunk_index": 0}},
+	}}
+
+	result := projectManifestToPipelineResult(manifest)
+	if len(result.Chunks) != 3 {
+		t.Fatalf("chunks = %d, want 3", len(result.Chunks))
+	}
+	seen := make(map[int]bool, len(result.Chunks))
+	for _, chunk := range result.Chunks {
+		if seen[chunk.Index] {
+			t.Fatalf("duplicate projected chunk index %d: %+v", chunk.Index, result.Chunks)
+		}
+		seen[chunk.Index] = true
+	}
+	if result.Chunks[0].Index != 0 || result.Chunks[0].DriveFileID != "" || result.Chunks[1].Index != 1 || result.Chunks[2].Index != 2 {
+		t.Fatalf("mixed chunk projection = %+v, want unique indices [0 1 2] with stable ordering", result.Chunks)
+	}
+}
+
+func TestProjectManifestToPipelineResult_HandlesLegacyMetadataAndMissingIndex(t *testing.T) {
+	manifest := &job.ArtifactManifest{
+		Artifacts: []job.Artifact{
+			{
+				ID:   "legacy-metadata",
+				Kind: job.ArtifactKindMetadata,
+				ArtifactMetadata: map[string]any{
+					"file_id":     "legacy-metadata-id",
+					"drive_link":  "https://drive.example/legacy-metadata",
+					"total_clips": 0,
+				},
+			},
+			{
+				ID:   "chunk-indexed",
+				Kind: string(finalization.KindVideo),
+				ArtifactMetadata: map[string]any{
+					"chunk_index": 2,
+					"clip_count":  2,
+				},
+			},
+			{
+				ID:   "chunk-legacy",
+				Kind: string(finalization.KindVideo),
+				ArtifactMetadata: map[string]any{
+					"clip_count":    1,
+					"source_ids":    []any{"source-a", "source-b"},
+					"drive_file_id": "legacy-chunk-id",
+					"drive_link":    "https://drive.example/legacy-chunk",
+				},
+			},
+		},
+	}
+
+	result := projectManifestToPipelineResult(manifest)
+	if result.MetadataFileID != "legacy-metadata-id" || result.MetadataLink != "https://drive.example/legacy-metadata" {
+		t.Fatalf("legacy metadata = id:%q link:%q", result.MetadataFileID, result.MetadataLink)
+	}
+	if result.TotalChunks != 2 || result.TotalClips != 3 {
+		t.Fatalf("legacy counts = clips:%d chunks:%d, want clips:3 chunks:2", result.TotalClips, result.TotalChunks)
+	}
+	if result.Chunks[0].Index != 2 || result.Chunks[1].Index != 1 {
+		t.Fatalf("chunk indices = [%d %d], want [2 1]", result.Chunks[0].Index, result.Chunks[1].Index)
+	}
+	if got := result.Chunks[1].SourceIDs; len(got) != 2 || got[0] != "source-a" || got[1] != "source-b" {
+		t.Fatalf("legacy source IDs = %#v, want [source-a source-b]", got)
+	}
+	if result.Chunks[1].DriveFileID != "legacy-chunk-id" || result.Chunks[1].DriveLink != "https://drive.example/legacy-chunk" {
+		t.Fatalf("legacy chunk links = %+v", result.Chunks[1])
+	}
+	if !result.Chunks[1].Uploaded {
+		t.Fatalf("metadata-published chunk status = %+v, want uploaded=true", result.Chunks[1])
+	}
+}
+
+type handleJobSourceStager struct {
+	path string
+}
+
+func (s handleJobSourceStager) Prepare(_ context.Context, req acquisition.PrepareRequest) (*acquisition.PrepareContext, error) {
+	info, err := os.Stat(s.path)
+	if err != nil {
+		return nil, err
+	}
+	return &acquisition.PrepareContext{
+		ID:           "handle-job-source",
+		SourceRef:    req.Source,
+		LocalPath:    s.path,
+		SizeBytes:    info.Size(),
+		SHA256:       "fixture-sha256",
+		CleanupToken: "handle-job-cleanup",
+	}, nil
+}
+
+func (handleJobSourceStager) Release(context.Context, string) error { return nil }
+
+var _ acquisition.SourceStager = handleJobSourceStager{}
+
+type handleJobCutter struct{}
+
+func (handleJobCutter) Cut(_ context.Context, req CutRequest) (CutBatchResult, error) {
+	items := make([]CutItemResult, len(req.Jobs))
+	for i, clip := range req.Jobs {
+		if err := os.WriteFile(clip.OutputPath, bytes.Repeat([]byte("fixture-cut-output"), 128), 0o644); err != nil {
+			return CutBatchResult{}, err
+		}
+		info, err := os.Stat(clip.OutputPath)
+		if err != nil {
+			return CutBatchResult{}, err
+		}
+		items[i] = CutItemResult{JobID: clip.OutputPath, OutputPath: clip.OutputPath, Status: CutItemStatusSucceeded, SizeBytes: info.Size()}
+	}
+	return CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
+}
+
+var _ VideoCutter = handleJobCutter{}
+
+type handleJobPublisherPort struct{}
+
+func (handleJobPublisherPort) Publish(_ context.Context, artifact finalization.VerifiedArtifact) (finalization.AssetLocation, error) {
+	return finalization.AssetLocation{
+		Provider:     "drive",
+		FileID:       "drive-" + artifact.ArtifactID,
+		WebViewLink:  "https://drive.example/view/" + artifact.ArtifactID,
+		DownloadLink: "https://drive.example/download/" + artifact.ArtifactID,
+		FolderID:     "folder-handle-job",
+		FolderPath:   "stock/handle-job",
+		Action:       finalization.PublishCreated,
+	}, nil
+}
+
+var _ finalization.PublisherPort = handleJobPublisherPort{}
+
+func TestService_HandleJob_SuccessHydratesProjectedResult(t *testing.T) {
+	const sourceURL = "https://example.com/handle-job-source.mp4"
+	sourcePath := t.TempDir() + "/source.mp4"
+	if err := os.WriteFile(sourcePath, []byte("fixture-source"), 0o644); err != nil {
+		t.Fatalf("write source fixture: %v", err)
+	}
+
+	svc := &Service{
+		runtime:       &RuntimeConfig{WorkDir: t.TempDir(), ClipDurationSec: 5, ChunkDurationSec: 5},
+		log:           zap.NewNop(),
+		publisher:     &recordingPublisher{},
+		cutter:        handleJobCutter{},
+		renderer:      successNoopRenderer(),
+		publisherPort: handleJobPublisherPort{},
+		finalizer:     &fakeJobFinalizer{},
+		sourceStager:  handleJobSourceStager{path: sourcePath},
+		localFS:       newRealishFakeLocalFS(),
+	}
+	payload, err := json.Marshal(&StockRunPayload{Clips: []ClipSpec{{URL: sourcePath, StartSec: 0, EndSec: 5, Title: "Fixture clip"}},
+		FolderID:      "workflow-handle-job",
+		ClipDuration:  5,
+		ChunkDuration: 5,
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	result, err := svc.HandleJob(context.Background(), &appjobs.Job{
+		ID:       "job-handle-success",
+		WorkerID: "worker-1",
+		LeaseID:  "lease-1",
+		Payload:  payload,
+	}, &appjobs.JobTools{})
+	if err != nil {
+		t.Fatalf("HandleJob: %v", err)
+	}
+	if got, ok := result["total_chunks"].(int); !ok || got != 1 {
+		t.Fatalf("total_chunks = %v (%T), want 1", result["total_chunks"], result["total_chunks"])
+	}
+	if got, ok := result["total_clips"].(int); !ok || got != 1 {
+		t.Fatalf("total_clips = %v (%T), want 1", result["total_clips"], result["total_clips"])
+	}
+	chunks, ok := result["chunks"].([]ChunkResult)
+	if !ok || len(chunks) != 1 {
+		t.Fatalf("chunks = %v (%T), want one hydrated chunk", result["chunks"], result["chunks"])
+	}
+	if chunks[0].DriveFileID == "" || chunks[0].DriveLink == "" || chunks[0].DownloadLink == "" || chunks[0].SHA256 == "" {
+		t.Fatalf("hydrated chunk publication fields = %+v", chunks[0])
+	}
+	if result["metadata_file_id"] == "" || result["metadata_link"] == "" {
+		t.Fatalf("hydrated metadata = id:%v link:%v", result["metadata_file_id"], result["metadata_link"])
+	}
+}
 
 // TestStockJobResult_ToResultMap_AllFieldsPopulated verifies that every
 // field survives the round-trip through ToResultMap() with the correct
