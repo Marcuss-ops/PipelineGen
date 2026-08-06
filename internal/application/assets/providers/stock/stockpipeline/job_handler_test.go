@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -17,8 +18,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -62,7 +65,10 @@ func TestProjectManifestToPipelineResult_HydratesAllFields(t *testing.T) {
 		},
 	}
 
-	result := projectManifestToPipelineResult(manifest)
+	result, err := projectManifestToPipelineResult(manifest)
+	if err != nil {
+		t.Fatalf("projectManifestToPipelineResult: %v", err)
+	}
 	if result.TotalChunks != 2 || result.TotalClips != 3 {
 		t.Fatalf("counts = clips:%d chunks:%d, want clips:3 chunks:2", result.TotalClips, result.TotalChunks)
 	}
@@ -93,7 +99,10 @@ func TestProjectManifestToPipelineResult_MixedIndexedAndLegacyChunksUseUniqueInd
 		{ID: "duplicate-index", Kind: string(finalization.KindVideo), ArtifactMetadata: map[string]any{"chunk_index": 0}},
 	}}
 
-	result := projectManifestToPipelineResult(manifest)
+	result, err := projectManifestToPipelineResult(manifest)
+	if err != nil {
+		t.Fatalf("projectManifestToPipelineResult: %v", err)
+	}
 	if len(result.Chunks) != 3 {
 		t.Fatalf("chunks = %d, want 3", len(result.Chunks))
 	}
@@ -142,7 +151,10 @@ func TestProjectManifestToPipelineResult_HandlesLegacyMetadataAndMissingIndex(t 
 		},
 	}
 
-	result := projectManifestToPipelineResult(manifest)
+	result, err := projectManifestToPipelineResult(manifest)
+	if err != nil {
+		t.Fatalf("projectManifestToPipelineResult: %v", err)
+	}
 	if result.MetadataFileID != "legacy-metadata-id" || result.MetadataLink != "https://drive.example/legacy-metadata" {
 		t.Fatalf("legacy metadata = id:%q link:%q", result.MetadataFileID, result.MetadataLink)
 	}
@@ -161,6 +173,73 @@ func TestProjectManifestToPipelineResult_HandlesLegacyMetadataAndMissingIndex(t 
 	if !result.Chunks[1].Uploaded {
 		t.Fatalf("metadata-published chunk status = %+v, want uploaded=true", result.Chunks[1])
 	}
+}
+
+// TestProjectManifestToPipelineResult_UnprojectableManifestFailsClosed
+// is the fail-closed regression guard for the silent-empty result class
+// (godlike/07 no-fake-availability): a manifest that cannot be projected
+// into a meaningful *PipelineResult MUST surface the typed sentinel
+// ErrStockManifestUnprojectable instead of returning an all-zeros result
+// that would let a SUCCEEDED job report total_clips=0/total_chunks=0/
+// chunks=[] despite real uploads.
+//
+// Covered failure modes:
+//  1. nil manifest → ErrStockManifestUnprojectable
+//  2. formally valid manifest with zero artifacts → errors.Is match
+//  3. manifest with artifacts but none projectable (no video chunk, no
+//     metadata artifact) → errors.Is match
+func TestProjectManifestToPipelineResult_UnprojectableManifestFailsClosed(t *testing.T) {
+	t.Run("nil manifest", func(t *testing.T) {
+		result, err := projectManifestToPipelineResult(nil)
+		if err == nil {
+			t.Fatal("nil manifest returned nil error — want ErrStockManifestUnprojectable")
+		}
+		if !errors.Is(err, ErrStockManifestUnprojectable) {
+			t.Errorf("err = %v, want errors.Is(err, ErrStockManifestUnprojectable) == true", err)
+		}
+		if result != nil {
+			t.Errorf("result = %+v, want nil on error", result)
+		}
+	})
+
+	t.Run("zero artifacts", func(t *testing.T) {
+		manifest := &job.ArtifactManifest{
+			SchemaVersion: job.SchemaVersionArtifactManifestV1,
+			JobID:         "job-empty-manifest",
+			Artifacts:     []job.Artifact{},
+		}
+		result, err := projectManifestToPipelineResult(manifest)
+		if err == nil {
+			t.Fatal("zero-artifact manifest returned nil error — want ErrStockManifestUnprojectable")
+		}
+		if !errors.Is(err, ErrStockManifestUnprojectable) {
+			t.Errorf("err = %v, want errors.Is(err, ErrStockManifestUnprojectable) == true", err)
+		}
+		if result != nil {
+			t.Errorf("result = %+v, want nil on error", result)
+		}
+	})
+
+	t.Run("no projectable artifacts", func(t *testing.T) {
+		manifest := &job.ArtifactManifest{
+			SchemaVersion: job.SchemaVersionArtifactManifestV1,
+			JobID:         "job-unknown-kinds",
+			Artifacts: []job.Artifact{
+				{ID: "artifact-a", Kind: "audio", Path: "/tmp/a.wav"},
+				{ID: "artifact-b", Kind: "document", Path: "/tmp/b.pdf"},
+			},
+		}
+		result, err := projectManifestToPipelineResult(manifest)
+		if err == nil {
+			t.Fatal("manifest without video/metadata artifacts returned nil error — want ErrStockManifestUnprojectable")
+		}
+		if !errors.Is(err, ErrStockManifestUnprojectable) {
+			t.Errorf("err = %v, want errors.Is(err, ErrStockManifestUnprojectable) == true", err)
+		}
+		if result != nil {
+			t.Errorf("result = %+v, want nil on error", result)
+		}
+	})
 }
 
 type handleJobSourceStager struct {
@@ -221,6 +300,70 @@ func (handleJobPublisherPort) Publish(_ context.Context, artifact finalization.V
 
 var _ finalization.PublisherPort = handleJobPublisherPort{}
 
+// handleJobDispatcher is a no-op stockChunkDispatcher fake: the happy
+// path must reach EnqueueAndIndex for each persisted clip without error.
+type handleJobDispatcher struct{}
+
+func (handleJobDispatcher) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
+	return nil
+}
+
+var _ stockChunkDispatcher = handleJobDispatcher{}
+
+// handleJobSourceProbe is a fixed SourceDurationProbe fake returning a
+// duration large enough for the 0-5s clip of the HandleJob success test.
+type handleJobSourceProbe struct{}
+
+func (handleJobSourceProbe) ProbeDurationSec(_ context.Context, _ string) (float64, error) {
+	return 60, nil
+}
+
+var _ SourceDurationProbe = handleJobSourceProbe{}
+
+// noopBatchRepository is a success-shaped StockBatchRepository fake.
+// The production orchestrator gate (NewProductionStockOrchestrator)
+// now requires a non-nil batch repository; the HandleJob happy path
+// must not fail on the durable-state writes.
+type noopBatchRepository struct{}
+
+func (noopBatchRepository) CreateBatch(context.Context, *StockBatch) error        { return nil }
+func (noopBatchRepository) GetBatch(context.Context, string) (*StockBatch, error) { return nil, nil }
+func (noopBatchRepository) UpdateBatchStatus(context.Context, string, BatchState, string) error {
+	return nil
+}
+func (noopBatchRepository) CreateGroup(context.Context, *StockBatchGroup) error { return nil }
+func (noopBatchRepository) GetGroup(context.Context, string) (*StockBatchGroup, error) {
+	return nil, nil
+}
+func (noopBatchRepository) UpdateGroupStatus(context.Context, string, GroupState, string) error {
+	return nil
+}
+func (noopBatchRepository) ListGroups(context.Context, string) ([]StockBatchGroup, error) {
+	return nil, nil
+}
+func (noopBatchRepository) CreateArtifact(context.Context, *StockArtifact) error { return nil }
+func (noopBatchRepository) GetArtifact(context.Context, string) (*StockArtifact, error) {
+	return nil, nil
+}
+func (noopBatchRepository) MarkArtifactExtracting(context.Context, string) error { return nil }
+func (noopBatchRepository) MarkArtifactExtracted(context.Context, string, string, string, int) error {
+	return nil
+}
+func (noopBatchRepository) MarkArtifactPublished(context.Context, string, string, string, string) error {
+	return nil
+}
+func (noopBatchRepository) MarkArtifactVerified(context.Context, string) error { return nil }
+func (noopBatchRepository) MarkArtifactFailed(context.Context, string, ArtifactState, string) error {
+	return nil
+}
+func (noopBatchRepository) MarkGroupSucceeded(context.Context, string, int) error { return nil }
+func (noopBatchRepository) MarkBatchSucceeded(context.Context, string, int) error { return nil }
+func (noopBatchRepository) FindIncompleteArtifacts(context.Context, string, int) ([]StockArtifact, error) {
+	return nil, nil
+}
+
+var _ StockBatchRepository = noopBatchRepository{}
+
 func TestService_HandleJob_SuccessHydratesProjectedResult(t *testing.T) {
 	const sourceURL = "https://example.com/handle-job-source.mp4"
 	sourcePath := t.TempDir() + "/source.mp4"
@@ -238,6 +381,14 @@ func TestService_HandleJob_SuccessHydratesProjectedResult(t *testing.T) {
 		finalizer:     &fakeJobFinalizer{},
 		sourceStager:  handleJobSourceStager{path: sourcePath},
 		localFS:       newRealishFakeLocalFS(),
+		// The production orchestrator gate (NewProductionStockOrchestrator)
+		// rejects nil dispatcher / projection / probe / batch repo /
+		// step store — the success path must wire them all.
+		dispatcher:  handleJobDispatcher{},
+		projection:  noopProjection{},
+		sourceProbe: handleJobSourceProbe{},
+		batchRepo:   noopBatchRepository{},
+		stepStore:   steps.NewInMemoryStore(),
 	}
 	payload, err := json.Marshal(&StockRunPayload{Clips: []ClipSpec{{URL: sourcePath, StartSec: 0, EndSec: 5, Title: "Fixture clip"}},
 		FolderID:      "workflow-handle-job",

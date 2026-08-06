@@ -54,8 +54,8 @@ import (
 //
 //  1. validateStockSymmetricGate (godlike/07 fail-fast at composition time).
 //     1b. SQLite mandatory in production (Fase 2).
-//  2. stockpipeline.NewProductionStockPipeline (strict runtime orchestrator
-//     construction is used by the Service execution path).
+//  2. stockpipeline.NewProductionStockPipeline (strict runtime Service
+//     construction; the Service later builds the strict orchestrator).
 //  3. stockpipeline.NewStockUseCase (ServiceRunner + narrowed jobsEnqueuer).
 //  4. stockapi.Build (API Descriptor with EnabledFunc closure).
 //
@@ -118,7 +118,15 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		return nil, stockpipeline.ErrStockProductionBatchRepositoryMissing
 	}
 
-	// ── Gate 2: construct the canonical *stockpipeline.Service ───
+	// ── Gate 2: reject nil concrete adapters before wrapping them ───
+	// The stockAssetIndexAdapter itself is intentionally non-nil after
+	// construction; validate its concrete dependency first so a typed
+	// wrapper cannot mask an unavailable indexing capability.
+	if stockDependencyNil(deps.Acquisition.AssetIndex) {
+		return nil, fmt.Errorf("stock.BuildStockBundle: asset index service is nil: %w", stockpipeline.ErrStockPipelineNilAssetIndex)
+	}
+
+	// ── Gate 3: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewProductionStockPipeline(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
 			Cfg:        stockRuntimeConfig(deps.Runtime.Cfg),
@@ -171,7 +179,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		return nil, err
 	}
 
-	// ── Gate 4: compose the canonical API Descriptor ─────────────
+	// ── Gate 5: compose the canonical API Descriptor ─────────────
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
 		EnabledFunc: deps.Feature.StockPipelineEnabled,
@@ -185,7 +193,7 @@ func BuildStockBundle(deps StockBundleDeps) (*wiring.StockPipelineWiring, error)
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build returned unexpected descriptor type %T (want *stockapi.StockDescriptor)", sd)
 	}
 
-	// ── Gate 5: construct the stock batch coordinator + /stock-batches module ─
+	// ── Gate 6: construct the stock batch coordinator + /stock-batches module ─
 	batchModule, err := buildStockBatchModule(deps, svc)
 	if err != nil {
 		return nil, err

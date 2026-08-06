@@ -137,7 +137,10 @@ func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *
 		tools.Progress(100, "Stock pipeline finalised")
 	}
 
-	projected := projectManifestToPipelineResult(summary.Manifest)
+	projected, err := projectManifestToPipelineResult(summary.Manifest)
+	if err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.HandleJob: %w", err)
+	}
 	return (StockJobResult{
 		Manifest:       summary.Manifest,
 		FinalStatus:    string(summary.FinalStatus),

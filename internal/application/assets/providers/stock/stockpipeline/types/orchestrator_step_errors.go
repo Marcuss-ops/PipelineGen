@@ -156,4 +156,15 @@ var (
 	// corruption class where a crash-resume proceeds with a malformed
 	// accumulator or where a checkpoint is silently dropped.
 	ErrStockResumeStateInvalid = errors.New("stock: resume: RunState checkpoint invalid")
+
+	// ErrStockManifestUnprojectable is raised when the resilient
+	// orchestrator produced a manifest that cannot be projected into
+	// the legacy *PipelineResult: nil manifest, zero artifacts, or
+	// artifacts of which none are projectable (no video chunk and no
+	// metadata artifact). This closes the godlike/07 no-fake-
+	// availability class where a SUCCEEDED job silently returned
+	// total_clips=0/total_chunks=0/chunks=[] even though the pipeline
+	// had uploaded real artifacts. Callers MUST fail the run instead
+	// of surfacing an all-zeros result.
+	ErrStockManifestUnprojectable = errors.New("stock.result: manifest not projectable — no video or metadata artifacts to hydrate")
 )

@@ -40,7 +40,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -77,12 +76,45 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	}
 
 	// ── Construct real deps ──────────────────────────────────
+	if root.Drive == nil {
+		return nil, fmt.Errorf("wire stock pipeline: Drive bundle is required")
+	}
+	if root.Jobs == nil {
+		return nil, fmt.Errorf("wire stock pipeline: Jobs bundle is required")
+	}
+	if root.Repos == nil {
+		return nil, fmt.Errorf("wire stock pipeline: repository bundle is required")
+	}
+	if root.Search == nil {
+		return nil, fmt.Errorf("wire stock pipeline: search bundle is required")
+	}
+	if root.Outbox == nil {
+		return nil, fmt.Errorf("wire stock pipeline: outbox bundle is required")
+	}
 	ffmpegPath := cfg.External.FfmpegPath
 
 	// DB: extract *sql.DB from typed *storage.SQLiteDB handle.
 	stockDB := (*sql.DB)(nil)
 	if root.DB != nil {
 		stockDB = root.DB.DB
+	}
+	if stockDB == nil {
+		return nil, fmt.Errorf("wire stock pipeline: SQLite DB handle is required")
+	}
+	if root.Jobs.Service == nil || root.Jobs.Repo == nil {
+		return nil, fmt.Errorf("wire stock pipeline: Jobs service and repository are required")
+	}
+	if root.Repos.ClipsRepo == nil {
+		return nil, fmt.Errorf("wire stock pipeline: Clips repository is required")
+	}
+	if root.Search.AssetIndexService == nil {
+		return nil, fmt.Errorf("wire stock pipeline: asset index service is required")
+	}
+	if root.Outbox.Dispatcher == nil || root.Outbox.EventsRepo == nil {
+		return nil, fmt.Errorf("wire stock pipeline: outbox dispatcher and events repository are required")
+	}
+	if root.Drive.Admin == nil || root.Drive.Reader == nil || root.Drive.Publisher == nil {
+		return nil, fmt.Errorf("wire stock pipeline: Drive admin, reader, and publisher are required")
 	}
 
 	// Cutter + Renderer (nil-safe: empty string → "ffmpeg").
@@ -207,12 +239,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
 	stockProbe := render.NewFFProbeSourceDurationProbe(ffmpegPath)
-	stockProjection := newStockProjection(func() *clipindexer.Service {
-		if root.Process == nil {
-			return nil
-		}
-		return root.Process.ClipIndexerService
-	}())
+	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{

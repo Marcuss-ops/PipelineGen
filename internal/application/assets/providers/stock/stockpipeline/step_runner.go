@@ -62,6 +62,10 @@ type RunState struct {
 	FinalStatus        job.Status
 	FinalizationResult *finalization.FinalizationResult
 	Counts             RunCounts
+	// SourceErrors preserves per-source staging failures so partial
+	// work is observable in checkpoints, diagnostics, and the wrapped
+	// incomplete-source error; failures must not exist only in logs.
+	SourceErrors map[string]string
 }
 
 // orchestratorRunner is the canonical StepRunner implementation.

@@ -2,7 +2,7 @@
 //
 // HandleJob end-to-end tests: verify that Service.HandleJob delegates
 // to runOrchestratorResilient and surfaces the orchestrator's typed
-// gate-fail error (ErrOrchestratorNilDeps) when the Service has
+// gate-fail error (ErrProductionCutterMissing) when the Service has
 // unwired deps (nil cutter / renderer / finalizer).
 //
 // RETIRED (July 2026): the 6 runOrchestrator manifest-contract tests
@@ -95,10 +95,10 @@ func TestService_HandleJob_DelegatesToRunOrchestratorResilient(t *testing.T) {
 	// errors.Is reaches the wrapped sentinel via the typed-error chain
 	// (godlike/07).
 	if err == nil {
-		t.Fatalf("HandleJob expected orchestrator gate-fail error (ErrOrchestratorNilDeps), got nil + result=%v", res)
+		t.Fatalf("HandleJob expected orchestrator gate-fail error (ErrProductionCutterMissing), got nil + result=%v", res)
 	}
-	if !errors.Is(err, ErrOrchestratorNilDeps) {
-		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps (orchestrator gate fires on unwired deps)", err)
+	if !errors.Is(err, ErrProductionCutterMissing) {
+		t.Fatalf("HandleJob err = %v; want ErrProductionCutterMissing (production orchestrator gate fires on unwired deps)", err)
 	}
 	// Gate fires BEFORE any step runs, so Publisher remains untouched.
 	if rec.publishCalls != 0 {
@@ -129,20 +129,20 @@ func TestService_HandleJob_DelegatesToRunOrchestratorResilient_Companion(t *test
 		Payload: payload,
 	}, &appjobs.JobTools{})
 	// Post-cleanup: HandleJob delegates to runOrchestratorResilient.
-	// Without cutter/renderer wired, the orchestrator's entry gate fires
-	// ErrOrchestratorNilDeps before any step runs.
+	// Without cutter/renderer wired, the production orchestrator's
+	// constructor gate fires ErrProductionCutterMissing before any step runs.
 	if err == nil {
 		t.Fatalf("HandleJob expected orchestrator gate-fail error, got nil (silent-success class reopened)")
 	}
-	if !errors.Is(err, ErrOrchestratorNilDeps) {
-		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps (orchestrator gate fires on unwired deps)", err)
+	if !errors.Is(err, ErrProductionCutterMissing) {
+		t.Fatalf("HandleJob err = %v; want ErrProductionCutterMissing (production orchestrator gate fires on unwired deps)", err)
 	}
 }
 
 // TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreached
 // (Stock Cutover §12-1 §F post-cleanup, July 2026) — the Publisher
 // (Drive-write canal) MUST NOT be invoked by HandleJob. The orchestrator's
-// entry gate (ErrOrchestratorNilDeps) fires before any step runs, so the
+// entry gate (ErrProductionCutterMissing) fires before any step runs, so the
 // Publisher is never reached. This contract is preserved across the
 // duplicate-finalization cleanup.
 func TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreached(t *testing.T) {
@@ -159,12 +159,12 @@ func TestService_HandleJob_DelegatesToRunOrchestratorResilient_PublisherUnreache
 		ID:      "job-no-drive",
 		Payload: payload,
 	}, &appjobs.JobTools{})
-	// Post-cleanup: orchestrator gate fires with ErrOrchestratorNilDeps.
+	// Post-cleanup: orchestrator gate fires with ErrProductionCutterMissing.
 	if err == nil {
 		t.Fatalf("HandleJob expected orchestrator gate-fail error, got nil")
 	}
-	if !errors.Is(err, ErrOrchestratorNilDeps) {
-		t.Fatalf("HandleJob err = %v; want ErrOrchestratorNilDeps", err)
+	if !errors.Is(err, ErrProductionCutterMissing) {
+		t.Fatalf("HandleJob err = %v; want ErrProductionCutterMissing", err)
 	}
 	if rec.publishCalls != 0 {
 		t.Errorf("recordingPublisher.Publish called %d times (must be zero — gate fires before any Drive write)", rec.publishCalls)

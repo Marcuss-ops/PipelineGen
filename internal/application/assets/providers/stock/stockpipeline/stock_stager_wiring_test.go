@@ -40,7 +40,7 @@
 // WHEN COMMIT 6 LANDS: removing the t.Skip() blocks re-activates the 5
 // contract assertions (no test body changes required; the
 // newWiringTestOrchestrator helper signature follows origin/main's 6-arg
-// NewOrchestrator — see FRAGILITY NOTE in the helper doc-comment).
+// NewTestStockOrchestrator — see FRAGILITY NOTE in the helper doc-comment).
 //
 // Without these tests, Commit 6's wire-up is correctness-invariant but
 // not test-pinned: a future agent that breaks Step 3's invocation order,
@@ -139,7 +139,7 @@ func (f *recordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*
 // cutter + renderer are not invoked in Step 3's invocation path).
 //
 // Note on signature: this helper is calibrated to the canonical
-// 5-arg NewOrchestrator (cfg, planner, stager, cutter, renderer) —
+// 5-arg NewTestStockOrchestrator (cfg, planner, stager, cutter, renderer) —
 // no logger arg. Tests are t.Skip()-gated so
 // they don't run against the current stub dispatchSteps[stock.stage_sources]
 // (Begin/Complete only); the helper compiles cleanly against origin/main.
@@ -165,7 +165,7 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 	// that's pinned by stock_fake_availability_test.go). The
 	// noopRenderer stub lives in stock_test_helpers.go per
 	// godlike/06 SSOT (one canonical owner per fact).
-	return NewOrchestrator(
+	return NewTestStockOrchestrator(
 		OrchestratorConfig{
 			JobId:            "wiring-test",
 			Lease:            testLease("wiring-test"),

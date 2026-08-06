@@ -40,9 +40,8 @@ import (
 //
 // Service.HandleJob wires the real broker JobID through cfg.JobId,
 // so production traffic carries the real JobID — the placeholder
-// is only used by non-broker callers (tests, CLI). Production wiring
-// that wants custom resilience ports MUST use
-// NewOrchestratorWithResilience instead.
+// is only used by non-broker callers (tests, CLI). Custom resilience
+// ports are a fixture concern and use NewOrchestratorWithResilience.
 func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	return newStockPipeline(cfg, planner, stager, cutter, renderer)
 }

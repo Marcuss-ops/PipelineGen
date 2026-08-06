@@ -122,7 +122,7 @@ func (m *mapRenderer) Render(ctx context.Context, req RenderRequest) (RenderResu
 // step.Run callers only. This is why the tests below always pass
 // a non-nil mapStager (even if its handler returns errors).
 func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
-	return NewOrchestrator(
+	return NewTestStockOrchestrator(
 		OrchestratorConfig{
 			JobId:            "fake-avail-test",
 			Lease:            testLease("fake-avail-test"),
@@ -189,6 +189,9 @@ func TestStockStageSourcesStep_AllSourcesFailed_ReturnsTypedError(t *testing.T) 
 	if !errors.Is(err, ErrStockStageSourcesAllFailed) {
 		t.Fatalf("expected ErrStockStageSourcesAllFailed, got %v (fail-closed contract violated — job would silently succeed with zero staged assets)", err)
 	}
+	if !strings.Contains(err.Error(), "https://example.com/a.mp4:") {
+		t.Fatalf("all-failed error must expose the failed source key, got %v", err)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -240,6 +243,9 @@ func TestStockStageSourcesStep_PartialFailure_ReturnsTypedError(t *testing.T) {
 
 	if !errors.Is(err, ErrStockStageSourcesIncomplete) {
 		t.Fatalf("expected ErrStockStageSourcesIncomplete, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "https://example.com/b.mp4: simulated yt-dlp bot challenge") {
+		t.Fatalf("partial error must expose the failed source and reason, got %v", err)
 	}
 }
 
