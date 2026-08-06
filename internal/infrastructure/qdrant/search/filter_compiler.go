@@ -117,19 +117,22 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 	}
 
 	// 3. Lifecycle allow-list — states are alternatives, not cumulative
-	//    requirements. Keep the equality predicates in `must`, and put
-	//    the searchable lifecycle states in `should` with min_should=1;
-	//    otherwise ACTIVE+PUBLISHED would require both values and return
-	//    no stock results. The default remains ACTIVE for direct callers.
+	//    requirements. Keep equality predicates in `must`, and encode
+	//    searchable lifecycle states using Qdrant's structured
+	//    `min_should` object. The REST API rejects a numeric
+	//    `min_should`; it requires `{conditions, min_count}`.
+	//    The default remains ACTIVE for direct callers.
 	lifecycle := filter.LifecycleState
 	if len(lifecycle) == 0 {
 		lifecycle = []string{"ACTIVE"}
 	}
 
 	return map[string]any{
-		"must":       must,
-		"should":     lifecycleClauses(lifecycle),
-		"min_should": 1,
+		"must": must,
+		"min_should": map[string]any{
+			"conditions": lifecycleClauses(lifecycle),
+			"min_count":  1,
+		},
 	}, nil
 }
 
@@ -144,11 +147,11 @@ func matchClause(key, value string) map[string]any {
 	}
 }
 
-// lifecycleClauses expands an allow-list of states into one must-
-// clause per state. Qdrant semantics: a "must" array is AND; to get
-// "lifecycle IN (A, B)" we use one must-clause per value (each
-// matching = OR within the must pair = ANDisjunction across must
-// clauses). Future "include soft-deleted" admin paths can pass
+// lifecycleClauses expands an allow-list of states into one condition
+// per state for Qdrant's structured min_should object. Qdrant requires
+// at least min_count of these alternatives to match, so ACTIVE/PUBLISHED
+// behaves as lifecycle IN (ACTIVE, PUBLISHED) without an AND-only must
+// clause. Future "include soft-deleted" admin paths can pass
 // {"ACTIVE", "DELETE_PENDING"} without code changes here.
 func lifecycleClauses(states []string) []map[string]any {
 	out := make([]map[string]any, 0, len(states))

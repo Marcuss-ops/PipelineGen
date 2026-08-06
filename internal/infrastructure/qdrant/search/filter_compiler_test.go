@@ -18,7 +18,7 @@ import (
 
 // filterClauseValues extracts match values from both Qdrant boolean
 // branches. Equality filters are cumulative (`must`); lifecycle states
-// are alternatives (`should`).
+// are alternatives in the structured `min_should.conditions` branch.
 func filterMustValues(t *testing.T, body map[string]interface{}) map[string][]string {
 	t.Helper()
 	must, ok := body["must"].([]map[string]interface{})
@@ -50,6 +50,15 @@ func filterClauseSlice(t *testing.T, body map[string]interface{}, key string) []
 			t.Fatalf("filter body %q must be a canonical clause slice: %#v", key, body)
 		}
 		return clauses
+	}
+	if key == "should" {
+		if minShould, ok := body["min_should"].(map[string]interface{}); ok {
+			conditions, ok := minShould["conditions"].([]map[string]interface{})
+			if !ok {
+				t.Fatalf("filter body min_should.conditions must be a canonical clause slice: %#v", body)
+			}
+			return conditions
+		}
 	}
 	return nil
 }
@@ -276,12 +285,23 @@ func TestCompileQdrantFilter_LifecycleAllowlistUsesShouldNotMust(t *testing.T) {
 			t.Fatalf("lifecycle allowlist must not be cumulative in must: %#v", must)
 		}
 	}
-	should := filterClauseSlice(t, filt, "should")
-	if len(should) != 2 {
-		t.Fatalf("lifecycle should clauses = %d, want 2", len(should))
+	minShould, ok := filt["min_should"].(map[string]any)
+	if !ok {
+		t.Fatalf("min_should must use Qdrant's structured object shape, got %#v", filt["min_should"])
 	}
-	if got := filt["min_should"]; got != 1 {
-		t.Fatalf("min_should = %#v, want 1", got)
+	conditions, ok := minShould["conditions"].([]map[string]any)
+	if !ok || len(conditions) != 2 {
+		t.Fatalf("min_should.conditions = %#v, want two lifecycle clauses", minShould["conditions"])
+	}
+	if got := minShould["min_count"]; got != 1 {
+		t.Fatalf("min_should.min_count = %#v, want 1", got)
+	}
+	wire, err := json.Marshal(filt)
+	if err != nil {
+		t.Fatalf("marshal filter: %v", err)
+	}
+	if strings.Contains(string(wire), `"min_should":1`) {
+		t.Fatalf("numeric min_should must never reach the Qdrant wire: %s", wire)
 	}
 }
 
