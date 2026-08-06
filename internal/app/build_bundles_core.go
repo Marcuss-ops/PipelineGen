@@ -40,6 +40,7 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
+	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
@@ -328,7 +329,7 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,
-			ImageGen: imgservice.NewChromeImageProviderPoolFromProfile(
+			ImageGen: chromeimages.NewChromeImageProviderPoolFromProfile(
 				params.Cfg.Paths.PythonScriptsDir,
 				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
 				params.Cfg.Concurrency.GoogleSlidesProfileID,

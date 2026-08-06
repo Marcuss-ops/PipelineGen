@@ -18,10 +18,11 @@
 // new key here MUST be paired with a worker-side update; removing
 // a key is a wire-protocol break and is forbidden outside the
 // protocol-versioning flow.
-package images
+package chrome
 
 import (
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"os"
 	"path/filepath"
 )
@@ -38,7 +39,7 @@ import (
 //
 // requestID is plumbed through so the tempDir fallback names the
 // file deterministically without colliding with concurrent calls.
-func resolveOutputPath(req GenerateImageRequest, requestID string) string {
+func resolveOutputPath(req appimages.GenerateImageRequest, requestID string) string {
 	if req.OutputPath != "" {
 		return req.OutputPath
 	}
@@ -59,11 +60,11 @@ func resolveOutputPath(req GenerateImageRequest, requestID string) string {
 //     prompt_original=<raw req.Prompt>. The worker fills the DOM
 //     textarea with Composed and emits prompt_original in the JSONL
 //     audit. See internal/application/images/prompt_composer.go
-//     for the ComposePrompt rulebook (P1.2 retire-the-150-char-truncation).
+//     for the appimages.ComposePrompt rulebook (P1.2 retire-the-150-char-truncation).
 //   - Style directives: style_id, optional prompt_suffix (forward-pointer
 //     for callers that want a custom worker-side composition
 //     format). prompt_suffix is plumb-through only — the
-//     ComposePrompt tool handles the canonical [style: X] [negative:
+//     appimages.ComposePrompt tool handles the canonical [style: X] [negative:
 //     do not include ...] format; prompt_suffix is for escape-hatch
 //     cases.
 //   - Dimensions: width / height (P1.1 wire-up). The worker uses
@@ -71,7 +72,7 @@ func resolveOutputPath(req GenerateImageRequest, requestID string) string {
 //   - Ratio override: optional ratio (P1.1). Empty defaults the
 //     worker to 16:9.
 //   - Output: output=<outputPath>, consumed by readGeneratedOutput.
-func buildWorkerGenerateRequest(requestID, generationID string, req GenerateImageRequest, composedPrompt string, outputPath string) map[string]any {
+func buildWorkerGenerateRequest(requestID, generationID string, req appimages.GenerateImageRequest, composedPrompt string, outputPath string) map[string]any {
 	workerReq := map[string]any{
 		"action":          "generate",
 		"id":              requestID, // request_id correlation token (Go ↔ worker stdin/stdout)

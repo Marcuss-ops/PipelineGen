@@ -26,7 +26,7 @@
 // canonical ChromeImageProvider fields (p.cmd, p.stdin, p.stdout, p.started)
 // + the JSON protocol helpers (p.writeJSON, p.readRawResponse) declared
 // in slide_worker_protocol.go.
-package images
+package chrome
 
 import (
 	"bufio"

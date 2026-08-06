@@ -4,8 +4,8 @@
 // in its own file.
 //
 // GoogleSlidesProvider wraps the canonical images.ImageGenerator port.
-// The production delegate is ChromeImageProvider, which drives
-// Playwright → slides.new → Nano Banana Pro.
+// The production delegate is the infrastructure image-generation adapter,
+// which drives Playwright → slides.new → Nano Banana Pro.
 package generated
 
 import (
@@ -17,9 +17,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// GoogleSlidesProvider wraps the canonical images.ImageGenerator port. The
-// production delegate is ChromeImageProvider, which drives Playwright →
-// slides.new → Nano Banana Pro.
+// GoogleSlidesProvider wraps the canonical image-generator port. The
+// production delegate is the infrastructure adapter, which drives
+// Playwright → slides.new → Nano Banana Pro.
 type GoogleSlidesProvider struct {
 	delegate ImageGeneratorPort
 	log      *zap.Logger

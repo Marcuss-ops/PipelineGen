@@ -1,6 +1,6 @@
 // Package images — chrome_provider_warmup.go owns explicit warmup hooks
 // for the persistent Chrome/Playwright worker.
-package images
+package chrome
 
 import "context"
 

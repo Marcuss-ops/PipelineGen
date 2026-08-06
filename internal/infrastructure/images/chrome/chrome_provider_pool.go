@@ -1,8 +1,9 @@
-package images
+package chrome
 
 import (
 	"context"
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"sync"
 	"sync/atomic"
 
@@ -19,7 +20,7 @@ type ChromeImageProviderPool struct {
 	log       *zap.Logger
 }
 
-var _ ImageGenerator = (*ChromeImageProviderPool)(nil)
+var _ appimages.ImageGenerator = (*ChromeImageProviderPool)(nil)
 
 // NewChromeImageProviderPool constructs a pool of independent Chrome workers.
 // poolSize is clamped to at least 1.
@@ -47,7 +48,7 @@ func NewChromeImageProviderPoolFromProfile(scriptsDir string, poolSize, profileI
 // Generate routes the request to the next provider in round-robin order.
 // Each underlying provider keeps its own mutex and worker process, so
 // concurrent calls can proceed in parallel across the pool.
-func (p *ChromeImageProviderPool) Generate(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error) {
+func (p *ChromeImageProviderPool) Generate(ctx context.Context, req appimages.GenerateImageRequest) (*appimages.GeneratedImage, error) {
 	if p == nil || len(p.providers) == 0 {
 		return nil, fmt.Errorf("chrome provider pool is empty")
 	}

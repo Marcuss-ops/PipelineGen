@@ -1,5 +1,5 @@
 // Package images — google_slides_adapter.go bridges the canonical
-// images.ImageGenerator port (the one ChromeImageProvider satisfies)
+// images.ImageGenerator port implemented by the infrastructure adapter
 // to the generated.ImageGeneratorPort contract that the
 // generated/provider_registry.go providers consume.
 //
@@ -28,7 +28,7 @@ import (
 )
 
 // ImageGeneratorAdapter is the concrete adapter that lets an
-// arbitrary images.ImageGenerator backend (today: ChromeImageProvider;
+// arbitrary images.ImageGenerator backend (today: the Chrome infrastructure adapter;
 // future: Flux/NVIDIA adapters) be passed to generated.NewDefaultProviderRegistry
 // as the GoogleSlidesProvider delegate.
 //

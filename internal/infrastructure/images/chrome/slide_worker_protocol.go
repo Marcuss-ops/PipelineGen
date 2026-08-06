@@ -15,7 +15,7 @@
 // Imports needed by this file (single-purpose slice per Pattern 5): the
 // canonical ChromeImageProvider fields (p.stdin, p.stdout, p.cmd) + the
 // stdlib JSON/bufio/fmt primitives.
-package images
+package chrome
 
 import (
 	"encoding/json"

@@ -20,7 +20,7 @@
 //  3. Negative keywords "text, watermark, blurry" forwarded intact.
 //     Confirms P1.1 wire-up of negative_prompt to the worker.
 //  4. Blank-negative intent (worker reports ErrNoImageCandidate).
-//     Confirms P0.1 fail-closed: nil GeneratedImage, file removed,
+//     Confirms P0.1 fail-closed: nil appimages.GeneratedImage, file removed,
 //     typed sentinel propagated.
 //  5. Slide-export-style blank from worker: status=ok with output_path
 //     pointing to a programmatically-generated blank PNG. Confirms
@@ -28,7 +28,7 @@
 //
 // These tests do NOT depend on Python being installed.
 
-package images
+package chrome
 
 import (
 	"bufio"
@@ -36,6 +36,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"image"
 	"image/color"
 	"image/png"
@@ -244,7 +245,7 @@ func TestSmoke_WhiteboardSketch_Accepted(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "An engineering whiteboard diagram of a distributed system",
 		Style:      "whiteboard",
 		Width:      1920,
@@ -255,7 +256,7 @@ func TestSmoke_WhiteboardSketch_Accepted(t *testing.T) {
 		t.Fatalf("smoke.1 whiteboard-valid: expected accept, got %v", err)
 	}
 	if g == nil {
-		t.Fatal("smoke.1 whiteboard-valid: expected GeneratedImage, got nil")
+		t.Fatal("smoke.1 whiteboard-valid: expected appimages.GeneratedImage, got nil")
 	}
 	if g.Width != 80 || g.Height != 80 {
 		t.Fatalf("smoke.1 whiteboard-valid: real dims wrong: %dx%d (want 80x80 — fixture PNG)",
@@ -281,7 +282,7 @@ func TestSmoke_LongPrompt_ForwardedInWorkerReq(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     longPrompt,
 		Style:      "cinematic",
 		Width:      1920,
@@ -296,7 +297,7 @@ func TestSmoke_LongPrompt_ForwardedInWorkerReq(t *testing.T) {
 		t.Fatal("smoke.2: no captured request")
 	}
 	gotP, _ := last["prompt"].(string)
-	// P1.2 (July 2026): the Go side composes the prompt via ComposePrompt
+	// P1.2 (July 2026): the Go side composes the prompt via appimages.ComposePrompt
 	// before sending to the worker. With Style="cinematic" the composed form
 	// is `{prompt} [style: cinematic]`. The user-spec contract has TWO parts:
 	//   (1) the 400-char raw prompt arrives WHOLE at the worker;
@@ -332,7 +333,7 @@ func TestSmoke_NegativeKeywords_ForwardedInWorkerReq(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:         "A medieval castle on a cliff",
 		Style:          "cinematic",
 		NegativePrompt: "text, watermark, blurry",
@@ -370,7 +371,7 @@ func TestSmoke_BlankNegativeIntent_FailsClosed(t *testing.T) {
 	fix.serveResponses([]string{
 		`{"id":"{GEN_ID}","status":"error","code":"ErrNoImageCandidate","error":"ErrNoImageCandidate","profile":0}`,
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "Blank negative intent test",
 		Style:      "cinematic",
 		Width:      1920,
@@ -378,13 +379,13 @@ func TestSmoke_BlankNegativeIntent_FailsClosed(t *testing.T) {
 		OutputPath: outputPath,
 	})
 	if g != nil {
-		t.Fatalf("smoke.4: expected nil GeneratedImage; got %+v", g)
+		t.Fatalf("smoke.4: expected nil appimages.GeneratedImage; got %+v", g)
 	}
 	if err == nil {
 		t.Fatal("smoke.4: expected error")
 	}
-	if !errors.Is(err, ErrImageGenNoImageCandidate) {
-		t.Fatalf("smoke.4: expected ErrImageGenNoImageCandidate; got %v", err)
+	if !errors.Is(err, appimages.ErrImageGenNoImageCandidate) {
+		t.Fatalf("smoke.4: expected appimages.ErrImageGenNoImageCandidate; got %v", err)
 	}
 	// output_path should NOT have been created (or if pre-created by
 	// test scaffolding, removed by fail-closed).
@@ -408,7 +409,7 @@ func TestSmoke_SlideVuotoFromWorker_RejectedByVisualValidate(t *testing.T) {
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:     "Pretends to be a real generation",
 		Style:      "cinematic",
 		Width:      1920,
@@ -416,13 +417,13 @@ func TestSmoke_SlideVuotoFromWorker_RejectedByVisualValidate(t *testing.T) {
 		OutputPath: outputPath,
 	})
 	if g != nil {
-		t.Fatalf("smoke.5: expected nil GeneratedImage on blank PNG; got %+v", g)
+		t.Fatalf("smoke.5: expected nil appimages.GeneratedImage on blank PNG; got %+v", g)
 	}
 	if err == nil {
 		t.Fatal("smoke.5: expected error on visual_validate reject")
 	}
-	if !errors.Is(err, ErrImageGenBlankOrPlaceholder) {
-		t.Fatalf("smoke.5: expected ErrImageGenBlankOrPlaceholder; got %v", err)
+	if !errors.Is(err, appimages.ErrImageGenBlankOrPlaceholder) {
+		t.Fatalf("smoke.5: expected appimages.ErrImageGenBlankOrPlaceholder; got %v", err)
 	}
 	// Output file MUST be removed by the fail-closed contract.
 	if _, statErr := os.Stat(outputPath); statErr == nil {
@@ -468,7 +469,7 @@ func TestSmoke_RunAll_Light(t *testing.T) {
 //        c. the 5th (simulated-blank) generation writes a phase=error
 //           line that HIGHLIGHTS the blankness: error_code contains
 //           "Blank" or "Placeholder", and the captured Go error
-//           errors.Is-probes ErrImageGenBlankOrPlaceholder.
+//           errors.Is-probes appimages.ErrImageGenBlankOrPlaceholder.
 //      That is the user spec's "in caso di bianco simulato i campi
 //      evidenziano il problema" contract.
 
@@ -589,7 +590,7 @@ func TestSmoke_FiveGeneration_DiagnosticHighlights(t *testing.T) {
 	}
 
 	for i, p := range prompts {
-		g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 			Prompt:     p,
 			Style:      "cinematic",
 			Width:      1920,
@@ -598,16 +599,16 @@ func TestSmoke_FiveGeneration_DiagnosticHighlights(t *testing.T) {
 		})
 
 		if i == 4 {
-			// Simulated-blank: nil GeneratedImage + typed
-			// ErrImageGenBlankOrPlaceholder.
+			// Simulated-blank: nil appimages.GeneratedImage + typed
+			// appimages.ErrImageGenBlankOrPlaceholder.
 			if g != nil {
-				t.Fatalf("gen_4 blank: want nil GeneratedImage; got %+v", g)
+				t.Fatalf("gen_4 blank: want nil appimages.GeneratedImage; got %+v", g)
 			}
 			if err == nil {
 				t.Fatal("gen_4 blank: want typed error; got nil")
 			}
-			if !errors.Is(err, ErrImageGenBlankOrPlaceholder) {
-				t.Fatalf("gen_4 blank: want ErrImageGenBlankOrPlaceholder; got %v", err)
+			if !errors.Is(err, appimages.ErrImageGenBlankOrPlaceholder) {
+				t.Fatalf("gen_4 blank: want appimages.ErrImageGenBlankOrPlaceholder; got %v", err)
 			}
 			if _, statErr := os.Stat(outputs[i]); statErr == nil {
 				t.Fatalf("gen_4 blank: output_path exists; FAIL-CLOSED must remove it")
@@ -632,7 +633,7 @@ func TestSmoke_FiveGeneration_DiagnosticHighlights(t *testing.T) {
 				t.Fatalf("gen_%d valid: want accept; got err=%v", i, err)
 			}
 			if g == nil {
-				t.Fatalf("gen_%d valid: want GeneratedImage; got nil", i)
+				t.Fatalf("gen_%d valid: want appimages.GeneratedImage; got nil", i)
 			}
 			methods := []string{"googleusercontent", "blob-fetch", "googleusercontent", "googleusercontent"}
 			phashes := []string{"a1b2c3d4e5f60123", "ffeeddccbbaa9988", "deadbeefcafebabe", "0102030405060708"}
@@ -764,7 +765,7 @@ func TestSmoke_TwoConsecutiveRequests_CleanContext(t *testing.T) {
 				outputPath, candSrc, phash, prompt,
 			),
 		})
-		_, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		_, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 			Prompt: prompt, Style: "cinematic",
 			Width: 1920, Height: 1080, OutputPath: outputPath,
 		})
@@ -891,7 +892,7 @@ func TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes(t *testing
 			"REPLACE", outputPath,
 		),
 	})
-	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+	g, err := fix.p.Generate(context.Background(), appimages.GenerateImageRequest{
 		Prompt:         longPrompt,
 		Style:          "cinematic",
 		NegativePrompt: "text, watermark, blurry",
@@ -958,7 +959,7 @@ func TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes(t *testing
 // so the helper was deleted. Call sites use the builtin directly:
 //   `min(len(gotP), 120)`, `min(len(r.Composed), len(longPrompt))`.
 
-// ── P1.2 (July 2026): Direct ComposePrompt unit test ────────────────────
+// ── P1.2 (July 2026): Direct appimages.ComposePrompt unit test ────────────────────
 //
 // Unit-level pinning of the contract documented in
 // internal/application/images/prompt_composer.go. Asserts:
@@ -972,7 +973,7 @@ func TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes(t *testing
 //   - 400-char prompt arrives whole (no first-period split)
 func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
 	// (a) No style, no negative: composed MUST equal raw (no mutation).
-	r := ComposePrompt("a peaceful valley at dawn", "", "")
+	r := appimages.ComposePrompt("a peaceful valley at dawn", "", "")
 	if r.Composed != "a peaceful valley at dawn" {
 		t.Fatalf("compose (a): empty affixes; want unchanged prompt; got %q", r.Composed)
 	}
@@ -989,7 +990,7 @@ func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
 	}
 
 	// (b) Style only: composed = prompt + ` [style: X]`.
-	r = ComposePrompt("a starlit desert at night", "cinematic", "")
+	r = appimages.ComposePrompt("a starlit desert at night", "cinematic", "")
 	if !strings.HasPrefix(r.Composed, "a starlit desert at night") {
 		t.Fatalf("compose (b): composed must START with raw prompt; got %q", r.Composed)
 	}
@@ -1009,7 +1010,7 @@ func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
 
 	// (c) Negative only: composed = prompt + ` [negative: do not include ...]`.
 	// Multi-word negatives: `,` → `;`.
-	r = ComposePrompt("a misty forest with sunlight", "", "text, watermark, blurry")
+	r = appimages.ComposePrompt("a misty forest with sunlight", "", "text, watermark, blurry")
 	if !strings.HasPrefix(r.Composed, "a misty forest with sunlight") {
 		t.Fatalf("compose (c): composed must START with raw prompt; got %q", r.Composed)
 	}
@@ -1025,7 +1026,7 @@ func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
 	}
 
 	// (d) Style + negative: full format.
-	r = ComposePrompt("a snow-capped peak at sunrise", "watercolor", "low quality")
+	r = appimages.ComposePrompt("a snow-capped peak at sunrise", "watercolor", "low quality")
 	wantSuffix := " [style: watercolor] [negative: do not include low quality]"
 	if r.Composed != "a snow-capped peak at sunrise"+wantSuffix {
 		t.Fatalf("compose (d): full format mismatch; want %q; got %q",
@@ -1049,7 +1050,7 @@ func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
 	if len(longPrompt) < 400 {
 		t.Fatalf("compose (e) setup: want >= 400 chars; got %d", len(longPrompt))
 	}
-	r = ComposePrompt(longPrompt, "cinematic", "text, watermark")
+	r = appimages.ComposePrompt(longPrompt, "cinematic", "text, watermark")
 	if !strings.HasPrefix(r.Composed, longPrompt) {
 		t.Fatalf("compose (e): composed MUST START with the raw 400-char text (no truncation); got prefix of %d vs want %d",
 			min(len(r.Composed), len(longPrompt)), len(longPrompt))

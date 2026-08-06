@@ -1,6 +1,17 @@
 package images
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+type capabilityImageGeneratorFake struct{}
+
+func (capabilityImageGeneratorFake) Generate(context.Context, GenerateImageRequest) (*GeneratedImage, error) {
+	return nil, ErrImageGenProviderNotAvailable
+}
+
+func (capabilityImageGeneratorFake) TriggerPrewarm(context.Context, string, int) {}
 
 func TestCapabilityResolution_NilSafe(t *testing.T) {
 	var s *Service
@@ -17,14 +28,14 @@ func TestCapabilityResolution_MissingGoogleSlidesDependency(t *testing.T) {
 }
 
 func TestCapabilityResolution_GoogleSlidesAvailable(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
+	s := &Service{Diag: &DiagnosticsService{imageGen: capabilityImageGeneratorFake{}}}
 	if got := s.CapabilityResolution(CapImageGenChrome); got != StatusAvailable {
 		t.Errorf("Google Slides capability: got %s, want %s", got, StatusAvailable)
 	}
 }
 
 func TestCapabilityResolution_UnknownCapabilityNotImplemented(t *testing.T) {
-	s := &Service{Diag: &DiagnosticsService{imageGen: &ChromeImageProvider{}}}
+	s := &Service{Diag: &DiagnosticsService{imageGen: capabilityImageGeneratorFake{}}}
 	if got := s.CapabilityResolution(Capability("removed-provider")); got != StatusNotImplemented {
 		t.Errorf("unknown capability: got %s, want %s", got, StatusNotImplemented)
 	}
