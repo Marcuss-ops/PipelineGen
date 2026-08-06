@@ -121,6 +121,16 @@ type Artifact struct {
 	// missing or cannot be uploaded. Non-required (best-effort)
 	// artefacts are silently dropped on upload failure.
 	Required bool `json:"required"`
+
+	// RemoteFileID, RemoteWebViewLink, and RemoteDownloadLink are
+	// populated by producers that already completed publication. They
+	// are additive manifest fields used by capability-specific result
+	// projections; the worker-side upload contract continues to use
+	// Path + Required and ignores these fields.
+	RemoteFileID       string         `json:"remote_file_id,omitempty"`
+	RemoteWebViewLink  string         `json:"remote_web_view_link,omitempty"`
+	RemoteDownloadLink string         `json:"remote_download_link,omitempty"`
+	ArtifactMetadata   map[string]any `json:"artifact_metadata,omitempty"`
 }
 
 // Validate checks the manifest invariants. Returns nil if the manifest

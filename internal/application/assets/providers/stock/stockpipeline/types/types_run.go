@@ -197,6 +197,7 @@ type ChunkResult struct {
 	DriveLink     string   `json:"drive_link"`
 	DownloadLink  string   `json:"download_link"`
 	DriveFileID   string   `json:"drive_file_id"`
+	SHA256        string   `json:"sha256"`
 	Title         string   `json:"title"`
 	SourceIDs     []string `json:"source_ids,omitempty"`
 	// Rendered is true when the FFmpeg render step completed and the
