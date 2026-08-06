@@ -12,8 +12,6 @@
 package stockpipeline
 
 import (
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -144,42 +142,6 @@ func (o *Orchestrator) WithAssetPreparation(svc finalization.ArtifactPreparation
 // receiver for fluent chaining.
 func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestrator {
 	o.jobFinalizer = svc
-	return o
-}
-
-// WithSourceProbe (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)
-// threads the optional ffprobe-backed SourceDurationProbe port
-// to the step_extract_clips step. The probe is OPTIONAL: nil
-// pass-through is allowed so existing composition roots + test
-// fixtures compile unchanged (godlike/07 minimum-blast-radius:
-// backward-compat; the step falls through to the legacy
-// unvalidated path when probe is nil and StagedAsset.DurationSec
-// is 0). Returns the receiver for fluent chaining. Production
-// wiring injects the ffprobe-backed concrete in
-// run_orchestrator.go::runOrchestratorResilient (forward-pointer
-// PR-STOCK-SOURCE-DURATION-WIRE for the live ffprobe adapter).
-func (o *Orchestrator) WithSourceProbe(probe SourceDurationProbe) *Orchestrator {
-	o.sourceProbe = probe
-	return o
-}
-
-// WithBatchRepository (Fase 2, July 2026) threads the durable
-// stock batch/group/artifact repository into the orchestrator.
-// nil is allowed for tests and back-compat. Production wiring
-// injects the SQLite-backed adapter in
-// run_orchestrator.go::runOrchestratorResilient.
-func (o *Orchestrator) WithBatchRepository(repo StockBatchRepository) *Orchestrator {
-	o.batchRepository = repo
-	return o
-}
-
-// WithLogger threads a real zap.Logger into the Orchestrator so
-// step-level logs (download sizes, FFmpeg errors, cut results)
-// appear in the journal instead of being silently swallowed by
-// defaultStepRunnerLog()'s no-op fallback. Returns the receiver
-// for fluent chaining.
-func (o *Orchestrator) WithLogger(log *zap.Logger) *Orchestrator {
-	o.executorLog = log
 	return o
 }
 

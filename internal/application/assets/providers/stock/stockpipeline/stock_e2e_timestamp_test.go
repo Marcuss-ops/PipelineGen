@@ -513,7 +513,7 @@ func generateSyntheticSource(t *testing.T, ffmpegPath, outputPath string, durati
 // godlike/07 minimum-blast-radius: the test only reads the canonical
 // test fixtures (recordingArtifactAndResult, stubJobFinalizer) and
 // the public Orchestrator API (NewOrchestratorWithResilience +
-// WithAssetPreparation + WithJobFinalizer + WithSourceProbe +
+// WithAssetPreparation + WithJobFinalizer +
 // RunResilient). No production code change. The new test-local
 // fixtures (syntheticStager, ffmpegCutter, passthroughRenderer,
 // ffprobeProbe, recordingArtifactAndResult, generateSyntheticSource,

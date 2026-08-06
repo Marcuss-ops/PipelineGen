@@ -7,7 +7,7 @@
 //     StockArtifactId*, ErrOrchestratorNilDeps
 //   - orchestrator_manifest.go: buildStockManifest (C12 5-artifact envelope)
 //   - orchestrator_constructor.go: NewTestStockOrchestrator, NewOrchestratorWithResilience,
-//     WithAssetPreparation, WithJobFinalizer, stepInputFingerprint, firstSource
+//     WithAssetPreparation, WithJobFinalizer, WithLocalFS, stepInputFingerprint, firstSource
 //   - orchestrator_run.go: Run, RunResilient, executorLogOrNop
 //   - orchestrator_defaults.go: DefaultStockSteps, compile-time Step assertions
 //   - orchestrator_fingerprint.go: ChunkArtifactID, ChunkArtifactFilename,
