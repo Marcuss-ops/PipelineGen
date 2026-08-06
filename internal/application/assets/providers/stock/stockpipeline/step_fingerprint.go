@@ -6,9 +6,29 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-const checkpointFingerprintVersion = "stock-step-fingerprint-v2"
-
 type checkpointFingerprintPayload struct {
+	SchemaVersion      string          `json:"schema_version"`
+	JobID              string          `json:"job_id"`
+	StepKey            string          `json:"step_key"`
+	PolicyVersion      string          `json:"policy_version"`
+	CanonicalInput     json.RawMessage `json:"canonical_input"`
+	PreviousResultHash string          `json:"previous_result_hash"`
+}
+
+type checkpointFingerprintInput struct {
+	URLs          checkpointFingerprintURLs      `json:"urls"`
+	Timestamps    []checkpointFingerprintWindow  `json:"timestamps"`
+	Configuration checkpointFingerprintConfig    `json:"configuration"`
+	Durations     checkpointFingerprintDurations `json:"durations"`
+}
+
+const (
+	checkpointFingerprintVersion          = "stock-step-fingerprint-v3"
+	checkpointFingerprintV2Version        = "stock-step-fingerprint-v2"
+	errCheckpointFingerprintSerialization = "checkpoint fingerprint payload serialization failed"
+)
+
+type legacyCheckpointFingerprintPayload struct {
 	Version        string                         `json:"version"`
 	JobID          string                         `json:"job_id"`
 	StepKey        string                         `json:"step_key"`
@@ -18,6 +38,77 @@ type checkpointFingerprintPayload struct {
 	Configuration  checkpointFingerprintConfig    `json:"configuration"`
 	Durations      checkpointFingerprintDurations `json:"durations"`
 	PreviousOutput json.RawMessage                `json:"previous_output"`
+}
+
+func canonicalCheckpointFingerprintInput(cfg OrchestratorConfig, input *RunInput) (json.RawMessage, error) {
+	runInput := input
+	if runInput == nil {
+		runInput = &RunInput{}
+	}
+	canonical := checkpointFingerprintInput{
+		URLs: checkpointFingerprintURLs{
+			Direct: canonicalStrings(runInput.DirectURLs),
+			Drive:  canonicalStrings(runInput.DriveURLs),
+			Search: canonicalStrings(runInput.SearchQueries),
+		},
+		Timestamps: fingerprintWindows(runInput),
+		Configuration: checkpointFingerprintConfig{
+			OrchestratorMaxConcurrentJobs:  cfg.MaxConcurrentJobs,
+			TotalMinutes:                   runInput.TotalMinutes,
+			TargetTotalDurationSeconds:     runInput.TargetTotalDurationSeconds,
+			TargetDurationPerSourceSeconds: runInput.TargetDurationPerSourceSeconds,
+			ClipsPerSource:                 runInput.ClipsPerSource,
+			ClipDurationSeconds:            runInput.ClipDurationSeconds,
+			DownloadMode:                   runInput.DownloadMode,
+			MaxVideos:                      runInput.MaxVideos,
+			NoAudio:                        runInput.NoAudio,
+			NoEffects:                      runInput.NoEffects,
+			NoTransitions:                  runInput.NoTransitions,
+			Subfolder:                      runInput.Subfolder,
+			FolderName:                     runInput.FolderName,
+			DriveFolderID:                  runInput.DriveFolderID,
+			FolderID:                       runInput.FolderID,
+			DriveFolderResolved:            runInput.DriveFolderResolved,
+			Persist:                        runInput.Persist,
+			Metadata:                       runInput.Metadata,
+			Clips:                          fingerprintClips(runInput.Clips),
+		},
+		Durations: checkpointFingerprintDurations{
+			ChunkDurationInputSeconds: runInput.ChunkDuration,
+			ClipDurationInputSeconds:  runInput.ClipDuration,
+			SecondsPerSegment:         runInput.SecondsPerSegment,
+			ChunkDurationConfigSec:    cfg.ChunkDurationSec,
+			ClipDurationConfigSec:     cfg.ClipDurationSec,
+		},
+	}
+	return json.Marshal(canonical)
+}
+
+func deterministicPreviousOutputHash(state *RunState) string {
+	return sha256String(string(deterministicPreviousOutputOrMarker(state)))
+}
+
+func buildCheckpointFingerprintPayload(jobID, stepName string, cfg OrchestratorConfig, input *RunInput, previous *RunState) (checkpointFingerprintPayload, error) {
+	canonicalInput, err := canonicalCheckpointFingerprintInput(cfg, input)
+	if err != nil {
+		return checkpointFingerprintPayload{}, err
+	}
+	return checkpointFingerprintPayload{
+		SchemaVersion:      checkpointFingerprintVersion,
+		JobID:              jobID,
+		StepKey:            stepName,
+		PolicyVersion:      cfg.PolicyVersion,
+		CanonicalInput:     canonicalInput,
+		PreviousResultHash: deterministicPreviousOutputHash(previous),
+	}, nil
+}
+
+func marshalCheckpointFingerprintPayload(payload checkpointFingerprintPayload) ([]byte, error) {
+	return json.Marshal(payload)
+}
+
+func fingerprintSerializationFallback(jobID, stepName string, err error) string {
+	return sha256String(checkpointFingerprintVersion + "|" + errCheckpointFingerprintSerialization + "|" + jobID + "|" + stepName + "|" + err.Error())
 }
 
 type checkpointFingerprintURLs struct {
@@ -81,10 +172,53 @@ type checkpointFingerprintDurations struct {
 // (clip windows) and the prior step's deterministic output.
 //
 // legacyStepInputFingerprint identifies checkpoints written before the
-// content-addressed v2 contract. It remains available only at the explicit
-// migration seam in RunResilient and in legacy-resume fixtures.
+// content-addressed fingerprint contract. It remains available only at the
+// explicit migration seam in RunResilient and in legacy-resume fixtures.
 func legacyStepInputFingerprint(jobID, stepName string) string {
 	return jobID + "|" + stepName
+}
+
+func legacyV2StepInputFingerprint(jobID, stepName string, cfg OrchestratorConfig, input *RunInput, previous *RunState) string {
+	runInput := input
+	if runInput == nil {
+		runInput = &RunInput{}
+	}
+	if cfg.JobId == "" {
+		cfg.JobId = jobID
+	}
+	if cfg.PolicyVersion == "" {
+		cfg.PolicyVersion = runInput.PolicyVersion
+	}
+	if cfg.MaxConcurrentJobs <= 0 {
+		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
+	}
+	payload := legacyCheckpointFingerprintPayload{
+		Version: checkpointFingerprintV2Version, JobID: jobID, StepKey: stepName,
+		PolicyVersion: cfg.PolicyVersion,
+		URLs: checkpointFingerprintURLs{
+			Direct: canonicalStrings(runInput.DirectURLs), Drive: canonicalStrings(runInput.DriveURLs), Search: canonicalStrings(runInput.SearchQueries),
+		},
+		Timestamps: fingerprintWindowsLegacy(runInput, previous),
+		Configuration: checkpointFingerprintConfig{
+			OrchestratorMaxConcurrentJobs: cfg.MaxConcurrentJobs, TotalMinutes: runInput.TotalMinutes,
+			TargetTotalDurationSeconds: runInput.TargetTotalDurationSeconds, TargetDurationPerSourceSeconds: runInput.TargetDurationPerSourceSeconds,
+			ClipsPerSource: runInput.ClipsPerSource, ClipDurationSeconds: runInput.ClipDurationSeconds,
+			DownloadMode: runInput.DownloadMode, MaxVideos: runInput.MaxVideos, NoAudio: runInput.NoAudio, NoEffects: runInput.NoEffects,
+			NoTransitions: runInput.NoTransitions, Subfolder: runInput.Subfolder, FolderName: runInput.FolderName,
+			DriveFolderID: runInput.DriveFolderID, FolderID: runInput.FolderID, DriveFolderResolved: runInput.DriveFolderResolved,
+			Persist: runInput.Persist, Metadata: runInput.Metadata, Clips: fingerprintClips(runInput.Clips),
+		},
+		Durations: checkpointFingerprintDurations{
+			ChunkDurationInputSeconds: runInput.ChunkDuration, ClipDurationInputSeconds: runInput.ClipDuration,
+			SecondsPerSegment: runInput.SecondsPerSegment, ChunkDurationConfigSec: cfg.ChunkDurationSec, ClipDurationConfigSec: cfg.ClipDurationSec,
+		},
+		PreviousOutput: deterministicPreviousOutputOrMarker(previous),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return sha256String(checkpointFingerprintV2Version + "|payload-serialization-error|" + jobID + "|" + stepName + "|" + err.Error())
+	}
+	return sha256String(string(raw))
 }
 
 func stepInputFingerprint(jobID, stepName string, cfg OrchestratorConfig, input *RunInput, previous *RunState) string {
@@ -102,54 +236,13 @@ func stepInputFingerprint(jobID, stepName string, cfg OrchestratorConfig, input 
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
 
-	payload := checkpointFingerprintPayload{
-		Version:       checkpointFingerprintVersion,
-		JobID:         jobID,
-		StepKey:       stepName,
-		PolicyVersion: cfg.PolicyVersion,
-		URLs: checkpointFingerprintURLs{
-			Direct: canonicalStrings(runInput.DirectURLs),
-			Drive:  canonicalStrings(runInput.DriveURLs),
-			Search: canonicalStrings(runInput.SearchQueries),
-		},
-		Timestamps: fingerprintWindows(runInput, previous),
-		Configuration: checkpointFingerprintConfig{
-			OrchestratorMaxConcurrentJobs: cfg.MaxConcurrentJobs, TotalMinutes: runInput.TotalMinutes,
-			TargetTotalDurationSeconds:     runInput.TargetTotalDurationSeconds,
-			TargetDurationPerSourceSeconds: runInput.TargetDurationPerSourceSeconds,
-			ClipsPerSource:                 runInput.ClipsPerSource,
-			ClipDurationSeconds:            runInput.ClipDurationSeconds,
-			DownloadMode:                   runInput.DownloadMode,
-			MaxVideos:                      runInput.MaxVideos,
-			NoAudio:                        runInput.NoAudio,
-			NoEffects:                      runInput.NoEffects,
-			NoTransitions:                  runInput.NoTransitions,
-			Subfolder:                      runInput.Subfolder,
-			FolderName:                     runInput.FolderName,
-			DriveFolderID:                  runInput.DriveFolderID,
-			FolderID:                       runInput.FolderID,
-			DriveFolderResolved:            runInput.DriveFolderResolved,
-			Persist:                        runInput.Persist,
-			Metadata:                       runInput.Metadata,
-			Clips:                          fingerprintClips(runInput.Clips),
-		},
-		Durations: checkpointFingerprintDurations{
-			ChunkDurationInputSeconds: runInput.ChunkDuration,
-			ClipDurationInputSeconds:  runInput.ClipDuration,
-			SecondsPerSegment:         runInput.SecondsPerSegment,
-			ChunkDurationConfigSec:    cfg.ChunkDurationSec,
-			ClipDurationConfigSec:     cfg.ClipDurationSec,
-		},
-		PreviousOutput: deterministicPreviousOutputOrMarker(previous),
-	}
-
-	raw, err := json.Marshal(payload)
+	payload, err := buildCheckpointFingerprintPayload(jobID, stepName, cfg, runInput, previous)
 	if err != nil {
-		// Keep the fallback domain-separated and error-specific. This path
-		// is defensive (the payload is composed of JSON-safe DTOs), but
-		// different serialization failures must never collapse to one
-		// indistinguishable previous-output marker.
-		return sha256String(checkpointFingerprintVersion + "|payload-serialization-error|" + jobID + "|" + stepName + "|" + err.Error())
+		return fingerprintSerializationFallback(jobID, stepName, err)
+	}
+	raw, err := marshalCheckpointFingerprintPayload(payload)
+	if err != nil {
+		return fingerprintSerializationFallback(jobID, stepName, err)
 	}
 	return sha256String(string(raw))
 }
@@ -192,16 +285,21 @@ func fingerprintClips(clips []ClipSpec) []checkpointClipSpec {
 	return out
 }
 
-func fingerprintWindows(input *RunInput, previous *RunState) []checkpointFingerprintWindow {
+func fingerprintWindowsLegacy(input *RunInput, previous *RunState) []checkpointFingerprintWindow {
+	windows := fingerprintWindows(input)
+	if previous != nil {
+		for _, plan := range previous.Plan {
+			windows = append(windows, checkpointFingerprintWindow{URL: plan.SourceID, StartSec: plan.StartSec, EndSec: plan.EndSec})
+		}
+	}
+	return windows
+}
+
+func fingerprintWindows(input *RunInput) []checkpointFingerprintWindow {
 	windows := make([]checkpointFingerprintWindow, 0)
 	if input != nil {
 		for _, clip := range input.Clips {
 			windows = append(windows, checkpointFingerprintWindow{URL: clip.URL, StartSec: clip.StartSec, EndSec: clip.EndSec})
-		}
-	}
-	if previous != nil {
-		for _, plan := range previous.Plan {
-			windows = append(windows, checkpointFingerprintWindow{URL: plan.SourceID, StartSec: plan.StartSec, EndSec: plan.EndSec})
 		}
 	}
 	return windows
@@ -237,14 +335,13 @@ type deterministicMetadataState struct {
 }
 
 type deterministicManifestArtifact struct {
-	ID               string         `json:"id"`
-	Kind             string         `json:"kind"`
-	Filename         string         `json:"filename"`
-	MIMEType         string         `json:"mime_type"`
-	SizeBytes        int64          `json:"size_bytes"`
-	SHA256           string         `json:"sha256"`
-	Required         bool           `json:"required"`
-	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Filename  string `json:"filename"`
+	MIMEType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	SHA256    string `json:"sha256"`
+	Required  bool   `json:"required"`
 }
 
 type deterministicManifest struct {
@@ -255,7 +352,8 @@ type deterministicManifest struct {
 }
 
 // deterministicPreviousOutput excludes execution-time timestamps, local
-// filesystem paths, and remote links. It retains the logical output contract
+// filesystem paths, temporary cut/compose paths, and remote links. It retains
+// the logical output contract
 // (source windows, hashes, sizes, artifact roles, and metadata) so the next
 // step changes identity when the previous step's meaningful output changes.
 func deterministicPreviousOutput(state *RunState) (json.RawMessage, error) {
@@ -287,15 +385,13 @@ func deterministicPreviousOutput(state *RunState) (json.RawMessage, error) {
 			manifest.Artifacts = append(manifest.Artifacts, deterministicManifestArtifact{
 				ID: artifact.ID, Kind: artifact.Kind, Filename: artifact.Filename,
 				MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, SHA256: artifact.SHA256,
-				Required: artifact.Required, ArtifactMetadata: artifact.ArtifactMetadata,
+				Required: artifact.Required,
 			})
 		}
 	}
 	projection := struct {
 		Plan              []ClipPlan                 `json:"plan"`
 		StagedAssets      []deterministicStagedAsset `json:"staged_assets"`
-		CutPaths          []string                   `json:"cut_paths"`
-		ComposedPaths     []string                   `json:"composed_paths"`
 		Published         []deterministicChunkState  `json:"published"`
 		MetadataPublished deterministicMetadataState `json:"metadata_published"`
 		Manifest          deterministicManifest      `json:"manifest"`
@@ -304,7 +400,6 @@ func deterministicPreviousOutput(state *RunState) (json.RawMessage, error) {
 		SourceErrors      map[string]string          `json:"source_errors,omitempty"`
 	}{
 		Plan: state.Plan, StagedAssets: staged,
-		CutPaths: state.CutPaths, ComposedPaths: state.ComposedPaths,
 		Published:         published,
 		MetadataPublished: deterministicMetadataState{SHA256: state.MetadataPublished.SHA256, SizeBytes: state.MetadataPublished.SizeBytes},
 		Manifest:          manifest, FinalStatus: state.FinalStatus,
