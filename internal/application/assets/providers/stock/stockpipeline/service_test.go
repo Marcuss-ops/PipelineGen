@@ -13,6 +13,9 @@ func TestDefaultPipelineConfig(t *testing.T) {
 	assert.Equal(t, 25, cfg.MaxResults, "default max results should be 25")
 	assert.Equal(t, 4, cfg.EffectInterval, "default effect interval should be 4")
 	assert.Equal(t, "assets/effects/EffettiVisiv", cfg.EffectsDir, "default effects dir")
+	assert.Equal(t, "libx264", cfg.Codec, "stock default codec must be CPU-first")
+	assert.Equal(t, "veryfast", cfg.Preset, "stock default preset must match canonical CPU profile")
+	assert.Equal(t, 23, cfg.CRF, "stock default CRF must match canonical CPU profile")
 }
 
 func TestRunInputValidation_EmptySources(t *testing.T) {
