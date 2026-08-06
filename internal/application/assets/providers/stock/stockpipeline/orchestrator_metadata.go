@@ -203,26 +203,47 @@ func buildChunkedStockManifest(workflowID, jobID, fingerprint string, chunks []C
 	}
 	if metadata.LocalPath != "" {
 		manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
-			ID:        MetadataArtifactID(fingerprint),
-			Kind:      job.ArtifactKindMetadata,
-			Filename:  "metadata.json",
-			MIMEType:  "application/json",
-			Path:      metadata.LocalPath,
-			SHA256:    metadata.SHA256,
-			SizeBytes: metadata.SizeBytes,
-			Required:  true,
+			ID:                MetadataArtifactID(fingerprint),
+			Kind:              job.ArtifactKindMetadata,
+			Filename:          "metadata.json",
+			MIMEType:          "application/json",
+			Path:              metadata.LocalPath,
+			SHA256:            metadata.SHA256,
+			SizeBytes:         metadata.SizeBytes,
+			Required:          true,
+			RemoteFileID:      metadata.RemoteFileID,
+			RemoteWebViewLink: metadata.RemoteWebViewLink,
+			ArtifactMetadata:  map[string]any{"total_clips": len(chunks), "total_chunks": len(chunks)},
 		})
 	}
 	for _, chunk := range chunks {
 		manifest.Artifacts = append(manifest.Artifacts, job.Artifact{
-			ID:        chunk.ArtifactID,
-			Kind:      string(finalization.KindVideo),
-			Filename:  chunk.Filename,
-			MIMEType:  "video/mp4",
-			Path:      chunk.LocalPath,
-			SHA256:    chunk.SHA256,
-			SizeBytes: chunk.SizeBytes,
-			Required:  true,
+			ID:                 chunk.ArtifactID,
+			Kind:               string(finalization.KindVideo),
+			Filename:           chunk.Filename,
+			MIMEType:           "video/mp4",
+			Path:               chunk.LocalPath,
+			SHA256:             chunk.SHA256,
+			SizeBytes:          chunk.SizeBytes,
+			Required:           true,
+			RemoteFileID:       chunk.RemoteFileID,
+			RemoteWebViewLink:  chunk.RemoteWebViewLink,
+			RemoteDownloadLink: chunk.RemoteDownloadLink,
+			ArtifactMetadata: map[string]any{
+				"chunk_index":                 chunk.Index,
+				"clip_count":                  1,
+				"total_chunks":                len(chunks),
+				"title":                       chunk.Title,
+				"description":                 chunk.Description,
+				"source_url":                  chunk.SourceURL,
+				"source_video_id":             chunk.SourceVideoID,
+				"start_sec":                   chunk.StartSec,
+				"end_sec":                     chunk.EndSec,
+				"drive_path":                  chunk.DrivePath,
+				"timestamp_drive_folder_link": chunk.TimestampDriveFolderLink,
+				"timestamp_folder_id":         chunk.TimestampFolderID,
+				"policy_version":              chunk.PolicyVersion,
+			},
 		})
 	}
 	return manifest
