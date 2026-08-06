@@ -45,6 +45,7 @@ func TestNewProductionStockOrchestratorAcceptsCompleteDependencyGraph(t *testing
 	require.NotNil(t, pipeline.writer)
 	require.NotNil(t, pipeline.projection)
 	require.NotNil(t, pipeline.sourceProbe)
+	require.True(t, pipeline.cfg.StrictDurationValidation)
 	require.NotNil(t, pipeline.batchRepository)
 	require.NotNil(t, pipeline.localFS)
 }

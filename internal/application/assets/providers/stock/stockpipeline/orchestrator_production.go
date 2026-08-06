@@ -86,6 +86,7 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 	if cfg.JobId == "" {
 		cfg.JobId = DefaultOrchestratorJobId
 	}
+	cfg.StrictDurationValidation = true
 	return &Orchestrator{
 		cfg:                 cfg,
 		planner:             deps.Planner,

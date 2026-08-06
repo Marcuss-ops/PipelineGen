@@ -17,23 +17,38 @@ func validateAndProbeSourceDuration(ctx context.Context, runner StepRunner, sour
 	duration := staged.DurationSec
 
 	// Tier 2: ffprobe SourceDurationProbe.
+	var probeErr error
 	if duration <= 0 {
 		probe := runner.SourceDurationProbe()
 		if probe != nil {
-			probed, probeErr := probe.ProbeDurationSec(ctx, sourcePath)
-			if probeErr == nil && probed > 0 {
+			probed, err := probe.ProbeDurationSec(ctx, sourcePath)
+			probeErr = err
+			if err == nil && probed > 0 {
 				duration = probed
-			} else if runner.Log() != nil {
-				runner.Log().Warn("orchestrator: stock.extract_clips: SourceDurationProbe failed",
-					zap.String("source_id", sourceID),
-					zap.String("source_path", sourcePath),
-					zap.Error(probeErr))
+			} else {
+				if err == nil {
+					probeErr = fmt.Errorf("probe returned non-positive duration %.2f", probed)
+				}
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.extract_clips: SourceDurationProbe failed",
+						zap.String("source_id", sourceID),
+						zap.String("source_path", sourcePath),
+						zap.Error(probeErr))
+				}
 			}
 		}
 	}
 
-	// Tier 3: Warn + skip validation (backward-compat).
+	// Tier 3: production is fail-closed when the source duration is
+	// still unknown. Fixture runners may intentionally leave probing
+	// disabled for hermetic tests that do not exercise duration validation.
 	if duration <= 0 {
+		if runner.Cfg().StrictDurationValidation {
+			if probeErr != nil {
+				return 0, nil, fmt.Errorf("%w: source_id=%s source_path=%s: %w", ErrStockClipsUnknownDuration, sourceID, sourcePath, probeErr)
+			}
+			return 0, nil, fmt.Errorf("%w: source_id=%s source_path=%s", ErrStockClipsUnknownDuration, sourceID, sourcePath)
+		}
 		if runner.Log() != nil {
 			runner.Log().Warn("orchestrator: stock.extract_clips: no source duration available — skipping bounds check",
 				zap.String("source_id", sourceID))
