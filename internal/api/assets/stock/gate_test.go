@@ -8,7 +8,7 @@ import (
 
 // prohibitedPatterns is the per-area list for internal/api/assets/stock.
 // Baseline (no goroutines; bash Check 19 enforces no infrastructure
-// imports) + the grep-verified `stockpipeline.NewService` direct
+// imports) + the grep-verified `stockpipeline.NewProductionStockPipeline` direct
 // orchestrator (added 2026-06-24 followup). See
 // architecture/current.yaml::Wave 14 + arch check Check 19.
 // Cross-ref: docs/migrations/api-infrastructure-imports-allowlist.txt
@@ -23,13 +23,13 @@ var prohibitedPatterns = []gate.Prohibition{
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
 	// Per-area orchestrator pattern (added 2026-06-24 followup, code-review
-	// NIT-B): `stockpipeline.NewService` is the canonical direct-
+	// NIT-B): `stockpipeline.NewProductionStockPipeline` is the canonical direct-
 	// orchestrator constructor; the API layer must reach the stock
 	// pipeline via the StockBundle wired in internal/app/composition.go,
 	// not via direct construction here. Grep-verified: zero hits in
 	// internal/api/* production code at HEAD, safe to enforce as
 	// hard-fail pattern.
-	{Name: "stockpipeline.NewService direct construction", Pattern: "stockpipeline.NewService"},
+	{Name: "stockpipeline.NewProductionStockPipeline direct construction", Pattern: "stockpipeline.NewProductionStockPipeline"},
 }
 
 func TestStaticGate_NoStockAPIInfrastructureLeaks(t *testing.T) {

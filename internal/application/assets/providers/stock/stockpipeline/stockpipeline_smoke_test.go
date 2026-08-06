@@ -139,10 +139,10 @@ func TestDeps_FieldCountCap(t *testing.T) {
 	require.LessOrEqual(t, len(want), 7, "Deps field count must stay ≤7 (well below the 8 cap); 9th field requires allowlist + ADR amendment")
 }
 
-// TestNewService_NilDepsRejected verifies the PR-D ctor validation surface:
+// TestNewProductionStockPipeline_NilDepsRejected verifies the PR-D ctor validation surface:
 // every required dep is rejected with its own typed sentinel error so
 // composition wiring + tests can assert the precise missing dep.
-func TestNewService_NilDepsRejected(t *testing.T) {
+func TestNewProductionStockPipeline_NilDepsRejected(t *testing.T) {
 	tests := []struct {
 		name string
 		// We assert the sentinel only — full Deps construction cannot
@@ -163,7 +163,7 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			deps := Deps{}
 			tc.setup(&deps)
-			_, err := NewService(deps)
+			_, err := NewProductionStockPipeline(deps)
 			require.Error(t, err)
 			assert.True(t, errors.Is(err, tc.wantErr) || err == tc.wantErr,
 				"expected sentinel %v, got %v", tc.wantErr, err)

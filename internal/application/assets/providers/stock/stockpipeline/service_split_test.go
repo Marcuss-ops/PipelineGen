@@ -47,7 +47,7 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 	}
 	if got, want := len(sentinels), 11; got != want {
 		// 11 distinct sentinels today (ErrStockPipelineNilDB retired — DB no
-		// longer passed to stockpipeline.NewService; step store is mandatory).
+		// longer passed to stockpipeline.NewProductionStockPipeline; step store is mandatory).
 		t.Fatalf("sentinel count: got %d, want %d (a sentinel was accidentally added/removed; update this test byte-stable)", got, want)
 	}
 	for _, s := range sentinels {
@@ -58,8 +58,8 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 		// (godlike/07 typed-error contract). Drift to bare messages
 		// would break operator log scanability.
 		msg := s.Error()
-		if !strings.Contains(msg, "stockpipeline.NewService") {
-			t.Errorf("sentinel %q missing 'stockpipeline.NewService' prefix", msg)
+		if !strings.Contains(msg, "stockpipeline.NewProductionStockPipeline") {
+			t.Errorf("sentinel %q missing 'stockpipeline.NewProductionStockPipeline' prefix", msg)
 		}
 	}
 }
@@ -92,33 +92,33 @@ func TestSplit_ConstructorInputTypesLiveInServiceTypes(t *testing.T) {
 	}
 }
 
-// TestSplit_NewServiceSurfacesTypedSentinelForMissingCfg pins the
-// canonical fail-closed contract: NewService(deps) with deps.Cfg ==
+// TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForMissingCfg pins the
+// canonical fail-closed contract: NewProductionStockPipeline(deps) with deps.Cfg ==
 // nil MUST return (nil, ErrStockPipelineNilCfg) verbatim (no
 // wrapping, no fake-availability fallthrough). The test runs the
 // minimum Deps literal that the constructor accepts as the nil-only
 // shape; every other nil field short-circuits before Cfg in the
 // validation ladder so the test isolates the Cfg path.
-func TestSplit_NewServiceSurfacesTypedSentinelForMissingCfg(t *testing.T) {
-	_, err := NewService(Deps{})
+func TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForMissingCfg(t *testing.T) {
+	_, err := NewProductionStockPipeline(Deps{})
 	if err == nil {
-		t.Fatalf("NewService(Deps{}) with nil Cfg: expected ErrStockPipelineNilCfg, got nil")
+		t.Fatalf("NewProductionStockPipeline(Deps{}) with nil Cfg: expected ErrStockPipelineNilCfg, got nil")
 	}
 	if !errors.Is(err, ErrStockPipelineNilCfg) {
-		t.Errorf("NewService(Deps{}) err = %v; want errors.Is(err, ErrStockPipelineNilCfg) == true", err)
+		t.Errorf("NewProductionStockPipeline(Deps{}) err = %v; want errors.Is(err, ErrStockPipelineNilCfg) == true", err)
 	}
 }
 
-// TestSplit_NewServiceSurfacesTypedSentinelForFirstMissingDep pins
+// TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForFirstMissingDep pins
 // the validation ladder's fail-closed short-circuit contract:
-// NewService MUST surface the EARLIEST missing dep as a typed
+// NewProductionStockPipeline MUST surface the EARLIEST missing dep as a typed
 // sentinel, NOT proceed past nil guards or fall through to a
 // downstream panic. The test populates only Cfg+Log so the
 // Storage.ClipsRepo check is the earliest that fires; a future
 // "moved the Storage check below Media" regression would surface
 // here as either (a) a different sentinel (Media.Renderer or
 // Media.Cutter) or (b) a nil-pointer panic.
-func TestSplit_NewServiceSurfacesTypedSentinelForFirstMissingDep(t *testing.T) {
+func TestSplit_NewProductionStockPipelineSurfacesTypedSentinelForFirstMissingDep(t *testing.T) {
 	cfg := &RuntimeConfig{WorkDir: t.TempDir(), ClipDurationSec: 5, ChunkDurationSec: 25, MaxResults: 25, PolicyVersion: "test"}
 	deps := Deps{
 		Runtime: RuntimeDeps{
@@ -127,12 +127,12 @@ func TestSplit_NewServiceSurfacesTypedSentinelForFirstMissingDep(t *testing.T) {
 		},
 		// Storage / Media / Jobs omitted → prior checks fire first.
 	}
-	_, err := NewService(deps)
+	_, err := NewProductionStockPipeline(deps)
 	if err == nil {
-		t.Fatalf("NewService(deps) with nil Storage.ClipsRepo: expected ErrStockPipelineNilClipsRepo, got nil")
+		t.Fatalf("NewProductionStockPipeline(deps) with nil Storage.ClipsRepo: expected ErrStockPipelineNilClipsRepo, got nil")
 	}
 	if !errors.Is(err, ErrStockPipelineNilClipsRepo) {
-		t.Errorf("NewService(deps) err = %v; want errors.Is(err, ErrStockPipelineNilClipsRepo) == true (validation ladder short-circuits at the earliest missing dep)", err)
+		t.Errorf("NewProductionStockPipeline(deps) err = %v; want errors.Is(err, ErrStockPipelineNilClipsRepo) == true (validation ladder short-circuits at the earliest missing dep)", err)
 	}
 }
 
@@ -165,8 +165,8 @@ func TestSplit_FileLayoutSentinelsMatch(t *testing.T) {
 	// Use strings.Contains to allow natural message evolution
 	// (e.g. adding a "(§F.2 follow-up)" annotation for parity
 	// with other sentinels) without freezing the exact wording.
-	if msg := ErrStockPipelineNilCfg.Error(); !strings.Contains(msg, "stockpipeline.NewService") || !strings.Contains(msg, "cfg") || !strings.Contains(msg, "required") {
-		t.Errorf("ErrStockPipelineNilCfg message drifted (must contain 'stockpipeline.NewService' + 'cfg' + 'required'): %q", msg)
+	if msg := ErrStockPipelineNilCfg.Error(); !strings.Contains(msg, "stockpipeline.NewProductionStockPipeline") || !strings.Contains(msg, "cfg") || !strings.Contains(msg, "required") {
+		t.Errorf("ErrStockPipelineNilCfg message drifted (must contain 'stockpipeline.NewProductionStockPipeline' + 'cfg' + 'required'): %q", msg)
 	}
 	if msg := ErrStockPipelineNilSourceStager.Error(); !strings.Contains(msg, "SourceStager") {
 		t.Errorf("ErrStockPipelineNilSourceStager missing 'SourceStager' in message: %q", msg)

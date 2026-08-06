@@ -97,7 +97,7 @@ type Service struct {
 	// batchRepo is the durable stock batch/group/artifact repository.
 	batchRepo StockBatchRepository
 	// dispatcher is the canonical media_index_outbox dispatcher,
-	// required at ctor time per QDRANT-002 PR7. NewService rejects
+	// required at ctor time per QDRANT-002 PR7. NewProductionStockPipeline rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
 	// Audit P0 #6: narrowed from `*outbox.Dispatcher` to the local
 	// `stockChunkDispatcher` interface so test fakes can wire the
