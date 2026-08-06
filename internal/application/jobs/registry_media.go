@@ -22,6 +22,7 @@ func registerMediaEntries(r *Registry) {
 	// ── Catalog / sync ──
 	r.Register(JobPolicy{Type: TypeCatalogSync, Description: "Catalog synchronization", Timeout: 2 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeArtlistRun, Description: "Artlist run", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeArtlistCacheRefresh, Description: "Refresh a stale Artlist live-search cache entry", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
 	r.Register(JobPolicy{Type: TypeDriveFolderSync, Description: "Drive folder sync", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── Content processing ──

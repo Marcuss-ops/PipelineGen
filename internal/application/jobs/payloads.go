@@ -75,6 +75,13 @@ type ArtlistRunPayload struct {
 	Count int    `json:"count"`
 }
 
+// ArtlistCacheRefreshPayload is sent with TypeArtlistCacheRefresh.
+type ArtlistCacheRefreshPayload struct {
+	Term         string `json:"term"`
+	Limit        int    `json:"limit,omitempty"`
+	PreferRemote bool   `json:"prefer_remote,omitempty"`
+}
+
 // BulkUploadYouTubeClipsPayload is sent with JobTypeBulkUploadYouTubeClips.
 //
 // PR-13 (July 2026, refactor(api): drop runtime-tunable noise configs):
@@ -113,7 +120,7 @@ type TypedPayload interface {
 		CatalogSyncPayload |
 		SystemCleanupPayload | VoiceoverBatchPayload |
 		BooksProcessPayload | LessonsProcessPayload |
-		MediaReindexPayload | ArtlistRunPayload | BulkUploadYouTubeClipsPayload |
+		MediaReindexPayload | ArtlistRunPayload | ArtlistCacheRefreshPayload | BulkUploadYouTubeClipsPayload |
 		DriveFolderSyncPayload
 }
 

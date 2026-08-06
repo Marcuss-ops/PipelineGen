@@ -162,22 +162,43 @@ func (c *liveSearchCache) age(term string) time.Duration {
 }
 
 // set stores a fresh live search result in both in-memory and
-// the persistent port. Persist errors are logged (fail-soft) —
-// the L1 has already been updated, the operator sees the failure
-// in the warn-level log line.
+// the persistent port. Ordinary request-path cache fills remain
+// fail-soft for backward compatibility; durable worker refreshes use
+// setWithContext so a persistent write failure is retryable.
 func (c *liveSearchCache) set(term string, clips []Candidate) {
+	if err := c.setWithContext(context.Background(), term, clips); err != nil && c.log != nil {
+		c.log.Debug("persistent cache write failed", zap.String("term", strings.ToLower(term)), zap.Error(err))
+	}
+}
+
+// setWithContext is the worker-safe cache mutation path. The L1 update is
+// applied first, while an L2 failure is returned so durable refresh jobs do
+// not report success when the persistent cache could not be updated.
+func (c *liveSearchCache) setWithContext(ctx context.Context, term string, clips []Candidate) error {
 	key := strings.ToLower(term)
+	writtenAt := time.Now()
 	c.mu.Lock()
-	c.items[key] = liveSearchCacheEntry{
-		Clips:    clips,
-		CachedAt: time.Now(),
-	}
+	previous, existed := c.items[key]
+	c.items[key] = liveSearchCacheEntry{Clips: clips, CachedAt: writtenAt}
 	c.mu.Unlock()
-	if c.cache != nil {
-		if err := c.cache.Set(context.Background(), key, clips); err != nil && c.log != nil {
-			c.log.Debug("persistent cache write failed", zap.String("term", key), zap.Error(err))
-		}
+	if c.cache == nil {
+		return nil
 	}
+	if err := c.cache.Set(ctx, key, clips); err != nil {
+		// Do not leave an unpersisted L1 value looking fresh. Restore only
+		// if no concurrent writer superseded this refresh in the meantime.
+		c.mu.Lock()
+		if current, ok := c.items[key]; ok && current.CachedAt.Equal(writtenAt) {
+			if existed {
+				c.items[key] = previous
+			} else {
+				delete(c.items, key)
+			}
+		}
+		c.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 // isFresh returns true if the cache entry exists and is within the TTL.

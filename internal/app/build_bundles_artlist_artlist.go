@@ -451,5 +451,9 @@ func WireArtlistJobBindings(artlistSvc *artlist.Service, jobsBundle *wiring.Jobs
 		return fmt.Errorf("%w: post-bind HasHandler(media.artlist) returned false (dispatcher silently dropped the Register call?)",
 			ErrArtlistConsumerRegistrationFailed)
 	}
+	if !jobsBundle.Service.HasHandler(media.TypeArtlistCacheRefresh) {
+		return fmt.Errorf("%w: post-bind HasHandler(media.artlist_cache_refresh) returned false",
+			ErrArtlistConsumerRegistrationFailed)
+	}
 	return nil
 }

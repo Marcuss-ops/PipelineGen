@@ -94,6 +94,7 @@ var canonicalJobTypes = []string{
 	TypeYouTubeClipExtract,     // domain/job/job.go
 	TypeCatalogSync,            // domain/job/job.go
 	TypeArtlistRun,             // domain/job/job.go
+	TypeArtlistCacheRefresh,    // domain/media/job_types.go (durable stale-cache refresh)
 	TypeSystemCleanup,          // domain/job/job.go
 	TypeMediaGenerate,          // domain/job/job.go
 	TypeVideoGenerate,          // domain/job/job.go

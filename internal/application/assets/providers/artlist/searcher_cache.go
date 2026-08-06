@@ -5,7 +5,9 @@ import (
 	"errors"
 	"time"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -18,22 +20,35 @@ var ErrCachedSearcherNotWired = errors.New("artlist cached searcher: inner searc
 // It owns cache hit, stale-refresh, and cache-miss behavior; the wrapped
 // searcher remains responsible only for obtaining candidates.
 type CachedSearcher struct {
-	inner Searcher
-	cache *liveSearchCache
-	ttl   time.Duration
-	log   *zap.Logger
+	inner    Searcher
+	cache    *liveSearchCache
+	ttl      time.Duration
+	log      *zap.Logger
+	enqueuer RefreshEnqueuer
+}
+
+// RefreshEnqueuer is the narrow durable-job port used by the cache decorator.
+// Enqueue is intentionally synchronous and fast: only the durable intent is
+// persisted on the request path; provider I/O runs in the worker.
+type RefreshEnqueuer interface {
+	Enqueue(context.Context, *job.EnqueueRequest) (*job.Job, error)
 }
 
 // NewCachedSearcher creates a cached search decorator.
-func NewCachedSearcher(inner Searcher, cache *liveSearchCache, ttlHours int, log *zap.Logger) *CachedSearcher {
+func NewCachedSearcher(inner Searcher, cache *liveSearchCache, ttlHours int, log *zap.Logger, enqueuers ...RefreshEnqueuer) *CachedSearcher {
 	if ttlHours <= 0 {
 		ttlHours = 24
 	}
+	var enqueuer RefreshEnqueuer
+	if len(enqueuers) > 0 {
+		enqueuer = enqueuers[0]
+	}
 	return &CachedSearcher{
-		inner: inner,
-		cache: cache,
-		ttl:   time.Duration(ttlHours) * time.Hour,
-		log:   log,
+		inner:    inner,
+		cache:    cache,
+		ttl:      time.Duration(ttlHours) * time.Hour,
+		log:      log,
+		enqueuer: enqueuer,
 	}
 }
 
@@ -50,20 +65,26 @@ func (s *CachedSearcher) Search(ctx context.Context, req SearchRequest) ([]Candi
 		}
 
 		if s.cache.isGettingStale(term, s.ttl) {
-			if s.log != nil {
-				s.log.Info("artlist search: cache getting stale, scheduling background refresh", zap.String("term", term))
-			}
-			concurrent.SafeGo("artlist-cache-refresh-"+term, func() {
-				bgCtx := context.WithoutCancel(ctx)
-				if freshClips, err := s.inner.Search(bgCtx, req); err == nil && len(freshClips) > 0 {
-					s.cache.set(term, freshClips)
-					if s.log != nil {
-						s.log.Info("artlist background refresh: cache updated", zap.String("term", term), zap.Int("clips", len(freshClips)))
-					}
-				} else if err != nil && s.log != nil {
-					s.log.Warn("artlist background refresh: live search failed", zap.String("term", term), zap.Error(err))
+			if s.enqueuer != nil {
+				if s.log != nil {
+					s.log.Info("artlist search: cache getting stale, enqueueing durable refresh", zap.String("term", term))
 				}
-			})
+				refreshTerm := normalizeSearchTermLower(term)
+				// Refreshes use the canonical provider limit so one durable job
+				// warms the cache for all callers, regardless of the stale-hit
+				// request's display limit.
+				const refreshLimit = 50
+				refreshReq := &job.EnqueueRequest{
+					Type:      media.TypeArtlistCacheRefresh,
+					Payload:   appjobs.ArtlistCacheRefreshPayload{Term: refreshTerm, Limit: refreshLimit, PreferRemote: true},
+					ActiveKey: "artlist-cache-refresh:" + refreshTerm,
+				}
+				if _, err := s.enqueuer.Enqueue(ctx, refreshReq); err != nil && s.log != nil {
+					s.log.Warn("artlist cache refresh enqueue failed", zap.String("term", term), zap.Error(err))
+				}
+			} else if s.log != nil {
+				s.log.Warn("artlist cache refresh skipped: durable job enqueuer is not wired", zap.String("term", term))
+			}
 		}
 
 		limit := req.Limit
