@@ -13,7 +13,7 @@
 package metadataexport
 
 import (
-	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
+	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
 )
 
 // Compile-time assertion: the file-writer concrete must satisfy the

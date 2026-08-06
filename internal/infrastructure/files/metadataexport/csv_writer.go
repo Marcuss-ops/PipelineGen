@@ -26,7 +26,7 @@ import (
 	"bytes"
 	"encoding/csv"
 
-	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
+	appexport "github.com/Marcuss-ops/PipelineGen/internal/application/assets/metadataexport"
 )
 
 // Compile-time assertion reuses the same FileWriter struct as the

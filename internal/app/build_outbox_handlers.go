@@ -22,7 +22,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
@@ -94,13 +93,13 @@ func buildOutboxDeps(
 	// handler gets its output dir as part of HandlerDeps at wire time.
 	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
 	metadataExportWriter := &filesmetadataexport.FileWriter{}
-	metadataExportDeps := metadataexport.HandlerDeps{
+	metadataExportDeps := jobsoutbox.MetadataExportHandlerDeps{
 		Resolver:  metadataExportResolver,
 		Writer:    metadataExportWriter,
 		OutputDir: cfg.Storage.FullPath("asset_metadata"),
 		Log:       log,
 	}
-	metadataExportHandler := metadataexport.NewMetadataExportHandler(metadataExportDeps)
+	metadataExportHandler := jobsoutbox.NewMetadataExportHandler(metadataExportDeps)
 
 	outboxDeps := &jobsoutbox.Deps{
 		Infra: jobsoutbox.InfraDeps{

@@ -2,13 +2,13 @@
 // Split metadata-export handler.
 //
 // Step 2 of the post-architettura 2026 plan (June 2026): the legacy
-// internal/application/jobs/outbox/metadata_export.go::atomicWrite
+// internal/application/assets/metadataexport::atomicWrite
 // helper inlined the POSIX-atomic .tmp + rename pattern. After split,
 // the atomic primitive lives here (private helper) and is wrapped by
 // the three format-specific writers in the sibling files of this
 // package. All four files implement the metadataexport.ExportWriter
 // port declared in
-// internal/application/jobs/outbox/metadataexport/ports.go.
+// internal/application/assets/metadataexport/ports.go.
 //
 // Atomicity guarantee: write to a sibling .tmp file (same directory
 // as the final destination) then os.Rename. On linux/macos the rename
