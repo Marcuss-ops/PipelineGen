@@ -105,10 +105,11 @@ import (
 // InfraDeps groups the infrastructure / configuration knobs so Deps
 // stays under the archcheck 8-field cap.
 type InfraDeps struct {
-	DB          *sql.DB
-	HTTPClient  ports.Client
-	HMACSecrets [][]byte
-	InsecureDev bool
+	DB                 *sql.DB
+	HTTPClient         ports.Client
+	HMACSecrets        [][]byte
+	InsecureDev        bool
+	DeliveryOperations DeliveryOperation
 }
 
 // JobDeps groups the job + cleanup ports so Deps stays under the
@@ -293,7 +294,9 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 //     metadataexport package's typed-port adapter; passed in via
 //     metadataExportHandler; nil → skipped).
 //   - DeliveryHandler (deps.Infra.HTTPClient OR deps.Infra.DB; plus HMACSecrets
-//     OR InsecureDev).
+//     OR InsecureDev). Explicit reference/materialization ports are supplied
+//     through DeliveryOperations; absent ports make explicit operations fail
+//     closed while legacy envelopes remain source-compatible.
 //   - ProviderSyncHandler (only Jobs — nil Jobs → drive|youtube events
 //     fail with retryable error inside the handler, never silently
 //     ack).
@@ -322,7 +325,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	}
 	if deps != nil {
 		if (deps.Infra.HTTPClient != nil || deps.Infra.DB != nil) && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev) {
-			optional = append(optional, NewDeliveryHandler(log, deps.Infra.HTTPClient, deps.Infra.DB, deps.Infra.HMACSecrets, deps.Infra.InsecureDev))
+			optional = append(optional, NewDeliveryHandlerWithOperations(log, deps.Infra.HTTPClient, deps.Infra.DB, deps.Infra.HMACSecrets, deps.Infra.InsecureDev, deps.Infra.DeliveryOperations))
 		}
 	}
 	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs.Jobs))
