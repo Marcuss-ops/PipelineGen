@@ -51,6 +51,8 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         ".dockerignore",
         ".github/dependabot.yml",
         "scripts/verify-ffmpeg.sh",
+        "scripts/with-velox-auth",
+        "scripts/with-velox-auth_test.sh",
         "comic-video-maker",
     }
 )

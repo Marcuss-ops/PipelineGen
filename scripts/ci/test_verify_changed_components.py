@@ -65,6 +65,8 @@ class VerifyChangedComponentsTests(unittest.TestCase):
                 ".github/workflows/ci.yml",
                 ".github/workflows/smoke.yml",
                 "scripts/verify-ffmpeg.sh",
+                "scripts/with-velox-auth",
+                "scripts/with-velox-auth_test.sh",
                 "comic-video-maker",
             ],
             self.registry(),
@@ -73,6 +75,8 @@ class VerifyChangedComponentsTests(unittest.TestCase):
         self.assertEqual(mapping["Dockerfile"], impacted)
         self.assertEqual(mapping[".github/workflows/ci.yml"], impacted)
         self.assertEqual(mapping["scripts/verify-ffmpeg.sh"], impacted)
+        self.assertEqual(mapping["scripts/with-velox-auth"], impacted)
+        self.assertEqual(mapping["scripts/with-velox-auth_test.sh"], impacted)
         self.assertEqual(mapping["comic-video-maker"], impacted)
         self.assertEqual(unmapped, [])
 
