@@ -127,7 +127,7 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(context.Background(), planKey))
-	require.NoError(t, store.MarkCompleted(context.Background(), planKey, nil, nil))
+	require.NoError(t, store.MarkCompleted(context.Background(), planKey, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)))
 
 	// Block-tracking flags for the canceller step.
 	var (

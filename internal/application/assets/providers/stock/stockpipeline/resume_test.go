@@ -83,7 +83,7 @@ func TestOrchestrator_PostRestart_StepStoreHasNoDuplicateRows(t *testing.T) {
 			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(context.Background(), k))
-		require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil),
+		require.NoError(t, store.MarkCompleted(context.Background(), k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)),
 			"pre-Complete %s", name)
 	}
 
@@ -163,7 +163,7 @@ func TestOrchestrator_PostRestart_AllStepsCASPreserveAttempt1(t *testing.T) {
 			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(context.Background(), k))
-		require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil))
+		require.NoError(t, store.MarkCompleted(context.Background(), k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)))
 	}
 
 	// Stub dispatchSteps (5 total).
@@ -228,7 +228,7 @@ func TestOrchestrator_PostRestart_ListRowCountMatchesDispatchSlice(t *testing.T)
 		InputFingerprint: legacyStepInputFingerprint(jobID, prestageName),
 	}
 	require.NoError(t, store.MarkStarted(context.Background(), k))
-	require.NoError(t, store.MarkCompleted(context.Background(), k, nil, nil))
+	require.NoError(t, store.MarkCompleted(context.Background(), k, []byte(`{"checkpoint_version":1,"Plan":[]}`), []byte(`[]`)))
 
 	dispatchSteps := []Step{
 		&stubRecorderStep{name: "stock.plan", count: new(int32)},

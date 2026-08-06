@@ -164,6 +164,7 @@ var (
 	ErrStockFinalizeStateLost              = types.ErrStockFinalizeStateLost
 	ErrStockFnRequired                     = types.ErrStockFnRequired
 	ErrStockPublishStateLost               = types.ErrStockPublishStateLost
+	ErrStockResumeStateReadFailed          = types.ErrStockResumeStateReadFailed
 	ErrStockResumeStateInvalid             = types.ErrStockResumeStateInvalid
 	ErrStockStageSourcesAllFailed          = types.ErrStockStageSourcesAllFailed
 	ErrStockStageSourcesIncomplete         = types.ErrStockStageSourcesIncomplete

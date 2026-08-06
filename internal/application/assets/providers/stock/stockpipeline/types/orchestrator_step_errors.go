@@ -149,6 +149,12 @@ var (
 	// PR-STOCK-FINALIZER-ABSENT-FAILCLOSED (July 2026).
 	ErrFinalizerAbsent = errors.New("stock.finalize: JobFinalizer absent")
 
+	// ErrStockResumeStateReadFailed is raised when the canonical checkpoint
+	// store cannot be read, or when a completed step has no corresponding
+	// readable state snapshot. Resume must stop rather than continue with
+	// an accumulator that cannot be proven canonical.
+	ErrStockResumeStateReadFailed = errors.New("stock: resume: canonical checkpoint state unreadable")
+
 	// ErrStockResumeStateInvalid is raised when the orchestrator
 	// cannot rehydrate the RunState snapshot from a pre-completed
 	// step's result_json, or when it cannot marshal the current
