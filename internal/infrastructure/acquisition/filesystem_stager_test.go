@@ -148,6 +148,119 @@ func TestFilesystemStager_Prepare_WritesMetaSidecar(t *testing.T) {
 
 // ── Cache idempotency: second Prepare hits the cache ───────────────
 
+func TestFilesystemStager_Prepare_ConcurrentSameSource_SerializesFetch(t *testing.T) {
+	root := t.TempDir()
+
+	var fetchCalls int32
+	var mu sync.Mutex
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+		mu.Lock()
+		fetchCalls++
+		mu.Unlock()
+		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+	}
+
+	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
+	require.NoError(t, err)
+	req := appacq.PrepareRequest{
+		Source:         appacq.SourceRef{URL: "https://example.com/concurrent.mp4"},
+		IdempotencyKey: "concurrent-key",
+	}
+
+	const callers = 12
+	results := make(chan *appacq.PrepareContext, callers)
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			prepared, prepareErr := stager.Prepare(context.Background(), req)
+			if prepareErr != nil {
+				errs <- prepareErr
+				return
+			}
+			results <- prepared
+		}()
+	}
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		t.Errorf("concurrent Prepare failed: %v", err)
+	}
+	if got := len(results); got != callers {
+		t.Fatalf("successful Prepare calls = %d, want %d", got, callers)
+	}
+	assert.EqualValues(t, 1, fetchCalls, "same stage ID must allow only one concurrent Fetch")
+
+	var canonicalPath string
+	for prepared := range results {
+		require.NoError(t, prepared.Validated())
+		if canonicalPath == "" {
+			canonicalPath = prepared.LocalPath
+		}
+		assert.Equal(t, canonicalPath, prepared.LocalPath, "all callers must receive the canonical staged path")
+	}
+	assert.FileExists(t, canonicalPath)
+	assert.FileExists(t, canonicalPath+".meta.json")
+	stager.prepareLocksMu.Lock()
+	assert.Empty(t, stager.prepareLocks, "released stage lock must not remain in the lock registry")
+	stager.prepareLocksMu.Unlock()
+}
+
+func TestFilesystemStager_Prepare_DifferentSourcesCanFetchConcurrently(t *testing.T) {
+	root := t.TempDir()
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	fetch := func(_ context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+		started <- struct{}{}
+		<-release
+		body := []byte(req.Source.URL)
+		if err := os.WriteFile(dstPath, body, 0o644); err != nil {
+			return err
+		}
+		hash, err := fileSHA256(dstPath)
+		if err != nil {
+			return err
+		}
+		if onWireSHA256 != nil {
+			onWireSHA256(hash)
+		}
+		return nil
+	}
+	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: fetch})
+	require.NoError(t, err)
+
+	results := make(chan error, 2)
+	go func() {
+		_, prepareErr := stager.Prepare(context.Background(), appacq.PrepareRequest{
+			Source:         appacq.SourceRef{URL: "https://example.com/one.mp4"},
+			IdempotencyKey: "one",
+		})
+		results <- prepareErr
+	}()
+	go func() {
+		_, prepareErr := stager.Prepare(context.Background(), appacq.PrepareRequest{
+			Source:         appacq.SourceRef{URL: "https://example.com/two.mp4"},
+			IdempotencyKey: "two",
+		})
+		results <- prepareErr
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("different sources were unexpectedly serialized")
+		}
+	}
+	close(release)
+	assert.NoError(t, <-results)
+	assert.NoError(t, <-results)
+}
+
 func TestFilesystemStager_Prepare_SecondCall_HitsCache(t *testing.T) {
 	root := t.TempDir()
 

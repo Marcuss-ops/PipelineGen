@@ -32,6 +32,9 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 	}
 
 	stageID := appacq.DeriveStageID(req.Source)
+	releasePrepareLock := f.acquirePrepareLock(stageID)
+	defer releasePrepareLock()
+
 	stagedPath := filepath.Join(f.stagingRoot, stageID)
 	metaPath := stagedPath + ".meta.json"
 
