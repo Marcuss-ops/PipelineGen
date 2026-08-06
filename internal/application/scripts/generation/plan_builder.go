@@ -28,7 +28,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID: item.ID, Title: title, Topic: topic, Language: item.Language,
-		Tone: item.Tone, Model: item.Model, Mode: modeForSource(item.Source.Type),
+		Tone: item.Tone, Model: item.Model, Mode: scriptpkg.ModeForSource(item.Source.Type),
 		MediaMode: item.MediaMode, SourceText: item.Source.SourceText,
 		Guidelines: editorialGuidelines(item), TargetWords: item.ScriptParams.TargetWords,
 		SingleScene: item.ScriptParams.SingleScene, Duration: item.ScriptParams.Duration,
@@ -75,19 +75,6 @@ func BuildPlans(items []scriptpkg.GenerationItemV2) []scriptpkg.ResolvedGenerati
 		plans[i] = BuildPlan(items[i])
 	}
 	return plans
-}
-
-var modeBySource = map[scriptpkg.SourceType]string{
-	scriptpkg.SourceText: "text", scriptpkg.SourceClips: "clip_to_script",
-	scriptpkg.SourceCurate: "clip_to_script", scriptpkg.SourceCatalog: "clip_to_script",
-	scriptpkg.SourceSearch: "clip_to_script",
-}
-
-func modeForSource(sourceType scriptpkg.SourceType) string {
-	if mode, ok := modeBySource[sourceType]; ok {
-		return mode
-	}
-	return "text"
 }
 
 func mediaPlanRequested(item scriptpkg.GenerationItemV2) bool {

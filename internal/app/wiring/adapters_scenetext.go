@@ -141,7 +141,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Language:       string(req.SourceLanguage),
 		SourceText:     req.Source.SourceText,
 		RenderedPrompt: renderedPrompt,
-		Mode:           modeForSourceType(req.Source.Type),
+		Mode:           scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
 		SourceKind:     string(req.Source.Type),
 		// Postprocessors left empty — the engine generates raw
 		// narrative prose. Downstream phases handle translation,
@@ -272,20 +272,6 @@ func copyStrings(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
-}
-
-// modeForSourceType maps scriptgeneration source types to the engine's
-// mode strings. Text sources produce "text" mode; clip-based sources
-// produce "clip_to_script".
-func modeForSourceType(st scriptgen.SourceType) string {
-	switch st {
-	case scriptgen.SourceText:
-		return "text"
-	case scriptgen.SourceClips, scriptgen.SourceCatalog, scriptgen.SourceSearch, scriptgen.SourceCurate:
-		return "clip_to_script"
-	default:
-		return "text"
-	}
 }
 
 // firstLine returns the first line of a multi-line string.
