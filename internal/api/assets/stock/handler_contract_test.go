@@ -77,11 +77,39 @@ func TestStockHandler_RoutesRegistered(t *testing.T) {
 	_, router := newStockHandler(nil, "job-1")
 
 	routes := router.Routes()
-	if len(routes) != 1 {
-		t.Fatalf("expected 1 route, got %d: %+v", len(routes), routes)
+	if len(routes) != 2 {
+		t.Fatalf("expected 2 routes, got %d: %+v", len(routes), routes)
 	}
-	if routes[0].Method != "POST" || routes[0].Path != "/run" {
-		t.Errorf("expected POST /run, got %s %s", routes[0].Method, routes[0].Path)
+	registered := map[string]bool{}
+	for _, route := range routes {
+		if route.Method != "POST" {
+			t.Errorf("expected POST route, got %s %s", route.Method, route.Path)
+		}
+		registered[route.Path] = true
+	}
+	if !registered["/run"] || !registered["/search-and-run"] {
+		t.Errorf("expected POST /run and POST /search-and-run, got %+v", registered)
+	}
+}
+
+func TestStockHandler_SearchAndRun_Async_Returns202(t *testing.T) {
+	_, router := newStockHandler(nil, "job-search-and-run")
+
+	payload := `{"queries":[{"q":"boxing training gym","limit":1}],"folder_id":"folder-1","folder_name":"Stock E2E Test","subfolder":"run-1","metadata":{"test":"stock-e2e","request_tag":"run-1"},"async":true}`
+	req := httptest.NewRequest(http.MethodPost, "/search-and-run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp testRunResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != StatusPending || resp.JobID != "job-search-and-run" {
+		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
 

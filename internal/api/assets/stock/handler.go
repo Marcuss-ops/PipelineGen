@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	stockapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 )
@@ -36,6 +37,7 @@ func NewStockHandler(uc *stockpipeline.StockUseCase, log *zap.Logger) *StockHand
 func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("registering stock-pipeline routes")
 	r.POST("/run", h.Run)
+	r.POST("/search-and-run", h.SearchAndRun)
 }
 
 // runRequest is the JSON body for POST /api/stock-pipeline/run.
@@ -66,7 +68,8 @@ type runRequest struct {
 	Persist                        bool                              `json:"persist,omitempty"`
 }
 
-// runResponse is the JSON response for POST /api/stock-pipeline/run.
+// runResponse is the JSON response for POST /api/stock-pipeline/run and
+// POST /api/stock-pipeline/search-and-run.
 // godlike/06 SSOT: all error responses carry a machine-readable
 // `error_code` field (UNKNOWN_FIELD / INVALID_URL / PATH_TRAVERSAL /
 // MAX_CLIPS_EXCEEDED / INVALID_PAYLOAD). Successful responses carry
@@ -128,6 +131,118 @@ const (
 	ErrCodeMaxClips       = "MAX_CLIPS_EXCEEDED"
 	ErrCodeInvalidPayload = "INVALID_PAYLOAD"
 )
+
+// SearchAndRun handles POST /api/stock-pipeline/search-and-run.
+//
+// This endpoint keeps the historical search request shape (`queries`)
+// separate from the legacy `/run` shape (`search_queries`). The
+// application converter remains the single owner of request-to-command
+// mapping and duration defaults. Search probe metadata is intentionally
+// bound permissively because operators may attach provider-specific
+// fields (for example `test` and `request_tag`) without changing the
+// execution command.
+func (h *StockHandler) SearchAndRun(c *gin.Context) {
+	var req stockapp.StockSearchAndRunRequest
+	decoder := json.NewDecoder(c.Request.Body)
+	if err := decoder.Decode(&req); err != nil {
+		c.JSON(http.StatusBadRequest, runResponse{
+			Status:    StatusError,
+			Error:     "invalid JSON payload: " + err.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+
+	if len(req.Queries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
+		c.JSON(http.StatusBadRequest, runResponse{
+			Status:    StatusError,
+			Error:     "at least one of queries, direct_urls, drive_urls, or clips is required",
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+	if len(req.Clips) > MaxClipsPerRun {
+		c.JSON(http.StatusBadRequest, runResponse{
+			Status:    StatusError,
+			Error:     fmt.Sprintf("too many clips requested (max %d)", MaxClipsPerRun),
+			ErrorCode: ErrCodeMaxClips,
+		})
+		return
+	}
+	for _, u := range req.DirectURLs {
+		if !isValidURL(primitives.NewURL(u)) {
+			c.JSON(http.StatusBadRequest, runResponse{
+				Status:    StatusError,
+				Error:     "invalid or insecure direct_url: " + redactURL(u),
+				ErrorCode: ErrCodeInvalidURL,
+			})
+			return
+		}
+	}
+	for _, u := range req.DriveURLs {
+		if !isValidURL(primitives.NewURL(u)) {
+			c.JSON(http.StatusBadRequest, runResponse{
+				Status:    StatusError,
+				Error:     "invalid or insecure drive_url: " + redactURL(u),
+				ErrorCode: ErrCodeInvalidURL,
+			})
+			return
+		}
+	}
+	for _, clip := range req.Clips {
+		if clip.URL != "" && !isValidURL(primitives.NewURL(clip.URL)) {
+			c.JSON(http.StatusBadRequest, runResponse{
+				Status:    StatusError,
+				Error:     "invalid or insecure clip url: " + redactURL(clip.URL),
+				ErrorCode: ErrCodeInvalidURL,
+			})
+			return
+		}
+	}
+	if !isSafePath(req.Subfolder) || !isSafePath(req.FolderName) || !isSafePath(req.DriveFolderID) || !isSafePath(req.FolderID) {
+		c.JSON(http.StatusBadRequest, runResponse{
+			Status:    StatusError,
+			Error:     "path traversal characters detected in folder configuration",
+			ErrorCode: ErrCodePathTraversal,
+		})
+		return
+	}
+
+	cmd, err := stockapp.FromAPIRequest(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, runResponse{
+			Status:    StatusError,
+			Error:     err.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+	jobID, err := h.useCase.Submit(c.Request.Context(), cmd, req.Async)
+	if err != nil {
+		h.log.Error("stock search-and-run submit failed", zap.Error(err))
+		status := http.StatusInternalServerError
+		if err == stockpipeline.ErrJobsServiceRequired {
+			status = http.StatusServiceUnavailable
+		}
+		c.JSON(status, runResponse{
+			Status:    StatusError,
+			Error:     err.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+
+	resp := runResponse{Deduplicated: false}
+	if jobID != "" {
+		resp.Status = StatusPending
+		resp.JobID = jobID
+		resp.RunID = jobID
+		c.JSON(http.StatusAccepted, resp)
+		return
+	}
+	resp.Status = StatusCompleted
+	c.JSON(http.StatusOK, resp)
+}
 
 // Run handles POST /api/stock-pipeline/run.
 //
