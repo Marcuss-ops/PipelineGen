@@ -347,7 +347,8 @@
       "internal/application/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
       "internal/infrastructure/youtube/",
-      "internal/api/assets/youtube/"
+      "internal/api/assets/youtube/",
+      "scripts/tools/transcribe_detect_lang.py"
     ],
     "go_packages": [
       "./internal/domain/youtube/...",
