@@ -12,6 +12,11 @@ package downloader
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"math/rand"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
@@ -26,6 +31,11 @@ type YTDLPDownloader struct {
 	artlistCookiesPath string // July 2026 (PR-ARTLIST-COOKIES-CONFIG): empty = skip --cookies flag (godlike/07 fail-closed)
 	cmdBuilder         *ytdlp.CommandBuilder
 	verifier           *ytdlp.OutputVerifier
+	// ytMinSleepSeconds / ytMaxSleepSeconds pace YouTube downloads
+	// (August 2026 rate-limit recovery). 0 = disabled. Clamped by
+	// NewYTDLP via cfg.External.ResolvedYouTubeSleepSeconds.
+	ytMinSleepSeconds int
+	ytMaxSleepSeconds int
 	// runner is the Pattern 0 port for executing external processes
 	// (godlike/07 minimum-blast-radius + testability). The production
 	// default is `defaultRunner{}` which wraps process.Run; tests inject
@@ -36,6 +46,111 @@ type YTDLPDownloader struct {
 
 func (d *YTDLPDownloader) run(ctx context.Context, args []string, opts process.Options) (*process.Result, error) {
 	return d.runner.Run(ctx, d.path, args, opts)
+}
+
+// isYouTubeURL reports whether the URL targets YouTube (the only host where
+// the player-client fallback and sleep pacing apply).
+func isYouTubeURL(url string) bool {
+	return strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be")
+}
+
+// youtubeBotCheckRe matches the yt-dlp/YouTube "Sign in to confirm you're
+// not a bot" rate-limit gate. When an invocation fails with this signature
+// the download is retried with an alternate player client instead of being
+// aborted (August 2026 hot-IP recovery).
+var youtubeBotCheckRe = regexp.MustCompile(`(?i)sign\s+in\s+to\s+confirm|not\s+a\s+bot`)
+
+// isYouTubeBotCheck reports whether the error output carries the YouTube
+// bot-check signature. process.Run embeds the combined yt-dlp output in the
+// error message, so the raw error string is sufficient.
+func isYouTubeBotCheck(err error) bool {
+	return err != nil && youtubeBotCheckRe.MatchString(err.Error())
+}
+
+// ytdlpClients returns the ordered attempt list: the canonical primary
+// client first, then each configured fallback (deduplicated). At minimum it
+// always contains the primary client so a misconfigured builder degrades to
+// the pre-fallback behaviour (single attempt).
+func (d *YTDLPDownloader) ytdlpClients() []string {
+	var clients []string
+	seen := make(map[string]bool)
+	add := func(c string) {
+		c = strings.TrimSpace(c)
+		if c == "" || seen[c] {
+			return
+		}
+		seen[c] = true
+		clients = append(clients, c)
+	}
+	if d.cmdBuilder != nil {
+		add(d.cmdBuilder.PrimaryYouTubePlayerClient())
+		for _, c := range d.cmdBuilder.FallbackYouTubePlayerClients() {
+			add(c)
+		}
+	}
+	if len(clients) == 0 {
+		return []string{"android_creator"}
+	}
+	return clients
+}
+
+// youtubeSleepIntervalArgs returns the yt-dlp random-sleep flags for YouTube
+// downloads when pacing is enabled (min > 0). Max is clamped to at least min.
+func (d *YTDLPDownloader) youtubeSleepIntervalArgs(url string) []string {
+	if !isYouTubeURL(url) || d.ytMinSleepSeconds <= 0 {
+		return nil
+	}
+	max := d.ytMaxSleepSeconds
+	if max < d.ytMinSleepSeconds {
+		max = d.ytMinSleepSeconds
+	}
+	return []string{
+		"--min-sleep-interval", fmt.Sprintf("%d", d.ytMinSleepSeconds),
+		"--max-sleep-interval", fmt.Sprintf("%d", max),
+	}
+}
+
+// sleepBetweenAttempts sleeps a random duration in the configured
+// [min,max] window before a fallback retry, so retries after a bot-check
+// don't hammer a hot IP back-to-back. No-op when pacing is disabled.
+func (d *YTDLPDownloader) sleepBetweenAttempts() {
+	if d.ytMinSleepSeconds <= 0 {
+		return
+	}
+	max := d.ytMaxSleepSeconds
+	if max < d.ytMinSleepSeconds {
+		max = d.ytMinSleepSeconds
+	}
+	span := max - d.ytMinSleepSeconds + 1
+	delay := d.ytMinSleepSeconds + rand.Intn(span)
+	time.Sleep(time.Duration(delay) * time.Second)
+}
+
+// runWithClientFallback executes a yt-dlp command through buildArgs, which
+// is called once per player-client attempt. The canonical client runs first;
+// after a YouTube bot-check error each configured fallback client is tried
+// with a random pacing delay in between. Non-bot-check errors abort
+// immediately (a different player client cannot fix a 404 or a bad format).
+// The last result+error is returned once the client list is exhausted.
+func (d *YTDLPDownloader) runWithClientFallback(ctx context.Context, url string, opts process.Options, buildArgs func(playerClient string) []string) (*process.Result, error) {
+	clients := d.ytdlpClients()
+	var lastResult *process.Result
+	var lastErr error
+	for i, client := range clients {
+		if i > 0 {
+			d.sleepBetweenAttempts()
+		}
+		result, err := d.run(ctx, buildArgs(client), opts)
+		if err == nil {
+			return result, nil
+		}
+		lastResult, lastErr = result, err
+		if !isYouTubeBotCheck(err) || i == len(clients)-1 {
+			return result, err
+		}
+		log.Printf("downloader: youtube bot-check with player client %q, retrying with %q (attempt %d/%d)", client, clients[i+1], i+1, len(clients))
+	}
+	return lastResult, lastErr
 }
 
 // ProcessRunner is the Pattern 0 port for executing external processes.
@@ -70,12 +185,15 @@ var _ ProcessRunner = defaultRunner{}
 func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	path := cfg.External.ResolvedYtdlpPath()
 	cookiesPath := cfg.External.ResolveYouTubeCookiesPath()
+	minSleep, maxSleep := cfg.External.ResolvedYouTubeSleepSeconds()
 	return &YTDLPDownloader{
 		path:               path,
 		cookiesPath:        cookiesPath,
 		artlistCookiesPath: cfg.External.ArtlistCookiesPath,
 		cmdBuilder:         ytdlp.NewCommandBuilder(cfg),
 		verifier:           &ytdlp.OutputVerifier{},
+		ytMinSleepSeconds:  minSleep,
+		ytMaxSleepSeconds:  maxSleep,
 		runner:             defaultRunner{},
 	}
 }

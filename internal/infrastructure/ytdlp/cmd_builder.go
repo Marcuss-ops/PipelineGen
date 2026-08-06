@@ -26,19 +26,35 @@ import (
 // is not available".
 const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best"
 
+// canonicalYouTubePlayerClient is the player client used by BaseArgs for
+// the first (primary) download attempt. Alternate clients from
+// config.External.YoutubePlayerClientFallback are only tried after a
+// YouTube bot-check. This constant is the SOLE owner of the
+// player_client= policy value; all consumers (BaseArgs, BaseArgsForClient,
+// the downloader fallback loop) reference it instead of re-declaring the
+// literal.
+const canonicalYouTubePlayerClient = "android_creator"
+
+// defaultYouTubePlayerClientFallback is the fallback order used when the
+// config list is empty (deterministic default for manually-assembled
+// configs that skip the loader). The primary client still runs first.
+var defaultYouTubePlayerClientFallback = []string{"android", "ios", "web_creator", "tv"}
+
 // CommandBuilder centralizes yt-dlp CLI argument construction. The builder
 // owns the resolved binary path plus the cookie and JS-runtime locations;
 // callers append their operation-specific flags to BaseArgs or FormatArgs.
 type CommandBuilder struct {
-	Path          string
-	cookiesPath   string
-	jsRuntimePath string
+	Path               string
+	cookiesPath        string
+	jsRuntimePath      string
+	ytPlayerClientList []string
 }
 
 // NewCommandBuilder reads yt-dlp configuration from cfg.External.
 // Path is resolved via cfg.External.ResolvedYtdlpPath(); cookies and JS
 // runtime paths honour the same zero-value → default fallback that the
-// pre-Bloco-5 callers applied independently.
+// pre-Bloco-5 callers applied independently. The YouTube player-client
+// fallback list defaults to android,ios,web_creator,tv when unset.
 func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -49,10 +65,45 @@ func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 		jsRuntimePath = "node"
 	}
 	return &CommandBuilder{
-		Path:          cfg.External.ResolvedYtdlpPath(),
-		cookiesPath:   cookiesPath,
-		jsRuntimePath: jsRuntimePath,
+		Path:               cfg.External.ResolvedYtdlpPath(),
+		cookiesPath:        cookiesPath,
+		jsRuntimePath:      jsRuntimePath,
+		ytPlayerClientList: normalizeClientList(cfg.External.YoutubePlayerClientFallback),
 	}
+}
+
+// normalizeClientList trims whitespace and drops empty or duplicate entries.
+func normalizeClientList(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]bool, len(in))
+	for _, c := range in {
+		c = strings.TrimSpace(c)
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	return out
+}
+
+// PrimaryYouTubePlayerClient returns the canonical first-try player client.
+func (b *CommandBuilder) PrimaryYouTubePlayerClient() string {
+	return canonicalYouTubePlayerClient
+}
+
+// FallbackYouTubePlayerClients returns a copy of the alternate player
+// clients tried after a YouTube bot-check, in configured order. Never
+// includes the primary client. Returns the built-in default list when the
+// builder was constructed without a configured list.
+func (b *CommandBuilder) FallbackYouTubePlayerClients() []string {
+	list := b.ytPlayerClientList
+	if len(list) == 0 {
+		list = defaultYouTubePlayerClientFallback
+	}
+	out := make([]string, 0, len(list))
+	out = append(out, list...)
+	return out
 }
 
 // YouTubeCookiesConfigured reports whether the canonical resolver returned
@@ -73,6 +124,16 @@ func (b *CommandBuilder) YouTubeCookiesConfigured() bool {
 // --flat-playlist, --download-sections, -f, -o, etc.) to the returned
 // slice. The returned slice is freshly allocated and safe to mutate.
 func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
+	return b.BaseArgsForClient(url, useCookies, canonicalYouTubePlayerClient)
+}
+
+// BaseArgsForClient is like BaseArgs but selects the given YouTube player
+// client for the --extractor-args pair. Used by the downloader fallback
+// loop (internal/infrastructure/downloader) to re-run a bot-checked
+// download with an alternate client. A blank playerClient resolves to the
+// canonical client. For non-YouTube URLs the extractor-args pair is never
+// emitted, exactly like BaseArgs.
+func (b *CommandBuilder) BaseArgsForClient(url string, useCookies bool, playerClient string) []string {
 	var args []string
 	isYouTube := strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be")
 
@@ -90,6 +151,9 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 	args = append(args, "--no-warnings")
 
 	if isYouTube {
+		if playerClient == "" {
+			playerClient = canonicalYouTubePlayerClient
+		}
 		// Prefer web/android, then fall back to mweb/android_creator. The
 		// latter pair remains usable when YouTube rate-limits the web
 		// session while still serving public progressive formats.
@@ -102,7 +166,7 @@ func (b *CommandBuilder) BaseArgs(url string, useCookies bool) []string {
 		// cookies was a brittle combination. YouTube now accepts cookies
 		// with the combined client list, and web-only causes regressions
 		// (no video formats) on several videos. Always use both.
-		args = append(args, "--extractor-args", "youtube:player_client=android_creator")
+		args = append(args, "--extractor-args", "youtube:player_client="+playerClient)
 	}
 
 	return args
