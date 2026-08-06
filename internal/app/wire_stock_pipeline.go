@@ -40,6 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -202,6 +203,17 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		stockPublisherPort = drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
 	}
 
+	// Source duration validation and manifest projection are production
+	// capabilities, not optional test conveniences. Both are built from
+	// concrete infrastructure already owned by the composition root.
+	stockProbe := render.NewFFProbeSourceDurationProbe(ffmpegPath)
+	stockProjection := newStockProjection(func() *clipindexer.Service {
+		if root.Process == nil {
+			return nil
+		}
+		return root.Process.ClipIndexerService
+	}())
+
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{
 			Cfg: cfg,
@@ -224,9 +236,11 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 			Publisher:     root.Drive.Publisher,
 			PublisherPort: stockPublisherPort,
 			Finalizer:     stockFinalizer,
+			Projection:    stockProjection,
 		},
 		Acquisition: StockAcquisitionDeps{
 			SourceStager:    stockSourceStager,
+			SourceProbe:     stockProbe,
 			ClipsRepo:       root.Repos.ClipsRepo,
 			AssetIndex:      root.Search.AssetIndexService,
 			Dispatcher:      root.Outbox.Dispatcher,

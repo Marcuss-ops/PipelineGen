@@ -75,7 +75,7 @@ import (
 // Mandatory fields return an error when BuildStockBundle is called with
 // nil; optional fields fall through to the existing type's nil-tolerance
 // (Publisher + Finalizer + DB + ChannelLister are optional per
-// stockpipeline.NewService's lenient gate — the symmetric gate above
+// stock service constructor's dependency gate — the symmetric gate above
 // adds the load-bearing pairing check on Publisher/DepositFinalizer).
 type StockBundleDeps struct {
 	Runtime       StockRuntimeDeps
@@ -118,9 +118,10 @@ type StockRuntimeDeps struct {
 // created at the composition root so the application layer stays free of
 // internal/infrastructure/drive imports. Field count: 3.
 type StockDeliveryDeps struct {
-	Publisher     delivery.Publisher         // optional (nil → backcompat; finalizer nil → OK)
-	PublisherPort finalization.PublisherPort // optional (nil → backcompat; constructed from Publisher at composition root)
-	Finalizer     finalization.JobFinalizer  // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
+	Publisher     delivery.Publisher           // optional (nil → backcompat; finalizer nil → OK)
+	PublisherPort finalization.PublisherPort   // optional (nil → backcompat; constructed from Publisher at composition root)
+	Finalizer     finalization.JobFinalizer    // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
+	Projection    stockpipeline.ProjectionPort // required in production
 }
 
 // stockConcreteDriveReader is the raw interface matched by the concrete
@@ -139,6 +140,7 @@ type stockConcreteDriveReader interface {
 // Dispatcher, BatchRepository, DriveReader). Field count: 6.
 type StockAcquisitionDeps struct {
 	SourceStager    acquisition.SourceStager           // required
+	SourceProbe     stockpipeline.SourceDurationProbe  // required
 	ClipsRepo       *sqassets.ClipsRepository          // required
 	AssetIndex      *assetindex.Service                // required
 	Dispatcher      *outbox.Dispatcher                 // required

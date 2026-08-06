@@ -145,6 +145,8 @@ var (
 	ErrStockPipelineNilLocalFS               = types.ErrStockPipelineNilLocalFS
 	ErrStockProductionDBMissing              = types.ErrStockProductionDBMissing
 	ErrStockProductionBatchRepositoryMissing = types.ErrStockProductionBatchRepositoryMissing
+	ErrStockProductionProjectionMissing      = types.ErrStockProductionProjectionMissing
+	ErrStockProductionSourceProbeMissing     = types.ErrStockProductionSourceProbeMissing
 	ErrStockPipelineNilFinalizer             = types.ErrStockPipelineNilFinalizer
 	ErrStockPipelineAllQueriesFailed         = types.ErrStockPipelineAllQueriesFailed
 )
@@ -165,5 +167,6 @@ var (
 	ErrStockResumeStateInvalid             = types.ErrStockResumeStateInvalid
 	ErrStockStageSourcesAllFailed          = types.ErrStockStageSourcesAllFailed
 	ErrStockStageSourcesIncomplete         = types.ErrStockStageSourcesIncomplete
+	ErrStockManifestUnprojectable          = types.ErrStockManifestUnprojectable
 	ErrFinalizerAbsent                     = types.ErrFinalizerAbsent
 )

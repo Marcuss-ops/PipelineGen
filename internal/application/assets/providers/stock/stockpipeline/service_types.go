@@ -138,6 +138,7 @@ type JobCreator interface {
 type ExecutionDeps struct {
 	Jobs         *appjobs.Service
 	SourceStager acquisition.SourceStager
+	SourceProbe  SourceDurationProbe
 	// ChannelLister is the YouTube channel listing port (P4, July 2026).
 	// Optional because direct URL requests do not need channel listing — the
 	// composition root (currently retired/stubbed) wires the concrete
@@ -193,6 +194,7 @@ type DeliveryDeps struct {
 	FolderCreator StockFolderCreator
 	DriveReader   DriveReaderPort
 	Finalizer     finalization.JobFinalizer
+	Projection    ProjectionPort
 }
 
 // DriveFileInfo is the application-layer representation of a Google Drive

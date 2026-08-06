@@ -129,7 +129,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	}()
 	// §12-1 (July 2026) + PR-STOCK-PRODUCTION-DEPS (P2_media,
 	// 2026-07-04): composition-time fail-closed gate. The canonical
-	// composition root (stockpipeline.NewService) already validates
+	// composition root (NewProductionStockPipeline) already validates
 	// planner/stager/renderer/jobs/sourceStager etc. at ctor time;
 	// this gate is the defense-in-depth seam for direct Orchestrator
 	// callers (tests, internal packages that bypass Service). Per

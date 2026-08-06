@@ -1,8 +1,8 @@
 // Package stockpipeline — service_errors.go (PR-STOCK-SERVICE-SPLIT,
 // July 2026).
 //
-// SOLE owner of the typed sentinel errors surfaced by
-// NewService validation per godlike/06 SSOT (one canonical owner
+// SOLE owner of the typed sentinel errors surfaced by the shared
+// production/test dependency validation per godlike/06 SSOT (one canonical owner
 // per fact). Each sentinel names the missing dependency so
 // composition-time call sites can forward a single error to
 // operators and tests can assert the precise missing dep without
@@ -30,7 +30,7 @@ package types
 
 import "errors"
 
-// Sentinel errors returned by NewService validation.
+// Sentinel errors returned by the shared production/test validation ladder.
 var (
 	ErrStockPipelineNilCfg = errors.New("stockpipeline.NewService: cfg is required")
 	ErrStockPipelineNilLog = errors.New("stockpipeline.NewService: log is required")
@@ -81,6 +81,8 @@ var (
 	// pipeline is wired for production but the composition root did not
 	// supply a StockBatchRepository adapter.
 	ErrStockProductionBatchRepositoryMissing = errors.New("stockpipeline: StockBatchRepository is mandatory for production stock pipeline")
+	ErrStockProductionProjectionMissing      = errors.New("stockpipeline: ProjectionPort is mandatory for production stock pipeline")
+	ErrStockProductionSourceProbeMissing     = errors.New("stockpipeline: SourceDurationProbe is mandatory for production stock pipeline")
 
 	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
 
