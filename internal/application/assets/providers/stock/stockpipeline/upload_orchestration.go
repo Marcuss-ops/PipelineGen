@@ -3,9 +3,9 @@
 //
 // Defines the canonical port surface for the orchestrator's
 // resilience flow (post-emission outbox dispatch + Qdrant projection),
-// the typed envelope that threads the per-run FinalStatus through to
-// the JobFinalizer, and the default no-op implementations wired by
-// NewOrchestrator when the caller does not inject custom ports.
+// and the typed envelope that threads the per-run FinalStatus through to
+// the JobFinalizer. Fixture defaults are owned by the explicit test
+// constructor; production wiring uses NewProductionStockOrchestrator.
 //
 // The 3 ports declared here are:
 //
@@ -101,8 +101,6 @@ type TransactionalAssetWriter interface {
 // orchestrator flips FinalStatus to job.StatusIndexPending and
 // returns a nil error so the broker runner persists the index-pending
 // state and the Qdrant-reconciler task can retry asynchronously.
-//
-// The default noopProjection trivially returns nil (=> SUCCEEDED).
 type ProjectionPort interface {
 	Project(ctx context.Context, manifest *job.ArtifactManifest) error
 }
@@ -134,9 +132,8 @@ func (stockManifestBuilder) Build(workflowID, jobID string) (*job.ArtifactManife
 	return buildStockManifest(workflowID, jobID), nil
 }
 
-// noopWriter is the default TransactionalAssetWriter. It returns
-// nil unconditionally — production wiring injects the SQLite-backed
-// outbox adapter in NewOrchestratorWithResilience.
+// noopWriter is a fixture-only TransactionalAssetWriter. Production
+// wiring must inject the SQLite-backed outbox adapter.
 type noopWriter struct{}
 
 // WriteAndEnqueue is a no-op; the canonical test (a) in
@@ -146,11 +143,9 @@ func (noopWriter) WriteAndEnqueue(_ context.Context, _ *asset.Asset, _ string) e
 	return nil
 }
 
-// noopProjection is the default ProjectionPort. It returns nil
-// unconditionally — production wiring injects the Qdrant-backed
-// adapter in NewOrchestratorWithResilience; the canonical test (c)
-// injects a Qdrant-offline stub to verify the StatusIndexPending
-// fallback.
+// noopProjection is a fixture-only ProjectionPort. Production wiring
+// must inject the Qdrant-backed adapter; the canonical test (c) injects
+// a Qdrant-offline stub to verify the StatusIndexPending fallback.
 type noopProjection struct{}
 
 // Project is a no-op; the canonical test (c) substitutes a
@@ -188,13 +183,6 @@ var ErrAtomicDispatchFailed = errors.New("atomic dispatch failed: outbox write a
 // The sentinel is exported for log scanners that want to keyword-
 // search for the resilience path; the orchestrator never wraps it.
 var ErrProjectionResilience = errors.New("projection-resilience path: Qdrant projection unavailable — status flipped to INDEX_PENDING")
-
-// ErrResilienceNotWired surfaces a missing required resilience
-// port at construction time. NewOrchestratorWithResilience rejects
-// nil builder / writer / projection; the canonical guard mirrors
-// the existing ErrOrchestratorNilDeps pattern (compose-time
-// fail-closed, NOT a panic at runtime).
-var ErrResilienceNotWired = errors.New("orchestrator: resilience ports (builder, writer, projection) must be non-nil; NewOrchestratorWithResilience requires explicit port injection")
 
 // ErrNoProducedChunk surfaces the §12-1 P0 #1 (July 2026) orchestrator-
 // level fail-closed gate: every Orchestrator.Run success path MUST

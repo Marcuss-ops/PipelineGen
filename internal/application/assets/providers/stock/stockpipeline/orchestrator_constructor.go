@@ -1,7 +1,7 @@
 // Package stockpipeline — orchestrator_constructor.go (split July 2026).
 //
 // This file owns the canonical fixture constructors
-// (NewTestStockOrchestrator, NewOrchestratorWithResilience), fluent setters (WithAssetPreparation,
+// (NewTestStockOrchestrator), fluent setters (WithAssetPreparation,
 // WithJobFinalizer), and pure helpers (stepInputFingerprint, firstSource).
 // Extracted from orchestrator.go per AGENTS.md Pattern 5.
 //
@@ -39,7 +39,8 @@ import (
 // Service.HandleJob wires the real broker JobID through cfg.JobId,
 // so production traffic carries the real JobID — the placeholder
 // is only used by non-broker callers (tests, CLI). Custom resilience
-// ports are a fixture concern and use NewOrchestratorWithResilience.
+// ports are test-only and use the helper in
+// orchestrator_test_helpers_test.go.
 func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager assets.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
 	return newStockPipeline(cfg, planner, stager, cutter, renderer)
 }
@@ -75,48 +76,6 @@ func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager assets
 		stepStore:     stepStore,
 		dispatchSteps: DefaultStockSteps(),
 	}
-}
-
-// NewOrchestratorWithResilience is a test-only fixture builder for
-// injecting custom resilience ports (the SQLite-backed outbox wrapper,
-// a failing manifest builder, or a projection stub). Production code
-// MUST use NewProductionStockOrchestrator; nil resilience fields here retain
-// fixture compatibility and are never accepted by the production builder.
-//
-// The canonical test surface uses this constructor directly so the
-// 3 failure-mode tests in run_upload_indexing_test.go can inject
-// per-test failing stubs (writer returns error / builder returns
-// incomplete manifest / projection returns Qdrant-offline error)
-// without touching the production composition wiring at
-// service.go::WireStockPipeline.
-// ResilienceDeps bundles the optional resilience ports for
-// NewOrchestratorWithResilience so the constructor stays under the
-// archcheck 8-parameter cap.
-type ResilienceDeps struct {
-	Builder    ManifestBuilder
-	Writer     TransactionalAssetWriter
-	Projection ProjectionPort
-}
-
-func NewOrchestratorWithResilience(
-	cfg OrchestratorConfig,
-	planner ClipPlanner,
-	stager assets.SourceStager,
-	cutter VideoCutter,
-	renderer StockRenderer,
-	resilience ResilienceDeps,
-) *Orchestrator {
-	o := NewTestStockOrchestrator(cfg, planner, stager, cutter, renderer)
-	if resilience.Builder != nil {
-		o.builder = resilience.Builder
-	}
-	if resilience.Writer != nil {
-		o.writer = resilience.Writer
-	}
-	if resilience.Projection != nil {
-		o.projection = resilience.Projection
-	}
-	return o
 }
 
 // WithAssetPreparation threads the canonical ArtifactPreparationService
