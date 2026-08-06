@@ -30,8 +30,11 @@ type StockStager struct {
 	sf          singleflight.Group
 
 	// sharedRefs maps each in-flight cacheKey to its reference-counted
-	// lease on the leader's tmpDir file.
-	sharedRefs sync.Map // map[string]*sharedSourceLease (cacheKey → lease)
+	// lease on the leader's tmpDir file. sharedRefsMu serializes lease
+	// lifecycle changes so an acquire cannot observe/delete a lease that
+	// a concurrent release is replacing.
+	sharedRefs   sync.Map // map[string]*sharedSourceLease (cacheKey → lease)
+	sharedRefsMu sync.Mutex
 
 	// assetLeases binds each caller's StagedAsset.LocalPath to the
 	// cacheKey of the shared lease that caller acquired.
@@ -88,6 +91,19 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 	outputPath := filepath.Join(tmpDir, "source.mp4")
 
 	cacheKey := DeriveSourceCacheKey(ref.URL, ref.DownloadSection, ref.MergeFormat, ref.ForceKeyframes)
+	var cacheLease *sharedSourceLease
+	s.sharedRefsMu.Lock()
+	if value, ok := s.sharedRefs.Load(cacheKey); ok {
+		lease := value.(*sharedSourceLease)
+		lease.mu.Lock()
+		if !lease.released {
+			lease.refCount++
+			cacheLease = lease
+			s.assetLeases.Store(outputPath, cacheKey)
+		}
+		lease.mu.Unlock()
+	}
+	s.sharedRefsMu.Unlock()
 	if sa, hit := s.checkSourceCache(ctx, cacheKey, ref, outputPath, fs); hit {
 		if isYouTubeSourceURL(ref.URL) {
 			cacheMetric := startServiceStockPhase(ctx, "stock.youtube_download", "")
@@ -99,11 +115,17 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 		}
 		return sa, nil
 	}
+	if cacheLease != nil {
+		s.assetLeases.Delete(outputPath)
+		_ = s.releaseSharedLease(cacheKey)
+	}
 
 	if isDriveURL(ref.URL) {
 		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
 		if driveErr != nil {
 			_ = fs.RemoveAll(tmpDir)
+			s.assetLeases.Delete(outputPath)
+			_ = s.releaseSharedLease(cacheKey)
 			return nil, driveErr
 		}
 		s.populateCache(ctx, cacheKey, "drive", "", ref, outputPath, sa.Bytes)
@@ -111,6 +133,9 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 	}
 
 	if s.downloader == nil {
+		s.assetLeases.Delete(outputPath)
+		_ = fs.RemoveAll(tmpDir)
+		_ = s.releaseSharedLease(cacheKey)
 		return nil, fmt.Errorf("stock stager: downloader not wired")
 	}
 
@@ -130,23 +155,28 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (re
 		dlReq.MergeFormat = ref.MergeFormat
 	}
 
+	finalLocalPath := outputPath
+	lease, leader := s.reserveSharedLease(cacheKey, finalLocalPath)
 	stagedAsset, sfErr := s.downloadSource(ctx, cacheKey, ref, dlReq)
 	if sfErr != nil {
+		s.assetLeases.Delete(finalLocalPath)
 		_ = fs.RemoveAll(tmpDir)
+		_ = s.releaseSharedLease(cacheKey)
 		return nil, sfErr
 	}
 
 	leaderPath := stagedAsset.LocalPath
-	finalLocalPath := leaderPath
+	if leader {
+		s.publishSharedLease(lease, leaderPath, true)
+	}
 	if leaderPath != outputPath {
 		if cpErr := copyFileToPath(leaderPath, outputPath, fs); cpErr != nil {
+			s.assetLeases.Delete(finalLocalPath)
 			_ = fs.RemoveAll(tmpDir)
+			_ = s.releaseSharedLease(cacheKey)
 			return nil, fmt.Errorf("stock stager: copy concurrent download: %w", cpErr)
 		}
-		finalLocalPath = outputPath
 	}
-
-	s.acquireSharedLease(cacheKey, leaderPath, finalLocalPath)
 
 	return &assets.StagedAsset{
 		LocalPath: finalLocalPath,

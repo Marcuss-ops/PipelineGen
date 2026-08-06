@@ -758,7 +758,7 @@ func TestStageSource_T9_ConcurrentSingleflightReturnsIndependentPaths(t *testing
 func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testing.T) {
 	fd := newFakeDownloader([]byte("fake-mp4-bytes-t10"))
 	fd.delay = 50 * time.Millisecond
-	stager, _, _ := setupTestEnv(t, fd)
+	stager, cache, _ := setupTestEnv(t, fd)
 
 	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
 	const N = 5
@@ -806,9 +806,29 @@ func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testin
 		}
 	}
 
-	// Cleanup goroutine[0] FIRST (worst-case ordering from the verdict).
-	if err := stager.Cleanup(context.Background(), results[0]); err != nil {
-		t.Fatalf("goroutine[0] Cleanup err: %v", err)
+	// Cleanup the job that owns the shared singleflight source first.
+	// The leader is identified by the lease's shared source directory,
+	// not by an exact file path: the downloader may resolve a different
+	// filename extension than the caller's outputPath.
+	leaderIdx := -1
+	for i, sa := range results {
+		if stager.isLeaseLeader(DeriveSourceCacheKey(ref.URL, "", "", false), sa.LocalPath) {
+			leaderIdx = i
+			break
+		}
+	}
+	if leaderIdx < 0 {
+		t.Fatal("expected one concurrent result to own the shared lease")
+	}
+	if err := stager.Cleanup(context.Background(), results[leaderIdx]); err != nil {
+		t.Fatalf("leader Cleanup err: %v", err)
+	}
+	cacheEntry, cacheErr := cache.GetByCacheKey(context.Background(), DeriveSourceCacheKey(ref.URL, "", "", false))
+	if cacheErr != nil || cacheEntry == nil {
+		t.Fatalf("expected shared source cache entry after staging: entry=%v err=%v", cacheEntry, cacheErr)
+	}
+	if _, err := os.Stat(cacheEntry.LocalPath); err != nil {
+		t.Fatalf("leader cleanup removed shared source before the final lease release: %v", err)
 	}
 	// NOTE: we deliberately don't assert that results[0]'s file is
 	// missing after its own Cleanup — under PR-STOCK-SOURCE-CACHE-LEASE
@@ -825,14 +845,20 @@ func TestStageSource_T10_FiveConcurrentJobs_LeaseGuardsCleanupOrdering(t *testin
 	//     for 4 outstanding refs) → followers' files intact.
 	//   - follower Cleanup: ownDir = filepath.Dir(results[0].LocalPath)
 	//     is THIS caller's tmp, independent of followers' tmps.
-	for i := 1; i < N; i++ {
+	for i := 0; i < N; i++ {
+		if i == leaderIdx {
+			continue
+		}
 		if _, err := os.Stat(results[i].LocalPath); err != nil {
-			t.Errorf("goroutine[%d] file was removed by goroutine[0]'s Cleanup: %v (lease/copy must isolate)", i, err)
+			t.Errorf("goroutine[%d] file was removed by leader Cleanup: %v (lease/copy must isolate)", i, err)
 		}
 	}
 
 	// Cleanup the rest — no race errors, no leakage.
-	for i := 1; i < N; i++ {
+	for i := 0; i < N; i++ {
+		if i == leaderIdx {
+			continue
+		}
 		if err := stager.Cleanup(context.Background(), results[i]); err != nil {
 			t.Errorf("goroutine[%d] Cleanup err: %v", i, err)
 		}
