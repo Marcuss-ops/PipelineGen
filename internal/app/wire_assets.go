@@ -82,17 +82,25 @@ func WireAssets(
 	}
 
 	clipsDesc, clipEnricher, err := buildClipsBundle(buildClipsParams{
-		Cfg:              cfg,
-		Log:              log,
-		Deps:             deps,
-		Jobs:             jobs,
-		Dispatcher:       dispatcher,
-		DriveUploader:    driveUploader,
-		AssetRepo:        assetRepo,
-		SearchAggregator: searchAggregator,
-		MetaWriter:       metaWriter,
-		DeletionSvc:      deletionSvc,
-		IdemHandler:      idemHandler,
+		Cfg: cfg,
+		Log: log,
+		Clips: ClipsCapabilityDeps{
+			ClipsRepo:          deps.Core.Repositories.ClipsRepo,
+			VoiceoverRepo:      deps.Core.Repositories.VoiceoverRepo,
+			ImageRepo:          deps.Core.Repositories.ImageRepo,
+			AssetRepo:          assetRepo,
+			ArtifactService:    deps.Core.Services.ArtifactService,
+			AssetTreeService:   deps.Core.Services.AssetTreeService,
+			MediaProcessor:     deps.Core.Services.MediaProcessor,
+			Publisher:          deps.Delivery.Publisher,
+			ClipIndexerService: deps.Search.ClipIndexerService,
+		},
+		Jobs:          jobs,
+		Dispatcher:    dispatcher,
+		DriveUploader: driveUploader,
+		MetaWriter:    metaWriter,
+		DeletionSvc:   deletionSvc,
+		IdemHandler:   idemHandler,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: clips: %w", err)
