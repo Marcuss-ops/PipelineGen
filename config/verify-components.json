@@ -83,7 +83,9 @@
     "timeout_seconds": 600,
     "race_timeout_seconds": 1200,
     "race_enabled": true,
-    "live_tests": []
+    "live_tests": [
+      ["make", "verify-stock-live"]
+    ]
   },
   "qdrant": {
     "paths": [

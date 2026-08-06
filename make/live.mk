@@ -10,7 +10,7 @@
 # ─── Post-deploy live batteries (STEP 4/4, July 2026) ─────────────────
 #
 # verify-live — top-level post-deploy gate. Composes the live batteries
-# (images + artlist + script + vidrush) so a single `make verify-live`
+# (images + artlist + script + vidrush + stock) so a single `make verify-live`
 # runs the full operational suite. NOT part of verify-main or
 # verify-release: these batteries all require Chrome + scraper + Drive
 # + Qdrant and must never be wired into the pre-push chain.
@@ -56,16 +56,16 @@ verify-vidrush-live: auth-check
 verify-artlist-scale-live: auth-check
 	@scripts/with-velox-auth bash tests/operational/artlist_scale_e2e.sh
 
-# verify-live — composite: all 4 live batteries in sequence. Fail-closed:
+# verify-live — composite: all 5 live batteries in sequence. Fail-closed:
 # any single battery failure aborts the chain.
 #
 # verify-artlist-live is ALSO runnable standalone (it wraps
 # tests/operational/artlist/run_all.sh) for an artlist-only post-deploy
 # validation that does not pay the full battery cost. verify-live itself
-# composes it alongside the 3 sibling batteries (images + script +
-# vidrush) so a single `make verify-live` runs the full operational
-# suite.
-verify-live: auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live
+# composes it alongside the 4 sibling batteries (images + script +
+# vidrush + stock) so a single `make verify-live` runs the full operational
+# suite, including the stock 14/14 battery.
+verify-live: auth-check verify-images-live verify-artlist-live verify-script-live verify-vidrush-live verify-stock-live
 	@echo "✅ verify-live passed"
 # ─── end Post-deploy live batteries ─────────────────────────────────────
 
