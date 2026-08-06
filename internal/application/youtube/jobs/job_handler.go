@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -84,6 +85,15 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *job.Job, tools *jobtool
 			zap.Error(err))
 		return nil, fmt.Errorf("extraction failed: %w", err)
 	}
+	if resp == nil {
+		// A nil response without an error is an invalid extractor result.
+		// Normalize it before classification so the broker receives the
+		// same structured failure envelope instead of a handler panic.
+		resp = &youtubetypes.ExtractResponse{
+			Error: "extractor returned nil response",
+			Items: []youtubetypes.ExtractItem{},
+		}
+	}
 
 	// Commit C — classify every response. Removes the silent-success hole.
 	classifyErr := ClassifyExtractionResult(resp)
@@ -102,11 +112,33 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *job.Job, tools *jobtool
 			return result, nil
 		}
 		// Retryable / terminal — propagate to broker so its retry policy can react.
+		// The classification sentinels carry no per-item detail, and the broker's
+		// Fail path persists ONLY the error text (result_json stays empty on Fail —
+		// lifecycle_p1b invariant). So the original cause rides in the dispatch
+		// error AND in a job event; the returned result map keeps the typed shape
+		// (failure_class, stats, items) for any future consumer.
+		retryable := errors.Is(classifyErr, ErrExtractionRetryable)
+		failureClass := "terminal"
+		if retryable {
+			failureClass = "retryable"
+		}
+		detail := summarizeExtractionItems(resp.Items)
 		h.log.Warn("YouTube extract job classified as failed",
 			zap.String("job_id", job.ID),
 			zap.String("classification", classifyErr.Error()),
-			zap.Bool("retryable", errors.Is(classifyErr, ErrExtractionRetryable)))
-		return nil, fmt.Errorf("extraction classified: %w", classifyErr)
+			zap.Bool("retryable", retryable))
+		if tools.Event != nil {
+			tools.Event("extraction_failed", "YouTube clip extraction classified as "+failureClass,
+				map[string]any{
+					"failure_class":  failureClass,
+					"classification": classifyErr.Error(),
+					"stats":          resp.Stats,
+					"items":          resp.Items,
+				})
+		}
+		result := h.buildResultMap(resp, "YouTube clip extraction finished with "+failureClass+" failure")
+		result["failure_class"] = failureClass
+		return result, classifiedFailureError(classifyErr, failureClass, resp, detail)
 	}
 
 	if tools.Progress != nil {
@@ -146,4 +178,47 @@ func (h *JobHandler) buildResultMap(resp *youtubetypes.ExtractResponse, message 
 		result["error"] = resp.Error
 	}
 	return result
+}
+
+// classifiedFailureError returns the classifier sentinel together with a
+// machine-readable failure_details JSON payload. The broker's failed-job
+// path persists the dispatch error text but not the result map, so the
+// structured payload is deliberately embedded in the error that reaches
+// the broker. This preserves the failure class, aggregate stats, and every
+// original per-item error in jobs.error and retry/dead-letter diagnostics.
+func classifiedFailureError(classifyErr error, failureClass string, resp *youtubetypes.ExtractResponse, detail string) error {
+	failureDetails := map[string]any{
+		"failure_class":  failureClass,
+		"classification": classifyErr.Error(),
+		"stats":          resp.Stats,
+		"items":          resp.Items,
+		"error":          resp.Error,
+	}
+	if payload, err := json.Marshal(failureDetails); err == nil {
+		return fmt.Errorf("extraction classified: %w — failure_details=%s", classifyErr, payload)
+	}
+	if detail != "" {
+		return fmt.Errorf("extraction classified: %w — %s", classifyErr, detail)
+	}
+	return fmt.Errorf("extraction classified: %w", classifyErr)
+}
+
+// summarizeExtractionItems renders the per-item failure detail (name,
+// start/end, status, and the ORIGINAL error — which carries the typed
+// FailureCode prefix from ProcessYouTubeSegmentUseCase, e.g.
+// `writer_failed: writer rejected locale-not-ready: ...`). It is the
+// human-readable fallback if structured failure serialization ever fails.
+func summarizeExtractionItems(items []youtubetypes.ExtractItem) string {
+	var b strings.Builder
+	for i, item := range items {
+		if item.Status != "failed" && item.Error == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "[%d] name=%q start=%q end=%q status=%q error=%q",
+			i, item.Name, item.Start, item.End, item.Status, item.Error)
+	}
+	return b.String()
 }
