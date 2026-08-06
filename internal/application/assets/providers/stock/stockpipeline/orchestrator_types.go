@@ -164,8 +164,10 @@ type Orchestrator struct {
 	// shouldn't crash the orchestrator at runtime).
 	executorLog *zap.Logger
 
-	// §12-7 (July 2026): Finalizer-side ports threaded via fluent
-	// setters (WithAssetPreparation / WithJobFinalizer). Defaulted to
+	// §12-7 (July 2026): Finalizer-side ports are explicit fields.
+	// Test fixtures may set them through the retained fixture setters;
+	// production composition supplies them via ProductionStockPipelineDeps.
+	// Defaulted to
 	// nil in NewTestStockOrchestrator; production composition roots in
 	// run_orchestrator.go::runOrchestratorResilient wire the canonical
 	// finalizer.NewArtifactPreparation(s.publisher, s.log) and
@@ -176,27 +178,21 @@ type Orchestrator struct {
 	artifactPreparation finalization.ArtifactPreparationService // nil ⇒ StockPublishStep logs+skips upload
 	jobFinalizer        finalization.JobFinalizer               // nil ⇒ StockFinalizeStep logs+skips spine write
 
-	// sourceProbe (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)
-	// is the optional ffprobe-backed port the step_extract_clips
-	// step uses to validate ClipPlan.EndSec against the source
-	// video duration BEFORE invoking VideoCutter.Cut. nil is the
-	// canonical backward-compat value: validation is skipped
-	// (godlike/07 fail-open), and the step falls through to the
-	// legacy unvalidated path. Production wiring injects the
-	// concrete via orchestrator.WithSourceProbe(probe); see
-	// forward-pointer PR-STOCK-SOURCE-DURATION-WIRE.
+	// sourceProbe is the required production port used to validate
+	// ClipPlan.EndSec against source duration before cutting.
+	// Production composition supplies it via ProductionStockPipelineDeps;
+	// fixture construction may leave it nil when the test does not exercise
+	// duration probing.
 	sourceProbe SourceDurationProbe
 
-	// batchRepository (Fase 2, July 2026) is the durable
-	// stock batch/group/artifact repository. nil means the
-	// orchestrator runs in-memory/test mode. Production wiring
-	// injects the SQLite-backed adapter via
-	// WithBatchRepository(...).
+	// batchRepository is the durable stock batch/group/artifact repository.
+	// Production composition supplies it via ProductionStockPipelineDeps;
+	// fixture construction may leave it nil when batch persistence is not
+	// under test.
 	batchRepository StockBatchRepository
 
-	// localFS is the Pattern 0 typed port for local filesystem I/O
-	// (PR-REFACTOR-P0-IO-BINDER, July 2026). nil means test/backcompat
-	// mode — steps fall back to os.* (the legacy path). Production
-	// wiring injects filesystem.NewLocal() via WithLocalFS.
+	// localFS is the Pattern 0 typed port for local filesystem I/O.
+	// Production composition supplies it via ProductionStockPipelineDeps;
+	// fixture construction may use the retained WithLocalFS setter.
 	localFS LocalFSPort
 }
