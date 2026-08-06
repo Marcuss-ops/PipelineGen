@@ -580,7 +580,7 @@ func TestStock_RetryPolicy_QdrantDown_OutboxKeepsRetryClassifier(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k),
 			"pre-Complete %q: MarkStarted", name)

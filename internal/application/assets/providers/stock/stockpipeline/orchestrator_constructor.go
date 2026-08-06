@@ -195,21 +195,6 @@ func (o *Orchestrator) WithLocalFS(fs LocalFSPort) *Orchestrator {
 	return o
 }
 
-// stepInputFingerprint returns the canonical input fingerprint
-// for a step within (JobID, stepName). Per §12-3 Design A (per-row
-// canonical): each (JobID, StepKey, fingerprint) triple is a
-// distinct row. For §12-5 minimal scope the fingerprint is a
-// concatenated stable string so retries with the same triple
-// MarkStarted idempotently (§12-3 MarkStarted semantics).
-//
-// Future commits can tighten the fingerprint to a chained SHA256
-// of the previous step's Result JSON so retries with different
-// inputs fragment cleanly per Design A's "Retries with a
-// different fingerprint INSERT a new row" rule.
-func stepInputFingerprint(jobID, stepName string) string {
-	return jobID + "|" + stepName
-}
-
 // firstSource returns the first source the orchestrator can plan
 // against. Used by Run as a Commit 1 round-trip target.
 //

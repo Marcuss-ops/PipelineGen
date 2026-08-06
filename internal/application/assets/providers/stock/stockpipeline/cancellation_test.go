@@ -124,7 +124,7 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 	planKey := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          "stock.plan",
-		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(context.Background(), planKey))
 	require.NoError(t, store.MarkCompleted(context.Background(), planKey, nil, nil))
@@ -329,7 +329,7 @@ func TestOrchestrator_CtxCancellation_PreservesPreCompletedArtifacts(t *testing.
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          stage,
-			InputFingerprint: stepInputFingerprint(jobID, stage),
+			InputFingerprint: legacyStepInputFingerprint(jobID, stage),
 		}
 		require.NoError(t, store.MarkStarted(context.Background(), k))
 		require.NoError(t, store.MarkCompleted(context.Background(), k, []byte(resultJSON), nil),

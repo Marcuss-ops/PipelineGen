@@ -173,7 +173,7 @@ func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k),
 			"pre-Complete %q: MarkStarted", name)
@@ -268,7 +268,7 @@ func TestOrchestrator_RunResilient_AllPreCompletedSkipsAll(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k))
 		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil))
@@ -335,7 +335,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 		k := steps.StepKey{
 			JobID:            jobID,
 			StepKey:          name,
-			InputFingerprint: stepInputFingerprint(jobID, name),
+			InputFingerprint: legacyStepInputFingerprint(jobID, name),
 		}
 		require.NoError(t, store.MarkStarted(ctx, k))
 		require.NoError(t, store.MarkCompleted(ctx, k, nil, nil))
@@ -443,7 +443,7 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	planKey := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          "stock.plan",
-		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(ctx, planKey))
 	require.NoError(t, store.MarkCompleted(ctx, planKey, planBytes, nil))
@@ -593,8 +593,8 @@ func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 		},
 	}
 
-	planKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: stepInputFingerprint(jobID, "stock.plan")}
-	stageKey := steps.StepKey{JobID: jobID, StepKey: "stock.stage_sources", InputFingerprint: stepInputFingerprint(jobID, "stock.stage_sources")}
+	planKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan")}
+	stageKey := steps.StepKey{JobID: jobID, StepKey: "stock.stage_sources", InputFingerprint: legacyStepInputFingerprint(jobID, "stock.stage_sources")}
 
 	planBytes, _ := json.Marshal(planState)
 	stageBytes, _ := json.Marshal(stageState)
@@ -671,7 +671,7 @@ func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testi
 	planKey := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          "stock.plan",
-		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(ctx, planKey))
 	require.NoError(t, store.MarkCompleted(ctx, planKey, nil, nil))
@@ -718,7 +718,7 @@ func TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed(t *testing
 	planKey := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          "stock.plan",
-		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(ctx, planKey))
 	require.NoError(t, store.MarkCompleted(ctx, planKey, []byte(`{"checkpoint_version":2,"Plan":[]}`), nil))
@@ -766,7 +766,7 @@ func TestOrchestrator_RunResilient_MalformedResultFailsClosed(t *testing.T) {
 	planKey := steps.StepKey{
 		JobID:            jobID,
 		StepKey:          "stock.plan",
-		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+		InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan"),
 	}
 	require.NoError(t, store.MarkStarted(ctx, planKey))
 	require.NoError(t, store.MarkCompleted(ctx, planKey, []byte("not-json"), nil))
@@ -807,7 +807,7 @@ func TestOrchestrator_RunResilient_IncompatibleCheckpointShapesFailClosed(t *tes
 			store := steps.NewSQLiteStoreWithDB(db)
 			ctx := context.Background()
 			jobID := "incompatible-checkpoint-" + tc.name
-			key := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: stepInputFingerprint(jobID, "stock.plan")}
+			key := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: legacyStepInputFingerprint(jobID, "stock.plan")}
 			require.NoError(t, store.MarkStarted(ctx, key))
 			require.NoError(t, store.MarkCompleted(ctx, key, []byte(tc.payload), nil))
 
