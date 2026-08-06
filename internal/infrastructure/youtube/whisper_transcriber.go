@@ -5,10 +5,11 @@
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026).
 //
-// Scope: minimal Fase 5 wiring. The Python script is a STUB
-// (Fase 5.c adds the real Whisper model integration —
-// faster-whisper, openai-whisper, or Ollama's whisper API).
-// The current implementation:
+// The bridge delegates to the repository's real faster-whisper
+// helper (scripts/tools/transcribe_detect_lang.py), which runs
+// Whisper on CUDA when a usable GPU is available (the helper
+// re-execs with a CUDA 12 runtime exposed when ctranslate2 needs
+// it) and falls back to CPU int8 otherwise. The adapter:
 //  1. Spawns the Python script with the local path as argv[1].
 //  2. Reads stdout (JSON) and parses it into
 //     asset.TranscriptResult.
@@ -27,15 +28,10 @@
 // satisfies both.
 //
 // godlike/07 fail-closed: every error path returns a typed
-// error. The chain never silently substitutes a placeholder
-// transcript for a real one. The stub's "[whisper stub: ...]"
-// marker is a VISIBLE signal that the real model is not yet
-// wired — the adapter rejects it with ErrStubTranscript so
-// the AcquireService surfaces ErrNoSourceAcquired and the
-// chain falls through cleanly. This prevents data pollution
-// (a placeholder transcript would otherwise be persisted as
-// a real source track and operators would see fake data in
-// asset_text_tracks).
+// error. The bridge always returns a real transcript or a
+// typed error — never a placeholder — so the AcquireService
+// surfaces ErrNoSourceAcquired and the chain falls through
+// cleanly. No placeholder data ever pollutes asset_text_tracks.
 package youtube
 
 import (
@@ -46,7 +42,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,29 +49,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// ErrStubTranscript is returned when the Python bridge script
-// returns a placeholder transcript (the "[whisper stub: ...]"
-// marker). The stub is a Fase 5 placeholder for the real
-// Whisper model integration; until Fase 5.c wires the real
-// model, the adapter rejects stub-prefixed text so the chain
-// falls through to ErrNoSourceAcquired instead of persisting
-// placeholder data to asset_text_tracks.
-//
-// godlike/07 no-fake-availability: the operator MUST see a
-// typed error, never a silently-substituted placeholder.
-var ErrStubTranscript = errors.New("whisper: stub transcript rejected (Fase 5.c real model not yet wired)")
-
 // ErrWhisperBridgeUnavailable is returned at construction
 // time when the Python interpreter or bridge script is not
 // reachable on the host. godlike/07 fail-closed: surfaces
 // at startup, not at first-clip time.
 var ErrWhisperBridgeUnavailable = errors.New("whisper bridge unavailable")
-
-// stubTranscriptPattern matches the "[whisper stub: ...]"
-// placeholder emitted by scripts/bridges/whisper_transcriber.py.
-// The adapter rejects any text matching this pattern with
-// ErrStubTranscript.
-var stubTranscriptPattern = regexp.MustCompile(`^\[whisper stub:`)
 
 // WhisperTranscriberAdapter is the concrete implementation of
 // the WhisperTranscriber interface. Spawns the Python bridge
@@ -200,19 +177,6 @@ func (a *WhisperTranscriberAdapter) TranscribeAudioWithDetection(ctx context.Con
 	}
 	if res.Error != "" {
 		return asset.TranscriptResult{}, fmt.Errorf("whisper: script error: %s", res.Error)
-	}
-
-	// godlike/07 no-fake-availability: reject stub-prefixed
-	// transcripts BEFORE normalization. The stub marker is a
-	// VISIBLE signal that the real Whisper model is not yet
-	// wired (Fase 5.c). The AcquireService surfaces
-	// ErrNoSourceAcquired, the chain falls through cleanly,
-	// and no placeholder data pollutes asset_text_tracks.
-	if stubTranscriptPattern.MatchString(res.Text) {
-		a.log.Warn("whisper: stub transcript rejected (Fase 5.c real model not yet wired)",
-			zap.String("local_path", localPath),
-			zap.String("stub_text", res.Text))
-		return asset.TranscriptResult{}, fmt.Errorf("%w: %s", ErrStubTranscript, res.Text)
 	}
 
 	// Normalize the detected language. Empty input collapses
