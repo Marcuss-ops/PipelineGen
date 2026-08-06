@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -81,4 +82,114 @@ func TestHandleJob_ThreeSegmentPayload_ClassificationSuccess(t *testing.T) {
 	require.Equal(t, "YouTube clip extraction completed", res["message"])
 	require.Equal(t, "vdC5GXxS-qU", res["video_id"])
 	require.Equal(t, 3, res["stats"].(*youtubetypes.ExtractStats).Requested)
+}
+
+func TestHandleJob_ClassifiedFailure_PreservesOriginalCause(t *testing.T) {
+	extractor := &failingExtractor{itemErr: "writer_failed: writer rejected locale-not-ready: clip locale not ready: asset=yt_z_k1UGy4-qU_3_15_v1 reason=missing READY translations"}
+	h := NewJobHandler(extractor, zap.NewNop())
+
+	payload := map[string]any{
+		"url": "https://www.youtube.com/watch?v=z_k1UGy4-qU",
+		"segments": []map[string]any{
+			{"start": "00:00", "end": "00:05", "name": "probe-0"},
+		},
+		"destination": map[string]any{
+			"folder_id":   "1KYyXMPF75XZHUM1QfMkwDiA7zUGgj_5T",
+			"folder_path": "Jason Momoa",
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	res, err := h.HandleJob(context.Background(), &job.Job{ID: "job-fail-1", Payload: raw}, &appjobs.JobTools{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrExtractionTerminal)
+	require.NotNil(t, res, "classified failure must NOT return a nil result")
+	require.Equal(t, "terminal", res["failure_class"])
+	require.Contains(t, err.Error(), "writer_failed")
+	require.Contains(t, err.Error(), "missing READY translations")
+
+	details := failureDetailsFromError(t, err)
+	require.Equal(t, "terminal", details["failure_class"])
+	require.Equal(t, "one or more segments failed", details["error"])
+	require.Equal(t, float64(1), details["stats"].(map[string]any)["failed"])
+	items := details["items"].([]any)
+	require.Len(t, items, 1)
+	require.Equal(t, extractor.itemErr, items[0].(map[string]any)["error"])
+}
+
+func TestHandleJob_NilExtractorResponse_IsStructuredTerminalFailure(t *testing.T) {
+	h := NewJobHandler(nilResponseExtractor{}, zap.NewNop())
+
+	res, err := h.HandleJob(context.Background(), &job.Job{ID: "job-nil-response"}, &appjobs.JobTools{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrExtractionTerminal)
+	require.Equal(t, "terminal", res["failure_class"])
+
+	details := failureDetailsFromError(t, err)
+	require.Equal(t, "terminal", details["failure_class"])
+	require.Equal(t, "extractor returned nil response", details["error"])
+	require.Empty(t, details["items"])
+}
+
+func TestHandleJob_ClassifiedFailure_Retryable(t *testing.T) {
+	extractor := &failingExtractor{itemErr: "ytdlp download failed: rate limit exceeded"}
+	h := NewJobHandler(extractor, zap.NewNop())
+
+	payload := map[string]any{
+		"url": "https://www.youtube.com/watch?v=z_k1UGy4-qU",
+		"segments": []map[string]any{
+			{"start": "00:00", "end": "00:05", "name": "probe-0"},
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	res, err := h.HandleJob(context.Background(), &job.Job{ID: "job-retry-1", Payload: raw}, &appjobs.JobTools{})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrExtractionRetryable)
+	require.NotNil(t, res)
+	require.Equal(t, "retryable", res["failure_class"])
+
+	details := failureDetailsFromError(t, err)
+	require.Equal(t, "retryable", details["failure_class"])
+	require.Equal(t, extractor.itemErr, details["items"].([]any)[0].(map[string]any)["error"])
+}
+
+func failureDetailsFromError(t *testing.T, err error) map[string]any {
+	t.Helper()
+	const marker = "failure_details="
+	_, payload, ok := strings.Cut(err.Error(), marker)
+	require.True(t, ok, "classified error must include %q", marker)
+	var details map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &details))
+	return details
+}
+
+type nilResponseExtractor struct{}
+
+func (nilResponseExtractor) Extract(context.Context, *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
+	return nil, nil
+}
+
+type failingExtractor struct {
+	itemErr string
+}
+
+func (f *failingExtractor) Extract(_ context.Context, _ *youtubetypes.ExtractRequest) (*youtubetypes.ExtractResponse, error) {
+	return &youtubetypes.ExtractResponse{
+		OK:        false,
+		SourceURL: "https://www.youtube.com/watch?v=z_k1UGy4-qU",
+		VideoID:   "z_k1UGy4-qU",
+		Stats: &youtubetypes.ExtractStats{
+			Requested: 1,
+			Processed: 0,
+			Skipped:   0,
+			Failed:    1,
+		},
+		Items: []youtubetypes.ExtractItem{
+			{Name: "probe-0", Start: "00:00", End: "00:05", Status: "failed", Error: f.itemErr},
+		},
+		Error: "one or more segments failed",
+	}, nil
 }
