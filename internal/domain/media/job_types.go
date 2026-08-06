@@ -50,6 +50,12 @@ const (
 	// stock-pipeline run (download + cut + Drive upload).
 	TypeArtlistRun = "media.artlist"
 
+	// TypeArtlistCacheRefresh is the canonical job type for refreshing
+	// a stale Artlist live-search cache entry. The HTTP search path only
+	// enqueues this durable job; the worker performs the provider request
+	// and cache write.
+	TypeArtlistCacheRefresh = "media.artlist_cache_refresh"
+
 	// TypeGenerate is the canonical job type for the media
 	// image-generation entry point. Wire-string recovered
 	// from git history (pre-bloomed bot-sweep deletion): the

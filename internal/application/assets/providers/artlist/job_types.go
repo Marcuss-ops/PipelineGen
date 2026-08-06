@@ -170,6 +170,74 @@ func (a *JobAdapter) HandleJob(
 
 // RegisterHandler binds the Artlist consumer using the media domain's
 // canonical discriminator and the shared kernel handler contract.
+// HandleCacheRefresh executes the durable stale-cache refresh job. It is
+// deliberately separate from HandleJob: a refresh fetches only provider
+// candidates and updates the Artlist search cache; it must not run the full
+// download/upload Artlist pipeline.
+func (a *JobAdapter) HandleCacheRefresh(
+	ctx context.Context,
+	j *job.Job,
+	tools *job.JobExecutionTools,
+) (job.Result, error) {
+	_ = tools
+	if a == nil || a.service == nil {
+		return nil, fmt.Errorf("artlist.JobAdapter.HandleCacheRefresh: service is not configured")
+	}
+	if j == nil {
+		return nil, fmt.Errorf("artlist.JobAdapter.HandleCacheRefresh: job is nil")
+	}
+	if a.service.scraperSearcher == nil {
+		return nil, ErrUnavailable
+	}
+	if a.service.liveCache == nil {
+		return nil, fmt.Errorf("artlist.JobAdapter.HandleCacheRefresh: cache is not configured")
+	}
+
+	payload, err := appjobs.DecodePayload[appjobs.ArtlistCacheRefreshPayload](j)
+	if err != nil {
+		return nil, fmt.Errorf("decode Artlist cache refresh payload: %w", err)
+	}
+	term := normalizeSearchTermLower(payload.Term)
+	if term == "" {
+		return nil, fmt.Errorf("%w: cache refresh term is required", ErrEmpty)
+	}
+	limit := payload.Limit
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	candidates, err := a.service.scraperSearcher.Search(ctx, SearchRequest{
+		Term:         term,
+		Limit:        limit,
+		PreferRemote: payload.PreferRemote,
+		ForceRefresh: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Artlist cache refresh search for %q: %w", term, err)
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("%w: Artlist cache refresh returned no candidates for %q", ErrEmptyResult, term)
+	}
+
+	if err := a.service.liveCache.setWithContext(ctx, term, candidates); err != nil {
+		return nil, fmt.Errorf("persist Artlist cache refresh for %q: %w", term, err)
+	}
+	if a.service.log != nil {
+		a.service.log.Info("Artlist cache refresh completed",
+			zap.String("term", term),
+			zap.Int("clips", len(candidates)),
+			zap.String("job_id", j.ID),
+		)
+	}
+	return job.Result{
+		"term":  term,
+		"clips": len(candidates),
+	}, nil
+}
+
 func (a *JobAdapter) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if a == nil || a.service == nil {
 		return fmt.Errorf("artlist.JobAdapter.RegisterHandler: service is not configured")
@@ -179,6 +247,9 @@ func (a *JobAdapter) RegisterHandler(jobsSvc *appjobs.Service) error {
 	}
 	if err := jobsSvc.RegisterHandler(media.TypeArtlistRun, appjobs.HandlerFunc(a.HandleJob)); err != nil {
 		return fmt.Errorf("artlist.JobAdapter.RegisterHandler: bind %q: %w", media.TypeArtlistRun, err)
+	}
+	if err := jobsSvc.RegisterHandler(media.TypeArtlistCacheRefresh, appjobs.HandlerFunc(a.HandleCacheRefresh)); err != nil {
+		return fmt.Errorf("artlist.JobAdapter.RegisterHandler: bind %q: %w", media.TypeArtlistCacheRefresh, err)
 	}
 	return nil
 }

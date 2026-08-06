@@ -143,26 +143,27 @@ type JobPolicy = RegistryEntry
 // fact: ZERO new string literals here; every value resolves to a
 // capability domain constant.
 const (
-	TypeMediaExtract     = media.TypeExtract
-	TypeMediaStock       = media.TypeStock
-	TypeVoiceoverBatch   = voiceover.TypeBatch
-	TypeSubtitleGenerate = subtitle.TypeGenerate
-	TypeRenderVideo      = video.TypeRender
-	TypeYouTubeUpload    = youtube.TypeUpload
-	TypeYouTubeStock     = youtube.TypeStock
-	TypeCatalogSync      = catalog.TypeSync
-	TypeArtlistRun       = media.TypeArtlistRun
-	TypeSystemCleanup    = system.TypeCleanup
-	TypeMediaGenerate    = media.TypeGenerate
-	TypeVideoGenerate    = video.TypeGenerate
-	TypeBooksProcess     = books.TypeProcess
-	TypeLessonsProcess   = lessons.TypeProcess
-	TypeMediaReindex     = media.TypeReindex
-	TypeMediaEnrich      = media.TypeEnrich
-	TypeYouTubeRebuildST = youtube.TypeRebuildSearchText
-	TypeDriveFolderSync  = drive.TypeFolderSync
-	TypeMediaCurate      = media.TypeCurate
-	TypeVoiceoverPromo   = voiceover.TypePromo
+	TypeMediaExtract        = media.TypeExtract
+	TypeMediaStock          = media.TypeStock
+	TypeVoiceoverBatch      = voiceover.TypeBatch
+	TypeSubtitleGenerate    = subtitle.TypeGenerate
+	TypeRenderVideo         = video.TypeRender
+	TypeYouTubeUpload       = youtube.TypeUpload
+	TypeYouTubeStock        = youtube.TypeStock
+	TypeCatalogSync         = catalog.TypeSync
+	TypeArtlistRun          = media.TypeArtlistRun
+	TypeArtlistCacheRefresh = media.TypeArtlistCacheRefresh
+	TypeSystemCleanup       = system.TypeCleanup
+	TypeMediaGenerate       = media.TypeGenerate
+	TypeVideoGenerate       = video.TypeGenerate
+	TypeBooksProcess        = books.TypeProcess
+	TypeLessonsProcess      = lessons.TypeProcess
+	TypeMediaReindex        = media.TypeReindex
+	TypeMediaEnrich         = media.TypeEnrich
+	TypeYouTubeRebuildST    = youtube.TypeRebuildSearchText
+	TypeDriveFolderSync     = drive.TypeFolderSync
+	TypeMediaCurate         = media.TypeCurate
+	TypeVoiceoverPromo      = voiceover.TypePromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is

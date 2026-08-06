@@ -375,7 +375,11 @@ func (ss *SearchService) buildSearcherChain(preferRemote bool) *SearcherFallback
 			if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
 				ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
 			}
-			searchers = append(searchers, NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log))
+			cachedSearcher := NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log)
+			if s.jobsSvc != nil {
+				cachedSearcher = NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log, s.jobsSvc)
+			}
+			searchers = append(searchers, cachedSearcher)
 		} else {
 			searchers = append(searchers, searcher)
 		}
