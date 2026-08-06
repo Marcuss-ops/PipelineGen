@@ -95,6 +95,7 @@ fi
 
 # ---- Header / logging ------------------------------------------------------
 REQ_TAG="stock-route-aliveness-$(date +%s)"
+mkdir -p /tmp/stock-tests
 OUT_JSON="/tmp/stock-tests/${REQ_TAG}.json"
 
 echo "=================================================================="
