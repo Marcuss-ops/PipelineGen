@@ -1,8 +1,10 @@
 package stockpipeline
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
@@ -143,16 +145,133 @@ func TestRunFingerprintUsesCanonicalPayloadFields(t *testing.T) {
 	}
 }
 
+func TestCheckpointFingerprintPayloadCarriesCanonicalInputAndPreviousResultHash(t *testing.T) {
+	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1", MaxConcurrentJobs: 3}
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}, Clips: []ClipSpec{{URL: "https://example.com/source.mp4", StartSec: 0, EndSec: 5}}}
+	previous := &RunState{Plan: []ClipPlan{{SourceID: "https://example.com/source.mp4", StartSec: 0, EndSec: 5}}}
+	payload, err := buildCheckpointFingerprintPayload("job-1", "stock.extract_clips", cfg, input, previous)
+
+	if err != nil {
+		t.Fatalf("build payload: %v", err)
+	}
+	if got, want := payload.SchemaVersion, checkpointFingerprintVersion; got != want {
+		t.Fatalf("schema version = %q, want %q", got, want)
+	}
+	if got, want := payload.JobID, "job-1"; got != want {
+		t.Fatalf("job ID = %q, want %q", got, want)
+	}
+	if got, want := payload.StepKey, "stock.extract_clips"; got != want {
+		t.Fatalf("step key = %q, want %q", got, want)
+	}
+	if len(payload.CanonicalInput) == 0 || string(payload.CanonicalInput) == "null" {
+		t.Fatal("canonical input must be present")
+	}
+	if got, want := payload.PreviousResultHash, deterministicPreviousOutputHash(previous); got != want {
+		t.Fatalf("previous result hash = %q, want %q", got, want)
+	}
+	if len(payload.PreviousResultHash) != 64 {
+		t.Fatalf("previous result hash length = %d, want 64", len(payload.PreviousResultHash))
+	}
+}
+
+func TestCheckpointFingerprintAllIdentityFieldsAffectDigest(t *testing.T) {
+	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1", MaxConcurrentJobs: 3}
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	previous := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
+	basePayload, err := buildCheckpointFingerprintPayload("job-1", "stock.extract_clips", cfg, input, previous)
+	if err != nil {
+		t.Fatalf("build payload: %v", err)
+	}
+	digest := func(payload checkpointFingerprintPayload) string {
+		raw, marshalErr := marshalCheckpointFingerprintPayload(payload)
+		if marshalErr != nil {
+			t.Fatalf("marshal payload: %v", marshalErr)
+		}
+		return sha256String(string(raw))
+	}
+	base := digest(basePayload)
+	cases := []struct {
+		name   string
+		mutate func(*checkpointFingerprintPayload)
+	}{
+		{"schema", func(p *checkpointFingerprintPayload) { p.SchemaVersion = "stock-step-fingerprint-test" }},
+		{"job", func(p *checkpointFingerprintPayload) { p.JobID = "job-2" }},
+		{"step", func(p *checkpointFingerprintPayload) { p.StepKey = "stock.publish" }},
+		{"policy", func(p *checkpointFingerprintPayload) { p.PolicyVersion = "policy-v2" }},
+		{"canonical-input", func(p *checkpointFingerprintPayload) { p.CanonicalInput = []byte(`{"urls":{"direct":["changed"]}}`) }},
+		{"previous-result-hash", func(p *checkpointFingerprintPayload) { p.PreviousResultHash = sha256String("changed-result") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := basePayload
+			tc.mutate(&candidate)
+			if got := digest(candidate); got == base {
+				t.Fatalf("digest did not change when %s changed", tc.name)
+			}
+		})
+	}
+}
+
+func TestCheckpointStoreIdempotencyUsesFingerprintVersioning(t *testing.T) {
+	store := steps.NewInMemoryStore()
+	ctx := context.Background()
+	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1"}
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	firstState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
+	secondState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 6}}}
+	first := steps.StepKey{JobID: "job-1", StepKey: "stock.extract_clips", InputFingerprint: stepInputFingerprint("job-1", "stock.extract_clips", cfg, input, firstState)}
+	requireNoError(t, store.MarkStarted(ctx, first))
+	requireNoError(t, store.MarkCompleted(ctx, first, []byte(`{"checkpoint_version":1}`), nil))
+	if err := store.MarkStarted(ctx, first); err != steps.ErrStepAlreadyCompleted {
+		t.Fatalf("same fingerprint retry error = %v, want ErrStepAlreadyCompleted", err)
+	}
+
+	second := first
+	second.InputFingerprint = stepInputFingerprint("job-1", "stock.extract_clips", cfg, input, secondState)
+	if second.InputFingerprint == first.InputFingerprint {
+		t.Fatal("different previous result must produce a different v3 fingerprint")
+	}
+	requireNoError(t, store.MarkStarted(ctx, second))
+	rows, err := store.ListByJob(ctx, first.JobID)
+	requireNoError(t, err)
+	if got, want := len(rows), 2; got != want {
+		t.Fatalf("fingerprint-versioned rows = %d, want %d", got, want)
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestStepInputFingerprintChangesWhenPreviousOutputChanges(t *testing.T) {
 	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1"}
 	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
 	firstState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
-	secondState := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}, CutPaths: []string{"/tmp/cut-2.mp4"}}
+	secondState := &RunState{
+		Plan:      []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}},
+		Published: []ChunkState{{Index: 0, SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 123}},
+	}
 
 	first := stepInputFingerprint("job-1", "stock.compose_chunks", cfg, input, firstState)
 	second := stepInputFingerprint("job-1", "stock.compose_chunks", cfg, input, secondState)
 	if first == second {
 		t.Fatalf("fingerprint did not change when previous step output changed")
+	}
+}
+
+func TestStepInputFingerprintPreviousOutputHashIsStableForEquivalentState(t *testing.T) {
+	cfg := OrchestratorConfig{JobId: "job-1", PolicyVersion: "policy-v1"}
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	first := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
+	second := &RunState{Plan: []ClipPlan{{SourceID: input.DirectURLs[0], StartSec: 0, EndSec: 5}}}
+	if got, want := deterministicPreviousOutputHash(first), deterministicPreviousOutputHash(second); got != want {
+		t.Fatalf("equivalent previous results have different hashes: %q vs %q", got, want)
+	}
+	if got, want := stepInputFingerprint("job-1", "stock.extract_clips", cfg, input, first), stepInputFingerprint("job-1", "stock.extract_clips", cfg, input, second); got != want {
+		t.Fatalf("equivalent previous results have different fingerprints: %q vs %q", got, want)
 	}
 }
 

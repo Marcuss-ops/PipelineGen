@@ -235,6 +235,56 @@ func TestOrchestrator_RunResilient_CompletedWithoutReadableRowFailsClosed(t *tes
 // TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed
 // verifies that a newer failed fingerprint is not hidden by an older
 // completed checkpoint. Retry must execute the latest failed attempt.
+func TestOrchestrator_RunResilient_ResumesV2CheckpointDuringV3Migration(t *testing.T) {
+	store := steps.NewInMemoryStore()
+	ctx := context.Background()
+	jobID := "resume-v2-migration"
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	cfg := OrchestratorConfig{JobId: jobID, PolicyVersion: "policy-v1", StepStore: store}
+	stepName := "stock.plan"
+	v2Fingerprint := legacyV2StepInputFingerprint(jobID, stepName, cfg, input, nil)
+	key := steps.StepKey{JobID: jobID, StepKey: stepName, InputFingerprint: v2Fingerprint}
+	require.NoError(t, store.MarkStarted(ctx, key))
+	require.NoError(t, store.MarkCompleted(ctx, key, []byte(`{"checkpoint_version":1,"Plan":[]}`), nil))
+
+	count := new(int32)
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = []Step{
+		&stubRecorderStep{name: stepName, count: count},
+	}
+
+	_, err := o.RunResilient(ctx, input)
+	require.NoError(t, err)
+	require.Zero(t, atomic.LoadInt32(count), "a matching v2 checkpoint must be resumed without rerunning the step")
+
+	rows, listErr := store.ListByJob(ctx, jobID)
+	require.NoError(t, listErr)
+	require.Len(t, rows, 1, "v2 resume must not create a duplicate checkpoint row")
+	require.Equal(t, v2Fingerprint, rows[0].Fingerprint)
+}
+
+func TestOrchestrator_RunResilient_DoesNotResumeMismatchedV2Checkpoint(t *testing.T) {
+	store := steps.NewInMemoryStore()
+	ctx := context.Background()
+	jobID := "resume-v2-mismatch"
+	input := &RunInput{DirectURLs: []string{"https://example.com/source.mp4"}}
+	cfg := OrchestratorConfig{JobId: jobID, PolicyVersion: "policy-v1", StepStore: store}
+	stepName := "stock.plan"
+	key := steps.StepKey{JobID: jobID, StepKey: stepName, InputFingerprint: legacyV2StepInputFingerprint(jobID, stepName, cfg, &RunInput{DirectURLs: []string{"https://example.com/other.mp4"}}, nil)}
+	require.NoError(t, store.MarkStarted(ctx, key))
+	require.NoError(t, store.MarkCompleted(ctx, key, []byte(`{"checkpoint_version":1,"Plan":[]}`), nil))
+
+	count := new(int32)
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = []Step{&stubRecorderStep{name: stepName, count: count}}
+	_, err := o.RunResilient(ctx, input)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), atomic.LoadInt32(count), "a mismatched v2 checkpoint must not authorize a skip")
+	rows, listErr := store.ListByJob(ctx, jobID)
+	require.NoError(t, listErr)
+	require.Len(t, rows, 2, "mismatched v2 input must create a new fingerprint version")
+}
+
 func TestLoadCompletedStepRows_DropsStaleCompletedWhenLatestAttemptFailed(t *testing.T) {
 	db := openOrchestratorResumeTestDB(t)
 	store := steps.NewSQLiteStoreWithDB(db)

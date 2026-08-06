@@ -222,8 +222,15 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 		// those checkpoints resumable during the migration, but only
 		// fall back for that explicit legacy format; a mismatching v2
 		// fingerprint must create a new attempt instead of skipping work.
-		if row, ok := completedRows[step.Name()]; ok && row.Fingerprint == legacyStepInputFingerprint(o.cfg.JobId, step.Name()) && legacyCheckpointEligible(o.cfg, input, previousState) {
-			fingerprint = row.Fingerprint
+		if row, ok := completedRows[step.Name()]; ok {
+			switch {
+			case row.Fingerprint == legacyStepInputFingerprint(o.cfg.JobId, step.Name()) && legacyCheckpointEligible(o.cfg, input, previousState):
+				fingerprint = row.Fingerprint
+			case row.Fingerprint == legacyV2StepInputFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState):
+				// v2 checkpoints remain resumable during the explicit
+				// v3 migration. New checkpoints always use v3.
+				fingerprint = row.Fingerprint
+			}
 		}
 		key := steps.StepKey{
 			JobID:            o.cfg.JobId,
