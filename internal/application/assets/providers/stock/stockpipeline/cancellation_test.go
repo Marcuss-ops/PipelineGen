@@ -147,7 +147,7 @@ func TestOrchestrator_CtxCancellation_PropagatesToBlockingStep(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())
@@ -267,7 +267,7 @@ func TestOrchestrator_CtxCancellation_DoesNotRunSubsequentSteps(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())
@@ -363,7 +363,7 @@ func TestOrchestrator_CtxCancellation_PreservesPreCompletedArtifacts(t *testing.
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())

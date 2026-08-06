@@ -106,7 +106,6 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	o := NewOrchestrator(
 		cfg,
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		s.stagerForRun(),
 		s.cutter,
 		s.renderer,

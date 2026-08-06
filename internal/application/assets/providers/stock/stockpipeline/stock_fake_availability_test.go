@@ -131,7 +131,6 @@ func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, re
 			ClipDurationSec:  5,
 		},
 		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
 		stager,
 		func() VideoCutter {
 			if cutter != nil {

@@ -573,7 +573,6 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 			ClipDurationSec:  5,
 		},
 		NewExplicitPlanner(clips),
-		NewInMemoryStepStore(),
 		assets.SourceStager(stager),
 		cutter,
 		passthroughRenderer{},
