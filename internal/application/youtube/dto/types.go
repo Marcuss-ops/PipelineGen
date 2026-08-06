@@ -20,6 +20,12 @@
 // sub-package taxonomy melt.
 package dto
 
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
 // ClipMetadataFile is the human-readable metadata saved alongside each clip.
 // It is serialized as JSON (metadata_<clip_id>.json) next to the clip MP4 and
 // uploaded to Drive alongside the video file.
@@ -78,13 +84,49 @@ type ExtractRequest struct {
 	Shuffle        bool                `json:"shuffle,omitempty"`
 }
 
+// UnmarshalJSON rejects the pre-destination wire shape instead of silently
+// dropping its folder fields. The extraction worker consumes this DTO after
+// the async enqueue boundary, so accepting those legacy fields would enqueue
+// a job that falls back to the default Drive hierarchy.
+func (r *ExtractRequest) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+
+	legacyDestinationFields := []string{
+		"group",
+		"folder_id",
+		"folder_path",
+		"subfolder_name",
+		"create_subfolder",
+	}
+	present := make([]string, 0, len(legacyDestinationFields))
+	for _, field := range legacyDestinationFields {
+		if _, ok := fields[field]; ok {
+			present = append(present, field)
+		}
+	}
+	if len(present) > 0 {
+		return fmt.Errorf("destination fields must be nested under destination: %s", strings.Join(present, ", "))
+	}
+
+	type extractRequestAlias ExtractRequest
+	var decoded extractRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = ExtractRequest(decoded)
+	return nil
+}
+
 // DestinationRequest specifies the target folder for extraction output.
 type DestinationRequest struct {
 	Group           string `json:"group,omitempty"`
 	FolderID        string `json:"folder_id,omitempty"`
 	FolderPath      string `json:"folder_path,omitempty"`
 	SubfolderName   string `json:"subfolder_name,omitempty"`
-	CreateSubfolder bool   `json:"create_subfolder,omitempty"`
+	CreateSubfolder bool   `json:"create_subfolder"`
 }
 
 // ExtractResponse is the result of a clip extraction operation.
