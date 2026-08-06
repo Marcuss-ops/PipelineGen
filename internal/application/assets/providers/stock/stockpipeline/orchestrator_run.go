@@ -288,7 +288,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			return nil, runErr
 		}
 
-		stateBytes, marshalErr := json.Marshal(state)
+		stateBytes, marshalErr := marshalRunStateCheckpoint(state)
 		if marshalErr != nil {
 			return nil, fmt.Errorf("orchestrator: %s checkpoint: %w: %v", step.Name(), ErrStockResumeStateInvalid, marshalErr)
 		}
@@ -415,17 +415,92 @@ func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) 
 	return latest, nil
 }
 
-// rehydrateRunState unmarshals a JSON snapshot of RunState.
-// Returns a typed error when the snapshot is empty or malformed so
-// the caller can fail the run loudly rather than resuming with an
-// empty accumulator.
+const currentRunStateCheckpointVersion = 1
+
+// runStateCheckpoint is a flat, versioned envelope. Embedding RunState
+// keeps the pre-versioning JSON shape intact: old checkpoints with fields
+// such as "Plan" remain readable and new checkpoints add only the
+// checkpoint_version discriminator.
+type runStateCheckpoint struct {
+	CheckpointVersion int `json:"checkpoint_version"`
+	RunState
+}
+
+func marshalRunStateCheckpoint(state *RunState) ([]byte, error) {
+	if state == nil {
+		return nil, fmt.Errorf("nil RunState")
+	}
+	return json.Marshal(runStateCheckpoint{
+		CheckpointVersion: currentRunStateCheckpointVersion,
+		RunState:          *state,
+	})
+}
+
+// rehydrateRunState validates and unmarshals a RunState checkpoint.
+//
+// Compatibility contract:
+//   - checkpoints without checkpoint_version are legacy v0 and remain
+//     readable;
+//   - checkpoint_version=1 is the current flat envelope;
+//   - an empty object is a legacy empty checkpoint and resumes with an
+//     empty accumulator, matching rows written before state snapshots;
+//   - a future, malformed, or non-object versioned payload fails closed.
 func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (RunState, error) {
 	if len(result) == 0 {
 		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: empty checkpoint result")
 	}
-	var rehydrated RunState
-	if err := json.Unmarshal(result, &rehydrated); err != nil {
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(result, &fields); err != nil {
 		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
 	}
-	return rehydrated, nil
+	if fields == nil {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint must be a JSON object")
+	}
+
+	versionRaw, versioned := fields["checkpoint_version"]
+	if !versioned {
+		// v0 compatibility: decode the historical flat RunState directly.
+		var legacy RunState
+		if err := json.Unmarshal(result, &legacy); err != nil {
+			return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: legacy unmarshal: %w", err)
+		}
+		return legacy, nil
+	}
+
+	var version int
+	if string(versionRaw) == "null" {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint_version is null")
+	}
+	if err := json.Unmarshal(versionRaw, &version); err != nil {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: checkpoint_version: %w", err)
+	}
+	if version != currentRunStateCheckpointVersion {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: unsupported checkpoint_version=%d (want %d)", version, currentRunStateCheckpointVersion)
+	}
+	if !hasRunStateField(fields) {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: versioned checkpoint has no RunState fields")
+	}
+
+	var checkpoint runStateCheckpoint
+	if err := json.Unmarshal(result, &checkpoint); err != nil {
+		return RunState{}, fmt.Errorf("orchestrator: rehydrateRunState: versioned unmarshal: %w", err)
+	}
+	return checkpoint.RunState, nil
+}
+
+// hasRunStateField distinguishes a valid v1 envelope from a versioned
+// payload that only carries an unknown/future field. Unknown fields remain
+// ignorable when a known RunState field is present, preserving additive JSON
+// compatibility within the same checkpoint version.
+func hasRunStateField(fields map[string]json.RawMessage) bool {
+	for key := range fields {
+		switch key {
+		case "Plan", "StagedAssets", "CutPaths", "ComposedPaths", "Published",
+			"MetadataPublished", "Manifest", "FinalStatus", "FinalizationResult",
+			"Counts", "SourceErrors":
+			return true
+		}
+	}
+	return false
 }

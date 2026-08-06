@@ -198,7 +198,7 @@ func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 		JobId:     jobID,
 		StepStore: store, // C2/4: inject SQLite-backed store via OrchestratorConfig
 	}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -288,7 +288,7 @@ func TestOrchestrator_RunResilient_AllPreCompletedSkipsAll(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -355,7 +355,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -488,7 +488,7 @@ func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -544,7 +544,7 @@ func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -562,6 +562,10 @@ func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
 	}
 	require.NotNil(t, planRow, "stock.plan row must exist")
 	require.True(t, len(planRow.Result) > 0, "stock.plan result_json must be non-empty")
+	var checkpointEnvelope map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(planRow.Result, &checkpointEnvelope))
+	require.Equal(t, `1`, string(checkpointEnvelope["checkpoint_version"]),
+		"new checkpoints must carry the current checkpoint_version")
 
 	var persisted RunState
 	require.NoError(t, json.Unmarshal(planRow.Result, &persisted))
@@ -629,7 +633,7 @@ func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -695,12 +699,59 @@ func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testi
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
 	require.NoError(t, err)
 	require.True(t, stageSourcesCalled, "stock.stage_sources must run after empty-result resume")
+}
+
+// TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed verifies
+// that a checkpoint from a newer release is not resumed silently.
+func TestOrchestrator_RunResilient_FutureCheckpointVersionFailsClosed(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "future-checkpoint-version-test-1"
+
+	planKey := steps.StepKey{
+		JobID:            jobID,
+		StepKey:          "stock.plan",
+		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+	}
+	require.NoError(t, store.MarkStarted(ctx, planKey))
+	require.NoError(t, store.MarkCompleted(ctx, planKey, []byte(`{"checkpoint_version":2,"Plan":[]}`), nil))
+
+	o := NewTestStockOrchestrator(
+		OrchestratorConfig{JobId: jobID, StepStore: store},
+		resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{},
+	)
+	o.dispatchSteps = []Step{
+		&stubRecorderStep{name: "stock.plan", count: new(int32)},
+		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+	}
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.Error(t, err, "future checkpoint versions must not be resumed silently")
+	require.ErrorIs(t, err, ErrStockResumeStateInvalid)
+	require.Contains(t, err.Error(), "unsupported checkpoint_version=2")
+}
+
+func TestRunStateCheckpoint_CompatibilityShapes(t *testing.T) {
+	o := &Orchestrator{}
+
+	versioned, err := o.rehydrateRunState(json.RawMessage(`{"checkpoint_version":1,"Plan":[{"SourceID":"https://example.com/v.mp4"}]}`))
+	require.NoError(t, err)
+	require.Len(t, versioned.Plan, 1)
+	require.Equal(t, "https://example.com/v.mp4", versioned.Plan[0].SourceID)
+
+	legacyEmpty, err := o.rehydrateRunState(json.RawMessage(`{}`))
+	require.NoError(t, err)
+	require.Empty(t, legacyEmpty.Plan, "legacy empty object remains a compatible empty checkpoint")
+
+	_, err = o.rehydrateRunState(json.RawMessage(`null`))
+	require.Error(t, err, "JSON null is not a checkpoint object")
 }
 
 // TestOrchestrator_RunResilient_MalformedResultFailsClosed verifies
@@ -729,10 +780,45 @@ func TestOrchestrator_RunResilient_MalformedResultFailsClosed(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o := NewTestStockOrchestrator(cfg, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
 	require.Error(t, err, "RunResilient must fail when a completed step has malformed checkpoint data")
 	require.ErrorIs(t, err, ErrStockResumeStateInvalid, "error must wrap ErrStockResumeStateInvalid")
+}
+
+// TestOrchestrator_RunResilient_IncompatibleCheckpointShapesFailClosed
+// covers valid JSON that is not a compatible checkpoint contract.
+func TestOrchestrator_RunResilient_IncompatibleCheckpointShapesFailClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{name: "null", payload: "null"},
+		{name: "array", payload: "[]"},
+		{name: "versioned_empty", payload: `{"checkpoint_version":1}`},
+		{name: "versioned_unknown_only", payload: `{"checkpoint_version":1,"future_field":true}`},
+		{name: "versioned_wrong_plan_type", payload: `{"checkpoint_version":1,"Plan":"not-a-plan"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openOrchestratorResumeTestDB(t)
+			store := steps.NewSQLiteStoreWithDB(db)
+			ctx := context.Background()
+			jobID := "incompatible-checkpoint-" + tc.name
+			key := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: stepInputFingerprint(jobID, "stock.plan")}
+			require.NoError(t, store.MarkStarted(ctx, key))
+			require.NoError(t, store.MarkCompleted(ctx, key, []byte(tc.payload), nil))
+
+			o := NewTestStockOrchestrator(OrchestratorConfig{JobId: jobID, StepStore: store}, resumeStubPlanner{}, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+			o.dispatchSteps = []Step{
+				&stubRecorderStep{name: "stock.plan", count: new(int32)},
+				&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+			}
+			_, err := o.RunResilient(ctx, &RunInput{})
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrStockResumeStateInvalid)
+		})
+	}
 }
