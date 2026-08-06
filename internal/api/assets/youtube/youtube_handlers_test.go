@@ -151,6 +151,93 @@ func TestNormalizeExtractionDestination_HonorsExplicitFlatFolder(t *testing.T) {
 	require.False(t, createSubfolder)
 }
 
+func TestYouTubeClipHandler_Extract_RejectsLegacyTopLevelDestinationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	jobsSvc := &recordingJobsService{}
+	handler := NewYouTubeClipHandler(
+		&recordingYouTubeClipService{},
+		zap.NewNop(),
+		jobsSvc,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clips/process", bytes.NewBufferString(`{
+		"url":"https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		"segments":[{"start":"00:01:00","end":"00:01:10","name":"diagnostic"}],
+		"folder_id":"legacy-folder-id",
+		"folder_path":"Legacy Actor",
+		"create_subfolder":false
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.Extract(ctx)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "destination fields must be nested under destination")
+	require.Nil(t, jobsSvc.lastReq, "invalid legacy payload must not enqueue a job")
+}
+
+func TestYouTubeClipHandler_Extract_PreservesFlatDestinationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	jobsSvc := &recordingJobsService{}
+	handler := NewYouTubeClipHandler(
+		&recordingYouTubeClipService{},
+		zap.NewNop(),
+		jobsSvc,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := map[string]any{
+		"url":      "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		"segments": []map[string]any{{"start": "00:01:00", "end": "00:01:10", "name": "diagnostic"}},
+		"destination": map[string]any{
+			"folder_id":        "actor-folder-id",
+			"folder_path":      "Tom Holland",
+			"create_subfolder": false,
+		},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clips/process", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.Extract(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, jobsSvc.lastReq)
+	payload, ok := jobsSvc.lastReq.Payload.(map[string]any)
+	require.True(t, ok)
+
+	dest, ok := payload["destination"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "actor-folder-id", dest["folder_id"])
+	require.Equal(t, "Tom Holland", dest["folder_path"])
+	require.Equal(t, false, dest["create_subfolder"])
+	_, hasTopLevelFolderID := payload["folder_id"]
+	_, hasTopLevelFolderPath := payload["folder_path"]
+	_, hasTopLevelCreateSubfolder := payload["create_subfolder"]
+	require.False(t, hasTopLevelFolderID)
+	require.False(t, hasTopLevelFolderPath)
+	require.False(t, hasTopLevelCreateSubfolder)
+}
+
 func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
