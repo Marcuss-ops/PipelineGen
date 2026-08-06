@@ -3,15 +3,14 @@
 // (Wave 5 ship, 2026-07-06) was split per AGENTS.md Pattern 5 +
 // godlike/06 SSOT one-canonical-owner-per-fact discipline:
 //
-//   - asset_published_errors.go   — 9 typed-error sentinels with
-//     the umbrella + sub-%w wrap chain preserved verbatim.
+//   - asset_published_errors.go   — typed terminal validation sentinels
+//     with the umbrella + sub-%w wrap chain preserved.
 //   - asset_published_envelope.go — SchemaVersion const +
 //     AssetPublishedRequestV1 struct + the deprecated unexported
 //     alias. Wire-shape contract only — NO business logic.
-//   - asset_published_handler.go  — AssetPublisher port (Pattern 0)
-//   - AssetPublishedHandler struct + NewAssetPublishedHandler +
-//     EventType + Handle + ComposeSearchText. Consumer-side surface
-//     only.
+//   - asset_published_handler.go  — AssetPublishedHandler struct +
+//     NewAssetPublishedHandler + EventType + Handle + ComposeSearchText.
+//     Informational consumer surface only; no Qdrant port.
 //
 // godlike/06 SSOT (one canonical owner per fact): the schema version
 // constant AssetPublishedSchemaVersion is re-declared as the parallel
@@ -38,7 +37,7 @@
 //
 //   - Typed errors:          asset_published_errors.go
 //   - Wire-shape envelope:   asset_published_envelope.go
-//   - Consumer (port+handler+composer): asset_published_handler.go
+//   - Consumer (informational handler+composer): asset_published_handler.go
 //
 // Callers (handler test, producer emitter, composition root wiring)
 // reference the symbols by their canonical names: the resolution is

@@ -290,6 +290,8 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 //
 //   - WorkflowStepCompletedHandler / WorkflowStepFailedHandler (no
 //     deps; always wired).
+//   - AssetPublishedHandler (logger only; informational receipt; never
+//     writes Qdrant or media_assets.index_state).
 //   - MetadataExportHandler (pre-built by composition root via the
 //     metadataexport package's typed-port adapter; passed in via
 //     metadataExportHandler; nil → skipped).
@@ -319,6 +321,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	optional := []outboxevents.Handler{
 		&WorkflowStepCompletedHandler{log: log},
 		&WorkflowStepFailedHandler{log: log},
+		NewAssetPublishedHandler(log),
 	}
 	if metadataExportHandler != nil {
 		optional = append(optional, metadataExportHandler)
@@ -381,6 +384,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	}
 	log.Info("outbox optional handlers registered",
 		zap.Int("registered", len(optional)),
+		zap.Bool("asset_published_informational_wired", true),
 		zap.Bool("metadata_export_wired", metadataExportHandler != nil),
 		zap.Bool("delivery_wired", deps != nil && (deps.Infra.HTTPClient != nil || deps.Infra.DB != nil) && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs.Jobs != nil),
