@@ -56,6 +56,10 @@ type OrchestratorConfig struct {
 	// orchestrator fans out to. 0 means "use the default 3" so
 	// operators can rely on the legacy run.go semaphore.
 	MaxConcurrentJobs int
+	// StrictDurationValidation is enabled only by the production
+	// constructor. It prevents unknown source durations from bypassing
+	// timestamp bounds checks before FFmpeg receives a clip.
+	StrictDurationValidation bool
 	// StepStore is the per-step checkpointing store (canonical
 	// §12-3 / godlike/06 SSOT). nil ⇒ defaults to
 	// steps.NewInMemoryStore() inside NewOrchestrator (the

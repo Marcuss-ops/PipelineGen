@@ -26,7 +26,10 @@ import (
 
 // ErrStockClipsOutOfRange (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)
 // surfaces a clip whose EndSec exceeds the probed source duration.
-var ErrStockClipsOutOfRange = errors.New("stock.extract_clips: clip EndSec exceeds source duration")
+var (
+	ErrStockClipsOutOfRange      = errors.New("stock.extract_clips: clip EndSec exceeds source duration")
+	ErrStockClipsUnknownDuration = errors.New("stock.extract_clips: source duration is unknown")
+)
 
 // maxDriveUploadWorkers caps concurrent Drive uploads per source group.
 const maxDriveUploadWorkers = 3
