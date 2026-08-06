@@ -58,47 +58,11 @@ func TestNewWhisperTranscriberAdapter_MissingScript(t *testing.T) {
 	}
 }
 
-func TestWhisperTranscriberAdapter_StubRejected(t *testing.T) {
-	// Stub script that returns the Fase 5 placeholder marker.
-	// The adapter MUST reject this with ErrStubTranscript
-	// (godlike/07 no-fake-availability).
-	script := writeStubScript(t, `
-import json, sys
-print(json.dumps({"text": "[whisper stub: " + sys.argv[1] + "]", "detected_language": "und", "confidence": 0.0}))
-`)
-	log := zap.NewNop()
-	adapter, err := NewWhisperTranscriberAdapter(WhisperTranscriberConfig{
-		PythonBin:  "python3",
-		ScriptPath: script,
-	}, log)
-	if err != nil {
-		t.Fatalf("NewWhisperTranscriberAdapter: %v", err)
-	}
-
-	// Use a real file path so os.Stat in the constructor
-	// would pass if the script existed. The adapter only
-	// checks the SCRIPT path at construction; the localPath
-	// arg is forwarded to the script (the stub doesn't read
-	// it from disk).
-	tmpFile := filepath.Join(t.TempDir(), "clip.mp4")
-	if err := os.WriteFile(tmpFile, []byte("fake"), 0o644); err != nil {
-		t.Fatalf("write tmp file: %v", err)
-	}
-
-	_, err = adapter.TranscribeAudioWithDetection(context.Background(), tmpFile)
-	if err == nil {
-		t.Fatalf("expected ErrStubTranscript, got nil")
-	}
-	if !errors.Is(err, ErrStubTranscript) {
-		t.Fatalf("expected ErrStubTranscript, got: %v", err)
-	}
-}
-
 func TestWhisperTranscriberAdapter_ValidJSON(t *testing.T) {
-	// Stub script that returns a real (non-stub) transcript.
+	// Fake bridge script that returns a real transcript.
 	script := writeStubScript(t, `
 import json, sys
-print(json.dumps({"text": "hello world from stub", "detected_language": "en", "confidence": 0.92}))
+print(json.dumps({"text": "hello world from bridge", "detected_language": "en", "confidence": 0.92}))
 `)
 	log := zap.NewNop()
 	adapter, err := NewWhisperTranscriberAdapter(WhisperTranscriberConfig{
@@ -118,8 +82,8 @@ print(json.dumps({"text": "hello world from stub", "detected_language": "en", "c
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
-	if res.Text != "hello world from stub" {
-		t.Fatalf("expected text 'hello world from stub', got: %q", res.Text)
+	if res.Text != "hello world from bridge" {
+		t.Fatalf("expected text 'hello world from bridge', got: %q", res.Text)
 	}
 	if res.DetectedLanguage != "en" {
 		t.Fatalf("expected detected_language 'en', got: %q", res.DetectedLanguage)

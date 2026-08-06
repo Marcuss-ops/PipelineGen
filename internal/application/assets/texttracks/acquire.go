@@ -250,12 +250,10 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 		det, err := s.whisper.TranscribeAudioWithDetection(ctx, cmd.LocalPath)
 		if err != nil {
 			// godlike/07 diagnostics: wrap the inner error
-			// with %w (not %v) so operators can distinguish
-			// ErrStubTranscript (Fase 5 placeholder) from a
-			// real Whisper hardware failure via
-			// errors.Is(returnedErr, youtube.ErrStubTranscript).
-			// ErrNoSourceAcquired remains the canonical
-			// surface for the BackfillService.
+			// with %w (not %v) so operators can distinguish a
+			// real Whisper failure from chain-level exhaustion
+			// via errors.Is. ErrNoSourceAcquired remains the
+			// canonical surface for the BackfillService.
 			s.log.Warn("acquire: Whisper failed; chain exhausted",
 				zap.String("asset_id", cmd.AssetID),
 				zap.String("local_path", cmd.LocalPath),
