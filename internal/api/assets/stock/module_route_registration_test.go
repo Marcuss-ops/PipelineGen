@@ -40,4 +40,14 @@ func TestBuild_RegistersRunRoute(t *testing.T) {
 	if res.Code != http.StatusAccepted {
 		t.Fatalf("POST /api/stock-pipeline/run = %d, want 202: %s", res.Code, res.Body.String())
 	}
+
+	searchReq := httptest.NewRequest(http.MethodPost, "/api/stock-pipeline/search-and-run", bytes.NewBufferString(
+		`{"queries":[{"q":"boxing","limit":1}],"folder_id":"folder-1","async":true}`,
+	))
+	searchReq.Header.Set("Content-Type", "application/json")
+	searchRes := httptest.NewRecorder()
+	router.ServeHTTP(searchRes, searchReq)
+	if searchRes.Code != http.StatusAccepted {
+		t.Fatalf("POST /api/stock-pipeline/search-and-run = %d, want 202: %s", searchRes.Code, searchRes.Body.String())
+	}
 }
