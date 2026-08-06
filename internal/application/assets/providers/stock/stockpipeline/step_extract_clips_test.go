@@ -50,15 +50,32 @@ import (
 // canonical "write-side observed" seam (godlike/06 SSOT one
 // canonical observer per fact).
 type recordingWriter struct {
-	calls    int
+	calls      int
+	clips      []*asset.Asset
+	fileHashes []string
+	// clip/fileHash are the LAST write observed (convenience accessors
+	// used by single-write tests).
 	clip     *asset.Asset
 	fileHash string
 }
 
 func (w *recordingWriter) WriteAndEnqueue(_ context.Context, clip *asset.Asset, fileHash string) error {
 	w.calls++
+	w.clips = append(w.clips, clip)
+	w.fileHashes = append(w.fileHashes, fileHash)
 	w.clip = clip
 	w.fileHash = fileHash
+	return nil
+}
+
+// byLogicalID returns the recorded clip with the given logical ID,
+// or nil if no such clip was written.
+func (w *recordingWriter) byLogicalID(id string) *asset.Asset {
+	for _, c := range w.clips {
+		if c.ID == id {
+			return c
+		}
+	}
 	return nil
 }
 
@@ -739,6 +756,160 @@ func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
 		if !strings.Contains(st, sub) {
 			t.Errorf("SearchText missing %q\ngot: %s", sub, st)
 		}
+	}
+}
+
+// TestStockExtractClips_CanonicalStateConstraints is the migration-189
+// regression guard (July 2026). Migration 189 installed SQLite triggers
+// (trg_media_assets_state_valid_insert/update) that ABORT any
+// media_assets INSERT/UPDATE carrying a lifecycle_state outside the
+// canonical allowlist — the zero value "" aborts, which surfaced in
+// production as stock jobs failing with "atomic dispatch failed: outbox
+// write aborted mid-transaction".
+//
+// The write produced by buildRichStockAsset must therefore carry:
+//   - MediaType == "video" (canonical stock clip type)
+//   - LifecycleState == StatePublished for non-youtube sources,
+//     StateActive for youtube-sourced clips (mirrors the canonical
+//     finalizer convention in asset_finalizer_committer.go)
+//   - CreatedAt stamped non-zero (UpsertClipTx persists clip.CreatedAt
+//     verbatim; a zero time writes an empty created_at column that
+//     breaks time-bucketed queries and recency ordering)
+func TestStockExtractClips_CanonicalStateConstraints(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.mp4")
+	outputPath := filepath.Join(tmpDir, "clip.mp4")
+	for _, p := range []string{sourcePath, outputPath} {
+		if err := os.WriteFile(p, []byte("fake-state-bytes-"+p), 0o644); err != nil {
+			t.Fatalf("seed file %s: %v", p, err)
+		}
+	}
+
+	// Three plans: youtube-sourced (direct URL), a named non-youtube
+	// provider, and an empty-provider plan (the canonical "stock"
+	// fallback).
+	plans := []ClipPlan{
+		{
+			SourceID:        "https://www.youtube.com/watch?v=abc123",
+			SourceProvider:  SourceProviderYouTube,
+			SourceVideoID:   "abc123",
+			OutputLogicalID: "planner:state:yt:0",
+			StartSec:        0,
+			EndSec:          5,
+			Title:           "YT clip",
+			PolicyVersion:   "test-policy-v1",
+		},
+		{
+			SourceID:        "https://cdn.example.com/stock.mp4",
+			SourceProvider:  "pexels",
+			OutputLogicalID: "planner:state:stock:0",
+			StartSec:        0,
+			EndSec:          5,
+			Title:           "Stock clip",
+			PolicyVersion:   "test-policy-v1",
+		},
+		{
+			SourceID:        "https://cdn2.example.com/empty.mp4",
+			SourceProvider:  "",
+			OutputLogicalID: "planner:state:empty:0",
+			StartSec:        0,
+			EndSec:          5,
+			Title:           "Fallback clip",
+			PolicyVersion:   "test-policy-v1",
+		},
+	}
+
+	cutter := &batchRecordingCutter{}
+	writer := &recordingWriter{}
+
+	state := &RunState{
+		Plan: plans,
+		StagedAssets: []*assets.StagedAsset{
+			{SourceID: plans[0].SourceID, LocalPath: sourcePath, DurationSec: 60},
+			{SourceID: plans[1].SourceID, LocalPath: sourcePath, DurationSec: 60},
+			{SourceID: plans[2].SourceID, LocalPath: sourcePath, DurationSec: 60},
+		},
+	}
+
+	base := &fakeStepRunner{
+		runInput: &RunInput{
+			Clips: []ClipSpec{
+				{URL: plans[0].SourceID, StartSec: 0, EndSec: 5},
+				{URL: plans[1].SourceID, StartSec: 0, EndSec: 5},
+				{URL: plans[2].SourceID, StartSec: 0, EndSec: 5},
+			},
+			ClipDuration: 5,
+			TotalMinutes: 1,
+		},
+		cfg: OrchestratorConfig{
+			PolicyVersion: "test-policy-v1",
+		},
+		state: state,
+	}
+	runner := &extractClipsFakeRunner{
+		fakeStepRunner: base,
+		writer:         writer,
+		cutter:         cutter,
+	}
+
+	step := StockExtractClipsStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("step.Run: unexpected error: %v", err)
+	}
+
+	if writer.calls != len(plans) {
+		t.Fatalf("writer.calls = %d, want %d", writer.calls, len(plans))
+	}
+
+	// youtube-sourced clip → ACTIVE (canonical finalizer convention).
+	yt := writer.byLogicalID("planner:state:yt:0")
+	if yt == nil {
+		t.Fatal("youtube clip was not written")
+	}
+	if got := string(yt.MediaType); got != "video" {
+		t.Errorf("youtube clip MediaType = %q, want %q (migration 189 canonical state write)", got, "video")
+	}
+	if yt.LifecycleState != asset.StateActive {
+		t.Errorf("youtube clip LifecycleState = %q, want %q (canonical finalizer convention: youtube → ACTIVE)", yt.LifecycleState, asset.StateActive)
+	}
+	if yt.CreatedAt.IsZero() {
+		t.Error("youtube clip CreatedAt is zero — UpsertClipTx persists CreatedAt verbatim and an empty created_at breaks time-bucketed queries")
+	}
+	if got := string(yt.Source); got != "youtube" {
+		t.Errorf("youtube clip Source = %q, want %q (provider identity preserved for direct URLs)", got, "youtube")
+	}
+
+	// named non-youtube provider (pexels) → PUBLISHED.
+	stock := writer.byLogicalID("planner:state:stock:0")
+	if stock == nil {
+		t.Fatal("stock clip was not written")
+	}
+	if got := string(stock.MediaType); got != "video" {
+		t.Errorf("stock clip MediaType = %q, want %q", got, "video")
+	}
+	if stock.LifecycleState != asset.StatePublished {
+		t.Errorf("stock clip LifecycleState = %q, want %q (non-youtube → PUBLISHED)", stock.LifecycleState, asset.StatePublished)
+	}
+	if stock.CreatedAt.IsZero() {
+		t.Error("stock clip CreatedAt is zero")
+	}
+	if got := string(stock.Source); got != "pexels" {
+		t.Errorf("stock clip Source = %q, want %q (provider identity preserved)", got, "pexels")
+	}
+
+	// empty-provider plan → canonical "stock" source fallback + PUBLISHED.
+	fallback := writer.byLogicalID("planner:state:empty:0")
+	if fallback == nil {
+		t.Fatal("fallback clip was not written")
+	}
+	if got := string(fallback.Source); got != "stock" {
+		t.Errorf("empty-provider clip Source = %q, want %q (canonical fallback)", got, "stock")
+	}
+	if fallback.LifecycleState != asset.StatePublished {
+		t.Errorf("empty-provider clip LifecycleState = %q, want %q (non-youtube → PUBLISHED)", fallback.LifecycleState, asset.StatePublished)
+	}
+	if fallback.CreatedAt.IsZero() {
+		t.Error("empty-provider clip CreatedAt is zero")
 	}
 }
 

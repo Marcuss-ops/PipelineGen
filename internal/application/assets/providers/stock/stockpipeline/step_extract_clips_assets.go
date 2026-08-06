@@ -47,6 +47,19 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	if provider == "" {
 		provider = "stock"
 	}
+	// Migration 189 canonical state constraints: media_assets writes MUST
+	// carry a valid lifecycle_state (the SQLite trigger
+	// trg_media_assets_state_valid_insert aborts on the zero value "").
+	// The state mirrors the canonical finalizer convention
+	// (asset_finalizer_committer.go::buildCommitRequest): youtube-sourced
+	// clips start ACTIVE, everything else PUBLISHED. The Drive upload for
+	// this clip happens in publishCuts AFTER this write; the state is the
+	// optimistic canonical value that the finalizer/committer reconciles.
+	// index_state is left to the column default (DISCOVERED).
+	lifecycleState := asset.StatePublished
+	if provider == SourceProviderYouTube {
+		lifecycleState = asset.StateActive
+	}
 	a := &asset.Asset{
 		ID: plan.OutputLogicalID,
 		// Preserve the provider identity of the source URL. YouTube stock
@@ -56,12 +69,20 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 		Source:     asset.Source(provider),
 		Name:       name,
 		Filename:   filename,
+		MediaType:  "video",
 		Category:   plan.Category,
 		SourceURL:  plan.SourceID,
 		Duration:   time.Duration(plan.EndSec-plan.StartSec) * time.Second,
 		Tags:       append([]string(nil), plan.Tags...),
 		SearchText: searchText,
 		Metadata:   make(map[string]any),
+		// CreatedAt MUST be stamped by the producer: UpsertClipTx persists
+		// clip.CreatedAt verbatim, and a zero time writes an empty
+		// created_at column, which breaks time-bucketed queries (e.g. the
+		// stock live battery's "created in the last 30 minutes" probe) and
+		// ordering by recency. updated_at is re-stamped by UpsertClipTx.
+		LifecycleState: lifecycleState,
+		CreatedAt:      time.Now().UTC(),
 	}
 
 	// Populate rich Metadata.
