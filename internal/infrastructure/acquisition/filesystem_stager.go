@@ -83,6 +83,13 @@ type FilesystemStager struct {
 
 	mu    sync.Mutex
 	byTok map[string]appacq.PrepareContext // cache: CleanupToken → in-memory PrepareContext
+
+	// prepareLocks serializes Prepare calls for the same stage ID while
+	// allowing unrelated sources to download concurrently. Without this
+	// keyed lock, concurrent callers share the same `.partial` path and
+	// their yt-dlp processes race while renaming the temporary output.
+	prepareLocksMu sync.Mutex
+	prepareLocks   map[string]*prepareLockEntry
 }
 
 // Options bundles construction-time configuration for FilesystemStager.
@@ -123,10 +130,11 @@ func NewFilesystemStager(opts Options) (*FilesystemStager, error) {
 		opts.Log = zap.NewNop()
 	}
 	return &FilesystemStager{
-		stagingRoot: opts.StagingRoot,
-		fetch:       opts.Fetch,
-		log:         opts.Log,
-		byTok:       make(map[string]appacq.PrepareContext),
+		stagingRoot:  opts.StagingRoot,
+		fetch:        opts.Fetch,
+		log:          opts.Log,
+		byTok:        make(map[string]appacq.PrepareContext),
+		prepareLocks: make(map[string]*prepareLockEntry),
 	}, nil
 }
 
@@ -142,6 +150,37 @@ func (f *FilesystemStager) forgetToken(token string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.byTok, token)
+}
+
+type prepareLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (f *FilesystemStager) acquirePrepareLock(stageID string) func() {
+	f.prepareLocksMu.Lock()
+	if f.prepareLocks == nil {
+		f.prepareLocks = make(map[string]*prepareLockEntry)
+	}
+	entry := f.prepareLocks[stageID]
+	if entry == nil {
+		entry = &prepareLockEntry{}
+		f.prepareLocks[stageID] = entry
+	}
+	entry.refs++
+	f.prepareLocksMu.Unlock()
+
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+
+		f.prepareLocksMu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(f.prepareLocks, stageID)
+		}
+		f.prepareLocksMu.Unlock()
+	}
 }
 
 // ── ErrFSStagerNotConfigured ───────────────────────────────────────
