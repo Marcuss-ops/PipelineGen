@@ -1,6 +1,7 @@
 // internal/infrastructure/downloader/downloader_ytdlp.go —
 // yt-dlp execution paths (Download / DownloadRange / DownloadSections).
-// Extracted from downloader.go; no behavior change.
+// Extracted from downloader.go. Sectioned downloads intentionally keep
+// yt-dlp/ffmpeg in control instead of selecting an external downloader.
 package downloader
 
 import (
@@ -40,78 +41,92 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return d.downloadLocalFile(req, parsed)
 	}
 
-	args := []string{}
-	if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
-		args = append(args, "--no-playlist")
-	}
-
-	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
-	// --no-warnings, and --extractor-args. Format selection is via
-	// FormatArg so the downloader doesn't inline the -f string.
-	args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
-	args = append(args, d.cmdBuilder.FormatArg(true)...)
-
-	// Dynamically use aria2c to accelerate downloads if available
-	args = d.addExternalDownloaderArgs(args)
-
-	// Add Artlist-specific args (cookies, headers, impersonation).
-	// July 2026 (PR-ARTLIST-COOKIES-CONFIG): the --cookies path is now
-	// config-driven (cfg.External.ArtlistCookiesPath, env ARTLIST_COOKIES_PATH).
-	// When empty (the godlike/07 fail-closed default), the --cookies flag is
-	// SKIPPED entirely so operators see a visible 403 from Artlist instead of
-	// a silent `--cookies /nonexistent/path` failure on a hardcoded path.
-	if strings.Contains(req.URL, "artlist") {
-		if d.artlistCookiesPath != "" {
-			args = append(args, "--cookies", d.artlistCookiesPath)
+	// buildArgs is called once per player-client attempt so the fallback
+	// loop can re-run a bot-checked download with an alternate client
+	// without duplicating the command construction.
+	buildArgs := func(playerClient string) []string {
+		args := []string{}
+		if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+			args = append(args, "--no-playlist")
 		}
-		args = append(args, "--add-header", "Referer:https://artlist.io/")
-		args = append(args, "--add-header", "Origin:https://artlist.io/")
-		args = append(args, "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-		args = append(args, "--extractor-args", "generic:impersonate")
-	}
 
-	if req.Format != "" {
-		args = append(args, "-f", req.Format)
-	}
-	mergeFormat := req.MergeFormat
-	// YouTube's best format is commonly a separate video+audio pair. Always
-	// merge that pair into one deterministic file; otherwise the resolver can
-	// return the video-only .mp4 member before the audio merge completes.
-	if mergeFormat == "" && (strings.Contains(req.URL, "youtube.com") || strings.Contains(req.URL, "youtu.be")) {
-		mergeFormat = "mp4"
-	}
-	if mergeFormat != "" {
-		args = append(args, "--merge-output-format", mergeFormat)
-	}
+		// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
+		// --no-warnings, and extractor-args. Format selection is via
+		// FormatArg so the downloader doesn't inline the -f string.
+		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
+		args = append(args, d.cmdBuilder.FormatArg(true)...)
 
-	outputTemplate := req.OutputPath
-	if !strings.Contains(outputTemplate, "%(ext)s") {
-		outputTemplate = outputTemplate + ".%(ext)s"
-	}
-	args = append(args, "-o", outputTemplate)
-
-	if len(req.DownloadSections) > 0 {
-		for _, section := range req.DownloadSections {
-			args = append(args, "--download-sections", section)
+		// aria2c is intentionally limited to full-source downloads. Section
+		// downloads must remain under yt-dlp/ffmpeg control so the time window
+		// is preserved; see DownloadRange and DownloadSections below.
+		if len(req.DownloadSections) == 0 {
+			args = d.addExternalDownloaderArgs(args)
 		}
-		if req.ForceKeyframes {
-			args = append(args, "--force-keyframes-at-cuts")
-		} else if req.StreamCopy {
-			args = append(args, "--downloader-args", "ffmpeg:-c copy")
-		}
-	}
 
-	args = append(args, req.URL)
+		// Add Artlist-specific args (cookies, headers, impersonation).
+		// July 2026 (PR-ARTLIST-COOKIES-CONFIG): the --cookies path is now
+		// config-driven (cfg.External.ArtlistCookiesPath, env ARTLIST_COOKIES_PATH).
+		// When empty (the godlike/07 fail-closed default), the --cookies flag is
+		// SKIPPED entirely so operators see a visible 403 from Artlist instead of
+		// a silent `--cookies /nonexistent/path` failure on a hardcoded path.
+		if strings.Contains(req.URL, "artlist") {
+			if d.artlistCookiesPath != "" {
+				args = append(args, "--cookies", d.artlistCookiesPath)
+			}
+			args = append(args, "--add-header", "Referer:https://artlist.io/")
+			args = append(args, "--add-header", "Origin:https://artlist.io/")
+			args = append(args, "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+			args = append(args, "--extractor-args", "generic:impersonate")
+		}
+
+		if req.Format != "" {
+			args = append(args, "-f", req.Format)
+		}
+		mergeFormat := req.MergeFormat
+		// YouTube's best format is commonly a separate video+audio pair. Always
+		// merge that pair into one deterministic file; otherwise the resolver can
+		// return the video-only .mp4 member before the audio merge completes.
+		if mergeFormat == "" && (strings.Contains(req.URL, "youtube.com") || strings.Contains(req.URL, "youtu.be")) {
+			mergeFormat = "mp4"
+		}
+		if mergeFormat != "" {
+			args = append(args, "--merge-output-format", mergeFormat)
+		}
+
+		outputTemplate := req.OutputPath
+		if !strings.Contains(outputTemplate, "%(ext)s") {
+			outputTemplate = outputTemplate + ".%(ext)s"
+		}
+		args = append(args, "-o", outputTemplate)
+
+		if len(req.DownloadSections) > 0 {
+			for _, section := range req.DownloadSections {
+				args = append(args, "--download-sections", section)
+			}
+			if req.ForceKeyframes {
+				args = append(args, "--force-keyframes-at-cuts")
+			} else if req.StreamCopy {
+				args = append(args, "--downloader-args", "ffmpeg:-c copy")
+			}
+		}
+
+		// August 2026 rate-limit pacing: random sleep before each YouTube
+		// download keeps a hot IP from being hammered back-to-back.
+		args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+
+		args = append(args, req.URL)
+		return args
+	}
 
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
 
-	_, err := d.run(ctx, args, process.Options{
+	_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
 		Timeout:        timeout,
 		CombinedOutput: true,
-	})
+	}, buildArgs)
 	if err != nil {
 		return err
 	}
@@ -119,7 +134,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	// Blocco 5 (July 2026): verify the output file exists and is
 	// non-empty after a successful yt-dlp exit (yt-dlp can exit zero
 	// but leave no output).
-	resolvedPath, resolveErr := ResolveDownloadedSegmentPath(outputTemplate)
+	resolvedPath, resolveErr := ResolveDownloadedSegmentPath(outputTemplateFor(req.OutputPath))
 	if resolveErr != nil {
 		return fmt.Errorf("download succeeded but output file not found: %w", resolveErr)
 	}
@@ -127,6 +142,15 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return verifyErr
 	}
 	return nil
+}
+
+// outputTemplateFor expands a bare output path into the yt-dlp template
+// form (appending .%(ext)s) that ResolveDownloadedSegmentPath expects.
+func outputTemplateFor(outputPath string) string {
+	if !strings.Contains(outputPath, "%(ext)s") {
+		return outputPath + ".%(ext)s"
+	}
+	return outputPath
 }
 
 // DownloadRange downloads a single contiguous time range from a video.
@@ -155,35 +179,42 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		outputTemplate = outputTemplate + ".%(ext)s"
 	}
 
-	args := []string{}
-	if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
-		args = append(args, "--no-playlist")
-	}
-	args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
-	args = append(args, d.cmdBuilder.FormatArg(true)...)
-	args = d.addExternalDownloaderArgs(args)
+	buildArgs := func(playerClient string) []string {
+		args := []string{}
+		if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+			args = append(args, "--no-playlist")
+		}
+		args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
+		args = append(args, d.cmdBuilder.FormatArg(true)...)
+		// Do not add aria2c here. yt-dlp must retain control of the
+		// sectioned download and ffmpeg cut; an external downloader can
+		// bypass or interfere with the requested time range.
 
-	if req.Format != "" {
-		args = append(args, "-f", req.Format)
-	}
-	if req.MergeFormat != "" {
-		args = append(args, "--merge-output-format", req.MergeFormat)
+		if req.Format != "" {
+			args = append(args, "-f", req.Format)
+		}
+		if req.MergeFormat != "" {
+			args = append(args, "--merge-output-format", req.MergeFormat)
+		}
+
+		for _, section := range req.DownloadSections {
+			args = append(args, "--download-sections", section)
+		}
+
+		if req.ForceKeyframes {
+			args = append(args, "--force-keyframes-at-cuts")
+		}
+		args = append(args, "-o", outputTemplate)
+
+		args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+		args = append(args, req.URL)
+		return args
 	}
 
-	for _, section := range req.DownloadSections {
-		args = append(args, "--download-sections", section)
-	}
-
-	if req.ForceKeyframes {
-		args = append(args, "--force-keyframes-at-cuts")
-	}
-	args = append(args, "-o", outputTemplate)
-	args = append(args, req.URL)
-
-	_, err := d.run(ctx, args, process.Options{
+	_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
-	})
+	}, buildArgs)
 	if err != nil {
 		return "", fmt.Errorf("failed to download range: %w", err)
 	}
@@ -243,32 +274,40 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		} else {
 			outputTemplate = fmt.Sprintf("%s_%03d.%%(ext)s", basePath, i+1)
 		}
-		args := []string{}
-		if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
-			args = append(args, "--no-playlist")
-		}
-		args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
-		args = append(args, d.cmdBuilder.FormatArg(true)...)
-		args = d.addExternalDownloaderArgs(args)
 
-		if req.Format != "" {
-			args = append(args, "-f", req.Format)
-		}
-		if req.MergeFormat != "" {
-			args = append(args, "--merge-output-format", req.MergeFormat)
+		buildArgs := func(playerClient string) []string {
+			args := []string{}
+			if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+				args = append(args, "--no-playlist")
+			}
+			args = append(args, d.cmdBuilder.BaseArgsForClient(req.URL, req.UseCookies, playerClient)...)
+			args = append(args, d.cmdBuilder.FormatArg(true)...)
+			// Keep section downloads on yt-dlp/ffmpeg. aria2c is reserved
+			// for full-source downloads because it cannot own the time-range
+			// cut without risking a full or incorrectly bounded output.
+
+			if req.Format != "" {
+				args = append(args, "-f", req.Format)
+			}
+			if req.MergeFormat != "" {
+				args = append(args, "--merge-output-format", req.MergeFormat)
+			}
+
+			args = append(args, "--download-sections", section)
+			if req.ForceKeyframes {
+				args = append(args, "--force-keyframes-at-cuts")
+			}
+			args = append(args, "-o", outputTemplate)
+
+			args = append(args, d.youtubeSleepIntervalArgs(req.URL)...)
+			args = append(args, req.URL)
+			return args
 		}
 
-		args = append(args, "--download-sections", section)
-		if req.ForceKeyframes {
-			args = append(args, "--force-keyframes-at-cuts")
-		}
-		args = append(args, "-o", outputTemplate)
-		args = append(args, req.URL)
-
-		_, err := d.run(ctx, args, process.Options{
+		_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
 			Timeout:        10 * time.Minute,
 			CombinedOutput: true,
-		})
+		}, buildArgs)
 		if err != nil {
 			return results, fmt.Errorf("failed to download section %d: %w", i, err)
 		}

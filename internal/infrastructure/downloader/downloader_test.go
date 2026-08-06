@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -395,4 +396,333 @@ func TestGetVideoMetadata_UsesRunner(t *testing.T) {
 	require.NotNil(t, meta)
 	assert.Equal(t, "abc123", meta.ID)
 	assert.Equal(t, "Video", meta.Title)
+}
+
+// ─── Fallback player client + rate-limit pacing (August 2026) ────────────
+
+// scriptedCall is one canned ProcessRunner outcome for scriptedRunner.
+type scriptedCall struct {
+	result *process.Result
+	err    error
+}
+
+// scriptedRunner is a ProcessRunner mock that replays a canned outcome
+// sequence, then repeats the final outcome for any extra calls. It records
+// the argv of every invocation so tests can assert the player client that
+// each fallback attempt used.
+type scriptedRunner struct {
+	script []scriptedCall
+	argv   [][]string
+	calls  int
+}
+
+// Compile-time pin (godlike/06 SSOT): scriptedRunner MUST satisfy the
+// ProcessRunner port.
+var _ ProcessRunner = (*scriptedRunner)(nil)
+
+func (r *scriptedRunner) Run(_ context.Context, name string, args []string, _ process.Options) (*process.Result, error) {
+	r.calls++
+	r.argv = append(r.argv, append([]string{}, args...))
+	if len(r.script) == 0 {
+		return &process.Result{ExitCode: 0}, nil
+	}
+	idx := r.calls - 1
+	if idx >= len(r.script) {
+		idx = len(r.script) - 1
+	}
+	c := r.script[idx]
+	if c.result == nil {
+		c.result = &process.Result{ExitCode: 0}
+	}
+	return c.result, c.err
+}
+
+// lastArgv joins the argv of the most recent invocation for substring
+// assertions (player client selection, sleep flags).
+func (r *scriptedRunner) lastArgv() string {
+	if r.calls == 0 {
+		return ""
+	}
+	return strings.Join(r.argv[r.calls-1], " ")
+}
+
+// botCheckError mirrors the yt-dlp error text process.Run embeds in the
+// returned error for the YouTube "Sign in to confirm you're not a bot"
+// rate-limit gate.
+func botCheckError(videoID string) error {
+	return fmt.Errorf("command yt-dlp failed: exit status 1 (output: ERROR: [youtube] %s: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies for the authentication)", videoID)
+}
+
+// newTestDownloaderCfg builds a YTDLPDownloader from an explicit config
+// (fallback clients + sleep pacing) with the given runner injected.
+func newTestDownloaderCfg(t *testing.T, cfg *ytcfg.Config, runner ProcessRunner) *YTDLPDownloader {
+	t.Helper()
+	d := NewYTDLP(cfg)
+	d.runner = runner
+	return d
+}
+
+const youTubeWatchURL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+// TestDownload_YouTubeBotCheck_FallsBackToAlternateClients is the load-bearing
+// hot-IP recovery contract: when the primary client hits the YouTube bot-check
+// gate, the downloader retries with the configured fallback client instead of
+// failing the job. Success on the fallback attempt must surface as a nil error,
+// and the fallback attempt argv MUST select the alternate player client (routed
+// through cmd_builder.BaseArgsForClient, never a re-declared literal).
+func TestDownload_YouTubeBotCheck_FallsBackToAlternateClients(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"ios"},
+	}}
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: botCheckError("dQw4w9WgXcQ")},
+		{result: &process.Result{ExitCode: 0}},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        youTubeWatchURL,
+		OutputPath: outputPath,
+	})
+	require.NoError(t, err, "fallback retry with an alternate client must succeed")
+	require.Equal(t, 2, runner.calls, "primary + 1 fallback attempt")
+
+	assert.Contains(t, runner.lastArgv(), "youtube:player_client=ios",
+		"fallback attempt must select the configured alternate client")
+	assert.Contains(t, strings.Join(runner.argv[0], " "), "youtube:player_client=android_creator",
+		"first attempt must keep the canonical primary client")
+}
+
+// TestDownload_YouTubeBotCheck_ExhaustsClients_ReturnsError pins the
+// fail-closed contract: when every client (primary + all fallbacks) hits the
+// bot-check gate, the downloader MUST return the last error rather than
+// swallowing it into a silent success.
+func TestDownload_YouTubeBotCheck_ExhaustsClients_ReturnsError(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"ios", "web_creator"},
+	}}
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: botCheckError("dQw4w9WgXcQ")},
+		{err: botCheckError("dQw4w9WgXcQ")},
+		{err: botCheckError("dQw4w9WgXcQ")},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        youTubeWatchURL,
+		OutputPath: outputPath,
+	})
+	require.Error(t, err, "exhausted clients must fail closed (never a silent no-op)")
+	require.Equal(t, 3, runner.calls, "primary + 2 fallback attempts, all bot-checked")
+	assert.Contains(t, err.Error(), "Sign in to confirm",
+		"the returned error must preserve the original bot-check signal")
+}
+
+// TestDownload_YouTube_NonBotCheckError_NoRetry pins the retry boundary: a
+// failure that is NOT a bot-check (e.g. HTTP 403, format error) must abort
+// immediately — a different player client cannot fix it, and retrying would
+// hide the real cause behind extra latency.
+func TestDownload_YouTube_NonBotCheckError_NoRetry(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"ios"},
+	}}
+	nonBotErr := fmt.Errorf("command yt-dlp failed: exit status 1 (output: ERROR: unable to download video data: HTTP Error 403: Forbidden)")
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: nonBotErr},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        youTubeWatchURL,
+		OutputPath: outputPath,
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, runner.calls,
+		"non-bot-check errors must NOT trigger the fallback client loop")
+	assert.Contains(t, err.Error(), "403")
+}
+
+// TestDownloadSections_YouTubeBotCheck_FallsBackAndFails pins the fallback
+// loop on the stock pipeline path (DownloadSections): a bot-checked section
+// download tries the primary client then the configured alternate clients and
+// fails closed with the last error once exhausted. (The success path of
+// DownloadSections runs a real ffmpeg normalize step and is covered by the
+// Download-level fallback tests plus the staging suite.)
+func TestDownloadSections_YouTubeBotCheck_FallsBackAndFails(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"web_creator"},
+	}}
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: botCheckError("dQw4w9WgXcQ")},
+		{err: botCheckError("dQw4w9WgXcQ")},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "clip.mp4")
+
+	_, err := d.DownloadSections(context.Background(), &DownloadRequest{
+		URL:              youTubeWatchURL,
+		OutputPath:       outputPath,
+		DownloadSections: []string{"*00:01:00-00:01:05"},
+	})
+	require.Error(t, err)
+	require.Equal(t, 2, runner.calls, "primary + 1 fallback attempt on the sections path")
+	assert.Contains(t, runner.lastArgv(), "youtube:player_client=web_creator",
+		"fallback attempt must select the configured alternate client")
+	assert.Contains(t, err.Error(), "Sign in to confirm")
+	assert.False(t, hasFlagArg(runner.argv[0], "--external-downloader"),
+		"section downloads must not delegate to aria2c")
+	require.Contains(t, runner.argv[0], "--download-sections",
+		"section downloads must retain the yt-dlp time-range selector")
+	require.Contains(t, runner.argv[0], "*00:01:00-00:01:05",
+		"the requested section must be passed unchanged")
+}
+
+// TestDownloadRange_DoesNotUseExternalDownloader pins the same boundary for
+// the single-range path. The runner fails before output resolution, allowing
+// this argv contract to stay hermetic while proving --download-sections is
+// still present and aria2c is absent even when installed on the host.
+func TestDownloadRange_DoesNotUseExternalDownloader(t *testing.T) {
+	setupTestAllowlist(t)
+	runner := &scriptedRunner{script: []scriptedCall{{
+		err: fmt.Errorf("section probe failure"),
+	}}}
+	d := newTestDownloaderCfg(t, &ytcfg.Config{}, runner)
+
+	_, err := d.DownloadRange(context.Background(), &DownloadRequest{
+		URL:              youTubeWatchURL,
+		OutputPath:       filepath.Join(t.TempDir(), "clip.mp4"),
+		DownloadSections: []string{"*00:02:00-00:02:05"},
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, runner.calls)
+	assert.False(t, hasFlagArg(runner.argv[0], "--external-downloader"),
+		"range downloads must not delegate to aria2c")
+	require.Contains(t, runner.argv[0], "--download-sections")
+	require.Contains(t, runner.argv[0], "*00:02:00-00:02:05")
+}
+
+// TestDownload_SectionRequest_DoesNotUseExternalDownloader covers the
+// generic Download entry point when callers provide a section selector.
+// This keeps the policy true even if a future caller routes a section through
+// Download instead of DownloadRange/DownloadSections.
+func TestDownload_SectionRequest_DoesNotUseExternalDownloader(t *testing.T) {
+	setupTestAllowlist(t)
+	runner := &scriptedRunner{script: []scriptedCall{{
+		err: fmt.Errorf("section probe failure"),
+	}}}
+	d := newTestDownloaderCfg(t, &ytcfg.Config{}, runner)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:              youTubeWatchURL,
+		OutputPath:       filepath.Join(t.TempDir(), "clip.mp4"),
+		DownloadSections: []string{"*00:03:00-00:03:05"},
+	})
+	require.Error(t, err)
+	require.Equal(t, 1, runner.calls)
+	assert.False(t, hasFlagArg(runner.argv[0], "--external-downloader"),
+		"section requests through Download must not delegate to aria2c")
+	require.Contains(t, runner.argv[0], "--download-sections")
+	require.Contains(t, runner.argv[0], "*00:03:00-00:03:05")
+}
+
+// TestDownload_YouTube_SleepArgs_Present pins the rate-limit pacing contract:
+// when YTDLP_MIN/MAX_SLEEP_SECONDS are configured, every YouTube download
+// argv carries the --min/--max-sleep-interval pair so yt-dlp sleeps a random
+// delay before each request.
+func TestDownload_YouTube_SleepArgs_Present(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubeMinSleepSeconds: 3,
+		YoutubeMaxSleepSeconds: 8,
+	}}
+	runner := &scriptedRunner{}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	require.NoError(t, d.Download(context.Background(), &DownloadRequest{
+		URL:        youTubeWatchURL,
+		OutputPath: outputPath,
+	}))
+	require.Equal(t, 1, runner.calls)
+
+	argv := runner.argv[0]
+	require.Equal(t, "--min-sleep-interval", argv[flagIndex(argv, "--min-sleep-interval")])
+	require.Equal(t, "--max-sleep-interval", argv[flagIndex(argv, "--max-sleep-interval")])
+	// Values immediately follow their flags (range from config).
+	assert.Equal(t, "3", argv[flagIndex(argv, "--min-sleep-interval")+1])
+	assert.Equal(t, "8", argv[flagIndex(argv, "--max-sleep-interval")+1])
+}
+
+// flagIndex returns the index of the first occurrence of flag in args,
+// or -1 when absent. Mirrors flagValueIndex but without a paired-value
+// assertion for flags that may legitimately appear once.
+func flagIndex(args []string, flag string) int {
+	for i, a := range args {
+		if a == flag {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestDownload_YouTube_SleepArgs_Absent_WhenDisabled pins the opt-out
+// contract: with zero sleep config (the fail-closed default for
+// manually-assembled configs) no pacing flags leak into argv.
+func TestDownload_YouTube_SleepArgs_Absent_WhenDisabled(t *testing.T) {
+	setupTestAllowlist(t)
+	d, runner := newTestDownloader(t, "") // zero sleep config
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	require.NoError(t, d.Download(context.Background(), &DownloadRequest{
+		URL:        youTubeWatchURL,
+		OutputPath: outputPath,
+	}))
+	require.Equal(t, 1, runner.calls)
+	assert.Equal(t, -1, flagIndex(runner.argv, "--min-sleep-interval"),
+		"pacing flags must be absent when sleep is disabled")
+	assert.Equal(t, -1, flagIndex(runner.argv, "--max-sleep-interval"),
+		"pacing flags must be absent when sleep is disabled")
+}
+
+// TestDownload_NonYouTube_SleepArgs_Absent pins the URL gating: pacing flags
+// and the player-client fallback are YouTube-specific; an Artlist download
+// argv must never carry --min/--max-sleep-interval even when sleep is
+// configured.
+func TestDownload_NonYouTube_SleepArgs_Absent(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubeMinSleepSeconds: 3,
+		YoutubeMaxSleepSeconds: 8,
+	}}
+	runner := &scriptedRunner{}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	require.NoError(t, d.Download(context.Background(), &DownloadRequest{
+		URL:        "https://artlist.io/royalty-free-stock/boxing-knockout",
+		OutputPath: outputPath,
+	}))
+	require.Equal(t, 1, runner.calls)
+	assert.Equal(t, -1, flagIndex(runner.argv[0], "--min-sleep-interval"),
+		"pacing flags must not appear for non-YouTube downloads")
 }
