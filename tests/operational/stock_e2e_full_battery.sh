@@ -131,6 +131,30 @@ for entry in "${PROBES[@]}"; do
 done
 
 # ------------------------------------------------------------------------------
+# Canonical receipt markers.
+# Each marker is owned by the probe that actually exercises that surface. The
+# release gate consumes these exact lines rather than inferring coverage from a
+# generic PASS string.
+# ------------------------------------------------------------------------------
+probe_status() {
+    local tag=$1
+    if [ "${probe_exit[$tag]}" -eq 0 ]; then
+        printf 'PASS'
+    else
+        printf 'FAIL'
+    fi
+}
+
+echo "=== STK-E2E-H: receipt coverage ==="
+echo "RECEIPT: route=$(probe_status STK-E2E-A)"
+echo "RECEIPT: job=$(probe_status STK-E2E-B)"
+echo "RECEIPT: outbox=$(probe_status STK-E2E-E)"
+echo "RECEIPT: qdrant=$(probe_status STK-E2E-F)"
+echo "RECEIPT: mp4=$(probe_status STK-E2E-G)"
+echo "RECEIPT: ffprobe=$(probe_status STK-E2E-G)"
+echo
+
+# ------------------------------------------------------------------------------
 # Verdict.
 # ------------------------------------------------------------------------------
 echo "=== STK-E2E-H: verdict ==="

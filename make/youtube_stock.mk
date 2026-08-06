@@ -87,9 +87,15 @@ verify-stock-integration: test-youtube-stock-local test-youtube-stock-resilience
 
 # This is the only stock live gate. It uses the canonical authenticated
 # operational battery rather than a local fixture or a package-only alias.
+# Keep the receipt in a caller-selectable location so release can validate the
+# exact output from this one live run without executing the battery twice.
+STOCK_E2E_RECEIPT ?= $(if $(TMPDIR),$(TMPDIR),/tmp)/pipelinegen-stock-e2e-receipt.$(shell date +%s%N).log
+
 verify-stock-live: auth-check
-	@scripts/with-velox-auth bash tests/operational/stock_e2e_full_battery.sh
-	@echo "✅ verify-stock-live passed"
+	@rm -f "$(STOCK_E2E_RECEIPT)"
+	@bash -o pipefail -c 'scripts/with-velox-auth bash tests/operational/stock_e2e_full_battery.sh 2>&1 | tee "$$1"' -- "$(STOCK_E2E_RECEIPT)"
+	@echo "✅ verify-stock-live passed (receipt: $(STOCK_E2E_RECEIPT))"
 
 verify-stock-release: verify-stock-unit verify-stock-integration verify-stock-live
-	@echo "✅ verify-stock-release passed"
+	@bash scripts/ci/verify-stock-receipt.sh "$(STOCK_E2E_RECEIPT)"
+	@echo "✅ verify-stock-release passed (canonical 14/14 receipt: $(STOCK_E2E_RECEIPT))"
