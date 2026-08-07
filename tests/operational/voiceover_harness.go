@@ -1,7 +1,6 @@
 // Package operational — voiceover_harness.go
 //
-// Single-file infrastructure for the FASE B/C/D voiceover smoke tests.
-// Provides:
+// Infrastructure for the FASE B/C/D voiceover smoke tests. Provides:
 //
 //   - NewVoiceoverHarness(t) : canonical single entry-point
 //   - Curl(ctx, method, path, payload)  : silent Authorization injection
@@ -37,19 +36,23 @@
 //   - sqlite3 CLI shell-out (not modernc.org/sqlite) for zero new deps
 //   - 7 TDD tests using httptest.Server + temp files + pure unit tests
 //   - separate per-FASE migration PRs (no smoke rewritten in this commit)
+//
+// File layout (split 2026-08-07 to satisfy the archcheck-strict 600-line
+// cap, see architecture/policy.yaml#max_lines_per_file_strict):
+//   - voiceover_harness.go: constructor, Curl, token rotation, tiny helpers
+//   - voiceover_probes.go:  the 4 DB Probe* methods + sqlite3 shell-out
+//   - voiceover_report.go:  report types + assertion/report writer
 package operational
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -68,48 +71,11 @@ import (
 // this sentinel.
 var ErrSqliteBinaryMissing = errors.New("voiceover harness: sqlite3 binary not in PATH (install with: apt-get install -y sqlite3)")
 
-// Sentinel parsed by WriteReport and surfaced as VoiceoverReport.Outcome
-// when at least one DB probe returned ErrSqliteBinaryMissing. Operators
-// can grep the report for "probe_unavailable" to identify which FASE
-// had the missing binary without re-running.
-const probeOutcomeUnavailable = "probe_unavailable"
-
-// VoiceoverReport is the JSON-serialised forensic artefact for one smoke run.
-//
-// Shape is intentionally self-contained: the report + the bash smoke log
-// together provide full offline-forensic coverage without re-running the
-// test. JobIDs is keyed by role (e.g. "parent", "child_it_it") so a
-// dashboard can correlate the canonical parent/child pair across runs.
-type VoiceoverReport struct {
-	StartedAt  string                   `json:"started_at"`
-	FinishedAt string                   `json:"finished_at"`
-	FASE       string                   `json:"fase"`
-	Outcome    string                   `json:"outcome"` // "pass" | "fail" | "skip"
-	JobIDs     map[string]string        `json:"job_ids"`
-	Assertions []AssertionRecord        `json:"assertions"`
-	DBProbes   map[string]DBProbeRecord `json:"db_probes"`
-}
-
-// AssertionRecord captures one Assert() call's expected/actual/outcome.
-type AssertionRecord struct {
-	Label    string `json:"label"`
-	Status   string `json:"status"` // "pass" | "fail" | "skip"
-	Expected string `json:"expected,omitempty"`
-	Actual   string `json:"actual,omitempty"`
-	Note     string `json:"note,omitempty"`
-}
-
-// DBProbeRecord captures one Probe* call's query + row count + first row.
-type DBProbeRecord struct {
-	Query  string `json:"query"`
-	Rows   int    `json:"rows"`
-	Sample string `json:"sample,omitempty"`
-}
-
 // VoiceoverHarness is the canonical test fixture for the voiceover
 // smoke suite. All probe / curl / assertion entry points are methods on
 // this type; the per-FASE test wrappers construct one harness per test
-// and call methods in sequence.
+// and call methods in sequence. Probe and report surfaces live in
+// voiceover_probes.go / voiceover_report.go respectively.
 type VoiceoverHarness struct {
 	t *testing.T
 
@@ -364,221 +330,7 @@ func (h *VoiceoverHarness) RotateToken() (string, error) {
 	return h.token, nil
 }
 
-// ── DB probes ────────────────────────────────────────────────────────────
-
-// ProbeJobs runs `SELECT id, type, status, parent_id, created_at
-// FROM jobs WHERE id = ? OR parent_id = ? ORDER BY created_at` and
-// returns the pipe-separated rows (matches bash lib/common.sh::sqlite_q
-// `-separator '|'` convention).
-//
-// Returns (nil, ErrSqliteBinaryMissing) if the sqlite3 binary is
-// absent from PATH. Callers MUST use errors.Is to detect this case
-// (NOT a nil-error + empty-slice check) so the typed-sentinel
-// contract is preserved across future refactors.
-func (h *VoiceoverHarness) ProbeJobs(jobOrParentID string) ([]string, error) {
-	if h.sqliteBin == "" {
-		return nil, ErrSqliteBinaryMissing
-	}
-	// Canonical: id matches OR parent_id matches. Bind the value as a
-	// quoted SQL literal (defensive: caller-supplied values may contain
-	// single quotes; sqlite3 has no parameter binding, so escape).
-	q := fmt.Sprintf(
-		`SELECT id, type, status, COALESCE(parent_id,''), created_at `+
-			`FROM jobs WHERE id = '%s' OR parent_id = '%s' `+
-			`ORDER BY created_at`,
-		sqlEscape(jobOrParentID), sqlEscape(jobOrParentID),
-	)
-	return h.runSQLiteQuery(q, "jobs:"+jobOrParentID)
-}
-
-// ProbeVoiceovers runs `SELECT id, drive_file_id, status, language,
-// parent_job_id FROM voiceovers WHERE parent_job_id = ?`.
-//
-// Returns (nil, ErrSqliteBinaryMissing) when sqlite3 is absent
-// (see ProbeJobs for the typed-sentinel contract).
-func (h *VoiceoverHarness) ProbeVoiceovers(parentID string) ([]string, error) {
-	if h.sqliteBin == "" {
-		return nil, ErrSqliteBinaryMissing
-	}
-	q := fmt.Sprintf(
-		`SELECT id, COALESCE(drive_file_id,''), status, COALESCE(language,''), parent_job_id `+
-			`FROM voiceovers WHERE parent_job_id = '%s'`,
-		sqlEscape(parentID),
-	)
-	return h.runSQLiteQuery(q, "voiceovers:"+parentID)
-}
-
-// ProbeMediaAssets runs `SELECT id, drive_file_id, status, source_url
-// FROM media_assets WHERE source_job_id = ?`.
-//
-// Returns (nil, ErrSqliteBinaryMissing) when sqlite3 is absent
-// (see ProbeJobs for the typed-sentinel contract).
-func (h *VoiceoverHarness) ProbeMediaAssets(parentID string) ([]string, error) {
-	if h.sqliteBin == "" {
-		return nil, ErrSqliteBinaryMissing
-	}
-	q := fmt.Sprintf(
-		`SELECT id, COALESCE(drive_file_id,''), status, COALESCE(source_url,'') `+
-			`FROM media_assets WHERE source_job_id = '%s'`,
-		sqlEscape(parentID),
-	)
-	return h.runSQLiteQuery(q, "media_assets:"+parentID)
-}
-
-// ProbeOutboxEvents runs `SELECT id, event_type, status, payload
-// FROM outbox_events WHERE source_job_id = ?`.
-//
-// Returns (nil, ErrSqliteBinaryMissing) when sqlite3 is absent
-// (see ProbeJobs for the typed-sentinel contract).
-func (h *VoiceoverHarness) ProbeOutboxEvents(parentID string) ([]string, error) {
-	if h.sqliteBin == "" {
-		return nil, ErrSqliteBinaryMissing
-	}
-	q := fmt.Sprintf(
-		`SELECT id, event_type, status, COALESCE(payload,'') `+
-			`FROM outbox_events WHERE source_job_id = '%s'`,
-		sqlEscape(parentID),
-	)
-	return h.runSQLiteQuery(q, "outbox_events:"+parentID)
-}
-
-// runSQLiteQuery shells out to the sqlite3 binary and records the
-// probe into the report. The first row is stored in the report as
-// `Sample` (truncated to 200 chars; offline forensics) and the full
-// row slice is returned to the caller for in-test assertions.
-//
-// SECURITY NOTE: the Sample preview may surface `drive_file_id` (from
-// media_assets/voiceovers) and `payload` contents (from outbox_events).
-// drive_file_id is a Google Drive resource ID — not secret-classified
-// today, but operationally sensitive (anyone with the ID can access
-// the file if the Drive ACL is permissive). The 200-char truncation
-// limits the surface; operators with stricter PII requirements
-// should review the generated report before sharing the JSON. The
-// future `WithRedactedProbes` option will replace this with a
-// column-driven allowlist (forward-pointer, not in this commit).
-func (h *VoiceoverHarness) runSQLiteQuery(query, label string) ([]string, error) {
-	cmd := exec.Command(h.sqliteBin, "-separator", "|", h.dbPath, query)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("voiceover harness: sqlite3 %s: %w (stderr: %s)",
-			label, err, strings.TrimSpace(stderr.String()))
-	}
-
-	out := strings.TrimRight(stdout.String(), "\n")
-	var rows []string
-	if out != "" {
-		rows = strings.Split(out, "\n")
-	}
-
-	h.recordDBProbe(label, query, rows)
-	return rows, nil
-}
-
-// ── Report writer + assertion recorder ──────────────────────────────────
-
-// Assert records an assertion outcome into the report and fails the
-// test if expected != actual. The first failed Assert in a test
-// short-circuits the rest of the test (t.Fatal semantics).
-func (h *VoiceoverHarness) Assert(label, expected, actual string) {
-	h.t.Helper()
-	status := "pass"
-	if expected != actual {
-		status = "fail"
-	}
-
-	h.reportMu.Lock()
-	h.report.Assertions = append(h.report.Assertions, AssertionRecord{
-		Label:    label,
-		Status:   status,
-		Expected: expected,
-		Actual:   actual,
-	})
-	h.reportMu.Unlock()
-
-	if status == "fail" {
-		h.t.Fatalf("voiceover harness: %s — expected [%s], got [%s]", label, expected, actual)
-	}
-}
-
-// Assertf is the printf-style variant of Assert for verbose expected/actual
-// pairs (e.g. JSON body snippets).
-func (h *VoiceoverHarness) Assertf(label, expected, actualFormat string, actualArgs ...any) {
-	h.Assert(label, expected, fmt.Sprintf(actualFormat, actualArgs...))
-}
-
-// AssertHTTPStatus is a convenience wrapper for `Assert(label, "<expected>",
-// strconv.Itoa(code))`. Returns the code unchanged so callers can chain.
-func (h *VoiceoverHarness) AssertHTTPStatus(label string, expectedStatuses []string, code int) int {
-	h.t.Helper()
-	actual := fmt.Sprintf("%d", code)
-	expected := strings.Join(expectedStatuses, "|")
-	h.Assert(label, expected, actual)
-	return code
-}
-
-// RecordJobID stores a jobID under a role key (e.g. "parent", "child_it_it")
-// in the report. Idempotent: re-recording under the same key OVERWRITES
-// (the latest value wins, which matches the natural "this is the final
-// value after retry" semantics).
-func (h *VoiceoverHarness) RecordJobID(role, jobID string) {
-	h.reportMu.Lock()
-	defer h.reportMu.Unlock()
-	h.report.JobIDs[role] = jobID
-}
-
-// WriteReport finalises the report (stamps FinishedAt + Outcome) and
-// JSON-marshals it to disk. Always returns nil error from a deferred
-// call so a failed test still produces a report for forensics.
-func (h *VoiceoverHarness) WriteReport() error {
-	h.reportMu.Lock()
-	defer h.reportMu.Unlock()
-
-	h.report.FinishedAt = time.Now().UTC().Format(time.RFC3339)
-	h.report.Outcome = "pass"
-	for _, a := range h.report.Assertions {
-		if a.Status == "fail" {
-			h.report.Outcome = "fail"
-			break
-		}
-	}
-
-	data, err := json.MarshalIndent(h.report, "", "  ")
-	if err != nil {
-		return fmt.Errorf("voiceover harness: marshal report: %w", err)
-	}
-
-	dir := filepath.Dir(h.reportPath)
-	if dir != "" && dir != "." {
-		_ = os.MkdirAll(dir, 0o755)
-	}
-	if err := os.WriteFile(h.reportPath, data, 0o600); err != nil {
-		return fmt.Errorf("voiceover harness: write report %s: %w", h.reportPath, err)
-	}
-	return nil
-}
-
 // ── Internal helpers ────────────────────────────────────────────────────
-
-// recordDBProbe is the internal Append hook used by the 4 Probe*
-// methods. Locked by reportMu.
-func (h *VoiceoverHarness) recordDBProbe(label, query string, rows []string) {
-	h.reportMu.Lock()
-	defer h.reportMu.Unlock()
-	sample := ""
-	if len(rows) > 0 {
-		sample = rows[0]
-		if len(sample) > 200 {
-			sample = sample[:200] + "..."
-		}
-	}
-	h.report.DBProbes[label] = DBProbeRecord{
-		Query:  query,
-		Rows:   len(rows),
-		Sample: sample,
-	}
-}
 
 // readTokenFromFile parses a TOKEN_FILE-format env file (one `KEY=value`
 // per line; comments start with #) and returns the value of
@@ -603,14 +355,6 @@ func readTokenFromFile(path string) (string, error) {
 		return v, nil
 	}
 	return "", errors.New("VELOX_ADMIN_TOKEN not found in token file")
-}
-
-// sqlEscape doubles single quotes for safe inlining into a sqlite3
-// query string. Mirrors the defensive pattern in bash smokes
-// (printf '%s' "$value" into a heredoc). NOT a full SQL-injection
-// defence — these queries are operator-controlled, not user input.
-func sqlEscape(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
 }
 
 func getenvDefault(key, fallback string) string {
