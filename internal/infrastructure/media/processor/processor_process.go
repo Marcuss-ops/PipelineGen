@@ -192,7 +192,7 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 		return nil, fmt.Errorf("create preview dir: %w", err)
 	}
 	if err := p.ffmpeg.GenerateProxy(ctx, masterPath, previewPath); err != nil {
-		p.log.Warn("preview generation failed", zap.String("id", input.ID), zap.Error(err))
+		return nil, fmt.Errorf("preview generation failed: %w", err)
 	}
 
 	// 3. Thumbnail: center frame from the master. Kept under the

@@ -371,21 +371,41 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 	return err
 }
 
-// GenerateProxy creates a 720p H.264/AAC proxy from the input file.
+// appendVideoEncoderArgs appends the canonical runtime video encoder
+// arguments. The artifact profile stays neutral; codec-specific quality
+// controls are derived from the resolved encoder policy.
+func appendVideoEncoderArgs(args []string, codec, preset string, quality int) []string {
+	if strings.TrimSpace(preset) == "" {
+		preset = "veryfast"
+	}
+	if quality <= 0 {
+		quality = 23
+	}
+	args = append(args, "-c:v", codec, "-preset", NormalizeEncoderPreset(codec, preset))
+	if IsNVENCCodec(codec) {
+		return append(args, "-rc", "vbr", "-cq", fmt.Sprintf("%d", quality), "-tune", "hq", "-bf", "0")
+	}
+	return append(args, "-crf", fmt.Sprintf("%d", quality))
+}
+
+// GenerateProxy creates a 720p H.264/AAC proxy using the Processor's central
+// encoder policy. A configured NVENC policy is GPU-required by
+// RunWithEncoderPolicy and cannot silently retry with libx264.
 func (p *Processor) GenerateProxy(ctx context.Context, input, output string) error {
+	codec := p.ResolveEncoder(ctx, "")
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 		"-i", input,
 		"-vf", "scale=-2:720",
-		"-c:v", "libx264", "-crf", "23", "-preset", "fast",
+		"-map", "0:v:0?", "-map", "0:a:0?",
+	}
+	args = appendVideoEncoderArgs(args, codec, p.encoderPreset, p.encoderCRF)
+	args = append(args,
 		"-c:a", "aac", "-b:a", "128k",
 		"-movflags", "+faststart",
 		output,
-	}
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 30 * time.Minute,
-	})
-	return err
+	)
+	return p.RunWithEncoderPolicy(ctx, codec, args, 30*time.Minute)
 }
 
 // GenerateStoryboard creates a tiled sprite of key frames from the input file.

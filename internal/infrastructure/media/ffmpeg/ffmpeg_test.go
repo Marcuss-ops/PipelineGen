@@ -1006,6 +1006,66 @@ func TestCutAndNormalize_Timeout(t *testing.T) {
 		"CutAndNormalize must pass a non-zero timeout")
 }
 
+func TestImageToVideo_UsesConfiguredNVENCPolicy(t *testing.T) {
+	runner := &captureRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	require.NoError(t, p.ImageToVideo(context.Background(), "still.png", "video.mp4", ImageToVideoOptions{}))
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "image-to-video must use configured NVENC: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p1"), "image-to-video must normalize NVENC preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-cq", "18"), "image-to-video must use NVENC CQ quality: %v", runner.lastArgv)
+	assert.False(t, hasArg(runner.lastArgv, "-crf"), "NVENC image-to-video must not use software CRF: %v", runner.lastArgv)
+}
+
+func TestGenerateProxy_UsesConfiguredNVENCPolicy(t *testing.T) {
+	runner := &captureRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "proxy must use configured NVENC: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p1"), "proxy must normalize NVENC preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-cq", "23"), "proxy must use NVENC CQ quality: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:a", "aac"), "proxy must retain AAC audio: %v", runner.lastArgv)
+	assert.False(t, hasArgPair(runner.lastArgv, "-crf", "23"), "NVENC proxy must not use software CRF: %v", runner.lastArgv)
+}
+
+func TestGenerateProxy_UsesSoftwarePolicyWhenConfigured(t *testing.T) {
+	runner := &captureRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "libx264").WithRunner(runner)
+
+	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "libx264"), "proxy must honor software policy: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "veryfast"), "proxy must use software preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-crf", "23"), "proxy must use software CRF: %v", runner.lastArgv)
+	assert.False(t, hasArg(runner.lastArgv, "-cq"), "software proxy must not use NVENC CQ: %v", runner.lastArgv)
+}
+
+func TestGenerateProxy_UsesConfiguredNVENCQualityAndPreset(t *testing.T) {
+	runner := &captureRunner{}
+	p := newProcessor("ffmpeg", config.VideoEncoderPolicy{
+		Codec:  "h264_nvenc",
+		Preset: "medium",
+		CRF:    27,
+	}).WithRunner(runner)
+
+	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "proxy must use configured NVENC: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p4"), "software preset must map to valid NVENC preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-cq", "27"), "proxy must preserve configured NVENC quality: %v", runner.lastArgv)
+	assert.False(t, hasArg(runner.lastArgv, "medium"), "software preset must not leak into NVENC argv: %v", runner.lastArgv)
+}
+
+func TestGenerateProxy_NVENCFailureIsTerminal(t *testing.T) {
+	runner := &fallbackRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	err := p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NVENC encode required and failed")
+	require.Equal(t, 1, runner.calls, "proxy must not retry after NVENC failure")
+	assert.False(t, hasArgPair(runner.args[0], "-c:v", "libx264"), "proxy must not fallback to libx264: %v", runner.args[0])
+}
+
 // ── ApplyWatermark tests ──────────────────────────────────────────────
 
 // defaultWatermarkOpts returns sensible WatermarkOptions for tests.

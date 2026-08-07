@@ -95,6 +95,32 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 	assert.Contains(t, result.Error, "process failed")
 }
 
+func TestProcessRenditions_ProxyFailureIsTerminal(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+	ff := &fakeFFmpeg{proxyErr: errors.New("NVENC encode required and failed: encoder unavailable")}
+	p := NewProcessor(
+		&fakeYTDLP{},
+		&fakeHTTPDownloader{},
+		ff,
+		zap.NewNop(),
+		ProcessorConfig{DataDir: tmp, TempDir: "tmp", VideoCfg: ffmpeg.NormalizeOptions{}},
+		nil,
+		&fakePublisher{},
+	)
+
+	rawPath := writeStagedFileForTest(t, "staged-video")
+	_, err := p.processRenditions(ctx, &asset.ProcessInput{
+		ID:        "proxy-failure",
+		Name:      "proxy failure",
+		OutputDir: filepath.Join(tmp, "out"),
+	}, rawPath)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "preview generation failed")
+	assert.Contains(t, err.Error(), "NVENC encode required and failed")
+}
+
 func TestProcessorZeroCopyOptimization(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
