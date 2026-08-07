@@ -748,6 +748,31 @@ Executed via the bench script with `N=30 SRC_DUR=150`: the bench wraps both ffmp
 
 **Wall-time delta (measured)**: `58.47 - 13.31 ≈ 45.16s` (≥4.4× faster). **Subprocess delta (measured)**: `60 - 31 ≈ 29` invocations collapsed (≈−48% per round). Output clip count: 30 (post) + 30 (pre). Hash digest file at `/tmp/stock-bench/hashes.txt` (re-runnable via the bench script).
 
+#### §12.5.1a — Non-destructive source/Drive accounting
+
+The same script also provides a fixture-only comparison for the source and publication seams. It copies the synthetic source into a private `/tmp/stock-bench` directory instead of downloading from a provider, and copies outputs into `drive_fixture/` instead of writing Google Drive. The operation counts are deterministic: POST reuses one staged source; PRE stages one source per clip; both scenarios publish every produced clip once. The script still runs the real local FFmpeg/ffprobe commands and samples FFmpeg/ffprobe CPU and RAM separately for each scenario.
+
+Smoke receipt (`N=2 SRC_DUR=4`, deterministic counts; wall/CPU values are host-dependent and illustrative):
+
+| Metric | POST-fix | PRE-fix |
+|---|---:|---:|
+| Fixture downloads | 1 | 2 |
+| FFmpeg processes | 1 | 2 |
+| FFprobe processes | 2 | 2 |
+| Fixture Drive uploads | 2 | 2 |
+| Clips produced | 2 | 2 |
+| Wall time / peak CPU | read from `result.json` | read from `result.json` |
+
+Run the reproducible local receipt with:
+
+```bash
+N=30 SRC_DUR=150 bash scripts/operations/bench_stock_clip_round.sh
+cat /tmp/stock-bench/result.json
+cat /tmp/stock-bench/hashes.txt
+```
+
+The JSON receipt contains `download_invocations`, `ffmpeg_invocations`, `ffprobe_invocations`, `drive_upload_invocations`, `wall_sec`, and per-scenario `peak_ffmpeg_cpu_pct`; no network, SQLite, or Drive mutation occurs. CPU is a 200ms process sample of FFmpeg/ffprobe only, not total host CPU, and very short-lived processes may be missed.
+
 #### §12.5.2 — Linear projection to N=351 (verdict §5 anchored)
 
 Per §12.1's monotonic-slice-and-fold argument: per-clip subprocess and wall-time scale linearly in clip-count for a single source group on the same host + ffmpeg version. With host ffmpeg 4.4.2 boundary, the N=351 projection is split into **two scenarios** to disambiguate the verdict §5 — see the footnote below.
