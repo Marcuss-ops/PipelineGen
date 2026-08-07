@@ -193,7 +193,7 @@ service entry.
 | `pipelinegen.service`    | `always`       | 3s         | active   |
 | `artlist-scraper.service`| `on-failure`   | 10s        | active   |
 
-The 5 drop-in files in `/etc/systemd/system/pipelinegen.service.d/`
+The existing drop-in files in `/etc/systemd/system/pipelinegen.service.d/`
 are **preserved** by the migration script:
 
 - `fase1_override.conf` — `VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true`
