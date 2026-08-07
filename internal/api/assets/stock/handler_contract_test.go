@@ -113,6 +113,27 @@ func TestStockHandler_SearchAndRun_Async_Returns202(t *testing.T) {
 	}
 }
 
+func TestStockHandler_SearchAndRun_AsyncOmitted_Returns200(t *testing.T) {
+	_, router := newStockHandler(nil, "job-search-and-run")
+
+	payload := `{"queries":[{"q":"boxing training gym","limit":1}],"folder_id":"folder-1"}`
+	req := httptest.NewRequest(http.MethodPost, "/search-and-run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("omitted async on search-and-run expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp testRunResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != StatusCompleted || resp.JobID != "" {
+		t.Fatalf("omitted async on search-and-run must be synchronous: %+v", resp)
+	}
+}
+
 func TestStockHandler_EmptyBody_Returns400(t *testing.T) {
 	_, router := newStockHandler(nil, "job-1")
 
@@ -250,6 +271,30 @@ func TestStockHandler_ValidPayload_Async_Returns202(t *testing.T) {
 	}
 }
 
+func TestStockHandler_ValidPayload_ExplicitAsyncFalse_Returns200(t *testing.T) {
+	_, router := newStockHandler(nil, "job-test-123")
+
+	payload := `{"direct_urls":["https://example.com/video.mp4"],"clip_duration":4,"folder_name":"test","async":false}`
+	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp testRunResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != StatusCompleted {
+		t.Fatalf("expected status=%s, got %q", StatusCompleted, resp.Status)
+	}
+	if resp.JobID != "" || resp.RunID != "" {
+		t.Fatalf("explicit async=false must not return job identifiers: %+v", resp)
+	}
+}
+
 func TestStockHandler_ValidPayload_Sync_Returns200(t *testing.T) {
 	_, router := newStockHandler(nil, "job-test-123")
 
@@ -273,6 +318,30 @@ func TestStockHandler_ValidPayload_Sync_Returns200(t *testing.T) {
 	}
 	if resp.Status != StatusCompleted {
 		t.Errorf("expected status=%s (sync mode), got %q", StatusCompleted, resp.Status)
+	}
+}
+
+func TestStockHandler_ValidPayload_AsyncOmitted_Returns200(t *testing.T) {
+	_, router := newStockHandler(nil, "job-test-123")
+
+	payload := `{"direct_urls":["https://example.com/video.mp4"],"clip_duration":4,"folder_name":"test"}`
+	req := httptest.NewRequest(http.MethodPost, "/run", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("omitted async expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp testRunResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != StatusCompleted {
+		t.Fatalf("omitted async must decode as false and return status=%s, got %q", StatusCompleted, resp.Status)
+	}
+	if resp.JobID != "" || resp.RunID != "" {
+		t.Fatalf("omitted async must not return job identifiers: %+v", resp)
 	}
 }
 
