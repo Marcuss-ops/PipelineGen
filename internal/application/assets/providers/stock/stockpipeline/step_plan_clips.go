@@ -225,7 +225,17 @@ func concreteSources(input *RunInput) []VideoSource {
 			if raw == "" {
 				continue
 			}
-			sources = append(sources, VideoSource{URL: raw, Title: raw, Source: raw})
+			// Carry the provider-known duration (populated by
+			// resolveInputQueries) so the deterministic planner uses
+			// the real source length instead of the budget*10
+			// fallback. Unknown durations remain zero and keep the
+			// planner's conservative fallback + extract-time bounds
+			// check contract.
+			duration := float64(0)
+			if input.SourceDurations != nil {
+				duration = input.SourceDurations[raw]
+			}
+			sources = append(sources, VideoSource{URL: raw, Title: raw, Source: raw, DurationSec: duration})
 		}
 		return sources
 	}
