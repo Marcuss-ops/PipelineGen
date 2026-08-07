@@ -316,11 +316,11 @@ func WireArtlist(
 	descriptor, err := artlistapi.Build(artlistapi.Dependencies{
 		Service:     service,
 		CatalogSync: bundle.CatalogSyncService,
-		Jobs:        bundle.Jobs.Service,
-		// PR-ARTLIST-RECOMMEND-ADAPTER (closed 2026-07-04): now
-		// WIRED via the new clipResolverRecommendAdapter (built
-		// above) — no longer an unset forward-pointer. /recommend
-		// returns real recommendations when canonical is available.
+		// PR-ARTLIST-ENQUEUE-SERVICE (July 2026): the /run enqueue path
+		// moved into artlist.Service.EnqueueRun (wired above via
+		// ServiceDependencies.Domain.JobsSvc), so the module no longer
+		// needs a Jobs dependency — the handler only parses/validates/
+		// responds (godlike/06 SSOT).
 		ClipResolver: bundle.ClipResolver,
 		CfgPort:      newArtlistConfigAdapter(cfg),
 		EnabledFunc:  func() bool { return cfg.Features.ArtlistEnabled },
