@@ -188,6 +188,13 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error
 	}
 
 	runner.State().CutPaths = cutPaths
+	// The cutter output is already the canonical final artifact when no
+	// effects or transitions are requested. Populate the downstream state
+	// before the extract checkpoint so publish can proceed even though the
+	// compose step is omitted by the orchestrator.
+	if isCanonicalFinalCut(in) {
+		runner.State().ComposedPaths = append([]string(nil), cutPaths...)
+	}
 	if len(publishedChunks) > 0 {
 		runner.State().Published = publishedChunks
 	}

@@ -217,6 +217,26 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 
 	var previousState *RunState
 	for _, step := range o.dispatchSteps {
+		// With no effects or transitions, stock.extract_clips already
+		// produced and verified the canonical final artifacts. Do not
+		// invoke or checkpoint stock.compose_chunks at all; its output
+		// is forwarded from CutPaths by the extract step (and backfilled
+		// here for checkpoints written by older versions).
+		if shouldBypassStockCompose(step.Name(), input) {
+			if len(state.ComposedPaths) == 0 && len(state.CutPaths) > 0 {
+				state.ComposedPaths = append([]string(nil), state.CutPaths...)
+				// Keep the next step's fingerprint projection aligned
+				// with the current state when resuming a legacy extract
+				// checkpoint that predates ComposedPaths.
+				var cloneErr error
+				previousState, cloneErr = cloneRunState(state)
+				if cloneErr != nil {
+					return nil, fmt.Errorf("orchestrator: %s resume clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
+				}
+			}
+			continue
+		}
+
 		fingerprint := stepInputFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState)
 		// Rows written before fingerprint v2 used jobID|stepKey. Keep
 		// those checkpoints resumable during the migration, but only
@@ -393,6 +413,14 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	}
 
 	return summary, nil
+}
+
+// shouldBypassStockCompose is the single dispatch gate for the
+// canonical cutter fast path. Keeping the step-name check here makes
+// the complete bypass explicit: no Run, checkpoint, or resume lookup
+// is performed for stock.compose_chunks in this mode.
+func shouldBypassStockCompose(stepName string, input *RunInput) bool {
+	return stepName == StepKeyStockComposeChunks && isCanonicalFinalCut(input)
 }
 
 // executorLogOrNop returns the per-orchestrator logger if one
