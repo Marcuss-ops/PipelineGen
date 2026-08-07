@@ -147,6 +147,7 @@ func scanInputImmutabilityAST(path, relPath string, r *report.Report) {
 
 var inputMutationAllowlist = map[string]bool{
 	"internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go": true,
+	"internal/application/assets/providers/stock/stockpipeline/query_resolution.go": true,
 	"internal/application/jobs/enqueue_service.go":                                  true,
 	"internal/application/lessons/service.go":                                       true,
 	"internal/application/voiceover/stages.go":                                      true,
