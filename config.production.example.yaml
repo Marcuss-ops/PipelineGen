@@ -114,9 +114,10 @@ video:
   height: 1080
   fps: 24
   # Production encoder policy: NVENC is required; a runtime GPU failure is
-  # terminal and must never degrade silently to CPU/libx264.
+  # terminal and must never degrade silently to CPU/libx264. `p1` is the
+  # native NVENC performance preset; the resolver preserves it as-is.
   codec: "h264_nvenc"
-  preset: "veryfast"
+  preset: "p1"
   crf: 23
   duration: 7
   keyframe_interval: 48

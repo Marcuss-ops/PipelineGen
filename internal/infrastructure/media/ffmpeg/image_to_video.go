@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // ImageToVideoOptions configures how a still image is converted to a video.
@@ -35,9 +33,7 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 	if opts.FPS <= 0 {
 		opts.FPS = 30
 	}
-	if opts.Codec == "" {
-		opts.Codec = "libx264"
-	}
+	opts.Codec = p.ResolveEncoder(ctx, opts.Codec)
 	if opts.Preset == "" {
 		opts.Preset = "medium"
 	}
@@ -45,7 +41,7 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 		opts.CRF = 18
 	}
 
-	// Build filter: scale to fill, crop to exact dimensions
+	// Build filter: scale to fill, crop to exact dimensions.
 	var filter string
 	if opts.Zoom {
 		// Slow, gradual zoom-in: 5% over the full duration, no cap hit before end.
@@ -77,17 +73,14 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 		"-i", inputImage,
 		"-vf", filter,
 		"-t", fmt.Sprintf("%d", opts.Duration),
-		"-c:v", opts.Codec,
-		"-preset", opts.Preset,
-		"-crf", fmt.Sprintf("%d", opts.CRF),
+	}
+	args = appendVideoEncoderArgs(args, opts.Codec, opts.Preset, opts.CRF)
+	args = append(args,
 		"-pix_fmt", "yuv420p",
 		"-movflags", "+faststart",
 		"-an",
 		outputVideo,
-	}
+	)
 
-	_, err := process.Run(ctx, p.path, args, process.Options{
-		Timeout: time.Duration(opts.Duration+30) * time.Second,
-	})
-	return err
+	return p.RunWithEncoderPolicy(ctx, opts.Codec, args, time.Duration(opts.Duration+30)*time.Second)
 }
