@@ -7,7 +7,10 @@ import (
 )
 
 // executeCuts builds CutJobs, creates the persistent workspace, and calls
-// the VideoCutter.Cut port for a single source group.
+// the VideoCutter.Cut port for a single source group. When the run has no
+// effects or transitions, the cutter's normalized output is already the
+// canonical final artifact and receives the stock_final name used by resume
+// and downstream publication.
 func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath string, sourceDuration float64, groupPlans []ClipPlan, sourceIdx int, noAudio bool) (CutBatchResult, error) {
 	cutter := runner.Cutter()
 	localFS := runner.LocalFS()
@@ -24,9 +27,13 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 		return CutBatchResult{}, fmt.Errorf("orchestrator: stock.extract_clips: create persistent workspace: %w", err)
 	}
 
+	outputPrefix := "stock_cut"
+	if isCanonicalFinalCut(runner.RunInput()) {
+		outputPrefix = "stock_final"
+	}
 	for clipIdx, plan := range groupPlans {
 		outputPath := filepath.Join(workspaceDir,
-			fmt.Sprintf("stock_cut_%s_%d_%d.mp4", runner.JobID(), sourceIdx, clipIdx))
+			fmt.Sprintf("%s_%s_%d_%d.mp4", outputPrefix, runner.JobID(), sourceIdx, clipIdx))
 		jobs[clipIdx] = CutJob{
 			StartSec:   plan.StartSec,
 			EndSec:     plan.EndSec,
@@ -56,4 +63,11 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 		finishStockPhase(runner, metric, "stock.extract", cutErr)
 	}
 	return result, cutErr
+}
+
+// isCanonicalFinalCut reports whether cutter output can be published as the
+// final canonical artifact without a second render pass. A nil input keeps
+// the conservative legacy behavior and requires compose_chunks.
+func isCanonicalFinalCut(input *RunInput) bool {
+	return input != nil && input.NoEffects && input.NoTransitions
 }

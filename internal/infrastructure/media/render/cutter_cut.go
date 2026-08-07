@@ -73,7 +73,8 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		// Only reuse files that live in the persistent stock workspace
 		// and follow the expected naming convention.
 		if !strings.Contains(j.OutputPath, persistentStockWorkspace) ||
-			!strings.Contains(j.OutputPath, "/extracted/stock_cut_") {
+			(!strings.Contains(j.OutputPath, "/extracted/stock_cut_") &&
+				!strings.Contains(j.OutputPath, "/extracted/stock_final_")) {
 			pendingJobs = append(pendingJobs, j)
 			pendingToOrig = append(pendingToOrig, origIdx)
 			continue

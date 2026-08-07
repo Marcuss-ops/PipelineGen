@@ -68,6 +68,20 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 		return nil
 	}
 
+	// A cutter output with neither effects nor transitions is already
+	// normalized to the canonical stock profile. Do not invoke the renderer
+	// for a second encode; pass the verified cut artifacts through as the
+	// composed/final input consumed by stock.publish.
+	in := runner.RunInput()
+	if isCanonicalFinalCut(in) {
+		runner.State().ComposedPaths = append([]string(nil), cutPaths...)
+		if runner.Log() != nil {
+			runner.Log().Info("orchestrator: stock.compose_chunks: bypassed — cutter output is canonical final artifact",
+				zap.Int("final_paths", len(cutPaths)))
+		}
+		return nil
+	}
+
 	// godlike/07 composition-time guarantee (PR-STOCK-PRODUCTION-DEPS,
 	// July 2026): runner.Renderer() is non-nil. The canonical
 	// composition root (NewProductionStockPipeline + orchestrator.RunResilient)
@@ -79,7 +93,6 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 	// must update to wire a non-nil stub (mapRenderer).
 	renderer := runner.Renderer()
 
-	in := runner.RunInput()
 	noAudio := in != nil && in.NoAudio
 	noTransitions := in != nil && in.NoTransitions
 	noEffects := in != nil && in.NoEffects
