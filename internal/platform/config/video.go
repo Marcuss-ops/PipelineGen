@@ -1,6 +1,8 @@
 package config
 
-import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+)
 
 // VideoConfig holds all video processing parameters shared across the clip, stock,
 // and video rendering pipelines. Centralizing these values ensures that every
@@ -12,9 +14,12 @@ import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 // of the canonical value; re-introduction is gated by Check 39 in
 // scripts/ci-architectural-checks.sh.
 type VideoConfig struct {
-	Width              int      `yaml:"width" default:"1920"`
-	Height             int      `yaml:"height" default:"1080"`
-	FPS                int      `yaml:"fps" default:"24"`
+	Width  int `yaml:"width" default:"1920"`
+	Height int `yaml:"height" default:"1080"`
+	FPS    int `yaml:"fps" default:"24"`
+	// Codec is the encoder policy: auto, h264_nvenc (or nvenc), or libx264.
+	// CanonicalClip intentionally remains the software contract; runtime
+	// infrastructure resolves this policy against the host's FFmpeg support.
 	Codec              string   `yaml:"codec" default:"libx264"`
 	Preset             string   `yaml:"preset" default:"veryfast"`
 	CRF                int      `yaml:"crf" default:"23"`
@@ -114,6 +119,9 @@ func (v VideoConfig) CanonicalClip() VideoConfig {
 	v.Width = 1920
 	v.Height = 1080
 	v.FPS = 24
+	// Keep the canonical materialized-clip contract software-first.
+	// Hardware selection is a runtime policy resolved by the FFmpeg
+	// infrastructure, never by this declarative profile method.
 	v.Codec = "libx264"
 	v.Preset = "veryfast"
 	v.CRF = 23

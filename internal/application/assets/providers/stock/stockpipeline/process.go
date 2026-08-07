@@ -183,12 +183,13 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	batch, cutErr := s.cutter.Cut(ctx, CutRequest{
 		SourcePath: actualPath,
 		Jobs:       jobs,
-		Codec:      cfg.Codec,
-		Preset:     cfg.Preset,
-		CRF:        cfg.CRF,
-		NoAudio:    noAudio,
-		Logger:     s.log,
-		SourceIdx:  idx,
+		// The cutter owns the single encoder-policy decision.
+		Codec:     "",
+		Preset:    cfg.Preset,
+		CRF:       cfg.CRF,
+		NoAudio:   noAudio,
+		Logger:    s.log,
+		SourceIdx: idx,
 	})
 
 	// FASE 2.4 (July 2026, audit P0 #4 continuation): the legacy

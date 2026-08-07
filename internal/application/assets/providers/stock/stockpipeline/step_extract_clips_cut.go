@@ -46,12 +46,14 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 		SourcePath:     sourcePath,
 		SourceDuration: sourceDuration,
 		Jobs:           jobs,
-		Codec:          canonical.Codec,
-		Preset:         canonical.Preset,
-		CRF:            canonical.CRF,
-		NoAudio:        noAudio,
-		Logger:         runner.Log(),
-		SourceIdx:      sourceIdx,
+		// Leave encoder policy resolution to the configured infrastructure
+		// cutter; empty means auto/NVENC/libx264 is resolved there.
+		Codec:     "",
+		Preset:    canonical.Preset,
+		CRF:       canonical.CRF,
+		NoAudio:   noAudio,
+		Logger:    runner.Log(),
+		SourceIdx: sourceIdx,
 	}
 
 	metric := startStockPhase(ctx, runner, "stock.extract")

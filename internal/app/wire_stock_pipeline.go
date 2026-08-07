@@ -118,8 +118,8 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	}
 
 	// Cutter + Renderer (nil-safe: empty string → "ffmpeg").
-	stockCutter := render.NewFFmpegCutter(ffmpegPath, log)
-	stockRenderer := render.NewFFmpegRenderer(ffmpegPath, nil, log)
+	stockCutter := render.NewFFmpegCutterWithEncoder(ffmpegPath, cfg.Video.WithDefaults().Codec, log)
+	stockRenderer := render.NewFFmpegRendererWithConfig(ffmpegPath, cfg.Video.WithDefaults().Codec, nil, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the

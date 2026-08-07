@@ -115,7 +115,7 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 			Width:            canonical.Width,
 			Height:           canonical.Height,
 			FPS:              canonical.FPS,
-			Codec:            canonical.Codec,
+			Codec:            "",
 			Preset:           canonical.Preset,
 			CRF:              canonical.CRF,
 			KeyframeInterval: canonical.KeyframeInterval,

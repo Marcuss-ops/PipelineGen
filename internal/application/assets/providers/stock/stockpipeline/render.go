@@ -50,12 +50,15 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 
 	cfg := DefaultPipelineConfig()
 	req := RenderRequest{
-		OutputPath:       outputPath,
-		InputPaths:       clips,
-		Width:            cfg.Width,
-		Height:           cfg.Height,
-		FPS:              cfg.FPS,
-		Codec:            cfg.Codec,
+		OutputPath: outputPath,
+		InputPaths: clips,
+		Width:      cfg.Width,
+		Height:     cfg.Height,
+		FPS:        cfg.FPS,
+		// The infrastructure renderer supplies the configured runtime policy;
+		// leaving Codec empty keeps this neutral application DTO from making a
+		// second encoder decision.
+		Codec:            "",
 		Preset:           cfg.Preset,
 		CRF:              cfg.CRF,
 		KeyframeInterval: cfg.KeyframeInterval,
