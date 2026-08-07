@@ -9,7 +9,8 @@
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
       "start_server.sh",
-      "examples/scripts/"
+      "examples/scripts/",
+      "examples/worker_integration/"
     ],
     "go_packages": [
       "./internal/domain/script/...",
