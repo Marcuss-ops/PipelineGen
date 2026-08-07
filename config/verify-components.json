@@ -70,8 +70,9 @@
       "internal/api/assets/stock/",
       "internal/api/assets/artlist/",
       "internal/infrastructure/artlist/",
-      "scripts/youtube_boxer_stock_e2e.py"
-    ],
+   "scripts/youtube_boxer_stock_e2e.py",
+  "scripts/operations/bench_stock_clip_round.sh"
+ ],
     "go_packages": [
       "./internal/application/assets/providers/stock/...",
       "./internal/application/assets/providers/artlist/...",
@@ -346,13 +347,17 @@
       "internal/application/youtube/",
       "internal/application/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
-      "internal/infrastructure/youtube/",
-      "internal/api/assets/youtube/",
-      "scripts/tools/transcribe_detect_lang.py",
-      "scripts/requirements-whisper.txt",
-      "scripts/verify-whisper.sh",
-      "scripts/ci/whisper-deployment-contract_test.py"
-    ],
+      "internal/infrastructure/youtube/",  "internal/api/assets/youtube/",
+  "scripts/tools/transcribe_detect_lang.py",
+  "scripts/requirements-whisper.txt",
+  "scripts/verify-whisper.sh",
+  "scripts/ci/whisper-deployment-contract_test.py",
+  "scripts/tools/whisper_preflight.py",
+  "scripts/tools/whisper_runtime.py",
+  "scripts/tools/test_whisper_preflight.py",
+  "scripts/systemd/pipelinegen.service.d/whisper.conf",
+  "docker-compose.yml"
+ ],
     "go_packages": [
       "./internal/domain/youtube/...",
       "./internal/application/youtube/...",
