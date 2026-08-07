@@ -12,8 +12,11 @@ coverage.html
 *.db
 *.sqlite
 *.sqlite-*
+!requirements/
+!requirements/whisper.lock.txt
 *.log
 *.bak
 profiles
 sessions
+.venv-whisper/
 deliverables

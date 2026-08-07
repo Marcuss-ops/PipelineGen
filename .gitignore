@@ -235,6 +235,7 @@ local.env
 
 # Docker secrets (never commit tokens)
 secrets/
+.venv-whisper/
 
 # PR1 (Repository truth, June 2026):
 #   * scripts/archcheck/current_report.json is a per-run diagnostic snapshot

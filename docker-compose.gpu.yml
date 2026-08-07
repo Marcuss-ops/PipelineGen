@@ -1,0 +1,12 @@
+# Optional NVIDIA override for PipelineGen's Whisper worker.
+# Usage on a GPU host with NVIDIA Container Toolkit:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d pipelinegen-worker
+services:
+  pipelinegen-worker:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -2,9 +2,9 @@
 # verify-whisper.sh — Worker image Whisper runtime probe.
 #
 # Verifies that the worker image contains the pinned Whisper runtime from
-# /opt/whisper/requirements.txt and that both packages are importable. This
-# is a dependency/import probe only; it does not download a model or require
-# a GPU.
+# /opt/whisper/requirements.lock.txt and that the core packages plus CUDA
+# runtime pins are importable. This is a dependency/import probe only; it
+# does not download a model or require a GPU.
 #
 # Usage:
 #   ./scripts/verify-whisper.sh
@@ -24,7 +24,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
-MANIFEST=/opt/whisper/requirements.txt
+MANIFEST=/opt/whisper/requirements.lock.txt
 
 if ! command -v docker &>/dev/null; then
     echo -e "${YELLOW}SKIP: docker not available${NC}"
@@ -57,15 +57,17 @@ if ! "${RUN[@]}" python3 -c 'import sys; print(sys.executable)' >/dev/null 2>&1;
 fi
 
 MANIFEST_CONTENT=$("${RUN[@]}" cat "$MANIFEST") || {
-    echo -e "${RED}✗ Whisper manifest is missing from the image${NC}"
+    echo -e "${RED}✗ Whisper lockfile is missing from the image${NC}"
     exit 1
 }
 EXPECTED=$(printf '%s\n' "$MANIFEST_CONTENT" | awk -F'==' '
-    $1 == "faster-whisper" || $1 == "ctranslate2" {
+    $1 == "faster-whisper" || $1 == "ctranslate2" ||
+    $1 == "nvidia-cublas-cu12" || $1 == "nvidia-cuda-nvrtc-cu12" ||
+    $1 == "nvidia-cudnn-cu12" {
         print "expected-" $1 "=" $2
     }
 ')
-for package in faster-whisper ctranslate2; do
+for package in faster-whisper ctranslate2 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cudnn-cu12; do
     if ! grep -q "^expected-${package}=" <<<"$EXPECTED"; then
         echo -e "${RED}✗ missing ${package} pin in ${MANIFEST}${NC}"
         exit 1
@@ -73,14 +75,14 @@ for package in faster-whisper ctranslate2; do
 done
 echo "$EXPECTED"
 
-PROBE='import importlib.metadata as m; import faster_whisper, ctranslate2; print("python=" + __import__("sys").executable); print("faster-whisper=" + m.version("faster-whisper")); print("ctranslate2=" + m.version("ctranslate2"))'
+PROBE='import importlib.metadata as m; import faster_whisper, ctranslate2; print("python=" + __import__("sys").executable); print("faster-whisper=" + m.version("faster-whisper")); print("ctranslate2=" + m.version("ctranslate2")); print("nvidia-cublas-cu12=" + m.version("nvidia-cublas-cu12")); print("nvidia-cuda-nvrtc-cu12=" + m.version("nvidia-cuda-nvrtc-cu12")); print("nvidia-cudnn-cu12=" + m.version("nvidia-cudnn-cu12"))'
 OUTPUT=$("${RUN[@]}" python3 -c "$PROBE") || {
     echo -e "${RED}✗ faster-whisper/ctranslate2 import probe failed${NC}"
     exit 1
 }
 echo "$OUTPUT"
 
-for package in faster-whisper ctranslate2; do
+for package in faster-whisper ctranslate2 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cudnn-cu12; do
     expected=$(grep -x "expected-${package}=.*" <<<"$EXPECTED" | cut -d= -f2-)
     installed=$(grep -x "${package}=.*" <<<"$OUTPUT" | cut -d= -f2-)
     if [ -z "$installed" ] || [ "$installed" != "$expected" ]; then
