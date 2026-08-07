@@ -602,6 +602,47 @@ func TestStockPlanStep_ShortSourceUsesRealDuration(t *testing.T) {
 	}
 }
 
+// TestStockPlanStep_MetadataRoundingAbsorbedByMargin guards against the
+// second Muhammad Ali 10m E2E regression (2026-08-07): YouTube declared
+// a source duration of 902s but the downloaded file measures 901.89s
+// (0.11s metadata rounding). The planner must subtract its safety margin
+// so the last clip's EndSec stays within the REAL probed duration.
+func TestStockPlanStep_MetadataRoundingAbsorbedByMargin(t *testing.T) {
+	const url = "https://www.youtube.com/watch?v=rounding902"
+	runner := &fakeStepRunner{
+		runInput: &RunInput{
+			DirectURLs:                     []string{url},
+			SourceDurations:                map[string]float64{url: 902.0}, // declared by provider
+			TargetDurationPerSourceSeconds: 60,
+			ClipsPerSource:                 3,
+			ClipDurationSeconds:            20,
+		},
+		cfg: OrchestratorConfig{
+			PolicyVersion:    "test-policy-v1",
+			ClipDurationSec:  20,
+			ChunkDurationSec: 60,
+		},
+		state:   &RunState{},
+		planner: NewDeterministicPlanner(),
+	}
+	step := StockPlanStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	plans := runner.State().Plan
+	if len(plans) != 3 {
+		t.Fatalf("expected 3 plans, got %d", len(plans))
+	}
+	// Real probed duration is 901.89 — every clip must end before it
+	// even though the declared duration was 902.0.
+	const realDuration = 901.89
+	for i, plan := range plans {
+		if plan.EndSec > realDuration {
+			t.Errorf("plan[%d] EndSec=%.2f exceeds real duration %.2f (metadata rounding must be absorbed by margin)", i, plan.EndSec, realDuration)
+		}
+	}
+}
+
 // TestStockPlanStep_UnknownDurationKeepsFallbackContract verifies that
 // sources without a known duration keep the previous behavior: the
 // planner uses its conservative horizon and the plan is produced

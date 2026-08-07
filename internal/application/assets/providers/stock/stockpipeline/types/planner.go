@@ -36,6 +36,20 @@ import (
 const (
 	explicitClipAutoSegmentThresholdSec = 60
 	explicitClipAutoSegmentSeconds      = 5
+	// sourceDurationHorizonMarginSec is subtracted from the provider-declared
+	// source duration when computing the planner's clip-window horizon.
+	//
+	// Rationale: the declared duration comes from provider metadata
+	// (e.g. YouTube's watch-page/API duration), which can exceed the
+	// ACTUAL duration probed on the downloaded file by a fraction of a
+	// second (observed: declared 902s vs measured 901.89s → 0.11s
+	// overrun on the last clip). Without the margin, the last planned
+	// clip's EndSec lands a few hundredths of a second past the real
+	// end of the file and the whole run fails closed with
+	// ErrStockClipsOutOfRange. The margin keeps the strong fail-closed
+	// contract for genuinely out-of-range plans while absorbing benign
+	// metadata rounding.
+	sourceDurationHorizonMarginSec = 2
 )
 
 // Canonical SourceProvider bucket identifiers (PR-003, July 2026).
@@ -283,6 +297,13 @@ func (p *deterministicPlanner) Plan(_ context.Context, src VideoSource, budgetSe
 	// sampling horizon; extraction still fails closed if the source is shorter
 	// than the planned end offsets.
 	horizonSec := int(src.DurationSec)
+	if src.DurationSec > 0 {
+		// Subtract the metadata rounding margin so the last clip window
+		// stays inside the REAL (probed) source length even when the
+		// provider-declared duration is a few tenths of a second longer
+		// than the downloaded file's measured duration.
+		horizonSec -= sourceDurationHorizonMarginSec
+	}
 	if horizonSec < budgetSec {
 		horizonSec = budgetSec
 	}
