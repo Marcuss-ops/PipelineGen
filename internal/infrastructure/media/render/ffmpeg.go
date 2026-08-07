@@ -40,12 +40,13 @@ import (
 // TransitionRegistry. The renderer owns its own scratchbuffer pool
 // (listPool) so no package-level mutable state leaks across instances.
 type FFmpegRenderer struct {
-	ffmpegPath  string
-	encoderMode string
-	encoder     *ffmpeg.Processor
-	transitions stockpipeline.TransitionRegistry
-	log         *zap.Logger
-	listPool    *appliedListPoolImpl
+	ffmpegPath    string
+	encoderMode   string
+	encoderPolicy config.VideoEncoderPolicy
+	encoder       *ffmpeg.Processor
+	transitions   stockpipeline.TransitionRegistry
+	log           *zap.Logger
+	listPool      *appliedListPoolImpl
 }
 
 // NewFFmpegRenderer constructs the FFmpeg renderer with the canonical
@@ -60,17 +61,23 @@ func NewFFmpegRenderer(ffmpegPath string, transitions stockpipeline.TransitionRe
 	if transitions == nil {
 		transitions = DefaultTransitionRegistry()
 	}
-	return newFFmpegRenderer(ffmpegPath, string(ffmpeg.EncoderLibX264), transitions, log)
+	return newFFmpegRenderer(ffmpegPath, config.VideoEncoderPolicy{Codec: string(ffmpeg.EncoderLibX264)}, transitions, log)
 }
 
 // NewFFmpegRendererWithConfig constructs the renderer with the configured
 // runtime encoder policy. The existing constructor remains software-first for
 // callers that do not provide platform configuration.
 func NewFFmpegRendererWithConfig(ffmpegPath, encoderMode string, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
-	return newFFmpegRenderer(ffmpegPath, encoderMode, transitions, log)
+	return newFFmpegRenderer(ffmpegPath, config.VideoEncoderPolicy{Codec: encoderMode}, transitions, log)
 }
 
-func newFFmpegRenderer(ffmpegPath, encoderMode string, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
+// NewFFmpegRendererWithPolicy constructs the renderer with the complete
+// encoder policy, including preset and quality settings.
+func NewFFmpegRendererWithPolicy(ffmpegPath string, policy config.VideoEncoderPolicy, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
+	return newFFmpegRenderer(ffmpegPath, policy, transitions, log)
+}
+
+func newFFmpegRenderer(ffmpegPath string, policy config.VideoEncoderPolicy, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
 	}
@@ -80,13 +87,15 @@ func newFFmpegRenderer(ffmpegPath, encoderMode string, transitions stockpipeline
 	if log == nil {
 		log = zap.NewNop()
 	}
+	policy = (config.VideoConfig{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF}).EncoderPolicy()
 	return &FFmpegRenderer{
-		ffmpegPath:  ffmpegPath,
-		encoderMode: encoderMode,
-		encoder:     ffmpeg.NewProcessorWithEncoder(ffmpegPath, encoderMode),
-		transitions: transitions,
-		log:         log,
-		listPool:    &appliedListPoolImpl{},
+		ffmpegPath:    ffmpegPath,
+		encoderMode:   policy.Codec,
+		encoderPolicy: policy,
+		encoder:       ffmpeg.NewProcessorWithEncoder(ffmpegPath, policy.Codec),
+		transitions:   transitions,
+		log:           log,
+		listPool:      &appliedListPoolImpl{},
 	}
 }
 
@@ -115,10 +124,13 @@ func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderReq
 	// a second codec/resolution/FPS profile at this boundary.
 	requestedCodec := req.Codec
 	if requestedCodec == "" {
-		requestedCodec = r.encoderMode
+		requestedCodec = r.encoderPolicy.Codec
 	}
 	profile := (config.VideoConfig{}).CanonicalVideoProfile()
-	policy := (config.VideoConfig{Codec: requestedCodec}).EncoderPolicy()
+	policy := r.encoderPolicy
+	if requestedCodec != policy.Codec {
+		policy = (config.VideoConfig{Codec: requestedCodec, Preset: req.Preset, CRF: req.CRF}).EncoderPolicy()
+	}
 	req.Width = profile.Width
 	req.Height = profile.Height
 	req.FPS = profile.FPS
