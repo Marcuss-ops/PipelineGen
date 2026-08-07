@@ -217,18 +217,23 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 
 	// ── 6. Build the MediaAsset record ────────────────────────────
 	now := time.Now().UTC()
+	// New rows use the shared lifecycle factory. The canonical
+	// media_assets.index_state column supplies its DISCOVERED default;
+	// it must not be duplicated in metadata_json.
+	lifecycleState, _ := asset.NewIndexableAssetState()
 	clip := &asset.Asset{
-		ID:         clipID,
-		Name:       cmd.Name,
-		Filename:   driveFilename,
-		Source:     asset.Source(cmd.Source),
-		Category:   cmd.Category,
-		Group:      cmd.Group,
-		MediaType:  asset.MediaType("video"),
-		Tags:       cmd.Tags,
-		SearchText: cmd.Description,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             clipID,
+		Name:           cmd.Name,
+		Filename:       driveFilename,
+		Source:         asset.Source(cmd.Source),
+		Category:       cmd.Category,
+		Group:          cmd.Group,
+		MediaType:      asset.MediaType("video"),
+		LifecycleState: lifecycleState,
+		Tags:           cmd.Tags,
+		SearchText:     cmd.Description,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	clip.SetLocalPath(localPath)
 	clip.SetFileHash(fileHash)
