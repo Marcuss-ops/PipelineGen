@@ -26,48 +26,16 @@ import time
 from pathlib import Path
 from typing import Optional
 
+try:
+    from whisper_runtime import prepare_cuda_runtime
+except ImportError:
+    from scripts.tools.whisper_runtime import prepare_cuda_runtime
+
 # ---------------------------------------------------------------------------
 # Module-level model cache — whisper model is loaded ONCE per process,
 # shared across all transcribe() calls. Avoids reloading for batch mode.
 # ---------------------------------------------------------------------------
 _MODEL_CACHE: dict = {}
-
-
-def _prepare_cuda_runtime() -> None:
-    """Expose a CUDA 12 runtime when ctranslate2 needs it.
-
-    ctranslate2 4.8 loads CUDA 12 libraries, while the host Python/Torch
-    installation may provide CUDA 13.  Ollama ships a compatible CUDA 12
-    runtime on this host.  Re-execing after changing LD_LIBRARY_PATH is
-    intentional: the dynamic loader reads that variable at process startup.
-    """
-    if os.environ.get("VELOX_WHISPER_CUDA_RUNTIME_READY") == "1":
-        return
-
-    library_path = os.environ.get("LD_LIBRARY_PATH", "")
-    search_dirs = [
-        os.environ.get("VELOX_WHISPER_CUDA_LIB_DIR", ""),
-        "/usr/local/lib/ollama/cuda_v12",
-        "/usr/local/cuda-12/lib64",
-        "/usr/local/cuda/lib64",
-    ]
-    for raw_dir in search_dirs:
-        if not raw_dir:
-            continue
-        directory = Path(raw_dir)
-        if not (directory / "libcublas.so.12").exists():
-            continue
-        if str(directory) in library_path.split(os.pathsep):
-            os.environ["VELOX_WHISPER_CUDA_RUNTIME_READY"] = "1"
-            return
-
-        paths = [str(directory)]
-        if library_path:
-            paths.append(library_path)
-        env = os.environ.copy()
-        env["LD_LIBRARY_PATH"] = os.pathsep.join(paths)
-        env["VELOX_WHISPER_CUDA_RUNTIME_READY"] = "1"
-        os.execve(sys.executable, [sys.executable, *sys.argv], env)
 
 
 def _resolve_device() -> tuple:
@@ -82,7 +50,7 @@ def _resolve_device() -> tuple:
         return "cpu", "int8"
     if choice in ("auto", "cuda"):
         try:
-            _prepare_cuda_runtime()
+            prepare_cuda_runtime()
             from ctranslate2 import get_cuda_device_count
 
             if get_cuda_device_count() > 0:

@@ -119,18 +119,18 @@ RUN apt-get update \
 # metadata against the direct manifest and exact lock used during the build.
 COPY scripts/requirements-whisper.txt /opt/whisper/requirements.txt
 COPY requirements/whisper.lock.txt /opt/whisper/requirements.lock.txt
-RUN python3 -m venv /opt/venv \
- && /opt/venv/bin/python -m pip install --no-cache-dir \
+RUN python3 -m venv /opt/whisper-venv \
+ && /opt/whisper-venv/bin/python -m pip install --no-cache-dir \
       --requirement /opt/whisper/requirements.lock.txt \
- && site_packages=$(/opt/venv/bin/python -c 'import site; print(site.getsitepackages()[0])') \
- && ln -s "$site_packages/nvidia/cublas/lib" /opt/venv/cublas-lib \
- && ln -s "$site_packages/nvidia/cuda_nvrtc/lib" /opt/venv/cuda-nvrtc-lib \
- && ln -s "$site_packages/nvidia/cudnn/lib" /opt/venv/cudnn-lib
-ENV PATH="/opt/venv/bin:${PATH}" \
-    LD_LIBRARY_PATH="/opt/venv/cublas-lib:/opt/venv/cuda-nvrtc-lib:/opt/venv/cudnn-lib" \
+ && site_packages=$(/opt/whisper-venv/bin/python -c 'import site; print(site.getsitepackages()[0])') \
+ && ln -s "$site_packages/nvidia/cublas/lib" /opt/whisper-venv/cublas-lib \
+ && ln -s "$site_packages/nvidia/cuda_nvrtc/lib" /opt/whisper-venv/cuda-nvrtc-lib \
+ && ln -s "$site_packages/nvidia/cudnn/lib" /opt/whisper-venv/cudnn-lib
+ENV PATH="/opt/whisper-venv/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/whisper-venv/cublas-lib:/opt/whisper-venv/cuda-nvrtc-lib:/opt/whisper-venv/cudnn-lib" \
     VELOX_WHISPER_DEVICE="auto" \
     VELOX_WHISPER_MODEL="base" \
-    VELOX_WHISPER_CUDA_LIB_DIR="/opt/venv/cublas-lib"
+    VELOX_WHISPER_CUDA_LIB_DIR="/opt/whisper-venv/cublas-lib"
 
 # yt-dlp pinned to the official stable release. Use the generic Python
 # executable rather than the x86-64-only standalone Linux binary so the

@@ -96,6 +96,15 @@ services:
     # standalone. WorkerAuth on /internal/v1 enforces worker-token-only
     # access (admin token is rejected).
     restart: unless-stopped
+    # Expose the host NVIDIA GPU only to the Whisper worker. The image keeps
+    # VELOX_WHISPER_DEVICE=auto so CPU-only hosts retain the existing fallback.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       pipelinegen-server:
         condition: service_healthy
@@ -114,7 +123,7 @@ services:
       # otherwise falls back to CPU/int8.
       VELOX_WHISPER_DEVICE: "auto"
       VELOX_WHISPER_MODEL: "base"
-      VELOX_WHISPER_CUDA_LIB_DIR: "/opt/venv/cublas-lib"
+      VELOX_WHISPER_CUDA_LIB_DIR: "/opt/whisper-venv/cublas-lib"
     env_file:
       - ./secrets/pipelinegen.env
     command: ["--config", "/etc/pipelinegen/config.yaml"]
