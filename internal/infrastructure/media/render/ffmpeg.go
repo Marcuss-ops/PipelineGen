@@ -155,7 +155,7 @@ func (r *FFmpegRenderer) renderSingle(ctx context.Context, req stockpipeline.Ren
 	args = append(args, r.encodeArgs(req)...)
 	args = append(args, req.OutputPath)
 
-	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, args, 20*time.Minute); err != nil {
+	if err := r.encoder.RunWithEncoderPolicy(ctx, req.Codec, args, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render single: %w", err)
 	}
 	r.log.Info("stock render: single clip normalized",
@@ -214,7 +214,7 @@ func (r *FFmpegRenderer) renderFastConcat(ctx context.Context, req stockpipeline
 	normArgs = append(normArgs, "-i", concatPath)
 	normArgs = append(normArgs, r.encodeArgs(req)...)
 	normArgs = append(normArgs, req.OutputPath)
-	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, normArgs, 20*time.Minute); err != nil {
+	if err := r.encoder.RunWithEncoderPolicy(ctx, req.Codec, normArgs, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render fast: normalize: %w", err)
 	}
 
@@ -331,7 +331,7 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 	args = append(args, r.encodeArgs(req)...)
 	args = append(args, req.OutputPath)
 
-	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, args, 20*time.Minute); err != nil {
+	if err := r.encoder.RunWithEncoderPolicy(ctx, req.Codec, args, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render complex: %w", err)
 	}
 

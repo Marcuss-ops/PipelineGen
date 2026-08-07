@@ -48,6 +48,7 @@ type Processor struct {
 	runner      ProcessRunner
 	resolver    *EncoderResolver
 	encoderMode string
+	nvencSlots  chan struct{}
 }
 
 // NewProcessor creates a new FFmpeg Processor with the given binary path.
@@ -72,6 +73,7 @@ func newProcessor(ffmpegPath, encoderMode string) *Processor {
 		runner:      runner,
 		resolver:    NewEncoderResolver(ffmpegPath, runner),
 		encoderMode: encoderMode,
+		nvencSlots:  make(chan struct{}, 1),
 	}
 }
 
@@ -126,29 +128,39 @@ func (p *Processor) resolveEncoder(ctx context.Context, requested string) string
 	return p.ResolveEncoder(ctx, requested)
 }
 
-// RunWithEncoderFallback executes one encoding attempt and retries with the
-// canonical software profile when an NVENC attempt fails. It is shared by
-// infrastructure adapters that build their own FFmpeg argv. The fallback is
-// intentionally local to the same runner/process boundary and never changes
-// CanonicalClip's declarative profile.
-func (p *Processor) RunWithEncoderFallback(ctx context.Context, codec string, args []string, timeout time.Duration) error {
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{Timeout: timeout})
-	if err == nil || !IsNVENCCodec(codec) {
+// RunWithEncoderPolicy executes exactly one encode attempt. An NVENC policy
+// is GPU-required: a runtime encoder failure is returned with its original
+// process output and is never hidden by a libx264 retry.
+func (p *Processor) RunWithEncoderPolicy(ctx context.Context, codec string, args []string, timeout time.Duration) error {
+	release, err := p.acquireNVENCSlot(ctx, codec)
+	if err != nil {
 		return err
 	}
-
-	fallbackArgs := softwareFallbackArgs(args)
-	_, fallbackErr := p.runner.Run(ctx, p.path, fallbackArgs, process.Options{Timeout: timeout})
-	if fallbackErr != nil {
-		return fmt.Errorf("NVENC encode failed: %w; libx264 fallback failed: %v", err, fallbackErr)
+	if release != nil {
+		defer release()
 	}
-	return nil
+
+	_, err = p.runner.Run(ctx, p.path, args, process.Options{
+		Timeout:        timeout,
+		CombinedOutput: true,
+		MaxOutputBytes: 1 << 20,
+	})
+	if err != nil && IsNVENCCodec(codec) {
+		return fmt.Errorf("NVENC encode required and failed: %w", err)
+	}
+	return err
 }
 
-// runWithEncoderFallback preserves the package-local call shape used by the
-// encoding methods.
-func (p *Processor) runWithEncoderFallback(ctx context.Context, codec string, args []string, timeout time.Duration) error {
-	return p.RunWithEncoderFallback(ctx, codec, args, timeout)
+func (p *Processor) acquireNVENCSlot(ctx context.Context, codec string) (func(), error) {
+	if !IsNVENCCodec(codec) {
+		return nil, nil
+	}
+	select {
+	case p.nvencSlots <- struct{}{}:
+		return func() { <-p.nvencSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // ── Type aliases — canonical definitions in ffmpeg/types (PR6-B, June 2026) ──

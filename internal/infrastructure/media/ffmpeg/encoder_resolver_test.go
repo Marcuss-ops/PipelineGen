@@ -3,6 +3,9 @@ package ffmpeg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,46 +128,128 @@ func TestNewFromConfigPreservesRuntimeCodecPolicy(t *testing.T) {
 	}
 }
 
-func TestSoftwareFallbackArgsRemovesNVENCOnlyFlags(t *testing.T) {
-	args := []string{
-		"-hwaccel", "cuda", "-i", "in.mp4", "-c:v", "h264_nvenc",
-		"-preset", "p1", "-rc", "vbr", "-cq", "26", "-tune", "hq", "-bf", "0",
-		"-c:a", "aac", "out.mp4",
+func TestExplicitNVENCFailureIsTerminal(t *testing.T) {
+	runner := &fallbackRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	err := p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{
+		"-c:v", "h264_nvenc", "-preset", "p1", "-rc", "vbr", "-cq", "23", "out.mp4",
+	}, time.Second)
+	if err == nil || !strings.Contains(err.Error(), "NVENC encode required and failed") {
+		t.Fatalf("RunWithEncoderPolicy error=%v, want terminal NVENC failure", err)
 	}
-	got := softwareFallbackArgs(args)
-	want := []string{
-		"-i", "in.mp4", "-c:v", "libx264", "-preset", "veryfast",
-		"-bf", "0", "-c:a", "aac", "-crf", "26", "out.mp4",
+	if runner.calls != 1 {
+		t.Fatalf("runner calls=%d, want 1", runner.calls)
 	}
-	if len(got) != len(want) {
-		t.Fatalf("fallback argv length=%d, want %d: %v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("fallback argv[%d]=%q, want %q; argv=%v", i, got[i], want[i], got)
+	for _, arg := range runner.args[0] {
+		if arg == "libx264" {
+			t.Fatalf("terminal NVENC failure must not invoke libx264: %v", runner.args[0])
 		}
 	}
 }
 
-func TestRunWithEncoderFallbackRetriesSoftware(t *testing.T) {
-	runner := &fallbackRunner{}
-	p := NewProcessor("ffmpeg").WithRunner(runner)
-	if err := p.RunWithEncoderFallback(context.Background(), "h264_nvenc", []string{
-		"-c:v", "h264_nvenc", "-preset", "p1", "-rc", "vbr", "-cq", "23", "out.mp4",
-	}, time.Second); err != nil {
-		t.Fatalf("RunWithEncoderFallback returned error: %v", err)
+func TestNVENCBatchIsMicrobatchedAndDoesNotForceCUDADecode(t *testing.T) {
+	runner := &resolverRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	jobs := make([]CutJob, 7)
+	for i := range jobs {
+		jobs[i] = CutJob{StartSec: float64(i), EndSec: float64(i + 1), Output: fmt.Sprintf("out-%d.mp4", i)}
 	}
-	if runner.calls != 2 {
-		t.Fatalf("runner calls=%d, want 2", runner.calls)
+	if err := p.CutReencodeBatch(context.Background(), "in.mp4", jobs, true, "h264_nvenc", "veryfast", 23); err != nil {
+		t.Fatalf("CutReencodeBatch returned error: %v", err)
 	}
-	if !containsPair(runner.args[1], "-c:v", "libx264") {
-		t.Fatalf("fallback did not select libx264: %v", runner.args[1])
+	if runner.calls != 3 {
+		t.Fatalf("NVENC batch calls=%d, want 3 microbatches (3+3+1)", runner.calls)
+	}
+	for i, args := range runner.args {
+		if containsPair(args, "-c:v", "libx264") {
+			t.Fatalf("microbatch %d unexpectedly selected libx264: %v", i, args)
+		}
+		if containsPair(args, "-hwaccel", "cuda") {
+			t.Fatalf("microbatch %d must not force CUDA decode: %v", i, args)
+		}
+		if !containsPair(args, "-c:v", "h264_nvenc") {
+			t.Fatalf("microbatch %d did not select h264_nvenc: %v", i, args)
+		}
+	}
+}
+
+func TestNVENCProcessConcurrencyIsBounded(t *testing.T) {
+	runner := &blockingRunner{entered: make(chan struct{}, 2), release: make(chan struct{})}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	done := make(chan error, 2)
+	go func() {
+		done <- p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{"-c:v", "h264_nvenc"}, time.Second)
+	}()
+	<-runner.entered
+	go func() {
+		done <- p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{"-c:v", "h264_nvenc"}, time.Second)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if got := runner.calls.Load(); got != 1 {
+		t.Fatalf("active NVENC runner calls=%d, want 1 while first is blocked", got)
+	}
+	close(runner.release)
+	if err := <-done; err != nil {
+		t.Fatalf("first NVENC encode returned error: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("second NVENC encode returned error: %v", err)
+	}
+	if got := runner.maxActive.Load(); got > 1 {
+		t.Fatalf("max concurrent NVENC calls=%d, want <=1", got)
+	}
+}
+
+func TestNVENCSlotCancellationDoesNotInvokeRunner(t *testing.T) {
+	runner := &blockingRunner{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{"-c:v", "h264_nvenc"}, time.Second)
+	}()
+	<-runner.entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := p.RunWithEncoderPolicy(ctx, "h264_nvenc", []string{"-c:v", "h264_nvenc"}, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled NVENC waiter error=%v, want context.Canceled", err)
+	}
+	if got := runner.calls.Load(); got != 1 {
+		t.Fatalf("cancelled waiter invoked runner; calls=%d, want 1", got)
+	}
+	close(runner.release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first NVENC encode returned error: %v", err)
 	}
 }
 
 type fallbackRunner struct {
 	calls int
 	args  [][]string
+}
+
+type blockingRunner struct {
+	entered   chan struct{}
+	release   chan struct{}
+	calls     atomic.Int32
+	active    atomic.Int32
+	maxActive atomic.Int32
+}
+
+func (r *blockingRunner) Run(_ context.Context, _ string, _ []string, _ process.Options) (*process.Result, error) {
+	r.calls.Add(1)
+	active := r.active.Add(1)
+	for {
+		max := r.maxActive.Load()
+		if active <= max || r.maxActive.CompareAndSwap(max, active) {
+			break
+		}
+	}
+	r.entered <- struct{}{}
+	<-r.release
+	r.active.Add(-1)
+	return &process.Result{}, nil
 }
 
 func (r *fallbackRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {

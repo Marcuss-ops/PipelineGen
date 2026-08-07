@@ -28,12 +28,6 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 		"-loglevel", "warning",
 	}
 
-	// Use hardware acceleration if NVENC is requested
-	if strings.Contains(opts.Codec, "nvenc") {
-		// Use CUDA for decoding if available
-		args = append(args, "-hwaccel", "cuda")
-	}
-
 	// Generate new PTS to fix timestamp issues
 	args = append(args, "-fflags", "+genpts")
 
@@ -89,7 +83,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-vsync", "cfr")
 	args = append(args, output)
 
-	return p.runWithEncoderFallback(ctx, opts.Codec, args, 15*time.Minute)
+	return p.RunWithEncoderPolicy(ctx, opts.Codec, args, 15*time.Minute)
 }
 
 // CutReencode cuts a segment and re-encodes it to ensure exact frame-accurate duration.
@@ -112,10 +106,6 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	codec = p.resolveEncoder(ctx, codec)
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
-
-	if strings.Contains(codec, "nvenc") {
-		args = append(args, "-hwaccel", "cuda")
-	}
 
 	if start != "" {
 		args = append(args, "-ss", start)
@@ -162,7 +152,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		output,
 	)
 
-	return p.runWithEncoderFallback(ctx, codec, args, 10*time.Minute)
+	return p.RunWithEncoderPolicy(ctx, codec, args, 10*time.Minute)
 }
 
 // CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
@@ -179,10 +169,6 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
-	}
-
-	if strings.Contains(opts.Codec, "nvenc") {
-		args = append(args, "-hwaccel", "cuda")
 	}
 
 	if start != "" {
@@ -223,15 +209,18 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-vsync", "cfr")
 	args = append(args, output)
 
-	return p.runWithEncoderFallback(ctx, opts.Codec, args, 10*time.Minute)
+	return p.RunWithEncoderPolicy(ctx, opts.Codec, args, 10*time.Minute)
 }
 
-// CutReencodeBatch extracts multiple clips from the same input in a single
+const maxNVENCOutputsPerBatch = 3
+
+// CutReencodeBatch extracts multiple clips from the same input in bounded
+// NVENC microbatches. A single NVENC process owns at most three output
+// sessions, and failures remain terminal for the selected encoder policy.
 // ffmpeg invocation using trim filters. This reads the source file once and
 // produces all clips, eliminating per-clip process spawn overhead and reducing
 // disk I/O contention compared to running N parallel CutReencode calls.
 // codec/preset/crf allow using hardware encoders (e.g. h264_nvenc).
-// If the primary codec fails, automatically retries with libx264.
 func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int) error {
 	if len(jobs) == 0 {
 		return nil
@@ -256,13 +245,19 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 			FormatSec(jobs[0].StartSec), FormatSec(jobs[0].EndSec), noAudio, codec, preset, crf)
 	}
 
-	err := p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf)
-	if err != nil && IsNVENCCodec(codec) {
-		// Batch argv contains one codec/preset group per output. Use the
-		// batch-specific software retry with the canonical libx264 preset.
-		return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, string(EncoderLibX264), "veryfast", crf)
+	if IsNVENCCodec(codec) && len(jobs) > maxNVENCOutputsPerBatch {
+		for start := 0; start < len(jobs); start += maxNVENCOutputsPerBatch {
+			end := start + maxNVENCOutputsPerBatch
+			if end > len(jobs) {
+				end = len(jobs)
+			}
+			if err := p.cutReencodeBatchWithCodec(ctx, input, jobs[start:end], noAudio, codec, preset, crf); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return err
+	return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf)
 }
 
 // cutReencodeSingle is the single-job fast path for CutReencodeBatch.
@@ -274,10 +269,6 @@ func (p *Processor) cutReencodeSingle(ctx context.Context, input, output, start,
 func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int) error {
 	canonical := canonicalClipProfile()
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
-
-	if strings.Contains(codec, "nvenc") {
-		args = append(args, "-hwaccel", "cuda")
-	}
 
 	args = append(args, "-i", input)
 
@@ -322,7 +313,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		args = append(args, j.Output)
 	}
 
-	return p.runWithEncoderFallback(ctx, codec, args, 15*time.Minute)
+	return p.RunWithEncoderPolicy(ctx, codec, args, 15*time.Minute)
 }
 
 // ApplyWatermark overlays a watermark image onto a video using chroma key to
