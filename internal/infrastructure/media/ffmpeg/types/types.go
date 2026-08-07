@@ -13,6 +13,11 @@ import (
 
 // NormalizeOptions configures video normalization.
 type NormalizeOptions struct {
+	// Profile and Policy are the canonical separated contracts. The legacy
+	// scalar fields below remain source-compatible with existing callers.
+	Profile config.CanonicalVideoProfile
+	Policy  config.VideoEncoderPolicy
+
 	Duration         int  // Max duration in seconds (0 = no limit)
 	DisableDuration  bool // If true, ignore Duration even if > 0
 	KeepAudio        bool // If true, do not strip audio
@@ -27,6 +32,11 @@ type NormalizeOptions struct {
 
 // CutAndNormalizeOptions combines cut boundaries with normalization parameters.
 type CutAndNormalizeOptions struct {
+	// Profile and Policy are the canonical separated contracts. The legacy
+	// scalar fields remain source-compatible with existing callers.
+	Profile config.CanonicalVideoProfile
+	Policy  config.VideoEncoderPolicy
+
 	Width   int
 	Height  int
 	FPS     int
@@ -58,16 +68,22 @@ type WatermarkOptions struct {
 
 // DefaultNormalizeOptions returns defaults from config.
 func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
-	v := cfg.Video.CanonicalClip()
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	profile := cfg.Video.CanonicalVideoProfile()
+	policy := cfg.Video.EncoderPolicy()
 	return NormalizeOptions{
-		Duration:         v.Duration,
-		Width:            v.Width,
-		Height:           v.Height,
-		FPS:              v.FPS,
-		Codec:            v.Codec,
-		Preset:           v.Preset,
-		CRF:              v.CRF,
-		KeyframeInterval: v.KeyframeInterval,
+		Profile:          profile,
+		Policy:           policy,
+		Duration:         cfg.Video.WithDefaults().Duration,
+		Width:            profile.Width,
+		Height:           profile.Height,
+		FPS:              profile.FPS,
+		Codec:            policy.Codec,
+		Preset:           policy.Preset,
+		CRF:              policy.CRF,
+		KeyframeInterval: profile.KeyframeInterval,
 	}
 }
 

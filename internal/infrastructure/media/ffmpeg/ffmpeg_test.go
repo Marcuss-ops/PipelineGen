@@ -2,12 +2,16 @@ package ffmpeg
 
 import (
 	"context"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	adminmediaapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	fftypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +50,18 @@ func (c *captureRunnerWithBinary) Run(_ context.Context, name string, args []str
 	c.lastArgv = append([]string(nil), args...) // defensive copy
 	c.lastOpts = opts
 	return &process.Result{}, nil
+}
+
+type fileWritingRunner struct {
+	args []string
+}
+
+func (r *fileWritingRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
+	r.args = append([]string(nil), args...)
+	if len(args) == 0 {
+		return nil, errors.New("missing ffmpeg output")
+	}
+	return &process.Result{}, os.WriteFile(args[len(args)-1], []byte("encoded"), 0o600)
 }
 
 // Compile-time pin: captureRunnerWithBinary satisfies ProcessRunner.
@@ -104,6 +120,69 @@ func hasArgPair(argv []string, flag, value string) bool {
 // TestCutCopy_NoAudio_True_AppendsAn verifies that CutCopy(noAudio=true)
 // appends the "-an" flag to strip audio from the output while preserving
 // stream-copy mode (-c copy).
+func TestAdminMediaProcessor_TrimAudioUsesCPUAudioCodec(t *testing.T) {
+	dir := t.TempDir()
+	input := dir + "/effect.mp3"
+	if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fileWritingRunner{}
+	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	adminProcessor := AdminMediaProcessor{Processor: processor}
+
+	if err := adminProcessor.Trim(context.Background(), input, 1); err != nil {
+		t.Fatalf("Trim audio returned error: %v", err)
+	}
+	if !hasArgPair(runner.args, "-c:a", "libmp3lame") {
+		t.Fatalf("audio trim must use the audio codec: %v", runner.args)
+	}
+	if hasArg(runner.args, "-c:v") || hasArgSubstring(runner.args, "nvenc") {
+		t.Fatalf("audio trim must not invoke a video encoder: %v", runner.args)
+	}
+}
+
+func TestAdminMediaProcessor_TrimVideoUsesResolvedNVENC(t *testing.T) {
+	dir := t.TempDir()
+	input := dir + "/effect.mp4"
+	if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fileWritingRunner{}
+	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	adminProcessor := AdminMediaProcessor{Processor: processor}
+
+	if err := adminProcessor.Trim(context.Background(), input, 1); err != nil {
+		t.Fatalf("Trim video returned error: %v", err)
+	}
+	if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-cq", "18") {
+		t.Fatalf("video trim must use resolved NVENC quality args: %v", runner.args)
+	}
+	if hasArgPair(runner.args, "-c:v", "libx264") {
+		t.Fatalf("video trim must not fall back to libx264: %v", runner.args)
+	}
+}
+
+func TestAdminMediaProcessor_RenderUsesResolvedNVENC(t *testing.T) {
+	dir := t.TempDir()
+	runner := &fileWritingRunner{}
+	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	adminProcessor := AdminMediaProcessor{Processor: processor}
+	manifest := adminmediaapp.RenderManifest{
+		Input: dir + "/input.mp4", Output: dir + "/output.mp4", Font: "/font.ttf",
+		Overlays: []adminmediaapp.RenderOverlay{{Text: "title", Start: "0", End: "1", Size: "32"}},
+	}
+
+	if err := adminProcessor.Render(context.Background(), manifest); err != nil {
+		t.Fatalf("Render returned error: %v", err)
+	}
+	if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-cq", "18") {
+		t.Fatalf("render must use resolved NVENC quality args: %v", runner.args)
+	}
+	if hasArgPair(runner.args, "-c:v", "libx264") {
+		t.Fatalf("render must not fall back to libx264: %v", runner.args)
+	}
+}
+
 func TestCutCopy_NoAudio_True_AppendsAn(t *testing.T) {
 	runner := &captureRunner{}
 	p := &Processor{path: "ffmpeg", runner: runner}
@@ -424,7 +503,7 @@ func TestCutReencode_CanonicalFilter(t *testing.T) {
 // expected scale/pad/fps/setpts chain for the canonical profile.
 func TestCanonicalClipFilter(t *testing.T) {
 	cfg := canonicalClipProfile()
-	got := CanonicalClipFilter(cfg)
+	got := CanonicalClipFilter(config.VideoConfig{Width: cfg.Width, Height: cfg.Height, FPS: cfg.FPS})
 	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24,setpts=PTS-STARTPTS"
 	assert.Equal(t, want, got)
 }
@@ -433,7 +512,7 @@ func TestCanonicalClipFilter(t *testing.T) {
 // trimmed segments where the cut boundary is authoritative.
 func TestCanonicalClipFilterTrim(t *testing.T) {
 	cfg := canonicalClipProfile()
-	got := CanonicalClipFilterTrim(cfg)
+	got := CanonicalVideoProfileFilterTrim(cfg)
 	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24"
 	assert.Equal(t, want, got)
 }
@@ -718,12 +797,45 @@ func TestNormalize_VideoSettings(t *testing.T) {
 		"codec must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
 		"preset must be passed; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-crf", "23"),
-		"canonical CRF must be passed; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-crf", "18"),
+		"configured CRF must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-pix_fmt", "yuv420p"),
 		"-pix_fmt yuv420p must be present; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-movflags", "+faststart"),
 		"-movflags +faststart must be present; got argv: %v", argv)
+}
+
+func TestNormalize_SeparatedProfileAndPolicyDriveFFmpegArgs(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	opts := NormalizeOptions{
+		Profile: config.CanonicalVideoProfile{
+			Width:            640,
+			Height:           360,
+			FPS:              30,
+			KeyframeInterval: 60,
+			AudioCodec:       "mp3",
+			AudioBitrate:     "96k",
+		},
+		Policy: config.VideoEncoderPolicy{
+			Codec:  "libx264",
+			Preset: "medium",
+			CRF:    17,
+		},
+		KeepAudio: true,
+	}
+
+	require.NoError(t, p.Normalize(context.Background(), "in.mp4", "out.mp4", opts))
+	argv := runner.lastArgv
+	assert.True(t, hasArgSubstring(argv, "scale=640:360"), "profile width/height must drive filter: %v", argv)
+	assert.True(t, hasArgSubstring(argv, "fps=30"), "profile FPS must drive filter: %v", argv)
+	assert.True(t, hasArgPair(argv, "-g", "60"), "profile GOP must drive encoder args: %v", argv)
+	assert.True(t, hasArgPair(argv, "-c:v", "libx264"), "policy codec must drive encoder args: %v", argv)
+	assert.True(t, hasArgPair(argv, "-preset", "medium"), "policy preset must drive encoder args: %v", argv)
+	assert.True(t, hasArgPair(argv, "-crf", "17"), "policy quality must drive encoder args: %v", argv)
+	assert.True(t, hasArgPair(argv, "-c:a", "mp3"), "profile audio codec must drive audio args: %v", argv)
+	assert.True(t, hasArgPair(argv, "-b:a", "96k"), "profile audio bitrate must drive audio args: %v", argv)
 }
 
 // TestNormalize_TargetDurationLoopsShortSources pins the exact-duration

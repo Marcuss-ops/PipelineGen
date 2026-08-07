@@ -4,6 +4,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
+// CanonicalVideoProfile describes the materialized video artifact. It contains
+// no encoder choice: the same profile can be produced by libx264 or NVENC.
+type CanonicalVideoProfile struct {
+	Width            int
+	Height           int
+	FPS              int
+	KeyframeInterval int
+	AudioCodec       string
+	AudioBitrate     string
+}
+
+// VideoEncoderPolicy describes how a canonical video profile is encoded.
+type VideoEncoderPolicy struct {
+	Codec  string
+	Preset string
+	CRF    int
+}
+
 // VideoConfig holds all video processing parameters shared across the clip, stock,
 // and video rendering pipelines. Centralizing these values ensures that every
 // stage uses the same codec, resolution, and preset so that ffmpeg can perform
@@ -17,10 +35,8 @@ type VideoConfig struct {
 	Width  int `yaml:"width" default:"1920"`
 	Height int `yaml:"height" default:"1080"`
 	FPS    int `yaml:"fps" default:"24"`
-	// Codec is the encoder policy: auto, h264_nvenc (or nvenc), or libx264.
-	// It is deliberately kept separate from the technical clip profile by
-	// CanonicalClip: the profile describes the artifact, this value describes
-	// how that artifact is encoded.
+	// Codec, Preset and CRF are encoder policy. They are deliberately kept
+	// separate from CanonicalVideoProfile, which describes only the artifact.
 	Codec              string   `yaml:"codec" default:"libx264"`
 	Preset             string   `yaml:"preset" default:"veryfast"`
 	CRF                int      `yaml:"crf" default:"23"`
@@ -110,21 +126,36 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	return v
 }
 
-// CanonicalClip returns the immutable technical profile used for every
-// materialized clip. Duration, planning and UI-related settings remain
-// caller-configurable; codec, geometry and timing do not. Keeping this seam
-// here prevents providers and FFmpeg adapters from inventing their own clip
-// encoding profiles.
+// CanonicalVideoProfile returns the immutable technical artifact profile.
+func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
+	v = v.WithDefaults()
+	return CanonicalVideoProfile{
+		Width:            1920,
+		Height:           1080,
+		FPS:              24,
+		KeyframeInterval: 48,
+		AudioCodec:       "aac",
+		AudioBitrate:     "128k",
+	}
+}
+
+// EncoderPolicy returns the configured runtime encoding policy with defaults.
+func (v VideoConfig) EncoderPolicy() VideoEncoderPolicy {
+	v = v.WithDefaults()
+	return VideoEncoderPolicy{Codec: v.Codec, Preset: v.Preset, CRF: v.CRF}
+}
+
+// CanonicalClip is retained as a source-compatible legacy composite. New
+// infrastructure code must use CanonicalVideoProfile and EncoderPolicy
+// separately; this method remains for callers that still expect a VideoConfig.
 func (v VideoConfig) CanonicalClip() VideoConfig {
 	v = v.WithDefaults()
-	v.Width = 1920
-	v.Height = 1080
-	v.FPS = 24
-	// Preserve the configured encoder policy. The FFmpeg infrastructure is
-	// responsible for resolving it and for translating quality settings to
-	// codec-specific arguments.
-	v.KeyframeInterval = 48
-	v.AudioCodec = "aac"
-	v.AudioBitrate = "128k"
+	profile := v.CanonicalVideoProfile()
+	v.Width = profile.Width
+	v.Height = profile.Height
+	v.FPS = profile.FPS
+	v.KeyframeInterval = profile.KeyframeInterval
+	v.AudioCodec = profile.AudioCodec
+	v.AudioBitrate = profile.AudioBitrate
 	return v
 }
