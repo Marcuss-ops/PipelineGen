@@ -32,7 +32,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	artlistapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -54,10 +53,6 @@ type Dependencies struct {
 	// CatalogSync handles /sync-catalogs reconciliation. OPTIONAL —
 	// nil is forwarded and the handler returns 503 at request time.
 	CatalogSync *catalogsync.Service
-
-	// Jobs is the canonical jobs service used by the /run enqueue
-	// path. MANDATORY — Build returns an error when nil.
-	Jobs jobs.Service
 
 	// ClipResolver is the clipresolver port used by /recommend.
 	// OPTIONAL — nil is forwarded and the handler returns 503.
@@ -138,9 +133,6 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	if deps.Service == nil {
 		return nil, fmt.Errorf("artlist.Build: Service is required (composition root must pre-construct *artlist.Service from ArtlistBundle)")
 	}
-	if deps.Jobs == nil {
-		return nil, fmt.Errorf("artlist.Build: Jobs is required (the /run enqueue path is unreachable without the canonical jobs.Service)")
-	}
 	if deps.CfgPort == nil {
 		return nil, fmt.Errorf("artlist.Build: CfgPort is required (RunTagRequest normalization reads the artlist root folder)")
 	}
@@ -155,8 +147,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 
 	handler := NewArtlistHandler(
 		deps.Service,
-		deps.CatalogSync, // nil-tolerant — handler returns 503 on /sync-catalogs
-		deps.Jobs,
+		deps.CatalogSync,  // nil-tolerant — handler returns 503 on /sync-catalogs
 		deps.ClipResolver, // nil-tolerant — handler returns 503 on /recommend
 		log,
 		deps.CfgPort,

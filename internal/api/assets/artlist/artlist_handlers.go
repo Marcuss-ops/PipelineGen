@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -63,22 +62,25 @@ type ClipResolverRecommendResult struct {
 type ArtlistHandler struct {
 	service      *artlist.Service
 	catalogSync  *catalogsync.Service
-	jobsService  job.Service
 	clipResolver ClipResolverPort
 	log          *zap.Logger
 	cfg          artlist.ArtlistConfigPort
 }
 
 // NewArtlistHandler builds the ArtlistHandler. service is the domain
-// Artlist service; catalogSync handles catalog reconciliation; jobsSvc
-// enqueues the artlist.run job; clipResolver is used by /recommend;
-// cfgPort exposes the artlist-side config defaults the handler reads
-// during request normalization (e.g. the default Artlist root folder).
+// Artlist service; catalogSync handles catalog reconciliation;
+// clipResolver is used by /recommend; cfgPort exposes the artlist-side
+// config defaults the handler reads during request normalization (e.g.
+// the default Artlist root folder).
+//
+// PR-ARTLIST-ENQUEUE-SERVICE (July 2026): the /run enqueue path moved
+// into artlist.Service.EnqueueRun — the handler no longer holds the
+// jobs service; the application layer owns dedup-key construction + job
+// enqueue (godlike/06 SSOT with SearchService.DiscoverAndQueueRun).
 // nodeScraperDir removed July 2026 (dead code — assigned but never read).
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
-	jobsService job.Service,
 	clipResolver ClipResolverPort,
 	log *zap.Logger,
 	cfgPort artlist.ArtlistConfigPort,
@@ -86,7 +88,6 @@ func NewArtlistHandler(
 	return &ArtlistHandler{
 		service:      service,
 		catalogSync:  catalogSync,
-		jobsService:  jobsService,
 		clipResolver: clipResolver,
 		log:          log,
 		cfg:          cfgPort,
@@ -199,56 +200,29 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 		zap.Bool("dry_run", req.DryRun),
 	)
 
-	h.enqueueArtlistRun(c, req)
-}
-
-// enqueueArtlistRun is the single enqueue path for all Artlist runs
-func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
-	if h.jobsService == nil {
-		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
-		return
-	}
-
-	// Use common jobs system exclusively
-	// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now returns
-	// (string, error). The previous shape silently produced a fmt.Sprintf
-	// fallback when canonical json.Marshal failed; the new shape fails
-	// closed per godlike/07 with a typed sentinel from pkg/idempotency.
-	// The handler maps the error to HTTP 400 BadRequest because a
-	// malformed run-dedup input is an operator-input error (e.g. an
-	// invalid term/folder shape), NOT a server-side failure (godlike/07
-	// typed-error contract).
-	runActiveKey, err := artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun, req.Limit)
+	// Enqueue is delegated to the canonical application use case
+	// (artlist.Service.EnqueueRun — godlike/06 SSOT with
+	// SearchService.DiscoverAndQueueRun). The handler only maps errors:
+	// ErrInvalidRunDedupInput → 400 (operator-input error), anything
+	// else → 500 (godlike/07 typed-error contract).
+	enqueued, err := h.service.EnqueueRun(c.Request.Context(), req)
 	if err != nil {
-		h.log.Warn("artlist run dedup key construction failed (operator-input error surfaced as HTTP 400)",
-			zap.String("term", req.Term),
-			zap.String("root_folder_id", req.RootFolderID),
-			zap.String("strategy", req.Strategy),
-			zap.Int("limit", req.Limit),
-			zap.Error(err),
-		)
-		apiutil.BadRequest(c, fmt.Sprintf("invalid run-dedup input: %v", err))
-		return
-	}
-	job, err := h.jobsService.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-		Type:       "media.artlist",
-		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
-		MaxRetries: 3,
-		// Fase 5 / Commit 3 follow-up (July 2026): limit is part of
-		// the canonical run identity. A replay with the same term +
-		// folder + strategy + dryRun but a DIFFERENT limit is a
-		// DIFFERENT run (the operator asked for a different number
-		// of clips), and must produce a different ActiveKey so the
-		// dedup does not silently merge distinct operator requests
-		// (godlike/07 fail-closed).
-		ActiveKey: runActiveKey,
-	})
-	if err != nil {
+		if errors.Is(err, artlist.ErrInvalidRunDedupInput) {
+			h.log.Warn("artlist run dedup key construction failed (operator-input error surfaced as HTTP 400)",
+				zap.String("term", req.Term),
+				zap.String("root_folder_id", req.RootFolderID),
+				zap.String("strategy", req.Strategy),
+				zap.Int("limit", req.Limit),
+				zap.Error(err),
+			)
+			apiutil.BadRequest(c, fmt.Sprintf("invalid run-dedup input: %v", err))
+			return
+		}
 		h.log.Error("failed to enqueue artlist job", zap.Error(err))
 		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 		return
 	}
-	apiutil.Accepted(c, artlist.JobToRunTagResponse(job))
+	apiutil.Accepted(c, artlist.JobToRunTagResponse(enqueued))
 }
 
 // RunStatus returns the tracked status for a background artlist run

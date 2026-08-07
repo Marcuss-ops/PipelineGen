@@ -1,8 +1,72 @@
 package artlist
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+// ErrInvalidRunDedupInput is returned by Service.EnqueueRun when the
+// run-dedup ActiveKey cannot be constructed from operator-supplied
+// request fields (malformed term/folder/strategy shape surfaced by
+// pkg/idempotency via the canonical RunDedupKey wrapper).
+//
+// godlike/07 typed-error contract: the HTTP handler maps this sentinel
+// to 400 BadRequest because a malformed run-dedup input is an
+// operator-input error, NOT a server-side failure. All other EnqueueRun
+// failures (jobs service not wired, enqueue transport error) surface as
+// plain wrapped errors → HTTP 500 at the transport.
+var ErrInvalidRunDedupInput = errors.New("artlist: invalid run-dedup input")
+
+// EnqueueRun is the single canonical enqueue path for a media.artlist
+// run job. It builds the deterministic run-dedup ActiveKey and enqueues
+// through the canonical jobs service, mirroring the orchestration
+// pattern already used by SearchService.DiscoverAndQueueRun (godlike/06
+// SSOT: both paths must produce byte-identical dedup keys + payloads).
+//
+// Error contract (godlike/07 typed errors):
+//   - ErrInvalidRunDedupInput (wrap) → operator-input error → HTTP 400
+//   - "jobs service is not configured" → composition gap → HTTP 500
+//   - enqueue failure → transport/server error → HTTP 500
+//
+// Returns the enqueued *job.Job so the caller can render the canonical
+// RunTagResponse via JobToRunTagResponse.
+func (s *Service) EnqueueRun(ctx context.Context, req RunTagRequest) (*job.Job, error) {
+	if s == nil || s.jobsSvc == nil {
+		return nil, fmt.Errorf("artlist.Service.EnqueueRun: jobs service is not configured")
+	}
+
+	// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now returns
+	// (string, error). The previous shape silently produced a fmt.Sprintf
+	// fallback when canonical json.Marshal failed; the new shape fails
+	// closed per godlike/07 with a typed sentinel from pkg/idempotency.
+	runActiveKey, err := RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun, req.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidRunDedupInput, err)
+	}
+
+	enqueued, err := s.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
+		Type:       media.TypeArtlistRun,
+		Payload:    (&JobCodec{}).PayloadFromRequest(&req),
+		MaxRetries: 3,
+		// Fase 5 / Commit 3 follow-up (July 2026): limit is part of
+		// the canonical run identity. A replay with the same term +
+		// folder + strategy + dryRun but a DIFFERENT limit is a
+		// DIFFERENT run (the operator asked for a different number
+		// of clips), and must produce a different ActiveKey so the
+		// dedup does not silently merge distinct operator requests
+		// (godlike/07 fail-closed).
+		ActiveKey: runActiveKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to enqueue artlist job: %w", err)
+	}
+	return enqueued, nil
+}
 
 // RegisterHandler registers the Artlist job handler (HandleJob) with the
 // canonical appjobs.Service dispatcher for TypeArtlistRun ("media.artlist").
