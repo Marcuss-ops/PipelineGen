@@ -18,8 +18,9 @@ type VideoConfig struct {
 	Height int `yaml:"height" default:"1080"`
 	FPS    int `yaml:"fps" default:"24"`
 	// Codec is the encoder policy: auto, h264_nvenc (or nvenc), or libx264.
-	// CanonicalClip intentionally remains the software contract; runtime
-	// infrastructure resolves this policy against the host's FFmpeg support.
+	// It is deliberately kept separate from the technical clip profile by
+	// CanonicalClip: the profile describes the artifact, this value describes
+	// how that artifact is encoded.
 	Codec              string   `yaml:"codec" default:"libx264"`
 	Preset             string   `yaml:"preset" default:"veryfast"`
 	CRF                int      `yaml:"crf" default:"23"`
@@ -119,12 +120,9 @@ func (v VideoConfig) CanonicalClip() VideoConfig {
 	v.Width = 1920
 	v.Height = 1080
 	v.FPS = 24
-	// Keep the canonical materialized-clip contract software-first.
-	// Hardware selection is a runtime policy resolved by the FFmpeg
-	// infrastructure, never by this declarative profile method.
-	v.Codec = "libx264"
-	v.Preset = "veryfast"
-	v.CRF = 23
+	// Preserve the configured encoder policy. The FFmpeg infrastructure is
+	// responsible for resolving it and for translating quality settings to
+	// codec-specific arguments.
 	v.KeyframeInterval = 48
 	v.AudioCodec = "aac"
 	v.AudioBitrate = "128k"

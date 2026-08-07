@@ -13,7 +13,7 @@ func TestVideoConfigCanonicalClip(t *testing.T) {
 	if got.Width != 1920 || got.Height != 1080 || got.FPS != 24 {
 		t.Fatalf("unexpected canonical geometry/timing: %+v", got)
 	}
-	if got.Codec != "libx264" || got.Preset != "veryfast" || got.CRF != 23 || got.KeyframeInterval != 48 {
+	if got.Codec != "h264_nvenc" || got.Preset != "p1" || got.CRF != 26 || got.KeyframeInterval != 48 {
 		t.Fatalf("unexpected canonical video encoding: %+v", got)
 	}
 	if got.AudioCodec != "aac" || got.AudioBitrate != "128k" {
@@ -24,11 +24,11 @@ func TestVideoConfigCanonicalClip(t *testing.T) {
 	}
 }
 
-func TestVideoConfigCanonicalClipKeepsRuntimePolicyOutOfCanonicalProfile(t *testing.T) {
+func TestVideoConfigCanonicalClipPreservesRuntimePolicy(t *testing.T) {
 	for _, policy := range []string{"auto", "h264_nvenc", "nvenc"} {
 		got := (VideoConfig{Codec: policy}).CanonicalClip()
-		if got.Codec != "libx264" {
-			t.Fatalf("CanonicalClip codec for policy %q = %q, want libx264", policy, got.Codec)
+		if got.Codec != policy {
+			t.Fatalf("CanonicalClip codec for policy %q = %q, want policy preserved", policy, got.Codec)
 		}
 	}
 }

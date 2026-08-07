@@ -11,6 +11,19 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestCanonicalYouTubeCutOptionsDelegatesEncoderPolicy(t *testing.T) {
+	opts := canonicalYouTubeCutOptions(true)
+
+	require.False(t, opts.NoAudio)
+	require.Empty(t, opts.Codec,
+		"videomuscles must delegate codec selection to the configured FFmpeg policy")
+	require.Empty(t, opts.Preset)
+	require.Zero(t, opts.CRF)
+
+	noAudio := canonicalYouTubeCutOptions(false)
+	require.True(t, noAudio.NoAudio)
+}
+
 func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) {
 	req := buildYouTubeSectionDownloadRequest(YouTubeCutRequest{
 		URL:            "https://www.youtube.com/watch?v=example",
