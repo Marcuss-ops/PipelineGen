@@ -6,7 +6,7 @@
 //
 //	downloader.go          core: struct, ProcessRunner port, constructor, request types
 //	downloader_ytdlp.go    yt-dlp execution: Download / DownloadRange / DownloadSections
-//	downloader_staging.go  staging + local files: section normalization, path resolution, file:// copies
+//	downloader_staging.go  staging + local files: path resolution and file:// copies
 //	downloader_helpers.go  metadata + channel listing helpers
 package downloader
 
