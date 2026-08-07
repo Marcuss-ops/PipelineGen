@@ -81,6 +81,15 @@ func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, secti
 	}
 }
 
+// canonicalYouTubeCutOptions keeps encoder selection in the FFmpeg processor's
+// configured policy. The videomuscles application owns the clip intent (duration
+// and audio), but must not select a concrete video encoder such as libx264.
+func canonicalYouTubeCutOptions(keepAudio bool) pkgffmpeg.CutAndNormalizeOptions {
+	return pkgffmpeg.CutAndNormalizeOptions{
+		NoAudio: !keepAudio,
+	}
+}
+
 // DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses FFmpeg to process it.
 // Returns the local path and full YouTube metadata (title, description, tags, language, etc.).
 func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCutRequest) (*YouTubeCutResult, error) {
@@ -195,20 +204,13 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	renderTimer := time.Now()
 	var normalizeErr error
 	if req.Normalize {
-		videoCfg := p.cfg.Video.CanonicalClip()
 		// yt-dlp's download section may include keyframe padding.  The raw
 		// file is therefore not itself a trustworthy 4-second clip.  Bound
 		// the canonical render to the requested duration so the persisted
 		// artifact, Drive object, and SQLite metadata agree physically.
-		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), pkgffmpeg.CutAndNormalizeOptions{
-			Width:   videoCfg.Width,
-			Height:  videoCfg.Height,
-			FPS:     videoCfg.FPS,
-			Codec:   videoCfg.Codec,
-			Preset:  videoCfg.Preset,
-			CRF:     videoCfg.CRF,
-			NoAudio: !req.KeepAudio,
-		})
+		// Encoder selection is intentionally delegated to clipProcess, which
+		// was constructed from the central VideoConfig policy.
+		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), canonicalYouTubeCutOptions(req.KeepAudio))
 	} else {
 		// Raw fetch: stream-copy the already-cut segment — no re-encode.
 		// CutCopy with empty start/end is a pure container remux.
