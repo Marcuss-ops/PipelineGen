@@ -455,54 +455,6 @@ func legacyCheckpointEligible(cfg OrchestratorConfig, input *RunInput, _ *RunSta
 		input.FinalizationLease.LeaseID == "" && input.FinalizationLease.JobID == "" && input.FinalizationLease.WorkerID == "" && input.FinalizationLease.Attempt == 0 && input.FinalizationLease.ExpiresAt.IsZero()
 }
 
-func (o *Orchestrator) stageSnapshots(ctx context.Context, input *RunInput) ([]StageSnapshot, error) {
-	if o == nil || o.stepStore == nil {
-		return nil, steps.ErrStoreNotWired
-	}
-	history, err := o.stepStore.ListByJob(ctx, o.cfg.JobId)
-	if err != nil {
-		return nil, err
-	}
-	latest := make(map[string]steps.StepState, len(history))
-	for _, row := range history {
-		if existing, ok := latest[row.StepKey]; !ok || row.ID > existing.ID {
-			latest[row.StepKey] = row
-		}
-	}
-	stageNames := []string{
-		StepKeyStockPlan,
-		StepKeyStockStageSources,
-		StepKeyStockExtractClips,
-		StepKeyStockComposeChunks,
-		StepKeyStockPublish,
-		StepKeyStockFinalize,
-	}
-	stages := make([]StageSnapshot, 0, len(stageNames))
-	for _, name := range stageNames {
-		stage := StageSnapshot{Name: name, Status: string(steps.StatusPending), Applicable: true}
-		bypassed := name == StepKeyStockComposeChunks && shouldBypassStockCompose(name, input)
-		if bypassed {
-			stage.Status = "skipped"
-			stage.Applicable = false
-		}
-		if row, ok := latest[name]; ok && !bypassed {
-			stage.Status = string(row.Status)
-			stage.Attempt = row.Attempt
-			if !row.StartedAt.IsZero() {
-				startedAt := row.StartedAt
-				stage.StartedAt = &startedAt
-			}
-			if !row.CompletedAt.IsZero() {
-				completedAt := row.CompletedAt
-				stage.CompletedAt = &completedAt
-			}
-			stage.LastError = row.LastError
-		}
-		stages = append(stages, stage)
-	}
-	return stages, nil
-}
-
 func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
 	if o.stepStore == nil {
 		return nil, steps.ErrStoreNotWired
