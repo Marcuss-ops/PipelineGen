@@ -74,3 +74,39 @@ func markArtifactsExtracting(ctx context.Context, runner StepRunner, batchID, so
 	}
 	return nil
 }
+
+// markGroupsRetryable reconciles artifacts that were marked EXTRACTING before
+// the bounded cut fan-out but did not reach publishCuts. RETRY_WAIT is the
+// durable, idempotent state for cancellation or transient cutter failures;
+// the next attempt can claim those deterministic artifact IDs again.
+func markGroupsRetryable(ctx context.Context, runner StepRunner, batchID string, groups []stockSourceGroup, reason string) error {
+	batchRepo := runner.BatchRepository()
+	if batchRepo == nil {
+		return nil
+	}
+	for _, group := range groups {
+		sourceID := durableSourceIDForGroup(group.sourceID, group.plans)
+		for clipIdx := range group.plans {
+			artifactID := StockArtifactID(batchID, sourceID, clipIdx)
+			artifact, err := batchRepo.GetArtifact(ctx, artifactID)
+			if err != nil {
+				return fmt.Errorf("%w: inspect artifact %s for retry: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
+			}
+			// Test/back-compat repositories may not expose a row; retain
+			// the existing fail-closed transition in that case. Production
+			// repositories return the durable row, allowing us to avoid
+			// regressing artifacts that were already published before a
+			// later publication failed.
+			if artifact == nil {
+				continue
+			}
+			if artifact.Status != ArtifactStateExtracting {
+				continue
+			}
+			if err := batchRepo.MarkArtifactFailed(ctx, artifactID, ArtifactStateRetryWait, reason); err != nil {
+				return fmt.Errorf("%w: mark artifact %s retryable: %w", ErrStockExtractClipsDurableStateFailed, artifactID, err)
+			}
+		}
+	}
+	return nil
+}

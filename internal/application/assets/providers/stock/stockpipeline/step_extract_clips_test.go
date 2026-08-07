@@ -149,11 +149,14 @@ func (r *recordingCutter) Cut(_ context.Context, req CutRequest) (CutBatchResult
 // tests can assert batch-cutting behaviour: one CutRequest per
 // source group containing all CutJobs for that group.
 type batchRecordingCutter struct {
+	mu       sync.Mutex
 	requests []CutRequest
 }
 
 func (b *batchRecordingCutter) Cut(_ context.Context, req CutRequest) (CutBatchResult, error) {
+	b.mu.Lock()
 	b.requests = append(b.requests, req)
+	b.mu.Unlock()
 	items := make([]CutItemResult, len(req.Jobs))
 	for i, j := range req.Jobs {
 		// Create the output file so the step's SHA256 compute succeeds.
