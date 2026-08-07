@@ -6,16 +6,19 @@ import (
 )
 
 type ExternalConfig struct {
-	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
-	OllamaEmbedModel     string `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL" default:"nomic-embed-text"`
-	OllamaMetadataModel  string `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
-	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
-	YtdlpPath            string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
-	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
-	NvidiaAPIKey         string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
-	NvidiaModel          string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
-	NvidiaLocalNIMURL    string `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`
+	OllamaURL                   string   `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel                 string   `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
+	OllamaEmbedModel            string   `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL" default:"nomic-embed-text"`
+	OllamaMetadataModel         string   `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
+	OllamaTimeoutSeconds        int      `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
+	YtdlpPath                   string   `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
+	YoutubePlayerClientFallback []string `yaml:"youtube_player_client_fallback" env:"VELOX_YOUTUBE_PLAYER_CLIENT_FALLBACK" default:"[]"`
+	YoutubeMinSleepSeconds      int      `yaml:"youtube_min_sleep_seconds" env:"YTDLP_MIN_SLEEP_SECONDS" default:"0"`
+	YoutubeMaxSleepSeconds      int      `yaml:"youtube_max_sleep_seconds" env:"YTDLP_MAX_SLEEP_SECONDS" default:"0"`
+	FfmpegPath                  string   `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
+	NvidiaAPIKey                string   `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
+	NvidiaModel                 string   `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	NvidiaLocalNIMURL           string   `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`
 
 	// VeloxMasterURL is the canonical address of a remote PipelineGen master.
 	// Workers and external clients (n8n, Google Flow sidecars, scripts)
@@ -296,6 +299,24 @@ func (c *ExternalConfig) ResolvedYtdlpPath() string {
 		return c.YtdlpPath
 	}
 	return "yt-dlp"
+}
+
+// ResolvedYouTubeSleepSeconds returns the configured pacing interval for
+// YouTube yt-dlp requests. A non-positive minimum disables pacing; the
+// maximum is clamped to the minimum so callers always receive a valid range.
+func (c *ExternalConfig) ResolvedYouTubeSleepSeconds() (int, int) {
+	if c == nil {
+		return 0, 0
+	}
+	min := c.YoutubeMinSleepSeconds
+	if min < 0 {
+		min = 0
+	}
+	max := c.YoutubeMaxSleepSeconds
+	if max < min {
+		max = min
+	}
+	return min, max
 }
 
 // ResolvedMasterURL returns the configured master URL, falling back to
