@@ -181,6 +181,88 @@ L'endpoint restituisce `202 Accepted` con un `job_id`; il client deve poi esegui
 
 ---
 
+## 4. `VELOX_WORKER_TOKEN`: configurazione e propagazione ai worker
+
+### Stato della configurazione
+
+Il `VELOX_WORKER_TOKEN` è **configurato sul server** nel file env canonico
+`/etc/pipelinegen/pipelinegen.env` (mode `0640`, owner
+`root:pipelinegen-agents`), insieme a `VELOX_ADMIN_TOKEN`.
+
+```env
+VELOX_ADMIN_TOKEN=<64-hex>
+VELOX_WORKER_TOKEN=<64-hex-diverso>
+VELOX_PORT=8000
+```
+
+### Come il server lo carica
+
+- **`start_server.sh`**: cattura `VELOX_WORKER_TOKEN` dall'ambiente systemd
+  (`EnvironmentFile=/etc/pipelinegen/pipelinegen.env`) **prima** di fare
+  `source .env`, e lo **ripristina** dopo — il `.env` del repository non può
+  sovrascrivere il valore canonico (e se il canonico è assente, `unset`
+  disattiva il token worker: `WorkerAuth` rifiuta con 500).
+- **Config layer Go**: `cfg.Security.WorkerToken` ← `VELOX_WORKER_TOKEN`;
+  ogni modifica richiede `sudo systemctl restart pipelinegen` (l'EnvironmentFile
+  è letto solo all'avvio).
+- **Verifica**: `scripts/start.sh` esegue `check_token VELOX_WORKER_TOKEN`
+  (64-hex obbligatorio, pattern placeholder rifiutati).
+
+### Come i worker lo usano
+
+I worker (Go `pkg/veloxclient`, Python `scripts/velox_client.py`, operatori)
+si autenticano con l'header `Authorization: Bearer <VELOX_WORKER_TOKEN>`.
+Il token worker è **distinto** da quello admin e serve per le superfici
+worker/server-to-server:
+
+| Superficie | Token accettato | Note |
+|---|---|---|
+| `/api/*` (admin, job, media) | `VELOX_ADMIN_TOKEN` | `RequireAdminToken` rifiuta il token worker |
+| `/internal/v1/jobs/claim` e altri `/internal/v1/*` | **solo** `VELOX_WORKER_TOKEN` | `WorkerAuth` rifiuta il token admin (difesa in profondità) |
+| `/internal/v1/media/search` | worker + workspace reale | i worker sono forzati a workspace `default` → servono principal tenant o admin (`X-Workspace-ID`) |
+| `/api/script/generate`, polling job | admin **o** worker | `velox_client.py` usa `VELOX_WORKER_TOKEN` per i worker non-admin |
+
+Il client di riferimento (`scripts/velox_client.py`) prende il token da
+`os.environ["VELOX_WORKER_TOKEN"]` e lo invia come Bearer; usa lo **stesso**
+valore configurato sul server.
+
+### Propagazione a un worker
+
+1. Genera/ruota il token con lo script ufficiale:
+   ```bash
+   sudo scripts/rotate_token.sh --also-worker   # rigenera ADMIN + WORKER
+   # oppure, solo worker:
+   scripts/generate_worker_token.sh --env       # stampa VELOX_WORKER_TOKEN=...
+   ```
+2. Distribuisci il valore al worker (env var / secret manager — mai nei log
+   o nei commit).
+3. Riavvia il servizio e verifica (atteso `200`; tutti i campi di
+   `ClaimCommand` sono opzionali):
+   ```bash
+   sudo systemctl restart pipelinegen
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     -X POST http://127.0.0.1:8000/internal/v1/jobs/claim \
+     -H "Authorization: Bearer $VELOX_WORKER_TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"worker_id":"verify-probe","capabilities":["youtube_clip.extract"]}'
+   ```
+4. **Il vecchio worker token viene invalidato solo se rigenerato**
+   (`rotate_token.sh --also-worker`): i worker devono ricevere il nuovo
+   valore prima del restart del server.
+
+### Sicurezza
+
+- I token non compaiono mai nei log: `scripts/systemd/pipelinegenctl` e i
+  probe redigono `VELOX_(ADMIN|WORKER)_TOKEN` come `<REDACTED>`.
+- La separazione admin/worker è un vincolo di sicurezza: un token admin
+  **non** autentica `/internal/v1/*`, un token worker **non** autentica gli
+  endpoint admin (bloccato dai test `TestWorkerAuth_RejectsAdminToken` /
+  `TestRequireAdminToken_RejectsWorkerToken`).
+- Rotazione: `sudo scripts/rotate_token.sh --also-worker` (rigenera
+  admin + worker; vedi lo `usage` nello script).
+
+---
+
 ## Riassunto configurazione sicura
 
 ```env

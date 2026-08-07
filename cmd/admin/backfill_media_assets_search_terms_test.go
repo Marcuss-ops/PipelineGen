@@ -1,8 +1,13 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"testing"
+	"time"
+
+	"go.uber.org/zap"
 )
 
 // ── parseBackfillArgs ──────────────────────────────────────────────────
@@ -118,6 +123,69 @@ func TestParseBackfillArgs_NegativeBatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("error text should mention non-negative; got %v", err)
+	}
+}
+
+// ── applyBackfillBatch (RFC3339 updated_at regression) ─────────────────
+//
+// TestApplyBackfillBatch_WritesRFC3339UpdatedAt pins the canonical
+// timestamp contract: the backfill must write updated_at as RFC3339
+// (`YYYY-MM-DDTHH:MM:SSZ`), NOT SQLite's bare `datetime('now')` format
+// (`YYYY-MM-DD HH:MM:SS`). The bare format cannot be parsed by
+// timeutil.ParseRFC3339 and fails-closed the deletion-reconciler scan
+// (stuck_row_scanner.go), blocking the whole deletion chain for 15-minute
+// ticks. Regression for the 2026-08-01 `yt_0vnOfawuQF4_*` rows.
+func TestApplyBackfillBatch_WritesRFC3339UpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open :memory: sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE media_assets (
+		id TEXT PRIMARY KEY,
+		source TEXT,
+		name TEXT,
+		filename TEXT,
+		category TEXT,
+		tags TEXT,
+		search_text TEXT,
+		metadata_json TEXT,
+		search_terms TEXT,
+		updated_at TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO media_assets (id, source, name, filename, category, tags, search_text, metadata_json, search_terms, updated_at)
+		VALUES ('a1', 'youtube', 'clip', 'clip.mp4', 'fight', '["x"]', 'text', '{}', '[]', '')`); err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	batch := []pendingMediaAssetRow{{id: "a1", source: "youtube", name: "clip", filename: "clip.mp4", category: "fight", tagsJSON: `["x"]`, searchText: "text", metadataJSON: "{}"}}
+	updated, skipped, err := applyBackfillBatch(context.Background(), db, batch, zap.NewNop())
+	if err != nil {
+		t.Fatalf("applyBackfillBatch: %v", err)
+	}
+	if updated != 1 || skipped != 0 {
+		t.Fatalf("updated=%d skipped=%d; want 1/0", updated, skipped)
+	}
+
+	var updatedAt string
+	if err := db.QueryRow(`SELECT updated_at FROM media_assets WHERE id='a1'`).Scan(&updatedAt); err != nil {
+		t.Fatalf("select updated_at: %v", err)
+	}
+	parsed, err := time.Parse(time.RFC3339, updatedAt)
+	if err != nil {
+		t.Fatalf("updated_at %q is not RFC3339 (deletion-reconciler will fail-closed): %v", updatedAt, err)
+	}
+	if parsed.IsZero() {
+		t.Fatalf("updated_at parsed to zero time")
+	}
+	if strings.Contains(updatedAt, " ") {
+		t.Fatalf("updated_at %q uses the legacy space-separated datetime('now') format", updatedAt)
 	}
 }
 

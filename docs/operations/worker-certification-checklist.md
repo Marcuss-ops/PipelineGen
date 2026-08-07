@@ -51,6 +51,7 @@ Un worker entra nell'allowlist production del master **solo** quando tutti i gat
 
 | Gate | Sorgente runbook | Comando di verifica |
 |---|---|---|
+| `Worker token claim = 200` | — (gate di auth, non runbook) | `curl` su `POST /internal/v1/jobs/claim` con `Authorization: Bearer $VELOX_WORKER_TOKEN` deve restituire **HTTP 200** con lease vuoto (vedi sotto) |
 | `Doctor = READY` | RW-PROD-016 | `velox-worker-agent doctor --production --json` deve terminare con exit `0` e verdict `READY`. |
 | `Canary mTLS = PASS` | RW-PROD-007 | Un canary reale mTLS termina `Job=SUCCEEDED` sul worker scelto, `TaskAttempt=SUCCEEDED`, artifact `READY`. |
 | `Artifact integrity = PASS` | RW-PROD-008 | SHA-256 calcolato sul worker uguale a quello verificato sul master; `jobs.completed_at >= artifacts.verified_at`. |
@@ -58,6 +59,41 @@ Un worker entra nell'allowlist production del master **solo** quando tutti i gat
 | `Soak test = PASS` | RW-PROD-015 | 24h soak per classe hardware, success rate ≥ 99%, zero fallback/emergency in produzione. |
 | `Fallback count = 0` | RW-PROD-003, RW-PROD-013 | Nessun fallback production, nessun Python emergency path attivato. |
 | `Verdetto = PRODUCTION_READY` | sezione 5 | Scheda di certificazione firmata da reviewer approvati. |
+
+### Verifica autenticazione worker (`VELOX_WORKER_TOKEN`)
+
+Prima di qualsiasi gate funzionale, il worker deve dimostrare di possedere il
+`VELOX_WORKER_TOKEN` **corrente** configurato sul master (file
+`/etc/pipelinegen/pipelinegen.env`, mode `0640`):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -X POST "${VELOX_MASTER_URL:-http://127.0.0.1:8000}/internal/v1/jobs/claim" \
+  -H "Authorization: Bearer $VELOX_WORKER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"worker_id":"cert-probe","capabilities":["cert.probe.noop"]}'
+# atteso: 200
+```
+
+Criteri:
+
+- **`200`** → il token è valido e il worker può procedere.
+- **`401`** → token assente/sbagliato: allineare il worker al valore corrente
+  del master (rigenerazione: `sudo scripts/rotate_token.sh --also-worker`).
+- **`500`** → `VELOX_WORKER_TOKEN` non configurato sul master: completare la
+  configurazione prima della certificazione.
+
+> **Importante**: usare una capability che non matcha alcun job reale
+> (es. `cert.probe.noop`). `/internal/v1/jobs/claim` non è un mero probe di
+> connettività: se la capability matchese un job in coda, il probe lo
+> claimerebbe per il worker fittizio `cert-probe`, bloccandolo fino alla
+> scadenza del lease e ritardando il lavoro reale in produzione.
+
+Il gate è obbligatorio perché `/internal/v1/*` accetta **solo** token worker
+(`WorkerAuth` rifiuta i token admin); un worker che fallisce questo check non
+può claimare job in produzione. (In produzione `VELOX_ENABLE_AUTH` è sempre
+attivo; con auth disabilitato in dev/staging `WorkerAuth` tratterebbe ogni
+principal come admin e restituirebbe `200` comunque.)
 
 ### Gate numerici minimi (soak test)
 

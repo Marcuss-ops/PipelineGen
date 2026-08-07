@@ -39,6 +39,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -615,11 +616,12 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 		mediaSource    string
 		mediaDriveLink string
 		mediaFileHash  string
+		mediaUpdatedAt string
 	)
 	if err := db.QueryRowContext(ctx,
-		`SELECT source, drive_link, file_hash FROM media_assets WHERE id = ? AND source = 'voiceover'`,
+		`SELECT source, drive_link, file_hash, updated_at FROM media_assets WHERE id = ? AND source = 'voiceover'`,
 		voiceoverID,
-	).Scan(&mediaSource, &mediaDriveLink, &mediaFileHash); err != nil {
+	).Scan(&mediaSource, &mediaDriveLink, &mediaFileHash, &mediaUpdatedAt); err != nil {
 		t.Fatalf("query media_assets row id=%q: %v", voiceoverID, err)
 	}
 	if mediaSource != "voiceover" {
@@ -630,6 +632,16 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	}
 	if mediaFileHash != fileHash {
 		t.Errorf("media_assets.file_hash = %q, want %q", mediaFileHash, fileHash)
+	}
+	// updated_at must be RFC3339 (deletion-reconciler regression: the
+	// Scanner.ListStuckRows fails closed on the SQLite datetime('now')
+	// space format — see deletion-reconciler bugfix, Aug 2026).
+	if mediaUpdatedAt == "" {
+		t.Errorf("media_assets.updated_at must be populated by UpsertVoiceoverProjectionTx (got %q)", mediaUpdatedAt)
+	} else if parsed := timeutil.ParseRFC3339(mediaUpdatedAt); parsed.IsZero() {
+		t.Errorf("media_assets.updated_at = %q must be RFC3339-parseable (UpsertVoiceoverProjectionTx wrote a non-RFC3339 timestamp)", mediaUpdatedAt)
+	} else if strings.Contains(mediaUpdatedAt, " ") {
+		t.Errorf("media_assets.updated_at = %q contains a space (SQLite datetime('now') format, not RFC3339)", mediaUpdatedAt)
 	}
 
 	// ── Stage D: assert outbox_events row exists ───────────────────

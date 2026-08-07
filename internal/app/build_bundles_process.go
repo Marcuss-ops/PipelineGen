@@ -97,7 +97,18 @@ import (
 // handles local file removal (stdlib os.Remove, no port ceremony)
 // and logs+skips the Drive delete branch with an operator-visible
 // warning. Production wiring always supplies a non-nil adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
+//
+// Blocco 3.1 commit 2/3 (June 2026) — driveDeleter wiring: the
+// driveDeleter arg passes drive.FileLifecycle (from
+// wiring.DriveBundle.Lifecycle) into the outbox Deps so
+// DriveDeleteHandler (asset.drive.delete_requested.v1) can trash /
+// permanently-delete the Drive file and atomically advance the
+// deletion state machine. nil driveDeleter is tolerated —
+// RegisterOptionalHandlers skips the handler at Info — but in
+// production it is a dead-letter regression, so the wiring logs a
+// loud Warn when it is missing. Production wiring always supplies
+// the canonical drive.FileLifecycle adapter.
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, repos *wiring.RepoBundle, qd *wiring.QdrantDeps, jobs *wiring.JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter) (*wiring.OutboxBundle, wiring.IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
@@ -142,14 +153,17 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
 
 	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
-	// construction moved to AFTER the fail-closed handler
-	// registration (see below). The previous order constructed the
-	// dispatcher + ClipsStateWriter BEFORE the fail-closed check, so
-	// when repos.ClipsRepo was nil the call returned an internal
-	// panic (NewDispatcher / NewMultiClipsUpserter panic on nil
-	// inputs) instead of the typed error the fail-closed contract
-	// requires. The dispatcher block is now anchored after
-	// RegisterOptionalHandlers.
+	// construction happens AFTER the fail-closed CORE handler
+	// registration (registerOutboxCoreHandlers above), so when
+	// repos.ClipsRepo was nil the call returns the typed error the
+	// fail-closed contract requires instead of an internal panic
+	// (NewDispatcher / NewMultiClipsUpserter panic on nil inputs).
+	// The dispatcher is additionally built BEFORE
+	// RegisterOptionalHandlers so the DriveDeleteDeps StateAdvancer
+	// port can be populated (Blocco 3.1 commit 2/3 wiring, fixed in
+	// production July 2026 — previously the DriveDeleteDeps were
+	// never populated and every asset.drive.delete_requested.v1
+	// event dead-lettered).
 
 	eventsRegistry := outboxevents.NewHandlerRegistry()
 
@@ -161,12 +175,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	if err := registerOutboxCoreHandlers(eventsRegistry, cfg, repos, qd, outboxDeps, log); err != nil {
 		return nil, nil, err
 	}
-	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)
-	if err != nil {
-		return nil, nil, err
-	}
 
-	// ── Dispatcher + pool construction (post fail-closed). ────────
+	// ── Dispatcher construction (post core fail-closed gate). ─────
+	// Moved BEFORE RegisterOptionalHandlers (previously after) so the
+	// DriveDeleteDeps.StateAdvancer port below can be populated with
+	// the concrete *outbox.Dispatcher. The PR 3 fail-closed contract
+	// is preserved: the core handlers registered above abort boot on a
+	// nil mandatory dep before this block ever runs.
 	multiClipsUp := outbox.NewMultiClipsUpserter(
 		map[string]outbox.ClipsUpserter{
 			"youtube": repos.ClipsRepo,
@@ -181,6 +196,32 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
+	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps
+	// (asset.drive.delete_requested.v1 → Drive Trash/Delete → atomic
+	// AdvanceAndEmit to DRIVE_DELETED + emit index.delete_requested).
+	// All 4 narrow ports are populated from production wiring;
+	// RegisterOptionalHandlers registers the handler only when ALL
+	// four are non-nil (partial dev wiring skips at Info, never aborts
+	// boot). A nil driveDeleter in production is a silent
+	// dead-letter regression, so it is surfaced as a loud Warn here.
+	if driveDeleter != nil && repos.ClipsRepo != nil {
+		outboxDeps.DriveDelete = jobsoutbox.DriveDeleteDeps{
+			DrivePatchLifecycle:  repos.ClipsRepo,
+			DrivePatchLifecycleW: repos.ClipsRepo,
+			DrivePatchStateAdv:   dispatcher,
+			DriveDeleteHandler:   driveDeleter,
+		}
+		log.Info("outbox DriveDeleteHandler deps wired: asset.drive.delete_requested.v1 → Drive Trash/Delete → AdvanceAndEmit (Blocco 3.1 commit 2/3)")
+	} else {
+		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
+	}
+
+	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// ── Pool construction (post fail-closed). ─────────────────────
 	cfgPoll := 500 * time.Millisecond
 	if cfg.Outbox.PollIntervalMs > 0 {
 		cfgPoll = time.Duration(cfg.Outbox.PollIntervalMs) * time.Millisecond

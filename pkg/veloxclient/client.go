@@ -186,6 +186,13 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body []byte,
 	}
 	if reqID != "" {
 		req.Header.Set("X-Request-ID", reqID)
+		// POST /api/script/generate (P0.B gate): the server rejects
+		// submissions whose Idempotency-Key header is missing with
+		// 400 IDEMPOTENCY_KEY_REQUIRED. Send the same reqID as the
+		// idempotency key so retries replay instead of duplicating.
+		if method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch {
+			req.Header.Set("Idempotency-Key", reqID)
+		}
 	}
 	if method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch {
 		req.Header.Set("Content-Type", "application/json")

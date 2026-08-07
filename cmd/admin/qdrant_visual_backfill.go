@@ -228,7 +228,7 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 
 		if _, err := db.ExecContext(ctx, `
 			UPDATE media_assets
-			SET visual_embedding = ?, metadata_json = ?, updated_at = datetime('now')
+			SET visual_embedding = ?, metadata_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
 			WHERE id = ?`,
 			string(raw), string(metaBytes), id); err != nil {
 			report.Failed++

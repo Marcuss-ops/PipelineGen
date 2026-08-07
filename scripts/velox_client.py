@@ -209,6 +209,13 @@ class VeloxClient:
             req.add_header("Authorization", f"Bearer {self.token}")
         if req_id:
             req.add_header("X-Request-ID", req_id)
+            # POST /api/script/generate (P0.B gate): the server rejects
+            # submissions whose Idempotency-Key header is missing with
+            # 400 IDEMPOTENCY_KEY_REQUIRED. Mirror the canonical Go
+            # client (pkg/veloxclient) and send the same req_id as the
+            # idempotency key so retries replay instead of duplicating.
+            if method in ("POST", "PUT", "PATCH"):
+                req.add_header("Idempotency-Key", req_id)
         if method in ("POST", "PUT", "PATCH"):
             req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json")
