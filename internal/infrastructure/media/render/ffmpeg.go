@@ -129,8 +129,15 @@ func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderReq
 	profile := (config.VideoConfig{}).CanonicalVideoProfile()
 	policy := r.encoderPolicy
 	if requestedCodec != policy.Codec {
-		policy = (config.VideoConfig{Codec: requestedCodec, Preset: req.Preset, CRF: req.CRF}).EncoderPolicy()
+		policy.Codec = requestedCodec
 	}
+	if req.Preset != "" {
+		policy.Preset = req.Preset
+	}
+	if req.CRF > 0 {
+		policy.CRF = req.CRF
+	}
+	policy = (config.VideoConfig{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF}).EncoderPolicy()
 	req.Width = profile.Width
 	req.Height = profile.Height
 	req.FPS = profile.FPS
