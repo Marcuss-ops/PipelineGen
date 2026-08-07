@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -458,6 +459,7 @@ func newTestDownloaderCfg(t *testing.T, cfg *ytcfg.Config, runner ProcessRunner)
 	t.Helper()
 	d := NewYTDLP(cfg)
 	d.runner = runner
+	d.transportSleep = func(context.Context, time.Duration) error { return nil }
 	return d
 }
 
@@ -553,6 +555,51 @@ func TestDownload_YouTube_NonRetryableError_NoRetry(t *testing.T) {
 	require.Equal(t, 1, runner.calls,
 		"non-retryable 404 errors must NOT trigger the fallback client loop")
 	assert.Contains(t, err.Error(), "404")
+}
+
+func TestDownload_TransientTransportError_RetriesSameClientAndSucceeds(t *testing.T) {
+	setupTestAllowlist(t)
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: fmt.Errorf("command yt-dlp failed: [Errno 101] Network is unreachable")},
+		{result: &process.Result{ExitCode: 0}},
+	}}
+	d := newTestDownloaderCfg(t, &ytcfg.Config{}, runner)
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	require.NoError(t, d.Download(context.Background(), &DownloadRequest{
+		URL: youTubeWatchURL, OutputPath: outputPath,
+	}))
+	require.Equal(t, 2, runner.calls)
+	assert.Contains(t, strings.Join(runner.argv[0], " "), "youtube:player_client=android_creator")
+	assert.Contains(t, strings.Join(runner.argv[1], " "), "youtube:player_client=android_creator",
+		"transport retry must restart with the primary client")
+}
+
+func TestDownload_TransientTransportError_IsBounded(t *testing.T) {
+	setupTestAllowlist(t)
+	runner := &scriptedRunner{script: []scriptedCall{{
+		err: fmt.Errorf("connection reset by peer"),
+	}}}
+	d := newTestDownloaderCfg(t, &ytcfg.Config{}, runner)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL: youTubeWatchURL, OutputPath: filepath.Join(t.TempDir(), "source.mp4"),
+	})
+	require.Error(t, err)
+	require.Equal(t, transportRetryAttempts, runner.calls)
+}
+
+func TestDownload_TransportRetry_DoesNotRetryCancellation(t *testing.T) {
+	setupTestAllowlist(t)
+	runner := &scriptedRunner{script: []scriptedCall{{err: context.Canceled}}}
+	d := newTestDownloaderCfg(t, &ytcfg.Config{}, runner)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL: youTubeWatchURL, OutputPath: filepath.Join(t.TempDir(), "source.mp4"),
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, runner.calls)
 }
 
 // TestDownload_InvalidURL_DoesNotInvokeFallback verifies that validation

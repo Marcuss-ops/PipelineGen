@@ -42,6 +42,9 @@ type YTDLPDownloader struct {
 	// a `captureRunner` mock to capture argv without spawning yt-dlp.
 	// See downloader_test.go for the canonical captureRunner pattern.
 	runner ProcessRunner
+	// transportSleep is a test seam for bounded transport retry backoff. The
+	// production value is nil, which uses the context-aware real sleep.
+	transportSleep func(context.Context, time.Duration) error
 }
 
 func (d *YTDLPDownloader) run(ctx context.Context, args []string, opts process.Options) (*process.Result, error) {

@@ -123,10 +123,12 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		timeout = 10 * time.Minute
 	}
 
-	_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
-		Timeout:        timeout,
-		CombinedOutput: true,
-	}, buildArgs)
+	_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+		return d.runWithClientFallback(ctx, req.URL, process.Options{
+			Timeout:        timeout,
+			CombinedOutput: true,
+		}, buildArgs)
+	})
 	if err != nil {
 		return err
 	}
@@ -211,10 +213,12 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		return args
 	}
 
-	_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
-		Timeout:        10 * time.Minute,
-		CombinedOutput: true,
-	}, buildArgs)
+	_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+		return d.runWithClientFallback(ctx, req.URL, process.Options{
+			Timeout:        10 * time.Minute,
+			CombinedOutput: true,
+		}, buildArgs)
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to download range: %w", err)
 	}
@@ -304,10 +308,12 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 			return args
 		}
 
-		_, err := d.runWithClientFallback(ctx, req.URL, process.Options{
-			Timeout:        10 * time.Minute,
-			CombinedOutput: true,
-		}, buildArgs)
+		_, err := d.runWithTransportRetry(ctx, req.URL, func() (*process.Result, error) {
+			return d.runWithClientFallback(ctx, req.URL, process.Options{
+				Timeout:        10 * time.Minute,
+				CombinedOutput: true,
+			}, buildArgs)
+		})
 		if err != nil {
 			return results, fmt.Errorf("failed to download section %d: %w", i, err)
 		}
