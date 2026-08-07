@@ -39,10 +39,10 @@ type StockSearchAndRunRequest struct {
 	DriveFolderID                  string              `json:"drive_folder_id,omitempty"`
 	FolderID                       string              `json:"folder_id,omitempty"`
 	Metadata                       *ChunkMetadataInput `json:"metadata,omitempty"`
-	// Async: operator opt-out for sync execution. Defaults to false
-	// (zero-value); api handler flips to true before JSON binding so
-	// existing clients see no behaviour change. With "async":false on
-	// the wire, use case.Submit runs synchronously via the runner.
+	// Async selects broker dispatch when true. JSON omission and an
+	// explicit "async": false both decode to false and run synchronously
+	// through the runner; callers that need queued execution must send
+	// "async": true explicitly.
 	Async bool `json:"async,omitempty"`
 	// Persist enables media_assets writing in sync mode (only when
 	// Async=false). See StockRunPayload.Persist for the rationale.

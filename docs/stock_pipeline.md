@@ -2,7 +2,7 @@
 
 The stock pipeline generates video clips from one or more sources, cuts them according to a plan or explicit time ranges, composes the result, and publishes the output to Google Drive.
 
-- Endpoint: `POST /api/stock-pipeline/run`
+- Endpoints: `POST /api/stock-pipeline/run` and `POST /api/stock-pipeline/search-and-run`
 - `clip_duration` must be between 3 and 30 seconds (default from `video.clip_duration`)
 - Output: MP4 files uploaded under the configured Google Drive root
 
@@ -62,6 +62,7 @@ The following payload reads from a Drive folder (`drive_urls`) and produces five
   ],
   "folder_name": "Zhilei_Zhang_vs_Deontay_Wilder_Test",
   "clip_duration": 5,
+  "async": true,
   "clips": [
     {
       "round": 1,
@@ -122,7 +123,15 @@ A successful response looks like:
 }
 ```
 
-The handler always runs stock pipeline jobs asynchronously (`Async=true` is forced before binding), so the response is always `QUEUED` with a `job_id`. Poll `/api/jobs/{job_id}/full` for terminal state.
+### Execution mode and acknowledgement
+
+The `async` field is submitter-controlled on both endpoints:
+
+- `"async": true` enqueues a `media.stock` job through the jobs broker and returns HTTP `202` with `status: "QUEUED"`, `job_id`, and `run_id`. Poll `/api/jobs/{job_id}/full` for the broker-level terminal state.
+- `"async": false` runs through the stock service synchronously and returns HTTP `200` with `status: "completed"`. No job is queued and no `job_id` is returned.
+- If `async` is omitted, JSON decoding uses the Go boolean zero value (`false`), so the request follows the same synchronous HTTP `200` / `completed` path as explicit `"async": false`.
+
+The response `status` is an endpoint acknowledgement, not the complete broker state machine. Only the asynchronous path has a job to poll.
 
 Poll the job until it reaches a terminal state:
 
@@ -142,7 +151,7 @@ curl -s http://127.0.0.1:8000/api/jobs/$JOB_ID/full \
 | `clips` | `[]ClipSpec` | No | Explicit clip specifications. |
 | `folder_name` | `string` | Yes* | Destination subfolder name under the configured Drive stock root. The handler does not validate emptiness; a missing value will fail later during the publish step. |
 | `clip_duration` | `int` | No | Length of each generated clip in seconds (default from `video.clip_duration`; range 3–30). |
-| `async` | `bool` | No | The handler always forces `true` for `/api/stock-pipeline/run`. Present for wire-shape audit. |
+| `async` | `bool` | No | Controls dispatch mode. `true` queues `media.stock` and returns HTTP 202; `false` runs synchronously and returns HTTP 200; omitted is decoded as `false` and therefore also runs synchronously. |
 | `persist` | `bool` | No | When `true` and `async=false`, writes to `media_assets` in sync mode. |
 | `drive_folder_id` | `string` | No | Legacy destination folder ID override. |
 | `folder_id` | `string` | No | Legacy destination folder ID override. |
