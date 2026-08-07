@@ -34,102 +34,39 @@
 //	go run ./cmd/admin backfill-asset-embeddings --retry-failed --checkpoint=./bf.json # retry failures
 //	go run ./cmd/admin backfill-asset-embeddings --json                    # machine-readable
 //
-// Split (Commit E, July 2026): the 2 SQL-pure candidate-fetch helpers
-// (fetchEmbeddingCandidates + fetchFailedCandidates) moved to the
-// sibling file backfill_asset_embeddings_db.go (same package main).
-// This orchestrator file retains the entry point, arg parsing, the
-// pure testable core (backfillAssetEmbeddings), the checkpoint
-// load/save helpers, and the testability interface (reindexEnqueuer).
+// Layout (Commit F, August 2026): the reusable backfill engine (batch
+// processing, retry recovery, checkpointing, reporting) lives in
+// internal/application/indexing/backfill. This file keeps the CLI
+// surface — entry point, arg parsing, output formatting, composition-root
+// wiring — and supplies the SQL-backed candidate fetcher.
 //
-// The sibling stays in cmd/admin (NOT internal/infrastructure) per the
-// Commit E user constraint: "NON spostare nulla in internal/infrastructure
-// (creerebbe interfacce morte)". These are one-shot-CLI-only queries;
-// promoting them to infrastructure would force a typed-port interface
-// with no second consumer.
+// The 2 SQL-pure candidate-fetch helpers (fetchEmbeddingCandidates +
+// fetchFailedCandidates) live in the sibling file
+// backfill_asset_embeddings_db.go (same package main). The sibling stays
+// in cmd/admin (NOT internal/infrastructure) per the Commit E user
+// constraint: "NON spostare nulla in internal/infrastructure (creerebbe
+// interfacce morte)". These are one-shot-CLI-only queries; promoting
+// them to infrastructure would force a typed-port interface with no
+// second consumer. The reusable core moved to the application layer
+// because it is SQL-free and port-driven (Fetcher + Enqueuer).
 package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
-
-// ── Types ─────────────────────────────────────────────────────────────
-
-// backfillEmbeddingsDeps holds parsed CLI flags.
-type backfillEmbeddingsDeps struct {
-	Apply       bool
-	DryRun      bool
-	JSON        bool
-	OnlyMissing bool
-	Limit       int
-	Progress    int // progress-report + checkpoint flush interval
-	Source      string
-	Checkpoint  string // path to checkpoint JSON file
-	Resume      bool   // resume from checkpoint
-	RetryFailed bool   // retry previously-failed assets
-}
-
-// backfillEmbeddingsReport is the JSON-serialisable output.
-type backfillEmbeddingsReport struct {
-	Mode              string   `json:"mode"`
-	Source            string   `json:"source,omitempty"`
-	Limit             int      `json:"limit,omitempty"`
-	TotalCandidates   int      `json:"total_candidates"`
-	MissingText       int      `json:"missing_text"`
-	MissingTranscript int      `json:"missing_transcript"`
-	MissingVisual     int      `json:"missing_visual"`
-	MissingAudio      int      `json:"missing_audio"`
-	AnyMissing        int      `json:"any_missing"`
-	AlreadyComplete   int      `json:"already_complete"`
-	Processed         int      `json:"processed"`
-	Succeeded         int      `json:"succeeded"`
-	Failed            int      `json:"failed"`
-	Skipped           int      `json:"skipped"`
-	FailedIDs         []string `json:"failed_ids,omitempty"`
-	Errors            []string `json:"errors,omitempty"`
-	Checkpoint        string   `json:"checkpoint,omitempty"`
-	DurationMs        int64    `json:"duration_ms"`
-}
-
-// embeddingCheckpoint is the on-disk resume state.
-type embeddingCheckpoint struct {
-	JobID           string   `json:"job_id"`
-	Source          string   `json:"source,omitempty"`
-	LastProcessedID string   `json:"last_processed_id"`
-	ProcessedCount  int      `json:"processed_count"`
-	SucceededCount  int      `json:"succeeded_count"`
-	FailedCount     int      `json:"failed_count"`
-	FailedIDs       []string `json:"failed_ids"`
-	Status          string   `json:"status"` // running | completed | failed
-	StartedAt       string   `json:"started_at"`
-	UpdatedAt       string   `json:"updated_at"`
-}
-
-// assetEmbeddingStatus holds per-asset embedding state for query+report.
-type assetEmbeddingStatus struct {
-	ID            string
-	Source        string
-	Name          string
-	MediaType     string
-	HasText       bool
-	HasTranscript bool
-	HasVisual     bool
-	HasAudio      bool
-	LocalPath     string
-}
 
 // ── Entry point ───────────────────────────────────────────────────────
 
@@ -170,7 +107,16 @@ func runBackfillAssetEmbeddings(args []string) error {
 
 	adapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema)
 
-	report, cp, err := backfillAssetEmbeddings(ctx, root.DB.DB, adapter, deps, log)
+	// SQL-backed candidate source: retry mode only re-processes
+	// previously-failed assets; otherwise the forward resume-anchored query.
+	fetch := func(ctx context.Context, d backfill.Deps, cp *backfill.Checkpoint) ([]backfill.Candidate, error) {
+		if d.RetryFailed && cp != nil && len(cp.FailedIDs) > 0 {
+			return fetchFailedCandidates(ctx, root.DB.DB, cp.FailedIDs)
+		}
+		return fetchEmbeddingCandidates(ctx, root.DB.DB, d, cp)
+	}
+
+	report, cp, err := backfill.Run(ctx, deps, fetch, adapter, log)
 	if err != nil {
 		return err
 	}
@@ -223,8 +169,8 @@ func runBackfillAssetEmbeddings(args []string) error {
 
 // ── Arg parsing ───────────────────────────────────────────────────────
 
-func parseBackfillEmbeddingsArgs(args []string) (backfillEmbeddingsDeps, error) {
-	deps := backfillEmbeddingsDeps{
+func parseBackfillEmbeddingsArgs(args []string) (backfill.Deps, error) {
+	deps := backfill.Deps{
 		Progress:    50,   // log + checkpoint flush every 50 assets
 		OnlyMissing: true, // default: skip already-complete assets
 	}
@@ -280,241 +226,4 @@ func parseBackfillEmbeddingsArgs(args []string) (backfillEmbeddingsDeps, error) 
 		deps.Progress = 50
 	}
 	return deps, nil
-}
-
-// ── Core logic ────────────────────────────────────────────────────────
-
-// backfillAssetEmbeddings is the pure, testable core. It returns a report
-// and a checkpoint suitable for serialisation.
-func backfillAssetEmbeddings(
-	ctx context.Context,
-	db *sql.DB,
-	enqueuer reindexEnqueuer,
-	deps backfillEmbeddingsDeps,
-	log *zap.Logger,
-) (backfillEmbeddingsReport, *embeddingCheckpoint, error) {
-	start := time.Now()
-	report := backfillEmbeddingsReport{
-		Mode:   "dry-run",
-		Source: deps.Source,
-		Limit:  deps.Limit,
-	}
-	if deps.Apply {
-		report.Mode = "apply"
-	}
-
-	// ── Load or init checkpoint ─────────────────────────────────────
-	var cp *embeddingCheckpoint
-	if deps.Checkpoint != "" {
-		loaded, err := loadCheckpoint(deps.Checkpoint)
-		if err != nil && !os.IsNotExist(err) {
-			return report, nil, fmt.Errorf("load checkpoint %q: %w", deps.Checkpoint, err)
-		}
-		if loaded != nil && deps.Resume {
-			cp = loaded
-			log.Info("resuming from checkpoint",
-				zap.String("job_id", cp.JobID),
-				zap.String("last_processed_id", cp.LastProcessedID),
-				zap.Int("processed_count", cp.ProcessedCount),
-				zap.Int("succeeded_count", cp.SucceededCount),
-				zap.Int("failed_count", cp.FailedCount))
-		} else if deps.RetryFailed && loaded != nil {
-			cp = loaded
-			log.Info("retrying failed assets from checkpoint",
-				zap.String("job_id", cp.JobID),
-				zap.Int("failed_count", len(cp.FailedIDs)))
-		} else {
-			cp = &embeddingCheckpoint{
-				JobID:     fmt.Sprintf("backfill-emb-%s", uuid.NewString()[:8]),
-				Source:    deps.Source,
-				Status:    "running",
-				StartedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			}
-		}
-	}
-
-	// ── Determine candidates ────────────────────────────────────────
-	// fetchEmbeddingCandidates + fetchFailedCandidates live in the
-	// sibling file backfill_asset_embeddings_db.go (same package main).
-	var candidates []assetEmbeddingStatus
-	var err error
-	if deps.RetryFailed && cp != nil && len(cp.FailedIDs) > 0 {
-		// Retry mode: only process previously-failed assets.
-		candidates, err = fetchFailedCandidates(ctx, db, cp.FailedIDs)
-	} else {
-		candidates, err = fetchEmbeddingCandidates(ctx, db, deps, cp)
-	}
-	if err != nil {
-		return report, cp, fmt.Errorf("fetch candidates: %w", err)
-	}
-
-	if len(candidates) == 0 {
-		report.DurationMs = time.Since(start).Milliseconds()
-		if cp != nil {
-			cp.Status = "completed"
-			cp.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		}
-		log.Info("no embedding candidates found")
-		return report, cp, nil
-	}
-
-	// ── Count missing channels ──────────────────────────────────────
-	report.TotalCandidates = len(candidates)
-	for _, c := range candidates {
-		hasAll := true
-		if !c.HasText {
-			report.MissingText++
-			hasAll = false
-		}
-		if !c.HasTranscript {
-			report.MissingTranscript++
-			hasAll = false
-		}
-		if !c.HasVisual {
-			report.MissingVisual++
-			hasAll = false
-		}
-		if !c.HasAudio {
-			report.MissingAudio++
-			hasAll = false
-		}
-		if hasAll {
-			report.AlreadyComplete++
-		} else {
-			report.AnyMissing++
-		}
-	}
-
-	if !deps.Apply {
-		report.DurationMs = time.Since(start).Milliseconds()
-		if cp != nil {
-			cp.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		}
-		return report, cp, nil
-	}
-
-	// ── Apply: process candidates ───────────────────────────────────
-	// At-least-once checkpointing: cp.LastProcessedID is updated in
-	// memory on every success, but flushed to disk only every --progress
-	// assets. A crash between flushes causes up to --progress assets to
-	// be re-processed on resume. This is safe because the outbox
-	// event_key is deterministic per (assetID, schemaVersion, contentHash).
-	report.Checkpoint = deps.Checkpoint
-	for i, c := range candidates {
-		select {
-		case <-ctx.Done():
-			report.Errors = append(report.Errors, "cancelled by signal")
-			if cp != nil {
-				cp.Status = "failed"
-				cp.LastProcessedID = c.ID
-			}
-			report.DurationMs = time.Since(start).Milliseconds()
-			return report, cp, ctx.Err()
-		default:
-		}
-
-		// Skip already-complete assets in --only-missing mode.
-		if deps.OnlyMissing && c.HasText && c.HasTranscript && c.HasVisual && c.HasAudio {
-			report.Skipped++
-			continue
-		}
-
-		report.Processed++
-
-		if (i+1)%deps.Progress == 0 || i+1 == len(candidates) {
-			log.Info("backfill progress",
-				zap.Int("processed", report.Processed),
-				zap.Int("succeeded", report.Succeeded),
-				zap.Int("failed", report.Failed),
-				zap.Int("remaining", len(candidates)-i-1))
-		}
-
-		idxStart := time.Now()
-		var ch string
-		if err := db.QueryRowContext(ctx, `
-			SELECT COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, '')
-			FROM media_assets WHERE id = ?`,
-			c.ID,
-		).Scan(&ch); err != nil || ch == "" {
-			ch = "legacy_no_hash_" + c.ID
-		}
-
-		err := enqueuer.EnqueueReindex(ctx, c.ID, ch, true)
-		if err != nil {
-			report.Failed++
-			if cp != nil {
-				cp.FailedCount++
-				cp.FailedIDs = append(cp.FailedIDs, c.ID)
-			}
-			log.Warn("EnqueueReindex failed",
-				zap.String("asset_id", c.ID),
-				zap.String("source", c.Source),
-				zap.Error(err))
-			report.Errors = append(report.Errors,
-				fmt.Sprintf("%s: %v", c.ID, err))
-			continue
-		}
-
-		report.Succeeded++
-		log.Debug("EnqueueReindex succeeded",
-			zap.String("asset_id", c.ID),
-			zap.Duration("elapsed", time.Since(idxStart)))
-
-		// Update in-memory checkpoint after each success.
-		if cp != nil {
-			cp.LastProcessedID = c.ID
-			cp.ProcessedCount = report.Processed
-			cp.SucceededCount = report.Succeeded
-			cp.FailedCount = report.Failed
-			cp.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		}
-
-		// Periodic checkpoint flush to disk.
-		// At-least-once delivery: crash between flushes → re-process
-		// up to --progress assets on resume. Safe because the outbox
-		// event_key is deterministic per (assetID, schemaVersion, contentHash).
-		if cp != nil && deps.Checkpoint != "" && (i+1)%deps.Progress == 0 {
-			if b, err := json.MarshalIndent(cp, "", "  "); err == nil {
-				_ = os.WriteFile(deps.Checkpoint, b, 0o644)
-			}
-		}
-	}
-
-	report.DurationMs = time.Since(start).Milliseconds()
-	if cp != nil {
-		report.FailedIDs = cp.FailedIDs
-		if report.Failed == 0 {
-			cp.Status = "completed"
-		} else {
-			cp.Status = "failed"
-		}
-		cp.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-
-	return report, cp, nil
-}
-
-// ── Checkpoint I/O ────────────────────────────────────────────────────
-
-func loadCheckpoint(path string) (*embeddingCheckpoint, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var cp embeddingCheckpoint
-	if err := json.Unmarshal(data, &cp); err != nil {
-		return nil, fmt.Errorf("parse checkpoint: %w", err)
-	}
-	if cp.JobID == "" {
-		return nil, fmt.Errorf("checkpoint %q is missing job_id", path)
-	}
-	return &cp, nil
-}
-
-// ── Interface for testability ─────────────────────────────────────────
-
-// reindexEnqueuer is the subset used by the backfill.
-// Production wired via outbox.RepairAdapter.
-type reindexEnqueuer interface {
-	EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error
 }

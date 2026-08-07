@@ -3,9 +3,8 @@
 //
 // Split rationale (Commit E, July 2026): the canonical backfill command
 // (backfill_asset_embeddings.go) owns the entry point, arg parsing,
-// core orchestration loop, checkpoint I/O, and the testability interface
-// (clipIndexer). This sibling owns the 2 SQL-pure candidate-fetch
-// functions:
+// output formatting, and the SQL-backed candidate fetcher wiring. This
+// sibling owns the 2 SQL-pure candidate-fetch functions:
 //
 //   - fetchEmbeddingCandidates: SELECT media_assets rows for the active
 //     backfill, applying resume-anchor + source filter + OnlyMissing
@@ -13,6 +12,13 @@
 //   - fetchFailedCandidates: SELECT media_assets rows restricted to a
 //     caller-supplied id set; same row shape as fetchEmbeddingCandidates
 //     but with IN(...) clause for the --retry-failed mode.
+//
+// Commit F (August 2026): the reusable core moved to
+// internal/application/indexing/backfill; the shared row/run shapes
+// (backfill.Candidate, backfill.Deps, backfill.Checkpoint) now come from
+// that package. Both helpers additionally select the content_hash
+// expression so the core can build the deterministic event_key
+// fingerprint without owning SQL.
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The media_assets column selected here MUST match the schema
@@ -47,6 +53,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing/backfill"
 )
 
 // fetchEmbeddingCandidates queries media_assets for assets that need
@@ -55,12 +63,13 @@ import (
 func fetchEmbeddingCandidates(
 	ctx context.Context,
 	db *sql.DB,
-	deps backfillEmbeddingsDeps,
-	cp *embeddingCheckpoint,
-) ([]assetEmbeddingStatus, error) {
+	deps backfill.Deps,
+	cp *backfill.Checkpoint,
+) ([]backfill.Candidate, error) {
 	query := `
 		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
 		       COALESCE(local_path, ''),
+		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, ''),
 		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
@@ -96,12 +105,12 @@ func fetchEmbeddingCandidates(
 	}
 	defer rows.Close()
 
-	var out []assetEmbeddingStatus
+	var out []backfill.Candidate
 	for rows.Next() {
-		var a assetEmbeddingStatus
+		var a backfill.Candidate
 		var hasText, hasTranscript, hasVisual, hasAudio int
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
+			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
 			return nil, fmt.Errorf("scan candidate: %w", err)
 		}
 		a.HasText = hasText == 1
@@ -118,7 +127,7 @@ func fetchEmbeddingCandidates(
 }
 
 // fetchFailedCandidates returns candidate rows only for the given asset IDs.
-func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]assetEmbeddingStatus, error) {
+func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]backfill.Candidate, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -133,6 +142,7 @@ func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]ass
 	query := fmt.Sprintf(`
 		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
 		       COALESCE(local_path, ''),
+		       COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, ''),
 		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
 		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
@@ -149,12 +159,12 @@ func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]ass
 	}
 	defer rows.Close()
 
-	var out []assetEmbeddingStatus
+	var out []backfill.Candidate
 	for rows.Next() {
-		var a assetEmbeddingStatus
+		var a backfill.Candidate
 		var hasText, hasTranscript, hasVisual, hasAudio int
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
+			&a.LocalPath, &a.ContentHash, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
 			return nil, fmt.Errorf("scan failed candidate: %w", err)
 		}
 		a.HasText = hasText == 1
