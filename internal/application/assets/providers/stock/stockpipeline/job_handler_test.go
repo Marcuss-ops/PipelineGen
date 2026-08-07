@@ -470,6 +470,9 @@ func TestStockJobResult_ToResultMap_AllFieldsPopulated(t *testing.T) {
 
 	assertString(t, m, "metadata_link", "https://drive.example.com/metadata.json")
 	assertString(t, m, "metadata_file_id", "abc123def456")
+	if stages, ok := m["stages"].([]StageSnapshot); !ok || stages != nil {
+		t.Errorf("stages = %v (%T), want nil []StageSnapshot", m["stages"], m["stages"])
+	}
 
 	// ── omitempty-populated fields (non-zero) ──────────────────
 	assertString(t, m, "__finalization_status", "completed")
@@ -585,8 +588,8 @@ func TestStockJobResult_ToResultMap_AllFieldsZero(t *testing.T) {
 	r := StockJobResult{}
 	m := r.ToResultMap()
 
-	// 7 always-present keys
-	wantKeys := 7
+	// 8 always-present keys, including the canonical stage snapshot.
+	wantKeys := 8
 	if len(m) != wantKeys {
 		t.Errorf("map has %d keys, want %d (zero-valued omitempty fields must be absent): %v", len(m), wantKeys, keysOf(m))
 	}

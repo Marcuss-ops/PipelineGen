@@ -37,6 +37,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -63,6 +64,23 @@ type RunSummary struct {
 	Manifest    *job.ArtifactManifest
 	FinalStatus job.Status
 	Counts      RunCounts
+	Stages      []StageSnapshot `json:"stages"`
+}
+
+// StageSnapshot is the stable, read-only stage projection returned with a
+// stock job result. It deliberately omits checkpoint fingerprints and raw
+// artifact references: those are internal resume details, not an API
+// contract. A skipped stage is explicitly non-applicable rather than a
+// false completed success (for example, compose_chunks is bypassed when
+// the cutter output is already the canonical final artifact).
+type StageSnapshot struct {
+	Name        string     `json:"name"`
+	Status      string     `json:"status"`
+	Attempt     int        `json:"attempt"`
+	Applicable  bool       `json:"applicable"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	LastError   string     `json:"last_error,omitempty"`
 }
 
 // RunCounts is the auditable outcome of one stock run. Values are derived
