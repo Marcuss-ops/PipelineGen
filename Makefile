@@ -54,7 +54,7 @@
 	verify-vidrush-fast verify-vidrush-local verify-vidrush-resilience verify-vidrush-release \
 	verify-vidrush-artlist-live verify-vidrush-images-live verify-vidrush-generation-live verify-vidrush-full-live benchmark-vidrush doctor-vidrush \
 	docker-build docker-build-worker docker-run docker-sign docker-digest \
-	docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke \
+	docker-verify-digest docker-verify-ffmpeg docker-verify-whisper docker-bootstrap-smoke \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	doctor artlist auth-check regenerate-token scraper-up \
 	smoke-pipeline operate-script-generate smoke-run-all smoke-dry smoke-voiceover \
