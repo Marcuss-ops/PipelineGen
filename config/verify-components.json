@@ -356,6 +356,7 @@
       "internal/infrastructure/youtube/",  "internal/api/assets/youtube/",
   "scripts/tools/transcribe_detect_lang.py",
   "scripts/requirements-whisper.txt",
+      "requirements/whisper.lock.txt",
   "scripts/verify-whisper.sh",
   "scripts/ci/whisper-deployment-contract_test.py",
   "scripts/tools/whisper_preflight.py",
