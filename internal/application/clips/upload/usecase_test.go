@@ -28,6 +28,7 @@ package upload
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -77,9 +78,18 @@ func (a *uploadFakeArtifact) LocalPath(_ context.Context, _ string) (string, err
 
 var _ ArtifactServicePort = (*uploadFakeArtifact)(nil)
 
-type uploadFakeDispatcher struct{}
+type uploadFakeDispatcher struct {
+	lastClip *asset.Asset
+}
 
-func (d *uploadFakeDispatcher) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
+func (d *uploadFakeDispatcher) EnqueueAndIndex(_ context.Context, clip *asset.Asset, _ string) error {
+	if clip == nil {
+		return fmt.Errorf("clip is nil")
+	}
+	if !clip.LifecycleState.Valid() {
+		return fmt.Errorf("invalid lifecycle state: %q", clip.LifecycleState)
+	}
+	d.lastClip = clip
 	return nil
 }
 
@@ -108,6 +118,46 @@ func (c *uploadFakeConfig) AssetsStoragePath() string         { return "/tmp/ass
 func (c *uploadFakeConfig) JobTimeout(_ string) time.Duration { return 30 * time.Second }
 
 var _ Config = (*uploadFakeConfig)(nil)
+
+// TestUseCaseExecute_InitializesCanonicalAssetStates pins the production
+// upload boundary to the shared asset-state factory. The dispatcher rejects
+// empty or legacy lifecycle states, so a real upload must enter with STAGING;
+// the canonical SQL schema supplies DISCOVERED for the index_state column.
+func TestUseCaseExecute_InitializesCanonicalAssetStates(t *testing.T) {
+	t.Parallel()
+	dispatcher := &uploadFakeDispatcher{}
+	uc, err := NewUseCase(UseCaseDeps{
+		Artifact: &uploadFakeArtifact{ref: &ArtifactRef{
+			ID:        "upload-state-test-id",
+			SHA256:    "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+			SizeBytes: 1024,
+		}},
+		Dispatcher:    dispatcher,
+		TreeBuilder:   &uploadFakeTreeBuilder{},
+		Config:        &uploadFakeConfig{},
+		ProcessRunner: nil,
+		Log:           zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("NewUseCase returned error: %v", err)
+	}
+
+	_, err = uc.Execute(context.Background(), UploadClipCommand{
+		File:     io.NopCloser(bytes.NewReader([]byte("fake mp4 bytes"))),
+		Filename: "state-test.mp4",
+		Name:     "state test",
+		Source:   "clips",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if dispatcher.lastClip == nil {
+		t.Fatal("dispatcher did not receive the clip")
+	}
+	if got := dispatcher.lastClip.LifecycleState; got != asset.StateStaging {
+		t.Fatalf("LifecycleState = %q, want %q", got, asset.StateStaging)
+	}
+}
 
 // newUseCaseWithStubs is the test helper that builds a UseCase
 // with all 7 ports wired to the no-op stubs + a caller-supplied
