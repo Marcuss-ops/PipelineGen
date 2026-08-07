@@ -558,6 +558,80 @@ func TestStockPlanStep_ClipsPropagatePolicyVersion(t *testing.T) {
 	}
 }
 
+// TestStockPlanStep_ShortSourceUsesRealDuration guards against the
+// Muhammad Ali 10m E2E regression (2026-08-07): resolveInputQueries
+// discarded the provider-known source duration, so concreteSources
+// passed DurationSec=0 to the deterministic planner, which fell back
+// to the budget*10 horizon (600s) and planned a clip ending at 310s
+// for a 226s source → ErrStockClipsOutOfRange failed the whole run.
+// With SourceDurations populated, every planned clip must stay within
+// the real source length.
+func TestStockPlanStep_ShortSourceUsesRealDuration(t *testing.T) {
+	const shortURL = "https://www.youtube.com/watch?v=short226"
+	runner := &fakeStepRunner{
+		runInput: &RunInput{
+			DirectURLs:                     []string{shortURL},
+			SourceDurations:                map[string]float64{shortURL: 226.19},
+			TargetDurationPerSourceSeconds: 60,
+			ClipsPerSource:                 3,
+			ClipDurationSeconds:            20,
+		},
+		cfg: OrchestratorConfig{
+			PolicyVersion:    "test-policy-v1",
+			ClipDurationSec:  20,
+			ChunkDurationSec: 60,
+		},
+		state:   &RunState{},
+		planner: NewDeterministicPlanner(),
+	}
+	step := StockPlanStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	plans := runner.State().Plan
+	if len(plans) != 3 {
+		t.Fatalf("expected 3 plans (60s/20s), got %d", len(plans))
+	}
+	for i, plan := range plans {
+		if plan.EndSec > 226.19 {
+			t.Errorf("plan[%d] EndSec=%.2f exceeds real source duration 226.19s (would fail with ErrStockClipsOutOfRange)", i, plan.EndSec)
+		}
+		if plan.StartSec < 0 || plan.EndSec <= plan.StartSec {
+			t.Errorf("plan[%d] invalid range [%v,%v]", i, plan.StartSec, plan.EndSec)
+		}
+	}
+}
+
+// TestStockPlanStep_UnknownDurationKeepsFallbackContract verifies that
+// sources without a known duration keep the previous behavior: the
+// planner uses its conservative horizon and the plan is produced
+// without error (extract-time bounds check remains the fail-closed
+// guard).
+func TestStockPlanStep_UnknownDurationKeepsFallbackContract(t *testing.T) {
+	runner := &fakeStepRunner{
+		runInput: &RunInput{
+			DirectURLs:                     []string{"https://www.youtube.com/watch?v=unknown"},
+			TargetDurationPerSourceSeconds: 60,
+			ClipsPerSource:                 3,
+			ClipDurationSeconds:            20,
+		},
+		cfg: OrchestratorConfig{
+			PolicyVersion:    "test-policy-v1",
+			ClipDurationSec:  20,
+			ChunkDurationSec: 60,
+		},
+		state:   &RunState{},
+		planner: NewDeterministicPlanner(),
+	}
+	step := StockPlanStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := len(runner.State().Plan); got != 3 {
+		t.Fatalf("expected 3 plans, got %d", got)
+	}
+}
+
 // ── Compile-time guard: fakeStepRunner satisfies StepRunner ────────
 
 var _ StepRunner = (*fakeStepRunner)(nil)

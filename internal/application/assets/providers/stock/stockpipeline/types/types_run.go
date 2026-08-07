@@ -68,9 +68,18 @@ type ClipSpec struct {
 type RunInput struct {
 	SearchQueries []string
 	DirectURLs    []string
-	DriveURLs     []string
-	Clips         []ClipSpec
-	TotalMinutes  int
+	// SourceDurations maps a resolved DirectURL to the source video's
+	// real duration in seconds (when known from the search provider's
+	// metadata). Populated by Service.resolveInputQueries so the
+	// deterministic planner can distribute clip windows within the
+	// actual source length instead of the budget*10 fallback. This
+	// prevents ErrStockClipsOutOfRange when a resolved source is
+	// shorter than the assumed horizon. Missing entries are treated
+	// as unknown duration (planner fallback applies).
+	SourceDurations map[string]float64
+	DriveURLs       []string
+	Clips           []ClipSpec
+	TotalMinutes    int
 	// Explicit stock contract. These fields are the source of truth for
 	// bounded stock runs; TotalMinutes remains only for legacy callers.
 	TargetTotalDurationSeconds     int
