@@ -8,20 +8,58 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
-	requestedCodec := opts.Codec
-	canonical := canonicalClipProfile()
-	opts.Width = canonical.Width
-	opts.Height = canonical.Height
-	opts.FPS = canonical.FPS
-	opts.Codec = canonical.Codec
-	opts.Preset = canonical.Preset
-	opts.CRF = canonical.CRF
-	opts.KeyframeInterval = canonical.KeyframeInterval
+	profile := opts.Profile
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = canonicalClipProfile()
+	}
+	requestedCodec := opts.Policy.Codec
+	if requestedCodec == "" {
+		requestedCodec = opts.Codec
+	}
+	if requestedCodec == "" {
+		requestedCodec = p.encoderMode
+	}
+	if requestedCodec == "" {
+		requestedCodec = string(EncoderLibX264)
+	}
+	preset := opts.Policy.Preset
+	if preset == "" {
+		preset = opts.Preset
+	}
+	if preset == "" {
+		preset = p.encoderPreset
+	}
+	if preset == "" {
+		preset = "veryfast"
+	}
+	crf := opts.Policy.CRF
+	if crf <= 0 {
+		crf = opts.CRF
+	}
+	if crf <= 0 {
+		crf = p.encoderCRF
+	}
+	if crf <= 0 {
+		crf = 23
+	}
+	opts.Width = profile.Width
+	opts.Height = profile.Height
+	opts.FPS = profile.FPS
+	opts.KeyframeInterval = profile.KeyframeInterval
 	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
+	if preset == "" {
+		preset = p.encoderPreset
+	}
+	if crf <= 0 {
+		crf = p.encoderCRF
+	}
+	opts.Preset = preset
+	opts.CRF = crf
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -45,12 +83,12 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	args = append(args, "-i", input)
 
-	args = append(args, "-vf", CanonicalClipFilter(canonical))
+	args = append(args, "-vf", CanonicalVideoProfileFilter(profile))
 
 	if !opts.KeepAudio {
 		args = append(args, "-an")
 	} else {
-		args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2")
+		args = append(args, "-c:a", profile.AudioCodec, "-b:a", profile.AudioBitrate, "-ar", "48000", "-ac", "2")
 		args = append(args, "-af", "asetpts=PTS-STARTPTS")
 	}
 
@@ -94,14 +132,17 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	if codec == "" {
 		codec = p.encoderMode
 	}
-	if codec == "" {
-		codec = canonical.Codec
+	if preset == "" {
+		preset = p.encoderPreset
 	}
 	if preset == "" {
-		preset = canonical.Preset
+		preset = "veryfast"
 	}
 	if crf <= 0 {
-		crf = canonical.CRF
+		crf = p.encoderCRF
+	}
+	if crf <= 0 {
+		crf = 23
 	}
 	codec = p.resolveEncoder(ctx, codec)
 
@@ -127,7 +168,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		args = append(args, "-to", end)
 	}
 
-	args = append(args, "-vf", CanonicalClipFilterTrim(canonical))
+	args = append(args, "-vf", CanonicalVideoProfileFilterTrim(canonical))
 	args = append(args, "-c:v", codec)
 	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
@@ -158,15 +199,52 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 // CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
 // avoiding a double re-encode. Combines CutSegment + Normalize.
 func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts CutAndNormalizeOptions) error {
-	requestedCodec := opts.Codec
-	canonical := canonicalClipProfile()
-	opts.Width = canonical.Width
-	opts.Height = canonical.Height
-	opts.FPS = canonical.FPS
-	opts.Codec = canonical.Codec
-	opts.Preset = canonical.Preset
-	opts.CRF = canonical.CRF
+	profile := opts.Profile
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = canonicalClipProfile()
+	}
+	requestedCodec := opts.Policy.Codec
+	if requestedCodec == "" {
+		requestedCodec = opts.Codec
+	}
+	if requestedCodec == "" {
+		requestedCodec = p.encoderMode
+	}
+	if requestedCodec == "" {
+		requestedCodec = string(EncoderLibX264)
+	}
+	preset := opts.Policy.Preset
+	if preset == "" {
+		preset = opts.Preset
+	}
+	if preset == "" {
+		preset = p.encoderPreset
+	}
+	if preset == "" {
+		preset = "veryfast"
+	}
+	crf := opts.Policy.CRF
+	if crf <= 0 {
+		crf = opts.CRF
+	}
+	if crf <= 0 {
+		crf = p.encoderCRF
+	}
+	if crf <= 0 {
+		crf = 23
+	}
+	opts.Width = profile.Width
+	opts.Height = profile.Height
+	opts.FPS = profile.FPS
 	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
+	if preset == "" {
+		preset = p.encoderPreset
+	}
+	if crf <= 0 {
+		crf = p.encoderCRF
+	}
+	opts.Preset = preset
+	opts.CRF = crf
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 	}
@@ -179,19 +257,19 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 		args = append(args, "-to", end)
 	}
 
-	args = append(args, "-vf", CanonicalClipFilter(canonical))
+	args = append(args, "-vf", CanonicalVideoProfileFilter(profile))
 
 	if opts.NoAudio {
 		args = append(args, "-an")
 	} else {
-		args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2", "-af", "asetpts=PTS-STARTPTS")
+		args = append(args, "-c:a", profile.AudioCodec, "-b:a", profile.AudioBitrate, "-ar", "48000", "-ac", "2", "-af", "asetpts=PTS-STARTPTS")
 	}
 
 	args = append(args, "-c:v", opts.Codec)
 	if !strings.Contains(opts.Codec, "nvenc") {
 		args = append(args, "-preset", opts.Preset)
 	}
-	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
+	args = append(args, "-g", fmt.Sprintf("%d", profile.KeyframeInterval))
 
 	if strings.Contains(opts.Codec, "nvenc") {
 		// The canonical preset is software-oriented; normalize it for NVENC.
@@ -225,18 +303,23 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	if len(jobs) == 0 {
 		return nil
 	}
-	canonical := canonicalClipProfile()
 	if codec == "" {
 		codec = p.encoderMode
 	}
 	if codec == "" {
-		codec = canonical.Codec
+		codec = string(EncoderLibX264)
 	}
 	if preset == "" {
-		preset = canonical.Preset
+		preset = p.encoderPreset
+	}
+	if preset == "" {
+		preset = "veryfast"
 	}
 	if crf <= 0 {
-		crf = canonical.CRF
+		crf = p.encoderCRF
+	}
+	if crf <= 0 {
+		crf = 23
 	}
 	codec = p.resolveEncoder(ctx, codec)
 
@@ -275,7 +358,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 	var filterParts []string
 	for i, j := range jobs {
 		filterParts = append(filterParts,
-			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS,%s[v%d]", j.StartSec, j.EndSec, CanonicalClipFilterTrim(canonical), i))
+			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS,%s[v%d]", j.StartSec, j.EndSec, CanonicalVideoProfileFilterTrim(canonical), i))
 		if !noAudio {
 			filterParts = append(filterParts,
 				fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a%d]", j.StartSec, j.EndSec, i))

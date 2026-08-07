@@ -36,6 +36,7 @@ func runRenderShort(args []string) error {
 	defer cancel()
 	var uploader adminmedia.AdminUploader
 	ffmpegPath := "ffmpeg"
+	encoder := string(ffmpeg.EncoderLibX264)
 	if manifest.Upload != nil {
 		cfg, log, cleanup, err := appLogger()
 		if err != nil {
@@ -53,12 +54,13 @@ func runRenderShort(args []string) error {
 		if cfg.External.FfmpegPath != "" {
 			ffmpegPath = cfg.External.FfmpegPath
 		}
+		encoder = cfg.Video.WithDefaults().Codec
 		uploader, err = delivery.NewAdminUploadService(root.Drive.Publisher)
 		if err != nil {
 			return err
 		}
 	}
-	result, err := adminmedia.RenderShort(ctx, manifest, ffmpeg.NewAdminMediaProcessor(ffmpegPath), uploader)
+	result, err := adminmedia.RenderShort(ctx, manifest, ffmpeg.NewAdminMediaProcessorWithEncoder(ffmpegPath, encoder), uploader)
 	if err != nil {
 		return err
 	}

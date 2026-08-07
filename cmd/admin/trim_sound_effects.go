@@ -5,12 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 // runTrimSoundEffects caps local SFX files at maxSeconds. Files already at or
@@ -56,6 +57,7 @@ func runTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
+	mediaEditor := ffmpeg.NewAdminMediaProcessorWithEncoder(cfg.External.FfmpegPath, cfg.Video.WithDefaults().Codec)
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
 		var id string
@@ -93,7 +95,7 @@ func runTrimSoundEffects(args []string) error {
 		}
 
 		targetSeconds := trimTargetSeconds(localPath, *maxSeconds)
-		if err := trimSoundEffect(ctx, localPath, targetSeconds); err != nil {
+		if err := trimSoundEffect(ctx, localPath, targetSeconds, mediaEditor); err != nil {
 			return fmt.Errorf("trim %s: %w", clip.Name, err)
 		}
 		newDuration, err := probeSoundEffectDuration(ctx, localPath)
@@ -136,27 +138,12 @@ func trimTargetSeconds(inputPath string, maxSeconds float64) float64 {
 	}
 }
 
-func trimSoundEffect(ctx context.Context, inputPath string, maxSeconds float64) error {
-	ext := strings.ToLower(filepath.Ext(inputPath))
-	tmpPath := inputPath + ".trim.tmp" + ext
-	defer os.Remove(tmpPath)
-
-	args := []string{"-y", "-i", inputPath, "-t", fmt.Sprintf("%.3f", maxSeconds)}
-	switch ext {
-	case ".mp4", ".mov", ".mkv":
-		args = append(args, "-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart")
-	case ".wav":
-		args = append(args, "-vn", "-c:a", "pcm_s16le")
-	default:
-		args = append(args, "-vn", "-c:a", "libmp3lame", "-q:a", "2")
+func trimSoundEffect(ctx context.Context, inputPath string, maxSeconds float64, editor adminmedia.AudioEditor) error {
+	if editor == nil {
+		return fmt.Errorf("audio editor is required")
 	}
-	args = append(args, tmpPath)
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	if err := os.Rename(tmpPath, inputPath); err != nil {
-		return fmt.Errorf("replace source: %w", err)
+	if err := editor.Trim(ctx, inputPath, maxSeconds); err != nil {
+		return fmt.Errorf("ffmpeg trim: %w", err)
 	}
 	return nil
 }

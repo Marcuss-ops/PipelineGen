@@ -117,14 +117,15 @@ func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderReq
 	if requestedCodec == "" {
 		requestedCodec = r.encoderMode
 	}
-	canonical := (config.VideoConfig{}).CanonicalClip()
-	req.Width = canonical.Width
-	req.Height = canonical.Height
-	req.FPS = canonical.FPS
+	profile := (config.VideoConfig{}).CanonicalVideoProfile()
+	policy := (config.VideoConfig{Codec: requestedCodec}).EncoderPolicy()
+	req.Width = profile.Width
+	req.Height = profile.Height
+	req.FPS = profile.FPS
 	req.Codec = r.encoder.ResolveEncoder(ctx, requestedCodec)
-	req.Preset = canonical.Preset
-	req.CRF = canonical.CRF
-	req.KeyframeInterval = canonical.KeyframeInterval
+	req.Preset = policy.Preset
+	req.CRF = policy.CRF
+	req.KeyframeInterval = profile.KeyframeInterval
 	if req.Logger != nil {
 		// Route app-provided logger through the renderer's log field so
 		// RenderRequest.Log wins when provided; otherwise fall back to
@@ -274,7 +275,7 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 
 	for idx := 0; idx < inputCount; idx++ {
 		clipFilters := []string{
-			ffmpeg.CanonicalClipFilter(config.VideoConfig{Width: req.Width, Height: req.Height, FPS: req.FPS}),
+			ffmpeg.CanonicalVideoProfileFilter(config.CanonicalVideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS}),
 		}
 
 		// Fade-out at the END of every Nth clip.

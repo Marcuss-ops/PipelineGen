@@ -40,7 +40,7 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
 	defer cancel()
 	ffmpegPath := cfg.External.FfmpegPath
-	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, ffmpeg.NewAdminMediaProcessor(ffmpegPath), uploader)
+	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, ffmpeg.NewAdminMediaProcessorWithEncoder(ffmpegPath, cfg.Video.WithDefaults().Codec), uploader)
 	if err != nil {
 		return err
 	}

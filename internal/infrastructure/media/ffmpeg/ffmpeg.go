@@ -18,8 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-func canonicalClipProfile() config.VideoConfig {
-	return (config.VideoConfig{}).CanonicalClip()
+func canonicalClipProfile() config.CanonicalVideoProfile {
+	return (config.VideoConfig{}).CanonicalVideoProfile()
 }
 
 // ── ProcessRunner port (Pattern 0) ────────────────────────────────────
@@ -44,11 +44,13 @@ var _ ProcessRunner = defaultProcessRunner{}
 
 // Processor handles FFmpeg operations.
 type Processor struct {
-	path        string
-	runner      ProcessRunner
-	resolver    *EncoderResolver
-	encoderMode string
-	nvencSlots  chan struct{}
+	path          string
+	runner        ProcessRunner
+	resolver      *EncoderResolver
+	encoderMode   string
+	encoderPreset string
+	encoderCRF    int
+	nvencSlots    chan struct{}
 }
 
 // NewProcessor creates a new FFmpeg Processor with the given binary path.
@@ -60,20 +62,35 @@ func NewProcessor(ffmpegPath string) *Processor {
 // NewProcessorWithEncoder creates a Processor with an explicit runtime
 // encoder policy (auto, h264_nvenc/nvenc, or libx264).
 func NewProcessorWithEncoder(ffmpegPath, encoderMode string) *Processor {
-	return newProcessor(ffmpegPath, encoderMode)
+	return newProcessor(ffmpegPath, config.VideoEncoderPolicy{
+		Codec:  encoderMode,
+		Preset: "veryfast",
+		CRF:    23,
+	})
 }
 
-func newProcessor(ffmpegPath, encoderMode string) *Processor {
+func newProcessor(ffmpegPath string, policy config.VideoEncoderPolicy) *Processor {
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
 	}
 	runner := defaultProcessRunner{}
+	if policy.Codec == "" {
+		policy.Codec = string(EncoderLibX264)
+	}
+	if policy.Preset == "" {
+		policy.Preset = "veryfast"
+	}
+	if policy.CRF <= 0 {
+		policy.CRF = 23
+	}
 	return &Processor{
-		path:        ffmpegPath,
-		runner:      runner,
-		resolver:    NewEncoderResolver(ffmpegPath, runner),
-		encoderMode: encoderMode,
-		nvencSlots:  make(chan struct{}, 1),
+		path:          ffmpegPath,
+		runner:        runner,
+		resolver:      NewEncoderResolver(ffmpegPath, runner),
+		encoderMode:   policy.Codec,
+		encoderPreset: policy.Preset,
+		encoderCRF:    policy.CRF,
+		nvencSlots:    make(chan struct{}, 1),
 	}
 }
 
@@ -86,10 +103,9 @@ func NewFromConfig(cfg *config.Config) *Processor {
 	if path == "" {
 		path = "ffmpeg"
 	}
-	// Preserve the configured encoder policy (auto/NVENC/libx264); the
-	// canonical profile deliberately normalizes materialized clips to
-	// libx264 and must not erase the runtime policy before resolution.
-	return newProcessor(path, cfg.Video.WithDefaults().Codec)
+	// Preserve the configured encoder policy (codec, preset and CRF); the
+	// canonical artifact profile must not erase it before resolution.
+	return newProcessor(path, cfg.Video.EncoderPolicy())
 }
 
 // Path returns the configured ffmpeg binary path.
