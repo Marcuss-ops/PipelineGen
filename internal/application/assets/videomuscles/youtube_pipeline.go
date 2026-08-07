@@ -64,6 +64,23 @@ func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess *pkgffmpeg.Pro
 	}
 }
 
+// buildYouTubeSectionDownloadRequest keeps section acquisition stream-copy-only.
+// The downloaded section may include keyframe padding; CutAndNormalize below
+// trims that padding and performs the single canonical encode. Setting
+// ForceKeyframes here would make yt-dlp invoke its own ffmpeg re-encode first,
+// creating a hidden double encode before the canonical render.
+func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *downloader.DownloadRequest {
+	return &downloader.DownloadRequest{
+		URL:              req.URL,
+		OutputPath:       outputPath,
+		MergeFormat:      "mp4",
+		DownloadSections: []string{section},
+		ForceKeyframes:   false,
+		UseCookies:       useCookies,
+		Timeout:          10 * time.Minute,
+	}
+}
+
 // DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses FFmpeg to process it.
 // Returns the local path and full YouTube metadata (title, description, tags, language, etc.).
 func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCutRequest) (*YouTubeCutResult, error) {
@@ -141,15 +158,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		endStr := p.formatTime(req.Start + req.Duration)
 		section := fmt.Sprintf("*%s-%s", startStr, endStr)
 
-		dlReq := &downloader.DownloadRequest{
-			URL:              req.URL,
-			OutputPath:       tempVideoPath,
-			MergeFormat:      "mp4",
-			DownloadSections: []string{section},
-			ForceKeyframes:   req.ForceKeyframes,
-			UseCookies:       p.hasYouTubeCookies(),
-			Timeout:          10 * time.Minute,
-		}
+		dlReq := buildYouTubeSectionDownloadRequest(req, tempVideoPath, section, p.hasYouTubeCookies())
 
 		downloadTimer := time.Now()
 		segments, err := p.ytdlp.DownloadSections(ctx, dlReq)

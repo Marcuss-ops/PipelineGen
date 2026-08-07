@@ -227,9 +227,6 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	if pathErr != nil {
 		return "", fmt.Errorf("download range succeeded but output file not found: %w", pathErr)
 	}
-	if err := normalizeSectionFile(ctx, path, req.DownloadSections[0]); err != nil {
-		return "", err
-	}
 	return path, nil
 }
 
@@ -322,10 +319,6 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		if pathErr != nil {
 			return results, fmt.Errorf("section %d: %w", i, pathErr)
 		}
-		if err := normalizeSectionFile(ctx, resolvedPath, section); err != nil {
-			return results, err
-		}
-
 		results = append(results, DownloadedSegment{
 			Path:  resolvedPath,
 			Name:  fmt.Sprintf("segment_%03d", i+1),

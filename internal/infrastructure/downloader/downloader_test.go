@@ -672,9 +672,8 @@ func TestDownload_YouTube_RetryableErrors_UseBoundedFallbackChain(t *testing.T) 
 // TestDownloadSections_YouTubeBotCheck_FallsBackAndFails pins the fallback
 // loop on the stock pipeline path (DownloadSections): a bot-checked section
 // download tries the primary client then the configured alternate clients and
-// fails closed with the last error once exhausted. (The success path of
-// DownloadSections runs a real ffmpeg normalize step and is covered by the
-// Download-level fallback tests plus the staging suite.)
+// fails closed with the last error once exhausted. DownloadSections returns
+// the raw section; canonical materialization belongs to its consumer.
 func TestDownloadSections_YouTubeBotCheck_FallsBackAndFails(t *testing.T) {
 	setupTestAllowlist(t)
 	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{

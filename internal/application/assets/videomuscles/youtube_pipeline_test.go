@@ -11,6 +11,19 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) {
+	req := buildYouTubeSectionDownloadRequest(YouTubeCutRequest{
+		URL:            "https://www.youtube.com/watch?v=example",
+		ForceKeyframes: true,
+	}, "/tmp/raw.mp4", "*00:00:01.000-00:00:05.000", true)
+
+	require.False(t, req.ForceKeyframes,
+		"the canonical YouTube path must leave section cutting to CutAndNormalize")
+	require.Equal(t, []string{"*00:00:01.000-00:00:05.000"}, req.DownloadSections)
+	require.Equal(t, "mp4", req.MergeFormat)
+	require.True(t, req.UseCookies)
+}
+
 func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "clip.mp4")
