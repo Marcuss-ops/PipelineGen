@@ -70,9 +70,14 @@
       "internal/api/assets/stock/",
       "internal/api/assets/artlist/",
       "internal/infrastructure/artlist/",
-   "scripts/youtube_boxer_stock_e2e.py",
-  "scripts/operations/bench_stock_clip_round.sh"
- ],
+      "scripts/youtube_boxer_stock_e2e.py",
+      "scripts/operations/bench_stock_clip_round.sh",
+      "scripts/check_ma_v3.py",
+      "scripts/poll_ma_v3.py",
+      "scripts/poll_ma_v3b.py",
+      "scripts/probe_ma_clips.py",
+      "out/stock-e2e-muhammad-ali-10m.payload.json"
+    ],
     "go_packages": [
       "./internal/application/assets/providers/stock/...",
       "./internal/application/assets/providers/artlist/...",
@@ -354,9 +359,11 @@
   "scripts/ci/whisper-deployment-contract_test.py",
   "scripts/tools/whisper_preflight.py",
   "scripts/tools/whisper_runtime.py",
-  "scripts/tools/test_whisper_preflight.py",
-  "scripts/systemd/pipelinegen.service.d/whisper.conf",
-  "docker-compose.yml"
+      "scripts/tools/test_whisper_preflight.py",
+      "scripts/systemd/pipelinegen.service.d/whisper.conf",
+      "scripts/systemd/pipelinegen.service.d/youtube-dlp.conf",
+      "scripts/yt-dlp-pipeline",
+      "docker-compose.yml"
  ],
     "go_packages": [
       "./internal/domain/youtube/...",

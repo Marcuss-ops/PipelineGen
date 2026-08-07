@@ -38,6 +38,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         "Makefile",
         "go.mod",
         "go.sum",
+        ".env.example",
         "config.example.yaml",
         "config.production.example.yaml",
         "config/multilingual.yaml",
