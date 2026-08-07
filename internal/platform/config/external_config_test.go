@@ -72,6 +72,74 @@ func TestExternalConfigResolveYouTubeCookiesPath(t *testing.T) {
 	})
 }
 
+func TestExternalConfigYoutubeSleepBinding(t *testing.T) {
+	t.Run("defaultsDisablePacing", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		assert.Equal(t, 0, cfg.External.YoutubeMinSleepSeconds)
+		assert.Equal(t, 0, cfg.External.YoutubeMaxSleepSeconds)
+		assert.Equal(t, 0, func() int { min, _ := cfg.External.ResolvedYouTubeSleepSeconds(); return min }())
+	})
+
+	t.Run("yamlBindsAndClampsRange", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		raw := []byte(`external:
+  youtube_min_sleep_seconds: 3
+  youtube_max_sleep_seconds: 8
+`)
+		if err := yaml.Unmarshal(raw, cfg); err != nil {
+			t.Fatalf("yaml unmarshal failed: %v", err)
+		}
+		min, max := cfg.External.ResolvedYouTubeSleepSeconds()
+		assert.Equal(t, 3, min)
+		assert.Equal(t, 8, max)
+
+		cfg.External.YoutubeMaxSleepSeconds = 1
+		min, max = cfg.External.ResolvedYouTubeSleepSeconds()
+		assert.Equal(t, 3, min)
+		assert.Equal(t, 3, max)
+	})
+
+	t.Run("envBindsValues", func(t *testing.T) {
+		t.Setenv("YTDLP_MIN_SLEEP_SECONDS", "4")
+		t.Setenv("YTDLP_MAX_SLEEP_SECONDS", "9")
+		cfg := &Config{}
+		applyDefaults(cfg)
+		applyEnvVars(cfg)
+		assert.Equal(t, 4, cfg.External.YoutubeMinSleepSeconds)
+		assert.Equal(t, 9, cfg.External.YoutubeMaxSleepSeconds)
+	})
+}
+
+func TestExternalConfigYoutubePlayerClientFallbackBinding(t *testing.T) {
+	t.Run("defaultIsEmpty", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		assert.Empty(t, cfg.External.YoutubePlayerClientFallback)
+	})
+
+	t.Run("yamlBindsList", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		raw := []byte(`external:
+  youtube_player_client_fallback: [ios, web_creator]
+`)
+		if err := yaml.Unmarshal(raw, cfg); err != nil {
+			t.Fatalf("yaml unmarshal failed: %v", err)
+		}
+		assert.Equal(t, []string{"ios", "web_creator"}, cfg.External.YoutubePlayerClientFallback)
+	})
+
+	t.Run("envBindsCommaSeparatedList", func(t *testing.T) {
+		t.Setenv("VELOX_YOUTUBE_PLAYER_CLIENT_FALLBACK", " ios, web_creator, tv ")
+		cfg := &Config{}
+		applyDefaults(cfg)
+		applyEnvVars(cfg)
+		assert.Equal(t, []string{"ios", "web_creator", "tv"}, cfg.External.YoutubePlayerClientFallback)
+	})
+}
+
 // ---------- PR-ARTLIST-CONFIG-PREFIX (July 2026) ----------
 //
 // TestConfigLoaderReadsVeloxArtlistScraperServerURLFromEnv pins the
