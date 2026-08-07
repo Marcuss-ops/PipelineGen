@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -291,6 +292,11 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 
 const maxNVENCOutputsPerBatch = 3
 
+// maxTemporalBatchSpanSec bounds how far one input-seek microbatch may span.
+// Distant trim filters otherwise make FFmpeg decode the whole interval between
+// the first and last requested timestamp before producing short clips.
+const maxTemporalBatchSpanSec = 120
+
 // CutReencodeBatch extracts multiple clips from the same input in bounded
 // NVENC microbatches. A single NVENC process owns at most three output
 // sessions, and failures remain terminal for the selected encoder policy.
@@ -327,19 +333,28 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 			FormatSec(jobs[0].StartSec), FormatSec(jobs[0].EndSec), noAudio, codec, preset, crf)
 	}
 
-	if IsNVENCCodec(codec) && len(jobs) > maxNVENCOutputsPerBatch {
-		for start := 0; start < len(jobs); start += maxNVENCOutputsPerBatch {
-			end := start + maxNVENCOutputsPerBatch
-			if end > len(jobs) {
-				end = len(jobs)
+	if IsNVENCCodec(codec) {
+		planned := append([]CutJob(nil), jobs...)
+		sort.SliceStable(planned, func(i, j int) bool {
+			return planned[i].StartSec < planned[j].StartSec
+		})
+		for start := 0; start < len(planned); {
+			end := start
+			anchor := planned[start].StartSec
+			for end < len(planned) && end-start < maxNVENCOutputsPerBatch {
+				if end > start && planned[end].EndSec-anchor > maxTemporalBatchSpanSec {
+					break
+				}
+				end++
 			}
-			if err := p.cutReencodeBatchWithCodec(ctx, input, jobs[start:end], noAudio, codec, preset, crf); err != nil {
+			if err := p.cutReencodeBatchWithCodec(ctx, input, planned[start:end], noAudio, codec, preset, crf, anchor); err != nil {
 				return err
 			}
+			start = end
 		}
 		return nil
 	}
-	return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf)
+	return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf, 0)
 }
 
 // cutReencodeSingle is the single-job fast path for CutReencodeBatch.
@@ -348,19 +363,24 @@ func (p *Processor) cutReencodeSingle(ctx context.Context, input, output, start,
 }
 
 // cutReencodeBatchWithCodec performs the actual batch cut with the given codec.
-func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int) error {
+func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int, seekStart float64) error {
 	canonical := canonicalClipProfile()
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
+	if seekStart > 0 {
+		args = append(args, "-ss", FormatSec(seekStart))
+	}
 	args = append(args, "-i", input)
 
 	var filterParts []string
 	for i, j := range jobs {
+		start := j.StartSec - seekStart
+		end := j.EndSec - seekStart
 		filterParts = append(filterParts,
-			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS,%s[v%d]", j.StartSec, j.EndSec, CanonicalVideoProfileFilterTrim(canonical), i))
+			fmt.Sprintf("[0:v]trim=start=%f:end=%f,setpts=PTS-STARTPTS,%s[v%d]", start, end, CanonicalVideoProfileFilterTrim(canonical), i))
 		if !noAudio {
 			filterParts = append(filterParts,
-				fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a%d]", j.StartSec, j.EndSec, i))
+				fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a%d]", start, end, i))
 		}
 	}
 	args = append(args, "-filter_complex", strings.Join(filterParts, ";"))
@@ -474,7 +494,7 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 		"-map", "[vout]",
 		"-map", "0:a:0?",
 	}
-	args = appendAdminVideoEncoderArgs(args, codec, preset, quality)
+	args = appendVideoEncoderArgs(args, codec, preset, quality)
 	args = append(args,
 		"-c:a", "copy",
 		"-movflags", "+faststart",

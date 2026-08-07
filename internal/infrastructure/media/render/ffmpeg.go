@@ -392,7 +392,7 @@ func (r *FFmpegRenderer) encodeArgs(req stockpipeline.RenderRequest) []string {
 		"-ac", "2",
 		"-movflags", "+faststart",
 	}
-	if req.Codec == "h264_nvenc" {
+	if ffmpeg.IsNVENCCodec(req.Codec) {
 		args = append(args,
 			"-rc", "vbr",
 			"-cq", fmt.Sprintf("%d", req.CRF),

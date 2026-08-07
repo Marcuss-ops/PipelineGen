@@ -33,6 +33,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_monitor_infra_import", scan.ScanMonitorInfraImport},
 		{"percheck_player_client_centralization", scan.ScanPlayerClientCentralization},
 		{"percheck_dual_mode_sync", scan.ScanDualModeSync},
+		{"percheck_video_encoder_policy", scan.ScanVideoEncoderPolicy},
 		{"percheck_root_override_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanRootOverrideBan(root, pol, r, productionOnly)
 		}},

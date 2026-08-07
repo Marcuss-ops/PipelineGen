@@ -676,6 +676,27 @@ func TestCutReencodeBatch_OutputPaths(t *testing.T) {
 		"third output must be present; got argv: %v", argv)
 }
 
+func TestCutReencodeBatch_NVENCUsesTemporalInputSeekMicrobatches(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	jobs := []fftypes.CutJob{
+		{StartSec: 0, EndSec: 5, Output: "near_a.mp4"},
+		{StartSec: 10, EndSec: 15, Output: "near_b.mp4"},
+		{StartSec: 300, EndSec: 305, Output: "far.mp4"},
+	}
+
+	err := p.CutReencodeBatch(context.Background(), "long.mp4", jobs, true, "h264_nvenc", "p1", 23)
+	require.NoError(t, err)
+	assert.Equal(t, 2, runner.calls, "distant clips must use separate seek microbatches")
+	assert.True(t, hasArgPair(runner.lastArgv, "-ss", "300.000"),
+		"distant microbatch must seek before input; argv=%v", runner.lastArgv)
+	assert.True(t, hasArgSubstring(runner.lastArgv, "trim=start=0.000000:end=5.000000"),
+		"trim timestamps must be relative to the seek anchor; argv=%v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"),
+		"seek microbatch must preserve NVENC policy; argv=%v", runner.lastArgv)
+}
+
 // TestCutReencodeBatch_ContextCancellation verifies context cancellation propagates.
 func TestCutReencodeBatch_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
@@ -1012,9 +1033,20 @@ func TestImageToVideo_UsesConfiguredNVENCPolicy(t *testing.T) {
 
 	require.NoError(t, p.ImageToVideo(context.Background(), "still.png", "video.mp4", ImageToVideoOptions{}))
 	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "image-to-video must use configured NVENC: %v", runner.lastArgv)
-	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p1"), "image-to-video must normalize NVENC preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p4"), "image-to-video must normalize medium to a valid NVENC preset: %v", runner.lastArgv)
 	assert.True(t, hasArgPair(runner.lastArgv, "-cq", "18"), "image-to-video must use NVENC CQ quality: %v", runner.lastArgv)
 	assert.False(t, hasArg(runner.lastArgv, "-crf"), "NVENC image-to-video must not use software CRF: %v", runner.lastArgv)
+}
+
+func TestImageToVideo_NVENCFailureIsTerminal(t *testing.T) {
+	runner := &fallbackRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	err := p.ImageToVideo(context.Background(), "still.png", "video.mp4", ImageToVideoOptions{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NVENC encode required and failed")
+	require.Equal(t, 1, runner.calls, "image-to-video must not retry after NVENC failure")
+	assert.False(t, hasArgPair(runner.args[0], "-c:v", "libx264"), "image-to-video must not fallback to libx264: %v", runner.args[0])
 }
 
 func TestGenerateProxy_UsesConfiguredNVENCPolicy(t *testing.T) {

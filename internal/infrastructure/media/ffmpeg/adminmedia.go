@@ -48,14 +48,6 @@ func (p AdminMediaProcessor) Probe(ctx context.Context, path string) (time.Durat
 	return info.Duration, nil
 }
 
-func appendAdminVideoEncoderArgs(args []string, codec, preset string, quality int) []string {
-	args = append(args, "-c:v", codec, "-preset", NormalizeEncoderPreset(codec, preset))
-	if IsNVENCCodec(codec) {
-		return append(args, "-rc", "vbr", "-cq", fmt.Sprintf("%d", quality), "-tune", "hq", "-bf", "0")
-	}
-	return append(args, "-crf", fmt.Sprintf("%d", quality))
-}
-
 func (p AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSeconds float64) error {
 	proc := p.processor()
 	ext := strings.ToLower(filepath.Ext(inputPath))
@@ -70,7 +62,7 @@ func (p AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSeco
 		video = true
 		codec = proc.ResolveEncoder(ctx, "")
 		args = append(args, "-map", "0:v:0?", "-map", "0:a:0?")
-		args = appendAdminVideoEncoderArgs(args, codec, "medium", 18)
+		args = appendVideoEncoderArgs(args, codec, "medium", 18)
 		args = append(args, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart")
 	case ".wav":
 		args = append(args, "-vn", "-c:a", "pcm_s16le")
@@ -128,7 +120,7 @@ func (p AdminMediaProcessor) Render(ctx context.Context, m adminmedia.RenderMani
 	proc := p.processor()
 	codec := proc.ResolveEncoder(ctx, "")
 	ff = append(ff, "-filter_complex", filter, "-map", "[vout]", "-map", "[aout]")
-	ff = appendAdminVideoEncoderArgs(ff, codec, "medium", 18)
+	ff = appendVideoEncoderArgs(ff, codec, "medium", 18)
 	ff = append(ff, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", m.Output)
 	return proc.RunWithEncoderPolicy(ctx, codec, ff, 20*time.Minute)
 }
