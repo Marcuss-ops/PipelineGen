@@ -3,10 +3,7 @@ package stock
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
-	"path"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -39,98 +36,6 @@ func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/run", h.Run)
 	r.POST("/search-and-run", h.SearchAndRun)
 }
-
-// runRequest is the JSON body for POST /api/stock-pipeline/run.
-type runRequest struct {
-	SearchQueries                  []string                          `json:"search_queries"`
-	DirectURLs                     []string                          `json:"direct_urls,omitempty"`
-	DriveURLs                      []string                          `json:"drive_urls,omitempty"`
-	Clips                          []stockpipeline.ClipSpec          `json:"clips,omitempty"`
-	TotalMinutes                   int                               `json:"total_minutes"`
-	TargetTotalDurationSeconds     int                               `json:"target_total_duration_seconds,omitempty"`
-	TargetDurationPerSourceSeconds int                               `json:"target_duration_per_source_seconds,omitempty"`
-	ClipsPerSource                 int                               `json:"clips_per_source,omitempty"`
-	ClipDurationSeconds            int                               `json:"clip_duration_seconds,omitempty"`
-	DownloadMode                   string                            `json:"download_mode,omitempty"`
-	ChunkDuration                  int                               `json:"chunk_duration,omitempty"`
-	ClipDuration                   int                               `json:"clip_duration,omitempty"`
-	SecondsPerSegment              int                               `json:"seconds_per_segment,omitempty"`
-	NoAudio                        bool                              `json:"no_audio,omitempty"`
-	NoEffects                      bool                              `json:"no_effects,omitempty"`
-	NoTransitions                  bool                              `json:"no_transitions,omitempty"`
-	MaxVideos                      int                               `json:"max_videos,omitempty"`
-	Subfolder                      string                            `json:"subfolder"`
-	FolderName                     string                            `json:"folder_name"`
-	DriveFolderID                  string                            `json:"drive_folder_id,omitempty"`
-	FolderID                       string                            `json:"folder_id,omitempty"`
-	Metadata                       *stockpipeline.ChunkMetadataInput `json:"metadata,omitempty"`
-	Async                          bool                              `json:"async,omitempty"`
-	Persist                        bool                              `json:"persist,omitempty"`
-}
-
-// runResponse is the JSON response for POST /api/stock-pipeline/run and
-// POST /api/stock-pipeline/search-and-run.
-// godlike/06 SSOT: all error responses carry a machine-readable
-// `error_code` field (UNKNOWN_FIELD / INVALID_URL / PATH_TRAVERSAL /
-// MAX_CLIPS_EXCEEDED / INVALID_PAYLOAD). Successful responses carry
-// `deduplicated` (always present, default false) — the idempotency
-// followup will flip it to true when a duplicate run is detected.
-type runResponse struct {
-	JobID        string `json:"job_id,omitempty"`
-	RunID        string `json:"run_id,omitempty"`
-	Status       string `json:"status"`
-	Deduplicated bool   `json:"deduplicated"`
-	Error        string `json:"error,omitempty"`
-	ErrorCode    string `json:"error_code,omitempty"`
-}
-
-// Constants for the HTTP contract — exported so the test suite can
-// reference them without copy/paste drift.
-const (
-	// MaxClipsPerRun is the upper bound on `clips` per single
-	// request. Larger jobs MUST be split client-side into multiple
-	// runs (the orchestrator flags 100+ clips as a misuse surface).
-	MaxClipsPerRun = 100
-
-	// MaxURLLength caps individual URL strings to defense-in-depth
-	// against URL-flood DoS. 2048 chars covers long Drive-share links
-	// with auth tokens; longer URLs are flagged for operator review
-	// and should be wrapped in a separate reference.
-	MaxURLLength = 2048
-
-	// Response-level status strings (godlike/06 SSOT decoupling):
-	// these describe the *endpoint acknowledgement* — not the broker
-	// job state enum (QUEUED / RUNNING / FINALIZING / SUCCEEDED /
-	// INDEX_PENDING, owned by internal/kernel/job.Status).
-	//   - StatusPending = request accepted, work scheduled via the
-	//     jobs broker (async path; useCase.Submit returned a jobID).
-	//     Callers poll /api/jobs/{id}/full or wait for the
-	//     broker-level terminal state to know the actual outcome.
-	//   - StatusCompleted = request processed inline (sync path;
-	//     useCase.Submit returned with empty jobID, e.g. test
-	//     fixture or partial-deploy worker). The job is finished
-	//     by the time the response is serialised; no follow-up
-	//     polling is required.
-	// Keeping these distinct from the broker enum avoids the silent-
-	// confusion class where a "QUEUED" status string at the endpoint
-	// implies "job not yet started" while the broker is in RUNNING.
-	StatusPending   = "QUEUED"
-	StatusCompleted = "completed"
-	// StatusError is the third endpoint-acknowledgement value —
-	// emitted on every 4xx/5xx response (validation rejections, broker
-	// unavailability). The `error_code` field carries the machine-
-	// readable subtype (UNKNOWN_FIELD / INVALID_URL / etc.); `status`
-	// stays at the canonical literal so clients can branch on a single
-	// field with no enum drift.
-	StatusError = "error"
-
-	// Error codes — machine-readable tags for client retry logic.
-	ErrCodeUnknownField   = "UNKNOWN_FIELD"
-	ErrCodeInvalidURL     = "INVALID_URL"
-	ErrCodePathTraversal  = "PATH_TRAVERSAL"
-	ErrCodeMaxClips       = "MAX_CLIPS_EXCEEDED"
-	ErrCodeInvalidPayload = "INVALID_PAYLOAD"
-)
 
 // SearchAndRun handles POST /api/stock-pipeline/search-and-run.
 //
@@ -256,23 +161,24 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 //  5. Path-traversal check on folder fields → PATH_TRAVERSAL.
 //  6. clip_duration range check (existing, 3 ≤ d ≤ 30).
 //
-// On success returns 200 OK with {job_id, run_id, status, deduplicated}.
-// HTTP 200 (not 202) is intentional: the handler always acknowledges
-// receipt synchronously, and the response carries the canonical
-// endpoint-acknowledgement enum (godlike/06 SSOT, see StatusPending /
-// StatusCompleted above). Status naming is intentionally decoupled
-// from the broker job.State enum (QUEUED / RUNNING / FINALIZING /
-// SUCCEEDED / INDEX_PENDING) — clients that need broker-level status
-// poll /api/jobs/{id}/full separately.
+// On success returns 202 with {job_id, run_id, status, deduplicated}
+// when async=true, or 200 with {status, deduplicated} when async is
+// false or omitted. The response carries the canonical endpoint-
+// acknowledgement enum (godlike/06 SSOT, see StatusPending /
+// StatusCompleted above). Status naming is intentionally decoupled from
+// the broker job.State enum (QUEUED / RUNNING / FINALIZING / SUCCEEDED /
+// INDEX_PENDING) — clients that need broker-level status poll
+// /api/jobs/{id}/full separately.
 //
 // Endpoint-acknowledgement enum (godlike/06 SSOT decoupling, see the
 // StatusPending / StatusCompleted / StatusError constants above):
-//   - status = "pending" when the use case routed through the jobs
-//     broker (async path — useCase.Submit returned a non-empty jobID,
-//     canonical production path). job_id + run_id are populated.
-//   - status = "completed" when the use case ran inline (sync path —
-//     useCase.Submit returned no jobID, e.g. partial deploy / test
-//     fixture). job_id + run_id are empty.
+//   - status = "QUEUED" when the use case routed through the jobs
+//     broker (async=true; useCase.Submit returned a non-empty jobID,
+//     canonical production path). job_id + run_id are populated and
+//     the HTTP response is 202.
+//   - status = "completed" when the use case ran inline (async=false
+//     or the async field was omitted; useCase.Submit returned no jobID).
+//     job_id + run_id are empty and the HTTP response is 200.
 //   - status = "error" on any 4xx/5xx response from the validation
 //     chain or the use case (the `error_code` field carries the
 //     machine-readable subtype).
@@ -453,182 +359,4 @@ func (h *StockHandler) Run(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resp)
-}
-
-// redactURL returns a token-safe rendering of a URL for operator-facing
-// error messages (PR-STOCK-ERROR-LEAKS-TOKEN, DoD §16 GAP-C). The raw URL
-// is NEVER echoed verbatim: query strings, fragments, and userinfo are
-// stripped unconditionally (they are the canonical credential carriers in
-// signed URLs), and path segments that look like credentials (Bearer
-// shapes, whitespace, common marker words, or long opaque runs such as
-// JWTs) are masked. The host and the remaining path survive so operators
-// can still identify the offending endpoint.
-func redactURL(raw string) string {
-	if raw == "" {
-		return raw
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		// Parse failed (e.g. malformed escape). Query strings and
-		// fragments can still carry credentials even when the rest of
-		// the URL is unparseable, so mask anything with a token-like
-		// shape OR with a query/fragment present — never echo verbatim.
-		if looksLikeToken(raw) || strings.ContainsAny(raw, "?#") {
-			return "[REDACTED]"
-		}
-		return raw
-	}
-	parsed.User = nil
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	segments := strings.Split(parsed.Path, "/")
-	masked := false
-	for i, seg := range segments {
-		if looksLikeToken(seg) {
-			segments[i] = "[REDACTED]"
-			masked = true
-		}
-	}
-	if masked {
-		parsed.Path = strings.Join(segments, "/")
-	}
-	return parsed.String()
-}
-
-// looksLikeToken reports whether s is plausibly a credential value that
-// must never surface in logs or error responses. It is deliberately
-// conservative (fail-closed): a false positive only masks part of an
-// error message, whereas a false negative leaks a secret.
-func looksLikeToken(s string) bool {
-	if s == "" {
-		return false
-	}
-	lower := strings.ToLower(s)
-	// Bearer/whitespace shapes and bare marker words (Bearer <token>,
-	// api_key=..., access_token=...) are credential-shaped.
-	if strings.Contains(lower, "bearer") || strings.ContainsAny(s, " \t\n") {
-		return true
-	}
-	for _, marker := range []string{
-		"token", "secret", "apikey", "api_key", "access_token",
-		"refresh_token", "signature", "credential", "password", "passwd",
-	} {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	// Long opaque runs (JWTs, signed payloads) are credential-shaped.
-	if len([]rune(s)) >= 64 {
-		return true
-	}
-	return false
-}
-
-// isValidURL validates that u is an absolute https URL with a
-// resolvable hostname and rejects private / loopback IP addresses
-// (RFC1918 SSRF mitigation). file:// URLs are accepted for local
-// hermetic stock runs; the path portion is validated via isSafePath.
-// ftp://, gopher://, jar: are rejected via the scheme check.
-//
-// godlike/06 SSOT: this is the single source of truth for URL
-// validation at the HTTP boundary. The orchestrator's downstream
-// path uses different rules (yt-dlp accepts http on some sources)
-// but those are application-layer concerns.
-//
-// PR-DOMAIN-PRIMITIVES-NOMINAL (July 2026): signature accepts
-// primitives.URL (canonical nominal type) so the compiler catches
-// accidental swaps with other raw-string identifiers. The internal
-// lexical/HTTP validation is unchanged — the primitive is a pure
-// view of the underlying string. Callers pass primitives.NewURL(s)
-// at the HTTP boundary.
-func isValidURL(u primitives.URL) bool {
-	if u.IsEmpty() {
-		return false
-	}
-	raw := u.String()
-	// Length cap — defense in depth against URL-flood DoS (10MB URLs).
-	if len(raw) > MaxURLLength {
-		return false
-	}
-	// Null-byte rejection — some libraries truncate at NUL.
-	if strings.ContainsRune(raw, '\x00') {
-		return false
-	}
-	// file:// scheme: accept for local hermetic stock runs.
-	// Validate the path portion for traversal, null bytes, and backslashes
-	// with inline checks (file paths are absolute so isSafePath can't be used).
-	if strings.HasPrefix(raw, "file://") {
-		filePath := strings.TrimPrefix(raw, "file://")
-		// Null-byte rejection
-		if strings.ContainsRune(filePath, '\x00') {
-			return false
-		}
-		// Backslash escape — reject (mirrors isSafePath)
-		if strings.Contains(filePath, "\\") {
-			return false
-		}
-		// Path traversal rejection — check raw string BEFORE path.Clean
-		// because Clean legitimately resolves /../ sequences for absolute paths.
-		for _, part := range strings.Split(filePath, "/") {
-			if part == ".." {
-				return false
-			}
-		}
-		return true
-	}
-	parsed, err := url.ParseRequestURI(raw)
-	if err != nil {
-		return false
-	}
-	if !strings.EqualFold(parsed.Scheme, "https") {
-		return false
-	}
-	if parsed.Host == "" {
-		return false
-	}
-	host := parsed.Hostname()
-	// Reject when Hostname is a private / loopback IP literal
-	// (numeric IPv4 or IPv6 literal). Hostnames that resolve to
-	// private IPs at DNS-time are out of scope for the HTTP-layer
-	// validator — call the operator-side DNS pin at the runner level.
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-			return false
-		}
-	}
-	return true
-}
-
-// isSafePath rejects path-traversal attempts (".." sequences and
-// backslash escapes), absolute paths, and null-byte injections on
-// folder fields. True for the empty string and for any value whose
-// canonical path stays within the configured root.
-//
-// godlike/06 SSOT: single helper used across subfolder / folder_name /
-// drive_folder_id / folder_id fields.
-func isSafePath(p string) bool {
-	if p == "" {
-		return true
-	}
-	// Backslash escape — reject any path that contains "\".
-	if strings.Contains(p, `\`) {
-		return false
-	}
-	// Null-byte rejection — defense in depth against libtruncation bypass.
-	if strings.ContainsRune(p, '\x00') {
-		return false
-	}
-	// Absolute-path rejection (e.g. /etc/passwd). Windows drive letters
-	// like "C:\foo" are caught by the backslash check above.
-	if strings.HasPrefix(p, "/") {
-		return false
-	}
-	clean := path.Clean(p)
-	if clean == ".." {
-		return false
-	}
-	if strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
-		return false
-	}
-	return true
 }
