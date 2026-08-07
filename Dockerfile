@@ -115,17 +115,22 @@ RUN apt-get update \
 # Keep the Python ML runtime isolated from Debian's externally-managed
 # system interpreter (PEP 668). The manifest pins the Whisper inference
 # engine, CTranslate2, and the CUDA 12/cuDNN 9 runtime wheels together.
-# Keep a copy in the image so image certification can compare installed
-# metadata against the exact manifest used during the build.
+# Keep copies in the image so image certification can compare installed
+# metadata against the direct manifest and exact lock used during the build.
 COPY scripts/requirements-whisper.txt /opt/whisper/requirements.txt
+COPY requirements/whisper.lock.txt /opt/whisper/requirements.lock.txt
 RUN python3 -m venv /opt/venv \
  && /opt/venv/bin/python -m pip install --no-cache-dir \
-      --requirement /opt/whisper/requirements.txt \
+      --requirement /opt/whisper/requirements.lock.txt \
  && site_packages=$(/opt/venv/bin/python -c 'import site; print(site.getsitepackages()[0])') \
  && ln -s "$site_packages/nvidia/cublas/lib" /opt/venv/cublas-lib \
+ && ln -s "$site_packages/nvidia/cuda_nvrtc/lib" /opt/venv/cuda-nvrtc-lib \
  && ln -s "$site_packages/nvidia/cudnn/lib" /opt/venv/cudnn-lib
 ENV PATH="/opt/venv/bin:${PATH}" \
-    LD_LIBRARY_PATH="/opt/venv/cublas-lib:/opt/venv/cudnn-lib"
+    LD_LIBRARY_PATH="/opt/venv/cublas-lib:/opt/venv/cuda-nvrtc-lib:/opt/venv/cudnn-lib" \
+    VELOX_WHISPER_DEVICE="auto" \
+    VELOX_WHISPER_MODEL="base" \
+    VELOX_WHISPER_CUDA_LIB_DIR="/opt/venv/cublas-lib"
 
 # yt-dlp pinned to the official stable release. Use the generic Python
 # executable rather than the x86-64-only standalone Linux binary so the

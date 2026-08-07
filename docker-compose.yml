@@ -110,6 +110,11 @@ services:
       VELOX_LOG_LEVEL: "info"
       VELOX_VECTOR_SEARCH_URL: "http://qdrant:6333"
       VELOX_ARTLIST_SCRAPER_SERVER_URL: "http://artlist-scraper:9123"
+      # `auto` uses CUDA when the optional GPU override exposes it and
+      # otherwise falls back to CPU/int8.
+      VELOX_WHISPER_DEVICE: "auto"
+      VELOX_WHISPER_MODEL: "base"
+      VELOX_WHISPER_CUDA_LIB_DIR: "/opt/venv/cublas-lib"
     env_file:
       - ./secrets/pipelinegen.env
     command: ["--config", "/etc/pipelinegen/config.yaml"]
