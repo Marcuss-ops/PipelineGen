@@ -44,22 +44,50 @@ var _ ProcessRunner = defaultProcessRunner{}
 
 // Processor handles FFmpeg operations.
 type Processor struct {
-	path   string
-	runner ProcessRunner
+	path        string
+	runner      ProcessRunner
+	resolver    *EncoderResolver
+	encoderMode string
 }
 
 // NewProcessor creates a new FFmpeg Processor with the given binary path.
+// It retains the historical software-first default.
 func NewProcessor(ffmpegPath string) *Processor {
-	return &Processor{path: ffmpegPath, runner: defaultProcessRunner{}}
+	return NewProcessorWithEncoder(ffmpegPath, string(EncoderLibX264))
+}
+
+// NewProcessorWithEncoder creates a Processor with an explicit runtime
+// encoder policy (auto, h264_nvenc/nvenc, or libx264).
+func NewProcessorWithEncoder(ffmpegPath, encoderMode string) *Processor {
+	return newProcessor(ffmpegPath, encoderMode)
+}
+
+func newProcessor(ffmpegPath, encoderMode string) *Processor {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	runner := defaultProcessRunner{}
+	return &Processor{
+		path:        ffmpegPath,
+		runner:      runner,
+		resolver:    NewEncoderResolver(ffmpegPath, runner),
+		encoderMode: encoderMode,
+	}
 }
 
 // NewFromConfig creates a new FFmpeg Processor using the config's resolved ffmpeg path.
 func NewFromConfig(cfg *config.Config) *Processor {
+	if cfg == nil {
+		return NewProcessor("ffmpeg")
+	}
 	path := cfg.External.FfmpegPath
 	if path == "" {
 		path = "ffmpeg"
 	}
-	return &Processor{path: path, runner: defaultProcessRunner{}}
+	// Preserve the configured encoder policy (auto/NVENC/libx264); the
+	// canonical profile deliberately normalizes materialized clips to
+	// libx264 and must not erase the runtime policy before resolution.
+	return newProcessor(path, cfg.Video.WithDefaults().Codec)
 }
 
 // Path returns the configured ffmpeg binary path.
@@ -70,7 +98,57 @@ func (p *Processor) Path() string { return p.path }
 // runner so ffmpeg argv can be asserted without spawning a real subprocess.
 func (p *Processor) WithRunner(r ProcessRunner) *Processor {
 	p.runner = r
+	p.resolver = NewEncoderResolver(p.path, r)
 	return p
+}
+
+// ResolveEncoder is the single Processor-side entry point for encoder
+// selection. Empty requests inherit the mode captured from VideoConfig;
+// explicit requests remain backward-compatible with existing callers.
+func (p *Processor) ResolveEncoder(ctx context.Context, requested string) string {
+	if strings.TrimSpace(requested) == "" {
+		requested = p.encoderMode
+	}
+	if strings.TrimSpace(requested) == "" {
+		requested = string(EncoderLibX264)
+	}
+	if p.resolver == nil {
+		p.resolver = NewEncoderResolver(p.path, p.runner)
+	}
+	codec, _ := p.resolver.Resolve(ctx, requested)
+	return codec
+}
+
+// resolveEncoder preserves the package-local call shape used by the encoding
+// methods while keeping the resolver available to other infrastructure
+// adapters such as the stock renderer.
+func (p *Processor) resolveEncoder(ctx context.Context, requested string) string {
+	return p.ResolveEncoder(ctx, requested)
+}
+
+// RunWithEncoderFallback executes one encoding attempt and retries with the
+// canonical software profile when an NVENC attempt fails. It is shared by
+// infrastructure adapters that build their own FFmpeg argv. The fallback is
+// intentionally local to the same runner/process boundary and never changes
+// CanonicalClip's declarative profile.
+func (p *Processor) RunWithEncoderFallback(ctx context.Context, codec string, args []string, timeout time.Duration) error {
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{Timeout: timeout})
+	if err == nil || !IsNVENCCodec(codec) {
+		return err
+	}
+
+	fallbackArgs := softwareFallbackArgs(args)
+	_, fallbackErr := p.runner.Run(ctx, p.path, fallbackArgs, process.Options{Timeout: timeout})
+	if fallbackErr != nil {
+		return fmt.Errorf("NVENC encode failed: %w; libx264 fallback failed: %v", err, fallbackErr)
+	}
+	return nil
+}
+
+// runWithEncoderFallback preserves the package-local call shape used by the
+// encoding methods.
+func (p *Processor) runWithEncoderFallback(ctx context.Context, codec string, args []string, timeout time.Duration) error {
+	return p.RunWithEncoderFallback(ctx, codec, args, timeout)
 }
 
 // ── Type aliases — canonical definitions in ffmpeg/types (PR6-B, June 2026) ──

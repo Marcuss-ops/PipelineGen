@@ -12,6 +12,7 @@ import (
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
+	requestedCodec := opts.Codec
 	canonical := canonicalClipProfile()
 	opts.Width = canonical.Width
 	opts.Height = canonical.Height
@@ -20,6 +21,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	opts.Preset = canonical.Preset
 	opts.CRF = canonical.CRF
 	opts.KeyframeInterval = canonical.KeyframeInterval
+	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -70,12 +72,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	// NVENC specific optimizations
 	if strings.Contains(opts.Codec, "nvenc") {
-		// P1 is the fastest preset for NVENC
-		preset := opts.Preset
-		if preset == "fast" || preset == "" {
-			preset = "p1"
-		}
-		args = append(args, "-preset", preset)
+		args = append(args, "-preset", NormalizeEncoderPreset(opts.Codec, opts.Preset))
 		args = append(args, "-rc", "vbr")
 		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
 		args = append(args, "-tune", "hq")
@@ -92,10 +89,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-vsync", "cfr")
 	args = append(args, output)
 
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 15 * time.Minute,
-	})
-	return err
+	return p.runWithEncoderFallback(ctx, opts.Codec, args, 15*time.Minute)
 }
 
 // CutReencode cuts a segment and re-encodes it to ensure exact frame-accurate duration.
@@ -103,6 +97,9 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 // codec/preset/crf allow using hardware encoders (e.g. h264_nvenc); pass "" for defaults.
 func (p *Processor) CutReencode(ctx context.Context, input, output, start, end string, noAudio bool, codec string, preset string, crf int) error {
 	canonical := canonicalClipProfile()
+	if codec == "" {
+		codec = p.encoderMode
+	}
 	if codec == "" {
 		codec = canonical.Codec
 	}
@@ -112,6 +109,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	if crf <= 0 {
 		crf = canonical.CRF
 	}
+	codec = p.resolveEncoder(ctx, codec)
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
@@ -144,11 +142,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
 	if strings.Contains(codec, "nvenc") {
-		p := preset
-		if p == "fast" || p == "" {
-			p = "p1"
-		}
-		args = append(args, "-preset", p, "-rc", "vbr", "-cq", fmt.Sprintf("%d", crf), "-tune", "hq", "-bf", "0")
+		args = append(args, "-preset", NormalizeEncoderPreset(codec, preset), "-rc", "vbr", "-cq", fmt.Sprintf("%d", crf), "-tune", "hq", "-bf", "0")
 	} else {
 		args = append(args, "-preset", preset, "-crf", fmt.Sprintf("%d", crf))
 	}
@@ -168,15 +162,13 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		output,
 	)
 
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 10 * time.Minute,
-	})
-	return err
+	return p.runWithEncoderFallback(ctx, codec, args, 10*time.Minute)
 }
 
 // CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
 // avoiding a double re-encode. Combines CutSegment + Normalize.
 func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts CutAndNormalizeOptions) error {
+	requestedCodec := opts.Codec
 	canonical := canonicalClipProfile()
 	opts.Width = canonical.Width
 	opts.Height = canonical.Height
@@ -184,6 +176,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	opts.Codec = canonical.Codec
 	opts.Preset = canonical.Preset
 	opts.CRF = canonical.CRF
+	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 	}
@@ -209,10 +202,14 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	}
 
 	args = append(args, "-c:v", opts.Codec)
-	args = append(args, "-preset", opts.Preset)
+	if !strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-preset", opts.Preset)
+	}
 	args = append(args, "-g", fmt.Sprintf("%d", canonical.KeyframeInterval))
 
 	if strings.Contains(opts.Codec, "nvenc") {
+		// The canonical preset is software-oriented; normalize it for NVENC.
+		args = append(args, "-preset", NormalizeEncoderPreset(opts.Codec, opts.Preset))
 		args = append(args, "-rc", "vbr")
 		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
 		args = append(args, "-tune", "hq")
@@ -226,10 +223,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-vsync", "cfr")
 	args = append(args, output)
 
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 10 * time.Minute,
-	})
-	return err
+	return p.runWithEncoderFallback(ctx, opts.Codec, args, 10*time.Minute)
 }
 
 // CutReencodeBatch extracts multiple clips from the same input in a single
@@ -244,6 +238,9 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	}
 	canonical := canonicalClipProfile()
 	if codec == "" {
+		codec = p.encoderMode
+	}
+	if codec == "" {
 		codec = canonical.Codec
 	}
 	if preset == "" {
@@ -252,6 +249,7 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	if crf <= 0 {
 		crf = canonical.CRF
 	}
+	codec = p.resolveEncoder(ctx, codec)
 
 	if len(jobs) == 1 {
 		return p.cutReencodeSingle(ctx, input, jobs[0].Output,
@@ -259,9 +257,10 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	}
 
 	err := p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf)
-	if err != nil && strings.Contains(codec, "nvenc") {
-		// Fallback to software encoder if hardware encoder fails
-		return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, "libx264", preset, crf)
+	if err != nil && IsNVENCCodec(codec) {
+		// Batch argv contains one codec/preset group per output. Use the
+		// batch-specific software retry with the canonical libx264 preset.
+		return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, string(EncoderLibX264), "veryfast", crf)
 	}
 	return err
 }
@@ -301,7 +300,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		}
 		args = append(args, "-c:v", codec)
 		if strings.Contains(codec, "nvenc") {
-			args = append(args, "-preset", preset, "-rc", "vbr", "-cq", fmt.Sprintf("%d", crf), "-tune", "hq", "-bf", "0")
+			args = append(args, "-preset", NormalizeEncoderPreset(codec, preset), "-rc", "vbr", "-cq", fmt.Sprintf("%d", crf), "-tune", "hq", "-bf", "0")
 		} else {
 			args = append(args, "-preset", preset, "-crf", fmt.Sprintf("%d", crf))
 		}
@@ -323,10 +322,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		args = append(args, j.Output)
 	}
 
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 15 * time.Minute,
-	})
-	return err
+	return p.runWithEncoderFallback(ctx, codec, args, 15*time.Minute)
 }
 
 // ApplyWatermark overlays a watermark image onto a video using chroma key to

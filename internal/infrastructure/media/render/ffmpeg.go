@@ -41,6 +41,8 @@ import (
 // (listPool) so no package-level mutable state leaks across instances.
 type FFmpegRenderer struct {
 	ffmpegPath  string
+	encoderMode string
+	encoder     *ffmpeg.Processor
 	transitions stockpipeline.TransitionRegistry
 	log         *zap.Logger
 	listPool    *appliedListPoolImpl
@@ -58,8 +60,30 @@ func NewFFmpegRenderer(ffmpegPath string, transitions stockpipeline.TransitionRe
 	if transitions == nil {
 		transitions = DefaultTransitionRegistry()
 	}
+	return newFFmpegRenderer(ffmpegPath, string(ffmpeg.EncoderLibX264), transitions, log)
+}
+
+// NewFFmpegRendererWithConfig constructs the renderer with the configured
+// runtime encoder policy. The existing constructor remains software-first for
+// callers that do not provide platform configuration.
+func NewFFmpegRendererWithConfig(ffmpegPath, encoderMode string, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
+	return newFFmpegRenderer(ffmpegPath, encoderMode, transitions, log)
+}
+
+func newFFmpegRenderer(ffmpegPath, encoderMode string, transitions stockpipeline.TransitionRegistry, log *zap.Logger) *FFmpegRenderer {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	if transitions == nil {
+		transitions = DefaultTransitionRegistry()
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &FFmpegRenderer{
 		ffmpegPath:  ffmpegPath,
+		encoderMode: encoderMode,
+		encoder:     ffmpeg.NewProcessorWithEncoder(ffmpegPath, encoderMode),
 		transitions: transitions,
 		log:         log,
 		listPool:    &appliedListPoolImpl{},
@@ -74,6 +98,12 @@ var _ stockpipeline.StockRenderer = (*FFmpegRenderer)(nil)
 // then builds + dispatches the appropriate FFmpeg invocation.
 func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
 	start := time.Now()
+	if r.log == nil {
+		r.log = zap.NewNop()
+	}
+	if r.encoder == nil {
+		r.encoder = ffmpeg.NewProcessorWithEncoder(r.ffmpegPath, r.encoderMode)
+	}
 	if len(req.InputPaths) == 0 {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render: no input paths")
 	}
@@ -83,11 +113,15 @@ func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderReq
 	// Every rendered clip/chunk uses the same technical profile. Request
 	// fields retain the neutral port shape, but providers cannot introduce
 	// a second codec/resolution/FPS profile at this boundary.
+	requestedCodec := req.Codec
+	if requestedCodec == "" {
+		requestedCodec = r.encoderMode
+	}
 	canonical := (config.VideoConfig{}).CanonicalClip()
 	req.Width = canonical.Width
 	req.Height = canonical.Height
 	req.FPS = canonical.FPS
-	req.Codec = canonical.Codec
+	req.Codec = r.encoder.ResolveEncoder(ctx, requestedCodec)
 	req.Preset = canonical.Preset
 	req.CRF = canonical.CRF
 	req.KeyframeInterval = canonical.KeyframeInterval
@@ -121,7 +155,7 @@ func (r *FFmpegRenderer) renderSingle(ctx context.Context, req stockpipeline.Ren
 	args = append(args, r.encodeArgs(req)...)
 	args = append(args, req.OutputPath)
 
-	if _, err := process.Run(ctx, r.ffmpegPath, args, process.Options{Timeout: 20 * time.Minute}); err != nil {
+	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, args, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render single: %w", err)
 	}
 	r.log.Info("stock render: single clip normalized",
@@ -180,7 +214,7 @@ func (r *FFmpegRenderer) renderFastConcat(ctx context.Context, req stockpipeline
 	normArgs = append(normArgs, "-i", concatPath)
 	normArgs = append(normArgs, r.encodeArgs(req)...)
 	normArgs = append(normArgs, req.OutputPath)
-	if _, err := process.Run(ctx, r.ffmpegPath, normArgs, process.Options{Timeout: 20 * time.Minute}); err != nil {
+	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, normArgs, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render fast: normalize: %w", err)
 	}
 
@@ -297,7 +331,7 @@ func (r *FFmpegRenderer) renderComplex(ctx context.Context, req stockpipeline.Re
 	args = append(args, r.encodeArgs(req)...)
 	args = append(args, req.OutputPath)
 
-	if _, err := process.Run(ctx, r.ffmpegPath, args, process.Options{Timeout: 20 * time.Minute}); err != nil {
+	if err := r.encoder.RunWithEncoderFallback(ctx, req.Codec, args, 20*time.Minute); err != nil {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render complex: %w", err)
 	}
 
@@ -330,7 +364,7 @@ func (r *FFmpegRenderer) baseArgs() []string {
 func (r *FFmpegRenderer) encodeArgs(req stockpipeline.RenderRequest) []string {
 	args := []string{
 		"-c:v", req.Codec,
-		"-preset", req.Preset,
+		"-preset", ffmpeg.NormalizeEncoderPreset(req.Codec, req.Preset),
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac",
 		"-b:a", "128k",
@@ -340,8 +374,10 @@ func (r *FFmpegRenderer) encodeArgs(req stockpipeline.RenderRequest) []string {
 	}
 	if req.Codec == "h264_nvenc" {
 		args = append(args,
-			"-rc", "constqp",
-			"-qp", fmt.Sprintf("%d", req.CRF),
+			"-rc", "vbr",
+			"-cq", fmt.Sprintf("%d", req.CRF),
+			"-tune", "hq",
+			"-bf", "0",
 		)
 	} else {
 		args = append(args, "-crf", fmt.Sprintf("%d", req.CRF))

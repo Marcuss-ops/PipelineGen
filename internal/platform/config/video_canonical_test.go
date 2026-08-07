@@ -23,3 +23,12 @@ func TestVideoConfigCanonicalClip(t *testing.T) {
 		t.Fatalf("CanonicalClip changed a planning value: got clip duration %d", got.ClipDuration)
 	}
 }
+
+func TestVideoConfigCanonicalClipKeepsRuntimePolicyOutOfCanonicalProfile(t *testing.T) {
+	for _, policy := range []string{"auto", "h264_nvenc", "nvenc"} {
+		got := (VideoConfig{Codec: policy}).CanonicalClip()
+		if got.Codec != "libx264" {
+			t.Fatalf("CanonicalClip codec for policy %q = %q, want libx264", policy, got.Codec)
+		}
+	}
+}

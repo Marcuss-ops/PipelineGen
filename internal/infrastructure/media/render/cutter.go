@@ -73,6 +73,12 @@ type FFmpegCutter struct {
 // lazily from the supplied ffmpeg path (empty path defaults to
 // "ffmpeg" via ffmpeg.NewProcessor).
 func NewFFmpegCutter(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
+	return NewFFmpegCutterWithEncoder(ffmpegPath, string(ffmpeg.EncoderLibX264), log)
+}
+
+// NewFFmpegCutterWithEncoder constructs the cutter with an explicit runtime
+// encoder policy while preserving the historical software-first constructor.
+func NewFFmpegCutterWithEncoder(ffmpegPath, encoderMode string, log *zap.Logger) *FFmpegCutter {
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
 	}
@@ -80,7 +86,7 @@ func NewFFmpegCutter(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
 		log = zap.NewNop()
 	}
 	return &FFmpegCutter{
-		proc:          ffmpeg.NewProcessor(ffmpegPath),
+		proc:          ffmpeg.NewProcessorWithEncoder(ffmpegPath, encoderMode),
 		log:           log,
 		probeAfterCut: true,
 	}

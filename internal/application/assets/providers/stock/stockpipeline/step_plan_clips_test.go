@@ -79,9 +79,9 @@ func newFakeRunner(clips []ClipSpec, clipDur int, policyVer string) *fakeStepRun
 	}
 }
 
-// TestExecuteCuts_UsesCanonicalCPUCodec pins the stock.extract_clips
-// request assembly to the canonical CPU-first profile. This prevents a
-// local hardcoded hardware codec from bypassing DefaultPipelineConfig.
+// TestExecuteCuts_LeavesEncoderPolicyToInfrastructure pins the stock.extract_clips
+// request assembly to the neutral port contract. The configured infrastructure
+// cutter owns the single auto/NVENC/libx264 decision.
 func TestExecuteCuts_UsesCanonicalCPUCodec(t *testing.T) {
 	const sourceID = "https://example.com/source.mp4"
 	cutter := &mockCutter{
@@ -112,10 +112,10 @@ func TestExecuteCuts_UsesCanonicalCPUCodec(t *testing.T) {
 	}
 
 	canonical := DefaultPipelineConfig()
-	if cutter.lastReq.Codec != canonical.Codec || cutter.lastReq.Preset != canonical.Preset || cutter.lastReq.CRF != canonical.CRF {
-		t.Fatalf("executeCuts codec profile = (%q, %q, %d), want (%q, %q, %d)",
+	if cutter.lastReq.Codec != "" || cutter.lastReq.Preset != canonical.Preset || cutter.lastReq.CRF != canonical.CRF {
+		t.Fatalf("executeCuts encoder policy = (%q, %q, %d), want neutral codec with canonical preset/CRF (%q, %q, %d)",
 			cutter.lastReq.Codec, cutter.lastReq.Preset, cutter.lastReq.CRF,
-			canonical.Codec, canonical.Preset, canonical.CRF)
+			"", canonical.Preset, canonical.CRF)
 	}
 }
 
