@@ -1,0 +1,31 @@
+{
+  "queries": [
+    {
+      "q": "Muhammad Ali -10",
+      "limit": 10
+    }
+  ],
+  "target_total_duration_seconds": 600,
+  "target_duration_per_source_seconds": 60,
+  "clips_per_source": 3,
+  "clip_duration_seconds": 20,
+  "download_mode": "sections_only",
+  "chunk_duration": 60,
+  "max_videos": 10,
+  "no_audio": false,
+  "no_effects": false,
+  "no_transitions": false,
+  "folder_name": "stock-e2e-muhammad-ali-10m",
+  "drive_folder_id": "1hhuUbvMIqkpkbAsxAON8cHTmaYbsyHgM",
+  "metadata": {
+    "title": "Muhammad Ali Stock E2E 10 Minutes",
+    "description": "Production stock pipeline endurance verification",
+    "category": "boxing",
+    "tags": [
+      "Muhammad Ali",
+      "boxing",
+      "stock-e2e"
+    ]
+  },
+  "async": true
+}
