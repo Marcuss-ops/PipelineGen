@@ -1,7 +1,7 @@
 // Package ytdlp tests — TDD contract surface for CommandBuilder.BaseArgs.
-// Pins the July 2026 ("web,android") player_client policy introduced in
-// commit f3f1ee90 (AdminAdapter type assertion + cookies web,android
-// policy). The web-only behaviour failed for videos like dtpF3BrSOto;
+// Pins the August 2026 android_creator primary player-client policy and
+// the configured fallback surface. The prior web-only behaviour failed
+// for videos like dtpF3BrSOto;
 // the closed matrix below guards against future regressions where the
 // flag reverts to web-only or the conditional branches reappear.
 //
@@ -24,8 +24,8 @@ const youTubeURLA = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 // nonYouTubeURLA is a non-YouTube source (Drive + direct MP4 + stock).
 const nonYouTubeURLA = "https://drive.google.com/file/d/abc123/view"
 
-// expectedExtractorArgs pins the f3f1ee90 web,android player client
-// ordering. The constant exists so future regressions (silent revert
+// expectedExtractorArgs pins the canonical android_creator player client.
+// The constant exists so future regressions (silent drift outside the
 // to web-only) surface as a diff in this test file rather than as a
 // runtime failure on a stock pipeline run.
 var expectedExtractorArgs = []string{
@@ -49,18 +49,18 @@ func newTestBuilder(t *testing.T, keepCookiesPath, keepJsRuntime bool) *CommandB
 	return b
 }
 
-// TestBaseArgs_YouTubeURL_NoCookies_NoJsRuntime_PinsWebAndroid is the
-// canonical pin for commit f3f1ee90. Without this assertion, a future
-// agent could silently revert to web-only and the symptom would only
-// surface as "no video formats" at the yt-dlp subprocess layer.
+// TestBaseArgs_YouTubeURL_NoCookies_NoJsRuntime_PinsPrimaryClient is the
+// canonical primary-client pin. Without this assertion, a future agent
+// could silently drift the policy and surface only as "no video formats"
+// at the yt-dlp subprocess layer.
 //
 // Expected argv (exact order matters for godlike/06 SSOT lockstep
 // with consumer call sites that append operation-specific flags):
 //
 //	--no-warnings
 //	--extractor-args
-//	youtube:player_client=web,android
-func TestBaseArgs_YouTubeURL_NoCookies_NoJsRuntime_PinsWebAndroid(t *testing.T) {
+//	youtube:player_client=android_creator
+func TestBaseArgs_YouTubeURL_NoCookies_NoJsRuntime_PinsPrimaryClient(t *testing.T) {
 	b := newTestBuilder(t, false, false)
 	got := b.BaseArgs(youTubeURLA, false)
 
@@ -296,14 +296,14 @@ func TestBaseArgsForClient_BlankClient_FallsBackToCanonical(t *testing.T) {
 
 // TestCommandBuilder_FallbackYouTubePlayerClients pins the config-driven
 // fallback list surface: the configured list is honored, unset lists fall
-// back to the deterministic android,ios,web_creator,tv default, and the
+// back to the deterministic web_creator,tv default, and the
 // returned slice is freshly allocated (caller mutation cannot bleed into
 // the builder).
 func TestCommandBuilder_FallbackYouTubePlayerClients(t *testing.T) {
 	t.Run("default when unset", func(t *testing.T) {
 		b := NewCommandBuilder(&config.Config{})
 		got := b.FallbackYouTubePlayerClients()
-		want := []string{"android", "ios", "web_creator", "tv"}
+		want := []string{"web_creator", "tv"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("default fallback mismatch: got %v want %v", got, want)
 		}

@@ -29,7 +29,7 @@ const DefaultYouTubeFormatSelectors = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[
 // canonicalYouTubePlayerClient is the player client used by BaseArgs for
 // the first (primary) download attempt. Alternate clients from
 // config.External.YoutubePlayerClientFallback are only tried after a
-// YouTube bot-check. This constant is the SOLE owner of the
+// retryable YouTube client error. This constant is the SOLE owner of the
 // player_client= policy value; all consumers (BaseArgs, BaseArgsForClient,
 // the downloader fallback loop) reference it instead of re-declaring the
 // literal.
@@ -38,7 +38,7 @@ const canonicalYouTubePlayerClient = "android_creator"
 // defaultYouTubePlayerClientFallback is the fallback order used when the
 // config list is empty (deterministic default for manually-assembled
 // configs that skip the loader). The primary client still runs first.
-var defaultYouTubePlayerClientFallback = []string{"android", "ios", "web_creator", "tv"}
+var defaultYouTubePlayerClientFallback = []string{"web_creator", "tv"}
 
 // CommandBuilder centralizes yt-dlp CLI argument construction. The builder
 // owns the resolved binary path plus the cookie and JS-runtime locations;
@@ -54,7 +54,7 @@ type CommandBuilder struct {
 // Path is resolved via cfg.External.ResolvedYtdlpPath(); cookies and JS
 // runtime paths honour the same zero-value → default fallback that the
 // pre-Bloco-5 callers applied independently. The YouTube player-client
-// fallback list defaults to android,ios,web_creator,tv when unset.
+// fallback list defaults to web_creator,tv when unset.
 func NewCommandBuilder(cfg *config.Config) *CommandBuilder {
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -93,7 +93,7 @@ func (b *CommandBuilder) PrimaryYouTubePlayerClient() string {
 }
 
 // FallbackYouTubePlayerClients returns a copy of the alternate player
-// clients tried after a YouTube bot-check, in configured order. Never
+// clients tried after a retryable YouTube client error, in configured order. Never
 // includes the primary client. Returns the built-in default list when the
 // builder was constructed without a configured list.
 func (b *CommandBuilder) FallbackYouTubePlayerClients() []string {
@@ -154,18 +154,9 @@ func (b *CommandBuilder) BaseArgsForClient(url string, useCookies bool, playerCl
 		if playerClient == "" {
 			playerClient = canonicalYouTubePlayerClient
 		}
-		// Prefer web/android, then fall back to mweb/android_creator. The
-		// latter pair remains usable when YouTube rate-limits the web
-		// session while still serving public progressive formats.
-		// The android client returns wrong durations + missing formats for
-		// some videos when tried first; web,android order tries web first
-		// (correct metadata) with android as fallback for videos like
-		// dtpF3BrSOto that have no video formats with web-only.
-		//
-		// Pre-July-2026: cookies switched to web-only because android+
-		// cookies was a brittle combination. YouTube now accepts cookies
-		// with the combined client list, and web-only causes regressions
-		// (no video formats) on several videos. Always use both.
+		// The downloader selects one client for each attempt. The primary
+		// android_creator attempt and configured web_creator/tv fallbacks
+		// are all routed through this single extractor-args pair.
 		args = append(args, "--extractor-args", "youtube:player_client="+playerClient)
 	}
 

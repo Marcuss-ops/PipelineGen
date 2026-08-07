@@ -260,20 +260,19 @@ func TestDownload_NonArtlistURL_NoArtlistArgs(t *testing.T) {
 // for the downloader. Mirrors
 // TestGetVideoMetadata_DelegatesToBaseArgs_CanonicalPlayerClient from
 // metadata_test.go — the downloader MUST delegate to ytdlp.BaseArgs()
-// for the canonical yt-dlp argv prefix (--no-warnings, --extractor-args
-// youtube:player_client=web,android). Drift (e.g., reverting to inline
+// for the canonical yt-dlp argv prefix (--no-warnings and the
+// android_creator player-client value). Drift (e.g., reverting to inline
 // --no-warnings) surfaces as a test failure here BEFORE the regression
 // reaches production.
 //
 // Failure modes this test catches:
-//  1. Loss of canonical web,android policy (the f3f1ee90 web-first
-//     policy) — would surface as the substring
-//     "youtube:player_client=web,android" being absent from argv.
+//  1. Loss of canonical android_creator policy — would surface as the
+//     player-client value being absent from argv.
 //  2. Re-introduction of `youtube:player_client=android,web` (the
 //     pre-f3f1ee90 reversed-order drift).
 //  3. Double-add of --no-warnings (would happen if Download()
 //     re-declared --no-warnings AND delegated to BaseArgs).
-//  4. Loss of the canonical web,android substring on YouTube URLs.
+//  4. Loss of the canonical player-client value on YouTube URLs.
 func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 	setupTestAllowlist(t)
 	d, runner := newTestDownloader(t, "")
@@ -287,7 +286,7 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Canonical web,android is present (the f3f1ee90 web-first policy)
+	// Canonical android_creator is present on the primary attempt.
 	require.Contains(t, runner.argv, "youtube:player_client=android_creator",
 		"downloader must use the canonical web,android order centralized in cmd_builder.go")
 
@@ -507,9 +506,9 @@ func TestDownload_YouTubeBotCheck_ExhaustsClients_ReturnsError(t *testing.T) {
 		YoutubePlayerClientFallback: []string{"ios", "web_creator"},
 	}}
 	runner := &scriptedRunner{script: []scriptedCall{
-		{err: botCheckError("dQw4w9WgXcQ")},
-		{err: botCheckError("dQw4w9WgXcQ")},
-		{err: botCheckError("dQw4w9WgXcQ")},
+		{err: fmt.Errorf("android_creator failed: Sign in to confirm you're not a bot")},
+		{err: fmt.Errorf("web_creator failed: Sign in to confirm you're not a bot")},
+		{err: fmt.Errorf("tv failed: Sign in to confirm you're not a bot")},
 	}}
 	d := newTestDownloaderCfg(t, cfg, runner)
 
@@ -522,20 +521,22 @@ func TestDownload_YouTubeBotCheck_ExhaustsClients_ReturnsError(t *testing.T) {
 	})
 	require.Error(t, err, "exhausted clients must fail closed (never a silent no-op)")
 	require.Equal(t, 3, runner.calls, "primary + 2 fallback attempts, all bot-checked")
+	assert.Contains(t, err.Error(), "tv failed",
+		"the final error must be the last exhausted client's error")
 	assert.Contains(t, err.Error(), "Sign in to confirm",
-		"the returned error must preserve the original bot-check signal")
+		"the returned error must preserve the bot-check signal")
 }
 
-// TestDownload_YouTube_NonBotCheckError_NoRetry pins the retry boundary: a
-// failure that is NOT a bot-check (e.g. HTTP 403, format error) must abort
-// immediately — a different player client cannot fix it, and retrying would
-// hide the real cause behind extra latency.
-func TestDownload_YouTube_NonBotCheckError_NoRetry(t *testing.T) {
+// TestDownload_YouTube_NonRetryableError_NoRetry pins the retry boundary:
+// permanent errors such as a missing video must abort immediately. A
+// different player client cannot fix them and retrying would hide the real
+// cause behind extra latency.
+func TestDownload_YouTube_NonRetryableError_NoRetry(t *testing.T) {
 	setupTestAllowlist(t)
 	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
 		YoutubePlayerClientFallback: []string{"ios"},
 	}}
-	nonBotErr := fmt.Errorf("command yt-dlp failed: exit status 1 (output: ERROR: unable to download video data: HTTP Error 403: Forbidden)")
+	nonBotErr := fmt.Errorf("command yt-dlp failed: exit status 1 (output: ERROR: [youtube] Video unavailable: HTTP 404: Not Found)")
 	runner := &scriptedRunner{script: []scriptedCall{
 		{err: nonBotErr},
 	}}
@@ -550,8 +551,75 @@ func TestDownload_YouTube_NonBotCheckError_NoRetry(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, 1, runner.calls,
-		"non-bot-check errors must NOT trigger the fallback client loop")
-	assert.Contains(t, err.Error(), "403")
+		"non-retryable 404 errors must NOT trigger the fallback client loop")
+	assert.Contains(t, err.Error(), "404")
+}
+
+// TestDownload_InvalidURL_DoesNotInvokeFallback verifies that validation
+// happens before the player-client loop. Invalid input must fail closed
+// without invoking yt-dlp or trying alternate clients.
+func TestDownload_InvalidURL_DoesNotInvokeFallback(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"web_creator", "tv"},
+	}}
+	runner := &scriptedRunner{}
+	d := newTestDownloaderCfg(t, cfg, runner)
+
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        "not-a-url",
+		OutputPath: filepath.Join(t.TempDir(), "source.mp4"),
+	})
+	require.Error(t, err)
+	require.Equal(t, 0, runner.calls,
+		"invalid URLs must fail before the fallback runner is invoked")
+	assert.Contains(t, err.Error(), "invalid URL")
+}
+
+// TestDownload_YouTube_FormatError_FallsBackToNextClient guards the failure
+// mode observed in production: a valid YouTube video can expose no formats
+// for one client while another client exposes a usable stream.
+func TestDownload_YouTube_FormatError_FallsBackToNextClient(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"web_creator", "tv"},
+	}}
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: fmt.Errorf("command yt-dlp failed: ERROR: [youtube] Requested format is not available")},
+		{result: &process.Result{ExitCode: 0}},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{URL: youTubeWatchURL, OutputPath: outputPath})
+	require.NoError(t, err)
+	require.Equal(t, 2, runner.calls)
+	assert.Contains(t, runner.lastArgv(), "youtube:player_client=web_creator")
+}
+
+// TestDownload_YouTube_RetryableErrors_UseBoundedFallbackChain verifies the
+// canonical three-client ladder and that a media-host 403 remains retryable.
+func TestDownload_YouTube_RetryableErrors_UseBoundedFallbackChain(t *testing.T) {
+	setupTestAllowlist(t)
+	cfg := &ytcfg.Config{External: ytcfg.ExternalConfig{
+		YoutubePlayerClientFallback: []string{"web_creator", "tv"},
+	}}
+	runner := &scriptedRunner{script: []scriptedCall{
+		{err: fmt.Errorf("command yt-dlp failed: googlevideo HTTP Error 403: Forbidden")},
+		{err: fmt.Errorf("command yt-dlp failed: ERROR: no video formats found")},
+		{result: &process.Result{ExitCode: 0}},
+	}}
+	d := newTestDownloaderCfg(t, cfg, runner)
+	outputPath := filepath.Join(t.TempDir(), "source.mp4")
+	writeDummyOutputFile(t, outputPath)
+
+	err := d.Download(context.Background(), &DownloadRequest{URL: youTubeWatchURL, OutputPath: outputPath})
+	require.NoError(t, err)
+	require.Equal(t, 3, runner.calls)
+	assert.Contains(t, strings.Join(runner.argv[0], " "), "youtube:player_client=android_creator")
+	assert.Contains(t, strings.Join(runner.argv[1], " "), "youtube:player_client=web_creator")
+	assert.Contains(t, strings.Join(runner.argv[2], " "), "youtube:player_client=tv")
 }
 
 // TestDownloadSections_YouTubeBotCheck_FallsBackAndFails pins the fallback
