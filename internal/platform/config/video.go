@@ -15,6 +15,29 @@ type CanonicalVideoProfile struct {
 	AudioBitrate     string
 }
 
+// WithDefaults makes partially populated profiles safe for direct consumers.
+func (p CanonicalVideoProfile) WithDefaults() CanonicalVideoProfile {
+	if p.Width <= 0 {
+		p.Width = 1920
+	}
+	if p.Height <= 0 {
+		p.Height = 1080
+	}
+	if p.FPS <= 0 {
+		p.FPS = 24
+	}
+	if p.KeyframeInterval <= 0 {
+		p.KeyframeInterval = 48
+	}
+	if p.AudioCodec == "" {
+		p.AudioCodec = "aac"
+	}
+	if p.AudioBitrate == "" {
+		p.AudioBitrate = "128k"
+	}
+	return p
+}
+
 // VideoEncoderPolicy describes how a canonical video profile is encoded.
 type VideoEncoderPolicy struct {
 	Codec  string
@@ -128,15 +151,7 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 
 // CanonicalVideoProfile returns the immutable technical artifact profile.
 func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
-	v = v.WithDefaults()
-	return CanonicalVideoProfile{
-		Width:            1920,
-		Height:           1080,
-		FPS:              24,
-		KeyframeInterval: 48,
-		AudioCodec:       "aac",
-		AudioBitrate:     "128k",
-	}
+	return (CanonicalVideoProfile{}).WithDefaults()
 }
 
 // EncoderPolicy returns the configured runtime encoding policy with defaults.
