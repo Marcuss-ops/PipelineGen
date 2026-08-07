@@ -291,10 +291,10 @@
       "internal/application/jobs/",
       "internal/api/jobs/",
       "internal/infrastructure/jobs/",
-      "internal/infrastructure/database/sqlite/jobs/",
-      "scripts/bridges/slide_worker_runtime/",
-      "scripts/worker-bootstrap-smoke.sh"
-    ],
+      "internal/infrastructure/database/sqlite/jobs/",  "scripts/bridges/slide_worker_runtime/",
+  "scripts/worker-bootstrap-smoke.sh",
+  "scripts/velox_client.py"
+ ],
     "go_packages": [
       "./internal/application/jobs/...",
       "./internal/api/jobs/...",
