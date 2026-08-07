@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -445,7 +444,7 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 	// 3. Apply opacity with colorchannelmixer (adjust alpha)
 	// 4. Overlay on video
 	filterComplex := fmt.Sprintf(
-		"[1:v]%s,colorkey=%s:%f:%f,colorchannelmixer=aa=%f[wm];[0:v][wm]overlay=%s",
+		"[1:v]%s,colorkey=%s:%f:%f,colorchannelmixer=aa=%f[wm];[0:v][wm]overlay=%s[vout]",
 		scaleFilter,
 		opts.GreenScreenColor,
 		opts.GreenScreenSimilarity,
@@ -454,19 +453,33 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 		overlayPos,
 	)
 
+	// Watermarking necessarily re-encodes the video stream. Require the
+	// canonical GPU encoder explicitly: RunWithEncoderPolicy makes NVENC
+	// failures terminal and never retries with libx264. Audio remains a
+	// stream copy because the watermark filter only transforms video.
+	codec := p.resolveEncoder(ctx, string(EncoderNVENC))
+	preset := p.encoderPreset
+	if preset == "" {
+		preset = "veryfast"
+	}
+	quality := p.encoderCRF
+	if quality <= 0 {
+		quality = 23
+	}
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 		"-i", input,
 		"-i", opts.ImagePath,
 		"-filter_complex", filterComplex,
+		"-map", "[vout]",
+		"-map", "0:a:0?",
+	}
+	args = appendAdminVideoEncoderArgs(args, codec, preset, quality)
+	args = append(args,
 		"-c:a", "copy",
-		"-preset", "veryfast",
 		"-movflags", "+faststart",
 		output,
-	}
+	)
 
-	_, err := p.runner.Run(ctx, p.path, args, process.Options{
-		Timeout: 5 * time.Minute,
-	})
-	return err
+	return p.RunWithEncoderPolicy(ctx, codec, args, 5*time.Minute)
 }

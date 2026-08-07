@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
@@ -51,6 +52,7 @@ type Processor struct {
 	encoderPreset string
 	encoderCRF    int
 	nvencSlots    chan struct{}
+	nvencSlotsMu  sync.Mutex
 }
 
 // NewProcessor creates a new FFmpeg Processor with the given binary path.
@@ -171,9 +173,18 @@ func (p *Processor) acquireNVENCSlot(ctx context.Context, codec string) (func(),
 	if !IsNVENCCodec(codec) {
 		return nil, nil
 	}
+	// Keep zero-value Processor values usable by tests and legacy callers.
+	// Constructors initialize this channel, but a nil channel would block
+	// forever when a GPU-required operation acquires its first slot.
+	p.nvencSlotsMu.Lock()
+	if p.nvencSlots == nil {
+		p.nvencSlots = make(chan struct{}, 1)
+	}
+	slots := p.nvencSlots
+	p.nvencSlotsMu.Unlock()
 	select {
-	case p.nvencSlots <- struct{}{}:
-		return func() { <-p.nvencSlots }, nil
+	case slots <- struct{}{}:
+		return func() { <-slots }, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

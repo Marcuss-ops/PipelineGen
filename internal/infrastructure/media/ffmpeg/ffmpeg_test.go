@@ -1021,6 +1021,46 @@ func defaultWatermarkOpts() WatermarkOptions {
 	}
 }
 
+func TestApplyWatermark_RequiresNVENCAndUsesCanonicalVideoArgs(t *testing.T) {
+	runner := &captureRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	if err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()); err != nil {
+		t.Fatalf("ApplyWatermark returned error: %v", err)
+	}
+	if !hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc") {
+		t.Fatalf("watermark must select h264_nvenc: %v", runner.lastArgv)
+	}
+	if !hasArgPair(runner.lastArgv, "-map", "[vout]") || !hasArgPair(runner.lastArgv, "-map", "0:a:0?") {
+		t.Fatalf("watermark must map filtered video and source audio: %v", runner.lastArgv)
+	}
+	if !hasArgSubstring(runner.lastArgv, "overlay=") || !hasArgSubstring(runner.lastArgv, "[vout]") {
+		t.Fatalf("watermark filter must label its output: %v", runner.lastArgv)
+	}
+	if !hasArgPair(runner.lastArgv, "-preset", "p1") || !hasArgPair(runner.lastArgv, "-cq", "23") {
+		t.Fatalf("watermark must use canonical NVENC quality args: %v", runner.lastArgv)
+	}
+	if hasArgPair(runner.lastArgv, "-c:v", "libx264") || hasArg(runner.lastArgv, "-crf") {
+		t.Fatalf("watermark must not include a CPU encoder path: %v", runner.lastArgv)
+	}
+}
+
+func TestApplyWatermarkNVENCFailureIsTerminal(t *testing.T) {
+	runner := &fallbackRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts())
+	if err == nil || !strings.Contains(err.Error(), "NVENC encode required and failed") {
+		t.Fatalf("ApplyWatermark error=%v, want terminal NVENC failure", err)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("watermark runner calls=%d, want 1", runner.calls)
+	}
+	if hasArgPair(runner.args[0], "-c:v", "libx264") {
+		t.Fatalf("watermark failure must not retry with libx264: %v", runner.args[0])
+	}
+}
+
 // TestApplyWatermark_AudioPreserved verifies that ApplyWatermark always
 // uses "-c:a copy" (audio passthrough) — there is no NoAudio field.
 func TestApplyWatermark_AudioPreserved(t *testing.T) {
