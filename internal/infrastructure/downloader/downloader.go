@@ -54,17 +54,21 @@ func isYouTubeURL(url string) bool {
 	return strings.Contains(url, "youtube.com") || strings.Contains(url, "youtu.be")
 }
 
-// youtubeBotCheckRe matches the yt-dlp/YouTube "Sign in to confirm you're
-// not a bot" rate-limit gate. When an invocation fails with this signature
-// the download is retried with an alternate player client instead of being
-// aborted (August 2026 hot-IP recovery).
-var youtubeBotCheckRe = regexp.MustCompile(`(?i)sign\s+in\s+to\s+confirm|not\s+a\s+bot`)
+// youtubeClientRetryableRe matches errors where another YouTube player client
+// can produce a different set of formats or bypass a client-specific gate.
+// Keep this classifier scoped to YouTube in isYouTubeClientRetryableError;
+// generic HTTP errors and invalid URLs must not trigger a fallback ladder.
+var youtubeClientRetryableRe = regexp.MustCompile(`(?i)` +
+	`sign\s+in\s+to\s+confirm|not\s+a\s+bot|` +
+	`requested\s+format\s+is\s+not\s+available|no\s+video\s+formats\s+found|` +
+	`(?:challenge|player)\s+(?:extraction|response)|` +
+	`(?:googlevideo|youtube).*(?:403|forbidden)|(?:403|forbidden).*(?:googlevideo|youtube)`)
 
-// isYouTubeBotCheck reports whether the error output carries the YouTube
-// bot-check signature. process.Run embeds the combined yt-dlp output in the
-// error message, so the raw error string is sufficient.
-func isYouTubeBotCheck(err error) bool {
-	return err != nil && youtubeBotCheckRe.MatchString(err.Error())
+// isYouTubeClientRetryableError reports whether a failed YouTube invocation
+// should try the next player client. process.Run embeds combined yt-dlp
+// output in the error, so classification is based on the wrapped message.
+func isYouTubeClientRetryableError(url string, err error) bool {
+	return err != nil && isYouTubeURL(url) && youtubeClientRetryableRe.MatchString(err.Error())
 }
 
 // ytdlpClients returns the ordered attempt list: the canonical primary
@@ -111,7 +115,7 @@ func (d *YTDLPDownloader) youtubeSleepIntervalArgs(url string) []string {
 }
 
 // sleepBetweenAttempts sleeps a random duration in the configured
-// [min,max] window before a fallback retry, so retries after a bot-check
+// [min,max] window before a fallback retry, so retries after a client error
 // don't hammer a hot IP back-to-back. No-op when pacing is disabled.
 func (d *YTDLPDownloader) sleepBetweenAttempts() {
 	if d.ytMinSleepSeconds <= 0 {
@@ -128,9 +132,9 @@ func (d *YTDLPDownloader) sleepBetweenAttempts() {
 
 // runWithClientFallback executes a yt-dlp command through buildArgs, which
 // is called once per player-client attempt. The canonical client runs first;
-// after a YouTube bot-check error each configured fallback client is tried
-// with a random pacing delay in between. Non-bot-check errors abort
-// immediately (a different player client cannot fix a 404 or a bad format).
+// after a retryable YouTube client error each configured fallback client is
+// tried with a random pacing delay in between. Non-retryable errors abort
+// immediately (a different player client cannot fix a 404 or malformed request).
 // The last result+error is returned once the client list is exhausted.
 func (d *YTDLPDownloader) runWithClientFallback(ctx context.Context, url string, opts process.Options, buildArgs func(playerClient string) []string) (*process.Result, error) {
 	clients := d.ytdlpClients()
@@ -145,10 +149,10 @@ func (d *YTDLPDownloader) runWithClientFallback(ctx context.Context, url string,
 			return result, nil
 		}
 		lastResult, lastErr = result, err
-		if !isYouTubeBotCheck(err) || i == len(clients)-1 {
+		if !isYouTubeClientRetryableError(url, err) || i == len(clients)-1 {
 			return result, err
 		}
-		log.Printf("downloader: youtube bot-check with player client %q, retrying with %q (attempt %d/%d)", client, clients[i+1], i+1, len(clients))
+		log.Printf("downloader: retryable YouTube client error with player client %q, retrying with %q (attempt %d/%d)", client, clients[i+1], i+1, len(clients))
 	}
 	return lastResult, lastErr
 }
