@@ -113,9 +113,9 @@ video:
   width: 1920
   height: 1080
   fps: 24
-  # Encoder policy: auto probes FFmpeg and prefers h264_nvenc when available;
-  # h264_nvenc forces NVENC with safe libx264 retry; libx264 is CPU-first.
-  codec: "libx264"
+  # Production encoder policy: NVENC is required; a runtime GPU failure is
+  # terminal and must never degrade silently to CPU/libx264.
+  codec: "h264_nvenc"
   preset: "veryfast"
   crf: 23
   duration: 7
