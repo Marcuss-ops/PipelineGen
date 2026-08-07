@@ -288,7 +288,7 @@ func applyBackfillBatch(ctx context.Context, db *sql.DB, batch []pendingMediaAss
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE media_assets SET search_terms = ?, updated_at = datetime('now') WHERE id = ?`,
+			`UPDATE media_assets SET search_terms = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?`,
 			string(termsJSON), p.id); err != nil {
 			log.Warn("update search_terms failed",
 				zap.String("id", p.id), zap.Error(err))

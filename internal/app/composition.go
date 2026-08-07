@@ -75,7 +75,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 
 	// wiring.OutboxBundle consumes wiring.StagingBundle.Store and Repository, plus the
 	// canonical delivery.Publisher, to drain artifact lifecycle events.
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher)
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}

@@ -41,8 +41,9 @@ import (
 //
 // Push 3.1f (July 2026): BuildOutboxBundle's signature was extended in
 // Push 3.1c (added `stagingSvc staging.Store`) and Push 3.1e (added
-// `repo artifact.Repository` + `drivePublisher delivery.Publisher`) —
-// now 11 args total. The pre-existing PR-3 fail-closed test at
+// `repo artifact.Repository` + `drivePublisher delivery.Publisher`),
+// then Push 3.1k/Blocco 3.1 (July 2026) added
+// `driveDeleter jobsoutbox.DriveDeleter` — now 12 args total. The pre-existing PR-3 fail-closed test at
 // TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed needed an
 // update: it was passing 8 args, and if naively padded with three nil
 // values the NEW fail-closed gate "stagingSvc is required" would
@@ -259,7 +260,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	// test reaches the RegisterCoreHandlers gate (triggering
 	// "core outbox handlers") — not the earlier "stagingSvc is required"
 	// gate introduced in Push 3.1c.
-	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{})
+	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil, dummyStagingStore{}, dummyArtifactRepo{}, dummyPublisher{}, nil)
 	require.Error(t, err,
 		"PR 3: cfg.Qdrant.Enabled=true + nil ClipsRepo must abort BuildOutboxBundle (fail-closed at boot, never warn-as-warning)")
 	require.Contains(t, err.Error(), "core outbox handlers",

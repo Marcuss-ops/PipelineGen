@@ -135,11 +135,13 @@ type DriveDeleteDeps struct {
 	// Blocco 3.1 commit 2/3 (June 2026) — deletion state machine.
 	// Each field is optional; their presence registers
 	// DriveDeleteHandler in RegisterOptionalHandlers. Production
-	// wires all 4 from BuildOutboxBundle calling
-	// NewLifecycleStateReader + ClipsLifecycleStateWriter on
-	// *assets.ClipsRepository, NewDriveDeleterAdapter wraps
-	// *drive.FileLifecycleAdapter, and StateAdvancer wraps
-	// *outbox.Dispatcher.
+	// wires all 4 from BuildOutboxBundle (internal/app/
+	// build_bundles_process.go): ClipsLifecycleStateReader and
+	// ClipsLifecycleStateWriter are the SAME *assets.ClipsRepository
+	// instance, DriveDeleter is drive.FileLifecycle assigned
+	// directly (structural conformance — the port is Trash + Delete,
+	// drive.FileLifecycle is a method-set superset, no wrapper
+	// needed), and StateAdvancer wraps *outbox.Dispatcher.
 	DrivePatchLifecycle  LifecycleStateReader
 	DrivePatchLifecycleW ClipsLifecycleStateWriter
 	DrivePatchStateAdv   StateAdvancer
@@ -389,6 +391,11 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		zap.Bool("delivery_wired", deps != nil && (deps.Infra.HTTPClient != nil || deps.Infra.DB != nil) && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev)),
 		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs.Jobs != nil),
 		zap.Bool("voiceover_cleanup_driver_wired", deps != nil && deps.Jobs.VoiceoverCleanupDriver != nil),
+		zap.Bool("drive_delete_wired", deps != nil &&
+			deps.DriveDelete.DrivePatchLifecycle != nil &&
+			deps.DriveDelete.DrivePatchLifecycleW != nil &&
+			deps.DriveDelete.DrivePatchStateAdv != nil &&
+			deps.DriveDelete.DriveDeleteHandler != nil),
 	)
 	return nil
 }

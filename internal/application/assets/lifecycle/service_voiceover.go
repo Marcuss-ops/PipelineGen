@@ -178,6 +178,12 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 	// (registry.UpsertMedia → clips_repository.UpsertClipTx in
 	// production) without introducing a new dependency on
 	// the existing Registry tx-less API.
+	// RFC3339 timestamps (deletion-reconciler regression, Aug 2026):
+	// the Scanner.ListStuckRows fails closed on the SQLite
+	// datetime('now') space format, so BOTH the INSERT path
+	// (created_at + updated_at) and the ON CONFLICT path
+	// (updated_at only — created_at is preserved) write
+	// strftime('%Y-%m-%dT%H:%M:%SZ','now').
 	const upsertSQL = `
 		INSERT INTO media_assets (
 			id,
@@ -194,8 +200,14 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 			file_hash,
 			language,
 			lifecycle_state,
-			metadata_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			metadata_json,
+			created_at,
+			updated_at
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+			strftime('%Y-%m-%dT%H:%M:%SZ','now')
+		)
 		ON CONFLICT(id) DO UPDATE SET
 			source           = excluded.source,
 			name             = excluded.name,
@@ -211,7 +223,7 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 			language         = excluded.language,
 			lifecycle_state  = excluded.lifecycle_state,
 			metadata_json    = excluded.metadata_json,
-			updated_at       = datetime('now')
+			updated_at       = strftime('%Y-%m-%dT%H:%M:%SZ','now')
 	`
 	if _, err := tx.ExecContext(ctx, upsertSQL,
 		in.ID,
