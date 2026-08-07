@@ -13,8 +13,8 @@ import (
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
-	profile := opts.Profile
-	if profile == (config.CanonicalVideoProfile{}) {
+	profile := opts.Profile.WithDefaults()
+	if opts.Profile == (config.CanonicalVideoProfile{}) {
 		profile = canonicalClipProfile()
 	}
 	requestedCodec := opts.Policy.Codec
@@ -199,8 +199,8 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 // CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
 // avoiding a double re-encode. Combines CutSegment + Normalize.
 func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts CutAndNormalizeOptions) error {
-	profile := opts.Profile
-	if profile == (config.CanonicalVideoProfile{}) {
+	profile := opts.Profile.WithDefaults()
+	if opts.Profile == (config.CanonicalVideoProfile{}) {
 		profile = canonicalClipProfile()
 	}
 	requestedCodec := opts.Policy.Codec

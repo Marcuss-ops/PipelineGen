@@ -9,7 +9,11 @@ import (
 // CanonicalClipFilter preserves the historical VideoConfig argument while
 // delegating to the profile-only implementation.
 func CanonicalClipFilter(profile config.VideoConfig) string {
-	return CanonicalVideoProfileFilter(profile.CanonicalVideoProfile())
+	return CanonicalVideoProfileFilter(config.CanonicalVideoProfile{
+		Width:  profile.Width,
+		Height: profile.Height,
+		FPS:    profile.FPS,
+	}.WithDefaults())
 }
 
 // CanonicalVideoProfileFilter returns the canonical FFmpeg video filter chain
@@ -25,7 +29,11 @@ func CanonicalVideoProfileFilter(profile config.CanonicalVideoProfile) string {
 // CanonicalClipFilterTrim preserves the historical VideoConfig argument while
 // delegating to the profile-only trim implementation.
 func CanonicalClipFilterTrim(profile config.VideoConfig) string {
-	return CanonicalVideoProfileFilterTrim(profile.CanonicalVideoProfile())
+	return CanonicalVideoProfileFilterTrim(config.CanonicalVideoProfile{
+		Width:  profile.Width,
+		Height: profile.Height,
+		FPS:    profile.FPS,
+	}.WithDefaults())
 }
 
 // CanonicalVideoProfileFilterTrim returns the canonical video filter chain
