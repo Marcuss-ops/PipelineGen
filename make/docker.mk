@@ -84,6 +84,12 @@ docker-verify-digest:
 docker-verify-ffmpeg:
 	@bash scripts/verify-ffmpeg.sh $${IMAGE:-pipelinegen-worker:latest}
 
+# docker-verify-whisper: Probe the worker image for the pinned Whisper
+# runtime without downloading a model or requiring a GPU.
+# Usage: make docker-verify-whisper IMAGE=pipelinegen-worker:latest
+docker-verify-whisper:
+	@bash scripts/verify-whisper.sh $${IMAGE:-pipelinegen-worker:latest}
+
 # docker-bootstrap-smoke: Quick smoke test of the worker binary in the
 # image — verifies ENTRYPOINT, --help, and version output.
 # Usage: make docker-bootstrap-smoke IMAGE=pipelinegen-worker:latest

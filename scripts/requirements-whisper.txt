@@ -1,0 +1,14 @@
+# PipelineGen worker Whisper runtime.
+#
+# Keep the inference engine and its adapter pinned together: faster-whisper
+# 1.2.1 supports the CTranslate2 4.x API, while CTranslate2 4.8.1 is the
+# CUDA 12/cuDNN 9 runtime used by the transcription helper.
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+
+# faster-whisper's documented Linux GPU runtime dependencies for CUDA 12.
+# They are installed in the worker venv so CPU-only hosts still use the
+# existing auto -> CPU/int8 fallback, while NVIDIA-enabled workers can load
+# CUDA without a host Python installation.
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.24.0.43

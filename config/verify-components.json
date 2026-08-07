@@ -348,7 +348,10 @@
       "internal/application/assets/sourcing/youtube/",
       "internal/infrastructure/youtube/",
       "internal/api/assets/youtube/",
-      "scripts/tools/transcribe_detect_lang.py"
+      "scripts/tools/transcribe_detect_lang.py",
+      "scripts/requirements-whisper.txt",
+      "scripts/verify-whisper.sh",
+      "scripts/ci/whisper-deployment-contract_test.py"
     ],
     "go_packages": [
       "./internal/domain/youtube/...",
@@ -359,7 +362,9 @@
       "./internal/api/assets/youtube/..."
     ],
     "node_tests": [],
-    "python_tests": [],
+    "python_tests": [
+      ["python3", "scripts/ci/whisper-deployment-contract_test.py"]
+    ],
     "dependencies": ["database", "drive"],
     "timeout_seconds": 600,
     "race_timeout_seconds": 1200,
