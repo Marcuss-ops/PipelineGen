@@ -22,22 +22,33 @@ func IsNVENCCodec(codec string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(codec)), "nvenc")
 }
 
-// NormalizeEncoderPreset maps the canonical software preset to a valid
-// NVENC preset while leaving explicit, codec-compatible values unchanged.
-// The canonical profile remains libx264/veryfast; this is only a runtime
-// command-line normalization.
+// NormalizeEncoderPreset maps software-oriented presets to valid NVENC
+// presets while leaving explicit p1..p7 values unchanged. The artifact
+// profile remains encoder-neutral; this is runtime command-line normalization.
 func NormalizeEncoderPreset(codec, preset string) string {
-	preset = strings.TrimSpace(preset)
+	preset = strings.ToLower(strings.TrimSpace(preset))
 	if !IsNVENCCodec(codec) {
 		if preset == "" {
 			return "veryfast"
 		}
 		return preset
 	}
-	if preset == "" || preset == "veryfast" || preset == "fast" {
+
+	switch preset {
+	case "p1", "p2", "p3", "p4", "p5", "p6", "p7":
+		return preset
+	case "", "ultrafast", "superfast", "veryfast", "faster", "fast":
 		return "p1"
+	case "medium":
+		return "p4"
+	case "slow", "slower", "veryslow":
+		return "p7"
+	default:
+		// Unknown software/custom values must not leak into an NVENC argv;
+		// use the balanced NVENC preset rather than risking an invalid
+		// encoder invocation or an implicit software fallback.
+		return "p4"
 	}
-	return preset
 }
 
 func NormalizeEncoderMode(requested string) EncoderMode {

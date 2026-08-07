@@ -55,6 +55,12 @@ func TestNormalizeEncoderPreset(t *testing.T) {
 	if got := NormalizeEncoderPreset("h264_nvenc", "veryfast"); got != "p1" {
 		t.Fatalf("NVENC veryfast preset = %q, want p1", got)
 	}
+	if got := NormalizeEncoderPreset("h264_nvenc", "medium"); got != "p4" {
+		t.Fatalf("NVENC medium preset = %q, want p4", got)
+	}
+	if got := NormalizeEncoderPreset("h264_nvenc", "slow"); got != "p7" {
+		t.Fatalf("NVENC slow preset = %q, want p7", got)
+	}
 	if got := NormalizeEncoderPreset("h264_nvenc", "p4"); got != "p4" {
 		t.Fatalf("explicit NVENC preset = %q, want p4", got)
 	}

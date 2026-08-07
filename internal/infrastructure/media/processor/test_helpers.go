@@ -33,6 +33,7 @@ func (f *fakeHTTPDownloader) Download(ctx context.Context, req *downloader.HTTPD
 
 type fakeFFmpeg struct {
 	normalizeErr    error
+	proxyErr        error
 	normalizeCalled bool
 	normalizeAsDir  bool
 }
@@ -61,6 +62,9 @@ func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, tim
 }
 
 func (f *fakeFFmpeg) GenerateProxy(ctx context.Context, input, output string) error {
+	if f.proxyErr != nil {
+		return f.proxyErr
+	}
 	return os.WriteFile(output, []byte("fake-proxy"), 0o644)
 }
 
