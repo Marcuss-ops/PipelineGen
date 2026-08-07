@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -36,6 +37,30 @@ import (
 // Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
 // artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
 // manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
+// maxSearchQueryWorkers bounds concurrent provider searches. Search calls are
+// network/process heavy, so keep this independent from FFmpeg source-cut
+// parallelism and deliberately conservative for the CPU-first worker.
+const maxSearchQueryWorkers = 3
+
+// runOrchestratorResilient is the canonical production entry point.
+// Calls Orchestrator.RunResilient to obtain the *RunSummary that pairs
+// the typed *job.ArtifactManifest with the per-run FinalStatus.
+//
+// STATO ATTUALE: Service.HandleJob (production broker traffic) uses
+// this variant so FinalStatus surfaces in the result map.
+// Service.runOrchestrator (manifest-only) remains for legacy callers.
+//
+// Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
+// artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
+// manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
+// searchQueryResolution holds one query's result at its original index. The
+// indexed slices let workers write without locks while the caller performs
+// deterministic ordered logging, URL deduplication, and error aggregation.
+type searchQueryResolution struct {
+	sources []VideoSource
+	err     error
+}
+
 func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (summary *RunSummary, err error) {
 	var ownedRun *kernobs.Run
 	defer func() {
@@ -488,51 +513,123 @@ func manifestInt(values map[string]any, key string) int {
 
 // resolveInputQueries converts text search queries in input.SearchQueries
 // to resolved YouTube URLs via s.resolveQuery(), appending them to
-// input.DirectURLs. This is the bridge between the user-facing
-// search-and-run endpoint (which accepts text queries like
-// "boxing training gym") and the orchestrator (which only understands
-// DirectURLs and SearchQueries as raw video source strings).
+// input.DirectURLs. Search calls run through a bounded worker pool, but
+// aggregation remains in query order so retries and downstream planning are
+// deterministic. URLs are deduplicated by their trimmed first appearance.
 //
-// Each query is resolved independently; a single failure logs a warning
-// and continues so other queries in the same run can still succeed.
-// After resolution input.SearchQueries is cleared to prevent the
-// orchestrator from trying to use raw text as a URL.
-//
-// godlike/07 no-fake-availability: nil receiver, nil input, and empty
-// SearchQueries are no-ops (not silent-success — the orchestrator will
-// still fail loudly later if no sources are available).
+// A query-level failure logs a warning and does not cancel sibling queries;
+// this preserves partial-success behavior. If every query fails, the existing
+// typed ErrStockPipelineAllQueriesFailed is returned. Parent context
+// cancellation is propagated as-is; provider errors retain the existing
+// partial-success behavior and are only fatal when no usable URL remains.
 func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) error {
 	if s == nil || input == nil || len(input.SearchQueries) == 0 {
 		return nil
 	}
-	total := len(input.SearchQueries)
+
+	queries := append([]string(nil), input.SearchQueries...)
+	results := make([]searchQueryResolution, len(queries))
+	workerCount := maxSearchQueryWorkers
+	if workerCount > len(queries) {
+		workerCount = len(queries)
+	}
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for worker := 0; worker < workerCount; worker++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-workCtx.Done():
+					return
+				case index, ok := <-jobs:
+					if !ok {
+						return
+					}
+					if err := workCtx.Err(); err != nil {
+						results[index].err = err
+						continue
+					}
+					sources, err := s.resolveQuery(workCtx, queries[index])
+					results[index] = searchQueryResolution{sources: sources, err: err}
+				}
+			}
+		}()
+	}
+
+	dispatching := true
+	for index := range queries {
+		if !dispatching {
+			break
+		}
+		select {
+		case jobs <- index:
+		case <-workCtx.Done():
+			dispatching = false
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	total := len(queries)
 	failed := 0
 	var lastErr error
-	for _, query := range input.SearchQueries {
-		sources, err := s.resolveQuery(ctx, query)
-		if err != nil {
-			if s.log != nil {
-				s.log.Warn("stock: failed to resolve search query, skipping",
-					zap.String("query", query), zap.Error(err))
-			}
-			failed++
-			lastErr = err
+	seen := make(map[string]struct{}, len(input.DirectURLs))
+	directURLs := make([]string, 0, len(input.DirectURLs))
+	for _, rawURL := range input.DirectURLs {
+		url := strings.TrimSpace(rawURL)
+		if url == "" {
 			continue
 		}
-		for _, src := range sources {
-			input.DirectURLs = append(input.DirectURLs, src.URL)
+		if _, exists := seen[url]; exists {
+			continue
+		}
+		seen[url] = struct{}{}
+		directURLs = append(directURLs, url)
+	}
+	input.DirectURLs = directURLs
+	for index, query := range queries {
+		result := results[index]
+		if result.err != nil {
+			if s.log != nil {
+				s.log.Warn("stock: failed to resolve search query, skipping",
+					zap.String("query", query), zap.Error(result.err))
+			}
+			failed++
+			lastErr = result.err
+			continue
+		}
+
+		for _, src := range result.sources {
+			url := strings.TrimSpace(src.URL)
+			if url == "" {
+				continue
+			}
+			if _, exists := seen[url]; exists {
+				continue
+			}
+			seen[url] = struct{}{}
+			input.DirectURLs = append(input.DirectURLs, url)
 		}
 		if s.log != nil {
-			if len(sources) > 0 {
+			if len(result.sources) > 0 {
 				s.log.Info("stock: resolved search query to URLs",
 					zap.String("query", query),
-					zap.Int("urls", len(sources)))
+					zap.Int("urls", len(result.sources)))
 			} else {
 				s.log.Warn("stock: search query returned no results",
 					zap.String("query", query))
 			}
 		}
 	}
+
 	// Clear resolved queries so the orchestrator doesn't try to use
 	// raw text as a URL (firstSource checks SearchQueries after
 	// DirectURLs — the resolved URLs are already in DirectURLs).
@@ -543,7 +640,7 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) erro
 	// orchestrator hits the misleading "no sources to plan" error
 	// in StockPlanStep.Run instead of surfacing the actual yt-dlp
 	// failure (n-challenge, cookies, network).
-	if failed > 0 && failed == total {
+	if failed > 0 && failed == total && len(input.DirectURLs) == 0 {
 		return fmt.Errorf("%w: %d/%d queries failed, last error: %v",
 			ErrStockPipelineAllQueriesFailed, failed, total, lastErr)
 	}
