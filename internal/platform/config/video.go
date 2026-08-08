@@ -163,8 +163,17 @@ func (v VideoConfig) EncoderPolicy() VideoEncoderPolicy {
 // CanonicalClip is retained as a source-compatible legacy composite. New
 // infrastructure code must use CanonicalVideoProfile and EncoderPolicy
 // separately; this method remains for callers that still expect a VideoConfig.
+//
+// The encoder policy is intentionally preserved verbatim here. In particular,
+// an empty Codec must remain empty so the caller or infrastructure resolver can
+// choose the runtime encoder; CanonicalClip must never silently turn it into
+// libx264 while materializing the artifact profile. Other policy fields retain
+// their safe defaults unless explicitly configured.
 func (v VideoConfig) CanonicalClip() VideoConfig {
+	codec := v.Codec
 	v = v.WithDefaults()
+	v.Codec = codec
+
 	profile := v.CanonicalVideoProfile()
 	v.Width = profile.Width
 	v.Height = profile.Height
