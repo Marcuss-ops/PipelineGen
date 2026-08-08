@@ -35,7 +35,7 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 
 	// PR-script-deps-slim (July 2026, P1) + WAVE-22-C2-E SSOT lock:
 	// the canonical ScriptFlow surface via RegisterRoutes mounts
-	// exactly 6 routes — 1 POST /generate + 3 POST /shorts/* +
+	// exactly 3 routes — 1 POST /generate +
 	// 1 GET /jobs/:id + 1 GET /clips/search. GET /jobs/:id/full is
 	// INTENTIONALLY NOT mounted here even though GetFullJobRun exists
 	// in handler_run_full.go: its canonical owner is the Jobs module
@@ -47,13 +47,12 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	// f8aa97c6b; the canonical option-A fix in this commit re-retires
 	// the route mount (handler_jobs.go::RegisterJobRoutes) and reverts
 	// the test's expected set back to 6 routes, restoring SSOT integrity.
+	// REMOTION-LEGACY-REMOVAL (August 2026): the 3 POST /shorts/* routes
+	// are RETIRED with the external Remotion renderer hand-off.
 	expectedRoutes := map[string]bool{
-		"POST /api/script/generate":            true,
-		"POST /api/script/shorts/generate":     true,
-		"POST /api/script/shorts/render":       true,
-		"POST /api/script/shorts/render/async": true,
-		"GET /api/script/jobs/:id":             true,
-		"GET /api/script/clips/search":         true,
+		"POST /api/script/generate":    true,
+		"GET /api/script/jobs/:id":     true,
+		"GET /api/script/clips/search": true,
 	}
 	assert.Equal(t, expectedRoutes, routeMap,
 		"ScriptFlow routes must match canonical set EXACTLY (drift = regressions in either direction; update this test AND architecture/ownership SSOT in lockstep)")

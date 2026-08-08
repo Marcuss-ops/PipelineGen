@@ -1,2 +1,0 @@
-{"level":"info","ts":1784554172.436072,"caller":"reconcile/reindex_qdrant.go:162","msg":"reindex-qdrant starting","apply":false,"dry_run":true,"limit":0,"target_collection":"","qdrant_url":"http://127.0.0.1:6333"}
-{"limit":0,"mode":"dry-run","target_collection":"media_assets_v3_e5_768_siglip_768","total_assets":1202}

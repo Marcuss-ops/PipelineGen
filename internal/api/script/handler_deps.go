@@ -1,6 +1,6 @@
 // Package script (api/script) — handler_deps.go owns the construction
-// seam for ScriptFlowHandler: 3 typed-narrow dep bags
-// (GenerateDeps / ShortsDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
+// seam for ScriptFlowHandler: 2 typed-narrow dep bags
+// (GenerateDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
 // and the canonical constructor
 // (NewScriptFlowHandler).
 //
@@ -16,6 +16,10 @@
 // ScriptDescriptor.Handler field (defensive — the 6 non-HTTP
 // methods have ZERO external callers at HEAD).
 //
+// REMOTION-LEGACY-REMOVAL (August 2026): the /shorts/* surface
+// (ShortsDeps + HandlerShorts + 3 routes) is RETIRED — the external
+// Remotion renderer hand-off is fully removed from this module.
+//
 // godlike/06 SSOT rationale (one canonical owner per fact):
 // the construction seam is the ScriptFlow package's re-use seam —
 // keeping it in this file alongside ScriptFlowDeps means pipeline
@@ -30,26 +34,11 @@ import (
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 
 	"go.uber.org/zap"
 )
-
-// ShortsDeps groups the canonical constructor inputs for the
-// /shorts/* handler. Kept separate from GenerateDeps so the two
-// surfaces can evolve independently.
-type ShortsDeps struct {
-	// Renderer is required by POST /shorts/render.
-	Renderer appvideo.Renderer
-	// Producer is required by POST /shorts/render/async.
-	Producer interface {
-		Enqueue(context.Context, remotionjob.RenderJob) (*jobs.Job, error)
-	}
-	Log *zap.Logger
-}
 
 // GenerateDeps groups the canonical constructor inputs for the
 // /generate handler. Each field is required by the canonical
@@ -104,7 +93,7 @@ type generationSubmitter interface {
 }
 
 // ScriptFlowDeps is the slim top-level bag assembled by Build.
-// Was 23 fields; now 5 (Generate + Shorts + Jobs + ClipsSearcher +
+// Was 23 fields; now 4 (Generate + Jobs + ClipsSearcher +
 // AdminToken). godlike/07 minimum-blast-radius: Build still
 // constructs NewScriptFlowHandler(ScriptFlowDeps{...}) so direct
 // callers (test fixtures) compile unchanged in shape — only the
@@ -112,8 +101,6 @@ type generationSubmitter interface {
 type ScriptFlowDeps struct {
 	// Generate is the dep bag for POST /generate.
 	Generate GenerateDeps
-	// Shorts is the dep bag for /shorts/*.
-	Shorts ShortsDeps
 	// Jobs is the dep bag for /jobs/:id.
 	Jobs JobsDeps
 
@@ -165,10 +152,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// with the optional GenerationRunStarter (P0 verdetto) and
 		// the SubmitRequestFactory (PR-SUBMISSION-FACTORY).
 		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.GenRunStarter, deps.Generate.Factory, deps.Generate.Log, deps.Generate.Validator, deps.Generate.ResearchPreflight),
-
-		// PR-SHORTS-EXTRACT (July 2026): construct the dedicated
-		// HandlerShorts for /shorts/* routes.
-		shorts: NewHandlerShorts(deps.Shorts.Renderer, deps.Shorts.Producer, deps.Shorts.Log),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. GET /api/script/jobs/:id mounts via
