@@ -32,10 +32,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capsystem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	scriptdocsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/scriptdocs"
@@ -111,7 +111,7 @@ func registerScriptHistory(registry *module.Registry, log *zap.Logger, cfg *conf
 	// feature is enabled.
 	scriptHistoryEnabled := anyScriptFeatureEnabled(cfg)
 	if err := tryRegisterModuleStrict(registry, log, scriptapi.NewScriptHistoryModule(
-		scriptapi.NewScriptHistoryHandler(adapters.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
+		scriptapi.NewScriptHistoryHandler(sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo), log),
 		log,
 		middleware.FeatureFlagChecker("Script", scriptHistoryEnabled),
 		scriptHistoryEnabled,

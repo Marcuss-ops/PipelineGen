@@ -21,7 +21,7 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 # ── Check 57: forbid ports.ScriptRecord literal outside canonical allowlist (godlike/06 SSOT, July 2026) ──
 # godlike/06 SSOT one-canonical-owner-per-fact: PersistenceProcessor is the
 # SOLE WRITER of *ports.ScriptRecord in production paths. The canonical
-# read-path translator (`adapters/repository.go::fromSQLiteScriptRecord`)
+# read-path translator (`infrastructure/database/sqlite/scripts/repository_adapter.go::fromSQLiteScriptRecord`)
 # is the SECOND canonical owner — it translates sqlitescripts.ScriptRecord
 # → ports.ScriptRecord on read paths (Get/List/Find). Every other direct
 # literal `&ports.ScriptRecord{...}` in production code is a SSOT
@@ -32,7 +32,7 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 #   ports\.ScriptRecord\{   — matches  &ports.ScriptRecord{ … }  literal.
 # Targets the FULLY-QUALIFIED form so it does NOT false-positive on the
 # canonical writer PersistenceProcessor, which uses the in-package alias
-# `&ScriptRecord{...}` (declared at adapters/repository.go:34 via
+# `&ScriptRecord{...}` (declared in application/scripts/adapters/repository.go via
 # `type ScriptRecord = ports.ScriptRecord`). The alias is byte-equivalent
 # to ports.ScriptRecord (Go type alias, NOT distinct type) but its
 # literal form `&ScriptRecord{` is NOT matched by the regex. Intentional
@@ -48,7 +48,7 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 #     regex does NOT match), so the allowlist row is forward-prevention
 #     only — if a future contributor accidentally writes
 #     `&ports.ScriptRecord{...}` at this site, the gate would still pass.
-#   - internal/application/scripts/adapters/repository.go             :
+#   - internal/infrastructure/database/sqlite/scripts/repository_adapter.go:
 #     CANONICAL READ-PATH TRANSLATOR
 #     (`fromSQLiteScriptRecord` constructs `&ports.ScriptRecord{...}` as
 #     the read-shape population for ports.ScriptRecord {sqlitescripts →
@@ -77,7 +77,7 @@ echo "=== Check 57: forbid ports.ScriptRecord literal outside canonical allowlis
 all_hits=$(rg -n --type go \
     -e 'ports\.ScriptRecord\{' \
     --glob '!**/processor_persistence.go' \
-    --glob '!**/application/scripts/adapters/repository.go' \
+    --glob '!**/internal/infrastructure/database/sqlite/scripts/repository_adapter.go' \
     --glob '!**/*_test.go' \
     internal/application internal/api 2>/dev/null \
     || true)
@@ -107,7 +107,7 @@ if [ -n "$literal_calls" ]; then
     echo ""
     echo "Fix: write new *ports.ScriptRecord rows ONLY through PersistenceProcessor"
     echo "      (canonical SOLE writer; godlike/06 SSOT). For read paths, the"
-    echo "      canonical translator is adapters/repository.go::fromSQLiteScriptRecord"
+    echo "      canonical translator is infrastructure/database/sqlite/scripts/repository_adapter.go::fromSQLiteScriptRecord"
     echo "      (sqlitescripts -> ports.ScriptRecord)."
     echo ""
     echo "If the literal is genuinely transitional (rare), prepend the magic"

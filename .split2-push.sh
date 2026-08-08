@@ -37,11 +37,11 @@ git stash push --include-untracked -m 'split2-pre-push-foreign-wip' -- \
     internal/app/build_process_qdrant.go \
     internal/app/build_media_processor.go \
     internal/app/build_qdrant_runtime.go \
-    internal/application/scripts/adapters/repository.go \
+    internal/infrastructure/database/sqlite/scripts/repository_adapter.go \
     internal/application/scripts/ports/repository.go \
     scripts/ci-architectural-checks.sh \
     scripts/ci/architecture/checks/43_db_chain_outside_infra.sh \
-    internal/application/scripts/adapters/repository_adapter.go \
+    internal/infrastructure/database/sqlite/scripts/repository_adapter.go \
     internal/api/assets/clips/bulk_upload_transport.go \
     internal/application/clips/bulk_upload_scanner.go 2>&1 || echo "stash partial"
 
