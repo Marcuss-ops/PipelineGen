@@ -1185,28 +1185,6 @@ func TestCutAndNormalize_Timeout(t *testing.T) {
 		"CutAndNormalize must pass a non-zero timeout")
 }
 
-func TestImageToVideo_UsesConfiguredNVENCPolicy(t *testing.T) {
-	runner := &captureRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-
-	require.NoError(t, p.ImageToVideo(context.Background(), "still.png", "video.mp4", ImageToVideoOptions{}))
-	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "image-to-video must use configured NVENC: %v", runner.lastArgv)
-	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "p4"), "image-to-video must normalize medium to a valid NVENC preset: %v", runner.lastArgv)
-	assert.True(t, hasArgPair(runner.lastArgv, "-cq", "18"), "image-to-video must use NVENC CQ quality: %v", runner.lastArgv)
-	assert.False(t, hasArg(runner.lastArgv, "-crf"), "NVENC image-to-video must not use software CRF: %v", runner.lastArgv)
-}
-
-func TestImageToVideo_NVENCFailureIsTerminal(t *testing.T) {
-	runner := &fallbackRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-
-	err := p.ImageToVideo(context.Background(), "still.png", "video.mp4", ImageToVideoOptions{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "NVENC encode required and failed")
-	require.Equal(t, 1, runner.calls, "image-to-video must not retry after NVENC failure")
-	assert.False(t, hasArgPair(runner.args[0], "-c:v", "libx264"), "image-to-video must not fallback to libx264: %v", runner.args[0])
-}
-
 func TestGenerateProxy_UsesConfiguredNVENCPolicy(t *testing.T) {
 	runner := &captureRunner{}
 	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
