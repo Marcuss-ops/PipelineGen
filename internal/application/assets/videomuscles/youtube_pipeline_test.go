@@ -1,11 +1,14 @@
 package videomuscles
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -22,6 +25,43 @@ func TestCanonicalYouTubeCutOptionsDelegatesEncoderPolicy(t *testing.T) {
 
 	noAudio := canonicalYouTubeCutOptions(false)
 	require.True(t, noAudio.NoAudio)
+}
+
+func TestYouTubeCutUsesConfiguredNVENCPolicy(t *testing.T) {
+	runner := &youtubeCaptureRunner{}
+	processor := pkgffmpeg.NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+
+	require.NoError(t, processor.CutAndNormalize(
+		context.Background(), "input.mp4", "output.mp4", "0", "4.000",
+		canonicalYouTubeCutOptions(true),
+	))
+
+	require.True(t, youtubeHasArgPair(runner.args, "-c:v", "h264_nvenc"),
+		"videomuscles must use the configured GPU encoder: %v", runner.args)
+	require.False(t, youtubeHasArgPair(runner.args, "-c:v", "libx264"),
+		"videomuscles must not fall back to libx264: %v", runner.args)
+	require.True(t, youtubeHasArgPair(runner.args, "-preset", "p1"),
+		"NVENC policy must normalize the default preset centrally: %v", runner.args)
+	require.True(t, youtubeHasArgPair(runner.args, "-cq", "23"),
+		"NVENC policy must retain the central quality default: %v", runner.args)
+}
+
+type youtubeCaptureRunner struct {
+	args []string
+}
+
+func (r *youtubeCaptureRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
+	r.args = append([]string(nil), args...)
+	return &process.Result{}, nil
+}
+
+func youtubeHasArgPair(args []string, key, value string) bool {
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == key && args[i+1] == value {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) {
