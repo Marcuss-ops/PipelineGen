@@ -1,7 +1,6 @@
 package images
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
@@ -33,7 +32,7 @@ type ImageStorageService struct {
 	imagesDir     string
 	tempDir       string
 	driveFolderID string
-	client        *http.Client
+	client        RemoteFetchPort
 	// committer is the canonical SINGLE-transaction asset commit surface
 	// for image ingest. Used by ingestDirect to atomically write
 	// media_assets + asset_locations + typed metadata + the

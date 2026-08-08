@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -59,7 +58,7 @@ type ImagesStorageDeps struct {
 // ImagesGenAIDeps holds AI-generation dependencies (LLM, metadata, styles, image gen).
 type ImagesGenAIDeps struct {
 	LLMGen        *ollama.Generator
-	MetaWriter    semantic.MetadataWriterPort
+	MetaWriter    SemanticPort
 	StyleRegistry *generation.StyleRegistry
 	ImageGen      ImageGenerator
 }
@@ -80,4 +79,5 @@ type ImagesExternalDeps struct {
 	SourceStager assetapp.SourceStager
 	VeloxBaseURL string
 	GACfg        GoogleAccountingConfig
+	RemoteFetch  RemoteFetchPort
 }

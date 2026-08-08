@@ -2,13 +2,11 @@ package images
 
 import (
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 )
 
 func TestSemanticPayloadToMap(t *testing.T) {
 	score := 0.95
-	payload := &semantic.Payload{
+	payload := &SemanticPayload{
 		AssetID:             "asset-1",
 		PromptOriginal:      "A cat",
 		SemanticDescription: "A domestic cat",

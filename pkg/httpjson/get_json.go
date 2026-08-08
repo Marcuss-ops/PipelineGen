@@ -123,7 +123,7 @@ func (e *StatusError) RetryAfterDuration() time.Duration {
 // IO: reads up to opts.MaxBodyBytes via io.LimitReader. 0 = no cap
 // (byte-for-byte behaviour with pre-B4 io.ReadAll on sites that did
 // not enforce a size cap).
-func GetBytes(ctx context.Context, client *http.Client, targetURL string, opts *Options) ([]byte, error) {
+func GetBytes(ctx context.Context, client Client, targetURL string, opts *Options) ([]byte, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: url=%s", ErrClientRequired, targetURL)
 	}
@@ -201,7 +201,7 @@ func parseRetryAfter(value string) time.Duration {
 //
 // Zero-value of T is returned alongside any error so callers never see
 // a half-initialised value.
-func GetJSON[T any](ctx context.Context, client *http.Client, targetURL string, opts *Options) (T, error) {
+func GetJSON[T any](ctx context.Context, client Client, targetURL string, opts *Options) (T, error) {
 	var zero T
 	b, err := GetBytes(ctx, client, targetURL, opts)
 	if err != nil {

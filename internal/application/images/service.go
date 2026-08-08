@@ -15,15 +15,11 @@
 package images
 
 import (
-	"time"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
 )
 
 // ── Compile-time satisfaction pins ──────────────────────────────────
@@ -41,10 +37,9 @@ var (
 // browser impersonation makes upstream diagnostics and throttling worse.
 const userAgent = "PipelineGen/1.0 (VidRush asset retrieval; contact admin)"
 
-// SemanticMetadataPayload is a convenience alias for the canonical
-// semantic.Payload type. Kept here (thin file) for backward-compat
-// with callers that use images.SemanticMetadataPayload directly.
-type SemanticMetadataPayload = semantic.Payload
+// SemanticMetadataPayload is retained as the application-owned payload
+// name for callers that use images.SemanticMetadataPayload directly.
+type SemanticMetadataPayload = SemanticPayload
 
 // Service is the top-level facade for the images subsystem. It composes
 // five sub-services: Gen (generation), JobHandler (async jobs), Store
@@ -77,7 +72,9 @@ func (s *Service) RetrievalRegistry() *retrieved.RetrievalProviderRegistry {
 
 // NewService is the canonical constructor. Wires the five sub-services
 // (Gen, JobHandler, Store, Meta, Diag) from the ImagesDeps bag. Falls
-// back to default registries when Generated/Retrieval are nil.
+// back to default registries when Generated/Retrieval are nil. The
+// composition root supplies RemoteFetch; direct image retrieval calls
+// fail closed through httpjson when it is absent.
 func NewService(deps ImagesDeps) *Service {
 	cfg := deps.Core.Cfg
 	log := deps.Core.Log
@@ -105,16 +102,9 @@ func NewService(deps ImagesDeps) *Service {
 		imagesDir:     cfg.Storage.ImagesPath(),
 		tempDir:       cfg.Storage.TempPath(),
 		driveFolderID: cfg.Drive.RootFolder(),
-		// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the http.Client
-		// construction through internal/infrastructure/httpclient.NewDefaultClient
-		// (the canonical owner of *http.Client construction for the
-		// application-facing port surface). The field type stays *http.Client
-		// because the image retrieval providers (provider_duckduckgo.go,
-		// provider_searxng.go, provider_wikipedia.go) still take *http.Client
-		// — widening their interface to ports.Client is a separate
-		// PR-IO-BINDER-HTTP follow-up. .HTTPClient() is the documented
-		// escape hatch for that migration window.
-		client:    httpclient.NewDefaultClient(10 * time.Minute).HTTPClient(),
+		// RemoteFetch is injected from the composition root. Image retrieval
+		// depends only on the application-owned transport port.		client:        deps.External.RemoteFetch,
+
 		committer: deps.External.Committer,
 		// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager is
 		// the canonical port for staging remote URLs into

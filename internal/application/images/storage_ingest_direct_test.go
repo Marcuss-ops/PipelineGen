@@ -13,11 +13,20 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
+
+type failingSemanticPort struct{}
+
+func (failingSemanticPort) GeneratePayload(context.Context, SemanticWriteRequest) (*SemanticPayload, string, error) {
+	return nil, "", errors.New("semantic metadata unavailable")
+}
+
+func (failingSemanticPort) Write(context.Context, SemanticWriteRequest) (*SemanticWriteResult, error) {
+	return nil, errors.New("semantic metadata unavailable")
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -152,7 +161,7 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	// Wire the Phase 1.2 disabled MetadataWriter stub — Write() returns
 	// ErrSemanticMetadataWriterDisabled, which causes tagImageMetadata to fail.
 	svc.meta = &MetadataService{
-		metaWriter: semantic.NewNopMetadataWriter(zap.NewNop()), // P0-#2: nop implementation of the MetadataWriterPort
+		metaWriter: failingSemanticPort{},
 		log:        zap.NewNop(),
 	}
 

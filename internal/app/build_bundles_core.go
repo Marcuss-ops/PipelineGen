@@ -40,6 +40,8 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
+
 	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
@@ -328,7 +330,7 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
-			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,
+			LLMGen: params.ScriptGen, MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
 			ImageGen: chromeimages.NewChromeImageProviderPoolFromProfile(
 				params.Cfg.Paths.PythonScriptsDir,
 				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
@@ -336,8 +338,9 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 				params.Log,
 			),
 		}, External: imgservice.ImagesExternalDeps{
-			IngestSvc: params.IngestSvc,
-			Committer: params.Committer,
+			IngestSvc:   params.IngestSvc,
+			RemoteFetch: httpclient.NewDefaultClient(10 * time.Minute),
+			Committer:   params.Committer,
 			// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager
 			// is the canonical port for staging remote URLs into
 			// deterministic local files. downloadAndIngest routes
