@@ -120,7 +120,8 @@
       "internal/application/indexing/",
       "internal/infrastructure/indexing/",
       "internal/api/assets/clips/indexing/",
-      "scripts/services/embedding_server/"
+      "scripts/services/",
+      "scripts/start_embedding_server.sh"
     ],
     "go_packages": [
       "./internal/application/indexing/...",
@@ -318,7 +319,9 @@
   "api": {
     "paths": [
       "internal/api/middleware/",
-      "internal/api/transport/"
+      "internal/api/transport/",
+      "scripts/admin/generate_routes_yaml.go",
+      "scripts/archcheck/gates/"
     ],
     "go_packages": [
       "./internal/api/middleware/...",
