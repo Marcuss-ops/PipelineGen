@@ -53,7 +53,7 @@
   status: "in_progress"
   owner: "channels-capability"
   deadline: "2026-09-30T00:00:00Z"
-  rationale: "Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root."
+  rationale: "Complete remaining monitor conformance through application-owned ports and adapters wired only at the composition root; channels capability conformance is already canonical."
   cross_refs:
     package: "internal/application/assets/monitor"
 - id: "WAVE-23-ADMIN-CONSOLE-SEPARATION"
