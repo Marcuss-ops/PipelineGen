@@ -116,12 +116,13 @@ func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *
 	}
 	if payload.Metadata != nil {
 		input.Metadata = &ChunkMetadataInput{
-			Title:       payload.Metadata.Title,
-			Description: payload.Metadata.Description,
-			Tags:        payload.Metadata.Tags,
-			Category:    payload.Metadata.Category,
-			Author:      payload.Metadata.Author,
-			Extra:       payload.Metadata.Extra,
+			Title:            payload.Metadata.Title,
+			Description:      payload.Metadata.Description,
+			BlockDescription: payload.Metadata.BlockDescription,
+			Tags:             payload.Metadata.Tags,
+			Category:         payload.Metadata.Category,
+			Author:           payload.Metadata.Author,
+			Extra:            payload.Metadata.Extra,
 		}
 	}
 

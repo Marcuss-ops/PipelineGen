@@ -45,10 +45,11 @@ type StockRunPayload struct {
 
 // StockRunPayloadMetadata mirrors ChunkMetadataInput for JSON compatibility.
 type StockRunPayloadMetadata struct {
-	Title       string            `json:"title,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	Category    string            `json:"category,omitempty"`
-	Author      string            `json:"author,omitempty"`
-	Extra       map[string]string `json:"extra,omitempty"`
+	Title            string            `json:"title,omitempty"`
+	Description      string            `json:"description,omitempty"`
+	BlockDescription string            `json:"block_description,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	Category         string            `json:"category,omitempty"`
+	Author           string            `json:"author,omitempty"`
+	Extra            map[string]string `json:"extra,omitempty"`
 }

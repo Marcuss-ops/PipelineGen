@@ -55,13 +55,8 @@ func BuildFinalizationRequest(
 	}
 
 	arts := make([]finalization.PublishedArtifact, 0, 1+len(chunks))
-	sourceProvider := "stock"
-	for _, c := range chunks {
-		if c.SourceProvider != "" {
-			sourceProvider = c.SourceProvider
-			break
-		}
-	}
+	// Stock is the asset family. The acquisition provider remains in
+	// source_provider for provenance and must not change unified filters.
 
 	// (1) Metadata artifact (always present, Required:true).
 	metaIdemKey, errMeta := asset.SHA256IdempotencyKey("stock", metadata.SHA256)
@@ -91,7 +86,7 @@ func BuildFinalizationRequest(
 			FolderPath:   "",
 			Action:       finalization.PublishCreated,
 		},
-		Source: sourceProvider,
+		Source: "stock",
 	})
 
 	// (2) Chunk artifacts (one per ChunkState, Required:true).
@@ -147,10 +142,6 @@ func BuildFinalizationRequest(
 			chunkMeta["slug"] = c.Slug
 		}
 
-		chunkSource := c.SourceProvider
-		if chunkSource == "" {
-			chunkSource = "stock"
-		}
 		arts = append(arts, finalization.PublishedArtifact{
 			ArtifactID:       c.ArtifactID,
 			Kind:             finalization.KindVideo,
@@ -163,7 +154,7 @@ func BuildFinalizationRequest(
 			IdempotencyKey:   chunkIdemKey,
 			Description:      c.Description,
 			ArtifactMetadata: chunkMeta,
-			Source:           chunkSource,
+			Source:           "stock",
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,

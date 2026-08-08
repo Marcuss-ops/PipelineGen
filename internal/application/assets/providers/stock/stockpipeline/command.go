@@ -171,12 +171,13 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 	var metadata *ChunkMetadataInput
 	if r.Metadata != nil {
 		metadata = &ChunkMetadataInput{
-			Title:       r.Metadata.Title,
-			Description: r.Metadata.Description,
-			Tags:        r.Metadata.Tags,
-			Category:    r.Metadata.Category,
-			Author:      r.Metadata.Author,
-			Extra:       r.Metadata.Extra,
+			Title:            r.Metadata.Title,
+			Description:      r.Metadata.Description,
+			BlockDescription: r.Metadata.BlockDescription,
+			Tags:             r.Metadata.Tags,
+			Category:         r.Metadata.Category,
+			Author:           r.Metadata.Author,
+			Extra:            r.Metadata.Extra,
 		}
 	}
 	return &StockCommand{
@@ -212,12 +213,13 @@ func chunkMetadataFromRunPayload(m *StockRunPayloadMetadata) *ChunkMetadataInput
 		return nil
 	}
 	return &ChunkMetadataInput{
-		Title:       m.Title,
-		Description: m.Description,
-		Tags:        m.Tags,
-		Category:    m.Category,
-		Author:      m.Author,
-		Extra:       m.Extra,
+		Title:            m.Title,
+		Description:      m.Description,
+		BlockDescription: m.BlockDescription,
+		Tags:             m.Tags,
+		Category:         m.Category,
+		Author:           m.Author,
+		Extra:            m.Extra,
 	}
 }
 
@@ -356,6 +358,9 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 		}
 		if c.Metadata.Description != "" {
 			md["description"] = c.Metadata.Description
+		}
+		if c.Metadata.BlockDescription != "" {
+			md["block_description"] = c.Metadata.BlockDescription
 		}
 		if len(c.Metadata.Tags) > 0 {
 			md["tags"] = c.Metadata.Tags
