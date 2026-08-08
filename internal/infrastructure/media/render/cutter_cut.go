@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"go.uber.org/zap"
@@ -37,6 +38,13 @@ import (
 // (cutter_mux.go). Batch-level + per-item result aggregation lives
 // in c.finalBatchResult + c.batchErr (cutter_mux.go).
 func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {
+	return c.cut(ctx, req, false)
+}
+
+// cut carries whether this recursive request already attempted the source
+// duration probe. The state stays inside the infrastructure adapter rather
+// than expanding the application CutRequest contract.
+func (c *FFmpegCutter) cut(ctx context.Context, req stockpipeline.CutRequest, sourceDurationProbeAttempted bool) (stockpipeline.CutBatchResult, error) {
 	items := make([]stockpipeline.CutItemResult, len(req.Jobs))
 	for i, j := range req.Jobs {
 		items[i] = stockpipeline.CutItemResult{JobID: j.OutputPath}
@@ -55,6 +63,14 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	if len(req.Jobs) == 0 {
 		// No work to do — empty batch is a success (len(items)==0).
 		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
+	}
+
+	logger := c.log
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	if req.Logger != nil {
+		logger = req.Logger
 	}
 
 	// Resume interrupted stock jobs without recreating clips that are
@@ -85,7 +101,7 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		// regenerated.
 		durationSec, sha, validateErr := c.validateProducedClip(ctx, j.OutputPath)
 		if validateErr != nil {
-			c.log.Warn("stock extractor: existing clip invalid, regenerating",
+			logger.Warn("stock extractor: existing clip invalid, regenerating",
 				zap.String("output_path", j.OutputPath),
 				zap.Error(validateErr))
 			_ = os.Remove(j.OutputPath)
@@ -112,7 +128,37 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 
 	// Bound FFmpeg filter graphs. Hundreds of trim/map/output branches in
 	// one process are disproportionately slow and can exhaust resources.
+	// Sort only the pending work before this outer chunking so every
+	// recursive request contains a contiguous temporal window. Keep the
+	// original indices alongside each job: results must still be written
+	// back in the caller's deterministic request order.
 	if len(pendingJobs) > 15 {
+		ordered := make([]struct {
+			job     stockpipeline.CutJob
+			origIdx int
+		}, len(pendingJobs))
+		for i := range pendingJobs {
+			ordered[i] = struct {
+				job     stockpipeline.CutJob
+				origIdx int
+			}{job: pendingJobs[i], origIdx: pendingToOrig[i]}
+		}
+		sort.SliceStable(ordered, func(i, j int) bool {
+			return ordered[i].job.StartSec < ordered[j].job.StartSec
+		})
+		for i := range ordered {
+			pendingJobs[i] = ordered[i].job
+			pendingToOrig[i] = ordered[i].origIdx
+		}
+
+		// Probe at most once before recursive chunks and carry the result
+		// into each sub-request. The attempted flag also covers probe
+		// failure, so a missing/unreadable source is not retried once per
+		// chunk.
+		if req.SourceDuration <= 0 && !sourceDurationProbeAttempted {
+			req.SourceDuration, _ = c.probeSourceDuration(ctx, req.SourcePath, 0, logger)
+		}
+
 		var lastErr error
 		produced := 0
 		for start := 0; start < len(pendingJobs); start += 15 {
@@ -122,7 +168,7 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 			}
 			subReq := req
 			subReq.Jobs = pendingJobs[start:end]
-			sub, cutErr := c.Cut(ctx, subReq)
+			sub, cutErr := c.cut(ctx, subReq, true)
 			if cutErr != nil {
 				lastErr = cutErr
 			}
@@ -146,17 +192,15 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		return result, nil
 	}
 
-	logger := c.log
-	if req.Logger != nil {
-		logger = req.Logger
-	}
-
 	// ── Probe source duration for pre-flight validation ──────────────
 	// If the source is shorter than the clip timestamps, FFmpeg's
 	// trim filter silently produces empty 262-byte MP4 containers.
 	// Probe first so we can fail-fast with a clear, actionable error
 	// instead of producing 11 identical empty files.
-	srcDuration, _ := c.probeSourceDuration(ctx, req.SourcePath, req.SourceDuration, logger)
+	srcDuration := req.SourceDuration
+	if srcDuration <= 0 && !sourceDurationProbeAttempted {
+		srcDuration, _ = c.probeSourceDuration(ctx, req.SourcePath, 0, logger)
+	}
 
 	// Filter out clips whose timestamps are entirely beyond the
 	// source duration. If we have the source duration and a clip's
