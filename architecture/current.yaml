@@ -27,7 +27,7 @@
   rationale: "Move source catalog ownership to the canonical typed registry and retire remaining duplicate declarations."
   count:
     baseline_initial: 48
-    current: 48
+    current: 25
     target_zero: 0
 - id: "WAVE-22-C2-E-ROUTE-MANIFEST"
   status: "in_progress"

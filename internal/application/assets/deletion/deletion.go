@@ -38,6 +38,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -132,6 +133,7 @@ type DeletionService struct {
 	stockRepo     *assets.ClipsRepository
 	voiceoverRepo *assets.VoiceoversRepository
 	imagesRepo    *imagesrepo.ImagesRepository
+	catalog       *artifacts.SourceCatalog
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `*drive.Uploader`
 	// field is RETIRED from the DeletionService struct entirely.
 	// The field + ctor parameter were already unused by every
@@ -188,6 +190,7 @@ type DeletionService struct {
 // purpose-grouped sub-bundle) so DeletionServiceDeps stays ≤8 fields.
 type DeletionServiceDeps struct {
 	Repos      DeletionRepoDeps
+	Catalog    *artifacts.SourceCatalog
 	Index      DeletionIndexDeps
 	Dispatcher DispatcherPort
 	Finalize   DeletionFinalizeDeps
@@ -249,6 +252,7 @@ func NewDeletionService(deps DeletionServiceDeps) *DeletionService {
 		stockRepo:        deps.Repos.StockRepo,
 		voiceoverRepo:    deps.Repos.VoiceoverRepo,
 		imagesRepo:       deps.Repos.ImagesRepo,
+		catalog:          deps.Catalog,
 		assetTreeSvc:     deps.Index.AssetTreeSvc,
 		assetIndexSvc:    deps.Index.AssetIndexSvc,
 		dispatcher:       deps.Dispatcher,

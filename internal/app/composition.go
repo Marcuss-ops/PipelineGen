@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+
 	"go.uber.org/zap"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
@@ -95,7 +97,11 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}
 
-	maint, err := BuildMaintBundle(ctx, cfg, dbs, log, driveBundle, repos, search, jobs, outbox)
+	sourceCatalog, err := artifacts.NewSourceCatalog(repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.VoiceoverRepo, repos.ImageRepo)
+	if err != nil {
+		return nil, fmt.Errorf("compose source catalog: %w", err)
+	}
+	maint, err := BuildMaintBundle(ctx, cfg, dbs, log, driveBundle, repos, search, jobs, outbox, sourceCatalog)
 	if err != nil {
 		return nil, fmt.Errorf("compose maintenance: %w", err)
 	}

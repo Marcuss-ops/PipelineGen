@@ -29,8 +29,6 @@ import (
 
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
@@ -342,18 +340,12 @@ func WireArtlist(
 		return nil, fmt.Errorf("WireArtlist: artlist.Build returned unexpected descriptor type %T (want *artlistapi.ArtlistDescriptor)", descriptor)
 	}
 
-	// ProviderAssets registry: unified catalog surface for Artlist,
-	// Pexels and Pixabay. The registry is frozen before the module
-	// is returned so no provider can be added or removed at runtime.
-	providerAssetsRegistry := providerassets.NewRegistry()
-	// VidRush discovery is explicitly live: the registry adapter must enter
-	// Service.SearchLive so queries reach the scraper rather than the
-	// catalog-only Service.Search path.
-	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlist.NewLiveAdapter(service))
-	_ = providerAssetsRegistry.Register(artlistAdapter)
-	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pexels", providers.PexelsSearcher))
-	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pixabay", providers.PixabaySearcher))
-	providerAssetsRegistry.Freeze()
+	// ProviderAssets is built by the single composition-root catalog builder.
+	providerAssetsRegistry, err := buildProviderAssetCatalog(service, providers.PexelsSearcher, providers.PixabaySearcher)
+	if err != nil {
+		_ = service.Close()
+		return nil, fmt.Errorf("WireArtlist: provider asset catalog: %w", err)
+	}
 
 	log.Info("WireArtlist: ART-001 reversal wiring complete",
 		zap.String("descriptor_name", ad.Name()),

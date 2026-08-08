@@ -133,8 +133,10 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 // SourceCatalog.Resolve→SourceRepo.GetByDriveFileID handles every
 // source uniformly with adapter-side shape conversion.
 func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*asset.Asset, string, error) {
-	catalog := artifacts.NewSourceCatalog(s.artlistRepo, s.clipsRepo, s.stockRepo, s.voiceoverRepo, s.imagesRepo)
-	sources := catalog.Names()
+	if s.catalog == nil {
+		return nil, "", fmt.Errorf("deletion: source catalog is not configured")
+	}
+	sources := s.catalog.Names()
 
 	if sourceLimit != "" && sourceLimit != "all" {
 		canonical := artifacts.CanonicalSource(sourceLimit)
@@ -145,13 +147,16 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 	}
 
 	for _, source := range sources {
-		repo, ok := catalog.Resolve(source)
+		repo, ok := s.catalog.Resolve(source)
 		if !ok || repo == nil {
-			continue
+			return nil, "", fmt.Errorf("deletion: source catalog repository unavailable for %q", source)
 		}
-		asset, err := repo.GetByDriveFileID(ctx, fileID)
-		if err == nil && asset != nil {
-			return asset, source, nil
+		resolved, err := repo.GetByDriveFileID(ctx, fileID)
+		if err != nil {
+			return nil, "", fmt.Errorf("deletion: source catalog lookup %q: %w", source, err)
+		}
+		if resolved != nil {
+			return resolved, source, nil
 		}
 	}
 

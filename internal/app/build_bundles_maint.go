@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -21,7 +22,7 @@ import (
 )
 
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
-func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle) (*wiring.MaintBundle, error) {
+func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, jobs *wiring.JobsBundle, outboxBundle *wiring.OutboxBundle, sourceCatalog *artifacts.SourceCatalog) (*wiring.MaintBundle, error) {
 	_ = ctx
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
 	// REMOVED from the canonical ctor — the field has been retired
@@ -36,6 +37,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Datab
 			VoiceoverRepo: repos.VoiceoverRepo,
 			ImagesRepo:    repos.ImageRepo,
 		},
+		Catalog: sourceCatalog,
 		Index: deletion.DeletionIndexDeps{
 			AssetTreeSvc:  search.AssetTreeService,
 			AssetIndexSvc: search.AssetIndexService,
