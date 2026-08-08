@@ -20,8 +20,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 )
 
 // semanticReadinessChecker implements mediasearchapi.SemanticReadyChecker

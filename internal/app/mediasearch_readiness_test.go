@@ -95,8 +95,8 @@ func TestSemanticReadinessChecker_ErrorSanitized(t *testing.T) {
 // panicking on partially-wired roots, and the nil DB must fail closed.
 func TestSemanticReadinessChecker_RootAdapterNilDB(t *testing.T) {
 	root := &wiring.ComposeRoot{
-		AI:     &wiring.AIBundle{},
-		DB:     nil,
+		AI: &wiring.AIBundle{},
+		DB: nil,
 		Process: &wiring.ProcessBundle{
 			ProcessQdrantBundle: wiring.ProcessQdrantBundle{
 				QdrantHealthProbe: nil,
