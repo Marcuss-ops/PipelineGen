@@ -1242,6 +1242,37 @@ func TestApplyWatermarkNVENCFailureIsTerminal(t *testing.T) {
 	}
 }
 
+func TestApplyWatermark_UsesConfiguredSoftwarePolicyWithoutGPUOverride(t *testing.T) {
+	runner := &captureRunner{}
+	p := NewProcessorWithEncoder("ffmpeg", "libx264").WithRunner(runner)
+
+	require.NoError(t, p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()))
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "libx264"),
+		"watermark must honor the configured software policy: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-preset", "veryfast"),
+		"watermark must use the configured software preset: %v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-crf", "23"),
+		"watermark must use software CRF quality: %v", runner.lastArgv)
+	assert.False(t, hasArg(runner.lastArgv, "-cq"),
+		"software watermark must not receive NVENC CQ args: %v", runner.lastArgv)
+}
+
+func TestApplyWatermark_AutoPolicyUsesResolverDetectedNVENC(t *testing.T) {
+	runner := &resolverRunner{output: " V....D h264_nvenc NVIDIA NVENC H.264 encoder\\n"}
+	p := NewProcessorWithEncoder("ffmpeg", "auto").WithRunner(runner)
+
+	require.NoError(t, p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()))
+	require.Len(t, runner.args, 2, "watermark must probe once, then execute the resolved encode")
+	assert.True(t, hasArgPair(runner.args[1], "-c:v", "h264_nvenc"),
+		"auto watermark policy must use resolver-detected NVENC: %v", runner.args[1])
+	assert.True(t, hasArgPair(runner.args[1], "-preset", "p1"),
+		"auto watermark policy must use NVENC preset args: %v", runner.args[1])
+	assert.True(t, hasArgPair(runner.args[1], "-cq", "23"),
+		"auto watermark policy must use NVENC quality args: %v", runner.args[1])
+	assert.False(t, hasArgPair(runner.args[1], "-c:v", "libx264"),
+		"auto watermark policy must not silently fall back when NVENC is detected: %v", runner.args[1])
+}
+
 // TestApplyWatermark_AudioPreserved verifies that ApplyWatermark always
 // uses "-c:a copy" (audio passthrough) — there is no NoAudio field.
 func TestApplyWatermark_AudioPreserved(t *testing.T) {
