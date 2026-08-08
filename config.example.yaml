@@ -234,8 +234,6 @@ scripts:
     require_ai: true
     require_drive: true
     require_database: true
-    remotion_url: ""                  # Defaults to http://127.0.0.1:4317
-    render_timeout_seconds: 1800        # 30 minutes
   # Concurrency caps for /api/script/legacy-batch phases
   batch_web_search_concurrency: 4     # Parallel SearXNG searches (1-16)
   batch_chapter_concurrency: 3        # Parallel Ollama chapter generations (1-10)

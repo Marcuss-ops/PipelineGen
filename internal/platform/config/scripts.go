@@ -1,9 +1,9 @@
 package config
 
-// ScriptCapabilityConfig gates the ScriptFlow module wiring and the
-// Remotion shorts renderer. In production (DeliveryInsecureDev=false) a
-// required dependency that is missing aborts the boot. In development
-// mode the module is disabled explicitly and no route is registered.
+// ScriptCapabilityConfig gates the ScriptFlow module wiring. In production
+// (DeliveryInsecureDev=false) a required dependency that is missing aborts
+// the boot. In development mode the module is disabled explicitly and no
+// route is registered.
 type ScriptCapabilityConfig struct {
 	// Enabled turns the ScriptFlow module on. Default true so existing
 	// deployments keep working; set to false to disable explicitly.
@@ -19,14 +19,6 @@ type ScriptCapabilityConfig struct {
 	// the script-generation run repository is skipped, but routes that
 	// depend on it may return errors at runtime.
 	RequireDatabase bool `yaml:"require_database" env:"VELOX_SCRIPTS_REQUIRE_DATABASE" default:"true"`
-
-	// RemotionURL is the base URL of the Remotion renderer sidecar.
-	// Falls back to http://127.0.0.1:4317 when empty.
-	RemotionURL string `yaml:"remotion_url" env:"VELOX_REMOTION_URL" default:""`
-
-	// RenderTimeoutSeconds is the HTTP client timeout for Remotion render
-	// requests. Default 1800 (30 minutes).
-	RenderTimeoutSeconds int `yaml:"render_timeout_seconds" env:"VELOX_SCRIPTS_RENDER_TIMEOUT_SECONDS" default:"1800"`
 }
 
 // ScriptsConfig holds tunables for the unified script generation endpoints
@@ -167,7 +159,7 @@ type ScriptsConfig struct {
 	// generation. Default 2 (at most three provider calls total).
 	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"2"`
 
-	// Capability gates ScriptFlow wiring and the Remotion shorts renderer.
+	// Capability gates ScriptFlow wiring.
 	Capability ScriptCapabilityConfig `yaml:"capability"`
 }
 
@@ -253,9 +245,6 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.MaxSegmentRegenerationAttempts <= 0 {
 		s.MaxSegmentRegenerationAttempts = 2
-	}
-	if s.Capability.RenderTimeoutSeconds <= 0 {
-		s.Capability.RenderTimeoutSeconds = 1800
 	}
 	return s
 }

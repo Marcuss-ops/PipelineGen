@@ -186,8 +186,6 @@ scripts:
     require_ai: true
     require_drive: true
     require_database: true
-    remotion_url: ""
-    render_timeout_seconds: 1800
   batch_web_search_concurrency: 4
   batch_chapter_concurrency: 3
 
