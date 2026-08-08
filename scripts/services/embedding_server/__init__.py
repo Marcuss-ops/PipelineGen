@@ -28,6 +28,13 @@ import asyncio
 
 from fastapi import FastAPI
 
+from scripts.services.device_policy import (
+    assert_model_device,
+    embedding_health_payload,
+    env_flag,
+    resolve_device,
+)
+
 log = logging.getLogger("embedding_server")
 
 try:
@@ -54,6 +61,20 @@ _busy_lock = asyncio.Lock()
 # ── Model loaders ───────────────────────────────────────────────────────────
 # Loaded once at module import (so the FastAPI app shares them across requests).
 
+EMBEDDING_DEVICE = os.environ.get("PIPELINEGEN_EMBEDDING_DEVICE", "auto")
+EMBEDDING_REQUIRE_GPU = env_flag("PIPELINEGEN_EMBEDDING_REQUIRE_GPU")
+DEVICE_SELECTION = resolve_device(
+    EMBEDDING_DEVICE,
+    require_gpu=EMBEDDING_REQUIRE_GPU,
+)
+
+print(
+    f"Embedding device policy: requested={DEVICE_SELECTION.requested} "
+    f"effective={DEVICE_SELECTION.effective} "
+    f"cuda_available={DEVICE_SELECTION.cuda_available} "
+    f"gpu_required={DEVICE_SELECTION.require_gpu}"
+)
+
 print("Loading NLP model (en_core_web_sm)...")
 nlp = spacy.load("en_core_web_sm")
 nlp_it = None
@@ -64,35 +85,57 @@ except Exception as e:
     print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
 
 print("Loading SentenceTransformer model (intfloat/multilingual-e5-base)...")
-model = SentenceTransformer("intfloat/multilingual-e5-base")
+model = SentenceTransformer(
+    "intfloat/multilingual-e5-base", device=DEVICE_SELECTION.effective
+)
+TEXT_MODEL_DEVICE = assert_model_device(model, DEVICE_SELECTION, "text embedding")
 TEXT_MODEL_NAME = "intfloat/multilingual-e5-base"
 TEXT_MODEL_VERSION = "2026-06-26-v1"
 siglip_model = None
 VISUAL_MODEL_NAME = "google/siglip-so400m-patch14-384"
 VISUAL_MODEL_VERSION = "2026-06-26-v1"
 if os.environ.get("SKIP_SIGLIP", "").lower() in ("1", "true", "yes"):
+    if DEVICE_SELECTION.requested == "cuda" or DEVICE_SELECTION.require_gpu:
+        raise RuntimeError("SigLIP cannot be skipped while GPU mode is explicit or required")
     print("SKIP_SIGLIP set — skipping SigLIP model load (visual endpoints will return 501)")
 else:
     try:
         print("Loading SigLIP model (google/siglip-so400m-patch14-384, 768d)...")
-        siglip_model = SentenceTransformer("google/siglip-so400m-patch14-384")
+        siglip_model = SentenceTransformer(
+            "google/siglip-so400m-patch14-384", device=DEVICE_SELECTION.effective
+        )
+        VISUAL_MODEL_DEVICE = assert_model_device(siglip_model, DEVICE_SELECTION, "visual embedding")
         print(f"SigLIP model loaded, embedding dimension: {siglip_model.get_sentence_embedding_dimension()}")
     except Exception as e:
+        if DEVICE_SELECTION.effective == "cuda" or DEVICE_SELECTION.require_gpu:
+            raise RuntimeError(f"SigLIP GPU model load failed: {e}") from e
         print(f"SigLIP model not loaded (visual endpoints will return 501): {e}")
 
 clap_model = None
 CLAP_MODEL_NAME = "laion/clap-htsat-fused"
 CLAP_MODEL_VERSION = "2026-06-26-v1"
 if os.environ.get("SKIP_CLAP", "").lower() in ("1", "true", "yes"):
+    if DEVICE_SELECTION.requested == "cuda" or DEVICE_SELECTION.require_gpu:
+        raise RuntimeError("CLAP cannot be skipped while GPU mode is explicit or required")
     print("SKIP_CLAP set — skipping CLAP model load (audio endpoints will return 501)")
 else:
     try:
         print("Loading CLAP model (laion/clap-htsat-fused)...")
-        clap_model = SentenceTransformer("laion/clap-htsat-fused")
+        clap_model = SentenceTransformer(
+            "laion/clap-htsat-fused", device=DEVICE_SELECTION.effective
+        )
+        AUDIO_MODEL_DEVICE = assert_model_device(clap_model, DEVICE_SELECTION, "audio embedding")
     except Exception as e:
+        if DEVICE_SELECTION.effective == "cuda" or DEVICE_SELECTION.require_gpu:
+            raise RuntimeError(f"CLAP GPU model load failed: {e}") from e
         print(f"CLAP model not loaded: {e}")
 
 # ── FastAPI app ─────────────────────────────────────────────────────────────
+if siglip_model is None:
+    VISUAL_MODEL_DEVICE = None
+if clap_model is None:
+    AUDIO_MODEL_DEVICE = None
+
 app = FastAPI(title="PipelineGen Embedding Server")
 
 
@@ -132,12 +175,15 @@ async def track_concurrency(request, call_next):
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "queue_depth": _busy_count,
-        "total_requests": _request_count,
-        "inference_slots": INFERENCE_CONCURRENCY,
-    }
+    return embedding_health_payload(
+        queue_depth=_busy_count,
+        total_requests=_request_count,
+        inference_slots=INFERENCE_CONCURRENCY,
+        text_device=TEXT_MODEL_DEVICE,
+        visual_device=VISUAL_MODEL_DEVICE,
+        audio_device=AUDIO_MODEL_DEVICE,
+        selection=DEVICE_SELECTION,
+    )
 
 
 # Mount router sub-modules. Each sub-module defines its own APIRouter and

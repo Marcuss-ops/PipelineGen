@@ -104,3 +104,16 @@ Script standalone per operazioni batch o one-shot. **Non chiamati da Go.**
 |----------|---------|---------|
 | `OLLAMA_URL` | `http://localhost:11434` | `bridges/semantic_tagger.py` |
 | `EMBEDDING_SERVER_URL` | `http://127.0.0.1:8001` | `start_embedding_server.sh` / Go clip indexer |
+| `PIPELINEGEN_EMBEDDING_DEVICE` | `auto` | Embedding sidecar device: `auto`, `cpu`, or `cuda` |
+| `PIPELINEGEN_EMBEDDING_REQUIRE_GPU` | `0` | Embedding sidecar: fail closed when CUDA is unavailable or a model loads on CPU |
+| `PIPELINEGEN_RERANKER_DEVICE` | `auto` | Reranker device: `auto`, `cpu`, or `cuda` |
+| `PIPELINEGEN_RERANKER_REQUIRE_GPU` | `0` | Reranker: fail closed when GPU is required but unavailable |
+
+The embedding `/health` response reports `requested_device`, effective `device`,
+`cuda_available`, `gpu_required`, and the effective `text_device`,
+`visual_device`, and `audio_device`. The reranker `/health` response reports
+`requested_device`, effective `device`, `model_device`, `cuda_available`, and
+`gpu_required`. `cuda` is explicit and fail-closed; `auto` selects CUDA when
+available and otherwise uses CPU unless the corresponding `*_REQUIRE_GPU=1`
+flag is set. These controls are independent from Whisper's `VELOX_WHISPER_DEVICE`
+contract.

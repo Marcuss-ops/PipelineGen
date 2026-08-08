@@ -11,6 +11,21 @@ Usage:
 
 import os
 from fastapi import FastAPI, HTTPException
+
+try:
+    from scripts.services.device_policy import (
+        assert_model_device,
+        env_flag,
+        reranker_health_payload,
+        resolve_device,
+    )
+except ModuleNotFoundError:  # direct `python scripts/reranker_server.py` execution
+    from device_policy import (  # type: ignore[no-redef]
+        assert_model_device,
+        env_flag,
+        reranker_health_payload,
+        resolve_device,
+    )
 from pydantic import BaseModel
 import uvicorn
 
@@ -22,10 +37,23 @@ except ImportError:
     exit(1)
 
 MODEL_NAME = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+RERANKER_DEVICE = os.getenv("PIPELINEGEN_RERANKER_DEVICE", "auto")
+RERANKER_REQUIRE_GPU = env_flag("PIPELINEGEN_RERANKER_REQUIRE_GPU")
+DEVICE_SELECTION = resolve_device(
+    RERANKER_DEVICE,
+    require_gpu=RERANKER_REQUIRE_GPU,
+)
 
+print(
+    f"Reranker device policy: requested={DEVICE_SELECTION.requested} "
+    f"effective={DEVICE_SELECTION.effective} "
+    f"cuda_available={DEVICE_SELECTION.cuda_available} "
+    f"gpu_required={DEVICE_SELECTION.require_gpu}"
+)
 print(f"Loading CrossEncoder model: {MODEL_NAME} ...")
-model = CrossEncoder(MODEL_NAME)
-print(f"CrossEncoder {MODEL_NAME} loaded successfully.")
+model = CrossEncoder(MODEL_NAME, device=DEVICE_SELECTION.effective)
+MODEL_DEVICE = assert_model_device(model, DEVICE_SELECTION, "reranker")
+print(f"CrossEncoder {MODEL_NAME} loaded successfully on {MODEL_DEVICE}.")
 
 app = FastAPI(title="PipelineGen Reranker Server")
 
@@ -54,7 +82,11 @@ class RerankResponse(BaseModel):
 @app.get("/health")
 def health():
     """Health check endpoint for circuit breaker logic in Go."""
-    return {"ok": True, "model": MODEL_NAME}
+    return reranker_health_payload(
+        model_name=MODEL_NAME,
+        model_device_name=MODEL_DEVICE,
+        selection=DEVICE_SELECTION,
+    )
 
 
 @app.post("/rerank")
