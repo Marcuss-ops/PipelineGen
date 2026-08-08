@@ -1,6 +1,5 @@
 // Package ffmpeg provides FFmpeg-based media processing utilities:
-// video normalization, cutting, watermarking, image-to-video conversion,
-// and audio extraction/silence removal.
+// video normalization, cutting, watermarking, and audio extraction/silence removal.
 //
 // STATUS: ACTIVE - Used by mediaasset, stockpipeline, videomuscles, fullimages, and voiceover.
 package ffmpeg
