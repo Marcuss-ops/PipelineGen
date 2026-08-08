@@ -1,31 +1,39 @@
 package images
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-)
-
-// semanticPayloadToMap converts a semantic payload into a plain
-// map[string]any that can be fed into asset.CanonicalImageMetadataBuilder.
-// It centralises the translation from the infrastructure/semantic
-// representation to the canonical image metadata shape.
-func semanticPayloadToMap(payload *semantic.Payload) map[string]any {
+// semanticPayloadToMap converts a semantic payload into a plain map[string]any
+// for the canonical image metadata builder.
+func semanticPayloadToMap(payload *SemanticPayload) map[string]any {
 	if payload == nil {
 		return nil
 	}
-
-	input := semantic.AssetSemanticInput{
-		AssetID:             payload.AssetID,
-		PromptOriginal:      payload.PromptOriginal,
-		SemanticDescription: payload.SemanticDescription,
-		SearchText:          payload.SearchText,
-		Subjects:            payload.Subjects,
-		Tags:                payload.Tags,
-		Categories:          payload.Categories,
-		Mood:                payload.Mood,
-		Style:               payload.Style,
+	out := map[string]any{}
+	if payload.AssetID != "" {
+		out["asset_id"] = payload.AssetID
 	}
-	out := semantic.BuildAssetMetadata(input, nil)
-
+	if payload.PromptOriginal != "" {
+		out["prompt_original"] = payload.PromptOriginal
+	}
+	if payload.SemanticDescription != "" {
+		out["semantic_description"] = payload.SemanticDescription
+	}
+	if payload.SearchText != "" {
+		out["search_text"] = payload.SearchText
+	}
+	if len(payload.Subjects) > 0 {
+		out["subjects"] = payload.Subjects
+	}
+	if len(payload.Tags) > 0 {
+		out["tags"] = payload.Tags
+	}
+	if len(payload.Categories) > 0 {
+		out["categories"] = payload.Categories
+	}
+	if len(payload.Mood) > 0 {
+		out["mood"] = payload.Mood
+	}
+	if len(payload.Style) > 0 {
+		out["style"] = payload.Style
+	}
 	if len(payload.ConceptTags) > 0 {
 		out["concept_tags"] = payload.ConceptTags
 	}
@@ -38,6 +46,5 @@ func semanticPayloadToMap(payload *semantic.Payload) map[string]any {
 	if payload.RetrievalScore != nil {
 		out["retrieval_score"] = *payload.RetrievalScore
 	}
-
 	return out
 }

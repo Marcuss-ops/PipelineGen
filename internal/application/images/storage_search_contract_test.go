@@ -2,7 +2,6 @@ package images
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -59,7 +58,7 @@ const (
 func TestPkgHTTPJSON_GetJSONExported(t *testing.T) {
 	var _ func(
 		ctx context.Context,
-		client *http.Client,
+		client httpjson.Client,
 		targetURL string,
 		opts *httpjson.Options,
 	) (map[string]any, error) = httpjson.GetJSON[map[string]any]

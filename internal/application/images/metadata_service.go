@@ -8,14 +8,13 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
 
 // MetadataService handles semantic metadata tagging and upload to images.
 type MetadataService struct {
-	metaWriter semantic.MetadataWriterPort
+	metaWriter SemanticPort
 	publisher  delivery.Publisher
 	tempDir    string
 	log        *zap.Logger
@@ -44,7 +43,7 @@ func (m *MetadataService) publishMetadata(ctx context.Context, style, subject, f
 var ccLicenseRegex = regexp.MustCompile(`(?i)(cc-by|creative\s*commons|public\s*domain|pd|gfdl|copyright\s*free|creative-commons)`)
 
 // tagImageMetadata calls metaWriter.Write() ONCE to produce semantic metadata.
-func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, generator, hash, localPath string, width, height int) (*semantic.WriteResult, error) {
+func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, generator, hash, localPath string, width, height int) (*SemanticWriteResult, error) {
 	if m.metaWriter == nil {
 		return nil, nil
 	}
@@ -117,7 +116,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 		}
 	}
 
-	req := semantic.WriteRequest{
+	req := SemanticWriteRequest{
 		AssetID:    hash,
 		AssetType:  "image",
 		MediaType:  "image",
@@ -133,7 +132,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 		Prompt:     cleanPrompt,
 		LocalPath:  localPath,
 		TempDir:    m.tempDir,
-		Extensions: semantic.BuildImageExtension(width, height, "", "", 0),
+		Extensions: buildImageSemanticExtension(width, height),
 	}
 
 	if sourceType == "retrieved" {
@@ -148,7 +147,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 }
 
 // uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
-func (m *MetadataService) uploadImageMetadata(ctx context.Context, style, subject string, result *semantic.WriteResult) {
+func (m *MetadataService) uploadImageMetadata(ctx context.Context, style, subject string, result *SemanticWriteResult) {
 	if result == nil || result.LocalPath == "" {
 		m.log.Warn("uploadImageMetadata: nil result or empty local path")
 		return
@@ -205,7 +204,7 @@ func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, 
 		}
 	}
 
-	result, err := m.metaWriter.Write(ctx, semantic.WriteRequest{
+	result, err := m.metaWriter.Write(ctx, SemanticWriteRequest{
 		AssetID:    genID,
 		AssetType:  "image_group",
 		MediaType:  "image",

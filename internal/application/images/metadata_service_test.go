@@ -4,20 +4,19 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"go.uber.org/zap"
 )
 
 // recordingMetaWriter captures the WriteRequest passed to Write.
 type recordingMetaWriter struct {
-	req semantic.WriteRequest
+	req SemanticWriteRequest
 }
 
-func (m *recordingMetaWriter) GeneratePayload(ctx context.Context, req semantic.WriteRequest) (*semantic.Payload, string, error) {
+func (m *recordingMetaWriter) GeneratePayload(ctx context.Context, req SemanticWriteRequest) (*SemanticPayload, string, error) {
 	return nil, "", nil
 }
 
-func (m *recordingMetaWriter) Write(ctx context.Context, req semantic.WriteRequest) (*semantic.WriteResult, error) {
+func (m *recordingMetaWriter) Write(ctx context.Context, req SemanticWriteRequest) (*SemanticWriteResult, error) {
 	m.req = req
 	return nil, nil
 }
