@@ -290,7 +290,11 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	return p.RunWithEncoderPolicy(ctx, opts.Codec, args, 10*time.Minute)
 }
 
-const maxNVENCOutputsPerBatch = 3
+// maxTemporalOutputsPerBatch bounds the number of outputs in one temporal
+// input-seek microbatch. The bound applies to every encoder; NVENC retains
+// the same conservative GPU session limit while software encoders also avoid
+// building one filter graph across distant source timestamps.
+const maxTemporalOutputsPerBatch = 3
 
 // maxTemporalBatchSpanSec bounds how far one input-seek microbatch may span.
 // Distant trim filters otherwise make FFmpeg decode the whole interval between
@@ -298,12 +302,13 @@ const maxNVENCOutputsPerBatch = 3
 const maxTemporalBatchSpanSec = 120
 
 // CutReencodeBatch extracts multiple clips from the same input in bounded
-// NVENC microbatches. A single NVENC process owns at most three output
-// sessions, and failures remain terminal for the selected encoder policy.
-// ffmpeg invocation using trim filters. This reads the source file once and
-// produces all clips, eliminating per-clip process spawn overhead and reducing
-// disk I/O contention compared to running N parallel CutReencode calls.
-// codec/preset/crf allow using hardware encoders (e.g. h264_nvenc).
+// temporal input-seek microbatches. Each invocation seeks near the first
+// requested timestamp before opening the input, then applies relative trim
+// timestamps. This avoids decoding from the beginning of a long source when
+// clips are far apart. NVENC remains the configured encoder and its failures
+// remain terminal; codec/preset/crf allow hardware encoders such as h264_nvenc.
+// The bounded filter graphs also reduce disk I/O contention compared to
+// running N parallel CutReencode calls.
 func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int) error {
 	if len(jobs) == 0 {
 		return nil
@@ -333,28 +338,25 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 			FormatSec(jobs[0].StartSec), FormatSec(jobs[0].EndSec), noAudio, codec, preset, crf)
 	}
 
-	if IsNVENCCodec(codec) {
-		planned := append([]CutJob(nil), jobs...)
-		sort.SliceStable(planned, func(i, j int) bool {
-			return planned[i].StartSec < planned[j].StartSec
-		})
-		for start := 0; start < len(planned); {
-			end := start
-			anchor := planned[start].StartSec
-			for end < len(planned) && end-start < maxNVENCOutputsPerBatch {
-				if end > start && planned[end].EndSec-anchor > maxTemporalBatchSpanSec {
-					break
-				}
-				end++
+	planned := append([]CutJob(nil), jobs...)
+	sort.SliceStable(planned, func(i, j int) bool {
+		return planned[i].StartSec < planned[j].StartSec
+	})
+	for start := 0; start < len(planned); {
+		end := start
+		anchor := planned[start].StartSec
+		for end < len(planned) && end-start < maxTemporalOutputsPerBatch {
+			if end > start && planned[end].EndSec-anchor > maxTemporalBatchSpanSec {
+				break
 			}
-			if err := p.cutReencodeBatchWithCodec(ctx, input, planned[start:end], noAudio, codec, preset, crf, anchor); err != nil {
-				return err
-			}
-			start = end
+			end++
 		}
-		return nil
+		if err := p.cutReencodeBatchWithCodec(ctx, input, planned[start:end], noAudio, codec, preset, crf, anchor); err != nil {
+			return err
+		}
+		start = end
 	}
-	return p.cutReencodeBatchWithCodec(ctx, input, jobs, noAudio, codec, preset, crf, 0)
+	return nil
 }
 
 // cutReencodeSingle is the single-job fast path for CutReencodeBatch.
