@@ -32,7 +32,7 @@ import (
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
-	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scripts_adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
@@ -307,7 +307,7 @@ func WireArtlist(
 	// tolerance continues to return 503 on /recommend in that
 	// case (unchanged runtime contract for unavailable canonical).
 	bundle.ClipResolver = wiring.NewClipResolverRecommendAdapter(
-		scripts_usecase.NewClipResolver(bundle.ClipsRepo, log),
+		scripts_adapters.NewClipResolver(bundle.ClipsRepo, log),
 		log,
 	)
 

@@ -27,7 +27,7 @@ import (
 // ReferenceType is the canonical enum of input-reference shapes.
 // Each value is a stable wire token for ClipReference.Type. The
 // resolver's behavior is whichever row of switch (in
-// usecase/clip_resolver.go) matches the input Type — there is no
+// adapters/clip_resolver.go) matches the input Type — there is no
 // value-based fallback.
 type ReferenceType string
 
@@ -165,7 +165,7 @@ type ClipResolutionResult struct {
 
 // ClipResolver is the canonical typed resolver for ClipReference.
 // Production wiring is NewClipResolver(repo, log) in
-// internal/application/scripts/usecase/clip_resolver.go, which
+// internal/application/scripts/adapters/clip_resolver.go, which
 // satisfies the port via the typed repo methods on
 // *assets.ClipsRepository. Tests can wire a stub via
 // the narrow clipResolverPortReadOnly interface defined next to

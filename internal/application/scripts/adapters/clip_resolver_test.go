@@ -1,4 +1,4 @@
-// Package scripts — clip_resolver_test.go is the unit-test seam for
+// Package adapters — clip_resolver_test.go is the unit-test seam for
 // the new typed ClipResolver adapter.
 //
 // These tests cover the explicit dispatch table using the narrow
@@ -15,7 +15,7 @@
 //   - not found → not_found reason
 //   - db error   → db_error reason + first DB error returned
 //   - mixed batch → partial success path authenticated
-package usecase
+package adapters
 
 import (
 	"context"

@@ -148,7 +148,7 @@ type ClipResolverRecommendAdapter struct {
 // unavailable" shape that the handler-side /recommend route
 // already handles via `if h.clipResolver == nil { 500 }`. This
 // is the same pattern as the canonical `clipResolverAdapter` in
-// scripts/usecase/clip_resolver.go (nil repo returns a no-op
+// scripts/adapters/clip_resolver.go (nil repo returns a no-op
 // adapter that synthesizes ResolveReasonNotFound for every
 // dispatch).
 func NewClipResolverRecommendAdapter(canonical ports.ClipResolver, log *zap.Logger) *ClipResolverRecommendAdapter {

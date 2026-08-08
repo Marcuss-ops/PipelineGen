@@ -73,7 +73,7 @@ type ArtlistBundle struct {
 	// closed 2026-07-04) that bridges the handler-side artlist.ClipResolverPort
 	// (Recommend method) to the canonical *scripts.ClipResolver (Resolve method)
 	// + a real field-weighted Jaccard scoring layer. Constructed in WireArtlist
-	// via NewClipResolverRecommendAdapter(scripts_usecase.NewClipResolver(ClipsRepo, log), log);
+	// via NewClipResolverRecommendAdapter(scripts_adapters.NewClipResolver(ClipsRepo, log), log);
 	// nil when the canonical resolver is unavailable (godlike/07 fail-closed
 	// fast path — the handler returns 503 on /recommend in that case).
 	ClipResolver       *ClipResolverRecommendAdapter
