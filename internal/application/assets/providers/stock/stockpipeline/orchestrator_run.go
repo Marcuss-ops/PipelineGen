@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // Run is a thin wrapper around RunResilient that drops the
@@ -187,11 +188,17 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// §Known Issues context.Background() allowlist pattern.
 	defer func() {
 		stager := o.stager
-		// Keep staged sources and extracted artifacts available across
-		// retryable failures. A retry must resume from the workspace,
-		// not download and cut the source again.
-		if stager == nil || err != nil {
+		if stager == nil {
 			return
+		}
+		// Keep staged sources available only across retryable failures.
+		// Terminal failures and cancellation must release the temporary
+		// workspace; otherwise failed jobs leak staged source files.
+		if err != nil {
+			_, retryable := retry.Classify(err)
+			if retryable {
+				return
+			}
 		}
 		cleanupCtx := context.WithoutCancel(ctx)
 		for _, sa := range state.StagedAssets {
