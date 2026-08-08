@@ -24,16 +24,12 @@ func (p *DocumentsProcessor) Policy(*scriptpkg.ResolvedGenerationPlan) Processor
 	return DefaultPolicyFor(ProcessorDocument)
 }
 
-func (p *DocumentsProcessor) Process(
-	ctx context.Context,
-	plan *scriptpkg.ResolvedGenerationPlan,
-	input ProcessInput,
-) (*PostProcessResult, error) {
-	if p == nil || p.service == nil {
-		return nil, fmt.Errorf("document publisher is not configured")
-	}
+func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if plan == nil || !plan.DocsEnabled {
 		return &PostProcessResult{Changed: true}, nil
+	}
+	if p == nil || p.service == nil {
+		return nil, fmt.Errorf("document publisher is not configured")
 	}
 
 	languages := append([]string(nil), plan.DocsLanguages...)
@@ -44,67 +40,37 @@ func (p *DocumentsProcessor) Process(
 		return nil, fmt.Errorf("document publishing requires at least one language")
 	}
 
-	model := &scriptpkg.ModelScriptOutputV1{
-		SchemaVersion: 1,
-		Text:          input.Text,
-		SpecScene:     input.SpecScene,
-		WordCount:     input.WordCount,
-		ModelUsed:     input.ModelUsed,
-	}
+	model := &scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: input.Text, SpecScene: input.SpecScene, WordCount: input.WordCount, ModelUsed: input.ModelUsed}
 	if plan.SingleScene {
 		var bindings scriptpkg.SceneBindings
 		if len(model.SpecScene.Scenes) > 0 {
 			bindings = model.SpecScene.Scenes[0].Bindings
 		}
-		model.SpecScene.Scenes = []scriptpkg.SpecScene{{
-			ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration,
-			Text: input.Text, Bindings: bindings,
-		}}
+		model.SpecScene.Scenes = []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration, Text: input.Text, Bindings: bindings}}
 	}
-	// For a single explicit segment, the persisted model text is the
-	// canonical generated narrative. The scene planner may retain only a
-	// short preview in SpecScene; publishing that preview would silently
-	// truncate the document produced by the endpoint.
 	if len(model.SpecScene.Scenes) == 1 && strings.TrimSpace(input.Text) != "" {
 		model.SpecScene.Scenes[0].Text = input.Text
 	}
 	documentTitle := strings.TrimSpace(plan.Title)
-
-	if plan.VideoMetadata != nil &&
-		strings.TrimSpace(plan.VideoMetadata.Title) != "" {
+	if plan.VideoMetadata != nil && strings.TrimSpace(plan.VideoMetadata.Title) != "" {
 		documentTitle = strings.TrimSpace(plan.VideoMetadata.Title)
 	}
-
-	content := BuildSpecSceneDocumentHTML(
-		model,
-		documentTitle,
-		plan.VideoMetadata,
-		input.Provenance,
-	)
+	content := BuildSpecSceneDocumentHTML(model, documentTitle, plan.VideoMetadata, input.Provenance)
 	if strings.TrimSpace(content) == "" {
 		return nil, fmt.Errorf("document content is empty")
 	}
 
 	var firstID, firstLink string
-	// Existing documents are normally reused by the idempotent publisher.
-	// Subtitle links are a versioned document surface, however: when ASS
-	// artifacts become available, refresh the existing doc so operators do
-	// not keep seeing the pre-subtitle HTML.
 	refreshDocument := plan.ForceRefresh || specSceneHasSubtitleLinks(input.SpecScene)
 	for _, language := range languages {
 		language = strings.TrimSpace(language)
 		if language == "" {
 			continue
 		}
-		link, id := p.service.CreateDoc(
-			ctx,
-			documentTitle+"_"+language,
-			content,
-			nil,
-			plan.DocsFolderID,
-			plan.ID+"-"+language,
-			refreshDocument,
-		)
+		link, id, createErr := p.service.CreateDoc(ctx, documentTitle+"_"+language, content, nil, plan.DocsFolderID, plan.ID+"-"+language, refreshDocument)
+		if createErr != nil {
+			return nil, fmt.Errorf("publish document for language %s: %w", language, createErr)
+		}
 		if strings.TrimSpace(link) == "" || strings.TrimSpace(id) == "" {
 			return nil, fmt.Errorf("document publisher returned an empty reference for language %s", language)
 		}

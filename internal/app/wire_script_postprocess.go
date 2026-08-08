@@ -60,10 +60,10 @@ func (a *assetServiceLookupAdapter) GetAsset(
 // canonical postprocessor on the supplied registry. Each registration
 // is gated on its required infrastructure dependency (DocClient for
 // document, ImageService for images, VoiceoverService for voiceover,
-// QdrantSearcher + OllamaClient for clip_search) — when the dep
-// is absent at the call site the registration is silently skipped
-// and the composition-time validator in wire_script_adapters.go
-// (validateRequiredProcessors) surfaces the gap after the freeze.
+// QdrantSearcher + OllamaClient for clip_search). DocumentProcessor
+// is always registered with a typed unavailable publisher when Drive
+// is absent, so docs-enabled requests fail closed at runtime rather
+// than being silently skipped.
 //
 // SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT,
 // extended PR-TRANSLATE-SCRIPT-SPEC FP2 2026-08-08 with TranslationProcessor):
@@ -119,16 +119,19 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Documents are opt-in per request. Register the processor only when
-	// Drive exposes the document client; requests that explicitly enable
-	// docs then receive the canonical best-effort warning if unavailable.
-	if root != nil && root.Drive != nil && root.Drive.DocClient != nil {
-		docService := usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.DocumentsFolder())
-		if !ppReg.Register(adapters.NewDocumentsProcessor(docService)) {
-			return fmt.Errorf("register document processor: composition bug or duplicate name")
-		}
-		log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
+	// Documents are opt-in per request. Always register the processor so
+	// docs-enabled plans fail closed when Drive is unavailable instead of
+	// silently skipping document output at composition time.
+	var docClient drive.DocClient
+	if root != nil && root.Drive != nil {
+		docClient = root.Drive.DocClient
 	}
+	docPublisher := newDriveDocumentPublisherAdapter(docClient)
+	docService := usecase.NewDocumentsService(docPublisher, log, cfg.Drive.DocumentsFolder())
+	if !ppReg.Register(adapters.NewDocumentsProcessor(docService)) {
+		return fmt.Errorf("register document processor: composition bug or duplicate name")
+	}
+	log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
 
 	// Inline Image generation processor (temporarily restored).
 	if root.Domains != nil && root.Domains.ImageService != nil {
