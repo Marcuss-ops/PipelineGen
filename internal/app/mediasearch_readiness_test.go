@@ -90,7 +90,7 @@ func TestSemanticReadinessChecker_ErrorSanitized(t *testing.T) {
 	if strings.Contains(msg, "\n") {
 		t.Fatalf("readiness error must be single-line, got: %q", msg)
 	}
-}// newSemanticReadinessChecker must adapt the composition root without
+} // newSemanticReadinessChecker must adapt the composition root without
 // panicking on partially-wired roots, and the nil DB must fail closed.
 func TestSemanticReadinessChecker_RootAdapterNilDB(t *testing.T) {
 	root := &wiring.ComposeRoot{
@@ -171,4 +171,3 @@ func TestWireMediasearchReadiness_Assembly(t *testing.T) {
 		t.Fatal("expected fail-closed error for nil root")
 	}
 }
-
