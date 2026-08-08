@@ -1,7 +1,7 @@
 // Package scriptgeneration — ports.go defines the technology-independent
 // interfaces for the script generation workflow. Every adapter
-// (Ollama, Google Drive, TTS, Remotion) implements one or more of
-// these contracts.
+// (Ollama, Google Drive, TTS) implements one or more of these
+// contracts.
 //
 // Verdetto invariant: no port returns a technology-specific type
 // (e.g. *driveintegration.UploadResult). Every port returns only
