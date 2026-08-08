@@ -50,19 +50,26 @@ var videoEncoderPolicySkipDirs = map[string]bool{
 	"out":          true,
 }
 
-// The resolver is the sole owner of concrete encoder names in the active
-// command path. The scanner itself contains probe literals and is exempt.
+// The resolver is the sole owner of runtime encoder selection. The scanner
+// itself contains probe literals and is exempt. Configuration and the stock
+// pipeline's default profile are policy inputs, not FFmpeg command builders;
+// they remain explicit allowlisted owners of default policy values.
 var videoEncoderPolicyAllowPrefixes = []string{
 	"internal/infrastructure/media/ffmpeg/encoder_resolver.go",
+	"internal/platform/config/video.go",
+	"internal/application/assets/providers/stock/stockpipeline/service_types.go",
 	"cmd/archcheck/scan",
 }
 
-// Keep the check focused on production FFmpeg command builders. Configuration
-// defaults and application-level profile descriptions are policy inputs, not
-// direct encoder selection at an FFmpeg call site.
+// Scan production Go trees rather than only today's FFmpeg packages. This
+// makes the rule forward-preventive: a new cmd/admin, application, or
+// infrastructure command builder cannot bypass the policy simply by landing
+// outside the original media directories. The narrow allowlist above keeps
+// declarative policy inputs and the resolver itself free of false positives.
 var videoEncoderPolicyScopes = []string{
-	"internal/infrastructure/media/ffmpeg/",
-	"internal/infrastructure/media/render/",
+	"internal/",
+	"cmd/",
+	"pkg/",
 }
 
 const videoEncoderPolicyNote = "hardcoded video encoder in an active FFmpeg command-builder path outside the canonical resolver; pass the resolved codec through the central encoder policy and RunWithEncoderPolicy"

@@ -97,6 +97,26 @@ func runArchcheckForReport(t *testing.T, binPath, projectRoot string) []byte {
 	return out
 }
 
+func TestVideoEncoderPolicyHardGateFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	fixture := filepath.Join(root, "internal", "infrastructure", "media", "ffmpeg", "bad.go")
+	if err := os.MkdirAll(filepath.Dir(fixture), 0o755); err != nil {
+		t.Fatalf("mkdir encoder fixture: %v", err)
+	}
+	if err := os.WriteFile(fixture, []byte("package ffmpeg\nvar codec = \\\"libx264\\\"\n"), 0o644); err != nil {
+		t.Fatalf("write encoder fixture: %v", err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "hard_gates:\n  - percheck_video_encoder_policy\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o644); err != nil {
+		t.Fatalf("write policy fixture: %v", err)
+	}
+
+	if code, err := Run(context.Background(), root, policyPath, "test", false, false); err != nil || code != ExitViolations {
+		t.Fatalf("video encoder policy hard gate must fail closed: code=%d err=%v", code, err)
+	}
+}
+
 func TestKernelSubzoneHardGatesFailClosed(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "internal", "kernel", "observability"), 0o755); err != nil {

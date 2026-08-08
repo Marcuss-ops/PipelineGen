@@ -67,6 +67,22 @@ func TestScanVideoEncoderPolicy_ProductionConfigIsGPUOriented(t *testing.T) {
 	}
 }
 
+func TestScanVideoEncoderPolicy_PolicyInputOwnersPass(t *testing.T) {
+	root := t.TempDir()
+	writeEncoderPolicyFixture(t, root, "internal/platform/config/video.go", `package config
+const defaultCodec = "libx264"
+`)
+	writeEncoderPolicyFixture(t, root, "internal/application/assets/providers/stock/stockpipeline/service_types.go", `package stockpipeline
+const defaultCodec = "libx264"
+`)
+
+	r := &report.Report{}
+	ScanVideoEncoderPolicy(root, &policy.Policy{}, r)
+	if len(r.Violations) != 0 {
+		t.Fatalf("policy input owners must pass: %+v", r.Violations)
+	}
+}
+
 func TestScanVideoEncoderPolicy_CanonicalResolverPasses(t *testing.T) {
 	root := t.TempDir()
 	writeEncoderPolicyFixture(t, root, "internal/infrastructure/media/ffmpeg/encoder_resolver.go", `package ffmpeg
