@@ -23,11 +23,13 @@ import (
 type captureRunner struct {
 	calls    int
 	lastArgv []string
+	argvs    [][]string
 }
 
 func (c *captureRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
 	c.calls++
 	c.lastArgv = append([]string(nil), args...) // defensive copy
+	c.argvs = append(c.argvs, append([]string(nil), args...))
 	return &process.Result{}, nil
 }
 
@@ -113,6 +115,15 @@ func hasArgPair(argv []string, flag, value string) bool {
 		}
 	}
 	return false
+}
+
+func argIndex(argv []string, value string) int {
+	for i, arg := range argv {
+		if arg == value {
+			return i
+		}
+	}
+	return -1
 }
 
 // ── CutCopy noAudio tests ───────────────────────────────────────────────
@@ -693,8 +704,53 @@ func TestCutReencodeBatch_NVENCUsesTemporalInputSeekMicrobatches(t *testing.T) {
 		"distant microbatch must seek before input; argv=%v", runner.lastArgv)
 	assert.True(t, hasArgSubstring(runner.lastArgv, "trim=start=0.000000:end=5.000000"),
 		"trim timestamps must be relative to the seek anchor; argv=%v", runner.lastArgv)
-	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"),
-		"seek microbatch must preserve NVENC policy; argv=%v", runner.lastArgv)
+	for i, argv := range runner.argvs {
+		ss := argIndex(argv, "-ss")
+		input := argIndex(argv, "-i")
+		assert.GreaterOrEqual(t, ss, 0, "NVENC invocation %d must include -ss; argv=%v", i, argv)
+		assert.GreaterOrEqual(t, input, 0, "NVENC invocation %d must include -i; argv=%v", i, argv)
+		assert.Less(t, ss, input, "NVENC invocation %d must place -ss before -i; argv=%v", i, argv)
+		assert.True(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
+			"NVENC invocation %d must preserve encoder policy; argv=%v", i, argv)
+	}
+}
+
+// TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches guards the
+// same distant-timestamp contract for the software encoder path. Temporal
+// input seek must not be limited to NVENC: otherwise libx264 can still decode
+// a long source from timestamp zero before reaching a far-away clip.
+func TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches(t *testing.T) {
+	runner := &captureRunner{}
+	p := &Processor{path: "ffmpeg", runner: runner}
+
+	jobs := []fftypes.CutJob{
+		{StartSec: 0, EndSec: 5, Output: "near_a.mp4"},
+		{StartSec: 10, EndSec: 15, Output: "near_b.mp4"},
+		{StartSec: 300, EndSec: 305, Output: "far.mp4"},
+	}
+
+	err := p.CutReencodeBatch(context.Background(), "long.mp4", jobs, true, "libx264", "veryfast", 23)
+	require.NoError(t, err)
+	assert.Equal(t, 2, runner.calls, "distant clips must use separate seek microbatches")
+	assert.True(t, hasArgPair(runner.lastArgv, "-ss", "300.000"),
+		"software distant microbatch must seek before input; argv=%v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-i", "long.mp4"),
+		"software microbatch must retain the source input; argv=%v", runner.lastArgv)
+	assert.True(t, hasArgSubstring(runner.lastArgv, "trim=start=0.000000:end=5.000000"),
+		"software trim timestamps must be relative to the seek anchor; argv=%v", runner.lastArgv)
+	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "libx264"),
+		"software seek microbatch must preserve the requested codec; argv=%v", runner.lastArgv)
+	for i, argv := range runner.argvs {
+		ss := argIndex(argv, "-ss")
+		input := argIndex(argv, "-i")
+		assert.GreaterOrEqual(t, ss, 0, "software invocation %d must include -ss; argv=%v", i, argv)
+		assert.GreaterOrEqual(t, input, 0, "software invocation %d must include -i; argv=%v", i, argv)
+		assert.Less(t, ss, input, "software invocation %d must place -ss before -i; argv=%v", i, argv)
+		assert.True(t, hasArgPair(argv, "-c:v", "libx264"),
+			"software invocation %d must preserve requested codec; argv=%v", i, argv)
+		assert.False(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
+			"software invocation %d must not switch to NVENC; argv=%v", i, argv)
+	}
 }
 
 // TestCutReencodeBatch_ContextCancellation verifies context cancellation propagates.
