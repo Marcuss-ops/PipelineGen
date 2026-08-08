@@ -704,15 +704,21 @@ func TestCutReencodeBatch_NVENCUsesTemporalInputSeekMicrobatches(t *testing.T) {
 		"distant microbatch must seek before input; argv=%v", runner.lastArgv)
 	assert.True(t, hasArgSubstring(runner.lastArgv, "trim=start=0.000000:end=5.000000"),
 		"trim timestamps must be relative to the seek anchor; argv=%v", runner.lastArgv)
+	require.Len(t, runner.argvs, 2, "expected near and distant temporal microbatches")
+	assert.False(t, hasArg(runner.argvs[0], "-ss"),
+		"zero-anchor microbatch should not need an input seek; argv=%v", runner.argvs[0])
 	for i, argv := range runner.argvs {
 		ss := argIndex(argv, "-ss")
 		input := argIndex(argv, "-i")
-		assert.GreaterOrEqual(t, ss, 0, "NVENC invocation %d must include -ss; argv=%v", i, argv)
 		assert.GreaterOrEqual(t, input, 0, "NVENC invocation %d must include -i; argv=%v", i, argv)
-		assert.Less(t, ss, input, "NVENC invocation %d must place -ss before -i; argv=%v", i, argv)
+		if ss >= 0 {
+			assert.Less(t, ss, input, "NVENC invocation %d must place -ss before -i; argv=%v", i, argv)
+		}
 		assert.True(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
 			"NVENC invocation %d must preserve encoder policy; argv=%v", i, argv)
 	}
+	assert.True(t, hasArgPair(runner.argvs[1], "-ss", "300.000"),
+		"distant NVENC invocation must use input seek; argv=%v", runner.argvs[1])
 }
 
 // TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches guards the
@@ -743,14 +749,17 @@ func TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches(t *testing.T
 	for i, argv := range runner.argvs {
 		ss := argIndex(argv, "-ss")
 		input := argIndex(argv, "-i")
-		assert.GreaterOrEqual(t, ss, 0, "software invocation %d must include -ss; argv=%v", i, argv)
 		assert.GreaterOrEqual(t, input, 0, "software invocation %d must include -i; argv=%v", i, argv)
-		assert.Less(t, ss, input, "software invocation %d must place -ss before -i; argv=%v", i, argv)
+		if ss >= 0 {
+			assert.Less(t, ss, input, "software invocation %d must place -ss before -i; argv=%v", i, argv)
+		}
 		assert.True(t, hasArgPair(argv, "-c:v", "libx264"),
 			"software invocation %d must preserve requested codec; argv=%v", i, argv)
 		assert.False(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
 			"software invocation %d must not switch to NVENC; argv=%v", i, argv)
 	}
+	assert.True(t, hasArgPair(runner.argvs[1], "-ss", "300.000"),
+		"distant software invocation must use input seek; argv=%v", runner.argvs[1])
 }
 
 // TestCutReencodeBatch_ContextCancellation verifies context cancellation propagates.
