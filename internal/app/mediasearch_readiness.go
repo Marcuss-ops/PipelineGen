@@ -131,30 +131,26 @@ func (e readinessSubsystemsError) Subsystems() map[string]string {
 }
 
 // sanitizeReadinessMessage trims a failure summary to a public-safe
-// single line: newlines collapsed, length capped. Mirrors the
+// single line: whitespace collapsed, length capped at a UTF-8 rune
+// boundary (never splits a multi-byte character). Mirrors the
 // handler-side sanitize philosophy (no internal URLs / stack traces
 // cross the HTTP boundary).
 func sanitizeReadinessMessage(msg string) string {
 	msg = strings.Join(strings.Fields(msg), " ")
 	if len(msg) > 200 {
-		msg = msg[:200]
+		msg = string([]rune(msg)[:200])
 	}
 	return msg
 }
 
-// staticIndexVersionSource is the IndexVersionSource wiring when no live
-// IndexManifest adapter is plumbed. It reports "unknown" so dashboards
-// never mistake an absent manifest for a real version.
-type staticIndexVersionSource struct{}
-
-func (staticIndexVersionSource) IndexVersion(_ context.Context) string { return "unknown" }
-
-var _ mediasearchapi.IndexVersionSource = staticIndexVersionSource{}
-
-// WireMediasearchReadiness assembles the SemanticReadyChecker and the
-// IndexVersionSource the mediasearch handler needs. The checker uses the
-// composition root singletons; the index version source is static until a
-// live IndexManifest adapter exists (forward-pointer).
-func WireMediasearchReadiness(root *wiring.ComposeRoot, aggregator mediasearchapi.AggregatorSearcher) (mediasearchapi.SemanticReadyChecker, mediasearchapi.IndexVersionSource) {
-	return newSemanticReadinessChecker(root, aggregator), staticIndexVersionSource{}
+// WireMediasearchReadiness assembles the SemanticReadyChecker the
+// mediasearch handler needs from the composition root singletons.
+//
+// IndexVersionSource is deliberately NOT wired: the handler already
+// defaults to StaticIndexVersion("") when the field is nil (empty
+// version = unknown, per godlike/07 no-fake-availability), and no live
+// IndexManifest adapter exists yet. Wiring a non-empty fake here would
+// violate the documented "empty string when unknown" contract.
+func WireMediasearchReadiness(root *wiring.ComposeRoot, aggregator mediasearchapi.AggregatorSearcher) mediasearchapi.SemanticReadyChecker {
+	return newSemanticReadinessChecker(root, aggregator)
 }

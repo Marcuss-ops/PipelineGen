@@ -5,7 +5,21 @@
   "base_available": true,
   "base_fallback": false,
   "changed_files": [
-    "internal/infrastructure/media/ffmpeg/ffmpeg_test.go",
+    "internal/api/script/handler_deps.go",
+    "internal/api/script/handler_flow.go",
+    "internal/api/script/handler_shorts.go",
+    "internal/api/script/handler_shorts_generate.go",
+    "internal/api/script/handler_shorts_render.go",
+    "internal/api/script/handler_shorts_render_async.go",
+    "internal/api/script/handler_shorts_test.go",
+    "internal/api/script/handler_test.go",
+    "internal/api/script/handler_test_fixtures_test.go",
+    "internal/api/script/module.go",
+    "internal/app/mediasearch_readiness.go",
+    "internal/app/mediasearch_readiness_test.go",
+    "internal/app/registry_late_bindings.go",
+    "internal/application/video/remotion.go",
+    "internal/application/video/remotion_test.go",
     "out/01-dryrun-backfill.json",
     "out/01-dryrun-reindex.json",
     "out/02-backfill-apply.json",
@@ -41,11 +55,165 @@
     "out/verify-report-20260720-133342.json",
     "out/verify-report-20260720-133525.json",
     "out/verify-report-20260720-133621.json",
-    "out/zhang_vs_wilder_script.json"
+    "out/zhang_vs_wilder_script.json",
+    "scripts/README.md",
+    "scripts/services/device_policy.py",
+    "scripts/services/embedding_server/__init__.py",
+    "scripts/services/reranker_server.py",
+    "scripts/services/test_device_policy.py",
+    "scripts/services/test_health_contract.py",
+    "scripts/start_embedding_server.sh"
   ],
   "file_components": {
-    "internal/infrastructure/media/ffmpeg/ffmpeg_test.go": [
-      "timeline"
+    "internal/api/script/handler_deps.go": [
+      "script"
+    ],
+    "internal/api/script/handler_flow.go": [
+      "script"
+    ],
+    "internal/api/script/handler_shorts.go": [
+      "script"
+    ],
+    "internal/api/script/handler_shorts_generate.go": [
+      "script"
+    ],
+    "internal/api/script/handler_shorts_render.go": [
+      "script"
+    ],
+    "internal/api/script/handler_shorts_render_async.go": [
+      "script"
+    ],
+    "internal/api/script/handler_shorts_test.go": [
+      "script"
+    ],
+    "internal/api/script/handler_test.go": [
+      "script"
+    ],
+    "internal/api/script/handler_test_fixtures_test.go": [
+      "script"
+    ],
+    "internal/api/script/module.go": [
+      "script"
+    ],
+    "internal/app/mediasearch_readiness.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/app/mediasearch_readiness_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/app/registry_late_bindings.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/video/remotion.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
+    ],
+    "internal/application/video/remotion_test.go": [
+      "script",
+      "research",
+      "clips",
+      "stock",
+      "qdrant",
+      "indexing",
+      "drive",
+      "docs",
+      "voiceover",
+      "images",
+      "translation",
+      "timeline",
+      "storage",
+      "database",
+      "jobs",
+      "api",
+      "ollama",
+      "youtube",
+      "artlist",
+      "node-scraper",
+      "kernel",
+      "web"
     ],
     "out/01-dryrun-backfill.json": [],
     "out/01-dryrun-reindex.json": [],
@@ -84,11 +252,42 @@
     "out/verify-report-20260720-133342.json": [],
     "out/verify-report-20260720-133525.json": [],
     "out/verify-report-20260720-133621.json": [],
-    "out/zhang_vs_wilder_script.json": []
+    "out/zhang_vs_wilder_script.json": [],
+    "scripts/README.md": [
+      "docs"
+    ],
+    "scripts/services/device_policy.py": [],
+    "scripts/services/embedding_server/__init__.py": [
+      "indexing"
+    ],
+    "scripts/services/reranker_server.py": [],
+    "scripts/services/test_device_policy.py": [],
+    "scripts/services/test_health_contract.py": [],
+    "scripts/start_embedding_server.sh": []
   },
   "impacted_components": [
+    "script",
+    "research",
+    "clips",
+    "stock",
+    "qdrant",
+    "indexing",
+    "drive",
+    "docs",
+    "voiceover",
+    "images",
+    "translation",
     "timeline",
-    "stock"
+    "storage",
+    "database",
+    "jobs",
+    "api",
+    "ollama",
+    "youtube",
+    "artlist",
+    "node-scraper",
+    "kernel",
+    "web"
   ],
   "resolved_components": [],
   "unmapped_files": [
@@ -126,7 +325,12 @@
     "out/verify-report-20260720-133342.json",
     "out/verify-report-20260720-133525.json",
     "out/verify-report-20260720-133621.json",
-    "out/zhang_vs_wilder_script.json"
+    "out/zhang_vs_wilder_script.json",
+    "scripts/services/device_policy.py",
+    "scripts/services/reranker_server.py",
+    "scripts/services/test_device_policy.py",
+    "scripts/services/test_health_contract.py",
+    "scripts/start_embedding_server.sh"
   ],
   "skipped": [
     "script",
@@ -153,9 +357,9 @@
     "web"
   ],
   "components": {},
-  "started_at": "2026-08-08T09:35:11.702173Z",
-  "finished_at": "2026-08-08T09:35:11.705529Z",
-  "git_sha": "490ec1a60ecae14a1f81bce28b2e25a08c3f0798",
+  "started_at": "2026-08-08T09:50:18.986654Z",
+  "finished_at": "2026-08-08T09:50:18.989926Z",
+  "git_sha": "1ef018f67aaf7e33f8bcd7edddaa5fbb984a4c9d",
   "duration_ms": 0,
   "dry_run": false,
   "final": "FAIL",
