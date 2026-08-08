@@ -6,8 +6,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
@@ -218,7 +218,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	}
 	builtPrompt += plainTextInstruction
 
-	ollamaReq := ollamatypes.TextGenerationRequest{
+	ollamaReq := ports.TextGenerationRequest{
 		Language:         language,
 		Tone:             tone,
 		Model:            model,
@@ -236,7 +236,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		// downstream SceneSynthesizer + scene binder + postprocessor
 		// pipeline own all structured fields (schema_version /
 		// specscene / scene IDs / scene indexes / kind labels).
-		OutputMode:     ollamatypes.OutputModePlainText,
+		OutputMode:     ports.OutputModePlainText,
 		WordsPerMinute: wordsPerMinute,
 	}
 

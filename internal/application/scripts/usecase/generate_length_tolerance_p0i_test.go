@@ -71,8 +71,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // p0iLengthClipAlpha + p0iLengthClipBeta are the canonical
@@ -164,7 +164,7 @@ func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*Genera
 	prose := p0iGenerateProse(targetWords)
 	envelope := p0iBuildLengthToleranceEnvelope(prose)
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      envelope,
 		WordCount:   targetWords,
 		EstDuration: 3,

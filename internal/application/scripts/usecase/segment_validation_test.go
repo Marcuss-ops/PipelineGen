@@ -7,18 +7,18 @@ import (
 	"sync"
 	"testing"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"go.uber.org/zap"
 )
 
 type sequentialSegmentGenerator struct {
 	mu      sync.Mutex
-	results []*ollamatypes.GenerationResult
+	results []*scriptports.GenerationResult
 	prompts []string
 }
 
-func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error) {
+func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.prompts = append(g.prompts, req.Prompt)
@@ -30,8 +30,8 @@ func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req ollam
 	return result, nil
 }
 
-func proseResult(text string) *ollamatypes.GenerationResult {
-	return &ollamatypes.GenerationResult{Script: text, WordCount: len(strings.Fields(text)), Model: "test-model"}
+func proseResult(text string) *scriptports.GenerationResult {
+	return &scriptports.GenerationResult{Script: text, WordCount: len(strings.Fields(text)), Model: "test-model"}
 }
 
 func segmentPlan(target int) *scriptpkg.ResolvedGenerationPlan {
@@ -96,7 +96,7 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 }
 
 func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.T) {
-	gen := &sequentialSegmentGenerator{results: []*ollamatypes.GenerationResult{
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
 		proseResult("short\n\n" + textOfNWords(10)),
 		proseResult(textOfNWords(10)),
 	}}
@@ -124,7 +124,7 @@ func TestEngineGenerate_SelectiveSegmentRegenerationFreezesValidText(t *testing.
 }
 
 func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
-	gen := &sequentialSegmentGenerator{results: []*ollamatypes.GenerationResult{
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
 		proseResult("short\n\n" + textOfNWords(10)),
 		proseResult("still-short\n\n" + textOfNWords(10)),
 		proseResult(textOfNWords(20)),

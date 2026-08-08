@@ -15,7 +15,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
@@ -125,7 +125,7 @@ func populateEntityImage(img *ScriptEntityImage, imgAsset *asset.ImageAsset, for
 	}
 	fileID := strings.TrimSpace(imgAsset.DriveFileID)
 	if fileID != "" {
-		img.DriveLink = drive.FileURLFromID(fileID)
+		img.DriveLink = clips.FileURLFromID(fileID)
 	}
 }
 

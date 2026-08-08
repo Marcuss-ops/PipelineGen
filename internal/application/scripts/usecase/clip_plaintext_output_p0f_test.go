@@ -63,8 +63,8 @@ import (
 	"strings"
 	"testing"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -345,7 +345,7 @@ func TestPlaintextOutput_P0F_SignatureIndex_AllReported(t *testing.T) {
 // either way, and the text-only path is the simplest way to
 // exercise that seam in isolation.
 //
-// Wire shape: ollamatypes.GenerationResult is a flat struct
+// Wire shape: scriptports.GenerationResult is a flat struct
 // with fields {Script, WordCount, EstDuration, Model, Prompt}.
 // The engine decodes `Script` as a JSON envelope
 // (ModelScriptOutputV1: {schema_version, text, specscene}) and
@@ -419,7 +419,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 	cleanJSON := fmt.Sprintf(`{"schema_version":1,"text":%q,"scenes":[]}`, prose)
 
 	uc := buildUsecaseWithClipResolver(
-		&fakeOllamaGen{result: &ollamatypes.GenerationResult{
+		&fakeOllamaGen{result: &scriptports.GenerationResult{
 			Script:      cleanJSON,
 			WordCount:   10,
 			EstDuration: 3,
