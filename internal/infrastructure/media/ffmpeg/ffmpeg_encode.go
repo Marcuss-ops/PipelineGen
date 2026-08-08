@@ -475,11 +475,13 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 		overlayPos,
 	)
 
-	// Watermarking necessarily re-encodes the video stream. Require the
-	// canonical GPU encoder explicitly: RunWithEncoderPolicy makes NVENC
+	// Watermarking necessarily re-encodes the video stream. Resolve the
+	// encoder through the processor's central policy so an explicitly
+	// configured GPU encoder is used when requested, while software policy
+	// remains an intentional choice. RunWithEncoderPolicy makes NVENC
 	// failures terminal and never retries with libx264. Audio remains a
 	// stream copy because the watermark filter only transforms video.
-	codec := p.resolveEncoder(ctx, string(EncoderNVENC))
+	codec := p.resolveEncoder(ctx, "")
 	preset := p.encoderPreset
 	if preset == "" {
 		preset = "veryfast"
