@@ -11,12 +11,10 @@
 //     entries (API imports not in the allowlist). The pre-PR2
 //     approach was a single static allowlist baked into CI scripts.
 //
-//   - checkApplicationToInfrastructure: Wave 19 (June 2026) observation
-//     counter for `internal/application/<x>/` →
-//     `internal/infrastructure/<y>/` cross-direction imports. PR1
-//     reports COUNTS without emitting violations: the active Wave
-//     14-18 ratchet would break otherwise. PR3+ will promote the
-//     counter to a hard-gate via bl.SubtractSet(actual, allowlist).
+//   - checkApplicationToInfrastructure: hard-gated temporary ratchet for
+//     `internal/application/<x>/` → `internal/infrastructure/<y>/` imports.
+//     Exact production import edges are checked against a decreasing
+//     migration allowlist; new and stale entries both fail.
 //
 //   - checkCrossCapabilityImport: Wave 19 (June 2026) edge counter
 //     for internal/application/<capA>/ → internal/application/<capB>/
@@ -39,9 +37,13 @@ package main
 
 import (
 	"fmt"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	bl "github.com/Marcuss-ops/PipelineGen/scripts/archcheck/baseline"
@@ -122,49 +124,113 @@ func checkAPIInfrastructureImports() (map[string]int, []string) {
 	return stats, violations
 }
 
-// checkApplicationToInfrastructure is the Wave 19 (June 2026) Portland
-// import-edge counter for the operator-pasted "Dependency Rules" spec.
-//
-// Vocabulary mapping (PR1 does NOT rename directories — would invalidate
-// the active Wave 14-18 ratchet):
-//   - capabilities = internal/application/<cap>
-//   - platform     = internal/infrastructure/<sub>
-//   - kernel       = internal/domain/<x>
-//   - app          = internal/app
-//
-// Target after Wave 15-18 hardening: 0. For the FIRST PR the function
-// reports COUNTS in the `Checks` map and emits NO violations, so the
-// CI stays GREEN while operators see the surface area before any
-// hard-gate promotion (PR2+: violations fail ratchet unless the edge
-// is allowlisted in docs/migrations/application-infrastructure-imports-allowlist.txt).
-//
-// The reverse direction (infrastructure -> application) is allowed
-// (composition-only bridge — Wave 15 PR4d). The `cmd -> app ->
-// capabilities -> kernel` direction is enforced by the existing
-// rules (pkg_to_internal, domain_to_application, domain_to_infrastructure,
-// application_to_api, application_to_database_sql).
+// checkApplicationToInfrastructure enforces the application boundary. The
+// reverse direction (infrastructure -> application) remains allowed because
+// concrete adapters implement application-owned ports. The temporary ledger
+// is exact-edge based and must decrease as migrations remove imports.
+const (
+	applicationInfrastructureImportAllowlistFile = "docs/migrations/application-infrastructure-imports-allowlist.txt"
+	applicationInfrastructureImportBaselineFile  = "docs/migrations/application-infrastructure-imports-baseline.txt"
+)
+
 func checkApplicationToInfrastructure() (map[string]int, []string) {
-	stats := map[string]int{
-		"actual":     0,
-		"violations": 0,
-	}
-	out, err := exec.Command("rg", "-l",
-		`"github\.com/Marcuss-ops/PipelineGen/internal/infrastructure/`,
-		"internal/application",
-		"--glob", "*.go",
-		"--glob", "!*_test.go",
-	).Output()
-	if err != nil && !execErrIsNoMatch(err) {
+	return checkApplicationToInfrastructureAt(".", applicationInfrastructureImportAllowlistFile, applicationInfrastructureImportBaselineFile)
+}
+
+func checkApplicationToInfrastructureAt(root, allowlistPath, bootstrapBaselinePath string) (map[string]int, []string) {
+	stats := map[string]int{"actual": 0, "allowed": 0, "baseline": 0, "stale": 0, "violations": 0}
+	actual, err := scanApplicationInfrastructureImports(root)
+	if err != nil {
 		stats["violations"] = -1
-		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: rg failed: %v", err)}
+		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: scan: %v", err)}
 	}
-	actual := bl.NormalizePaths(splitNonEmpty(string(out)))
+	allowlist, err := loadAllowlist(allowlistPath)
+	if err != nil {
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: load allowlist: %v", err)}
+	}
+	baseline, err := loadCommittedAllowlist(root, allowlistPath)
+	if err != nil {
+		// Bootstrap is allowed only before the active ledger has a
+		// parent revision. After that, the previous commit is the
+		// immutable ratchet baseline and local edits to a parallel
+		// baseline file cannot authorize new exceptions.
+		baseline, err = loadAllowlist(bootstrapBaselinePath)
+	}
+	if err != nil {
+		stats["violations"] = -1
+		return stats, []string{fmt.Sprintf("checkApplicationToInfrastructure: load baseline: %v", err)}
+	}
+	newEdges := bl.SubtractSet(actual, allowlist)
+	staleEdges := bl.SubtractSet(allowlist, actual)
+	growthEdges := bl.SubtractSet(allowlist, baseline)
+	violations := make([]string, 0, len(newEdges)+len(staleEdges)+len(growthEdges))
+	for _, edge := range newEdges {
+		violations = append(violations, "unallowlisted application→infrastructure import: "+edge)
+	}
+	for _, edge := range staleEdges {
+		violations = append(violations, "stale application→infrastructure allowlist entry: "+edge)
+	}
+	for _, edge := range growthEdges {
+		violations = append(violations, "application→infrastructure allowlist grew beyond baseline: "+edge)
+	}
+	sort.Strings(violations)
 	stats["actual"] = len(actual)
-	// PR1 observation-only: no violations emitted (would break active
-	// Wave 14-18 ratchet). The edge-counter stays zero-promotion until
-	// PR3 promotes the rule to hard-gate via bl.SubtractSet(actual, allowlist)
-	// (see Wave 19 description in architecture/current.yaml).
-	return stats, nil
+	stats["allowed"] = len(allowlist)
+	stats["baseline"] = len(baseline)
+	stats["stale"] = len(staleEdges)
+	stats["violations"] = len(violations)
+	return stats, violations
+}
+
+func scanApplicationInfrastructureImports(root string) ([]string, error) {
+	appDir := filepath.Join(root, "internal", "application")
+	var edges []string
+	err := filepath.WalkDir(appDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		for _, spec := range file.Imports {
+			importPath, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				return fmt.Errorf("unquote import in %s: %w", rel, err)
+			}
+			if strings.HasPrefix(importPath, "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/") {
+				edges = append(edges, rel+" -> "+importPath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(edges)
+	return uniqueStrings(edges), nil
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	out := values[:1]
+	for _, value := range values[1:] {
+		if value != out[len(out)-1] {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 // checkCrossCapabilityImport is the Wave 19 (June 2026) edge counter
@@ -341,12 +407,9 @@ func capabilityOfImport(importLine string, caps map[string]bool) string {
 	return candidate
 }
 
-// loadAllowlist reads an allowlist file (one path per line, "#"-prefixed
-// comments and blank lines skipped) and returns the sorted, path-
-// normalized result. Co-located in checks_imports.go because its
-// ONLY consumer is checkAPIInfrastructureImports above — godlike/06
-// SSOT one-canonical-owner-per-fact: the helper does NOT need to be
-// visible to the rest of the package.
+// loadAllowlist reads an allowlist file (one edge or path per line, "#"-prefixed
+// comments and blank lines skipped) and returns the sorted, normalized result.
+// It is shared by the API import ratchet and the application-boundary ratchet.
 //
 // The error message is operator-actionable: "allowlist file is required;
 // see docs/migrations/api-infrastructure-imports-allowlist.txt" so an
@@ -359,8 +422,12 @@ func capabilityOfImport(importLine string, caps map[string]bool) string {
 func loadAllowlist(path string) ([]string, error) {
 	text, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w (allowlist file is required; see docs/migrations/api-infrastructure-imports-allowlist.txt)", path, err)
+		return nil, fmt.Errorf("read %s: %w (allowlist file is required; see docs/migrations/application-infrastructure-imports-allowlist.txt)", path, err)
 	}
+	return parseAllowlist(text), nil
+}
+
+func parseAllowlist(text []byte) []string {
 	var out []string
 	for _, line := range strings.Split(string(text), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -370,5 +437,14 @@ func loadAllowlist(path string) ([]string, error) {
 		out = append(out, trimmed)
 	}
 	sort.Strings(out)
-	return bl.NormalizePaths(out), nil
+	return uniqueStrings(bl.NormalizePaths(out))
+}
+
+func loadCommittedAllowlist(root, path string) ([]string, error) {
+	cmd := exec.Command("git", "-C", root, "show", "HEAD^:"+path)
+	text, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("read committed %s: %w", path, err)
+	}
+	return parseAllowlist(text), nil
 }

@@ -15,8 +15,8 @@
 // All actual check body logic lives in 3 sibling files (godlike/06 SSOT
 // one-canonical-owner-per-fact):
 //
-//   - checks_imports.go  (~290 LOC): import-graph rules —
-//     checkAPIInfrastructureImports + checkApplicationToInfrastructure +
+//   - checks_imports.go  (~350 LOC): import-graph rules —
+//     checkAPIInfrastructureImports + hard-gated checkApplicationToInfrastructure +
 //     checkCrossCapabilityImport + their 3 capability-classification
 //     helpers + loadAllowlist (co-located because ONLY
 //     checkAPIInfrastructureImports consumes it).
