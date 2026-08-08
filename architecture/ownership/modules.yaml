@@ -19,9 +19,9 @@ module_route_map:
     prefix: /api/script
     owner: internal/app/wire_script.go
     # Routes mounted by ScriptFlowHandler.RegisterRoutes (internal/api/script/handler_flow.go)
-    # via gen.GenerateRoute + shorts.ShortsRoute + r.GET("/clips/search",
+    # via gen.GenerateRoute + r.GET("/clips/search",
     # h.SearchClipsByName) + jobsRegisterRoutes. The AUDITED canonical set
-    # matches handler_test.go ALLOWED_ROUTES (lines 45-50) 1:1.
+    # matches handler_test.go ALLOWED_ROUTES 1:1.
     # /jobs/:id/full is intentionally NOT listed here — it is mounted
     # under /api/jobs (the Jobs module below), not under /api/script;
     # its prior inclusion under ScriptFlow was a pre-existing SSOT error
@@ -29,11 +29,11 @@ module_route_map:
     # Legacy per-source routes (generate-with-images, generate-from-catalog,
     # generate-from-clips, curate, cache/evict, sections/.../regenerate)
     # are retired as of commits 09af3cdd3 + 069b36ad2.
+    # The /shorts/* surface (POST /shorts/generate, POST /shorts/render,
+    # POST /shorts/render/async) is RETIRED (August 2026) with the external
+    # Remotion renderer hand-off.
     routes:
       - POST /generate
-      - POST /shorts/generate
-      - POST /shorts/render
-      - POST /shorts/render/async
       - GET  /clips/search
       - GET  /jobs/:id
   - module: Assets

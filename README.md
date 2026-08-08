@@ -159,38 +159,6 @@ scripts/                 operational and CI utilities
 tests/                   automated and operational tests
 ```
 
-## External video rendering boundary
-
-PipelineGen owns scripts, asset selection, sound effects, timing, persistence,
-and delivery. Video rendering is performed by an **external renderer**
-(formerly the sibling `RemotionUpload` project, removed): PipelineGen emits a
-`remotion.render-job.v1` payload through the
-[`pkg/remotionjob`](pkg/remotionjob) contract and hands it to the renderer
-over HTTP. The renderer must not be imported by this Go module and must not
-query PipelineGen's SQLite/Qdrant or choose providers.
-
-The `../PythonYoutubeVideoProcessing` project (Rust + FFmpeg core with Python
-orchestration and Drive upload) is a candidate replacement; wiring it as the
-renderer would require an HTTP adapter exposing `POST {base}/render` and
-mapping the contract payload to its compilation spec. The Go side is
-intentionally renderer-agnostic: it only needs an HTTP `POST {base}/render`
-endpoint that accepts the contract payload.
-
-For Shorts, the dedicated `POST /api/script/shorts/generate` endpoint returns
-`remotion.shorts.v1`. It accepts already-approved text, clip references and
-indexed sound-effect cues; `include_sound_effects` controls whether the cues
-are emitted. It does not regenerate the script or select assets.
-
-Video rendering is intentionally limited to the short-form YouTube path:
-`POST /api/script/shorts/render` for a synchronous smoke test, or
-`POST /api/script/shorts/render/async` for the production path. The async route
-returns `202` with a `job_id`; the `render.video` worker calls the external
-renderer at `VELOX_REMOTION_URL` (default `http://127.0.0.1:4317`). Longform
-and compilation compositions are rejected before the renderer or worker is
-reached. Set `upload_to_drive: true` and pass `drive_folder_id` as either a
-folder ID or a full Google Drive folder URL to upload a permitted Shorts
-render.
-
 ## Architecture rules
 
 - SQLite is the source of truth.
