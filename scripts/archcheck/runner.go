@@ -59,13 +59,14 @@ func runFocusedChecks() Report {
 	}
 	violations = append(violations, depViolations...)
 
-	// Wave 19 (PR1 — observation only): surface capability-direction
-	// edge counts. NO violations emitted (would break the active
-	// Wave 14-18 ratchet until the baseline is agreed). PR2+ will
-	// promote the counts to hard gates via allowlist-based
-	// subtraction.
+	// Enforce the temporary application-boundary ratchet. New import
+	// edges and stale ledger entries are both violations.
 	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_files"] = atiStats["actual"]
+	checks["application_to_infrastructure_edges"] = atiStats["actual"]
+	checks["application_to_infrastructure_allowed"] = atiStats["allowed"]
+	checks["application_to_infrastructure_baseline"] = atiStats["baseline"]
+	checks["application_to_infrastructure_allowlist_stale"] = atiStats["stale"]
+	checks["application_to_infrastructure_violations"] = atiStats["violations"]
 	violations = append(violations, atiViolations...)
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
@@ -121,10 +122,13 @@ func runRatchetChecks() Report {
 	}
 	violations = append(violations, depViolations...)
 
-	// Wave 19 (PR1 — observation only). See runFocusedChecks for
-	// rationale.
+	// Enforce the temporary application-boundary ratchet in ratchet mode.
 	atiStats, atiViolations := checkApplicationToInfrastructure()
-	checks["application_to_infrastructure_files"] = atiStats["actual"]
+	checks["application_to_infrastructure_edges"] = atiStats["actual"]
+	checks["application_to_infrastructure_allowed"] = atiStats["allowed"]
+	checks["application_to_infrastructure_baseline"] = atiStats["baseline"]
+	checks["application_to_infrastructure_allowlist_stale"] = atiStats["stale"]
+	checks["application_to_infrastructure_violations"] = atiStats["violations"]
 	violations = append(violations, atiViolations...)
 
 	cciStats, cciViolations := checkCrossCapabilityImport()
