@@ -32,14 +32,16 @@ func (f *fakeHTTPDownloader) Download(ctx context.Context, req *downloader.HTTPD
 }
 
 type fakeFFmpeg struct {
-	normalizeErr    error
-	proxyErr        error
-	normalizeCalled bool
-	normalizeAsDir  bool
+	normalizeErr      error
+	proxyErr          error
+	normalizeCalled   bool
+	normalizeAsDir    bool
+	lastNormalizeOpts ffmpeg.NormalizeOptions
 }
 
 func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string, opts ffmpeg.NormalizeOptions) error {
 	f.normalizeCalled = true
+	f.lastNormalizeOpts = opts
 	if f.normalizeErr != nil {
 		return f.normalizeErr
 	}

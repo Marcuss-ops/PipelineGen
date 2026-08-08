@@ -13,7 +13,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -119,6 +121,64 @@ func TestProcessRenditions_ProxyFailureIsTerminal(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "preview generation failed")
 	assert.Contains(t, err.Error(), "NVENC encode required and failed")
+}
+
+func TestProcessorPassesDefaultNormalizePolicyWithoutCodecOverride(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	ff := &fakeFFmpeg{}
+	defaultOpts := ffmpegtypes.DefaultNormalizeOptions(&config.Config{})
+	p := NewProcessor(
+		&fakeYTDLP{}, &fakeHTTPDownloader{}, ff, zap.NewNop(),
+		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: defaultOpts},
+		nil, &fakePublisher{},
+	)
+
+	_, err := p.Process(ctx, &asset.ProcessInput{
+		ID: "default-policy", Name: "default policy", LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+	})
+	require.NoError(t, err)
+	require.True(t, ff.normalizeCalled)
+	assert.Empty(t, ff.lastNormalizeOpts.Policy.Codec,
+		"generic processor must not reintroduce libx264 into the default policy")
+	assert.Empty(t, ff.lastNormalizeOpts.Codec,
+		"legacy codec field must remain empty for FFmpeg runtime resolution")
+	assert.Equal(t, "veryfast", ff.lastNormalizeOpts.Policy.Preset)
+	assert.Equal(t, 23, ff.lastNormalizeOpts.Policy.CRF)
+}
+
+func TestProcessorPreservesResolvedEncoderPolicyDuringNormalization(t *testing.T) {
+	ctx := context.Background()
+	localPath := writeStagedFileForTest(t, "staged-bytes")
+	ff := &fakeFFmpeg{}
+	policy := ffmpeg.NormalizeOptions{
+		Profile: config.CanonicalVideoProfile{},
+		Policy: config.VideoEncoderPolicy{
+			Codec:  "h264_nvenc",
+			Preset: "p1",
+			CRF:    19,
+		},
+		Codec:  "h264_nvenc",
+		Preset: "p1",
+		CRF:    19,
+	}
+	p := NewProcessor(
+		&fakeYTDLP{}, &fakeHTTPDownloader{}, ff, zap.NewNop(),
+		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: policy},
+		nil, &fakePublisher{},
+	)
+
+	_, err := p.Process(ctx, &asset.ProcessInput{
+		ID: "policy-preserved", Name: "policy test", LocalPath: localPath,
+		OutputDir: filepath.Join(t.TempDir(), "out"),
+	})
+	require.NoError(t, err)
+	require.True(t, ff.normalizeCalled)
+	assert.Equal(t, "h264_nvenc", ff.lastNormalizeOpts.Policy.Codec)
+	assert.Equal(t, "h264_nvenc", ff.lastNormalizeOpts.Codec)
+	assert.Equal(t, "p1", ff.lastNormalizeOpts.Policy.Preset)
+	assert.Equal(t, 19, ff.lastNormalizeOpts.Policy.CRF)
 }
 
 func TestProcessorZeroCopyOptimization(t *testing.T) {
