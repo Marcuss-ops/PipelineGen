@@ -1,0 +1,11 @@
+{
+  "job_id": "backfill-emb-3f3bf1b9",
+  "last_processed_id": "yt_y_Kf9kNPCbg_f4bfb138",
+  "processed_count": 1202,
+  "succeeded_count": 1202,
+  "failed_count": 0,
+  "failed_ids": null,
+  "status": "completed",
+  "started_at": "2026-07-20T13:29:58.73937767Z",
+  "updated_at": "2026-07-20T13:30:00.128418365Z"
+}
