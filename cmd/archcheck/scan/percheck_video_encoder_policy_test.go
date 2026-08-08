@@ -34,6 +34,38 @@ func bad(args []string) []string { return append(args, "-c:v", "libx264") }
 	}
 }
 
+func TestScanVideoEncoderPolicy_NonBuilderProductionLiteralFails(t *testing.T) {
+	root := t.TempDir()
+	writeEncoderPolicyFixture(t, root, "internal/application/video_defaults.go", `package application
+const defaultCodec = "libx264"
+`)
+
+	r := &report.Report{}
+	ScanVideoEncoderPolicy(root, &policy.Policy{}, r)
+	if len(r.Violations) != 1 {
+		t.Fatalf("violations = %d, want 1: %+v", len(r.Violations), r.Violations)
+	}
+	if r.Violations[0].File != "internal/application/video_defaults.go" {
+		t.Fatalf("violation file = %q, want internal/application/video_defaults.go", r.Violations[0].File)
+	}
+}
+
+func TestScanVideoEncoderPolicy_HardcodedOutsideMediaPackageFails(t *testing.T) {
+	root := t.TempDir()
+	writeEncoderPolicyFixture(t, root, "cmd/admin/bad.go", `package main
+func bad() string { return "h264_nvenc" }
+`)
+
+	r := &report.Report{}
+	ScanVideoEncoderPolicy(root, &policy.Policy{}, r)
+	if len(r.Violations) != 1 {
+		t.Fatalf("violations = %d, want 1: %+v", len(r.Violations), r.Violations)
+	}
+	if r.Violations[0].File != "cmd/admin/bad.go" {
+		t.Fatalf("violation file = %q, want cmd/admin/bad.go", r.Violations[0].File)
+	}
+}
+
 func TestScanVideoEncoderPolicy_HardcodedAssignmentAndComparisonFail(t *testing.T) {
 	root := t.TempDir()
 	writeEncoderPolicyFixture(t, root, "internal/infrastructure/media/ffmpeg/bad.go", `package ffmpeg

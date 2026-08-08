@@ -103,7 +103,7 @@ func TestVideoEncoderPolicyHardGateFailsClosed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(fixture), 0o755); err != nil {
 		t.Fatalf("mkdir encoder fixture: %v", err)
 	}
-	if err := os.WriteFile(fixture, []byte("package ffmpeg\nvar codec = \\\"libx264\\\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(fixture, []byte("package ffmpeg\nvar codec = \"libx264\"\n"), 0o644); err != nil {
 		t.Fatalf("write encoder fixture: %v", err)
 	}
 	policyPath := filepath.Join(root, "policy.yaml")
