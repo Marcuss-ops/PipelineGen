@@ -891,6 +891,30 @@ func TestNormalize_VideoSettings(t *testing.T) {
 		"-movflags +faststart must be present; got argv: %v", argv)
 }
 
+func TestDefaultNormalizeOptions_ResolvesConfiguredAutoEncoder(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.External.FfmpegPath = "ffmpeg"
+	cfg.Video.Codec = "auto"
+	cfg.Video.Preset = "p1"
+	cfg.Video.CRF = 19
+
+	runner := &resolverRunner{output: " V....D h264_nvenc NVIDIA NVENC H.264 encoder\\n"}
+	p := NewFromConfig(cfg).WithRunner(runner)
+	opts := fftypes.DefaultNormalizeOptions(cfg)
+
+	require.NoError(t, p.Normalize(context.Background(), "in.mp4", "out.mp4", opts))
+	require.Len(t, runner.args, 2, "expected encoder probe followed by normalization")
+	argv := runner.args[len(runner.args)-1]
+	assert.True(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
+		"default normalization must use the resolved NVENC policy: %v", argv)
+	assert.False(t, hasArgPair(argv, "-c:v", "libx264"),
+		"default normalization must not overwrite resolved NVENC with libx264: %v", argv)
+	assert.True(t, hasArgPair(argv, "-preset", "p1"),
+		"resolved normalization must retain the configured preset: %v", argv)
+	assert.True(t, hasArgPair(argv, "-cq", "19"),
+		"resolved NVENC normalization must retain configured quality: %v", argv)
+}
+
 func TestNormalize_SeparatedProfileAndPolicyDriveFFmpegArgs(t *testing.T) {
 	runner := &captureRunner{}
 	p := &Processor{path: "ffmpeg", runner: runner}

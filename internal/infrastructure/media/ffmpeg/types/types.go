@@ -71,12 +71,21 @@ func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+	canonical := cfg.Video.CanonicalClip()
 	profile := cfg.Video.CanonicalVideoProfile()
-	policy := cfg.Video.EncoderPolicy()
+	// CanonicalClip deliberately preserves an empty Codec so the FFmpeg
+	// processor can resolve the host's configured encoder (for example,
+	// h264_nvenc). Do not use EncoderPolicy here: its legacy defaults would
+	// materialize libx264 before the runtime encoder resolver gets a chance.
+	policy := config.VideoEncoderPolicy{
+		Codec:  canonical.Codec,
+		Preset: canonical.Preset,
+		CRF:    canonical.CRF,
+	}
 	return NormalizeOptions{
 		Profile:          profile,
 		Policy:           policy,
-		Duration:         cfg.Video.WithDefaults().Duration,
+		Duration:         canonical.Duration,
 		Width:            profile.Width,
 		Height:           profile.Height,
 		FPS:              profile.FPS,
