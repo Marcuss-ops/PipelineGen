@@ -13,15 +13,17 @@
 // caller can surface them diagnostically.
 //
 // Layering note: per AGENTS.md Pattern 0 the port is declared
-// structurally here. The adapter that wraps
-// *assets.ClipsRepository lives in the matching usecase package
-// (clip_resolver.go). Legacy clip_source_builder.clipsResolverPort
-// is unaffected; the typed port is for NEW consumers.
+// structurally here. The adapter that wraps infrastructure repositories
+// lives in the matching adapter package (clip_resolver.go). Legacy
+// clip_source_builder.clipsResolverPort is unaffected; the typed port
+// is for NEW consumers.
 package ports
 
 import (
 	"context"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ReferenceType is the canonical enum of input-reference shapes.
@@ -163,13 +165,17 @@ type ClipResolutionResult struct {
 	Unresolved []UnresolvedReference `json:"unresolved"`
 }
 
+// ClipRepositoryReader is the application-owned read port consumed by the
+// resolver adapter. Infrastructure repositories implement this structural
+// contract in the composition root.
+type ClipRepositoryReader interface {
+	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
+	ResolveByYouTubeVideoID(ctx context.Context, videoID string) ([]*asset.Asset, error)
+	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
+	ResolveByExternalProviderID(ctx context.Context, provider, externalID string) ([]*asset.Asset, error)
+}
+
 // ClipResolver is the canonical typed resolver for ClipReference.
-// Production wiring is NewClipResolver(repo, log) in
-// internal/application/scripts/adapters/clip_resolver.go, which
-// satisfies the port via the typed repo methods on
-// *assets.ClipsRepository. Tests can wire a stub via
-// the narrow clipResolverPortReadOnly interface defined next to
-// NewClipResolver.
 type ClipResolver interface {
 	Resolve(ctx context.Context, refs []ClipReference) (*ClipResolutionResult, error)
 }

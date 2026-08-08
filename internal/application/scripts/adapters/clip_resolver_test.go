@@ -1,8 +1,8 @@
 // Package adapters — clip_resolver_test.go is the unit-test seam for
 // the new typed ClipResolver adapter.
 //
-// These tests cover the explicit dispatch table using the narrow
-// clipResolverPortReadOnly interface (no real DB needed):
+// These tests cover the explicit dispatch table using the application-owned
+// ClipRepositoryReader port (no real DB needed):
 //
 //	RefTypeMediaAssetID        → ResolveByMediaAssetID
 //	RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (fan-out)
@@ -105,7 +105,7 @@ func TestResolve_HappyPath_MediaAssetID(t *testing.T) {
 	repo.mediaReturns["asset-1"] = mkAsset("asset-1")
 	repo.mediaReturns["asset-2"] = mkAsset("asset-2")
 
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeMediaAssetID, Value: "asset-1"},
 		{Type: ports.RefTypeMediaAssetID, Value: "asset-2"},
@@ -132,7 +132,7 @@ func TestResolve_HappyPath_YouTubeVideoIDFanOut(t *testing.T) {
 		mkAsset("yt_vidXYZ_120_3"),
 	}
 
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeYouTubeVideoID, Value: "vidXYZ"},
 	})
@@ -157,7 +157,7 @@ func TestResolve_HappyPath_DriveFileID(t *testing.T) {
 	repo := newFakeRepo()
 	repo.driveReturns["1ABC_XYZ"] = []*asset.Asset{mkAsset("asset-drive-1")}
 
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeDriveFileID, Value: "1ABC_XYZ"},
 	})
@@ -176,7 +176,7 @@ func TestResolve_HappyPath_ExternalProviderID(t *testing.T) {
 	repo := newFakeRepo()
 	repo.externalReturns["youtube::ext-1"] = []*asset.Asset{mkAsset("asset-ext-1")}
 
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeExternalProviderID, Value: "youtube::ext-1"},
 	})
@@ -201,7 +201,7 @@ func TestResolve_HappyPath_ExternalProviderID(t *testing.T) {
 // ── Edge cases — the caller keys on these reasons ──────────────
 
 func TestResolve_EmptyValue_ReportsEmptyValueReason(t *testing.T) {
-	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())
+	svc := NewClipResolver(newFakeRepo(), zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeMediaAssetID, Value: ""},
 	})
@@ -214,7 +214,7 @@ func TestResolve_EmptyValue_ReportsEmptyValueReason(t *testing.T) {
 }
 
 func TestResolve_InvalidType_ReportsInvalidTypeReason(t *testing.T) {
-	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())
+	svc := NewClipResolver(newFakeRepo(), zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.ReferenceType("bogus"), Value: "anything"},
 	})
@@ -228,7 +228,7 @@ func TestResolve_InvalidType_ReportsInvalidTypeReason(t *testing.T) {
 
 func TestResolve_NotFound_ReportsNotFoundReason(t *testing.T) {
 	// media_returns has nothing for "missing".
-	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())
+	svc := NewClipResolver(newFakeRepo(), zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeMediaAssetID, Value: "missing"},
 	})
@@ -244,7 +244,7 @@ func TestResolve_NotFound_ReportsNotFoundReason(t *testing.T) {
 }
 
 func TestResolve_ExternalProviderID_MalformedValue_ReportsFormatReason(t *testing.T) {
-	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())
+	svc := NewClipResolver(newFakeRepo(), zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		// Five malformed shapes — every one fails the
 		// `idx <= 0 || idx >= len(v) - len("::")` guard in
@@ -271,7 +271,7 @@ func TestResolve_ExternalProviderID_MalformedValue_ReportsFormatReason(t *testin
 func TestResolve_DBError_ReportsDBErrorReason_And_ReturnsError(t *testing.T) {
 	repo := newFakeRepo()
 	repo.dbError = errors.New("simulated db failure")
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeMediaAssetID, Value: "x"},
 		{Type: ports.RefTypeYouTubeVideoID, Value: "y"},
@@ -297,7 +297,7 @@ func TestResolve_MixedBatch_PartialSuccess(t *testing.T) {
 	// "missing" intentionally absent → not_found.
 	// "bad-type" intentionally absent → invalid_type.
 
-	svc := NewClipResolverForTest(repo, zap.NewNop())
+	svc := NewClipResolver(repo, zap.NewNop())
 	res, err := svc.Resolve(context.Background(), []ports.ClipReference{
 		{Type: ports.RefTypeMediaAssetID, Value: "ok-1"},
 		{Type: ports.RefTypeMediaAssetID, Value: "ok-2"},
@@ -342,7 +342,7 @@ func TestResolve_NilRepo_SynthesizesNotFoundWithoutPanic(t *testing.T) {
 }
 
 func TestResolve_EmptyInput_ReturnsEmptyResult(t *testing.T) {
-	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())
+	svc := NewClipResolver(newFakeRepo(), zap.NewNop())
 	res, err := svc.Resolve(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("err=%v, want nil", err)

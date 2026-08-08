@@ -55,6 +55,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -75,9 +76,10 @@ import (
 // single owner is PersistenceProcessor, registered in the plan's
 // Postprocessors list.
 type Engine struct {
-	ollamaGen scriptOllamaGenerator
-	memorySvc memoryGateChecker
-	log       *zap.Logger
+	ollamaGen    scriptOllamaGenerator
+	memorySvc    memoryGateChecker
+	branchMetric scriptmetrics.ScriptGenerationBranchRecorder
+	log          *zap.Logger
 
 	// Segment QA policy is configured at the composition root. Zero values
 	// use the canonical defaults in segment_validation.go.
@@ -235,10 +237,16 @@ func NewEngine(
 	ollamaGen scriptOllamaGenerator,
 	memorySvc memoryGateChecker,
 	log *zap.Logger,
+	branchMetrics ...scriptmetrics.ScriptGenerationBranchRecorder,
 ) *Engine {
+	var branchMetric scriptmetrics.ScriptGenerationBranchRecorder
+	if len(branchMetrics) > 0 {
+		branchMetric = branchMetrics[0]
+	}
 	return &Engine{
-		ollamaGen: ollamaGen,
-		memorySvc: memorySvc,
-		log:       log,
+		ollamaGen:    ollamaGen,
+		memorySvc:    memorySvc,
+		branchMetric: branchMetric,
+		log:          log,
 	}
 }
