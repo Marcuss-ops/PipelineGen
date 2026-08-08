@@ -12,6 +12,18 @@
 #   - qdrant.enabled: true (external vector store connected)
 #   - clip_indexer.enabled: true (semantic indexer active)
 #   - artlist.auto_download.enabled: true (10/day cap on non-Enterprise quota)
+#   - video.codec: h264_nvenc (GPU-required video encoding; no implicit CPU fallback)
+#
+# GPU deployment contract:
+#   - This template targets a host with a working NVIDIA driver and NVENC
+#     support. Validate the host before boot with `ffmpeg -encoders` and
+#     confirm `h264_nvenc` is available.
+#   - A configured NVENC video encode is fail-closed: if the GPU encoder or
+#     runtime encode fails, the operation returns an error. It must never
+#     retry or silently degrade to libx264/CPU.
+#   - CPU remains intentional for ffprobe, audio-only AAC/MP3/WAV work,
+#     metadata, hashing, database/I/O, and stream-copy operations (`-c copy`).
+#     Those operations do not imply a video-encoder fallback.
 
 server:
   # 0.0.0.0 binds all interfaces. Production deployments should sit behind
@@ -113,9 +125,11 @@ video:
   width: 1920
   height: 1080
   fps: 24
-  # Production encoder policy: NVENC is required; a runtime GPU failure is
-  # terminal and must never degrade silently to CPU/libx264. `p1` is the
-  # native NVENC performance preset; the resolver preserves it as-is.
+  # GPU-oriented production video policy. `h264_nvenc` is explicit and
+  # GPU-required; runtime failure is terminal (no libx264/CPU retry).
+  # `p1` is the native NVENC performance preset and `crf` maps to NVENC CQ.
+  # Keep this policy explicit: an empty codec or an implicit default is not
+  # an acceptable production fallback.
   codec: "h264_nvenc"
   preset: "p1"
   crf: 23
