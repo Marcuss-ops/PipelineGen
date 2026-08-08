@@ -67,8 +67,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // p0gClipAlpha + p0gClipBeta are the canonical 2-clip IDs
@@ -148,7 +148,7 @@ func p0gBuildEnvelope(prose string) string {
 func p0gBuildFallbackOrchestrator(t *testing.T) (*GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      p0gBuildEnvelope(p0gProse),
 		WordCount:   54,
 		EstDuration: 3,

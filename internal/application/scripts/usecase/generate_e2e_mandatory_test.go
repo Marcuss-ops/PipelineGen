@@ -20,8 +20,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // buildUsecaseWithClipResolver returns a GenerateOneUseCase wired with a
@@ -62,7 +62,7 @@ func TestGenerateE2E_OneClipWithoutSourceText(t *testing.T) {
 	clipResolver := newFakeClipResolver()
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -85,7 +85,7 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
 
 	sourceText := "Use this editorial angle about the quick brown fox."
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"clip-1"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -111,7 +111,7 @@ func TestGenerateE2E_SourcePrimaryGroundingPolicy(t *testing.T) {
 	t.Parallel()
 
 	sourceText := "The quick brown fox jumps over the lazy dog."
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, nil, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -139,7 +139,7 @@ func TestGenerateE2E_IncompatibleInput_FiveSecondClipNineHundredWords(t *testing
 	clipResolver.AddClip(makeTestClip("short-clip", "Short", 5*time.Second))
 
 	sourceText := strings.Repeat("word ", 950)
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"short-clip"}, sourceText), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -157,7 +157,7 @@ func TestGenerateE2E_NonexistentClip(t *testing.T) {
 	t.Parallel()
 
 	clipResolver := newFakeClipResolver()
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(1, []string{"does-not-exist"}, ""), WordCount: 10, EstDuration: 3, Model: "llama3:8b",
 	}}
 
@@ -197,7 +197,7 @@ func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
 	// Use text that overlaps with the clip evidence so the quality gate
 	// passes without needing model-emitted scenes.
 	plainText := buildOverlappingText(1, defaultClipSearchText)
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, plainText),
 		WordCount:   10,
 		EstDuration: 4,
@@ -238,7 +238,7 @@ func TestGenerateE2E_Concurrency(t *testing.T) {
 		clipResolver.AddClip(makeTestClip(fmt.Sprintf("clip-%d", i), fmt.Sprintf("Clip %d", i), 10*time.Second))
 	}
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script: canonicalSceneJSON(2, []string{"clip-0", "clip-1"}, ""), WordCount: 10, EstDuration: 6, Model: "llama3:8b",
 	}}
 

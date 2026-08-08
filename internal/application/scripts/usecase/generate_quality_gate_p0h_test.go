@@ -80,8 +80,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // p0hClipPacquiaoR1 is the canonical Pacquiao round-1 clip ID used
@@ -192,7 +192,7 @@ func p0hBuildControlledEnvelope(prose string) string {
 func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
 		Script:      p0hBuildControlledEnvelope(p0hProse),
 		WordCount:   55,
 		EstDuration: 3,

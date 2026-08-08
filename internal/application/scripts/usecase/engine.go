@@ -54,9 +54,8 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
 	"go.uber.org/zap"
 )
@@ -92,9 +91,7 @@ type Engine struct {
 
 // scriptOllamaGenerator is the narrow interface satisfied by both
 // *ollama.Generator (production) and fakeOllamaGen (tests).
-type scriptOllamaGenerator interface {
-	GenerateScript(ctx context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error)
-}
+type scriptOllamaGenerator = ports.ScriptGenerator
 
 // memoryGateChecker is the narrow interface satisfied by any future
 // gemmamemory adapter exposing CheckGate; the canonical fakeMemoryGate
@@ -179,9 +176,6 @@ func (a *memoryGateAdapter) CheckGate(ctx context.Context, req memoryGateRequest
 func NewMemoryGateChecker(svc *adapters.Service) memoryGateChecker {
 	return &memoryGateAdapter{svc: svc}
 }
-
-// Compile-time assertions: concrete types satisfy the narrow interfaces.
-var _ scriptOllamaGenerator = (*ollama.Generator)(nil)
 
 // EngineResult is the canonical typed output of Engine.Generate.
 // It carries the canonical ModelScriptOutputV1 produced by the

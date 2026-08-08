@@ -215,7 +215,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	engine := usecase.NewEngine(scriptGen, nil, log)
+	engine := usecase.NewEngine(adapters.NewOllamaScriptGeneratorAdapter(scriptGen), nil, log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(cfg.Scripts.SegmentWordsTolerancePercent, cfg.Scripts.TotalWordsTolerancePercent, cfg.Scripts.MaxSegmentRegenerationAttempts)
 

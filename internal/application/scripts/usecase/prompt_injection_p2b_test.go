@@ -154,8 +154,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // p2bInjectionTranscript is the canonical adversarial transcript
@@ -455,7 +455,7 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 	t.Parallel()
 	// Simulate the model following the "Return JSON"
 	// injection: the fake returns a V1 JSON envelope.
-	jsonResult := &ollamatypes.GenerationResult{
+	jsonResult := &scriptports.GenerationResult{
 		Script:      `{"schema_version":1,"text":"JSON-following injection response.","specscene":{"version":1,"scenes":[]}}`,
 		WordCount:   3,
 		EstDuration: 1,
@@ -486,7 +486,7 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 	t.Run("malformed_also_graceful", func(t *testing.T) {
 		t.Parallel()
 		badGen := &fakeOllamaGen{
-			result: &ollamatypes.GenerationResult{
+			result: &scriptports.GenerationResult{
 				Script:      `{"ignore_previous": true, "format": "json"}`,
 				WordCount:   3,
 				EstDuration: 1,
@@ -528,7 +528,7 @@ func TestPromptInjectionDefense_P2B_TopicChangeNotDetected(t *testing.T) {
 	// off-topic prose about a DIFFERENT boxer (e.g.,
 	// Muhammad Ali vs Joe Frazier), with no mention of
 	// the canonical clip topic (Pacquiao vs Broner).
-	offTopicResult := &ollamatypes.GenerationResult{
+	offTopicResult := &scriptports.GenerationResult{
 		Script: "In another era, Muhammad Ali and Joe Frazier faced each other in the Thrilla in Manila, " +
 			"a legendary boxing match that defined a generation. The fight was brutal and intense, " +
 			"with both fighters giving their all in the ring.",
@@ -601,7 +601,7 @@ func TestPromptInjectionDefense_P2B_QualityGateCatchesInjection(t *testing.T) {
 	// in the source (Pacquiao/Broner context). The
 	// source-text-coverage check SHOULD drop, and the
 	// unsupported-claims check SHOULD rise.
-	offTopicResult := &ollamatypes.GenerationResult{
+	offTopicResult := &scriptports.GenerationResult{
 		Script:      "In another era, Muhammad Ali and Joe Frazier faced each other in the Thrilla in Manila, a legendary boxing match that defined a generation.",
 		WordCount:   22,
 		EstDuration: 9,

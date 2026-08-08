@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -254,8 +254,8 @@ func assembleFrozenSegments(texts []string) string {
 func (e *Engine) generateSegments(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
-	req ollamatypes.TextGenerationRequest,
-) (*ollamatypes.GenerationResult, error) {
+	req ports.TextGenerationRequest,
+) (*ports.GenerationResult, error) {
 	if plan == nil || len(plan.Segments) == 0 {
 		return e.ollamaGen.GenerateScript(ctx, req)
 	}

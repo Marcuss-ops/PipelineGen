@@ -42,8 +42,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // ── Fakes ──────────────────────────────────────────────────────────────────
@@ -51,12 +51,12 @@ import (
 // fakeOllamaGen is a scriptOllamaGenerator injected into Engine for tests.
 type fakeOllamaGen struct {
 	calls       atomic.Int32
-	result      *ollamatypes.GenerationResult
+	result      *scriptports.GenerationResult
 	returnErr   error
-	capturedReq atomic.Pointer[ollamatypes.TextGenerationRequest]
+	capturedReq atomic.Pointer[scriptports.TextGenerationRequest]
 }
 
-func (f *fakeOllamaGen) GenerateScript(_ context.Context, req ollamatypes.TextGenerationRequest) (*ollamatypes.GenerationResult, error) {
+func (f *fakeOllamaGen) GenerateScript(_ context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	f.calls.Add(1)
 	f.capturedReq.Store(&req)
 	if f.returnErr != nil {
@@ -118,8 +118,8 @@ func v1CanonicalFixture() string {
 	return `{"schema_version":1,"text":"` + v1CanonicalFixtureText + `","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"` + v1CanonicalFixtureText + `","kind":"narration","bindings":{}}]}}`
 }
 
-func defaultFakeResult() *ollamatypes.GenerationResult {
-	return &ollamatypes.GenerationResult{
+func defaultFakeResult() *scriptports.GenerationResult {
+	return &scriptports.GenerationResult{
 		Script:      v1CanonicalFixture(),
 		WordCount:   12,
 		EstDuration: 4,
@@ -471,7 +471,7 @@ func TestEngineGenerate_NilPlan(t *testing.T) {
 func TestEngineGenerate_DecodeFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{
-		result: &ollamatypes.GenerationResult{
+		result: &scriptports.GenerationResult{
 			Script:      "Plain prose without a JSON envelope.",
 			WordCount:   8,
 			EstDuration: 3,
@@ -585,7 +585,7 @@ func TestEngineGenerate_ModelScenesPreserved(t *testing.T) {
 	t.Parallel()
 	scenarioJSON := `{"schema_version":1,"text":"Full prose. S1. S2.","specscene":{"version":1,"scenes":[{"id":"scene-0","index":0,"text":"S1.","kind":"narration","bindings":{}},{"id":"scene-1","index":1,"text":"S2.","kind":"narration","bindings":{}}]}}`
 	gen := &fakeOllamaGen{
-		result: &ollamatypes.GenerationResult{
+		result: &scriptports.GenerationResult{
 			Script:      scenarioJSON,
 			WordCount:   4,
 			EstDuration: 2,
@@ -647,7 +647,7 @@ func TestEngineGenerate_AlwaysAppendsVSuffix(t *testing.T) {
 		// post-wave default). OutputModeScriptV1 is RETAINED in the
 		// const block for backward-compat with pre-wave cached rows;
 		// no new caller should request it.
-		assert.Equal(t, ollamatypes.OutputModePlainText, captured.OutputMode,
+		assert.Equal(t, scriptports.OutputModePlainText, captured.OutputMode,
 			"OutputModePlainText must be set on the ollama request for plan %q (canonical post-PR-2 default)",
 			p.Title)
 		assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]",

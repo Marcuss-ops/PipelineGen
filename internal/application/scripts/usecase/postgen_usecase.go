@@ -22,8 +22,9 @@ package usecase
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
@@ -55,7 +56,7 @@ type InsightBuilder interface {
 type PostGenUseCase struct {
 	extractor      EntityScriptExtractor
 	insightBuilder InsightBuilder
-	generator      *ollama.Generator
+	generator      dto.MetadataGenerator
 	metadataModel  string
 	log            *zap.Logger
 }
@@ -64,7 +65,7 @@ type PostGenUseCase struct {
 func NewPostGenUseCase(
 	extractor EntityScriptExtractor,
 	insightBuilder InsightBuilder,
-	generator *ollama.Generator,
+	generator dto.MetadataGenerator,
 	metadataModel string,
 	log *zap.Logger,
 ) *PostGenUseCase {
@@ -132,8 +133,8 @@ func (u *PostGenUseCase) Run(ctx context.Context, payload *scriptpkg.GenerationS
 
 	if u.generator != nil && payload != nil && payload.GenerateMetadata {
 		group.Go("video-metadata", func() error {
-			languages := BuildMetadataLanguages(payload.Languages)
-			res.VideoMetadata = GenerateVideoMetadata(groupCtx, u.generator, payload.Title, languages, u.metadataModel)
+			languages := dto.BuildMetadataLanguages(payload.Languages)
+			res.VideoMetadata = dto.GenerateVideoMetadata(groupCtx, u.generator, payload.Title, languages, u.metadataModel)
 			return nil
 		})
 	}
@@ -145,21 +146,4 @@ func (u *PostGenUseCase) Run(ctx context.Context, payload *scriptpkg.GenerationS
 	}
 
 	return res, nil
-}
-
-// BuildMetadataLanguages builds a list of language metadata strings.
-// Phase 1b stub.
-func BuildMetadataLanguages(languages []string) []string {
-	return languages
-}
-
-// GenerateVideoMetadata generates metadata for a video asset.
-// Phase 1b stub.
-func GenerateVideoMetadata(ctx context.Context, generator any, title string, languages []string, modelName string) []scriptpkg.VideoMetadata {
-	_ = ctx
-	_ = generator
-	_ = title
-	_ = languages
-	_ = modelName
-	return nil
 }
