@@ -195,12 +195,16 @@ func applyRunMetadataToPlans(plans []ClipPlan, metadata *ChunkMetadataInput) {
 	if metadata == nil {
 		return
 	}
+	blockDescription := strings.TrimSpace(metadata.BlockDescription)
+	if blockDescription == "" {
+		blockDescription = strings.TrimSpace(metadata.Description)
+	}
 	for i := range plans {
 		if strings.TrimSpace(plans[i].Title) == "" {
 			plans[i].Title = metadata.Title
 		}
 		if strings.TrimSpace(plans[i].Description) == "" {
-			plans[i].Description = metadata.Description
+			plans[i].Description = blockDescription
 		}
 		if len(plans[i].Tags) == 0 {
 			plans[i].Tags = append([]string(nil), metadata.Tags...)

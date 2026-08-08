@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -29,6 +30,9 @@ type StockRunMetadata struct {
 	Chunks                         []ChunkMetadataEntry `json:"chunks"`
 	CreatedAt                      time.Time            `json:"created_at"`
 	PolicyVersion                  string               `json:"policy_version"`
+	Title                          string               `json:"title,omitempty"`
+	Description                    string               `json:"description,omitempty"`
+	BlockDescription               string               `json:"block_description,omitempty"`
 
 	Category string   `json:"category,omitempty"`
 	Event    string   `json:"event,omitempty"`
@@ -117,10 +121,30 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 		Chunks:                         entries,
 		CreatedAt:                      time.Now().UTC(),
 		PolicyVersion:                  in.PolicyVersion,
+		Title:                          metadataValue(in.Metadata, func(m *ChunkMetadataInput) string { return m.Title }),
+		Description:                    effectiveMetadataDescription(in.Metadata),
+		BlockDescription:               metadataValue(in.Metadata, func(m *ChunkMetadataInput) string { return m.BlockDescription }),
 		IndexingStatus:                 IndexingStatusPending,
 		TimestampDriveFolderLink:       timestampFolderLink(chunks),
 		TimestampFolderID:              timestampFolderID(chunks),
 	}
+}
+
+func effectiveMetadataDescription(metadata *ChunkMetadataInput) string {
+	if metadata == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(metadata.Description); value != "" {
+		return value
+	}
+	return strings.TrimSpace(metadata.BlockDescription)
+}
+
+func metadataValue(metadata *ChunkMetadataInput, get func(*ChunkMetadataInput) string) string {
+	if metadata == nil {
+		return ""
+	}
+	return strings.TrimSpace(get(metadata))
 }
 
 func timestampFolderLink(chunks []ChunkState) string {

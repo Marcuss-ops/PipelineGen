@@ -116,25 +116,27 @@ type RunInput struct {
 
 // ChunkMetadataInput holds user-provided metadata for chunks.
 type ChunkMetadataInput struct {
-	Title       string            `json:"title,omitempty"`
-	Description string            `json:"description,omitempty"`
-	Tags        []string          `json:"tags,omitempty"`
-	Category    string            `json:"category,omitempty"`
-	Author      string            `json:"author,omitempty"`
-	Extra       map[string]string `json:"extra,omitempty"`
+	Title            string            `json:"title,omitempty"`
+	Description      string            `json:"description,omitempty"`
+	BlockDescription string            `json:"block_description,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	Category         string            `json:"category,omitempty"`
+	Author           string            `json:"author,omitempty"`
+	Extra            map[string]string `json:"extra,omitempty"`
 }
 
 // PipelineMetadata is the single metadata JSON uploaded at the end with all chunks.
 type PipelineMetadata struct {
-	Title       string            `json:"title"`
-	Description string            `json:"description,omitempty"`
-	Source      SourceInfo        `json:"source"`
-	Pipeline    PipelineInfo      `json:"pipeline"`
-	Tags        []string          `json:"tags,omitempty"`
-	Category    string            `json:"category,omitempty"`
-	Author      string            `json:"author,omitempty"`
-	Extra       map[string]string `json:"extra,omitempty"`
-	Chunks      []ChunkMeta       `json:"chunks"`
+	Title            string            `json:"title"`
+	Description      string            `json:"description,omitempty"`
+	BlockDescription string            `json:"block_description,omitempty"`
+	Source           SourceInfo        `json:"source"`
+	Pipeline         PipelineInfo      `json:"pipeline"`
+	Tags             []string          `json:"tags,omitempty"`
+	Category         string            `json:"category,omitempty"`
+	Author           string            `json:"author,omitempty"`
+	Extra            map[string]string `json:"extra,omitempty"`
+	Chunks           []ChunkMeta       `json:"chunks"`
 }
 
 // ChunkMeta describes a single chunk within the pipeline metadata.

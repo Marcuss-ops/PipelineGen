@@ -418,10 +418,11 @@ func TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip(t *testi
 		t.Fatalf("artifacts count=%d, want 2 (1 metadata + 1 chunk)", len(req.Artifacts))
 	}
 
-	// ── Assert the provider source on BOTH artifacts ────────────────
+	// Stock is the asset family; acquisition provenance is carried by the
+	// source_provider metadata field.
 	for i, a := range req.Artifacts {
-		if a.Source != "youtube" {
-			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "youtube")
+		if a.Source != "stock" {
+			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "stock")
 		}
 	}
 
