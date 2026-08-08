@@ -1187,6 +1187,27 @@ func TestGenerateProxy_NVENCFailureIsTerminal(t *testing.T) {
 	assert.False(t, hasArgPair(runner.args[0], "-c:v", "libx264"), "proxy must not fallback to libx264: %v", runner.args[0])
 }
 
+func TestGenerateProxy_AutoPolicyUsesResolverDetectedNVENC(t *testing.T) {
+	runner := &resolverRunner{output: " V....D h264_nvenc NVIDIA NVENC H.264 encoder\\n"}
+	p := NewProcessorWithEncoder("ffmpeg", "auto").WithRunner(runner)
+
+	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
+	require.Len(t, runner.args, 2, "proxy must probe once, then execute the resolved encode")
+	argv := runner.args[1]
+	assert.True(t, hasArgPair(argv, "-c:v", "h264_nvenc"),
+		"auto proxy policy must use resolver-detected NVENC: %v", argv)
+	assert.True(t, hasArgPair(argv, "-preset", "p1"),
+		"auto proxy policy must map the configured software preset to NVENC: %v", argv)
+	assert.True(t, hasArgPair(argv, "-cq", "23"),
+		"auto proxy policy must map quality to NVENC CQ: %v", argv)
+	assert.True(t, hasArgPair(argv, "-rc", "vbr"),
+		"auto proxy policy must use NVENC rate control: %v", argv)
+	assert.True(t, hasArgPair(argv, "-c:a", "aac"),
+		"proxy must retain AAC audio: %v", argv)
+	assert.False(t, hasArgPair(argv, "-c:v", "libx264"),
+		"auto proxy policy must not silently fall back to software: %v", argv)
+}
+
 // ── ApplyWatermark tests ──────────────────────────────────────────────
 
 // defaultWatermarkOpts returns sensible WatermarkOptions for tests.
