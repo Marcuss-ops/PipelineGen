@@ -91,6 +91,16 @@ type fakeMemoryGate struct {
 	onCheck     func()
 }
 
+type fakeBranchRecorder struct {
+	branches  []string
+	countries []string
+}
+
+func (r *fakeBranchRecorder) RecordScriptGenerationBranch(branch, bcp47 string) {
+	r.branches = append(r.branches, branch)
+	r.countries = append(r.countries, ExtractCountryForTelemetry(bcp47))
+}
+
 func (f *fakeMemoryGate) CheckGate(_ context.Context, req memoryGateRequest) (*memoryGateResult, error) {
 	if f.onCheck != nil {
 		f.onCheck()
@@ -167,6 +177,32 @@ func buildTestEngine(gen *fakeOllamaGen, mem memoryGateChecker) *Engine {
 		memorySvc: mem,
 		log:       zap.NewNop(),
 	}
+}
+
+func TestEngineGenerate_RecordsScriptBranchThroughPort(t *testing.T) {
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+		Script:      "This is a generated script with multiple sentences and narrative depth.",
+		WordCount:   11,
+		EstDuration: 4,
+		Model:       "test-model",
+	}}
+	recorder := &fakeBranchRecorder{}
+	e := NewEngine(gen, nil, zap.NewNop(), recorder)
+
+	_, err := e.Generate(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		Language:    "it-IT",
+		TargetWords: 11,
+		Segments:    []scriptpkg.ScriptSegment{{Topic: "canonical", TargetWords: 11}},
+	})
+	require.NoError(t, err)
+	_, err = e.Generate(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		Language:      "pt-BR",
+		SegmentTopics: []string{"legacy"},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"a", "b"}, recorder.branches)
+	require.Equal(t, []string{"IT", "BR"}, recorder.countries)
 }
 
 // ── Nil / missing dependency ───────────────────────────────────────────────

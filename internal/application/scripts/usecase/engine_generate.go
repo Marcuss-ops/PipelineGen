@@ -193,10 +193,12 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// the orchestrator owns side-effects. This placement also
 	// closes the BRANCH-B telemetry gap (SegmentTopics-only plans
 	// without clip evidence) — see commit message for details.
-	if len(plan.Segments) > 0 {
-		RecordScriptGenerationBranch("a", plan.Language)
-	} else if len(plan.SegmentTopics) > 0 {
-		RecordScriptGenerationBranch("b", plan.Language)
+	if e.branchMetric != nil {
+		if len(plan.Segments) > 0 {
+			e.branchMetric.RecordScriptGenerationBranch("a", plan.Language)
+		} else if len(plan.SegmentTopics) > 0 {
+			e.branchMetric.RecordScriptGenerationBranch("b", plan.Language)
+		}
 	}
 	builtPrompt := renderedPrompt
 	// PR-CS-1 / FASE 3: ScriptSegment blocks + canonical footer are

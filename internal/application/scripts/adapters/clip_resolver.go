@@ -1,6 +1,6 @@
 // Package adapters — clip_resolver.go implements the canonical
-// ports.ClipResolver adapter, wrapping the typed repo methods on
-// *assets.ClipsRepository (this PR adds the typed methods).
+// ports.ClipResolver adapter over the application-owned
+// ClipRepositoryReader port.
 //
 // This adapter replaces the legacy clip_source_builder.clipsResolverPort
 // (now typedClipResolverPort) heuristic that silently mixed identifier
@@ -27,52 +27,22 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
-
-// clipResolverPortReadOnly is the narrow Read surface the
-// clipResolverAdapter aggregates over. Defined here (rather than in
-// `ports/`) because it is the concrete-method set the infra repo
-// satisfies — keeping it next to NewClipResolver localises
-// adapter-internal types and avoids dragging the entire scripts
-// application package import graph into the production repo's
-// test boundary.
-//
-// Tests inject a hand-rolled stub via NewClipResolverForTest.
-type clipResolverPortReadOnly interface {
-	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
-	ResolveByYouTubeVideoID(ctx context.Context, videoID string) ([]*asset.Asset, error)
-	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
-	ResolveByExternalProviderID(ctx context.Context, provider, externalID string) ([]*asset.Asset, error)
-}
 
 // clipResolverAdapter satisfies ports.ClipResolver by dispatching on
 // ClipReference.Type via the typed repo methods above. No
 // fall-through between arms — invalid Type surfaces as
 // UnresolvedReference{Reason:"invalid_type"}.
 type clipResolverAdapter struct {
-	repo clipResolverPortReadOnly
+	repo ports.ClipRepositoryReader
 	log  *zap.Logger
 }
 
-// NewClipResolver constructs the production adapter. The repo
-// argument must be the concrete *assets.ClipsRepository — the
-// canonical typed methods are wired here. nil repo returns a no-op adapter so test fixtures can
-// pass nil without nil-checking at every call site (mirrors the
-// nil-safe shape of voiceoverGroupsAdapter).
-func NewClipResolver(repo *assets.ClipsRepository, log *zap.Logger) ports.ClipResolver {
-	if repo == nil {
-		return &clipResolverAdapter{repo: nil, log: log}
-	}
-	return &clipResolverAdapter{repo: repo, log: log}
-}
-
-// NewClipResolverForTest is the test-only constructor accepting the
-// narrow port interface rather than the concrete repository.
-// Production code MUST use NewClipResolver — the narrow port is
-// the seam for stub injection only.
-func NewClipResolverForTest(repo clipResolverPortReadOnly, log *zap.Logger) ports.ClipResolver {
+// NewClipResolver constructs the resolver over the application-owned
+// repository port. Concrete repositories are supplied by the composition
+// root, while tests can inject the same port with a fake.
+func NewClipResolver(repo ports.ClipRepositoryReader, log *zap.Logger) ports.ClipResolver {
 	return &clipResolverAdapter{repo: repo, log: log}
 }
 
@@ -80,13 +50,6 @@ func NewClipResolverForTest(repo clipResolverPortReadOnly, log *zap.Logger) port
 // A future method change to ClipResolver surfaces here rather than
 // at the first production dispatch.
 var _ ports.ClipResolver = (*clipResolverAdapter)(nil)
-
-// Compile-time pin: the concrete *assets.ClipsRepository satisfies
-// the narrow clipResolverPortReadOnly surface. Without this assertion,
-// a future signature drift on clipResolverPortReadOnly fails only at
-// the first adapter dispatch (silent runtime panic), not at compile.
-// AGENTS.md Pattern 0 prefers the compile-time gate.
-var _ clipResolverPortReadOnly = (*assets.ClipsRepository)(nil)
 
 // Resolve dispatches each input reference to the typed arm.
 // Per-reference failures (empty value, invalid type, not found)

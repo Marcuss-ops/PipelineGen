@@ -1,29 +1,31 @@
+// Package adapters bridges the application script-generation port to Ollama.
 package adapters
 
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
-// OllamaScriptGeneratorAdapter translates the application generation contract
-// to the infrastructure Ollama generator without leaking provider types upward.
-type OllamaScriptGeneratorAdapter struct {
+// ScriptGeneratorAdapter translates the provider-neutral application request
+// into the concrete Ollama request and translates the result back.
+type ScriptGeneratorAdapter struct {
 	generator *ollama.Generator
 }
 
-func NewOllamaScriptGeneratorAdapter(generator *ollama.Generator) ports.ScriptGenerator {
+// NewScriptGeneratorAdapter constructs an application-port adapter for Ollama.
+func NewScriptGeneratorAdapter(generator *ollama.Generator) scriptports.ScriptGenerator {
 	if generator == nil {
 		return nil
 	}
-	return &OllamaScriptGeneratorAdapter{generator: generator}
+	return &ScriptGeneratorAdapter{generator: generator}
 }
 
-func (a *OllamaScriptGeneratorAdapter) GenerateScript(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
+func (a *ScriptGeneratorAdapter) GenerateScript(ctx context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	if a == nil || a.generator == nil {
-		return nil, ports.ErrScriptGeneratorUnavailable
+		return nil, scriptports.ErrScriptGeneratorUnavailable
 	}
 	result, err := a.generator.GenerateScript(ctx, ollamatypes.TextGenerationRequest{
 		Language: req.Language, Duration: req.Duration, DurationMinutes: req.DurationMinutes,
@@ -38,12 +40,12 @@ func (a *OllamaScriptGeneratorAdapter) GenerateScript(ctx context.Context, req p
 		return nil, err
 	}
 	if result == nil {
-		return nil, ports.ErrScriptGenerationEmptyResult
+		return nil, scriptports.ErrScriptGenerationEmptyResult
 	}
-	return &ports.GenerationResult{
+	return &scriptports.GenerationResult{
 		Script: result.Script, WordCount: result.WordCount, EstDuration: result.EstDuration,
 		Model: result.Model, Prompt: result.Prompt,
 	}, nil
 }
 
-var _ ports.ScriptGenerator = (*OllamaScriptGeneratorAdapter)(nil)
+var _ scriptports.ScriptGenerator = (*ScriptGeneratorAdapter)(nil)

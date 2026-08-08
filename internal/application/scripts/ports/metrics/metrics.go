@@ -36,6 +36,21 @@ package metrics
 
 import "strings"
 
+// ExtractCountryForTelemetry maps a BCP-47 tag to the bounded country label
+// used by script-generation branch telemetry. It is the application policy
+// consumed by infrastructure metric adapters.
+func ExtractCountryForTelemetry(bcp47 string) string {
+	bcp47 = strings.TrimSpace(bcp47)
+	if bcp47 == "" {
+		return "XX"
+	}
+	parts := strings.Split(bcp47, "-")
+	if len(parts) >= 2 && parts[1] != "" {
+		return strings.ToUpper(parts[1])
+	}
+	return strings.ToUpper(parts[0])
+}
+
 // TranslationWarningReason is the bounded enum for Prometheus
 // label cardinality (PR-TRANSLATE-SCRIPT-SPEC FP3, 2026-08-08). The
 // TranslationProcessor emits one bounded reason per warning + per
@@ -99,6 +114,11 @@ const (
 	// the metrics-adapter boundary.
 	ReasonUnknown TranslationWarningReason = "unknown"
 )
+
+// ScriptGenerationBranchRecorder records the selected script-generation branch.
+type ScriptGenerationBranchRecorder interface {
+	RecordScriptGenerationBranch(branch, bcp47 string)
+}
 
 // TranslationMetricsRecorder is the canonical SOLE consumer surface
 // for the script_translation_warnings_total Prometheus counter.
