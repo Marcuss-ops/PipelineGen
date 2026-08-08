@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // SyncAll synchronizes every configured target.
@@ -27,8 +25,14 @@ func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
 	}
 
 	for _, target := range s.targets {
-		if strings.TrimSpace(target.RootFolderID) == "" || target.Repo == nil {
+		if strings.TrimSpace(target.RootFolderID) == "" {
 			continue
+		}
+		if target.Repo == nil || target.Indexer == nil {
+			err := fmt.Errorf("%w: source=%q", ErrCatalogSyncInvalidTarget, target.Source)
+			summary.OK = false
+			summary.Error = err.Error()
+			return summary, err
 		}
 
 		rootSummary, err := s.syncTarget(ctx, target)
@@ -53,6 +57,9 @@ func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, 
 
 	for _, target := range s.targets {
 		if strings.EqualFold(target.Source, source) {
+			if err := validateTarget(target); err != nil {
+				return nil, err
+			}
 			summary, err := s.syncTarget(ctx, target)
 			return &summary, err
 		}
@@ -69,7 +76,7 @@ func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, 
 //
 //	POST /api/media/sync
 //	{ "drive_folder_id": "1ll2RlTa...", "source": "youtube", "name": "MyFolder" }
-func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo *assets.ClipsRepository) (*RootSummary, error) {
+func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo CatalogRepository, indexer AssetIndexer) (*RootSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -78,6 +85,9 @@ func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, medi
 	}
 	if repo == nil {
 		return nil, fmt.Errorf("repository is required")
+	}
+	if indexer == nil {
+		return nil, fmt.Errorf("asset indexer is required")
 	}
 	if source == "" {
 		source = "drive"
@@ -95,6 +105,7 @@ func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, medi
 		Source:       source,
 		MediaType:    mediaType,
 		Repo:         repo,
+		Indexer:      indexer,
 	}
 
 	summary, err := s.syncTarget(ctx, target)

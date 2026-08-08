@@ -13,7 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -48,6 +47,18 @@ const dispatcherTestSchema = drive.CanonicalMediaAssetsSchema + `
 	CREATE INDEX idx_outbox_events_status
 		ON outbox_events(status, next_attempt_at);
 `
+
+type testSourceReader struct{}
+
+var _ SourceReader = testSourceReader{}
+
+func (testSourceReader) GetFileMeta(context.Context, string) (*RemoteFileMeta, error) {
+	return &RemoteFileMeta{}, nil
+}
+
+func (testSourceReader) ListFiles(context.Context, string) ([]RemoteFile, error) {
+	return nil, nil
+}
 
 // TestUpsertPreservingExisting_DispatcherPath verifies the canonical PR1
 // flow: when Deps.Dispatcher is wired (PR-D, June 2026 — the late-bind
@@ -89,7 +100,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	// continues to pass the AssetTree zero-struct because the recursive
 	// walker dereferences it (the dispatcher path itself does not).
 	svc, err := NewService(Deps{
-		Reader:     &uploaddrive.Uploader{},
+		Reader:     testSourceReader{},
 		Targets:    nil, // no pre-configured targets
 		AssetTree:  &assettree.Service{},
 		Dispatcher: dispatcher,
@@ -110,7 +121,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	clip.SetFileHash("abc123")
 	clip.SetDriveLink("https://drive.google.com/file/d/abc")
 
-	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, clip))
+	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, repo, clip))
 
 	// media_assets row must be present (atomic with the outbox write).
 	stored, err := repo.GetClip(ctx, "test_clip_001")
@@ -148,7 +159,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	dispatcher := outbox.NewDispatcher(repo, stateWriter, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc, err := NewService(Deps{
-		Reader:     &uploaddrive.Uploader{},
+		Reader:     testSourceReader{},
 		Targets:    nil,
 		AssetTree:  &assettree.Service{},
 		Dispatcher: dispatcher,
@@ -165,7 +176,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	folder.SetIsFolder(true)
 	folder.SetFolderID("test_folder_001")
 
-	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, folder))
+	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, repo, folder))
 
 	// media_assets row must be present (folder metadata is canonical).
 	stored, err := repo.GetClip(ctx, "test_folder_001")
@@ -211,7 +222,7 @@ func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	clip.SetIsFolder(false)
 	clip.SetFileHash("legacy_hash")
 
-	err := svc.upsertPreservingExisting(ctx, repo, clip)
+	err := svc.upsertPreservingExisting(ctx, repo, repo, clip)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatcher is nil")
 }
@@ -242,19 +253,20 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		// post-review right-sizing (nil-safe guards in
 		// sync_prune.go::pruneMissingFolders + sync_recursive.go:79,175).
 		// Only the absence of Reader / Dispatcher / Log triggers a sentinel.
-		_, err := NewService(Deps{Reader: &uploaddrive.Uploader{}, Log: log})
+		_, err := NewService(Deps{Reader: testSourceReader{},
+			Log: log})
 		require.ErrorIs(t, err, ErrCatalogSyncNilDispatcher)
 	})
 	t.Run("nil log returns ErrCatalogSyncNilLog", func(t *testing.T) {
 		_, err := NewService(Deps{
-			Reader:     &uploaddrive.Uploader{},
+			Reader:     testSourceReader{},
 			Dispatcher: &outbox.Dispatcher{},
 		})
 		require.ErrorIs(t, err, ErrCatalogSyncNilLog)
 	})
 	t.Run("all-non-nil happy path", func(t *testing.T) {
 		_, err := NewService(Deps{
-			Reader:     &uploaddrive.Uploader{},
+			Reader:     testSourceReader{},
 			Targets:    nil,
 			AssetTree:  nil, // optional, nil-safe guarded
 			Dispatcher: &outbox.Dispatcher{},
@@ -262,12 +274,24 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
+	t.Run("invalid configured target is rejected", func(t *testing.T) {
+		_, err := NewService(Deps{
+			Reader: testSourceReader{},
+			Targets: []Target{{
+				Source:       "youtube",
+				RootFolderID: "folder-1",
+			}},
+			Dispatcher: &outbox.Dispatcher{},
+			Log:        log,
+		})
+		require.ErrorIs(t, err, ErrCatalogSyncInvalidTarget)
+	})
 	t.Run("optional deps nil is accepted", func(t *testing.T) {
 		// AssetTree nil — ctor accepts because it's nil-safe guarded
 		// at every catalogsync call site. Documenting this explicitly
 		// so future maintainers see the optionality contract.
 		_, err := NewService(Deps{
-			Reader:     &uploaddrive.Uploader{},
+			Reader:     testSourceReader{},
 			Dispatcher: &outbox.Dispatcher{},
 			Log:        log,
 		})

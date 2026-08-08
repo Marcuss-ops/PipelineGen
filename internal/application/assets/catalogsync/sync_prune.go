@@ -5,11 +5,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
-func (s *Service) pruneMissingFolders(ctx context.Context, repo *assets.ClipsRepository, source string, seenFolderIDs map[string]struct{}) error {
+func (s *Service) pruneMissingFolders(ctx context.Context, repo CatalogRepository, source string, seenFolderIDs map[string]struct{}) error {
 	if repo == nil {
 		return nil
 	}

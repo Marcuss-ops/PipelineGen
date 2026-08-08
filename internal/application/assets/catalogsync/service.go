@@ -2,15 +2,14 @@ package catalogsync
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 type Target struct {
@@ -18,7 +17,8 @@ type Target struct {
 	RootFolderID string
 	Source       string
 	MediaType    string
-	Repo         *assets.ClipsRepository
+	Repo         CatalogRepository
+	Indexer      AssetIndexer
 }
 
 type RootSummary struct {
@@ -46,7 +46,7 @@ type Summary struct {
 // stockpipeline convention: each missing dep has its own typed sentinel
 // so production wiring can forward a single error verbatim and tests
 // can assert the precise missing dep without unwrapping the chain.
-// Sentinel errors returned by NewService validation. PR-D (June 2026):
+// PR-D (June 2026):
 // the ctor validates only the fields that are referenced UNCONDITIONALLY
 // at runtime. Fields that have documented nil-safe guards in call sites
 // (s.assetTree in sync_prune.go::pruneMissingFolders +
@@ -73,6 +73,7 @@ var (
 	ErrCatalogSyncNilReader     = errors.New("catalogsync.NewService: reader is required (read-only Drive port — sync_targets.go:23 + sync_recursive.go dereference unconditionally)")
 	ErrCatalogSyncNilDispatcher = errors.New("catalogsync.NewService: dispatcher is required (QDRANT-002 PR7 — production canonical ingest; sync_persist.go::upsertPreservingExisting dereferences unconditionally)")
 	ErrCatalogSyncNilLog        = errors.New("catalogsync.NewService: log is required (zap.Logger dereferenced by every warn/error path in sync_persist.go + sync_targets.go + sync_prune.go)")
+	ErrCatalogSyncInvalidTarget = errors.New("catalogsync: target requires repository and indexer ports")
 )
 
 // Deps is the canonical constructor input for catalogsync.Service
@@ -123,15 +124,15 @@ var (
 // a false-positive: composition wiring that legitimately wants a
 // minimal-Deps Service (e.g. test fixtures) could not pass.
 type Deps struct {
-	Reader     drive.Reader
+	Reader     SourceReader
 	Targets    []Target
 	AssetTree  *assettree.Service
-	Dispatcher *outbox.Dispatcher
+	Dispatcher ProjectionDispatcher
 	Log        *zap.Logger
 }
 
 type Service struct {
-	reader    drive.Reader
+	reader    SourceReader
 	log       *zap.Logger
 	targets   []Target
 	assetTree *assettree.Service
@@ -153,7 +154,7 @@ type Service struct {
 	// into any catalogsync method. The `defaultClipsRepo` fallback
 	// is also removed — async drive.folder.sync now requires the
 	// source to be pre-listed in Targets.
-	dispatcher *outbox.Dispatcher
+	dispatcher ProjectionDispatcher
 	mu         sync.Mutex
 }
 
@@ -185,6 +186,14 @@ func NewService(deps Deps) (*Service, error) {
 	}
 	if deps.Log == nil {
 		return nil, ErrCatalogSyncNilLog
+	}
+	for _, target := range deps.Targets {
+		if strings.TrimSpace(target.RootFolderID) == "" {
+			continue
+		}
+		if target.Repo == nil || target.Indexer == nil {
+			return nil, fmt.Errorf("%w: source=%q", ErrCatalogSyncInvalidTarget, target.Source)
+		}
 	}
 
 	return &Service{

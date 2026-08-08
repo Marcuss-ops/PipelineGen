@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
 // HandleJob processes a catalog.sync job.
@@ -144,26 +143,21 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 		mediaType = "clip"
 	}
 
-	// Resolve the repository for the given source
+	// Resolve the repository and index-state port for the given source.
 	repo := s.resolveRepo(source)
 	if repo == nil {
-		// Fallback to the first available target repo if not explicitly configured for this source name
-		for _, t := range s.targets {
-			if t.Repo != nil {
-				repo = t.Repo
-				break
-			}
-		}
-	}
-	if repo == nil {
 		return nil, fmt.Errorf("no repository configured for source: %s", source)
+	}
+	indexer := s.resolveIndexer(source)
+	if indexer == nil {
+		return nil, fmt.Errorf("no asset indexer configured for source: %s", source)
 	}
 
 	if tools.Progress != nil {
 		tools.Progress(10, "Scanning Drive folder recursively")
 	}
 
-	summary, err := s.SyncFolderID(ctx, payload.DriveFolderID, source, payload.Name, mediaType, repo)
+	summary, err := s.SyncFolderID(ctx, payload.DriveFolderID, source, payload.Name, mediaType, repo, indexer)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +187,19 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 // guessed repo. The targets-loop is preserved because the async
 // job payload carries only a Source string (not a repo pointer) and
 // the job handler must resolve the repo at execution time.
-func (s *Service) resolveRepo(source string) *assets.ClipsRepository {
+func (s *Service) resolveRepo(source string) CatalogRepository {
 	for _, t := range s.targets {
 		if strings.EqualFold(t.Source, source) {
 			return t.Repo
+		}
+	}
+	return nil
+}
+
+func (s *Service) resolveIndexer(source string) AssetIndexer {
+	for _, t := range s.targets {
+		if strings.EqualFold(t.Source, source) {
+			return t.Indexer
 		}
 	}
 	return nil

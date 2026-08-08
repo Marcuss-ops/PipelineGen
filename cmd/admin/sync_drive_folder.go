@@ -70,7 +70,7 @@ func runSyncDriveFolder(args []string) error {
 
 	summary, err := root.Sync.CatalogSync.SyncFolderID(
 		ctx, strings.TrimSpace(*folder), strings.TrimSpace(*source),
-		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), root.Repos.ClipsRepo,
+		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), root.Repos.ClipsRepo, root.Repos.ClipsRepo,
 	)
 	if err != nil {
 		return fmt.Errorf("sync Drive folder recursively: %w", err)
