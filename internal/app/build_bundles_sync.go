@@ -47,12 +47,13 @@ func BuildSyncBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 		reader = &driveutil.Uploader{Log: log}
 		log.Warn("BuildSyncBundle: drive reader missing; using nil-service placeholder for disabled-drive bootstrap")
 	}
+	catalogReader := catalogSyncSourceReader{reader: reader}
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("BuildSyncBundle: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
 	catalogSync, err := catalogsync.NewService(catalogsync.Deps{
-		Reader:     reader,
+		Reader:     catalogReader,
 		Targets:    syncTargets,
 		AssetTree:  search.AssetTreeService,
 		Dispatcher: outbox.Dispatcher,

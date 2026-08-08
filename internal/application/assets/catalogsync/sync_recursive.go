@@ -11,15 +11,33 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
 
+func validateTarget(target Target) error {
+	if strings.TrimSpace(target.RootFolderID) == "" {
+		return fmt.Errorf("%w: source=%q has no root folder", ErrCatalogSyncInvalidTarget, target.Source)
+	}
+	if target.Repo == nil || target.Indexer == nil {
+		return fmt.Errorf("%w: source=%q", ErrCatalogSyncInvalidTarget, target.Source)
+	}
+	return nil
+}
+
 func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, error) {
+	if err := validateTarget(target); err != nil {
+		return RootSummary{
+			Name:         target.Name,
+			RootFolderID: target.RootFolderID,
+			Source:       target.Source,
+			MediaType:    target.MediaType,
+			Failed:       1,
+			Error:        err.Error(),
+		}, err
+	}
+
 	rootSummary := RootSummary{
 		Name:         target.Name,
 		RootFolderID: target.RootFolderID,
@@ -74,7 +92,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	rootClip.SetDownloadLink(rootLink)
 	rootClip.SetExternalURL(rootLink)
 	rootClip.SetDriveFileID(target.RootFolderID)
-	if err := s.upsertPreservingExisting(ctx, target.Repo, rootClip); err != nil {
+	if err := s.upsertPreservingExisting(ctx, target.Repo, target.Indexer, rootClip); err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
 	}
@@ -91,7 +109,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 
 	rootSummary.Synced++
 
-	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, target.RootFolderID, rootName, target, seenFolderIDs)
+	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.Indexer, target.RootFolderID, target.RootFolderID, rootName, target, seenFolderIDs)
 	rootSummary.Requested = requested
 	rootSummary.Synced += synced
 	rootSummary.Failed += failed
@@ -111,7 +129,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	return rootSummary, err
 }
 
-func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRepository, folderID, rootID, folderPath string, target Target, seenFolderIDs map[string]struct{}) (int, int, int, error) {
+func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepository, indexer AssetIndexer, folderID, rootID, folderPath string, target Target, seenFolderIDs map[string]struct{}) (int, int, int, error) {
 	children, err := s.listChildren(ctx, folderID)
 	if err != nil {
 		return 0, 0, 1, err
@@ -134,9 +152,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 		}
 		if link == "" {
 			if child.MimeType == folderMimeType {
-				link = storedrive.FolderURLFromID(child.ID)
+				link = "https://drive.google.com/drive/folders/" + child.ID
 			} else {
-				link = storedrive.FileURLFromID(child.ID)
+				link = "https://drive.google.com/file/d/" + child.ID
 			}
 		}
 
@@ -183,7 +201,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 			clip.SetFileHash(remoteFileFingerprint(child))
 		}
 
-		if err := s.upsertPreservingExisting(ctx, repo, clip); err != nil {
+		if err := s.upsertPreservingExisting(ctx, repo, indexer, clip); err != nil {
 			s.log.Warn("failed to upsert clip", zap.String("id", child.ID), zap.Error(err))
 			failed++
 			continue
@@ -202,7 +220,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 		synced++
 
 		if child.MimeType == folderMimeType {
-			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.ID, rootID, childPath, target, seenFolderIDs)
+			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, indexer, child.ID, rootID, childPath, target, seenFolderIDs)
 			requested += subRequested
 			synced += subSynced
 			failed += subFailed
@@ -224,7 +242,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 // Google Drive's MD5 is the strongest available value; the metadata fallback
 // remains deterministic across retries and is explicitly not presented as a
 // content hash.
-func remoteFileFingerprint(file drive.DriveFileInfo) string {
+func remoteFileFingerprint(file RemoteFile) string {
 	if strings.TrimSpace(file.MD5Checksum) != "" {
 		return "drive-md5:" + strings.TrimSpace(file.MD5Checksum)
 	}
@@ -236,6 +254,6 @@ func remoteFileFingerprint(file drive.DriveFileInfo) string {
 // listChildren lists the direct children of a Drive folder. Kept in this file
 // so the recursive walker can swap it in tests without touching higher-level
 // sync orchestration.
-func (s *Service) listChildren(ctx context.Context, folderID string) ([]drive.DriveFileInfo, error) {
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]RemoteFile, error) {
 	return s.reader.ListFiles(ctx, folderID)
 }

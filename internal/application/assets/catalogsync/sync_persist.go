@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -13,9 +12,15 @@ import (
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
 // Routes through the canonical outbox dispatcher: the media_assets UPDATE
 // and the outbox_events INSERT commit atomically.
-func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.ClipsRepository, clip *asset.Asset) error {
-	if repo == nil || clip == nil {
-		return nil
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepository, indexer AssetIndexer, clip *asset.Asset) error {
+	if repo == nil {
+		return fmt.Errorf("upsertPreservingExisting: repository is nil")
+	}
+	if indexer == nil {
+		return fmt.Errorf("upsertPreservingExisting: asset indexer is nil")
+	}
+	if clip == nil {
+		return fmt.Errorf("upsertPreservingExisting: asset is nil")
 	}
 
 	var alreadyIndexedUnchanged bool
@@ -51,7 +56,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 		// remote fingerprint differs from the stored one, the content
 		// changed and the row must be re-indexed normally.
 		if existing.FileHash() != "" && existing.FileHash() == freshFingerprint {
-			if state, stErr := repo.GetIndexState(ctx, clip.ID); stErr == nil && state == asset.StateIndexed {
+			if state, stErr := indexer.GetIndexState(ctx, clip.ID); stErr == nil && state == asset.StateIndexed {
 				alreadyIndexedUnchanged = true
 			}
 		}
