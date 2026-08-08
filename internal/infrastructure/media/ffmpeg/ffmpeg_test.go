@@ -512,9 +512,9 @@ func TestCutReencode_CanonicalFilter(t *testing.T) {
 
 // TestCanonicalClipFilter verifies the canonical filter string matches the
 // expected scale/pad/fps/setpts chain for the canonical profile.
-func TestCanonicalClipFilter(t *testing.T) {
+func TestCanonicalVideoProfileFilter(t *testing.T) {
 	cfg := canonicalClipProfile()
-	got := CanonicalClipFilter(config.VideoConfig{Width: cfg.Width, Height: cfg.Height, FPS: cfg.FPS})
+	got := CanonicalVideoProfileFilter(cfg)
 	want := "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24,setpts=PTS-STARTPTS"
 	assert.Equal(t, want, got)
 }

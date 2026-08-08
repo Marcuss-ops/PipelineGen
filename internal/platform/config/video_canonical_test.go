@@ -34,3 +34,20 @@ func TestVideoConfigCanonicalClipPreservesLegacyCompositeCompatibility(t *testin
 		t.Fatalf("legacy composite did not preserve policy/planning values: %+v", got)
 	}
 }
+
+func TestVideoConfigCanonicalClipDoesNotChooseEncoder(t *testing.T) {
+	got := (VideoConfig{}).CanonicalClip()
+	if got.Codec != "" || got.Preset != "veryfast" || got.CRF != 23 {
+		t.Fatalf("CanonicalClip must preserve empty codec while defaulting other policy fields safely: %+v", got)
+	}
+	if got.Width != 1920 || got.Height != 1080 || got.FPS != 24 || got.Duration != 7 {
+		t.Fatalf("CanonicalClip must still provide canonical profile/default planning fields: %+v", got)
+	}
+}
+
+func TestVideoConfigCanonicalClipPreservesPartialEncoderPolicySafely(t *testing.T) {
+	got := (VideoConfig{Codec: "h264_nvenc"}).CanonicalClip()
+	if got.Codec != "h264_nvenc" || got.Preset != "veryfast" || got.CRF != 23 {
+		t.Fatalf("CanonicalClip must preserve explicit codec and default missing policy fields: %+v", got)
+	}
+}
