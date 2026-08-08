@@ -442,3 +442,7 @@ hard_gates:
   # declared here, and every declared subzone must exist on disk.
   - kernel_subzone_undeclared
   - kernel_subzone_missing
+  # Video encoding is an infrastructure policy decision. Keep concrete
+  # encoder names in the canonical resolver; active FFmpeg/render paths
+  # fail closed when they introduce a hardcoded encoder literal.
+  - percheck_video_encoder_policy

@@ -26,6 +26,9 @@ func TestLoadCanonicalPolicyRoundTrip(t *testing.T) {
 	if len(p.HardGates) == 0 {
 		t.Fatal("hard_gates were not parsed")
 	}
+	if !contains(p.HardGates, "percheck_video_encoder_policy") {
+		t.Fatalf("HardGates=%v, want percheck_video_encoder_policy", p.HardGates)
+	}
 }
 
 func contains(values []string, want string) bool {
