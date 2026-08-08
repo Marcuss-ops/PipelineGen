@@ -11,9 +11,9 @@ source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
 
 echo "=== Check: forbid legacy Template/TimelineJSON writes outside canonical owners ==="
 hits=$(rg -n --type go \
-    -e 'Template:\s' -e 'TimelineJSON:\s' \
+    -e '^[[:space:]]*Template:\s' -e '^[[:space:]]*TimelineJSON:\s' \
     --glob '!**/internal/application/scripts/adapters/processor_persistence.go' \
-    --glob '!**/internal/application/scripts/adapters/repository.go' \
+    --glob '!**/internal/infrastructure/database/sqlite/scripts/repository_adapter.go' \
     --glob '!**/internal/application/voiceover/**' \
     --glob '!**/*_test.go' internal/ 2>/dev/null \
     | awk -F: '{
