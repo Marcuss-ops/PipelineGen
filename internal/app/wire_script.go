@@ -68,19 +68,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"net/http"
 	"strings"
-	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
@@ -262,27 +258,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if err != nil {
 		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
 	}
-	remotionURL := cfg.Scripts.Capability.RemotionURL
-	if remotionURL == "" {
-		remotionURL = "http://127.0.0.1:4317"
-	}
-	renderTimeoutSeconds := cfg.Scripts.Capability.RenderTimeoutSeconds
-	if renderTimeoutSeconds <= 0 {
-		renderTimeoutSeconds = 1800
-	}
-	remotionRenderer := &appvideo.HTTPRenderer{
-		BaseURL: remotionURL,
-		Client:  &http.Client{Timeout: time.Duration(renderTimeoutSeconds) * time.Second},
-	}
-	var drivePublisher delivery.Publisher
-	if root.Drive != nil {
-		drivePublisher = root.Drive.Publisher
-	}
-	if err := (appvideo.NewHandlerWithPublisher(remotionRenderer, drivePublisher, log)).Register(root.Jobs.Service); err != nil {
-		return fmt.Errorf("wireScriptFlow: register Remotion render handler: %w", err)
-	}
-	remotionProducer := appvideo.NewProducer(root.Jobs.Facade)
-
 	// Build the script-generation run repository when a DB is available.
 	// This repository backs GET /jobs/:id/full and the durable runner.
 	var runRepo scriptgen.RunRepository
@@ -314,11 +289,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 				}
 				return usecase.NewResearchSubmissionPreflight(topicsourcecache.NewRepository(root.DB.DB))
 			}(),
-		},
-		Shorts: scriptapi.ShortsDeps{
-			Renderer: remotionRenderer,
-			Producer: remotionProducer,
-			Log:      log,
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
 		// canonical MaxRetries lookup moved into
