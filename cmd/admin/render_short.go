@@ -34,15 +34,19 @@ func runRenderShort(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
+	cfg, log, cleanup, err := appLogger()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	var uploader adminmedia.AdminUploader
-	ffmpegPath := "ffmpeg"
-	encoder := string(ffmpeg.EncoderLibX264)
+	ffmpegPath := cfg.External.FfmpegPath
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	policy := cfg.Video.WithDefaults().EncoderPolicy()
 	if manifest.Upload != nil {
-		cfg, log, cleanup, err := appLogger()
-		if err != nil {
-			return err
-		}
-		defer cleanup()
 		root, _, rootCleanup, err := app.InitComposition(cfg, log)
 		if err != nil {
 			return fmt.Errorf("initialize composition: %w", err)
@@ -51,16 +55,12 @@ func runRenderShort(args []string) error {
 		if root == nil || root.Drive == nil || root.Drive.Publisher == nil {
 			return fmt.Errorf("Drive publisher is required for upload")
 		}
-		if cfg.External.FfmpegPath != "" {
-			ffmpegPath = cfg.External.FfmpegPath
-		}
-		encoder = cfg.Video.WithDefaults().Codec
 		uploader, err = delivery.NewAdminUploadService(root.Drive.Publisher)
 		if err != nil {
 			return err
 		}
 	}
-	result, err := adminmedia.RenderShort(ctx, manifest, ffmpeg.NewAdminMediaProcessorWithEncoder(ffmpegPath, encoder), uploader)
+	result, err := adminmedia.RenderShort(ctx, manifest, ffmpeg.NewAdminMediaProcessorWithPolicy(ffmpegPath, policy), uploader)
 	if err != nil {
 		return err
 	}

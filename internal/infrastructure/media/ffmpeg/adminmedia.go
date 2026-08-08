@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // AdminMediaProcessor adapts the canonical FFmpeg Processor to admin-media
@@ -20,17 +21,28 @@ type AdminMediaProcessor struct {
 }
 
 func NewAdminMediaProcessor(ffmpegPath string) AdminMediaProcessor {
-	return NewAdminMediaProcessorWithEncoder(ffmpegPath, string(EncoderLibX264))
+	return NewAdminMediaProcessorWithPolicy(ffmpegPath, config.VideoEncoderPolicy{
+		Codec: string(EncoderLibX264), Preset: "medium", CRF: 18,
+	})
 }
 
-// NewAdminMediaProcessorWithEncoder constructs the admin adapter with the
-// configured video encoder policy. Audio-only operations remain CPU/audio
-// codec operations; video operations use Processor's central resolver.
+// NewAdminMediaProcessorWithEncoder preserves the legacy constructor while
+// keeping its historical medium/18 defaults. New composition roots should
+// pass the complete configured policy with NewAdminMediaProcessorWithPolicy.
 func NewAdminMediaProcessorWithEncoder(ffmpegPath, encoder string) AdminMediaProcessor {
+	return NewAdminMediaProcessorWithPolicy(ffmpegPath, config.VideoEncoderPolicy{
+		Codec: encoder, Preset: "medium", CRF: 18,
+	})
+}
+
+// NewAdminMediaProcessorWithPolicy constructs the adapter with the complete
+// shared video encoder policy. Audio-only operations remain CPU/audio codec
+// operations; video operations use Processor's central resolver.
+func NewAdminMediaProcessorWithPolicy(ffmpegPath string, policy config.VideoEncoderPolicy) AdminMediaProcessor {
 	if strings.TrimSpace(ffmpegPath) == "" {
 		ffmpegPath = "ffmpeg"
 	}
-	return AdminMediaProcessor{Processor: NewProcessorWithEncoder(ffmpegPath, encoder)}
+	return AdminMediaProcessor{Processor: newProcessor(ffmpegPath, policy)}
 }
 
 func (p AdminMediaProcessor) processor() *Processor {
@@ -62,7 +74,7 @@ func (p AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSeco
 		video = true
 		codec = proc.ResolveEncoder(ctx, "")
 		args = append(args, "-map", "0:v:0?", "-map", "0:a:0?")
-		args = appendVideoEncoderArgs(args, codec, "medium", 18)
+		args = appendVideoEncoderArgs(args, codec, proc.encoderPreset, proc.encoderCRF)
 		args = append(args, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart")
 	case ".wav":
 		args = append(args, "-vn", "-c:a", "pcm_s16le")
@@ -120,7 +132,7 @@ func (p AdminMediaProcessor) Render(ctx context.Context, m adminmedia.RenderMani
 	proc := p.processor()
 	codec := proc.ResolveEncoder(ctx, "")
 	ff = append(ff, "-filter_complex", filter, "-map", "[vout]", "-map", "[aout]")
-	ff = appendVideoEncoderArgs(ff, codec, "medium", 18)
+	ff = appendVideoEncoderArgs(ff, codec, proc.encoderPreset, proc.encoderCRF)
 	ff = append(ff, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", m.Output)
 	return proc.RunWithEncoderPolicy(ctx, codec, ff, 20*time.Minute)
 }

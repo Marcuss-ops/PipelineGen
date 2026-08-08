@@ -57,7 +57,7 @@ func runTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
-	mediaEditor := ffmpeg.NewAdminMediaProcessorWithEncoder(cfg.External.FfmpegPath, cfg.Video.WithDefaults().Codec)
+	mediaEditor := ffmpeg.NewAdminMediaProcessorWithPolicy(cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy())
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
 		var id string
