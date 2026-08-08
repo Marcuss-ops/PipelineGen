@@ -3,9 +3,11 @@
 // Video encoder selection is an infrastructure policy decision. FFmpeg argv
 // builders must receive the resolved codec from the canonical resolver instead
 // of embedding a concrete encoder at a call site. This gate scans active
-// production FFmpeg/render Go code with the Go AST, so assignments, comparisons,
-// and multiline argv builders are covered uniformly while comments and tests
-// remain non-fatal.
+// production Go code with the Go AST, so assignments, comparisons, and
+// multiline argv builders are covered uniformly while comments and tests
+// remain non-fatal. The contract is intentionally conservative: a concrete
+// encoder literal anywhere in governed production code is a violation unless
+// it belongs to an explicitly registered policy owner.
 package scan
 
 import (
@@ -74,8 +76,9 @@ var videoEncoderPolicyScopes = []string{
 
 const videoEncoderPolicyNote = "hardcoded video encoder in an active FFmpeg command-builder path outside the canonical resolver; pass the resolved codec through the central encoder policy and RunWithEncoderPolicy"
 
-// ScanVideoEncoderPolicy reports concrete video encoder literals used in an
-// active FFmpeg command-builder path outside the canonical resolver.
+// ScanVideoEncoderPolicy reports concrete video encoder literals used in
+// governed production code outside the canonical resolver and registered
+// policy-input owners.
 func ScanVideoEncoderPolicy(root string, _ *policy.Policy, r *report.Report) {
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {

@@ -70,7 +70,7 @@ verify-static: go-version-check web-build
 # standard Go tests, the native Node probe, and architecture checks;
 # verify-full and verify-release add the heavier race, Node, and integration
 # gates.
-verify-fast: verify-foundation verify-static
+verify-fast: verify-foundation verify-static verify-architecture
 	@echo "✅ verify-fast passed"
 
 verify-dev: verify-foundation verify-static
