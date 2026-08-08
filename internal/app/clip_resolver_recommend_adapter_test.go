@@ -27,7 +27,7 @@ import (
 // intentional — tests use the same hand-rolled stub pattern as
 // the canonical clip_resolver_test.go (NewClipResolverForTest
 // seam); the test-only `clipResolverPortReadOnly` interface
-// declared in scripts/usecase/clip_resolver.go is the
+// declared in scripts/adapters/clip_resolver.go is the
 // canonical precedent.
 type stubCanonicalResolver struct {
 	lastRefs []ports.ClipReference

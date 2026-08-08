@@ -1,4 +1,4 @@
-// Package scripts — clip_resolver.go implements the canonical
+// Package adapters — clip_resolver.go implements the canonical
 // ports.ClipResolver adapter, wrapping the typed repo methods on
 // *assets.ClipsRepository (this PR adds the typed methods).
 //
@@ -19,7 +19,7 @@
 // error signals "this batch is degraded" without throwing away the
 // per-reference diagnosis the caller needs for partial-success
 // UX.
-package usecase
+package adapters
 
 import (
 	"context"

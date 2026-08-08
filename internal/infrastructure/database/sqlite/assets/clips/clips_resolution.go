@@ -12,7 +12,7 @@ import (
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
 //
 // clips_resolution.go holds the *ClipsRepository typed-lookup methods
-// consumed by internal/application/scripts/usecase/clip_resolver.go
+// consumed by internal/application/scripts/adapters/clip_resolver.go
 // (the ports.ClipResolver adapter) plus the two legacy-delegate
 // wrappers (GetByDriveFileID, GetClipFolderByVideoID) that route to
 // the embedded AssetStoreSQLite and the canonical folders helper.
@@ -25,7 +25,7 @@ import (
 //
 // ResolveByMediaAssetID / ResolveByYouTubeVideoID / ResolveByDriveFileID
 // / ResolveByExternalProviderID are the canonical typed DB lookups
-// consumed by internal/application/scripts/usecase/clip_resolver.go
+// consumed by internal/application/scripts/adapters/clip_resolver.go
 // (the ports.ClipResolver adapter). They replace the legacy
 // clip_source_builder heuristic "try GetClip, then fall back to
 // GetByDriveFileID" with EXPLICIT per-ReferenceType dispatch:
