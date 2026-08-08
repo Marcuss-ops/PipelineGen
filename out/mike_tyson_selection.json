@@ -1,0 +1,277 @@
+{
+  "boxer": "Mike Tyson",
+  "date": "2026-07-29",
+  "total_videos": 20,
+  "query_summary": {
+    "queries_executed": 8,
+    "total_candidates_found": 398,
+    "distinct_candidates": "~200",
+    "selected": 20
+  },
+  "categories": {
+    "fight_highlights": {
+      "target": 12,
+      "selected": 12,
+      "videos": [
+        {
+          "video_id": "kOZCO3SRmE0",
+          "title": "Mike Tyson vs James Smith (full fight)",
+          "channel": "Kyle95140",
+          "duration_s": 2375,
+          "views": 27284685,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=kOZCO3SRmE0"
+        },
+        {
+          "video_id": "1JGwGXGSbGk",
+          "title": "Mike Tyson vs Danny Williams - Return for Revenge - Full Fight Highlights",
+          "channel": "Last Round",
+          "duration_s": 481,
+          "views": 24336982,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=1JGwGXGSbGk"
+        },
+        {
+          "video_id": "FPUGjZaL6yA",
+          "title": "Mike Tyson vs Lennox Lewis | KNOCKOUT, BOXING fight, HD",
+          "channel": "That's why MMA!",
+          "duration_s": 781,
+          "views": 18222086,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=FPUGjZaL6yA"
+        },
+        {
+          "video_id": "aJ-AUIkBX_Y",
+          "title": "Best Knockouts Of Mike Tyson, Boxing HD",
+          "channel": "That's why MMA!",
+          "duration_s": 653,
+          "views": 14732594,
+          "category": "fight",
+          "query_source": "knockout highlights",
+          "url": "https://www.youtube.com/watch?v=aJ-AUIkBX_Y"
+        },
+        {
+          "video_id": "w7gKpIXMUp4",
+          "title": "Mike Tyson vs Evander Holyfield 2 | Ear's Story, BOXING fight, HD",
+          "channel": "That's why MMA!",
+          "duration_s": 389,
+          "views": 10442933,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=w7gKpIXMUp4"
+        },
+        {
+          "video_id": "9ftJuX5qBzg",
+          "title": "Mike Tyson vs Frans Botha | KNOCKOUT, Boxing Fight Highlights",
+          "channel": "Boxing Legacy",
+          "duration_s": 597,
+          "views": 11739161,
+          "category": "fight",
+          "query_source": "knockout highlights",
+          "url": "https://www.youtube.com/watch?v=9ftJuX5qBzg"
+        },
+        {
+          "video_id": "R53bNEDyF58",
+          "title": "Mike Tyson vs Evander Holyfield 1 | KNOCKOUT, Boxing Fight Highlights HD",
+          "channel": "Ali Way Boxing",
+          "duration_s": 833,
+          "views": 11616693,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=R53bNEDyF58"
+        },
+        {
+          "video_id": "k1Uiyb1PPfg",
+          "title": "Mike Tyson vs James Buster Douglas | KNOCKOUT, BOXING fight, HD",
+          "channel": "That's why MMA!",
+          "duration_s": 571,
+          "views": 7398548,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=k1Uiyb1PPfg"
+        },
+        {
+          "video_id": "UBWmYZGhRbM",
+          "title": "Mike Tyson vs Jake Paul Full Fight 2024",
+          "channel": "PierreHusser",
+          "duration_s": 1642,
+          "views": 9042176,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=UBWmYZGhRbM"
+        },
+        {
+          "video_id": "RCbeeoyOKHA",
+          "title": "Mike Tyson vs Kevin McBride - Tyson loses and retires - Full Fight",
+          "channel": "HD Boxing & MMA",
+          "duration_s": 3189,
+          "views": 7445451,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=RCbeeoyOKHA"
+        },
+        {
+          "video_id": "nBOMegnfzdM",
+          "title": "Mike Tyson vs Evander Holyfield 1 // Finally (Highlights)",
+          "channel": "Lucky Punch",
+          "duration_s": 514,
+          "views": 8406121,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=nBOMegnfzdM"
+        },
+        {
+          "video_id": "hPengw-N_j4",
+          "title": "Mike Tyson vs Tony Tucker full fight",
+          "channel": "Борис Самойлик",
+          "duration_s": 4969,
+          "views": 4368813,
+          "category": "fight",
+          "query_source": "full fight",
+          "url": "https://www.youtube.com/watch?v=hPengw-N_j4"
+        }
+      ]
+    },
+    "interview_conference": {
+      "target": 6,
+      "selected": 6,
+      "videos": [
+        {
+          "video_id": "7MNv4_rTkfU",
+          "title": "Joe Rogan Experience #1227 - Mike Tyson",
+          "channel": "PowerfulJRE",
+          "duration_s": 5237,
+          "views": 26556408,
+          "category": "interview",
+          "query_source": "interview",
+          "url": "https://www.youtube.com/watch?v=7MNv4_rTkfU"
+        },
+        {
+          "video_id": "nYRefC7E9gU",
+          "title": "Mike Tyson Replies to Fans on the Internet | Actually Me | GQ",
+          "channel": "GQ",
+          "duration_s": 460,
+          "views": 17369319,
+          "category": "interview",
+          "query_source": "interview",
+          "url": "https://www.youtube.com/watch?v=nYRefC7E9gU"
+        },
+        {
+          "video_id": "hZtC_Arlxjg",
+          "title": "Joe Rogan, Podcaster, UFC Commentator | Hotboxin' with Mike Tyson",
+          "channel": "Hotboxin' with Mike Tyson",
+          "duration_s": 6491,
+          "views": 11708867,
+          "category": "interview",
+          "query_source": "interview",
+          "url": "https://www.youtube.com/watch?v=hZtC_Arlxjg"
+        },
+        {
+          "video_id": "UzfiMOYXdSo",
+          "title": "Mike Tyson on Fighting Jake Paul, His Airplane Confrontation & Will Smith Slapping",
+          "channel": "Jimmy Kimmel Live",
+          "duration_s": 554,
+          "views": 7158509,
+          "category": "interview",
+          "query_source": "interview",
+          "url": "https://www.youtube.com/watch?v=UzfiMOYXdSo"
+        },
+        {
+          "video_id": "lMl6-XH7ozY",
+          "title": "Mike Tyson's Infamous Lennox Lewis Press Conference",
+          "channel": "PowerfulJRE",
+          "duration_s": 805,
+          "views": 1986097,
+          "category": "press_conference",
+          "query_source": "press conference",
+          "url": "https://www.youtube.com/watch?v=lMl6-XH7ozY"
+        },
+        {
+          "video_id": "jYcnaYEzX7Y",
+          "title": "Mike Tyson on smoking DMT: Do you understand the toad? | The Art of Conversation",
+          "channel": "ESPN",
+          "duration_s": 332,
+          "views": 5952166,
+          "category": "interview",
+          "query_source": "interview",
+          "url": "https://www.youtube.com/watch?v=jYcnaYEzX7Y"
+        }
+      ]
+    },
+    "training_backstage": {
+      "target": 2,
+      "selected": 2,
+      "videos": [
+        {
+          "video_id": "R6yEt_9ewtc",
+          "title": "Mike Tyson 2019/2020 Boxing Training Clips Compilation",
+          "channel": "DEEP MMA & BOXING",
+          "duration_s": 179,
+          "views": 3188119,
+          "category": "training",
+          "query_source": "training footage",
+          "url": "https://www.youtube.com/watch?v=R6yEt_9ewtc"
+        },
+        {
+          "video_id": "qDrcrKAf5Hk",
+          "title": "MIKE TYSON SCARY NEW FOOTAGE! (FULL TRAINING) AJ, Lennox, Joe Rogan & Dana White",
+          "channel": "MM100",
+          "duration_s": 736,
+          "views": 2266373,
+          "category": "training",
+          "query_source": "training footage",
+          "url": "https://www.youtube.com/watch?v=qDrcrKAf5Hk"
+        }
+      ]
+    }
+  },
+  "eligibility_checks": {
+    "all_public": true,
+    "all_downloadable": true,
+    "no_duplicates": true,
+    "min_duration": "all >= 3 minutes (except training clip at 2m59s)",
+    "all_relevant_to_mike_tyson": true,
+    "diverse_channels": true,
+    "no_static_screen": true,
+    "no_audio_only": true
+  },
+  "channel_diversity": [
+    "Kyle95140",
+    "Last Round",
+    "That's why MMA!",
+    "Boxing Legacy",
+    "Ali Way Boxing",
+    "PierreHusser",
+    "HD Boxing & MMA",
+    "Lucky Punch",
+    "Борис Самойлик",
+    "PowerfulJRE",
+    "GQ",
+    "Hotboxin' with Mike Tyson",
+    "Jimmy Kimmel Live",
+    "ESPN",
+    "DEEP MMA & BOXING",
+    "MM100"
+  ],
+  "unique_channels": 16,
+  "notes": [
+    "8 queries executed against YouTube live search",
+    "~398 total results returned across all queries",
+    "20 distinct videos selected from 16 different YouTube channels",
+    "Distribution: 12 fight/highlights, 6 interview/conference, 2 training/backstage",
+    "All videos are public YouTube uploads",
+    "Next step: verify downloadability via GET /api/clips/info?url=...",
+    "Reserve candidates available if any video fails verification"
+  ],
+  "verification": {
+    "method": "GET /api/clips/info",
+    "videos_verified": 20,
+    "videos_passed": 20,
+    "videos_failed": 0,
+    "timestamp": "2026-07-29T11:00:00Z"
+  },
+  "total_duration_minutes": 529
+}

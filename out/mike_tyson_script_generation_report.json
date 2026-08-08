@@ -1,0 +1,116 @@
+{
+  "step": "9-script-generation",
+  "boxer": "Mike Tyson",
+  "timestamp": "2026-07-29T12:45:00Z",
+  "status": "BLOCKED — Job completed 90% but failed editorial quality gate",
+  "summary": "The script generation endpoint accepted the request and the pipeline progressed to 90%, but the editorial quality gate rejected the generated script: source_text coverage below threshold, actual word count outside target tolerance.",
+
+  "request": {
+    "endpoint": "POST /api/script/generate",
+    "envelope_version": 2,
+    "preset": "custom",
+    "idempotency_key": "step9-mike-tyson-script-001",
+    "item": {
+      "id": "mike-tyson-career",
+      "title": "La carriera di Mike Tyson: ascesa, dominio, caduta e trasformazione",
+      "language": "it",
+      "script_params": {"target_words": 200},
+      "source": {
+        "type": "text",
+        "topic": "La carriera di Mike Tyson: ascesa, dominio, caduta e trasformazione"
+      }
+    }
+  },
+
+  "result": {
+    "job_id": "job_1785329079036812169_b413fee5",
+    "status": "RETRY_WAIT",
+    "current_stage": "job_retry_wait",
+    "progress": 90,
+    "error": "script.generate single failed: generation: script generation failed: generation: editorial quality gate failed: code=QUALITY_GATE_FAILED item=\"mike-tyson-career\"; source_text coverage below threshold; actual word count outside target tolerance",
+    "script_created": false,
+    "scenes_divided": false,
+    "clips_bound": false,
+    "timeline_present": false
+  },
+
+  "checks": {
+    "script_creation": {
+      "status": "ATTEMPTED — reached 90% progress",
+      "passed": false,
+      "note": "Script was generated but rejected by editorial quality gate"
+    },
+    "scene_division": {
+      "status": "NOT_REACHED",
+      "passed": false,
+      "note": "Quality gate failure prevented scene extraction"
+    },
+    "mike_tyson_clip_search": {
+      "status": "NOT_REACHED",
+      "passed": false,
+      "note": "Clip binding phase never executed (quality gate failed before clip search)"
+    },
+    "fight_interview_training_alternation": {
+      "status": "NOT_VERIFIABLE",
+      "passed": false,
+      "note": "No scene/clip bindings to check"
+    },
+    "max_2_clips_same_video": {
+      "status": "NOT_VERIFIABLE",
+      "passed": false,
+      "note": "No clip bindings to check"
+    },
+    "no_duplicate_asset_ids": {
+      "status": "NOT_VERIFIABLE",
+      "passed": false,
+      "note": "No clip bindings to check"
+    },
+    "real_bindings_with_drive_links": {
+      "status": "NOT_VERIFIABLE",
+      "passed": false,
+      "note": "No clip bindings to check"
+    },
+    "no_artlist_fallback": {
+      "status": "NOT_VERIFIABLE",
+      "passed": false,
+      "note": "Clip search never executed"
+    },
+    "timeline_and_metadata": {
+      "status": "NOT_REACHED",
+      "passed": false,
+      "note": "Quality gate failure prevented final output"
+    }
+  },
+
+  "root_cause_analysis": {
+    "error_type": "QUALITY_GATE_FAILED",
+    "error_details": [
+      "source_text coverage below threshold — the generated script text didn't cover enough of the source topic",
+      "actual word count outside target tolerance — the generated script was either too short or too long"
+    ],
+    "possible_causes": [
+      "Italian language (it) quality gate may be stricter than English",
+      "Topic is too broad ('entire career') for a single script — consider narrower focus",
+      "AI model may need more explicit source_text rather than just a topic string",
+      "target_words=200 may be too high for a single-topic Italian generation"
+    ],
+    "distinction_from_steps_6_8": "Unlike Steps 6-8 (blocked by missing clips), Step 9 is blocked by generation quality, not data availability. The script pipeline works — it just needs better input parameters or lower quality thresholds."
+  },
+
+  "gap_analysis": {
+    "script_generation_works": "PARTIALLY — endpoint accepts requests, pipeline runs to 90%",
+    "blocking_factor": "editorial quality gate rejects generated script",
+    "clip_search_not_reached": "Because quality gate fires before clip binding phase",
+    "artlist_check_not_possible": "Clip search never executes",
+    "steps_3_6_dependency": "Even if quality gate passed, clip search would fail because only 5 non-semantic stock clips exist in DB and Qdrant has 0 active points"
+  },
+
+  "recommendations": [
+    "Retry with language='en' and narrower topic like 'Mike Tyson: The Rise and Fall'",
+    "Add a concrete source_text field with factual content instead of relying on topic alone",
+    "Lower target_words to 100-150 for tighter quality gate tolerance",
+    "Complete Steps 3-5 first so that when quality gate passes, clip search has real data to bind"
+  ],
+
+  "conclusion": "Step 9 script generation CANNOT pass. The pipeline ran to 90% but the editorial quality gate rejected the generated Italian script (source_text coverage below threshold, word count outside tolerance). Clip search and binding never executed. Additionally, even if the quality gate passed, the clip binding phase would fail because only 5 stock clips exist with non-semantic search text and Qdrant has 0 active points. Steps 3-5 must be completed first, and generation parameters should be tuned for the quality gate."
+}
