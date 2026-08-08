@@ -24,7 +24,7 @@ pre-build del binario per evitare recompile per ogni singolo clip.
 # (a) configurazione Go + secrets Drive + cfg runtime vedi ARCHITECTURE.md
 # (b) jq per il pre-check JSON sintattico del wrapper:
 which jq || sudo apt-get install -y jq
-# (c) sqlite3 binary (già richiesto da RemotionUpload/scripts/extract-metadata.ts):
+# (c) sqlite3 binary (per ispezionare il DB locale data/media/media.db.sqlite):
 which sqlite3 || sudo apt-get install -y sqlite3
 ```
 
@@ -159,32 +159,7 @@ Output finale:
 
 (Rilanciare è sicuro: `index-drive-clip` è idempotente su `asset_id = drive_file_id`.)
 
-## 6. Step 4 — sync metadata verso RemotionUpload
-
-Ora che i nuovi asset sono dentro `media_assets`, rigenera i sidecar JSON della
-parte RemotionUpload (così `YouTubeShortComposition` può mostrare
-`timed_events` reali invece di animazioni neutre). Lo script:
-
-- legge `refactored/data/media/media.db.sqlite`
-- scrive `RemotionUpload/src/data/clipMetadata.json` (byId, byDriveId, byFileHash)
-- scrive sidecar individuali in `RemotionUpload/public/assets/metadata/<hash_prefix>.json`
-  (per lookup diretto) e `<asset_id>.json` (per `brollManifest`)
-- scrive `_broll-manifest.template.json` se non già presente
-
-```bash
-cd ..                                        # root del progetto
-cd RemotionUpload
-# env opzionale:
-export REFACTORED_REPO="$(cd .. && pwd)/refactored"
-npx tsx scripts/extract-metadata.ts
-```
-
-Poi **popola manualmente** `RemotionUpload/public/assets/metadata/_broll-manifest.json`
-(tipicamente rinominando il template) mappando i path locali dei tuoi b-roll ai
-`drive_file_id` o `asset_id`. Senza questo mapping `YouTubeShortComposition`
-emette solo animazioni neutre.
-
-## 7. Step 5 (opzionale) — re-embedding di massa
+## 6. Step 4 (opzionale) — re-embedding di massa
 
 I nuovi asset sono indicizzati ma potrebbero non avere ancora embeddings
 semantic/transcript. Per generarli in parallelo:
@@ -197,7 +172,7 @@ go run ./cmd/... jobs reindex --source admin --limit 1000    # adatta comando al
 # internal/infrastructure/indexing/clipindexer/batch.go::HandleJob.
 ```
 
-## 8. Note operative
+## 7. Note operative
 
 - **Idempotenza**: `index-drive-clip` non duplica asset (EnqueueAndIndex upsert
   su `asset_id = drive_file_id`); `drive-reconcile` non duplica catalog rows.
@@ -216,7 +191,7 @@ go run ./cmd/... jobs reindex --source admin --limit 1000    # adatta comando al
   vedi gli eventuali job in `cmd/admin/cleanup_*` (non documentati in questo
   runbook per non fare overlap con procedure di storage esistenti).
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 | errore                                     | causa                                           | rimedio                                                      |
 | ------------------------------------------ | ----------------------------------------------- | ------------------------------------------------------------ |
