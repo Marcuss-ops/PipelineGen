@@ -29,6 +29,9 @@ current:
     baseline_initial: 48
     current: 25
     target_zero: 0
+  cross_refs:
+    gate: scripts/archcheck/gates/gate_c2_source_catalog_only_main.go
+    verify_target: make verify-architecture
 - id: WAVE-22-C2-E-ROUTE-MANIFEST
   status: in_progress
   owner: api-routing
@@ -36,10 +39,13 @@ current:
   rationale: Keep the route manifest generated from the registered runtime surface and eliminate hand-maintained route inventory drift.
   count:
     baseline_initial: 171
-    current: 171
+    current: 0
     target_zero: 0
   cross_refs:
     manifest: architecture/routes.yaml
+    runtime_docs: docs/api/ACTIVE_API_GENERATED.md
+    generator: cmd/admin/gen_api_docs.go
+    verify_target: make verify-architecture
 - id: WAVE-22-PHASE-N-HARD-GATES
   status: in_progress
   owner: architecture-governance

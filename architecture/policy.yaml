@@ -58,6 +58,15 @@ max_struct_deps: 8
 # hatch (godlike/06 SSOT — single canonical owner per fact).
 max_clip_ingest_pipeline_fields: 9
 
+# Target-tree warning residue budget. This is a monotone ratchet: warnings
+# may decrease, but a run may not exceed the committed ceiling without a
+# hard-gated cleanup. The budget applies only to warnings collected in
+# cmd/archcheck/report.Report.Warnings; route-generator diagnostics and
+# missing route descriptions are separate generator/route-surface checks,
+# not silently folded into this count.
+# Current baseline is measured from the deterministic cmd/archcheck report.
+max_warnings: 77
+
 # Generic dumping-ground dirs forbidden as top-level package names
 # (per the proposal §"internal/capabilities").
 forbidden_top_level_dirs: service, repository, models, utils, helpers
@@ -446,3 +455,6 @@ hard_gates:
   # encoder names in the canonical resolver; active FFmpeg/render paths
   # fail closed when they introduce a hardcoded encoder literal.
   - percheck_video_encoder_policy
+  # Warning residue cannot grow silently; reduce the budget as warnings are
+  # removed rather than raising it to mask new architectural drift.
+  - warning_budget

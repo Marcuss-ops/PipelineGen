@@ -75,12 +75,17 @@ type Policy struct {
 	// canonical surface with > 8 fields declare a matching `_per_struct_field`
 	// knob here, NOT a global cap raise.
 	MaxClipIngestPipelineFields int
-	ForbiddenTopLevelDirs       []string
-	KernelSubzones              []string
-	Capabilities                []string
-	PlatformSubzones            []string
-	LegacyInternalRoots         []string
-	TargetInternalRoots         []string
+	// MaxWarnings is the committed warning budget for the target-tree
+	// report. The budget is a ratchet: current warnings may not exceed
+	// this value, and the policy remains explicit until the residue is
+	// reduced to zero.
+	MaxWarnings           int
+	ForbiddenTopLevelDirs []string
+	KernelSubzones        []string
+	Capabilities          []string
+	PlatformSubzones      []string
+	LegacyInternalRoots   []string
+	TargetInternalRoots   []string
 	// DataOwnershipDoc is the path (relative to root) of the canonical
 	// data/config ownership document whose authority the rule family
 	// scanOwnershipDoc enforces. Empty string opts out (Phase 0 only;

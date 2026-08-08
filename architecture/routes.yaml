@@ -1,361 +1,397 @@
 routes:
     - method: DELETE
-      path: /:id
-      source: internal/api/channels/handler.go
+      path: /api/media-memory/bindings/:id
+      source: cmd/admin/gen_api_docs.go
     - method: DELETE
-      path: /:source/clips/:id
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/media/clips/:source/clips/:id
+      source: cmd/admin/gen_api_docs.go
     - method: DELETE
-      path: /:source/folders/:id
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/media/clips/:source/folders/:id
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /
-      source: internal/api/routes.go
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:id
-      source: internal/api/script/helpers.go
+      path: /admin/*filepath
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:id/events
-      source: internal/api/jobs/impl.go
+      path: /api/admin/auth/me
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:id/full
-      source: internal/api/jobs/impl.go
+      path: /api/admin/entities
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:id/results
-      source: internal/api/assets/handler_searchqueries.go
+      path: /api/admin/entities/:entity
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/breadcrumb
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/admin/entities/:entity/:id
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/clips
-      source: internal/api/assets/clips/search.go
+      path: /api/admin/entities/:entity/schema
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/clips/:id
-      source: internal/api/assets/clips/search.go
+      path: /api/artlist/diagnostics
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/folders
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/artlist/job-consumer
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/folders/:id
-      source: internal/api/assets/clips/catalog/module.go
+      path: /api/artlist/runs/:run_id
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/folders/:id/children
-      source: internal/api/assets/clips/ops.go
+      path: /api/artlist/search/live
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /:source/tree
-      source: internal/api/assets/clips/ops.go
+      path: /api/artlist/stats
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /active
-      source: internal/api/assets/handler_searchqueries.go
+      path: /api/assets/operator/assets
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /admin/auth/me
-      source: internal/api/routes.go
+      path: /api/assets/operator/assets/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/assets/:id/preview
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/facets
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/index-health
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/operations/errors
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/outbox/events
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/outbox/status
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/assets/operator/summary
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /api/capabilities
-      source: internal/api/routes.go
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /assets
-      source: internal/api/assets/operator/handler_assets.go
+      path: /api/clips/diagnostics
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /assets/:id
-      source: internal/api/assets/operator/handler_assets.go
+      path: /api/clips/info
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /assets/:id/preview
-      source: internal/api/assets/operator/handler_assets.go
+      path: /api/clips/search
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /categories
-      source: internal/api/channels/handler.go
+      path: /api/clips/stats
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /clips/search
-      source: internal/api/script/handler_flow.go
+      path: /api/drive/files
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /diagnostics
-      source: internal/api/assets/youtube/youtube_handlers.go
+      path: /api/images/diagnostics
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /events
-      source: internal/api/outbox/handler.go
+      path: /api/images/generated/search
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /files
-      source: internal/api/system/handler_drive.go
+      path: /api/images/generated/styles
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /generated/search
-      source: internal/api/images/handler.go
+      path: /api/images/retrieved/search
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /generated/styles
-      source: internal/api/images/handler.go
+      path: /api/images/search
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/:id/events
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/:id/full
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/jobs/stats
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media-memory/batches/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media-memory/bindings
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/breadcrumb
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/clips
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/clips/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/folders
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/folders/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/folders/:id/children
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/clips/:source/tree
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/diagnostics
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/media/index-health
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/script-assets/catalog
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/scripts
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/scripts/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/system/doctor
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /api/ui/health
+      source: cmd/admin/gen_api_docs.go
+    - method: GET
+      path: /assets/*filepath
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /health
-      source: internal/api/admin/ui/handler.go
+      source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /index-health
-      source: internal/api/assets/operator/handler_index.go
-    - method: GET
-      path: /info
-      source: internal/api/assets/youtube/youtube_handlers.go
-    - method: GET
-      path: /internal/slug
-      source: internal/api/module_core_modules.go
-    - method: GET
-      path: /job-consumer
-      source: internal/api/assets/artlist/artlist_handlers.go
-    - method: GET
-      path: /jobs/:id
-      source: internal/api/script/handler_jobs.go
-    - method: GET
-      path: /jobs/:id/cancelled
-      source: internal/api/jobs/handler_workers.go
+      path: /media/google-accounting/*filepath
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /metrics
-      source: internal/api/routes.go
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /models
-      source: internal/api/routes.go
-    - method: GET
-      path: /operations/errors
-      source: internal/api/assets/operator/handler_operations.go
-    - method: GET
-      path: /outbox/events
-      source: internal/api/assets/operator/handler_outbox.go
-    - method: GET
-      path: /outbox/status
-      source: internal/api/assets/operator/handler_outbox.go
-    - method: GET
-      path: /qdrant/live
-      source: internal/api/routes.go
-    - method: GET
-      path: /qdrant/ready
-      source: internal/api/routes.go
+      source: cmd/admin/gen_api_docs.go
     - method: GET
       path: /ready
-      source: internal/api/routes.go
-    - method: GET
-      path: /retrieved/search
-      source: internal/api/images/handler.go
-    - method: GET
-      path: /runs/:run_id
-      source: internal/api/assets/artlist/artlist_handlers.go
-    - method: GET
-      path: /search
-      source: internal/api/images/handler.go
-    - method: GET
-      path: /search/live
-      source: internal/api/assets/artlist/artlist_handlers.go
-    - method: GET
-      path: /stats
-      source: internal/api/assets/youtube/youtube_handlers.go
-    - method: GET
-      path: /status
-      source: internal/api/outbox/handler.go
-    - method: GET
-      path: /summary
-      source: internal/api/assets/operator/handler_summary.go
-    - method: GET
-      path: /system/doctor
-      source: internal/api/system/module.go
-    - method: GET
-      path: /worker-assets/:asset_id/download
-      source: internal/api/jobs/handler_workers.go
-    - method: GET
-      path: /workers/:id/cert-report
-      source: internal/api/admin/handler_workers_cert.go
-    - method: GET
-      path: Content-Type
-      source: internal/api/middleware/idempotency.go
+      source: cmd/admin/gen_api_docs.go
+    - method: HEAD
+      path: /admin/*filepath
+      source: cmd/admin/gen_api_docs.go
+    - method: HEAD
+      path: /assets/*filepath
+      source: cmd/admin/gen_api_docs.go
+    - method: HEAD
+      path: /media/google-accounting/*filepath
+      source: cmd/admin/gen_api_docs.go
     - method: PATCH
-      path: /:source/clips/:id
-      source: internal/api/assets/clips/ingest.go
+      path: /api/admin/entities/:entity/:id
+      source: cmd/admin/gen_api_docs.go
+    - method: PATCH
+      path: /api/media/clips/:source/clips/:id
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:id/cancel
-      source: internal/api/jobs/impl.go
+      path: /api/admin/auth/login
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:id/retry
-      source: internal/api/jobs/impl.go
+      path: /api/admin/auth/logout
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/bulk/tags/add
-      source: internal/api/assets/clips/operations/module.go
+      path: /api/admin/entities/:entity/:id/actions/:action
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/bulk/tags/remove
-      source: internal/api/assets/clips/operations/module.go
+      path: /api/artlist/import
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/cleanup
-      source: internal/api/assets/clips/ops.go
+      path: /api/artlist/recommend
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips
-      source: internal/api/assets/clips/ingest.go
+      path: /api/artlist/run
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/download
-      source: internal/api/assets/clips/publication/module.go
+      path: /api/artlist/search
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/duplicates
-      source: internal/api/assets/clips/catalog/module.go
+      path: /api/artlist/sync-catalogs
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/fix-hash
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/assets/operator/assets/:id/reindex
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/reindex
-      source: internal/api/assets/clips/nonops/handler.go
+      path: /api/assets/operator/assets/:id/verify-index
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/reprocess
-      source: internal/api/assets/clips/nonops/handler.go
+      path: /api/assets/operator/bulk
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/reupload
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/clips/extract-important
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/status
-      source: internal/api/assets/clips/search.go
+      path: /api/clips/process
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/:id/verify
-      source: internal/api/assets/clips/operations/module.go
+      path: /api/clips/search
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/clips/bulk-upload-youtube-clips
-      source: internal/api/assets/clips/bulk_upload_transport.go
+      path: /api/clips/stock
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/folders/:id/manifest
-      source: internal/api/assets/clips/ops.go
+      path: /api/drive/canary-upload
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /:source/reconcile
-      source: internal/api/assets/clips/sub_handler_wrappers.go
+      path: /api/drive/cleanup
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /admin/auth/login
-      source: internal/api/routes.go
+      path: /api/drive/folders
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /admin/auth/logout
-      source: internal/api/routes.go
+      path: /api/drive/move
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /batch-generate
-      source: internal/api/images/handler.go
+      path: /api/drive/reconcile
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /bulk-upsert
-      source: internal/api/channels/handler.go
+      path: /api/drive/rename
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /canary-upload
-      source: internal/api/admin/handler_drive_canary.go
+      path: /api/drive/resolve-by-id
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /cleanup
-      source: internal/api/system/handler_drive.go
+      path: /api/fullimages/image/generate
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /document/generate
-      source: internal/api/assets/document/document_handler.go
+      path: /api/images/batch-generate
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /enrich
-      source: internal/api/assets/clips/nonops/handler.go
+      path: /api/images/generated/generate
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /enrich/batch
-      source: internal/api/assets/clips/indexing/module.go
+      path: /api/images/sync
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /extract-important
-      source: internal/api/assets/youtube/youtube_handlers.go
+      path: /api/images/upload
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /folders
-      source: internal/api/system/handler_drive.go
+      path: /api/jobs
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /generate
-      source: internal/api/assets/voiceover/handler.go
+      path: /api/jobs/:id/cancel
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /generated/generate
-      source: internal/api/images/handler.go
+      path: /api/jobs/:id/retry
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /image/generate
-      source: internal/api/fullimages/handler.go
+      path: /api/media-memory/batches
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /import
-      source: internal/api/assets/handler_mediaingest.go
+      path: /api/media-memory/batches/:id/reconcile
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /ingest/ai-stock
-      source: internal/api/assets/clips/ingest.go
+      path: /api/media-memory/bindings
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/:id/complete
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media-memory/bindings/:id/approve
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/:id/complete-with-artifacts
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media-memory/bindings/:id/reject
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/:id/fail
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media-memory/feedback
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/:id/progress
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media-memory/resolve
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/:id/renew
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media/:source/clips/:id/download
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /jobs/claim
-      source: internal/api/jobs/handler_workers.go
+      path: /api/media/:source/clips/:id/reupload
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /media/sync
-      source: internal/api/assets/storage/handler.go
+      path: /api/media/clips/:source/bulk/tags/add
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /move
-      source: internal/api/system/handler_drive.go
+      path: /api/media/clips/:source/bulk/tags/remove
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /process
-      source: internal/api/assets/youtube/youtube_handlers.go
+      path: /api/media/clips/:source/cleanup
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /qdrant/cleanup
-      source: internal/api/assets/diagnostics/handler.go
+      path: /api/media/clips/:source/clips
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /realtime/match
-      source: internal/api/assets/handler_realtime.go
+      path: /api/media/clips/:source/clips/:id/duplicates
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /recommend
-      source: internal/api/assets/artlist/artlist_handlers.go
+      path: /api/media/clips/:source/clips/:id/fix-hash
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /reconcile
-      source: internal/api/system/handler_drive.go
+      path: /api/media/clips/:source/clips/:id/reindex
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /register-batch
-      source: internal/api/assets/register/handler.go
+      path: /api/media/clips/:source/clips/:id/reprocess
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /register-from-youtube
-      source: internal/api/assets/register/handler.go
+      path: /api/media/clips/:source/clips/:id/status
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /rename
-      source: internal/api/system/handler_drive.go
+      path: /api/media/clips/:source/clips/:id/verify
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /resolve-by-id
-      source: internal/api/system/handler_drive.go
+      path: /api/media/clips/:source/clips/bulk-upload-youtube-clips
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /run
-      source: internal/api/assets/artlist/artlist_handlers.go
+      path: /api/media/clips/:source/folders/:id/manifest
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /search
-      source: internal/api/assets/artlist/artlist_handlers.go
+      path: /api/media/clips/:source/reconcile
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /shorts/generate
-      source: internal/api/script/handler_shorts.go
+      path: /api/media/clips/enrich
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /shorts/render
-      source: internal/api/script/handler_shorts.go
+      path: /api/media/clips/enrich/batch
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /shorts/render/async
-      source: internal/api/script/handler_shorts.go
+      path: /api/media/clips/ingest/ai-stock
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /sync
-      source: internal/api/assets/storage/handler.go
+      path: /api/media/clips/upload-video
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /sync-catalogs
-      source: internal/api/assets/artlist/artlist_handlers.go
+      path: /api/media/qdrant/cleanup
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /upload
-      source: internal/api/images/handler.go
+      path: /api/media/register-batch
+      source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /upload-video
-      source: internal/api/assets/clips/ingest.go
+      path: /api/media/register-from-youtube
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/search
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/sound_effect/generate
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/sync
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/media/voiceover/generate
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
+      path: /api/script-docs/generate
+      source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /vlm/autotag/analyze-file
-      source: internal/api/vlm.go
-    - method: POST
-      path: /worker-assets/uploads/:asset_id/content
-      source: internal/api/jobs/handler_workers.go
-    - method: POST
-      path: /worker-assets/uploads/finalize
-      source: internal/api/jobs/handler_workers.go
-    - method: POST
-      path: /worker-assets/uploads/initiate
-      source: internal/api/jobs/handler_workers.go
-    - method: POST
-      path: /workers/heartbeat
-      source: internal/api/jobs/handler_workers.go
-    - method: POST
-      path: /workers/register
-      source: internal/api/jobs/handler_workers.go
+      source: cmd/admin/gen_api_docs.go

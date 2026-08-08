@@ -1,31 +1,30 @@
 # scripts/ci/architecture/checks/all_checks/check_48_c2e_route_manifest_equiv_generated_docs.sh
 #
-# Layer-split (July 2026): extracted from monolithic
-# scripts/ci/architecture/checks/all_checks/check_40_api.sh
-# (209 LOC, 3 stacked C2-Block rules) into 3 per-rule sourceable
-# files (this file + check_46 + check_47). RECOVERY STUB — full
-# rule body pending restoration.
-#
-# Rule 48: C2-E route-manifest-≡-generated-docs
-#                          (Blocco C2, June 2026, --baseline=171).
-# The canonical route surface is a 3-source SSOT contract:
-#   1. STATIC — architecture/routes.yaml (AST-generated)
-#   2. RUNTIME — docs/api/ACTIVE_API_GENERATED.md (gin-captured)
-#   3. CODE — the AST-detected routes from source 1
-# Recovery note: original rule invokes `go run` AST gates +
-# uses ${REPO_ROOT}/architecture/routes.yaml + a pre-step
-# generator. The contract-test sandbox cannot run go run, so the
-# stub emits a placeholder echo. Full rule-body restoration
-# requires the AST gates to be path-safe under sandbox isolation.
+# Rule 48: C2-E route-manifest-≡-generated-docs (Blocco C2, June 2026).
+# The runtime generator is the sole authority for both committed artifacts:
+#   - architecture/routes.yaml (deduplicated runtime route manifest)
+#   - docs/api/ACTIVE_API_GENERATED.md (runtime route documentation)
+# The legacy AST helper is diagnostic-only and is not invoked here.
 
 # ── Anti-bleed reset ──────────────────────────────────────────────
 c2e_out=""
 c2e_rc=0
-manifest_path=""
-docs_path=""
+REPO_ROOT="${REPO_ROOT:-$(pwd)}"
+manifest_path="${REPO_ROOT}/architecture/routes.yaml"
+docs_path="${REPO_ROOT}/docs/api/ACTIVE_API_GENERATED.md"
 
-# ── Check 48: C2-E route-manifest-≡-generated-docs (RECOVERY STUB) ──
-echo "=== Check 48: C2-E route-manifest-≡-generated-docs (Blocco C2, June 2026) [RECOVERY STUB] ==="
-echo "INFO: real AST gate invocation (--baseline=171) + pre-step generator deferred to recovery"
-echo "INFO: subshell source-with-marker sandbox cannot run `go run` (REPO_ROOT absent)"
-echo "OK: RECOVERY STUB pending full rule body restoration"
+echo "=== Check 48: C2-E route-manifest-≡-generated-docs (Blocco C2, June 2026) ==="
+if [ ! -f "${manifest_path}" ] || [ ! -f "${docs_path}" ]; then
+    echo "FAIL: paired runtime route artifacts are missing"
+    echo "Fix: run `go run ./cmd/admin gen-api-docs` from the repository root"
+    exit 1
+fi
+
+c2e_out=$(go run -tags=c2_route_manifest -- ./scripts/archcheck/gates/gate_c2_route_manifest_main.go --baseline=171 --root="${REPO_ROOT}" 2>&1) || c2e_rc=$?
+c2e_rc=${c2e_rc:-0}
+if [ "$c2e_rc" -ne 0 ]; then
+    printf '%s\n' "$c2e_out" | sed 's/^/  /'
+    echo "Fix: regenerate the paired runtime artifacts with `go run ./cmd/admin gen-api-docs`"
+    exit 1
+fi
+printf '%s\n' "$c2e_out" | grep -E '^C2-E gate:' || true

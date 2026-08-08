@@ -1,7 +1,7 @@
 //go:build c2_route_manifest
 
-// Command gate_c2_route_manifest compares the canonical route manifest with
-// generated API docs. Its ceiling is derived from HEAD^ and dated milestones;
+// Command gate_c2_route_manifest compares the runtime-captured route manifest
+// with generated API docs. Its ceiling is derived from HEAD^ and dated milestones;
 // the legacy --baseline flag is only a bootstrap fallback when no parent commit
 // is available, eliminating duplicated hand-maintained current counts.
 package main

@@ -1,11 +1,10 @@
 // Package main is the Blocco C2-E pre-step generator (June 2026):
 //
-//	scans the canonical HTTP capability surface (internal/api/**/RegisterRoutes
+//	scans the HTTP capability surface (internal/api/**/RegisterRoutes
 //	method bodies + nesting through api.NewRouteModule closures) and emits
-//	`architecture/routes.yaml`, the structured manifest that the C2-E gate
-//	(`scripts/archcheck/gates/gate_c2_route_manifest.go`) compares against
-//	`docs/api/ACTIVE_API_GENERATED.md` for the route ≡ manifest ≡ docs
-//	invariant.
+//	a diagnostic AST manifest. The committed runtime manifest is produced
+//	by `cmd/admin gen-api-docs`, which captures the registered Gin router;
+//	this helper remains useful for static diagnostics and warnings.
 //
 // LONG-FILES-DECOMPOSITION-2026-07-06 Band C #2: types → routes_yaml_types.go,
 // file walker → routes_yaml_discovery.go, AST engine → routes_yaml_ast.go,
@@ -16,6 +15,8 @@
 //	go run ./scripts/admin/generate_routes_yaml.go [root_dir] [output_path]
 //
 // root_dir defaults to "."; output_path defaults to "architecture/routes.yaml".
+// For committed route coverage use `go run ./cmd/admin gen-api-docs` so
+// docs and manifest are written from one runtime snapshot.
 // Exit codes: 0 = success, 2 = invocation error, 3 = zero-routes
 // sentinel (the AST scanner is broken, NOT "no API exists" — the
 // latter is impossible in this codebase).
