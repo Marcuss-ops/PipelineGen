@@ -34,7 +34,7 @@ gates_baseline:
     name: "no source-type switch outside Source Catalog"
     target_zero: true
     enforce_zero: false
-    current: 48
+    current: 25
     baseline_initial: 48
     baseline_target: "0 by 2026-09-15"
     scope: "internal/application/** + internal/api/** + internal/domain/**/*.go excluding *_test.go and the Source Catalog allowlist"

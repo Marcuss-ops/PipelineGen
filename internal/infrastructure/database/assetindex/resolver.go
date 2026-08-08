@@ -109,22 +109,7 @@ func (r *Resolver) resolveFromDB(ctx context.Context, source, sourceID string) (
 // Mirrors artifacts.CanonicalSource for the subset of sources
 // this package knows about.
 func canonicalSource(source string) string {
-	switch strings.ToLower(source) {
-	case "youtube", "youtube_clip", "clip", "clips":
-		return "clips"
-	case "artlist":
-		return "artlist"
-	case "stock":
-		return "stock"
-	case "sound_effect", "sound_effects", "sfx":
-		return "sound_effect"
-	case "voiceover", "audio":
-		return "voiceover"
-	case "image", "images":
-		return "images"
-	default:
-		return ""
-	}
+	return asset.DefaultSourceCatalog().Canonical(source)
 }
 
 // resolveClipFromDB retrieves a clip from the appropriate clips repository

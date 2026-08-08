@@ -2,13 +2,16 @@ package artifacts
 
 import (
 	"context"
+	"errors"
 	"sort"
-	"strings"
-	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
+var (
+	ErrSourceCatalogDependencyUnavailable = errors.New("artifacts: source catalog dependency unavailable")
 )
 
 // Wave 19 / P1-9 typed-port family:
@@ -225,8 +228,8 @@ func (a *imagesSourceAdapter) Delete(ctx context.Context, id string) error {
 // SourceCatalog is the central source-metadata + typed-port dispatcher.
 // Construction-time immutable: registered adapters can't be swapped at
 // runtime (no Register method exposed after NewSourceCatalog returns).
-// Falls back to (nil, false) for unknown sources so the call site can
-// branch explicitly (zero-value-tolerant interface returns).
+// Returns (nil, false) for unknown source names so callers can branch
+// explicitly; missing repository dependencies are rejected at construction.
 //
 // Collapse (June 2026): SourceRegistry was renamed to SourceCatalog.
 // SourceResolver + ResolveRepo + NewSourceResolver were DELETED —
@@ -248,23 +251,28 @@ type SourceCatalog struct {
 //	"images"         -> imagesSourceAdapter(images)
 //	"sound_effect"   -> clipsSourceAdapter(clips)   <- alias-of-clips
 //
-// Nil-tolerant: a panel of nils is supported; the adapter covers nil
-// fields with an explicit guard so test fixtures can wire a partial
-// set of repos without panics.
+// Names contains canonical names only; aliases are normalized through the
+// kernel-owned asset.SourceCatalog before dispatch.
+//
+// Composition is fail-closed: every repository dependency is required.
+// A missing adapter returns ErrSourceCatalogDependencyUnavailable before
+// the catalog can enter the runtime graph.
 func NewSourceCatalog(
 	artlist, clips, stock *assets.ClipsRepository,
 	voiceover *assets.VoiceoversRepository,
 	images *imagesrepo.ImagesRepository,
-) *SourceCatalog {
+) (*SourceCatalog, error) {
+	if artlist == nil || clips == nil || stock == nil || voiceover == nil || images == nil {
+		return nil, ErrSourceCatalogDependencyUnavailable
+	}
 	reg := &SourceCatalog{byCanonical: make(map[string]SourceRepo, 7)}
 	reg.byCanonical["artlist"] = newClipsSourceAdapter(artlist)
 	reg.byCanonical["clips"] = newClipsSourceAdapter(clips)
 	reg.byCanonical["stock"] = newClipsSourceAdapter(stock)
-	reg.byCanonical["ai_generated"] = newClipsSourceAdapter(stock)
 	reg.byCanonical["voiceover"] = newVoiceoverSourceAdapter(voiceover)
 	reg.byCanonical["images"] = newImagesSourceAdapter(images)
 	reg.byCanonical["sound_effect"] = newClipsSourceAdapter(clips)
-	return reg
+	return reg, nil
 }
 
 // Resolve returns the typed SourceRepo for any source-string
@@ -272,6 +280,7 @@ func NewSourceCatalog(
 // (nil, false) so the call site branches explicitly.
 //
 // Receiver-nil-tolerant: a nil *SourceCatalog returns (nil, false).
+// A constructed catalog never contains nil repository adapters.
 func (c *SourceCatalog) Resolve(source string) (SourceRepo, bool) {
 	if c == nil {
 		return nil, false
@@ -289,19 +298,17 @@ func (c *SourceCatalog) Resolve(source string) (SourceRepo, bool) {
 // package-level CanonicalSource which uses the StandardSources
 // alias map.
 func (c *SourceCatalog) Normalize(source string) string {
-	return CanonicalSource(source)
+	return asset.DefaultSourceCatalog().Canonical(source)
 }
 
 // MediaType returns the media type for a canonical source name.
 // Returns empty string for unknown sources.
 func (c *SourceCatalog) MediaType(source string) string {
-	canonical := CanonicalSource(source)
-	for _, def := range StandardSources {
-		if def.Canonical == canonical {
-			return def.MediaType
-		}
+	def, ok := asset.DefaultSourceCatalog().Definition(source)
+	if !ok {
+		return ""
 	}
-	return ""
+	return def.MediaType
 }
 
 // Names returns the registered canonical source names in sorted
@@ -331,70 +338,11 @@ var (
 	_ SourceRepo = (*imagesSourceAdapter)(nil)
 )
 
-// SourceDefinition defines a canonical source with its aliases and associated repository.
-type SourceDefinition struct {
-	Canonical string
-	Aliases   []string
-	MediaType string
-}
-
-// StandardSources is the canonical list of all supported sources.
-// Update this list when adding a new source — all resolvers use it.
-var StandardSources = []SourceDefinition{
-	{
-		Canonical: "artlist",
-		Aliases:   []string{"artlist"},
-		MediaType: "video",
-	},
-	{
-		Canonical: "clips",
-		Aliases:   []string{"youtube", "clips"},
-		MediaType: "video",
-	},
-	{
-		Canonical: "stock",
-		Aliases:   []string{"stock", "ai_generated"},
-		MediaType: "video",
-	},
-	{
-		Canonical: "voiceover",
-		Aliases:   []string{"voiceover"},
-		MediaType: "audio",
-	},
-	{
-		Canonical: "images",
-		Aliases:   []string{"images"},
-		MediaType: "image",
-	},
-	{
-		Canonical: "sound_effect",
-		Aliases:   []string{"sound_effect", "sound_effects", "sfx"},
-		MediaType: "audio",
-	},
-}
-
-// sourceAliasMap is a lazy-built lookup for O(1) alias resolution.
-// Built via buildSourceAliasMap() which is called lazily instead of init().
-var sourceAliasMap map[string]string
-var sourceAliasMapOnce sync.Once
-
-func buildSourceAliasMap() {
-	sourceAliasMapOnce.Do(func() {
-		sourceAliasMap = make(map[string]string)
-		for _, def := range StandardSources {
-			for _, alias := range def.Aliases {
-				sourceAliasMap[strings.ToLower(alias)] = def.Canonical
-			}
-		}
-	})
-}
-
-// CanonicalSource resolves any source alias to its canonical name.
-// Returns empty string if the source is unknown.
-// Lazily builds the alias map on first call instead of using init().
+// CanonicalSource delegates source identity and alias policy to the
+// kernel-owned catalog. This application package owns repository
+// adapters; it does not duplicate source definitions.
 func CanonicalSource(source string) string {
-	buildSourceAliasMap()
-	return sourceAliasMap[strings.ToLower(source)]
+	return asset.DefaultSourceCatalog().Canonical(source)
 }
 
 // IsValidSource checks if a source string (or alias) is known.
