@@ -43,19 +43,19 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 		if crossStep.SearchAggregator != nil {
 			searchAgg = crossStep.SearchAggregator
 		}
-		// QDRANT-004 readiness closure: assemble the typed probe + index
-		// version source from the composition root before handler wiring.
-		readinessChecker, readinessIndexVersion := WireMediasearchReadiness(root, searchAgg)
+		// QDRANT-004 readiness closure: assemble the typed probe from the
+		// composition root before handler wiring. IndexVersion is left nil
+		// on purpose — the handler defaults to an empty (unknown) version.
+		readinessChecker := WireMediasearchReadiness(root, searchAgg)
 		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
 			Aggregator: searchAgg,
 			// QDRANT-004 readiness closure (August 2026): the handler was
-			// previously constructed without SemanticReady/IndexVersion,
-			// so GET /internal/v1/media/ready always reported
+			// previously constructed without SemanticReady, so GET
+			// /internal/v1/media/ready always reported
 			// "semantic_search_real checker not wired". The composition
 			// root now wires the typed probe (embedder + aggregator +
-			// Qdrant + SQLite) and the index-version source.
+			// Qdrant + SQLite).
 			SemanticReady: readinessChecker,
-			IndexVersion:  readinessIndexVersion,
 			Log:           log,
 		})
 		log.Info("QDRANT-004: mediasearch handler prepared from canonical search aggregator")
