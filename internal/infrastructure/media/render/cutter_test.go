@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -408,6 +409,252 @@ func TestFFmpegCutter_BatchFallback_PreservesPartialResults(t *testing.T) {
 	produced := result.SuccessfulItems()
 	if len(produced) != 2 {
 		t.Errorf("SuccessfulItems() = %d, want 2", len(produced))
+	}
+}
+
+// temporalBatchCaptureRunner records FFmpeg invocations and materializes
+// every expected .part output. It is intentionally scoped to the cutter
+// test: the production cutter remains responsible for constructing the
+// temporal microbatches and preserving result order.
+type temporalBatchCaptureRunner struct {
+	mu          sync.Mutex
+	calls       [][]string
+	outputs     []string
+	probeCalls  int
+	probeFailed bool
+}
+
+func (r *temporalBatchCaptureRunner) Run(_ context.Context, name string, args []string, _ process.Options) (*process.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if filepath.Base(name) == "ffprobe" {
+		r.probeCalls++
+		if r.probeFailed {
+			return nil, errors.New("synthetic source probe failure")
+		}
+		duration := "100"
+		for _, arg := range args {
+			if strings.Contains(arg, ".part.") {
+				duration = "1"
+				break
+			}
+		}
+		return &process.Result{ExitCode: 0, Stdout: fmt.Sprintf(`{"format":{"duration":"%s"},"streams":[{"codec_type":"video","codec_name":"h264","width":1920,"height":1080,"avg_frame_rate":"24/1","pix_fmt":"yuv420p"}]}`, duration)}, nil
+	}
+	if filepath.Base(name) != "ffmpeg" {
+		return &process.Result{ExitCode: 0}, nil
+	}
+	r.calls = append(r.calls, append([]string(nil), args...))
+	for _, output := range r.outputs {
+		for _, arg := range args {
+			if arg == output {
+				if err := os.WriteFile(output, []byte("fake-clip"), 0o644); err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
+	}
+	return &process.Result{ExitCode: 0}, nil
+}
+
+func temporalArgIndex(argv []string, value string) int {
+	for i, arg := range argv {
+		if arg == value {
+			return i
+		}
+	}
+	return -1
+}
+
+func (r *temporalBatchCaptureRunner) invocations() [][]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([][]string, len(r.calls))
+	for i := range r.calls {
+		out[i] = append([]string(nil), r.calls[i]...)
+	}
+	return out
+}
+
+// TestFFmpegCutter_OuterTemporalChunksSortPendingJobs verifies that the
+// cutter's >15-job guard sorts only pending work before splitting it. The
+// input order is deliberately shuffled; FFmpeg anchors must still progress
+// monotonically while CutBatchResult.Items remains in request order.
+func TestFFmpegCutter_OuterTemporalChunksSortPendingJobs(t *testing.T) {
+	dir := t.TempDir()
+	runner := &temporalBatchCaptureRunner{}
+	jobs := make([]stockpipeline.CutJob, 16)
+	for i := range jobs {
+		start := float64(i * 5)
+		jobs[i] = stockpipeline.CutJob{
+			StartSec:   start,
+			EndSec:     start + 1,
+			OutputPath: filepath.Join(dir, fmt.Sprintf("clip_%02d.mp4", i)),
+		}
+		runner.outputs = append(runner.outputs, partPath(jobs[i].OutputPath))
+	}
+	// Deliberately destroy temporal input order without changing the
+	// deterministic output identity attached to each timestamp.
+	jobs[0], jobs[15] = jobs[15], jobs[0]
+	jobs[1], jobs[8] = jobs[8], jobs[1]
+	jobs[2], jobs[12] = jobs[12], jobs[2]
+
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath:     "source.mp4",
+		SourceDuration: 100,
+		Jobs:           jobs,
+		NoAudio:        true,
+		Codec:          "libx264",
+		Preset:         "veryfast",
+		CRF:            23,
+		Logger:         zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("Cut returned unexpected error: %v", err)
+	}
+	if len(result.Items) != len(jobs) {
+		t.Fatalf("len(Items)=%d, want %d", len(result.Items), len(jobs))
+	}
+	for i, job := range jobs {
+		if result.Items[i].JobID != job.OutputPath || result.Items[i].OutputPath != job.OutputPath {
+			t.Errorf("item[%d] output mapping = (%q,%q), want %q", i, result.Items[i].JobID, result.Items[i].OutputPath, job.OutputPath)
+		}
+		if result.Items[i].Status != stockpipeline.CutItemStatusSucceeded {
+			t.Errorf("item[%d] status=%v, want Succeeded", i, result.Items[i].Status)
+		}
+	}
+
+	calls := runner.invocations()
+	if len(calls) != 6 {
+		t.Fatalf("FFmpeg invocations=%d, want 6 temporal microbatches for 16 jobs", len(calls))
+	}
+	previousAnchor := -1.0
+	for i, argv := range calls {
+		anchor := 0.0
+		if ss := temporalArgIndex(argv, "-ss"); ss >= 0 {
+			if ss+1 >= len(argv) {
+				t.Fatalf("invocation %d has incomplete -ss pair: %v", i, argv)
+			}
+			parsed, parseErr := strconv.ParseFloat(argv[ss+1], 64)
+			if parseErr != nil {
+				t.Fatalf("invocation %d seek=%q: %v", i, argv[ss+1], parseErr)
+			}
+			anchor = parsed
+		}
+		if anchor < previousAnchor {
+			t.Errorf("temporal anchors are not monotonic: invocation %d anchor=%.3f after %.3f", i, anchor, previousAnchor)
+		}
+		previousAnchor = anchor
+	}
+}
+
+// TestFFmpegCutter_ResumeReusesValidFinals verifies that a valid final
+// artifact is omitted from pending temporal work. Missing clips still go
+// through sorted microbatches, while the reused final keeps its original
+// result slot and bytes unchanged.
+func TestFFmpegCutter_ResumeReusesValidFinals(t *testing.T) {
+	jobDir := filepath.Join(persistentStockWorkspace, "test-resume-"+strings.ReplaceAll(t.Name(), "/", "-"))
+	if err := os.MkdirAll(filepath.Join(jobDir, "extracted"), 0o755); err != nil {
+		t.Skipf("persistent stock workspace is not writable: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(jobDir) })
+
+	dir := filepath.Join(jobDir, "extracted")
+	jobs := make([]stockpipeline.CutJob, 17)
+	runner := &temporalBatchCaptureRunner{}
+
+	for i := range jobs {
+		start := float64(i * 5)
+		jobs[i] = stockpipeline.CutJob{
+			StartSec:   start,
+			EndSec:     start + 1,
+			OutputPath: filepath.Join(dir, fmt.Sprintf("stock_cut_resume_%02d.mp4", i)),
+		}
+		runner.outputs = append(runner.outputs, partPath(jobs[i].OutputPath))
+	}
+	const reused = 4
+	reusedBytes := []byte("already-published")
+	if err := os.WriteFile(jobs[reused].OutputPath, reusedBytes, 0o644); err != nil {
+		t.Fatalf("seed reusable final: %v", err)
+	}
+
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath:     "source.mp4",
+		SourceDuration: 100,
+		Jobs:           jobs,
+		NoAudio:        true,
+		Codec:          "libx264",
+		Preset:         "veryfast",
+		CRF:            23,
+		Logger:         zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("Cut returned unexpected error: %v", err)
+	}
+	if len(result.Items) != len(jobs) {
+		t.Fatalf("len(Items)=%d, want %d", len(result.Items), len(jobs))
+	}
+	for i, job := range jobs {
+		if result.Items[i].JobID != job.OutputPath || result.Items[i].OutputPath != job.OutputPath {
+			t.Errorf("item[%d] output mapping = (%q,%q), want %q", i, result.Items[i].JobID, result.Items[i].OutputPath, job.OutputPath)
+		}
+		if result.Items[i].Status != stockpipeline.CutItemStatusValidated {
+			t.Errorf("item[%d] status=%v, want Validated", i, result.Items[i].Status)
+		}
+	}
+	if got := len(runner.invocations()); got != 6 {
+		t.Fatalf("FFmpeg invocations=%d, want 6 for 16 pending jobs; valid final must be skipped", got)
+	}
+	gotBytes, readErr := os.ReadFile(jobs[reused].OutputPath)
+	if readErr != nil {
+		t.Fatalf("read reused final: %v", readErr)
+	}
+	if string(gotBytes) != string(reusedBytes) {
+		t.Fatalf("reused final changed: got %q, want %q", gotBytes, reusedBytes)
+	}
+}
+
+// TestFFmpegCutter_LargeBatchFailedProbeIsAttemptedOnce verifies that a
+// failed source probe is not retried by every recursive outer chunk.
+func TestFFmpegCutter_LargeBatchFailedProbeIsAttemptedOnce(t *testing.T) {
+	dir := t.TempDir()
+	runner := &temporalBatchCaptureRunner{probeFailed: true}
+	jobs := make([]stockpipeline.CutJob, 16)
+	for i := range jobs {
+		start := float64(i * 5)
+		jobs[i] = stockpipeline.CutJob{
+			StartSec:   start,
+			EndSec:     start + 1,
+			OutputPath: filepath.Join(dir, fmt.Sprintf("clip_%02d.mp4", i)),
+		}
+		runner.outputs = append(runner.outputs, partPath(jobs[i].OutputPath))
+	}
+
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "source.mp4",
+		Jobs:       jobs,
+		NoAudio:    true,
+		Codec:      "libx264",
+		Preset:     "veryfast",
+		CRF:        23,
+		Logger:     zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("Cut returned unexpected error after probe failure: %v", err)
+	}
+	if len(result.Items) != len(jobs) {
+		t.Fatalf("len(Items)=%d, want %d", len(result.Items), len(jobs))
+	}
+	if runner.probeCalls != 1 {
+		t.Fatalf("source probe calls=%d, want 1 after failed probe", runner.probeCalls)
+	}
+	if len(runner.invocations()) != 6 {
+		t.Fatalf("FFmpeg invocations=%d, want 6 temporal microbatches", len(runner.invocations()))
 	}
 }
 
