@@ -25,8 +25,14 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/admin/auth/me` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/admin/entities` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/admin/entities/:entity` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/admin/entities/:entity/schema` | ⚠️ MISSING DESCRIPTION |
+| PATCH | `/api/admin/entities/:entity/:id` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/admin/auth/login` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/admin/auth/logout` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/admin/entities/:entity/:id/actions/:action` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/artlist
 
@@ -37,6 +43,7 @@
 | GET | `/api/artlist/runs/:run_id` | Get Artlist pipeline run status |
 | GET | `/api/artlist/search/live` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/artlist/stats` | Get Artlist statistics |
+| POST | `/api/artlist/import` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/artlist/recommend` | Get Artlist recommendations for a term |
 | POST | `/api/artlist/run` | Start Artlist pipeline for a term |
 | POST | `/api/artlist/search` | Search Artlist catalog (cached) |
@@ -49,11 +56,15 @@
 | GET | `/api/assets/operator/assets` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/assets/:id` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/assets/:id/preview` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/assets/operator/facets` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/index-health` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/operations/errors` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/outbox/events` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/outbox/status` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/assets/operator/summary` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/assets/operator/assets/:id/reindex` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/assets/operator/assets/:id/verify-index` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/assets/operator/bulk` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/capabilities
 
@@ -67,11 +78,12 @@
 |--------|------|-------------|
 | GET | `/api/clips/diagnostics` | Clips diagnostics |
 | GET | `/api/clips/info` | Get YouTube video metadata |
-| GET | `/api/clips/search` | Discover and rank YouTube videos for a keyword |
+| GET | `/api/clips/search` | Search and rank YouTube videos by topic |
 | GET | `/api/clips/stats` | Get clips statistics |
 | POST | `/api/clips/extract-important` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/clips/search` | Discover and rank YouTube videos for a keyword |
 | POST | `/api/clips/process` | Download and process clips |
+| POST | `/api/clips/search` | Search and rank YouTube videos by topic (POST variant) |
+| POST | `/api/clips/stock` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/drive
 
@@ -135,16 +147,16 @@
 | GET | `/api/media/diagnostics` | Media diagnostics |
 | GET | `/api/media/index-health` | Media index health check |
 | PATCH | `/api/media/clips/:source/clips/:id` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/:source/clips/:id/download` | Download clip |
+| POST | `/api/media/:source/clips/:id/reupload` | Re-upload clip to Drive |
 | POST | `/api/media/clips/:source/bulk/tags/add` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/bulk/tags/remove` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/cleanup` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/download` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/duplicates` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/fix-hash` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/reindex` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/reprocess` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media/clips/:source/clips/:id/reupload` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/status` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/verify` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/bulk-upload-youtube-clips` | ⚠️ MISSING DESCRIPTION |
@@ -162,16 +174,20 @@
 | POST | `/api/media/sync` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/voiceover/generate` | Generate voiceover |
 
-## /api/script
+## /api/media-memory
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/script/clips/search` | Search script clips by name |
-| GET | `/api/script/jobs/:id` | Get script job status |
-| POST | `/api/script/generate` | Generate scripts from text, clips, catalog or search sources |
-| POST | `/api/script/shorts/generate` | Generate a Remotion Shorts video |
-| POST | `/api/script/shorts/render` | Render a Remotion Shorts video synchronously |
-| POST | `/api/script/shorts/render/async` | Enqueue a Remotion Shorts render job |
+| DELETE | `/api/media-memory/bindings/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media-memory/batches/:id` | ⚠️ MISSING DESCRIPTION |
+| GET | `/api/media-memory/bindings` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/batches` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/batches/:id/reconcile` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/bindings` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/bindings/:id/approve` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/bindings/:id/reject` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/feedback` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media-memory/resolve` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/script-assets
 

@@ -20,6 +20,9 @@ func TestLoadCanonicalPolicyRoundTrip(t *testing.T) {
 	if p.MaxStructDeps != 8 {
 		t.Fatalf("MaxStructDeps=%d, want 8", p.MaxStructDeps)
 	}
+	if p.MaxWarnings != 77 {
+		t.Fatalf("MaxWarnings=%d, want 77", p.MaxWarnings)
+	}
 	if !contains(p.KernelSubzones, "observability") {
 		t.Fatalf("KernelSubzones=%v, want observability to be registered", p.KernelSubzones)
 	}

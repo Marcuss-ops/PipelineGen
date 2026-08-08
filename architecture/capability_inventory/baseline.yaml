@@ -37,6 +37,7 @@ gates_baseline:
     current: 25
     baseline_initial: 48
     baseline_target: "0 by 2026-09-15"
+    governance: "scripts/archcheck/gates/gate_c2_source_catalog_only_main.go + make verify-architecture"
     scope: "internal/application/** + internal/api/** + internal/domain/**/*.go excluding *_test.go and the Source Catalog allowlist"
     migration_owner: internal/application/assets/artifacts/source_resolver.go + internal/application/scripts/adapters/source_registry.go
     enforcing_test: scripts/archcheck/gates/gate_c2_source_catalog_only.go
@@ -53,17 +54,19 @@ gates_baseline:
     name: "route ≡ manifest ≡ ACTIVE_API_GENERATED.md"
     target_zero: true
     enforce_zero: false
-    current: 171
+    current: 0
     baseline_initial: 171
     baseline_target: "0 by 2026-09-15"
+    governance: "cmd/admin/gen_api_docs.go writes routes.yaml + ACTIVE_API_GENERATED.md; make verify-architecture runs C2-E"
     scope: "internal/api/** + cmd/server/main.go + docs/api/ACTIVE_API_GENERATED.md"
     migration_owner: internal/app/registry.go + scripts/admin/generate_routes_yaml.go + cmd/admin/gen_api_docs.go
     enforcing_test: scripts/archcheck/gates/gate_c2_route_manifest.go
     ratchet_status: closed_at_step_C2-E
     known_limitations: |
-      Routes registered through non-foldable Gin methods are not detected statically.
-      Chained group assignments may expose only the outer prefix.
-      The source scanner and runtime Gin capture remain separate canonical paths.
+      The runtime Gin capture is the canonical route source; the legacy AST
+      helper remains available for diagnostics but is not used to regenerate
+      the committed manifest. Runtime capture requires the test lexicon root
+      configured by cmd/admin/gen_api_docs.go.
   - gate_id: C2-F
     name: "no `if svc == nil { return nil }` fallback in capabilities"
     target_zero: true

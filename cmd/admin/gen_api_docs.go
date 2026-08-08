@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -40,6 +39,10 @@ func runGenAPIDocs(args []string) error {
 		},
 		Multilingual: config.MultilingualConfig{
 			SourceLanguage: "en",
+		},
+		Linguistics: config.LinguisticsConfig{
+			LexiconRoot:       "config/lexicons",
+			RequiredLanguages: []string{"en", "it"},
 		},
 		External: config.ExternalConfig{
 			ArtlistScraperServerURL: "http://localhost:0",
@@ -93,7 +96,12 @@ func runGenAPIDocs(args []string) error {
 		outputPath = args[0]
 	}
 
-	if err := os.WriteFile(outputPath, []byte(md), 0644); err != nil {
+	markdown := []byte(strings.TrimRight(md, "\n") + "\n")
+	if outputPath == "docs/api/ACTIVE_API_GENERATED.md" {
+		if err := publishRuntimeRouteArtifacts(outputPath, "architecture/routes.yaml", markdown, routes); err != nil {
+			return fmt.Errorf("publish route artifacts: %w", err)
+		}
+	} else if err := writeAtomicFile(outputPath, markdown, 0644); err != nil {
 		return fmt.Errorf("write output: %w", err)
 	}
 

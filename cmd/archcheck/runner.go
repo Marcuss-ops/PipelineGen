@@ -38,6 +38,7 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 	for _, check := range DefaultChecks(productionOnly) {
 		check.Run(root, pol, r)
 	}
+	enforceWarningBudget(pol, r)
 
 	r.Summary.TotalViolations = len(r.Violations)
 	for _, v := range r.Violations {

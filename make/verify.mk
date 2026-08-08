@@ -155,7 +155,9 @@ verify-integration: go-version-check
 # so architecture drift surfaces under its own target.
 verify-architecture:
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
-	$(GO) run ./cmd/archcheck
+	$(GO) run ./cmd/archcheck && \
+	$(GO) run -tags=c2_source_catalog_only scripts/archcheck/gates/gate_c2_source_catalog_only_main.go --baseline=48 . && \
+	$(GO) run -tags=c2_route_manifest scripts/archcheck/gates/gate_c2_route_manifest_main.go --baseline=171 --root=.
 	@echo "✅ Architecture verification passed"
 
 # test-main-stock — diagnostic Stock-focused gate. The authoritative Stock
@@ -188,27 +190,13 @@ verify-release: verify-full verify-integration
 verify-split:
 	@bash scripts/ci/verify-split-contract.sh
 
-# Aggregate pre-flight check. Runs both toolchain guards plus two
-# sanity contracts that have historically drifted silently:
-#   - docker-compose.yml resolves against the current Dockerfile
-#   - the Dockerfile builder image tag tracks go.mod's `go` line
-# Read-only: no lockfile modification, no upgrade, no commit.
+# regen-routes-yaml — refreshes the runtime-captured docs and the structured
+# manifest in one transaction. The old AST-only recipe could emit module-
+# relative paths and reintroduce route coverage drift; cmd/admin is the
+# canonical composition-root capture and now writes both artifacts.
 regen-routes-yaml:
-	@TMP=$$(mktemp architecture/routes.yaml.tmp.XXXXXX) || { echo "❌ regen-routes-yaml: mktemp failed (architecture/ missing or read-only?)" >&2; exit 1; }; \
-	if [ ! -f scripts/admin/generate_routes_yaml.go ]; then \
-	    rm -f "$$TMP"; \
-	    echo "❌ scripts/admin/generate_routes_yaml.go not present — current hand-routes.yaml is authoritative until Push 7(a) lands." >&2; \
-	    exit 1; \
-	fi; \
-	if ! $(GO) run ./scripts/admin --output="$$TMP" 2>"$$TMP.stderr"; then \
-	    echo "❌ regen-routes-yaml: AST analyzer failed; architecture/routes.yaml untouched." >&2; \
-	    cat "$$TMP.stderr" >&2; \
-	    rm -f "$$TMP" "$$TMP.stderr"; \
-	    exit 1; \
-	fi; \
-	rm -f "$$TMP.stderr"; \
-	mv "$$TMP" architecture/routes.yaml; \
-	echo "✅ regen-routes-yaml wrote architecture/routes.yaml"
+	@$(GO) run ./cmd/admin gen-api-docs
+	@echo "✅ regen-routes-yaml refreshed runtime docs and route manifest"
 
 # archcheck-strict — invokes go run ./cmd/archcheck --strict which is
 # the gate-promoted Phase-0 governance check. Used by CI + locally as

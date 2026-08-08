@@ -26,6 +26,7 @@ var policyBindings = map[string]fieldBinding{
 	"max_constructor_deps":            intBinding("MaxConstructorDeps", "scan.ScanConstructors", func(p *Policy, n int) { p.MaxConstructorDeps = n }),
 	"max_struct_deps":                 intBinding("MaxStructDeps", "scan.ScanStructDeps", func(p *Policy, n int) { p.MaxStructDeps = n }),
 	"max_clip_ingest_pipeline_fields": intBinding("MaxClipIngestPipelineFields", "scan.ScanStructDeps clip-ingest exception", func(p *Policy, n int) { p.MaxClipIngestPipelineFields = n }),
+	"max_warnings":                    nonNegativeIntBinding("MaxWarnings", "runner warning budget", func(p *Policy, n int) { p.MaxWarnings = n }),
 	"forbidden_top_level_dirs":        stringListBinding("ForbiddenTopLevelDirs", "scan.ScanForbiddenDirs", func(p *Policy, v []string) { p.ForbiddenTopLevelDirs = v }),
 	"kernel_subzones":                 stringListBinding("KernelSubzones", "scan.ScanKernelSubzoneHints + ScanKernelSubzoneIntegrity", func(p *Policy, v []string) { p.KernelSubzones = v }),
 	"capabilities":                    stringListBinding("Capabilities", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.Capabilities = v }),
@@ -138,6 +139,17 @@ func Load(path string) (*Policy, error) {
 		return nil, fmt.Errorf("%s: list key %q has no values", path, activeList)
 	}
 	return p, nil
+}
+
+func nonNegativeIntBinding(field, consumer string, set func(*Policy, int)) fieldBinding {
+	return fieldBinding{Field: field, Consumer: consumer, Apply: func(p *Policy, raw string) error {
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || n < 0 {
+			return fmt.Errorf("expected a non-negative integer, got %q", raw)
+		}
+		set(p, n)
+		return nil
+	}}
 }
 
 func intBinding(field, consumer string, set func(*Policy, int)) fieldBinding {
