@@ -8,6 +8,7 @@
       "scripts/bridges/local_nlp_gpu.py",
       "scripts/with-velox-auth",
       "scripts/with-velox-auth_test.sh",
+      ".split2-push.sh",
       "start_server.sh",
       "examples/scripts/",
       "examples/worker_integration/"
