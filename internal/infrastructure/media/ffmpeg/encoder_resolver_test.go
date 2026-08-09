@@ -136,7 +136,7 @@ func TestNewFromConfigPreservesRuntimeCodecPolicy(t *testing.T) {
 
 func TestExplicitNVENCFailureIsTerminal(t *testing.T) {
 	runner := &fallbackRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 	err := p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{
 		"-c:v", "h264_nvenc", "-preset", "p1", "-rc", "vbr", "-cq", "23", "out.mp4",
 	}, time.Second)
@@ -155,7 +155,7 @@ func TestExplicitNVENCFailureIsTerminal(t *testing.T) {
 
 func TestNVENCBatchIsMicrobatchedAndDoesNotForceCUDADecode(t *testing.T) {
 	runner := &resolverRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 	jobs := make([]CutJob, 7)
 	for i := range jobs {
 		jobs[i] = CutJob{StartSec: float64(i), EndSec: float64(i + 1), Output: fmt.Sprintf("out-%d.mp4", i)}
@@ -181,7 +181,7 @@ func TestNVENCBatchIsMicrobatchedAndDoesNotForceCUDADecode(t *testing.T) {
 
 func TestNVENCProcessConcurrencyIsBounded(t *testing.T) {
 	runner := &blockingRunner{entered: make(chan struct{}, 2), release: make(chan struct{})}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	done := make(chan error, 2)
 	go func() {
@@ -209,7 +209,7 @@ func TestNVENCProcessConcurrencyIsBounded(t *testing.T) {
 
 func TestNVENCSlotCancellationDoesNotInvokeRunner(t *testing.T) {
 	runner := &blockingRunner{entered: make(chan struct{}, 1), release: make(chan struct{})}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 	firstDone := make(chan error, 1)
 	go func() {
 		firstDone <- p.RunWithEncoderPolicy(context.Background(), "h264_nvenc", []string{"-c:v", "h264_nvenc"}, time.Second)

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +76,7 @@ func TestCutReencode_NormalizesInputToCanonicalProfile(t *testing.T) {
 	dir := t.TempDir()
 	src := generateNonCanonicalSource(t, dir, 5)
 
-	p := NewProcessor(ffmpegPath)
+	p := NewProcessorWithEncoder(ffmpegPath, config.VideoEncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23})
 	out := filepath.Join(dir, "cut.mp4")
 	err := p.CutReencode(context.Background(), src, out, "1.000", "4.000", false, "", "", 0)
 	require.NoError(t, err)
@@ -91,7 +92,7 @@ func TestCutReencodeBatch_NormalizesInputToCanonicalProfile(t *testing.T) {
 	dir := t.TempDir()
 	src := generateNonCanonicalSource(t, dir, 6)
 
-	p := NewProcessor(ffmpegPath)
+	p := NewProcessorWithEncoder(ffmpegPath, config.VideoEncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23})
 	out1 := filepath.Join(dir, "clip1.mp4")
 	out2 := filepath.Join(dir, "clip2.mp4")
 	jobs := []CutJob{

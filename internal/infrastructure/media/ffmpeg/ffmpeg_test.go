@@ -33,6 +33,14 @@ func (c *captureRunner) Run(_ context.Context, _ string, args []string, _ proces
 // Compile-time pin: captureRunner satisfies ProcessRunner.
 var _ ProcessRunner = (*captureRunner)(nil)
 
+func newTestProcessor(runner ProcessRunner) *Processor {
+	return NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{
+		Codec:  "libx264",
+		Preset: "veryfast",
+		CRF:    23,
+	}).WithRunner(runner)
+}
+
 // captureRunnerWithBinary is a ProcessRunner mock that captures the
 // binary name, argv, and options. Used for tests that need to verify
 // binary path propagation or timeout configuration.
@@ -113,7 +121,7 @@ func argIndex(argv []string, value string) int {
 
 func TestCutCopy_NoAudio_True_AppendsAn(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "input.mp4", "output.mp4", "00:00:00", "00:00:05", true)
 	require.NoError(t, err)
@@ -131,7 +139,7 @@ func TestCutCopy_NoAudio_True_AppendsAn(t *testing.T) {
 // does NOT append "-an" — audio is preserved by default (backward-compat).
 func TestCutCopy_NoAudio_False_NoAn(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "input.mp4", "output.mp4", "00:00:00", "00:00:05", false)
 	require.NoError(t, err)
@@ -145,7 +153,7 @@ func TestCutCopy_NoAudio_False_NoAn(t *testing.T) {
 // and before the output path — the canonical ffmpeg argument ordering.
 func TestCutCopy_NoAudio_ArgOrder(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "in.mp4", "out.mp4", "", "", true)
 	require.NoError(t, err)
@@ -174,7 +182,7 @@ func TestCutCopy_NoAudio_ArgOrder(t *testing.T) {
 // the output path still comes last and "-an" is absent.
 func TestCutCopy_NoAudio_False_ArgOrder(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "in.mp4", "out.mp4", "10", "15", false)
 	require.NoError(t, err)
@@ -190,7 +198,7 @@ func TestCutCopy_NoAudio_False_ArgOrder(t *testing.T) {
 // -ss and -to are NOT added (cut the whole file via stream copy).
 func TestCutCopy_StartEndEmpty(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "full.mp4", "copy.mp4", "", "", false)
 	require.NoError(t, err)
@@ -220,7 +228,7 @@ func TestCutCopy_ProcessorPath(t *testing.T) {
 // the context is done — a falsifiable invariant.
 func TestCutCopy_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
@@ -241,7 +249,7 @@ func TestNewProcessor_DefaultRunner(t *testing.T) {
 // TestCutCopy_Timeout verifies that the Run options include a non-zero timeout.
 func TestCutCopy_Timeout(t *testing.T) {
 	runner := &captureRunnerWithBinary{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "in.mp4", "out.mp4", "", "", true)
 	require.NoError(t, err)
@@ -254,7 +262,7 @@ func TestCutCopy_Timeout(t *testing.T) {
 // across multiple invocations (no state leakage).
 func TestCutCopy_MultipleInvocations(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	// First call: noAudio=true
 	err := p.CutCopy(context.Background(), "a.mp4", "b.mp4", "", "", true)
@@ -276,7 +284,7 @@ func TestCutCopy_MultipleInvocations(t *testing.T) {
 // does NOT interfere with the other CutCopy flags (-c copy, -avoid_negative_ts, etc.)
 func TestCutCopy_NoAudio_PreservesStreamCopyFlags(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutCopy(context.Background(), "in.mp4", "out.mp4", "00:01:00", "00:01:10", true)
 	require.NoError(t, err)
@@ -296,7 +304,7 @@ func TestCutCopy_NoAudio_PreservesStreamCopyFlags(t *testing.T) {
 // appends "-an" and does NOT add AAC audio encoding flags.
 func TestCutReencode_NoAudio_True_AppendsAn(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "10", "15",
 		true, "libx264", "veryfast", 18)
@@ -316,7 +324,7 @@ func TestCutReencode_NoAudio_True_AppendsAn(t *testing.T) {
 // does NOT append "-an" and instead adds AAC audio encoding flags.
 func TestCutReencode_NoAudio_False_AddsAAC(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "10", "15",
 		false, "libx264", "veryfast", 18)
@@ -332,11 +340,11 @@ func TestCutReencode_NoAudio_False_AddsAAC(t *testing.T) {
 		"noAudio=false must add -b:a 128k; got argv: %v", argv)
 }
 
-// TestCutReencode_CodecAndPreset verifies that an explicit stock profile is
-// preserved while empty arguments still use the canonical fallback.
+// TestCutReencode_CodecAndPreset verifies that an explicit encoder policy is
+// preserved when operation-level values are supplied.
 func TestCutReencode_CodecAndPreset(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "5", "10",
 		false, "libx264", "medium", 23)
@@ -351,28 +359,71 @@ func TestCutReencode_CodecAndPreset(t *testing.T) {
 		"crf must be passed; got argv: %v", argv)
 }
 
-// TestCutReencode_DefaultCodec verifies the canonical fallback profile.
-func TestCutReencode_DefaultCodec(t *testing.T) {
+// TestCutReencode_RequiresEncoderPolicy verifies that an empty processor
+// cannot silently choose a software encoder for re-encoding.
+func TestCutReencode_RequiresEncoderPolicy(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := NewProcessor("ffmpeg").WithRunner(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "", "",
 		true, "", "", 0)
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ENCODER_POLICY_REQUIRED")
+	assert.Zero(t, runner.calls, "missing policy must fail before invoking ffmpeg")
+}
 
-	argv := runner.lastArgv
-	assert.True(t, hasArgPair(argv, "-c:v", "libx264"),
-		"empty codec must default to libx264; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
-		"empty preset must default to veryfast; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-crf", "23"),
-		"canonical CRF must be 23; got argv: %v", argv)
+func TestEncodingOperations_RequireCompleteEncoderPolicy(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		call func(*Processor) error
+	}{
+		{
+			name: "normalize",
+			call: func(p *Processor) error {
+				return p.Normalize(context.Background(), "in.mp4", "out.mp4", NormalizeOptions{})
+			},
+		},
+		{
+			name: "cut-and-normalize",
+			call: func(p *Processor) error {
+				return p.CutAndNormalize(context.Background(), "in.mp4", "out.mp4", "0", "1", CutAndNormalizeOptions{})
+			},
+		},
+		{
+			name: "cut-reencode-batch",
+			call: func(p *Processor) error {
+				return p.CutReencodeBatch(context.Background(), "in.mp4", []CutJob{{StartSec: 0, EndSec: 1, Output: "out.mp4"}}, true, "", "", 0)
+			},
+		},
+		{
+			name: "watermark",
+			call: func(p *Processor) error {
+				return p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts())
+			},
+		},
+		{
+			name: "proxy",
+			call: func(p *Processor) error {
+				return p.GenerateProxy(context.Background(), "in.mp4", "out.mp4")
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &captureRunner{}
+			p := NewProcessor("ffmpeg").WithRunner(runner)
+
+			err := tt.call(p)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "ENCODER_POLICY_REQUIRED")
+			assert.Zero(t, runner.calls, "missing policy must fail before invoking ffmpeg")
+		})
+	}
 }
 
 // TestCutReencode_ContextCancellation verifies context cancellation propagates.
 func TestCutReencode_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -386,7 +437,7 @@ func TestCutReencode_ContextCancellation(t *testing.T) {
 // -reset_timestamps are present alongside noAudio.
 func TestCutReencode_StreamCopyFlags(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "10", "20",
 		true, "libx264", "veryfast", 18)
@@ -406,7 +457,7 @@ func TestCutReencode_StreamCopyFlags(t *testing.T) {
 // clip to the canonical geometry.
 func TestCutReencode_CanonicalFilter(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencode(context.Background(), "in.mp4", "out.mp4", "10", "15",
 		false, "libx264", "veryfast", 18)
@@ -451,7 +502,7 @@ func TestCanonicalClipFilterTrim(t *testing.T) {
 // returns nil immediately without calling Run.
 func TestCutReencodeBatch_EmptyJobs_ReturnsNil(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	err := p.CutReencodeBatch(context.Background(), "in.mp4",
 		nil, true, "libx264", "veryfast", 18)
@@ -464,7 +515,7 @@ func TestCutReencodeBatch_EmptyJobs_ReturnsNil(t *testing.T) {
 // cutReencodeSingle → CutReencode internally).
 func TestCutReencodeBatch_SingleJob_NoAudio_True(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{{StartSec: 5.0, EndSec: 10.0, Output: "out0.mp4"}}
 	err := p.CutReencodeBatch(context.Background(), "in.mp4",
@@ -483,7 +534,7 @@ func TestCutReencodeBatch_SingleJob_NoAudio_True(t *testing.T) {
 // with noAudio=true produce filter_complex with video-only maps and -an per job.
 func TestCutReencodeBatch_MultipleJobs_NoAudio_True(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0.0, EndSec: 5.0, Output: "out0.mp4"},
@@ -519,7 +570,7 @@ func TestCutReencodeBatch_MultipleJobs_NoAudio_True(t *testing.T) {
 // with noAudio=false produce filter_complex with both video and audio maps.
 func TestCutReencodeBatch_MultipleJobs_NoAudio_False(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0.0, EndSec: 5.0, Output: "out0.mp4"},
@@ -553,7 +604,7 @@ func TestCutReencodeBatch_MultipleJobs_NoAudio_False(t *testing.T) {
 // batch filter_complex applies the canonical video filter to every clip.
 func TestCutReencodeBatch_MultipleJobs_CanonicalFilter(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0.0, EndSec: 5.0, Output: "out0.mp4"},
@@ -584,7 +635,7 @@ func TestCutReencodeBatch_MultipleJobs_CanonicalFilter(t *testing.T) {
 // appears in the argv for multi-job batches.
 func TestCutReencodeBatch_OutputPaths(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0.0, EndSec: 5.0, Output: "/tmp/clip_a.mp4"},
@@ -606,7 +657,7 @@ func TestCutReencodeBatch_OutputPaths(t *testing.T) {
 
 func TestCutReencodeBatch_NVENCUsesTemporalInputSeekMicrobatches(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0, EndSec: 5, Output: "near_a.mp4"},
@@ -644,7 +695,7 @@ func TestCutReencodeBatch_NVENCUsesTemporalInputSeekMicrobatches(t *testing.T) {
 // a long source from timestamp zero before reaching a far-away clip.
 func TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	jobs := []fftypes.CutJob{
 		{StartSec: 0, EndSec: 5, Output: "near_a.mp4"},
@@ -682,7 +733,7 @@ func TestCutReencodeBatch_SoftwareUsesTemporalInputSeekMicrobatches(t *testing.T
 // TestCutReencodeBatch_ContextCancellation verifies context cancellation propagates.
 func TestCutReencodeBatch_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -714,7 +765,7 @@ func defaultNormalizeOpts() NormalizeOptions {
 // KeepAudio=false (default) appends "-an" to strip audio.
 func TestNormalize_KeepAudio_False_AppendsAn(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.KeepAudio = false
@@ -735,7 +786,7 @@ func TestNormalize_KeepAudio_False_AppendsAn(t *testing.T) {
 // KeepAudio=true does NOT append "-an" and instead adds AAC audio encoding.
 func TestNormalize_KeepAudio_True_AddsAAC(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.KeepAudio = true
@@ -756,7 +807,7 @@ func TestNormalize_KeepAudio_True_AddsAAC(t *testing.T) {
 // adds the asetpts PTS-reset filter for the audio stream.
 func TestNormalize_KeepAudio_True_AudioFilter(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.KeepAudio = true
@@ -772,7 +823,7 @@ func TestNormalize_KeepAudio_True_AudioFilter(t *testing.T) {
 // does NOT add the -af asetpts filter.
 func TestNormalize_KeepAudio_False_NoAudioFilter(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.KeepAudio = false
@@ -788,7 +839,7 @@ func TestNormalize_KeepAudio_False_NoAudioFilter(t *testing.T) {
 // and codec settings are passed correctly.
 func TestNormalize_VideoSettings(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.KeepAudio = false
@@ -834,7 +885,7 @@ func TestDefaultNormalizeOptions_ResolvesConfiguredAutoEncoder(t *testing.T) {
 
 func TestNormalize_SeparatedProfileAndPolicyDriveFFmpegArgs(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := NormalizeOptions{
 		Profile: config.CanonicalVideoProfile{
@@ -870,7 +921,7 @@ func TestNormalize_SeparatedProfileAndPolicyDriveFFmpegArgs(t *testing.T) {
 // the output duration limit is applied.
 func TestNormalize_TargetDurationLoopsShortSources(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	opts.Duration = 7
@@ -887,7 +938,7 @@ func TestNormalize_TargetDurationLoopsShortSources(t *testing.T) {
 // TestNormalize_ContextCancellation verifies context cancellation propagates.
 func TestNormalize_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -900,7 +951,7 @@ func TestNormalize_ContextCancellation(t *testing.T) {
 // TestNormalize_Timeout verifies a non-zero timeout is passed to Run.
 func TestNormalize_Timeout(t *testing.T) {
 	runner := &captureRunnerWithBinary{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultNormalizeOpts()
 	err := p.Normalize(context.Background(), "in.mp4", "out.mp4", opts)
@@ -927,7 +978,7 @@ func defaultCutAndNormalizeOpts() CutAndNormalizeOptions {
 // with NoAudio=true appends "-an" and does NOT add AAC audio encoding.
 func TestCutAndNormalize_NoAudio_True_AppendsAn(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultCutAndNormalizeOpts()
 	opts.NoAudio = true
@@ -949,7 +1000,7 @@ func TestCutAndNormalize_NoAudio_True_AppendsAn(t *testing.T) {
 // with NoAudio=false does NOT append "-an" and instead adds AAC encoding.
 func TestCutAndNormalize_NoAudio_False_AddsAAC(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultCutAndNormalizeOpts()
 	opts.NoAudio = false
@@ -971,7 +1022,7 @@ func TestCutAndNormalize_NoAudio_False_AddsAAC(t *testing.T) {
 // adds the asetpts PTS-reset filter for the audio stream.
 func TestCutAndNormalize_NoAudio_False_AudioFilter(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultCutAndNormalizeOpts()
 	opts.NoAudio = false
@@ -988,7 +1039,7 @@ func TestCutAndNormalize_NoAudio_False_AudioFilter(t *testing.T) {
 // (before -i for fast seek) and the video filter chain is present.
 func TestCutAndNormalize_CutParams(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultCutAndNormalizeOpts()
 	opts.NoAudio = true
@@ -1010,7 +1061,7 @@ func TestCutAndNormalize_CutParams(t *testing.T) {
 // TestCutAndNormalize_ContextCancellation verifies context cancellation propagates.
 func TestCutAndNormalize_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1023,7 +1074,7 @@ func TestCutAndNormalize_ContextCancellation(t *testing.T) {
 // TestCutAndNormalize_Timeout verifies a non-zero timeout is passed to Run.
 func TestCutAndNormalize_Timeout(t *testing.T) {
 	runner := &captureRunnerWithBinary{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultCutAndNormalizeOpts()
 	err := p.CutAndNormalize(context.Background(), "in.mp4", "out.mp4",
@@ -1035,7 +1086,7 @@ func TestCutAndNormalize_Timeout(t *testing.T) {
 
 func TestGenerateProxy_UsesConfiguredNVENCPolicy(t *testing.T) {
 	runner := &captureRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
 	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "h264_nvenc"), "proxy must use configured NVENC: %v", runner.lastArgv)
@@ -1047,7 +1098,7 @@ func TestGenerateProxy_UsesConfiguredNVENCPolicy(t *testing.T) {
 
 func TestGenerateProxy_UsesSoftwarePolicyWhenConfigured(t *testing.T) {
 	runner := &captureRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "libx264").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
 	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "libx264"), "proxy must honor software policy: %v", runner.lastArgv)
@@ -1073,7 +1124,7 @@ func TestGenerateProxy_UsesConfiguredNVENCQualityAndPreset(t *testing.T) {
 
 func TestGenerateProxy_NVENCFailureIsTerminal(t *testing.T) {
 	runner := &fallbackRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	err := p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4")
 	require.Error(t, err)
@@ -1084,7 +1135,7 @@ func TestGenerateProxy_NVENCFailureIsTerminal(t *testing.T) {
 
 func TestGenerateProxy_AutoPolicyUsesResolverDetectedNVENC(t *testing.T) {
 	runner := &resolverRunner{output: " V....D h264_nvenc NVIDIA NVENC H.264 encoder\\n"}
-	p := NewProcessorWithEncoder("ffmpeg", "auto").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "auto", Preset: "veryfast", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, p.GenerateProxy(context.Background(), "master.mp4", "preview.mp4"))
 	require.Len(t, runner.args, 2, "proxy must probe once, then execute the resolved encode")
@@ -1120,7 +1171,7 @@ func defaultWatermarkOpts() WatermarkOptions {
 
 func TestApplyWatermark_RequiresNVENCAndUsesCanonicalVideoArgs(t *testing.T) {
 	runner := &captureRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	if err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()); err != nil {
 		t.Fatalf("ApplyWatermark returned error: %v", err)
@@ -1144,7 +1195,7 @@ func TestApplyWatermark_RequiresNVENCAndUsesCanonicalVideoArgs(t *testing.T) {
 
 func TestApplyWatermarkNVENCFailureIsTerminal(t *testing.T) {
 	runner := &fallbackRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts())
 	if err == nil || !strings.Contains(err.Error(), "NVENC encode required and failed") {
@@ -1160,7 +1211,7 @@ func TestApplyWatermarkNVENCFailureIsTerminal(t *testing.T) {
 
 func TestApplyWatermark_UsesConfiguredSoftwarePolicyWithoutGPUOverride(t *testing.T) {
 	runner := &captureRunner{}
-	p := NewProcessorWithEncoder("ffmpeg", "libx264").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()))
 	assert.True(t, hasArgPair(runner.lastArgv, "-c:v", "libx264"),
@@ -1175,7 +1226,7 @@ func TestApplyWatermark_UsesConfiguredSoftwarePolicyWithoutGPUOverride(t *testin
 
 func TestApplyWatermark_AutoPolicyUsesResolverDetectedNVENC(t *testing.T) {
 	runner := &resolverRunner{output: " V....D h264_nvenc NVIDIA NVENC H.264 encoder\\n"}
-	p := NewProcessorWithEncoder("ffmpeg", "auto").WithRunner(runner)
+	p := NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "auto", Preset: "veryfast", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", defaultWatermarkOpts()))
 	require.Len(t, runner.args, 2, "watermark must probe once, then execute the resolved encode")
@@ -1193,7 +1244,7 @@ func TestApplyWatermark_AutoPolicyUsesResolverDetectedNVENC(t *testing.T) {
 // uses "-c:a copy" (audio passthrough) — there is no NoAudio field.
 func TestApplyWatermark_AudioPreserved(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", opts)
@@ -1211,7 +1262,7 @@ func TestApplyWatermark_AudioPreserved(t *testing.T) {
 // the chroma key + overlay pipeline.
 func TestApplyWatermark_FilterComplex(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", opts)
@@ -1232,7 +1283,7 @@ func TestApplyWatermark_FilterComplex(t *testing.T) {
 // image are passed as -i arguments.
 func TestApplyWatermark_BothInputs(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", opts)
@@ -1262,7 +1313,7 @@ func TestApplyWatermark_Positions(t *testing.T) {
 	for _, tc := range positions {
 		t.Run(tc.pos, func(t *testing.T) {
 			runner := &captureRunner{}
-			p := &Processor{path: "ffmpeg", runner: runner}
+			p := newTestProcessor(runner)
 
 			opts := defaultWatermarkOpts()
 			opts.Position = tc.pos
@@ -1280,7 +1331,7 @@ func TestApplyWatermark_Positions(t *testing.T) {
 // TestApplyWatermark_MissingImagePath returns an error when ImagePath is empty.
 func TestApplyWatermark_MissingImagePath(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	opts.ImagePath = ""
@@ -1293,7 +1344,7 @@ func TestApplyWatermark_MissingImagePath(t *testing.T) {
 // (tested indirectly via the filter_complex substring containing "aa=0.25").
 func TestApplyWatermark_DefaultOpacity(t *testing.T) {
 	runner := &captureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	opts.Opacity = 0 // should default to 0.25
@@ -1308,7 +1359,7 @@ func TestApplyWatermark_DefaultOpacity(t *testing.T) {
 // TestApplyWatermark_ContextCancellation verifies context cancellation propagates.
 func TestApplyWatermark_ContextCancellation(t *testing.T) {
 	runner := &contextCaptureRunner{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1321,7 +1372,7 @@ func TestApplyWatermark_ContextCancellation(t *testing.T) {
 // TestApplyWatermark_Timeout verifies a non-zero timeout is passed to Run.
 func TestApplyWatermark_Timeout(t *testing.T) {
 	runner := &captureRunnerWithBinary{}
-	p := &Processor{path: "ffmpeg", runner: runner}
+	p := newTestProcessor(runner)
 
 	opts := defaultWatermarkOpts()
 	err := p.ApplyWatermark(context.Background(), "in.mp4", "out.mp4", opts)

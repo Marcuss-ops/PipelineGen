@@ -29,7 +29,7 @@ func TestCanonicalYouTubeCutOptionsDelegatesEncoderPolicy(t *testing.T) {
 
 func TestYouTubeCutUsesConfiguredNVENCPolicy(t *testing.T) {
 	runner := &youtubeCaptureRunner{}
-	processor := pkgffmpeg.NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
+	processor := pkgffmpeg.NewProcessorWithEncoder("ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}).WithRunner(runner)
 
 	require.NoError(t, processor.CutAndNormalize(
 		context.Background(), "input.mp4", "output.mp4", "0", "4.000",
