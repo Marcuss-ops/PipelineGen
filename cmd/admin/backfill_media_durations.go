@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 )
 
 // runBackfillMediaDurations measures existing Drive-backed video assets with
@@ -77,7 +77,7 @@ func runBackfillMediaDurations(args []string) error {
 	go root.Outbox.EventsPool.Start(ctx, 1)
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 
-	probe := ffmpeg.NewFromConfig(cfg)
+	probe := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	var failed int
 	for _, row := range rows {
 		if err := backfillOneMediaDuration(ctx, root, probe, &row, *retainDir); err != nil {
@@ -155,7 +155,7 @@ func selectDurationBackfillRows(ctx context.Context, db queryer, folderID, rawID
 	return result, nil
 }
 
-func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, probe *ffmpeg.Processor, row *durationBackfillRow, retainDir string) error {
+func backfillOneMediaDuration(ctx context.Context, root *wiring.ComposeRoot, probe *rustexec.VideoProcessor, row *durationBackfillRow, retainDir string) error {
 	reader, _, err := root.Drive.Reader.DownloadFile(ctx, row.DriveFileID)
 	if err != nil {
 		return fmt.Errorf("download Drive file: %w", err)

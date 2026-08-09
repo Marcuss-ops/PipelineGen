@@ -53,7 +53,7 @@ import (
 // Dep construction sequence:
 //   - DB: root.DB.DB (embedded *sql.DB from *storage.SQLiteDB)
 //   - Cutter: render.NewConfiguredCutter(cfg.External.MediaExecutor, ...)
-//   - Renderer: render.NewFFmpegRenderer(cfg.External.FfmpegPath, nil)
+//   - Renderer: rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ...)
 //   - ChannelLister + SourceStager Fetch: downloader.NewYTDLP(cfg)
 //   - SourceStager: WireAcquisitionStager with real yt-dlp Fetch closure
 //   - Finalizer: jobsfinalizer.New (Publisher+Finalizer paired → gate passes)
@@ -129,7 +129,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := render.NewFFmpegRendererWithPolicy(ffmpegPath, cfg.Video.EncoderPolicy(), nil, log)
+	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the

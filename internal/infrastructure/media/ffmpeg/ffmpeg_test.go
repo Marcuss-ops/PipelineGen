@@ -2,13 +2,10 @@ package ffmpeg
 
 import (
 	"context"
-	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	adminmediaapp "github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	fftypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -52,18 +49,6 @@ func (c *captureRunnerWithBinary) Run(_ context.Context, name string, args []str
 	c.lastArgv = append([]string(nil), args...) // defensive copy
 	c.lastOpts = opts
 	return &process.Result{}, nil
-}
-
-type fileWritingRunner struct {
-	args []string
-}
-
-func (r *fileWritingRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
-	r.args = append([]string(nil), args...)
-	if len(args) == 0 {
-		return nil, errors.New("missing ffmpeg output")
-	}
-	return &process.Result{}, os.WriteFile(args[len(args)-1], []byte("encoded"), 0o600)
 }
 
 // Compile-time pin: captureRunnerWithBinary satisfies ProcessRunner.
@@ -124,143 +109,6 @@ func argIndex(argv []string, value string) int {
 		}
 	}
 	return -1
-}
-
-// ── CutCopy noAudio tests ───────────────────────────────────────────────
-
-// TestCutCopy_NoAudio_True_AppendsAn verifies that CutCopy(noAudio=true)
-// appends the "-an" flag to strip audio from the output while preserving
-// stream-copy mode (-c copy).
-func TestAdminMediaProcessor_TrimAudioUsesCPUAudioCodec(t *testing.T) {
-	dir := t.TempDir()
-	input := dir + "/effect.mp3"
-	if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runner := &fileWritingRunner{}
-	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-	adminProcessor := AdminMediaProcessor{Processor: processor}
-
-	if err := adminProcessor.Trim(context.Background(), input, 1); err != nil {
-		t.Fatalf("Trim audio returned error: %v", err)
-	}
-	if !hasArgPair(runner.args, "-c:a", "libmp3lame") {
-		t.Fatalf("audio trim must use the audio codec: %v", runner.args)
-	}
-	if hasArg(runner.args, "-c:v") || hasArgSubstring(runner.args, "nvenc") {
-		t.Fatalf("audio trim must not invoke a video encoder: %v", runner.args)
-	}
-}
-
-func TestAdminMediaProcessor_TrimVideoUsesResolvedNVENC(t *testing.T) {
-	dir := t.TempDir()
-	input := dir + "/effect.mp4"
-	if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runner := &fileWritingRunner{}
-	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-	adminProcessor := AdminMediaProcessor{Processor: processor}
-
-	if err := adminProcessor.Trim(context.Background(), input, 1); err != nil {
-		t.Fatalf("Trim video returned error: %v", err)
-	}
-	if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-cq", "23") {
-		t.Fatalf("video trim must use resolved NVENC quality args: %v", runner.args)
-	}
-	if hasArgPair(runner.args, "-c:v", "libx264") {
-		t.Fatalf("video trim must not fall back to libx264: %v", runner.args)
-	}
-}
-
-func TestAdminMediaProcessor_RenderUsesResolvedNVENC(t *testing.T) {
-	dir := t.TempDir()
-	runner := &fileWritingRunner{}
-	processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-	adminProcessor := AdminMediaProcessor{Processor: processor}
-	manifest := adminmediaapp.RenderManifest{
-		Input: dir + "/input.mp4", Output: dir + "/output.mp4", Font: "/font.ttf",
-		Overlays: []adminmediaapp.RenderOverlay{{Text: "title", Start: "0", End: "1", Size: "32"}},
-	}
-
-	if err := adminProcessor.Render(context.Background(), manifest); err != nil {
-		t.Fatalf("Render returned error: %v", err)
-	}
-	if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-cq", "23") {
-		t.Fatalf("render must use resolved NVENC quality args: %v", runner.args)
-	}
-	if hasArgPair(runner.args, "-c:v", "libx264") {
-		t.Fatalf("render must not fall back to libx264: %v", runner.args)
-	}
-}
-
-func TestAdminMediaProcessor_UsesCompleteConfiguredVideoPolicy(t *testing.T) {
-	policy := config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "slow", CRF: 27}
-	for _, render := range []bool{false, true} {
-		runner := &fileWritingRunner{}
-		processor := NewAdminMediaProcessorWithPolicy("ffmpeg", policy)
-		processor.Processor.WithRunner(runner)
-		if render {
-			manifest := adminmediaapp.RenderManifest{
-				Input: t.TempDir() + "/input.mp4", Output: t.TempDir() + "/output.mp4", Font: "/font.ttf",
-				Overlays: []adminmediaapp.RenderOverlay{{Text: "title", Start: "0", End: "1", Size: "32"}},
-			}
-			if err := processor.Render(context.Background(), manifest); err != nil {
-				t.Fatalf("Render returned error: %v", err)
-			}
-		} else {
-			input := t.TempDir() + "/effect.mp4"
-			if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if err := processor.Trim(context.Background(), input, 1); err != nil {
-				t.Fatalf("Trim returned error: %v", err)
-			}
-		}
-		if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-preset", "p7") || !hasArgPair(runner.args, "-cq", "27") {
-			t.Fatalf("video operation must use complete configured NVENC policy: %v", runner.args)
-		}
-		if hasArgPair(runner.args, "-c:v", "libx264") || hasArg(runner.args, "-crf") {
-			t.Fatalf("video operation must not fall back to CPU encoding: %v", runner.args)
-		}
-	}
-}
-
-func TestAdminMediaProcessor_TrimSoundEffectExtensionsKeepVideoGPUAndAudioCPU(t *testing.T) {
-	tests := []struct {
-		name  string
-		ext   string
-		video bool
-		codec string
-	}{
-		{name: "mp4 video", ext: ".mp4", video: true},
-		{name: "mov video", ext: ".mov", video: true},
-		{name: "mkv video", ext: ".mkv", video: true},
-		{name: "mp3 audio", ext: ".mp3", codec: "libmp3lame"},
-		{name: "wav audio", ext: ".wav", codec: "pcm_s16le"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			input := t.TempDir() + "/effect" + tt.ext
-			if err := os.WriteFile(input, []byte("source"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			runner := &fileWritingRunner{}
-			processor := NewProcessorWithEncoder("ffmpeg", "h264_nvenc").WithRunner(runner)
-			if err := (AdminMediaProcessor{Processor: processor}).Trim(context.Background(), input, 1); err != nil {
-				t.Fatalf("Trim returned error: %v", err)
-			}
-			if tt.video {
-				if !hasArgPair(runner.args, "-c:v", "h264_nvenc") || !hasArgPair(runner.args, "-cq", "23") || hasArg(runner.args, "-crf") {
-					t.Fatalf("video SFX must use GPU video policy: %v", runner.args)
-				}
-				return
-			}
-			if hasArg(runner.args, "-c:v") || hasArgSubstring(runner.args, "nvenc") || !hasArgPair(runner.args, "-c:a", tt.codec) {
-				t.Fatalf("audio SFX must remain CPU audio-only: %v", runner.args)
-			}
-		})
-	}
 }
 
 func TestCutCopy_NoAudio_True_AppendsAn(t *testing.T) {

@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 
@@ -140,7 +140,7 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 	}
 	defer rows.Close()
 
-	ffmpegProc := ffmpeg.NewFromConfig(cfg)
+	ffmpegProc := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	schema := qdrantschema.DefaultV3Schema()
 	imageEmbedder := search.NewImageEmbedderAdapter(search.ImageEmbedderConfig{
 		ServerURL: cfg.ClipIndexer.ServerURL,
@@ -243,7 +243,7 @@ func backfillVisualEmbeddings(ctx context.Context, db *sql.DB, cfg *config.Confi
 	return report, nil
 }
 
-func regenerateVisualEmbedding(ctx context.Context, ffmpegProc *ffmpeg.Processor, embedder search.ImageEmbedder, assetID, mediaType, localPath string) ([]float32, error) {
+func regenerateVisualEmbedding(ctx context.Context, ffmpegProc *rustexec.VideoProcessor, embedder search.ImageEmbedder, assetID, mediaType, localPath string) ([]float32, error) {
 	switch strings.ToLower(strings.TrimSpace(mediaType)) {
 	case "image":
 		vecs, err := embedder.EmbedImages(ctx, []string{localPath})

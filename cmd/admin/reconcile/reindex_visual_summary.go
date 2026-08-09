@@ -55,7 +55,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/visualsummary"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -282,7 +282,7 @@ func reindexVisualSummaryMain(
 		return report, fmt.Errorf("visual_summary_repository: %w", err)
 	}
 	// Build the production ffmpeg frame sampler.
-	sampler, err := indexing.NewFFMPEGFrameSampler(ffmpeg.NewFromConfig(cfg))
+	sampler, err := indexing.NewFFMPEGFrameSampler(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
 	if err != nil {
 		return report, fmt.Errorf("ffmpeg_frame_sampler: %w", err)
 	}

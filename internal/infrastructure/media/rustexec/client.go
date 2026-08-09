@@ -7,36 +7,71 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
+	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
 type request struct {
-	Operation      string  `json:"operation"`
-	FFmpegPath     string  `json:"ffmpeg_path,omitempty"`
-	SourcePath     string  `json:"source_path,omitempty"`
-	OutputPath     string  `json:"output_path,omitempty"`
-	TimestampSec   float64 `json:"timestamp_sec,omitempty"`
-	StartSec       float64 `json:"start_sec,omitempty"`
-	EndSec         float64 `json:"end_sec,omitempty"`
-	IntervalFrames uint32  `json:"interval_frames,omitempty"`
-	Columns        uint32  `json:"columns,omitempty"`
-	Rows           uint32  `json:"rows,omitempty"`
-	Codec          string  `json:"codec,omitempty"`
-	Preset         string  `json:"preset,omitempty"`
-	CRF            int     `json:"crf,omitempty"`
-	Width          uint32  `json:"width,omitempty"`
-	Height         uint32  `json:"height,omitempty"`
-	FPS            uint32  `json:"fps,omitempty"`
-	DurationSec    float64 `json:"duration_sec,omitempty"`
-	KeepAudio      bool    `json:"keep_audio,omitempty"`
-	NoAudio        bool    `json:"no_audio,omitempty"`
-	OverlayPath    string  `json:"overlay_path,omitempty"`
-	Opacity        float64 `json:"opacity,omitempty"`
+	Operation        string          `json:"operation"`
+	FFmpegPath       string          `json:"ffmpeg_path,omitempty"`
+	SourcePath       string          `json:"source_path,omitempty"`
+	OutputPath       string          `json:"output_path,omitempty"`
+	TimestampSec     float64         `json:"timestamp_sec,omitempty"`
+	StartSec         float64         `json:"start_sec,omitempty"`
+	EndSec           float64         `json:"end_sec,omitempty"`
+	IntervalFrames   uint32          `json:"interval_frames,omitempty"`
+	Columns          uint32          `json:"columns,omitempty"`
+	Rows             uint32          `json:"rows,omitempty"`
+	Codec            string          `json:"codec,omitempty"`
+	Preset           string          `json:"preset,omitempty"`
+	CRF              int             `json:"crf,omitempty"`
+	Width            uint32          `json:"width,omitempty"`
+	Height           uint32          `json:"height,omitempty"`
+	FPS              uint32          `json:"fps,omitempty"`
+	DurationSec      float64         `json:"duration_sec,omitempty"`
+	KeepAudio        bool            `json:"keep_audio,omitempty"`
+	NoAudio          bool            `json:"no_audio,omitempty"`
+	OverlayPath      string          `json:"overlay_path,omitempty"`
+	Opacity          float64         `json:"opacity,omitempty"`
+	InputPaths       []string        `json:"input_paths,omitempty"`
+	NoTransitions    bool            `json:"no_transitions,omitempty"`
+	TransitionEvery  int             `json:"transition_every,omitempty"`
+	ClipDurationSec  int             `json:"clip_duration_sec,omitempty"`
+	NoEffects        bool            `json:"no_effects,omitempty"`
+	EffectsDir       string          `json:"effects_dir,omitempty"`
+	EffectEvery      int             `json:"effect_every,omitempty"`
+	EffectIndexHint  int             `json:"effect_index_hint,omitempty"`
+	OverlayOpacity   float64         `json:"overlay_opacity,omitempty"`
+	KeyframeInterval uint32          `json:"keyframe_interval,omitempty"`
+	Font             string          `json:"font,omitempty"`
+	Effects          []renderEffect  `json:"effects,omitempty"`
+	Overlays         []renderOverlay `json:"overlays,omitempty"`
+	MaxDurationSec   float64         `json:"max_duration_sec,omitempty"`
+}
+
+type renderEffect struct {
+	Path     string  `json:"path"`
+	DelayMS  int     `json:"delay_ms"`
+	Duration float64 `json:"duration"`
+	Volume   string  `json:"volume"`
+}
+
+type renderOverlay struct {
+	Text  string `json:"text"`
+	Start string `json:"start"`
+	End   string `json:"end"`
+	Size  string `json:"size"`
+	Y     string `json:"y"`
+	Color string `json:"color"`
 }
 
 type response struct {
@@ -199,6 +234,84 @@ func (p *VideoProcessor) run(ctx context.Context, req request) error {
 	_, err := p.client.call(ctx, req)
 	return err
 }
+
+// AdminMediaProcessor adapts the Rust capabilities to the operator media
+// ports. Drive traversal and publication remain in Go.
+type AdminMediaProcessor struct {
+	client *Client
+	policy config.VideoEncoderPolicy
+}
+
+func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *AdminMediaProcessor {
+	return &AdminMediaProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
+}
+
+func (p *AdminMediaProcessor) Probe(ctx context.Context, path string) (time.Duration, error) {
+	info, err := (&VideoProcessor{client: p.client}).Probe(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	return info.Duration, nil
+}
+
+func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSeconds float64) error {
+	ext := filepath.Ext(inputPath)
+	tmpPath := inputPath + ".trim.tmp" + ext
+	defer os.Remove(tmpPath)
+	_, err := p.client.call(ctx, request{
+		Operation: "trim", SourcePath: inputPath, OutputPath: tmpPath,
+		MaxDurationSec: maxSeconds, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
+	})
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, inputPath)
+}
+
+func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.RenderManifest) error {
+	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF}
+	for _, effect := range manifest.Effects {
+		req.Effects = append(req.Effects, renderEffect{Path: effect.Path, DelayMS: effect.DelayMS, Duration: effect.Duration, Volume: effect.Volume})
+	}
+	for _, overlay := range manifest.Overlays {
+		req.Overlays = append(req.Overlays, renderOverlay{Text: overlay.Text, Start: overlay.Start, End: overlay.End, Size: overlay.Size, Y: overlay.Y, Color: overlay.Color})
+	}
+	_, err := p.client.call(ctx, req)
+	return err
+}
+
+var _ adminmedia.AudioEditor = (*AdminMediaProcessor)(nil)
+var _ adminmedia.ShortRenderer = (*AdminMediaProcessor)(nil)
+
+// StockRenderer adapts the neutral StockRenderer port to the Rust
+// render_stock capability. Transition and effect selection remains encoded in
+// the neutral request; Rust owns FFmpeg graph construction and execution.
+type StockRenderer struct {
+	client *Client
+}
+
+func NewStockRenderer(binaryPath, ffmpegPath string, log *zap.Logger) *StockRenderer {
+	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log)}
+}
+
+func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
+	_, err := r.client.call(ctx, request{
+		Operation: "render_stock", OutputPath: input.OutputPath, InputPaths: input.InputPaths,
+		Codec: input.Codec, Preset: input.Preset, CRF: input.CRF,
+		Width: uint32(input.Width), Height: uint32(input.Height), FPS: uint32(input.FPS),
+		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,
+		TransitionEvery: input.TransitionEvery, ClipDurationSec: input.ClipDurationSec,
+		NoEffects: input.NoEffects, EffectsDir: input.EffectsDir,
+		EffectEvery: input.EffectEvery, EffectIndexHint: input.EffectIndexHint,
+		OverlayOpacity: input.OverlayOpacity, KeyframeInterval: uint32(input.KeyframeInterval),
+	})
+	if err != nil {
+		return stockpipeline.RenderResult{}, err
+	}
+	return stockpipeline.RenderResult{UsedFastPath: input.NoTransitions && input.NoEffects}, nil
+}
+
+var _ stockpipeline.StockRenderer = (*StockRenderer)(nil)
 
 func durationFromSeconds(seconds float64) time.Duration {
 	return time.Duration(seconds * float64(time.Second))
