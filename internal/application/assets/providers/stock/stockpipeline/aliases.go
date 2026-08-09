@@ -53,6 +53,8 @@ type TransitionRegistry = types.TransitionRegistry
 
 type RenderRequest = types.RenderRequest
 type RenderResult = types.RenderResult
+type RenderTransition = types.RenderTransition
+type RenderEffectPath = types.RenderEffectPath
 type SourceDurationProbe = types.SourceDurationProbe
 type CutRequest = types.CutRequest
 type CutJob = types.CutJob

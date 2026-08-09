@@ -23,43 +23,52 @@ import (
 )
 
 type request struct {
-	Version          string          `json:"version"`
-	Operation        string          `json:"operation"`
-	FFmpegPath       string          `json:"ffmpeg_path,omitempty"`
-	SourcePath       string          `json:"source_path,omitempty"`
-	OutputPath       string          `json:"output_path,omitempty"`
-	TimestampSec     float64         `json:"timestamp_sec,omitempty"`
-	StartSec         float64         `json:"start_sec,omitempty"`
-	EndSec           float64         `json:"end_sec,omitempty"`
-	IntervalFrames   uint32          `json:"interval_frames,omitempty"`
-	Columns          uint32          `json:"columns,omitempty"`
-	Rows             uint32          `json:"rows,omitempty"`
-	Codec            string          `json:"codec,omitempty"`
-	Preset           string          `json:"preset,omitempty"`
-	CRF              int             `json:"crf,omitempty"`
-	Width            uint32          `json:"width,omitempty"`
-	Height           uint32          `json:"height,omitempty"`
-	FPS              uint32          `json:"fps,omitempty"`
-	DurationSec      float64         `json:"duration_sec,omitempty"`
-	KeepAudio        bool            `json:"keep_audio,omitempty"`
-	NoAudio          bool            `json:"no_audio,omitempty"`
-	OverlayPath      string          `json:"overlay_path,omitempty"`
-	Opacity          float64         `json:"opacity,omitempty"`
-	InputPaths       []string        `json:"input_paths,omitempty"`
-	Jobs             []cutRequestJob `json:"jobs,omitempty"`
-	NoTransitions    bool            `json:"no_transitions,omitempty"`
-	TransitionEvery  int             `json:"transition_every,omitempty"`
-	ClipDurationSec  int             `json:"clip_duration_sec,omitempty"`
-	NoEffects        bool            `json:"no_effects,omitempty"`
-	EffectsDir       string          `json:"effects_dir,omitempty"`
-	EffectEvery      int             `json:"effect_every,omitempty"`
-	EffectIndexHint  int             `json:"effect_index_hint,omitempty"`
-	OverlayOpacity   float64         `json:"overlay_opacity,omitempty"`
-	KeyframeInterval uint32          `json:"keyframe_interval,omitempty"`
-	Font             string          `json:"font,omitempty"`
-	Effects          []renderEffect  `json:"effects,omitempty"`
-	Overlays         []renderOverlay `json:"overlays,omitempty"`
-	MaxDurationSec   float64         `json:"max_duration_sec,omitempty"`
+	Version          string             `json:"version"`
+	Operation        string             `json:"operation"`
+	FFmpegPath       string             `json:"ffmpeg_path,omitempty"`
+	SourcePath       string             `json:"source_path,omitempty"`
+	OutputPath       string             `json:"output_path,omitempty"`
+	TimestampSec     float64            `json:"timestamp_sec,omitempty"`
+	StartSec         float64            `json:"start_sec,omitempty"`
+	EndSec           float64            `json:"end_sec,omitempty"`
+	IntervalFrames   uint32             `json:"interval_frames,omitempty"`
+	Columns          uint32             `json:"columns,omitempty"`
+	Rows             uint32             `json:"rows,omitempty"`
+	Codec            string             `json:"codec,omitempty"`
+	Preset           string             `json:"preset,omitempty"`
+	CRF              int                `json:"crf,omitempty"`
+	Width            uint32             `json:"width,omitempty"`
+	Height           uint32             `json:"height,omitempty"`
+	FPS              uint32             `json:"fps,omitempty"`
+	DurationSec      float64            `json:"duration_sec,omitempty"`
+	KeepAudio        bool               `json:"keep_audio,omitempty"`
+	NoAudio          bool               `json:"no_audio,omitempty"`
+	OverlayPath      string             `json:"overlay_path,omitempty"`
+	Opacity          float64            `json:"opacity,omitempty"`
+	InputPaths       []string           `json:"input_paths,omitempty"`
+	Jobs             []cutRequestJob    `json:"jobs,omitempty"`
+	NoTransitions    bool               `json:"no_transitions,omitempty"`
+	ClipDurationSec  int                `json:"clip_duration_sec,omitempty"`
+	NoEffects        bool               `json:"no_effects,omitempty"`
+	Transitions      []renderTransition `json:"transitions,omitempty"`
+	EffectPaths      []renderEffectPath `json:"effect_paths,omitempty"`
+	OverlayOpacity   float64            `json:"overlay_opacity,omitempty"`
+	KeyframeInterval uint32             `json:"keyframe_interval,omitempty"`
+	Font             string             `json:"font,omitempty"`
+	Effects          []renderEffect     `json:"effects,omitempty"`
+	Overlays         []renderOverlay    `json:"overlays,omitempty"`
+	MaxDurationSec   float64            `json:"max_duration_sec,omitempty"`
+}
+
+type renderTransition struct {
+	ClipIndex int    `json:"clip_index"`
+	Segment   string `json:"segment"`
+	ID        string `json:"id"`
+}
+
+type renderEffectPath struct {
+	ClipIndex int    `json:"clip_index"`
+	Path      string `json:"path"`
 }
 
 type renderEffect struct {
@@ -416,9 +425,10 @@ func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.Re
 var _ adminmedia.AudioEditor = (*AdminMediaProcessor)(nil)
 var _ adminmedia.ShortRenderer = (*AdminMediaProcessor)(nil)
 
-// StockRenderer adapts the neutral StockRenderer port to the Rust
-// render_stock capability. Transition and effect selection remains encoded in
-// the neutral request; Rust owns FFmpeg graph construction and execution.
+// StockRenderer adapts the resolved neutral StockRenderer port to the Rust
+// render_stock capability. Go resolves transition IDs and exact effect paths
+// before this adapter serializes the request; Rust owns only graph construction
+// and execution.
 type StockRenderer struct {
 	client *Client
 	policy config.VideoEncoderPolicy
@@ -429,7 +439,31 @@ func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderP
 }
 
 func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
+	if !input.NoTransitions && len(input.Transitions) == 0 {
+		return stockpipeline.RenderResult{}, fmt.Errorf("unresolved render plan: transitions must be resolved by Go")
+	}
+	if !input.NoEffects && len(input.EffectPaths) == 0 {
+		return stockpipeline.RenderResult{}, fmt.Errorf("unresolved render plan: effect paths must be resolved by Go")
+	}
+	for _, transition := range input.Transitions {
+		if transition.ID == "" || (transition.Segment != "start" && transition.Segment != "end") {
+			return stockpipeline.RenderResult{}, fmt.Errorf("invalid resolved transition assignment")
+		}
+	}
+	for _, effect := range input.EffectPaths {
+		if effect.Path == "" {
+			return stockpipeline.RenderResult{}, fmt.Errorf("invalid resolved effect path assignment")
+		}
+	}
 	codec, preset, crf, err := (&VideoProcessor{client: r.client, policy: r.policy}).policyFor(input.Codec, input.Preset, input.CRF)
+	wireTransitions := make([]renderTransition, len(input.Transitions))
+	for i, transition := range input.Transitions {
+		wireTransitions[i] = renderTransition{ClipIndex: transition.ClipIndex, Segment: transition.Segment, ID: transition.ID}
+	}
+	wireEffects := make([]renderEffectPath, len(input.EffectPaths))
+	for i, effect := range input.EffectPaths {
+		wireEffects[i] = renderEffectPath{ClipIndex: effect.ClipIndex, Path: effect.Path}
+	}
 	if err != nil {
 		return stockpipeline.RenderResult{}, err
 	}
@@ -438,10 +472,9 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 		Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(input.Width), Height: uint32(input.Height), FPS: uint32(input.FPS),
 		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,
-		TransitionEvery: input.TransitionEvery, ClipDurationSec: input.ClipDurationSec,
-		NoEffects: input.NoEffects, EffectsDir: input.EffectsDir,
-		EffectEvery: input.EffectEvery, EffectIndexHint: input.EffectIndexHint,
-		OverlayOpacity: input.OverlayOpacity, KeyframeInterval: uint32(input.KeyframeInterval),
+		ClipDurationSec: input.ClipDurationSec, Transitions: wireTransitions,
+		NoEffects: input.NoEffects, EffectPaths: wireEffects, OverlayOpacity: input.OverlayOpacity,
+		KeyframeInterval: uint32(input.KeyframeInterval),
 	})
 	if err != nil {
 		return stockpipeline.RenderResult{}, err
