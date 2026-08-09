@@ -3,6 +3,7 @@ package rustexec
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
@@ -50,7 +51,10 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	client.runner = runner
 	processor := &VideoProcessor{client: client}
 
-	opts := ffmpeg.NormalizeOptions{Duration: 30, DisableDuration: true, KeepAudio: true}
+	opts := ffmpeg.NormalizeOptions{
+		Duration: 30, DisableDuration: true, KeepAudio: true,
+		Policy: config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23},
+	}
 	if err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", opts); err != nil {
 		t.Fatalf("Normalize() error = %v", err)
 	}
@@ -82,6 +86,42 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	}
 	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || sent.TransitionEvery != 2 {
 		t.Fatalf("unexpected render request: %+v", sent)
+	}
+}
+
+func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
+	out := t.TempDir() + "/clip.mp4"
+	if err := os.WriteFile(out, []byte("clip"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
+	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, nil)
+	processor.client.runner = runner
+
+	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "source.mp4",
+		Jobs:       []stockpipeline.CutJob{{StartSec: 1, EndSec: 2, OutputPath: out}},
+	})
+	if err != nil {
+		t.Fatalf("Cut() error = %v", err)
+	}
+	if result.Items[0].Status != stockpipeline.CutItemStatusValidated {
+		t.Fatalf("unexpected cut result: %+v", result.Items[0])
+	}
+	var sent request
+	if err := json.Unmarshal(runner.input, &sent); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || len(sent.Jobs) != 1 {
+		t.Fatalf("unexpected shared cut request: %+v", sent)
+	}
+}
+
+func TestVideoProcessorEncodingFailsWithoutPolicy(t *testing.T) {
+	processor := NewVideoProcessor("muscles", "ffmpeg", nil)
+	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", ffmpeg.NormalizeOptions{})
+	if err == nil || err.Error() != "ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy" {
+		t.Fatalf("Normalize() error = %v, want missing policy error", err)
 	}
 }
 

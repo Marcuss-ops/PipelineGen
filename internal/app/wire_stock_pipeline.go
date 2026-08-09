@@ -124,12 +124,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		cfg.External.MediaExecutor,
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
+		cfg.Video.EncoderPolicy(),
 		log,
 	)
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, log)
+	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
