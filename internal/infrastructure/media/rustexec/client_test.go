@@ -96,7 +96,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
-	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, nil)
+	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, config.CanonicalVideoProfile{}.WithDefaults(), nil)
 	processor.client.runner = runner
 
 	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{

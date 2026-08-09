@@ -12,12 +12,13 @@ import (
 )
 
 type AdminMediaProcessor struct {
-	client *Client
-	policy config.VideoEncoderPolicy
+	client  *Client
+	policy  config.VideoEncoderPolicy
+	profile config.CanonicalVideoProfile
 }
 
-func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *AdminMediaProcessor {
-	return &AdminMediaProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
+func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *AdminMediaProcessor {
+	return &AdminMediaProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
 }
 
 func (p *AdminMediaProcessor) Probe(ctx context.Context, path string) (time.Duration, error) {
@@ -35,6 +36,8 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 	_, err := p.client.call(ctx, request{
 		Operation: "trim", SourcePath: inputPath, OutputPath: tmpPath,
 		MaxDurationSec: maxSeconds, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
+		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPS: uint32(p.profile.FPS), KeyframeInterval: uint32(p.profile.KeyframeInterval),
+		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels),
 	})
 	if err != nil {
 		return err
@@ -43,7 +46,9 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 }
 
 func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.RenderManifest) error {
-	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF}
+	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
+		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPS: uint32(p.profile.FPS), KeyframeInterval: uint32(p.profile.KeyframeInterval),
+		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels)}
 	for _, effect := range manifest.Effects {
 		req.Effects = append(req.Effects, renderEffect{Path: effect.Path, DelayMS: effect.DelayMS, Duration: effect.Duration, Volume: effect.Volume})
 	}

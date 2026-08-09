@@ -39,7 +39,7 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
 	defer cancel()
-	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), log), uploader)
+	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log), uploader)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,11 @@ type request struct {
 	Width            uint32             `json:"width,omitempty"`
 	Height           uint32             `json:"height,omitempty"`
 	FPS              uint32             `json:"fps,omitempty"`
+	KeyframeInterval uint32             `json:"keyframe_interval,omitempty"`
+	AudioCodec       string             `json:"audio_codec,omitempty"`
+	AudioBitrate     string             `json:"audio_bitrate,omitempty"`
+	SampleRate       uint32             `json:"sample_rate,omitempty"`
+	Channels         uint32             `json:"channels,omitempty"`
 	DurationSec      float64            `json:"duration_sec,omitempty"`
 	KeepAudio        bool               `json:"keep_audio,omitempty"`
 	NoAudio          bool               `json:"no_audio,omitempty"`
@@ -31,7 +36,6 @@ type request struct {
 	Transitions      []renderTransition `json:"transitions,omitempty"`
 	EffectPaths      []renderEffectPath `json:"effect_paths,omitempty"`
 	OverlayOpacity   float64            `json:"overlay_opacity,omitempty"`
-	KeyframeInterval uint32             `json:"keyframe_interval,omitempty"`
 	Font             string             `json:"font,omitempty"`
 	Effects          []renderEffect     `json:"effects,omitempty"`
 	Overlays         []renderOverlay    `json:"overlays,omitempty"`

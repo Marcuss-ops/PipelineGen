@@ -56,7 +56,7 @@ func runRenderShort(args []string) error {
 			return err
 		}
 	}
-	result, err := adminmedia.RenderShort(ctx, manifest, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, policy, log), uploader)
+	result, err := adminmedia.RenderShort(ctx, manifest, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, policy, cfg.Video.CanonicalVideoProfile(), log), uploader)
 	if err != nil {
 		return err
 	}

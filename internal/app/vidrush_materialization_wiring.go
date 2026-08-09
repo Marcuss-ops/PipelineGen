@@ -54,7 +54,7 @@ func buildVidRushMaterialization(cfg *config.Config, root *wiring.ComposeRoot, a
 		if cfg == nil {
 			return nil, nil
 		}
-		_ = registry.Register(&vidRushArtlistProvider{search: artlistWiring.ProviderAssets, downloader: artlistWiring.ArtlistDownloader, probe: rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), log)})
+		_ = registry.Register(&vidRushArtlistProvider{search: artlistWiring.ProviderAssets, downloader: artlistWiring.ArtlistDownloader, probe: rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)})
 	}
 	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
 		_ = registry.Register(&vidRushInternetImageProvider{searcher: newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)})
