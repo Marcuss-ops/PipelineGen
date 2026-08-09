@@ -43,6 +43,40 @@ func contains(values []string, want string) bool {
 	return false
 }
 
+func TestLoadCanonicalApplicationAreas(t *testing.T) {
+	t.Run("multiline list parses", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "policy.yaml")
+		content := "canonical_application_areas:\n  - internal/application/images\n  - internal/application/scripts\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		want := []string{"internal/application/images", "internal/application/scripts"}
+		if !reflect.DeepEqual(p.CanonicalApplicationAreas, want) {
+			t.Fatalf("CanonicalApplicationAreas=%v, want %v", p.CanonicalApplicationAreas, want)
+		}
+	})
+
+	for name, content := range map[string]string{
+		"duplicate":           "canonical_application_areas:\n  - internal/application/images\n  - internal/application/images\n",
+		"traversal":           "canonical_application_areas:\n  - internal/application/../images\n",
+		"outside application": "canonical_application_areas:\n  - internal/infrastructure\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "policy.yaml")
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "canonical application area") {
+				t.Fatalf("expected canonical-area validation error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsUnknownTopLevelKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "policy.yaml")
 	if err := os.WriteFile(path, []byte("max_files_per_package: 40\nunknown_arch_rule: true\n"), 0o644); err != nil {

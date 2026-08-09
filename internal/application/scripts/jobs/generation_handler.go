@@ -27,6 +27,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
@@ -44,6 +45,7 @@ import (
 type GenerateJobHandler struct {
 	log        *zap.Logger
 	dispatcher GenerationDispatcher
+	runRepo    scriptgen.RunRepository
 }
 
 // NewGenerateJobHandler wires the handler to the unified use cases.
@@ -52,13 +54,28 @@ func NewGenerateJobHandler(
 	one *usecase.GenerateOneUseCase,
 	many *usecase.GenerateManyUseCase,
 	log *zap.Logger,
+	runRepo ...scriptgen.RunRepository,
 ) *GenerateJobHandler {
+	var repo scriptgen.RunRepository
+	if len(runRepo) > 0 {
+		repo = runRepo[0]
+	}
 	return &GenerateJobHandler{
-		log: log,
+		log:     log,
+		runRepo: repo,
 		dispatcher: NewGenerationDispatcher(
 			NewSingleGenerationExecutor(one, log),
 			NewBatchGenerationExecutor(many, log),
 		),
+	}
+}
+
+// SetRunRepository wires the optional durable run lifecycle observer after
+// the composition root has built the SQLite adapter. Keeping this setter
+// separate avoids moving repository construction ahead of use-case wiring.
+func (h *GenerateJobHandler) SetRunRepository(repo scriptgen.RunRepository) {
+	if h != nil {
+		h.runRepo = repo
 	}
 }
 
@@ -94,9 +111,26 @@ func (h *GenerateJobHandler) Handle(
 	if err := checkPipelineCtx(ctx, h.log, "handler-entry"); err != nil {
 		return nil, err
 	}
+	var run *scriptgen.GenerationRun
+	if h.runRepo != nil {
+		run, _ = h.runRepo.GetByJobID(ctx, j.ID)
+		if run != nil {
+			// The HTTP starter creates the run before the job is committed;
+			// the worker is the owner of the execution lifecycle thereafter.
+			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageGeneratingSceneText)
+		}
+	}
 
 	env, err := domainScript.DecodeEnvelopeV2(j.Payload)
 	if err != nil {
+		if run != nil {
+			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
+				RunID:        run.ID,
+				FailedStage:  scriptgen.StageFailed,
+				ErrorCode:    "INVALID_GENERATION_PAYLOAD",
+				ErrorMessage: err.Error(),
+			})
+		}
 		return nil, fmt.Errorf("generate job handler: decode envelope: %w", err)
 	}
 
@@ -107,5 +141,21 @@ func (h *GenerateJobHandler) Handle(
 			zap.Int("items", len(env.Items)))
 	}
 
-	return h.dispatcher.Dispatch(ctx, j, env, tools)
+	result, dispatchErr := h.dispatcher.Dispatch(ctx, j, env, tools)
+	if run != nil {
+		if dispatchErr != nil {
+			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{
+				RunID:        run.ID,
+				FailedStage:  scriptgen.StageFailed,
+				ErrorCode:    "SCRIPT_GENERATION_FAILED",
+				ErrorMessage: dispatchErr.Error(),
+			})
+		} else if parentState, _ := result["parent_state"].(string); parentState == "waiting_children" {
+			// The parent aggregator owns terminal completion for batches.
+			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusRunning, scriptgen.StageWorkerQueued)
+		} else {
+			_ = h.runRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted)
+		}
+	}
+	return result, dispatchErr
 }

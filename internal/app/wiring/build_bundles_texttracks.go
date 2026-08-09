@@ -313,6 +313,7 @@ func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 		nested.Enabled ||
 		nested.RequireLanguageCertainty ||
 		nested.RequireTranscriptReady ||
+		nested.RequireAllLanguagesBeforeVideo ||
 		nested.SourceLanguage != "" ||
 		nested.TranslationPolicy != "" {
 		return nested

@@ -229,13 +229,18 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			}
 		}
 
+		requireAllLanguages := u.observability.RequireAllLanguagesBeforeVideo
+		if cmd.RequireAllLanguagesBeforeVideo != nil {
+			requireAllLanguages = *cmd.RequireAllLanguagesBeforeVideo
+		}
+
 		superCmd := localized.CommitLocalizedClipCommand{
 			Clip:                           clipAsset,
 			TextTracks:                     tracks,
 			TimedTracks:                    timedTracks,
 			IndexEvent:                     event,
 			RequireTranscriptReady:         u.observability.RequireTranscriptReady,
-			RequireAllLanguagesBeforeVideo: u.observability.RequireAllLanguagesBeforeVideo,
+			RequireAllLanguagesBeforeVideo: requireAllLanguages,
 			PreferredLanguages:             u.observability.PreferredLanguages,
 		}
 

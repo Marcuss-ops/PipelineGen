@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ var policyBindings = map[string]fieldBinding{
 	"forbidden_top_level_dirs":        stringListBinding("ForbiddenTopLevelDirs", "scan.ScanForbiddenDirs", func(p *Policy, v []string) { p.ForbiddenTopLevelDirs = v }),
 	"kernel_subzones":                 stringListBinding("KernelSubzones", "scan.ScanKernelSubzoneHints + ScanKernelSubzoneIntegrity", func(p *Policy, v []string) { p.KernelSubzones = v }),
 	"capabilities":                    stringListBinding("Capabilities", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.Capabilities = v }),
+	"canonical_application_areas":     canonicalApplicationAreasBinding(),
 	"platform_subzones":               stringListBinding("PlatformSubzones", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.PlatformSubzones = v }),
 	"legacy_internal_roots":           stringListBinding("LegacyInternalRoots", "scan.ScanUnknownInternalRoots", func(p *Policy, v []string) { p.LegacyInternalRoots = v }),
 	"target_internal_roots":           stringListBinding("TargetInternalRoots", "scan.ScanUnknownInternalRoots", func(p *Policy, v []string) { p.TargetInternalRoots = v }),
@@ -186,6 +188,16 @@ func stringListBinding(field, consumer string, set func(*Policy, []string)) fiel
 }
 
 func appendListValue(p *Policy, binding fieldBinding, value string) error {
+	if binding.Field == "CanonicalApplicationAreas" {
+		if err := validateCanonicalApplicationArea(value); err != nil {
+			return err
+		}
+		for _, existing := range p.CanonicalApplicationAreas {
+			if existing == value {
+				return fmt.Errorf("duplicate canonical application area %q", value)
+			}
+		}
+	}
 	field := reflect.ValueOf(p).Elem().FieldByName(binding.Field)
 	if !field.IsValid() || field.Kind() != reflect.Slice || field.Type().Elem().Kind() != reflect.String {
 		return fmt.Errorf("binding %s is not a []string Policy field", binding.Field)
@@ -214,6 +226,47 @@ func splitTrim(s string) []string {
 		}
 	}
 	return out
+}
+
+func canonicalApplicationAreasBinding() fieldBinding {
+	return fieldBinding{
+		Field:    "CanonicalApplicationAreas",
+		Consumer: "scan.ScanCanonicalApplicationInfrastructureImports",
+		List:     true,
+		Apply: func(p *Policy, raw string) error {
+			values := splitTrim(raw)
+			if len(values) == 0 {
+				return fmt.Errorf("list cannot be empty")
+			}
+			seen := make(map[string]struct{}, len(values))
+			for _, value := range values {
+				if err := validateCanonicalApplicationArea(value); err != nil {
+					return err
+				}
+				if _, ok := seen[value]; ok {
+					return fmt.Errorf("duplicate canonical application area %q", value)
+				}
+				seen[value] = struct{}{}
+			}
+			p.CanonicalApplicationAreas = values
+			return nil
+		},
+	}
+}
+
+func validateCanonicalApplicationArea(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(value, "/") || filepath.IsAbs(value) {
+		return fmt.Errorf("canonical application area must be a relative path, got %q", value)
+	}
+	clean := filepath.ToSlash(filepath.Clean(value))
+	if clean != value || clean == "." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") || clean == ".." {
+		return fmt.Errorf("canonical application area must be normalized and cannot traverse parents, got %q", value)
+	}
+	if clean != "internal/application" && !strings.HasPrefix(clean, "internal/application/") {
+		return fmt.Errorf("canonical application area must be under internal/application, got %q", value)
+	}
+	return nil
 }
 
 func collectBullet(line string) (string, bool) {

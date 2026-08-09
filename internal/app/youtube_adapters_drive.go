@@ -19,19 +19,22 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): the canonical
 // YouTubePublisherDriveAdapter is the SOLE owner of the
-// DriveFolderManagerPort implementation in production. The 2
-// RootFolderOverride=parentFolderID + RootFolderOverride=folderID
-// literals previously threaded through Publisher.ResolveFolder /
-// Publisher.Publish are RETIRED — the canonical Publisher now
-// resolves the root folder for DestinationYouTubeClip via
-// DestinationRegistry + DestinationPolicy.RootFolderID (single
-// source of truth for root folders per the
-// architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
+// DriveFolderManagerPort implementation in production. Folder writes
+// are threaded as DestinationFolderID (canonical leaf semantics — the
+// upload lands directly in the payload-selected Drive folder); the
+// legacy RootFolderOverride escape hatch is used only by
+// GetOrCreateFolder to pin the channel folder under a caller-selected
+// Drive root. The canonical Publisher resolves the root folder for
+// DestinationYouTubeClip via DestinationRegistry +
+// DestinationPolicy.RootFolderID (single source of truth for root
+// folders per the architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY
+// wave).
 package app
 
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -119,30 +122,29 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 }
 
 func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*youtubeports.UploadResultDTO, bool, error) {
-	// Thread the resolved folder into RootFolderOverride so the
-	// publisher writes into the payload-selected Drive folder.
-	// Without this, the DestinationRegistry root wins and uploads
-	// drift to the configured default folder.
+	// Thread the resolved folder into DestinationFolderID so the
+	// publisher writes directly INTO the payload-selected Drive folder.
+	// DestinationFolderID is the canonical application-layer leaf
+	// (resolveDestination returns it verbatim without consulting the
+	// registry, path builders, or catalog) — RootFolderOverride would
+	// re-run the DestinationYouTubeClip path builder and drift uploads
+	// into a `youtube_uncategorized/<video_id>` subfolder under the
+	// selected root.
 	if a.publisher == nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: publisher not wired")
 	}
-	rootOverride := ""
-	if folderID != "" {
-		rootOverride = folderID
-	}
+	destFolderID := strings.TrimSpace(folderID)
 	result, err := a.publisher.Publish(ctx, delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   localPath,
 		Filename:    filename,
 		Group:       group,
 		Subject:     subject,
-		// Thread the resolved folder into RootFolderOverride so the
-		// publisher writes into the payload-selected Drive folder.
-		// The test contract at youtube_adapters_drive_test.go:TestUpload-
-		// FileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy
-		// asserts RootFolderOverride = resolved-folder-id.
-		RootFolderOverride: rootOverride,
-		ConflictPolicy:     delivery.ConflictSkipByHash,
+		// Thread the resolved folder into DestinationFolderID so the
+		// publisher writes directly into the payload-selected Drive
+		// folder (leaf semantics, no path-builder subfolder).
+		DestinationFolderID: destFolderID,
+		ConflictPolicy:      delivery.ConflictSkipByHash,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)

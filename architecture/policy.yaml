@@ -145,6 +145,17 @@ stale_prose_paths:
   - module_youtube
 
 	  - subject_bindings
+# Canonical application areas are explicit DoD scope. Every production Go file
+# under these paths must remain free of direct internal/infrastructure imports;
+# the composition root owns concrete adapter wiring. This list is deliberately
+# narrower than all of internal/application while migrations remain in progress.
+canonical_application_areas:
+  - internal/application/images
+  - internal/application/assets/artifacts
+  - internal/application/scripts
+  - internal/application/assets/catalogsync
+  - internal/application/assets/providers/stock/stockpipeline
+
 # Expected capability slices (target: internal/capabilities/<x>).
 # Each owns module.go, contract.go, service.go, http.go, jobs.go,
 # events.go, repository.go, adapters.go per proposal §"internal/capabilities".
@@ -458,3 +469,9 @@ hard_gates:
   # Warning residue cannot grow silently; reduce the budget as warnings are
   # removed rather than raising it to mask new architectural drift.
   - warning_budget
+  # Canonical application areas have a zero-baseline direct-infrastructure
+  # import contract. Missing declarations/paths and malformed production Go
+  # files fail closed alongside the import rule.
+  - percheck_canonical_application_infrastructure_imports
+  - percheck_canonical_application_infrastructure_imports_missing_area
+  - percheck_canonical_application_infrastructure_imports_parse_error

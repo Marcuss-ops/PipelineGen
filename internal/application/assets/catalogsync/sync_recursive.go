@@ -83,6 +83,10 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	// Folder metadata is persisted in media_assets as a non-vector asset.
+	// It still needs a valid lifecycle state; leaving this empty makes the
+	// canonical SQLite state trigger reject the whole recursive sync.
+	rootClip.LifecycleState = asset.StateActive
 	rootClip.SetFolderID(target.RootFolderID)
 	rootClip.SetParentFolderID("")
 	rootClip.SetDepth(0)
@@ -181,9 +185,10 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 		// file is therefore online immediately; indexing is tracked separately
 		// by index_state and the transactional outbox. Folders remain metadata
 		// nodes and are never made indexable below.
-		if child.MimeType != folderMimeType {
-			clip.LifecycleState = asset.StateActive
-		}
+		// Both files and folder metadata are live Drive discoveries. Folders
+		// remain non-indexable via IsFolder, but must still carry a valid
+		// lifecycle state for the SQLite state trigger.
+		clip.LifecycleState = asset.StateActive
 		clip.SetFolderID(child.ID)
 		clip.SetParentFolderID(folderID)
 		clip.SetDepth(0)

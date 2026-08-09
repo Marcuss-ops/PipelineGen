@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -137,6 +138,20 @@ func (r *SQLiteRunRepository) GetByJobID(ctx context.Context, jobID string) (*sc
 		return nil, errors.New("scriptgeneration: GetByJobID: jobID is empty")
 	}
 	row := r.db.QueryRowContext(ctx, selectRunSQL+" WHERE job_id = ? LIMIT 1", jobID)
+	return r.scanRow(row)
+}
+
+// GetByIdempotencyKey returns the most recent non-superseded run for a
+// submission key. The operations table remains the idempotency authority;
+// this lookup only prevents duplicate pipeline-run ledger rows on replay.
+func (r *SQLiteRunRepository) GetByIdempotencyKey(ctx context.Context, key string) (*scriptgen.GenerationRun, error) {
+	if strings.TrimSpace(key) == "" {
+		return nil, errors.New("scriptgeneration: GetByIdempotencyKey: key is empty")
+	}
+	row := r.db.QueryRowContext(ctx, selectRunSQL+`
+		WHERE idempotency_key = ?
+		ORDER BY created_at DESC
+		LIMIT 1`, key)
 	return r.scanRow(row)
 }
 

@@ -27,7 +27,9 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -60,6 +62,14 @@ type workerDeps struct {
 // "Voiceover parent aggregator (Step 4 / micro-commit #5)" rationale.
 func buildWorkerSteps(deps workerDeps) []StartupStep {
 	var steps []StartupStep
+	var scriptRunRepo scriptgen.RunRepository
+	if deps.root != nil && deps.root.DB != nil {
+		if repo, err := scriptgenrepo.NewSQLiteRunRepository(deps.root.DB.DB, deps.log); err == nil {
+			scriptRunRepo = repo
+		} else if deps.log != nil {
+			deps.log.Warn("script parent aggregator: run repository unavailable", zap.Error(err))
+		}
+	}
 
 	// Self-heartbeat (July 2026): when the server runs in --mode all or
 	// --mode worker without an external cmd/worker, the BrokerLastHeartbeat
@@ -169,6 +179,7 @@ func buildWorkerSteps(deps workerDeps) []StartupStep {
 	if jobsService != nil {
 		scriptAgg := scriptjobs.NewScriptParentAggregator(scriptjobs.ScriptAggregatorDeps{
 			JobsSvc:      jobsService,
+			RunRepo:      scriptRunRepo,
 			Logger:       deps.log,
 			PollInterval: 30 * time.Second,
 		})

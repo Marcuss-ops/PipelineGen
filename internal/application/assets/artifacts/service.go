@@ -3,16 +3,28 @@ package artifacts
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"go.uber.org/zap"
-
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
+
+func randomHex(n int) string {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		fallback := fmt.Sprintf("%x", time.Now().UnixNano())
+		for len(fallback) < n {
+			fallback += fallback
+		}
+		return fallback[:n]
+	}
+	return hex.EncodeToString(buf)[:n]
+}
 
 // Service manages the artifact lifecycle: Stage → Verify → Promote.
 // It coordinates between the BlobStore (content-addressed storage) and
@@ -40,7 +52,7 @@ func NewService(blobs BlobStore, repo Repository, log *zap.Logger) *Service {
 // verification fails or storage is unavailable.
 func (s *Service) CreateAndVerify(ctx context.Context, input CreateInput) (*Artifact, error) {
 	if input.ID == "" {
-		input.ID = "art_" + hashutil.RandomString(16)
+		input.ID = "art_" + randomHex(16)
 	}
 	if input.Kind == "" {
 		input.Kind = "unknown"
@@ -240,7 +252,7 @@ func (s *Service) ResolveAndRegister(ctx context.Context, input ResolveAndRegist
 		)
 
 		// Record provenance even for deduplicated artifacts
-		sourceID := "src_" + hashutil.RandomString(16)
+		sourceID := "src_" + randomHex(16)
 		source := &ArtifactSource{
 			SourceID:        sourceID,
 			ArtifactID:      existing.ID,
@@ -272,7 +284,7 @@ func (s *Service) ResolveAndRegister(ctx context.Context, input ResolveAndRegist
 	}
 
 	// Step 4: Record provenance
-	sourceID := "src_" + hashutil.RandomString(16)
+	sourceID := "src_" + randomHex(16)
 	source := &ArtifactSource{
 		SourceID:        sourceID,
 		ArtifactID:      artifact.ID,

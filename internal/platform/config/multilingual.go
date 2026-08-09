@@ -50,6 +50,19 @@ type MultilingualConfig struct {
 	// the pipeline (cmd/admin/text_tracks_backfill.go).
 	RequireTranscriptReady bool `yaml:"require_transcript_ready" default:"false"`
 
+	// RequireAllLanguagesBeforeVideo is the Fase 5.1 (Aug 2026)
+	// decoupled policy gate. When true, the YouTube segment pipeline's
+	// Step 9 super-tx fails PRE-TX with
+	// localized.ErrClipLocaleNotReady unless EVERY PreferredLanguage has
+	// a READY transcript-origin track. Default false: the pipeline
+	// persists well-formed clips with only the languages actually
+	// produced (e.g. a single "en" Whisper transcript) without waiting
+	// for the full multilingual fan-out. This flag is independent from
+	// Enabled: an operator may keep the multilingual registry active
+	// for voiceover/subtitle generation while NOT gating clip-write on
+	// full translation coverage.
+	RequireAllLanguagesBeforeVideo bool `yaml:"require_all_languages_before_video" default:"false"`
+
 	// MigrationFallbackLegacyMetadata REMOVED in Fase 4 strict cutover (July 2026).
 	// The legacy metadata_json["transcript"] / metadata_json["clean_transcript"] read is
 	// RETIRED; the video pipeline reads transcripts EXCLUSIVELY from asset_text_tracks

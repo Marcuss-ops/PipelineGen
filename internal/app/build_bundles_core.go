@@ -23,7 +23,6 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/books/pythontransformer"
@@ -281,7 +280,6 @@ type buildImagesParams struct {
 	Log           *zap.Logger
 	DriveUploader *drive.Uploader
 	StyleRegistry *generation.StyleRegistry
-	ScriptGen     *ollama.Generator
 	Publisher     delivery.Publisher
 	ImageRepo     *imagesrepo.ImagesRepository
 	VOMetaWriter  semantic.MetadataWriterPort
@@ -326,11 +324,11 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
 		Core: imgservice.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: imgservice.ImagesStorageDeps{
-			ImageRepo: params.ImageRepo, DriveReader: params.DriveUploader,
+			ImageRepo: params.ImageRepo, DriveReader: newImagesDriveReaderAdapter(params.DriveUploader),
 			Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
-			LLMGen: params.ScriptGen, MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
+			MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
 			ImageGen: chromeimages.NewChromeImageProviderPoolFromProfile(
 				params.Cfg.Paths.PythonScriptsDir,
 				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,

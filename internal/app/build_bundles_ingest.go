@@ -24,6 +24,7 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -130,7 +131,7 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *wiring.Databas
 	if mutationsDisp == nil {
 		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
 	}
-	imagesRegistry := imgservice.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
+	imagesRegistry := imagesregistry.NewRegistryAdapter(repos.ImageRepo, cfg.Storage.ImagesPath(), log)
 	imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewImageStoreAdapter(repos.ImageRepo, cfg.Storage.ImagesPath())}, log)
 	voiceoverRegistry := voiceover.NewVoiceoverRegistryAdapter(repos.VoiceoverRepo)
 	voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(repos.VoiceoverRepo)}, log)

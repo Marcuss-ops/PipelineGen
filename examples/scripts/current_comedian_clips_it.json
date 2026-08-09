@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "current-comedian-clips-it",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "current-comedian-clips-it",
+      "title": "Five current comedy clips",
+      "language": "en",
+      "model": "gemma4:e4b",
+      "tone": "light, concise and documentary",
+      "style": "Write five short English introductions, one per scene and in the supplied order. Use only the supplied clip subject and title context. Do not invent quotes, events or biography. Keep each scene close to fifty words and make the narration suitable for translation and voiceover.",
+      "source": {
+        "type": "text",
+        "topic": "Five indexed comedy clips",
+        "source_text": "The five clips are ordered as follows: Chris Tucker discussing a comedy club, Tom Papa discussing children and bad words, Jack Black discussing his son and martial arts, Jamie Foxx recalling the Comedy Store, and Chris Tucker discussing shoes and Matt Damon. Each scene must remain focused on its matching clip."
+      },
+      "script_params": {
+        "target_words": 305,
+        "segment_words": 61,
+        "force_refresh": true,
+        "use_memory": false,
+        "skip_quality_gate": true,
+        "segments": [
+          {"id": "comedian-chris-tucker-club", "topic": "Chris Tucker comedy club", "target_words": 61, "source_text": "Chris Tucker discusses running a comedy club with family. Write a short, playful introduction grounded only in that subject."},
+          {"id": "comedian-tom-papa-kids", "topic": "Tom Papa children and bad words", "target_words": 61, "source_text": "Tom Papa discusses children and bad words. Write a short, playful introduction grounded only in that subject."},
+          {"id": "comedian-jack-black-son", "topic": "Jack Black young ninja", "target_words": 61, "source_text": "Jack Black discusses his son and martial arts. Write a short, playful introduction grounded only in that subject."},
+          {"id": "comedian-jamie-foxx-store", "topic": "Jamie Foxx Comedy Store", "target_words": 61, "source_text": "Jamie Foxx recalls sneaking into the Comedy Store to watch performers. Write a short, playful introduction grounded only in that subject."},
+          {"id": "comedian-chris-tucker-shoes", "topic": "Chris Tucker shoes and Matt Damon", "target_words": 61, "source_text": "Chris Tucker discusses shoes and Matt Damon. Write a short, playful introduction grounded only in that subject."}
+        ]
+      },
+      "output": {
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {"index": 0, "scene_id": "scene-0", "segment_id": "comedian-chris-tucker-club", "asset_id": "1ACocqdNciHEBScJ1-mTb9DOaPRyH4jZj", "name": "Chris Tucker comedy club", "source": "youtube", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 1, "scene_id": "scene-1", "segment_id": "comedian-tom-papa-kids", "asset_id": "1GJY5u0kE43t0YkGQ7LPhY8aXVqxYD74R", "name": "Tom Papa kids and bad words", "source": "youtube", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 2, "scene_id": "scene-2", "segment_id": "comedian-jack-black-son", "asset_id": "1YiQb90UbNsCSlF_tg6kckKaePsQF9BgQ", "name": "Jack Black young ninja", "source": "youtube", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 3, "scene_id": "scene-3", "segment_id": "comedian-jamie-foxx-store", "asset_id": "yt_ibPkLdbG4VU_150_210_v1", "name": "Jamie Foxx Comedy Store", "source": "youtube", "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 4, "scene_id": "scene-4", "segment_id": "comedian-chris-tucker-shoes", "asset_id": "14lC5FyiwBTD5QrCf4jnE08EsjPeyTYRV", "name": "Chris Tucker shoes", "source": "youtube", "fallback": false, "start_ms": 0, "end_ms": 5000}
+        ],
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": true,
+        "translate_to": "it",
+        "voiceover_folder_id": "1Cph0ypa_tBgRW_2PgTrzqy1RWW-fPe5X"
+      }
+    }
+  ]
+}

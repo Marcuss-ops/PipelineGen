@@ -218,7 +218,7 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, img := range images {
-			allClips = append(allClips, artifacts.ImageAssetToClip(img))
+			allClips = append(allClips, appclips.ImageAssetToAsset(img))
 		}
 	} else {
 		if sh.assetRepo == nil {

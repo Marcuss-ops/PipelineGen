@@ -12,8 +12,6 @@ import (
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -25,9 +23,9 @@ import (
 // AssetCommitter. The legacy drive.Store / mediaStore surface has
 // been removed.
 type ImageStorageService struct {
-	repo          *imagesrepo.ImagesRepository
+	repo          ImageRepository
 	publisher     delivery.Publisher
-	driveReader   drive.Reader
+	driveReader   DriveReader
 	cfg           *config.Config
 	imagesDir     string
 	tempDir       string

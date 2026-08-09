@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -87,7 +86,7 @@ func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genI
 	}
 
 	if existing, err := s.repo.GetImageByHash(ingestCtx, contentHash); err == nil && existing != nil {
-		existingStyle := pathutil.ExtractStyleFromPath(existing.PathRel)
+		existingStyle := extractStyleFromPath(existing.PathRel)
 		if style == "" || existingStyle == style {
 			filePath := filepath.Join(s.imagesDir, existing.PathRel)
 			if _, statErr := os.Stat(filePath); statErr == nil {

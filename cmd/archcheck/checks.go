@@ -95,6 +95,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		}},
 		{"percheck_search_aggregator_singleton", scan.ScanSearchAggregatorSingleton},
 		{"percheck_api_infrastructure_imports", scan.ScanAPIInfrastructureImports},
+		{"percheck_canonical_application_infrastructure_imports", scan.ScanCanonicalApplicationInfrastructureImports},
 		{"percheck_legacy_root_ban", scan.ScanLegacyRootImportBan},
 		{"percheck_job_ownership", scan.ScanJobOwnership},
 		{"percheck_handler_generate_fields", scan.ScanHandlerGenerateFields},

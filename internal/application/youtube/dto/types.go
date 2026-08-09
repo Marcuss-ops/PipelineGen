@@ -81,7 +81,11 @@ type ExtractRequest struct {
 	Strategy       ExtractionStrategy  `json:"strategy,omitempty"`
 	Concurrency    int                 `json:"concurrency,omitempty"`
 	Destination    *DestinationRequest `json:"destination,omitempty"`
-	Shuffle        bool                `json:"shuffle,omitempty"`
+	// RequireAllLanguagesBeforeVideo overrides the global multilingual gate
+	// for this extraction job. false allows a clip to commit with the
+	// available transcript language(s) only.
+	RequireAllLanguagesBeforeVideo *bool `json:"require_all_languages_before_video,omitempty"`
+	Shuffle                        bool  `json:"shuffle,omitempty"`
 }
 
 // UnmarshalJSON rejects the pre-destination wire shape instead of silently
@@ -230,6 +234,9 @@ type ProcessSegmentCommand struct {
 	// at the port boundary (process_segment.go::Execute).
 	Strategy    ExtractionStrategy
 	Destination *DestinationRequest
+	// RequireAllLanguagesBeforeVideo is the per-job override propagated from
+	// ExtractRequest. nil preserves the process-wide policy.
+	RequireAllLanguagesBeforeVideo *bool
 }
 
 type ProcessSegmentResult struct {

@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // UploadOnly uploads a local file to Drive WITHOUT any database
@@ -172,6 +173,14 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 		// writer of media_assets rows in the voiceover pipeline.
 		in.Source = "voiceover"
 	}
+	// Voiceover status belongs to the voiceovers state machine
+	// (generated/uploaded/completed). media_assets has a separate
+	// canonical lifecycle enum and an orthogonal index enum; passing the
+	// voiceover status through verbatim violates the SQLite state trigger.
+	// Audio voiceovers are published assets that must not enter Qdrant's
+	// vector index, so project them as ACTIVE + NOT_INDEXABLE.
+	lifecycleState := string(asset.StateActive)
+	indexState := string(asset.StateNotIndexable)
 
 	// On-conflict UPSERT: drives the canonical id-keyed SQL
 	// identity. Mirrors the legacy voiceover.lifecycle route
@@ -200,11 +209,12 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 			file_hash,
 			language,
 			lifecycle_state,
+			index_state,
 			metadata_json,
 			created_at,
 			updated_at
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 			strftime('%Y-%m-%dT%H:%M:%SZ','now'),
 			strftime('%Y-%m-%dT%H:%M:%SZ','now')
 		)
@@ -222,6 +232,7 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 			file_hash        = excluded.file_hash,
 			language         = excluded.language,
 			lifecycle_state  = excluded.lifecycle_state,
+			index_state      = excluded.index_state,
 			metadata_json    = excluded.metadata_json,
 			updated_at       = strftime('%Y-%m-%dT%H:%M:%SZ','now')
 	`
@@ -239,7 +250,8 @@ func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, i
 		in.DownloadLink,
 		in.FileHash,
 		in.Language,
-		in.Status,
+		lifecycleState,
+		indexState,
 		in.Metadata,
 	); err != nil {
 		if s.log != nil {
