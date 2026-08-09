@@ -11,12 +11,13 @@ import (
 )
 
 type StockRenderer struct {
-	client *Client
-	policy config.VideoEncoderPolicy
+	client  *Client
+	policy  config.VideoEncoderPolicy
+	profile config.CanonicalVideoProfile
 }
 
-func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *StockRenderer {
-	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
+func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
+	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
 }
 
 func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
@@ -36,7 +37,7 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 			return stockpipeline.RenderResult{}, fmt.Errorf("invalid resolved effect path assignment")
 		}
 	}
-	codec, preset, crf, err := (&VideoProcessor{client: r.client, policy: r.policy}).policyFor(input.Codec, input.Preset, input.CRF)
+	codec, preset, crf, err := (&VideoProcessor{client: r.client, policy: r.policy, profile: r.profile}).policyFor(input.Codec, input.Preset, input.CRF)
 	wireTransitions := make([]renderTransition, len(input.Transitions))
 	for i, transition := range input.Transitions {
 		wireTransitions[i] = renderTransition{ClipIndex: transition.ClipIndex, Segment: transition.Segment, ID: transition.ID}
@@ -48,14 +49,19 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 	if err != nil {
 		return stockpipeline.RenderResult{}, err
 	}
+	profile := r.profile
+	if input.Width > 0 && input.Height > 0 && input.FPS > 0 && input.KeyframeInterval > 0 {
+		profile.Width, profile.Height, profile.FPS, profile.KeyframeInterval = input.Width, input.Height, input.FPS, input.KeyframeInterval
+	}
 	_, err = r.client.call(ctx, request{
 		Operation: "render_stock", OutputPath: input.OutputPath, InputPaths: input.InputPaths,
 		Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(input.Width), Height: uint32(input.Height), FPS: uint32(input.FPS),
-		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,
-		ClipDurationSec: input.ClipDurationSec, Transitions: wireTransitions,
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		KeyframeInterval: uint32(profile.KeyframeInterval),
+		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
+		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,		ClipDurationSec: input.ClipDurationSec, Transitions: wireTransitions,
 		NoEffects: input.NoEffects, EffectPaths: wireEffects, OverlayOpacity: input.OverlayOpacity,
-		KeyframeInterval: uint32(input.KeyframeInterval),
 	})
 	if err != nil {
 		return stockpipeline.RenderResult{}, err

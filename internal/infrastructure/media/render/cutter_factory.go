@@ -13,7 +13,7 @@ import (
 
 // NewConfiguredCutter selects the media execution backend at the composition
 // root. The Rust client is the single protocol adapter for every capability.
-func NewConfiguredCutter(mode, rustBinary, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) (stockpipeline.VideoCutter, error) {
+func NewConfiguredCutter(mode, rustBinary, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) (stockpipeline.VideoCutter, error) {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "", "rust":
 		if strings.TrimSpace(rustBinary) == "" {
@@ -22,7 +22,7 @@ func NewConfiguredCutter(mode, rustBinary, ffmpegPath string, policy config.Vide
 		if _, err := exec.LookPath(rustBinary); err != nil {
 			return nil, fmt.Errorf("rust media executor %q is unavailable: %w", rustBinary, err)
 		}
-		return rustexec.NewConfiguredVideoProcessor(rustBinary, ffmpegPath, policy, log), nil
+		return rustexec.NewConfiguredVideoProcessor(rustBinary, ffmpegPath, policy, profile, log), nil
 	default:
 		return nil, fmt.Errorf("unsupported media executor %q", mode)
 	}

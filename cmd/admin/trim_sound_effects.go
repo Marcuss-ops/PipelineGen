@@ -57,7 +57,7 @@ func runTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
-	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), log)
+	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
 		var id string

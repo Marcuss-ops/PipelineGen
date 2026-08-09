@@ -15,8 +15,9 @@ import (
 )
 
 type VideoProcessor struct {
-	client *Client
-	policy config.VideoEncoderPolicy
+	client  *Client
+	policy  config.VideoEncoderPolicy
+	profile config.CanonicalVideoProfile
 }
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
@@ -26,8 +27,8 @@ func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoPro
 // NewConfiguredVideoProcessor binds the single Go-owned encoder policy to all
 // encoding capabilities exposed by this adapter. Probe and copy operations do
 // not use it; encoded operations fail closed when it is absent.
-func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *VideoProcessor {
-	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
+func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
+	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
 }
 
 func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, string, int, error) {
@@ -47,7 +48,11 @@ func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, strin
 }
 
 func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts ffmpeg.NormalizeOptions) error {
-	profile := opts.Profile.WithDefaults()
+	profile := opts.Profile
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = p.profile
+	}
+	profile = profile.WithDefaults()
 	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
 	if err != nil {
 		return err
@@ -56,7 +61,9 @@ func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, op
 		Operation: "normalize", SourcePath: input, OutputPath: output,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
-		Codec:            codec, Preset: preset, CRF: crf,
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
+		Codec: codec, Preset: preset, CRF: crf,
 		DurationSec: durationSeconds(opts), KeepAudio: opts.KeepAudio,
 	})
 }
@@ -77,7 +84,11 @@ func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end 
 func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts ffmpeg.CutAndNormalizeOptions) error {
 	startSec, _ := strconv.ParseFloat(start, 64)
 	endSec, _ := strconv.ParseFloat(end, 64)
-	profile := opts.Profile.WithDefaults()
+	profile := opts.Profile
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = p.profile
+	}
+	profile = profile.WithDefaults()
 	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
 	if err != nil {
 		return err
@@ -87,7 +98,9 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 		StartSec: startSec, EndSec: endSec, NoAudio: opts.NoAudio,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
-		Codec:            codec, Preset: preset, CRF: crf,
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
+		Codec: codec, Preset: preset, CRF: crf,
 	})
 }
 
@@ -96,7 +109,10 @@ func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output strin
 	if err != nil {
 		return err
 	}
-	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf})
+	profile := p.profile.WithDefaults()
+	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf,
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
 }
 
 func (p *VideoProcessor) RemuxHLS(ctx context.Context, sourceURL, output string) error {
@@ -130,7 +146,10 @@ func (p *VideoProcessor) GenerateProxy(ctx context.Context, input, output string
 	if err != nil {
 		return err
 	}
-	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output, Codec: codec, Preset: preset, CRF: crf})
+	profile := p.profile.WithDefaults()
+	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output, Codec: codec, Preset: preset, CRF: crf,
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
 }
 
 func (p *VideoProcessor) GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error {
@@ -145,10 +164,17 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	if err != nil {
 		return result, err
 	}
+	profile := p.profile
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = config.CanonicalVideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
+	}
+	profile = profile.WithDefaults()
 	wire := request{
 		Operation: "cut_batch", SourcePath: req.SourcePath, Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(req.Width), Height: uint32(req.Height), FPS: uint32(req.FPS),
-		KeyframeInterval: uint32(req.KeyframeInterval), NoAudio: req.NoAudio,
+		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
+		KeyframeInterval: uint32(profile.KeyframeInterval),
+		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels), NoAudio: req.NoAudio,
 	}
 	wireJobs := make([]cutRequestJob, len(req.Jobs))
 	for i, job := range req.Jobs {

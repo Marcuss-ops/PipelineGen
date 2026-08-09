@@ -125,12 +125,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
 		cfg.Video.EncoderPolicy(),
+		cfg.Video.CanonicalVideoProfile(),
 		log,
 	)
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), log)
+	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
@@ -249,7 +250,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// Source duration validation and manifest projection are production
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
-	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, ffmpegPath, log))
+	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
 	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{

@@ -22,15 +22,15 @@
     "items": [
       {
         "id": "vidrush-08-images-item",
-        "title": "Internet images live: visual scene discovery",
+        "title": "Famous people image search live",
         "language": "en",
         "tone": "descriptive",
-        "style": "Write vivid, image-rich descriptions. Each segment should contain concrete visual elements that translate to specific image search queries.",
+        "style": "Write clear factual descriptions centered on the named famous person. Keep each segment focused on the person and the specific public scene so image search queries preserve the exact name.",
         "model": "gemma2:2b",
         "source": {
           "type": "text",
-          "topic": "Visually rich scenes for internet image discovery",
-          "source_text": "A vintage motorcycle parked outside a neon-lit diner at night. Chrome details reflect the pink and blue glow of the sign above.\n\nA botanist examines a rare orchid species in a misty greenhouse. Water droplets cling to the translucent petals under soft diffused light.\n\nAn architect's desk covered in blueprints, scale models, and drafting tools. Morning light streams through a large industrial window.\n\nOperational marker: vidrush-08-images-live."
+          "topic": "Famous people and public appearances",
+          "source_text": "John Cena appears in a WWE wrestling arena wearing his recognizable ring gear. The scene shows John Cena, the wrestling ring, stadium lights and a cheering crowd.\n\nDwayne The Rock Johnson stands at a professional wrestling event beside the ring. The scene shows Dwayne The Rock Johnson, the arena, championship atmosphere and fans.\n\nMuhammad Ali trains and poses in a historic boxing gym. The scene shows Muhammad Ali, boxing gloves, the ring, trainers and classic sports photography.\n\nOperational marker: vidrush-08-images-live."
         },
         "script_params": {
           "target_words": 300,
@@ -39,9 +39,9 @@
           "skip_quality_gate": true,
           "use_memory": false,
           "segments": [
-            {"id": "motorcycle-neon-diner", "topic": "Vintage motorcycle outside a neon diner", "target_words": 100, "source_text": "A vintage motorcycle is parked outside a neon-lit diner at night. Chrome details reflect the pink and blue glow of the sign above. Describe the motorcycle, diner, neon reflections and night atmosphere for visual search."},
-            {"id": "orchid-greenhouse", "topic": "Botanist examining a rare orchid", "target_words": 100, "source_text": "A botanist examines a rare orchid species in a misty greenhouse. Water droplets cling to the translucent petals under soft diffused light. Describe the botanist, orchid, greenhouse and botanical details for visual search."},
-            {"id": "architect-blueprints", "topic": "Architect desk with blueprints and models", "target_words": 100, "source_text": "An architect's desk is covered in blueprints, scale models and drafting tools. Morning light streams through a large industrial window. Describe the desk, blueprints, models and drafting materials for visual search."}
+            {"id": "john-cena-wwe", "topic": "John Cena WWE arena", "target_words": 100, "source_text": "John Cena appears in a WWE wrestling arena wearing his recognizable ring gear. Describe John Cena, the wrestling ring, stadium lights and the cheering crowd for accurate image search."},
+            {"id": "dwayne-rock-johnson-wrestling", "topic": "Dwayne The Rock Johnson wrestling event", "target_words": 100, "source_text": "Dwayne The Rock Johnson stands at a professional wrestling event beside the ring. Describe Dwayne The Rock Johnson, the arena, championship atmosphere and the fans for accurate image search."},
+            {"id": "muhammad-ali-boxing", "topic": "Muhammad Ali historic boxing gym", "target_words": 100, "source_text": "Muhammad Ali trains and poses in a historic boxing gym. Describe Muhammad Ali, boxing gloves, the ring, trainers and classic sports photography for accurate image search."}
           ]
         },
         "output": {

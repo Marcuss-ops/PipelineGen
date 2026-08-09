@@ -77,7 +77,7 @@ func buildDomainMediaServices(
 	// satisfies semantic.MetadataWriterPort.
 	voMetaWriter = nil
 
-	clipProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), log)
+	clipProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 

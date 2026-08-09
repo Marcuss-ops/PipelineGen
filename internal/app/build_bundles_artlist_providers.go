@@ -67,7 +67,7 @@ func constructArtlistProviders(
 	// subprocess. Fail-closed: missing ffprobe binary yields a typed
 	// exec error from process.Run that the closure below forwards to
 	// markAudit(Failed) + ErrInvalidResponse to the caller.
-	mediaProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), log)
+	mediaProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
 
 	// godlike/06 SSOT: HTTPSelfLoopProbe is the canonical app-layer wrapper
 	// for *Probe; its Probe(ctx) (bool, error) signature matches

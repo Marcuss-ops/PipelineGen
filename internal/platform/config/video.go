@@ -13,6 +13,8 @@ type CanonicalVideoProfile struct {
 	KeyframeInterval int
 	AudioCodec       string
 	AudioBitrate     string
+	SampleRate       int
+	Channels         int
 }
 
 // WithDefaults makes partially populated profiles safe for direct consumers.
@@ -34,6 +36,12 @@ func (p CanonicalVideoProfile) WithDefaults() CanonicalVideoProfile {
 	}
 	if p.AudioBitrate == "" {
 		p.AudioBitrate = "128k"
+	}
+	if p.SampleRate <= 0 {
+		p.SampleRate = 48000
+	}
+	if p.Channels <= 0 {
+		p.Channels = 2
 	}
 	return p
 }
@@ -67,6 +75,8 @@ type VideoConfig struct {
 	KeyframeInterval   int      `yaml:"keyframe_interval" default:"48"`
 	AudioCodec         string   `yaml:"audio_codec" default:"aac"`
 	AudioBitrate       string   `yaml:"audio_bitrate" default:"128k"`
+	SampleRate         int      `yaml:"sample_rate" default:"48000"`
+	Channels           int      `yaml:"channels" default:"2"`
 	ClipDuration       int      `yaml:"clip_duration" default:"5"`
 	ChunkDuration      int      `yaml:"chunk_duration" default:"25"`
 	MaxClipsPerSource  int      `yaml:"max_clips_per_source" default:"30"`
@@ -109,6 +119,12 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	if v.AudioBitrate == "" {
 		v.AudioBitrate = "128k"
 	}
+	if v.SampleRate <= 0 {
+		v.SampleRate = 48000
+	}
+	if v.Channels <= 0 {
+		v.Channels = 2
+	}
 	if v.ClipDuration <= 0 {
 		v.ClipDuration = 5
 	}
@@ -149,9 +165,20 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	return v
 }
 
-// CanonicalVideoProfile returns the immutable technical artifact profile.
+// CanonicalVideoProfile materializes the fully resolved technical artifact
+// profile owned by Go. Rust receives this value and must not fill missing fields.
 func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
-	return (CanonicalVideoProfile{}).WithDefaults()
+	v = v.WithDefaults()
+	return CanonicalVideoProfile{
+		Width:            v.Width,
+		Height:           v.Height,
+		FPS:              v.FPS,
+		KeyframeInterval: v.KeyframeInterval,
+		AudioCodec:       v.AudioCodec,
+		AudioBitrate:     v.AudioBitrate,
+		SampleRate:       v.SampleRate,
+		Channels:         v.Channels,
+	}
 }
 
 // EncoderPolicy returns the configured runtime encoding policy with defaults.
@@ -181,5 +208,7 @@ func (v VideoConfig) CanonicalClip() VideoConfig {
 	v.KeyframeInterval = profile.KeyframeInterval
 	v.AudioCodec = profile.AudioCodec
 	v.AudioBitrate = profile.AudioBitrate
+	v.SampleRate = profile.SampleRate
+	v.Channels = profile.Channels
 	return v
 }
