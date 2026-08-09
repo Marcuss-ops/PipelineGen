@@ -56,13 +56,16 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 		return response{}, fmt.Errorf("rust media executor is not configured")
 	}
 	if err != nil {
+		cleanupPartFiles(payload)
 		return response{}, fmt.Errorf("rust media executor: %w: %s", err, stderr)
 	}
 	var result response
 	if err := json.Unmarshal(bytes.TrimSpace(stdout), &result); err != nil {
+		cleanupPartFiles(payload)
 		return response{}, fmt.Errorf("decode rust media response: %w", err)
 	}
 	if !result.OK {
+		cleanupPartFiles(payload)
 		return result, fmt.Errorf("rust media %s: %s", req.Operation, result.Error)
 	}
 	return result, nil

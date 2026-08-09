@@ -20,6 +20,14 @@ func (failingProcessRunner) Run(context.Context, string, []byte, int64) ([]byte,
 	return nil, []byte("runner failed"), errors.New("runner failed")
 }
 
+type responseProcessRunner struct {
+	stdout []byte
+}
+
+func (r responseProcessRunner) Run(context.Context, string, []byte, int64) ([]byte, []byte, error) {
+	return r.stdout, nil, nil
+}
+
 func TestExecutorCleansPartFilesAfterFailedRun(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "clip.mp4")
@@ -39,6 +47,26 @@ func TestExecutorCleansPartFilesAfterFailedRun(t *testing.T) {
 	}
 	if _, err := os.Stat(part); !os.IsNotExist(err) {
 		t.Fatalf("part file still exists after failed run: %v", err)
+	}
+}
+
+func TestClientCleansPartFilesAfterFailedRustResponse(t *testing.T) {
+	dir := t.TempDir()
+	output := filepath.Join(dir, "clip.mp4")
+	part := partPathForCleanup(output)
+	if err := os.WriteFile(part, []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	executor := NewExecutorWithLimit("unused", "ffmpeg", 1, nil)
+	executor.runner = responseProcessRunner{stdout: []byte(`{"ok":false,"operation":"normalize","error":"failed"}`)}
+	client := NewClientWithExecutor(executor, nil)
+	_, err := client.call(context.Background(), request{Operation: "normalize", OutputPath: output})
+	if err == nil {
+		t.Fatal("expected failed Rust response")
+	}
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Fatalf("part file still exists after failed response: %v", err)
 	}
 }
 
