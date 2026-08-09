@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -55,7 +55,7 @@ func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, strin
 	return codec, preset, crf, nil
 }
 
-func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts ffmpeg.NormalizeOptions) error {
+func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts mediaexec.NormalizeOptions) error {
 	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
 	if err != nil {
 		return err
@@ -75,7 +75,7 @@ func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, op
 	})
 }
 
-func durationSeconds(opts ffmpeg.NormalizeOptions) float64 {
+func durationSeconds(opts mediaexec.NormalizeOptions) float64 {
 	if opts.DisableDuration {
 		return 0
 	}
@@ -88,7 +88,7 @@ func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end 
 	return p.run(ctx, request{Operation: "cut_copy", SourcePath: input, OutputPath: output, StartSec: startSec, EndSec: endSec, NoAudio: noAudio})
 }
 
-func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts ffmpeg.CutAndNormalizeOptions) error {
+func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts mediaexec.CutAndNormalizeOptions) error {
 	startSec, _ := strconv.ParseFloat(start, 64)
 	endSec, _ := strconv.ParseFloat(end, 64)
 	profile, err := p.resolvedProfile(opts.Profile)
@@ -110,7 +110,7 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 	})
 }
 
-func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output string, opts ffmpeg.WatermarkOptions) error {
+func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output string, opts mediaexec.WatermarkOptions) error {
 	codec, preset, crf, err := p.policyFor("", "", 0)
 	if err != nil {
 		return err
@@ -128,7 +128,7 @@ func (p *VideoProcessor) RemuxHLS(ctx context.Context, sourceURL, output string)
 	return p.run(ctx, request{Operation: "remux_hls", SourcePath: sourceURL, OutputPath: output})
 }
 
-func (p *VideoProcessor) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
+func (p *VideoProcessor) Probe(ctx context.Context, path string) (*mediaexec.MediaInfo, error) {
 	result, err := p.client.call(ctx, request{Operation: "probe", SourcePath: path})
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (p *VideoProcessor) Probe(ctx context.Context, path string) (*ffmpeg.MediaI
 		return nil, fmt.Errorf("rust media probe returned no metadata")
 	}
 	m := result.Metadata
-	return &ffmpeg.MediaInfo{
+	return &mediaexec.MediaInfo{
 		Duration: durationFromSeconds(m.DurationSec),
 		Width:    int(m.Width), Height: int(m.Height), FPS: m.FPS,
 		VideoCodec: m.VideoCodec, AudioCodec: m.AudioCodec,

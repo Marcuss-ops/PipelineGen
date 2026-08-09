@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 )
 
 // Compile-time check that FFProbeSourceDurationProbe satisfies
@@ -18,14 +18,14 @@ var _ stockpipeline.SourceDurationProbe = (*FFProbeSourceDurationProbe)(nil)
 // consistent with the rest of the media stack.
 type FFProbeSourceDurationProbe struct {
 	proc interface {
-		Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 	}
 }
 
 // NewFFProbeSourceDurationProbe constructs a probe adapter. An empty
 // ffmpegPath defaults to "ffmpeg" via ffmpeg.NewProcessor.
 func NewFFProbeSourceDurationProbe(proc interface {
-	Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+	Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 }) *FFProbeSourceDurationProbe {
 	return &FFProbeSourceDurationProbe{
 		proc: proc,

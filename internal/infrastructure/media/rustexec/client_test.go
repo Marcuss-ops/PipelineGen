@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -51,7 +51,7 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	client.runner = runner
 	processor := &VideoProcessor{client: client, profile: config.CanonicalVideoProfile{}.WithDefaults()}
 
-	opts := ffmpeg.NormalizeOptions{
+	opts := mediaexec.NormalizeOptions{
 		Duration: 30, DisableDuration: true, KeepAudio: true,
 		Policy: config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23},
 	}
@@ -121,7 +121,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 
 func TestVideoProcessorEncodingFailsWithoutPolicy(t *testing.T) {
 	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil), profile: config.CanonicalVideoProfile{}.WithDefaults()}
-	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", ffmpeg.NormalizeOptions{})
+	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", mediaexec.NormalizeOptions{})
 	if err == nil || err.Error() != "ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy" {
 		t.Fatalf("Normalize() error = %v, want missing policy error", err)
 	}

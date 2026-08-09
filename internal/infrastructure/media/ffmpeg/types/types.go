@@ -6,13 +6,17 @@
 package types
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Option types ────────────────────────────────────────────────────────
 
 // NormalizeOptions configures video normalization.
-type NormalizeOptions struct {
+type NormalizeOptions = mediaexec.NormalizeOptions
+
+/*
+	type NormalizeOptions struct {
 	// Profile and Policy are the canonical separated contracts. The legacy
 	// scalar fields below remain source-compatible with existing callers.
 	Profile config.CanonicalVideoProfile
@@ -29,9 +33,13 @@ type NormalizeOptions struct {
 	CRF              int
 	KeyframeInterval int // GOP size (keyframe interval, 0 = default)
 }
+*/
 
 // CutAndNormalizeOptions combines cut boundaries with normalization parameters.
-type CutAndNormalizeOptions struct {
+type CutAndNormalizeOptions = mediaexec.CutAndNormalizeOptions
+
+/*
+	type CutAndNormalizeOptions struct {
 	// Profile and Policy are the canonical separated contracts. The legacy
 	// scalar fields remain source-compatible with existing callers.
 	Profile config.CanonicalVideoProfile
@@ -45,6 +53,7 @@ type CutAndNormalizeOptions struct {
 	CRF     int
 	NoAudio bool
 }
+*/
 
 // CutJob defines a single clip to extract from a source video.
 type CutJob struct {
@@ -54,7 +63,10 @@ type CutJob struct {
 }
 
 // WatermarkOptions configures how a watermark overlay is applied to a video.
-type WatermarkOptions struct {
+type WatermarkOptions = mediaexec.WatermarkOptions
+
+/*
+	type WatermarkOptions struct {
 	ImagePath             string
 	Opacity               float64
 	Position              string
@@ -63,6 +75,7 @@ type WatermarkOptions struct {
 	GreenScreenSimilarity float64
 	GreenScreenBlend      float64
 }
+*/
 
 // ── Default helpers ─────────────────────────────────────────────────────
 
