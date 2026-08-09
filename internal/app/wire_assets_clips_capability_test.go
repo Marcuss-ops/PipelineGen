@@ -8,10 +8,7 @@ import (
 func TestClipsCapabilityDeps_IsNarrowTypedBundle(t *testing.T) {
 	typ := reflect.TypeOf(ClipsCapabilityDeps{})
 	want := []string{
-		"ClipsRepo",
-		"VoiceoverRepo",
-		"ImageRepo",
-		"AssetRepo",
+		"Repositories",
 		"ArtifactService",
 		"AssetTreeService",
 		"MediaProcessor",
@@ -25,6 +22,11 @@ func TestClipsCapabilityDeps_IsNarrowTypedBundle(t *testing.T) {
 		if got := typ.Field(i).Name; got != name {
 			t.Fatalf("ClipsCapabilityDeps field %d is %q, want %q", i, got, name)
 		}
+	}
+
+	repos := reflect.TypeOf(ClipsRepositoryDeps{})
+	if repos.NumField() != 4 {
+		t.Fatalf("ClipsRepositoryDeps has %d fields, want 4", repos.NumField())
 	}
 }
 
