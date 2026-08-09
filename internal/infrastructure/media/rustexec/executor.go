@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -18,11 +19,13 @@ import (
 const (
 	defaultRustExecutionSlots = 4
 	defaultRustOutputLimit    = 64 * 1024
+	defaultRustTimeout        = 10 * time.Minute
 )
 
-// ProcessRunner owns the lifecycle of one Rust executor process. It is kept as
-// a port so tests can exercise Executor without depending on a real binary.
-type ProcessRunner interface {
+// RustProcessRunner owns the lifecycle of one Rust executor process. It is
+// kept as a port so tests can exercise Executor without depending on a real
+// binary.
+type RustProcessRunner interface {
 	Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error)
 }
 
@@ -59,9 +62,10 @@ type Executor struct {
 	binaryPath  string
 	ffmpegPath  string
 	log         *zap.Logger
-	runner      ProcessRunner
+	runner      RustProcessRunner
 	limiter     *ResourceLimiter
 	outputLimit int64
+	timeout     time.Duration
 }
 
 func NewExecutor(binaryPath, ffmpegPath string, log *zap.Logger) *Executor {
@@ -79,9 +83,10 @@ func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Log
 		binaryPath:  binaryPath,
 		ffmpegPath:  ffmpegPath,
 		log:         log,
-		runner:      execProcessRunner{},
+		runner:      rustProcessRunner{},
 		limiter:     NewResourceLimiter(slots),
 		outputLimit: defaultRustOutputLimit,
+		timeout:     defaultRustTimeout,
 	}
 }
 
@@ -98,7 +103,13 @@ func (e *Executor) Run(ctx context.Context, input []byte) ([]byte, []byte, error
 	}
 	defer release()
 
-	stdout, stderr, runErr := e.runner.Run(ctx, e.binaryPath, input, e.outputLimit)
+	runCtx := ctx
+	cancel := func() {}
+	if e.timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, e.timeout)
+	}
+	defer cancel()
+	stdout, stderr, runErr := e.runner.Run(runCtx, e.binaryPath, input, e.outputLimit)
 	if runErr != nil {
 		cleanupPartFiles(input)
 		return stdout, stderr, fmt.Errorf("rust media executor: %w: %s", runErr, stderr)
@@ -114,12 +125,12 @@ func (e *Executor) FFmpegPath() string {
 	return e.ffmpegPath
 }
 
-// execProcessRunner runs the Rust binary in its own process group. Both direct
+// rustProcessRunner runs the Rust binary in its own process group. Both direct
 // cancellation and timeout kill the group, preventing descendant FFmpeg
 // processes from surviving the Rust adapter.
-type execProcessRunner struct{}
+type rustProcessRunner struct{}
 
-func (execProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
+func (rustProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, binary)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
@@ -178,9 +189,18 @@ func (b *boundedBuffer) Bytes() []byte {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	result := append([]byte(nil), b.buf.Bytes()...)
-	if b.truncated {
-		result = append(result, []byte("\n[output truncated]")...)
+	if !b.truncated || b.limit <= 0 {
+		return result
 	}
+	const marker = "[output truncated]"
+	if int64(len(marker)) >= b.limit {
+		return []byte(marker[len(marker)-int(b.limit):])
+	}
+	keep := int(b.limit) - len(marker)
+	if len(result) > keep {
+		result = result[len(result)-keep:]
+	}
+	result = append(result, marker...)
 	return result
 }
 

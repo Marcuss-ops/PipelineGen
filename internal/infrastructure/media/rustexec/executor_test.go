@@ -76,12 +76,44 @@ func TestBoundedBufferLimitsStderrAndMarksTruncation(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := buffer.Bytes()
-	if len(got) > 32+len("\n[output truncated]") || !strings.HasSuffix(string(got), "[output truncated]") {
+	if len(got) > 32 || !strings.HasSuffix(string(got), "[output truncated]") {
 		t.Fatalf("bounded stderr length/marker mismatch: len=%d output=%q", len(got), got)
 	}
 }
 
-func TestExecProcessRunnerKillsDescendantsOnCancellation(t *testing.T) {
+func TestExecutorTimeoutKillsRustProcessTreeAndCleansPart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX process groups required")
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "sleep.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "clip.mp4")
+	part := partPathForCleanup(output)
+	if err := os.WriteFile(part, []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(request{OutputPath: output})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := NewExecutorWithLimit(script, "ffmpeg", 1, nil)
+	executor.timeout = 100 * time.Millisecond
+	started := time.Now()
+	if _, _, err := executor.Run(context.Background(), payload); err == nil {
+		t.Fatal("expected configured executor timeout")
+	}
+	if time.Since(started) >= 2*time.Second {
+		t.Fatal("executor timeout did not return promptly")
+	}
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Fatalf("part file still exists after timeout: %v", err)
+	}
+}
+
+func TestRustProcessRunnerKillsDescendantsOnCancellation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX process groups required")
 	}
@@ -95,7 +127,7 @@ func TestExecProcessRunnerKillsDescendantsOnCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
-	_, _, err := (execProcessRunner{}).Run(ctx, script, nil, 1024)
+	_, _, err := (rustProcessRunner{}).Run(ctx, script, nil, 1024)
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}

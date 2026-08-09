@@ -48,13 +48,13 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 				Category: rec.Category, Group: rec.Group, SourceURL: rec.ExternalURL,
 				Tags: append([]string(nil), rec.Tags...), LifecycleState: asset.StateActive,
 			}
+			m.SetMetadataJSON(rec.Metadata)
 			m.SetLocalPath(rec.LocalPath)
 			m.SetDriveFileID(rec.DriveFileID)
 			m.SetDriveLink(rec.DriveLink)
 			m.SetDownloadLink(rec.DownloadLink)
 			m.SetFileHash(rec.FileHash)
 			m.SetContentHash(rec.ContentHash)
-			m.SetMetadataJSON(rec.Metadata)
 			return dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash)
 		},
 		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
