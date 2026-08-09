@@ -17,6 +17,8 @@ import (
 	"fmt"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/api/assets/search"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/application/assets/resolver"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"go.uber.org/zap"
 )
@@ -41,9 +43,11 @@ import (
 func buildSearchBundle(
 	log *zap.Logger,
 	searchAggregator *search.Aggregator,
+	providerRegistry *providers.Registry,
 ) (*assetsearch.SearchDescriptor, error) {
 	descriptor, err := assetsearch.Build(assetsearch.Dependencies{
 		Aggregator:  searchAggregator,
+		Resolver:    assetresolver.NewService(providerRegistry),
 		EnabledFunc: func() bool { return true }, // search is always on in production
 		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-11 wiring)
 		Logger:      log,

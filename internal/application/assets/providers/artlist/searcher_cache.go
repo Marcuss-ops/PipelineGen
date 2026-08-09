@@ -9,6 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // ErrCachedSearcherNotWired is returned when the decorator has no wrapped
@@ -25,6 +26,7 @@ type CachedSearcher struct {
 	ttl      time.Duration
 	log      *zap.Logger
 	enqueuer RefreshEnqueuer
+	misses   singleflight.Group
 }
 
 // RefreshEnqueuer is the narrow durable-job port used by the cache decorator.
@@ -56,7 +58,8 @@ func (s *CachedSearcher) Search(ctx context.Context, req SearchRequest) ([]Candi
 	if s == nil || s.inner == nil {
 		return nil, ErrCachedSearcherNotWired
 	}
-	term := req.Term
+	term := normalizeSearchTermLower(req.Term)
+	req.Term = term
 
 	if !req.ForceRefresh && s.cache != nil && s.cache.isFresh(term, s.ttl) {
 		cached, _ := s.cache.get(term)
@@ -97,12 +100,40 @@ func (s *CachedSearcher) Search(ctx context.Context, req SearchRequest) ([]Candi
 		return cached, nil
 	}
 
-	candidates, err := s.inner.Search(ctx, req)
+	// Coalesce concurrent misses for the same query. This ensures a burst of
+	// identical pipeline requests starts one upstream search, not one browser
+	// session per request. Explicit refreshes use a separate key.
+	key := term
+	if req.ForceRefresh {
+		key = "refresh:" + term
+	}
+	value, err, _ := s.misses.Do(key, func() (any, error) {
+		// Re-check after acquiring the singleflight slot: another caller may
+		// have populated the cache just before this function started.
+		if !req.ForceRefresh && s.cache != nil && s.cache.isFresh(term, s.ttl) {
+			cached, _ := s.cache.get(term)
+			return cached, nil
+		}
+		candidates, searchErr := s.inner.Search(ctx, req)
+		if searchErr != nil {
+			return nil, searchErr
+		}
+		// Empty results are meaningful negative-cache entries. Cache them too
+		// so a known miss does not repeatedly pay provider latency.
+		if s.cache != nil {
+			s.cache.set(term, candidates)
+		}
+		return candidates, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(candidates) > 0 && s.cache != nil {
-		s.cache.set(term, candidates)
+	candidates, ok := value.([]Candidate)
+	if !ok {
+		return nil, errors.New("artlist cached searcher: invalid coalesced result")
+	}
+	if req.Limit > 0 && len(candidates) > req.Limit {
+		candidates = candidates[:req.Limit]
 	}
 	return candidates, nil
 }

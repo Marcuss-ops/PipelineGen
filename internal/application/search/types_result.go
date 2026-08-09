@@ -21,17 +21,22 @@ package search
 // Score is normalised [0,1] across backends. Hash is a content hash
 // when known (used by dedup policy rank-order 4).
 type Candidate struct {
-	AssetID      string  `json:"asset_id"`
-	Source       string  `json:"source"`               // "youtube","artlist","local","semantic"
-	SourceRef    string  `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
-	MediaType    string  `json:"media_type,omitempty"`
-	Title        string  `json:"title,omitempty"`
-	Name         string  `json:"name,omitempty"` // canonical asset name; may differ from Title when localizations differ
-	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-	PreviewURL   string  `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
-	DriveLink    string  `json:"-"`                     // internal SQLite enrichment; never public JSON
-	Score        float64 `json:"score"`
-	Hash         string  `json:"hash,omitempty"`
+	AssetID      string   `json:"asset_id"`
+	Source       string   `json:"source"`               // "youtube","artlist","local","semantic"
+	SourceRef    string   `json:"source_ref,omitempty"` // provider-native ID (YouTube VideoID, artlist ID)
+	MediaType    string   `json:"media_type,omitempty"`
+	Title        string   `json:"title,omitempty"`
+	Name         string   `json:"name,omitempty"`       // canonical asset name; may differ from Title when localizations differ
+	SourceURL    string   `json:"source_url,omitempty"` // provider page, never a temporary download URL
+	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
+	PreviewURL   string   `json:"preview_url,omitempty"` // signed; NEVER raw Drive URL
+	DurationMs   int64    `json:"duration_ms,omitempty"`
+	Width        int      `json:"width,omitempty"`
+	Height       int      `json:"height,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	DriveLink    string   `json:"-"` // internal SQLite enrichment; never public JSON
+	Score        float64  `json:"score"`
+	Hash         string   `json:"hash,omitempty"`
 }
 
 // ── Result ──────────────────────────────────────────────────────────

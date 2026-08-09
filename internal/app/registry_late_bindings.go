@@ -69,7 +69,7 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
 			Id:     "artlist",
 			Kind:   ProviderKindSearch,
-			Search: artlistadapter.NewAdapter(regWiring.ArtlistSvc.Service),
+			Search: artlistadapter.NewGatewayAdapter(regWiring.ArtlistSvc.Service),
 		})
 	}
 	if regWiring.YouTubeClip != nil && regWiring.YouTubeClip.Service != nil {
@@ -84,6 +84,12 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 			Id:    "stock",
 			Kind:  ProviderKindFetch,
 			Fetch: stockadapter.NewAdapter(regWiring.StockPipeline.Service),
+		})
+	}
+	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
+		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
+			Id: "image", Kind: ProviderKindSearch,
+			Search: newImageSearchProvider(root.Domains.ImageSearchResolver),
 		})
 	}
 
