@@ -1,8 +1,48 @@
 package rustexec
 
+import (
+	"fmt"
+	"strings"
+)
+
+const ProtocolVersion = "mediaexec.v1"
+
+type Operation string
+
+const (
+	OperationHealth             Operation = "health"
+	OperationProbe              Operation = "probe"
+	OperationCutBatch           Operation = "cut_batch"
+	OperationNormalize          Operation = "normalize"
+	OperationCutCopy            Operation = "cut_copy"
+	OperationCutAndNormalize    Operation = "cut_and_normalize"
+	OperationWatermark          Operation = "watermark"
+	OperationExtractFrame       Operation = "extract_frame"
+	OperationGenerateProxy      Operation = "generate_proxy"
+	OperationGenerateStoryboard Operation = "generate_storyboard"
+	OperationRemuxHLS           Operation = "remux_hls"
+	OperationTrim               Operation = "trim"
+	OperationRenderStock        Operation = "render_stock"
+	OperationAdminRender        Operation = "admin_render"
+)
+
+func (o Operation) String() string { return string(o) }
+
+func (o Operation) valid() bool {
+	switch o {
+	case OperationHealth, OperationProbe, OperationCutBatch, OperationNormalize,
+		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
+		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
+		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationAdminRender:
+		return true
+	default:
+		return false
+	}
+}
+
 type request struct {
 	Version          string             `json:"version"`
-	Operation        string             `json:"operation"`
+	Operation        Operation          `json:"operation"`
 	FFmpegPath       string             `json:"ffmpeg_path,omitempty"`
 	SourcePath       string             `json:"source_path,omitempty"`
 	OutputPath       string             `json:"output_path,omitempty"`
@@ -40,6 +80,63 @@ type request struct {
 	Effects          []renderEffect     `json:"effects,omitempty"`
 	Overlays         []renderOverlay    `json:"overlays,omitempty"`
 	MaxDurationSec   float64            `json:"max_duration_sec,omitempty"`
+}
+
+// Validate checks the transport envelope and the operation-specific required
+// paths before the request reaches the Rust process. Capability-specific
+// profile validation remains owned by the Rust execution contract.
+func (r request) Validate() error {
+	if r.Version != ProtocolVersion {
+		return fmt.Errorf("unsupported protocol version: %q", r.Version)
+	}
+	if !r.Operation.valid() {
+		return fmt.Errorf("unsupported media operation: %q", r.Operation)
+	}
+	requireSource := func() error {
+		if strings.TrimSpace(r.SourcePath) == "" {
+			return fmt.Errorf("%s: source_path is required", r.Operation)
+		}
+		return nil
+	}
+	requireOutput := func() error {
+		if strings.TrimSpace(r.OutputPath) == "" {
+			return fmt.Errorf("%s: output_path is required", r.Operation)
+		}
+		return nil
+	}
+	switch r.Operation {
+	case OperationHealth:
+		return nil
+	case OperationProbe:
+		return requireSource()
+	case OperationCutBatch:
+		if err := requireSource(); err != nil {
+			return err
+		}
+		if len(r.Jobs) == 0 {
+			return fmt.Errorf("%s: jobs are required", r.Operation)
+		}
+		return nil
+	case OperationRenderStock:
+		if len(r.InputPaths) == 0 {
+			return fmt.Errorf("%s: input_paths are required", r.Operation)
+		}
+		return requireOutput()
+	case OperationAdminRender:
+		if err := requireSource(); err != nil {
+			return err
+		}
+		return requireOutput()
+	case OperationCutCopy, OperationNormalize, OperationCutAndNormalize,
+		OperationWatermark, OperationExtractFrame, OperationGenerateProxy,
+		OperationGenerateStoryboard, OperationRemuxHLS, OperationTrim:
+		if err := requireSource(); err != nil {
+			return err
+		}
+		return requireOutput()
+	default:
+		return fmt.Errorf("unsupported media operation: %q", r.Operation)
+	}
 }
 
 type renderTransition struct {
