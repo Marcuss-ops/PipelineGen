@@ -5,8 +5,10 @@ package rustexec
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +23,7 @@ import (
 )
 
 type request struct {
+	Version          string          `json:"version"`
 	Operation        string          `json:"operation"`
 	FFmpegPath       string          `json:"ffmpeg_path,omitempty"`
 	SourcePath       string          `json:"source_path,omitempty"`
@@ -43,6 +46,7 @@ type request struct {
 	OverlayPath      string          `json:"overlay_path,omitempty"`
 	Opacity          float64         `json:"opacity,omitempty"`
 	InputPaths       []string        `json:"input_paths,omitempty"`
+	Jobs             []cutRequestJob `json:"jobs,omitempty"`
 	NoTransitions    bool            `json:"no_transitions,omitempty"`
 	TransitionEvery  int             `json:"transition_every,omitempty"`
 	ClipDurationSec  int             `json:"clip_duration_sec,omitempty"`
@@ -75,10 +79,28 @@ type renderOverlay struct {
 }
 
 type response struct {
-	OK        bool           `json:"ok"`
-	Operation string         `json:"operation"`
-	Metadata  *mediaMetadata `json:"metadata"`
-	Error     string         `json:"error"`
+	OK         bool           `json:"ok"`
+	Operation  string         `json:"operation"`
+	SourcePath string         `json:"source_path"`
+	Items      []cutItem      `json:"items"`
+	Metadata   *mediaMetadata `json:"metadata"`
+	Error      string         `json:"error"`
+}
+
+type cutRequestJob struct {
+	JobID      string  `json:"job_id"`
+	StartSec   float64 `json:"start_sec"`
+	EndSec     float64 `json:"end_sec"`
+	OutputPath string  `json:"output_path"`
+}
+
+type cutItem struct {
+	JobID       string  `json:"job_id"`
+	OutputPath  string  `json:"output_path"`
+	Status      string  `json:"status"`
+	SizeBytes   int64   `json:"size_bytes"`
+	DurationSec float64 `json:"duration_sec"`
+	Error       string  `json:"error"`
 }
 
 type mediaMetadata struct {
@@ -128,6 +150,7 @@ func NewClient(binaryPath, ffmpegPath string, log *zap.Logger) *Client {
 }
 
 func (c *Client) call(ctx context.Context, req request) (response, error) {
+	req.Version = "mediaexec.v1"
 	req.FFmpegPath = c.ffmpegPath
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -149,19 +172,48 @@ func (c *Client) call(ctx context.Context, req request) (response, error) {
 
 // VideoProcessor implements the infrastructure media processor port through
 // the Rust executor. It contains no business policy or persistence logic.
-type VideoProcessor struct{ client *Client }
+type VideoProcessor struct {
+	client *Client
+	policy config.VideoEncoderPolicy
+}
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
 	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log)}
 }
 
+// NewConfiguredVideoProcessor binds the single Go-owned encoder policy to all
+// encoding capabilities exposed by this adapter. Probe and copy operations do
+// not use it; encoded operations fail closed when it is absent.
+func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *VideoProcessor {
+	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
+}
+
+func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, string, int, error) {
+	if codec == "" {
+		codec = p.policy.Codec
+	}
+	if preset == "" {
+		preset = p.policy.Preset
+	}
+	if crf <= 0 {
+		crf = p.policy.CRF
+	}
+	if codec == "" || preset == "" || crf <= 0 {
+		return "", "", 0, fmt.Errorf("ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy")
+	}
+	return codec, preset, crf, nil
+}
+
 func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts ffmpeg.NormalizeOptions) error {
 	profile := opts.Profile.WithDefaults()
-	policy := opts.Policy
+	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	if err != nil {
+		return err
+	}
 	return p.run(ctx, request{
 		Operation: "normalize", SourcePath: input, OutputPath: output,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
-		Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF,
+		Codec: codec, Preset: preset, CRF: crf,
 		DurationSec: durationSeconds(opts), KeepAudio: opts.KeepAudio,
 	})
 }
@@ -183,17 +235,24 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 	startSec, _ := strconv.ParseFloat(start, 64)
 	endSec, _ := strconv.ParseFloat(end, 64)
 	profile := opts.Profile.WithDefaults()
-	policy := opts.Policy
+	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	if err != nil {
+		return err
+	}
 	return p.run(ctx, request{
 		Operation: "cut_and_normalize", SourcePath: input, OutputPath: output,
 		StartSec: startSec, EndSec: endSec, NoAudio: opts.NoAudio,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
-		Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF,
+		Codec: codec, Preset: preset, CRF: crf,
 	})
 }
 
 func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output string, opts ffmpeg.WatermarkOptions) error {
-	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity})
+	codec, preset, crf, err := p.policyFor("", "", 0)
+	if err != nil {
+		return err
+	}
+	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf})
 }
 
 func (p *VideoProcessor) RemuxHLS(ctx context.Context, sourceURL, output string) error {
@@ -223,11 +282,85 @@ func (p *VideoProcessor) ExtractFrame(ctx context.Context, input, output string,
 }
 
 func (p *VideoProcessor) GenerateProxy(ctx context.Context, input, output string) error {
-	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output})
+	codec, preset, crf, err := p.policyFor("", "", 0)
+	if err != nil {
+		return err
+	}
+	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output, Codec: codec, Preset: preset, CRF: crf})
 }
 
 func (p *VideoProcessor) GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error {
 	return p.run(ctx, request{Operation: "generate_storyboard", SourcePath: input, OutputPath: output, IntervalFrames: uint32(intervalFrames), Columns: uint32(cols), Rows: uint32(rows)})
+}
+
+// Cut implements the Stock VideoCutter port through the same client and
+// protocol used by every other Rust capability.
+func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {
+	result := stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: make([]stockpipeline.CutItemResult, len(req.Jobs))}
+	codec, preset, crf, err := p.policyFor(req.Codec, req.Preset, req.CRF)
+	if err != nil {
+		return result, err
+	}
+	wire := request{Operation: "cut_batch", SourcePath: req.SourcePath, Codec: codec, Preset: preset, CRF: crf, NoAudio: req.NoAudio}
+	wireJobs := make([]cutRequestJob, len(req.Jobs))
+	for i, job := range req.Jobs {
+		result.Items[i] = stockpipeline.CutItemResult{JobID: job.OutputPath, OutputPath: job.OutputPath, Status: stockpipeline.CutItemStatusUnknown}
+		wireJobs[i] = cutRequestJob{JobID: job.OutputPath, StartSec: job.StartSec, EndSec: job.EndSec, OutputPath: job.OutputPath}
+	}
+	wire.Jobs = wireJobs
+	response, err := p.client.call(ctx, wire)
+	if err != nil {
+		return result, err
+	}
+	byJob := make(map[string]cutItem, len(response.Items))
+	for _, item := range response.Items {
+		byJob[item.JobID] = item
+	}
+	for i, job := range req.Jobs {
+		item, ok := byJob[job.OutputPath]
+		if !ok {
+			result.Items[i].Status = stockpipeline.CutItemStatusFailed
+			result.Items[i].Err = fmt.Errorf("rust muscles omitted job %q", job.OutputPath)
+			continue
+		}
+		result.Items[i].OutputPath = item.OutputPath
+		result.Items[i].SizeBytes = item.SizeBytes
+		if (item.Status != "succeeded" && item.Status != "validated") || item.OutputPath == "" {
+			result.Items[i].Status = stockpipeline.CutItemStatusFailed
+			result.Items[i].Err = fmt.Errorf("rust cut failed: %s", item.Error)
+			continue
+		}
+		result.Items[i].DurationSec = item.DurationSec
+		result.Items[i].Status = stockpipeline.CutItemStatusValidated
+		size, hash, hashErr := hashOutput(item.OutputPath)
+		if hashErr != nil {
+			result.Items[i].Status = stockpipeline.CutItemStatusFailed
+			result.Items[i].Err = fmt.Errorf("validate rust cut output: %w", hashErr)
+			continue
+		}
+		result.Items[i].SizeBytes, result.Items[i].SHA256Hex = size, hash
+	}
+	return result, nil
+}
+
+func hashOutput(path string) (int64, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() == 0 {
+		if err == nil {
+			err = io.ErrUnexpectedEOF
+		}
+		return 0, "", err
+	}
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return 0, "", err
+	}
+	return info.Size(), fmt.Sprintf("%x", digest.Sum(nil)), nil
 }
 
 func (p *VideoProcessor) run(ctx context.Context, req request) error {
@@ -288,16 +421,21 @@ var _ adminmedia.ShortRenderer = (*AdminMediaProcessor)(nil)
 // the neutral request; Rust owns FFmpeg graph construction and execution.
 type StockRenderer struct {
 	client *Client
+	policy config.VideoEncoderPolicy
 }
 
-func NewStockRenderer(binaryPath, ffmpegPath string, log *zap.Logger) *StockRenderer {
-	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log)}
+func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, log *zap.Logger) *StockRenderer {
+	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy}
 }
 
 func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
-	_, err := r.client.call(ctx, request{
+	codec, preset, crf, err := (&VideoProcessor{client: r.client, policy: r.policy}).policyFor(input.Codec, input.Preset, input.CRF)
+	if err != nil {
+		return stockpipeline.RenderResult{}, err
+	}
+	_, err = r.client.call(ctx, request{
 		Operation: "render_stock", OutputPath: input.OutputPath, InputPaths: input.InputPaths,
-		Codec: input.Codec, Preset: input.Preset, CRF: input.CRF,
+		Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(input.Width), Height: uint32(input.Height), FPS: uint32(input.FPS),
 		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,
 		TransitionEvery: input.TransitionEvery, ClipDurationSec: input.ClipDurationSec,

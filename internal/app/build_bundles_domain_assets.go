@@ -117,7 +117,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	// best-effort: if any dependency is missing the autotag service
 	// falls back to single-shot VLM analysis for video assets.
 	var videoSampler indexing.PercentageFrameSampler
-	proc := rustexec.NewVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.log)
+	proc := rustexec.NewConfiguredVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.cfg.Video.EncoderPolicy(), params.log)
 	if sampler, err := indexing.NewFFMPEGFrameSampler(proc); err == nil {
 		videoSampler = sampler
 	} else {

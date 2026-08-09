@@ -93,7 +93,7 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
-	ffmpegProc := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), log)
 	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing, mutationsDisp)
 	return processor.NewProcessor(ytDLPDownloader, httpDL, ffmpegProc, log, processor.ProcessorConfig{DataDir: cfg.Storage.DataDir, TempDir: cfg.Storage.TempDir, VideoCfg: ffmpegtypes.DefaultNormalizeOptions(cfg), EmbeddingServerURL: cfg.ClipIndexer.ServerURL}, clipsRegistry, publisher)
 }
