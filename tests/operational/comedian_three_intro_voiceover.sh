@@ -18,91 +18,79 @@ SMOKE_DB="${SMOKE_DB:-$ROOT_DIR/data/media/media.db.sqlite}"
 VOICEOVER_PROJECT_ID="${VOICEOVER_PROJECT_ID:-comedian-three-intros}"
 VOICEOVER_VOICE="${VOICEOVER_VOICE:-en-US-ChristopherNeural}"
 VOICEOVER_GROUP="${VOICEOVER_GROUP:-Comedy}"
+DOCS_FOLDER_ID="${COMEDY_DOCS_FOLDER_ID:-${VELOX_DRIVE_SCRIPTS_GENERATE:-}}"
 
 if [[ ! -f "$SMOKE_DB" ]]; then
     printf '%ssetup error: SMOKE_DB=%s does not exist%s\n' "$RED" "$SMOKE_DB" "$RESET" >&2
     exit 2
 fi
+if [[ "$DRY_RUN" != "1" && -z "$DOCS_FOLDER_ID" ]]; then
+    printf '%ssetup error: COMEDY_DOCS_FOLDER_ID or VELOX_DRIVE_SCRIPTS_GENERATE is required%s\n' "$RED" "$RESET" >&2
+    exit 2
+fi
 
-# Select one current active asset for each requested comedian. The selection
-# is deterministic and prefers an asset with a usable source reference. No
-# stale YouTube IDs are embedded in this job.
+# Select three current, source-backed comedy clips. The canonical lifecycle
+# field is lifecycle_state; lifecycle_status is a retired compatibility field
+# and must not make deleted Drive rows eligible for a new job.
 CLIPS_JSON=$(sqlite3 -json "$SMOKE_DB" <<'SQL'
 WITH candidates AS (
   SELECT
     id,
     name,
-    COALESCE(NULLIF(local_path,''), NULLIF(download_link,''),
-             NULLIF(drive_link,''), NULLIF(source_url,'')) AS source_ref,
-    CASE
-      WHEN lower(name) LIKE '%chris tucker%' THEN 'Chris Tucker'
-      WHEN lower(name) LIKE '%ricky gervais%' THEN 'Ricky Gervais'
-      WHEN lower(name) LIKE '%robin williams%' THEN 'Robin Williams'
-    END AS comedian
+    COALESCE(NULLIF(local_path,''), NULLIF(download_link,''), NULLIF(source_url,'')) AS source_ref
   FROM media_assets
-  WHERE lifecycle_status = 'ACTIVE'
-    AND COALESCE(NULLIF(local_path,''), NULLIF(download_link,''),
-                 NULLIF(drive_link,''), NULLIF(source_url,'')) IS NOT NULL
-    AND (
-      lower(name) LIKE '%chris tucker%'
-      OR lower(name) LIKE '%ricky gervais%'
-      OR lower(name) LIKE '%robin williams%'
-    )
-), ranked AS (
-  SELECT *, row_number() OVER (PARTITION BY comedian ORDER BY id) AS rn
-  FROM candidates
+  WHERE lifecycle_state = 'ACTIVE'
+    AND media_type = 'video'
+    AND local_path != ''
+    AND lower(COALESCE(category,'')) = 'comedy'
+  ORDER BY id
 )
-SELECT id, name, source_ref, comedian
-FROM ranked
-WHERE rn = 1
-ORDER BY CASE comedian
-  WHEN 'Chris Tucker' THEN 1
-  WHEN 'Ricky Gervais' THEN 2
-  WHEN 'Robin Williams' THEN 3
-END;
+SELECT id, name, source_ref
+FROM candidates
+LIMIT 3;
 SQL
 )
 
 CLIP_COUNT=$(jq 'length' <<<"$CLIPS_JSON")
 if [[ "$CLIP_COUNT" != "3" ]]; then
-    printf '%ssetup error: expected one active source-backed clip for each of Chris Tucker, Ricky Gervais and Robin Williams; found %s%s\n' \
+    printf '%ssetup error: expected 3 active local comedy clips; found %s%s\n' \
         "$RED" "$CLIP_COUNT" "$RESET" >&2
     exit 2
 fi
 
 CLIP_IDS_JSON=$(jq -c '[.[].id]' <<<"$CLIPS_JSON")
-CLIP_CONTEXT=$(jq -r 'map("\(.comedian): \(.name)") | join("; ")' <<<"$CLIPS_JSON")
+CLIP_CONTEXT=$(jq -r 'map(.name) | join("; ")' <<<"$CLIPS_JSON")
 CASE_PREFIX="comedian-three-intros-$(smoke_gen_uuid)"
 IDEMPOTENCY_KEY="$CASE_PREFIX-script"
 VOICEOVER_REQUEST_ID="$CASE_PREFIX-voiceover"
 
 ITEMS_JSON=$(jq -c --arg prefix "$CASE_PREFIX" '[.[] | {
-      id: ($prefix + "-" + (.comedian | ascii_downcase | gsub(" "; "-"))),
-      title: ("" + .comedian + " comedy intro"),
+      id: ($prefix + "-" + (.id | gsub("[^A-Za-z0-9]+"; "-") | .[0:32])),
+      title: ("Comedy clip intro — " + .name),
       language: "en",
       tone: "light, conversational comedy commentary",
-      style: "Write one short English INTRO for this clip. Use two natural sentences and about 25 to 55 words. Describe lightly what the audience is about to see, with a playful but restrained tone. Do not invent context, quotes, outcomes, or biographical facts.",
+        style: "Write one short English INTRO for this clip. Use two or three natural sentences and about 50 to 65 words. Describe lightly what the audience is about to see, with a playful but restrained tone. Do not invent context, quotes, outcomes, or biographical facts.",
       source: {
-        # The current Drive-backed assets are catalogued but not locally
-        # resolvable as clip contexts. Use their verified titles as the
-        # narration source rather than pretending transcript/clip evidence
-        # exists; the selected asset IDs remain printed by the job.
-        type: "text",
-        topic: ("Light English intro for " + .comedian),
+        type: "clips",
+        topic: ("Light English intro for comedy clip " + .name),
+        clip_ids: [.id],
+        num_clips: 1,
+        grounding_policy: "clips_primary",
+        fallback_policy: "strict",
         source_text: .name,
         guidelines: "English only. Keep this intro concise, factual, and suitable for voiceover. Never claim a detail that is not grounded in the clip metadata or content."
       },
       script_params: {
-        target_words: 70,
+        target_words: 60,
         min_words: 20,
         segment_words: 40,
         segments: [{
-          id: ("intro-" + (.comedian | ascii_downcase | gsub(" "; "-"))),
-          topic: ("Light English intro for " + .comedian),
+          id: ("intro-" + (.id | gsub("[^A-Za-z0-9]+"; "-"))),
+          topic: ("Light English intro for " + .name),
           source_text: .name,
-          target_words: 70,
+          target_words: 60,
           min_words: 20,
-          max_words: 80
+          max_words: 75
         }],
         skip_quality_gate: true,
         use_memory: false
@@ -118,16 +106,17 @@ ITEMS_JSON=$(jq -c --arg prefix "$CASE_PREFIX" '[.[] | {
 
 PAYLOAD=$(jq -n \
     --argjson items "$ITEMS_JSON" \
+    --arg docs_folder "$DOCS_FOLDER_ID" \
     '{
       version: 2,
       preset: "custom",
-      items: $items
+      items: ($items | map(. + {docs: {enabled: true, languages: ["it"], folder_id: $docs_folder}}))
     }')
 
 if [[ "$DRY_RUN" == "1" ]]; then
     printf 'DRY RUN — three comedian intro + voiceover job\n'
     printf 'Database: %s\n' "$SMOKE_DB"
-    jq -r '.[] | "- \(.comedian): \(.id) — \(.name)"' <<<"$CLIPS_JSON"
+    jq -r '.[] | "- \(.id): \(.name)"' <<<"$CLIPS_JSON"
     printf '\nScript payload:\n'
     jq . <<<"$PAYLOAD"
     printf '\nVoiceover policy: group=%s language=en-US voice=%s, one canonical batch request with 3 required items\n' "$VOICEOVER_GROUP" "$VOICEOVER_VOICE"
@@ -172,22 +161,18 @@ while IFS= read -r child_id; do
     printf '%s' "$SMOKE_LAST_BODY" > "$SCRIPT_RESULT_DIR/child-${CHILD_INDEX}.json"
 done <<< "$CHILD_IDS"
 
-SCENES_JSON=$(sqlite3 -json "$SMOKE_DB" <<'SQL' | jq -c '[.[] | {id: ("scene-" + ((.sort_order)|tostring)), text: .narrative_text}]'
+SCENES_JSON=$(sqlite3 -json "$SMOKE_DB" <<SQL | jq -c '[.[] | {id: ("scene-" + ((.sort_order)|tostring)), text: .narrative_text}]'
 WITH ranked AS (
   SELECT title, narrative_text,
-         CASE title
-           WHEN 'Chris Tucker comedy intro' THEN 1
-           WHEN 'Ricky Gervais comedy intro' THEN 2
-           WHEN 'Robin Williams comedy intro' THEN 3
-         END AS sort_order,
-         ROW_NUMBER() OVER (PARTITION BY title ORDER BY created_at DESC, id DESC) AS rn
+         ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS sort_order
   FROM scripts
-  WHERE title IN ('Chris Tucker comedy intro', 'Ricky Gervais comedy intro', 'Robin Williams comedy intro')
+  WHERE title LIKE 'Comedy clip intro — %'
     AND language = 'en'
+    AND created_at >= datetime('now', '-15 minutes')
 )
 SELECT title, narrative_text, sort_order
 FROM ranked
-WHERE rn = 1
+WHERE sort_order <= 3
 ORDER BY sort_order;
 SQL
 )
