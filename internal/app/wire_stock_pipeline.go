@@ -52,7 +52,7 @@ import (
 //
 // Dep construction sequence:
 //   - DB: root.DB.DB (embedded *sql.DB from *storage.SQLiteDB)
-//   - Cutter: render.NewConfiguredCutter(cfg.External.MediaExecutor, ...)
+//   - Cutter: render.NewConfiguredCutter(...)
 //   - Renderer: rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ...)
 //   - ChannelLister + SourceStager Fetch: downloader.NewYTDLP(cfg)
 //   - SourceStager: WireAcquisitionStager with real yt-dlp Fetch closure
@@ -123,7 +123,6 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// owned by this composition root rather than each adapter separately.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, ffmpegPath, log)
 	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutor(
-		cfg.External.MediaExecutor,
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
 		cfg.Video.EncoderPolicy(),

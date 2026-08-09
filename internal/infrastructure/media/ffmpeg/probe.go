@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
@@ -20,7 +21,10 @@ import (
 // validation (Fase 9 Commits 2-8) read these fields and compare
 // against the expected values from ffmpeg.NormalizeOptions /
 // config.VideoConfig.
-type MediaInfo struct {
+type MediaInfo = mediaexec.MediaInfo
+
+/*
+	type mediaInfoLegacy struct {
 	// Duration of the media file. 0 means "no duration reported
 	// by ffprobe" (corrupt or empty file).
 	Duration time.Duration
@@ -80,6 +84,7 @@ type MediaInfo struct {
 	// at least 1 stream).
 	StreamCount int
 }
+*/
 
 // ffprobeOutput is the minimal JSON structure we parse from ffprobe output.
 type ffprobeOutput struct {
