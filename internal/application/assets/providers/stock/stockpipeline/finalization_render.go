@@ -366,7 +366,11 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		ChunkIndex: chunkIdx,
 	}
 
-	res, err := s.renderer.Render(ctx, req)
+	resolved, err := ResolveRenderPlan(req)
+	if err != nil {
+		return fmt.Errorf("renderChunk resolve plan failed: %w", err)
+	}
+	res, err := s.renderer.Render(ctx, resolved)
 	if err != nil {
 		return fmt.Errorf("renderChunk port failed: %w", err)
 	}

@@ -63,20 +63,34 @@ type RenderRequest struct {
 	KeepAudio        bool // false = strip audio output (-an)
 
 	// ── Transition policy ─────────────────────────────────────────
-	NoTransitions   bool // skip transitions entirely (fast path eligible)
-	TransitionEvery int  // apply transition at every Nth clip boundary (1=every)
-	ClipDurationSec int  // clip target duration (used to compute fadeStart)
+	NoTransitions   bool
+	TransitionEvery int
+	ClipDurationSec int
+	Transitions     []RenderTransition
 
-	// ── Effects policy ─────────────────────────────────────────────
-	NoEffects       bool   // skip overlay effects
-	EffectsDir      string // directory scanned for .mp4 overlay files
-	EffectEvery     int    // apply overlay every Nth clip
-	EffectIndexHint int    // 0+ — deterministic hint for selecting effect file
+	NoEffects       bool
+	EffectsDir      string
+	EffectEvery     int
+	EffectIndexHint int
+	EffectPaths     []RenderEffectPath
 	OverlayOpacity  float64
 
 	// ── Logging / telemetry ────────────────────────────────────────
 	Logger     *zap.Logger
 	ChunkIndex int // for log enrichment
+}
+
+// RenderTransition is a Go-resolved transition assignment.
+type RenderTransition struct {
+	ClipIndex int    `json:"clip_index"`
+	Segment   string `json:"segment"`
+	ID        string `json:"id"`
+}
+
+// RenderEffectPath is a Go-resolved exact effect file assignment.
+type RenderEffectPath struct {
+	ClipIndex int    `json:"clip_index"`
+	Path      string `json:"path"`
 }
 
 // RenderResult is the neutral result returned by StockRenderer.Render.

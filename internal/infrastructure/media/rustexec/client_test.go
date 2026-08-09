@@ -75,7 +75,8 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	_, err := renderer.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: []string{"a.mp4", "b.mp4"}, OutputPath: "out.mp4",
 		Codec: "h264_nvenc", Preset: "p1", CRF: 23, Width: 1920, Height: 1080, FPS: 24,
-		TransitionEvery: 2, ClipDurationSec: 5, EffectEvery: 3, EffectIndexHint: 1,
+		Transitions: []stockpipeline.RenderTransition{{ClipIndex: 1, Segment: "end", ID: "fadeblack"}},
+		EffectPaths: []stockpipeline.RenderEffectPath{{ClipIndex: 1, Path: "/effects/a.mp4"}}, ClipDurationSec: 5,
 	})
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
@@ -84,7 +85,7 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || sent.TransitionEvery != 2 {
+	if sent.Operation != "render_stock" || len(sent.InputPaths) != 2 || sent.Codec != "h264_nvenc" || len(sent.Transitions) != 1 || sent.Transitions[0].ID != "fadeblack" || len(sent.EffectPaths) != 1 || sent.EffectPaths[0].Path != "/effects/a.mp4" {
 		t.Fatalf("unexpected render request: %+v", sent)
 	}
 }

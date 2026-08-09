@@ -131,7 +131,15 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 			ChunkIndex:       i,
 		}
 
-		_, renderErr := renderer.Render(ctx, req)
+		resolved, resolveErr := ResolveRenderPlan(req)
+		if resolveErr != nil {
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.compose_chunks: render plan resolution failed",
+					zap.Int("chunk_index", i), zap.Error(resolveErr))
+			}
+			continue
+		}
+		_, renderErr := renderer.Render(ctx, resolved)
 		if renderErr != nil {
 			// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (2026-07-04): per-chunk
 			// graceful degradation (Warn + continue) mirrors the
