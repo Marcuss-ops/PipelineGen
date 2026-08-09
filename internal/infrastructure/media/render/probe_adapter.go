@@ -17,14 +17,18 @@ var _ stockpipeline.SourceDurationProbe = (*FFProbeSourceDurationProbe)(nil)
 // ffmpeg.Processor Probe path so the duration measurement stays
 // consistent with the rest of the media stack.
 type FFProbeSourceDurationProbe struct {
-	proc *ffmpeg.Processor
+	proc interface {
+		Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+	}
 }
 
 // NewFFProbeSourceDurationProbe constructs a probe adapter. An empty
 // ffmpegPath defaults to "ffmpeg" via ffmpeg.NewProcessor.
-func NewFFProbeSourceDurationProbe(ffmpegPath string) *FFProbeSourceDurationProbe {
+func NewFFProbeSourceDurationProbe(proc interface {
+	Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+}) *FFProbeSourceDurationProbe {
 	return &FFProbeSourceDurationProbe{
-		proc: ffmpeg.NewProcessor(ffmpegPath),
+		proc: proc,
 	}
 }
 

@@ -63,15 +63,23 @@ type PercentageFrameSampler interface {
 //
 // Tests can swap to a fake sampler (interface implementation) to
 // bypass the ffmpeg CLI invocation.
+// FrameProcessor is the narrow media execution port required by the sampler.
+// The application does not care whether the implementation is Go/FFmpeg or
+// the Rust execution plane.
+type FrameProcessor interface {
+	Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+	ExtractFrame(context.Context, string, string, float64) error
+}
+
 type FFMPEGFrameSampler struct {
-	proc *ffmpeg.Processor
+	proc FrameProcessor
 }
 
 // NewFFMPEGFrameSampler wires the sampler. nil processor is a hard
 // error per godlike/07 (the constructor fails closed).
-func NewFFMPEGFrameSampler(proc *ffmpeg.Processor) (*FFMPEGFrameSampler, error) {
+func NewFFMPEGFrameSampler(proc FrameProcessor) (*FFMPEGFrameSampler, error) {
 	if proc == nil {
-		return nil, errors.New("ffmpeg_frame_sampler: ffmpeg.Processor is nil")
+		return nil, errors.New("ffmpeg_frame_sampler: media processor is nil")
 	}
 	return &FFMPEGFrameSampler{proc: proc}, nil
 }

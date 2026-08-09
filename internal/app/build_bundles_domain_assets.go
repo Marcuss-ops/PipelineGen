@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -117,7 +117,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	// best-effort: if any dependency is missing the autotag service
 	// falls back to single-shot VLM analysis for video assets.
 	var videoSampler indexing.PercentageFrameSampler
-	proc := ffmpeg.NewFromConfig(params.cfg)
+	proc := rustexec.NewVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.log)
 	if sampler, err := indexing.NewFFMPEGFrameSampler(proc); err == nil {
 		videoSampler = sampler
 	} else {

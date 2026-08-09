@@ -24,8 +24,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -67,7 +67,7 @@ func constructArtlistProviders(
 	// subprocess. Fail-closed: missing ffprobe binary yields a typed
 	// exec error from process.Run that the closure below forwards to
 	// markAudit(Failed) + ErrInvalidResponse to the caller.
-	ffmpegProc := ffmpeg.NewProcessor("")
+	mediaProc := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 
 	// godlike/06 SSOT: HTTPSelfLoopProbe is the canonical app-layer wrapper
 	// for *Probe; its Probe(ctx) (bool, error) signature matches
@@ -198,7 +198,7 @@ func constructArtlistProviders(
 		// sees the audit-status flip and an actionable log line naming
 		// ffprobe as the missing dependency.
 		PostValidator: func(ctx context.Context, path string) error {
-			mediaInfo, err := ffmpegProc.Probe(ctx, path)
+			mediaInfo, err := mediaProc.Probe(ctx, path)
 			if err != nil {
 				return err
 			}
@@ -218,7 +218,6 @@ func constructArtlistProviders(
 	artlistStager := artlist.NewArtlistStager(artlistDownloader)
 
 	return artlistProviders{
-		FfmpegProc:        ffmpegProc,
 		IsLiveProbe:       isLiveProbe,
 		SystemProber:      systemProber,
 		ArtlistDownloader: artlistDownloader,

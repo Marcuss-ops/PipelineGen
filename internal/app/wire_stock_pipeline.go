@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -247,7 +248,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// Source duration validation and manifest projection are production
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
-	stockProbe := render.NewFFProbeSourceDurationProbe(ffmpegPath)
+	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, ffmpegPath, log))
 	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{

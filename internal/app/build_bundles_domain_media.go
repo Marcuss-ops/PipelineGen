@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
-	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
@@ -77,7 +77,7 @@ func buildDomainMediaServices(
 	// satisfies semantic.MetadataWriterPort.
 	voMetaWriter = nil
 
-	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
+	clipProcessor := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 
