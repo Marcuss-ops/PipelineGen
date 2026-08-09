@@ -110,9 +110,9 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 	out := make([]string, 0, min(limit, len(all)*2))
 	seenOutput := make(map[string]struct{}, cap(out))
 	for _, result := range all {
-		// Keep the full image and its DDG thumbnail adjacent. If a host
-		// blocks hotlinking on the original image, acquisition can still
-		// use the normal thumbnail returned by the same search result.
+		// Prefer the original source image so the technical minimum
+		// dimensions can be satisfied. Keep DuckDuckGo's real thumbnail as
+		// fallback when an origin host rejects server-side acquisition.
 		for _, candidate := range []string{result.Image, result.Thumbnail} {
 			if !strings.HasPrefix(candidate, "http") {
 				continue

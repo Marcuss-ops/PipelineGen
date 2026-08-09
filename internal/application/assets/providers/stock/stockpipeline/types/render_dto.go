@@ -169,10 +169,15 @@ type CutRequest struct {
 	Jobs []CutJob
 
 	// ── Batch-level encoding policy ────────────────────────────────
-	Codec   string // "libx264", "h264_nvenc", ...
-	Preset  string
-	CRF     int
-	NoAudio bool
+	Codec  string // "libx264", "h264_nvenc", ...
+	Preset string
+	CRF    int
+	Width  int
+	Height int
+	FPS    int
+	// KeyframeInterval is the canonical GOP size for encoded cuts.
+	KeyframeInterval int
+	NoAudio          bool
 
 	// ── Logging / telemetry ────────────────────────────────────────
 	Logger    *zap.Logger

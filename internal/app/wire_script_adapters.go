@@ -49,6 +49,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -280,13 +281,61 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	}
 	var searcher imagesrouting.ImageSearcher
 	var err error
-	// VidRush's retrieved provider is explicitly Wikimedia Commons. Resolve it
-	// through the same routing/registry seam so every selected image carries
-	// an explicit license before it can become a binding winner.
+	toCandidate := func(r imagesrouting.ImageSearchResult) scriptpkg.SegmentAssetCandidate {
+		assetID := strings.TrimSpace(r.AssetID)
+		if assetID == "" {
+			assetID = strings.TrimSpace(r.Name)
+		}
+		if assetID == "" {
+			sum := sha256.Sum256([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
+			assetID = hex.EncodeToString(sum[:])
+		}
+		return scriptpkg.SegmentAssetCandidate{
+			AssetID: assetID, Provider: "internet_images", Query: strings.TrimSpace(req.Query),
+			Entity: strings.TrimSpace(req.Entity), SourceURL: strings.TrimSpace(r.PreviewURL),
+			SourcePageURL: strings.TrimSpace(r.SourcePageURL), PreviewURL: strings.TrimSpace(r.PreviewURL),
+			DriveLink: strings.TrimSpace(r.DriveLink), FileHash: strings.TrimSpace(r.FileHash),
+			Score: r.Score, Width: r.Width, Height: r.Height,
+			RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
+		}
+	}
+	// Reuse durable retrieved images first. The optional resolver seam keeps
+	// this DB-first policy out of the provider implementation; a fresh
+	// randomized order avoids selecting the same stored image every run.
+	if lookup, ok := a.resolver.(interface {
+		ExistingImages(context.Context, string, int) ([]imagesrouting.ImageSearchResult, error)
+	}); ok {
+		cached, lookupErr := lookup.ExistingImages(ctx, req.Query, req.Limit)
+		if lookupErr != nil {
+			a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("query", req.Query), zap.Error(lookupErr))
+		} else if len(cached) > 0 {
+			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+			rng.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
+			out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
+			for _, row := range cached {
+				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.FileHash) == "" {
+					continue
+				}
+				candidate := toCandidate(row)
+				candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+				candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+				candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
+				candidate.IndexStatus = "pending"
+				out = append(out, candidate)
+			}
+			if len(out) > 0 {
+				a.log.Info("VidRush reused persisted image candidates", zap.String("query", req.Query), zap.Int("count", len(out)))
+				return out, nil
+			}
+		}
+	}
+	// VidRush internet_images is explicitly backed by DuckDuckGo. Resolve it
+	// through the same routing/registry seam so provider selection remains
+	// centralized and candidate provenance is preserved downstream.
 	if explicit, ok := a.resolver.(interface {
 		ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 	}); ok {
-		searcher, err = explicit.ResolveProvider("wikimedia_commons")
+		searcher, err = explicit.ResolveProvider("duckduckgo")
 	} else {
 		searcher, err = a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
 	}
@@ -319,28 +368,7 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
 	for _, r := range results {
-		assetID := strings.TrimSpace(r.AssetID)
-		if assetID == "" {
-			assetID = strings.TrimSpace(r.Name)
-		}
-		if assetID == "" {
-			sum := sha256.Sum256([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
-			assetID = hex.EncodeToString(sum[:])
-		}
-		out = append(out, scriptpkg.SegmentAssetCandidate{
-			AssetID:       assetID,
-			Provider:      "internet_images",
-			Query:         strings.TrimSpace(req.Query),
-			Entity:        strings.TrimSpace(req.Entity),
-			SourceURL:     strings.TrimSpace(r.PreviewURL),
-			SourcePageURL: strings.TrimSpace(r.SourcePageURL),
-			PreviewURL:    strings.TrimSpace(r.PreviewURL),
-			Score:         r.Score,
-			Width:         r.Width,
-			Height:        r.Height,
-			RightsStatus:  retrievedImageRightsStatus(r.License),
-			RightsBasis:   retrievedImageRightsBasis(r.License, r.Author),
-		})
+		out = append(out, toCandidate(r))
 	}
 	return out, nil
 }

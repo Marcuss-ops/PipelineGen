@@ -64,17 +64,21 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter routing.Im
 	out := make([]routing.ImageSearchResult, 0, len(dbRows))
 	for _, r := range dbRows {
 		out = append(out, routing.ImageSearchResult{
-			AssetID:      r.AssetID,
-			Origin:       r.Origin,
-			Provider:     r.Provider,
-			Name:         r.Name,
-			PreviewURL:   r.PreviewURL,
-			Width:        r.Width,
-			Height:       r.Height,
-			Score:        r.Score,
-			StyleID:      r.StyleID,
-			StyleVersion: r.StyleVersion,
-			License:      r.License,
+			AssetID:       r.AssetID,
+			Origin:        r.Origin,
+			Provider:      r.Provider,
+			Name:          r.Name,
+			PreviewURL:    r.PreviewURL,
+			DriveLink:     r.DriveLink,
+			FileHash:      r.FileHash,
+			SourcePageURL: r.SourcePageURL,
+			Author:        r.Author,
+			Width:         r.Width,
+			Height:        r.Height,
+			Score:         r.Score,
+			StyleID:       r.StyleID,
+			StyleVersion:  r.StyleVersion,
+			License:       r.License,
 		})
 	}
 	return out, nil

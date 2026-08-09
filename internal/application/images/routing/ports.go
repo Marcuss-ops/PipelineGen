@@ -49,22 +49,26 @@ type RepositoryListFilter struct {
 // Subject/Slug/Description/Tags/CreatedAt fields to carry the joined
 // projection columns that the routing-level DTO doesn't expose.
 type RepositoryImageRow struct {
-	AssetID      string
-	Subject      string
-	Slug         string
-	Name         string
-	PreviewURL   string
-	Provider     string
-	Origin       asset.ImageOrigin
-	License      string
-	Description  string
-	Width        int
-	Height       int
-	Score        float64
-	Tags         []string
-	StyleID      string
-	StyleVersion string
-	CreatedAt    string
+	AssetID       string
+	Subject       string
+	Slug          string
+	Name          string
+	PreviewURL    string
+	Provider      string
+	Origin        asset.ImageOrigin
+	License       string
+	Author        string
+	SourcePageURL string
+	DriveLink     string
+	FileHash      string
+	Description   string
+	Width         int
+	Height        int
+	Score         float64
+	Tags          []string
+	StyleID       string
+	StyleVersion  string
+	CreatedAt     string
 }
 
 // DefaultResolvedLimit is the canonical cap applied when a caller
