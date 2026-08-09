@@ -27,7 +27,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
@@ -35,9 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -126,60 +123,4 @@ func TestVoiceoverGenerateJobHandlerTypeIsWiredInSamePackage(t *testing.T) {
 	var h *jobs.GenerateJobHandler
 	require.Nil(t, h,
 		"GenerateJobHandler pointer is nil at allocation-time — presence asserts the type compiles + is reachable from this package")
-}
-
-// TestBuildVoiceoverService_TranslationRequiredNilPort_Panics locks the FASE 9
-// fail-closed contract: when cfg.Translation.Required=true and the caller
-// passes a nil translationPort, buildVoiceoverService MUST panic with a
-// message that tells the operator EXACTLY which config key to flip or which
-// port to wire. The silent-fallback "return text, nil" is RETIRED — a nil
-// port under Required=true is a composition-time misconfiguration.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: the test verifies the panic fires AND
-// that the message names cfg.Translation.Required + translationPort so
-// a future refactor that changes either name would trip the substring
-// assertion (the operator-facing contract for the boot-failure message).
-func TestBuildVoiceoverService_TranslationRequiredNilPort_Panics(t *testing.T) {
-	cfg := &config.Config{
-		Translation: config.TranslationConfig{
-			Required: true,
-		},
-	}
-
-	// buildVoiceoverService requires many concrete deps. The panic gate
-	// fires BEFORE any of them are accessed (it only checks cfg + the
-	// translationPort parameter), so we can pass nil/zap.NewNop() for
-	// everything except cfg and translationPort.
-	recovered := make(chan string, 1)
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				recovered <- fmt.Sprint(r)
-			}
-		}()
-		buildVoiceoverService(
-			context.Background(),
-			cfg,
-			nil, // dbs
-			zap.NewNop(),
-			nil, // driveUploader
-			nil, // publisher
-			nil, // assetIndexService
-			nil, // clipIndexerService
-			nil, // destResolver
-			nil, // metaWriter
-			nil, // translationPort — THIS triggers the gate
-			nil, // outboxDispatcher
-		)
-	}()
-
-	select {
-	case msg := <-recovered:
-		// The panic message must name the canonical config key AND the
-		// port so the operator can grep the log for either.
-		require.Contains(t, msg, "cfg.Translation.Required")
-		require.Contains(t, msg, "translationPort")
-	default:
-		t.Fatal("expected panic when cfg.Translation.Required=true and translationPort is nil, but buildVoiceoverService returned normally")
-	}
 }

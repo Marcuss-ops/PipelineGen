@@ -25,14 +25,12 @@ package app
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
@@ -43,7 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -69,7 +67,7 @@ import (
 // adapters_voiceover_publisher.go. Post-commit Drive cleanup now flows
 // directly through drive.Admin → jobsoutbox.VoiceoverCleanupDriver
 // (structural conformance, no wrapper needed).
-func buildVoiceoverService(
+func buildVoiceoverPipeline(
 	ctx context.Context,
 	cfg *config.Config,
 	dbs *wiring.Databases,
@@ -81,23 +79,8 @@ func buildVoiceoverService(
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
 	metaWriter semantic.MetadataWriterPort,
-	translationPort translation.TranslationPort, // Fase 9 step 4 CUTOVER: *translation.OllamaTranslator satisfies this port; the bare *ollama.Generator.TranslateText direct-call closure is RETIRED.
 	outboxDispatcher *outbox.Dispatcher,
-) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
-
-	// FASE 9 (July 2026): fail-closed gate — when cfg.Translation.Required
-	// is true, the translation port MUST be wired. A nil port is a
-	// composition-time misconfiguration; panic with an actionable message
-	// so the operator sees the boot failure and fixes the wiring rather
-	// than discovering the silent fallback at the first promo translation
-	// request (godlike/07 NO-FAKE-AVAILABILITY: never silently degrade
-	// a required production dependency).
-	if cfg.Translation.Required && translationPort == nil {
-		panic("voiceover: cfg.Translation.Required=true but translationPort is nil — " +
-			"the voiceover pipeline requires a translation.TranslationPort (e.g. *translation.OllamaTranslator) " +
-			"for promo generation. Set cfg.Translation.Required=false for dev mode, or wire the port " +
-			"via build_bundles_ai.go → BuildDomainBundle → buildVoiceoverService.")
-	}
+) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
 
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.DualPool.Writer)
@@ -120,32 +103,6 @@ func buildVoiceoverService(
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	// Build semantic-tagger closure from metaWriter (used by promo
-	// generation to enrich voiceover assets with search_text/tags).
-	semanticTagger := func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
-		if metaWriter == nil {
-			return nil, fmt.Errorf("voiceover: metaWriter not wired (cannot enrich voiceover semantic metadata)")
-		}
-		payload, _, err := metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
-			AssetID:   "",
-			AssetType: "voiceover",
-			MediaType: mediaType,
-			Source:    "voiceover",
-			Generator: generator,
-			Style:     style,
-			Prompt:    prompt,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return &voiceover.SemanticTaggerResult{
-			SearchText: payload.SearchText,
-			Tags:       payload.Tags,
-			Subjects:   payload.Subjects,
-			Mood:       payload.Mood,
-		}, nil
-	}
-
 	// P0.4 Fase 3a (July 2026): construct the unified VoiceoverFinalizer
 	// once and inject it into BOTH the per-item use case (child pipeline)
 	// and the legacy Service (batch pipeline). The finalizer replaces the
@@ -161,43 +118,7 @@ func buildVoiceoverService(
 	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
 	//                       via voiceoverProjectionAdapter
 	//   - log:             *zap.Logger
-	// FASE 8 (July 2026): wrap the translation port with bounded
-	// concurrency (Ollama semaphore) and per-call timeout BEFORE
-	// the closure captures it. The closure's nil-guard still works
-	// when translationPort is nil (rate-limited wrapper is skipped).
-	if translationPort != nil {
-		translationPort = newRateLimitedTranslator(translationPort, cfg.Voiceover, log)
-	}
-
-	// Build translator closure from translationPort (canonical Fase 9
-	// step 4 surface). The closure adapts the canonical 1-method port
-	// (Translate(ctx, cmd TranslationCommand)) to the legacy 3-arg
-	// TranslatorFunc signature voiceover.Service expects (ctx, text, lang)
-	// → (string, error). The ContentKind=voiceover envelope tells the
-	// provider this is a voiceover translation (preserves verbatim
-	// formatting for TTS downstream). Graceful degradation: if
-	// translationPort is nil, return input unchanged so promo generation
-	// can still proceed (godlike/07 no-fake-availability: callers should
-	// detect nil + wire, but the missing-wire failure mode is silent
-	// fallback, not panic — same pattern as the pre-CUTOVER bare
-	// scriptGen closure).
-	translator := func(ctx context.Context, text, targetLanguage string) (string, error) {
-		if translationPort == nil {
-			return text, nil
-		}
-		res, err := translationPort.Translate(ctx, translation.TranslationCommand{
-			TargetLang: targetLanguage,
-			Text:       text,
-		})
-		if err != nil {
-			observability.TranslationFailuresTotal.Inc()
-			return text, err
-		}
-		return res.TranslatedText, nil
-	}
-
-	// PR-VO-A3: outbox enqueuer (idle if nil). The voiceover.Service
-	// guards nil — see voiceover/ports.go. Production wiring supplies
+	// PR-VO-A3: outbox enqueuer. Production wiring supplies
 	// the *outbox.Dispatcher; the field satisfies the TxOutboxEnqueuer
 	// port structurally (no wrapper required).
 	var outboxEnqueuer voiceover.TxOutboxEnqueuer
@@ -234,17 +155,6 @@ func buildVoiceoverService(
 	//
 	// FASE 8: Publisher wrapped with rate-limiting + retry.
 	voPublisher := newRateLimitedPublisher(newUseCasePublisherAdapter(publisher, log), cfg.Voiceover, log)
-	processSeg := voiceover.NewProcessSegmentUseCase(voiceover.ProcessSegmentDeps{
-		TTSProvider:         ttsProvider,
-		AudioPostProcessor:  newUseCaseAudioAdapter(log),
-		Publisher:           voPublisher,
-		VoiceoverRepository: voRepoAdapter,
-		Finalizer:           finalizer,
-		TxOutboxEnqueuer:    outboxEnqueuer, // FASE 4 (July 2026): orphan-cleanup path active in production
-		SemanticTagger:      semanticTagger,
-		Logger:              log,
-	})
-
 	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
 	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
 	// top of the same adapter surface the legacy service consumes.
@@ -299,9 +209,9 @@ func buildVoiceoverService(
 	publisherAdapter := voPublisher
 
 	// Adapter: AudioPostProcessor port — silence-removal bridge
-	// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
+	// built on the canonical media execution adapter. Nil-safe
 	// at the use case boundary (only invoked when RemoveSilence == true).
-	audioAdapter := newUseCaseAudioAdapter(log)
+	audioAdapter := newUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
 
 	// The use case satisfies voiceover.VoiceoverItemExecutor
 	// structurally — compile-time assertion in process_voiceover_item.go
@@ -331,17 +241,10 @@ func buildVoiceoverService(
 	// After the tx commits, finalizeStage calls Verify to confirm both
 	// the voiceovers row and the media_assets projection are durably
 	// present. The adapter uses dbs.DualPool.Writer for post-commit SELECTs.
-	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.DualPool.Writer)
-
 	// PR-CATALOG-MULTILINGUA step 3 (July 2026): build the canonical
 	// per-language capability surface used by the voiceover pipeline to
 	// resolve EdgeTTSVoice identifiers. A nil registry falls through
 	// to the bridge's emergency fallback (nil-safe in process.go).
-	languageRegistry, err := wiring.BuildLanguageRegistry(wiring.ActiveMultilingualConfig(cfg))
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("compose voiceover: language registry: %w", err)
-	}
-
 	// P0-#3 (July 2026): wire the canonical per-item voiceover use
 	// case into the legacy Service so GeneratePromo can route
 	// through it. processItemUseCase was already constructed above
@@ -351,30 +254,9 @@ func buildVoiceoverService(
 	// destResolver==nil branch above), processItemUseCase is nil
 	// and Service.GeneratePromo surfaces a typed error — fail-closed
 	// per godlike/07 NO-FAKE-AVAILABILITY.
-	voService := voiceover.NewService(voiceover.VoiceoverDeps{
-		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
-		Persistence: voiceover.VoiceoverPersistenceDeps{Repo: voRepoAdapter},
-		Generation: voiceover.VoiceoverGenerationDeps{
-			TTSProvider:    ttsProvider,
-			SemanticTagger: semanticTagger,
-		},
-		Integration: voiceover.VoiceoverIntegrationDeps{
-			LifecycleService:  voLifecycle, // voiceover's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
-			AssetDestResolver: destResolver,
-			OutboxEnqueuer:    outboxEnqueuer,
-			Translator:        translator,
-			LanguageRegistry:  languageRegistry,
-		},
-		Execution: voiceover.VoiceoverExecutionDeps{
-			Finalizer:          finalizer,
-			PostCommitVerifier: postCommitVerifier,
-			ProcessSegment:     processSeg,
-			ProcessItem:        processItemUseCase, // P0-#3 (July 2026): the canonical per-item use case the promo path routes through
-		},
-	})
 	// pylint: disable=unused
 	_ = clipIndexerService // retained on the signature for future use; IndexClip is now reached only via the outbox dispatcher → IndexingHandler → clipIndexerService.IndexClip instead.
-	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
+	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voService, voRepo, processItemUseCase, audioProcessor, nil
+	return voRepo, processItemUseCase, audioProcessor, nil
 }

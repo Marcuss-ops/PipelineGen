@@ -72,12 +72,12 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		}
 		voiceoverDestResolver = resolved
 	}
-	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverService(params.ctx, params.cfg, params.dbs, params.log,
+	voiceoverRepo, voiceoverProcessItem, audioProcessor, err := buildVoiceoverPipeline(params.ctx, params.cfg, params.dbs, params.log,
 		params.drive.DriveUploader,
 		params.drive.Publisher,
 		params.search.AssetIndexService, params.process.ClipIndexerService,
 		voiceoverDestResolver,
-		params.voMetaWriter, params.ai.OllamaTranslator,
+		params.voMetaWriter,
 		params.outbox.Dispatcher,
 	)
 	if err != nil {
@@ -174,7 +174,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		params.log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	params.bundle.VoiceoverService = voiceoverSvc
 	params.bundle.VoiceoverSync = vosyncSvc
 	params.bundle.VoiceoverProcessItem = voiceoverProcessItem
 	params.bundle.ImageService = imageSvc
