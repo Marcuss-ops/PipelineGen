@@ -30,14 +30,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// ClipsRepositoryDeps groups the repository ports consumed by clips.
+type ClipsRepositoryDeps struct {
+	ClipsRepo     *sqassets.ClipsRepository
+	VoiceoverRepo *sqassets.VoiceoversRepository
+	ImageRepo     *imagesrepo.ImagesRepository
+	AssetRepo     asset.Repository
+}
+
 // ClipsCapabilityDeps contains only the concrete ports consumed by the clips
 // capability builder. AssetsModuleDeps is projected into this bundle at the
 // WireAssets boundary and does not cross into the builder.
 type ClipsCapabilityDeps struct {
-	ClipsRepo          *sqassets.ClipsRepository
-	VoiceoverRepo      *sqassets.VoiceoversRepository
-	ImageRepo          *imagesrepo.ImagesRepository
-	AssetRepo          asset.Repository
+	Repositories       ClipsRepositoryDeps
 	ArtifactService    *artifacts.Service
 	AssetTreeService   *assettree.Service
 	MediaProcessor     asset.Processor
@@ -68,10 +73,10 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	}
 
 	duplicateFinder := duplicates.NewFinder(
-		NewClipsRepoDuplicateSource("local", params.Clips.ClipsRepo),
+		NewClipsRepoDuplicateSource("local", params.Clips.Repositories.ClipsRepo),
 	)
 	enrichUC, err := appclips.NewEnrichUseCase(
-		params.Clips.AssetRepo,
+		params.Clips.Repositories.AssetRepo,
 		params.MetaWriter,
 		mutationsDisp,
 		params.Log,
@@ -82,7 +87,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		params.Clips.Publisher,
-		newClipsRepoAdapter(params.Clips.ClipsRepo),
+		newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,
@@ -120,7 +125,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		"stock":   {RootID: params.Cfg.Drive.StockFolder(), PathMarker: params.Cfg.Storage.FullPath("stock")},
 	}
 	reuploadUC := appclips.NewReuploadUseCase(
-		params.Clips.AssetRepo,
+		params.Clips.Repositories.AssetRepo,
 		params.Clips.Publisher,
 		clipsDispatcherPort,
 		reuploadFolderRoots,
@@ -128,7 +133,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	clipsOpsPorts := buildClipOpsPorts(
-		newClipsRepoAdapter(params.Clips.ClipsRepo),
+		newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 		params.Jobs,
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
@@ -145,15 +150,15 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	// makes the API package transport-only and gives NonOps/Actions precisely
 	// the operations they execute.
 	bulkTagsUC := appclips.NewBulkTagsUseCase(
-		params.Clips.ClipsRepo,
+		params.Clips.Repositories.ClipsRepo,
 		params.Clips.AssetTreeService,
 	)
 	downloadUC := appclips.NewDownloadUseCase(
-		params.Clips.AssetRepo,
-		params.Clips.VoiceoverRepo,
+		params.Clips.Repositories.AssetRepo,
+		params.Clips.Repositories.VoiceoverRepo,
 	)
 	reprocessUC := appclips.NewReprocessUseCase(
-		params.Clips.AssetRepo,
+		params.Clips.Repositories.AssetRepo,
 		params.Clips.MediaProcessor,
 		mutationsDisp,
 		params.Cfg.Drive.ClipsFolder(),
@@ -164,22 +169,22 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		if !artifacts.IsClipsSource(source) {
 			return nil
 		}
-		return newClipsRepoAdapter(params.Clips.ClipsRepo)
+		return newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo)
 	}
 
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		Handlers: clipsapi.Deps{
 			Search: clipsapi.SearchDeps{
-				ClipsRepo:     newClipsRepoAdapter(params.Clips.ClipsRepo),
-				AssetRepo:     params.Clips.AssetRepo,
-				VoiceoverRepo: newVoiceoverRepoAdapter(params.Clips.VoiceoverRepo),
-				ImagesRepo:    params.Clips.ImageRepo,
+				ClipsRepo:     newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+				AssetRepo:     params.Clips.Repositories.AssetRepo,
+				VoiceoverRepo: newVoiceoverRepoAdapter(params.Clips.Repositories.VoiceoverRepo),
+				ImagesRepo:    params.Clips.Repositories.ImageRepo,
 			},
 			Ingest: clipsapi.IngestDeps{
 				Dispatcher:   clipsDispatcherPort,
 				AssetTreeSvc: params.Clips.AssetTreeService,
 				JobsSvc:      params.Jobs.Facade,
-				ClipsRepo:    newClipsRepoAdapter(params.Clips.ClipsRepo),
+				ClipsRepo:    newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 				EnrichUC:     enrichUC,
 				UploadUC:     uploadUC,
 				AIStockUC:    aiStockUC,
@@ -188,7 +193,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 			Operations: clipsapi.OpsDeps{
 				ClipOpsService: clipOpsSvc,
 				DeletionSvc:    params.DeletionSvc,
-				ClipsRepo:      newClipsRepoAdapter(params.Clips.ClipsRepo),
+				ClipsRepo:      newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 				DriveAdmin:     clipsDrive,
 				AssetTreeSvc:   params.Clips.AssetTreeService,
 				Log:            params.Log,
@@ -212,7 +217,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				Log:              params.Log,
 			},
 			Actions: clipsapi.ActionDeps{
-				AssetRepo:       params.Clips.AssetRepo,
+				AssetRepo:       params.Clips.Repositories.AssetRepo,
 				DriveAdmin:      clipsDrive,
 				DuplicateFinder: duplicateFinder,
 				DownloadUC:      downloadUC,

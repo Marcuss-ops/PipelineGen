@@ -11,11 +11,13 @@ import (
 
 func TestNewProductionStockOrchestratorRejectsImplicitWriter(t *testing.T) {
 	_, err := NewProductionStockOrchestrator(OrchestratorConfig{}, ProductionStockPipelineDeps{
-		Planner:  resumeStubPlanner{},
-		Stager:   resumeStubStager{},
-		Cutter:   fakeSucceedingCutter{},
-		Renderer: noopRenderer{},
-		Builder:  stockManifestBuilder{},
+		Pipeline: ProductionPipelineDeps{
+			Planner:  resumeStubPlanner{},
+			Stager:   resumeStubStager{},
+			Cutter:   fakeSucceedingCutter{},
+			Renderer: noopRenderer{},
+			Builder:  stockManifestBuilder{},
+		},
 		// Writer is intentionally omitted: production must not inherit
 		// NewTestStockOrchestrator's noop writer.
 	})
@@ -24,20 +26,26 @@ func TestNewProductionStockOrchestratorRejectsImplicitWriter(t *testing.T) {
 
 func TestNewProductionStockOrchestratorAcceptsCompleteDependencyGraph(t *testing.T) {
 	pipeline, err := NewProductionStockOrchestrator(OrchestratorConfig{JobId: "production-fixture"}, ProductionStockPipelineDeps{
-		Planner:             resumeStubPlanner{},
-		Stager:              resumeStubStager{},
-		Cutter:              fakeSucceedingCutter{},
-		Renderer:            noopRenderer{},
-		Builder:             stockManifestBuilder{},
-		Writer:              noopWriter{},
-		Projection:          noopProjection{},
-		StepStore:           steps.NewInMemoryStore(),
-		ArtifactPreparation: &recordingArtifactPreparation{},
-		JobFinalizer:        stubJobFinalizer{},
-		SourceProbe:         handleJobSourceProbe{},
-		BatchRepository:     noopBatchRepository{},
-		LocalFS:             newRealishFakeLocalFS(),
-		Logger:              zap.NewNop(),
+		Pipeline: ProductionPipelineDeps{
+			Planner:  resumeStubPlanner{},
+			Stager:   resumeStubStager{},
+			Cutter:   fakeSucceedingCutter{},
+			Renderer: noopRenderer{},
+			Builder:  stockManifestBuilder{},
+		},
+		Persistence: ProductionPersistenceDeps{
+			Writer:              noopWriter{},
+			Projection:          noopProjection{},
+			StepStore:           steps.NewInMemoryStore(),
+			ArtifactPreparation: &recordingArtifactPreparation{},
+			JobFinalizer:        stubJobFinalizer{},
+			BatchRepository:     noopBatchRepository{},
+		},
+		Runtime: ProductionRuntimeDeps{
+			SourceProbe: handleJobSourceProbe{},
+			LocalFS:     newRealishFakeLocalFS(),
+			Logger:      zap.NewNop(),
+		},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, pipeline)

@@ -11,25 +11,40 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
-// ProductionStockPipelineDeps is the complete dependency graph required by
-// the live stock pipeline. Unlike NewTestStockOrchestrator, this bundle has no
-// implicit defaults: every port that can affect a production verdict is
-// supplied by the composition root.
-type ProductionStockPipelineDeps struct {
-	Planner             ClipPlanner
-	Stager              assets.SourceStager
-	Cutter              VideoCutter
-	Renderer            StockRenderer
-	Builder             ManifestBuilder
+// ProductionPipelineDeps groups the execution ports for the live stock run.
+type ProductionPipelineDeps struct {
+	Planner  ClipPlanner
+	Stager   assets.SourceStager
+	Cutter   VideoCutter
+	Renderer StockRenderer
+	Builder  ManifestBuilder
+}
+
+// ProductionPersistenceDeps groups durable state and finalization ports.
+type ProductionPersistenceDeps struct {
 	Writer              TransactionalAssetWriter
 	Projection          ProjectionPort
 	StepStore           steps.Store
 	ArtifactPreparation finalization.ArtifactPreparationService
 	JobFinalizer        finalization.JobFinalizer
-	SourceProbe         SourceDurationProbe
 	BatchRepository     StockBatchRepository
-	LocalFS             LocalFSPort
-	Logger              *zap.Logger
+}
+
+// ProductionRuntimeDeps groups probing, filesystem, and observability ports.
+type ProductionRuntimeDeps struct {
+	SourceProbe SourceDurationProbe
+	LocalFS     LocalFSPort
+	Logger      *zap.Logger
+}
+
+// ProductionStockPipelineDeps is the complete dependency graph required by
+// the live stock pipeline. Unlike NewTestStockOrchestrator, this bundle has no
+// implicit defaults: every port that can affect a production verdict is
+// supplied by the composition root.
+type ProductionStockPipelineDeps struct {
+	Pipeline    ProductionPipelineDeps
+	Persistence ProductionPersistenceDeps
+	Runtime     ProductionRuntimeDeps
 }
 
 var (
@@ -59,20 +74,20 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 		value any
 		err   error
 	}{
-		{deps.Planner, ErrProductionPlannerMissing},
-		{deps.Stager, ErrProductionStagerMissing},
-		{deps.Cutter, ErrProductionCutterMissing},
-		{deps.Renderer, ErrProductionRendererMissing},
-		{deps.Builder, ErrProductionManifestBuilderMissing},
-		{deps.Writer, ErrProductionWriterMissing},
-		{deps.Projection, ErrProductionProjectionMissing},
-		{deps.StepStore, ErrProductionStepStoreMissing},
-		{deps.ArtifactPreparation, ErrProductionArtifactPreparationMissing},
-		{deps.JobFinalizer, ErrProductionJobFinalizerMissing},
-		{deps.SourceProbe, ErrProductionSourceProbeMissing},
-		{deps.BatchRepository, ErrProductionBatchRepositoryMissing},
-		{deps.LocalFS, ErrProductionLocalFSMissing},
-		{deps.Logger, ErrProductionLoggerMissing},
+		{deps.Pipeline.Planner, ErrProductionPlannerMissing},
+		{deps.Pipeline.Stager, ErrProductionStagerMissing},
+		{deps.Pipeline.Cutter, ErrProductionCutterMissing},
+		{deps.Pipeline.Renderer, ErrProductionRendererMissing},
+		{deps.Pipeline.Builder, ErrProductionManifestBuilderMissing},
+		{deps.Persistence.Writer, ErrProductionWriterMissing},
+		{deps.Persistence.Projection, ErrProductionProjectionMissing},
+		{deps.Persistence.StepStore, ErrProductionStepStoreMissing},
+		{deps.Persistence.ArtifactPreparation, ErrProductionArtifactPreparationMissing},
+		{deps.Persistence.JobFinalizer, ErrProductionJobFinalizerMissing},
+		{deps.Runtime.SourceProbe, ErrProductionSourceProbeMissing},
+		{deps.Persistence.BatchRepository, ErrProductionBatchRepositoryMissing},
+		{deps.Runtime.LocalFS, ErrProductionLocalFSMissing},
+		{deps.Runtime.Logger, ErrProductionLoggerMissing},
 	}
 	for _, check := range checks {
 		if isNilProductionDependency(check.value) {
@@ -89,21 +104,21 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 	cfg.StrictDurationValidation = true
 	return &Orchestrator{
 		cfg:                 cfg,
-		planner:             deps.Planner,
-		stager:              deps.Stager,
-		cutter:              deps.Cutter,
-		renderer:            deps.Renderer,
-		builder:             deps.Builder,
-		writer:              deps.Writer,
-		projection:          deps.Projection,
-		stepStore:           deps.StepStore,
+		planner:             deps.Pipeline.Planner,
+		stager:              deps.Pipeline.Stager,
+		cutter:              deps.Pipeline.Cutter,
+		renderer:            deps.Pipeline.Renderer,
+		builder:             deps.Pipeline.Builder,
+		writer:              deps.Persistence.Writer,
+		projection:          deps.Persistence.Projection,
+		stepStore:           deps.Persistence.StepStore,
 		dispatchSteps:       DefaultStockSteps(),
-		artifactPreparation: deps.ArtifactPreparation,
-		jobFinalizer:        deps.JobFinalizer,
-		sourceProbe:         deps.SourceProbe,
-		batchRepository:     deps.BatchRepository,
-		localFS:             deps.LocalFS,
-		executorLog:         deps.Logger,
+		artifactPreparation: deps.Persistence.ArtifactPreparation,
+		jobFinalizer:        deps.Persistence.JobFinalizer,
+		sourceProbe:         deps.Runtime.SourceProbe,
+		batchRepository:     deps.Persistence.BatchRepository,
+		localFS:             deps.Runtime.LocalFS,
+		executorLog:         deps.Runtime.Logger,
 	}, nil
 }
 

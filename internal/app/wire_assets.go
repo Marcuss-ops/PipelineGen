@@ -87,10 +87,12 @@ func WireAssets(
 		Cfg: cfg,
 		Log: log,
 		Clips: ClipsCapabilityDeps{
-			ClipsRepo:          deps.Core.Repositories.ClipsRepo,
-			VoiceoverRepo:      deps.Core.Repositories.VoiceoverRepo,
-			ImageRepo:          deps.Core.Repositories.ImageRepo,
-			AssetRepo:          assetRepo,
+			Repositories: ClipsRepositoryDeps{
+				ClipsRepo:     deps.Core.Repositories.ClipsRepo,
+				VoiceoverRepo: deps.Core.Repositories.VoiceoverRepo,
+				ImageRepo:     deps.Core.Repositories.ImageRepo,
+				AssetRepo:     assetRepo,
+			},
 			ArtifactService:    deps.Core.Services.ArtifactService,
 			AssetTreeService:   deps.Core.Services.AssetTreeService,
 			MediaProcessor:     deps.Core.Services.MediaProcessor,

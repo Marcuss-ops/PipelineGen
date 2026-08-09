@@ -127,20 +127,18 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	} else {
 		var constructErr error
 		o, constructErr = NewProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
-			Planner:             planner,
-			Stager:              stager,
-			Cutter:              s.cutter,
-			Renderer:            s.renderer,
-			Builder:             stockManifestBuilder{},
-			Writer:              writer,
-			Projection:          s.projection,
-			StepStore:           s.stepStore,
-			ArtifactPreparation: artifactPreparation,
-			JobFinalizer:        s.finalizer,
-			SourceProbe:         s.sourceProbe,
-			BatchRepository:     s.batchRepo,
-			LocalFS:             s.localFS,
-			Logger:              s.log,
+			Pipeline: ProductionPipelineDeps{
+				Planner: planner, Stager: stager, Cutter: s.cutter,
+				Renderer: s.renderer, Builder: stockManifestBuilder{},
+			},
+			Persistence: ProductionPersistenceDeps{
+				Writer: writer, Projection: s.projection, StepStore: s.stepStore,
+				ArtifactPreparation: artifactPreparation, JobFinalizer: s.finalizer,
+				BatchRepository: s.batchRepo,
+			},
+			Runtime: ProductionRuntimeDeps{
+				SourceProbe: s.sourceProbe, LocalFS: s.localFS, Logger: s.log,
+			},
 		})
 		if constructErr != nil {
 			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: construct production pipeline: %w", constructErr)
