@@ -168,6 +168,16 @@ func (p *VideoProcessor) GenerateStoryboard(ctx context.Context, input, output s
 	return p.run(ctx, request{Operation: "generate_storyboard", SourcePath: input, OutputPath: output, IntervalFrames: uint32(intervalFrames), Columns: uint32(cols), Rows: uint32(rows)})
 }
 
+func (p *VideoProcessor) MergeInputs(ctx context.Context, inputs []string, output string) error {
+	return p.run(ctx, request{Operation: OperationMergeInputs, InputPaths: inputs, OutputPath: output})
+}
+
+func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string) error {
+	return p.run(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
+}
+
+var _ mediaexec.AudioProcessor = (*VideoProcessor)(nil)
+
 // Cut implements the Stock VideoCutter port through the same client and
 // protocol used by every other Rust capability.
 func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) (stockpipeline.CutBatchResult, error) {

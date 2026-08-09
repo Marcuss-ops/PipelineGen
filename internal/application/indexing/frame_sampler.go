@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 )
 
 // FrameSample carries metadata for a single extracted frame.
@@ -57,9 +57,9 @@ type PercentageFrameSampler interface {
 	ExtractPercentageFrames(ctx context.Context, localPath string, percentages []float64, outDir string) ([]FrameSample, error)
 }
 
-// FFMPEGFrameSampler wraps internal/infrastructure/media/ffmpeg
-// .Processor.ExtractFrame to provide the canonical "1 frame every
-// N seconds" cadence. Real ffmpeg run; the production wire path.
+// FFMPEGFrameSampler wraps the neutral FrameProcessor port to provide
+// the canonical "1 frame every N seconds" cadence. Production wiring
+// supplies the Rust execution adapter.
 //
 // Tests can swap to a fake sampler (interface implementation) to
 // bypass the ffmpeg CLI invocation.
@@ -67,7 +67,7 @@ type PercentageFrameSampler interface {
 // The application does not care whether the implementation is Go/FFmpeg or
 // the Rust execution plane.
 type FrameProcessor interface {
-	Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+	Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 	ExtractFrame(context.Context, string, string, float64) error
 }
 

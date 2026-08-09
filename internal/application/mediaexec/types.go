@@ -3,10 +3,19 @@
 package mediaexec
 
 import (
+	"context"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// AudioProcessor exposes media audio execution without naming an implementation.
+// Implementations belong to infrastructure adapters such as rustexec.
+type AudioProcessor interface {
+	MergeInputs(context.Context, []string, string) error
+	RemoveSilence(context.Context, string, string) error
+	Probe(context.Context, string) (*MediaInfo, error)
+}
 
 type NormalizeOptions struct {
 	Profile               config.CanonicalVideoProfile

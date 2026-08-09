@@ -12,8 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -44,7 +43,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		ProcessorConfig{
 			DataDir:  tmp,
 			TempDir:  "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{},
+			VideoCfg: mediaexec.NormalizeOptions{},
 		},
 		nil,
 		&fakePublisher{},
@@ -77,7 +76,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		ProcessorConfig{
 			DataDir:  tmp,
 			TempDir:  "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{},
+			VideoCfg: mediaexec.NormalizeOptions{},
 		},
 		nil,
 		&fakePublisher{},
@@ -106,7 +105,7 @@ func TestProcessRenditions_ProxyFailureIsTerminal(t *testing.T) {
 		&fakeHTTPDownloader{},
 		ff,
 		zap.NewNop(),
-		ProcessorConfig{DataDir: tmp, TempDir: "tmp", VideoCfg: ffmpeg.NormalizeOptions{}},
+		ProcessorConfig{DataDir: tmp, TempDir: "tmp", VideoCfg: mediaexec.NormalizeOptions{}},
 		nil,
 		&fakePublisher{},
 	)
@@ -127,7 +126,13 @@ func TestProcessorPassesDefaultNormalizePolicyWithoutCodecOverride(t *testing.T)
 	ctx := context.Background()
 	localPath := writeStagedFileForTest(t, "staged-bytes")
 	ff := &fakeFFmpeg{}
-	defaultOpts := ffmpegtypes.DefaultNormalizeOptions(&config.Config{})
+	clip := (config.VideoConfig{}).CanonicalClip()
+	defaultOpts := mediaexec.NormalizeOptions{
+		Profile: clip.CanonicalVideoProfile(),
+		Policy:  config.VideoEncoderPolicy{Preset: clip.Preset, CRF: clip.CRF},
+		Preset:  clip.Preset,
+		CRF:     clip.CRF,
+	}
 	p := NewProcessor(
 		&fakeYTDLP{}, &fakeHTTPDownloader{}, ff, zap.NewNop(),
 		ProcessorConfig{DataDir: t.TempDir(), TempDir: "tmp", VideoCfg: defaultOpts},
@@ -152,7 +157,7 @@ func TestProcessorPreservesResolvedEncoderPolicyDuringNormalization(t *testing.T
 	ctx := context.Background()
 	localPath := writeStagedFileForTest(t, "staged-bytes")
 	ff := &fakeFFmpeg{}
-	policy := ffmpeg.NormalizeOptions{
+	policy := mediaexec.NormalizeOptions{
 		Profile: config.CanonicalVideoProfile{},
 		Policy: config.VideoEncoderPolicy{
 			Codec:  "h264_nvenc",
@@ -195,7 +200,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 		ProcessorConfig{
 			DataDir: tmp,
 			TempDir: "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{
+			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
 				FPS:    30,
@@ -260,7 +265,7 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 		ProcessorConfig{
 			DataDir: tmp,
 			TempDir: "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{
+			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
 				FPS:    30,
@@ -346,7 +351,7 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 		ProcessorConfig{
 			DataDir: tmp,
 			TempDir: "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{
+			VideoCfg: mediaexec.NormalizeOptions{
 				Width:  1920,
 				Height: 1080,
 				FPS:    30,

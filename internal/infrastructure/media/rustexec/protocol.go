@@ -24,6 +24,8 @@ const (
 	OperationTrim               Operation = "trim"
 	OperationRenderStock        Operation = "render_stock"
 	OperationAdminRender        Operation = "admin_render"
+	OperationMergeInputs        Operation = "merge_inputs"
+	OperationRemoveSilence      Operation = "remove_silence"
 )
 
 func (o Operation) String() string { return string(o) }
@@ -33,7 +35,8 @@ func (o Operation) valid() bool {
 	case OperationHealth, OperationProbe, OperationCutBatch, OperationNormalize,
 		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
-		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationAdminRender:
+		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationAdminRender,
+		OperationMergeInputs, OperationRemoveSilence:
 		return true
 	default:
 		return false
@@ -107,6 +110,19 @@ func (r request) Validate() error {
 	switch r.Operation {
 	case OperationHealth:
 		return nil
+	case OperationMergeInputs:
+		if strings.TrimSpace(r.OutputPath) == "" {
+			return fmt.Errorf("%s: output_path is required", r.Operation)
+		}
+		if len(r.InputPaths) == 0 {
+			return fmt.Errorf("%s: input_paths are required", r.Operation)
+		}
+		return nil
+	case OperationRemoveSilence:
+		if err := requireSource(); err != nil {
+			return err
+		}
+		return requireOutput()
 	case OperationProbe:
 		return requireSource()
 	case OperationCutBatch:

@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 // Remote stubs used by processor tests.
@@ -36,10 +36,10 @@ type fakeFFmpeg struct {
 	proxyErr          error
 	normalizeCalled   bool
 	normalizeAsDir    bool
-	lastNormalizeOpts ffmpeg.NormalizeOptions
+	lastNormalizeOpts mediaexec.NormalizeOptions
 }
 
-func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string, opts ffmpeg.NormalizeOptions) error {
+func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string, opts mediaexec.NormalizeOptions) error {
 	f.normalizeCalled = true
 	f.lastNormalizeOpts = opts
 	if f.normalizeErr != nil {
@@ -55,8 +55,8 @@ func (f *fakeFFmpeg) RemuxHLS(ctx context.Context, sourceURL, outputPath string)
 	return os.WriteFile(outputPath, []byte("hls-video"), 0o644)
 }
 
-func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
-	return &ffmpeg.MediaInfo{Width: 1920, Height: 1080, FPS: 30, VideoCodec: "h264"}, nil
+func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*mediaexec.MediaInfo, error) {
+	return &mediaexec.MediaInfo{Width: 1920, Height: 1080, FPS: 30, VideoCodec: "h264"}, nil
 }
 
 func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
@@ -119,7 +119,7 @@ func newProcessorForLocalPathTest(t *testing.T, ff *fakeFFmpeg) *Processor {
 		ProcessorConfig{
 			DataDir:  tmp,
 			TempDir:  "tmp",
-			VideoCfg: ffmpeg.NormalizeOptions{},
+			VideoCfg: mediaexec.NormalizeOptions{},
 		},
 		nil,
 		&fakePublisher{},

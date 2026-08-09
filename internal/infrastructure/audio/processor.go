@@ -14,8 +14,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 // Processor — PR-VO-B1 (June 2026): the previous direct Drive
@@ -49,6 +49,7 @@ type Processor struct {
 	baseURL    string
 	httpClient *http.Client
 	started    bool
+	media      mediaexec.AudioProcessor
 }
 
 // processorShape mirrors the GENERATE-side surface of
@@ -95,6 +96,20 @@ func NewProcessor(
 		pythonScriptsDir: pythonScriptsDir,
 		log:              log,
 	}
+}
+
+func (p *Processor) SetMediaExecutor(media mediaexec.AudioProcessor) {
+	if p == nil {
+		return
+	}
+	p.media = media
+}
+
+func (p *Processor) mediaExecutor() (mediaexec.AudioProcessor, error) {
+	if p == nil || p.media == nil {
+		return nil, fmt.Errorf("audio media executor unavailable")
+	}
+	return p.media, nil
 }
 
 // Generate runs TTS over the persistent Python worker (preferred) or
@@ -230,10 +245,14 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	result.LocalPath = outputPath
 	result.Status = "generated"
-	if info, probeErr := audio.NewProcessor("").Probe(ctx, result.LocalPath); probeErr == nil {
-		result.Duration = info.Duration
+	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
+		if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr == nil {
+			result.Duration = info.Duration
+		} else {
+			p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+		}
 	} else {
-		p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+		p.log.Warn("failed to probe synthesized audio duration", zap.Error(mediaErr))
 	}
 
 	p.log.Info("TTS generated (legacy spawn-per-call)", zap.String("path", outputPath))
@@ -241,7 +260,11 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 	// Optional silence removal.
 	if input.RemoveSilence {
 		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
-		if err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath); err != nil {
+		media, mediaErr := p.mediaExecutor()
+		if mediaErr != nil {
+			return nil, fmt.Errorf("remove silence: %w", mediaErr)
+		}
+		if err := media.RemoveSilence(ctx, outputPath, cleanedPath); err != nil {
 			p.log.Warn("silence removal failed", zap.Error(err))
 		} else {
 			result.CleanedPath = cleanedPath

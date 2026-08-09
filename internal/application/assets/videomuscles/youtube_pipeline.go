@@ -10,10 +10,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
-	ffmpegtypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg/types"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -52,8 +51,8 @@ type Pipeline struct {
 // cutting, normalization and watermark execution.
 type ClipProcessor interface {
 	CutCopy(context.Context, string, string, string, string, bool) error
-	CutAndNormalize(context.Context, string, string, string, string, pkgffmpeg.CutAndNormalizeOptions) error
-	ApplyWatermark(context.Context, string, string, pkgffmpeg.WatermarkOptions) error
+	CutAndNormalize(context.Context, string, string, string, string, mediaexec.CutAndNormalizeOptions) error
+	ApplyWatermark(context.Context, string, string, mediaexec.WatermarkOptions) error
 }
 
 // YouTubeCutResult wraps the output of a YouTube cut operation with the local file path
@@ -93,8 +92,8 @@ func buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, secti
 // canonicalYouTubeCutOptions keeps encoder selection in the FFmpeg processor's
 // configured policy. The videomuscles application owns the clip intent (duration
 // and audio), but must not select a concrete video encoder such as libx264.
-func canonicalYouTubeCutOptions(keepAudio bool) pkgffmpeg.CutAndNormalizeOptions {
-	return pkgffmpeg.CutAndNormalizeOptions{
+func canonicalYouTubeCutOptions(keepAudio bool) mediaexec.CutAndNormalizeOptions {
+	return mediaexec.CutAndNormalizeOptions{
 		NoAudio: !keepAudio,
 	}
 }
@@ -247,7 +246,10 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 			zap.String("clip", outputPath))
 
 		watermarkedPath := outputPath + ".wm.mp4"
-		wmOpts := ffmpegtypes.DefaultWatermarkOptions(watermarkPath)
+		wmOpts := mediaexec.WatermarkOptions{
+			ImagePath: watermarkPath, Opacity: 0.25, Position: "center", ScalePercent: 20,
+			GreenScreenColor: "0x00FF00", GreenScreenSimilarity: 0.3, GreenScreenBlend: 0.1,
+		}
 		wmOpts.Position = "center"
 		wmOpts.Opacity = 0.25
 		wmOpts.ScalePercent = 20

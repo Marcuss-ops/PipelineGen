@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -35,6 +35,8 @@ func buildVoiceoverTTSProvider(
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
+	mediaProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	audioProcessor.SetMediaExecutor(mediaProcessor)
 	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
 
 	// FASE 6 (July 2026): wrap TTS provider with exponential-backoff
@@ -51,7 +53,7 @@ func buildVoiceoverTTSProvider(
 	// wrapper merges ordered chunks back into one track per language.
 	ttsProvider = &chunkedTTSProvider{
 		inner:       ttsProvider,
-		merger:      ffmpeg.NewFromConfig(cfg),
+		merger:      mediaProcessor,
 		concurrency: cfg.Voiceover.Defaults.ChunkConcurrency,
 	}
 

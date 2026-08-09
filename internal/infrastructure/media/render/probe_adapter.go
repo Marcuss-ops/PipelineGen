@@ -14,16 +14,16 @@ var _ stockpipeline.SourceDurationProbe = (*FFProbeSourceDurationProbe)(nil)
 
 // FFProbeSourceDurationProbe is the canonical concrete implementation
 // of the stockpipeline.SourceDurationProbe port. It uses the shared
-// ffmpeg.Processor Probe path so the duration measurement stays
-// consistent with the rest of the media stack.
+// media execution port so the duration measurement stays consistent
+// with the rest of the media stack.
 type FFProbeSourceDurationProbe struct {
 	proc interface {
 		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 	}
 }
 
-// NewFFProbeSourceDurationProbe constructs a probe adapter. An empty
-// ffmpegPath defaults to "ffmpeg" via ffmpeg.NewProcessor.
+// NewFFProbeSourceDurationProbe constructs a probe adapter around the
+// canonical media execution port.
 func NewFFProbeSourceDurationProbe(proc interface {
 	Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 }) *FFProbeSourceDurationProbe {
