@@ -21,6 +21,10 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Use: make build GO=/opt/go-1.25/bin/go
 GO ?= go
 
+# Rust execution-plane build. Keep the toolchain explicit so rustup does not
+# silently select a host default while the migration is being rolled out.
+RUST_CARGO ?= rustup run stable cargo
+
 # Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
 # Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
 # belt-and-braces bootstrap so any Make recipe that needs VELOX_ADMIN_TOKEN can
@@ -90,7 +94,12 @@ web-clean:
 #   - bin/worker      : cross-host worker (cmd/worker) — registers
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
-build: go-version-check web-build
+build-muscles:
+	@mkdir -p bin
+	$(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
+	install -m 0755 rust/target/release/pipelinegen-muscles bin/pipelinegen-muscles
+
+build: go-version-check web-build build-muscles
 	@mkdir -p bin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin            ./cmd/admin
@@ -98,7 +107,7 @@ build: go-version-check web-build
 
 # Build only the server binary and its embedded admin console. This is the
 # canonical target for server smoke checks and lightweight container builds.
-build-server: go-version-check web-build
+build-server: go-version-check web-build build-muscles
 	@mkdir -p bin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen ./cmd/server
 

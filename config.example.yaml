@@ -59,6 +59,10 @@ external:
   searxng_engines: "bing,mwmbl,wiby"
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
+  # Media execution backend: keep "go" during parity rollout, then switch to
+  # "rust" once bin/pipelinegen-muscles is deployed.
+  media_executor: "go"
+  rust_muscles_path: "bin/pipelinegen-muscles"
   nvidia_api_key: ""
   nvidia_model: "stabilityai/sdxl-turbo"
   nvidia_local_nim_url: "http://localhost:8000/v1/infer"
