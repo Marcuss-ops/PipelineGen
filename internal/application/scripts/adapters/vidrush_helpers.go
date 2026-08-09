@@ -477,6 +477,25 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		// merely because their lifecycle fields are empty.
 		return strings.TrimSpace(candidate.DriveLink) != ""
 	}
+	// Internet image retrieval records unknown_allowed when the source page
+	// does not expose a machine-verifiable license. That is still sufficient
+	// for the technical image-retrieval contract (download, Drive persistence,
+	// SQLite state and Qdrant projection); only an explicit rejection must
+	// block this image-only fallback. Video and generated-image providers keep
+	// the stricter ReadyForBinding rights requirement below.
+	if candidate.Provider == scriptpkg.VidRushProviderInternetImages &&
+		strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "unknown_allowed") &&
+		candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired &&
+		candidate.VerificationStatus == scriptpkg.VidRushStatusVerified &&
+		candidate.PersistenceStatus == scriptpkg.VidRushStatusPersisted &&
+		(strings.EqualFold(candidate.IndexStatus, "indexed") ||
+			strings.EqualFold(candidate.IndexStatus, "pending") ||
+			strings.EqualFold(candidate.IndexStatus, "discovered") ||
+			strings.EqualFold(candidate.IndexStatus, "indexing_skipped_no_indexer")) &&
+		strings.TrimSpace(candidate.FileHash) != "" &&
+		strings.TrimSpace(candidate.DriveLink) != "" {
+		return true
+	}
 	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.FileHash) != "" && strings.TrimSpace(candidate.DriveLink) != ""
 }
 

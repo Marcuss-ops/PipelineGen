@@ -108,12 +108,22 @@ func imageToMediaRecord(img *asset.ImageAsset, imagesDir string) *artifacts.Medi
 		ExternalURL: img.SourceURL,
 		LocalPath:   imageFullPath(imagesDir, img.PathRel),
 		DriveFileID: img.DriveFileID,
+		DriveLink:   imageMetadataString(img.MetadataJSON, "drive_link"),
 		FileHash:    img.Hash,
 		Status:      img.Status,
 		Metadata:    img.MetadataJSON,
 		Tags:        append([]string(nil), img.Tags...),
 		SourceID:    textutil.FirstNonEmpty(img.SourceURL, img.Hash),
 	}
+}
+
+func imageMetadataString(raw, key string) string {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return ""
+	}
+	value, _ := payload[key].(string)
+	return strings.TrimSpace(value)
 }
 
 func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string) string {

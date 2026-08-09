@@ -271,7 +271,22 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		warnings = append(warnings, item.warnings...)
 	}
 
-	return &PostProcessResult{VidRushSegments: segments, Warnings: warnings, Changed: true}, nil
+	// Internet-image discovery runs before materialization, when candidates
+	// still have only remote provenance. Re-project entity bindings after the
+	// common finalizer has persisted the assets so the SpecScene receives the
+	// durable AssetID/DriveLink rather than the earlier not_found result.
+	var entityImagePolicy mediadomain.EntityImagePolicy
+	if plan != nil {
+		entityImagePolicy = plan.MediaPlan.Extraction.EntityImages
+	}
+	updatedSpecScene := projectEntityImageBindings(input.SpecScene, segments, entityImagePolicy)
+	return &PostProcessResult{
+		VidRushSegments:  segments,
+		UpdatedSpecScene: updatedSpecScene,
+		SpecSceneChanged: len(updatedSpecScene.Scenes) > 0,
+		Warnings:         warnings,
+		Changed:          true,
+	}, nil
 }
 
 func vidRushProviderTimeout(provider string) time.Duration {
