@@ -16,8 +16,9 @@ func TestBuildPlan_ClipsRunsTranslationVoiceoverInSameJob(t *testing.T) {
 			ClipIDs: []string{"clip-1"},
 		},
 		Output: scriptpkg.OutputSpec{
-			TranslateTo: "it",
-			SaveToDB:    true,
+			TranslateTo:      "it",
+			SaveToDB:         true,
+			VoiceoverEnabled: scriptpkg.ToggleEnabled,
 		},
 	})
 
@@ -78,7 +79,7 @@ func TestBuildPlan_ReconciliationRunsBeforePersistenceAndDocument(t *testing.T) 
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
 		Docs:   scriptpkg.DocumentsSpec{Enabled: true},
-		Output: scriptpkg.OutputSpec{SaveToDB: true, VoiceoverFolderID: "voiceover-folder"},
+		Output: scriptpkg.OutputSpec{SaveToDB: true, VoiceoverEnabled: scriptpkg.ToggleEnabled, VoiceoverFolderID: "voiceover-folder"},
 	})
 
 	want := []string{

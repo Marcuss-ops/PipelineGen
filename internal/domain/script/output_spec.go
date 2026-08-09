@@ -31,6 +31,10 @@ type OutputSpec struct {
 	GenerateTimeline bool `json:"generate_timeline,omitempty"`
 
 	// ── Voiceover options ────────────────────────────────────────────
+	// VoiceoverEnabled is the canonical capability toggle. Routing fields
+	// below select the destination only; they are not consulted as an
+	// implicit enable switch after normalization.
+	VoiceoverEnabled  Toggle `json:"voiceover_enabled,omitempty"`
 	VoiceoverGroup    string `json:"voiceover_group,omitempty"`
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
 

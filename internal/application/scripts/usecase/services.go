@@ -23,7 +23,6 @@ import (
 	"context"
 
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	domain "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"go.uber.org/zap"
 )
@@ -40,7 +39,6 @@ import (
 type ClipServices struct {
 	ClipSearch  ClipSearchService
 	ImageSearch ImageSearchService
-	Voiceover   VoiceoverService
 	RealtimeSvc RealtimeSearchService
 	HarvestSvc  HarvestService
 	Logger      *zap.Logger
@@ -121,11 +119,4 @@ type AssocSearchService interface {
 type ImageGenService interface {
 	SearchAndDownload(ctx context.Context, name, description, query, language string) (*asset.ImageAsset, error)
 	GenerateSceneImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
-}
-
-// VoiceoverService narrows voiceover operations.
-// PR 5 (June 2026): typed port — takes domain.GenerateVoiceoverCommand,
-// returns *domain.VoiceoverResult. No more any.
-type VoiceoverService interface {
-	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.Result, error)
 }

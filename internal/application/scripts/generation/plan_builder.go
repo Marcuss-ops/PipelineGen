@@ -33,6 +33,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		Guidelines: editorialGuidelines(item), TargetWords: item.ScriptParams.TargetWords,
 		SingleScene: item.ScriptParams.SingleScene, Duration: item.ScriptParams.Duration,
 		MinWords: item.ScriptParams.MinWords, NumClips: item.Source.NumClips,
+		IntroClipIDs:      append([]string(nil), item.Source.IntroClipIDs...),
 		SegmentWords:      item.ScriptParams.SegmentWords,
 		SegmentTopics:     append([]string(nil), item.ScriptParams.SegmentTopics...),
 		Segments:          append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
@@ -43,7 +44,8 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		QAPromptVersion:     item.ScriptParams.QAPromptVersion, UseMemory: item.ScriptParams.UseMemory,
 		ForceRefresh: item.ScriptParams.ForceRefresh, DriveFolderID: item.Output.DriveFolderID,
 		DocsEnabled: item.Docs.Enabled, DocsLanguages: append([]string(nil), item.Docs.Languages...),
-		DocsFolderID: item.Docs.FolderID, VoiceoverGroup: item.Output.VoiceoverGroup,
+		DocsFolderID: item.Docs.FolderID, VoiceoverEnabled: item.Output.VoiceoverEnabled,
+		VoiceoverGroup:    item.Output.VoiceoverGroup,
 		VoiceoverFolderID: item.Output.VoiceoverFolderID, MaxChars: item.Output.MaxChars,
 		OutputFmt: item.Output.OutputFmt, SaveToDB: item.Output.SaveToDB,
 		StockEnabled:  item.Output.StockEnabled,
@@ -164,7 +166,7 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 	if output.GenerateSceneImages.AsBool() {
 		processors = append(processors, adapters.ProcessorImages)
 	}
-	if strings.TrimSpace(output.VoiceoverGroup) != "" || strings.TrimSpace(output.VoiceoverFolderID) != "" {
+	if output.VoiceoverEnabled.AsBool() {
 		processors = append(processors, adapters.ProcessorVoiceover)
 	}
 	if output.SaveToDB {
@@ -174,18 +176,19 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 }
 
 func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.ProcessorName {
-	result := make([]adapters.ProcessorName, 0, len(processors)+2)
+	// Voiceover is a resolved capability, not an implicit consequence of a
+	// clip source. If enabled, buildPostprocessorList has already inserted
+	// ProcessorVoiceover; this helper only guarantees clip-side artifacts.
+	result := make([]adapters.ProcessorName, 0, len(processors)+1)
 	persist := false
 	for _, processor := range processors {
 		switch processor {
-		case adapters.ProcessorVoiceover:
 		case adapters.ProcessorPersistence:
 			persist = true
 		default:
 			result = append(result, processor)
 		}
 	}
-	result = append(result, adapters.ProcessorVoiceover)
 	if persist {
 		result = append(result, adapters.ProcessorPersistence)
 	}

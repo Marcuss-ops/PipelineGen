@@ -249,8 +249,8 @@ func TestApplyPresetNilItem(t *testing.T) {
 // ── FullMedia preset tests ────────────────────────────────────────────────
 //
 // Per §6 row 3 of docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md,
-// `full_media` is scoping-only: it preserves caller-set values verbatim and
-// does not promote zero values.
+// `full_media` enables voiceover when the caller leaves the capability
+// unset, while preserving explicit enable/disable choices.
 
 // TestApplyPresetFullMedia_DoesNothingWhenExplicit verifies that caller-set
 // fields are preserved.
@@ -260,6 +260,34 @@ func TestApplyPresetNilItem(t *testing.T) {
 
 // TestApplyPresetFullMedia_CallerPrecedencePreserved verifies per-field
 // caller precedence.
+
+func TestNormalizeItemFullMediaResolvesVoiceoverCapability(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{}
+	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
+	if item.Output.VoiceoverEnabled != scriptpkg.ToggleEnabled {
+		t.Fatalf("full_media voiceover_enabled=%q, want enabled", item.Output.VoiceoverEnabled)
+	}
+}
+
+func TestNormalizeItemExplicitVoiceoverDisabledWinsOverRouting(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{Output: scriptpkg.OutputSpec{
+		VoiceoverEnabled:  scriptpkg.ToggleDisabled,
+		VoiceoverGroup:    "Comedy",
+		VoiceoverFolderID: "folder-id",
+	}}
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	if item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled {
+		t.Fatalf("voiceover_enabled=%q, want disabled", item.Output.VoiceoverEnabled)
+	}
+}
+
+func TestNormalizeItemLegacyVoiceoverRoutingEnablesCapability(t *testing.T) {
+	item := scriptpkg.GenerationItemV2{Output: scriptpkg.OutputSpec{VoiceoverGroup: "Comedy"}}
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+	if item.Output.VoiceoverEnabled != scriptpkg.ToggleEnabled {
+		t.Fatalf("legacy routing voiceover_enabled=%q, want enabled", item.Output.VoiceoverEnabled)
+	}
+}
 
 // ── Catalog preset test ───────────────────────────────────────────────────
 

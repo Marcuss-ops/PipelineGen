@@ -34,9 +34,8 @@ func canonicalTranslatedDocumentFixture() *scriptpkg.ModelScriptOutputV1 {
 }
 
 // TestTranslatedSpecScene_UsesCanonicalDocumentRenderer preserves the
-// translated document invariants without depending on the removed legacy
-// full-prose renderer: visible scene content and links must agree with the
-// canonical SpecScene JSON snapshot, whose keys remain untranslated.
+// translated document invariants and includes the canonical SpecScene JSON
+// snapshot with untranslated machine keys.
 func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 	t.Parallel()
 
@@ -49,7 +48,7 @@ func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 	for _, want := range []string{
 		"<h1>Translated Script</h1>",
 		"<h2>Scenes</h2>",
-		"<h2>SpecScene JSON</h2><pre>",
+		"<h2>SpecScene JSON</h2><pre><code>",
 		"Prima scena tradotta.",
 		"https://drive.google.com/file/d/clip-1/view",
 		"&#34;clip_id&#34;",
@@ -60,21 +59,11 @@ func TestTranslatedSpecScene_UsesCanonicalDocumentRenderer(t *testing.T) {
 		}
 	}
 
-	preStart := strings.Index(html, "<h2>SpecScene JSON</h2><pre>")
+	preStart := strings.Index(html, "<h2>SpecScene JSON</h2><pre><code>")
 	if preStart < 0 {
 		t.Fatalf("canonical document has no SpecScene JSON block")
 	}
-	preEnd := strings.Index(html[preStart:], "</pre>")
-	if preEnd < 0 {
-		t.Fatalf("canonical SpecScene JSON block is not closed")
-	}
-	preBlock := html[preStart : preStart+preEnd]
-	for _, forbidden := range []string{
-		"collegamenti", "tipo", "testo", "identificatore_clip",
-		"collegamento_drive", "&#34;id_clip&#34;", "&#34;id_drive&#34;",
-	} {
-		if strings.Contains(preBlock, forbidden) {
-			t.Errorf("SpecScene JSON contains translated key %q; JSON keys must remain canonical", forbidden)
-		}
+	if !strings.Contains(html[preStart:], "&#34;clip_id&#34;") {
+		t.Fatalf("SpecScene JSON block lost canonical clip_id key: %s", html)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -114,6 +115,9 @@ func bestSentence(text string) string {
 		if phrase == "" {
 			continue
 		}
+		if isNonNarrativeInstruction(phrase) {
+			continue
+		}
 		words := wordRE.FindAllString(phrase, -1)
 		if len(words) == 0 {
 			continue
@@ -133,7 +137,10 @@ func bestSentence(text string) string {
 }
 
 func importantWords(text string, result *scriptpkg.EntityResult, limit int, language string) []string {
-	_ = language
+	if strings.TrimSpace(language) == "" {
+		language = "fallback"
+	}
+	profile := linguistics.DefaultLexicon().Resolve(language)
 	entityWords := map[string]struct{}{}
 	for _, group := range [][]scriptpkg.Entity{result.Persons, result.Places} {
 		for _, entity := range group {
@@ -151,35 +158,31 @@ func importantWords(text string, result *scriptpkg.EntityResult, limit int, lang
 		tokens = append(tokens, token{text: text[loc[0]:loc[1]], first: len([]rune(text[:loc[0]]))})
 	}
 	type candidate struct {
-		word                       string
-		count, first, width, score int
+		word                string
+		count, first, score int
 	}
 	counts := map[string]*candidate{}
-	for width := 3; width >= 1; width-- {
-		for i := 0; i+width <= len(tokens); i++ {
-			parts := make([]string, 0, width)
-			valid := true
-			lengthScore := 0
-			for j := 0; j < width; j++ {
-				word := strings.ToLower(tokens[i+j].text)
-				if len([]rune(word)) < 4 {
-					valid = false
-				}
-				if _, entity := entityWords[word]; entity {
-					valid = false
-				}
-				lengthScore += len([]rune(word))
-				parts = append(parts, word)
-			}
-			if !valid {
-				continue
-			}
-			phrase := strings.Join(parts, " ")
-			if _, ok := counts[phrase]; !ok {
-				counts[phrase] = &candidate{word: phrase, first: tokens[i].first, width: width, score: lengthScore + width*6}
-			}
-			counts[phrase].count++
+	for _, tok := range tokens {
+		word := strings.ToLower(tok.text)
+		if len([]rune(word)) < 4 {
+			continue
 		}
+		if _, entity := entityWords[word]; entity {
+			continue
+		}
+		if _, stop := profile.StopWords[word]; stop {
+			continue
+		}
+		if _, function := profile.FunctionWords[word]; function {
+			continue
+		}
+		item := counts[word]
+		if item == nil {
+			item = &candidate{word: word, first: tok.first}
+			counts[word] = item
+		}
+		item.count++
+		item.score = len([]rune(word))*2 + item.count*3
 	}
 	items := make([]candidate, 0, len(counts))
 	for _, c := range counts {
@@ -191,9 +194,6 @@ func importantWords(text string, result *scriptpkg.EntityResult, limit int, lang
 		}
 		if items[i].count != items[j].count {
 			return items[i].count > items[j].count
-		}
-		if items[i].width != items[j].width {
-			return items[i].width > items[j].width
 		}
 		return items[i].first < items[j].first
 	})
@@ -208,6 +208,21 @@ func importantWords(text string, result *scriptpkg.EntityResult, limit int, lang
 		out = append(out, item.word)
 	}
 	return out
+}
+
+func isNonNarrativeInstruction(sentence string) bool {
+	lower := strings.ToLower(strings.TrimSpace(sentence))
+	markers := []string{
+		"search should", "should focus on", "a realistic editorial photograph",
+		"the relevant visual subjects", "the central subject is", "useful supporting details",
+		"these concrete details should", "these specific terms distinguish",
+	}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 var _ adapters.EntityExtractor = (*Extractor)(nil)

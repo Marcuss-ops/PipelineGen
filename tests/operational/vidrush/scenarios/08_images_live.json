@@ -9,7 +9,7 @@
     "max_image_queries_per_segment": 5,
     "provider_requests_artlist": 0,
     "provider_requests_internet_images": -1,
-    "min_secondary_images_per_segment": 2,
+    "min_secondary_images_per_segment": 1,
     "require_persisted_images": true,
     "no_permanent_negative_cache": true,
     "cache_extraction": "MISS"
@@ -30,18 +30,18 @@
         "source": {
           "type": "text",
           "topic": "Famous people and public appearances",
-          "source_text": "John Cena appears in a WWE wrestling arena wearing his recognizable ring gear. The scene shows John Cena, the wrestling ring, stadium lights and a cheering crowd.\n\nDwayne The Rock Johnson stands at a professional wrestling event beside the ring. The scene shows Dwayne The Rock Johnson, the arena, championship atmosphere and fans.\n\nMuhammad Ali trains and poses in a historic boxing gym. The scene shows Muhammad Ali, boxing gloves, the ring, trainers and classic sports photography.\n\nOperational marker: vidrush-08-images-live."
+          "source_text": "John Cena built one of the most recognizable careers in modern professional wrestling. In a packed WWE arena, he walks toward the ring wearing his familiar colorful shorts, sneakers, cap and entrance gear while thousands of fans raise signs and chant his name. Bright stadium lights frame the squared circle, the ropes and the ringside barriers. The atmosphere is a mixture of athletic competition and live entertainment: camera operators follow the entrance, music fills the venue and the audience reacts to every gesture. Cena is known for his powerful athletic build, confident posture and expressive interaction with the crowd. A realistic editorial photograph of this moment would show the wrestling ring in the foreground, the illuminated arena in the background and fans surrounding the action. The useful visual subjects are John Cena, WWE wrestling, a professional ring, stadium lighting and a cheering audience. These concrete details should guide image retrieval toward real sports photography rather than generic fitness pictures or unrelated portraits.\n\nDwayne The Rock Johnson remains closely associated with the spectacular atmosphere of professional wrestling. At a major wrestling event, he stands beside the ring in a packed arena, greeting fans and looking toward the entrance stage. He has a muscular build, a shaved head and a confident, charismatic expression. The venue is filled with championship banners, bright spotlights, LED screens and spectators holding signs. The ring ropes and corner posts create a clear visual frame around the scene, while the crowd suggests the importance of a title match or special appearance. A credible editorial image would capture Johnson near ringside, surrounded by the energy of a championship event rather than place him in a generic studio. Search should focus on Dwayne The Rock Johnson, professional wrestling arena, ringside appearance, championship atmosphere, fans and stadium lights. Those names and concrete settings provide enough information to connect the image with the correct famous person and sport.\n\nMuhammad Ali changed the visual language of boxing through his speed, personality and remarkable confidence. In a historic boxing gym, Ali trains near a worn ring while trainers and photographers watch closely. He wears classic boxing trunks and gloves, and the gym contains heavy bags, old ropes, wooden floors and equipment marked by years of use. Classic black-and-white sports photography often shows Ali smiling, posing with his gloves raised or moving lightly around an opponent during training. The scene should feel documentary and authentic, with natural gym light, visible trainers and the texture of an old boxing venue. The central subject is Muhammad Ali, but useful supporting details include boxing gloves, a traditional ring, coaches, vintage sports photography and a historic training environment. These specific terms distinguish an image of Ali from a generic boxer and help retrieval select a real archival photograph associated with his career.\n\nOperational marker: vidrush-08-images-live."
         },
         "script_params": {
-          "target_words": 300,
+          "target_words": 600,
           "min_words": 200,
-          "segment_words": 70,
+          "segment_words": 200,
           "skip_quality_gate": true,
           "use_memory": false,
           "segments": [
-            {"id": "john-cena-wwe", "topic": "John Cena WWE arena", "target_words": 100, "source_text": "John Cena appears in a WWE wrestling arena wearing his recognizable ring gear. Describe John Cena, the wrestling ring, stadium lights and the cheering crowd for accurate image search."},
-            {"id": "dwayne-rock-johnson-wrestling", "topic": "Dwayne The Rock Johnson wrestling event", "target_words": 100, "source_text": "Dwayne The Rock Johnson stands at a professional wrestling event beside the ring. Describe Dwayne The Rock Johnson, the arena, championship atmosphere and the fans for accurate image search."},
-            {"id": "muhammad-ali-boxing", "topic": "Muhammad Ali historic boxing gym", "target_words": 100, "source_text": "Muhammad Ali trains and poses in a historic boxing gym. Describe Muhammad Ali, boxing gloves, the ring, trainers and classic sports photography for accurate image search."}
+            {"id": "john-cena-wwe", "topic": "John Cena WWE arena", "target_words": 200, "source_text": "John Cena built one of the most recognizable careers in modern professional wrestling. In a packed WWE arena, he walks toward the ring wearing his familiar colorful shorts, sneakers, cap and entrance gear while thousands of fans raise signs and chant his name. Bright stadium lights frame the squared circle, the ropes and the ringside barriers. The atmosphere is a mixture of athletic competition and live entertainment, with camera operators following the entrance and the audience reacting to every gesture. Cena is known for his powerful athletic build, confident posture and expressive interaction with the crowd. A realistic editorial photograph would show the wrestling ring in the foreground, the illuminated arena behind him and fans surrounding the action. The relevant visual subjects are John Cena, WWE wrestling, a professional ring, stadium lighting and a cheering audience. These concrete details should guide image retrieval toward real sports photography rather than generic fitness pictures or unrelated portraits."},
+            {"id": "dwayne-rock-johnson-wrestling", "topic": "Dwayne The Rock Johnson wrestling event", "target_words": 200, "source_text": "Dwayne The Rock Johnson remains closely associated with the spectacular atmosphere of professional wrestling. At a major wrestling event, he stands beside the ring in a packed arena, greeting fans and looking toward the entrance stage. He has a muscular build, a shaved head and a confident, charismatic expression. The venue is filled with championship banners, bright spotlights, LED screens and spectators holding signs. The ring ropes and corner posts create a clear visual frame around the scene, while the crowd suggests the importance of a title match or special appearance. A credible editorial image would capture Johnson near ringside, surrounded by the energy of a championship event rather than place him in a generic studio. Search should focus on Dwayne The Rock Johnson, a professional wrestling arena, a ringside appearance, championship atmosphere, fans and stadium lights. Those names and concrete settings provide enough information to connect the image with the correct famous person and sport."},
+            {"id": "muhammad-ali-boxing", "topic": "Muhammad Ali historic boxing gym", "target_words": 200, "source_text": "Muhammad Ali changed the visual language of boxing through his speed, personality and remarkable confidence. In a historic boxing gym, Ali trains near a worn ring while trainers and photographers watch closely. He wears classic boxing trunks and gloves, and the gym contains heavy bags, old ropes, wooden floors and equipment marked by years of use. Classic black-and-white sports photography often shows Ali smiling, posing with his gloves raised or moving lightly around an opponent during training. The scene should feel documentary and authentic, with natural gym light, visible trainers and the texture of an old boxing venue. The central subject is Muhammad Ali, while useful supporting details include boxing gloves, a traditional ring, coaches, vintage sports photography and a historic training environment. These specific terms distinguish an image of Ali from a generic boxer and help retrieval select a real archival photograph associated with his career."}
           ]
         },
         "output": {
@@ -49,6 +49,11 @@
           "generate_metadata": true,
           "save_to_db": true,
           "stock_enabled": "disabled"
+        },
+        "docs": {
+          "enabled": true,
+          "languages": ["en"],
+          "folder_id": "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
         },
         "media_plan": {
           "mode": "hybrid",
@@ -64,7 +69,12 @@
             "max_important_phrases_per_segment": 5,
             "max_important_words_per_segment": 5,
             "max_artlist_queries_per_segment": 0,
-            "max_image_queries_per_segment": 5
+            "max_image_queries_per_segment": 5,
+            "entity_images": {
+              "enabled": true,
+              "entity_types": ["PERSON", "ORG"],
+              "max_per_entity": 2
+            }
           }
         }
       }

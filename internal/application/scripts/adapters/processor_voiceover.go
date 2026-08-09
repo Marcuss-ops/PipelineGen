@@ -103,7 +103,7 @@ func (p *VoiceoverProcessor) Name() ProcessorName { return ProcessorVoiceover }
 // configurabile" (best-effort is the safe default). The plan arg is
 // accepted for interface uniformity but ignored.
 func (p *VoiceoverProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	if plan != nil && (strings.TrimSpace(plan.VoiceoverFolderID) != "" || strings.TrimSpace(plan.VoiceoverGroup) != "") {
+	if plan != nil && plan.VoiceoverEnabled.AsBool() {
 		return ProcessorRequired
 	}
 	return ProcessorBestEffort
@@ -132,6 +132,14 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 
 	// PR 9: scenes sourced from canonical typed MSOV1.
 	scenes := specScenesFromInput(input)
+	// An explicit intro clip set identifies the leading scene as the short
+	// spoken introduction. Enforce the editorial contract at the last
+	// speakable-text boundary so the TTS input, persisted SpecScene, and
+	// Google Doc cannot drift from one another.
+	introChanged := capRequestedIntro(&input, plan)
+	if introChanged {
+		scenes = specScenesFromInput(input)
+	}
 	// Translation is an explicit downstream contract. Prefer the retained
 	// translated scene surface over the mutable working envelope because
 	// binding processors may rebuild scenes from the original segment source
@@ -326,7 +334,33 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	return &PostProcessResult{
 		Voiceovers: voiceovers,
 		Warnings:   warnings,
+		UpdatedSpecScene: func() scriptpkg.SpecSceneOutput {
+			if introChanged {
+				return input.SpecScene
+			}
+			return scriptpkg.SpecSceneOutput{}
+		}(),
 	}, nil
+}
+
+// capRequestedIntro applies the product-level maximum to the first scene of
+// an explicit intro-clip request. It deliberately operates on Unicode text
+// after model/translation processing and before TTS, making the boundary
+// deterministic without inventing narration.
+func capRequestedIntro(input *ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if input == nil || plan == nil || len(input.SpecScene.Scenes) == 0 {
+		return false
+	}
+	if input.SpecScene.Scenes[0].Kind != scriptpkg.SceneIntro && len(plan.IntroClipIDs) == 0 {
+		return false
+	}
+	text := strings.TrimSpace(input.SpecScene.Scenes[0].Text)
+	words := strings.Fields(text)
+	if len(words) <= 30 {
+		return false
+	}
+	input.SpecScene.Scenes[0].Text = strings.Join(words[:30], " ")
+	return true
 }
 
 func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {
