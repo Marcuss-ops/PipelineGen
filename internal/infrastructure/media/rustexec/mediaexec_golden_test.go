@@ -38,8 +38,11 @@ func TestMediaexecV1SharedGoldens(t *testing.T) {
 	for _, name := range []string{"probe", "cut_batch", "render_stock", "normalize"} {
 		t.Run(name, func(t *testing.T) {
 			fixture := loadMediaexecGolden(t, name)
-			if fixture.Request.Version != "mediaexec.v1" {
-				t.Fatalf("request version = %q, want mediaexec.v1", fixture.Request.Version)
+			if fixture.Request.Version != ProtocolVersion {
+				t.Fatalf("request version = %q, want %s", fixture.Request.Version, ProtocolVersion)
+			}
+			if err := fixture.Request.Validate(); err != nil {
+				t.Fatalf("request validation failed: %v", err)
 			}
 			if fixture.Request.Operation.String() != name {
 				t.Fatalf("request operation = %q, want %q", fixture.Request.Operation, name)
