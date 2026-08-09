@@ -42,11 +42,12 @@ type rustCutResponse struct {
 }
 
 type rustCutItem struct {
-	JobID      string `json:"job_id"`
-	OutputPath string `json:"output_path"`
-	Status     string `json:"status"`
-	SizeBytes  int64  `json:"size_bytes"`
-	Error      string `json:"error"`
+	JobID       string  `json:"job_id"`
+	OutputPath  string  `json:"output_path"`
+	Status      string  `json:"status"`
+	SizeBytes   int64   `json:"size_bytes"`
+	DurationSec float64 `json:"duration_sec"`
+	Error       string  `json:"error"`
 }
 
 type rustMusclesRunner interface {
@@ -141,12 +142,13 @@ func (c *RustCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (sto
 		}
 		result.Items[i].OutputPath = item.OutputPath
 		result.Items[i].SizeBytes = item.SizeBytes
-		if item.Status != "succeeded" || item.OutputPath == "" {
+		if (item.Status != "succeeded" && item.Status != "validated") || item.OutputPath == "" {
 			result.Items[i].Status = stockpipeline.CutItemStatusFailed
 			result.Items[i].Err = fmt.Errorf("rust cut failed: %s", item.Error)
 			continue
 		}
-		result.Items[i].Status = stockpipeline.CutItemStatusSucceeded
+		result.Items[i].DurationSec = item.DurationSec
+		result.Items[i].Status = stockpipeline.CutItemStatusValidated
 		if size, hash, hashErr := hashCutOutput(item.OutputPath); hashErr == nil {
 			result.Items[i].SizeBytes = size
 			result.Items[i].SHA256Hex = hash

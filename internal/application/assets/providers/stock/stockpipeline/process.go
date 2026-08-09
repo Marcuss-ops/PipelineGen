@@ -224,7 +224,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 	if cutErr != nil {
 		// Batch-level error propagates only when zero clips
-		// succeeded (FFmpegCutter.batchErr convention). For a
+		// succeeded (RustCutter batch convention). For a
 		// partial-success batch the top-level err is nil and
 		// FailedItems carries the per-clip reason; the caller
 		// iterates Clips and self-routes per Status without
