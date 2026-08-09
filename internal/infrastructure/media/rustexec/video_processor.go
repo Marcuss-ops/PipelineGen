@@ -21,14 +21,22 @@ type VideoProcessor struct {
 }
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
-	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log)}
+	return NewVideoProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), log)
+}
+
+func NewVideoProcessorWithExecutor(executor *Executor, log *zap.Logger) *VideoProcessor {
+	return &VideoProcessor{client: NewClientWithExecutor(executor, log)}
 }
 
 // NewConfiguredVideoProcessor binds the single Go-owned encoder policy to all
 // encoding capabilities exposed by this adapter. Probe and copy operations do
 // not use it; encoded operations fail closed when it is absent.
 func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
-	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile}
+	return NewConfiguredVideoProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
+}
+
+func NewConfiguredVideoProcessorWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
+	return &VideoProcessor{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
 }
 
 func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, string, int, error) {

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -209,7 +208,3 @@ func partPathForCleanup(finalPath string) string {
 	stem := strings.TrimSuffix(filepath.Base(path), ext)
 	return filepath.Join(filepath.Dir(path), stem+".part"+ext)
 }
-
-// Keep time imported in this file's API documentation and make cancellation
-// behavior explicit in profiling without exposing process internals.
-var _ = time.Second

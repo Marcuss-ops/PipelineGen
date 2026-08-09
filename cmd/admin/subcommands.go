@@ -79,6 +79,7 @@ var commandRegistry = map[string]commandHandler{
 	"cleanup-stock-orphans":          runCleanupStockOrphans,
 	"db":                             runDB,
 	"delete-specific-folders":        runDeleteSpecificFolders,
+	"delete-drive-images":            runDeleteDriveImages,
 	"download-sound-effects":         runDownloadSoundEffects,
 	"drive-bootstrap":                runDriveBootstrap,
 	"drive-create-folder":            runDriveCreateFolder,

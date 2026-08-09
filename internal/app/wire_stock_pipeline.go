@@ -118,20 +118,23 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		return nil, fmt.Errorf("wire stock pipeline: Drive admin, reader, and publisher are required")
 	}
 
-	// Cutter + Renderer. The cutter backend is selected here, at the only
-	// composition root; unavailable Rust capabilities fail closed.
-	stockCutter, cutterErr := render.NewConfiguredCutter(
+	// Cutter, renderer, and probe share one Executor so resource limits,
+	// process-group cancellation, bounded diagnostics, and .part cleanup are
+	// owned by this composition root rather than each adapter separately.
+	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, ffmpegPath, log)
+	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutor(
 		cfg.External.MediaExecutor,
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
 		cfg.Video.EncoderPolicy(),
 		cfg.Video.CanonicalVideoProfile(),
 		log,
+		rustExecutor,
 	)
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := rustexec.NewStockRenderer(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	stockRenderer := rustexec.NewStockRendererWithExecutor(rustExecutor, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
@@ -250,7 +253,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// Source duration validation and manifest projection are production
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
-	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, ffmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
+	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
 	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{
