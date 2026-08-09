@@ -51,7 +51,7 @@ import (
 //
 // Dep construction sequence:
 //   - DB: root.DB.DB (embedded *sql.DB from *storage.SQLiteDB)
-//   - Cutter: render.NewFFmpegCutter(cfg.External.FfmpegPath)
+//   - Cutter: render.NewConfiguredCutter(cfg.External.MediaExecutor, ...)
 //   - Renderer: render.NewFFmpegRenderer(cfg.External.FfmpegPath, nil)
 //   - ChannelLister + SourceStager Fetch: downloader.NewYTDLP(cfg)
 //   - SourceStager: WireAcquisitionStager with real yt-dlp Fetch closure
@@ -117,8 +117,18 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		return nil, fmt.Errorf("wire stock pipeline: Drive admin, reader, and publisher are required")
 	}
 
-	// Cutter + Renderer (nil-safe: empty string → "ffmpeg").
-	stockCutter := render.NewFFmpegCutterWithEncoder(ffmpegPath, cfg.Video.WithDefaults().Codec, log)
+	// Cutter + Renderer. The cutter backend is selected here, at the only
+	// composition root; unavailable Rust capabilities fail closed.
+	stockCutter, cutterErr := render.NewConfiguredCutter(
+		cfg.External.MediaExecutor,
+		cfg.External.RustMusclesPath,
+		ffmpegPath,
+		cfg.Video.WithDefaults().Codec,
+		log,
+	)
+	if cutterErr != nil {
+		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
+	}
 	stockRenderer := render.NewFFmpegRendererWithPolicy(ffmpegPath, cfg.Video.EncoderPolicy(), nil, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.

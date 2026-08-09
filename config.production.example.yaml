@@ -64,6 +64,8 @@ external:
   searxng_url: "http://127.0.0.1:8080"
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
+  media_executor: "go"
+  rust_muscles_path: "bin/pipelinegen-muscles"
   nvidia_api_key: ""
   nvidia_model: "stabilityai/sdxl-turbo"
   nvidia_local_nim_url: "http://localhost:8000/v1/infer"
