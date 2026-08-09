@@ -17,7 +17,7 @@
 //     ports for the application layer.
 //   - Canonical home + retirement history (PR-VOICEOVER-ALIASES-RETIRE,
 //     July 2026): the legacy voiceover.VoiceoverRepository +
-//     voiceover.VoiceoverRecord root-package aliases were retired
+//     legacy root-package record aliases were retired
 //     (see voiceover/types.go lockstep comments). All callers now
 //     reference persistence.Repository + persistence.VoiceoverRecord
 //     directly per godlike/06 SSOT one-canonical-owner-per-fact.
