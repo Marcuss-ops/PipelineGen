@@ -17,7 +17,11 @@ type StockRenderer struct {
 }
 
 func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
-	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile}
+	return NewStockRendererWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
+}
+
+func NewStockRendererWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
+	return &StockRenderer{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
 }
 
 func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {

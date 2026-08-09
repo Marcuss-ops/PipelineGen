@@ -18,7 +18,11 @@ type AdminMediaProcessor struct {
 }
 
 func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *AdminMediaProcessor {
-	return &AdminMediaProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
+	return NewAdminMediaProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
+}
+
+func NewAdminMediaProcessorWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *AdminMediaProcessor {
+	return &AdminMediaProcessor{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile.WithDefaults()}
 }
 
 func (p *AdminMediaProcessor) Probe(ctx context.Context, path string) (time.Duration, error) {
