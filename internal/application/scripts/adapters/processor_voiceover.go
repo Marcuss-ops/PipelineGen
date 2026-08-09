@@ -136,7 +136,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	// spoken introduction. Enforce the editorial contract at the last
 	// speakable-text boundary so the TTS input, persisted SpecScene, and
 	// Google Doc cannot drift from one another.
-	introChanged := capRequestedIntro(&input, plan)
+	introChanged := capIntroNarration(&input, plan)
 	if introChanged {
 		scenes = specScenesFromInput(input)
 	}
@@ -341,26 +341,6 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			return scriptpkg.SpecSceneOutput{}
 		}(),
 	}, nil
-}
-
-// capRequestedIntro applies the product-level maximum to the first scene of
-// an explicit intro-clip request. It deliberately operates on Unicode text
-// after model/translation processing and before TTS, making the boundary
-// deterministic without inventing narration.
-func capRequestedIntro(input *ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {
-	if input == nil || plan == nil || len(input.SpecScene.Scenes) == 0 {
-		return false
-	}
-	if input.SpecScene.Scenes[0].Kind != scriptpkg.SceneIntro && len(plan.IntroClipIDs) == 0 {
-		return false
-	}
-	text := strings.TrimSpace(input.SpecScene.Scenes[0].Text)
-	words := strings.Fields(text)
-	if len(words) <= 30 {
-		return false
-	}
-	input.SpecScene.Scenes[0].Text = strings.Join(words[:30], " ")
-	return true
 }
 
 func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {
