@@ -156,15 +156,19 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	if b.limit <= 0 {
 		return len(p), nil
 	}
-	remaining := b.limit - int64(b.buf.Len())
-	if remaining > 0 {
-		if int64(len(p)) > remaining {
-			_, _ = b.buf.Write(p[:remaining])
-			b.truncated = true
-		} else {
-			_, _ = b.buf.Write(p)
-		}
-	} else if len(p) > 0 {
+	if int64(len(p)) >= b.limit {
+		b.buf.Reset()
+		_, _ = b.buf.Write(p[len(p)-int(b.limit):])
+		b.truncated = true
+		return len(p), nil
+	}
+	_, _ = b.buf.Write(p)
+	if int64(b.buf.Len()) > b.limit {
+		all := b.buf.Bytes()
+		start := len(all) - int(b.limit)
+		tail := append([]byte(nil), all[start:]...)
+		b.buf.Reset()
+		_, _ = b.buf.Write(tail)
 		b.truncated = true
 	}
 	return len(p), nil
