@@ -54,20 +54,17 @@ type Processor struct {
 	nvencSlotsMu  sync.Mutex
 }
 
-// NewProcessor creates a new FFmpeg Processor with the given binary path.
-// It retains the historical software-first default.
+// NewProcessor creates a processor for probe/copy-only operations. Encoding
+// operations fail closed until an explicit complete EncoderPolicy is supplied
+// through NewProcessorWithEncoder or NewFromConfig.
 func NewProcessor(ffmpegPath string) *Processor {
-	return NewProcessorWithEncoder(ffmpegPath, string(EncoderLibX264))
+	return newProcessor(ffmpegPath, config.VideoEncoderPolicy{})
 }
 
-// NewProcessorWithEncoder creates a Processor with an explicit runtime
-// encoder policy (auto, h264_nvenc/nvenc, or libx264).
-func NewProcessorWithEncoder(ffmpegPath, encoderMode string) *Processor {
-	return newProcessor(ffmpegPath, config.VideoEncoderPolicy{
-		Codec:  encoderMode,
-		Preset: "veryfast",
-		CRF:    23,
-	})
+// NewProcessorWithEncoder creates a Processor with the complete Go-owned
+// runtime encoder policy. Encoding never fills missing values locally.
+func NewProcessorWithEncoder(ffmpegPath string, policy config.VideoEncoderPolicy) *Processor {
+	return newProcessor(ffmpegPath, policy)
 }
 
 func newProcessor(ffmpegPath string, policy config.VideoEncoderPolicy) *Processor {
@@ -75,15 +72,6 @@ func newProcessor(ffmpegPath string, policy config.VideoEncoderPolicy) *Processo
 		ffmpegPath = "ffmpeg"
 	}
 	runner := defaultProcessRunner{}
-	if policy.Codec == "" {
-		policy.Codec = string(EncoderLibX264)
-	}
-	if policy.Preset == "" {
-		policy.Preset = "veryfast"
-	}
-	if policy.CRF <= 0 {
-		policy.CRF = 23
-	}
 	return &Processor{
 		path:          ffmpegPath,
 		runner:        runner,
@@ -122,14 +110,14 @@ func (p *Processor) WithRunner(r ProcessRunner) *Processor {
 }
 
 // ResolveEncoder is the single Processor-side entry point for encoder
-// selection. Empty requests inherit the mode captured from VideoConfig;
-// explicit requests remain backward-compatible with existing callers.
+// selection. Empty requests inherit the configured policy; no policy means
+// no encoder is selected.
 func (p *Processor) ResolveEncoder(ctx context.Context, requested string) string {
 	if strings.TrimSpace(requested) == "" {
 		requested = p.encoderMode
 	}
 	if strings.TrimSpace(requested) == "" {
-		requested = string(EncoderLibX264)
+		return ""
 	}
 	if p.resolver == nil {
 		p.resolver = NewEncoderResolver(p.path, p.runner)
@@ -138,11 +126,30 @@ func (p *Processor) ResolveEncoder(ctx context.Context, requested string) string
 	return codec
 }
 
-// resolveEncoder preserves the package-local call shape used by the encoding
-// methods while keeping the resolver available to other infrastructure
-// adapters such as the stock renderer.
 func (p *Processor) resolveEncoder(ctx context.Context, requested string) string {
 	return p.ResolveEncoder(ctx, requested)
+}
+
+// encoderPolicy resolves a complete policy for an encoding operation. Missing
+// fields are errors: encoding paths must never invent local codec defaults.
+func (p *Processor) encoderPolicy(ctx context.Context, codec, preset string, quality int) (string, string, int, error) {
+	if strings.TrimSpace(codec) == "" {
+		codec = p.encoderMode
+	}
+	if strings.TrimSpace(preset) == "" {
+		preset = p.encoderPreset
+	}
+	if quality <= 0 {
+		quality = p.encoderCRF
+	}
+	if strings.TrimSpace(codec) == "" || strings.TrimSpace(preset) == "" || quality <= 0 {
+		return "", "", 0, fmt.Errorf("ENCODER_POLICY_REQUIRED: complete codec, preset, and quality are required")
+	}
+	resolvedCodec := p.resolveEncoder(ctx, codec)
+	if strings.TrimSpace(resolvedCodec) == "" {
+		return "", "", 0, fmt.Errorf("ENCODER_POLICY_REQUIRED: codec resolution returned empty encoder")
+	}
+	return resolvedCodec, preset, quality, nil
 }
 
 // RunWithEncoderPolicy executes exactly one encode attempt. An NVENC policy
@@ -370,35 +377,37 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 	return err
 }
 
-// appendVideoEncoderArgs appends the canonical runtime video encoder
-// arguments. The artifact profile stays neutral; codec-specific quality
-// controls are derived from the resolved encoder policy.
-func appendVideoEncoderArgs(args []string, codec, preset string, quality int) []string {
-	if strings.TrimSpace(preset) == "" {
-		preset = "veryfast"
-	}
-	if quality <= 0 {
-		quality = 23
+// appendVideoEncoderArgs appends canonical codec-specific arguments. It
+// refuses incomplete policy values instead of supplying hidden defaults.
+func appendVideoEncoderArgs(args []string, codec, preset string, quality int) ([]string, error) {
+	if strings.TrimSpace(codec) == "" || strings.TrimSpace(preset) == "" || quality <= 0 {
+		return args, fmt.Errorf("ENCODER_POLICY_REQUIRED: complete codec, preset, and quality are required")
 	}
 	args = append(args, "-c:v", codec, "-preset", NormalizeEncoderPreset(codec, preset))
 	if IsNVENCCodec(codec) {
-		return append(args, "-rc", "vbr", "-cq", fmt.Sprintf("%d", quality), "-tune", "hq", "-bf", "0")
+		return append(args, "-rc", "vbr", "-cq", fmt.Sprintf("%d", quality), "-tune", "hq", "-bf", "0"), nil
 	}
-	return append(args, "-crf", fmt.Sprintf("%d", quality))
+	return append(args, "-crf", fmt.Sprintf("%d", quality)), nil
 }
 
 // GenerateProxy creates a 720p H.264/AAC proxy using the Processor's central
 // encoder policy. A configured NVENC policy is GPU-required by
 // RunWithEncoderPolicy and cannot silently retry with libx264.
 func (p *Processor) GenerateProxy(ctx context.Context, input, output string) error {
-	codec := p.ResolveEncoder(ctx, "")
+	codec, preset, quality, err := p.encoderPolicy(ctx, "", "", 0)
+	if err != nil {
+		return err
+	}
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 		"-i", input,
 		"-vf", "scale=-2:720",
 		"-map", "0:v:0?", "-map", "0:a:0?",
 	}
-	args = appendVideoEncoderArgs(args, codec, p.encoderPreset, p.encoderCRF)
+	args, err = appendVideoEncoderArgs(args, codec, preset, quality)
+	if err != nil {
+		return err
+	}
 	args = append(args,
 		"-c:a", "aac", "-b:a", "128k",
 		"-movflags", "+faststart",

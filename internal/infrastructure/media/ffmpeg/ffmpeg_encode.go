@@ -17,49 +17,20 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	if opts.Profile == (config.CanonicalVideoProfile{}) {
 		profile = canonicalClipProfile()
 	}
-	requestedCodec := opts.Policy.Codec
-	if requestedCodec == "" {
-		requestedCodec = opts.Codec
+	codec, preset, quality, err := p.encoderPolicy(ctx, opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	if opts.Policy.Codec == "" && opts.Codec != "" {
+		codec, preset, quality, err = p.encoderPolicy(ctx, opts.Codec, opts.Preset, opts.CRF)
 	}
-	if requestedCodec == "" {
-		requestedCodec = p.encoderMode
-	}
-	if requestedCodec == "" {
-		requestedCodec = string(EncoderLibX264)
-	}
-	preset := opts.Policy.Preset
-	if preset == "" {
-		preset = opts.Preset
-	}
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	crf := opts.Policy.CRF
-	if crf <= 0 {
-		crf = opts.CRF
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
-	if crf <= 0 {
-		crf = 23
+	if err != nil {
+		return err
 	}
 	opts.Width = profile.Width
 	opts.Height = profile.Height
 	opts.FPS = profile.FPS
 	opts.KeyframeInterval = profile.KeyframeInterval
-	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
+	opts.Codec = codec
 	opts.Preset = preset
-	opts.CRF = crf
+	opts.CRF = quality
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -129,22 +100,11 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 // codec/preset/crf allow using hardware encoders (e.g. h264_nvenc); pass "" for defaults.
 func (p *Processor) CutReencode(ctx context.Context, input, output, start, end string, noAudio bool, codec string, preset string, crf int) error {
 	canonical := canonicalClipProfile()
-	if codec == "" {
-		codec = p.encoderMode
+	var err error
+	codec, preset, crf, err = p.encoderPolicy(ctx, codec, preset, crf)
+	if err != nil {
+		return err
 	}
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
-	if crf <= 0 {
-		crf = 23
-	}
-	codec = p.resolveEncoder(ctx, codec)
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
@@ -203,48 +163,19 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	if opts.Profile == (config.CanonicalVideoProfile{}) {
 		profile = canonicalClipProfile()
 	}
-	requestedCodec := opts.Policy.Codec
-	if requestedCodec == "" {
-		requestedCodec = opts.Codec
+	codec, preset, quality, err := p.encoderPolicy(ctx, opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	if opts.Policy.Codec == "" && opts.Codec != "" {
+		codec, preset, quality, err = p.encoderPolicy(ctx, opts.Codec, opts.Preset, opts.CRF)
 	}
-	if requestedCodec == "" {
-		requestedCodec = p.encoderMode
-	}
-	if requestedCodec == "" {
-		requestedCodec = string(EncoderLibX264)
-	}
-	preset := opts.Policy.Preset
-	if preset == "" {
-		preset = opts.Preset
-	}
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	crf := opts.Policy.CRF
-	if crf <= 0 {
-		crf = opts.CRF
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
-	if crf <= 0 {
-		crf = 23
+	if err != nil {
+		return err
 	}
 	opts.Width = profile.Width
 	opts.Height = profile.Height
 	opts.FPS = profile.FPS
-	opts.Codec = p.resolveEncoder(ctx, requestedCodec)
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
+	opts.Codec = codec
 	opts.Preset = preset
-	opts.CRF = crf
+	opts.CRF = quality
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 	}
@@ -313,25 +244,11 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	if len(jobs) == 0 {
 		return nil
 	}
-	if codec == "" {
-		codec = p.encoderMode
+	var err error
+	codec, preset, crf, err = p.encoderPolicy(ctx, codec, preset, crf)
+	if err != nil {
+		return err
 	}
-	if codec == "" {
-		codec = string(EncoderLibX264)
-	}
-	if preset == "" {
-		preset = p.encoderPreset
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	if crf <= 0 {
-		crf = p.encoderCRF
-	}
-	if crf <= 0 {
-		crf = 23
-	}
-	codec = p.resolveEncoder(ctx, codec)
 
 	if len(jobs) == 1 {
 		return p.cutReencodeSingle(ctx, input, jobs[0].Output,
@@ -481,14 +398,9 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 	// remains an intentional choice. RunWithEncoderPolicy makes NVENC
 	// failures terminal and never retries with libx264. Audio remains a
 	// stream copy because the watermark filter only transforms video.
-	codec := p.resolveEncoder(ctx, "")
-	preset := p.encoderPreset
-	if preset == "" {
-		preset = "veryfast"
-	}
-	quality := p.encoderCRF
-	if quality <= 0 {
-		quality = 23
+	codec, preset, quality, err := p.encoderPolicy(ctx, "", "", 0)
+	if err != nil {
+		return err
 	}
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
@@ -498,7 +410,10 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 		"-map", "[vout]",
 		"-map", "0:a:0?",
 	}
-	args = appendVideoEncoderArgs(args, codec, preset, quality)
+	args, err = appendVideoEncoderArgs(args, codec, preset, quality)
+	if err != nil {
+		return err
+	}
 	args = append(args,
 		"-c:a", "copy",
 		"-movflags", "+faststart",
