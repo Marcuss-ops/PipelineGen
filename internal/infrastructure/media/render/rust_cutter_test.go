@@ -25,7 +25,7 @@ func TestRustCutterMapsSuccessfulResponse(t *testing.T) {
 	if err := os.WriteFile(out, []byte("clip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runner := fakeRustMusclesRunner{output: []byte(`{"ok":true,"operation":"cut_batch","source_path":"source.mp4","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"succeeded","size_bytes":4}]}`)}
+	runner := fakeRustMusclesRunner{output: []byte(`{"ok":true,"operation":"cut_batch","source_path":"source.mp4","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
 	cutter := NewRustCutter("ignored", "ffmpeg", zap.NewNop())
 	cutter.runner = runner
 
@@ -36,8 +36,8 @@ func TestRustCutterMapsSuccessfulResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Cut() error = %v", err)
 	}
-	if got := result.Items[0].Status; got != stockpipeline.CutItemStatusSucceeded {
-		t.Fatalf("status = %v, want succeeded", got)
+	if got := result.Items[0].Status; got != stockpipeline.CutItemStatusValidated {
+		t.Fatalf("status = %v, want validated", got)
 	}
 	if result.Items[0].SHA256Hex == "" || result.Items[0].SizeBytes != 4 {
 		t.Fatalf("result did not validate output: %+v", result.Items[0])

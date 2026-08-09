@@ -123,7 +123,6 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		cfg.External.MediaExecutor,
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
-		cfg.Video.WithDefaults().Codec,
 		log,
 	)
 	if cutterErr != nil {

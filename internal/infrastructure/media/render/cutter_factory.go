@@ -12,11 +12,9 @@ import (
 // NewConfiguredCutter selects the media execution backend at the composition
 // root. The default remains Go until Rust passes the production parity gate;
 // unknown or unavailable backends fail closed.
-func NewConfiguredCutter(mode, rustBinary, ffmpegPath, encoder string, log *zap.Logger) (stockpipeline.VideoCutter, error) {
+func NewConfiguredCutter(mode, rustBinary, ffmpegPath string, log *zap.Logger) (stockpipeline.VideoCutter, error) {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", "go":
-		return NewFFmpegCutterWithEncoder(ffmpegPath, encoder, log), nil
-	case "rust":
+	case "", "rust":
 		if strings.TrimSpace(rustBinary) == "" {
 			return nil, fmt.Errorf("rust media executor requires rust_muscles_path")
 		}

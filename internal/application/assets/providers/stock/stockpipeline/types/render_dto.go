@@ -20,7 +20,7 @@
 //     MUST aggregate on the enum (NOT string-match Err patterns).
 //   - The "mai nil con zero output" invariant is enforced by the
 //     noOpCutter test fixture (in render_ports.go) AND by the
-//     production FFmpegCutter in internal/infrastructure/media/render/.
+//     production RustCutter in internal/infrastructure/media/render/.
 //   - Clip.Succeeded() is the canonical "file-on-disk-playable"
 //     predicate; Source-fed consumers (InterleaveClips,
 //     renderChunk) skip non-Succeeded clips at iteration time via
@@ -180,7 +180,7 @@ type CutItemStatus int
 
 const (
 	// CutItemStatusUnknown is the zero-value; never written by the
-	// canonical FFmpegCutter. A sanity-check logger fails fast on
+	// canonical RustCutter. A sanity-check logger fails fast on
 	// Items with status Unknown at the orchestrator boundary.
 	CutItemStatusUnknown CutItemStatus = iota
 	// CutItemStatusSucceeded means ffmpeg exited 0 and an output
