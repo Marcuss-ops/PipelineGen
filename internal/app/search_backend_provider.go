@@ -79,16 +79,35 @@ func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	out := make([]search.Candidate, 0, len(res.Candidates))
 	for _, c := range res.Candidates {
 		out = append(out, search.Candidate{
-			Source:     b.Name(),
-			SourceRef:  c.SourceRef,
-			MediaType:  string(c.MediaType),
-			Title:      c.Title,
-			PreviewURL: c.PreviewURL,
-			Hash:       "", // providers don't emit content hash
-			Score:      c.Score,
+			AssetID: firstNonEmptyProvider(c.ID, c.ExternalID),
+			Source:  b.Name(),
+			// Provider-native ID is the stable identity. URLs belong in
+			// SourceURL/PreviewURL and may expire independently.
+			SourceRef:    firstNonEmptyProvider(c.ExternalID, c.ID, c.SourceRef),
+			MediaType:    string(c.MediaType),
+			Title:        c.Title,
+			Name:         c.Title,
+			SourceURL:    c.PageURL,
+			ThumbnailURL: c.ThumbnailURL,
+			PreviewURL:   c.PreviewURL,
+			DurationMs:   c.DurationMs,
+			Width:        c.Width,
+			Height:       c.Height,
+			Tags:         append([]string(nil), c.Keywords...),
+			Hash:         "", // providers don't emit content hash
+			Score:        c.Score,
 		})
 	}
 	return out, nil
+}
+
+func firstNonEmptyProvider(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 var _ search.SearchBackend = (*providerSearchBackend)(nil)

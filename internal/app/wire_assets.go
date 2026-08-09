@@ -148,7 +148,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: diagnostics: %w", err)
 	}
 
-	sd, err := buildSearchBundle(log, searchAggregator)
+	sd, err := buildSearchBundle(log, searchAggregator, providerRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: search: %w", err)
 	}

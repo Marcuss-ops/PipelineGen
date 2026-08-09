@@ -47,6 +47,15 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 	if err := a.checkWired(); err != nil {
 		return providers.SearchResult{}, err
 	}
+	// Production Service implements the cache-first live chain. Do not route
+	// the canonical facade through the catalog-only Search method.
+	if live, ok := a.src.(liveSearcher); ok {
+		candidates, err := live.SearchLive(ctx, req.Query, req.Limit, false)
+		if err != nil {
+			return providers.SearchResult{}, fmt.Errorf("artlist search: %w", err)
+		}
+		return providers.SearchResult{Candidates: mapLiveCandidates(a.Name(), candidates)}, nil
+	}
 
 	resp, err := a.src.Search(ctx, &SearchRequest{
 		Term:     req.Query,
@@ -87,6 +96,33 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 		})
 	}
 	return providers.SearchResult{Candidates: candidates}, nil
+}
+
+func mapLiveCandidates(provider string, in []Candidate) []providers.Candidate {
+	out := make([]providers.Candidate, 0, len(in))
+	for _, clip := range in {
+		out = append(out, providers.Candidate{
+			Provider:     provider,
+			ExternalID:   clip.ID,
+			ID:           clip.ID,
+			Title:        clip.Title,
+			PageURL:      clip.PageURL,
+			ThumbnailURL: clip.ThumbnailURL,
+			PreviewURL:   clip.PreviewURL,
+			// SourceRef is the stable provider identity. The temporary media
+			// URL stays out of the identity and is refreshed by resolve.
+			SourceRef:  firstNonEmpty(clip.ID, clip.SourceRef),
+			Duration:   clip.Duration,
+			DurationMs: clip.Duration.Milliseconds(),
+			Width:      clip.Width,
+			Height:     clip.Height,
+			Keywords:   append([]string(nil), clip.Keywords...),
+			Categories: append([]string(nil), clip.Categories...),
+			MediaType:  clip.MediaType,
+			Score:      clip.Score,
+		})
+	}
+	return out
 }
 
 func (a *Adapter) checkWired() error {

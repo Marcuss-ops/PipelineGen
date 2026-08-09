@@ -60,6 +60,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/application/assets/resolver"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 
 	"github.com/gin-gonic/gin"
@@ -86,6 +87,7 @@ type Dependencies struct {
 	// aggreg.Search unconditionally. A nil Aggregator would
 	// NPE at first request; fail at startup instead.
 	Aggregator *search.Aggregator
+	Resolver   *assetresolver.Service
 
 	// EnabledFunc is the closure that decides whether the
 	// module's routes are mounted. The search capability has
@@ -181,6 +183,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// are the new defensive layer.
 	handler := NewHandler(
 		deps.Aggregator,
+		deps.Resolver,
 		log,
 	)
 
