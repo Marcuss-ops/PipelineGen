@@ -251,10 +251,11 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 		// that haven't yet started setting input.RequireDrive keep
 		// their existing behaviour. Once every entrypoint sets the
 		// field explicitly, the OR can drop.
+		requireDrive := input.RequireDrive || driveLink != "" || input.Destination == delivery.DestinationImage
 		finalizeOpts := artifacts.FinalizeOptions{
 			RequireLocal: false,
 			RequireHash:  false,
-			RequireDrive: input.RequireDrive || driveLink != "",
+			RequireDrive: requireDrive,
 			VerifyDB:     true,
 		}
 
