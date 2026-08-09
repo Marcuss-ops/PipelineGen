@@ -47,11 +47,11 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 	}
 
 	var sb strings.Builder
-	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider_id, ma.subject_id, ma.preview_url, ma.width, ma.height, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
+	sb.WriteString(`SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), NULLIF(ma.thumb_url, ''), rid.source_image_url), ma.drive_link, ma.file_hash, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version FROM media_assets ma LEFT JOIN retrieved_image_details rid ON ma.id = rid.asset_id LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id WHERE 1=1`)
 	args := []any{}
 
 	if filter.SubjectID != "" {
-		sb.WriteString(" AND ma.subject_id = ?")
+		sb.WriteString(" AND json_extract(ma.metadata_json, '$.subject_id') = ?")
 		args = append(args, filter.SubjectID)
 	}
 
@@ -70,7 +70,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 			ph[i] = "?"
 			args = append(args, p)
 		}
-		sb.WriteString(" AND ma.provider_id IN (" + strings.Join(ph, ",") + ")")
+		sb.WriteString(" AND ma.provider IN (" + strings.Join(ph, ",") + ")")
 	}
 
 	if len(filter.StyleIDs) > 0 {
@@ -101,11 +101,12 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 	out := make([]routing.RepositoryImageRow, 0, limit)
 	for rows.Next() {
 		var (
-			id, originStr, providerID, subjectID, previewURL sql.NullString
-			width, height                                    sql.NullInt64
-			promptResolved, styleID, styleVersion            sql.NullString
+			id, originStr, providerID, subjectID, previewURL, driveLink, fileHash sql.NullString
+			width, height                                                         sql.NullInt64
+			sourcePageURL, license, author                                        sql.NullString
+			promptResolved, styleID, styleVersion                                 sql.NullString
 		)
-		err := rows.Scan(&id, &originStr, &providerID, &subjectID, &previewURL, &width, &height, &promptResolved, &styleID, &styleVersion)
+		err := rows.Scan(&id, &originStr, &providerID, &subjectID, &previewURL, &driveLink, &fileHash, &width, &height, &sourcePageURL, &license, &author, &promptResolved, &styleID, &styleVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -126,16 +127,21 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter routing.Reposi
 			h = int(height.Int64)
 		}
 		out = append(out, routing.RepositoryImageRow{
-			AssetID:      id.String,
-			Origin:       asset.ImageOrigin(originStr.String),
-			Provider:     providerID.String,
-			Name:         name,
-			PreviewURL:   previewURL.String,
-			Width:        w,
-			Height:       h,
-			Score:        1.0,
-			StyleID:      styleID.String,
-			StyleVersion: styleVersion.String,
+			AssetID:       id.String,
+			Origin:        asset.ImageOrigin(originStr.String),
+			Provider:      providerID.String,
+			Name:          name,
+			PreviewURL:    previewURL.String,
+			DriveLink:     driveLink.String,
+			FileHash:      fileHash.String,
+			SourcePageURL: sourcePageURL.String,
+			License:       license.String,
+			Author:        author.String,
+			Width:         w,
+			Height:        h,
+			Score:         1.0,
+			StyleID:       styleID.String,
+			StyleVersion:  styleVersion.String,
 		})
 	}
 	return out, rows.Err()

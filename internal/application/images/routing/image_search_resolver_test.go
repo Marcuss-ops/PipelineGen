@@ -28,11 +28,13 @@ func (f *fakeRetrievalBackend) SearchAll(_ context.Context, _ string, _ Retrieva
 }
 
 type fakeImageListRepository struct {
-	rows []ImageSearchResult
-	err  error
+	rows       []ImageSearchResult
+	err        error
+	lastFilter ImageFilter
 }
 
-func (f *fakeImageListRepository) ListImages(_ context.Context, _ ImageFilter) ([]ImageSearchResult, error) {
+func (f *fakeImageListRepository) ListImages(_ context.Context, filter ImageFilter) ([]ImageSearchResult, error) {
+	f.lastFilter = filter
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -276,4 +278,25 @@ func TestCompileTimeAssertions(t *testing.T) {
 		_ ImageSearcher       = (*compositeSearcher)(nil)
 		_ ImageSearchResolver = (*ImageSearchResolverImpl)(nil)
 	)
+}
+
+func TestExistingImagesUsesRetrievedSubjectRows(t *testing.T) {
+	repo := &fakeImageListRepository{rows: []ImageSearchResult{
+		{AssetID: "cached-ddg-1", Origin: asset.ImageOriginRetrieved, PreviewURL: "https://img.example/one.jpg"},
+	}}
+	resolver := mustResolver(t, &fakeRetrievalBackend{}, repo)
+	impl := resolver.(*ImageSearchResolverImpl)
+	rows, err := impl.ExistingImages(context.Background(), "Vintage Motorcycle", 10)
+	if err != nil {
+		t.Fatalf("ExistingImages returned error: %v", err)
+	}
+	if len(rows) != 1 || rows[0].AssetID != "cached-ddg-1" {
+		t.Fatalf("ExistingImages rows = %+v, want only retrieved cached image", rows)
+	}
+	if repo.lastFilter.SubjectID != "vintage-motorcycle" {
+		t.Fatalf("subject lookup = %q, want slug", repo.lastFilter.SubjectID)
+	}
+	if len(repo.lastFilter.Origins) != 1 || repo.lastFilter.Origins[0] != asset.ImageOriginRetrieved {
+		t.Fatalf("origin filter = %v, want retrieved", repo.lastFilter.Origins)
+	}
 }

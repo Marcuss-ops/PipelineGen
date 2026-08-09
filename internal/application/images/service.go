@@ -103,7 +103,8 @@ func NewService(deps ImagesDeps) *Service {
 		tempDir:       cfg.Storage.TempPath(),
 		driveFolderID: cfg.Drive.RootFolder(),
 		// RemoteFetch is injected from the composition root. Image retrieval
-		// depends only on the application-owned transport port.		client:        deps.External.RemoteFetch,
+		// depends only on the application-owned transport port.
+		client: deps.External.RemoteFetch,
 
 		committer: deps.External.Committer,
 		// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager is

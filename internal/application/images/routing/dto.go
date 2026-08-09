@@ -60,6 +60,8 @@ type ImageSearchResult struct {
 	Provider      string
 	Name          string
 	PreviewURL    string
+	DriveLink     string
+	FileHash      string
 	SourcePageURL string
 	Width         int
 	Height        int

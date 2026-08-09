@@ -102,6 +102,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{
 		SourcePath: "source.mp4",
 		Jobs:       []stockpipeline.CutJob{{StartSec: 1, EndSec: 2, OutputPath: out}},
+		Width:      1920, Height: 1080, FPS: 24, KeyframeInterval: 48,
 	})
 	if err != nil {
 		t.Fatalf("Cut() error = %v", err)
@@ -113,7 +114,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || len(sent.Jobs) != 1 {
+	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || len(sent.Jobs) != 1 {
 		t.Fatalf("unexpected shared cut request: %+v", sent)
 	}
 }

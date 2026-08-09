@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ErrUnknownTerritory is returned by Resolve when the territory
@@ -118,6 +119,24 @@ func (r *ImageSearchResolverImpl) ResolveProvider(provider string) (ImageSearche
 		return nil, fmt.Errorf("routing.ResolveProvider: explicit provider selection unavailable")
 	}
 	return &retrievedProviderSearcher{backend: backend, provider: provider}, nil
+}
+
+// ExistingImages returns retrieved images already persisted for a subject.
+// It is an optional read-through seam for callers that want to reuse durable
+// images before contacting an external provider.
+func (r *ImageSearchResolverImpl) ExistingImages(ctx context.Context, subject string, limit int) ([]ImageSearchResult, error) {
+	if r == nil || r.repo == nil {
+		return nil, nil
+	}
+	subjectID := textutil.Slugify(subject)
+	if subjectID == "" {
+		return nil, nil
+	}
+	return r.repo.ListImages(ctx, ImageFilter{
+		SubjectID: subjectID,
+		Origins:   []ImageOrigin{asset.ImageOriginRetrieved},
+		Limit:     ResolvedLimit(limit),
+	})
 }
 
 type retrievedProviderSearcher struct {

@@ -33,11 +33,16 @@
           "source_text": "A vintage motorcycle parked outside a neon-lit diner at night. Chrome details reflect the pink and blue glow of the sign above.\n\nA botanist examines a rare orchid species in a misty greenhouse. Water droplets cling to the translucent petals under soft diffused light.\n\nAn architect's desk covered in blueprints, scale models, and drafting tools. Morning light streams through a large industrial window.\n\nOperational marker: vidrush-08-images-live."
         },
         "script_params": {
-          "target_words": 260,
+          "target_words": 300,
           "min_words": 200,
-          "segment_words": 60,
+          "segment_words": 70,
           "skip_quality_gate": true,
-          "use_memory": false
+          "use_memory": false,
+          "segments": [
+            {"id": "motorcycle-neon-diner", "topic": "Vintage motorcycle outside a neon diner", "target_words": 100, "source_text": "A vintage motorcycle is parked outside a neon-lit diner at night. Chrome details reflect the pink and blue glow of the sign above. Describe the motorcycle, diner, neon reflections and night atmosphere for visual search."},
+            {"id": "orchid-greenhouse", "topic": "Botanist examining a rare orchid", "target_words": 100, "source_text": "A botanist examines a rare orchid species in a misty greenhouse. Water droplets cling to the translucent petals under soft diffused light. Describe the botanist, orchid, greenhouse and botanical details for visual search."},
+            {"id": "architect-blueprints", "topic": "Architect desk with blueprints and models", "target_words": 100, "source_text": "An architect's desk is covered in blueprints, scale models and drafting tools. Morning light streams through a large industrial window. Describe the desk, blueprints, models and drafting materials for visual search."}
+          ]
         },
         "output": {
           "extract_entities": true,
@@ -47,9 +52,11 @@
         },
         "media_plan": {
           "mode": "hybrid",
+          "force_refresh_assets": true,
           "provider_policy": {
             "artlist": "disabled",
-            "internet_images": "enabled"
+            "internet_images": "enabled",
+            "image_generation": "disabled"
           },
           "extraction": {
             "enabled": true,

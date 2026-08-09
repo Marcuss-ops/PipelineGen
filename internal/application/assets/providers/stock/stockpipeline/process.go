@@ -184,12 +184,16 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		SourcePath: actualPath,
 		Jobs:       jobs,
 		// The cutter owns the single encoder-policy decision.
-		Codec:     "",
-		Preset:    cfg.Preset,
-		CRF:       cfg.CRF,
-		NoAudio:   noAudio,
-		Logger:    s.log,
-		SourceIdx: idx,
+		Codec:            "",
+		Preset:           cfg.Preset,
+		CRF:              cfg.CRF,
+		Width:            cfg.Width,
+		Height:           cfg.Height,
+		FPS:              cfg.FPS,
+		KeyframeInterval: cfg.KeyframeInterval,
+		NoAudio:          noAudio,
+		Logger:           s.log,
+		SourceIdx:        idx,
 	})
 
 	// FASE 2.4 (July 2026, audit P0 #4 continuation): the legacy
