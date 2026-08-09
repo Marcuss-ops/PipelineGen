@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 )
 
 // runTrimSoundEffects caps local SFX files at maxSeconds. Files already at or
@@ -57,7 +57,7 @@ func runTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
-	mediaEditor := ffmpeg.NewAdminMediaProcessorWithPolicy(cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy())
+	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), log)
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
 		var id string

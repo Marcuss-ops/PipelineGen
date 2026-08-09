@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 )
 
 // runNormalizeSoundEffectsDrive parses the optional root folder and delegates
@@ -39,8 +39,7 @@ func runNormalizeSoundEffectsDrive(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
 	defer cancel()
-	ffmpegPath := cfg.External.FfmpegPath
-	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, ffmpeg.NewAdminMediaProcessorWithPolicy(ffmpegPath, cfg.Video.WithDefaults().EncoderPolicy()), uploader)
+	report, err := adminmedia.NormalizeDriveSoundEffects(ctx, rootFolder, 2, drive.AdminMediaReader{Reader: root.Drive.Reader}, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), log), uploader)
 	if err != nil {
 		return err
 	}
