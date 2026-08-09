@@ -66,9 +66,12 @@ func TestMediaexecV1SharedGoldens(t *testing.T) {
 					t.Fatalf("cut_batch fixture drift: job=%+v item=%+v", job, item)
 				}
 			case "render_stock":
+				if len(fixture.Request.InputPaths) != 2 || len(fixture.Request.Transitions) != 1 || len(fixture.Request.EffectPaths) != 1 {
+					t.Fatalf("render_stock fixture must contain two inputs, one transition, and one effect path")
+				}
 				transition := fixture.Request.Transitions[0]
 				effect := fixture.Request.EffectPaths[0]
-				if len(fixture.Request.InputPaths) != 2 || len(fixture.Request.Transitions) != 1 || len(fixture.Request.EffectPaths) != 1 || transition.ClipIndex != 1 || transition.Segment != "end" || transition.ID != "fadeblack" || effect.ClipIndex != 1 || effect.Path != "/fixtures/effect-001.mp4" {
+				if transition.ClipIndex != 1 || transition.Segment != "end" || transition.ID != "fadeblack" || effect.ClipIndex != 1 || effect.Path != "/fixtures/effect-001.mp4" {
 					t.Fatalf("render_stock fixture drift: inputs=%v transition=%+v effect=%+v", fixture.Request.InputPaths, transition, effect)
 				}
 			case "normalize":
