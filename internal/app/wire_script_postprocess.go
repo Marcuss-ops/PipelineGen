@@ -237,7 +237,7 @@ func registerScriptPostProcessors(
 	// VidRush provider registry is built once and shared by discovery and
 	// materialization. Providers remain unavailable when their concrete
 	// dependencies are absent; no empty-success adapter is registered.
-	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(root, artlistWiring, log)
+	vidRushProviders, vidRushFinalizer := buildVidRushMaterialization(cfg, root, artlistWiring, log)
 	vidRushCache := buildVidRushCache(root, log)
 
 	// AI-backed processors (entities, metadata, translation,

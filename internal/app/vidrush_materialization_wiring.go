@@ -26,6 +26,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -38,7 +40,7 @@ func buildVidRushCache(root *wiring.ComposeRoot, log *zap.Logger) scriptports.Vi
 
 // vidRushProviderWiring is composition-root-only. It creates one closed
 // registry and one common finalizer; providers never write canonical tables.
-func buildVidRushMaterialization(root *wiring.ComposeRoot, artlistWiring *wiring.ArtlistWiring, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
+func buildVidRushMaterialization(cfg *config.Config, root *wiring.ComposeRoot, artlistWiring *wiring.ArtlistWiring, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
 	if root == nil || root.DB == nil || root.DB.DB == nil || root.Drive == nil || root.Drive.Publisher == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return nil, nil
 	}
@@ -49,7 +51,10 @@ func buildVidRushMaterialization(root *wiring.ComposeRoot, artlistWiring *wiring
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
 	if artlistWiring != nil && artlistWiring.ArtlistDownloader != nil {
-		_ = registry.Register(&vidRushArtlistProvider{search: artlistWiring.ProviderAssets, downloader: artlistWiring.ArtlistDownloader, probe: ffmpeg.NewProcessor("ffmpeg")})
+		if cfg == nil {
+			return nil, nil
+		}
+		_ = registry.Register(&vidRushArtlistProvider{search: artlistWiring.ProviderAssets, downloader: artlistWiring.ArtlistDownloader, probe: rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)})
 	}
 	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
 		_ = registry.Register(&vidRushInternetImageProvider{searcher: newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)})
@@ -190,7 +195,9 @@ func waitForVidRushIndex(ctx context.Context, db *sql.DB, assetID string, maxWai
 type vidRushArtlistProvider struct {
 	search     *providerassets.Registry
 	downloader artlistpkg.Downloader
-	probe      *ffmpeg.Processor
+	probe      interface {
+		Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+	}
 }
 
 func (p *vidRushArtlistProvider) Name() string { return scriptpkg.VidRushProviderArtlist }

@@ -25,7 +25,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -55,7 +54,6 @@ var (
 // declared in internal/domain/asset (the SQLite-backed AssetStore
 // methods return these interfaces).
 type artlistProviders struct {
-	FfmpegProc        *ffmpeg.Processor
 	IsLiveProbe       *artlist.HTTPSelfLoopProbe
 	SystemProber      *diagnostics.AdminSystemProber
 	ArtlistDownloader *downloader.Resolver

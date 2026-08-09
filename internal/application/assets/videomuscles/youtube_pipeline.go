@@ -44,7 +44,16 @@ type Pipeline struct {
 	cfg         *config.Config
 	log         *zap.Logger
 	ytdlp       *downloader.YTDLPDownloader
-	clipProcess *pkgffmpeg.Processor
+	clipProcess ClipProcessor
+}
+
+// ClipProcessor is the execution port for YouTube media mechanics. The
+// application owns download/cache/lifecycle policy; the injected adapter owns
+// cutting, normalization and watermark execution.
+type ClipProcessor interface {
+	CutCopy(context.Context, string, string, string, string, bool) error
+	CutAndNormalize(context.Context, string, string, string, string, pkgffmpeg.CutAndNormalizeOptions) error
+	ApplyWatermark(context.Context, string, string, pkgffmpeg.WatermarkOptions) error
 }
 
 // YouTubeCutResult wraps the output of a YouTube cut operation with the local file path
@@ -55,7 +64,7 @@ type YouTubeCutResult struct {
 }
 
 // NewPipeline creates a new video processing pipeline.
-func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess *pkgffmpeg.Processor) *Pipeline {
+func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess ClipProcessor) *Pipeline {
 	return &Pipeline{
 		cfg:         cfg,
 		log:         log,
