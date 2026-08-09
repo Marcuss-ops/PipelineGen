@@ -48,14 +48,19 @@ import (
 // production sees the warning log and proceeds with nil for the
 // downstream caller to fail-closed.
 func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker rerankerClient) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator) {
+	return registerSearchBackendWithProviders(log, providerReg, nil, clipsRepo, embeddings, vectorStore, mediaRepo, delivery, reranker)
+}
+
+func registerSearchBackendWithProviders(log *zap.Logger, providerReg *providers.Registry, extraProviders []providers.SearchProvider, clipsRepo *sqassets.ClipsRepository, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker rerankerClient) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator) {
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
 	var searchAgg *search.Aggregator
 	var err error
 	searchFanOut, searchBackends, searchAgg, err = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
-		Logger:      log,
-		ProviderReg: providerReg,
-		ClipsRepo:   clipsRepo,
+		Logger:         log,
+		ProviderReg:    providerReg,
+		ExtraProviders: extraProviders,
+		ClipsRepo:      clipsRepo,
 		// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): semantic
 		// backend deps are nil-safe — the backend only
 		// registers when all four are non-nil. Embeddings

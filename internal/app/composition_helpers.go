@@ -38,6 +38,7 @@ type registryCrossStepState struct {
 	SearchFanOut       search.SearchFanOut
 	SearchBackends     *search.BackendRegistry
 	SearchAggregator   *search.Aggregator
+	ProviderEntries    []TrackedProviderEntry
 	IdempotencyHandler gin.HandlerFunc
 }
 

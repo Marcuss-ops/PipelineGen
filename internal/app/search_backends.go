@@ -75,7 +75,13 @@ type rerankerClient interface {
 type SearchBackendBuildOpts struct {
 	Logger      *zap.Logger
 	ProviderReg *providers.Registry
-	ClipsRepo   *sqassets.ClipsRepository
+	// ExtraProviders are fully constructed provider adapters that are not
+	// registered in the runtime provider registry until the final capability
+	// phase. They are included here so the canonical search aggregator is
+	// built from the same adapters during composition, without relying on
+	// post-freeze mutation or a second legacy search path.
+	ExtraProviders []providers.SearchProvider
+	ClipsRepo      *sqassets.ClipsRepository
 
 	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): Embeddings
 	// replaces the historical Embedder search.QueryEmbedder field.
@@ -132,6 +138,20 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 					zap.Error(err))
 				return nil, fmt.Errorf("BuildSearchBackends: provider %q: %w", sp.Name(), err)
 			}
+		}
+	}
+	for _, sp := range opts.ExtraProviders {
+		if sp == nil {
+			continue
+		}
+		backend := &providerSearchBackend{
+			provider: sp,
+			caps:     translateCaps(sp.Capabilities()),
+		}
+		if err := reg.Register(backend); err != nil {
+			log.Error("BuildSearchBackends: extra provider backend register failed (fail-closed)",
+				zap.String("provider", sp.Name()), zap.Error(err))
+			return nil, fmt.Errorf("BuildSearchBackends: extra provider %q: %w", sp.Name(), err)
 		}
 	}
 

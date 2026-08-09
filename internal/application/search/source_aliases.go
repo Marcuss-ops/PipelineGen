@@ -5,7 +5,7 @@
 // filter is currently declared but not applied (Eligible only
 // filters by MediaTypes∩Backend.Capabilities). This file adds the
 // alias resolution so callers may pass either canonical backend
-// names ("youtube", "artlist", "local", "semantic", "stock") OR
+// names ("youtube", "artlist", "image", "local", "semantic", "stock") OR
 // well-known short aliases ("yt", "clips", "vector"), and the
 // registry treats them identically. Unknown aliases resolve to an
 // empty canonical form and contribute to filtering-out the
@@ -49,6 +49,10 @@ func NewAliasRegistry() *AliasRegistry {
 	r.alias["artlist"] = "artlist"
 	// Stock — providers.SearchProvider returns "stock".
 	r.alias["stock"] = "stock"
+	// Images — the canonical retrieval facade is exposed as "image".
+	for _, a := range []string{"image", "images", "internet_images"} {
+		r.alias[a] = "image"
+	}
 	// Local — localSearchBackend returns "local".
 	// Aliases accepted: "clips" (legacy clipssearch vocabulary),
 	// "local" (canonical), "db" (power users referring to the

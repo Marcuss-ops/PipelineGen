@@ -11,6 +11,8 @@ import (
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -80,9 +82,44 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		rerankerPort = root.AI.Reranker
 	}
 
-	searchFanOut, searchBackends, searchAgg := registerSearchBackend(
+	// Artlist must be composed before the canonical search graph so its
+	// adapter can be included in the aggregator from the first request.
+	// ProviderRegistry is intentionally still mutable here; final registry
+	// registration/freeze remains centralized in registerCapabilities.
+	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
+		return registryCrossStepState{}, err
+	}
+
+	var providerEntries []TrackedProviderEntry
+	if regWiring.ArtlistSvc != nil && regWiring.ArtlistSvc.Service != nil {
+		providerEntries = append(providerEntries, TrackedProviderEntry{
+			Id: "artlist", Kind: ProviderKindSearch,
+			Search: artlistadapter.NewGatewayAdapter(regWiring.ArtlistSvc.Service),
+		})
+	}
+	if cfg.Features.YouTubeEnabled && root.Domains != nil && root.Domains.YoutubeClipService != nil {
+		providerEntries = append(providerEntries, TrackedProviderEntry{
+			Id: "youtube", Kind: ProviderKindSearch,
+			Search: youtubeadapter.NewAdapter(root.Domains.YoutubeClipService),
+		})
+	}
+	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
+		providerEntries = append(providerEntries, TrackedProviderEntry{
+			Id: "image", Kind: ProviderKindSearch,
+			Search: newImageSearchProvider(root.Domains.ImageSearchResolver),
+		})
+	}
+	extraSearchProviders := make([]providers.SearchProvider, 0, len(providerEntries))
+	for _, entry := range providerEntries {
+		if entry.Search != nil {
+			extraSearchProviders = append(extraSearchProviders, entry.Search)
+		}
+	}
+
+	searchFanOut, searchBackends, searchAgg := registerSearchBackendWithProviders(
 		log,
 		providerReg,
+		extraSearchProviders,
 		root.Repos.ClipsRepo,
 		embeddingReg,
 		vectorStoreForSearch,
@@ -94,12 +131,10 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		SearchFanOut:       searchFanOut,
 		SearchBackends:     searchBackends,
 		SearchAggregator:   searchAgg,
+		ProviderEntries:    providerEntries,
 		IdempotencyHandler: idemHandler,
 	}
 
-	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
-		return registryCrossStepState{}, err
-	}
 	// Fase 4.1: native Pexels image search provider. Registered
 	// alongside Artlist + YouTube so the canonical SearchFanOut
 	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut, idemHandler); err != nil {
