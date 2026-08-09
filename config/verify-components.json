@@ -445,7 +445,8 @@
   "rust-muscles": {
     "utility": true,
     "paths": [
-      "rust/"
+      "rust/",
+      "testdata/mediaexec/"
     ],
     "go_packages": [],
     "node_tests": [],

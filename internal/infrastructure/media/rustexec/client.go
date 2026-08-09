@@ -38,7 +38,13 @@ func NewClientWithExecutor(executor *Executor, log *zap.Logger) *Client {
 }
 
 func (c *Client) call(ctx context.Context, req request) (response, error) {
-	req.Version = "mediaexec.v1"
+	if req.Version == "" {
+		req.Version = ProtocolVersion
+	}
+	if err := req.Validate(); err != nil {
+		cleanupPartFilesForRequest(req)
+		return response{}, err
+	}
 	if c.executor != nil {
 		req.FFmpegPath = c.executor.FFmpegPath()
 	}

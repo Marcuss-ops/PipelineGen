@@ -184,6 +184,21 @@ func (b *boundedBuffer) Bytes() []byte {
 	return result
 }
 
+func cleanupPartFilesForRequest(req request) {
+	paths := make([]string, 0, len(req.Jobs)+1)
+	if req.OutputPath != "" {
+		paths = append(paths, req.OutputPath)
+	}
+	for _, job := range req.Jobs {
+		if job.OutputPath != "" {
+			paths = append(paths, job.OutputPath)
+		}
+	}
+	for _, path := range paths {
+		_ = os.Remove(partPathForCleanup(path))
+	}
+}
+
 func cleanupPartFiles(input []byte) {
 	var req request
 	if json.Unmarshal(bytes.TrimSpace(input), &req) != nil {
