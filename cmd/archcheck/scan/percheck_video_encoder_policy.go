@@ -57,6 +57,8 @@ var videoEncoderPolicySkipDirs = map[string]bool{
 // pipeline's default profile are policy inputs, not FFmpeg command builders;
 // they remain explicit allowlisted owners of default policy values.
 var videoEncoderPolicyAllowPrefixes = []string{
+	// Retained for the scanner's synthetic canonical-resolver fixtures;
+	// the production package was removed after migration to rustexec.
 	"internal/infrastructure/media/ffmpeg/encoder_resolver.go",
 	"internal/platform/config/video.go",
 	"internal/application/assets/providers/stock/stockpipeline/service_types.go",

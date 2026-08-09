@@ -2,7 +2,7 @@
 // (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
 // Capability cluster: AUDIO synthesis (text→speech via *audioasset.Processor)
-// + AUDIO post-processing (silence-removal via pkg/ffmpeg.RemoveSilence).
+// + AUDIO post-processing through the media execution port.
 //
 // Both adapters satisfy Pattern 0 narrow ports declared in
 // internal/application/voiceover/ports.go. Per AGENTS.md Pattern 0
@@ -12,7 +12,7 @@
 // imports.
 //
 // TTSProvider                   ← *audioasset.Processor
-// AudioPostProcessor            ← pkg-level ffmpeg.RemoveSilence closure
+// AudioPostProcessor            ← mediaexec.AudioProcessor adapter
 //
 // Fail-closed: nil proc panics at construction (fail-fast per
 // AGENTS.md WireUp pattern). The AudioPostProcessor constructor is
@@ -23,9 +23,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"go.uber.org/zap"
 )
 
@@ -87,7 +87,7 @@ var _ voiceover.TTSProvider = (*useCaseTTSAdapter)(nil)
 // AudioPostProcessor adapter.
 //
 // Implements voiceover.AudioPostProcessor.Process by wrapping the
-// package-level ffmpeg.RemoveSilence closure. The cleaned-path
+// mediaexec.AudioProcessor.RemoveSilence capability. The cleaned-path
 // convention is deterministic: <OutputDir>/cleaned_<Filename> so
 // filename uniqueness rules (P1.3) keep the call surface predictable.
 // Nil-safe at the use case boundary (only invoked when
@@ -95,11 +95,12 @@ var _ voiceover.TTSProvider = (*useCaseTTSAdapter)(nil)
 // ─────────────────────────────────────────────────────────────────────
 
 type useCaseAudioAdapter struct {
-	log *zap.Logger
+	log   *zap.Logger
+	media mediaexec.AudioProcessor
 }
 
-func newUseCaseAudioAdapter(log *zap.Logger) *useCaseAudioAdapter {
-	return &useCaseAudioAdapter{log: log}
+func newUseCaseAudioAdapter(log *zap.Logger, media mediaexec.AudioProcessor) *useCaseAudioAdapter {
+	return &useCaseAudioAdapter{log: log, media: media}
 }
 
 func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPostInput) (voiceover.AudioPostOutput, error) {
@@ -118,7 +119,10 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 			zap.String("output_dir", in.OutputDir),
 			zap.String("filename", in.Filename))
 	}
-	if err := ffmpeg.RemoveSilence(ctx, "", in.LocalPath, cleaned); err != nil {
+	if a.media == nil {
+		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: media executor unavailable")
+	}
+	if err := a.media.RemoveSilence(ctx, in.LocalPath, cleaned); err != nil {
 		if a.log != nil {
 			a.log.Warn("voiceover.audio_post: RemoveSilence failed (caller decides whether to fail-fast)",
 				zap.String("input", in.LocalPath),

@@ -48,7 +48,7 @@ func TestSplit_TTSAdapter_PanicInvariants(t *testing.T) {
 		require.NotNil(t, adapter, "TTS adapter must be non-nil on valid input")
 	})
 	t.Run("Audio_NilLogAcceptable", func(t *testing.T) {
-		adapter := newUseCaseAudioAdapter(nil)
+		adapter := newUseCaseAudioAdapter(nil, nil)
 		require.NotNil(t, adapter, "Audio adapter must be non-nil even with nil log (nil-safe)")
 	})
 }

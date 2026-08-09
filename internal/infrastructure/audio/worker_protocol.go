@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"go.uber.org/zap"
 )
 
@@ -123,7 +122,11 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	if input.RemoveSilence {
 		safeName := input.Filename
 		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
-		if err := audio.RemoveSilence(ctx, "", outputPath, cleanedPath); err != nil {
+		media, mediaErr := p.mediaExecutor()
+		if mediaErr != nil {
+			return nil, fmt.Errorf("remove silence: %w", mediaErr)
+		}
+		if err := media.RemoveSilence(ctx, outputPath, cleanedPath); err != nil {
 			p.log.Warn("silence removal failed", zap.Error(err))
 		} else {
 			result.CleanedPath = cleanedPath
@@ -141,10 +144,14 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 			result.FileHash = hash
 		}
 	}
-	if info, probeErr := audio.NewProcessor("").Probe(ctx, result.LocalPath); probeErr == nil {
-		result.Duration = info.Duration
+	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
+		if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr == nil {
+			result.Duration = info.Duration
+		} else {
+			p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+		}
 	} else {
-		p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+		p.log.Warn("failed to probe synthesized audio duration", zap.Error(mediaErr))
 	}
 
 	return result, nil

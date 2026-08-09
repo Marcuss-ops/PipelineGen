@@ -39,8 +39,8 @@
 //     per-frame VLM inference and returns a JSON envelope
 //     (visual_objects, text_on_screen, raw_description, ...).
 //
-//   - Go side uses internal/infrastructure/media/ffmpeg (the canonical
-//     Processor) to extract 1 PNG frame every interval_seconds from
+//   - Go side uses the canonical media execution port, backed by
+//     rustexec, to extract 1 PNG frame every interval_seconds from
 //     the clip's local_path.
 //
 //   - For each extracted frame, Go issues an HTTP POST to the Python

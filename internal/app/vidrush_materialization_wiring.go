@@ -18,6 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -25,7 +26,6 @@ import (
 	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -196,7 +196,7 @@ type vidRushArtlistProvider struct {
 	search     *providerassets.Registry
 	downloader artlistpkg.Downloader
 	probe      interface {
-		Probe(context.Context, string) (*ffmpeg.MediaInfo, error)
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 	}
 }
 

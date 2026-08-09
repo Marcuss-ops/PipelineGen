@@ -3,8 +3,8 @@ package processor
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 type YTDLP interface {
@@ -16,9 +16,9 @@ type HTTPDownloader interface {
 }
 
 type VideoProcessor interface {
-	Normalize(ctx context.Context, inputPath, outputPath string, opts ffmpeg.NormalizeOptions) error
+	Normalize(ctx context.Context, inputPath, outputPath string, opts mediaexec.NormalizeOptions) error
 	RemuxHLS(ctx context.Context, sourceURL, outputPath string) error
-	Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error)
+	Probe(ctx context.Context, path string) (*mediaexec.MediaInfo, error)
 	ExtractFrame(ctx context.Context, input, output string, timestamp float64) error
 	GenerateProxy(ctx context.Context, input, output string) error
 	GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -42,7 +42,7 @@ type Processor struct {
 	log      *zap.Logger
 	dataDir  string
 	tempDir  string
-	videoCfg ffmpeg.NormalizeOptions
+	videoCfg mediaexec.NormalizeOptions
 	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL field REMOVED.
 	// Artlist downloads now route exclusively through the
 	// ArtlistDownloader port (wired via build_bundles_artlist.go).
@@ -84,7 +84,7 @@ func (p *Processor) SetArtlistDownloader(dl ArtlistDownloader) {
 type ProcessorConfig struct {
 	DataDir  string
 	TempDir  string
-	VideoCfg ffmpeg.NormalizeOptions
+	VideoCfg mediaexec.NormalizeOptions
 	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): ScraperServerURL REMOVED.
 	EmbeddingServerURL string // Python embedding/phash server (e.g. http://127.0.0.1:8001)
 }
