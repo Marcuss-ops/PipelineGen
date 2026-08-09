@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -214,10 +215,13 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		DownloadLink: strings.TrimSpace(req.DownloadLink),
 		FileHash:     fileHash,
 		Metadata:     string(metaJSON),
+		Destination:  destinationForKind(kind),
+		Subject:      name,
+		Style:        imageStyle(req),
 		Duration:     req.Duration,
 		RequireLocal: true,
 		RequireHash:  true,
-		RequireDrive: resolvedFolderID != "",
+		RequireDrive: true,
 		VerifyDB:     true,
 	}
 
@@ -313,4 +317,29 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 		SkippedDuplicate: status == "skipped_duplicate" || status == "would_skip_duplicate",
 		Metadata:         metadata,
 	}, nil
+}
+
+func destinationForKind(kind Kind) delivery.DestinationKey {
+	switch kind {
+	case KindImage:
+		return delivery.DestinationImage
+	case KindVoiceover:
+		return delivery.DestinationVoiceover
+	case KindClip:
+		return delivery.DestinationYouTubeClip
+	case KindStock:
+		return delivery.DestinationStock
+	default:
+		return ""
+	}
+}
+
+func imageStyle(req *Request) string {
+	if req == nil || req.Metadata == nil {
+		return "retrieved"
+	}
+	if style, ok := req.Metadata["style"].(string); ok && strings.TrimSpace(style) != "" {
+		return strings.TrimSpace(style)
+	}
+	return "retrieved"
 }

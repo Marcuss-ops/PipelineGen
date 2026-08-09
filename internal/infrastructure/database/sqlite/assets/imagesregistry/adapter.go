@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -18,7 +19,7 @@ import (
 // NewRegistryAdapter returns an artifacts.Registry backed by an
 // ImagesRepository. The returned *artifacts.SimpleRegistry delegates
 // every Registry method to a repo-specific callback.
-func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
+func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log *zap.Logger, dispatcher mutations.AssetMutationDispatcher) artifacts.Registry {
 	return &artifacts.SimpleRegistry{
 		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
 			if rec == nil {
@@ -38,8 +39,23 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			if img.Description == "" {
 				img.Description = filepath.Base(rec.Filename)
 			}
-			_, err := repo.AddImage(ctx, img)
-			return err
+			if dispatcher == nil {
+				return mutations.ErrDispatcherUnavailable
+			}
+			m := &asset.Asset{
+				ID: img.Hash, Source: asset.Source("image"), Name: rec.Name,
+				Filename: rec.Filename, MediaType: asset.MediaTypeImage,
+				Category: rec.Category, Group: rec.Group, SourceURL: rec.ExternalURL,
+				Tags: append([]string(nil), rec.Tags...), LifecycleState: asset.StateActive,
+			}
+			m.SetLocalPath(rec.LocalPath)
+			m.SetDriveFileID(rec.DriveFileID)
+			m.SetDriveLink(rec.DriveLink)
+			m.SetDownloadLink(rec.DownloadLink)
+			m.SetFileHash(rec.FileHash)
+			m.SetContentHash(rec.ContentHash)
+			m.SetMetadataJSON(rec.Metadata)
+			return dispatcher.EnqueueAndIndex(ctx, m, rec.FileHash)
 		},
 		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 			img, err := repo.GetImageByHash(ctx, imageRecordHash(id, ""))
