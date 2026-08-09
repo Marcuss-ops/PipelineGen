@@ -7,51 +7,54 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"go.uber.org/zap"
-	"os/exec"
 )
 
 type Client struct {
-	binaryPath string
-	ffmpegPath string
-	log        *zap.Logger
-	runner     commandRunner
+	executor *Executor
+	log      *zap.Logger
+	// runner is retained as a narrow test seam for protocol tests. Production
+	// calls always use the shared Executor below it.
+	runner commandRunner
 }
 
 type commandRunner interface {
 	Run(context.Context, string, []byte) ([]byte, []byte, error)
 }
 
-type execCommandRunner struct{}
-
-func (execCommandRunner) Run(ctx context.Context, binary string, input []byte) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, binary)
-	cmd.Stdin = bytes.NewReader(input)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.Bytes(), stderr.Bytes(), err
+func NewClient(binaryPath, ffmpegPath string, log *zap.Logger) *Client {
+	return NewClientWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), log)
 }
 
-func NewClient(binaryPath, ffmpegPath string, log *zap.Logger) *Client {
+// NewClientWithExecutor binds a protocol client to a shared composition-root
+// Executor. All adapters created from this client then share its limiter and
+// process lifecycle policy.
+func NewClientWithExecutor(executor *Executor, log *zap.Logger) *Client {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	if ffmpegPath == "" {
-		ffmpegPath = "ffmpeg"
-	}
-	return &Client{binaryPath: binaryPath, ffmpegPath: ffmpegPath, log: log, runner: execCommandRunner{}}
+	return &Client{executor: executor, log: log}
 }
 
 func (c *Client) call(ctx context.Context, req request) (response, error) {
 	req.Version = "mediaexec.v1"
-	req.FFmpegPath = c.ffmpegPath
+	if c.executor != nil {
+		req.FFmpegPath = c.executor.FFmpegPath()
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return response{}, fmt.Errorf("marshal rust media request: %w", err)
 	}
-	stdout, stderr, err := c.runner.Run(ctx, c.binaryPath, append(payload, '\n'))
+	var stdout, stderr []byte
+	if c.runner != nil {
+		stdout, stderr, err = c.runner.Run(ctx, "", append(payload, '\n'))
+	} else if c.executor != nil {
+		reqPayload := append(payload, '\n')
+		stdout, stderr, err = c.executor.Run(ctx, reqPayload)
+	} else {
+		return response{}, fmt.Errorf("rust media executor is not configured")
+	}
 	if err != nil {
 		return response{}, fmt.Errorf("rust media executor: %w: %s", err, stderr)
 	}

@@ -28,7 +28,7 @@ func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoPro
 // encoding capabilities exposed by this adapter. Probe and copy operations do
 // not use it; encoded operations fail closed when it is absent.
 func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
-	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
+	return &VideoProcessor{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile}
 }
 
 func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, string, int, error) {
@@ -48,12 +48,11 @@ func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, strin
 }
 
 func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts ffmpeg.NormalizeOptions) error {
-	profile := opts.Profile
-	if profile == (config.CanonicalVideoProfile{}) {
-		profile = p.profile
-	}
-	profile = profile.WithDefaults()
 	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	if err != nil {
+		return err
+	}
+	profile, err := p.resolvedProfile(opts.Profile)
 	if err != nil {
 		return err
 	}
@@ -61,7 +60,7 @@ func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, op
 		Operation: "normalize", SourcePath: input, OutputPath: output,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
-		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
 		Codec: codec, Preset: preset, CRF: crf,
 		DurationSec: durationSeconds(opts), KeepAudio: opts.KeepAudio,
@@ -84,11 +83,10 @@ func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end 
 func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts ffmpeg.CutAndNormalizeOptions) error {
 	startSec, _ := strconv.ParseFloat(start, 64)
 	endSec, _ := strconv.ParseFloat(end, 64)
-	profile := opts.Profile
-	if profile == (config.CanonicalVideoProfile{}) {
-		profile = p.profile
+	profile, err := p.resolvedProfile(opts.Profile)
+	if err != nil {
+		return err
 	}
-	profile = profile.WithDefaults()
 	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
 	if err != nil {
 		return err
@@ -98,7 +96,7 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 		StartSec: startSec, EndSec: endSec, NoAudio: opts.NoAudio,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
-		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
 		Codec: codec, Preset: preset, CRF: crf,
 	})
@@ -109,7 +107,10 @@ func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output strin
 	if err != nil {
 		return err
 	}
-	profile := p.profile.WithDefaults()
+	profile, err := p.resolvedProfile(config.CanonicalVideoProfile{})
+	if err != nil {
+		return err
+	}
 	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
@@ -146,7 +147,10 @@ func (p *VideoProcessor) GenerateProxy(ctx context.Context, input, output string
 	if err != nil {
 		return err
 	}
-	profile := p.profile.WithDefaults()
+	profile, err := p.resolvedProfile(config.CanonicalVideoProfile{})
+	if err != nil {
+		return err
+	}
 	return p.run(ctx, request{Operation: "generate_proxy", SourcePath: input, OutputPath: output, Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS), KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels)})
@@ -164,16 +168,19 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	if err != nil {
 		return result, err
 	}
-	profile := p.profile
-	if profile == (config.CanonicalVideoProfile{}) {
-		profile = config.CanonicalVideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
+	profileInput := p.profile
+	if profileInput == (config.CanonicalVideoProfile{}) {
+		profileInput = config.CanonicalVideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
 	}
-	profile = profile.WithDefaults()
+	profile, err := p.resolvedProfile(profileInput)
+	if err != nil {
+		return result, err
+	}
 	wire := request{
 		Operation: "cut_batch", SourcePath: req.SourcePath, Codec: codec, Preset: preset, CRF: crf,
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPS: uint32(profile.FPS),
 		KeyframeInterval: uint32(profile.KeyframeInterval),
-		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
+		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels), NoAudio: req.NoAudio,
 	}
 	wireJobs := make([]cutRequestJob, len(req.Jobs))
@@ -235,6 +242,24 @@ func hashOutput(path string) (int64, string, error) {
 		return 0, "", err
 	}
 	return info.Size(), fmt.Sprintf("%x", digest.Sum(nil)), nil
+}
+
+func (p *VideoProcessor) resolvedProfile(requested config.CanonicalVideoProfile) (config.CanonicalVideoProfile, error) {
+	profile := requested
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = p.profile
+	}
+	if err := validateResolvedProfile(profile); err != nil {
+		return config.CanonicalVideoProfile{}, err
+	}
+	return profile, nil
+}
+
+func validateResolvedProfile(profile config.CanonicalVideoProfile) error {
+	if profile.Width <= 0 || profile.Height <= 0 || profile.FPS <= 0 || profile.KeyframeInterval <= 0 || profile.AudioCodec == "" || profile.AudioBitrate == "" || profile.SampleRate <= 0 || profile.Channels <= 0 {
+		return fmt.Errorf("PROFILE_REQUIRED: complete resolved video profile is required")
+	}
+	return nil
 }
 
 func (p *VideoProcessor) run(ctx context.Context, req request) error {

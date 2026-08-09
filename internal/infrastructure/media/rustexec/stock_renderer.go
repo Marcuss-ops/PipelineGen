@@ -17,7 +17,7 @@ type StockRenderer struct {
 }
 
 func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
-	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile.WithDefaults()}
+	return &StockRenderer{client: NewClient(binaryPath, ffmpegPath, log), policy: policy, profile: profile}
 }
 
 func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
@@ -50,8 +50,11 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 		return stockpipeline.RenderResult{}, err
 	}
 	profile := r.profile
-	if input.Width > 0 && input.Height > 0 && input.FPS > 0 && input.KeyframeInterval > 0 {
-		profile.Width, profile.Height, profile.FPS, profile.KeyframeInterval = input.Width, input.Height, input.FPS, input.KeyframeInterval
+	if profile == (config.CanonicalVideoProfile{}) {
+		profile = config.CanonicalVideoProfile{Width: input.Width, Height: input.Height, FPS: input.FPS, KeyframeInterval: input.KeyframeInterval}
+	}
+	if err := validateResolvedProfile(profile); err != nil {
+		return stockpipeline.RenderResult{}, err
 	}
 	_, err = r.client.call(ctx, request{
 		Operation: "render_stock", OutputPath: input.OutputPath, InputPaths: input.InputPaths,
@@ -60,7 +63,7 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 		KeyframeInterval: uint32(profile.KeyframeInterval),
 		AudioCodec:       profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
-		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions,		ClipDurationSec: input.ClipDurationSec, Transitions: wireTransitions,
+		KeepAudio: input.KeepAudio, NoTransitions: input.NoTransitions, ClipDurationSec: input.ClipDurationSec, Transitions: wireTransitions,
 		NoEffects: input.NoEffects, EffectPaths: wireEffects, OverlayOpacity: input.OverlayOpacity,
 	})
 	if err != nil {
