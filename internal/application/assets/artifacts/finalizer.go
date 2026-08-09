@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -20,7 +18,8 @@ import (
 type Finalizer struct {
 	registry      Registry
 	driveVerifier DriveVerifier
-	assetIndex    *assetindex.Service
+	assetIndex    AssetIndexPort
+	metadata      MetadataPort
 	log           *zap.Logger
 }
 
@@ -28,17 +27,29 @@ func NewFinalizer(registry Registry, driveVerifier DriveVerifier, log *zap.Logge
 	return &Finalizer{
 		registry:      registry,
 		driveVerifier: driveVerifier,
+		metadata:      defaultMetadata(),
 		log:           log,
 	}
 }
 
-func NewFinalizerWithAssetIndex(registry Registry, driveVerifier DriveVerifier, assetIndex *assetindex.Service, log *zap.Logger) *Finalizer {
+func NewFinalizerWithAssetIndex(registry Registry, driveVerifier DriveVerifier, assetIndex AssetIndexPort, log *zap.Logger) *Finalizer {
 	return &Finalizer{
 		registry:      registry,
 		driveVerifier: driveVerifier,
 		assetIndex:    assetIndex,
+		metadata:      defaultMetadata(),
 		log:           log,
 	}
+}
+
+// NewFinalizerWithPorts constructs a finalizer with explicit projection and
+// metadata ports. The composition root uses this when concrete adapters are
+// available; tests can inject deterministic fakes.
+func NewFinalizerWithPorts(registry Registry, driveVerifier DriveVerifier, assetIndex AssetIndexPort, metadata MetadataPort, log *zap.Logger) *Finalizer {
+	if metadata == nil {
+		metadata = defaultMetadata()
+	}
+	return &Finalizer{registry: registry, driveVerifier: driveVerifier, assetIndex: assetIndex, metadata: metadata, log: log}
 }
 
 func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts FinalizeOptions) (*FinalizeResult, error) {
@@ -124,7 +135,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 
 	// Write to asset_index if enabled
 	if f.assetIndex != nil {
-		assetRec := &assetindex.AssetRecord{
+		assetRec := &AssetIndexRecord{
 			AssetID:      rec.ID,
 			AssetType:    rec.MediaType,
 			Source:       rec.Source,
@@ -190,9 +201,9 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	dir := filepath.Dir(rec.LocalPath)
 	metaPath := filepath.Join(dir, "metadata.json")
 
-	existingMeta := semantic.MetadataMapFromJSON(readFileAsString(metaPath))
+	existingMeta := f.metadata.MetadataMapFromJSON(readFileAsString(metaPath))
 	if rec.Metadata != "" {
-		for k, v := range semantic.MetadataMapFromJSON(rec.Metadata) {
+		for k, v := range f.metadata.MetadataMapFromJSON(rec.Metadata) {
 			existingMeta[k] = v
 		}
 	}
@@ -208,12 +219,12 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	categories := textutil.UniqueStringsVar(append(existingStringSlice(existingMeta, "categories"), rec.Category, rec.Group, rec.MediaType)...)
 	style := existingStringSlice(existingMeta, "style")
 	mood := existingStringSlice(existingMeta, "mood")
-	searchText := firstString(existingMeta, "search_text", semantic.MergeMetadataSearchText(rec.Name, rec.Filename, rec.Source, rec.Category, rec.Group, rec.FolderPath, strings.Join(rec.Tags, " ")))
+	searchText := firstString(existingMeta, "search_text", f.metadata.MergeMetadataSearchText(rec.Name, rec.Filename, rec.Source, rec.Category, rec.Group, rec.FolderPath, strings.Join(rec.Tags, " ")))
 	semanticDesc := firstString(existingMeta, "semantic_description", rec.Name, rec.Filename, rec.Category, rec.Group)
 	generator := firstString(existingMeta, "generator", rec.Source, rec.Category, rec.MediaType)
-	assetType := firstString(existingMeta, "asset_type", semantic.AssetTypeForMediaType(rec.MediaType))
+	assetType := firstString(existingMeta, "asset_type", f.metadata.AssetTypeForMediaType(rec.MediaType))
 	if assetType == "" {
-		assetType = semantic.AssetTypeForMediaType(rec.MediaType)
+		assetType = f.metadata.AssetTypeForMediaType(rec.MediaType)
 	}
 
 	// Supersede-gate fix: content_hash MUST be in metadata_json so
@@ -224,7 +235,7 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 		contentHash = rec.FileHash
 	}
 
-	metadata := semantic.BuildAssetMetadata(semantic.AssetSemanticInput{
+	metadata := f.metadata.BuildAssetMetadata(MetadataInput{
 		AssetID:             rec.ID,
 		AssetType:           assetType,
 		Source:              rec.Source,
@@ -275,7 +286,7 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 		metadata["origin"] = string(asset.ClassifyImageOrigin(rec.Source, generator))
 		metadata["provider"] = string(asset.ClassifyImageProvider(rec.Source, generator))
 	}
-	metadataJSON := semantic.MetadataMapToJSON(metadata)
+	metadataJSON := f.metadata.MetadataMapToJSON(metadata)
 	rec.Metadata = metadataJSON
 
 	if data, err := json.MarshalIndent(metadata, "", "  "); err == nil {

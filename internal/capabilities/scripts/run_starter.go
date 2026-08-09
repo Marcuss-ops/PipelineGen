@@ -62,6 +62,23 @@ func NewGenerationRunStarterWithRepo(runner *Runner, repo RunRepository) *Genera
 // Returns the run so the handler can include current_stage in the
 // 202 Accepted response.
 func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) (*GenerationRun, error) {
+	// Replays must reuse the existing run just as the submission service
+	// reuses the existing operation/job. The optional interface keeps the
+	// domain port backwards-compatible with lightweight test repositories.
+	if s.repo != nil && !req.ForceRefresh {
+		if finder, ok := s.repo.(interface {
+			GetByIdempotencyKey(context.Context, string) (*GenerationRun, error)
+		}); ok {
+			existing, err := finder.GetByIdempotencyKey(ctx, req.IdempotencyKey)
+			if err != nil {
+				return nil, err
+			}
+			if existing != nil {
+				return existing, nil
+			}
+		}
+	}
+
 	now := time.Now().UTC()
 	run := &GenerationRun{
 		ID:           "run_" + uuid.New().String(),
@@ -99,4 +116,22 @@ func (s *GenerationRunStarter) SetJobID(ctx context.Context, runID, jobID string
 		return nil
 	}
 	return setter.SetJobID(ctx, runID, jobID)
+}
+
+// Fail marks a submission-created run as failed when the enqueue transaction
+// or the post-submit correlation step fails. It is intentionally best-effort
+// at the HTTP boundary: the original error remains the client-facing error.
+func (s *GenerationRunStarter) Fail(ctx context.Context, runID string, err error) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	if err == nil {
+		err = context.Canceled
+	}
+	return s.repo.FailRun(ctx, FailRunInput{
+		RunID:        runID,
+		FailedStage:  StageNormalizing,
+		ErrorCode:    "SUBMISSION_FAILED",
+		ErrorMessage: err.Error(),
+	})
 }

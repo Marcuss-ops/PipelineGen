@@ -226,6 +226,7 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 	if h.scriptgenSvc != nil {
 		runReq := scriptgen.GenerateRequest{
 			IdempotencyKey: submitReq.IdempotencyKey,
+			ForceRefresh:   submitReq.ForceRefresh,
 		}
 		run, startErr := h.scriptgenSvc.Start(c.Request.Context(), runReq)
 		if startErr != nil {
@@ -235,6 +236,7 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 
 		res, err := h.submitter.Submit(submitCtx, submitReq)
 		if err != nil {
+			_ = h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err)
 			writeGenerateSubmitError(c, err)
 			return
 		}
@@ -243,10 +245,11 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 		// Set the JobID on the run for GET /full correlation.
 		run.JobID = jobID
 		if err := h.scriptgenSvc.SetJobID(c.Request.Context(), run.ID, jobID); err != nil {
+			_ = h.scriptgenSvc.Fail(c.Request.Context(), run.ID, err)
 			writeGenerateSubmitError(c, err)
 			return
 		}
-		writeGenerationRunSuccess(c, run, jobID, res != nil && res.IsIdempotencyHit)
+		writeGenerationRunSuccess(c, run, jobID, res, res != nil && res.IsIdempotencyHit)
 		return
 	}
 

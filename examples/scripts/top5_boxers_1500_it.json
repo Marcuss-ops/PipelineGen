@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "top5-boxers-1500-it",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "top5-boxers-1500-it",
+      "title": "Five legendary boxers: five careers that changed boxing",
+      "language": "en",
+      "model": "hf.co/unsloth/gemma-4-12b-it-GGUF:UD-Q4_K_XL",
+      "tone": "documentary, authoritative and cinematic",
+      "style": "Write a single English documentary made of five clearly separated scenes, one per boxer and in the supplied order. Use the supplied stock clips as the visual grounding. Keep the narration factual and avoid unsupported records, quotations, rankings or precise figures. The total narration must be approximately 1500 words: five scenes of approximately 300 words each. Do not merge subjects or mention another boxer inside a scene.",
+      "source": {
+        "type": "text",
+        "topic": "Five legendary boxers and the qualities that made them unforgettable",
+        "source_text": "The documentary follows five champions in this order: Mike Tyson, Muhammad Ali, Manny Pacquiao, Floyd Mayweather and Sugar Ray Robinson. Explain the distinctive sporting qualities, career arc and lasting cultural influence of each champion. Keep each scene focused on its named subject, use a factual documentary tone and avoid unsupported records, quotations, rankings or precise figures. The visual plan contains one verified English stock clip for each matching scene."
+      },
+      "script_params": {
+        "target_words": 1500,
+        "min_words": 1400,
+        "max_words": 1600,
+        "segment_words": 300,
+        "force_refresh": true,
+        "use_memory": false,
+        "segments": [
+          {
+            "id": "boxer-mike-tyson",
+            "topic": "Mike Tyson",
+            "target_words": 300,
+            "source_text": "Mike Tyson's scene must be a complete documentary portrait of about three hundred words. Explain how his extraordinary speed, compact movement, explosive power and pressure fighting made every exchange feel urgent. Describe the rapid rise of a young heavyweight whose entrances, early victories and physical presence changed the atmosphere around a fight. Explain that his style was based on closing distance, bending under punches, creating angles and combining timing with force, rather than on size alone. Then create a careful contrast between the frightening public image of an apparently invincible champion and the personal and professional difficulties that later altered the direction of his career. Keep the tone serious and human. Do not invent precise records, quotations, financial figures or legal details. Stay focused exclusively on Mike Tyson, use the matching stock clip as the visual reference, and do not introduce another boxer."
+          },
+          {
+            "id": "boxer-muhammad-ali",
+            "topic": "Muhammad Ali",
+            "target_words": 300,
+            "source_text": "Muhammad Ali's scene must be a complete documentary portrait of about three hundred words. Explain his light footwork, hand speed, rhythm and extraordinary control of distance. Show how he made movement part of the attack, changed tempo, invited an opponent forward and used angles to make a heavyweight ring feel open. Explain that his confidence outside the ropes was also part of his public performance: interviews, predictions, humor and an unmistakable voice made him impossible to ignore. Distinguish clearly between sporting achievement and cultural influence. His public principles, refusal to remain silent and willingness to accept consequences expanded the meaning of his legacy beyond wins and titles. Keep the language factual and avoid invented quotations, unsupported exact records or claims about individual fights that are not supplied. Stay focused exclusively on Muhammad Ali, use the matching stock clip as the visual reference, and do not introduce another boxer."
+          },
+          {
+            "id": "boxer-manny-pacquiao",
+            "topic": "Manny Pacquiao",
+            "target_words": 300,
+            "source_text": "Manny Pacquiao's scene must be a complete documentary portrait of about three hundred words. Explain his speed, changing angles, southpaw combinations and relentless movement. Describe the way he could enter behind a quick attack, leave before the answer arrived and turn rhythm into pressure. Present his rise from hardship to international success as a story of discipline, opportunity and sustained work, without inventing private details or exact figures. Explain why his achievement carried special meaning for audiences in the Philippines and why his public identity became larger than a single fight. The scene should connect physical courage with preparation, adaptability and the ability to remain dangerous while changing direction. Avoid unsupported precise claims, invented quotations, unverified rankings or details about opponents that are not supplied. Stay focused exclusively on Manny Pacquiao, use the matching stock clip as the visual reference, and do not introduce another boxer."
+          },
+          {
+            "id": "boxer-floyd-mayweather",
+            "topic": "Floyd Mayweather",
+            "target_words": 300,
+            "source_text": "Floyd Mayweather's scene must be a complete documentary portrait of about three hundred words. Explain defensive intelligence, distance management, timing, anticipation and counterpunching. Show how a fighter can control a contest by reading an opponent, reducing unnecessary risk, choosing the moment to attack and turning a small mistake into a clean scoring opportunity. Describe the importance of preparation, repetition and technical discipline, making clear that efficiency is an active skill rather than passive caution. Then explain how this method became part of Mayweather's public identity, including the deliberate contrast between a highly controlled ring performance and a provocative public image. Avoid unsupported precise financial figures, invented quotations, unverified records or claims about a particular contest that are not supplied. Stay focused exclusively on Floyd Mayweather, use the matching stock clip as the visual reference, and do not introduce another boxer."
+          },
+          {
+            "id": "boxer-sugar-ray-robinson",
+            "topic": "Sugar Ray Robinson",
+            "target_words": 300,
+            "source_text": "Sugar Ray Robinson's scene must be a complete documentary portrait of about three hundred words and the closing section of the film. Explain fluid movement, rapid combinations, speed, balance, power and adaptability as parts of one complete style. Show how technical beauty can coexist with physical authority, and how a great fighter responds when a contest changes pace or distance. Describe Robinson as a model studied across generations because his boxing joined natural talent to preparation, timing and the ability to solve different problems in different ways. Close by explaining why his influence survived beyond a list of results: a champion becomes a lasting reference when later athletes can still learn from the shape of his movement and the choices he made under pressure. Avoid unsupported exact statistics, invented quotations or claims not supplied. Stay focused exclusively on Sugar Ray Robinson, use the matching stock clip as the visual reference, and do not introduce another boxer."
+          }
+        ]
+      },
+      "output": {
+        "stock_enabled": "enabled",
+        "stock_bindings": [
+          {"index": 0, "scene_id": "scene-0", "segment_id": "boxer-mike-tyson", "asset_id": "planner:5b3a1399ac0b3c23:0", "name": "Mike Tyson stock", "source": "youtube", "score": 1, "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 1, "scene_id": "scene-1", "segment_id": "boxer-muhammad-ali", "asset_id": "planner:96d07f0da43de615:0", "name": "Muhammad Ali stock", "source": "youtube", "score": 1, "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 2, "scene_id": "scene-2", "segment_id": "boxer-manny-pacquiao", "asset_id": "planner:a939c7d455e8de9c:0", "name": "Manny Pacquiao stock", "source": "youtube", "score": 1, "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 3, "scene_id": "scene-3", "segment_id": "boxer-floyd-mayweather", "asset_id": "planner:33a65feeb627695e:3", "name": "Floyd Mayweather stock", "source": "youtube", "score": 1, "fallback": false, "start_ms": 0, "end_ms": 5000},
+          {"index": 4, "scene_id": "scene-4", "segment_id": "boxer-sugar-ray-robinson", "asset_id": "planner:c7074c575f1975fb:3", "name": "Sugar Ray Robinson stock", "source": "youtube", "score": 1, "fallback": false, "start_ms": 0, "end_ms": 5000}
+        ],
+        "save_to_db": true,
+        "generate_timeline": true,
+        "generate_metadata": true,
+        "extract_entities": false,
+        "translate_to": "it",
+        "voiceover_folder_id": "1Cph0ypa_tBgRW_2PgTrzqy1RWW-fPe5X"
+      }
+    }
+  ]
+}

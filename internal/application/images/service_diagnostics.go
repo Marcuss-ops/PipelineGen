@@ -4,10 +4,7 @@
 // (operational/meta — neither generated nor retrieved).
 package images
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
-	"go.uber.org/zap"
-)
+import "go.uber.org/zap"
 
 // DiagnosticsReport is the JSON-serializable wiring report for the
 // images subsystem. Surfaces repo/Drive/ingest/gen configuration
@@ -48,7 +45,7 @@ func (s *Service) AllCapabilities() map[Capability]CapabilityStatus {
 func (s *Service) Log() *zap.Logger { return s.Diag.Log() }
 
 // Repo returns the held ImagesRepository (from the Diag sub-service).
-func (s *Service) Repo() *imagesrepo.ImagesRepository { return s.Diag.Repo() }
+func (s *Service) Repo() ImageRepository { return s.Diag.Repo() }
 
 // SyncAssets triggers a local filesystem asset sync via the Diag sub-service.
 func (s *Service) SyncAssets() error { return s.Diag.SyncAssets() }

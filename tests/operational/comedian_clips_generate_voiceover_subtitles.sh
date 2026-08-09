@@ -50,11 +50,11 @@ VELOX_RENDER_POLL_INTERVAL="${VELOX_RENDER_POLL_INTERVAL:-5}"
 
 # ── 5 comedian clips from the production DB ───────────────────────────
 CLIP_IDS=(
-    "yt_vdC5GXxS-qU_193_205_v1"
-    "yt_7s2YY5izDa0_680f0e22"
-    "yt_GAIGHJQ7AGk_683db356"
-    "yt_gg69R6vHYcU_eb5a669c"
-    "yt_yhmnEfzdtmE_9e7a0596"
+    "1ACocqdNciHEBScJ1-mTb9DOaPRyH4jZj"
+    "1GJY5u0kE43t0YkGQ7LPhY8aXVqxYD74R"
+    "1YiQb90UbNsCSlF_tg6kckKaePsQF9BgQ"
+    "yt_ibPkLdbG4VU_150_210_v1"
+    "14lC5FyiwBTD5QrCf4jnE08EsjPeyTYRV"
 )
 
 # ── Work dir ──────────────────────────────────────────────────────────

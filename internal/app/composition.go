@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifacts"
 
 	"go.uber.org/zap"
 
@@ -97,7 +97,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}
 
-	sourceCatalog, err := artifacts.NewSourceCatalog(repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.VoiceoverRepo, repos.ImageRepo)
+	sourceCatalog, err := artifactsinfra.NewArtifactSourceCatalog(repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.VoiceoverRepo, repos.ImageRepo)
 	if err != nil {
 		return nil, fmt.Errorf("compose source catalog: %w", err)
 	}

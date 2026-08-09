@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -57,7 +56,7 @@ func (uc *DownloadUseCase) Resolve(ctx context.Context, source, clipID string) (
 		if err != nil {
 			return nil, fmt.Errorf("voiceover not found: %s", clipID)
 		}
-		clip = artifacts.VoiceoverRecordToClip(rec)
+		clip = assets.VoiceoverRecordToAsset(rec)
 	} else {
 		if uc.assetRepo == nil {
 			return nil, fmt.Errorf("asset repository not available")

@@ -77,6 +77,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -262,10 +263,11 @@ func NewLifecycleFromDeps(
 	}
 
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
-		deps.Finalizer = artifacts.NewFinalizerWithAssetIndex(
+		deps.Finalizer = artifacts.NewFinalizerWithPorts(
 			deps.Registry,
 			deps.DriveVerifier,
-			deps.AssetIndex,
+			newArtifactAssetIndexAdapter(deps.AssetIndex),
+			semantic.NewArtifactsMetadataAdapter(),
 			log,
 		)
 	}

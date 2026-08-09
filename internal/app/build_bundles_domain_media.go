@@ -226,7 +226,7 @@ func buildDomainMediaServices(
 	processSegObservability := youtube.ProcessSegmentObservabilityDeps{
 		Step10Metrics:                  observability.NewStep10MetricsAdapter(),
 		RequireTranscriptReady:         mlCfg.RequireTranscriptReady,
-		RequireAllLanguagesBeforeVideo: mlCfg.Enabled,
+		RequireAllLanguagesBeforeVideo: mlCfg.RequireAllLanguagesBeforeVideo,
 		PreferredLanguages:             preferredLangs,
 	}
 	processSeg := youtube.NewProcessYouTubeSegmentFromSubBundles(

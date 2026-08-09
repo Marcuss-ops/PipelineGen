@@ -71,6 +71,7 @@ import (
 	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -274,6 +275,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if runRepo == nil {
 		return fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
 	}
+	genJobHandler.SetRunRepository(runRepo)
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
@@ -300,9 +302,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		},
 		ClipsSearcher: clipsSearcher,
 		AdminToken:    adminToken,
-		EnabledFunc:   func() bool { return anyScriptFeatureEnabled(cfg) },
-		ModuleOpts:    nil,
-		Logger:        log,
+		EnabledFunc:   func() bool { return scriptGenerationEnabled(cfg) },
+		ModuleOpts: []module.RouteModuleOption{
+			module.WithMiddleware(middleware.RequireAdminToken(cfg, log)),
+		},
+		Logger: log,
 	}
 	scriptDescriptor, err := scriptapi.Build(scriptDeps)
 	if err != nil {
@@ -327,6 +331,14 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 		return false
 	}
 	return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled || cfg.Features.ImagesEnabled
+}
+
+// scriptGenerationEnabled is the dedicated gate for the canonical
+// POST /api/script/generate capability. Script generation must not depend on
+// optional clips, docs, or image feature flags; those flags control their own
+// sub-capabilities.
+func scriptGenerationEnabled(cfg *config.Config) bool {
+	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
 // registerScripts orchestrates the /api/script/* routing surface.

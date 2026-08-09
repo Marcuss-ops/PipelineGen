@@ -372,6 +372,17 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 	t.Logf("DB save failure test: OK=%v, Error=%s", result.OK, result.Error)
 }
 
+type testAssetIndexPort struct{ service *assetindex.Service }
+
+func (p testAssetIndexPort) Upsert(ctx context.Context, rec *AssetIndexRecord) error {
+	return p.service.Upsert(ctx, &assetindex.AssetRecord{
+		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
+		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
+		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink, FileHash: rec.FileHash,
+		ContentHash: rec.ContentHash, Status: rec.Status, Metadata: rec.Metadata,
+	})
+}
+
 func setupTestAssetIndex(t *testing.T) *assetindex.Service {
 	t.Helper()
 
@@ -412,7 +423,7 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
 	assetIdx := setupTestAssetIndex(t)
 
-	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, testAssetIndexPort{service: assetIdx}, logger)
 
 	// Create a temp file that exists
 	tmpFile := filepath.Join(t.TempDir(), "test_asset.mp4")
@@ -466,6 +477,9 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 	assertEqual(t, "artlist", found.Source)
 	assertEqual(t, "contenthash123", found.ContentHash)
 	assertEqual(t, "ready", found.Status)
+	if found.CreatedAt.IsZero() || found.UpdatedAt.IsZero() {
+		t.Error("asset index timestamps must be propagated by the finalizer adapter")
+	}
 }
 
 func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
@@ -476,7 +490,7 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
 	assetIdx := setupTestAssetIndex(t)
 
-	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, testAssetIndexPort{service: assetIdx}, logger)
 
 	// Create a temp file that exists
 	tmpFile := filepath.Join(t.TempDir(), "test_asset2.mp4")

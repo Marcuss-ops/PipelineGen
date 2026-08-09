@@ -31,3 +31,17 @@ func TestAnyScriptFeatureEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestScriptGenerationEnabledUsesCapabilityFlag(t *testing.T) {
+	t.Parallel()
+
+	if scriptGenerationEnabled(nil) {
+		t.Fatal("nil config must disable script generation")
+	}
+	if scriptGenerationEnabled(&config.Config{Scripts: config.ScriptsConfig{Capability: config.ScriptCapabilityConfig{Enabled: false}}, Features: config.FeaturesConfig{ImagesEnabled: true}}) {
+		t.Fatal("optional image feature must not enable script generation")
+	}
+	if !scriptGenerationEnabled(&config.Config{Scripts: config.ScriptsConfig{Capability: config.ScriptCapabilityConfig{Enabled: true}}}) {
+		t.Fatal("script capability must enable script generation independently")
+	}
+}

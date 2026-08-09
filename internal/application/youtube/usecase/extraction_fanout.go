@@ -94,19 +94,20 @@ func buildSegmentCommand(
 	keepAudio bool,
 ) youtubetypes.ProcessSegmentCommand {
 	return youtubetypes.ProcessSegmentCommand{
-		VideoID:         videoID,
-		Segment:         seg,
-		Index:           index,
-		PolicyVersion:   ProcessSegmentPolicyVersion,
-		OutDir:          outDir,
-		DriveFolderID:   driveFolderID,
-		DriveFolderPath: driveFolderPath,
-		VideoURL:        req.URL,
-		ForceKeyframes:  req.ForceKeyframes,
-		Normalize:       req.Normalize,
-		KeepAudio:       &keepAudio,
-		Strategy:        req.Strategy,
-		Destination:     req.Destination,
+		VideoID:                        videoID,
+		Segment:                        seg,
+		Index:                          index,
+		PolicyVersion:                  ProcessSegmentPolicyVersion,
+		OutDir:                         outDir,
+		DriveFolderID:                  driveFolderID,
+		DriveFolderPath:                driveFolderPath,
+		VideoURL:                       req.URL,
+		ForceKeyframes:                 req.ForceKeyframes,
+		Normalize:                      req.Normalize,
+		KeepAudio:                      &keepAudio,
+		Strategy:                       req.Strategy,
+		Destination:                    req.Destination,
+		RequireAllLanguagesBeforeVideo: req.RequireAllLanguagesBeforeVideo,
 	}
 }
 

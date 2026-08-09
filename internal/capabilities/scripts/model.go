@@ -115,6 +115,11 @@ type GenerateRequest struct {
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 
+	// ForceRefresh requests a new run when the idempotency key already
+	// has an associated run. It mirrors the submission-layer intent so
+	// the run ledger does not create duplicates on replay.
+	ForceRefresh bool `json:"force_refresh,omitempty"`
+
 	// Source describes the generation input source.
 	Source Source `json:"source"`
 

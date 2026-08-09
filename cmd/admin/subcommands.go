@@ -56,6 +56,7 @@ var errUnknownCommand = errors.New("unknown command")
 type commandHandler func([]string) error
 
 var commandRegistry = map[string]commandHandler{
+	"delete-clip-by-drive-file":      runDeleteClipByDriveFile,
 	"apply-asset-metadata":           runApplyAssetMetadata,
 	"audit-google-doc-links":         runAuditGoogleDocLinks,
 	"apply-asset-metadata-batch":     runApplyAssetMetadataBatch,

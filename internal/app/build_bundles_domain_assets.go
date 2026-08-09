@@ -96,7 +96,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		Log:           params.log,
 		DriveUploader: params.drive.DriveUploader,
 		StyleRegistry: params.drive.StyleRegistry,
-		ScriptGen:     params.ai.ScriptGen,
 		Publisher:     params.drive.Publisher,
 		ImageRepo:     params.repos.ImageRepo,
 		VOMetaWriter:  params.voMetaWriter,

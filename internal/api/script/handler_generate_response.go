@@ -127,7 +127,7 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 //
 // The run's CurrentStage reflects the initial pipeline phase
 // (NORMALIZING → GENERATING_SCENE_TEXT → ... → WORKER_QUEUED).
-func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, isReplay bool) {
+func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, res *opsapp.SubmitResult, isReplay bool) {
 	if isReplay {
 		c.Writer.Header().Set("X-Idempotency-Replay", "true")
 	}
@@ -137,7 +137,7 @@ func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, job
 	}
 
 	resp := GenerateResponse{}
-	resp.asyncWithStage(jobID, "PENDING", "/api/jobs/"+jobID+"/full", "", string(run.CurrentStage))
+	resp.asyncWithStage(jobID, resolveJobStatus(res), "/api/jobs/"+jobID+"/full", "", string(run.CurrentStage))
 	c.JSON(http.StatusAccepted, resp)
 }
 

@@ -12,9 +12,10 @@
 //     (godlike/07 fail-closed at the seam).
 //  3. GetOrCreateFolder: Publisher.ResolveFolder error is wrapped
 //     (typed-error contract preserved via fmt.Errorf %w).
-//  4. UploadFileIfChanged: RootFolderOverride = resolved folder ID,
-//     Group/Subject propagated (per-file identity in Filename),
-//     ConflictPolicy = ConflictSkipByHash (preserved).
+//  4. UploadFileIfChanged: DestinationFolderID = resolved folder ID
+//     (canonical leaf — direct upload, no path-builder subfolder),
+//     Group/Subject propagated, ConflictPolicy = ConflictSkipByHash
+//     (preserved).
 //  5. UploadFileIfChanged: skipped bool derives from
 //     PublishResult.Action == delivery.UploadOutcomeSkipped
 //     (godlike/07 NO-FAKE-AVAILABILITY: no caller-side heuristic,
@@ -268,11 +269,21 @@ func TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy(t *te
 		t.Errorf("Filename = %q, want %q", pub.lastPublishReq.Filename, "clip-yt_abc123_0_30_v1.mp4")
 	}
 	// The resolved folder must be threaded into the publish request
-	// so the Drive upload lands in the payload-selected folder.
-	if pub.lastPublishReq.RootFolderOverride != "resolved-folder-id" {
-		t.Fatalf("RootFolderOverride = %q, want %q", pub.lastPublishReq.RootFolderOverride, "resolved-folder-id")
+	// as DestinationFolderID (canonical leaf semantics) so the Drive
+	// upload lands directly in the payload-selected folder — NOT as
+	// RootFolderOverride, which would re-run the YouTubeClipPath
+	// builder and drift the upload into a
+	// `youtube_uncategorized/<video_id>` subfolder under the root.
+	if pub.lastPublishReq.DestinationFolderID != "resolved-folder-id" {
+		t.Fatalf("DestinationFolderID = %q, want %q", pub.lastPublishReq.DestinationFolderID, "resolved-folder-id")
+	}
+	if pub.lastPublishReq.RootFolderOverride != "" {
+		t.Errorf("RootFolderOverride = %q, want empty (leaf via DestinationFolderID)", pub.lastPublishReq.RootFolderOverride)
 	}
 	// Group + Subject MUST be propagated for YouTubeClipPath path-building.
+	// (With DestinationFolderID set, YouTubeClipPath returns nil
+	// sub-segments — the leaf wins — but Group/Subject are still part
+	// of the canonical wire-shape for callers without a resolved leaf.)
 	if pub.lastPublishReq.Group != "boxing-channels" {
 		t.Errorf("Group = %q, want %q (channel name must propagate to PublishRequest)", pub.lastPublishReq.Group, "boxing-channels")
 	}

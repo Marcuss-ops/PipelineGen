@@ -12,6 +12,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
@@ -23,6 +24,7 @@ import (
 // voiceover/jobs/parent_aggregator.go::AggregatorDeps exactly.
 type ScriptAggregatorDeps struct {
 	JobsSvc ScriptAggregatorJobsService
+	RunRepo scriptgen.RunRepository
 	Logger  *zap.Logger
 	// PollInterval is the background-tick interval. Production: 30s.
 	// Zero or negative defaults to 30s (mirrors voiceover).
@@ -485,6 +487,25 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		zap.String("parent_state", string(agg.ParentState)),
 		zap.String("target_status", string(targetStatus)),
 		zap.Int("revision", agg.ParentRevision))
+	if a.deps.RunRepo != nil {
+		if targetStatus == job.StatusFailed {
+			_ = a.deps.RunRepo.FailRun(ctx, scriptgen.FailRunInput{
+				RunID:        runIDForJob(ctx, a.deps.RunRepo, parentJobID),
+				FailedStage:  scriptgen.StageFailed,
+				ErrorCode:    "SCRIPT_BATCH_FAILED",
+				ErrorMessage: errMsg,
+			})
+		} else if run, lookupErr := a.deps.RunRepo.GetByJobID(ctx, parentJobID); lookupErr == nil && run != nil {
+			_ = a.deps.RunRepo.UpdateStage(ctx, run.ID, scriptgen.RunStatusCompleted, scriptgen.StageCompleted)
+		}
+	}
+}
+
+func runIDForJob(ctx context.Context, repo scriptgen.RunRepository, jobID string) string {
+	if run, err := repo.GetByJobID(ctx, jobID); err == nil && run != nil {
+		return run.ID
+	}
+	return ""
 }
 
 // scriptItemP0_1Gate overrides a child to FAILED when broker status

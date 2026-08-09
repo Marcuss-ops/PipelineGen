@@ -79,13 +79,14 @@ type Policy struct {
 	// report. The budget is a ratchet: current warnings may not exceed
 	// this value, and the policy remains explicit until the residue is
 	// reduced to zero.
-	MaxWarnings           int
-	ForbiddenTopLevelDirs []string
-	KernelSubzones        []string
-	Capabilities          []string
-	PlatformSubzones      []string
-	LegacyInternalRoots   []string
-	TargetInternalRoots   []string
+	MaxWarnings               int
+	ForbiddenTopLevelDirs     []string
+	KernelSubzones            []string
+	Capabilities              []string
+	CanonicalApplicationAreas []string
+	PlatformSubzones          []string
+	LegacyInternalRoots       []string
+	TargetInternalRoots       []string
 	// DataOwnershipDoc is the path (relative to root) of the canonical
 	// data/config ownership document whose authority the rule family
 	// scanOwnershipDoc enforces. Empty string opts out (Phase 0 only;

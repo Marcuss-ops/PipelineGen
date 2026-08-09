@@ -153,6 +153,30 @@ func TestKernelSubzoneHardGatesFailClosed(t *testing.T) {
 	}
 }
 
+func TestCanonicalApplicationInfrastructureHardGateFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	fixture := filepath.Join(root, "internal", "application", "images", "bad.go")
+	if err := os.MkdirAll(filepath.Dir(fixture), 0o755); err != nil {
+		t.Fatalf("mkdir canonical application fixture: %v", err)
+	}
+	if err := os.WriteFile(fixture, []byte("package images\n\nimport _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive\"\n"), 0o644); err != nil {
+		t.Fatalf("write canonical application fixture: %v", err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "canonical_application_areas:\n" +
+		"  - internal/application/images\n" +
+		"hard_gates:\n" +
+		"  - percheck_canonical_application_infrastructure_imports\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o644); err != nil {
+		t.Fatalf("write policy fixture: %v", err)
+	}
+
+	code, err := Run(context.Background(), root, policyPath, "test", false, false)
+	if err != nil || code != ExitViolations {
+		t.Fatalf("canonical application hard gate must fail closed: code=%d err=%v", code, err)
+	}
+}
+
 func TestProjectRootContainsPolicyAndCatalog(t *testing.T) {
 	pkgDir, err := os.Getwd()
 	if err != nil {
