@@ -188,7 +188,9 @@
     "paths": [
       "internal/domain/voiceover/",
       "internal/application/voiceover/",
-      "internal/api/assets/voiceover/"
+      "internal/api/assets/voiceover/",
+      "cleaned_jackie-chan-is-seen-on-graham_en-US.mp3",
+      "jackie-chan-is-seen-on-graham_en-US.mp3"
     ],
     "go_packages": [
       "./internal/domain/voiceover/...",
@@ -438,6 +440,20 @@
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
+    "live_tests": []
+  },
+  "rust-muscles": {
+    "utility": true,
+    "paths": [
+      "rust/"
+    ],
+    "go_packages": [],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 300,
+    "race_timeout_seconds": 300,
+    "race_enabled": false,
     "live_tests": []
   },
   "web": {
