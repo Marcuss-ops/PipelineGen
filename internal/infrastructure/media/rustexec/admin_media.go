@@ -30,6 +30,9 @@ func (p *AdminMediaProcessor) Probe(ctx context.Context, path string) (time.Dura
 }
 
 func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSeconds float64) error {
+	if err := validateResolvedProfile(p.profile); err != nil {
+		return err
+	}
 	ext := filepath.Ext(inputPath)
 	tmpPath := inputPath + ".trim.tmp" + ext
 	defer os.Remove(tmpPath)
@@ -46,6 +49,9 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 }
 
 func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.RenderManifest) error {
+	if err := validateResolvedProfile(p.profile); err != nil {
+		return err
+	}
 	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
 		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPS: uint32(p.profile.FPS), KeyframeInterval: uint32(p.profile.KeyframeInterval),
 		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels)}

@@ -49,7 +49,7 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"normalize"}`)}
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
-	processor := &VideoProcessor{client: client}
+	processor := &VideoProcessor{client: client, profile: config.CanonicalVideoProfile{}.WithDefaults()}
 
 	opts := ffmpeg.NormalizeOptions{
 		Duration: 30, DisableDuration: true, KeepAudio: true,
@@ -114,13 +114,13 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || len(sent.Jobs) != 1 {
+	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Jobs) != 1 {
 		t.Fatalf("unexpected shared cut request: %+v", sent)
 	}
 }
 
 func TestVideoProcessorEncodingFailsWithoutPolicy(t *testing.T) {
-	processor := NewVideoProcessor("muscles", "ffmpeg", nil)
+	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil), profile: config.CanonicalVideoProfile{}.WithDefaults()}
 	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", ffmpeg.NormalizeOptions{})
 	if err == nil || err.Error() != "ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy" {
 		t.Fatalf("Normalize() error = %v, want missing policy error", err)
@@ -144,7 +144,7 @@ func TestAdminRendererPreservesEncoderPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "admin_render" || sent.Codec != "h264_nvenc" || sent.Preset != "p1" || sent.CRF != 21 || len(sent.Effects) != 1 || len(sent.Overlays) != 1 {
+	if sent.Operation != "admin_render" || sent.Codec != "h264_nvenc" || sent.Preset != "p1" || sent.CRF != 21 || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Effects) != 1 || len(sent.Overlays) != 1 {
 		t.Fatalf("unexpected admin render request: %+v", sent)
 	}
 }
