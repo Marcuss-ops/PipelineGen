@@ -218,6 +218,10 @@ func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageS
 	return []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "asset-mike", Provider: "internet_images", Entity: req.Query,
 		Query: req.Query, SourceURL: "https://images.example/mike.jpg", Score: 1,
+		DriveLink: "https://drive.google.com/file/d/asset-mike/view", FileHash: "hash-mike",
+		RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+		IndexStatus: scriptpkg.VidRushStatusIndexed,
 	}}, nil
 }
 

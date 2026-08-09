@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -90,6 +91,30 @@ func TestExtractorSupportsUnicodeInput(t *testing.T) {
 	}
 	if result.ImportantPhrases[0] == "" {
 		t.Fatal("empty phrase")
+	}
+}
+
+func TestExtractorRanksNarrativeSentenceAndConcreteKeywords(t *testing.T) {
+	text := "La boxe ha una storia lunga e complessa. Nel 1986 Mike Tyson conquistò il titolo mondiale e cambiò per sempre la percezione del pugilato. Gli allenatori studiarono a lungo quella trasformazione tecnica."
+	result := extract(t, text)
+
+	if len(result.ImportantPhrases) != 1 {
+		t.Fatalf("phrases = %+v, want exactly one source sentence", result.ImportantPhrases)
+	}
+	if result.ImportantPhrases[0] != "Nel 1986 Mike Tyson conquistò il titolo mondiale e cambiò per sempre la percezione del pugilato." {
+		t.Fatalf("phrase = %q, want the entity-and-year narrative sentence", result.ImportantPhrases[0])
+	}
+
+	for _, word := range result.ImportantWords {
+		if word == "della" || word == "quella" || word == "per" || word == "una" || word == "nel" {
+			t.Fatalf("function word returned as important: %q (all=%v)", word, result.ImportantWords)
+		}
+		if !strings.Contains(strings.ToLower(text), strings.ToLower(word)) {
+			t.Fatalf("keyword %q was not found in source text", word)
+		}
+	}
+	if len(result.ImportantWords) == 0 {
+		t.Fatal("concrete important words are empty")
 	}
 }
 

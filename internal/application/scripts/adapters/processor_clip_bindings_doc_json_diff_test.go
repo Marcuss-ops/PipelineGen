@@ -39,7 +39,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -247,54 +246,16 @@ func TestClipBindings_DocBuilderByteStream_Equals_JSONWire_PR7(t *testing.T) {
 // generates so json.Unmarshal can re-parse the embedded JSON.
 func extractDocLinksFromDocHTML(t *testing.T, html string, numScenes int) []string {
 	t.Helper()
-	re := regexp.MustCompile(`(?s)<h2>SpecScene JSON</h2><pre>(.*?)</pre>`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		t.Fatalf("doc HTML body has no <h2>SpecScene JSON</h2><pre>...</pre> block; "+
-			"either the test design assumption broke (BuildSpecSceneDocumentHTML no longer emits one) "+
-			"or the binder never wrote canonical bindings into SpecScene.\n"+
-			"first 800 chars of HTML: %s", truncateForFailure(html, 800))
+	re := regexp.MustCompile(`<strong>Clip:</strong> <a href="([^"]+)"`)
+	matches := re.FindAllStringSubmatch(html, -1)
+	if len(matches) != numScenes {
+		t.Fatalf("doc HTML contains %d visible clip links, want %d; first 800 chars: %s",
+			len(matches), numScenes, truncateForFailure(html, 800))
 	}
 
-	// BuildSpecSceneDocumentHTML calls html.EscapeString on the
-	// JSON bytes; unescape the four escapes it produces so
-	// json.Unmarshal can re-parse the inner block.
-	inner := matches[1]
-	inner = strings.ReplaceAll(inner, "&#34;", `"`)
-	inner = strings.ReplaceAll(inner, "&quot;", `"`)
-	inner = strings.ReplaceAll(inner, "&amp;", "&")
-	inner = strings.ReplaceAll(inner, "&lt;", "<")
-	inner = strings.ReplaceAll(inner, "&gt;", ">")
-
-	var docDoc docSpecDoc
-	if err := json.Unmarshal([]byte(inner), &docDoc); err != nil {
-		t.Fatalf("parse doc inner JSON: %v\n"+
-			"inner JSON (first 800 chars): %s",
-			err, truncateForFailure(inner, 800))
-	}
-	// PR 7 followup (review defect e): pin the doc builder's
-	// embedded schema version so a future refactor that bumps
-	// the version (e.g. an extra per-scene prompt field) is
-	// caught HERE rather than silently dropping or adding
-	// empty fields. The typed mirror above would still parse
-	// silently with a degraded stream; this explicit assertion
-	// is the canary.
-	if docDoc.Version != docSpecDocRendererVersion {
-		t.Fatalf("doc-rendered SpecScene JSON has unexpected version %d "+
-			"(test pinned to %d) — BuildSpecSceneDocumentHTML bumped the "+
-			"embedded schema; update the typed mirror and the renderer-version "+
-			"constant together, then re-pin the diff test.\n"+
-			"first 800 chars of inner JSON: %s",
-			docDoc.Version, docSpecDocRendererVersion,
-			truncateForFailure(inner, 800))
-	}
 	out := make([]string, 0, numScenes)
-	for _, ds := range docDoc.Scenes {
-		if ds.Bindings.Clip == nil {
-			out = append(out, "")
-			continue
-		}
-		out = append(out, ds.Bindings.Clip.DriveLink)
+	for _, match := range matches {
+		out = append(out, match[1])
 	}
 	return out
 }

@@ -58,6 +58,7 @@ type ResolvedGenerationPlan struct {
 	Duration          int             `json:"duration,omitempty"`
 	MinWords          int             `json:"min_words,omitempty"`
 	NumClips          int             `json:"num_clips,omitempty"`
+	IntroClipIDs      []string        `json:"intro_clip_ids,omitempty"`
 	SegmentWords      int             `json:"segment_words,omitempty"`
 	SegmentTopics     []string        `json:"segment_topics,omitempty"`
 	Segments          []ScriptSegment `json:"segments,omitempty"`
@@ -141,6 +142,7 @@ type ResolvedGenerationPlan struct {
 	DocsEnabled       bool                `json:"docs_enabled,omitempty"`
 	DocsLanguages     []string            `json:"docs_languages,omitempty"`
 	DocsFolderID      string              `json:"docs_folder_id,omitempty"`
+	VoiceoverEnabled  Toggle              `json:"voiceover_enabled,omitempty"`
 	VoiceoverGroup    string              `json:"voiceover_group,omitempty"`
 	VoiceoverFolderID string              `json:"voiceover_folder_id,omitempty"`
 	MaxChars          int                 `json:"max_chars,omitempty"`

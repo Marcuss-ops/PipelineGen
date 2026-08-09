@@ -168,11 +168,14 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		item.ScriptParams.ImagesPerScene = cfg.DefaultImagesPerScene
 	}
 
-	// Voiceover is opt-in. Do not synthesize a voiceover_group from the
-	// memory channel: that legacy default enabled the inline voiceover
-	// processor for image/script-only requests and then failed with
-	// missing_folder_id. An explicit voiceover_group or
-	// voiceover_folder_id remains untouched and is resolved normally.
+	// Resolve the voiceover capability once. Legacy payloads that only set a
+	// group/folder remain compatible, but routing is no longer reinterpreted
+	// by downstream processors. An explicit disabled toggle always wins.
+	if item.Output.VoiceoverEnabled != scriptpkg.ToggleEnabled &&
+		item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled &&
+		(strings.TrimSpace(item.Output.VoiceoverGroup) != "" || strings.TrimSpace(item.Output.VoiceoverFolderID) != "") {
+		item.Output.VoiceoverEnabled = scriptpkg.ToggleEnabled
+	}
 
 	// Source defaults: NumClips derives from MaxClips.
 	if item.Source.NumClips <= 0 && item.Source.MaxClips > 0 {
@@ -335,7 +338,11 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 			item.ScriptParams.ImagesPerScene = 2
 		}
 	case scriptpkg.PresetFullMedia:
-		// §6 row 3: full_media | scoping-only.
+		// §6 row 3: full_media enables voiceover when the caller did not
+		// explicitly choose a voiceover capability.
+		if item.Output.VoiceoverEnabled != scriptpkg.ToggleEnabled && item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled {
+			item.Output.VoiceoverEnabled = scriptpkg.ToggleEnabled
+		}
 	case scriptpkg.PresetCatalog:
 		// §6 row 4: catalog | source.kind=catalog | none.
 		//

@@ -18,7 +18,9 @@ import (
 // BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
 //
 // Visible sections include the optional metadata title, description, and tags,
-// followed by the operational scene view and the SpecScene JSON snapshot.
+// followed by the operational scene view and the complete SpecScene JSON
+// snapshot. The JSON block is the canonical machine-consumable surface and
+// must remain byte-faithful to model.SpecScene.
 func BuildSpecSceneDocumentHTML(
 	model *scriptpkg.ModelScriptOutputV1,
 	title string,
@@ -117,19 +119,44 @@ func BuildSpecSceneDocumentHTML(
 				}
 				b.WriteString("</p>")
 			}
+			if scene.Annotations != nil {
+				for _, entity := range scene.Annotations.PrimaryEntities {
+					if entity.Image == nil || strings.TrimSpace(entity.Image.DriveLink) == "" {
+						continue
+					}
+					name := documentEntityName(entity)
+					if name == "" {
+						continue
+					}
+					b.WriteString("<p><strong>Entità:</strong> ")
+					b.WriteString(html.EscapeString(name))
+					b.WriteString("</p><p><strong>Image link Drive:</strong> ")
+					b.WriteString(renderDocumentLink(entity.Image.DriveLink, entity.Image.DriveLink, entity.Image.DriveLink))
+					b.WriteString("</p>")
+				}
+			}
 			b.WriteString("</section>")
 		}
 	}
 
 	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
 	if err == nil {
-		b.WriteString("<h2>SpecScene JSON</h2><pre>")
+		b.WriteString("<h2>SpecScene JSON</h2><pre><code>")
 		b.WriteString(html.EscapeString(string(raw)))
-		b.WriteString("</pre>")
+		b.WriteString("</code></pre>")
 	}
 
 	b.WriteString("</body></html>")
 	return b.String()
+}
+
+func documentEntityName(entity scriptpkg.AnnotatedEntity) string {
+	name := strings.TrimSpace(entity.CanonicalName)
+	if name == "" {
+		name = strings.TrimSpace(entity.Text)
+	}
+	name = strings.TrimSpace(strings.TrimPrefix(name, "Describe "))
+	return name
 }
 
 func renderDocumentLink(url, label, fallback string) string {

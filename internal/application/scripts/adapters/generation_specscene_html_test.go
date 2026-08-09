@@ -51,7 +51,7 @@ func TestBuildSpecSceneDocumentHTML_RendersVisibleScenesAndLinks(t *testing.T) {
 	for _, want := range []string{
 		"<h1>Canonical Script</h1>",
 		"<h2>Scenes</h2>",
-		"<h2>SpecScene JSON</h2><pre>",
+		"<h2>SpecScene JSON</h2><pre><code>",
 		"scene-clip-1",
 		"Canonical scene text.",
 		"clip-1",
@@ -77,6 +77,28 @@ func TestBuildSpecSceneDocumentHTML_RendersVisibleScenesAndLinks(t *testing.T) {
 			t.Errorf("canonical SpecScene document must not contain %q; HTML=%s", unwanted, html)
 		}
 	}
+}
+
+func TestBuildSpecSceneDocumentHTML_RendersConciseEntityImageLinks(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+		ID:   "scene-0",
+		Text: "John Cena enters the arena.",
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Describe John Cena",
+			Text:          "Describe John Cena",
+			Image:         &scriptpkg.EntityImageBinding{DriveLink: "https://drive.google.com/file/d/cena/view"},
+		}}},
+	}}}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, "Famous people", nil)
+	require.Contains(t, out, "<strong>Entità:</strong> John Cena")
+	require.Contains(t, out, "<strong>Image link Drive:</strong>")
+	require.Contains(t, out, "https://drive.google.com/file/d/cena/view")
+	require.Contains(t, out, "Describe John Cena")
+	require.Contains(t, out, "primary_entities")
+	require.Contains(t, out, "drive_link")
 }
 
 func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
@@ -192,7 +214,7 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 		t.Errorf("expected Clip binding drive_link in HTML; HTML=%s", out)
 	}
 	if !strings.Contains(out, "https://drive.google.com/file/d/stock-9/view") {
-		t.Errorf("expected Stock binding drive_link in HTML (independent of Clip); HTML=%s", out)
+		t.Errorf("expected Stock binding drive_link in SpecScene JSON; HTML=%s", out)
 	}
 }
 

@@ -384,6 +384,12 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 	if want == "" {
 		want = normalizeEntityMatch(entity.Text)
 	}
+	// Small local models sometimes turn prompt instructions into the
+	// extracted entity text (for example, "Describe John Cena").  The
+	// provider query and the public person's canonical name are still
+	// "John Cena", so remove that non-semantic instruction prefix before
+	// comparing the entity with a retrieved candidate.
+	want = strings.TrimSpace(strings.TrimPrefix(want, "describe "))
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
 	for _, candidate := range all {
 		if !validVidRushCandidate(candidate) || strings.TrimSpace(candidate.AssetID) == "" {
@@ -391,8 +397,16 @@ func findEntityImageCandidate(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		}
 		entityText := normalizeEntityMatch(candidate.Entity)
 		query := normalizeEntityMatch(candidate.Query)
-		if entityText == want || strings.Contains(query, want) || strings.Contains(entityText, want) {
-			return candidate, true
+		candidateQuery := strings.TrimSpace(strings.TrimPrefix(query, "describe "))
+		candidateEntity := strings.TrimSpace(strings.TrimPrefix(entityText, "describe "))
+		if candidateQuery == want || candidateEntity == want || strings.Contains(candidateQuery, want) || strings.Contains(candidateEntity, want) {
+			// Search results are projected once before acquisition and again
+			// after Drive/SQLite/Qdrant materialization. Prefer the durable
+			// candidate on the second pass; otherwise an early discovered hit
+			// can leave the document with an asset_id but no drive_link.
+			if readyVidRushCandidate(candidate) {
+				return candidate, true
+			}
 		}
 	}
 	return scriptpkg.SegmentAssetCandidate{}, false
