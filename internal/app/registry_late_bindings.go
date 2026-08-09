@@ -10,9 +10,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
-	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
-	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	"go.uber.org/zap"
 )
@@ -65,31 +63,16 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.Compose
 		return prepared, nil
 	}
 
-	if regWiring.ArtlistSvc != nil && regWiring.ArtlistSvc.Service != nil {
-		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
-			Id:     "artlist",
-			Kind:   ProviderKindSearch,
-			Search: artlistadapter.NewGatewayAdapter(regWiring.ArtlistSvc.Service),
-		})
-	}
-	if regWiring.YouTubeClip != nil && regWiring.YouTubeClip.Service != nil {
-		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
-			Id:     "youtube",
-			Kind:   ProviderKindSearch,
-			Search: youtubeadapter.NewAdapter(regWiring.YouTubeClip.Service),
-		})
-	}
+	// Search adapters were composed before the canonical aggregator was
+	// built. Reuse those exact instances for the final provider registry so
+	// cache, coalescing and provider identity are not split across a legacy
+	// duplicate adapter graph.
+	prepared.Providers = append(prepared.Providers, crossStep.ProviderEntries...)
 	if regWiring.StockPipeline != nil && regWiring.StockPipeline.Service != nil {
 		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
 			Id:    "stock",
 			Kind:  ProviderKindFetch,
 			Fetch: stockadapter.NewAdapter(regWiring.StockPipeline.Service),
-		})
-	}
-	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
-		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
-			Id: "image", Kind: ProviderKindSearch,
-			Search: newImageSearchProvider(root.Domains.ImageSearchResolver),
 		})
 	}
 
