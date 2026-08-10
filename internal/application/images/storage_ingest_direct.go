@@ -14,6 +14,7 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
+	capimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"go.uber.org/zap"
 )
 
@@ -243,7 +244,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		EmitIndexEvent: true,
 	}
 	if !skipDrive {
-		payload, marshalErr := json.Marshal(ImageDriveDeliveryPayload{
+		payload, marshalErr := json.Marshal(capimages.ImageDriveDeliveryPayload{
 			AssetID: hash, ContentHash: hash, LocalPath: localPath,
 			Filename: filepath.Base(localPath), DestinationFolderID: overrideRoot,
 			Style: style, Subject: slug, Group: slug, SourceVersion: 1,
@@ -252,7 +253,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			return nil, fmt.Errorf("image ingest: build Drive delivery outbox payload: %w", marshalErr)
 		}
 		commitReq.AdditionalOutboxEvents = []persistence.OutboxEvent{{
-			EventType:   EventTypeImageDriveDeliveryRequested,
+			EventType:   capimages.EventTypeImageDriveDeliveryRequested,
 			AggregateID: hash, AggregateType: "media_asset", PayloadJSON: string(payload),
 			EventKey: "image-drive-delivery:" + hash + ":" + style + ":" + overrideRoot,
 		}}

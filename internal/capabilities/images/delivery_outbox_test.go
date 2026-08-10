@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 
@@ -51,10 +50,10 @@ func TestImageDriveDeliveryHandler_SuccessPersistsProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = handler.Handle(context.Background(), outboxevents.Event{PayloadJSON: `{
+	err = handler.HandlePayload(context.Background(), `{
 		"asset_id":"asset-123","content_hash":"hash-123","local_path":"/tmp/image.jpg",
 		"filename":"image.jpg","destination_folder_id":"images-root","source_version":1
-	}`})
+	}`)
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -78,10 +77,10 @@ func TestImageDriveDeliveryHandler_PublishFailureIsRetryableAndRecordsFailure(t 
 		t.Fatal(err)
 	}
 
-	err = handler.Handle(context.Background(), outboxevents.Event{PayloadJSON: `{
+	err = handler.HandlePayload(context.Background(), `{
 		"asset_id":"asset-123","content_hash":"hash-123","local_path":"/tmp/image.jpg",
 		"filename":"image.jpg","destination_folder_id":"images-root","source_version":1
-	}`})
+	}`)
 	if err == nil {
 		t.Fatal("publish failure must be returned so the outbox retries")
 	}
@@ -102,9 +101,9 @@ func TestImageDriveDeliveryHandler_AllowsRegistryResolvedDestination(t *testing.
 		t.Fatal(err)
 	}
 
-	err = handler.Handle(context.Background(), outboxevents.Event{PayloadJSON: `{
+	err = handler.HandlePayload(context.Background(), `{
 		"asset_id":"asset-123","content_hash":"hash-123","local_path":"/tmp/image.jpg"
-	}`})
+	}`)
 	if err != nil {
 		t.Fatalf("registry-resolved destination should be accepted: %v", err)
 	}

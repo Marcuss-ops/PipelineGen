@@ -21,8 +21,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
@@ -289,12 +289,29 @@ func registerOutboxWorkers(
 	if imageErr != nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: image Drive delivery handler: %w", imageErr)
 	}
-	if regErr := eventsRegistry.Register(imageHandler); regErr != nil {
+	if regErr := eventsRegistry.Register(imageDriveDeliveryOutboxAdapter{handler: imageHandler}); regErr != nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register image Drive delivery handler: %w", regErr)
 	}
 	log.Info("outbox image Drive delivery handler registered: image.drive_delivery.requested → delivery.Publisher.Publish")
 
 	return publisherHandler, driveUploadHandler, nil
+}
+
+// imageDriveDeliveryOutboxAdapter keeps the SQLite outbox envelope at the
+// composition boundary. The image capability owns only its payload handler;
+// this adapter owns the concrete outboxevents.Handler contract.
+type imageDriveDeliveryOutboxAdapter struct {
+	handler *imagesapp.ImageDriveDeliveryHandler
+}
+
+func (a imageDriveDeliveryOutboxAdapter) EventType() string {
+	return imagesapp.EventTypeImageDriveDeliveryRequested
+}
+func (a imageDriveDeliveryOutboxAdapter) IdempotencyKey() string {
+	return imagesapp.EventTypeImageDriveDeliveryRequested + ".v1"
+}
+func (a imageDriveDeliveryOutboxAdapter) Handle(ctx context.Context, evt outboxevents.Event) error {
+	return a.handler.HandlePayload(ctx, evt.PayloadJSON)
 }
 
 // noopIndexClipper is the qdrant-off IndexClip no-op concrete used by
