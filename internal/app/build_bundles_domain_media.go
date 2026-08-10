@@ -19,7 +19,6 @@ import (
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/commit"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/publication"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/recommendation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
@@ -309,11 +308,9 @@ func buildDomainMediaServices(
 	// AssetTxFinalizer) stays untouched in this commit.
 	var (
 		_ = ytacquisition.NewServiceAdapter
-		_ = ytmetadata.NewSearchServiceAdapter
 		_ = transcripts.NewWhisperAdapter
 		_ = publication.NewDriveAdapter
 		_ = commit.NewTxAdapter
-		_ = recommendation.NewStubAdapter
 	)
 
 	return voMetaWriter, clipWriter, nil
