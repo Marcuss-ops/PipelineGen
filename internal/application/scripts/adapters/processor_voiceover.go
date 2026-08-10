@@ -343,6 +343,27 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}, nil
 }
 
+// capIntroNarration applies the product-level maximum to the first scene of
+// an explicit intro-clip request. It operates after model/translation
+// processing and before TTS, keeping the persisted scene and spoken text in
+// sync without inventing narration.
+func capIntroNarration(input *ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if input == nil || plan == nil || len(input.SpecScene.Scenes) == 0 {
+		return false
+	}
+	if input.SpecScene.Scenes[0].Kind != scriptpkg.SceneIntro && len(plan.IntroClipIDs) == 0 {
+		return false
+	}
+	text := strings.TrimSpace(input.SpecScene.Scenes[0].Text)
+	words := strings.Fields(text)
+	const maxIntroWords = 20
+	if len(words) <= maxIntroWords {
+		return false
+	}
+	input.SpecScene.Scenes[0].Text = strings.Join(words[:maxIntroWords], " ")
+	return true
+}
+
 func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 	if len(src) == 0 {
 		return nil
