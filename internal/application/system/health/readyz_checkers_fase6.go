@@ -105,8 +105,8 @@ func (c *publisherFolderChecker) CheckFolder(ctx context.Context, folderID strin
 		return errCanaryPublisherNotWired
 	}
 	_, err := c.pub.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		RootFolderOverride: folderID,
+		Destination:    delivery.DestinationYouTubeClip,
+		ParentFolderID: folderID,
 	})
 	return err
 }

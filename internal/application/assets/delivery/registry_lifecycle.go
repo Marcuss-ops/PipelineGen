@@ -100,18 +100,15 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			RequireSubpath: true,
 			ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 		},
-		// DestinationImage: P1 image-dedupe surface — skip on content
-		// hash match (vs. the immutability-only ConflictSkip used
-		// elsewhere). The publisher resolves ConflictSkipByHash to
-		// ConflictSkip at the PutFile seam pending the full DRAM sidecar
-		// implementation; the typed enum is captured here so the
-		// intent is explicit at construction time.
+		// DestinationImage: immutable image assets use the canonical
+		// ConflictSkip policy until a real content-hash comparison
+		// capability exists.
 		DestinationImage: {
 			RootFolderID:   cfg.Drive.ImagesFolder(),
 			Namespace:      "images",
 			PathBuilder:    maybeWrapNamespace(cfg, "images", cfg.Drive.ImagesRootFolder, ImagePath),
 			RequireSubpath: true,
-			ConflictPolicy: ConflictSkipByHash, // P1: skip when content hash matches
+			ConflictPolicy: ConflictSkip,
 		},
 		// DestinationScript: regenerable script outputs. Latest
 		// version wins.

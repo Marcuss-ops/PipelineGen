@@ -85,7 +85,7 @@ func TestPublisher_ExplicitDestinationFolderBypassesForSidecars(t *testing.T) {
 	// DestinationFolderID is the complete leaf destination and MUST bypass
 	// the registry AND the path builder even with an explicit conflict
 	// policy. This is distinct from the YouTube clip path, which threads
-	// RootFolderOverride and always nests (see
+	// ParentFolderID and always nests (see
 	// TestPublisher_YouTubeClipWithRootOverride_EnsuresNestedSegments).
 	reg := testRegistry()
 	folders := &fakeFolderManager{}
@@ -111,7 +111,7 @@ func TestPublisher_ExplicitDestinationFolderBypassesForSidecars(t *testing.T) {
 func TestPublisher_YouTubeClipWithRootOverride_EnsuresNestedSegments(t *testing.T) {
 	// Production contract (adapter decision, ba84a9eaf): the
 	// YouTubePublisherDriveAdapter threads the resolved folder into
-	// RootFolderOverride — NOT DestinationFolderID. The publisher therefore
+	// ParentFolderID — NOT DestinationFolderID. The publisher therefore
 	// re-runs YouTubeClipPath and creates the per-video nested subfolder
 	// inside the resolved root: {folder}/{group}/{video_id}.
 	reg := testRegistry()
@@ -121,13 +121,13 @@ func TestPublisher_YouTubeClipWithRootOverride_EnsuresNestedSegments(t *testing.
 	require.NoError(t, err)
 
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		RootFolderOverride: "resolved-actor-folder",
-		Group:              "Matt Damon",
-		Subject:            "e35PVH3ksFA",
-		LocalPath:          "/tmp/clip.mp4",
-		Filename:           "clip.mp4",
-		ConflictPolicy:     delivery.ConflictSkip,
+		Destination:    delivery.DestinationYouTubeClip,
+		ParentFolderID: "resolved-actor-folder",
+		Group:          "Matt Damon",
+		Subject:        "e35PVH3ksFA",
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip.mp4",
+		ConflictPolicy: delivery.ConflictSkip,
 	})
 	require.NoError(t, err)
 	require.Len(t, folders.ensureCalls, 1, "nested per-video folder must be ensured inside the resolved root")
@@ -163,23 +163,23 @@ func TestPublisher_ExplicitDestinationFolderWithUnsetPolicyBypassesRegistry(t *t
 
 func TestYouTubeClipPath_ExplicitFolderViaRootOverride_StillBuildsNestedSegments(t *testing.T) {
 	// Production contract (adapter decision, ba84a9eaf): the adapter passes
-	// the resolved folder as RootFolderOverride, so YouTubeClipPath is ALWAYS
+	// the resolved folder as ParentFolderID, so YouTubeClipPath is ALWAYS
 	// re-run and the per-video subfolder is created. An explicit actor folder
 	// is the ROOT of the nested path, never a verbatim leaf.
 	//
 	// With a group present the path is {group}/{video_id} — no fallback.
 	req := delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		RootFolderOverride: "matt-damon-folder",
-		Group:              "Matt Damon",
-		Category:           "actor_clip",
-		Subject:            "e35PVH3ksFA",
+		Destination:    delivery.DestinationYouTubeClip,
+		ParentFolderID: "matt-damon-folder",
+		Group:          "Matt Damon",
+		Category:       "actor_clip",
+		Subject:        "e35PVH3ksFA",
 	}
 
 	segments, err := delivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 	require.Equal(t, []string{"Matt Damon", "e35PVH3ksFA"}, segments,
-		"YouTubeClipPath must build {group}/{video_id} under a RootFolderOverride")
+		"YouTubeClipPath must build {group}/{video_id} under a ParentFolderID")
 	require.NotContains(t, segments, "youtube_uncategorized")
 }
 
@@ -187,11 +187,11 @@ func TestYouTubeClipPath_ExplicitFolderViaRootOverride_WithoutGroupFallsBackToUn
 	// The uVoMqnwEdBQ regression (2026-08-06): a clip whose request had a
 	// folder but no group/category lands in {folder}/youtube_uncategorized/{video}
 	// — the fallback chain (Group → Category → "youtube_uncategorized") applies
-	// under a RootFolderOverride just as it does without one.
+	// under a ParentFolderID just as it does without one.
 	req := delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		RootFolderOverride: "1omaKrmSHurA9y", // "Tom Holland"
-		Subject:            "uVoMqnwEdBQ",
+		Destination:    delivery.DestinationYouTubeClip,
+		ParentFolderID: "1omaKrmSHurA9y", // "Tom Holland"
+		Subject:        "uVoMqnwEdBQ",
 	}
 
 	segments, err := delivery.YouTubeClipPath(req)

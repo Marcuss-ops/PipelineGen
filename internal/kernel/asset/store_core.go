@@ -2,7 +2,7 @@
 // (Wave C / Phase 3 slim).
 //
 // Phase 3 (Wave C / Blocco 1 Asset SSOT, June 2026): the Get/Save/
-// Delete/List receivers on `*AssetStoreSQLite` + the
+// Delete/List receivers and their concrete repository adapters + the
 // assetRepositoryAdapter struct + 8 methods + FindByExternalRef +
 // listAssetsByFilter helper + getAssetByID top-level helper +
 // buildSummaryQuery/scanSummary SQL builders were relocated to
@@ -18,22 +18,15 @@
 //
 //   - The unexported `assetStoreAdapter` interface — the type-switch
 //     bridge that decouples `Service.{Repository,LocationRepository,
-//     ProcessingRepository,VersionRepository}` from the concrete
-//     `*AssetStoreSQLite` type so callers in this domain layer never
-//     reach into Local infra's adapter structs.
+//     ProcessingRepository,VersionRepository}` from concrete SQLite
+//     infrastructure so callers in this domain layer never reach into
+//     Local infra's adapter structs.
 //
 // NO `database/sql` import. NO `fmt`/`strings`/`time`/`timeutil`/
 // `encoding/json` imports. The new embed-friendly shape is:
 //
-//   - Legacy `*asset.AssetStoreSQLite` declares 4 nil-returning
-//     factory method stubs (in store_helpers.go) so the type satisfies
-//     `assetStoreAdapter` even on its own.
-//   - Local `*sqassets.AssetStoreSQLite` (HYBRID embed) declares its
-//     own concrete factory methods, which shadow the legacy stubs.
-//   - `Service.{Repository,...}()` type-switches against
-//     `assetStoreAdapter`; only Local satisfies it with real adapters,
-//     legacy alone returns nil. Production paths always go through
-//     Local so this asymmetry is invisible at runtime.
+//   - Local SQLite infrastructure declares the concrete factory methods
+//     and satisfies this bridge at the infrastructure boundary.
 package asset
 
 // assetStoreAdapter exposes the 4 concrete factory methods needed by
@@ -46,16 +39,14 @@ package asset
 // in domain keeps the direction-of-import graph acyclic:
 //
 //	internal/kernel/asset/Service → assetStoreAdapter (here)
-//	internal/infrastructure/database/sqlite/assets/AssetStoreSQLite
+//	internal/infrastructure/database/sqlite/assets
 //	                              → satisfies assetStoreAdapter
 //	                                (declarations live next to it)
 //
 // Caller-side contract: the value passed to `NewService(Store, log)`
 // MUST additionally implement assetStoreAdapter for the Repository
 // accessors to be useful. Production callers satisfy this through
-// `sqassets.NewAssetStoreSQLite(*sql.DB, *zap.Logger)`; legacy
-// `*asset.AssetStoreSQLite` alone satisfies it but returns nil from
-// every factory method (the adapter structs moved to Local infra).
+// the SQLite asset-store constructor.
 type assetStoreAdapter interface {
 	Repository() Repository
 	LocationRepository() LocationRepository
@@ -66,10 +57,8 @@ type assetStoreAdapter interface {
 // ── Service factory method type-switches ───────────────────────────
 //
 // Each method below type-switches against `assetStoreAdapter`. When
-// the underlying Store implements the bridge interface (i.e. is a
-// Local `*sqassets.AssetStoreSQLite` via embed promotion, OR a
-// legacy `*asset.AssetStoreSQLite` directly), the corresponding real
-// adapter is returned. Otherwise nil.
+// the underlying Store implements the bridge interface, the concrete
+// repository adapter is returned. Otherwise nil.
 //
 // The nil return is deliberate: passing a non-asset-store Store
 // (eg a mock test double) does NOT defeat the build, it just means

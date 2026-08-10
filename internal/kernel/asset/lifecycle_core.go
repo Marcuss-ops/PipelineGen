@@ -8,7 +8,7 @@
 // were relocated to Local infra at
 // internal/infrastructure/database/sqlite/assets/version_queries.go,
 // reachable via HYBRID-embed promotion through the legacy
-// *AssetStoreSQLite struct.
+// asset store struct.
 //
 // This file now carries ONLY the canonical type surface: SourceType
 // enum, AssetNode API shape, IndexingCheckpoint, PipelineStrategy enum

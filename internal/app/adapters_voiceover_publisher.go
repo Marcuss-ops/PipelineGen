@@ -71,8 +71,8 @@ func newUseCasePublisherAdapter(publisher delivery.Publisher, log *zap.Logger) *
 // SEMANTIC publish (req.ProjectID + req.Language). The legacy fallback
 // chain (Project→FolderID→voiceover-ID) is RETIRED per godlike/07
 // NO-FAKE-AVAILABILITY: an empty Project silently routed to
-// req.RootFolderOverride, which surfaced upstream as
-// "PathBuilder incomplete but RootFolderOverride is set (direct-to-
+// req.ParentFolderID, which surfaced upstream as
+// "PathBuilder incomplete but ParentFolderID is set (direct-to-
 // root fallback)" — operators saw the uploaded audio land in the
 // wrong Drive folder with no typed diagnostic.
 //
@@ -85,7 +85,7 @@ func newUseCasePublisherAdapter(publisher delivery.Publisher, log *zap.Logger) *
 //     semantic surface does NOT consume FolderID for voiceover
 //     publishes — VoiceoverPath derives the path from
 //     Project + Language). The pre-PR-12 silent-fallback
-//     to RootFolderOverride is REMOVED.
+//     to ParentFolderID is REMOVED.
 //
 // Field precedence summary (semantic-first per godlike/06 SSOT):
 //  1. cmd.Project  → req.ProjectID (REQUIRED, fail-closed via Validate)

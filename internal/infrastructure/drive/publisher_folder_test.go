@@ -71,7 +71,7 @@ func TestPublisher_PublishYouTubeClip_CategoryBoxe_EnsureFolderSegments_DOD_10_1
 		Group:       "Boxe",
 		Subject:     "Pacquiao vs Broner",
 		Category:    "Boxe",
-		// No RootFolderOverride — pure semantic routing via registry.
+		// No ParentFolderID — pure semantic routing via registry.
 	})
 	require.NoError(t, err)
 
@@ -111,7 +111,7 @@ func TestPublisher_PublishYouTubeClip_NoFolderOverride_PureSemanticRouting_DOD_1
 	pub, err := NewPublisher(reg, folders, files, zap.NewNop())
 	require.NoError(t, err)
 
-	// Pure semantic routing: no RootFolderOverride, no FolderID — just
+	// Pure semantic routing: no ParentFolderID, no FolderID — just
 	// Group + Subject + Category. The Publisher resolves everything.
 	result, err := pub.Publish(context.Background(), delivery.PublishRequest{
 		Destination: delivery.DestinationYouTubeClip,
@@ -120,14 +120,14 @@ func TestPublisher_PublishYouTubeClip_NoFolderOverride_PureSemanticRouting_DOD_1
 		Group:       "Boxe",
 		Subject:     "Pacquiao vs Broner",
 		Category:    "Boxe",
-		// RootFolderOverride intentionally omitted — zero value.
+		// ParentFolderID intentionally omitted — zero value.
 	})
 	require.NoError(t, err)
 
 	// (1) EnsureFolder was called with registry root, NOT an override.
 	require.Len(t, folders.ensureCalls, 1)
 	require.Equal(t, "clips-root", folders.ensureCalls[0].parent,
-		"when RootFolderOverride is empty, EnsureFolder parent MUST be the registry root 'clips-root'")
+		"when ParentFolderID is empty, EnsureFolder parent MUST be the registry root 'clips-root'")
 
 	// (2) Result carries the canonical path.
 	require.Equal(t, []string{"Boxe", "Pacquiao vs Broner"}, result.PathSegments)

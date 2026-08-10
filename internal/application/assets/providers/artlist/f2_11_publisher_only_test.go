@@ -13,7 +13,7 @@
 //  2. DestinationService.ResolveDestination is Publisher-ONLY — no
 //     legacy else-branch (driveManager.EnsureFolder), no silent
 //     `folderID = rootFolderID` fallback. The Publisher.ResolveFolder
-//     call signature is pinned (Destination + Group + RootFolderOverride).
+//     call signature is pinned (Destination + Group + ParentFolderID).
 //
 //  3. NewDestinationService PANICS on nil publisher at construction
 //     time. Service.NewService already fails-closed on Publisher via
@@ -121,7 +121,7 @@ func TestNewService_FailClosedOnNilPublisher_F2_11(t *testing.T) {
 // fallback) per the user spec verbatim.
 //
 // Cfg is intentionally nil so this test exercises the under-cfg
-// branch (RootFolderOverride is set non-conditionally — the
+// branch (ParentFolderID is set non-conditionally — the
 // canonical path for any caller that does not pass cfg).
 func TestDestinationService_PublisherOnly_F2_11(t *testing.T) {
 	t.Parallel()
@@ -166,7 +166,7 @@ func TestDestinationService_PublisherOnly_F2_11(t *testing.T) {
 
 	// Step 4: pin the canonical PublishRequest shape that reached
 	// Publisher.ResolveFolder. F2.11 sends these three fields EXACTLY
-	// (Destination + Group + RootFolderOverride) — any drift breaks
+	// (Destination + Group + ParentFolderID) — any drift breaks
 	// the destination-policy resolution pipeline.
 	if pub.ResolveCalls != 1 {
 		t.Fatalf("Publisher.ResolveFolder calls: want 1 (F2.11 brutal override: Publisher-only path), got %d",
@@ -184,9 +184,9 @@ func TestDestinationService_PublisherOnly_F2_11(t *testing.T) {
 		t.Fatalf("Publisher.LastResolveReq.Group: want %q (textutil.SafeName(\"funny-moments\")-derived), got %q",
 			textutil.SafeName("funny-moments"), pub.LastResolveReq.Group)
 	}
-	if pub.LastResolveReq.RootFolderOverride != "term-folder-id" {
-		t.Fatalf("Publisher.LastResolveReq.RootFolderOverride: want %q (parent folder MUST be threaded to pin clip location per F2.11), got %q",
-			"term-folder-id", pub.LastResolveReq.RootFolderOverride)
+	if pub.LastResolveReq.ParentFolderID != "term-folder-id" {
+		t.Fatalf("Publisher.LastResolveReq.ParentFolderID: want %q (parent folder MUST be threaded to pin clip location per F2.11), got %q",
+			"term-folder-id", pub.LastResolveReq.ParentFolderID)
 	}
 }
 

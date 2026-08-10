@@ -165,7 +165,7 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 	resolved, err := p.resolveDestination(ctx, req)
 	if err != nil {
 		// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE (July 2026): the
-		// PathBuilder failed under RootFolderOverride. The helper
+		// PathBuilder failed under ParentFolderID. The helper
 		// returns BOTH the typed sentinel error AND the resolved
 		// struct (with direct-to-root fallback). We preserve caller
 		// backward-compat by errors.Is'ing the sentinel + log.Debug
@@ -174,7 +174,7 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		// are still valid for the Step 6 PutFile seam. Aggressive-mode
 		// callers can detect this case via the same errors.Is probe
 		// and fail-closed (forward-pointer PR-VO-AGGREGATE-SUBPATH-CASCADE).
-		if errors.Is(err, ErrPathBuilderIncompleteForOverride) {
+		if errors.Is(err, ErrPathBuilderIncompleteForParent) {
 			p.log.Debug(
 				"delivery: incomplete subpath tolerated because override was set",
 				zap.String("destination", string(req.Destination)),
@@ -284,7 +284,7 @@ func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishReque
 		// still the override root (segments=nil → direct-to-root),
 		// which is the canonical return value for callers that
 		// ResolveFolder'd to learn the upload destination pre-publish.
-		if errors.Is(err, ErrPathBuilderIncompleteForOverride) {
+		if errors.Is(err, ErrPathBuilderIncompleteForParent) {
 			p.log.Debug(
 				"delivery: incomplete subpath tolerated because override was set",
 				zap.String("destination", string(req.Destination)),

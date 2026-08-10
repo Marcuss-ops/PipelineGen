@@ -22,7 +22,7 @@
 // DriveFolderManagerPort implementation in production. Folder writes
 // are threaded as DestinationFolderID (canonical leaf semantics — the
 // upload lands directly in the payload-selected Drive folder); the
-// legacy RootFolderOverride escape hatch is used only by
+// legacy ParentFolderID escape hatch is used only by
 // GetOrCreateFolder to pin the channel folder under a caller-selected
 // Drive root. The canonical Publisher resolves the root folder for
 // DestinationYouTubeClip via DestinationRegistry +
@@ -68,11 +68,11 @@ import (
 // Publisher.ResolveFolder, passing the channel name as the Group
 // metadata for path-building. The root folder is resolved
 // canonically by the Publisher via DestinationRegistry + RootFolderID
-// (no caller-supplied RootFolderOverride per godlike/07
+// (no caller-supplied ParentFolderID per godlike/07
 // NO-FAKE-AVAILABILITY).
 //
 // UploadFileIfChanged delegates to Publisher.Publish with
-// ConflictSkipByHash, so the Publisher's content-dedupe logic
+// ConflictSkip, so the Publisher's content-dedupe logic
 // (hash comparison) replaces the legacy Uploader.UploadFileIfChanged
 // (filename-based lookup + MD5 comparison). The skipped bool and
 // UploadResultDTO fields are derived from PublishResult.Action +
@@ -99,7 +99,7 @@ func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, log *zap.Logger) *Y
 var _ youtubeports.DriveFolderManagerPort = (*YouTubePublisherDriveAdapter)(nil)
 
 func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	// Thread the request-local parent folder into RootFolderOverride so
+	// Thread the request-local parent folder into ParentFolderID so
 	// the channel folder is created under the caller-selected Drive root.
 	// Without this, the destination registry root wins and the clip
 	// subfolder drifts into the default catalog tree.
@@ -111,9 +111,9 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 		rootOverride = parentFolderID
 	}
 	folderID, err := a.publisher.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		Group:              channelName,
-		RootFolderOverride: rootOverride,
+		Destination:    delivery.DestinationYouTubeClip,
+		Group:          channelName,
+		ParentFolderID: rootOverride,
 	})
 	if err != nil {
 		return parentFolderID, fmt.Errorf("YouTubePublisherDriveAdapter.GetOrCreateFolder: %w", err)
@@ -126,7 +126,7 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 	// publisher writes directly INTO the payload-selected Drive folder.
 	// DestinationFolderID is the canonical application-layer leaf
 	// (resolveDestination returns it verbatim without consulting the
-	// registry, path builders, or catalog) — RootFolderOverride would
+	// registry, path builders, or catalog) — ParentFolderID would
 	// re-run the DestinationYouTubeClip path builder and drift uploads
 	// into a `youtube_uncategorized/<video_id>` subfolder under the
 	// selected root.
@@ -144,7 +144,7 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 		// publisher writes directly into the payload-selected Drive
 		// folder (leaf semantics, no path-builder subfolder).
 		DestinationFolderID: destFolderID,
-		ConflictPolicy:      delivery.ConflictSkipByHash,
+		ConflictPolicy:      delivery.ConflictSkip,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)

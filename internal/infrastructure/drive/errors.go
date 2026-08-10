@@ -68,9 +68,9 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 // UploadFileWithDescription + sourcing.DrivePort.UploadFileWithDescription)
 // retired via PR-YT-DRIVE-LEGACY-RETIRE.
 
-// ErrPathBuilderIncompleteForOverride is the canonical sentinel returned
+// ErrPathBuilderIncompleteForParent is the canonical sentinel returned
 // when a Destination's PathBuilder fails (e.g., missing Group/Subject/Language
-// metadata) AND the caller supplied a RootFolderOverride (the back-compat
+// metadata) AND the caller supplied a ParentFolderID (the back-compat
 // escape hatch for pre-subpath-era callers).
 //
 // godlike/07 typed-error contract (PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE,
@@ -97,7 +97,7 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 // 2026-07-04) shipped the originally-swallowed fallback. This sentinel
 // migration is the typed-error contract that user-spec asked for in the
 // PR-VO-SUBFOLDER follow-up.
-var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incomplete but RootFolderOverride is set (direct-to-root fallback)")
+var ErrPathBuilderIncompleteForParent = errors.New("drive: PathBuilder incomplete but ParentFolderID is set (direct-to-root fallback)")
 
 // DriveIsNotFound is the canonical typed classifier for Google Drive
 // HTTP 404 (file/folder not found) responses. The probe is a pure

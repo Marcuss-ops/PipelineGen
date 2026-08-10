@@ -1,5 +1,4 @@
-// Package asset — Store interface contracts + AssetStoreSQLite marker
-// + Service ctor (Wave C / Phase 3 slim, Phase 4 unification).
+// Package asset — store contracts + Service ctor (Wave C / Phase 3 slim, Phase 4 unification).
 //
 // Phase 3 (Wave C / Blocco 1 Asset SSOT, June 2026): the SQL
 // receivers and `database/sql` import were moved to Local infra.
@@ -17,24 +16,13 @@
 //
 //   - 4 receivers (GetFolderChildren/FindByPHash/MarkUsed/MarkClipsUsed) →
 //     internal/infrastructure/database/sqlite/assets/store_helpers.go
-//   - 9 Store-CRD receivers (Get/Save/Delete/List) on `*AssetStoreSQLite` →
+//   - 9 Store-CRD receivers (Get/Save/Delete/List) on the asset store →
 //     internal/infrastructure/database/sqlite/assets/asset_store.go
 //     (asset_repository_adapter + summary_query)
-//   - `db *sql.DB` field on `*AssetStoreSQLite` (Local infra owns the
-//     connection handle via embed; the legacy struct no longer needs
-//     the field — its presence was an artefact of the pre-Phase-3
-//     moved-from-Local/dual-struct shape)
-//
-// The 4 factory method receivers (AssetRepository/LocationRepository/
-// ProcessingRepository/VersionRepository) STAY on the legacy struct
-// so the domain Service type-switches against the unexported
-// `assetStoreAdapter` interface (defined in store_core.go) without
-// importing Local infra. They return nil in the legacy struct because
-// the adapter structs (locationRepositoryAdapter/versionRepositoryAdapter/
-// processingRepositoryAdapter/assetRepositoryAdapter) moved to
-// Local infra; Local's `*sqassets.AssetStoreSQLite` declares its own
-// concrete factory methods that shadow the legacy stubs and produce
-// the real adapters.
+//   - the concrete SQLite connection and repository adapters now live
+//     entirely in internal/infrastructure/database/sqlite/assets.
+//     The domain package retains only the consumer-facing contracts and
+//     the type-switch bridge used by Service.
 //
 // NO stdlib database/sql import, NO fmt/time/timeutil imports. Phase 3
 // acceptance: zero stdlib database/sql and sqlite3 hits in this
@@ -119,39 +107,6 @@ type DeliveryStore interface {
 	ListPending(ctx context.Context) ([]*delivery.Delivery, error)
 }
 
-// ── AssetStoreSQLite (legacy marker for HYBRID embed promotion) ────
-
-// AssetStoreSQLite is the SQLite-backed implementation marker kept in
-// domain for backwards naming compatibility AND the HYBRID embed
-// promotion contract (Local infra embeds this struct to inherit the
-// nil-returning factory stubs below; Local's own concrete receivers
-// shadow the stubs).
-//
-// Wave C / Phase 3 (June 2026): the legacy struct no longer owns the
-// SQLite connection handle. Local `*sqassets.AssetStoreSQLite` owns
-// `db *sql.DB`; the legacy struct's only state is the logger (Local
-// shadows it via its own `log *zap.Logger` field on the outer struct).
-//
-// Ctor signature change: `NewAssetStoreSQLite(log *zap.Logger)` (no
-// db parameter) — production callers MUST construct via
-// `sqassets.NewAssetStoreSQLite(*sql.DB, *zap.Logger)`. The legacy
-// ctor is preserved only for the Local infra embed sites in
-// `internal/infrastructure/database/sqlite/assets/{asset_store,clips_repository}.go`.
-type AssetStoreSQLite struct {
-	log *zap.Logger
-}
-
-// NewAssetStoreSQLite creates a new AssetStoreSQLite marker with the
-// given logger. Production callers should use the Local ctor
-// `sqassets.NewAssetStoreSQLite(*sql.DB, *zap.Logger)` which embeds
-// this struct AND owns the db handle.
-func NewAssetStoreSQLite(log *zap.Logger) *AssetStoreSQLite {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &AssetStoreSQLite{log: log}
-}
-
 // ── Service Class ───────────────────────────────────────────────────
 
 // Service is the high-level facade that wraps a Store implementation
@@ -188,37 +143,6 @@ func (s *Service) Save(ctx context.Context, details *Details) error {
 // Delete delegates to the wrapped Store.
 func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.store.Delete(ctx, id)
-}
-
-// ── nil-returning factory stubs (HYBRID embed promotion) ────────────
-//
-// The four factory methods stay on the legacy struct so it satisfies
-// the `assetStoreAdapter` interface (store_core.go) — they return nil
-// in legacy execution paths. Local infra's
-// `*sqassets.AssetStoreSQLite` declares its own concrete versions of
-// these four methods, which shadow the legacy stubs and produce the
-// real adapters.
-//
-// Why not delete these stubs: deleting them would break the
-// `assetStoreAdapter` interface type-switch from going through struct
-// embedding cleanly, plus regression tests in other packages may
-// still construct legacy `*asset.AssetStoreSQLite` directly (and the
-// legacy type would then lack the constructor-dispatch methods even
-// after the LOCAL embed removed it).
-func (s *AssetStoreSQLite) AssetRepository() Repository {
-	return nil
-}
-
-func (s *AssetStoreSQLite) LocationRepository() LocationRepository {
-	return nil
-}
-
-func (s *AssetStoreSQLite) ProcessingRepository() ProcessingRepository {
-	return nil
-}
-
-func (s *AssetStoreSQLite) VersionRepository() VersionRepository {
-	return nil
 }
 
 // ── Soft-delete filter (canonical SSOT, PR 1) ───────────────────────

@@ -30,7 +30,7 @@
     "filename": "9u4T_o3FxOU_993_1048_v1_Round_7_Pacquiao_hurts_Broner.mp4",
     "drive_link_shape": "https://drive.google.com/file/d/<DRIVE_FILE_ID_RUNTIME>/view",
     "drive_link_production_driver": "DriveFolderMgr.UploadFileIfChanged (Step 8) — runtime computed, NOT a fixture value",
-    "upload_strategy": "ConflictSkipByHash (PR-PUBLISHER-CONFLICT-SKIP-BY-HASH) — re-running the same payload reuses the same drive_file_id"
+    "upload_strategy": "ConflictSkip (PR-PUBLISHER-CONFLICT-SKIP-BY-HASH) — re-running the same payload reuses the same drive_file_id"
   },
   "expected_ffprobe_validation": {
     "container_readable": true,

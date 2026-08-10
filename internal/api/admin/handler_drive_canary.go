@@ -101,7 +101,7 @@ func (h *DriveCanaryHandler) CanaryUpload(c *gin.Context) {
 
 	publishRequest := delivery.PublishRequest{Destination: delivery.DestinationAdmin}
 	if folderID != "" {
-		publishRequest.RootFolderOverride = folderID
+		publishRequest.ParentFolderID = folderID
 	} else {
 		if h.aliasResolver == nil {
 			h.log.Error("Drive canary: folder alias resolver not wired")
@@ -115,7 +115,7 @@ func (h *DriveCanaryHandler) CanaryUpload(c *gin.Context) {
 		}
 
 		if ref.ID != "" {
-			publishRequest.RootFolderOverride = ref.ID
+			publishRequest.ParentFolderID = ref.ID
 		} else {
 			// Production aliases intentionally leave folder_id empty. Resolve
 			// the canonical path through Publisher, exactly as the resolver
@@ -133,7 +133,7 @@ func (h *DriveCanaryHandler) CanaryUpload(c *gin.Context) {
 				apiutil.InternalError(c, fmt.Errorf("drive canary folder resolution failed: %w", err))
 				return
 			}
-			publishRequest.RootFolderOverride = resolvedFolderID
+			publishRequest.ParentFolderID = resolvedFolderID
 		}
 	}
 
@@ -157,11 +157,11 @@ func (h *DriveCanaryHandler) CanaryUpload(c *gin.Context) {
 	// so the caller can cancel/timeout the upload (consistent with
 	// every other handler in the codebase).
 	result, err := h.publisher.Publish(c.Request.Context(), delivery.PublishRequest{
-		Destination:        publishRequest.Destination,
-		LocalPath:          canaryPath,
-		Filename:           "pipelinegen-canary.txt",
-		Description:        "PipelineGen Drive canary — operational readiness smoke test",
-		RootFolderOverride: publishRequest.RootFolderOverride,
+		Destination:    publishRequest.Destination,
+		LocalPath:      canaryPath,
+		Filename:       "pipelinegen-canary.txt",
+		Description:    "PipelineGen Drive canary — operational readiness smoke test",
+		ParentFolderID: publishRequest.ParentFolderID,
 	})
 	if err != nil {
 		h.log.Error("Drive canary: publish failed",

@@ -3,7 +3,7 @@
 // Phase 2 (Wave C / Blocco 1 Asset SSOT, June 2026): the 4 SQL
 // receivers (SearchByTerms/fetchClipsByIDs/UpdateSearchTerms/
 // RebuildSearchTerms) that used to live here are now canonical on
-// the LOCAL infra `*assets.AssetStoreSQLite`
+// the LOCAL infra sqlite asset store
 // (internal/infrastructure/database/sqlite/assets/search_terms_queries.go)
 // and reached via HYBRID-embed promotion. The `updateTermsInTx`
 // closure that `UpdateSearchTerms` used (lowercase, unexported) was

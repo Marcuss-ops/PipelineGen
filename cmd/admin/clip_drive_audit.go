@@ -3,7 +3,7 @@
 // every divergence.
 //
 // Background (2026-08-06): the per-clip upload path threads the request
-// folder_id as the publisher RootFolderOverride, so YouTubeClipPath creates
+// folder_id as the publisher ParentFolderID, so YouTubeClipPath creates
 // a nested `{group-fallback}/{video_id}` subfolder (e.g.
 // `Tom Holland/youtube_uncategorized/uVoMqnwEdBQ`). The ClipAsset writer
 // persisted the REQUEST folder instead of the physical leaf folder, so

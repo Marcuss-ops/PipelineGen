@@ -68,11 +68,11 @@ type DriveDestinationInput struct {
 	Language string // BCP-47 tag for per-language subfoldering
 
 	// ── Explicit path overrides ────────────────────────────────────
-	// DriveFolderOverrideID is the legacy admin escape hatch for
-	// VerifiedArtifact.RootFolderOverride. When non-empty, the
+	// ParentFolderID is the legacy admin escape hatch for
+	// VerifiedArtifact.ParentFolderID. When non-empty, the
 	// resolver passes it through verbatim. New callers SHOULD NOT
 	// set this — use Category/Subject/Provider instead.
-	DriveFolderOverrideID string
+	ParentFolderID string
 
 	// ── Run-level root context (Stock pipeline) ────────────────────
 	// These fields drive the RootFolderName derivation cascade:
@@ -112,7 +112,7 @@ type DriveDestinationInput struct {
 //  3. PathLeafName — for VerifiedArtifact.PathLeafName (immediate leaf
 //     folder, e.g. "round-7-broner-barcolla").
 //
-//  4. RootFolderOverride — for VerifiedArtifact.RootFolderOverride (legacy
+//  4. ParentFolderID — for VerifiedArtifact.ParentFolderID (legacy
 //     admin escape hatch; empty for normal operation).
 //
 // godlike/06 SSOT: DriveDestination is the canonical bridge between the
@@ -133,10 +133,10 @@ type DriveDestination struct {
 	// Drive subfolder. Used by VerifiedArtifact.PathLeafName.
 	PathLeafName string
 
-	// RootFolderOverride is the explicit Drive root folder ID (legacy
+	// ParentFolderID is the explicit Drive root folder ID (legacy
 	// admin escape hatch). Empty for normal operation. Used by
-	// VerifiedArtifact.RootFolderOverride.
-	RootFolderOverride string
+	// VerifiedArtifact.ParentFolderID.
+	ParentFolderID string
 }
 
 // ── Resolver function ────────────────────────────────────────────────
@@ -166,10 +166,10 @@ func ResolveDriveDestination(in DriveDestinationInput) DriveDestination {
 	}
 
 	return DriveDestination{
-		LocationInput:      loc,
-		RootFolderName:     deriveRootFolderName(in),
-		PathLeafName:       derivePathLeafName(in),
-		RootFolderOverride: strings.TrimSpace(in.DriveFolderOverrideID),
+		LocationInput:  loc,
+		RootFolderName: deriveRootFolderName(in),
+		PathLeafName:   derivePathLeafName(in),
+		ParentFolderID: strings.TrimSpace(in.ParentFolderID),
 	}
 }
 

@@ -145,18 +145,18 @@ func TestArtifactPublisherAdapter_Publish_StockMetadata_UsesRunFingerprintPath(t
 	adapter := NewArtifactPublisherAdapter(stub, nil)
 
 	artifact := finalization.VerifiedArtifact{
-		ArtifactID:         "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:metadata",
-		Kind:               finalization.KindMetadata,
-		Filename:           "metadata.json",
-		LocalPath:          localPath,
-		MIMEType:           "application/json",
-		SizeBytes:          int64(len(content)),
-		SHA256:             sha,
-		SourceVersion:      1,
-		Requirement:        finalization.ArtifactRequirementRequired,
-		IdempotencyKey:     "idem-key-stock-metadata",
-		RootFolderName:     "Round_7_Broner_barcolla",
-		RootFolderOverride: "drive-root-123",
+		ArtifactID:     "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:metadata",
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		LocalPath:      localPath,
+		MIMEType:       "application/json",
+		SizeBytes:      int64(len(content)),
+		SHA256:         sha,
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "idem-key-stock-metadata",
+		RootFolderName: "Round_7_Broner_barcolla",
+		ParentFolderID: "drive-root-123",
 	}
 
 	_, err := adapter.Publish(context.Background(), artifact)
@@ -180,8 +180,8 @@ func TestArtifactPublisherAdapter_Publish_StockMetadata_UsesRunFingerprintPath(t
 	if req.Provider != "" {
 		t.Fatalf("expected Provider empty, got %q", req.Provider)
 	}
-	if req.RootFolderOverride != "drive-root-123" {
-		t.Fatalf("expected RootFolderOverride to pass through, got %q", req.RootFolderOverride)
+	if req.ParentFolderID != "drive-root-123" {
+		t.Fatalf("expected ParentFolderID to pass through, got %q", req.ParentFolderID)
 	}
 }
 
@@ -217,19 +217,19 @@ func TestArtifactPublisherAdapter_Publish_ExplicitTimestamp_UsesTimestampPath(t 
 	adapter := NewArtifactPublisherAdapter(stub, nil)
 
 	artifact := finalization.VerifiedArtifact{
-		ArtifactID:         "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:timestamp:2:metadata",
-		Kind:               finalization.KindMetadata,
-		Filename:           "metadata.json",
-		LocalPath:          localPath,
-		MIMEType:           "application/json",
-		SizeBytes:          int64(len(content)),
-		SHA256:             sha,
-		SourceVersion:      1,
-		Requirement:        finalization.ArtifactRequirementRequired,
-		IdempotencyKey:     "idem-key-explicit-timestamp",
-		RootFolderName:     "Round_7_Broner_barcolla",
-		RootFolderOverride: "drive-root-123",
-		PathLeafName:       "timestamp_00-32_to_00-37_Round_7_Broner_barcolla",
+		ArtifactID:     "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:timestamp:2:metadata",
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		LocalPath:      localPath,
+		MIMEType:       "application/json",
+		SizeBytes:      int64(len(content)),
+		SHA256:         sha,
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "idem-key-explicit-timestamp",
+		RootFolderName: "Round_7_Broner_barcolla",
+		ParentFolderID: "drive-root-123",
+		PathLeafName:   "timestamp_00-32_to_00-37_Round_7_Broner_barcolla",
 	}
 
 	_, err := adapter.Publish(context.Background(), artifact)
@@ -253,8 +253,8 @@ func TestArtifactPublisherAdapter_Publish_ExplicitTimestamp_UsesTimestampPath(t 
 	if req.Provider != "" {
 		t.Fatalf("expected Provider empty, got %q", req.Provider)
 	}
-	if req.RootFolderOverride != "drive-root-123" {
-		t.Fatalf("expected RootFolderOverride to pass through, got %q", req.RootFolderOverride)
+	if req.ParentFolderID != "drive-root-123" {
+		t.Fatalf("expected ParentFolderID to pass through, got %q", req.ParentFolderID)
 	}
 }
 

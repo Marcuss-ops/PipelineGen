@@ -161,7 +161,7 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 	assert.Equal(t, "it-IT", got.Language)
 	assert.Equal(t, "legacy-folder-DO-NOT-USE", got.DestinationFolderID,
 		"the plan-resolved folder must be forwarded as the canonical destination leaf")
-	assert.Empty(t, got.RootFolderOverride,
+	assert.Empty(t, got.ParentFolderID,
 		"voiceover publishing must not use the legacy root override or re-resolve the folder")
 }
 
@@ -175,7 +175,7 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 // can detect the failure mode without parsing string fragments.
 //
 // The legacy fallback chain (empty Project + non-empty FolderID →
-// req.RootFolderOverride; empty Project + empty FolderID →
+// req.ParentFolderID; empty Project + empty FolderID →
 // req.ProjectID = cmd.ID with a Warn log) is RETIRED per
 // godlike/07 NO-FAKE-AVAILABILITY. Both legacy scenarios now fail
 // closed identically — the test exercises BOTH sub-cases to lock
@@ -424,8 +424,8 @@ func TestPublisherAdapter_EmptyLanguage_FailsClosedWithTypedSentinel(t *testing.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the drift closure's primary use
 // case is the Project-empty path (the legacy silent-fallback chain
-// routed empty-Project to RootFolderOverride which surfaced as
-// "PathBuilder incomplete but RootFolderOverride is set"). Surfacing
+// routed empty-Project to ParentFolderID which surfaced as
+// "PathBuilder incomplete but ParentFolderID is set"). Surfacing
 // the Project error FIRST lets operators debug the drift directly,
 // without first fixing a downstream Language issue that may be a
 // secondary symptom.

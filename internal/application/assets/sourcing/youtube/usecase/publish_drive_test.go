@@ -232,7 +232,7 @@ func TestPublishClipToDrive_SemanticCategory_FlowsToRequest(t *testing.T) {
 		t.Errorf("expected Subject non-empty, got %q", req.Subject)
 	}
 
-	// RootFolderOverride is RETIRED (PR-P12-YOUTUBE-LEGACY-RETIRE, July 2026).
+	// ParentFolderID is RETIRED (PR-P12-YOUTUBE-LEGACY-RETIRE, July 2026).
 	// The canonical Publisher resolves the target folder via
 	// DestinationRegistry + semantic fields (Category/Provider/Group/etc).
 }
@@ -294,7 +294,7 @@ func TestPublishClipToDrive_SemanticFieldsEmptyByDefault(t *testing.T) {
 
 // TestPublishClipToDrive_ProjectID_FlowsToRequest verifies that
 // ProjectID flows through from PublishClipCommand to PublishRequest.
-// This is the canonical replacement for the retired RootFolderOverride
+// This is the canonical replacement for the retired ParentFolderID
 // field — callers that need per-call folder targeting pass ProjectID
 // instead (PR-P12-YOUTUBE-LEGACY-RETIRE, July 2026).
 //
@@ -329,7 +329,7 @@ func TestPublishClipToDrive_ProjectID_FlowsToRequest(t *testing.T) {
 	}
 
 	// ProjectID must pass through — this is the canonical replacement
-	// for the retired RootFolderOverride field.
+	// for the retired ParentFolderID field.
 	if stub.lastReq.ProjectID != "explicit-project-id" {
 		t.Errorf("expected ProjectID 'explicit-project-id', got %q",
 			stub.lastReq.ProjectID)

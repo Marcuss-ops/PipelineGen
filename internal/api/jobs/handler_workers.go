@@ -29,6 +29,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	completiontransport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/primitives"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -191,7 +192,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 		// when err matches one of the 7 canonical kinds; false
 		// falls through to apiutil.InternalError so the 500 path
 		// stays intact for genuine unknowns.
-		if MapErrorToHTTP(c, err) {
+		if completiontransport.MapErrorToHTTP(c, err) {
 			return
 		}
 		apiutil.InternalError(c, err)
@@ -317,7 +318,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 		// MapErrorToHTTP. Same semantics as Complete:
 		// true = aborts gin chain + sets typed envelope; false =
 		// fall-through to apiutil.InternalError for unmapped errors.
-		if MapErrorToHTTP(c, err) {
+		if completiontransport.MapErrorToHTTP(c, err) {
 			return
 		}
 		apiutil.InternalError(c, err)

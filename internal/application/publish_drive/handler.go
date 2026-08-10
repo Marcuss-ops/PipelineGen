@@ -13,7 +13,7 @@
 // of `artifact.staged.v1` events. The composition root
 // registers it exactly once via outboxevents.HandlerRegistry
 // inside BuildOutboxBundle. No other code path may bypass
-// delivery.Publisher (the `RootFolderOverride` ban per
+// delivery.Publisher (the `ParentFolderID` ban per
 // godlike/06 SSOT — see cmd/archcheck/scan/percheck_root_override.go).
 //
 // godlike/07 fail-closed:

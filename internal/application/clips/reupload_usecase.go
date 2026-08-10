@@ -7,7 +7,7 @@
 // assets, same as F2.7 lifecycle + F2.8 processor + FASE 7 upload +
 // FASE 7 bulk_upload. The dynamic-folder-resolution path now calls
 // publisher.ResolveFolder(ctx, delivery.PublishRequest{Group: seg,
-// RootFolderOverride: currentID}) instead of
+// ParentFolderID: currentID}) instead of
 // driveUploader.GetOrCreateFolder(seg, currentID).
 //
 // The metadata.json sidecar (cumulativeListDownloadTrashUpload)
@@ -262,7 +262,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 		Group:          strings.TrimSpace(clip.Group),          // explicit caller-provided group
 		Subject:        filename,                               // per-file identity (mirrors soundeffect/handler.go canonical pattern)
 		ConflictPolicy: delivery.ConflictOverwrite,             // reupload → replace existing
-		// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+		// PR-P12-CLIPS-AND-BOOKS (July 2026): ParentFolderID RETIRED.
 		// The canonical Publisher resolves the target folder via
 		// DestinationRegistry + DestinationPolicy.RootFolderID.
 		// folderID (clip.FolderID) is preserved as Group routing;
@@ -342,7 +342,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 //
 // F2.9 (June 2026): folder creation routes through
 // publisher.ResolveFolder(ctx, delivery.PublishRequest{Group: seg,
-// RootFolderOverride: currentID}) instead of
+// ParentFolderID: currentID}) instead of
 // driveUploader.GetOrCreateFolder(seg, currentID). The Publisher's
 // PathBuilder picks canonical folder names via the destination's
 // policy; the legacy GetOrCreateFolder created arbitrary named
@@ -376,7 +376,7 @@ func (uc *ReuploadUseCase) resolveFolder(ctx context.Context, source, localPath 
 		resolveReq := delivery.PublishRequest{
 			Destination: destKey,
 			Group:       seg,
-			// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+			// PR-P12-CLIPS-AND-BOOKS (July 2026): ParentFolderID RETIRED.
 			// The Publisher's PathBuilder walks the canonical hierarchy
 			// for DestinationYouTubeClip using only Group, computing the
 			// folder ID from the destination's policy.

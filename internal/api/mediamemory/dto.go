@@ -123,65 +123,6 @@ func toBindingDTO(b mediamemory.MediaBinding) bindingDTO {
 	return out
 }
 
-// feedbackRequest is the POST /api/media-memory/feedback body.
-type feedbackRequest struct {
-	ProjectID string `json:"project_id" binding:"required"`
-	SceneID   string `json:"scene_id" binding:"required"`
-	BindingID string `json:"binding_id" binding:"required"`
-	Action    string `json:"action" binding:"required"`
-	Reason    string `json:"reason,omitempty"`
-}
-
-// toFeedbackInput projects the wire DTO into the canonical input.
-// The clock.Now() default for OccurredAt is applied by the service
-// (godlike/06 SSOT: OccurredAt always means "feedback event time",
-// never "client reported time" — clients may lie).
-func (r feedbackRequest) toFeedbackInput() mediamemory.FeedbackInput {
-	return mediamemory.FeedbackInput{
-		ProjectID: r.ProjectID,
-		SceneID:   r.SceneID,
-		BindingID: r.BindingID,
-		Action:    mediamemory.FeedbackAction(r.Action),
-		Reason:    r.Reason,
-	}
-}
-
-// usageEventDTO is the wire shape returned for POST /feedback.
-// We expose the FK columns (ConceptID, AssetID, BindingID,
-// ProjectID, SceneID) but NOT server-internal IDs.
-type usageEventDTO struct {
-	ID               string `json:"id"`
-	ProjectID        string `json:"project_id"`
-	SceneID          string `json:"scene_id"`
-	ConceptID        string `json:"concept_id"`
-	AssetID          string `json:"asset_id"`
-	BindingID        string `json:"binding_id"`
-	SlotKind         string `json:"slot_kind"`
-	Selected         bool   `json:"selected"`
-	ManuallySelected bool   `json:"manually_selected"`
-	Rejected         bool   `json:"rejected"`
-	RenderCompleted  bool   `json:"render_completed"`
-	CreatedAt        string `json:"created_at"`
-}
-
-// toUsageEventDTO projects a canonical UsageEvent into wire shape.
-func toUsageEventDTO(e mediamemory.UsageEvent) usageEventDTO {
-	return usageEventDTO{
-		ID:               e.ID,
-		ProjectID:        e.ProjectID,
-		SceneID:          e.SceneID,
-		ConceptID:        e.ConceptID,
-		AssetID:          e.AssetID,
-		BindingID:        e.BindingID,
-		SlotKind:         string(e.SlotKind),
-		Selected:         e.Selected,
-		ManuallySelected: e.ManuallySelected,
-		Rejected:         e.Rejected,
-		RenderCompleted:  e.RenderCompleted,
-		CreatedAt:        e.CreatedAt.Format(time.RFC3339Nano),
-	}
-}
-
 // errorEnvelope is the canonical wire shape for 400/404/409
 // responses. The code field is machine-readable (branchable); the
 // message field is human-readable.

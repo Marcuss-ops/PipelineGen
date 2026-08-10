@@ -360,11 +360,11 @@ func TestHandleJob_LocalOK_DriveFail_DeliveryStatusPublishFailed(t *testing.T) {
 //	    ProjectID:   job.ID,                  // auto-derive from book.JobID
 //	    Group:       "",                       // books don't group; registry picks canonical folder
 //	    Subject:     filepath.Base(a.path),   // per-file identity (.txt or .pdf)
-//	    // RootFolderOverride RETIRED — Publisher resolves target folder
+//	    // ParentFolderID RETIRED — Publisher resolves target folder
 //	    // via DestinationRegistry + DestinationPolicy.RootFolderID.
 //	}
 //
-// Pre-PR-P12 the code passed `RootFolderOverride: folderID` (legacy
+// Pre-PR-P12 the code passed `ParentFolderID: folderID` (legacy
 // bypass) and req.DriveFolderID/s.driveFolder were threaded through
 // the same literal. Post-PR-P12 the call routes via canonical
 // semantic fields only; the per-request folder override is retired.
@@ -413,9 +413,9 @@ func TestHandleJob_DrivePublishesWithAutoDerivedFields(t *testing.T) {
 		if call.Subject == "" {
 			t.Errorf("Subject is empty; want filename (per-file identity)")
 		}
-		// godlike/06 SSOT: RootFolderOverride RETIRED.
-		if call.RootFolderOverride != "" {
-			t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", call.RootFolderOverride)
+		// godlike/06 SSOT: ParentFolderID RETIRED.
+		if call.ParentFolderID != "" {
+			t.Errorf("ParentFolderID = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", call.ParentFolderID)
 		}
 	}
 }

@@ -190,7 +190,7 @@ func isMarkNotFoundError(err error) bool {
 // adapter over `drive.Admin.UploadFile`) has been retired — Step 2
 // now routes through canonical `delivery.Publisher.Publish` per
 // DRIVE-CUTOVER-P0-1 closure. The caller-resolved folder is
-// preserved via `PublishRequest.RootFolderOverride` to keep
+// preserved via `PublishRequest.ParentFolderID` to keep
 // byte-equivalent behaviour vs the prior `UploadFile(ctx, folderID, ...)`
 // 3-arg signature.
 type ProjectFinalizer interface {
@@ -290,7 +290,7 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 	// P2.6 migration: routes through canonical `delivery.Publisher.Publish`
 	// per architecture/deprecations.yaml#DRIVE-CUTOVER-P0-1 closure.
 	// The caller-resolved `folderID` is preserved via
-	// `PublishRequest.RootFolderOverride` to keep byte-equivalent
+	// `PublishRequest.ParentFolderID` to keep byte-equivalent
 	// behaviour vs the prior `drive.Admin.UploadFile(ctx, folderID, ...)`
 	// 3-arg signature. Failure semantics unchanged: drive upload
 	// failure advances intent row to 'failed' with reason

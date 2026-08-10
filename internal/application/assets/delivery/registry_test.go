@@ -25,9 +25,8 @@ func TestRegistry_DestinationAdmin_Exists(t *testing.T) {
 	require.Equal(t, ConflictOverwrite, policy.ConflictPolicy, "P1: Admin destination must default to ConflictOverwrite")
 }
 
-// TestRegistry_ImageSkipByHash pins the P1 contract: DestinationImage
-// defaults to ConflictSkipByHash instead of ConflictSkip.
-func TestRegistry_ImageSkipByHash(t *testing.T) {
+// TestRegistry_ImageSkip pins the canonical immutable-image policy.
+func TestRegistry_ImageSkip(t *testing.T) {
 	r := NewDestinationRegistry(&config.Config{
 		Drive: config.DriveConfig{
 			ImagesRootFolder: "fake-images-root",
@@ -38,24 +37,17 @@ func TestRegistry_ImageSkipByHash(t *testing.T) {
 
 	policy, err := r.Resolve(DestinationImage)
 	require.NoError(t, err)
-	require.Equal(t, ConflictSkipByHash, policy.ConflictPolicy,
-		"P1: Image destination must default to ConflictSkipByHash (content-hash dedupe)")
+	require.Equal(t, ConflictSkip, policy.ConflictPolicy,
+		"Image destination must use the canonical ConflictSkip policy")
 }
 
-// TestConflictPolicyEnum_P1Values pins the P1 enum surface: ConflictSkipByHash
-// exists and is distinct from ConflictSkip.
-func TestConflictPolicyEnum_P1Values(t *testing.T) {
-	// ConflictSkipByHash must be a distinct enum value, not equal to ConflictSkip.
-	require.NotEqual(t, ConflictSkip, ConflictSkipByHash,
-		"P1: ConflictSkipByHash must be a distinct enum value from ConflictSkip")
-
-	// The zero value is still ConflictPolicyUnset.
+// TestConflictPolicyEnumValues pins the supported conflict-policy surface.
+func TestConflictPolicyEnumValues(t *testing.T) {
 	require.Equal(t, ConflictPolicyUnset, ConflictPolicy(0),
 		"ConflictPolicyUnset must be the iota-zero value")
-
-	// ConflictSkipByHash must be non-zero and non-Unset.
-	require.NotEqual(t, ConflictPolicyUnset, ConflictSkipByHash,
-		"ConflictSkipByHash must not be the zero value")
+	require.NotEqual(t, ConflictPolicyUnset, ConflictOverwrite)
+	require.NotEqual(t, ConflictPolicyUnset, ConflictSkip)
+	require.NotEqual(t, ConflictPolicyUnset, ConflictRename)
 }
 
 // TestAdminPath_ReturnsEmpty verifies AdminPath returns no segments

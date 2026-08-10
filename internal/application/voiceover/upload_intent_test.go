@@ -15,7 +15,7 @@
 // and the `UploadIntentDeps` field is renamed from `DriveUploader`
 // to `Publisher`. Step 2 in the production use case now routes
 // through `delivery.Publisher.Publish(DestinationVoiceover,
-// RootFolderOverride=folderID, …)` per DRIVE-CUTOVER-P0-1 closure.
+// ParentFolderID=folderID, …)` per DRIVE-CUTOVER-P0-1 closure.
 package voiceover
 
 import (

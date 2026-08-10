@@ -92,7 +92,7 @@ type VoiceoverPublishCommand struct {
 var ErrVoiceoverPublishLanguageRequired = errors.New("voiceover: Language is required for semantic publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS) — caller must populate Language on VoiceoverPublishCommand before invoking the Publisher")
 
 // PR-WAVE-1-DRIVE-SSOT (July 2026): see below — the literal
-// "RootFolderOverride" was replaced with "FolderID" in the
+// "ParentFolderID" was replaced with "FolderID" in the
 // error envelope so the percheck_root_override_ban
 // forward-prevention gate does not fire on this production-code
 // sentence. The semantic meaning is unchanged.

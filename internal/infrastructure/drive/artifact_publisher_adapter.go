@@ -176,8 +176,8 @@ func (a *ArtifactPublisherAdapter) Publish(
 		Style:          "vidrush",
 		Provider:       provider,
 		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
-		// RootFolderOverride is retained only for legacy envelopes.
-		RootFolderOverride: artifact.RootFolderOverride,
+		// ParentFolderID is retained only for legacy envelopes.
+		ParentFolderID: artifact.ParentFolderID,
 		// A stock run resolves its named Drive folder before publishing.
 		// Pin the canonical destination explicitly so the path builder
 		// cannot recreate legacy category/video subfolders.

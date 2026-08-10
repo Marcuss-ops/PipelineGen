@@ -309,7 +309,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// non-artlist caller emerges). The processor's canonical caller
 	// is the artlist ingest pipeline, so DestinationArtlist is the
 	// correct default. ConflictPolicy is left zero-value
-	// (ConflictOverwrite = legacy behaviour). RootFolderOverride is
+	// (ConflictOverwrite = legacy behaviour). ParentFolderID is
 	// input.FolderID so callers that explicitly target a specific
 	// Drive folder (e.g. legacy pipeline scripts) keep working.
 	//
@@ -353,13 +353,13 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	if input.FolderID != "" {
 		destKey := delivery.DestinationArtlist
 		pubReq := delivery.PublishRequest{
-			Destination:        destKey,
-			LocalPath:          processedPath,
-			Filename:           result.Filename,
-			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
-			AssetID:            input.ID,
-			Group:              input.Term, // artlist search term (PathBuilder input)Subject: "", // empty by design — see doc above (F2.9: explicit Subject plumb)
-			RootFolderOverride: input.FolderID,
+			Destination:    destKey,
+			LocalPath:      processedPath,
+			Filename:       result.Filename,
+			Description:    fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
+			AssetID:        input.ID,
+			Group:          input.Term, // artlist search term (PathBuilder input)Subject: "", // empty by design — see doc above (F2.9: explicit Subject plumb)
+			ParentFolderID: input.FolderID,
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
 		if pubErr != nil {

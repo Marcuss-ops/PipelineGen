@@ -179,7 +179,7 @@ func (o *orchestrator) Process(ctx context.Context, req ProcessRequest) (*Proces
 			Group:       req.Term,
 			// godlike/08 forward-prevention: route the folder hint through
 			// the canonical DestinationFolderID seam on delivery.PublishRequest
-			// rather than the banned RootFolderOverride. The publisher's
+			// rather than the banned ParentFolderID. The publisher's
 			// DestinationKey mapping owns folder resolution; per-task hints
 			// flow through the typed seam.
 			DestinationFolderID: req.FolderID,

@@ -179,14 +179,10 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | DELETE | `/api/media-memory/bindings/:id` | ⚠️ MISSING DESCRIPTION |
-| GET | `/api/media-memory/batches/:id` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/media-memory/bindings` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media-memory/batches` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media-memory/batches/:id/reconcile` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media-memory/bindings` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media-memory/bindings/:id/approve` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media-memory/bindings/:id/reject` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/media-memory/feedback` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media-memory/resolve` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/script-assets

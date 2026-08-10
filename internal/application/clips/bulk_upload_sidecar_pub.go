@@ -11,7 +11,7 @@
 //   - Group is intentionally empty: setting Group on sidecar
 //     publishes would create double-nesting under the canonical
 //     folder hierarchy established by clip_pub.publishClip.
-//   - RootFolderOverride is the resolved folder id from the
+//   - ParentFolderID is the resolved folder id from the
 //     .mp4 publish (pubRes.FolderID).
 //   - Errors from Publisher.Publish are deliberately swallowed:
 //     sidecars are observation metadata, not the primary payload.
@@ -69,7 +69,7 @@ func publishSidecars(
 			Filename:    baseNoExt + ".clip_manifest.json",
 			Description: "Clip manifest for " + baseNoExt,
 			ProjectID:   targetFolderID,
-			// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+			// PR-P12-CLIPS-AND-BOOKS (July 2026): ParentFolderID RETIRED.
 			// The resolved .mp4 folder ID is now routed via ProjectID so
 			// the sidecar co-locates with the clip under the canonical
 			// DestinationYouTubeClip root + PathBuilder hierarchy.
@@ -91,7 +91,7 @@ func publishSidecars(
 				Filename:    baseNoExt + ".transcript.txt",
 				Description: "Whisper transcript for " + baseNoExt,
 				ProjectID:   targetFolderID,
-				// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+				// PR-P12-CLIPS-AND-BOOKS (July 2026): ParentFolderID RETIRED.
 				// See manifest publish above for the canonical routing rationale.
 			}); err != nil && log != nil {
 				log.Warn("sidecar publish failed (non-fatal)",

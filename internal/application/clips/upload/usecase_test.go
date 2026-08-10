@@ -8,11 +8,11 @@
 //	    ProjectID:   strings.TrimSpace(cmd.Source),  // auto-derive
 //	    Group:       strings.TrimSpace(cmd.Group),
 //	    Subject:     strings.TrimSpace(cmd.Name),    // auto-derive
-//	    // RootFolderOverride RETIRED (godlike/06 SSOT).
+//	    // ParentFolderID RETIRED (godlike/06 SSOT).
 //	}
 //
 // Test 1 pins the happy path: the Publisher sees ProjectID/Group/Subject
-// derived from cmd fields; RootFolderOverride is empty (canonical semantic
+// derived from cmd fields; ParentFolderID is empty (canonical semantic
 // routing via DestinationRegistry + DestinationPolicy.RootFolderID).
 // Test 2 pins the publisher=nil fail-closed path: a nil publisher
 // means Drive upload is SKIPPED entirely (no Publisher.Publish call,
@@ -191,11 +191,11 @@ func newUseCaseWithStubs(t *testing.T, publisher *uploadFakePublisher) *UseCase 
 // TestUseCaseExecute_PublishesWithAutoDerivedFields pins the
 // canonical auto-derivation contract: the Publisher receives
 // ProjectID derived from cmd.Source, Group derived from cmd.Group,
-// Subject derived from cmd.Name; RootFolderOverride is empty
+// Subject derived from cmd.Name; ParentFolderID is empty
 // (godlike/06 SSOT — Publisher resolves the target folder via
 // DestinationRegistry + DestinationPolicy.RootFolderID).
 //
-// Pre-PR-P12 this code passed `RootFolderOverride: appclips.ExtractDriveFolderID(cmd.FolderID)`
+// Pre-PR-P12 this code passed `ParentFolderID: appclips.ExtractDriveFolderID(cmd.FolderID)`
 // which routed through the legacy bypass. Post-PR-P12 the call
 // routes via canonical semantic fields only.
 func TestUseCaseExecute_PublishesWithAutoDerivedFields(t *testing.T) {
@@ -243,10 +243,10 @@ func TestUseCaseExecute_PublishesWithAutoDerivedFields(t *testing.T) {
 	if req.Subject != "Mike Tyson knockout reel" {
 		t.Errorf("Subject = %q, want %q (auto-derived from cmd.Name)", req.Subject, "Mike Tyson knockout reel")
 	}
-	// godlike/06 SSOT: RootFolderOverride RETIRED — Publisher resolves
+	// godlike/06 SSOT: ParentFolderID RETIRED — Publisher resolves
 	// the target folder via DestinationRegistry + DestinationPolicy.
-	if req.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", req.RootFolderOverride)
+	if req.ParentFolderID != "" {
+		t.Errorf("ParentFolderID = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", req.ParentFolderID)
 	}
 	if req.Filename != "Mike Tyson knockout reel.mp4" {
 		t.Errorf("Filename = %q, want %q (cmd.Name + ext)", req.Filename, "Mike Tyson knockout reel.mp4")

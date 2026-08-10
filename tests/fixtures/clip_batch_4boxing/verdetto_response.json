@@ -30,7 +30,7 @@
     "filename": "9u4T_o3FxOU_1727_1769_v1_Verdetto_Finale_match.mp4",
     "drive_link_shape": "https://drive.google.com/file/d/<DRIVE_FILE_ID_RUNTIME>/view",
     "drive_link_production_driver": "DriveFolderMgr.UploadFileIfChanged",
-    "upload_strategy": "ConflictSkipByHash"
+    "upload_strategy": "ConflictSkip"
   },
   "expected_ffprobe_validation": {
     "container_readable": true,

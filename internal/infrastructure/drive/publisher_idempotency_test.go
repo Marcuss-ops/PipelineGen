@@ -25,11 +25,11 @@ func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
 
 	override := "explicit-fallback-folder-id"
 	resolved, err := pub.resolveDestination(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          "/tmp/clip.mp4",
-		Filename:           "clip.mp4",
-		RootFolderOverride: override,
-		ConflictPolicy:     delivery.ConflictOverwrite,
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip.mp4",
+		ParentFolderID: override,
+		ConflictPolicy: delivery.ConflictOverwrite,
 		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
 		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
 	})
@@ -46,14 +46,14 @@ func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
 
 	// (2) Typed-error contract: errors.Is the canonical sentinel.
 	require.Error(t, err, "resolveDestination must surface a non-nil error on the typed-error path")
-	require.ErrorIs(t, err, ErrPathBuilderIncompleteForOverride,
-		"the returned error MUST wrap ErrPathBuilderIncompleteForOverride (errors.Is gateway for call-site decision)")
+	require.ErrorIs(t, err, ErrPathBuilderIncompleteForParent,
+		"the returned error MUST wrap ErrPathBuilderIncompleteForParent (errors.Is gateway for call-site decision)")
 
 	// (3) Typed-chain preservation + grep-able diagnostic surface.
 	//     The dual-%w fmt.Errorf wrap is verified by:
 	//       (3a) err.Error() contains "group is required" (the underlying
 	//            cause's message survives the wrap via the %w chain)
-	//       (3b) errors.Is(err, ErrPathBuilderIncompleteForOverride)
+	//       (3b) errors.Is(err, ErrPathBuilderIncompleteForParent)
 	//            (the sentinel is recoverable via the wrap chain).
 	//     We intentionally do NOT use errors.As(&recoveredCause) here
 	//     because (a) the underlying cause is a private fmt.Errorf
@@ -64,8 +64,8 @@ func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
 	//     walk-order flakiness.
 	require.Contains(t, err.Error(), "subject (video ID) is required",
 		"dual-%w fmt.Errorf must preserve the underlying PathBuilder cause 'subject (video ID) is required' (typed-chain diagnostic via message-preservation — Group now falls back to youtube_uncategorized, Subject is first to fail)")
-	require.ErrorIs(t, err, ErrPathBuilderIncompleteForOverride,
-		"dual-%w fmt.Errorf must preserve ErrPathBuilderIncompleteForOverride for errors.Is at the resolveDestination call site (call-site decision gateway)")
+	require.ErrorIs(t, err, ErrPathBuilderIncompleteForParent,
+		"dual-%w fmt.Errorf must preserve ErrPathBuilderIncompleteForParent for errors.Is at the resolveDestination call site (call-site decision gateway)")
 }
 
 func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
@@ -76,13 +76,13 @@ func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
 	require.NoError(t, err)
 
 	resolved, err := pub.resolveDestination(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          "/tmp/clip.mp4",
-		Filename:           "clip.mp4",
-		Group:              "test",
-		Subject:            "abc",
-		RootFolderOverride: "explicit-override-folder-id",
-		ConflictPolicy:     delivery.ConflictOverwrite,
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip.mp4",
+		Group:          "test",
+		Subject:        "abc",
+		ParentFolderID: "explicit-override-folder-id",
+		ConflictPolicy: delivery.ConflictOverwrite,
 	})
 
 	// Success path: PathBuilder succeeded → segments built → EnsureFolder
@@ -97,9 +97,9 @@ func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
 	require.NotEmpty(t, resolved.PathSegments,
 		"success path: PathSegments must be non-empty when PathBuilder succeeds")
 	require.Equal(t, []string{"test", "abc"}, resolved.PathSegments,
-		"success path: PathSegments must remain the canonical [{group},{subject}] shape when RootFolderOverride only changes the root folder")
+		"success path: PathSegments must remain the canonical [{group},{subject}] shape when ParentFolderID only changes the root folder")
 	require.Equal(t, "explicit-override-folder-id", resolved.RootFolderID,
-		"success path: RootFolderID must be the explicit override (RootFolderOverride precedence)")
+		"success path: RootFolderID must be the explicit override (ParentFolderID precedence)")
 }
 
 func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.T) {
@@ -111,14 +111,14 @@ func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.
 
 	override := "explicit-fallback-folder-id"
 	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          "/tmp/clip.mp4",
-		Filename:           "clip.mp4",
-		RootFolderOverride: override,
-		ConflictPolicy:     delivery.ConflictOverwrite,
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip.mp4",
+		ParentFolderID: override,
+		ConflictPolicy: delivery.ConflictOverwrite,
 	})
 	require.NoError(t, err,
-		"Publish MUST swallow ErrPathBuilderIncompleteForOverride at the call-site (backward-compat per godlike/07 minimum-blast-radius)")
+		"Publish MUST swallow ErrPathBuilderIncompleteForParent at the call-site (backward-compat per godlike/07 minimum-blast-radius)")
 
 	// Upload landed in the override root via the resolved struct (proves dual-return shape contract).
 	require.Len(t, files.uploadCalls, 1)
@@ -126,7 +126,7 @@ func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.
 		"Publish MUST use the override root from the resolved struct (dual-return shape contract)")
 }
 
-func TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath(t *testing.T) {
+func TestResolveDestination_VoiceoverWithParentFolderID_BuildsSubpath(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "voiceover-sub-folder-id"}
 	files := &fakeFileUploader{}
@@ -139,12 +139,12 @@ func TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath(t *tes
 	// canonical {project}/{language} subfolder.
 	override := "explicit-voiceover-folder-id"
 	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationVoiceover,
-		LocalPath:          "/tmp/storia-boxe-it.mp3",
-		Filename:           "storia-boxe-it.mp3",
-		ProjectID:          "storia-boxe-it",
-		Language:           "it-IT",
-		RootFolderOverride: override,
+		Destination:    delivery.DestinationVoiceover,
+		LocalPath:      "/tmp/storia-boxe-it.mp3",
+		Filename:       "storia-boxe-it.mp3",
+		ProjectID:      "storia-boxe-it",
+		Language:       "it-IT",
+		ParentFolderID: override,
 		// ConflictPolicy omitted → registry-driven default applies
 		// (Voiceover is ConflictSkip per P1.1 mapping).
 	})
@@ -155,9 +155,9 @@ func TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath(t *tes
 	//     invariant: the override wins for the parent, the PathBuilder
 	//     still owns the canonical subpath segments.
 	require.Len(t, folders.ensureCalls, 1,
-		"voiceover with RootFolderOverride MUST trigger exactly one EnsureFolder call (PR-VO-SUBFOLDER invariant)")
+		"voiceover with ParentFolderID MUST trigger exactly one EnsureFolder call (PR-VO-SUBFOLDER invariant)")
 	require.Equal(t, override, folders.ensureCalls[0].parent,
-		"EnsureFolder MUST be called with the explicit RootFolderOverride as parent — NOT the registry vo-root")
+		"EnsureFolder MUST be called with the explicit ParentFolderID as parent — NOT the registry vo-root")
 	require.Equal(t, []string{"storia-boxe-it", "it-IT"}, folders.ensureCalls[0].segments,
 		"EnsureFolder MUST be called with the canonical voiceover subpath [{project},{language}] — SafeFolderName preserves alphanum + hyphen")
 
@@ -187,10 +187,10 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 
 	override := "explicit-fallback-folder-id"
 	_, err = pub.Publish(context.Background(), delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          "/tmp/clip.mp4",
-		Filename:           "clip.mp4",
-		RootFolderOverride: override,
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      "/tmp/clip.mp4",
+		Filename:       "clip.mp4",
+		ParentFolderID: override,
 		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
 		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
 		// ConflictPolicy explicit Overwrite so the registry's
@@ -203,7 +203,7 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 
 	// (1) EnsureFolder MUST NOT be called (no segments → direct upload).
 	require.Empty(t, folders.ensureCalls,
-		"EnsureFolder MUST NOT be called when PathBuilder fails + RootFolderOverride is set (direct-to-root fallback)")
+		"EnsureFolder MUST NOT be called when PathBuilder fails + ParentFolderID is set (direct-to-root fallback)")
 
 	// (2) Upload landed directly in the override root.
 	require.Len(t, files.uploadCalls, 1)
@@ -214,7 +214,7 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 	//     the operator sees the metadata gap in logs (NOT silent). The
 	//     message text is the canonical 'incomplete subpath tolerated'
 	//     ack that the call-site uses after errors.Is'ing
-	//     ErrPathBuilderIncompleteForOverride.
+	//     ErrPathBuilderIncompleteForParent.
 	require.NotEmpty(t, recorded.All(), "expected at least one log entry on PathBuilder failure with override — got none")
 	debugFound := false
 	for _, entry := range recorded.All() {
@@ -241,7 +241,7 @@ func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T
 		Filename:    "clip.mp4",
 		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
 		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
-		// RootFolderOverride omitted (zero value).
+		// ParentFolderID omitted (zero value).
 		ConflictPolicy: delivery.ConflictOverwrite,
 	})
 	require.Error(t, err,
@@ -252,21 +252,21 @@ func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T
 		"Error must include the publisher's 'delivery: build path for %q: %w' prefix so the canonical seam is grep-able in logs")
 }
 
-func TestErrPathBuilderIncompleteForOverride_Sentinel(t *testing.T) {
-	var _ error = ErrPathBuilderIncompleteForOverride // compile-time pin
+func TestErrPathBuilderIncompleteForParent_Sentinel(t *testing.T) {
+	var _ error = ErrPathBuilderIncompleteForParent // compile-time pin
 
 	// (a) Bare sentinel: errors.Is matches the error itself.
-	require.ErrorIs(t, ErrPathBuilderIncompleteForOverride, ErrPathBuilderIncompleteForOverride,
+	require.ErrorIs(t, ErrPathBuilderIncompleteForParent, ErrPathBuilderIncompleteForParent,
 		"bare sentinel MUST errors.Is match itself")
 
 	// (b1) Production dual-%w fmt.Errorf wrap (canonical in resolveDestination).
 	//      underlyingCause is held for the errors.Is identity probe at (c).
 	underlyingCause := fmt.Errorf("group is required")
-	wrapped := fmt.Errorf("delivery: PathBuilder failed under RootFolderOverride (cause: %w): %w",
-		underlyingCause, ErrPathBuilderIncompleteForOverride)
+	wrapped := fmt.Errorf("delivery: PathBuilder failed under ParentFolderID (cause: %w): %w",
+		underlyingCause, ErrPathBuilderIncompleteForParent)
 
 	// (b2) errors.Is recovers the sentinel via wrap-chain walk.
-	require.ErrorIs(t, wrapped, ErrPathBuilderIncompleteForOverride,
+	require.ErrorIs(t, wrapped, ErrPathBuilderIncompleteForParent,
 		"dual-%w fmt.Errorf must preserve the sentinel for errors.Is (typed-chain preservation contract)")
 
 	// (c) Typed-recovery: errors.Is recovers the underlying cause via
@@ -283,8 +283,8 @@ func TestErrPathBuilderIncompleteForOverride_Sentinel(t *testing.T) {
 		"dual-%w fmt.Errorf must preserve the underlying cause's message via the wrap chain (log/diagnostic surface)")
 
 	// (e) Sentinel discriminator phrase preserved (stable against message rewording).
-	require.Contains(t, wrapped.Error(), "RootFolderOverride",
-		"dual-%w fmt.Errorf must preserve the sentinel's discriminator phrase (RootFolderOverride) for grep-able diagnostic surface")
+	require.Contains(t, wrapped.Error(), "ParentFolderID",
+		"dual-%w fmt.Errorf must preserve the sentinel's discriminator phrase (ParentFolderID) for grep-able diagnostic surface")
 
 	// (f) DOWNSTREAM-COMPAT ALIAS ONLY — errors.Join is equally valid for
 	//     downstream consumers (godlike/06 SSOT does NOT forbid it; production
@@ -296,8 +296,8 @@ func TestErrPathBuilderIncompleteForOverride_Sentinel(t *testing.T) {
 	//     the canonical production idiom per godlike/07 single-line stderr
 	//     criterion.
 	joinedCause := fmt.Errorf("group is required")
-	joined := errors.Join(joinedCause, ErrPathBuilderIncompleteForOverride)
-	require.ErrorIs(t, joined, ErrPathBuilderIncompleteForOverride,
+	joined := errors.Join(joinedCause, ErrPathBuilderIncompleteForParent)
+	require.ErrorIs(t, joined, ErrPathBuilderIncompleteForParent,
 		"errors.Join downstream-compat: sentinel preserved for errors.Is")
 	require.ErrorIs(t, joined, joinedCause,
 		"errors.Join downstream-compat: underlying cause preserved for errors.Is (typed-recovery alias)")
@@ -352,12 +352,12 @@ func TestPublisher_Voiceover_3LanguageMatrix_DistinctSubpaths(t *testing.T) {
 
 	for _, lc := range languages {
 		_, err := pub.Publish(context.Background(), delivery.PublishRequest{
-			Destination:        delivery.DestinationVoiceover,
-			LocalPath:          "/tmp/" + lc.filename,
-			Filename:           lc.filename,
-			ProjectID:          project,
-			Language:           lc.lang,
-			RootFolderOverride: override,
+			Destination:    delivery.DestinationVoiceover,
+			LocalPath:      "/tmp/" + lc.filename,
+			Filename:       lc.filename,
+			ProjectID:      project,
+			Language:       lc.lang,
+			ParentFolderID: override,
 		})
 		require.NoError(t, err, "Publish for language %q must succeed", lc.lang)
 	}

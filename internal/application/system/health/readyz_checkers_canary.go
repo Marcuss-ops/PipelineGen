@@ -62,11 +62,11 @@ func (c *publisherCanary) CanaryUpload(ctx context.Context, folderID string) err
 	}
 	tmp.Close()
 	result, err := c.pub.Publish(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationAdmin,
-		LocalPath:          tmp.Name(),
-		Filename:           "readyz-canary.txt",
-		Description:        "/readyz Drive canary probe",
-		RootFolderOverride: folderID,
+		Destination:    delivery.DestinationAdmin,
+		LocalPath:      tmp.Name(),
+		Filename:       "readyz-canary.txt",
+		Description:    "/readyz Drive canary probe",
+		ParentFolderID: folderID,
 	})
 	if err != nil {
 		return err
