@@ -31,6 +31,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
@@ -80,8 +81,8 @@ func buildVoiceoverPipeline(
 	destResolver asset.Resolver,
 	metaWriter semantic.MetadataWriterPort,
 	outboxDispatcher *outbox.Dispatcher,
+	mediaConfig mediaexec.ExecutionConfig,
 ) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
-
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.DualPool.Writer)
 
@@ -146,7 +147,7 @@ func buildVoiceoverPipeline(
 	// TTS chain — raw processor → use-case adapter → retryable → rate-limited.
 	// Extracted to build_voiceover_tts.go (shared by the legacy batch
 	// service and the canonical per-item use case).
-	audioProcessor, ttsProvider := buildVoiceoverTTSProvider(cfg, log)
+	audioProcessor, ttsProvider := buildVoiceoverTTSProvider(cfg, log, mediaConfig)
 
 	// Azione #1 (July 2026): construct the shared per-item pipeline
 	// runner. The legacy batch path (process.go::processLanguage) now
@@ -211,7 +212,7 @@ func buildVoiceoverPipeline(
 	// Adapter: AudioPostProcessor port — silence-removal bridge
 	// built on the canonical media execution adapter. Nil-safe
 	// at the use case boundary (only invoked when RemoveSilence == true).
-	audioAdapter := newUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
+	audioAdapter := newUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log))
 
 	// The use case satisfies voiceover.VoiceoverItemExecutor
 	// structurally — compile-time assertion in process_voiceover_item.go

@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
 // NewConfiguredCutter selects the media execution backend at the composition
 // root. The Rust client is the single protocol adapter for every capability.
-func NewConfiguredCutter(rustBinary, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) (stockpipeline.VideoCutter, error) {
+func NewConfiguredCutter(rustBinary, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) (stockpipeline.VideoCutter, error) {
 	return NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath, policy, profile, log, nil)
 }
 
@@ -21,7 +21,7 @@ func NewConfiguredCutter(rustBinary, ffmpegPath string, policy config.VideoEncod
 // Executor when supplied, keeping cutter, renderer, and probe under one
 // process/cancellation/limiter policy.
 
-func NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger, executor *rustexec.Executor) (stockpipeline.VideoCutter, error) {
+func NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger, executor *rustexec.Executor) (stockpipeline.VideoCutter, error) {
 	if executor == nil {
 		if strings.TrimSpace(rustBinary) == "" {
 			return nil, fmt.Errorf("rust media executor requires rust_muscles_path")

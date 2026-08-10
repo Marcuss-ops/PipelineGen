@@ -37,6 +37,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
@@ -103,6 +104,7 @@ func BuildProcessBundle(
 	publisher delivery.Publisher,
 	outbox *wiring.OutboxBundle,
 	qd *wiring.QdrantDeps,
+	mediaConfig mediaexec.ExecutionConfig,
 ) (*wiring.ProcessBundle, error) {
 	_ = ctx
 
@@ -110,7 +112,7 @@ func BuildProcessBundle(
 		return nil, fmt.Errorf("BuildProcessBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
 	}
 
-	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log)
+	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log, mediaConfig)
 	if err != nil {
 		return nil, err
 	}

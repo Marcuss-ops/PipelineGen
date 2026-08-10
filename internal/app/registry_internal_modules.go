@@ -236,6 +236,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		log,
 		cfg,
 		&wiring.ArtlistBundle{
+			MediaExec:          root.MediaExec,
 			Committer:          sqassets.NewSQLiteAssetCommitter(root.DB.DB, root.Outbox.EventsRepo, log),
 			DB:                 root.DB,
 			Assets:             root.Repos.Assets,

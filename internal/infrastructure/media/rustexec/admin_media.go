@@ -7,21 +7,21 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"go.uber.org/zap"
 )
 
 type AdminMediaProcessor struct {
 	client  *Client
-	policy  config.VideoEncoderPolicy
-	profile config.CanonicalVideoProfile
+	policy  mediaexec.EncoderPolicy
+	profile mediaexec.VideoProfile
 }
 
-func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *AdminMediaProcessor {
+func NewAdminMediaProcessor(binaryPath, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *AdminMediaProcessor {
 	return NewAdminMediaProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
 }
 
-func NewAdminMediaProcessorWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *AdminMediaProcessor {
+func NewAdminMediaProcessorWithExecutor(executor *Executor, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *AdminMediaProcessor {
 	return &AdminMediaProcessor{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile.WithDefaults()}
 }
 

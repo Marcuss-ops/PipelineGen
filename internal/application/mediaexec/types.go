@@ -5,9 +5,64 @@ package mediaexec
 import (
 	"context"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// VideoProfile describes the fully resolved video artifact independently of
+// configuration, transport, or encoder implementation.
+type VideoProfile struct {
+	Width            int
+	Height           int
+	FPS              int
+	KeyframeInterval int
+	AudioCodec       string
+	AudioBitrate     string
+	SampleRate       int
+	Channels         int
+}
+
+// WithDefaults makes a partially populated profile safe for direct consumers.
+func (p VideoProfile) WithDefaults() VideoProfile {
+	if p.Width <= 0 {
+		p.Width = 1920
+	}
+	if p.Height <= 0 {
+		p.Height = 1080
+	}
+	if p.FPS <= 0 {
+		p.FPS = 24
+	}
+	if p.KeyframeInterval <= 0 {
+		p.KeyframeInterval = 48
+	}
+	if p.AudioCodec == "" {
+		p.AudioCodec = "aac"
+	}
+	if p.AudioBitrate == "" {
+		p.AudioBitrate = "128k"
+	}
+	if p.SampleRate <= 0 {
+		p.SampleRate = 48000
+	}
+	if p.Channels <= 0 {
+		p.Channels = 2
+	}
+	return p
+}
+
+// EncoderPolicy describes how a VideoProfile is encoded.
+type EncoderPolicy struct {
+	Codec  string
+	Preset string
+	CRF    int
+}
+
+// ExecutionConfig is the resolved media configuration passed from the
+// composition root to media capabilities. Platform configuration is mapped
+// into this contract once; adapters do not read platform/config themselves.
+type ExecutionConfig struct {
+	Profile VideoProfile
+	Policy  EncoderPolicy
+}
 
 // AudioProcessor exposes media audio execution without naming an implementation.
 // Implementations belong to infrastructure adapters such as rustexec.
@@ -18,8 +73,12 @@ type AudioProcessor interface {
 }
 
 type NormalizeOptions struct {
-	Profile               config.CanonicalVideoProfile
-	Policy                config.VideoEncoderPolicy
+	// Profile and Policy are the canonical representations. The scalar fields
+	// remain for source compatibility with legacy callers; adapters use them
+	// only as fallback overrides when the canonical values are incomplete.
+	Profile VideoProfile
+	Policy  EncoderPolicy
+
 	Duration              int
 	DisableDuration       bool
 	KeepAudio             bool
@@ -29,8 +88,9 @@ type NormalizeOptions struct {
 }
 
 type CutAndNormalizeOptions struct {
-	Profile            config.CanonicalVideoProfile
-	Policy             config.VideoEncoderPolicy
+	Profile VideoProfile
+	Policy  EncoderPolicy
+
 	Width, Height, FPS int
 	Codec, Preset      string
 	CRF                int

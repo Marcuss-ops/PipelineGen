@@ -6,21 +6,21 @@ import (
 	"time"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"go.uber.org/zap"
 )
 
 type StockRenderer struct {
 	client  *Client
-	policy  config.VideoEncoderPolicy
-	profile config.CanonicalVideoProfile
+	policy  mediaexec.EncoderPolicy
+	profile mediaexec.VideoProfile
 }
 
-func NewStockRenderer(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
+func NewStockRenderer(binaryPath, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *StockRenderer {
 	return NewStockRendererWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
 }
 
-func NewStockRendererWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *StockRenderer {
+func NewStockRendererWithExecutor(executor *Executor, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *StockRenderer {
 	return &StockRenderer{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
 }
 
@@ -54,8 +54,8 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 		return stockpipeline.RenderResult{}, err
 	}
 	profile := r.profile
-	if profile == (config.CanonicalVideoProfile{}) {
-		profile = config.CanonicalVideoProfile{Width: input.Width, Height: input.Height, FPS: input.FPS, KeyframeInterval: input.KeyframeInterval}
+	if profile == (mediaexec.VideoProfile{}) {
+		profile = mediaexec.VideoProfile{Width: input.Width, Height: input.Height, FPS: input.FPS, KeyframeInterval: input.KeyframeInterval}
 	}
 	if err := validateResolvedProfile(profile); err != nil {
 		return stockpipeline.RenderResult{}, err

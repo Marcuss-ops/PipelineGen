@@ -44,6 +44,7 @@ import (
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -62,7 +63,9 @@ import (
 // PR4d-chunk2 (June 2026): wraps the 25 cross-bundle reads of WireArtlist
 // into 10 typed fields.
 type ArtlistBundle struct {
-	Committer     assetspersistence.AssetCommitter
+	Committer assetspersistence.AssetCommitter
+	// MediaExec is the resolved media contract supplied by the composition root.
+	MediaExec     mediaexec.ExecutionConfig
 	DB            *storage.SQLiteDB
 	Assets        *asset.Service
 	ClipsRepo     *assets.ClipsRepository

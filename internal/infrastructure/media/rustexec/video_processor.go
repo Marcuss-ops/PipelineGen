@@ -10,14 +10,13 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
 type VideoProcessor struct {
 	client  *Client
-	policy  config.VideoEncoderPolicy
-	profile config.CanonicalVideoProfile
+	policy  mediaexec.EncoderPolicy
+	profile mediaexec.VideoProfile
 }
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
@@ -31,11 +30,11 @@ func NewVideoProcessorWithExecutor(executor *Executor, log *zap.Logger) *VideoPr
 // NewConfiguredVideoProcessor binds the single Go-owned encoder policy to all
 // encoding capabilities exposed by this adapter. Probe and copy operations do
 // not use it; encoded operations fail closed when it is absent.
-func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
+func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *VideoProcessor {
 	return NewConfiguredVideoProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), policy, profile, log)
 }
 
-func NewConfiguredVideoProcessorWithExecutor(executor *Executor, policy config.VideoEncoderPolicy, profile config.CanonicalVideoProfile, log *zap.Logger) *VideoProcessor {
+func NewConfiguredVideoProcessorWithExecutor(executor *Executor, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *VideoProcessor {
 	return &VideoProcessor{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
 }
 
@@ -56,11 +55,11 @@ func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, strin
 }
 
 func (p *VideoProcessor) Normalize(ctx context.Context, input, output string, opts mediaexec.NormalizeOptions) error {
-	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	codec, preset, crf, err := p.policyFor(normalizeCodec(opts), normalizePreset(opts), normalizeCRF(opts))
 	if err != nil {
 		return err
 	}
-	profile, err := p.resolvedProfile(opts.Profile)
+	profile, err := p.resolvedProfile(normalizeProfile(opts))
 	if err != nil {
 		return err
 	}
@@ -91,11 +90,11 @@ func (p *VideoProcessor) CutCopy(ctx context.Context, input, output, start, end 
 func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts mediaexec.CutAndNormalizeOptions) error {
 	startSec, _ := strconv.ParseFloat(start, 64)
 	endSec, _ := strconv.ParseFloat(end, 64)
-	profile, err := p.resolvedProfile(opts.Profile)
+	profile, err := p.resolvedProfile(cutProfile(opts))
 	if err != nil {
 		return err
 	}
-	codec, preset, crf, err := p.policyFor(opts.Policy.Codec, opts.Policy.Preset, opts.Policy.CRF)
+	codec, preset, crf, err := p.policyFor(cutCodec(opts), cutPreset(opts), cutCRF(opts))
 	if err != nil {
 		return err
 	}
@@ -115,7 +114,7 @@ func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output strin
 	if err != nil {
 		return err
 	}
-	profile, err := p.resolvedProfile(config.CanonicalVideoProfile{})
+	profile, err := p.resolvedProfile(mediaexec.VideoProfile{})
 	if err != nil {
 		return err
 	}
@@ -155,7 +154,7 @@ func (p *VideoProcessor) GenerateProxy(ctx context.Context, input, output string
 	if err != nil {
 		return err
 	}
-	profile, err := p.resolvedProfile(config.CanonicalVideoProfile{})
+	profile, err := p.resolvedProfile(mediaexec.VideoProfile{})
 	if err != nil {
 		return err
 	}
@@ -187,8 +186,8 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 		return result, err
 	}
 	profileInput := p.profile
-	if profileInput == (config.CanonicalVideoProfile{}) {
-		profileInput = config.CanonicalVideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
+	if profileInput == (mediaexec.VideoProfile{}) {
+		profileInput = mediaexec.VideoProfile{Width: req.Width, Height: req.Height, FPS: req.FPS, KeyframeInterval: req.KeyframeInterval}
 	}
 	profile, err := p.resolvedProfile(profileInput)
 	if err != nil {
@@ -262,18 +261,112 @@ func hashOutput(path string) (int64, string, error) {
 	return info.Size(), fmt.Sprintf("%x", digest.Sum(nil)), nil
 }
 
-func (p *VideoProcessor) resolvedProfile(requested config.CanonicalVideoProfile) (config.CanonicalVideoProfile, error) {
-	profile := requested
-	if profile == (config.CanonicalVideoProfile{}) {
-		profile = p.profile
+func normalizeProfile(opts mediaexec.NormalizeOptions) mediaexec.VideoProfile {
+	profile := opts.Profile
+	if opts.Width > 0 {
+		profile.Width = opts.Width
+	}
+	if opts.Height > 0 {
+		profile.Height = opts.Height
+	}
+	if opts.FPS > 0 {
+		profile.FPS = opts.FPS
+	}
+	if opts.KeyframeInterval > 0 {
+		profile.KeyframeInterval = opts.KeyframeInterval
+	}
+	return profile
+}
+
+func normalizeCodec(opts mediaexec.NormalizeOptions) string {
+	if opts.Codec != "" {
+		return opts.Codec
+	}
+	return opts.Policy.Codec
+}
+
+func normalizePreset(opts mediaexec.NormalizeOptions) string {
+	if opts.Preset != "" {
+		return opts.Preset
+	}
+	return opts.Policy.Preset
+}
+
+func normalizeCRF(opts mediaexec.NormalizeOptions) int {
+	if opts.CRF > 0 {
+		return opts.CRF
+	}
+	return opts.Policy.CRF
+}
+
+func cutCodec(opts mediaexec.CutAndNormalizeOptions) string {
+	if opts.Codec != "" {
+		return opts.Codec
+	}
+	return opts.Policy.Codec
+}
+
+func cutPreset(opts mediaexec.CutAndNormalizeOptions) string {
+	if opts.Preset != "" {
+		return opts.Preset
+	}
+	return opts.Policy.Preset
+}
+
+func cutCRF(opts mediaexec.CutAndNormalizeOptions) int {
+	if opts.CRF > 0 {
+		return opts.CRF
+	}
+	return opts.Policy.CRF
+}
+
+func cutProfile(opts mediaexec.CutAndNormalizeOptions) mediaexec.VideoProfile {
+	profile := opts.Profile
+	if opts.Width > 0 {
+		profile.Width = opts.Width
+	}
+	if opts.Height > 0 {
+		profile.Height = opts.Height
+	}
+	if opts.FPS > 0 {
+		profile.FPS = opts.FPS
+	}
+	return profile
+}
+
+func (p *VideoProcessor) resolvedProfile(requested mediaexec.VideoProfile) (mediaexec.VideoProfile, error) {
+	profile := p.profile
+	if requested.Width > 0 {
+		profile.Width = requested.Width
+	}
+	if requested.Height > 0 {
+		profile.Height = requested.Height
+	}
+	if requested.FPS > 0 {
+		profile.FPS = requested.FPS
+	}
+	if requested.KeyframeInterval > 0 {
+		profile.KeyframeInterval = requested.KeyframeInterval
+	}
+	if requested.AudioCodec != "" {
+		profile.AudioCodec = requested.AudioCodec
+	}
+	if requested.AudioBitrate != "" {
+		profile.AudioBitrate = requested.AudioBitrate
+	}
+	if requested.SampleRate > 0 {
+		profile.SampleRate = requested.SampleRate
+	}
+	if requested.Channels > 0 {
+		profile.Channels = requested.Channels
 	}
 	if err := validateResolvedProfile(profile); err != nil {
-		return config.CanonicalVideoProfile{}, err
+		return mediaexec.VideoProfile{}, err
 	}
 	return profile, nil
 }
 
-func validateResolvedProfile(profile config.CanonicalVideoProfile) error {
+func validateResolvedProfile(profile mediaexec.VideoProfile) error {
 	if profile.Width <= 0 || profile.Height <= 0 || profile.FPS <= 0 || profile.KeyframeInterval <= 0 || profile.AudioCodec == "" || profile.AudioBitrate == "" || profile.SampleRate <= 0 || profile.Channels <= 0 {
 		return fmt.Errorf("PROFILE_REQUIRED: complete resolved video profile is required")
 	}

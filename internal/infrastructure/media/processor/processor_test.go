@@ -128,8 +128,8 @@ func TestProcessorPassesDefaultNormalizePolicyWithoutCodecOverride(t *testing.T)
 	ff := &fakeFFmpeg{}
 	clip := (config.VideoConfig{}).CanonicalClip()
 	defaultOpts := mediaexec.NormalizeOptions{
-		Profile: clip.CanonicalVideoProfile(),
-		Policy:  config.VideoEncoderPolicy{Preset: clip.Preset, CRF: clip.CRF},
+		Profile: mediaexec.VideoProfile{Width: clip.Width, Height: clip.Height, FPS: clip.FPS, KeyframeInterval: clip.KeyframeInterval, AudioCodec: clip.AudioCodec, AudioBitrate: clip.AudioBitrate, SampleRate: clip.SampleRate, Channels: clip.Channels},
+		Policy:  mediaexec.EncoderPolicy{Preset: clip.Preset, CRF: clip.CRF},
 		Preset:  clip.Preset,
 		CRF:     clip.CRF,
 	}
@@ -158,8 +158,8 @@ func TestProcessorPreservesResolvedEncoderPolicyDuringNormalization(t *testing.T
 	localPath := writeStagedFileForTest(t, "staged-bytes")
 	ff := &fakeFFmpeg{}
 	policy := mediaexec.NormalizeOptions{
-		Profile: config.CanonicalVideoProfile{},
-		Policy: config.VideoEncoderPolicy{
+		Profile: mediaexec.VideoProfile{},
+		Policy: mediaexec.EncoderPolicy{
 			Codec:  "h264_nvenc",
 			Preset: "p1",
 			CRF:    19,

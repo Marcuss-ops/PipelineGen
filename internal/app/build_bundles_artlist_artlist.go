@@ -160,7 +160,7 @@ func WireArtlist(
 
 	// Provider-side bundle (helper in providers.go). Receives the audit
 	// adapter from the repos bundle to wire into ResolverConfig.AuditRepository.
-	providers := constructArtlistProviders(cfg, log, bundle, repos.DownloadAuditAdapter)
+	providers := constructArtlistProviders(cfg, log, bundle, repos.DownloadAuditAdapter, bundle.MediaExec)
 
 	// The Node scraper provider is both a Searcher and a DetailFetcher.
 	// Reuse the same instance so /search and /import share the browser pool.
