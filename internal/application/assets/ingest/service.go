@@ -248,15 +248,10 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 	// canonical stamp fires immediately so the row is never "mai
 	// classificato".
 	//
-	// Why stamp AFTER result.OK gate: a row that did not enter
-	// media_assets (result.OK=false) cannot have a stable
-	// enrich_state to flip — the typed stamp would target a row
-	// that is not there, surfacing ErrEnrichStateMissing. The
-	// canonical gate rejects this surface because it surfaces the
-	// "WHERE id=? UPDATE 0 rows" silently masked by the typed-
-	// error contract — operator dashboards would see a row that
-	// "should" be PENDING but isn't because the insert failed.
-	if result.OK && s.enrichState != nil {
+	// Why stamp only after a successful lifecycle call: an operational
+	// error means the canonical asset was not completed, so there is no
+	// stable enrich_state to update.
+	if s.enrichState != nil {
 		if stampErr := s.enrichState.MarkPending(ctx, id); stampErr != nil {
 			// godlike/07 no-fake-availability: the stamp failure
 			// MUST surface as a typed error envelope, NOT be silently
@@ -270,28 +265,6 @@ func (s *Service) Ingest(ctx context.Context, req *Request) (*Result, error) {
 			return nil, fmt.Errorf("canonical enrich_state stamp failed for asset %q: %w", id, stampErr)
 		}
 	}
-	if !result.OK {
-		return &Result{
-			OK:           false,
-			Status:       result.Status,
-			Kind:         string(kind),
-			ID:           id,
-			Source:       source,
-			SourceID:     sourceID,
-			Name:         name,
-			Filename:     filename,
-			FolderID:     resolvedFolderID,
-			FolderPath:   resolvedFolderPath,
-			LocalPath:    localPath,
-			DriveLink:    result.DriveLink,
-			DriveFileID:  result.DriveFileID,
-			DownloadLink: result.DownloadLink,
-			FileHash:     fileHash,
-			ContentHash:  fileHash,
-			Metadata:     metadata,
-		}, nil
-	}
-
 	status := result.Status
 	if status == "" {
 		status = "processed"

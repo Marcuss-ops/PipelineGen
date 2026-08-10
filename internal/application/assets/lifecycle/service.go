@@ -19,9 +19,20 @@ var (
 	// ErrFinalizerUnavailable is returned when persistence is required but
 	// the canonical asset finalizer was not wired.
 	ErrFinalizerUnavailable = errors.New("asset lifecycle: finalizer unavailable")
+	// ErrAssetStoreUnavailable is returned when duplicate checking is
+	// enabled but its canonical store was not wired.
+	ErrAssetStoreUnavailable = errors.New("asset lifecycle: asset store unavailable")
 	// ErrReconcilerUnavailable is returned when reconciliation was requested
 	// but the lifecycle service has no reconciliation capability.
 	ErrReconcilerUnavailable = errors.New("asset lifecycle: reconciler unavailable")
+	// ErrDrivePublisherUnavailable is returned when a required Drive upload
+	// cannot run because the Publisher dependency was not wired.
+	ErrDrivePublisherUnavailable = errors.New("asset lifecycle: Drive publisher unavailable")
+	// ErrDriveUploadFailed is returned when a required Drive upload fails.
+	ErrDriveUploadFailed = errors.New("asset lifecycle: Drive upload failed")
+	// ErrFinalizationFailed is returned when canonical persistence rejects an
+	// asset after the lifecycle has attempted its required side effects.
+	ErrFinalizationFailed = errors.New("asset lifecycle: finalization failed")
 )
 
 // Service orchestrates the full asset lifecycle:
@@ -85,6 +96,9 @@ type ServiceDeps struct {
 // service itself NEVER holds a drive.Admin handle (P0 #7 invariant: no
 // raw SDK / legacy port access from application code).
 func NewService(deps ServiceDeps, cfg Config) *Service {
+	if deps.Log == nil {
+		deps.Log = zap.NewNop()
+	}
 	dedupe := assetop.NewDedupeService(deps.Store, cfg.DuplicatePolicy, deps.Log)
 
 	var reconcile *assetop.ReconcileService
@@ -117,13 +131,18 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	}
 
 	out := &FinalizeResult{
-		OK:        false,
-		Status:    "failed",
-		LocalPath: input.LocalPath,
+		LocalPath:    input.LocalPath,
+		DriveLink:    input.DriveLink,
+		DriveFileID:  input.DriveFileID,
+		DownloadLink: input.DownloadLink,
+		FileHash:     fileHash,
 	}
 
 	// Step 1: Check for duplicates
 	if s.dedupe != nil && s.dedupe.Policy().Enabled {
+		if s.store == nil {
+			return out, ErrAssetStoreUnavailable
+		}
 		query := assetop.ExistingAssetQuery{
 			ID:       input.ID,
 			FileHash: fileHash,
@@ -133,7 +152,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 
 		existing, err := s.dedupe.CheckDuplicate(ctx, query)
 		if err != nil {
-			s.log.Warn("duplicate check failed", zap.Error(err))
+			return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 		} else if existing != nil && s.dedupe.Policy().SkipIfExists {
 			out.OK = true
 			out.Status = "skipped_duplicate"
@@ -159,14 +178,13 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			// through without constructing delivery.Publisher. This is
 			// a code defect — surface the gap loudly so operators see
 			// it at first invocation. With RequireDrive=true, the
-			// caller demands a Drive URL; bail out as UPLOAD_FAILED
-			// instead of silently producing a local-only record.
+			// caller demands a Drive URL; return an operational error
+			// instead of encoding the failure in a result status.
 			if input.RequireDrive {
-				out.Status = "UPLOAD_FAILED"
-				out.Error = fmt.Sprintf("lifecycle.ProcessAsset: publisher not wired (composition root); RequireDrive=true cannot proceed")
+				err := fmt.Errorf("%w: RequireDrive=true", ErrDrivePublisherUnavailable)
 				s.log.Error("lifecycle.ProcessAsset: publisher not wired + RequireDrive=true — abort without persistence",
-					zap.String("id", input.ID))
-				return out, nil
+					zap.String("id", input.ID), zap.Error(err))
+				return out, err
 			}
 			s.log.Warn("lifecycle.ProcessAsset: publisher not wired (composition root) — RequireDrive=false, proceeding without Drive upload",
 				zap.String("id", input.ID))
@@ -205,17 +223,18 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			pubRes, pubErr := s.publisher.Publish(ctx, pubReq)
 			if pubErr != nil {
 				if input.RequireDrive {
-					out.Status = "UPLOAD_FAILED"
-					out.Error = fmt.Sprintf("lifecycle.ProcessAsset: publisher.Publish failed and RequireDrive=true: %v", pubErr)
+					err := fmt.Errorf("%w: %w", ErrDriveUploadFailed, pubErr)
 					s.log.Error("lifecycle.ProcessAsset: publisher.Publish failed + RequireDrive=true — abort without persistence",
 						zap.String("id", input.ID),
 						zap.String("destination", string(input.Destination)),
-						zap.Error(pubErr))
-					return out, nil
+						zap.Error(err))
+					return out, err
 				}
 				s.log.Warn("lifecycle.ProcessAsset: publisher.Publish failed (RequireDrive=false — best-effort, proceeding without Drive URL)",
 					zap.String("id", input.ID),
 					zap.Error(pubErr))
+			} else if pubRes == nil {
+				return out, fmt.Errorf("%w: publisher returned nil result", ErrDriveUploadFailed)
 			} else {
 				driveLink = pubRes.WebViewLink
 				if pubRes.DownloadLink != "" {
@@ -273,13 +292,19 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			VerifyDB:     true,
 		}
 
+		out.DriveLink = driveLink
+		out.DriveFileID = driveFileID
+		out.DownloadLink = downloadLink
 		finalResult, err := s.finalizer.Finalize(ctx, rec, finalizeOpts)
 		if err != nil {
-			return out, err
+			return out, fmt.Errorf("%w: %w", ErrFinalizationFailed, err)
 		}
 		if !finalResult.OK {
-			out.Error = finalResult.Error
-			return out, nil
+			message := finalResult.Error
+			if message == "" {
+				message = "finalizer returned an unsuccessful result"
+			}
+			return out, fmt.Errorf("%w: %s", ErrFinalizationFailed, message)
 		}
 	}
 
@@ -304,6 +329,9 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 		LocalPath: input.LocalPath,
 	}
 
+	if s.dedupe != nil && s.dedupe.Policy().Enabled && s.store == nil {
+		return out, ErrAssetStoreUnavailable
+	}
 	if s.dedupe == nil || !s.dedupe.Policy().Enabled {
 		out.OK = true
 		out.Status = "no_dedupe_policy"
@@ -319,7 +347,7 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 
 	existing, err := s.dedupe.CheckDuplicate(ctx, query)
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 	}
 	if existing != nil && s.dedupe.Policy().SkipIfExists {
 		out.OK = true

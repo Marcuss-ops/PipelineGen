@@ -369,9 +369,9 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 		FolderID:  "fake-folder-id-for-e2e",
 	})
 
-	require.NoError(t, err, "F2.8: processor.Process returns nil err on Publish failure; the warn+continue path keeps Stage 1 status='processed' so the lifecycle.RequireDrive gate is the single canonical authority that flips to UPLOAD_FAILED")
+	require.NoError(t, err, "F2.8: processor.Process returns nil err on Publish failure; the upstream warn+continue path leaves required-upload classification to lifecycle.ProcessAsset")
 	require.NotNil(t, result)
-	assert.Equal(t, "processed", result.Status, "F2.8: Stage 1 status remains 'processed' on Publish failure (best-effort; lifecycle.RequireDrive owns UPLOAD_FAILED)")
+	assert.Equal(t, "processed", result.Status, "F2.8: upstream processor status remains 'processed' on publish failure; lifecycle.ProcessAsset owns required-upload errors")
 
 	// Drive fields MUST be empty — Publisher returned an error so the
 	// canonical surface reflects that. lifecycle.RequireDrive=true will
@@ -385,7 +385,7 @@ func TestProcessorE2E_PublishFailureIsBestEffort(t *testing.T) {
 	// F2.8 reviewer-feedback Q2 audit-pin: Result.Error MUST be stamped
 	// with the publisher error so a downstream caller (ingest pipeline,
 	// worker) can surface why the Drive side is empty without grepping
-	// the log. Status stays "processed" (lifecycle owns UPLOAD_FAILED).
+	// the log. Status stays "processed" in this upstream best-effort stage.
 	assert.Contains(t, result.Error, "drive upload failed",
 		"F2.8: Result.Error must be stamped with 'drive upload failed' on Publish failure so callers don't have to grep the log")
 	assert.Contains(t, result.Error, "Drive unreachable",
