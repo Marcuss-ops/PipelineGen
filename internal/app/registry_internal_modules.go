@@ -14,6 +14,7 @@ import (
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -106,7 +107,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if root.Domains != nil && root.Domains.ImageSearchResolver != nil {
 		providerEntries = append(providerEntries, TrackedProviderEntry{
 			Id: "image", Kind: ProviderKindSearch,
-			Search: newImageSearchProvider(root.Domains.ImageSearchResolver),
+			Search: appimages.NewResolverSearchProvider(root.Domains.ImageSearchResolver),
 		})
 	}
 	extraSearchProviders := make([]providers.SearchProvider, 0, len(providerEntries))
