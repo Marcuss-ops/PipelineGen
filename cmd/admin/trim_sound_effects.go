@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 )
@@ -57,7 +58,8 @@ func runTrimSoundEffects(args []string) error {
 	}
 	defer rows.Close()
 
-	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.WithDefaults().EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	mediaConfig := wiring.MediaexecConfig(cfg)
+	mediaEditor := rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	changed, untouched, metadataUpdated := 0, 0, 0
 	for rows.Next() {
 		var id string
