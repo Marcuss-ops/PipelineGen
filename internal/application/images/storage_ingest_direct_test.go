@@ -13,6 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	capimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -326,8 +327,8 @@ func TestIngestDirect_GeneratedImage_QueuesDriveDeliveryAfterCommit(t *testing.T
 	if len(committer.lastReq.AdditionalOutboxEvents) != 1 {
 		t.Fatalf("additional outbox events = %d, want one Drive delivery intent", len(committer.lastReq.AdditionalOutboxEvents))
 	}
-	if got := committer.lastReq.AdditionalOutboxEvents[0].EventType; got != EventTypeImageDriveDeliveryRequested {
-		t.Fatalf("delivery event type = %q, want %q", got, EventTypeImageDriveDeliveryRequested)
+	if got := committer.lastReq.AdditionalOutboxEvents[0].EventType; got != capimages.EventTypeImageDriveDeliveryRequested {
+		t.Fatalf("delivery event type = %q, want %q", got, capimages.EventTypeImageDriveDeliveryRequested)
 	}
 }
 

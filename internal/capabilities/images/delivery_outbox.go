@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 
@@ -35,8 +34,6 @@ type ImageDriveDeliveryPayload struct {
 type ImageDeliveryRepository interface {
 	UpdateDriveDelivery(ctx context.Context, contentHash, driveFileID, driveLink, downloadLink, status string) error
 }
-
-var _ outboxevents.Handler = (*ImageDriveDeliveryHandler)(nil)
 
 // ImageDriveDeliveryHandler performs Drive delivery after the ownership
 // transaction has committed. A failed projection or publish is returned to
@@ -65,9 +62,12 @@ func (h *ImageDriveDeliveryHandler) IdempotencyKey() string {
 	return EventTypeImageDriveDeliveryRequested + ".v1"
 }
 
-func (h *ImageDriveDeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+// HandlePayload consumes the JSON payload from a committed outbox event.
+// The SQLite outbox envelope is adapted at the composition boundary so this
+// capability package does not depend on a concrete outbox implementation.
+func (h *ImageDriveDeliveryHandler) HandlePayload(ctx context.Context, payloadJSON string) error {
 	var payload ImageDriveDeliveryPayload
-	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 		return fmt.Errorf("image drive delivery: decode payload: %w", err)
 	}
 	if strings.TrimSpace(payload.AssetID) == "" || strings.TrimSpace(payload.ContentHash) == "" || strings.TrimSpace(payload.LocalPath) == "" {
