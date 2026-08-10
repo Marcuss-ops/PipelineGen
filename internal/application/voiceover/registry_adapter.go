@@ -3,6 +3,7 @@ package voiceover
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -15,46 +16,97 @@ import (
 func NewVoiceoverRegistryAdapter(repo *assets.VoiceoversRepository) artifacts.Registry {
 	return &artifacts.SimpleRegistry{
 		UpsertFn: func(ctx context.Context, rec *artifacts.MediaRecord) error {
-			return repo.Upsert(ctx, mediaRecordToVoiceover(rec))
+			converted, err := mediaRecordToVoiceover(rec)
+			if err != nil {
+				return err
+			}
+			return repo.Upsert(ctx, converted)
 		},
 		GetFn: func(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 			vRec, err := repo.GetByID(ctx, id)
 			if err != nil || vRec == nil {
 				return nil, err
 			}
-			return voiceoverToMediaRecord(vRec), nil
+			converted, err := voiceoverToMediaRecord(vRec)
+			if err != nil {
+				return nil, err
+			}
+			return converted, nil
 		},
 		DeleteFn: func(ctx context.Context, id string) error {
 			return repo.Delete(ctx, id)
 		},
 		ListFn: func(ctx context.Context) ([]*artifacts.MediaRecord, error) {
-			return artifacts.GetAllWithDriveFileID(ctx, repo.ListAll,
-				func(r *assets.Record) (*artifacts.MediaRecord, bool) {
-					if r.DriveFileID == "" {
-						return nil, false
-					}
-					return voiceoverToMediaRecord(r), true
-				})
+			records, err := repo.ListAll(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]*artifacts.MediaRecord, 0, len(records))
+			for _, record := range records {
+				if record == nil || record.DriveFileID == "" {
+					continue
+				}
+				converted, err := voiceoverToMediaRecord(record)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, converted)
+			}
+			return out, nil
 		},
 		PHashFn: artifacts.NoopFindByPHash,
 	}
 }
 
+// VoiceoverMetadata is the typed persistence envelope stored in a voiceover
+// media record's metadata column. Keeping the wire shape here avoids passing
+// anonymous structs or map[string]any through the registry adapter.
+type VoiceoverMetadata struct {
+	TextHash    string `json:"text_hash"`
+	TextPreview string `json:"text_preview"`
+	Language    string `json:"language"`
+	Voice       string `json:"voice"`
+	CleanedPath string `json:"cleaned_path"`
+	Strategy    string `json:"strategy"`
+	RequestID   string `json:"request_id"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// Decode parses persisted metadata. Empty metadata is treated as the legacy
+// zero envelope; malformed non-empty JSON is returned to the registry caller.
+func (m *VoiceoverMetadata) Decode(raw string) error {
+	if m == nil {
+		return fmt.Errorf("voiceover metadata: nil receiver")
+	}
+	if raw == "" || raw == "{}" {
+		return nil
+	}
+	if err := json.Unmarshal([]byte(raw), m); err != nil {
+		return fmt.Errorf("voiceover metadata decode: %w", err)
+	}
+	return nil
+}
+
+// Encode serializes the typed metadata envelope for persistence.
+func (m VoiceoverMetadata) Encode() ([]byte, error) {
+	encoded, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("voiceover metadata encode: %w", err)
+	}
+	return encoded, nil
+}
+
 // ── Type conversions ───────────────────────────────────────────────────
 
-func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *assets.Record {
-	var meta struct {
-		TextHash    string `json:"text_hash"`
-		TextPreview string `json:"text_preview"`
-		Language    string `json:"language"`
-		Voice       string `json:"voice"`
-		CleanedPath string `json:"cleaned_path"`
-		Strategy    string `json:"strategy"`
-		RequestID   string `json:"request_id"`
-		CreatedAt   string `json:"created_at"`
-		UpdatedAt   string `json:"updated_at"`
+func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) (*assets.Record, error) {
+	if mediaRec == nil {
+		return nil, fmt.Errorf("voiceover metadata: nil media record")
 	}
-	_ = json.Unmarshal([]byte(mediaRec.Metadata), &meta)
+	var meta VoiceoverMetadata
+	if err := meta.Decode(mediaRec.Metadata); err != nil {
+		return nil, err
+	}
 
 	rec := &assets.Record{
 		ID:           mediaRec.ID,
@@ -83,38 +135,28 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *assets.Record {
 	if meta.UpdatedAt != "" {
 		rec.UpdatedAt = timeutil.ParseRFC3339(meta.UpdatedAt)
 	}
-	return rec
+	return rec, nil
 }
 
-func voiceoverToMediaRecord(rec *assets.Record) *artifacts.MediaRecord {
-	meta := map[string]any{
-		"text_hash":    rec.TextHash,
-		"text_preview": rec.TextPreview,
-		"language":     rec.Language,
-		"voice":        rec.Voice,
-		"cleaned_path": rec.CleanedPath,
-		"strategy":     rec.Strategy,
-		"request_id":   rec.RequestID,
-		"created_at":   timeutil.FormatRFC3339(rec.CreatedAt),
-		"updated_at":   timeutil.FormatRFC3339(rec.UpdatedAt),
+func voiceoverToMediaRecord(rec *assets.Record) (*artifacts.MediaRecord, error) {
+	if rec == nil {
+		return nil, fmt.Errorf("voiceover metadata: nil record")
 	}
-	metaJSON, _ := json.Marshal(meta)
+	metaJSON, err := (VoiceoverMetadata{
+		TextHash: rec.TextHash, TextPreview: rec.TextPreview, Language: rec.Language,
+		Voice: rec.Voice, CleanedPath: rec.CleanedPath, Strategy: rec.Strategy,
+		RequestID: rec.RequestID, CreatedAt: timeutil.FormatRFC3339(rec.CreatedAt),
+		UpdatedAt: timeutil.FormatRFC3339(rec.UpdatedAt),
+	}).Encode()
+	if err != nil {
+		return nil, err
+	}
 
 	return &artifacts.MediaRecord{
-		ID:           rec.ID,
-		Source:       "voiceover",
-		Name:         rec.TextPreview,
-		Filename:     rec.Filename,
-		FolderID:     rec.FolderID,
-		FolderPath:   rec.FolderPath,
-		MediaType:    "audio",
-		DriveFileID:  rec.DriveFileID,
-		DriveLink:    rec.DriveLink,
-		DownloadLink: rec.DownloadLink,
-		FileHash:     rec.FileHash,
-		LocalPath:    rec.LocalPath,
-		Status:       rec.Status,
-		Error:        rec.Error,
-		Metadata:     string(metaJSON),
-	}
+		ID: rec.ID, Source: "voiceover", Name: rec.TextPreview, Filename: rec.Filename,
+		FolderID: rec.FolderID, FolderPath: rec.FolderPath, MediaType: "audio",
+		DriveFileID: rec.DriveFileID, DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink,
+		FileHash: rec.FileHash, LocalPath: rec.LocalPath, Status: rec.Status,
+		Error: rec.Error, Metadata: string(metaJSON),
+	}, nil
 }
