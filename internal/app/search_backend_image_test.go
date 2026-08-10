@@ -39,11 +39,59 @@ func TestImageSearchProviderUsesNormalizedSingleflightKey(t *testing.T) {
 	}
 }
 
-func TestImageSearchKeySeparatesDelimiterContainingTags(t *testing.T) {
-	first := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a,b"}}, Limit: 2}
-	second := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a", "b"}}, Limit: 2}
+func TestImageSearchKeySeparatesDelimiterContainingFields(t *testing.T) {
+	cases := []struct {
+		name   string
+		first  providers.SearchRequest
+		second providers.SearchRequest
+	}{
+		{
+			name:   "comma in tags",
+			first:  providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a,b"}}, Limit: 2},
+			second: providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a", "b"}}, Limit: 2},
+		},
+		{
+			name:   "colon and pipe in query",
+			first:  providers.SearchRequest{Query: "a:b|c", Limit: 2},
+			second: providers.SearchRequest{Query: "a", Filters: providers.SearchFilters{Tags: []string{"b|c"}}, Limit: 2},
+		},
+		{
+			name:   "delimiter in tag",
+			first:  providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a:b|c"}}, Limit: 2},
+			second: providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a:b", "c"}}, Limit: 2},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, want := imageSearchKey(tc.first), imageSearchKey(tc.second); got == want {
+				t.Fatalf("delimiter-containing fields collided: %q", got)
+			}
+		})
+	}
+}
+
+func TestImageSearchKeySeparatesLimits(t *testing.T) {
+	first := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"tag"}}, Limit: 2}
+	second := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"tag"}}, Limit: 20}
 	if got, want := imageSearchKey(first), imageSearchKey(second); got == want {
-		t.Fatalf("delimiter-containing tags collided: %q", got)
+		t.Fatalf("different limits collided: %q", got)
+	}
+}
+
+func TestImageSearchKeyIncludesQueryTagsAndLimitDeterministically(t *testing.T) {
+	base := providers.SearchRequest{Query: "A subject", Filters: providers.SearchFilters{Tags: []string{"z", "a"}}, Limit: 7}
+	equivalent := providers.SearchRequest{Query: " a   subject ", Filters: providers.SearchFilters{Tags: []string{"a", "z"}}, Limit: 7}
+	if got, want := imageSearchKey(base), imageSearchKey(equivalent); got != want {
+		t.Fatalf("equivalent requests produced different keys: %q vs %q", got, want)
+	}
+	for _, changed := range []providers.SearchRequest{
+		{Query: "different subject", Filters: providers.SearchFilters{Tags: []string{"a", "z"}}, Limit: 7},
+		{Query: "A subject", Filters: providers.SearchFilters{Tags: []string{"different"}}, Limit: 7},
+		{Query: "A subject", Filters: providers.SearchFilters{Tags: []string{"a", "z"}}, Limit: 8},
+	} {
+		if imageSearchKey(base) == imageSearchKey(changed) {
+			t.Fatalf("changed query/tag/limit collided: base=%q changed=%q", imageSearchKey(base), imageSearchKey(changed))
+		}
 	}
 }
 

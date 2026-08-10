@@ -94,14 +94,13 @@ func imageSearchKey(req providers.SearchRequest) string {
 
 func (k imageSearchCacheKey) String() string {
 	var b strings.Builder
-	b.WriteString("image:v1:")
+	b.WriteString("image:v2:")
 	writeCacheKeyField(&b, k.Query)
-	b.WriteString(strconv.Itoa(len(k.Tags)))
-	b.WriteByte(':')
+	writeCacheKeyField(&b, strconv.Itoa(len(k.Tags)))
 	for _, tag := range k.Tags {
 		writeCacheKeyField(&b, tag)
 	}
-	b.WriteString(strconv.Itoa(k.Limit))
+	writeCacheKeyField(&b, strconv.Itoa(k.Limit))
 	return b.String()
 }
 
