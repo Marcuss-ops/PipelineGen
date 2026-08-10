@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,7 +50,8 @@ func TestDetachWithTimeout_AppliesTimeout(t *testing.T) {
 
 // TestDetachWithTimeout_RegistersInFlight: the helper MUST register
 // (taskName, traceID) in the global registry on entry so operators
-// can count live detached tasks for metrics/dashboards.
+// can count live detached tasks for metrics/dashboards, and CancelFunc
+// MUST remove the registration.
 func TestDetachWithTimeout_RegistersInFlight(t *testing.T) {
 	parent := corid.WithCorrelationID(context.Background(), "test-trace-abc-123")
 	detached, cancel := DetachWithTimeout(parent, "test-register", 1*time.Second)
@@ -59,6 +61,10 @@ func TestDetachWithTimeout_RegistersInFlight(t *testing.T) {
 	key := "test-register:test-trace-abc-123"
 	if _, ok := inFlight.Load(key); !ok {
 		t.Fatalf("registry missing key %q after DetachWithTimeout", key)
+	}
+	cancel()
+	if _, ok := inFlight.Load(key); ok {
+		t.Fatalf("registry retained key %q after CancelFunc", key)
 	}
 }
 
@@ -93,9 +99,8 @@ func TestDetachWithTimeout_NilCtxDefensiveFallback(t *testing.T) {
 }
 
 // TestInFlight_ReflectsRegistry: exported counter MUST reflect the
-// number of entries currently in the sync.Map (registry-cleanup-hook
-// is a follow-up; this test pins the current write-only increment
-// behaviour).
+// number of active detached tasks and return to its baseline after
+// cancellation.
 func TestInFlight_ReflectsRegistry(t *testing.T) {
 	before := InFlight()
 	parent := corid.WithCorrelationID(context.Background(), "test-count-trace")
@@ -105,4 +110,88 @@ func TestInFlight_ReflectsRegistry(t *testing.T) {
 	if got := InFlight(); got != before+1 {
 		t.Fatalf("InFlight counter: before=%d, after register=%d, want before+1=%d", before, got, before+1)
 	}
+	cancel()
+	if got := InFlight(); got != before {
+		t.Fatalf("InFlight counter after cancel: got=%d, want baseline=%d", got, before)
+	}
+}
+
+func waitForInFlight(t *testing.T, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := InFlight(); got == want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("InFlight did not reach %d (got %d)", want, InFlight())
+}
+
+// TestDetachWithTimeout_TimeoutCleansRegistry verifies that timeout cleanup
+// does not depend on callers remembering to invoke CancelFunc.
+func TestDetachWithTimeout_TimeoutCleansRegistry(t *testing.T) {
+	before := InFlight()
+	ctx, cancel := DetachWithTimeout(context.Background(), "test-auto-timeout", 10*time.Millisecond)
+	_ = cancel // intentionally not called: the watcher owns timeout cleanup.
+	if got := InFlight(); got != before+1 {
+		t.Fatalf("InFlight after registration: got=%d, want=%d", got, before+1)
+	}
+	<-ctx.Done()
+	waitForInFlight(t, before)
+}
+
+// TestDetachWithTimeout_DuplicateKeysTrackEachTask verifies that concurrent
+// tasks with the same task/correlation key are counted independently and one
+// cleanup cannot remove the other task's registry entry.
+func TestDetachWithTimeout_DuplicateKeysTrackEachTask(t *testing.T) {
+	before := InFlight()
+	parent := corid.WithCorrelationID(context.Background(), "duplicate-trace")
+	first, firstCancel := DetachWithTimeout(parent, "test-duplicate", time.Second)
+	second, secondCancel := DetachWithTimeout(parent, "test-duplicate", time.Second)
+	key := "test-duplicate:duplicate-trace"
+	if got := InFlight(); got != before+2 {
+		t.Fatalf("InFlight for duplicate keys: got=%d, want=%d", got, before+2)
+	}
+	firstCancel()
+	if _, ok := inFlight.Load(key); !ok {
+		t.Fatalf("registry removed while duplicate task remained")
+	}
+	if got := InFlight(); got != before+1 {
+		t.Fatalf("InFlight after first duplicate cancel: got=%d, want=%d", got, before+1)
+	}
+	secondCancel()
+	waitForInFlight(t, before)
+	<-first.Done()
+	<-second.Done()
+}
+
+// TestDetachWithTimeout_CancelAndTimeoutRace is a stress pin for the two
+// cleanup paths. Repeated CancelFunc calls and timeout callbacks must be
+// idempotent and must leave both the bounded registry and InFlight counter
+// at their baseline.
+func TestDetachWithTimeout_CancelAndTimeoutRace(t *testing.T) {
+	before := InFlight()
+	const tasks = 64
+	cancels := make([]context.CancelFunc, 0, tasks)
+	for i := 0; i < tasks; i++ {
+		_, cancel := DetachWithTimeout(context.Background(), "test-race", 5*time.Millisecond)
+		cancels = append(cancels, cancel)
+	}
+	if got := InFlight(); got != before+tasks {
+		t.Fatalf("InFlight after stress registration: got=%d, want=%d", got, before+tasks)
+	}
+
+	var wg sync.WaitGroup
+	for _, cancel := range cancels {
+		cancel := cancel
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cancel()
+			cancel()
+		}()
+	}
+	wg.Wait()
+	waitForInFlight(t, before)
 }
