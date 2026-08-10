@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -182,6 +183,88 @@ func (r *ImagesRepository) UpdateOrigin(ctx context.Context, hash, origin, provi
 		WHERE source = 'image' AND file_hash = ?
 	`, origin, provider, hash)
 	return err
+}
+
+// UpdateDriveDelivery records the post-commit Drive projection for an image.
+// It is called only by the image delivery outbox worker; ingest ownership is
+// established by AssetCommitter before this method can run.
+func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveFileID, driveLink, downloadLink, status string) error {
+	if hash == "" {
+		return fmt.Errorf("UpdateDriveDelivery: hash is empty")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("UpdateDriveDelivery: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// A failed delivery must not erase a Drive identity that may have
+	// been persisted by a previous successful attempt (for example, a
+	// worker crash after Publish returned but before the outbox ACK).
+	preserveIdentity := strings.HasPrefix(status, "delivery_failed:") && driveFileID == "" && driveLink == "" && downloadLink == ""
+	var updateSQL string
+	var args []any
+	if preserveIdentity {
+		updateSQL = `
+			UPDATE media_assets
+			SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?),
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE source = 'image' AND file_hash = ?`
+		args = []any{status, hash}
+	} else {
+		updateSQL = `
+			UPDATE media_assets
+			SET drive_file_id = ?, drive_link = ?, download_link = ?,
+			    metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?),
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE source = 'image' AND file_hash = ?`
+		args = []any{driveFileID, driveLink, downloadLink, status, hash}
+	}
+	result, err := tx.ExecContext(ctx, updateSQL, args...)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("UpdateDriveDelivery: inspect asset update: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("UpdateDriveDelivery: image with hash %q not found", hash)
+	}
+
+	if !preserveIdentity && driveFileID != "" {
+		var assetID string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id FROM media_assets WHERE source = 'image' AND file_hash = ?`, hash).Scan(&assetID); err != nil {
+			return fmt.Errorf("UpdateDriveDelivery: read asset id: %w", err)
+		}
+		now := timeutil.FormatRFC3339(time.Now())
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO asset_locations
+				(asset_id, location_kind, uri, external_id, web_view_link, download_url,
+				 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+			VALUES (?, 'drive', ?, ?, ?, ?, '', 0, ?, 0, ?, ?)
+			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+				uri = excluded.uri,
+				external_id = excluded.external_id,
+				web_view_link = excluded.web_view_link,
+				download_url = excluded.download_url,
+				file_hash = excluded.file_hash,
+				updated_at = excluded.updated_at`,
+			assetID, "drive://"+driveFileID, driveFileID, driveLink, downloadLink, hash, now, now); err != nil {
+			return fmt.Errorf("UpdateDriveDelivery: upsert Drive location: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("UpdateDriveDelivery: commit: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 // UpdateImageMetadata aggiorna i metadati JSON di un'immagine esistente.

@@ -40,9 +40,11 @@ func (n *noopSubjectTags) ExtractSubjectAndTags(_ context.Context, _ string) (st
 type fakePublisher struct {
 	fileID string
 	link   string
+	calls  int
 }
 
 func (f *fakePublisher) Publish(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
+	f.calls++
 	return &delivery.PublishResult{FileID: f.fileID, WebViewLink: f.link}, nil
 }
 
@@ -60,6 +62,7 @@ type recordingCommitter struct {
 	calls      int
 	lastReq    persistence.AssetCommitRequest
 	lastResult persistence.CommittedAsset
+	err        error
 }
 
 func (r *recordingCommitter) CommitTx(_ context.Context, _ persistence.Transaction, req persistence.AssetCommitRequest) (persistence.CommitResult, error) {
@@ -81,6 +84,9 @@ func (r *recordingCommitter) CommitAndIndex(_ context.Context, req persistence.A
 func (r *recordingCommitter) CommitAsset(_ context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
 	r.calls++
 	r.lastReq = req
+	if r.err != nil {
+		return persistence.CommittedAsset{}, r.err
+	}
 	out := r.success(req)
 	r.lastResult = out
 	return out, nil
@@ -216,6 +222,23 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 // write a (partial) media_assets row without the matching
 // outbox event is the SSOT — it preserves the atomicity invariant
 // the refactor closes.
+func TestIngestDirect_CommitFailureDoesNotPublishDrive(t *testing.T) {
+	svc := testImageService(t)
+	committer := svc.committer.(*recordingCommitter)
+	committer.err = errors.New("sqlite commit failed")
+	svc.cfg = &config.Config{Drive: config.DriveConfig{ImagesRootFolder: "images-root"}}
+	publisher := &fakePublisher{fileID: "drive-file-commit-failure"}
+	svc.publisher = publisher
+
+	_, err := svc.ingestDirect(context.Background(), "commit-failure", "", "", []byte{0xFF, 0xD8, 0xFF, 0xE0}, "image.jpg", "google-slides", "commit failure", nil, "commit-failure-hash", false, true)
+	if err == nil || !strings.Contains(err.Error(), "sqlite commit failed") {
+		t.Fatalf("ingestDirect error = %v, want sqlite commit failure", err)
+	}
+	if publisher.calls != 0 {
+		t.Fatalf("Drive publisher calls = %d after failed canonical commit, want 0", publisher.calls)
+	}
+}
+
 func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
 	svc := testImageService(t)
 	svc.committer = nil // explicit nil — fail-closed assertion
@@ -242,16 +265,11 @@ func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
 	}
 }
 
-// TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL verifies that
-// generated images persist the Drive web link as the canonical SourceURL
-// once upload succeeds. The provider label still flows into Provider.
-//
-// PR-IMAGES-INGEST-ATOMIC (July 2026): the recordingCommitter stub is
-// wired to record the canonical CommitRequest shape.
-//
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): s.publisher.Publish is now
-// called directly from ingestDirect (no more publishToDrive bridge).
-func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
+// TestIngestDirect_GeneratedImage_QueuesDriveDeliveryAfterCommit verifies
+// that ingest persists the source URL and durable delivery intent without
+// calling Drive in the request path. The provider label still flows into
+// the canonical commit request.
+func TestIngestDirect_GeneratedImage_QueuesDriveDeliveryAfterCommit(t *testing.T) {
 	svc := testImageService(t)
 	committer := svc.committer.(*recordingCommitter)
 	svc.cfg = &config.Config{Drive: config.DriveConfig{ImagesRootFolder: "images-root"}}
@@ -284,21 +302,32 @@ func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
 	if result == nil {
 		t.Fatal("ingestDirect returned nil result")
 	}
-	if result.SourceURL != "https://drive.google.com/file/d/drive-file-123/view" {
-		t.Fatalf("SourceURL = %q, want drive web link", result.SourceURL)
+	if result.SourceURL != "google-slides" {
+		t.Fatalf("SourceURL = %q, want original source until post-commit delivery", result.SourceURL)
+	}
+	if svc.publisher.(*fakePublisher).calls != 0 {
+		t.Fatalf("Drive publisher calls = %d, want 0 during canonical ingest commit", svc.publisher.(*fakePublisher).calls)
 	}
 	if result.Provider != "google-slides" {
 		t.Fatalf("Provider = %q, want google-slides", result.Provider)
 	}
+	if result.Status != "delivery_pending" {
+		t.Fatalf("Status = %q, want delivery_pending before worker runs", result.Status)
+	}
 
-	// PR-IMAGES-INGEST-ATOMIC: verify CommitAsset was called exactly
-	// once and routed the SourceURL (Drive link) through to the
-	// canonical CommitRequest.
+	// Verify the canonical commit owns the source record and the
+	// post-commit Drive intent. The publisher must remain untouched.
 	if committer.calls != 1 {
 		t.Errorf("recordingCommitter.calls = %d, want 1", committer.calls)
 	}
-	if committer.lastReq.SourceURL != "https://drive.google.com/file/d/drive-file-123/view" {
-		t.Errorf("CommitAsset SourceURL = %q, want drive web link", committer.lastReq.SourceURL)
+	if committer.lastReq.SourceURL != "google-slides" {
+		t.Errorf("CommitAsset SourceURL = %q, want original source", committer.lastReq.SourceURL)
+	}
+	if len(committer.lastReq.AdditionalOutboxEvents) != 1 {
+		t.Fatalf("additional outbox events = %d, want one Drive delivery intent", len(committer.lastReq.AdditionalOutboxEvents))
+	}
+	if got := committer.lastReq.AdditionalOutboxEvents[0].EventType; got != EventTypeImageDriveDeliveryRequested {
+		t.Fatalf("delivery event type = %q, want %q", got, EventTypeImageDriveDeliveryRequested)
 	}
 }
 

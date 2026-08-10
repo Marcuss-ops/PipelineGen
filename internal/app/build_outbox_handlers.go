@@ -21,12 +21,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
+
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/metadataexport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
@@ -211,6 +215,7 @@ func registerOutboxWorkers(
 	jobs *wiring.JobsBundle,
 	stagingSvc staging.Store,
 	repo artifact.Repository,
+	imageRepo *imagesrepo.ImagesRepository,
 	drivePublisher delivery.Publisher,
 ) (*publishoutbox.Handler, *publishdrive.Handler, error) {
 	// Optional handlers: best-effort. Missing deps here are logged
@@ -279,6 +284,15 @@ func registerOutboxWorkers(
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_drive handler (fail-closed): %w", regErr)
 	}
 	log.Info("outbox publish_drive handler registered: artifact.staged.v1 → delivery.Publisher.Publish + Repository.MarkPublished (FASE 3 Push 3.1e)")
+
+	imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(imageRepo, drivePublisher, log)
+	if imageErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: image Drive delivery handler: %w", imageErr)
+	}
+	if regErr := eventsRegistry.Register(imageHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register image Drive delivery handler: %w", regErr)
+	}
+	log.Info("outbox image Drive delivery handler registered: image.drive_delivery.requested → delivery.Publisher.Publish")
 
 	return publisherHandler, driveUploadHandler, nil
 }

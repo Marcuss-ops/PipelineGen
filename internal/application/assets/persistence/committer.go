@@ -39,6 +39,7 @@ import (
 // the canonical keys).
 type TypedMetadata struct {
 	Title          string
+	Origin         string
 	Description    string
 	SourceVersion  string
 	PublishAction  string
@@ -72,6 +73,7 @@ func (m TypedMetadata) ToMap() map[string]any {
 		}
 	}
 	setIfNotEmpty("title", m.Title)
+	setIfNotEmpty("origin", m.Origin)
 	setIfNotEmpty("description", m.Description)
 	setIfNotEmpty("source_version", m.SourceVersion)
 	setIfNotEmpty("publish_action", m.PublishAction)
@@ -130,6 +132,17 @@ type LocationCommit struct {
 // Required fields: AssetID, Source, Filename, MediaType, ContentHash,
 // LifecycleState. Locations may be empty for callers that do not yet
 // have a concrete storage location (e.g. discovery-only staging rows).
+// OutboxEvent is an additional event emitted atomically with the asset commit.
+// It is intentionally transport-neutral so application producers can request
+// durable post-commit work without importing the SQLite outbox adapter.
+type OutboxEvent struct {
+	EventType     string
+	AggregateID   string
+	AggregateType string
+	PayloadJSON   string
+	EventKey      string
+}
+
 type CommitRequest struct {
 	AssetID        string
 	Source         string
@@ -189,6 +202,11 @@ type CommitRequest struct {
 	// RequestedAt is the timestamp used for the outbox event. When
 	// zero, the adapter uses time.Now().
 	RequestedAt time.Time
+
+	// AdditionalOutboxEvents are emitted in the same transaction as the
+	// canonical asset row and index event. Use this for durable external
+	// work such as Drive delivery; never perform that work inline here.
+	AdditionalOutboxEvents []OutboxEvent
 }
 
 // IndexPriorityHigh is the outbox scheduling priority for
@@ -204,6 +222,16 @@ type CommitResult struct {
 	OutboxEventKey       string
 	OutboxInserted       bool
 	OutboxExistingStatus string // status of the existing outbox row when OutboxInserted=false; empty otherwise
+	AdditionalOutbox     []AdditionalOutboxResult
+}
+
+// AdditionalOutboxResult describes whether a post-commit intent was newly
+// inserted or already existed, including the existing terminal status when
+// applicable.
+type AdditionalOutboxResult struct {
+	EventKey       string
+	Inserted       bool
+	ExistingStatus string
 }
 
 // AssetCommitRequest is the canonical alias of CommitRequest, exposed at

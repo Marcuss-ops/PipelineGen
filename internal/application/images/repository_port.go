@@ -18,6 +18,7 @@ type ImageRepository interface {
 	Delete(context.Context, any) error
 	UpdateImageMetadata(context.Context, string, string) error
 	UpdateOrigin(context.Context, string, string, string) error
+	UpdateDriveDelivery(context.Context, string, string, string, string, string) error
 	UpsertRetrievedDetails(context.Context, *asset.RetrievedImageDetail) error
 	GetSubjectBySlugOrAlias(context.Context, string) (*asset.Subject, error)
 	CreateSubject(context.Context, *asset.Subject) (int64, error)
