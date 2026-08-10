@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
@@ -72,10 +72,44 @@ func (p *imageSearchProvider) searchUncached(ctx context.Context, req providers.
 	return providers.SearchResult{Candidates: out}, nil
 }
 
+// imageSearchCacheKey is the typed, canonical identity for an image search.
+// Length-prefixing each field keeps delimiters inside user data from creating
+// collisions (for example, tags ["a,b"] and ["a", "b"]).
+type imageSearchCacheKey struct {
+	Query string
+	Tags  []string
+	Limit int
+}
+
 func imageSearchKey(req providers.SearchRequest) string {
 	tags := append([]string(nil), req.Filters.Tags...)
 	sort.Strings(tags)
-	return "image:" + normalizeImageQuery(req.Query) + ":" + strings.Join(tags, ",") + ":" + fmt.Sprint(req.Limit)
+	key := imageSearchCacheKey{
+		Query: normalizeImageQuery(req.Query),
+		Tags:  tags,
+		Limit: req.Limit,
+	}
+	return key.String()
+}
+
+func (k imageSearchCacheKey) String() string {
+	var b strings.Builder
+	b.WriteString("image:v1:")
+	writeCacheKeyField(&b, k.Query)
+	b.WriteString(strconv.Itoa(len(k.Tags)))
+	b.WriteByte(':')
+	for _, tag := range k.Tags {
+		writeCacheKeyField(&b, tag)
+	}
+	b.WriteString(strconv.Itoa(k.Limit))
+	return b.String()
+}
+
+func writeCacheKeyField(b *strings.Builder, value string) {
+	b.WriteString(strconv.Itoa(len(value)))
+	b.WriteByte(':')
+	b.WriteString(value)
+	b.WriteByte('|')
 }
 
 func normalizeImageQuery(query string) string {

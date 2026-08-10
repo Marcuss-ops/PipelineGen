@@ -39,6 +39,26 @@ func TestImageSearchProviderUsesNormalizedSingleflightKey(t *testing.T) {
 	}
 }
 
+func TestImageSearchKeySeparatesDelimiterContainingTags(t *testing.T) {
+	first := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a,b"}}, Limit: 2}
+	second := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a", "b"}}, Limit: 2}
+	if got, want := imageSearchKey(first), imageSearchKey(second); got == want {
+		t.Fatalf("delimiter-containing tags collided: %q", got)
+	}
+}
+
+func TestImageSearchKeySortsTagsWithoutMutatingRequest(t *testing.T) {
+	tags := []string{"z", "a"}
+	req := providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: tags}, Limit: 2}
+	_ = imageSearchKey(req)
+	if tags[0] != "z" || tags[1] != "a" {
+		t.Fatalf("imageSearchKey mutated caller tags: %v", tags)
+	}
+	if imageSearchKey(req) != imageSearchKey(providers.SearchRequest{Query: "subject", Filters: providers.SearchFilters{Tags: []string{"a", "z"}}, Limit: 2}) {
+		t.Fatal("equivalent tag order must produce the same key")
+	}
+}
+
 func TestImageSearchProviderDoesNotRetainResultsBetweenCalls(t *testing.T) {
 	searcher := &imageSearcherFake{}
 	provider := newImageSearchProvider(&imageResolverFake{searcher: searcher})
