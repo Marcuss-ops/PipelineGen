@@ -48,7 +48,7 @@ var (
 // subtitle fetch (TranscriptDocument with Entries[].TimedEntry) to the
 // use case's Transcript shape.
 type transcriptFetcherAdapter struct {
-	sub *transcripts.YTDLPSubtitleAdapter
+	sub transcripts.SubtitleSource
 }
 
 func (a *transcriptFetcherAdapter) FetchTranscript(ctx context.Context, videoID, language string) (*youtubeusecase.Transcript, error) {
@@ -246,7 +246,7 @@ var _ drive.FolderManagerPort = (*adminFolderManagerAdapter)(nil)
 // ctor (Analyzer is nil-tolerant forward-pointer; AtomicClipWriter is
 // owned by the composition root independently).
 type ExtractImportantClipsAdapterDeps struct {
-	Subtitles  *transcripts.YTDLPSubtitleAdapter
+	Subtitles  transcripts.SubtitleSource
 	Downloader *downloader.YTDLPDownloader
 	Folder     drive.FolderManagerPort
 	Files      drivePutFn

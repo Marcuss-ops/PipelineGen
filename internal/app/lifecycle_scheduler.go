@@ -26,13 +26,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/application/semantic"
-	transcripts "github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	monitoradapter "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/health"
 	sqlchannels "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -97,15 +98,16 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 		// the right default for the monitor (it processes the full
 		// channel feed including age-restricted videos).
 		ytdlpForSubtitles := downloader.NewYTDLP(deps.cfg)
-		ytdlpSubtitleAdapter := transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+		ytdlpSubtitleAdapter := youtubeinfra.NewYTDLPSubtitleAdapter(youtubeinfra.Deps{
 			Ytdlp:      ytdlpForSubtitles,
 			CmdBuilder: ytdlp.NewCommandBuilder(deps.cfg),
 			UseCookies: true,
 			Log:        deps.log,
 		})
+		transcriptSource := transcripts.NewCachingTranscriptProvider(ytdlpSubtitleAdapter)
 		ollamaAnalyzer := semantic.NewOllamaAnalyzer(semantic.Deps{
 			OllamaClient:    deps.root.AI.OllamaClient,
-			Subtitles:       ytdlpSubtitleAdapter,
+			Subtitles:       transcriptSource,
 			Log:             deps.log,
 			Model:           deps.cfg.External.OllamaModel,
 			DataDir:         deps.cfg.Storage.DataDir,
@@ -124,7 +126,7 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 				// subprocess, keeping a single downloader binary+cookies
 				// config across the two adapters.
 				Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
-				Transcript: ytdlpSubtitleAdapter,
+				Transcript: transcriptSource,
 				Analyzer:   ollamaAnalyzer,
 				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(deps.root.Jobs.Service, channelsSvc, deps.log),
 				// Commit 1/6 (PR-C-YouTube-Cutover, June 2026) — wiring CLOSED

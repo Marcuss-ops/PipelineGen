@@ -12,6 +12,7 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -58,13 +59,16 @@ func buildDomainScriptServices(
 
 	// ExtractImportantClips adapters + handler.
 	extractDl := downloader.NewYTDLP(cfg)
-	extractAdapters := BuildExtractImportantClipsAdapters(ExtractImportantClipsAdapterDeps{
-		Subtitles: transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+	extractSubtitleSource := transcripts.NewCachingTranscriptProvider(
+		youtubeinfra.NewYTDLPSubtitleAdapter(youtubeinfra.Deps{
 			Ytdlp:      extractDl,
 			CmdBuilder: ytdlp.NewCommandBuilder(cfg),
 			UseCookies: cfg.External.ResolveYouTubeCookiesPath() != "",
 			Log:        log,
 		}),
+	)
+	extractAdapters := BuildExtractImportantClipsAdapters(ExtractImportantClipsAdapterDeps{
+		Subtitles:  extractSubtitleSource,
 		Downloader: extractDl,
 		Folder:     &adminFolderManagerAdapter{admin: drive.Admin},
 		Files: func(ctx context.Context, req drivePutFnRequest) (*drivePutFnResult, error) {

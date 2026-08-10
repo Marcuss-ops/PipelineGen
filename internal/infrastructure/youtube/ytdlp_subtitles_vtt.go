@@ -1,17 +1,16 @@
-// Package transcripts — ytdlp_subtitles_vtt.go (PR-SPLIT-YTDLP-SUBTITLES, July 2026).
+// Package youtube — ytdlp_subtitles_vtt.go (PR-SPLIT-YTDLP-SUBTITLES, July 2026).
 //
 // Owns the 4 VTT parser helpers (stripVTTHeader + parseVTTBlock +
-// parseTimestampSeconds + stripXMLTags). Extracted from
-// ytdlp_subtitles.go per godlike/06 SSOT one-canonical-owner-per-fact:
+// parseTimestampSeconds + stripXMLTags). Extracted from the former
+// application adapter per godlike/06 SSOT one-canonical-owner-per-fact:
 // this file is the SOLE canonical owner of the WebVTT parsing surface.
 //
 // Sibling files in the ytdlp_subtitles family (post-split canonical layout):
-//   - ytdlp_subtitles.go (slim orchestrator) — Deps + YTDLPSubtitleAdapter
-//     struct + NewYTDLPSubtitleAdapter + GetTranscript + GetTimedTranscript
-//   - Fetch + inheritOrWithTimeout + buildSubtitleArgs + fetchTimedTranscript
-//   - var _ monitor.TranscriptProvider pin.
+//   - ytdlp_subtitles.go — Deps, adapter construction, and plain-text helpers
+//   - ytdlp_subtitles_fetch.go — document assembly and timeout ownership
+//   - ytdlp_subtitles_exec.go — filesystem/process execution
 //   - ytdlp_subtitles_vtt.go (this file) — the 4 VTT parser helpers.
-package transcripts
+package youtube
 
 import (
 	"fmt"

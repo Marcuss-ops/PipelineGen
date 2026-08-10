@@ -1,4 +1,4 @@
-package transcripts
+package youtube
 
 import (
 	"context"
@@ -7,23 +7,25 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 )
 
 // Fetch downloads the timed transcript once and assembles the canonical
-// TranscriptDocument consumed by the monitor pipeline.
-func (a *YTDLPSubtitleAdapter) Fetch(parent context.Context, videoURL string) (TranscriptDocument, error) {
+// transcript.Document consumed by application transcript ports.
+func (a *YTDLPSubtitleAdapter) Fetch(parent context.Context, videoURL string) (transcript.Document, error) {
 	ctx, cancel := inheritOrWithTimeout(parent, a.timeout)
 	defer cancel()
 
 	entries, err := a.fetchTimedTranscript(ctx, videoURL)
 	if err != nil {
-		return TranscriptDocument{}, err
+		return transcript.Document{}, err
 	}
 	if len(entries) == 0 {
-		return TranscriptDocument{}, fmt.Errorf("transcript empty for video (0 timed entries): %s", videoURL)
+		return transcript.Document{}, fmt.Errorf("transcript empty for video (0 timed entries): %s", videoURL)
 	}
 
-	videoID := extractVideoID(videoURL)
+	videoID := extractIDFromURL(videoURL)
 	var sb strings.Builder
 	maxLen := a.maxTranscriptLen
 	if maxLen <= 0 {
@@ -41,11 +43,11 @@ func (a *YTDLPSubtitleAdapter) Fetch(parent context.Context, videoURL string) (T
 		text = text[:maxLen]
 	}
 	if wordCount := len(strings.Fields(text)); wordCount < a.minTranscriptWords {
-		return TranscriptDocument{}, fmt.Errorf("transcript too short (%d words), skipping", wordCount)
+		return transcript.Document{}, fmt.Errorf("transcript too short (%d words), skipping", wordCount)
 	}
 
 	lastEnd := entries[len(entries)-1].End
-	doc := TranscriptDocument{
+	doc := transcript.Document{
 		VideoID:     videoID,
 		Language:    "en",
 		Source:      "asr",

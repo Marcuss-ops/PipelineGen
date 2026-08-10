@@ -1,6 +1,5 @@
-// Package transcripts provides the canonical yt-dlp subtitle adapter used by
-// the channel-monitor transcript port.
-package transcripts
+// Package youtube provides the concrete yt-dlp subtitle adapter.
+package youtube
 
 import (
 	"context"
@@ -10,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -24,7 +23,7 @@ type Deps struct {
 	Log        *zap.Logger
 }
 
-// YTDLPSubtitleAdapter implements monitor.TranscriptProvider. Subprocess and
+// YTDLPSubtitleAdapter implements the application transcript ports. Subprocess and
 // filesystem work live in ytdlp_subtitles_exec.go; document assembly and
 // timeout ownership live in ytdlp_subtitles_fetch.go.
 type YTDLPSubtitleAdapter struct {
@@ -57,7 +56,7 @@ func NewYTDLPSubtitleAdapter(d Deps) *YTDLPSubtitleAdapter {
 	}
 }
 
-// GetTranscript satisfies the legacy monitor transcript surface.
+// GetTranscript is a compatibility helper for callers that need plain text.
 func (a *YTDLPSubtitleAdapter) GetTranscript(ctx context.Context, videoURL string) (string, error) {
 	entries, err := a.fetchTimedTranscript(ctx, videoURL)
 	if err != nil {
@@ -85,9 +84,7 @@ func (a *YTDLPSubtitleAdapter) GetTranscript(ctx context.Context, videoURL strin
 	return transcript, nil
 }
 
-// GetTimedTranscript returns the parsed VTT cues for sibling analyzers.
-func (a *YTDLPSubtitleAdapter) GetTimedTranscript(ctx context.Context, videoURL string) ([]TranscriptEntry, error) {
+// GetTimedTranscript returns parsed VTT cues for infrastructure/application bridges.
+func (a *YTDLPSubtitleAdapter) GetTimedTranscript(ctx context.Context, videoURL string) ([]transcript.Entry, error) {
 	return a.fetchTimedTranscript(ctx, videoURL)
 }
-
-var _ monitor.TranscriptProvider = (*YTDLPSubtitleAdapter)(nil)

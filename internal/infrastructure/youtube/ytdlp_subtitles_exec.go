@@ -1,4 +1,4 @@
-package transcripts
+package youtube
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 )
 
 // buildSubtitleArgs appends subtitle-specific arguments to the canonical
@@ -28,7 +30,7 @@ func (a *YTDLPSubtitleAdapter) buildSubtitleArgs(videoURL, outputTemplate string
 
 // fetchTimedTranscript owns temp-directory lifecycle, yt-dlp execution, VTT
 // discovery and conversion into timed transcript entries.
-func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoURL string) ([]TranscriptEntry, error) {
+func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoURL string) ([]transcript.Entry, error) {
 	if a.ytdlp == nil {
 		return nil, fmt.Errorf("YTDLPSubtitleAdapter: ytdlp not wired (composition bug — call downloader.NewYTDLP(cfg) in lifecycle.go)")
 	}
@@ -66,7 +68,7 @@ func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoUR
 	}
 	content := stripVTTHeader(string(vttData))
 
-	var out []TranscriptEntry
+	var out []transcript.Entry
 	for _, block := range strings.Split(content, "\n\n") {
 		block = strings.TrimSpace(block)
 		if block == "" {
@@ -76,7 +78,7 @@ func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoUR
 		if !ok || text == "" {
 			continue
 		}
-		out = append(out, TranscriptEntry{
+		out = append(out, transcript.Entry{
 			Start: start,
 			End:   end,
 			Text:  text,

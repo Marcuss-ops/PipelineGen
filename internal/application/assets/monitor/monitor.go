@@ -138,8 +138,9 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// rather than nil-deref panicking inside the worker.
 	//
 	// The Transcript stub was lifted in a follow-up commit (Wave B, June 2026):
-	// `internal/app/lifecycle.go::startBackgroundJobs` now wires a concrete
-	// `transcripts.YTDLPSubtitleAdapter` directly into CompositionDeps.Transcript,
+	// `internal/app/lifecycle.go::startBackgroundJobs` now wires the concrete
+	// `youtube.YTDLPSubtitleAdapter` (which satisfies the application
+	// `transcripts.SubtitleSource` port) into CompositionDeps.Transcript,
 	// so a nil deps.Transcript can only happen in partial-deploy / test-fixture
 	// paths and the analyzer's `if m.transcript != nil` discipline catches it.
 
