@@ -98,6 +98,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_api_infrastructure_imports", scan.ScanAPIInfrastructureImports},
 		{"percheck_canonical_application_infrastructure_imports", scan.ScanCanonicalApplicationInfrastructureImports},
 		{"percheck_legacy_root_ban", scan.ScanLegacyRootImportBan},
+		{"percheck_sqlite_assets_clips_duplicate", scan.ScanSQLiteAssetsClipsDuplicateBan},
 		{"percheck_job_ownership", scan.ScanJobOwnership},
 		{"percheck_handler_generate_fields", scan.ScanHandlerGenerateFields},
 		{"percheck_brain_infra_ban", scan.ScanBrainInfraBan},
