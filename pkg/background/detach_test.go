@@ -9,6 +9,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
+type contextValueKey string
+
 // TestDetachWithTimeout_PreservesParentCancelRemoval: a detached ctx
 // MUST survive cancellation of its parent; the parent cancel must
 // not propagate to the detached scope.
@@ -29,8 +31,53 @@ func TestDetachWithTimeout_PreservesParentCancelRemoval(t *testing.T) {
 	}
 }
 
+func TestDetachWithTimeout_PreservesValuesAndCorrelation(t *testing.T) {
+	parent := context.WithValue(context.Background(), contextValueKey("request"), "request-value")
+	parent = corid.WithCorrelationID(parent, "trace-preserved")
+
+	detached, cancel := DetachWithTimeout(parent, "test-values", time.Second)
+	defer cancel()
+
+	if got := detached.Value(contextValueKey("request")); got != "request-value" {
+		t.Fatalf("context value not preserved: got=%v", got)
+	}
+	if got := corid.FromContext(detached); got != "trace-preserved" {
+		t.Fatalf("correlation id not preserved: got=%q", got)
+	}
+}
+
+func TestDetachWithTimeout_RemovesParentDeadlineCancellation(t *testing.T) {
+	parent, parentCancel := context.WithTimeout(context.Background(), time.Hour)
+	defer parentCancel()
+
+	detached, cancel := DetachWithTimeout(parent, "test-deadline", time.Second)
+	defer cancel()
+	parentCancel()
+
+	select {
+	case <-detached.Done():
+		t.Fatalf("detached context cancelled by parent deadline/cancel")
+	default:
+	}
+	if _, ok := detached.Deadline(); !ok {
+		t.Fatalf("detached context must have the helper deadline")
+	}
+}
+
 // TestDetachWithTimeout_AppliesTimeout: detached ctx MUST expire
 // after the supplied timeout; cancel func MUST allow early release.
+func TestDetachWithTimeout_ZeroTimeoutExpiresImmediately(t *testing.T) {
+	before := InFlight()
+	ctx, cancel := DetachWithTimeout(context.Background(), "test-zero-timeout", 0)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("zero timeout did not expire immediately")
+	}
+	waitForInFlight(t, before)
+}
+
 func TestDetachWithTimeout_AppliesTimeout(t *testing.T) {
 	parent := context.Background()
 	start := time.Now()
@@ -83,8 +130,7 @@ func TestDetachWithTimeout_NoTraceIDIsAllowed(t *testing.T) {
 }
 
 // TestDetachWithTimeout_NilCtxDefensiveFallback: nil parent ctx MUST
-// not nil-deref; helper falls back to context.Background() per the
-// pkg/contextutil/postwrite.go precedent.
+// not nil-deref; helper falls back to context.Background().
 func TestDetachWithTimeout_NilCtxDefensiveFallback(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -142,8 +188,7 @@ func TestDetachWithTimeout_TimeoutCleansRegistry(t *testing.T) {
 }
 
 // TestDetachWithTimeout_DuplicateKeysTrackEachTask verifies that concurrent
-// tasks with the same task/correlation key are counted independently and one
-// cleanup cannot remove the other task's registry entry.
+// tasks with the same task/correlation key are tracked independently.
 func TestDetachWithTimeout_DuplicateKeysTrackEachTask(t *testing.T) {
 	before := InFlight()
 	parent := corid.WithCorrelationID(context.Background(), "duplicate-trace")
@@ -166,10 +211,7 @@ func TestDetachWithTimeout_DuplicateKeysTrackEachTask(t *testing.T) {
 	<-second.Done()
 }
 
-// TestDetachWithTimeout_CancelAndTimeoutRace is a stress pin for the two
-// cleanup paths. Repeated CancelFunc calls and timeout callbacks must be
-// idempotent and must leave both the bounded registry and InFlight counter
-// at their baseline.
+// TestDetachWithTimeout_CancelAndTimeoutRace stresses both cleanup paths.
 func TestDetachWithTimeout_CancelAndTimeoutRace(t *testing.T) {
 	before := InFlight()
 	const tasks = 64

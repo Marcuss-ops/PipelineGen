@@ -80,15 +80,17 @@ func InFlight() int {
 // unspecified — callers do not need to guard; the helper never
 // panics on empty IDs).
 //
-// Mirrors the helper shape used by pkg/contextutil/postwrite.go
-// (the original composition-root post-write ctx), generalised so
-// the same shape works for any detached-with-timeout call site.
+// This is the canonical replacement for the former post-write context
+// helper. Unlike a Background-based context, it preserves context values
+// and correlation IDs while removing parent cancellation. The timeout is
+// always applied: zero or negative values produce an immediately expired
+// context and therefore cannot leave an unbounded registry entry.
 func DetachWithTimeout(ctx context.Context, taskName string, timeout time.Duration) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		// Defensive fallback when parentCtx is nil — same shape as
-		// the existing pkg/contextutil/postwrite.go fallback so call
-		// sites that hold a nil parent ctx in test fixtures do not
-		// nil-deref on corid.FromContext.
+		// the former post-write helper's fallback so call sites that
+		// hold a nil parent ctx in test fixtures do not nil-deref on
+		// corid.FromContext.
 		ctx = context.Background()
 	}
 	traceID := corid.FromContext(ctx)
@@ -104,7 +106,8 @@ func DetachWithTimeout(ctx context.Context, taskName string, timeout time.Durati
 	inFlightCount.Add(1)
 	inFlightMu.Unlock()
 
-	detached, timeoutCancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	detached := context.WithoutCancel(ctx)
+	detached, timeoutCancel := context.WithTimeout(detached, timeout)
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
