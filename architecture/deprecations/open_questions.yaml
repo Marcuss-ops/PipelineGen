@@ -5,7 +5,8 @@ open_questions:
     tracker_ref: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-NAMING-DECISION"
     teammate_ref: "scripts/ci-bypass-audit.sh + scripts/ci-architectural-checks.sh (both reference `mutations.AssetMutationDispatcher` in canonical-SSOT language)"
     deadline: 2026-07-15
-    status: open (team vote pending)
+    status: closed
+    decision: "KEEP AssetMutationDispatcher"
 
     evidence_dispatcher_currently_shipped:
       - "(1) 99 hits across internal/ + cmd/ for AssetMutationDispatcher (canonical, currently shipped); 0 hits for AssetMutationService"
@@ -48,11 +49,12 @@ open_questions:
       Decision recorded by PR-W24-BLOCK1-NAMING-DECISION ticket close:
       the team's vote + rationale is appended to this section's `team_decision` field.
 
-    team_decision: pending
+    team_decision: "KEEP AssetMutationDispatcher"
     vote_record:
-      dispatcher_keep_votes: []
+      dispatcher_keep_votes:
+        - "Architecture review: semantic precision and zero functional value for a rename outweigh convention preference"
       service_rename_votes: []
-    closing_blocker: "vote ties → defer until next wave tracker entry; cost-asymmetry is the deciding factor"
+    closing_blocker: "resolved: retain the shipped canonical interface; no rename churn"
 
     # Sibling evidence (canonical interface name declaration site):
     canonical_evidence:
