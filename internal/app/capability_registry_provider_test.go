@@ -25,36 +25,38 @@ func (p *lifecycleSearchProvider) Search(context.Context, providers.SearchReques
 
 var _ providers.SearchProvider = (*lifecycleSearchProvider)(nil)
 
-// TestRegisterCapabilities_RegistersPreparedProvidersBeforeFreeze pins the
-// composition lifecycle: adapters are prepared first, registered in the
-// canonical phase, and only then is the provider registry frozen. This keeps
-// the search graph and the final provider catalog on the same adapter set.
-func TestRegisterCapabilities_RegistersPreparedProvidersBeforeFreeze(t *testing.T) {
+// TestBootstrapProviderRegistry_FreezesBeforeFinalPublication pins the
+// composition lifecycle: adapters are registered first, the provider catalog
+// is frozen, and final publication cannot mutate it.
+func TestBootstrapProviderRegistry_FreezesBeforeFinalPublication(t *testing.T) {
 	providerRegistry := providers.NewRegistry()
 	apiRegistry := module.NewRegistry()
-	provider := &lifecycleSearchProvider{name: "late-search"}
-	prepared := PreparedCapabilities{Providers: []TrackedProviderEntry{{
-		Id:     provider.Name(),
-		Kind:   ProviderKindSearch,
-		Search: provider,
-	}}}
-
-	err := registerCapabilities(apiRegistry, providerRegistry, CapabilityDeps{
-		Providers: prepared,
-	})
-	if err != nil {
-		t.Fatalf("registerCapabilities: %v", err)
+	provider := &lifecycleSearchProvider{name: "bootstrap-search"}
+	entries := []TrackedProviderEntry{{Id: provider.Name(), Kind: ProviderKindSearch, Search: provider}}
+	if err := bootstrapProviderRegistry(providerRegistry, entries, nil); err != nil {
+		t.Fatalf("bootstrapProviderRegistry: %v", err)
 	}
 	if !providerRegistry.IsFrozen() {
-		t.Fatal("provider registry must be frozen after canonical registration")
+		t.Fatal("provider registry must be frozen before search composition")
 	}
 	got, ok := providerRegistry.Get(provider.Name())
 	if !ok || got != provider {
 		t.Fatalf("registered provider = (%v, %t), want exact prepared adapter (%v, true)", got, ok, provider)
 	}
-
+	if err := registerCapabilities(apiRegistry, providerRegistry, CapabilityDeps{}); err != nil {
+		t.Fatalf("registerCapabilities: %v", err)
+	}
 	late := &lifecycleSearchProvider{name: "registered-too-late"}
 	if err := providerRegistry.RegisterSearch(late); !errors.Is(err, providers.ErrFrozen) {
 		t.Fatalf("late provider registration error = %v, want providers.ErrFrozen", err)
+	}
+}
+
+func TestBootstrapProviderRegistryRejectsAlreadyFrozenRegistry(t *testing.T) {
+	providerRegistry := providers.NewRegistry()
+	providerRegistry.Freeze()
+	provider := &lifecycleSearchProvider{name: "late-bootstrap"}
+	if err := bootstrapProviderRegistry(providerRegistry, []TrackedProviderEntry{{Id: provider.Name(), Kind: ProviderKindSearch, Search: provider}}, nil); !errors.Is(err, providers.ErrFrozen) {
+		t.Fatalf("bootstrap on frozen registry error = %v, want providers.ErrFrozen", err)
 	}
 }

@@ -1,94 +1,34 @@
-// Package app prepares runtime handlers and provider descriptors after all
-// immutable services have been constructed. Despite the legacy function name,
-// this file performs no registry mutation and no required dependency injection.
+// Package app prepares runtime handlers after immutable services are constructed.
+// It never mutates the provider registry and performs no provider registration.
 package app
 
 import (
-	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
-	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"go.uber.org/zap"
 )
 
-// applyLateBindings is retained as a compatibility name for the orchestrator.
-// Its behavior is now a pure preparation phase:
-//   - build internal route handlers from canonical services;
-//   - collect provider adapters;
-//   - build descriptor-owned HTTP/provider slots;
-//   - return an immutable PreparedCapabilities value.
-//
-// Registration, validation and freeze happen later and exclusively inside
-// registerCapabilities. No object is completed through setters here.
+// applyLateBindings is retained as an orchestration name for a pure handler
+// preparation phase. Provider adapters and descriptor-owned providers have
+// already been registered and frozen before this function is called.
 func applyLateBindings(_ *module.Registry, log *zap.Logger, root *wiring.ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
 	prepared := PreparedCapabilities{}
-
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		outboxPort := newOutboxMonitorAdapter(root.Outbox.EventsRepo)
-		regWiring.OutboxHandler = outboxapi.NewHandler(outboxPort, log)
-		log.Info("QDRANT-002: outbox handler prepared for internal route mounting")
+		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
 	}
-
 	if root.Process != nil && root.Process.VectorSvc != nil && root.AI != nil && root.AI.OllamaClient != nil {
-		// Consume the canonical composition-root singleton directly. This no
-		// longer depends on Assets having copied the aggregator into its own
-		// wiring object first, eliminating the former temporal coupling.
 		var searchAgg mediasearchapi.AggregatorSearcher
 		if crossStep.SearchAggregator != nil {
 			searchAgg = crossStep.SearchAggregator
 		}
-		// QDRANT-004 readiness closure: assemble the typed probe from the
-		// composition root before handler wiring. IndexVersion is left nil
-		// on purpose — the handler defaults to an empty (unknown) version.
-		readinessChecker := WireMediasearchReadiness(root, searchAgg)
 		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
-			Aggregator: searchAgg,
-			// QDRANT-004 readiness closure (August 2026): the handler was
-			// previously constructed without SemanticReady, so GET
-			// /internal/v1/media/ready always reported
-			// "semantic_search_real checker not wired". The composition
-			// root now wires the typed probe (embedder + aggregator +
-			// Qdrant + SQLite).
-			SemanticReady: readinessChecker,
-			Log:           log,
-		})
-		log.Info("QDRANT-004: mediasearch handler prepared from canonical search aggregator")
-	}
-
-	if root.Search == nil || root.Search.ProviderRegistry == nil {
-		return prepared, nil
-	}
-
-	// Search adapters were composed before the canonical aggregator was
-	// built. Reuse those exact instances for the final provider registry so
-	// cache, coalescing and provider identity are not split across a legacy
-	// duplicate adapter graph.
-	prepared.Providers = append(prepared.Providers, crossStep.ProviderEntries...)
-	if regWiring.StockPipeline != nil && regWiring.StockPipeline.Service != nil {
-		prepared.Providers = append(prepared.Providers, TrackedProviderEntry{
-			Id:    "stock",
-			Kind:  ProviderKindFetch,
-			Fetch: stockadapter.NewAdapter(regWiring.StockPipeline.Service),
+			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
 		})
 	}
-
-	descriptor, err := scriptassets.Build(scriptassets.Dependencies{Logger: log})
-	if err != nil {
-		return PreparedCapabilities{}, err
+	if crossStep.ScriptAssetsModule != nil {
+		prepared.HTTPModules = append(prepared.HTTPModules, TrackedHTTPModule{Module: crossStep.ScriptAssetsModule, Point: "register.ScriptAssets"})
 	}
-	prepared.HTTPModules = append(prepared.HTTPModules, TrackedHTTPModule{
-		Module: descriptor,
-		Point:  "register.ScriptAssets",
-	})
-	if providerDescriptor, ok := descriptor.(module.DescriptorProviders); ok {
-		prepared.ProviderDescriptors = append(prepared.ProviderDescriptors, providerDescriptor)
-	} else {
-		return PreparedCapabilities{}, fmt.Errorf("script-assets descriptor does not implement api.DescriptorProviders")
-	}
-
 	return prepared, nil
 }

@@ -1,4 +1,4 @@
-// Package app owns the canonical composition-time registration phase.
+// Package app owns the canonical composition-time registration phases.
 package app
 
 import (
@@ -9,17 +9,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// PreparedCapabilities contains immutable descriptors and adapters produced by
-// the construction phase. No registry is mutated while this value is built.
 type PreparedCapabilities struct {
-	HTTPModules         []TrackedHTTPModule
-	Providers           []TrackedProviderEntry
-	ProviderDescriptors []module.DescriptorProviders
+	HTTPModules []TrackedHTTPModule
 }
 
-// CapabilityDeps is the input to the single registration/validation/freeze
-// phase. HTTPModules remains for existing callers; Prepared carries the
-// descriptors assembled by prepareRuntimeCapabilities.
 type CapabilityDeps struct {
 	HTTPModules []TrackedHTTPModule
 	Providers   PreparedCapabilities
@@ -44,34 +37,45 @@ const (
 	ProviderKindFetch
 )
 
-// registerCapabilities is the only registry mutation phase. The order is
-// explicit and fail-closed:
-//  1. register HTTP modules;
-//  2. register search/fetch adapters and descriptor-owned providers;
-//  3. validate the complete runtime graph;
-//  4. freeze the provider registry.
-//
-// Required dependencies are never completed after this function returns.
+// bootstrapProviderRegistry is the sole provider mutation phase. All provider
+// adapters and descriptor-owned providers are registered before search graph
+// composition, then the catalog is frozen exactly once.
+func bootstrapProviderRegistry(provReg *providers.Registry, entries []TrackedProviderEntry, descriptors []module.DescriptorProviders) error {
+	if provReg == nil {
+		if len(entries) > 0 || len(descriptors) > 0 {
+			return fmt.Errorf("bootstrapProviderRegistry: provider registry is required")
+		}
+		return nil
+	}
+	if provReg.IsFrozen() {
+		return fmt.Errorf("bootstrapProviderRegistry: %w", providers.ErrFrozen)
+	}
+	if err := registerProviders(provReg, entries); err != nil {
+		return fmt.Errorf("bootstrapProviderRegistry: providers: %w", err)
+	}
+	if err := registerProviderDescriptors(provReg, descriptors); err != nil {
+		return fmt.Errorf("bootstrapProviderRegistry: provider-descriptors: %w", err)
+	}
+	provReg.Freeze()
+	return nil
+}
+
+// registerCapabilities publishes prepared HTTP modules and validates the
+// completed runtime graph. It deliberately cannot mutate providers.Registry.
 func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
 	if reg == nil {
 		return fmt.Errorf("registerCapabilities: nil api.Registry (composition bug)")
+	}
+	if provReg != nil && !provReg.IsFrozen() {
+		return fmt.Errorf("registerCapabilities: provider registry must be frozen before final publication")
 	}
 	modules := append([]TrackedHTTPModule{}, deps.HTTPModules...)
 	modules = append(modules, deps.Providers.HTTPModules...)
 	if err := registerHTTPModules(reg, modules); err != nil {
 		return fmt.Errorf("registerCapabilities: http-modules: %w", err)
 	}
-	if err := registerProviders(provReg, deps.Providers.Providers); err != nil {
-		return fmt.Errorf("registerCapabilities: providers: %w", err)
-	}
-	if err := registerProviderDescriptors(provReg, deps.Providers.ProviderDescriptors); err != nil {
-		return fmt.Errorf("registerCapabilities: provider-descriptors: %w", err)
-	}
 	if err := c3ValidateRuntimeGraph(); err != nil {
 		return fmt.Errorf("registerCapabilities: runtime validation: %w", err)
-	}
-	if provReg != nil {
-		provReg.Freeze()
 	}
 	return nil
 }
@@ -140,10 +144,7 @@ func registerProviderDescriptors(provReg *providers.Registry, descriptors []modu
 }
 
 type strictOption func(*strictRegCtx)
-
-type strictRegCtx struct {
-	point string
-}
+type strictRegCtx struct{ point string }
 
 func WithRegistrationPoint(point string) strictOption {
 	return func(ctx *strictRegCtx) {
@@ -179,13 +180,9 @@ func tryRegisterModuleStrict(registry *module.Registry, log *zap.Logger, mod mod
 	}
 	if err := registry.RegisterRuntimeModule(runtimeModule); err != nil {
 		if log != nil {
-			log.Warn("strict-register failed",
-				zap.String("module", mod.Name()),
-				zap.String("registration-point", collectRegPoint(opts)),
-				zap.Error(err))
+			log.Warn("strict-register failed", zap.String("module", mod.Name()), zap.String("registration-point", collectRegPoint(opts)), zap.Error(err))
 		}
-		return fmt.Errorf("compose: capability=%q, descriptor-type=%T, registration-point=%s: %w",
-			mod.Name(), mod, collectRegPoint(opts), err)
+		return fmt.Errorf("compose: capability=%q, descriptor-type=%T, registration-point=%s: %w", mod.Name(), mod, collectRegPoint(opts), err)
 	}
 	return nil
 }
