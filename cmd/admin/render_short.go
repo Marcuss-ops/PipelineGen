@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
@@ -41,7 +42,7 @@ func runRenderShort(args []string) error {
 	defer cleanup()
 
 	var uploader adminmedia.AdminUploader
-	policy := cfg.Video.WithDefaults().EncoderPolicy()
+	mediaConfig := wiring.MediaexecConfig(cfg)
 	if manifest.Upload != nil {
 		root, _, rootCleanup, err := app.InitComposition(cfg, log)
 		if err != nil {
@@ -56,7 +57,7 @@ func runRenderShort(args []string) error {
 			return err
 		}
 	}
-	result, err := adminmedia.RenderShort(ctx, manifest, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, policy, cfg.Video.CanonicalVideoProfile(), log), uploader)
+	result, err := adminmedia.RenderShort(ctx, manifest, rustexec.NewAdminMediaProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log), uploader)
 	if err != nil {
 		return err
 	}
