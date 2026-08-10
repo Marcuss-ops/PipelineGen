@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -28,23 +27,29 @@ func (f *imageSearcherFake) Search(context.Context, routing.ImageFilter) ([]rout
 	}}, nil
 }
 
-func TestImageSearchProviderCoalescesNormalizedQueries(t *testing.T) {
+func TestImageSearchProviderUsesNormalizedSingleflightKey(t *testing.T) {
+	base := providers.SearchRequest{Query: "Elon Musk Tesla", Limit: 20}
+	for _, equivalent := range []providers.SearchRequest{
+		{Query: " elon   musk tesla ", Limit: 20},
+		{Query: "ELON MUSK TESLA", Limit: 20},
+	} {
+		if got, want := imageSearchKey(equivalent), imageSearchKey(base); got != want {
+			t.Fatalf("equivalent query key=%q, want %q", got, want)
+		}
+	}
+}
+
+func TestImageSearchProviderDoesNotRetainResultsBetweenCalls(t *testing.T) {
 	searcher := &imageSearcherFake{}
 	provider := newImageSearchProvider(&imageResolverFake{searcher: searcher})
+	req := providers.SearchRequest{Query: "Elon Musk Tesla", Limit: 20}
 
-	var wg sync.WaitGroup
-	for _, query := range []string{"Elon Musk Tesla", " elon   musk tesla ", "ELON MUSK TESLA"} {
-		wg.Add(1)
-		go func(query string) {
-			defer wg.Done()
-			result, err := provider.Search(context.Background(), providers.SearchRequest{Query: query, Limit: 20})
-			if err != nil || len(result.Candidates) != 1 {
-				t.Errorf("query=%q result=%#v err=%v", query, result, err)
-			}
-		}(query)
+	for i := 0; i < 2; i++ {
+		if _, err := provider.Search(context.Background(), req); err != nil {
+			t.Fatalf("search %d: %v", i+1, err)
+		}
 	}
-	wg.Wait()
-	if got := searcher.calls.Load(); got != 1 {
-		t.Fatalf("retrieval calls=%d, want 1", got)
+	if got := searcher.calls.Load(); got != 2 {
+		t.Fatalf("retrieval calls=%d, want 2 after sequential searches", got)
 	}
 }

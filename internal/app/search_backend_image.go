@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
@@ -20,18 +18,11 @@ import (
 // calls the image download/ingest path.
 type imageSearchProvider struct {
 	resolver routing.ImageSearchResolver
-	mu       sync.RWMutex
-	cache    map[string]imageSearchCacheEntry
 	flight   singleflight.Group
 }
 
-type imageSearchCacheEntry struct {
-	result providers.SearchResult
-	stored time.Time
-}
-
 func newImageSearchProvider(resolver routing.ImageSearchResolver) *imageSearchProvider {
-	return &imageSearchProvider{resolver: resolver, cache: make(map[string]imageSearchCacheEntry)}
+	return &imageSearchProvider{resolver: resolver}
 }
 
 func (p *imageSearchProvider) Name() string { return "image" }
@@ -44,27 +35,8 @@ func (p *imageSearchProvider) Search(ctx context.Context, req providers.SearchRe
 		return providers.SearchResult{}, errors.New("image search provider not wired")
 	}
 	key := imageSearchKey(req)
-	p.mu.RLock()
-	entry, ok := p.cache[key]
-	p.mu.RUnlock()
-	if ok && time.Since(entry.stored) < 15*time.Minute {
-		return cloneProviderSearchResult(entry.result), nil
-	}
 	value, err, _ := p.flight.Do(key, func() (any, error) {
-		p.mu.RLock()
-		entry, cached := p.cache[key]
-		p.mu.RUnlock()
-		if cached && time.Since(entry.stored) < 15*time.Minute {
-			return entry.result, nil
-		}
-		result, searchErr := p.searchUncached(ctx, req)
-		if searchErr != nil {
-			return nil, searchErr
-		}
-		p.mu.Lock()
-		p.cache[key] = imageSearchCacheEntry{result: result, stored: time.Now()}
-		p.mu.Unlock()
-		return result, nil
+		return p.searchUncached(ctx, req)
 	})
 	if err != nil {
 		return providers.SearchResult{}, err
