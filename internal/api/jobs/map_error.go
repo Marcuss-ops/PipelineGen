@@ -32,7 +32,7 @@
 // err argument. The wire envelope does NOT swallow the inner
 // sentinel's identity, so callers can still probe via both probes
 // after MapErrorToHTTP sets the response.
-package completion
+package jobs
 
 import (
 	"errors"

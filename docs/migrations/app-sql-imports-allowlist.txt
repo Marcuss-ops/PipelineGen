@@ -86,7 +86,6 @@ internal/application/assets/artifacts/clips_adapter.go  # Wave 19 PR-Wave19-MIGR
 internal/application/assets/artifacts/resolvers/resolvers.go  # Wave 19 PR-Wave19-MIGRATE-R: ArtifactResolversPort (resolvers façade) + resolvers adapter; owner: agent/Codebuff; deadline: 2026-08-31
 
 # ── 6. Tier-E: voiceover SQL verification query (deadline 2026-08-31) ───
-internal/application/voiceover/verify_media_assets.go  # Wave 19 P0.7 Step 9/12: single SQL verification query (SELECT 1 FROM media_assets WHERE id=? AND source='voiceover'); owner: agent/Codebuff; deadline: 2026-08-31
 
 # ── 7. Tier-F: remaining P1-8 production violations (deadline 2026-08-31) ─
 # Files discovered by Check 42 that carry direct database/sql usage in

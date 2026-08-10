@@ -20,7 +20,7 @@
 //	FASE 6 advanced capability (July 2026):
 //	  - TempWritableChecker + defaultTempWritableChecker
 //	    (constructed inline in WithTempPath on the orchestrator)
-//	  - TTSChecker + CommandTTSChecker + NewTTSChecker
+//	  - TTSChecker (concrete owned by internal/infrastructure/process)
 //	  - DriveRootChecker + driveRootAdapter + NewDriveRootChecker
 //	  - OllamaChecker + ollamaHealthAdapter + NewOllamaChecker
 //	  - OutboxChecker + outboxPoolProbe + NewOutboxChecker
@@ -35,7 +35,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
@@ -202,49 +201,10 @@ func (c *defaultTempWritableChecker) CheckTempWritable(path string) error {
 	return os.Remove(f.Name())
 }
 
-// TTSChecker verifies the Python TTS bridge is available
-// (python3 can import the required modules). nil-safe.
+// TTSChecker is the application port for the Python TTS bridge probe.
+// The subprocess-backed concrete lives in internal/infrastructure/process.
 type TTSChecker interface {
 	CheckTTS(ctx context.Context) error
-}
-
-// CommandTTSChecker probes the Python TTS bridge by spawning
-// python3 -c "<import-statement>" and checking exit code. If a
-// script dir is configured, also verifies the canonical TTS
-// script (tts_edge.py) exists on disk.
-type CommandTTSChecker struct {
-	PythonBin string // python3 path; empty → "python3"
-	ScriptDir string // directory containing TTS scripts; empty → skip script-existence check
-}
-
-// CheckTTS runs the python import probe + (optional) script
-// existence probe. Both failures are wrapped in fmt.Errorf
-// with the python3 path for diagnostic clarity.
-func (c *CommandTTSChecker) CheckTTS(ctx context.Context) error {
-	python := c.PythonBin
-	if python == "" {
-		python = "python3"
-	}
-	// Fast probe: can python3 import the TTS bridge modules?
-	// The TTS bridge uses edge_tts + aiohttp; probe imports.
-	cmd := exec.CommandContext(ctx, python, "-c", "import sys, edge_tts; sys.exit(0)")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s not available: %w", python, err)
-	}
-	// If script dir is set, verify the TTS script exists on disk.
-	if c.ScriptDir != "" {
-		ttsScript := c.ScriptDir + "/tts_edge.py"
-		if _, err := os.Stat(ttsScript); err != nil {
-			return fmt.Errorf("TTS script %s not found: %w", ttsScript, err)
-		}
-	}
-	return nil
-}
-
-// NewTTSChecker creates a Python TTS probe. Pass empty scriptDir
-// to skip the script-existence check (just the import probe).
-func NewTTSChecker(pythonBin, scriptDir string) TTSChecker {
-	return &CommandTTSChecker{PythonBin: pythonBin, ScriptDir: scriptDir}
 }
 
 // DriveRootChecker verifies the Drive root folder is accessible

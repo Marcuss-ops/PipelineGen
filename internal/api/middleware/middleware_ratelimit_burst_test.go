@@ -170,7 +170,7 @@ func TestRateLimit_VoiceoverBurstBypass_DoesNotMatchLookalikeRoute(t *testing.T)
 // Remote workers (e.g. pkg/veloxclient::Client.SubmitAsync) consume
 // this header to throttle their retry budget to the actual refill
 // window; see pkg/retry/registry_google.go for the canonical parser
-// (client-side) and internal/application/jobs/completion/map_error.go
+// (client-side) and internal/api/jobs/map_error.go
 // for the canonical upstream sibling (server-side, rate_limited kind).
 //
 // We assert RANGE membership rather than exact value because the time

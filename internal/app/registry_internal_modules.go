@@ -10,12 +10,12 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	scriptassetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/scriptassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -128,7 +128,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		}
 		providerEntries = append(providerEntries, TrackedProviderEntry{Id: "stock", Kind: ProviderKindFetch, Fetch: stockadapter.NewAdapter(stockW.Service)})
 	}
-	scriptAssetsDescriptor, err := scriptassets.Build(scriptassets.Dependencies{Logger: log})
+	scriptAssetsDescriptor, err := scriptassetsapi.Build(scriptassetsapi.Dependencies{Logger: log})
 	if err != nil {
 		return registryCrossStepState{}, err
 	}

@@ -35,7 +35,7 @@ import (
 )
 
 // wireEnvelope mirrors the server-side body shape emitted by
-// completion.MapErrorToHTTP. Kept private to this package so the
+// api/jobs.MapErrorToHTTP. Kept private to this package so the
 // 7 canonical names (kind / error / retry_after_seconds) cannot
 // drift from the encode side.
 type wireEnvelope struct {

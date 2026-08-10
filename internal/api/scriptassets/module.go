@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -63,11 +64,11 @@ type ScriptAssetsDescriptor struct {
 	// Service is exposed so non-HTTP callers (future internal
 	// services, admin tools, tests) can drive the capability
 	// without re-constructing the use-case layer.
-	Service *Service
+	Service *appscriptassets.Service
 	// Provider is exposed so the composition root can publish it
 	// into the canonical providers.Registry via the
 	// DescriptorProviders slot. Same nil-safety as Service.
-	Provider *ScriptAssetsProvider
+	Provider *appscriptassets.ScriptAssetsProvider
 }
 
 // ── Module satisfaction (api.Descriptor) ───────────────────────
@@ -133,8 +134,8 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	provider := NewScriptAssetsProvider(zapLoggerAdapter{log})
-	svc := NewService(provider)
+	provider := appscriptassets.NewScriptAssetsProvider(zapLoggerAdapter{log})
+	svc := appscriptassets.NewService(provider)
 	handler := NewHandler(svc)
 
 	return &ScriptAssetsDescriptor{
