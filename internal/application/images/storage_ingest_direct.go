@@ -2,13 +2,12 @@ package images
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -114,58 +113,21 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		metaResult = nil
 	}
 
-	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-	// The legacy drive.Store upload bridge is RETIRED —
-	// Drive upload now routes directly through s.publisher.Publish
-	// (delivery.Publisher) with the canonical delivery.PublishRequest
-	// shape. The override root is still sourced from
-	// s.aiImageDriveRootForSource so the per-style folder routing
-	// is preserved end-to-end.
+	// Drive is deliberately not called from ingestDirect. When delivery is
+	// requested, this transaction emits an image.drive_delivery.requested
+	// intent and the outbox worker performs the external publish later.
+	// This keeps SQLite ownership ahead of every durable Drive side effect.
 	var driveFileID string
 	storedSourceURL := source
-	if s.publisher != nil && !skipDrive {
-		overrideRoot := s.aiImageDriveRootForSource(source, style)
-		if overrideRoot == "" {
-			if s.log != nil {
-				s.log.Debug("Drive upload skipped for image: no configured root folder",
-					zap.String("source", source),
-					zap.String("style", style),
-					zap.String("slug", slug))
-			}
-		} else {
-			// PR-WAVE-1-DRIVE-SSOT (July 2026): the per-style folder
-			// override is now expressed through the canonical
-			// DestinationFolderID field (the typed pre-resolved-folder
-			// surface on PublishRequest), NOT the legacy
-			// RootFolderOverride escape hatch. Per
-			// delivery/types.go::DestinationFolderID docstring, when
-			// non-empty DestinationFolderID takes precedence over the
-			// registry's RootFolderID for the destination — preserving
-			// the per-style folder routing end-to-end while satisfying
-			// the godlike/06 SSOT forward-prevention gate. Behavior
-			// unchanged from the caller's view.
-			pubResult, uploadErr := s.publisher.Publish(ctx, delivery.PublishRequest{
-				Destination:         delivery.DestinationImage,
-				DestinationFolderID: overrideRoot,
-				LocalPath:           localPath,
-				Filename:            filepath.Base(localPath),
-				Style:               style,
-				Subject:             slug,
-				Group:               slug,
-				ConflictPolicy:      delivery.ConflictSkip,
-			})
-			if uploadErr != nil {
-				s.log.Warn("Drive upload failed", zap.Error(uploadErr))
-			} else {
-				driveFileID = pubResult.FileID
-				if strings.TrimSpace(pubResult.WebViewLink) != "" {
-					storedSourceURL = pubResult.WebViewLink
-				}
-				if !skipMetadata && metaResult != nil {
-					s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
-				}
-			}
-		}
+	overrideRoot := ""
+	if !skipDrive && s.publisher == nil {
+		return nil, fmt.Errorf("image ingest: Drive delivery publisher is unavailable")
+	}
+	if !skipDrive {
+		// AI sources may provide a style-specific root override. Retrieved
+		// images intentionally leave this empty so the image destination
+		// registry remains the authority for the Drive root.
+		overrideRoot = s.aiImageDriveRootForSource(source, style)
 	}
 
 	// A retrieved download has a URL as its source, so classifying the URL
@@ -196,6 +158,10 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	origin = builtOrigin
 	provider = builtProvider
 
+	deliveryStatus := "ready"
+	if !skipDrive {
+		deliveryStatus = "delivery_pending"
+	}
 	result := &asset.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
@@ -207,7 +173,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Width:        width,
 		Height:       height,
 		SizeBytes:    int64(len(content)),
-		Status:       "ready",
+		Status:       deliveryStatus,
 		MetadataJSON: string(metaJSON),
 		Tags:         tags,
 		Origin:       origin,
@@ -243,6 +209,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		SourceURL:      storedSourceURL,
 		Metadata: persistence.TypedMetadata{
 			Title:       textutil.Truncate(description, 500),
+			Origin:      string(origin),
 			Description: description,
 			// The outbox supersede gate compares this value with the
 			// canonical metadata_json.content_hash. Keep both on the
@@ -266,6 +233,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 				"style":                    style,
 				"gen_id":                   genID,
 				"drive_file_id":            driveFileID,
+				"delivery_status":          deliveryStatus,
 				"content_hash":             hash,
 				"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
 				"subject_id":               slug,
@@ -273,6 +241,21 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		},
 		Locations:      buildImageIngestLocations(localPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
 		EmitIndexEvent: true,
+	}
+	if !skipDrive {
+		payload, marshalErr := json.Marshal(ImageDriveDeliveryPayload{
+			AssetID: hash, ContentHash: hash, LocalPath: localPath,
+			Filename: filepath.Base(localPath), DestinationFolderID: overrideRoot,
+			Style: style, Subject: slug, Group: slug, SourceVersion: 1,
+		})
+		if marshalErr != nil {
+			return nil, fmt.Errorf("image ingest: build Drive delivery outbox payload: %w", marshalErr)
+		}
+		commitReq.AdditionalOutboxEvents = []persistence.OutboxEvent{{
+			EventType:   EventTypeImageDriveDeliveryRequested,
+			AggregateID: hash, AggregateType: "media_asset", PayloadJSON: string(payload),
+			EventKey: "image-drive-delivery:" + hash + ":" + style + ":" + overrideRoot,
+		}}
 	}
 
 	if _, err := s.committer.CommitAsset(ctx, commitReq); err != nil {
@@ -303,51 +286,9 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
 	}
-	// The canonical committer stores the provider in source_provider and
-	// metadata_json. Keep the legacy image projection in sync as well so
-	// older readers of media_assets.provider observe the same provenance.
-	// This is an UPDATE-only compatibility projection: it emits no second
-	// outbox event and does not replace the atomic commit above.
-	if result.Provider != asset.ProviderUnknown && s.repo != nil {
-		if err := s.repo.UpdateOrigin(ctx, hash, string(result.Origin), string(result.Provider)); err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
-				return nil, fmt.Errorf("image provider projection: %w", err)
-			}
-			if s.log != nil {
-				s.log.Warn("legacy image provider projection unavailable", zap.Error(err))
-			}
-		}
-	}
-	if result.Origin == asset.ImageOriginRetrieved && s.repo != nil {
-		detail := &asset.RetrievedImageDetail{
-			AssetID: hash, SourceImageURL: source,
-			Provider: string(result.Provider), RetrievedAt: time.Now().UTC().Format(time.RFC3339),
-		}
-		if v, ok := ctx.Value(PageURLKey).(string); ok {
-			detail.SourcePageURL = v
-		}
-		if v, ok := ctx.Value(LicenseKey).(string); ok {
-			detail.License = v
-		}
-		if v, ok := ctx.Value(AuthorKey).(string); ok {
-			detail.Author = v
-		}
-		if v, ok := ctx.Value(SearchQueryKey).(string); ok {
-			detail.SearchQuery = v
-		}
-		if err := s.repo.UpsertRetrievedDetails(ctx, detail); err != nil {
-			// Older test/maintenance databases may predate migration 117;
-			// the canonical media commit has already succeeded, so keep the
-			// asset usable while making the missing projection observable.
-			if !strings.Contains(strings.ToLower(err.Error()), "no such table") {
-				return nil, fmt.Errorf("image retrieved provenance: %w", err)
-			}
-			if s.log != nil {
-				s.log.Warn("retrieved_image_details table unavailable", zap.Error(err))
-			}
-		}
-	}
-
+	// No synchronous compatibility writes follow the canonical commit. Drive
+	// identity and delivery status are written only by the post-commit worker;
+	// provenance needed by indexing is already part of the committed metadata.
 	return result, nil
 }
 

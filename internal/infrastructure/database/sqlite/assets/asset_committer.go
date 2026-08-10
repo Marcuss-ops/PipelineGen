@@ -77,12 +77,19 @@ func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persisten
 	}
 	committed = true
 
-	// Post-commit terminal-conflict check (mirrors the BLOCKER #4
-	// contract in clip_atomic_writer_outbox.go).
+	// Post-commit terminal-conflict checks cover both the canonical index
+	// event and every additional durable intent. The asset row is already
+	// owned by SQLite; a terminal intent is surfaced so callers can trigger
+	// explicit recovery instead of reporting an unqualified success.
 	if !res.OutboxInserted && res.OutboxEventKey != "" {
 		status, err := c.queryOutboxStatus(ctx, res.OutboxEventKey)
 		if err == nil && isTerminalOutboxStatus(status) {
 			return res, fmt.Errorf("%w: event_key=%q status=%q", persistence.ErrAssetCommitOutboxTerminal, res.OutboxEventKey, status)
+		}
+	}
+	for _, additional := range res.AdditionalOutbox {
+		if !additional.Inserted && isTerminalOutboxStatus(additional.ExistingStatus) {
+			return res, fmt.Errorf("%w: event_key=%q status=%q", persistence.ErrAssetCommitOutboxTerminal, additional.EventKey, additional.ExistingStatus)
 		}
 	}
 
@@ -243,6 +250,23 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 		result.OutboxEventKey = indexResult.EventKey
 		result.OutboxInserted = indexResult.Inserted
 		result.OutboxExistingStatus = indexResult.ExistingStatus
+	}
+
+	// Additional external side effects are represented as outbox intents,
+	// never executed synchronously after this transaction commits.
+	for i, event := range req.AdditionalOutboxEvents {
+		if event.EventType == "" || event.EventKey == "" {
+			return persistence.CommitResult{}, fmt.Errorf("asset committer: additional outbox event[%d] requires event type and event key", i)
+		}
+		enqueueResult, err := c.box.Enqueue(ctx, sqlTx, event.EventType, event.AggregateID, event.AggregateType, event.PayloadJSON, event.EventKey)
+		if err != nil {
+			return persistence.CommitResult{}, fmt.Errorf("asset committer: enqueue additional event %q: %w", event.EventType, err)
+		}
+		result.AdditionalOutbox = append(result.AdditionalOutbox, persistence.AdditionalOutboxResult{
+			EventKey:       event.EventKey,
+			Inserted:       enqueueResult.Inserted,
+			ExistingStatus: enqueueResult.ExistingStatus,
+		})
 	}
 
 	if c.log != nil {

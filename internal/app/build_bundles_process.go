@@ -216,7 +216,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
 	}
 
-	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, drivePublisher)
+	publisherHandler, driveUploadHandler, err := registerOutboxWorkers(eventsRegistry, log, outboxDeps, metadataExportHandler, jobs, stagingSvc, repo, repos.ImageRepo, drivePublisher)
 	if err != nil {
 		return nil, nil, err
 	}
