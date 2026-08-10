@@ -127,3 +127,41 @@ func TestResolverSearchProviderDoesNotRetainResultsBetweenCalls(t *testing.T) {
 		t.Fatalf("retrieval calls=%d, want 2 after sequential searches", got)
 	}
 }
+
+func TestResolverSearchProviderDoesNotRetainErrors(t *testing.T) {
+	searcher := &resolverSearchErrorFake{}
+	provider := NewResolverSearchProvider(searcher)
+	req := providers.SearchRequest{Query: "Elon Musk Tesla", Limit: 20}
+
+	for i := 0; i < 2; i++ {
+		if _, err := provider.Search(context.Background(), req); err == nil {
+			t.Fatalf("search %d: expected transient search error", i+1)
+		}
+	}
+	if got := searcher.calls.Load(); got != 2 {
+		t.Fatalf("retrieval calls=%d, want 2 after sequential failed searches", got)
+	}
+}
+
+// resolverSearchErrorFake proves that singleflight coalesces only in-flight
+// work; it is not a persistent result or error cache.
+type resolverSearchErrorFake struct {
+	calls atomic.Int32
+}
+
+func (f *resolverSearchErrorFake) Resolve(routing.ImageSearchTerritory) (routing.ImageSearcher, error) {
+	return f.searcher(), nil
+}
+
+func (f *resolverSearchErrorFake) searcher() routing.ImageSearcher {
+	return &resolverErrorSearcherFake{calls: &f.calls}
+}
+
+type resolverErrorSearcherFake struct {
+	calls *atomic.Int32
+}
+
+func (f *resolverErrorSearcherFake) Search(context.Context, routing.ImageFilter) ([]routing.ImageSearchResult, error) {
+	f.calls.Add(1)
+	return nil, context.DeadlineExceeded
+}
