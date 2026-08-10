@@ -25,6 +25,7 @@ package usecase
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -250,6 +251,31 @@ func (p *ProgressTracker) PhasePostprocessProgress(index, total int, processor s
 		percent = 95
 	}
 	p.phase(percent, "Running postprocessor %d/%d: %s...", index+1, total, processor)
+}
+
+// PhasePostprocessEvent reports the real registry execution boundary. The
+// legacy PhasePostprocessProgress helper remains available for older callers,
+// but new flows must use this event-aware method.
+func (p *ProgressTracker) PhasePostprocessEvent(index, total int, processor, status string, duration time.Duration, err error) {
+	if total <= 0 {
+		return
+	}
+	percent := 55 + ((index + 1) * 40 / total)
+	if percent > 95 {
+		percent = 95
+	}
+	switch status {
+	case "started":
+		p.phase(percent, "Running postprocessor %d/%d: %s...", index+1, total, processor)
+	case "completed":
+		p.phase(percent, "Completed postprocessor %d/%d: %s (%s)", index+1, total, processor, duration.Round(time.Millisecond))
+	case "failed":
+		reason := "unknown error"
+		if err != nil {
+			reason = err.Error()
+		}
+		p.phase(percent, "Failed postprocessor %d/%d: %s (%s): %s", index+1, total, processor, duration.Round(time.Millisecond), reason)
+	}
 }
 
 func (p *ProgressTracker) PhaseComplete() {

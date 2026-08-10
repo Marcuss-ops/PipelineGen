@@ -32,8 +32,6 @@
 package jobs
 
 import (
-	"sync"
-
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -55,11 +53,6 @@ type Service struct {
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	registry   *Registry
-
-	// enqueueMu serializes FindActiveByKey + Create to prevent the
-	// race where two concurrent Enqueue calls both find no existing
-	// job and then both insert a duplicate.
-	enqueueMu sync.Mutex
 }
 
 // NewService constructs the Service from the canonical job.JobBroker port.

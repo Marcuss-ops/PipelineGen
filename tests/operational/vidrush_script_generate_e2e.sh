@@ -113,6 +113,22 @@ run_generation() {
     [[ "$SMOKE_LAST_STATUS" == "completed" || "$SMOKE_LAST_STATUS" == "SUCCEEDED" ]] || {
         echo "job $LAST_JOB_ID ended in $SMOKE_LAST_STATUS" >&2
         smoke_echo_safe "$(head -c 1200 "$SMOKE_LAST_BODY")" >&2
+        # The lightweight status response is not enough to identify the
+        # exact VidRush stop point. Fetch the canonical full job report and
+        # print only a compact, token-safe failure projection so operators
+        # can distinguish generation, extraction, provider, persistence,
+        # Drive, and indexing failures without opening server logs.
+        if smoke_curl GET "/api/jobs/${LAST_JOB_ID}/full" >/dev/null; then
+            jq -r '
+              {
+                stage: (.current_stage // "unknown"),
+                progress: (.progress // null),
+                failure_reason: (.error // .failure_reason // "unknown"),
+                last_failure_event: ([.timeline[]? | select(.type == "stage.failed" or .type == "job.failed" or .type == "job_failed") | {type, message, data}] | last // null),
+                last_stage_progress: ([.timeline[]? | select(.type == "stage_progress") | .data] | last // null)
+              }
+            ' "$SMOKE_LAST_BODY" >&2 || true
+        fi
         return 1
     }
     result_file="$WORK_DIR/${label}_full.json"

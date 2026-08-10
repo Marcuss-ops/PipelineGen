@@ -46,8 +46,7 @@ const correlationLookupTimeout = 2 * time.Second
 // with the parent's ctx.
 func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *job.Job, retErr error) {
 	// Child-run linkage (nil-tolerant: no run bound = plain enqueue,
-	// e.g. API-triggered). The defer runs after the enqueue mutex is
-	// released (LIFO: the Unlock defer below is registered later).
+	// e.g. API-triggered).
 	parentRun := kernobs.FromContext(ctx)
 	created := false
 	if parentRun != nil {
@@ -72,15 +71,16 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		return nil, err
 	}
 
-	// Idempotency: auto-inject correlation_id from the request context.
-	if req.CorrelationID == "" {
+	// Idempotency: auto-inject correlation_id from the request context
+	// into a local value. Do not mutate the caller-owned request: callers
+	// may safely reuse one request concurrently, and enqueue serialization
+	// is intentionally provided by SQLite rather than this service.
+	correlationID := req.CorrelationID
+	if correlationID == "" {
 		if cid := corid.FromContext(ctx); cid != "" {
-			req.CorrelationID = cid
+			correlationID = cid
 		}
 	}
-
-	s.enqueueMu.Lock()
-	defer s.enqueueMu.Unlock()
 
 	if req.ActiveKey != "" {
 		existing, err := s.repo.FindActiveByKey(ctx, req.ActiveKey)
@@ -94,8 +94,8 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 	}
 
 	// Idempotency on (type, correlation_id).
-	if req.CorrelationID != "" {
-		existing, err := s.findExistingByCorrelation(ctx, req.Type, req.CorrelationID)
+	if correlationID != "" {
+		existing, err := s.findExistingByCorrelation(ctx, req.Type, correlationID)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +103,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 			s.log.Info("returning existing job with same (type, correlation_id)",
 				zap.String("job_id", existing.ID),
 				zap.String("type", req.Type),
-				zap.String("correlation_id", req.CorrelationID),
+				zap.String("correlation_id", correlationID),
 			)
 			return existing, nil
 		}
@@ -138,7 +138,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		CreatedAt:     now,
 		UpdatedAt:     now,
 		ActiveKey:     req.ActiveKey,
-		CorrelationID: req.CorrelationID,
+		CorrelationID: correlationID,
 	}
 
 	// Step 6 (July 2026): fail-closed handler gate. When the dispatcher is
@@ -179,7 +179,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		// (ErrNoExtended) fields — neither depends on the error string
 		// format, so a future driver string change cannot silently disable
 		// the rescue path).
-		if j.CorrelationID != "" {
+		if correlationID != "" || req.ActiveKey != "" {
 			var sqliteErr sqlite3.Error
 			// PR-JOBS-SQLITE3-PROBE-FIX (commit-9, 2026-07-05): canonical
 			// ExtendedCode == sqlite3.ErrConstraintUnique comparison.
@@ -201,13 +201,24 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 			// race condition returned the generic "failed to create job"
 			// error instead of the existing job.
 			if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
-				if existing, findErr := s.findExistingByCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
-					s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
-						zap.String("job_id", existing.ID),
-						zap.String("type", j.Type),
-						zap.String("correlation_id", j.CorrelationID),
-					)
-					return existing, nil
+				if correlationID != "" {
+					if existing, findErr := s.findExistingByCorrelation(ctx, j.Type, correlationID); findErr == nil && existing != nil {
+						s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
+							zap.String("job_id", existing.ID),
+							zap.String("type", j.Type),
+							zap.String("correlation_id", correlationID),
+						)
+						return existing, nil
+					}
+				}
+				if req.ActiveKey != "" {
+					if existing, findErr := s.repo.FindActiveByKey(ctx, req.ActiveKey); findErr == nil && existing != nil && !existing.IsTerminal() {
+						s.log.Info("returning existing job by active key — caught race on SQLite UNIQUE constraint",
+							zap.String("job_id", existing.ID),
+							zap.String("active_key", req.ActiveKey),
+						)
+						return existing, nil
+					}
 				}
 				// typed probe fired but no existing job found — propagate
 				// as typed sentinel so callers can errors.Is it.

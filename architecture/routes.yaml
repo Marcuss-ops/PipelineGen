@@ -366,6 +366,9 @@ routes:
       path: /api/media/register-from-youtube
       source: cmd/admin/gen_api_docs.go
     - method: POST
+      path: /api/media/resolve/:asset_id
+      source: cmd/admin/gen_api_docs.go
+    - method: POST
       path: /api/media/search
       source: cmd/admin/gen_api_docs.go
     - method: POST

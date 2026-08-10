@@ -70,14 +70,21 @@ func registerAIBackedProcessors(
 	vidrushMetrics := observability.NewVidRushMetricsAdapter()
 	ppReg.SetVidRushTimingMetrics(vidrushMetrics)
 	// ── Entities ──────────────────────────────────────────────────────
-	// Entity extraction is local and deterministic. It is intentionally
-	// registered independently of Ollama so extraction never becomes a
-	// second LLM call and never disappears when Ollama is unavailable.
-	entityAdapter := localnlp.NewHybridExtractor()
+	// Entity extraction uses the bounded Ollama batch path when the canonical
+	// local client is wired; the adapter selects the small gemma3:1b model.
+	// Keep the deterministic local extractor for deployments that deliberately
+	// omit Ollama.
+	var entityAdapter adapters.EntityExtractor
+	if root.AI != nil && root.AI.ScriptGen != nil && root.AI.ScriptGen.GetClient() != nil {
+		entityAdapter = ollamaadapters.NewOllamaEntityExtractorAdapter(root.AI.ScriptGen.GetClient())
+		log.Info("EntitiesProcessor wired with bounded Ollama batches")
+	} else {
+		entityAdapter = localnlp.NewHybridExtractor()
+		log.Info("EntitiesProcessor wired with local auto CPU/GPU extractor")
+	}
 	if !ppReg.Register(adapters.NewEntitiesProcessorWithCache(entityAdapter, vidRushCache, vidrushMetrics)) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
-	log.Info("EntitiesProcessor wired with local auto CPU/GPU extractor")
 
 	// ── Metadata ─────────────────────────────────────────────────────
 	var metadataAdapter adapters.MetadataGenerator

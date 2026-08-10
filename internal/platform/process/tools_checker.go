@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-
-	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 )
 
 // DefaultToolsChecker probes required CLI tools through the platform PATH.
@@ -33,8 +31,18 @@ func (c *DefaultToolsChecker) CheckTools(_ context.Context) []string {
 	return missing
 }
 
+// ToolsChecker is the platform-facing tool lookup contract.
+type ToolsChecker interface {
+	CheckTools(ctx context.Context) (missing []string)
+}
+
+// TTSChecker is the platform-facing Python TTS probe contract.
+type TTSChecker interface {
+	CheckTTS(ctx context.Context) error
+}
+
 // NewToolsChecker constructs the production PATH-backed readiness adapter.
-func NewToolsChecker() systemhealth.ToolsChecker {
+func NewToolsChecker() ToolsChecker {
 	return &DefaultToolsChecker{RequiredTools: []string{"yt-dlp", "ffmpeg", "ffprobe"}}
 }
 
@@ -64,6 +72,6 @@ func (c *CommandTTSChecker) CheckTTS(ctx context.Context) error {
 }
 
 // NewTTSChecker creates the infrastructure-owned Python TTS readiness adapter.
-func NewTTSChecker(pythonBin, scriptDir string) systemhealth.TTSChecker {
+func NewTTSChecker(pythonBin, scriptDir string) TTSChecker {
 	return &CommandTTSChecker{PythonBin: pythonBin, ScriptDir: scriptDir}
 }

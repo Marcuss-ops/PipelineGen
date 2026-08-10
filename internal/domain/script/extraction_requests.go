@@ -21,8 +21,19 @@ type EntityResult struct {
 	Raw string `json:"raw,omitempty"`
 }
 
+// EntityExtractionBatchResult preserves scene identity when several scene
+// requests share one model invocation.
+type EntityExtractionBatchResult struct {
+	SegmentID    string        `json:"segment_id,omitempty"`
+	SegmentIndex int           `json:"segment_index"`
+	Result       *EntityResult `json:"result,omitempty"`
+}
+
 // EntityExtractionRequest is the canonical typed request for entity extraction.
 type EntityExtractionRequest struct {
+	// SegmentID is stable within the current VidRush plan and lets a batched
+	// backend map the model response back to the originating scene.
+	SegmentID string `json:"segment_id,omitempty"`
 	// Text is the canonical text for exactly one VidRush segment.
 	Text string `json:"text"`
 	// Title is the resolved document/video title.
