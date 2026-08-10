@@ -186,6 +186,7 @@
       "completed_packages": [
         "internal/infrastructure/database/sqlite/assets/clips"
       ],
+      "note": "ClipsRepository migration completed: the parent assets package is the sole owner of ClipsRepository business logic; assets/clips remains only for the independent idempotency adapter and is guarded against duplicate implementations/imports.",
       "remaining_files": 47
     }
   ],

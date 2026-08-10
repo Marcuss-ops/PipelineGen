@@ -421,6 +421,10 @@ hard_gates:
   # consumers of `internal/domain/job`; the percheck now has a
   # zero legal-call-site footprint by construction.
   - percheck_legacy_root_ban
+  # Retired duplicate SQLite assets/clips implementation: only the idempotency
+  # adapter remains in that directory; new implementation files and imports fail.
+  - percheck_sqlite_assets_clips_duplicate
+  - percheck_sqlite_assets_clips_import
   # Migration-only roots may be edited for cutover/removal/fixes, but new files
   # in those roots are forbidden. Added-file detection is fail-closed in CI.
   - percheck_legacy_root_new_code
