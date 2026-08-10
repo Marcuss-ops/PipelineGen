@@ -6,6 +6,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type AssetKind string
@@ -65,15 +66,16 @@ type FinalizeInput struct {
 }
 
 type FinalizeResult struct {
-	OK           bool
-	Status       string
-	FileHash     string
-	ContentHash  string
-	DriveLink    string
-	DriveFileID  string
-	DownloadLink string
-	LocalPath    string
-	Error        string
+	OK             bool
+	Status         string
+	DeliveryStatus asset.AssetPublishStatus
+	FileHash       string
+	ContentHash    string
+	DriveLink      string
+	DriveFileID    string
+	DownloadLink   string
+	LocalPath      string
+	Error          string
 }
 
 // UploadOnlyResult is the post-Drive-upload surface. Used by the
@@ -127,6 +129,11 @@ type VoiceoverProjectionInput struct {
 // Use assetop types for compatibility
 type ExistingAssetQuery = assetop.ExistingAssetQuery
 type AssetRecord = assetop.AssetRecord
+
+// Finalizer is the canonical commit boundary used by the lifecycle.
+type Finalizer interface {
+	Finalize(context.Context, *artifacts.MediaRecord, artifacts.FinalizeOptions) (*artifacts.FinalizeResult, error)
+}
 
 // AssetRecordStore defines the interface for asset record persistence
 type AssetRecordStore interface {

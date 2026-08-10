@@ -3,6 +3,7 @@ package artifacts
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,15 @@ func NewFinalizerWithPorts(registry Registry, driveVerifier DriveVerifier, asset
 }
 
 func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts FinalizeOptions) (*FinalizeResult, error) {
+	if rec == nil {
+		return nil, fmt.Errorf("finalize: media record is required")
+	}
+	if f == nil || f.registry == nil {
+		return nil, fmt.Errorf("finalize: registry is unavailable")
+	}
+	if f.log == nil {
+		f.log = zap.NewNop()
+	}
 	result := &FinalizeResult{
 		Record: rec,
 		Status: rec.Status,
@@ -119,6 +129,23 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		}
 	}
 
+	if rec.PublishStatus != "" {
+		var metadata map[string]any
+		if strings.TrimSpace(rec.Metadata) != "" {
+			_ = json.Unmarshal([]byte(rec.Metadata), &metadata)
+		}
+		if metadata == nil {
+			metadata = make(map[string]any)
+		}
+		metadata["delivery_status"] = string(rec.PublishStatus)
+		if rec.Error != "" {
+			metadata["delivery_error"] = rec.Error
+		}
+		if data, err := json.Marshal(metadata); err == nil {
+			rec.Metadata = string(data)
+		}
+	}
+
 	if err := f.registry.UpsertMedia(ctx, rec); err != nil {
 		result.OK = false
 		result.Status = "failed"
@@ -147,7 +174,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 			DownloadLink: rec.DownloadLink,
 			FileHash:     rec.FileHash,
 			ContentHash:  rec.ContentHash,
-			Status:       "ready",
+			Status:       assetIndexStatus(rec.PublishStatus),
 			Metadata:     rec.Metadata,
 			CreatedAt:    time.Now().UTC(),
 			UpdatedAt:    time.Now().UTC(),
@@ -195,6 +222,17 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		zap.Bool("drive_uploaded", result.DriveUploaded))
 
 	return result, nil
+}
+
+func assetIndexStatus(status asset.AssetPublishStatus) string {
+	switch status {
+	case asset.AssetPublishPending, asset.AssetPublishPublishing:
+		return "pending"
+	case asset.AssetPublishFailed:
+		return "failed"
+	default:
+		return "ready"
+	}
 }
 
 func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
