@@ -72,12 +72,6 @@ func (s *Service) ProcessLifecycle(ctx context.Context, metadata *lifecycle.Fina
 		item.Error = fmt.Sprintf("lifecycle failed: %v", err)
 		return
 	}
-	if !lifecycleResult.OK {
-		item.Status = "failed"
-		item.Error = lifecycleResult.Error
-		return
-	}
-
 	item.LocalPath = localPath
 	item.DriveLink = lifecycleResult.DriveLink
 	item.DriveFileID = lifecycleResult.DriveFileID

@@ -83,7 +83,7 @@ func (s *DedupeService) CheckDuplicate(ctx context.Context, query ExistingAssetQ
 	if s.policy.CheckByDriveFileID && query.DriveFileID != "" {
 		rec, err := s.store.FindExisting(ctx, ExistingAssetQuery{DriveFileID: query.DriveFileID})
 		if err != nil {
-			s.log.Warn("failed to check duplicate by DriveFileID", zap.Error(err))
+			return nil, err
 		} else if rec != nil {
 			s.log.Info("duplicate found by DriveFileID",
 				zap.String("id", rec.ID),
@@ -95,7 +95,7 @@ func (s *DedupeService) CheckDuplicate(ctx context.Context, query ExistingAssetQ
 	if s.policy.CheckByHash && query.FileHash != "" {
 		rec, err := s.store.FindExisting(ctx, ExistingAssetQuery{FileHash: query.FileHash})
 		if err != nil {
-			s.log.Warn("failed to check duplicate by hash", zap.Error(err))
+			return nil, err
 		} else if rec != nil {
 			s.log.Info("duplicate found by hash",
 				zap.String("id", rec.ID),
@@ -107,7 +107,7 @@ func (s *DedupeService) CheckDuplicate(ctx context.Context, query ExistingAssetQ
 	if s.policy.CheckByFilename && query.Filename != "" {
 		rec, err := s.store.FindExisting(ctx, ExistingAssetQuery{Filename: query.Filename, Source: query.Source})
 		if err != nil {
-			s.log.Warn("failed to check duplicate by filename", zap.Error(err))
+			return nil, err
 		} else if rec != nil {
 			s.log.Info("duplicate found by filename",
 				zap.String("id", rec.ID),

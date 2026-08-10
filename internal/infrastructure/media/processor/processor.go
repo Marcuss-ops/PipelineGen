@@ -349,7 +349,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// Result.Error with the publisher error message at non-zero status.
 	// Status itself stays "processed" so the lifecycle layer's
 	// RequireDrive gate is the single canonical place that flips
-	// to UPLOAD_FAILED (per F2.7 closure contract).
+	// to a required Drive-upload error (per the lifecycle contract).
 	if input.FolderID != "" {
 		destKey := delivery.DestinationArtlist
 		pubReq := delivery.PublishRequest{
@@ -363,7 +363,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
 		if pubErr != nil {
-			p.log.Warn("Drive upload failed (continuing with local only; lifecycle.Finalize.RequireDrive will fail-closed in UPLOAD_FAILED)",
+			p.log.Warn("Drive upload failed (continuing with local only; lifecycle.RequireDrive reports the operational error)",
 				zap.String("id", input.ID),
 				zap.String("destination", string(destKey)),
 				zap.Error(pubErr),
