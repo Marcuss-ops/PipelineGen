@@ -8,6 +8,7 @@ package scriptassets
 import (
 	"net/http"
 
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,13 +17,13 @@ import (
 // /script-assets/catalog route; future per-script asset lookups land
 // behind /script-assets/:scriptId/assets in a follow-up PR.
 type Handler struct {
-	svc *Service
+	svc *appscriptassets.Service
 }
 
 // NewHandler wires a Handler around the canonical Service. svc is
 // required (no nil-tolerant transport — handlers must panic visibly
 // at startup if wiring is broken, per the composition root's contract).
-func NewHandler(svc *Service) *Handler {
+func NewHandler(svc *appscriptassets.Service) *Handler {
 	return &Handler{svc: svc}
 }
 

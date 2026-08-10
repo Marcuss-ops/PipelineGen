@@ -50,7 +50,6 @@ internal/application/voiceover/finalizer_execute.go	database/sql	@agent/Codebuff
 internal/application/voiceover/persistence/repository.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/voiceover/ports_finalization.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/voiceover/upload_intent.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
-internal/application/voiceover/verify_media_assets.go	database/sql	@agent/Codebuff	2026-08-31	legacy direct SQL import; migrate to typed repository/tx port per PR-REFACTOR-P0-IO-BINDER-SQLITE
 internal/application/workerdoctor/probes_dependency.go	os.OpenFile	@agent/Codebuff	2026-08-31	legacy file-system access; migrate to typed FileReader/FileWriter port per PR-REFACTOR-P0-IO-BINDER-FS
 internal/application/assets/texttracks/ass_materializer.go	os.Open	@agent/Antigravity	2026-08-31	validate subtitle ASS files
 internal/application/scripts/usecase/clip_sampler_gates.go	database/sql	@agent/Antigravity	2026-08-31	enforce subtitles check on candidate clips

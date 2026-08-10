@@ -16,7 +16,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // single source of truth for the wire envelope taxonomy. The server
-// emits via internal/application/jobs/completion.MapErrorToHTTP; the
+// emits via internal/api/jobs.MapErrorToHTTP; the
 // client reconstructs via internal/infrastructure/remote/jobbrokerclient.
 // decodeCompletionErrorEnvelope. Both sides share this file's names.
 //
@@ -44,7 +44,7 @@
 //   - BACKFILL (forward-pointer): migrate the remaining completion-
 //     adjacent call sites in internal/api/jobs/handler_workers.go
 //     (Complete / Fail / Renew / Progress) from apiutil.InternalError
-//     to completion.MapErrorToHTTP.
+//     to api/jobs.MapErrorToHTTP.
 //   - CUTOVER (forward-pointer): retire the apiutil.InternalError
 //     overlay on completion-path routes once every call site maps.
 //   - CONTRACT (forward-pointer): physical git-rm of the legacy
@@ -191,7 +191,7 @@ var kindToSentinel = map[ErrorKind]error{
 //	if errors.Is(err, remote.ErrCompletionXxx) {...} // sentinel probe
 //
 // Wildcard use cases:
-//   - Server emits: completion.MapErrorToHTTP → c.AbortWithStatusJSON
+//   - Server emits: api/jobs.MapErrorToHTTP → c.AbortWithStatusJSON
 //     with the canonical wire envelope {kind, error, retry_after_seconds}.
 //   - Client decodes: jobbrokerclient.decodeCompletionErrorEnvelope
 //     → reconstructs a RemoteCompletionError instance from the JSON

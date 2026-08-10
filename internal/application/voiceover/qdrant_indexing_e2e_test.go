@@ -605,7 +605,7 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	}
 
 	// ── Stage C: assert media_assets projection (source='voiceover') ─
-	hit, err := HasVoiceoverProjection(ctx, db, voiceoverID)
+	hit, err := sqassets.HasVoiceoverProjection(ctx, db, voiceoverID)
 	if err != nil {
 		t.Fatalf("HasVoiceoverProjection: %v", err)
 	}

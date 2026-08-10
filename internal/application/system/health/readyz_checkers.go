@@ -10,9 +10,9 @@
 //     run*Check runners + formatNanos helper. Owns NO checker
 //     interfaces, concretes, or NewX constructors.
 //
-//   - (B) readyz_checkers_tools.go: ToolsChecker interface +
-//     DefaultToolsChecker concrete + NewToolsChecker. Owner of
-//     CLI-toolpath readiness probe (Section FileToolsChecker).
+//   - (B) readyz_checkers_tools.go: ToolsChecker application port. The
+//     concrete CLI-toolpath readiness probe lives in
+//     internal/infrastructure/process.
 //
 //   - (C) readyz_checkers_canary.go: DriveCanaryPort +
 //     HandlerRegChecker interfaces + publisherCanary concrete +
@@ -31,17 +31,17 @@
 //     their NewX constructors + 5 FASE 6 capability interfaces
 //     (TempWritableChecker + TTSChecker + DriveRootChecker +
 //     OllamaChecker + OutboxChecker) + their concretes
-//     (defaultTempWritableChecker + CommandTTSChecker +
+//     (defaultTempWritableChecker + infrastructure TTS adapter +
 //     driveRootAdapter + ollamaHealthAdapter + outboxPoolProbe) +
 //     their NewX constructors. Owner of Step 4 drive-specific
 //     preflight probes + FASE 6 advanced capability probes.
 //
 // Lookup paths preserved (same package, no import edge change):
 //   - health.ReadyChecker (struct on *ReadyChecker — see ready.go)
-//   - health.NewToolsChecker / NewPublisherCanary /
+//   - NewPublisherCanary /
 //     NewHandlerPresenceChecker / NewDriveCredentialsChecker /
 //     NewDriveFolderChecker / NewPublisherChecker /
-//     NewDestinationClipChecker / NewTTSChecker /
+//     NewDestinationClipChecker /
 //     NewDriveRootChecker / NewOllamaChecker / NewOutboxChecker
 //
 // godlike/07 minimum-blast-radius: zero behavior change. Every

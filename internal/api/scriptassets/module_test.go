@@ -21,12 +21,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appscriptassets "github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 )
 
 // stubProviderRegistrar captures Register calls without leaking
 // through providers.Registry. Simplifies the test surface — we don't
 // need to construct a real Registry just to assert that
-// RegisterProviders correctly forwards the *ScriptAssetsProvider.
+// RegisterProviders correctly forwards the *appscriptassets.ScriptAssetsProvider.
 type stubProviderRegistrar struct {
 	called bool
 	got    providers.Provider
@@ -49,14 +50,14 @@ func (nilLogger) Warn(string, ...any) {}
 // ── Provider identity ────────────────────────────────────────────
 
 func TestScriptAssetsProvider_Name(t *testing.T) {
-	p := NewScriptAssetsProvider(nilLogger{})
+	p := appscriptassets.NewScriptAssetsProvider(nilLogger{})
 	if got, want := p.Name(), "script_assets"; got != want {
 		t.Fatalf("Name() = %q, want %q", got, want)
 	}
 }
 
 func TestScriptAssetsProvider_Capabilities(t *testing.T) {
-	p := NewScriptAssetsProvider(nilLogger{})
+	p := appscriptassets.NewScriptAssetsProvider(nilLogger{})
 	caps := p.Capabilities()
 	if len(caps) != 2 {
 		t.Fatalf("Capabilities() returned %d caps, want 2", len(caps))
@@ -73,7 +74,7 @@ func TestScriptAssetsProvider_Capabilities_NoFetch(t *testing.T) {
 	// CapabilityFetch must NOT be advertised — script-to-asset mapping
 	// has no download stage; downstream media composition fetches the
 	// resolved assets through their own providers.
-	p := NewScriptAssetsProvider(nilLogger{})
+	p := appscriptassets.NewScriptAssetsProvider(nilLogger{})
 	for _, c := range p.Capabilities() {
 		if c == providers.CapabilityFetch {
 			t.Fatalf("Capabilities() unexpectedly includes CapabilityFetch — would break ByCapability lookups")
@@ -84,7 +85,7 @@ func TestScriptAssetsProvider_Capabilities_NoFetch(t *testing.T) {
 // ── Provider.Search behaviour ───────────────────────────────────
 
 func TestScriptAssetsProvider_Search_ReturnsOneCandidatePerQuery(t *testing.T) {
-	p := NewScriptAssetsProvider(nilLogger{})
+	p := appscriptassets.NewScriptAssetsProvider(nilLogger{})
 	res, err := p.Search(context.Background(), providers.SearchRequest{Query: "medieval castles"})
 	if err != nil {
 		t.Fatalf("Search returned unexpected error: %v", err)
@@ -104,7 +105,7 @@ func TestScriptAssetsProvider_Search_ReturnsOneCandidatePerQuery(t *testing.T) {
 }
 
 func TestScriptAssetsProvider_Search_EmptyQueryRejected(t *testing.T) {
-	p := NewScriptAssetsProvider(nilLogger{})
+	p := appscriptassets.NewScriptAssetsProvider(nilLogger{})
 	_, err := p.Search(context.Background(), providers.SearchRequest{Query: ""})
 	if err == nil {
 		t.Fatal("Search with empty query returned no error — must reject")
@@ -112,7 +113,7 @@ func TestScriptAssetsProvider_Search_EmptyQueryRejected(t *testing.T) {
 }
 
 func TestScriptAssetsProvider_Search_NilReceiverRejected(t *testing.T) {
-	var p *ScriptAssetsProvider
+	var p *appscriptassets.ScriptAssetsProvider
 	_, err := p.Search(context.Background(), providers.SearchRequest{Query: "topic"})
 	if err == nil {
 		t.Fatal("nil receiver Search returned no error — must reject")
@@ -235,6 +236,6 @@ func TestRegisterProviders_NilRegistrar_Rejected(t *testing.T) {
 // ScriptAssetsDescriptor satisfies the slot the composition root will
 // type-assert on.
 var (
-	_ providers.SearchProvider = (*ScriptAssetsProvider)(nil)
+	_ providers.SearchProvider = (*appscriptassets.ScriptAssetsProvider)(nil)
 	_ api.DescriptorProviders  = (*ScriptAssetsDescriptor)(nil)
 )

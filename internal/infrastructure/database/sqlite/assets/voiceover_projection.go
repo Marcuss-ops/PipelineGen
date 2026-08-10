@@ -1,4 +1,4 @@
-// Package voiceover — verify_media_assets.go (P0.7 Step 9/12, June 2026).
+// Package assets — voiceover_projection.go (P0.7 Step 9/12, June 2026).
 //
 // SQL verification contract.
 //
@@ -26,9 +26,9 @@
 //     state is impossible. This was the pre-fix bug surface: a
 //     success-then-failure pair would leave an orphan row.
 //
-// The HasVoiceoverProjection helper is the canonical reference for
-// integration tests, downstream code-search auditing, and operator-facing
-// SQL verification scripts. It is intentionally NOT lint-protected
+// The HasVoiceoverProjection helper is the canonical assets projection
+// verification reference for integration tests, downstream code-search
+// auditing, and operator-facing SQL verification scripts. It is intentionally NOT lint-protected
 // (sqlnear inline literals are acceptable in verification/audit helpers
 // — the canonical media_assets write path owns SQL composition).
 //
@@ -38,7 +38,7 @@
 // smoke test for full migration is the existing count of media_assets
 // rows with source='voiceover', which should equal the count of
 // voiceovers.id rows post-cutover.
-package voiceover
+package assets
 
 import (
 	"context"

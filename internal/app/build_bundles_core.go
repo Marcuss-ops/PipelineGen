@@ -40,6 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
+	processinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 
 	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
@@ -124,7 +125,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *wiring.UtilityBundle {
 	svc := buildHealthService(cfg, db)
 	rc := systemhealth.NewReadyChecker(svc).
-		WithTools(systemhealth.NewToolsChecker()).
+		WithTools(processinfra.NewToolsChecker()).
 		WithClipsPath("data/media/clips")
 
 	// Step 4: Drive readiness checks (July 2026).
@@ -171,7 +172,7 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 	// FASE 6: severe readiness probes (temp, tts, drive_root, ollama, outbox).
 	// Temp + TTS + Drive root are wired inline below.
 	rc = rc.WithTempPath(cfg.Storage.DataDir).
-		WithTTSChecker(systemhealth.NewTTSChecker("", cfg.Paths.PythonScriptsDir))
+		WithTTSChecker(processinfra.NewTTSChecker("", cfg.Paths.PythonScriptsDir))
 
 	// Outbox worker pool liveness (July 2026): checks that the
 	// outboxevents.Pool was created and started at composition time.
