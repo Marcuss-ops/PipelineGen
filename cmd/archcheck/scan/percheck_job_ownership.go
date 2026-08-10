@@ -148,7 +148,8 @@ func loadOwnershipJobs(root string) ([]ownershipJob, error) {
 }
 
 // collectRuntimeJobEvidence parses production Go files and records only:
-//   - JobPolicy composite literals with a Type field; and
+//   - JobPolicy composite literals with a canonical Completion.JobType field
+//     (and the historical direct Type field used by isolated fixtures); and
 //   - calls whose selector name is exactly RegisterHandler and whose first
 //     argument is the job-type expression.
 //
@@ -193,11 +194,30 @@ func collectRuntimeJobEvidence(root string) (registryExpressions, handlerExpress
 				}
 				for _, element := range n.Elts {
 					field, ok := element.(*ast.KeyValueExpr)
-					if !ok || expressionName(field.Key) != "Type" {
+					if !ok {
 						continue
 					}
-					if name := expressionName(field.Value); name != "" {
-						registryExpressions = append(registryExpressions, name)
+					if expressionName(field.Key) == "Type" {
+						if name := expressionName(field.Value); name != "" {
+							registryExpressions = append(registryExpressions, name)
+						}
+						continue
+					}
+					if expressionName(field.Key) != "Completion" {
+						continue
+					}
+					completion, ok := field.Value.(*ast.CompositeLit)
+					if !ok {
+						continue
+					}
+					for _, completionElement := range completion.Elts {
+						completionField, ok := completionElement.(*ast.KeyValueExpr)
+						if !ok || expressionName(completionField.Key) != "JobType" {
+							continue
+						}
+						if name := expressionName(completionField.Value); name != "" {
+							registryExpressions = append(registryExpressions, name)
+						}
 					}
 				}
 			case *ast.CallExpr:

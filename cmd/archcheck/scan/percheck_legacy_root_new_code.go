@@ -10,6 +10,7 @@ package scan
 
 import (
 	"bufio"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -34,6 +35,15 @@ func ScanLegacyRootNewCode(root string, pol *policy.Policy, r *report.Report) {
 		return
 	}
 	for _, rel := range added {
+		// A prior commit may have added a file that was subsequently moved
+		// or removed in the current tree. It is no longer production code in
+		// the reviewed snapshot, so do not report stale historical paths.
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			continue
+		}
 		// Tests are regression guards rather than production architecture;
 		// existing legacy packages may add tests while they are migrated.
 		if strings.HasSuffix(rel, "_test.go") {

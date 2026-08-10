@@ -33,7 +33,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/youtubediscoveries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	platformyoutube "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -98,7 +99,7 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 		// the right default for the monitor (it processes the full
 		// channel feed including age-restricted videos).
 		ytdlpForSubtitles := downloader.NewYTDLP(deps.cfg)
-		ytdlpSubtitleAdapter := youtubeinfra.NewYTDLPSubtitleAdapter(youtubeinfra.Deps{
+		ytdlpSubtitleAdapter := platformyoutube.NewYTDLPSubtitleAdapter(platformyoutube.Deps{
 			Ytdlp:      ytdlpForSubtitles,
 			CmdBuilder: ytdlp.NewCommandBuilder(deps.cfg),
 			UseCookies: true,
