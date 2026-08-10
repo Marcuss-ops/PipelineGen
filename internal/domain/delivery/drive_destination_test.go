@@ -50,9 +50,9 @@ func TestResolveDriveDestination_Stock_HappyPath(t *testing.T) {
 		t.Errorf("PathLeafName = %q, want %q", dest.PathLeafName, "round-7-broner-barcolla")
 	}
 
-	// RootFolderOverride should be empty (no override set)
-	if dest.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride = %q, want empty", dest.RootFolderOverride)
+	// ParentFolderID should be empty (no override set)
+	if dest.ParentFolderID != "" {
+		t.Errorf("ParentFolderID = %q, want empty", dest.ParentFolderID)
 	}
 }
 
@@ -248,13 +248,13 @@ func TestResolveDriveDestination_Voiceover_ProjectAndLanguage(t *testing.T) {
 
 // ── DriveFolderOverride ───────────────────────────────────────────────
 
-func TestResolveDriveDestination_RootFolderOverride_PassedThrough(t *testing.T) {
+func TestResolveDriveDestination_ParentFolderID_PassedThrough(t *testing.T) {
 	in := DriveDestinationInput{
-		DriveFolderOverrideID: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs",
+		ParentFolderID: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs",
 	}
 	dest := ResolveDriveDestination(in)
-	if dest.RootFolderOverride != "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs" {
-		t.Errorf("RootFolderOverride = %q, want passthrough", dest.RootFolderOverride)
+	if dest.ParentFolderID != "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2wtIs" {
+		t.Errorf("ParentFolderID = %q, want passthrough", dest.ParentFolderID)
 	}
 }
 
@@ -271,8 +271,8 @@ func TestResolveDriveDestination_EmptyInput_ProducesEmptyDestination(t *testing.
 	if dest.PathLeafName != "" {
 		t.Errorf("PathLeafName should be empty")
 	}
-	if dest.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride should be empty")
+	if dest.ParentFolderID != "" {
+		t.Errorf("ParentFolderID should be empty")
 	}
 }
 

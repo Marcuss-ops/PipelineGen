@@ -13,11 +13,8 @@
 // pre-built Handler from the composition root (forward-prevention:
 // avoid any init-time wiring phase).
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the Build function is allowed to
-// return a non-nil Descriptor even when the underlying mediamemory
-// handler is not yet wired for production — the ModuleName and
-// base route prefix are still canonical SSOT and the composition
-// root decides when to swap in a wired Handler.
+// godlike/07 NO-FAKE-AVAILABILITY: unavailable capabilities are
+// not registered. The composition root passes only wired handlers.
 package mediamemory
 
 import (
@@ -48,9 +45,8 @@ type Module struct {
 }
 
 // NewModule constructs the api.Module wrapper. The handler argument
-// MAY be nil during Phase 1.1 (skeleton wiring); the wrapper renders
-// the registered routes as 501 Not Implemented envelopes until the
-// composition root swaps in a wired Handler.
+// must be non-nil for a registered capability; nil handlers are
+// skipped by RegisterRoutes.
 func NewModule(name string, enabled func() bool, handler *Handler, log *zap.Logger) *Module {
 	return &Module{
 		name:    name,
@@ -86,10 +82,9 @@ func (m *Module) Enabled() bool {
 // full path is /api/media-memory/... The wrapper hands the
 // already-prefixed group to the Handler verbatim.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: when the handler is nil
-// (skeleton phase), RegisterRoutes logs a warning rather than
-// silently mounting a 501-only router (the composition root will
-// detect that the capability is not yet active and skip the mount).
+// godlike/07 NO-FAKE-AVAILABILITY: when the handler is nil,
+// RegisterRoutes skips the capability rather than mounting a
+// placeholder route.
 func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
 	if m.handler == nil {
 		if m.log != nil {
@@ -107,11 +102,8 @@ func (m *Module) RegisterRoutes(rg *gin.RouterGroup) {
 // composition root calls Build(deps) once during wire-up; the
 // returned Descriptor is registered into api.Registry.
 //
-// Phase 1.1 (skeleton): Build wires a Module wrapping a nil
-// handler. The composition root can still register the
-// Descriptor; route calls will log + 501 until Phase 1.x wires
-// real services. Subsequent phases swap NewModule(...,
-// wireRealHandler, ...).
+// Build wraps the already-wired handler supplied by the composition
+// root; an unavailable handler is not exposed as a route.
 func Build(handler *Handler, log *zap.Logger) api.Descriptor {
 	m := NewModule("mediamemory", nil, handler, log)
 	return api.AsDescriptor(m)

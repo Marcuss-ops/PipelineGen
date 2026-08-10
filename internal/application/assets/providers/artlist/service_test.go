@@ -450,11 +450,11 @@ func (s *stubPublisherForArtlist) Publish(ctx context.Context, req delivery.Publ
 }
 
 func (s *stubPublisherForArtlist) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
-	// Use RootFolderOverride if threaded (matches production under-cfg
+	// Use ParentFolderID if threaded (matches production under-cfg
 	// branch); otherwise return a deterministic ID so the test's
 	// downstream assertions stay stable.
-	if req.RootFolderOverride != "" {
-		return req.RootFolderOverride, nil
+	if req.ParentFolderID != "" {
+		return req.ParentFolderID, nil
 	}
 	return "stub-resolve-folder-id", nil
 }

@@ -5,19 +5,6 @@
 //
 // HYBRID EMBED strategy (validated by prior thinker, June 2026):
 //
-//	type AssetStoreSQLite struct {
-//	    *asset.AssetStoreSQLite  // EMBED the domain's legacy struct
-//	    db  *sql.DB
-//	    log *zap.Logger
-//	}
-//
-// The local struct EMBEDS the legacy `*asset.AssetStoreSQLite` so the
-// 71+ method receivers defined in OTHER domain files (clips_core.go,
-// search_core.go, search_terms.go, search_list, tags.go, processor.go,
-// lifecycle_core.go, store_helpers.go, and the split domain files) are reachable
-// via method-set promotion. Those receivers stay where they are
-// today — moving them is a follow-up Wave B+ task.
-//
 // On top of the embed, LOCAL canonical methods (Get / Save / Delete /
 // List) shadow the same-named receivers on the embedded legacy struct
 // so callers using `r.AssetStoreSQLite.Save(...)` etc. always hit the
@@ -44,7 +31,6 @@ import (
 // ── AssetStoreSQLite (canonical Wave A receiver) ────────────────────
 
 type AssetStoreSQLite struct {
-	*asset.AssetStoreSQLite
 	db  *sql.DB
 	log *zap.Logger
 }
@@ -59,11 +45,7 @@ func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &AssetStoreSQLite{
-		AssetStoreSQLite: asset.NewAssetStoreSQLite(log),
-		db:               db,
-		log:              log,
-	}
+	return &AssetStoreSQLite{db: db, log: log}
 }
 
 // ── canonical Get / Save / Delete / List (overlay) ──────────────────

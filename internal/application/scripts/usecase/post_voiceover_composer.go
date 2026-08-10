@@ -5,7 +5,7 @@
 // infrastructure concern, never the model concern) and emits a SpecScene manifest
 // whose clip entries are hydrated via a binding table. The Drive write goes
 // through the canonical delivery.Publisher port — godlike/08 forward-prevention
-// gate forbids RootFolderOverride in application/api layers; this file does not
+// gate forbids ParentFolderID in application/api layers; this file does not
 // touch it.
 
 package usecase
@@ -150,7 +150,7 @@ func (c *PostVoiceoverComposer) ComposeAndPublish(
 	}
 
 	// 2. ResolveFolder first — pass via PublishRequest so the canonical
-	// publisher can use Group/Subject/AssetID metadata. RootFolderOverride
+	// publisher can use Group/Subject/AssetID metadata. ParentFolderID
 	// is deliberately NOT set (godlike/08 forward-prevention).
 	if _, err := c.publisher.ResolveFolder(ctx, delivery.PublishRequest{
 		Destination: destination,
@@ -216,7 +216,7 @@ func (c *PostVoiceoverComposer) ComposeAndPublish(
 		return SpecSceneManifest{}, delivery.PublishResult{}, fmt.Errorf("close temp file: %w", err)
 	}
 
-	// RootFolderOverride is deliberately NOT set: godlike/08 forward-
+	// ParentFolderID is deliberately NOT set: godlike/08 forward-
 	// prevention gate forbids it outside infra/cmd/admin. The folder
 	// resolved above is the canonical destination.
 	res, err := c.publisher.Publish(ctx, delivery.PublishRequest{

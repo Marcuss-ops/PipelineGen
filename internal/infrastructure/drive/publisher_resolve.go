@@ -16,7 +16,7 @@ import (
 //
 // Steps (canonical order — see ARCHITECTURE.md §6):
 //  1. registry.Resolve(req.Destination)
-//  2. Apply RootFolderOverride (back-compat escape hatch)
+//  2. Apply ParentFolderID (back-compat escape hatch)
 //  3. Reject empty root folder (misconfiguration surface)
 //  4. policy.PathBuilder(req)
 //  5. RequireSubpath enforcement
@@ -44,12 +44,12 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	// Step 2: Root override.
 	// DestinationFolderID is the canonical application-layer way to
 	// pin the target folder for sidecar destinations (e.g.
-	// DestinationClipMetadata). RootFolderOverride is the legacy
+	// DestinationClipMetadata). ParentFolderID is the legacy
 	// admin-CLI escape hatch kept for backward compatibility.
 	rootFolderID := policy.RootFolderID
 	if destFolder := strings.TrimSpace(req.DestinationFolderID); destFolder != "" {
 		rootFolderID = destFolder
-	} else if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
+	} else if override := strings.TrimSpace(req.ParentFolderID); override != "" {
 		rootFolderID = override
 	}
 
@@ -66,8 +66,8 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	pathBuilt := false
 	if segments, err = policy.PathBuilder(req); err == nil {
 		pathBuilt = true
-	} else if req.RootFolderOverride != "" {
-		err = fmt.Errorf("delivery: PathBuilder failed under RootFolderOverride (cause: %w): %w", err, ErrPathBuilderIncompleteForOverride)
+	} else if req.ParentFolderID != "" {
+		err = fmt.Errorf("delivery: PathBuilder failed under ParentFolderID (cause: %w): %w", err, ErrPathBuilderIncompleteForParent)
 		segments = nil
 	} else {
 		return nil, fmt.Errorf("delivery: build path for %q: %w", req.Destination, err)
@@ -82,14 +82,14 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	}
 
 	// Step 6: Folder hierarchy creation (catalog-first, DoD item 6).
-	// When the caller supplied an explicit RootFolderOverride we must
+	// When the caller supplied an explicit ParentFolderID we must
 	// bypass the folder catalog lookup: the override is a request-local
 	// root, so reusing a cached path from another root would silently
 	// route the upload into the wrong Drive tree.
 	folderID := rootFolderID
 	if len(segments) > 0 {
 		pathKey := strings.Join(segments, "/")
-		if strings.TrimSpace(req.DestinationFolderID) == "" && strings.TrimSpace(req.RootFolderOverride) == "" {
+		if strings.TrimSpace(req.DestinationFolderID) == "" && strings.TrimSpace(req.ParentFolderID) == "" {
 			if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
 				folderID = cachedID
 			} else {

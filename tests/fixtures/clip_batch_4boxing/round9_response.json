@@ -30,7 +30,7 @@
     "filename": "9u4T_o3FxOU_1276_1330_v1_Round_9_Pressione_all_angolo.mp4",
     "drive_link_shape": "https://drive.google.com/file/d/<DRIVE_FILE_ID_RUNTIME>/view",
     "drive_link_production_driver": "DriveFolderMgr.UploadFileIfChanged (Step 8) — runtime computed, NOT a fixture value",
-    "upload_strategy": "ConflictSkipByHash (PR-PUBLISHER-CONFLICT-SKIP-BY-HASH)"
+    "upload_strategy": "ConflictSkip (PR-PUBLISHER-CONFLICT-SKIP-BY-HASH)"
   },
   "expected_ffprobe_validation": {
     "container_readable": true,

@@ -1,25 +1,26 @@
-// Package scan — per-check forward-prevention gate for the
-// `RootFolderOverride` field in delivery.PublishRequest.
+// Package scan — per-check forward-prevention gate for the retired
+// `RootFolderOverride` field and its transitional parent-folder seam.
 //
 // scan/percheck_root_override.go owns the archcheck gate
-// (FASE B1, July 2026) that bans `RootFolderOverride` from
+// (FASE B1, July 2026) that bans the retired `RootFolderOverride`
+// and unapproved parent-folder literals from
 // `internal/application/**` and `internal/api/**` production
 // code. The canonical delivery.Publisher consumes
-// RootFolderOverride internally (internal/infrastructure/drive/)
+// the retired compatibility field internally (internal/infrastructure/drive/)
 // and admin CLI tools (cmd/admin/) use it for operational
 // overrides — those zones are explicitly allowed. Every other
 // production caller MUST route through the typed Publisher
 // surface without reaching for the escape hatch.
 //
 // Rationale (godlike/06 SSOT + godlike/07 NO-FAKE-AVAILABILITY):
-// RootFolderOverride is a back-compat escape hatch on
+// The retired field was a back-compat escape hatch on
 // delivery.PublishRequest. Before the FASE A1-A5 migration
 // wave (July 2026), callers in internal/application/ and
 // internal/api/ routinely passed raw Drive folder IDs through
 // this field instead of using the canonical DestinationKey +
 // PathBuilder resolver. Post-migration, the typed
 // delivery.Publisher.Publish + .ResolveFolder surfaces are the
-// ONLY canals for Drive writes; RootFolderOverride is
+// ONLY canals for Drive writes; the parent-folder seam is
 // restricted to the infrastructure layer (Publisher
 // implementation) and admin CLIs.
 //
@@ -29,12 +30,9 @@
 //
 // Allowed zones:
 //   - internal/infrastructure/** — the Publisher implementation
-//     and drive types legitimately reference the field in
-//     struct literals (publisher.go, publisher_types.go,
-//     publisher_resolve.go, etc.).
-//   - cmd/admin/** — operator CLIs use RootFolderOverride for
-//     explicit operational overrides (e.g., backfill/reconcile
-//     commands that target a specific Drive folder).
+//     owns the retired compatibility mapping and the parent resolver.
+//   - cmd/admin/** — operator CLIs may use explicit parent-folder
+//     overrides for backfill/reconcile commands.
 //   - All *_test.go files — regression guards legitimately
 //     reference the field for invariant pinning.
 //
@@ -60,12 +58,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// rootOverrideLiteral is the canonical substring the gate
-// looks for. The literal is `RootFolderOverride` — the
-// exported struct field on delivery.PublishRequest that
-// production code outside the infrastructure layer MUST NOT
-// reference directly.
+// rootOverrideLiteral is the retired compatibility field name on
+// delivery.PublishRequest. It remains in this scanner only so the
+// gate prevents the old API from being reintroduced.
 const rootOverrideLiteral = "RootFolderOverride"
+
+// parentFolderIDLiteral is the narrowly scoped progressive-cutover
+// spelling used by the parent-resolution seam. It is checked only
+// in PublishRequest-style struct literals; ordinary asset-tree
+// ParentFolderID fields are unrelated and must not be rejected.
+const parentFolderIDLiteral = "ParentFolderID:"
 
 // rootOverrideScanNote is the violation Note string. The
 // message references the canonical Publisher surfaces + the
@@ -93,29 +95,14 @@ var rootOverrideSkipPathPrefixes = []string{
 	"cmd/archcheck/scan",
 }
 
-// rootOverrideAllowedPrefixes enumerates the production Go
-// paths where RootFolderOverride is legitimate:
-//
-//   - internal/infrastructure: the Publisher implementation
-//     (publisher.go, publisher_types.go, publisher_resolve.go)
-//     and drive types (types.go, ports.go) need the field
-//     to construct PublishRequest struct literals.
-//   - cmd/admin: operator CLIs use the field for explicit
-//     operational overrides.
-var rootOverrideAllowedPrefixes = []string{
-	"internal/infrastructure",
-	"cmd/admin",
-}
-
 // rootOverrideAllowedFiles enumerates specific production Go files
-// in the forbidden zones where RootFolderOverride is legitimate:
+// in the forbidden zones where the transitional parent-folder seam is legitimate:
 //
 //   - delivery/types.go: the field DECLARATION on PublishRequest
-//     (not a call site; the scanner should whitelist the struct
-//     definition itself per godlike/06 SSOT — one canonical owner
-//     of the field shape).
+//     (not a call site; the scanner should whitelist the canonical
+//     delivery contract declaration).
 //   - health/readyz_checkers.go: operational readiness probes
-//     (Drive canary + folder checker) that need RootFolderOverride
+//     (Drive canary + folder checker) that need explicit parent folders
 //     to target specific Drive folders for canary uploads.
 var rootOverrideAllowedFiles = map[string]bool{
 	"internal/application/assets/delivery/types.go": true,
@@ -126,7 +113,7 @@ var rootOverrideAllowedFiles = map[string]bool{
 	"internal/application/system/health/readyz_checkers_fase6.go":  true,
 	"internal/application/system/health/readyz_checkers_canary.go": true,
 	// PR-P12-STOCK-PIPELINE-WHITELIST (July 2026): stock pipeline
-	// uses VerifiedArtifact.RootFolderOverride to pass the caller's
+	// uses the verified artifact's parent-folder field to pass the caller's
 	// explicit drive_folder_id through the finalization domain type
 	// to the infrastructure-layer artifact_publisher_adapter.go.
 	// The deeper fix requires adding Destination+Group to
@@ -140,24 +127,27 @@ var rootOverrideAllowedFiles = map[string]bool{
 	"internal/application/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": true,
 	"internal/application/assets/providers/stock/stockpipeline/step_publish_naming.go":         true,
 	// PR-P12-ARTLIST-WHITELIST (July 2026): artlist destination_service
-	// uses RootFolderOverride for non-media-root explicit folder
+	// uses the parent-folder seam for non-media-root explicit folder
 	// targeting; semantic_enricher_metadata uses it for metadata.json
 	// sidecar placement in the clip's parent folder. Both require
 	// explicit folder IDs that semantic routing cannot replace without
 	// breaking the cumulative metadata.json sync contract.
 	"internal/application/assets/providers/artlist/destination_service.go":        true,
 	"internal/application/assets/providers/artlist/semantic_enricher_metadata.go": true,
+	// Progressive cutover: ParentFolderID remains only in the
+	// already-allowlisted parent-resolution callers until the
+	// dedicated resolution request seam replaces it.
 	// PR-P12-ADMIN-CANARY-WHITELIST (July 2026): the Drive canary
 	// handler (internal/api/admin/handler_drive_canary.go) is an
 	// operational readiness endpoint that must upload to an arbitrary
-	// folder specified by the operator at request time. RootFolderOverride
+	// folder specified by the operator at request time. ParentFolderID
 	// is the correct mechanism for targeting folders outside the
 	// registry's configured roots — the canary's whole purpose is
 	// verifying that an arbitrary folder is writable.
 	"internal/api/admin/handler_drive_canary.go": true,
 	// PR-P12-REGISTRY-WHITELIST (July 2026): the DestinationRegistry's
 	// PathBuilder functions (YouTubeClipPath at registry.go:280) legitimately
-	// read req.RootFolderOverride to support the backwards-compat path where
+	// read req.ParentFolderID to support the progressive parent-resolution path where
 	// callers pass per-call folder overrides while the registry transitions
 	// to full semantic routing. The field is the canonical owner of
 	// PublishRequest shape; reading it in a PathBuilder is NOT a violation.
@@ -290,7 +280,11 @@ func scanRootOverrideFile(path, relPath string, r *report.Report, productionOnly
 	for sc.Scan() {
 		lineNo++
 		line := sc.Text()
-		if !strings.Contains(line, rootOverrideLiteral) {
+		// ParentFolderID is also a legitimate asset-tree field. Only
+		// inspect its PublishRequest struct-literal form here; ordinary
+		// asset hierarchy accessors (SetParentFolderID/ParentFolderID())
+		// are unrelated to the Drive compatibility seam.
+		if !strings.Contains(line, rootOverrideLiteral) && !strings.Contains(line, parentFolderIDLiteral) {
 			continue
 		}
 		trimmed := strings.TrimSpace(line)

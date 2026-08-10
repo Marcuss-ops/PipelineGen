@@ -4,7 +4,7 @@
 // Pins the canonical semantic-routing contract for
 // YouTubePublisherDriveAdapter:
 //
-//  1. GetOrCreateFolder: Group = channelName, RootFolderOverride = ""
+//  1. GetOrCreateFolder: Group = channelName, ParentFolderID = ""
 //     (RETIRED per godlike/07 NO-FAKE-AVAILABILITY — the
 //     Publisher resolves the root via DestinationRegistry +
 //     DestinationPolicy.RootFolderID).
@@ -14,7 +14,7 @@
 //     (typed-error contract preserved via fmt.Errorf %w).
 //  4. UploadFileIfChanged: DestinationFolderID = resolved folder ID
 //     (canonical leaf — direct upload, no path-builder subfolder),
-//     Group/Subject propagated, ConflictPolicy = ConflictSkipByHash
+//     Group/Subject propagated, ConflictPolicy = ConflictSkip
 //     (preserved).
 //  5. UploadFileIfChanged: skipped bool derives from
 //     PublishResult.Action == delivery.UploadOutcomeSkipped
@@ -29,7 +29,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: every case asserts the recorded
 // `lastReq` matches the expected wire-shape exactly; a future
 // refactor that silently drops the resolved folder override (or
-// silently drops ConflictSkipByHash) surfaces as a test failure.
+// silently drops ConflictSkip) surfaces as a test failure.
 package app
 
 import (
@@ -45,7 +45,7 @@ import (
 
 // ytDriveRecordingPublisher is a stub delivery.Publisher that captures
 // the PublishRequest it receives so tests can assert the wire-shape
-// (Group/Subject/RootFolderOverride/Destination/ConflictPolicy)
+// (Group/Subject/ParentFolderID/Destination/ConflictPolicy)
 // propagated from YouTubePublisherDriveAdapter. The Publish
 // outcome is configurable via publishAction field so Case 5 can
 // verify the skipped-bool derivation against both
@@ -117,7 +117,7 @@ func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDrive
 //   - input (channelName="boxing-channels", parentFolderID="any")
 //   - lastResolveReq.Group = "boxing-channels"
 //   - lastResolveReq.Destination = DestinationYouTubeClip
-//   - lastResolveReq.RootFolderOverride = "any" so the folder is
+//   - lastResolveReq.ParentFolderID = "any" so the folder is
 //     created under the caller-selected Drive root
 //   - returned folderID = the canonical Publisher.ResolveFolder
 //     resolved ID ("resolved-folder-id")
@@ -144,8 +144,8 @@ func TestGetOrCreateFolder_GroupSubjectSplit_ThreadsParentRoot(t *testing.T) {
 	}
 	// The parent folder must be threaded through so the child folder is
 	// created under the request-selected root instead of the catalog root.
-	if pub.lastResolveReq.RootFolderOverride != "legacy-parent-folder" {
-		t.Fatalf("RootFolderOverride = %q, want %q", pub.lastResolveReq.RootFolderOverride, "legacy-parent-folder")
+	if pub.lastResolveReq.ParentFolderID != "legacy-parent-folder" {
+		t.Fatalf("ParentFolderID = %q, want %q", pub.lastResolveReq.ParentFolderID, "legacy-parent-folder")
 	}
 }
 
@@ -220,8 +220,8 @@ func TestGetOrCreateFolder_PublisherError_WrapsTypedError(t *testing.T) {
 //   - lastPublishReq.LocalPath = "/tmp/clip.mp4"
 //   - lastPublishReq.Filename = "clip-yt_abc123_0_30_v1.mp4"
 //   - lastPublishReq.Destination = DestinationYouTubeClip
-//   - lastPublishReq.RootFolderOverride = "resolved-folder-id"
-//   - lastPublishReq.ConflictPolicy = ConflictSkipByHash
+//   - lastPublishReq.ParentFolderID = "resolved-folder-id"
+//   - lastPublishReq.ConflictPolicy = ConflictSkip
 //     (preserved — Publisher's content-dedupe via hash comparison)
 //   - Group + Subject omitted (per-file identity in Filename;
 //     folder context was established by prior GetOrCreateFolder)
@@ -271,14 +271,14 @@ func TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy(t *te
 	// The resolved folder must be threaded into the publish request
 	// as DestinationFolderID (canonical leaf semantics) so the Drive
 	// upload lands directly in the payload-selected folder — NOT as
-	// RootFolderOverride, which would re-run the YouTubeClipPath
+	// ParentFolderID, which would re-run the YouTubeClipPath
 	// builder and drift the upload into a
 	// `youtube_uncategorized/<video_id>` subfolder under the root.
 	if pub.lastPublishReq.DestinationFolderID != "resolved-folder-id" {
 		t.Fatalf("DestinationFolderID = %q, want %q", pub.lastPublishReq.DestinationFolderID, "resolved-folder-id")
 	}
-	if pub.lastPublishReq.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride = %q, want empty (leaf via DestinationFolderID)", pub.lastPublishReq.RootFolderOverride)
+	if pub.lastPublishReq.ParentFolderID != "" {
+		t.Errorf("ParentFolderID = %q, want empty (leaf via DestinationFolderID)", pub.lastPublishReq.ParentFolderID)
 	}
 	// Group + Subject MUST be propagated for YouTubeClipPath path-building.
 	// (With DestinationFolderID set, YouTubeClipPath returns nil
@@ -293,9 +293,9 @@ func TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy(t *te
 	// ConflictPolicy MUST be preserved (Publisher's content-dedupe
 	// via hash comparison is the canonical replacement for the
 	// legacy Uploader.UploadFileIfChanged filename-based lookup).
-	if pub.lastPublishReq.ConflictPolicy != delivery.ConflictSkipByHash {
+	if pub.lastPublishReq.ConflictPolicy != delivery.ConflictSkip {
 		t.Errorf("ConflictPolicy = %q, want %q (canonical content-dedupe)",
-			pub.lastPublishReq.ConflictPolicy, delivery.ConflictSkipByHash)
+			pub.lastPublishReq.ConflictPolicy, delivery.ConflictSkip)
 	}
 }
 

@@ -196,7 +196,7 @@ func (a *locationRepositoryAdapter) DeleteAll(ctx context.Context, assetID strin
 
 // LocationRepository returns the LocationRepository adapter for the
 // LOCAL AssetStoreSQLite. Caller-side promotion to legacy
-// `*asset.AssetStoreSQLite` (via HYBRID embed) keeps backward
+// `*asset.AssetStoreSQLite` keeps backward
 // compatibility for composition roots that haven't yet migrated.
 func (s *AssetStoreSQLite) LocationRepository() asset.LocationRepository {
 	return &locationRepositoryAdapter{store: s}

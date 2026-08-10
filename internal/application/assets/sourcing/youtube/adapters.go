@@ -81,7 +81,7 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 
 	// The resolved caller folder is an exact destination folder. Keep the
 	// application layer on the canonical DestinationFolderID seam; the
-	// RootFolderOverride escape hatch is reserved for infrastructure/admin.
+	// ParentFolderID escape hatch is reserved for infrastructure/admin.
 	result, err := a.inner.Publish(ctx, delivery.PublishRequest{
 		Destination:         delivery.DestinationYouTubeClip,
 		LocalPath:           req.LocalPath,

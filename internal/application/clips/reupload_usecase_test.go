@@ -76,12 +76,12 @@ func (p *fakeReuploadPublisher) ResolveFolder(ctx context.Context, req delivery.
 	if p.resolveFolderErr != nil {
 		return "", p.resolveFolderErr
 	}
-	// Simple implementation: return RootFolderOverride if set, else
+	// Simple implementation: return ParentFolderID if set, else
 	// echo back Group. Real Publisher has DomainPolicy-aware logic;
 	// for the F2.9 audit pin all we need is a stable ID for each
 	// segment so the resolveFolder loop advances.
-	if req.RootFolderOverride != "" {
-		return req.RootFolderOverride, nil
+	if req.ParentFolderID != "" {
+		return req.ParentFolderID, nil
 	}
 	return req.Group, nil
 }
@@ -268,11 +268,11 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 //	    Group:       strings.TrimSpace(clip.Group),          // explicit caller-provided
 //	    Subject:     filename,                               // per-file identity (mirrors soundeffect/handler.go)
 //	    ConflictPolicy: delivery.ConflictOverwrite,
-//	    // RootFolderOverride RETIRED — Publisher resolves target folder
+//	    // ParentFolderID RETIRED — Publisher resolves target folder
 //	    // via DestinationRegistry + DestinationPolicy.RootFolderID.
 //	}
 //
-// Pre-PR-P12 the code passed `RootFolderOverride: folderID` (legacy
+// Pre-PR-P12 the code passed `ParentFolderID: folderID` (legacy
 // bypass) and `Subject: ""` (TODO F2.9+). Post-PR-P12 the call routes
 // via canonical semantic fields only and the per-file identity is
 // captured in Subject (filename).
@@ -321,12 +321,12 @@ func TestReuploadExecute_PublishesWithAutoDerivedFields(t *testing.T) {
 	if req.Subject != "f29-video.mp4" {
 		t.Errorf("Subject = %q, want %q (filename per-file identity)", req.Subject, "f29-video.mp4")
 	}
-	// PR-P12-CLIPS-AND-BOOKS: RootFolderOverride is retired; the
+	// PR-P12-CLIPS-AND-BOOKS: ParentFolderID is retired; the
 	// publisher resolves the target folder via DestinationRegistry +
 	// DestinationPolicy.RootFolderID. The publish request must NOT
-	// carry a RootFolderOverride.
-	if req.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
+	// carry a ParentFolderID.
+	if req.ParentFolderID != "" {
+		t.Errorf("ParentFolderID = %q, want \"\" (RETIRED)", req.ParentFolderID)
 	}
 	// ConflictPolicy preserved (reupload semantics)
 	if req.ConflictPolicy != delivery.ConflictOverwrite {
@@ -382,9 +382,9 @@ func TestReuploadExecute_ArtlistSourceSetsArtlistDestination(t *testing.T) {
 	if req.Subject != "f29-video.mp4" {
 		t.Errorf("Subject = %q, want %q (per-file identity)", req.Subject, "f29-video.mp4")
 	}
-	// PR-P12-CLIPS-AND-BOOKS: RootFolderOverride is retired.
-	if req.RootFolderOverride != "" {
-		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
+	// PR-P12-CLIPS-AND-BOOKS: ParentFolderID is retired.
+	if req.ParentFolderID != "" {
+		t.Errorf("ParentFolderID = %q, want \"\" (RETIRED)", req.ParentFolderID)
 	}
 }
 
@@ -393,7 +393,7 @@ func TestReuploadExecute_ArtlistSourceSetsArtlistDestination(t *testing.T) {
 // Publisher.ResolveFolder call MUST carry Group=seg, no Subject
 // (folder resolution operates on Group only — Subject is per-file
 // identity, resolved at the Publish call site), and no
-// RootFolderOverride (RETIRED — Publisher's PathBuilder walks the
+// ParentFolderID (RETIRED — Publisher's PathBuilder walks the
 // canonical hierarchy for DestinationYouTubeClip using only Group).
 func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
 	t.Parallel()
@@ -460,11 +460,11 @@ func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
 	if clip.FolderID() == "" {
 		t.Error("clip.FolderID is empty after resolveFolder path; the resolved folder was not propagated to the clip")
 	}
-	// The Publish call must NOT carry RootFolderOverride (RETIRED)
+	// The Publish call must NOT carry ParentFolderID (RETIRED)
 	// and must carry the canonical per-file subject.
 	req := pub.lastPublishRequest
-	if req.RootFolderOverride != "" {
-		t.Errorf("Publish.RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
+	if req.ParentFolderID != "" {
+		t.Errorf("Publish.ParentFolderID = %q, want \"\" (RETIRED)", req.ParentFolderID)
 	}
 	if req.Subject != "sub.mp4" {
 		t.Errorf("Publish.Subject = %q, want %q (per-file identity)", req.Subject, "sub.mp4")
@@ -474,7 +474,7 @@ func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
 	// the resolveFolder loop runs once per segment under tmpDir/italy/mike-tyson/,
 	// producing 2 calls ("italy" then "mike-tyson"). The last call carries
 	// Group="mike-tyson", Subject="" (intentionally OMITTED — folder
-	// resolution operates on Group only), and RootFolderOverride=""
+	// resolution operates on Group only), and ParentFolderID=""
 	// (RETIRED). PR-P12-CLIPS-AND-BOOKS locks the contract end-to-end.
 	if pub.resolveFolderCalls < 2 {
 		t.Errorf("resolveFolderCalls = %d, want >= 2 (one per segment)", pub.resolveFolderCalls)
@@ -485,8 +485,8 @@ func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
 	if pub.lastResolveRequest.Subject != "" {
 		t.Errorf("lastResolveRequest.Subject = %q, want \"\" (folder resolution OMITTED Subject)", pub.lastResolveRequest.Subject)
 	}
-	if pub.lastResolveRequest.RootFolderOverride != "" {
-		t.Errorf("lastResolveRequest.RootFolderOverride = %q, want \"\" (RETIRED)", pub.lastResolveRequest.RootFolderOverride)
+	if pub.lastResolveRequest.ParentFolderID != "" {
+		t.Errorf("lastResolveRequest.ParentFolderID = %q, want \"\" (RETIRED)", pub.lastResolveRequest.ParentFolderID)
 	}
 }
 

@@ -47,8 +47,6 @@ func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *wirin
 		Resolver:       resolver,
 		PolicyResolver: mediamemoryapp.NewResolutionPolicyResolver(),
 		Bindings:       bindingSvc,
-		Feedback:       nil,
-		Batches:        nil,
 		Log:            log,
 	})
 

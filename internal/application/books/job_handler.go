@@ -159,7 +159,7 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 
 	// PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08):
 	// req.DriveFolderID and s.driveFolder are NO LONGER threaded as
-	// RootFolderOverride. The canonical Publisher resolves the target
+	// ParentFolderID. The canonical Publisher resolves the target
 	// folder via DestinationRegistry + DestinationPolicy.RootFolderID
 	// (single source of truth per architecture/current.yaml#DRIVE-AS-
 	// CENTRAL-CAPABILITY). The per-request folder override is retired;
@@ -201,7 +201,7 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 			ProjectID:   jobID,                 // auto-derive Project from book.JobID (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS)
 			Group:       "",                    // books don't group; DestinationRegistry picks canonical folder
 			Subject:     filepath.Base(a.path), // per-file identity (.txt or .pdf)
-			// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS
+			// ParentFolderID RETIRED per PR-P12-CLIPS-AND-BOOKS
 			// (July 2026, deadline 2026-08-08). See the block comment
 			// above driveToDrive's body for the migration rationale.
 		}

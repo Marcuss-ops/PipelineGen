@@ -501,3 +501,35 @@ const x = "RootFolderOverride"
 		t.Errorf("expected a comment-only warning for %s; got warnings: %+v", commentRel, r.Warnings)
 	}
 }
+
+func TestScanRootOverrideBan_ParentFolderIDApplicationFileFlagged(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/application/clips/drift_parent.go", `package clips
+
+func upload() {
+	_ = struct{ ParentFolderID string }{ParentFolderID: "x"}
+}
+`)
+
+	r := newEmptyReport()
+	ScanRootOverrideBan(root, newTestPolicy(), r, true)
+	if got := len(r.Violations); got != 1 {
+		t.Fatalf("ParentFolderID application usage must be flagged once; got %d: %+v", got, r.Violations)
+	}
+}
+
+func TestScanRootOverrideBan_ParentFolderIDTransitionalAllowlist(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/application/assets/providers/artlist/destination_service.go", `package artlist
+
+func resolve() {
+	_ = struct{ ParentFolderID string }{ParentFolderID: "x"}
+}
+`)
+
+	r := newEmptyReport()
+	ScanRootOverrideBan(root, newTestPolicy(), r, true)
+	if got := len(r.Violations); got != 0 {
+		t.Fatalf("transitional ParentFolderID caller must be allowlisted; got %d: %+v", got, r.Violations)
+	}
+}

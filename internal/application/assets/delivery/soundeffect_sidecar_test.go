@@ -3,7 +3,7 @@
 // 4 TDD contract tests pinning the canonical
 // DestinationSoundEffectSidecar surface introduced by
 // PR-P12-SOUND-EFFECT-SIDECAR. The sidecar key replaces the legacy
-// `RootFolderOverride=parentFolderID` publish of sound-effect
+// `ParentFolderID=parentFolderID` publish of sound-effect
 // metadata.json in internal/api/assets/soundeffect/handler.go:268.
 //
 // godlike/06 SSOT: the canonical surface for "publish a sound-effect
@@ -89,7 +89,7 @@ func TestSidecar_RegistryEntry_ConflictOverwrite(t *testing.T) {
 // TestSidecar_Mapper_SemanticSuccess pins contract #2: the canonical
 // BuildPublishRequest mapper produces a PublishRequest that
 // surfaces the sidecar's destination + Group=name semantic shape
-// — NO RootFolderOverride (godlike/07 NO-FAKE-AVAILABILITY
+// — NO ParentFolderID (godlike/07 NO-FAKE-AVAILABILITY
 // violation), NO empty Group (silent fallback anti-pattern).
 func TestSidecar_Mapper_SemanticSuccess(t *testing.T) {
 	req, err := BuildPublishRequest(AssetPublishInput{
@@ -108,8 +108,8 @@ func TestSidecar_Mapper_SemanticSuccess(t *testing.T) {
 		"Destination MUST be preserved verbatim through the mapper")
 	assert.Equal(t, "boom", req.Group,
 		"Group MUST equal loc.Category (canonical semantic routing for sidecar)")
-	assert.Empty(t, req.RootFolderOverride,
-		"req.RootFolderOverride MUST be empty (godlike/07 NO-FAKE-AVAILABILITY: the sidecar MUST route via DestinationRegistry, not a bypass literal)")
+	assert.Empty(t, req.ParentFolderID,
+		"req.ParentFolderID MUST be empty (godlike/07 NO-FAKE-AVAILABILITY: the sidecar MUST route via DestinationRegistry, not a bypass literal)")
 	assert.Equal(t, "/tmp/sfx_boom.mp3", req.LocalPath)
 	assert.Equal(t, "metadata.json", req.Filename)
 }

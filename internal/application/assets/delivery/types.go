@@ -123,21 +123,6 @@ const (
 
 	// ConflictRename appends a timestamp or suffix to avoid collision.
 	ConflictRename
-
-	// ConflictSkipByHash (P1, July 2026) skips the upload when the
-	// existing Drive file's content hash matches the request's
-	// ContentHash. Unlike pure ConflictSkip (which skips unconditionally
-	// on any existing match), SkipByHash only skips when the content
-	// is provably identical. When the hash differs — or when
-	// ContentHash is empty — the file is created/updated per the
-	// fallback policy (Overwrite for regenerable outputs).
-	//
-	// Forward-pointer: the hash comparison currently delegates to
-	// ConflictSkip (same behavior) because Drive-side MD5 vs local
-	// SHA-256 comparison requires a separate content-dedupe pass.
-	// The full implementation will compare hashes at the PutFile
-	// level once the artifact pipeline provides both hash formats.
-	ConflictSkipByHash
 )
 
 // PublishRequest describes WHAT to publish, not WHERE it lands on Drive.
@@ -257,24 +242,14 @@ type PublishRequest struct {
 	//
 	// When non-empty, it takes precedence over the registry's
 	// RootFolderID for the destination. When empty, the publisher
-	// falls back to RootFolderOverride (legacy admin escape hatch)
+	// falls back to ParentFolderID (legacy admin escape hatch)
 	// and then to the registry root.
 	DestinationFolderID string `json:"destination_folder_id,omitempty"`
 
-	// RootFolderOverride, when non-empty, overrides the root folder ID
-	// that the DestinationRegistry would normally resolve for this
-	// destination. This is a backward-compat escape hatch for the
-	// admin CLI only (cmd/admin) — new publisher flows MUST route
-	// through DestinationKey-only routing and let the registry decide.
-	//
-	// P1 (July 2026): narrowed scope to admin CLI only. Callers in
-	// internal/application/** that pass RootFolderOverride should
-	// migrate to DestinationKey + registry-driven path builders or
-	// DestinationFolderID.
-	//
-	// Deprecated: will be removed once all callers migrate to
-	// DestinationKey-only routing (FASE 9 cleanup).
-	RootFolderOverride string `json:"root_folder_override,omitempty"`
+	// ParentFolderID is the semantic parent folder used when resolving
+	// a destination hierarchy. It is not a direct upload target: callers
+	// that already resolved the leaf MUST use DestinationFolderID.
+	ParentFolderID string `json:"parent_folder_id,omitempty"`
 
 	// IdempotencyKey (P0.6, July 2026) is the deterministic identity
 	// key for this publish. Derived from SHA-256(destination:artifactID:

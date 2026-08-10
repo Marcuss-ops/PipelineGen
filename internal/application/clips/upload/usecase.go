@@ -175,7 +175,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 			ProjectID:   strings.TrimSpace(cmd.Source), // auto-derive Project from cmd.Source (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS, July 2026)
 			Group:       strings.TrimSpace(cmd.Group),  // explicit caller-provided group
 			Subject:     strings.TrimSpace(cmd.Name),   // auto-derive Subject from clip.Name (godlike/06 SSOT)
-			// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08).
+			// ParentFolderID RETIRED per PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08).
 			// The canonical Publisher resolves the target folder via
 			// DestinationRegistry + DestinationPolicy.RootFolderID
 			// (single source of truth for root folders per

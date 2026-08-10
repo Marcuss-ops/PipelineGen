@@ -54,7 +54,7 @@ var ErrDestinationParentMismatch = errors.New("delivery: uploaded file parent do
 // destination (e.g. `delivery.DestinationArtlist`,
 // `delivery.DestinationYouTubeClip`).
 //
-// The `FolderID` / `DestinationFolderID` / `RootFolderOverride`
+// The `FolderID` / `DestinationFolderID` / `ParentFolderID`
 // fields on `PublishRequest` are threaded through transparently
 // (they are part of the canonical `DestinationSpec` surface). The
 // publisher's `DestinationRegistry` resolves the folder hierarchy

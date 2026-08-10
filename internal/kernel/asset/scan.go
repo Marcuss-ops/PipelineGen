@@ -182,7 +182,7 @@ func scanCanonicalAssetRows(rows mediaAssetScanner) (*Asset, error) {
 
 // scanCanonicalAssetRow scans a single canonical asset from any SQL
 // scanner (typically `*sql.Row` via interface satisfaction).
-func (s *AssetStoreSQLite) scanCanonicalAssetRow(row mediaAssetScanner) (*Asset, error) {
+func scanCanonicalAssetRow(row mediaAssetScanner) (*Asset, error) {
 	return scanMediaAsset(row)
 }
 
@@ -191,7 +191,7 @@ func ScanCanonicalAssetRowsPublic(rows mediaAssetScanner) (*Asset, error) {
 	return scanCanonicalAssetRows(rows)
 }
 
-// ScanCanonicalAssetRowPublic is an exported wrapper for scanCanonicalAssetRow.
-func (s *AssetStoreSQLite) ScanCanonicalAssetRowPublic(row mediaAssetScanner) (*Asset, error) {
-	return s.scanCanonicalAssetRow(row)
+// ScanCanonicalAssetRowPublic is the exported scanner for one canonical asset row.
+func ScanCanonicalAssetRowPublic(row mediaAssetScanner) (*Asset, error) {
+	return scanCanonicalAssetRow(row)
 }

@@ -289,8 +289,8 @@ func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 	t.Run(string(delivery.DestinationImage)+"/skip-by-hash", func(t *testing.T) {
 		policy, err := reg.Resolve(delivery.DestinationImage)
 		require.NoError(t, err, "missing policy for %q", delivery.DestinationImage)
-		require.Equal(t, delivery.ConflictSkipByHash, policy.ConflictPolicy,
-			"%q must default to ConflictSkipByHash (content-hash dedupe)", delivery.DestinationImage)
+		require.Equal(t, delivery.ConflictSkip, policy.ConflictPolicy,
+			"%q must default to ConflictSkip", delivery.DestinationImage)
 	})
 
 	overwriteDestinations := []delivery.DestinationKey{

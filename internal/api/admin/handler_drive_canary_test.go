@@ -50,7 +50,7 @@ func (f *canaryPublisherFake) Publish(_ context.Context, req delivery.PublishReq
 	return &delivery.PublishResult{
 		FileID:      "canary-file-id",
 		WebViewLink: "https://drive.google.com/file/d/canary-file-id/view",
-		FolderID:    req.RootFolderOverride,
+		FolderID:    req.ParentFolderID,
 	}, nil
 }
 
@@ -151,7 +151,7 @@ func TestCanaryUploadWithFolderIDPublishesExplicitRoot(t *testing.T) {
 	if publisher.resolveCalls != 0 {
 		t.Fatalf("explicit folder_id unexpectedly resolved as alias")
 	}
-	if publisher.publishCalls != 1 || publisher.publishReq.RootFolderOverride != "explicit-folder-id" {
+	if publisher.publishCalls != 1 || publisher.publishReq.ParentFolderID != "explicit-folder-id" {
 		t.Fatalf("publish request = %+v, calls=%d", publisher.publishReq, publisher.publishCalls)
 	}
 }
@@ -170,7 +170,7 @@ func TestCanaryUploadWithFolderAliasUsesCanonicalResolverAndPublisher(t *testing
 		publisher.resolveReq.Subject != "pipelinegen-canary" {
 		t.Fatalf("canonical resolve request = %+v", publisher.resolveReq)
 	}
-	if publisher.publishCalls != 1 || publisher.publishReq.RootFolderOverride != "resolved-boxe-folder-id" {
+	if publisher.publishCalls != 1 || publisher.publishReq.ParentFolderID != "resolved-boxe-folder-id" {
 		t.Fatalf("publish request = %+v, calls=%d", publisher.publishReq, publisher.publishCalls)
 	}
 }

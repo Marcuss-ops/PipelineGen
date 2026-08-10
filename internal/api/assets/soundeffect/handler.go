@@ -272,7 +272,7 @@ func (h *Handler) Generate(c *gin.Context) {
 				// <root>/<name>/ folder as the audio (PathBuilder =
 				// SoundEffectPath) but with ConflictOverwrite
 				// (regenerable metadata.json — latest wins). The
-				// pre-PR-12 RootFolderOverride=parentFolderID bypass
+				// pre-PR-12 ParentFolderID=parentFolderID bypass
 				// is RETIRED per godlike/07 NO-FAKE-AVAILABILITY:
 				// the canonical Publisher seam now resolves the
 				// folder via DestinationRegistry + DestinationPolicy

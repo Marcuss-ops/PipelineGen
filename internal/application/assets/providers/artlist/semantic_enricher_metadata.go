@@ -27,7 +27,7 @@ import (
 //   - drive.Reader.DownloadFile replaces Download (same return shape:
 //     (io.ReadCloser, content-type, error)).
 //   - delivery.Publisher.Publish replaces Upload (conflict-aware per
-//     P0 #1). We thread `RootFolderOverride=folderID` so the metadata
+//     P0 #1). We thread `ParentFolderID=folderID` so the metadata
 //     lands in the same destination as its clip (per the canonical
 //     publisher resolution pipeline Step 2 in publisher.go).
 //
@@ -104,7 +104,7 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	// underlying DriveFolderManagerAdapter entirely). The publisher
 	// resolves the destination policy (DestinationArtlist + Group="metadata"
 	// → segments=["metadata"] satisfies RequireSubpath) and pins the
-	// resolved root to the clip's parent folder via RootFolderOverride.
+	// resolved root to the clip's parent folder via ParentFolderID.
 	// ConflictPolicy=ConflictOverwrite matches the legacy "find existing
 	// → update in place" semantics that the pre-F2.11 folder-write
 	// path implicitly had (preserved intentionally so existing
@@ -125,12 +125,12 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 	// RequireSubpath=false would let the metadata.json land at the
 	// legacy location without re-introducing the legacy fallback path.
 	if _, err := e.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationArtlist,
-		Group:              "metadata",
-		Filename:           metaFilename,
-		LocalPath:          metaTempPath,
-		RootFolderOverride: folderID,
-		ConflictPolicy:     delivery.ConflictOverwrite,
+		Destination:    delivery.DestinationArtlist,
+		Group:          "metadata",
+		Filename:       metaFilename,
+		LocalPath:      metaTempPath,
+		ParentFolderID: folderID,
+		ConflictPolicy: delivery.ConflictOverwrite,
 	}); err != nil {
 		e.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
 	} else {

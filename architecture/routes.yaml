@@ -120,9 +120,6 @@ routes:
       path: /api/jobs/stats
       source: cmd/admin/gen_api_docs.go
     - method: GET
-      path: /api/media-memory/batches/:id
-      source: cmd/admin/gen_api_docs.go
-    - method: GET
       path: /api/media-memory/bindings
       source: cmd/admin/gen_api_docs.go
     - method: GET
@@ -291,12 +288,6 @@ routes:
       path: /api/jobs/:id/retry
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/media-memory/batches
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media-memory/batches/:id/reconcile
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/media-memory/bindings
       source: cmd/admin/gen_api_docs.go
     - method: POST
@@ -304,9 +295,6 @@ routes:
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media-memory/bindings/:id/reject
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
-      path: /api/media-memory/feedback
       source: cmd/admin/gen_api_docs.go
     - method: POST
       path: /api/media-memory/resolve

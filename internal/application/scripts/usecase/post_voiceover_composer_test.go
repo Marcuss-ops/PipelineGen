@@ -1,6 +1,6 @@
 // Tests for PostVoiceoverComposer. Every test asserts the canonical
 // delivery.Publisher surface (Publish + ResolveFolder) and proves that
-// the composer never sets RootFolderOverride on the outgoing PublishRequest
+// the composer never sets ParentFolderID on the outgoing PublishRequest
 // (godlike/08 forward-prevention compliance).
 
 package usecase
@@ -123,9 +123,9 @@ func fixtureModelOutput() scriptpkg.ModelScriptOutputV1 {
 
 // Verify temp file was cleaned up after return.
 
-// 5. Forward-prevention: RootFolderOverride MUST be empty on EVERY
+// 5. Forward-prevention: ParentFolderID MUST be empty on EVERY
 // outgoing PublishRequest - including the ResolveFolder call. The
-// source-level scanner test (TestForwardPrevention_ComposerSourceDoesNotMentionRootFolderOverride)
+// source-level scanner test (TestForwardPrevention_ComposerSourceDoesNotMentionParentFolderID)
 // catches static drift; these runtime checks catch dynamic drift.
 
 // 6. Destination propagated correctly.
@@ -316,7 +316,7 @@ func TestStaticRefBindingResolver_Succeeds(t *testing.T) {
 	}
 }
 
-// Sanity: the test file itself does not set RootFolderOverride.
+// Sanity: the test file itself does not set ParentFolderID.
 
 // firstN returns the first n bytes of b (or the whole string if shorter).
 func firstN(b []byte, n int) string {

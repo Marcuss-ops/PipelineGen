@@ -4,7 +4,7 @@
 // receivers that used to live here
 // (UpsertFolder/DeleteFolder/GetFolder/GetFolderByVideoID/ListByFolderID/
 // ListByFolderPath/CountByFolderID/ListFolders/SearchFolders) are now
-// canonical on the LOCAL infra `*assets.AssetStoreSQLite`
+// canonical on the LOCAL infra sqlite asset store
 // (internal/infrastructure/database/sqlite/assets/folder_queries.go)
 // and reached via HYBRID-embed promotion through the legacy struct.
 //

@@ -310,7 +310,7 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 
 	// Publisher contract surface: PublishRequest was constructed with
 	// the canonical Destination + LocalPath + Filename + Description +
-	// AssetID + Group + Subject + RootFolderOverride fields.
+	// AssetID + Group + Subject + ParentFolderID fields.
 	// (ConflictPolicy is zero-value ConflictOverwrite = legacy default.)
 	assert.NotNil(t, pub.lastReq, "F2.8: Publisher must have been invoked")
 	assert.Equal(t, delivery.DestinationArtlist, pub.lastReq.Destination, "F2.8: PublishRequest.Destination MUST default to DestinationArtlist (Input has no Destination field today; TODO F2.9 when a non-artlist caller emerges)")
@@ -325,7 +325,7 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 	// PathSegments. A meaningful Subject (artlist asset UUID,
 	// YouTube video ID) MUST be plumbed explicitly via F2.9.
 	assert.Equal(t, "", pub.lastReq.Subject, "F2.8: PublishRequest.Subject MUST default to empty string (no leaky UUID in Drive folder metadata; a meaningful Subject comes via F2.9)")
-	assert.Equal(t, "fake-folder-id-for-e2e", pub.lastReq.RootFolderOverride, "F2.8: PublishRequest.RootFolderOverride = input.FolderID (explicit-folder caller inheritance)")
+	assert.Equal(t, "fake-folder-id-for-e2e", pub.lastReq.ParentFolderID, "F2.8: PublishRequest.ParentFolderID = input.FolderID (explicit-folder caller inheritance)")
 }
 
 // ── E2E audit-pin (F2.8): Publish failure is best-effort + stamps Result.Error ──

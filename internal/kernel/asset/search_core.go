@@ -3,7 +3,7 @@
 // Phase 2 (Wave C / Blocco 1 Asset SSOT, June 2026): the 4 SQL
 // receivers (SearchClips/SearchClipsByKeywords/SearchClipsAdvanced/
 // SearchStockByKeywords) that used to live here are now canonical on
-// the LOCAL infra `*assets.AssetStoreSQLite`
+// the LOCAL infra sqlite asset store
 // (internal/infrastructure/database/sqlite/assets/search_queries.go)
 // and reached via HYBRID-embed promotion. Cross-package scoring
 // (`asset.ScoreClips`) is the public surface for the SearchClips

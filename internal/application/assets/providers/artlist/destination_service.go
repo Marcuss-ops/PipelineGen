@@ -71,9 +71,9 @@ func NewDestinationService(svc *Service) *DestinationService {
 // DestinationRegistry maps the (Destination, Group=term) tuple to a
 // folder rooted at cfg.Drive.ArtlistFolder() with [term] as the path
 // segment. When rootFolderID equals the media root or is empty, the
-// registry resolves the Artlist root naturally (no RootFolderOverride);
+// registry resolves the Artlist root naturally (no ParentFolderID);
 // when a specific rootFolderID is provided, it's threaded through
-// as RootFolderOverride so callers can pin a non-natural root for
+// as ParentFolderID so callers can pin a non-natural root for
 // back-compat with operator-deployed setups.
 func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootFolderID string) (*DestinationInfo, error) {
 	if term == "" {
@@ -93,7 +93,7 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 	}
 	isMediaRoot := d.cfg != nil && (rootFolderID == d.cfg.Drive.MediaRootFolder || rootFolderID == "")
 	if !isMediaRoot {
-		pubReq.RootFolderOverride = rootFolderID
+		pubReq.ParentFolderID = rootFolderID
 	}
 	folderID, err := d.publisher.ResolveFolder(ctx, pubReq)
 	if err != nil {

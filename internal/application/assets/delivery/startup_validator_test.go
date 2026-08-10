@@ -96,7 +96,7 @@ func countNonEmptyRoots(reg *DestinationRegistry) int {
 //
 // Note: DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026)
 // is registered with RootFolderID="" because its root is supplied by
-// the caller via RootFolderOverride (the clip's already-resolved
+// the caller via ParentFolderID (the clip's already-resolved
 // folder). The startup validator correctly classifies it as Skipped
 // (it does not own its own Drive root — that ownership lives on
 // DestinationYouTubeClip, which is already validated). Tests in this
