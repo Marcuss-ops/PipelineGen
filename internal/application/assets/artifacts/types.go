@@ -16,6 +16,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ── Status ─────────────────────────────────────────────────────────
@@ -365,6 +367,7 @@ type MediaRecord struct {
 	Duration            int
 	Tags                []string
 	Status              string
+	PublishStatus       asset.AssetPublishStatus
 	Error               string
 	SourceID            string
 	Subfolder           string

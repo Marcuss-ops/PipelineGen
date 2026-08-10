@@ -11,11 +11,37 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 type lifecyclePublisherStub struct {
 	err       error
 	nilResult bool
+	calls     *[]string
+}
+
+type lifecycleFinalizerStub struct {
+	err        error
+	failAlways bool
+	failAt     int
+	callCount  int
+	calls      []asset.AssetPublishStatus
+	records    []*artifacts.MediaRecord
+	order      *[]string
+}
+
+func (f *lifecycleFinalizerStub) Finalize(_ context.Context, rec *artifacts.MediaRecord, _ artifacts.FinalizeOptions) (*artifacts.FinalizeResult, error) {
+	if f.order != nil {
+		*f.order = append(*f.order, "finalizer:"+string(rec.PublishStatus))
+	}
+	f.calls = append(f.calls, rec.PublishStatus)
+	f.callCount++
+	recordCopy := *rec
+	f.records = append(f.records, &recordCopy)
+	if f.err != nil && (f.failAlways || (f.failAt > 0 && f.callCount == f.failAt)) {
+		return nil, f.err
+	}
+	return &artifacts.FinalizeResult{OK: true, Status: rec.Status, Record: rec}, nil
 }
 
 type lifecycleStoreStub struct {
@@ -76,6 +102,9 @@ func lifecycleNoPersistenceConfig() Config {
 }
 
 func (p *lifecyclePublisherStub) Publish(context.Context, delivery.PublishRequest) (*delivery.PublishResult, error) {
+	if p.calls != nil {
+		*p.calls = append(*p.calls, "publisher")
+	}
 	if p.err != nil {
 		return nil, p.err
 	}
@@ -105,9 +134,12 @@ func TestProcessAsset_FinalizerMissingFailsClosed(t *testing.T) {
 
 func TestProcessAsset_RequiredPublisherFailureReturnsError(t *testing.T) {
 	cause := errors.New("drive unavailable")
-	svc := NewService(ServiceDeps{Publisher: &lifecyclePublisherStub{err: cause}}, Config{
+	svc := NewService(ServiceDeps{
+		Publisher: &lifecyclePublisherStub{err: cause},
+		Finalizer: &lifecycleFinalizerStub{},
+	}, Config{
 		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
-		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: false},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
@@ -128,9 +160,12 @@ func TestProcessAsset_RequiredPublisherFailureReturnsError(t *testing.T) {
 }
 
 func TestProcessAsset_RequiredPublisherNilResultReturnsError(t *testing.T) {
-	svc := NewService(ServiceDeps{Publisher: &lifecyclePublisherStub{nilResult: true}}, Config{
+	svc := NewService(ServiceDeps{
+		Publisher: &lifecyclePublisherStub{nilResult: true},
+		Finalizer: &lifecycleFinalizerStub{},
+	}, Config{
 		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
-		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: false},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
@@ -161,9 +196,9 @@ func TestProcessAsset_DedupeStoreMissingReturnsError(t *testing.T) {
 }
 
 func TestProcessAsset_RequiredPublisherMissingReturnsError(t *testing.T) {
-	svc := NewService(ServiceDeps{}, Config{
+	svc := NewService(ServiceDeps{Finalizer: &lifecycleFinalizerStub{}}, Config{
 		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
-		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: false},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
 	})
 
 	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
@@ -227,6 +262,123 @@ func TestProcessAsset_DedupeFailureReturnsOperationalError(t *testing.T) {
 	}
 	if !errors.Is(err, ErrFinalizationFailed) || !errors.Is(err, cause) {
 		t.Fatalf("err = %v, want ErrFinalizationFailed and store cause", err)
+	}
+}
+
+func TestProcessAsset_CommitFailurePreventsDrivePublish(t *testing.T) {
+	commitErr := errors.New("canonical commit failed")
+	order := []string{}
+	publisher := &lifecyclePublisherStub{calls: &order}
+	finalizer := &lifecycleFinalizerStub{err: commitErr, failAlways: true, order: &order}
+	svc := NewService(ServiceDeps{Publisher: publisher, Finalizer: finalizer}, Config{
+		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-commit-failure", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+	}, "hash")
+	if result == nil {
+		t.Fatal("result = nil, want operational result")
+	}
+	if !errors.Is(err, ErrFinalizationFailed) || !errors.Is(err, commitErr) {
+		t.Fatalf("err = %v, want ErrFinalizationFailed and commit cause", err)
+	}
+	if len(order) != 1 || order[0] != "finalizer:PUBLISH_PENDING" {
+		t.Fatalf("order = %#v, want only pending commit before abort", order)
+	}
+}
+
+func TestProcessAsset_PublisherIdentityMissingPersistsRecoveryState(t *testing.T) {
+	order := []string{}
+	finalizer := &lifecycleFinalizerStub{order: &order}
+	// The default publisher stub returns an identity; this test uses a
+	// dedicated publisher below to model a malformed successful response.
+	publisherWithNoIdentity := lifecyclePublisherNoIdentityStub{calls: &order}
+	svc := NewService(ServiceDeps{Publisher: &publisherWithNoIdentity, Finalizer: finalizer}, Config{
+		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{ID: "asset-no-identity", LocalPath: "/tmp/asset.mp4", RequireDrive: true}, "hash")
+	if result == nil || !errors.Is(err, ErrDriveUploadFailed) {
+		t.Fatalf("result=%#v err=%v, want required delivery error", result, err)
+	}
+	if len(finalizer.records) != 2 || finalizer.records[1].PublishStatus != asset.AssetPublishFailed {
+		t.Fatalf("records = %#v, want pending then failed recovery", finalizer.records)
+	}
+}
+
+type lifecyclePublisherNoIdentityStub struct {
+	calls *[]string
+}
+
+func (p *lifecyclePublisherNoIdentityStub) Publish(context.Context, delivery.PublishRequest) (*delivery.PublishResult, error) {
+	if p.calls != nil {
+		*p.calls = append(*p.calls, "publisher")
+	}
+	return &delivery.PublishResult{}, nil
+}
+
+func (p *lifecyclePublisherNoIdentityStub) ResolveFolder(context.Context, delivery.PublishRequest) (string, error) {
+	return "", nil
+}
+
+func TestProcessAsset_PublishFailurePersistsRecoveryStateAndOrder(t *testing.T) {
+	cause := errors.New("drive unavailable")
+	order := []string{}
+	finalizer := &lifecycleFinalizerStub{order: &order}
+	publisher := &lifecyclePublisherStub{err: cause, calls: &order}
+	svc := NewService(ServiceDeps{Publisher: publisher, Finalizer: finalizer}, Config{
+		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-recovery", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+	}, "hash")
+	if result == nil {
+		t.Fatal("result = nil, want operational result")
+	}
+	if !errors.Is(err, ErrDriveUploadFailed) || !errors.Is(err, cause) {
+		t.Fatalf("err = %v, want ErrDriveUploadFailed and publisher cause", err)
+	}
+	if result.OK || result.Status != "" {
+		t.Fatalf("result = %#v, want no success result on required delivery failure", result)
+	}
+	wantOrder := []string{"finalizer:PUBLISH_PENDING", "publisher", "finalizer:PUBLISH_FAILED"}
+	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
+		t.Fatalf("order = %#v, want %#v", order, wantOrder)
+	}
+	if len(finalizer.records) != 2 || finalizer.records[1].PublishStatus != asset.AssetPublishFailed || finalizer.records[1].Status != "delivery_pending" {
+		t.Fatalf("recovery record = %#v, want PUBLISH_FAILED/delivery_pending", finalizer.records)
+	}
+}
+
+func TestProcessAsset_TerminalCommitFailurePreservesDriveIdentityForRecovery(t *testing.T) {
+	commitErr := errors.New("terminal commit failed")
+	finalizer := &lifecycleFinalizerStub{err: commitErr, failAt: 2}
+	publisher := &lifecyclePublisherStub{}
+	svc := NewService(ServiceDeps{Publisher: publisher, Finalizer: finalizer}, Config{
+		UploadPolicy:  assetop.UploadPolicy{Enabled: true},
+		PersistPolicy: assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-terminal-recovery", LocalPath: "/tmp/asset.mp4", RequireDrive: true,
+	}, "hash")
+	if result == nil || !errors.Is(err, ErrFinalizationFailed) || !errors.Is(err, commitErr) {
+		t.Fatalf("result=%#v err=%v, want terminal commit failure", result, err)
+	}
+	if len(finalizer.records) != 3 {
+		t.Fatalf("records = %d, want pending + failed terminal attempt + recovery", len(finalizer.records))
+	}
+	recovery := finalizer.records[2]
+	if recovery.PublishStatus != asset.AssetPublishFailed || recovery.Status != "delivery_pending" {
+		t.Fatalf("recovery = %#v, want PUBLISH_FAILED/delivery_pending", recovery)
+	}
+	if recovery.DriveFileID != "drive-file" || recovery.DriveLink == "" {
+		t.Fatalf("recovery = %#v, want preserved Drive identity", recovery)
 	}
 }
 

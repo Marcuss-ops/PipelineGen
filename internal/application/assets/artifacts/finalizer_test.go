@@ -11,6 +11,7 @@ import (
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 )
@@ -413,6 +414,23 @@ func setupTestAssetIndex(t *testing.T) *assetindex.Service {
 	db := drive.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	return assetindex.NewService(repo)
+}
+
+func TestAssetIndexStatusTracksDeliveryState(t *testing.T) {
+	for _, tc := range []struct {
+		status asset.AssetPublishStatus
+		want   string
+	}{
+		{asset.AssetPublishPending, "pending"},
+		{asset.AssetPublishPublishing, "pending"},
+		{asset.AssetPublishFailed, "failed"},
+		{asset.AssetPublishPublished, "ready"},
+		{asset.AssetPublishLocalOnly, "ready"},
+	} {
+		if got := assetIndexStatus(tc.status); got != tc.want {
+			t.Errorf("assetIndexStatus(%q) = %q, want %q", tc.status, got, tc.want)
+		}
+	}
 }
 
 func TestFinalizerWritesToAssetIndex(t *testing.T) {

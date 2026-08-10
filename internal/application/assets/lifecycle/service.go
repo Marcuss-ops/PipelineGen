@@ -13,48 +13,25 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 var (
-	// ErrFinalizerUnavailable is returned when persistence is required but
-	// the canonical asset finalizer was not wired.
-	ErrFinalizerUnavailable = errors.New("asset lifecycle: finalizer unavailable")
-	// ErrAssetStoreUnavailable is returned when duplicate checking is
-	// enabled but its canonical store was not wired.
-	ErrAssetStoreUnavailable = errors.New("asset lifecycle: asset store unavailable")
-	// ErrReconcilerUnavailable is returned when reconciliation was requested
-	// but the lifecycle service has no reconciliation capability.
-	ErrReconcilerUnavailable = errors.New("asset lifecycle: reconciler unavailable")
-	// ErrDrivePublisherUnavailable is returned when a required Drive upload
-	// cannot run because the Publisher dependency was not wired.
+	ErrFinalizerUnavailable      = errors.New("asset lifecycle: finalizer unavailable")
+	ErrAssetStoreUnavailable     = errors.New("asset lifecycle: asset store unavailable")
+	ErrReconcilerUnavailable     = errors.New("asset lifecycle: reconciler unavailable")
 	ErrDrivePublisherUnavailable = errors.New("asset lifecycle: Drive publisher unavailable")
-	// ErrDriveUploadFailed is returned when a required Drive upload fails.
-	ErrDriveUploadFailed = errors.New("asset lifecycle: Drive upload failed")
-	// ErrFinalizationFailed is returned when canonical persistence rejects an
-	// asset after the lifecycle has attempted its required side effects.
-	ErrFinalizationFailed = errors.New("asset lifecycle: finalization failed")
+	ErrDriveUploadFailed         = errors.New("asset lifecycle: Drive upload failed")
+	ErrFinalizationFailed        = errors.New("asset lifecycle: finalization failed")
 )
 
-// Service orchestrates the full asset lifecycle:
-// duplicate checking, upload, persistence, and reconciliation.
-//
-// FASE 9 Step 7 (June 2026): drive.Admin (UploadFile) + drive.Reader.
-//
-// F2.7 (June 2026): driveAdmin REMOVED. The Drive write path now goes
-// through delivery.Publisher (canonical Pattern 0 port) — every upload
-// flows through DestinationRegistry + RequireSubpath + ConflictPolicy
-// instead of bypassing them via the raw drive.Admin.UploadFile port.
-//
-// driveReader (drive.Reader) is retained for the read-only reconcile
-// path (DriveIsNotTrashed); it is the only Drive-side touch left on
-// service-side callers.
 type Service struct {
 	store         AssetRecordStore
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
 	publisher     delivery.Publisher
 	driveReader   drive.Reader
-	finalizer     *artifacts.Finalizer
+	finalizer     Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
 	registry      artifacts.Registry
@@ -62,7 +39,6 @@ type Service struct {
 	log           *zap.Logger
 }
 
-// Config holds configuration for Service.
 type Config struct {
 	DuplicatePolicy assetop.DuplicatePolicy
 	UploadPolicy    assetop.UploadPolicy
@@ -70,313 +46,217 @@ type Config struct {
 	ReconcilePolicy assetop.ReconcilePolicy
 }
 
-// ServiceDeps carries the dependencies for NewService. Grouping them
-// keeps the constructor under the archcheck 8-parameter cap while
-// preserving the canonical lifecycle service surface.
 type ServiceDeps struct {
 	Store       AssetRecordStore
 	Publisher   delivery.Publisher
 	DriveReader drive.Reader
 	Registry    artifacts.Registry
 	AssetIndex  *assetindex.Service
-	Finalizer   *artifacts.Finalizer
+	Finalizer   Finalizer
 	Log         *zap.Logger
 }
 
-// NewService creates a new lifecycle Service.
-//
-// FASE 9 Step 7: driveAdmin is used for UploadFile; driveReader is used
-// for FileIsNotTrashed in the reconcile service. Both are satisfied by
-// the same *drive.Uploader concrete in production wiring.
-//
-// F2.7 (June 2026): driveAdmin (drive.Admin) replaced by publisher
-// (delivery.Publisher). driveReader stays — reconcile touches the read-
-// only drive surface (DriveIsNotTrashed). NewLifecycleFromDeps at the
-// composition root is the only place drive.Admin lives; the lifecycle
-// service itself NEVER holds a drive.Admin handle (P0 #7 invariant: no
-// raw SDK / legacy port access from application code).
 func NewService(deps ServiceDeps, cfg Config) *Service {
 	if deps.Log == nil {
 		deps.Log = zap.NewNop()
 	}
 	dedupe := assetop.NewDedupeService(deps.Store, cfg.DuplicatePolicy, deps.Log)
-
 	var reconcile *assetop.ReconcileService
 	if cfg.ReconcilePolicy.Enabled && deps.DriveReader != nil {
 		reconcile = assetop.NewReconcileService(deps.Store, deps.DriveReader, cfg.ReconcilePolicy, deps.Log)
 	}
-
-	return &Service{
-		store:         deps.Store,
-		dedupe:        dedupe,
-		reconcile:     reconcile,
-		publisher:     deps.Publisher,
-		driveReader:   deps.DriveReader,
-		finalizer:     deps.Finalizer,
-		uploadPolicy:  cfg.UploadPolicy,
-		persistPolicy: cfg.PersistPolicy,
-		registry:      deps.Registry,
-		assetIndex:    deps.AssetIndex,
-		log:           deps.Log,
-	}
+	return &Service{store: deps.Store, dedupe: dedupe, reconcile: reconcile, publisher: deps.Publisher, driveReader: deps.DriveReader, finalizer: deps.Finalizer, uploadPolicy: cfg.UploadPolicy, persistPolicy: cfg.PersistPolicy, registry: deps.Registry, assetIndex: deps.AssetIndex, log: deps.Log}
 }
 
-// ProcessAsset processes an asset through the lifecycle:
-// 1. Check for duplicates
-// 2. Upload to Drive (if needed)
-// 3. Persist to databases
+// ProcessAsset makes the canonical SQLite-owned record before any Drive side
+// effect. The first commit records PUBLISH_PENDING; the second records either
+// PUBLISHED or PUBLISH_FAILED so failed delivery remains recoverable.
 func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHash string) (*FinalizeResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("%w: input is required", ErrFinalizationFailed)
+	}
+	out := &FinalizeResult{LocalPath: input.LocalPath, DriveLink: input.DriveLink, DriveFileID: input.DriveFileID, DownloadLink: input.DownloadLink, FileHash: fileHash}
+	if input.RequireDrive && input.LocalPath == "" {
+		return out, fmt.Errorf("%w: local path is required", ErrDriveUploadFailed)
+	}
+	needsDelivery := input.RequireDrive || (s.uploadPolicy.Enabled && input.LocalPath != "")
+	if needsDelivery && !s.persistPolicy.SaveToAssetRegistry {
+		return out, fmt.Errorf("%w: Drive delivery requires canonical persistence", ErrFinalizerUnavailable)
+	}
 	if s.persistPolicy.SaveToAssetRegistry && s.finalizer == nil {
 		return nil, ErrFinalizerUnavailable
 	}
 
-	out := &FinalizeResult{
-		LocalPath:    input.LocalPath,
-		DriveLink:    input.DriveLink,
-		DriveFileID:  input.DriveFileID,
-		DownloadLink: input.DownloadLink,
-		FileHash:     fileHash,
-	}
-
-	// Step 1: Check for duplicates
 	if s.dedupe != nil && s.dedupe.Policy().Enabled {
 		if s.store == nil {
 			return out, ErrAssetStoreUnavailable
 		}
-		query := assetop.ExistingAssetQuery{
-			ID:       input.ID,
-			FileHash: fileHash,
-			Filename: input.Filename,
-			Source:   input.Source,
-		}
-
-		existing, err := s.dedupe.CheckDuplicate(ctx, query)
+		existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, FileHash: fileHash, Filename: input.Filename, Source: input.Source})
 		if err != nil {
 			return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
-		} else if existing != nil && s.dedupe.Policy().SkipIfExists {
-			out.OK = true
-			out.Status = "skipped_duplicate"
-			out.DriveLink = existing.DriveLink
-			out.DriveFileID = existing.DriveFileID
-			out.DownloadLink = existing.DownloadLink
-			out.FileHash = existing.FileHash
-			s.log.Info("skipping duplicate asset",
-				zap.String("id", input.ID),
-				zap.String("existing_id", existing.ID))
+		}
+		if existing != nil && s.dedupe.Policy().SkipIfExists {
+			out.OK, out.Status, out.DeliveryStatus = true, "skipped_duplicate", asset.AssetPublishPublished
+			out.DriveLink, out.DriveFileID, out.DownloadLink, out.FileHash = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.FileHash
 			return out, nil
 		}
 	}
 
-	// Step 2: Upload to Drive (if policy enabled and not already uploaded)
-	driveLink := input.DriveLink
-	driveFileID := input.DriveFileID
-	downloadLink := input.DownloadLink
+	driveLink, driveFileID, downloadLink := input.DriveLink, input.DriveFileID, input.DownloadLink
+	publishStatus := asset.AssetPublishLocalOnly
+	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, FileHash: fileHash, ContentHash: fileHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
 
-	if s.uploadPolicy.Enabled && driveLink == "" && input.LocalPath != "" {
+	if needsDelivery {
+		if _, err := s.commitRecord(ctx, rec, false); err != nil {
+			return out, fmt.Errorf("%w: pending commit: %w", ErrFinalizationFailed, err)
+		}
+	}
+
+	if needsDelivery {
 		if s.publisher == nil {
-			// F2.7: publisher unwired means the composition root fell
-			// through without constructing delivery.Publisher. This is
-			// a code defect — surface the gap loudly so operators see
-			// it at first invocation. With RequireDrive=true, the
-			// caller demands a Drive URL; return an operational error
-			// instead of encoding the failure in a result status.
-			if input.RequireDrive {
-				err := fmt.Errorf("%w: RequireDrive=true", ErrDrivePublisherUnavailable)
-				s.log.Error("lifecycle.ProcessAsset: publisher not wired + RequireDrive=true — abort without persistence",
-					zap.String("id", input.ID), zap.Error(err))
-				return out, err
+			publishStatus = asset.AssetPublishFailed
+			rec.PublishStatus, rec.Error = publishStatus, ErrDrivePublisherUnavailable.Error()
+			if _, err := s.commitRecord(ctx, rec, false); err != nil {
+				return out, fmt.Errorf("%w: recovery commit: %w", ErrFinalizationFailed, err)
 			}
-			s.log.Warn("lifecycle.ProcessAsset: publisher not wired (composition root) — RequireDrive=false, proceeding without Drive upload",
-				zap.String("id", input.ID))
+			if input.RequireDrive {
+				return out, ErrDrivePublisherUnavailable
+			}
 		} else {
-			// F2.7: build the canonical delivery.PublishRequest. The
-			// Publisher routes through DestinationRegistry +
-			// RequireSubpath + ConflictPolicy — the legacy
-			// drive.Admin.UploadFile bypass is closed. FolderID passes
-			// through RootFolderOverride (back-compat escape hatch for
-			// callers with an explicit folder target).
 			filename := input.Filename
 			if filename == "" {
 				filename = filepath.Base(input.LocalPath)
 			}
-			// PR-P12-LIFECYCLE-SEMANTIC (July 2026): RootFolderOverride
-			// REMOVED. Destination + Group + Subject + ProjectID + Language
-			// provide canonical semantic routing via DestinationRegistry +
-			// PathBuilder. The explicit folder override is the
-			// infrastructure-layer escape hatch (delivery.Publisher
-			// internal); application-layer code uses typed semantic fields.
-			// Forward-pointer: PR-P12-LIFECYCLE-CALLER-VERIFY (deadline
-			// 2026-08-15) — audit all callers of ProcessAsset that set
-			// input.FolderID to verify semantic fields resolve to the
-			// same folder.
-			pubReq := delivery.PublishRequest{
-				Destination: input.Destination,
-				LocalPath:   input.LocalPath,
-				Filename:    filename,
-				AssetID:     input.ID,
-				Group:       input.Group,
-				Subject:     input.Subject,
-				ProjectID:   input.ProjectID,
-				Language:    input.Language,
-				Style:       input.Style,
-			}
-			pubRes, pubErr := s.publisher.Publish(ctx, pubReq)
-			if pubErr != nil {
-				if input.RequireDrive {
-					err := fmt.Errorf("%w: %w", ErrDriveUploadFailed, pubErr)
-					s.log.Error("lifecycle.ProcessAsset: publisher.Publish failed + RequireDrive=true — abort without persistence",
-						zap.String("id", input.ID),
-						zap.String("destination", string(input.Destination)),
-						zap.Error(err))
-					return out, err
+			pubRes, pubErr := s.publisher.Publish(ctx, delivery.PublishRequest{Destination: input.Destination, LocalPath: input.LocalPath, Filename: filename, AssetID: input.ID, Group: input.Group, Subject: input.Subject, ProjectID: input.ProjectID, Language: input.Language, Style: input.Style})
+			if pubErr != nil || pubRes == nil {
+				publishStatus = asset.AssetPublishFailed
+				rec.PublishStatus = publishStatus
+				if pubErr != nil {
+					rec.Error = pubErr.Error()
+				} else {
+					rec.Error = "publisher returned nil result"
 				}
-				s.log.Warn("lifecycle.ProcessAsset: publisher.Publish failed (RequireDrive=false — best-effort, proceeding without Drive URL)",
-					zap.String("id", input.ID),
-					zap.Error(pubErr))
-			} else if pubRes == nil {
-				return out, fmt.Errorf("%w: publisher returned nil result", ErrDriveUploadFailed)
+				if _, err := s.commitRecord(ctx, rec, false); err != nil {
+					return out, fmt.Errorf("%w: recovery commit: %w", ErrFinalizationFailed, err)
+				}
+				if input.RequireDrive {
+					if pubErr != nil {
+						return out, fmt.Errorf("%w: %w", ErrDriveUploadFailed, pubErr)
+					}
+					return out, fmt.Errorf("%w: publisher returned nil result", ErrDriveUploadFailed)
+				}
+			} else if pubRes.FileID == "" && pubRes.WebViewLink == "" {
+				publishStatus = asset.AssetPublishFailed
+				rec.PublishStatus = publishStatus
+				rec.Error = "publisher returned no Drive file identity"
+				if _, err := s.commitRecord(ctx, rec, false); err != nil {
+					return out, fmt.Errorf("%w: recovery commit: %w", ErrFinalizationFailed, err)
+				}
+				if input.RequireDrive {
+					return out, fmt.Errorf("%w: publisher returned no Drive file identity", ErrDriveUploadFailed)
+				}
 			} else {
-				driveLink = pubRes.WebViewLink
+				publishStatus = asset.AssetPublishPublished
+				rec.PublishStatus = publishStatus
+				driveLink, driveFileID = pubRes.WebViewLink, pubRes.FileID
+				if driveLink == "" && driveFileID != "" {
+					driveLink = "https://drive.google.com/file/d/" + driveFileID + "/view"
+				}
 				if pubRes.DownloadLink != "" {
 					downloadLink = pubRes.DownloadLink
 				} else if pubRes.FileID != "" {
 					downloadLink = "https://drive.google.com/uc?id=" + pubRes.FileID
 				}
-				driveFileID = pubRes.FileID
-				s.log.Info("lifecycle.ProcessAsset: asset uploaded to drive (via Publisher, F2.7)",
-					zap.String("id", input.ID),
-					zap.String("file_id", pubRes.FileID),
-					zap.String("destination", string(input.Destination)),
-					zap.String("action", string(pubRes.Action)))
 			}
 		}
 	}
 
-	// Step 3: Persist to databases (if policy enabled)
-	if s.persistPolicy.SaveToAssetRegistry {
-		rec := &artifacts.MediaRecord{
-			ID:           input.ID,
-			Name:         input.Name,
-			Filename:     input.Filename,
-			Source:       input.Source,
-			MediaType:    string(input.Kind),
-			FolderID:     input.FolderID,
-			FolderPath:   input.FolderPath,
-			Group:        input.Group,
-			LocalPath:    input.LocalPath,
-			DriveLink:    driveLink,
-			DriveFileID:  driveFileID,
-			DownloadLink: downloadLink,
-			FileHash:     fileHash,
-			ContentHash:  fileHash,
-			Metadata:     input.Metadata,
-			Status:       "processed",
-			Duration:     input.Duration,
-			SourceID:     input.SourceID,
-			Subfolder:    input.Subfolder,
-		}
-
-		// fix/voiceover-require-drive-on-intent: honour the caller's
-		// RequireDrive intent (set at the request boundary, e.g. the
-		// voiceover process passes true whenever dest.FolderID or the
-		// cfg-level voiceover folder is set). The legacy
-		// `driveLink != ""` fallback is preserved as an OR so callers
-		// that haven't yet started setting input.RequireDrive keep
-		// their existing behaviour. Once every entrypoint sets the
-		// field explicitly, the OR can drop.
-		requireDrive := input.RequireDrive || driveLink != "" || input.Destination == delivery.DestinationImage
-		finalizeOpts := artifacts.FinalizeOptions{
-			RequireLocal: false,
-			RequireHash:  false,
-			RequireDrive: requireDrive,
-			VerifyDB:     true,
-		}
-
-		out.DriveLink = driveLink
-		out.DriveFileID = driveFileID
-		out.DownloadLink = downloadLink
-		finalResult, err := s.finalizer.Finalize(ctx, rec, finalizeOpts)
-		if err != nil {
-			return out, fmt.Errorf("%w: %w", ErrFinalizationFailed, err)
-		}
-		if !finalResult.OK {
-			message := finalResult.Error
-			if message == "" {
-				message = "finalizer returned an unsuccessful result"
+	if !needsDelivery {
+		publishStatus = asset.AssetPublishLocalOnly
+		rec.PublishStatus, rec.Status = publishStatus, "processed"
+		if s.persistPolicy.SaveToAssetRegistry {
+			if _, err := s.commitRecord(ctx, rec, false); err != nil {
+				return out, fmt.Errorf("%w: commit: %w", ErrFinalizationFailed, err)
 			}
-			return out, fmt.Errorf("%w: %s", ErrFinalizationFailed, message)
+		}
+	} else if publishStatus == asset.AssetPublishPublished {
+		rec.DriveLink, rec.DriveFileID, rec.DownloadLink, rec.Status = driveLink, driveFileID, downloadLink, "processed"
+		if _, err := s.commitRecord(ctx, rec, true); err != nil {
+			// Drive already owns the external side effect. Preserve its
+			// identity and make one explicit recovery attempt so the
+			// canonical record remains retryable instead of looking lost.
+			terminalErr := err
+			rec.PublishStatus = asset.AssetPublishFailed
+			rec.Status = "delivery_pending"
+			rec.Error = terminalErr.Error()
+			if _, recoveryErr := s.commitRecord(ctx, rec, false); recoveryErr != nil {
+				return out, fmt.Errorf("%w: terminal commit: %v; recovery commit: %w", ErrFinalizationFailed, terminalErr, recoveryErr)
+			}
+			return out, fmt.Errorf("%w: terminal commit: %w", ErrFinalizationFailed, terminalErr)
 		}
 	}
 
-	out.OK = true
+	out.OK, out.DeliveryStatus = true, publishStatus
 	out.Status = "processed"
-	out.DriveLink = driveLink
-	out.DriveFileID = driveFileID
-	out.DownloadLink = downloadLink
-	out.FileHash = fileHash
+	if publishStatus == asset.AssetPublishFailed {
+		out.Status = "delivery_pending"
+	}
+	out.DriveLink, out.DriveFileID, out.DownloadLink = driveLink, driveFileID, downloadLink
 	return out, nil
 }
 
-// UploadOnly + UpsertVoiceoverProjectionTx — extracted to
-// service_voiceover.go (PR-LIFECYCLE-SPLIT, July 2026).
-// See that file for the canonical voiceover-specific lifecycle methods.
-
-// CheckDuplicate performs a read-only duplicate check for an asset.
-func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, fileHash string) (*FinalizeResult, error) {
-	out := &FinalizeResult{
-		OK:        false,
-		Status:    "failed",
-		LocalPath: input.LocalPath,
+func (s *Service) commitRecord(ctx context.Context, rec *artifacts.MediaRecord, requireDrive bool) (*artifacts.FinalizeResult, error) {
+	if s.finalizer == nil {
+		return nil, ErrFinalizerUnavailable
 	}
+	result, err := s.finalizer.Finalize(ctx, rec, artifacts.FinalizeOptions{RequireDrive: requireDrive, VerifyDB: true})
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, errors.New("finalizer returned nil result")
+	}
+	if !result.OK {
+		message := result.Error
+		if message == "" {
+			message = "finalizer returned an unsuccessful result"
+		}
+		return result, errors.New(message)
+	}
+	return result, nil
+}
 
+func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, fileHash string) (*FinalizeResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("%w: input is required", ErrFinalizationFailed)
+	}
+	out := &FinalizeResult{Status: "failed", LocalPath: input.LocalPath}
 	if s.dedupe != nil && s.dedupe.Policy().Enabled && s.store == nil {
 		return out, ErrAssetStoreUnavailable
 	}
 	if s.dedupe == nil || !s.dedupe.Policy().Enabled {
-		out.OK = true
-		out.Status = "no_dedupe_policy"
+		out.OK, out.Status = true, "no_dedupe_policy"
 		return out, nil
 	}
-
-	query := assetop.ExistingAssetQuery{
-		ID:       input.ID,
-		FileHash: fileHash,
-		Filename: input.Filename,
-		Source:   input.Source,
-	}
-
-	existing, err := s.dedupe.CheckDuplicate(ctx, query)
+	existing, err := s.dedupe.CheckDuplicate(ctx, assetop.ExistingAssetQuery{ID: input.ID, FileHash: fileHash, Filename: input.Filename, Source: input.Source})
 	if err != nil {
 		return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 	}
 	if existing != nil && s.dedupe.Policy().SkipIfExists {
-		out.OK = true
-		out.Status = "would_skip_duplicate"
-		out.DriveLink = existing.DriveLink
-		out.DriveFileID = existing.DriveFileID
-		out.DownloadLink = existing.DownloadLink
-		out.FileHash = existing.FileHash
+		out.OK, out.Status = true, "would_skip_duplicate"
+		out.DriveLink, out.DriveFileID, out.DownloadLink, out.FileHash = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.FileHash
 		return out, nil
 	}
-	out.OK = true
-	out.Status = "would_process"
+	out.OK, out.Status = true, "would_process"
 	return out, nil
 }
 
-// Reconcile triggers reconciliation for a given source.
 func (s *Service) Reconcile(ctx context.Context, source string) (int, error) {
 	if s.reconcile == nil {
 		return 0, ErrReconcilerUnavailable
 	}
 	return s.reconcile.ReconcileDriveMissing(ctx, source)
 }
-
-// DefaultConfig returns the default lifecycle configuration.
 func DefaultConfig() Config {
-	return Config{
-		DuplicatePolicy: assetop.DefaultDuplicatePolicy(),
-		UploadPolicy:    assetop.DefaultUploadPolicy(),
-		PersistPolicy:   assetop.DefaultPersistPolicy(),
-		ReconcilePolicy: assetop.DefaultReconcilePolicy(),
-	}
+	return Config{DuplicatePolicy: assetop.DefaultDuplicatePolicy(), UploadPolicy: assetop.DefaultUploadPolicy(), PersistPolicy: assetop.DefaultPersistPolicy(), ReconcilePolicy: assetop.DefaultReconcilePolicy()}
 }
