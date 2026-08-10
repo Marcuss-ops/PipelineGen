@@ -12,10 +12,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
-	appimages "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptassets"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	appimages "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
@@ -83,10 +85,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		rerankerPort = root.AI.Reranker
 	}
 
-	// Artlist must be composed before the canonical search graph so its
-	// adapter can be included in the aggregator from the first request.
-	// ProviderRegistry is intentionally still mutable here; final registry
-	// registration/freeze remains centralized in registerCapabilities.
+	// Bootstrap all provider adapters before composing the search graph.
 	if err := registerArtlist(ctx, registry, log, cfg, root, regWiring); err != nil {
 		return registryCrossStepState{}, err
 	}
@@ -110,17 +109,39 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 			Search: appimages.NewResolverSearchProvider(root.Domains.ImageSearchResolver),
 		})
 	}
-	extraSearchProviders := make([]providers.SearchProvider, 0, len(providerEntries))
-	for _, entry := range providerEntries {
-		if entry.Search != nil {
-			extraSearchProviders = append(extraSearchProviders, entry.Search)
+	regWiring.StockPipeline = nil
+	stockW, stockErr := WireStockPipeline(cfg, log, root)
+	if stockErr == nil && stockW != nil && stockW.Module != nil {
+		regWiring.StockPipeline = stockW
+		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
+			return registryCrossStepState{}, err
 		}
+		if stockW.BatchModule != nil {
+			if err := tryRegisterModuleStrict(registry, log, stockW.BatchModule, WithRegistrationPoint("register.StockBatches")); err != nil {
+				return registryCrossStepState{}, err
+			}
+		}
+		if stockW.Service != nil && root.Jobs != nil && root.Jobs.Service != nil {
+			if err := stockW.Service.RegisterHandler(root.Jobs.Service); err != nil {
+				return registryCrossStepState{}, err
+			}
+		}
+		providerEntries = append(providerEntries, TrackedProviderEntry{Id: "stock", Kind: ProviderKindFetch, Fetch: stockadapter.NewAdapter(stockW.Service)})
 	}
-
-	searchFanOut, searchBackends, searchAgg := registerSearchBackendWithProviders(
+	scriptAssetsDescriptor, err := scriptassets.Build(scriptassets.Dependencies{Logger: log})
+	if err != nil {
+		return registryCrossStepState{}, err
+	}
+	providerDescriptor, ok := scriptAssetsDescriptor.(module.DescriptorProviders)
+	if !ok {
+		return registryCrossStepState{}, fmt.Errorf("script-assets descriptor does not implement api.DescriptorProviders")
+	}
+	if err := bootstrapProviderRegistry(providerReg, providerEntries, []module.DescriptorProviders{providerDescriptor}); err != nil {
+		return registryCrossStepState{}, err
+	}
+	searchFanOut, searchBackends, searchAgg := registerSearchBackend(
 		log,
 		providerReg,
-		extraSearchProviders,
 		root.Repos.ClipsRepo,
 		embeddingReg,
 		vectorStoreForSearch,
@@ -132,7 +153,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		SearchFanOut:       searchFanOut,
 		SearchBackends:     searchBackends,
 		SearchAggregator:   searchAgg,
-		ProviderEntries:    providerEntries,
+		ScriptAssetsModule: scriptAssetsDescriptor,
 		IdempotencyHandler: idemHandler,
 	}
 
@@ -197,29 +218,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		log.Info("registerInternalModules Step 7 FullImages pipeline mounted")
 	} else {
 		regWiring.FullImages = nil
-	}
-
-	regWiring.StockPipeline = nil
-	stockW, stockErr := WireStockPipeline(cfg, log, root)
-	if stockErr != nil {
-		log.Warn("registerInternalModules Step 8 WireStockPipeline failed (godlike/07 fail-closed: typed sentinel surfaced, /api/stock-pipeline/* may return 404 or 503 depending on which gate fired)", zap.Error(stockErr))
-	} else if stockW != nil && stockW.Module != nil {
-		regWiring.StockPipeline = stockW
-		if err := tryRegisterModuleStrict(registry, log, stockW.Module, WithRegistrationPoint("register.StockPipeline")); err != nil {
-			return registryCrossStepState{}, fmt.Errorf("wire registry: stock-pipeline: %w", err)
-		}
-		if stockW.BatchModule != nil {
-			if err := tryRegisterModuleStrict(registry, log, stockW.BatchModule, WithRegistrationPoint("register.StockBatches")); err != nil {
-				return registryCrossStepState{}, fmt.Errorf("wire registry: stock-batches: %w", err)
-			}
-			log.Info("registerInternalModules Step 8 stock-batches pipeline mounted")
-		}
-		if stockW.Service != nil && root.Jobs != nil && root.Jobs.Service != nil {
-			if err := stockW.Service.RegisterHandler(root.Jobs.Service); err != nil {
-				return registryCrossStepState{}, fmt.Errorf("wire registry: stock-pipeline: register handler: %w", err)
-			}
-		}
-		log.Info("registerInternalModules Step 8 stock pipeline mounted")
 	}
 
 	return crossStep, nil

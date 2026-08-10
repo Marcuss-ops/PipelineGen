@@ -32,9 +32,8 @@
 //   - SetDeletionService cycle).
 //   - registry_script.go          registerScripts wrapper
 //     (calls wireScriptFlow + registerScriptHistory).
-//   - registry_late_bindings.go   applyLateBindings (returns
-//     []TrackedProviderEntry to feed capability_registry.go's
-//     registerProviders step).
+//   - registry_late_bindings.go   applyLateBindings (pure handler/module
+//     preparation; provider registration completes before search composition).
 //   - registry_mediamemory.go    registerMediaMemory (Step 5c helper —
 //     wires the canonical MediaMemory resolve + bindings + feedback
 //     surface).
@@ -58,21 +57,12 @@
 //
 // Blocco C1-Step 2 changes to the orchestrator:
 //
-//   - Step 6 (applyLateBindings) now RETURNS []TrackedProviderEntry
-//     instead of incurring providers.Registry mutation inline. The
-//     inline calls were the gate violation: typed-punctuated
-//     provider Registry mutation outside the canonical point.
+//   - Step 6 (applyLateBindings) prepares handlers and the already-built
+//     script-assets route module. Provider registration is complete before
+//     search graph composition.
 //
-//   - Step 7 is registerCapabilities — the canonical single
-//     composition point — which routes HTTP modules (already
-//     registered inline during Steps 2-5, see Note (a) below)
-//     through registerHTTPModules' strict-uniqueness gate AND
-//     registers the providers slice AND freezes the
-//     providers.Registry. The pre-Step-2 freezeRegistries step
-//     is gone (the canonical Freeze lives inside registerProviders
-//     inside capability_registry.go — Reviewer Q8 invariant
-//     preserved by plumbing the Freeze as the LAST mutation
-//     of registerCapabilities).
+//   - Step 7 (registerCapabilities) publishes prepared HTTP modules and
+//     validates the graph. It cannot mutate providers.Registry.
 //
 // Note (a): per-step registerX functions in
 // registry_internal_modules.go + registry_public_modules.go +
@@ -271,29 +261,16 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: mediamemory: %w", err)
 	}
 
-	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +
-	// QDRANT-004 mediasearch handler + COLLECTS provider registration
-	// entries (artlist + youtube + stock); internally still publishes
-	// the script_assets capability (HTTP module via the canonical
-	// tryRegisterModuleStrict + ScriptAssetsDescriptor.RegisterProviders
-	// slot — gate-safe because the slot is a descriptor-level method,
-	// NOT a typed providers.Registry .Register call). Returns the
-	// provider entry slice for Step 7 to register+freeze via the
-	// canonical composition point.
-	providerEntries, lbErr := applyLateBindings(registry, log, root, wiring, crossStep)
+	// Step 6 — Late bindings prepares internal handlers and the
+	// script-assets route module. It performs no provider registration.
+	preparedCapabilities, lbErr := applyLateBindings(registry, log, root, wiring, crossStep)
 	if lbErr != nil {
 		return nil, fmt.Errorf("wire registry: late-bindings: %w", lbErr)
 	}
 
-	// Step 7 — registerCapabilities (Blocco C1-Step 2, June 2026):
-	// the canonical single composition point for typed-prefix
-	// mutated-by-Register style calls on the THREE canonical
-	// registries. capability_registry_gate_test.go enforces the
-	// invariant: NO production file outside capability_registry.go
-	// may contain a typed-prefix Registry.Register(...) literal.
-	// ProviderRegistry.Freeze() lands inside registerProviders as
-	// the absolute last mutation (Reviewer Q8 invariant preserved
-	// from Wave 14 close-out).
+	// Step 7 — registerCapabilities publishes prepared HTTP modules and
+	// validates the graph; the provider registry was already bootstrapped
+	// and frozen before search composition.
 	//
 	// HTTPModules is forward-only here — today empty because per-step
 	// registerX functions register inline during Steps 2-5 (the
@@ -304,7 +281,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		providerReg = root.Search.ProviderRegistry
 	}
 	if err := registerCapabilities(registry, providerReg, CapabilityDeps{
-		Providers: providerEntries,
+		Providers: preparedCapabilities,
 	}); err != nil {
 		return nil, fmt.Errorf("wire registry: register-capabilities: %w", err)
 	}
