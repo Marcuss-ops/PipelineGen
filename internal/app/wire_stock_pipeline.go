@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stockbatches"
@@ -93,6 +94,10 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 		return nil, fmt.Errorf("wire stock pipeline: outbox bundle is required")
 	}
 	ffmpegPath := cfg.External.FfmpegPath
+	mediaConfig := root.MediaExec
+	if mediaConfig == (mediaexec.ExecutionConfig{}) {
+		return nil, fmt.Errorf("wire stock pipeline: resolved media execution config is required")
+	}
 
 	// DB: extract *sql.DB from typed *storage.SQLiteDB handle.
 	stockDB := (*sql.DB)(nil)
@@ -125,15 +130,15 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutor(
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
-		cfg.Video.EncoderPolicy(),
-		cfg.Video.CanonicalVideoProfile(),
+		mediaConfig.Policy,
+		mediaConfig.Profile,
 		log,
 		rustExecutor,
 	)
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := rustexec.NewStockRendererWithExecutor(rustExecutor, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	stockRenderer := rustexec.NewStockRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
@@ -252,7 +257,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *wiring.Compose
 	// Source duration validation and manifest projection are production
 	// capabilities, not optional test conveniences. Both are built from
 	// concrete infrastructure already owned by the composition root.
-	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log))
+	stockProbe := render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log))
 	stockProjection := newStockProjection()
 
 	return BuildStockBundle(StockBundleDeps{

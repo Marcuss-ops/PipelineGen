@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -19,7 +20,7 @@ import (
 // deps (mutations dispatcher) and the bundle assembly.
 //
 // Requires outbox.Dispatcher (injected via wiring.OutboxBundle, last arg).
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle) (*wiring.DomainBundle, error) {
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger, drive *wiring.DriveBundle, repos *wiring.RepoBundle, search *wiring.SearchBundle, process *wiring.ProcessBundle, ai *wiring.AIBundle, outbox *wiring.OutboxBundle, mediaConfig mediaexec.ExecutionConfig) (*wiring.DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	if outbox != nil && outbox.Dispatcher != nil {
@@ -35,7 +36,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 	bundle := &wiring.DomainBundle{}
 
 	// ── Media domain: YouTube clip pipeline ──────────────────
-	voMetaWriter, clipWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, mutationsDisp, bundle)
+	voMetaWriter, clipWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, mutationsDisp, bundle, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains (media): %w", err)
 	}
@@ -57,6 +58,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Data
 		mutationsDisp: mutationsDisp,
 		voMetaWriter:  voMetaWriter,
 		bundle:        bundle,
+		mediaConfig:   mediaConfig,
 	}); err != nil {
 		return nil, fmt.Errorf("compose domains (assets): %w", err)
 	}

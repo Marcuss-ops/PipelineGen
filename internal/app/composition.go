@@ -26,6 +26,8 @@ import (
 // NewComposition assembles all bundles in dependency order and returns
 // the fully-wired wiring.ComposeRoot. Cleanup is owned by shutdown.go.
 func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databases, log *zap.Logger) (*wiring.ComposeRoot, error) {
+	mediaConfig := wiring.MediaexecConfig(cfg)
+
 	repos, err := BuildRepoBundle(ctx, cfg, dbs, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose repos: %w", err)
@@ -82,12 +84,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps)
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
-	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox)
+	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
@@ -135,6 +137,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 	}
 
 	root := &wiring.ComposeRoot{
+		MediaExec:       mediaConfig,
 		DB:              dbs.Main,
 		ObservabilityDB: dbs.Logs,
 		Drive:           driveBundle,

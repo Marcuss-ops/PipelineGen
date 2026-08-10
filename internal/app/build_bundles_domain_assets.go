@@ -11,6 +11,7 @@ import (
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/indexing"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
@@ -47,6 +48,7 @@ type buildDomainAssetServicesParams struct {
 	mutationsDisp mutations.AssetMutationDispatcher
 	voMetaWriter  semantic.MetadataWriterPort
 	bundle        *wiring.DomainBundle
+	mediaConfig   mediaexec.ExecutionConfig
 }
 
 // buildDomainAssetServices constructs the voiceover, books, ingest,
@@ -79,6 +81,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		voiceoverDestResolver,
 		params.voMetaWriter,
 		params.outbox.Dispatcher,
+		params.mediaConfig,
 	)
 	if err != nil {
 		return fmt.Errorf("compose domains: voiceover service: %w", err)
@@ -117,7 +120,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	// best-effort: if any dependency is missing the autotag service
 	// falls back to single-shot VLM analysis for video assets.
 	var videoSampler indexing.PercentageFrameSampler
-	proc := rustexec.NewConfiguredVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.cfg.Video.EncoderPolicy(), params.cfg.Video.CanonicalVideoProfile(), params.log)
+	proc := rustexec.NewConfiguredVideoProcessor(params.cfg.External.RustMusclesPath, params.cfg.External.FfmpegPath, params.mediaConfig.Policy, params.mediaConfig.Profile, params.log)
 	if sampler, err := indexing.NewFFMPEGFrameSampler(proc); err == nil {
 		videoSampler = sampler
 	} else {

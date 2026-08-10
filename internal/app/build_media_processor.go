@@ -14,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -35,6 +36,7 @@ func wireMediaProcessor(
 	cfg *config.Config,
 	publisher delivery.Publisher,
 	log *zap.Logger,
+	mediaConfig mediaexec.ExecutionConfig,
 ) (asset.Processor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
 		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
@@ -54,6 +56,7 @@ func wireMediaProcessor(
 		mutationsDisp,
 		log,
 		publisher,
+		mediaConfig,
 	)
 	log.Info("PR 8: MediaProcessor constructed inline with canonical mutations.AssetMutationDispatcher (F2.8: publisher wired)")
 	return mp, nil

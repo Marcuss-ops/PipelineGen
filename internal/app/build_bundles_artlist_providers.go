@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"time"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -59,6 +60,7 @@ func constructArtlistProviders(
 	log *zap.Logger,
 	bundle *wiring.ArtlistBundle,
 	auditAdapter artlist.DownloadAuditRepository,
+	mediaConfig mediaexec.ExecutionConfig,
 ) artlistProviders {
 	// PR-HLS-AES128 followup-2 (July 2026): construct the canonical ffprobe
 	// Processor ONCE at composition scope (lifted out of the closure to
@@ -67,7 +69,7 @@ func constructArtlistProviders(
 	// subprocess. Fail-closed: missing ffprobe binary yields a typed
 	// exec error from process.Run that the closure below forwards to
 	// markAudit(Failed) + ErrInvalidResponse to the caller.
-	mediaProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	mediaProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 
 	// godlike/06 SSOT: HTTPSelfLoopProbe is the canonical app-layer wrapper
 	// for *Probe; its Probe(ctx) (bool, error) signature matches

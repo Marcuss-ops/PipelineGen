@@ -12,6 +12,7 @@ package app
 import (
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
@@ -30,12 +31,13 @@ import (
 func buildVoiceoverTTSProvider(
 	cfg *config.Config,
 	log *zap.Logger,
+	mediaConfig mediaexec.ExecutionConfig,
 ) (*audioasset.Processor, voiceover.TTSProvider) {
 	if cfg.Paths.PythonScriptsDir == "" {
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	mediaProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	mediaProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	audioProcessor.SetMediaExecutor(mediaProcessor)
 	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
 

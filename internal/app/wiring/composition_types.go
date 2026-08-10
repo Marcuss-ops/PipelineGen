@@ -36,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	lessonsSvc "github.com/Marcuss-ops/PipelineGen/internal/application/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -86,6 +87,10 @@ type IOpaqueStartFunc func() error
 
 // ComposeRoot is the assembled root tree. NewComposition returns this.
 type ComposeRoot struct {
+	// MediaExec is the single resolved media contract for this composition.
+	// Platform config is mapped before downstream bundles are built.
+	MediaExec mediaexec.ExecutionConfig
+
 	DB              *storage.SQLiteDB
 	ObservabilityDB *storage.SQLiteDB
 

@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	ytacquisition "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -55,6 +56,7 @@ func buildDomainMediaServices(
 	outbox *wiring.OutboxBundle,
 	mutationsDisp mutations.AssetMutationDispatcher,
 	bundle *wiring.DomainBundle,
+	mediaConfig mediaexec.ExecutionConfig,
 ) (
 	voMetaWriter semantic.MetadataWriterPort,
 	clipWriter *assets.ClipAtomicWriterAdapter,
@@ -76,7 +78,7 @@ func buildDomainMediaServices(
 	// satisfies semantic.MetadataWriterPort.
 	voMetaWriter = nil
 
-	clipProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	clipProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 

@@ -9,7 +9,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 type fakeRunner struct {
@@ -49,11 +48,11 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"normalize"}`)}
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
-	processor := &VideoProcessor{client: client, profile: config.CanonicalVideoProfile{}.WithDefaults()}
+	processor := &VideoProcessor{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
 
 	opts := mediaexec.NormalizeOptions{
 		Duration: 30, DisableDuration: true, KeepAudio: true,
-		Policy: config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23},
+		Policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23},
 	}
 	if err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", opts); err != nil {
 		t.Fatalf("Normalize() error = %v", err)
@@ -71,7 +70,7 @@ func TestStockRendererSendsTypedRenderCapability(t *testing.T) {
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"render_stock"}`)}
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
-	renderer := &StockRenderer{client: client, profile: config.CanonicalVideoProfile{}.WithDefaults()}
+	renderer := &StockRenderer{client: client, profile: mediaexec.VideoProfile{}.WithDefaults()}
 	_, err := renderer.Render(context.Background(), stockpipeline.RenderRequest{
 		InputPaths: []string{"a.mp4", "b.mp4"}, OutputPath: "out.mp4",
 		Codec: "h264_nvenc", Preset: "p1", CRF: 23, Width: 1920, Height: 1080, FPS: 24,
@@ -96,7 +95,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
-	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, config.CanonicalVideoProfile{}.WithDefaults(), nil)
+	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, mediaexec.VideoProfile{}.WithDefaults(), nil)
 	processor.client.runner = runner
 
 	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{
@@ -120,7 +119,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 }
 
 func TestVideoProcessorEncodingFailsWithoutPolicy(t *testing.T) {
-	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil), profile: config.CanonicalVideoProfile{}.WithDefaults()}
+	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil), profile: mediaexec.VideoProfile{}.WithDefaults()}
 	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", mediaexec.NormalizeOptions{})
 	if err == nil || err.Error() != "ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy" {
 		t.Fatalf("Normalize() error = %v, want missing policy error", err)
@@ -131,7 +130,7 @@ func TestAdminRendererPreservesEncoderPolicy(t *testing.T) {
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"admin_render"}`)}
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
-	processor := &AdminMediaProcessor{client: client, policy: config.VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 21}, profile: config.CanonicalVideoProfile{}.WithDefaults()}
+	processor := &AdminMediaProcessor{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 21}, profile: mediaexec.VideoProfile{}.WithDefaults()}
 	manifest := adminmedia.RenderManifest{
 		Input: "in.mp4", Output: "out.mp4", Font: "/tmp/font.ttf",
 		Effects:  []adminmedia.RenderEffect{{Path: "fx.mp4", DelayMS: 10, Duration: 1, Volume: "0.5"}},

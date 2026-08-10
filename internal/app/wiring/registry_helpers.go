@@ -90,13 +90,13 @@ func (d *DriveDestinations) ImagesFolder() string { return d.ImagesFolderID }
 // bypass is closed. The driveup import is no longer needed in this
 // file (Wave A Item 15, June 2026) — the ensureStyleDriveFolders
 // helper that used it has been removed.
-func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher) asset.Processor {
+func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, assetsRepo asset.Repository, querySvc *asset.Service, locations asset.LocationRepository, processing asset.ProcessingRepository, mutationsDisp mutations.AssetMutationDispatcher, log *zap.Logger, publisher delivery.Publisher, mediaConfig mediaexec.ExecutionConfig) asset.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
-	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, cfg.Video.EncoderPolicy(), cfg.Video.CanonicalVideoProfile(), log)
+	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	clipsRegistry := artifacts.NewClipsRegistry(db.DB, assetsRepo, querySvc, locations, processing, mutationsDisp)
-	profile := cfg.Video.CanonicalVideoProfile()
-	policy := cfg.Video.EncoderPolicy()
+	profile := mediaConfig.Profile
+	policy := mediaConfig.Policy
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,
 		Width: profile.Width, Height: profile.Height, FPS: profile.FPS, Codec: policy.Codec, Preset: policy.Preset,
 		CRF: policy.CRF, KeyframeInterval: profile.KeyframeInterval}
