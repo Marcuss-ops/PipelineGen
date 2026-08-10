@@ -24,39 +24,38 @@ package background
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // inFlight is the canonical in-memory registry of detached tasks.
-// Each entry records (taskName, traceID, registeredAt) keyed by
-// "<taskName>:<traceID>". Operators query this map to surface live
-// post-write-save tasks in dashboards or audit probes. Entries are
-// pruned per task-cancel via the cleanup hook in a follow-up slice.
+// Entries are grouped by (taskName, traceID), while the count on each
+// entry tracks concurrent tasks sharing that correlation key. This keeps
+// the registry bounded by active task keys and lets cleanup remove exactly
+// one task without deleting a newer task that reused the same key.
 //
-// The map is sufficient for metrics + log correlation. Per the spec
-// the alternative (log-only with no retention) loses the ability to
-// count concurrent in-flight detaches; this implementation keeps the
-// registry but does NOT bound it — long-running detach sessions are
-// expected to remain <30s and the registry remains small.
-//
-// Concurrency: sync.Map is the canonical choice for "write-once +
-// sporadic read" without fine-grained locking. The working set stays
-// at most a few dozen concurrent entries because callers consistently
-// cancel on deadline.
-var inFlight sync.Map
+// Every registration has two cleanup paths: the returned CancelFunc and a
+// goroutine watching the detached context. The sync.Once on each task makes
+// those paths race-safe, so success (caller cancel), timeout, and explicit
+// cancellation all release their registry slot.
+var (
+	inFlight   sync.Map
+	inFlightMu sync.Mutex
+)
 
-// InFlight returns the count of currently-registered detached tasks
-// across all (taskName, traceID) pairs. Exported for metrics +
+type inFlightEntry struct {
+	count int
+}
+
+var inFlightCount atomic.Int64
+
+// InFlight returns the number of currently-registered detached tasks
+// across all (taskName, traceID) pairs. Exported for metrics and
 // dashboarding. Read-only.
 func InFlight() int {
-	n := 0
-	inFlight.Range(func(_, _ any) bool {
-		n++
-		return true
-	})
-	return n
+	return int(inFlightCount.Load())
 }
 
 // DetachWithTimeout returns a context that survives the cancellation
@@ -69,10 +68,10 @@ func InFlight() int {
 // Cancellation semantics:
 //   - parent context cancelled → detached context is NOT cancelled
 //     (it is built on context.WithoutCancel(parent)).
-//   - detached context's deadline (timeout) expires → CancelFunc MUST
-//     be called by the caller to release resources; the helper
-//     itself does NOT auto-clean the registry entry on deadline
-//     (the registry is diagnostics, not lifecycle).
+//   - detached context's deadline (timeout) expires → the registry entry
+//     is removed automatically, even if the caller forgets CancelFunc.
+//   - caller invokes CancelFunc → the registry entry is removed exactly
+//     once, including when cancellation races with the timeout watcher.
 //
 // `taskName` must be a short, stable kebab-case identifier — e.g.
 // "post-write-save", "voiceover-promo-delivery",
@@ -94,7 +93,38 @@ func DetachWithTimeout(ctx context.Context, taskName string, timeout time.Durati
 	}
 	traceID := corid.FromContext(ctx)
 	key := taskName + ":" + traceID
-	inFlight.Store(key, time.Now())
-	detached := context.WithoutCancel(ctx)
-	return context.WithTimeout(detached, timeout)
+
+	inFlightMu.Lock()
+	if existing, ok := inFlight.Load(key); ok {
+		entry := existing.(*inFlightEntry)
+		entry.count++
+	} else {
+		inFlight.Store(key, &inFlightEntry{count: 1})
+	}
+	inFlightCount.Add(1)
+	inFlightMu.Unlock()
+
+	detached, timeoutCancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			inFlightMu.Lock()
+			if value, ok := inFlight.Load(key); ok {
+				entry := value.(*inFlightEntry)
+				entry.count--
+				if entry.count <= 0 {
+					inFlight.Delete(key)
+				}
+			}
+			inFlightMu.Unlock()
+			inFlightCount.Add(-1)
+		})
+	}
+	stopCleanup := context.AfterFunc(detached, cleanup)
+
+	return detached, func() {
+		cleanup()
+		timeoutCancel()
+		stopCleanup()
+	}
 }
