@@ -44,7 +44,11 @@ func newWiringRegistry(t *testing.T, timeout time.Duration, maxRetries int) *Reg
 	t.Helper()
 	reg := NewRegistry()
 	if err := reg.Register(RegistryEntry{
-		Type:              wiringTestType,
+		Completion: CompletionDeclaration{
+			JobType:              wiringTestType,
+			ArtifactOwnership:    ArtifactOwnershipNone,
+			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+		},
 		Description:       "wiring-test entry",
 		Timeout:           timeout,
 		DefaultMaxRetries: maxRetries,

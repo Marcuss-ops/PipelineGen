@@ -157,26 +157,42 @@ func (r *Registry) Concurrency(jobType string) int {
 	return DefaultConcurrency
 }
 
-// ── ProducesArtifacts typed accessors ──────────────────────────────────
+// ── Completion declaration accessors ───────────────────────────────────
 
-// ProducesArtifacts returns true if the job type is registered as an
-// artifact-producing job. Artifact-producing jobs MUST use
-// CompleteWithArtifacts instead of the legacy Complete path.
-func (r *Registry) ProducesArtifacts(jobType string) bool {
+// ArtifactOwnership returns the validated artifact owner for a registered
+// job type. Unknown types return ArtifactOwnershipNone.
+func (r *Registry) ArtifactOwnership(jobType string) ArtifactOwnership {
 	if entry, ok := r.Get(jobType); ok {
-		return entry.ProducesArtifacts
+		return entry.Completion.ArtifactOwnership
 	}
-	return false
+	return ArtifactOwnershipNone
 }
 
-// ProducesArtifactsMap returns a read-only map of job types that produce
-// artifacts, keyed by type string. Used to configure the SQLiteStore gate.
+// FinalizationStrategy returns the validated terminal strategy for a
+// registered job type. Unknown types use the safe legacy completion value.
+func (r *Registry) FinalizationStrategy(jobType string) FinalizationStrategy {
+	if entry, ok := r.Get(jobType); ok {
+		return entry.Completion.FinalizationStrategy
+	}
+	return FinalizationStrategyLegacyComplete
+}
+
+// ProducesArtifacts is a compatibility projection for the SQLite completion
+// gate and worker wiring. It is derived exclusively from ArtifactOwnership;
+// there is no independent boolean declaration to drift from the policy.
+func (r *Registry) ProducesArtifacts(jobType string) bool {
+	return r.ArtifactOwnership(jobType) == ArtifactOwnershipWorkerSpine
+}
+
+// ProducesArtifactsMap returns the derived projection consumed by the
+// SQLiteStore gate. Only worker-spine ownership requires the
+// CompleteWithArtifacts path.
 func (r *Registry) ProducesArtifactsMap() map[string]bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make(map[string]bool, len(r.entries))
 	for t, e := range r.entries {
-		if e.ProducesArtifacts {
+		if e.Completion.ArtifactOwnership == ArtifactOwnershipWorkerSpine {
 			out[t] = true
 		}
 	}

@@ -86,16 +86,16 @@ func setupTestService(t *testing.T) (*Service, *sqljobs.SQLiteStore, func()) {
 	// (handler check + typed MaxRetries lookup) does not reject the
 	// arbitrary types used by these tests.
 	testTypes := []RegistryEntry{
-		{Type: "test_job", Description: "test job", DefaultMaxRetries: 1},
-		{Type: "unknown_type", Description: "unknown type", DefaultMaxRetries: 1},
-		{Type: "concurrent_job", Description: "concurrent job", DefaultMaxRetries: 1},
-		{Type: "idem_test", Description: "idempotency test", DefaultMaxRetries: 1},
-		{Type: "rescue_test", Description: "rescue test", DefaultMaxRetries: 1},
-		{Type: "concurrent_idem", Description: "concurrent idempotency test", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "test_job", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "test job", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "unknown_type", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "unknown type", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "concurrent_job", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "concurrent job", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "idem_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "idempotency test", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1},
+		{Completion: CompletionDeclaration{JobType: "concurrent_idem", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "concurrent idempotency test", DefaultMaxRetries: 1},
 	}
 	for _, e := range testTypes {
 		if err := reg.Register(e); err != nil {
-			t.Fatalf("register test type %q: %v", e.Type, err)
+			t.Fatalf("register test type %q: %v", e.Completion.JobType, err)
 		}
 	}
 	svc, err := NewService(store, nil, zap.NewNop(), reg)
@@ -519,7 +519,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	storeA := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	storeB := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	reg := Compose()
-	if err := reg.Register(RegistryEntry{Type: "rescue_test", Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
+	if err := reg.Register(RegistryEntry{Completion: CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
 		t.Fatalf("register rescue_test: %v", err)
 	}
 	svcA, errA := NewService(storeA, nil, zap.NewNop(), reg)

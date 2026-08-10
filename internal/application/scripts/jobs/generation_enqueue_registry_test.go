@@ -63,7 +63,11 @@ func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*
 func newRegistryWithScriptGenerateRetry(retries int) *appjobs.Registry {
 	r := appjobs.NewRegistry()
 	_ = r.Register(appjobs.RegistryEntry{
-		Type:              job.TypeScriptGenerate,
+		Completion: appjobs.CompletionDeclaration{
+			JobType:              job.TypeScriptGenerate,
+			ArtifactOwnership:    appjobs.ArtifactOwnershipNone,
+			FinalizationStrategy: appjobs.FinalizationStrategyLegacyComplete,
+		},
 		Description:       "test fixture for Issue 4 plumbing assertions",
 		Timeout:           60 * time.Minute,
 		DefaultMaxRetries: retries,

@@ -215,7 +215,7 @@ func TestValidateHandlerCompleteness_NoGap(t *testing.T) {
 	// to entry in nil map). NewRegistry() is the canonical constructor
 	// and matches the production wiring in internal/app/registry.go.
 	reg := NewRegistry()
-	if err := reg.Register(RegistryEntry{Type: "only.type"}); err != nil {
+	if err := reg.Register(RegistryEntry{Completion: CompletionDeclaration{JobType: "only.type", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}}); err != nil {
 		t.Fatalf("Registry.Register failed for 'only.type': %v", err)
 	}
 	if err := s.ValidateHandlerCompleteness(reg); err != nil {
