@@ -126,7 +126,8 @@ var canonicalJobTypes = []string{
 	TypeYouTubeStock,                // domain/youtube/job_types.go (YouTube stock vertical slice)
 	TypeAssetTextMaterialize,        // application/jobs/registry_types.go (FASE texttracks / July 2026)
 	TypeYouTubeExtract,              // application/jobs/registry_types.go (July 2026)
-	TypeYouTubeStock,                // domain/youtube/job_types.go (YouTube stock vertical slice)
+	TypeIntegrityVerify,             // application/jobs/registry_integrity.go
+	TypeAssetCleanup,                // application/jobs/registry_integrity.go
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending

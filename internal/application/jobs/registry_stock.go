@@ -20,17 +20,17 @@ func registerStockEntries(r *Registry) {
 	// (UpdateJobToSucceededCAS + InsertResultOnConflict + PersistArtifactMap +
 	// InsertOutboxEnvelope per Pattern 11 in AGENTS.md). The spine call IS the
 	// terminal-flip seam for this job type — NOT the legacy SQLiteStore.Complete.
-	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, Concurrency: 4, ProducesArtifacts: true})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaStock, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifacts}, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, Concurrency: 4})
 	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
 	// TypeMediaGenerate is an orphaned registry entry — no production handler
 	// is statically registered.
-	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
-	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaReindex, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
 	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
 	// TypeBulkUploadYouTubeClips is an orphaned registry entry — no production
 	// handler is statically registered.
-	r.Register(JobPolicy{Type: TypeBulkUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeBulkUploadYouTubeClips, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
 
 	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
 	//
@@ -52,5 +52,5 @@ func registerStockEntries(r *Registry) {
 	// ProducesArtifacts=false (the enrichment pass persists
 	// media_assets.metadata_json inside the per-chunk tx; no separate
 	// finalizer needed).
-	r.Register(JobPolicy{Type: TypeMediaStockRLMEnrich, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk: read media_assets -> ollama.Enrich -> UPDATE media_assets.metadata_json -> emit informational asset.published v1; operational reindexing uses asset.index.requested). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (enrichment tx owns its own media_assets write; broker legacy Complete is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
+	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaStockRLMEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "PR-011 post-publish RLM/LLM enrichment pass (per-chunk: read media_assets -> ollama.Enrich -> UPDATE media_assets.metadata_json -> emit informational asset.published v1; operational reindexing uses asset.index.requested). Wired ONLY when cfg.External.StockEnrichmentEnabled=true; default = false (godlike/07 fail-closed composition). ProducesArtifacts=false (enrichment tx owns its own media_assets write; broker legacy Complete is the canonical mark-SUCCEEDED seam).", Timeout: 2 * time.Minute, DefaultMaxRetries: 3})
 }

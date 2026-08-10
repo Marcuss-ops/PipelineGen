@@ -227,21 +227,27 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	// the SSOT job-type list and the resolver lookup.
 	registry := jobs.NewRegistry()
 	if err := registry.Register(jobs.JobPolicy{
-		Type:              jobs.TypeVoiceoverGenerate,
+		Completion: jobs.CompletionDeclaration{
+			JobType:              jobs.TypeVoiceoverGenerate,
+			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
+			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+		},
 		Description:       "Voiceover single generation",
 		Timeout:           30 * time.Minute,
 		DefaultMaxRetries: 2,
-		ProducesArtifacts: true,
 	}); err != nil {
 		t.Fatalf("§15.9: register voiceover.generate in test registry: %v", err)
 	}
 	if err := registry.Register(jobs.JobPolicy{
-		Type:              jobs.TypeVoiceoverGenerateItem,
+		Completion: jobs.CompletionDeclaration{
+			JobType:              jobs.TypeVoiceoverGenerateItem,
+			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
+			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+		},
 		Description:       "Voiceover per-language child",
 		Timeout:           10 * time.Minute,
 		DefaultMaxRetries: 2,
 		Concurrency:       4,
-		ProducesArtifacts: true,
 	}); err != nil {
 		t.Fatalf("§15.9: register voiceover.generate_item in test registry: %v", err)
 	}

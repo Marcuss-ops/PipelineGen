@@ -286,7 +286,11 @@ func TestCompose_SnapshotFiltersZeroTimeoutEntries(t *testing.T) {
 
 	reg := NewRegistry()
 	if err := reg.Register(RegistryEntry{
-		Type:              zeroTimeoutType,
+		Completion: CompletionDeclaration{
+			JobType:              zeroTimeoutType,
+			ArtifactOwnership:    ArtifactOwnershipNone,
+			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+		},
 		Description:       "ssot zero-timeout filter pin",
 		Timeout:           0, // explicit zero — must be filtered by Compose()
 		DefaultMaxRetries: 1,

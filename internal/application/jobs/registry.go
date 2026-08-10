@@ -12,9 +12,13 @@
 //     path that wires the 5 per-family
 //     helper files + applies defaults.
 //
-//   - registry_definitions.go   — pure data shapes + identifier SSOT:
-//     RegistryEntry + JobPolicy alias,
-//     TimeoutMap + TimeoutResolver port,
+//   - registry_definitions.go   — policy defaults SSOT:
+//     DefaultQueue + DefaultConcurrency.
+//
+//   - registry_types.go          — completion declaration, registry entry,
+//     job policy alias, and identifier SSOT.
+//
+//   - registry_timeout.go       — TimeoutMap + TimeoutResolver port,
 //     the canonical DefaultQueue +
 //     DefaultConcurrency consts, and the
 //     full Type... identifier block.
@@ -64,15 +68,18 @@ func (r *Registry) Register(entry RegistryEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.frozen {
-		return fmt.Errorf("registry is frozen: cannot register %s", entry.Type)
+		return fmt.Errorf("registry is frozen: cannot register %s", entry.Completion.JobType)
 	}
-	if entry.Type == "" {
+	if entry.Completion.JobType == "" {
 		return fmt.Errorf("job type must not be empty")
 	}
-	if _, exists := r.entries[entry.Type]; exists {
-		return fmt.Errorf("job type %s already registered", entry.Type)
+	if err := entry.ValidateCompletion(); err != nil {
+		return fmt.Errorf("job type %s: %w", entry.Completion.JobType, err)
 	}
-	r.entries[entry.Type] = entry
+	if _, exists := r.entries[entry.Completion.JobType]; exists {
+		return fmt.Errorf("job type %s already registered", entry.Completion.JobType)
+	}
+	r.entries[entry.Completion.JobType] = entry
 	return nil
 }
 
@@ -194,6 +201,8 @@ func (r *Registry) Compose() TimeoutMap {
 //	registry_extraction.go — Extraction + YouTube
 //	registry_stock.go      — Stock media pipeline
 //	registry_media.go      — Video, catalog, content, system, AI images
+//	registry_texttracks.go  — Text-track materialization
+//	registry_integrity.go   — Integrity and cleanup jobs
 //
 // Each family file exports a register<Family>Entries(r *Registry)
 // helper called below.
@@ -215,6 +224,7 @@ func Compose() *Registry {
 	registerMediaEntries(r)
 	registerVoiceoverEntries(r)
 	registerTextTrackEntries(r)
+	registerIntegrityEntries(r)
 
 	// Wave 19 / P1-9 normalisation pass: every registered entry
 	// surfaces a non-empty Queue (DefaultQueue) and Concurrency

@@ -20,7 +20,11 @@ func registerTextTrackEntries(r *Registry) {
 	//     before dead-letter; the materializer is idempotent at
 	//     the per-language level so a retry is safe).
 	r.Register(JobPolicy{
-		Type:              TypeAssetTextMaterialize,
+		Completion: CompletionDeclaration{
+			JobType:              TypeAssetTextMaterialize,
+			ArtifactOwnership:    ArtifactOwnershipApplication,
+			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+		},
 		Description:       "Asset text track materialization (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3: fan-out translation into all configured MaterializeLanguages; idempotent via per-language skip + outbox event_key dedup)",
 		Timeout:           2 * time.Hour,
 		DefaultMaxRetries: 1,

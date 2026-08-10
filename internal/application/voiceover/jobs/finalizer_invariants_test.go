@@ -136,9 +136,11 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 	// uses the JobPolicy literal and not the ProducesArtifacts flag.
 	entry, ok := reg.Get(job.TypeVoiceoverGenerate)
 	require.True(t, ok, "job.TypeVoiceoverGenerate must be a registered entry")
-	assert.Equal(t, "voiceover.generate", entry.Type)
-	assert.False(t, entry.ProducesArtifacts,
-		"registry entry's ProducesArtifacts field MUST be false (registry.go:541 post-db2f3b1e)")
+	assert.Equal(t, "voiceover.generate", entry.Completion.JobType)
+	assert.Equal(t, appjobs.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
+		"registry entry must declare application-owned artifact persistence")
+	assert.Equal(t, appjobs.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
+		"application-owned voiceover artifacts must use legacy broker completion")
 	assert.Contains(t, entry.Description, "voiceover.Finalizer",
 		"registry entry's Description MUST mention voiceover.Finalizer as the canonical artifact owner (godlike/06 SSOT documentation discipline)")
 }
@@ -177,9 +179,11 @@ func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 
 	entry, ok := reg.Get(appjobs.TypeVoiceoverGenerateItem)
 	require.True(t, ok)
-	assert.Equal(t, "voiceover.generate_item", entry.Type)
-	assert.False(t, entry.ProducesArtifacts,
-		"registry entry's ProducesArtifacts field MUST be false (registry.go:548 post-db2f3b1e)")
+	assert.Equal(t, "voiceover.generate_item", entry.Completion.JobType)
+	assert.Equal(t, appjobs.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
+		"registry entry must declare application-owned artifact persistence")
+	assert.Equal(t, appjobs.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
+		"application-owned voiceover artifacts must use legacy broker completion")
 	assert.Equal(t, 4, entry.Concurrency,
 		"job.TypeVoiceoverGenerateItem Concurrency MUST remain 4 (per-language sibling throttle — production canonical)")
 }

@@ -24,6 +24,8 @@
 package jobs
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/books"
@@ -42,6 +44,67 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
+// ── Completion declaration ─────────────────────────────────────────────
+
+// ArtifactOwnership identifies the component that owns artifact persistence
+// for a job's successful completion.
+type ArtifactOwnership string
+
+const (
+	ArtifactOwnershipNone        ArtifactOwnership = "none"
+	ArtifactOwnershipWorkerSpine ArtifactOwnership = "worker_spine"
+	ArtifactOwnershipApplication ArtifactOwnership = "application_transaction"
+)
+
+// FinalizationStrategy identifies the terminal completion API that the worker
+// must use after a handler succeeds.
+type FinalizationStrategy string
+
+const (
+	FinalizationStrategyLegacyComplete        FinalizationStrategy = "complete"
+	FinalizationStrategyCompleteWithArtifacts FinalizationStrategy = "complete_with_artifacts"
+)
+
+// ErrInvalidCompletionDeclaration is returned when the unified declaration
+// is incomplete or its ownership/strategy pair is incoherent.
+var ErrInvalidCompletionDeclaration = errors.New("invalid job completion declaration")
+
+// CompletionDeclaration is the single source of truth for a job's identity,
+// artifact owner, and terminal completion API.
+type CompletionDeclaration struct {
+	JobType              string
+	ArtifactOwnership    ArtifactOwnership
+	FinalizationStrategy FinalizationStrategy
+}
+
+// Validate checks the load-bearing relationship between artifact ownership
+// and terminal finalization. WorkerSpine is the only owner allowed to use
+// CompleteWithArtifacts; application-owned transactions and artifact-free
+// jobs both use Complete only to mark the broker job terminal.
+func (d CompletionDeclaration) Validate() error {
+	if d.JobType == "" {
+		return fmt.Errorf("%w: job type must not be empty", ErrInvalidCompletionDeclaration)
+	}
+	switch d.ArtifactOwnership {
+	case ArtifactOwnershipNone, ArtifactOwnershipApplication:
+		if d.FinalizationStrategy != FinalizationStrategyLegacyComplete {
+			return fmt.Errorf("%w: ownership=%q requires strategy=%q, got %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership, FinalizationStrategyLegacyComplete, d.FinalizationStrategy)
+		}
+	case ArtifactOwnershipWorkerSpine:
+		if d.FinalizationStrategy != FinalizationStrategyCompleteWithArtifacts {
+			return fmt.Errorf("%w: ownership=%q requires strategy=%q, got %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership, FinalizationStrategyCompleteWithArtifacts, d.FinalizationStrategy)
+		}
+	default:
+		return fmt.Errorf("%w: unknown artifact ownership %q", ErrInvalidCompletionDeclaration, d.ArtifactOwnership)
+	}
+	return nil
+}
+
+// ValidateCompletion validates the embedded declaration.
+func (e RegistryEntry) ValidateCompletion() error {
+	return e.Completion.Validate()
+}
+
 // ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────
 
 // RegistryEntry defines a registered job type with its operational parameters.
@@ -58,13 +121,13 @@ import (
 // Job type policy contract (Wave 19 / P1-9):
 //
 //	JobPolicy{
-//	    Type:                canonicalJobType,                  // e.g. "script.generate"
-//	    Description:         human-readable string,             // operator-facing
-//	    Timeout:             per-job execution cap,             // 0 = canonical 10m default
-//	    DefaultMaxRetries:   retry count when caller omits,     // canonical = 3
-//	    Queue:               queue label (string),              // empty -> DefaultQueue
-//	    Concurrency:         per-worker parallel-leases,        // <=0 -> DefaultConcurrency
-//	    RequiredCapabilities: capability tags worker must have,  // empty = any worker
+//	    Completion:          CompletionDeclaration{...},         // JobType + owner + strategy
+//	    Description:         human-readable string,              // operator-facing
+//	    Timeout:             per-job execution cap,              // 0 = canonical 10m default
+//	    DefaultMaxRetries:   retry count when caller omits,      // canonical = 3
+//	    Queue:               queue label (string),               // empty -> DefaultQueue
+//	    Concurrency:         per-worker parallel-leases,         // <=0 -> DefaultConcurrency
+//	    RequiredCapabilities: capability tags worker must have, // empty = any worker
 //	}
 //
 // Field-default canon (Wave 19): every registered job type surfaces a
@@ -79,11 +142,13 @@ import (
 // Migration to Wave 19 fields is field-additive (no struct rename).
 // Because JobPolicy is a Go type alias (not a new named type), all
 // pre-Wave-19 `RegistryEntry{...}` literals and `RegistryEntry`-by-
-// name references in production code compile unchanged. New code MUST
-// prefer the JobPolicy name when declaring entries.
+// name references in production code retain the type name, but their
+// job identity and completion semantics now live in CompletionDeclaration.
+// New code MUST prefer the JobPolicy name when declaring entries.
 type RegistryEntry struct {
-	// Type is the canonical job type string (e.g. "script.generate").
-	Type string
+	// Completion is the single validated declaration for job identity and
+	// terminal artifact ownership/finalization.
+	Completion CompletionDeclaration
 	// Description is a human-readable description for operators.
 	Description string
 	// Timeout is the per-job execution timeout. Zero means use the default (10 min).
@@ -112,28 +177,15 @@ type RegistryEntry struct {
 	Concurrency int
 	// RequiredCapabilities are worker capabilities needed (empty = any worker).
 	RequiredCapabilities []string
-
-	// ProducesArtifacts is true when this job type produces files (videos,
-	// images, documents, audio, etc.) that must be finalised through the
-	// JobFinalizer spine. Jobs with ProducesArtifacts=true MUST call
-	// CompleteWithArtifacts instead of the legacy Complete path.
-	//
-	// When true, SQLiteStore.Complete rejects completions with the canonical
-	// typed sentinel domainremote.ErrCompleteJobPathViolation (godlike/06
-	// SSOT: the typed sentinel at internal/domain/remote/complete_job.go is
-	// the SINGLE canonical owner of the failure mode "legacy Complete path
-	// attempted on artifact-producing job"; the pre-FASE-0.1 package-local
-	// alias ErrArtifactJobRequiresCompleteWithArtifacts was REMOVED).
-	ProducesArtifacts bool
 }
 
 // JobPolicy is the canonical alias for RegistryEntry. New code MUST
 // prefer the JobPolicy name when declaring or augmenting entries;
 // the RegistryEntry alias is kept for back-compat with pre-Wave-19
-// callers that reference the field by name directly. Both names refer
+// callers that reference the type name directly. Both names refer
 // to the SAME type (Go type-alias semantics — not a named distinct
-// type), so adapting a pre-Wave-19 RegistryEntry literal to the
-// Wave-19 surface is a field-additive change, not a struct rename.
+// type). CompletionDeclaration is intentionally required for every
+// registration so ownership and terminal strategy cannot drift.
 type JobPolicy = RegistryEntry
 
 // ── Standard job.Job Types — RE-EXPORT block ──────────────────────────
