@@ -145,10 +145,11 @@ stale_prose_paths:
   - module_youtube
 
 	  - subject_bindings
-# Canonical application areas are explicit DoD scope. Every production Go file
-# under these paths must remain free of direct internal/infrastructure imports;
-# the composition root owns concrete adapter wiring. This list is deliberately
-# narrower than all of internal/application while migrations remain in progress.
+# Migration-boundary application areas are explicit DoD scope. Every production
+# Go file under these paths must remain free of direct internal/infrastructure
+# imports while the root migration is in progress; the composition root owns
+# concrete adapter wiring. This is a guarded migration surface, not a second
+# target architecture.
 canonical_application_areas:
   - internal/application/images
   - internal/application/assets/artifacts
@@ -166,47 +167,25 @@ capabilities: assets, artlist, youtube, scripts, images, voiceover, content, cha
 # repositories own SQL for their tables (per proposal §"platform/sqlite").
 platform_subzones: config, sqlite, drive, qdrant, ffmpeg, process, filesystem, observability, httpserver, ollama, nvidia, youtube
 
-# CANONICAL LAYOUT (chosen 2026-07-25, binding): target_internal_roots
-# below is THE layout. The earlier legacy_internal_roots pairing was
-# retired 2026-07-25 per godlike/07 ZERO_LEGACY_POLICY §"What counts as
-# legacy" — two-layout mode accumulated transitional allowlists and
-# ratchets (see the stock-legacy-keyword allowlist header for the
-# surviving forward-pointers). P1-4 step 1 (internal/transcription)
-# + P1-4 step 2 (internal/youtube) + P1-7 (internal/domain/job →
-# internal/kernel/job) are now retired. The domain/ root still
-# exists on disk for sibling subtrees (transcription, voiceover,
-# translation, etc.) but the kernel/job surface is fully canonical.
-# RE-REGISTERED 2026-08-01 (strict-gate governance): the four surviving
-# legacy zones (api, application, infrastructure, domain) are re-added
-# as GOVERNED roots via `legacy_internal_roots` below so the --strict
-# gate (max_lines_per_file_strict=600, hard-gated) covers them. Each
-# zone carries an owner/deadline/targets in
-# architecture/package_hotspots.json (root_migrations) so the
-# migration stays observable. cmd/archcheck treats unknown first-level
-# internal/ dirs as an error (`unknown_internal_root` rule); the
-# re-registration keeps these zones governed instead of unmanaged.
-# + P1-4 step 3 (internal/scriptgeneration -> internal/capabilities/scripts)
-#   is complete: the implementation and tests now live in the canonical
-#   scripts capability package, while package scriptgeneration is preserved
-#   for importer alias stability. The SQLite adapter remains under
-#   internal/infrastructure/database/sqlite/scripts/legacy/ because it is
-#   infrastructure-owned and imports the capability ports. The old
-#   application legacy facade has been removed only after all references
-#   were updated and the capability/package tests passed.
-#   The Wave-25 hard gate (promoted via the percheck_legacy_root_ban
-#   hard_gates entry in hard_gates below) continues to catch reintroduction
-#   of deleted legacy roots.
+# CANONICAL LAYOUT (binding): target_internal_roots
+#
+# This is the sole target architecture. New production structure belongs only
+# under these four roots. The legacy list below exists solely so the scanner can
+# govern the migration surface; it is not a second supported architecture.
 target_internal_roots: app, kernel, capabilities, platform
-# Governed legacy zones (re-registered 2026-08-01): first-level
-# internal/ roots that the layout policy treats as known so the
-# --strict 600-LOC forward-prevention gate covers their files. Each
-# root also has an owner/deadline in architecture/package_hotspots.json
-# (root_migrations) — the migration registry is the governance SSOT.
+
+# MIGRATION-ONLY ROOTS (binding): existing code is tolerated only while it is
+# being migrated or removed. These roots are forbidden homes for new
+# capabilities, public contracts, providers, routes, files, or packages. Every
+# exception must be an existing owner/deadline/target entry in
+# architecture/package_hotspots.json::root_migrations. The migration registry
+# is governance metadata, not permission to extend a legacy root.
 legacy_internal_roots: application, api, infrastructure, domain
 
 # Known grandfathered violations (Phase 0 reports, Phase 1+ gates). Each
 # entry is a free-form comment consumed by the human reviewer; the binary
-# only checks the structural rules above.
+# only checks the structural rules above. Grandfathering never authorizes new
+# code in a migration-only root.
 known_grandfathered:
   - "internal/application/scripts — RESOLVED June 2026: split into 8 subpackages (adapters/ contracts/ dto/ events/ jobs/ jsonextract/ ports/ usecase/). Retired from transitional baselines; see audit_ledger in docs/migrations/archcheck-strict-baseline.json."
   - "internal/application/images (25 files) — in_progress to capability/images split"
@@ -442,6 +421,9 @@ hard_gates:
   # consumers of `internal/domain/job`; the percheck now has a
   # zero legal-call-site footprint by construction.
   - percheck_legacy_root_ban
+  # Migration-only roots may be edited for cutover/removal/fixes, but new files
+  # in those roots are forbidden. Added-file detection is fail-closed in CI.
+  - percheck_legacy_root_new_code
   # P0 ownership integrity: every declared job must map to a canonical
   # runtime registry entry and a production handler binding.
   - percheck_job_ownership

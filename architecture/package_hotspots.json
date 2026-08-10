@@ -192,34 +192,42 @@
   "root_migrations": [
     {
       "path": "internal/youtube",
-      "owner": "internal/application/youtube with infrastructure adapters owned by internal/infrastructure/youtube",
+      "owner": "youtube migration owner",
       "deadline": "2026-08-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
-        "internal/application/youtube",
-        "internal/infrastructure/youtube"
+        "internal/capabilities/youtube",
+        "internal/platform/youtube"
       ]
     },
     {
       "path": "internal/transcription",
-      "owner": "internal/application/transcripts with concrete adapters owned by internal/infrastructure",
+      "owner": "transcription migration owner",
       "deadline": "2026-08-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
-        "internal/application/transcripts",
-        "internal/infrastructure"
+        "internal/capabilities/transcripts",
+        "internal/platform/ytdlp"
       ]
     },
     {
       "path": "internal/scriptgeneration",
-      "owner": "script generation domain; target home is internal/application/scripts once the mechanical migration is complete",
+      "owner": "script generation migration owner",
       "deadline": "2026-09-30",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
-        "internal/application/scripts"
+        "internal/capabilities/scripts"
       ]
     },
     {
       "path": "internal/api",
-      "owner": "transport boundary migration to internal/capabilities and internal/platform/httpserver",
+      "owner": "API transport migration owner",
       "deadline": "2026-12-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
         "internal/capabilities",
         "internal/platform/httpserver"
@@ -227,16 +235,20 @@
     },
     {
       "path": "internal/application",
-      "owner": "use-case migration to internal/capabilities while preserving typed application ports",
+      "owner": "application use-case migration owner",
       "deadline": "2026-12-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
         "internal/capabilities"
       ]
     },
     {
       "path": "internal/domain",
-      "owner": "domain contract migration to internal/kernel and capability-owned packages",
+      "owner": "domain contract migration owner",
       "deadline": "2026-12-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
         "internal/kernel",
         "internal/capabilities"
@@ -244,8 +256,10 @@
     },
     {
       "path": "internal/infrastructure",
-      "owner": "adapter migration to internal/platform and capability-owned infrastructure packages",
+      "owner": "infrastructure adapter migration owner",
       "deadline": "2026-12-31",
+      "status": "migration_only",
+      "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
       "targets": [
         "internal/platform",
         "internal/capabilities"

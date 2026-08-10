@@ -120,7 +120,9 @@ func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
     "path": "internal/youtube",
     "owner": "internal/application/youtube",
     "deadline": "2026-08-31",
-    "targets": ["internal/application/youtube", "internal/infrastructure/youtube"]
+    "status": "migration_only",
+    "new_code_policy": "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages",
+    "targets": ["internal/capabilities/youtube", "internal/platform/youtube"]
   }]
 }`)
 	if err := os.MkdirAll(filepath.Join(root, "internal", "youtube"), 0o755); err != nil {

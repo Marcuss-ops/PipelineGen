@@ -6,9 +6,11 @@ evidence in one document. The report is now split by ownership area.
 
 ## Scope
 
-Production Go files under `internal/api` and `internal/application`; tests are
-excluded. The tracked boundary leaks are `*sql.DB`, `net/http`, `os`, and
-`RootFolderOverride`.
+Migration audit scope: production Go files under the migration-only
+`internal/api` and `internal/application` roots; tests are excluded. The
+tracked boundary leaks are `*sql.DB`, `net/http`, `os`, and
+`RootFolderOverride`. New capabilities belong under the target roots listed in
+`ARCHITECTURE.md`, not in this audit surface.
 
 ## Severity
 

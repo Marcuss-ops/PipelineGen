@@ -11,10 +11,20 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 | Durable post-commit work | Transactional outbox |
 | Semantic and lexical retrieval | Qdrant projection |
 | Remote files | Google Drive |
-| Dependency construction | `internal/app` |
-| Business orchestration | `internal/application` |
-| Technical adapters | `internal/infrastructure` |
-| HTTP transport | `internal/api` |
+| Dependency construction and lifecycle | `internal/app` |
+| Shared semantic contracts | `internal/kernel` |
+| Business capabilities and use cases | `internal/capabilities` |
+| Technical adapters and transport platform | `internal/platform` |
+
+`internal/app`, `internal/kernel`, `internal/capabilities`, and
+`internal/platform` are the only target roots. The existing
+`internal/application`, `internal/api`, `internal/infrastructure`, and
+`internal/domain` roots are migration-only zones: **no new capabilities, no
+new public contracts, no new providers, no new routes, and no new files or
+packages** may be introduced there. Changes in those zones are limited to
+migration work, correctness/security fixes required to keep the system
+running, or removal of legacy code, and must have a registered migration owner
+and deadline in `architecture/package_hotspots.json`.
 
 SQLite is authoritative. Qdrant and Drive are external projections or locations and must not become hidden sources of business truth.
 
@@ -31,15 +41,23 @@ Entry points remain thin and delegate construction to `internal/app`.
 ```text
 cmd
   -> internal/app
-       -> internal/api
-       -> internal/application
-       -> internal/domain
-       -> internal/infrastructure
+       -> internal/capabilities
+       -> internal/kernel
+       -> internal/platform
+
+internal/app is the composition root. Capabilities depend on kernel contracts
+and typed ports; platform supplies concrete adapters and transport mechanics.
+The former application/api/infrastructure/domain roots remain only as
+migration-only zones and are not valid homes for new architecture.
 
 pkg is leaf-only and must not import internal packages.
 ```
 
-`internal/app` may import every zone because it owns composition. Other zones follow inward-facing ports and domain contracts.
+`internal/app` may compose all target roots. `internal/capabilities` owns
+business behavior, `internal/kernel` owns genuinely shared semantic contracts,
+and `internal/platform` owns concrete I/O adapters and HTTP/server mechanics.
+Legacy-root code must move toward these owners rather than creating another
+parallel architecture.
 
 ## Request and job flow
 
@@ -101,7 +119,11 @@ Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifa
 
 ## Configuration and ownership
 
-- `architecture/policy.yaml` contains machine-enforced structural policy.
+- `architecture/policy.yaml` contains machine-enforced structural policy and
+  declares the four target roots plus the migration-only legacy-root inventory.
+- `architecture/package_hotspots.json` is the migration registry for legacy
+  roots; every entry carries an owner, deadline, target, and explicit
+  migration-only policy.
 - `architecture/ownership.generated.yaml` is the generated capability ownership view.
 - `architecture/current.yaml` contains active exceptions only.
 - `architecture/issues.yaml` contains unresolved cross-package issues.
