@@ -19,6 +19,13 @@ var keepFolders = map[string]bool{
 	"Boxing": true, "Music": true, "Crime": true,
 }
 
+func recordStockResetError(first *error, operation string, err error) {
+	if err == nil || first == nil || *first != nil {
+		return
+	}
+	*first = fmt.Errorf("reset-stock-drive: %s: %w", operation, err)
+}
+
 func runResetStockDrive(args []string) error {
 	fs := flag.NewFlagSet("reset-stock-drive", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -66,6 +73,8 @@ func runResetStockDrive(args []string) error {
 		return nil
 	}
 
+	var firstErr error
+
 	// 2. Delete only items NOT in keepFolders
 	fmt.Println("\n=== Deleting non-kept items from Drive ===")
 	for _, f := range list {
@@ -77,6 +86,7 @@ func runResetStockDrive(args []string) error {
 		err := driveAdmin.DeleteFolder(ctx, f.ID)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
+			recordStockResetError(&firstErr, fmt.Sprintf("delete Drive folder %s", f.ID), err)
 		} else {
 			fmt.Println("OK")
 		}
@@ -92,37 +102,64 @@ func runResetStockDrive(args []string) error {
 			res, err := mediaDB.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE source = 'stock'", table))
 			if err != nil {
 				fmt.Printf("  Failed to clean %s: %v\n", table, err)
-			} else {
-				n, _ := res.RowsAffected()
-				fmt.Printf("  Deleted %d rows from media.%s\n", n, table)
+				recordStockResetError(&firstErr, fmt.Sprintf("clean media.%s", table), err)
+				continue
 			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("  Failed to read affected rows for media.%s: %v\n", table, err)
+				recordStockResetError(&firstErr, fmt.Sprintf("read affected rows for media.%s", table), err)
+				continue
+			}
+			fmt.Printf("  Deleted %d rows from media.%s\n", n, table)
 		}
 
 		res, err := mediaDB.ExecContext(ctx, "DELETE FROM media_assets WHERE source = 'nvidia-animation'")
 		if err != nil {
 			fmt.Printf("  Failed to clean nvidia-animation: %v\n", err)
+			recordStockResetError(&firstErr, "clean nvidia-animation media assets", err)
 		} else {
-			n, _ := res.RowsAffected()
-			fmt.Printf("  Deleted %d nvidia-animation rows from media_assets\n", n)
+			n, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("  Failed to read affected rows for nvidia-animation: %v\n", err)
+				recordStockResetError(&firstErr, "read affected rows for nvidia-animation", err)
+			} else {
+				fmt.Printf("  Deleted %d nvidia-animation rows from media_assets\n", n)
+			}
 		}
 	}
 
 	if veloxDB != nil {
-		_, _ = veloxDB.ExecContext(ctx, "DELETE FROM asset_links WHERE asset_id IN (SELECT asset_id FROM asset_index WHERE source = 'stock')")
+		if _, err := veloxDB.ExecContext(ctx, "DELETE FROM asset_links WHERE asset_id IN (SELECT asset_id FROM asset_index WHERE source = 'stock')"); err != nil {
+			fmt.Printf("  Failed to clean asset_links: %v\n", err)
+			recordStockResetError(&firstErr, "clean asset links", err)
+		}
 		res, err := veloxDB.ExecContext(ctx, "DELETE FROM asset_index WHERE source = 'stock'")
 		if err != nil {
 			fmt.Printf("  Failed to clean asset_index: %v\n", err)
+			recordStockResetError(&firstErr, "clean asset index", err)
 		} else {
-			n, _ := res.RowsAffected()
-			fmt.Printf("  Deleted %d rows from velox.asset_index\n", n)
+			n, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("  Failed to read affected rows for asset_index: %v\n", err)
+				recordStockResetError(&firstErr, "read affected rows for asset index", err)
+			} else {
+				fmt.Printf("  Deleted %d rows from velox.asset_index\n", n)
+			}
 		}
 
 		res, err = veloxDB.ExecContext(ctx, "DELETE FROM script_stock_matches")
 		if err != nil {
 			fmt.Printf("  Failed to clean script_stock_matches: %v\n", err)
+			recordStockResetError(&firstErr, "clean script stock matches", err)
 		} else {
-			n, _ := res.RowsAffected()
-			fmt.Printf("  Deleted %d rows from velox.script_stock_matches\n", n)
+			n, err := res.RowsAffected()
+			if err != nil {
+				fmt.Printf("  Failed to read affected rows for script_stock_matches: %v\n", err)
+				recordStockResetError(&firstErr, "read affected rows for script stock matches", err)
+			} else {
+				fmt.Printf("  Deleted %d rows from velox.script_stock_matches\n", n)
+			}
 		}
 	}
 
@@ -133,11 +170,16 @@ func runResetStockDrive(args []string) error {
 		id, err := driveAdmin.GetOrCreateFolder(ctx, name, *folder)
 		if err != nil {
 			fmt.Printf("FAILED: %v\n", err)
+			recordStockResetError(&firstErr, fmt.Sprintf("create Drive folder %s", name), err)
 		} else {
 			fmt.Printf("OK -> %s\n", id)
 		}
 	}
 
+	if firstErr != nil {
+		fmt.Printf("\n❌ Stock drive reset completed with errors: %v\n", firstErr)
+		return firstErr
+	}
 	fmt.Println("\n✅ Stock drive reset complete!")
 	return nil
 }
