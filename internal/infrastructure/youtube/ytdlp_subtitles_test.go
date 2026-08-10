@@ -1,4 +1,4 @@
-package transcripts
+package youtube
 
 import (
 	"strings"

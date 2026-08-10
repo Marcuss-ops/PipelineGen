@@ -53,7 +53,7 @@ import (
 // matches); no separate interface declaration needed.
 type Deps struct {
 	OllamaClient *client.Client
-	Subtitles    *transcripts.YTDLPSubtitleAdapter
+	Subtitles    transcripts.SubtitleSource
 	Log          *zap.Logger
 	// Model is the Ollama model name; default "gemma4:e2b" (matches the
 	// pre-Step-9 hard-default). Production callers should pass
@@ -72,7 +72,7 @@ type Deps struct {
 // the config knobs that drive prompt construction.
 type OllamaAnalyzer struct {
 	ollamaClient *client.Client
-	subtitles    *transcripts.YTDLPSubtitleAdapter
+	subtitles    transcripts.SubtitleSource
 	log          *zap.Logger
 	model        string
 	dataDir      string

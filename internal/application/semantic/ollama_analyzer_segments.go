@@ -55,10 +55,11 @@ func (a *OllamaAnalyzer) FindSegments(ctx context.Context, videoURL string, tran
 	}
 
 	// Step 1: re-fetch timed entries.
-	entries, err := a.subtitles.GetTimedTranscript(ctx, videoURL)
+	doc, err := a.subtitles.Fetch(ctx, videoURL)
 	if err != nil {
-		return nil, fmt.Errorf("OllamaAnalyzer.FindSegments: subtitles.GetTimedTranscript(%s): %w", videoURL, err)
+		return nil, fmt.Errorf("OllamaAnalyzer.FindSegments: subtitles.Fetch(%s): %w", videoURL, err)
 	}
+	entries := doc.Entries
 	if len(entries) < 5 {
 		// Pre-Step-9 segment_finder.go rejected <5 timed entries as
 		// "too few subtitle entries for analysis". Preserve the gate.
