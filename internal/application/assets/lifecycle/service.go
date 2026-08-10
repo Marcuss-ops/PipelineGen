@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -12,6 +13,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+)
+
+var (
+	// ErrFinalizerUnavailable is returned when persistence is required but
+	// the canonical asset finalizer was not wired.
+	ErrFinalizerUnavailable = errors.New("asset lifecycle: finalizer unavailable")
+	// ErrReconcilerUnavailable is returned when reconciliation was requested
+	// but the lifecycle service has no reconciliation capability.
+	ErrReconcilerUnavailable = errors.New("asset lifecycle: reconciler unavailable")
 )
 
 // Service orchestrates the full asset lifecycle:
@@ -102,6 +112,10 @@ func NewService(deps ServiceDeps, cfg Config) *Service {
 // 2. Upload to Drive (if needed)
 // 3. Persist to databases
 func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHash string) (*FinalizeResult, error) {
+	if s.persistPolicy.SaveToAssetRegistry && s.finalizer == nil {
+		return nil, ErrFinalizerUnavailable
+	}
+
 	out := &FinalizeResult{
 		OK:        false,
 		Status:    "failed",
@@ -220,7 +234,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	}
 
 	// Step 3: Persist to databases (if policy enabled)
-	if s.persistPolicy.SaveToAssetRegistry && s.finalizer != nil {
+	if s.persistPolicy.SaveToAssetRegistry {
 		rec := &artifacts.MediaRecord{
 			ID:           input.ID,
 			Name:         input.Name,
@@ -324,7 +338,7 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 // Reconcile triggers reconciliation for a given source.
 func (s *Service) Reconcile(ctx context.Context, source string) (int, error) {
 	if s.reconcile == nil {
-		return 0, nil
+		return 0, ErrReconcilerUnavailable
 	}
 	return s.reconcile.ReconcileDriveMissing(ctx, source)
 }
