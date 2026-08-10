@@ -43,6 +43,19 @@ func bind() { svc.RegisterHandler(appjobs.TypeCatalogSync, appjobs.HandlerFunc(f
 	}
 }
 
+func TestScanJobOwnership_PassesCanonicalNestedJobType(t *testing.T) {
+	root := t.TempDir()
+	writeJobOwnershipFixture(t, root, "job_handler_map:\n  - job_type: catalog.sync\n")
+	writeRuntimeFixture(t, root, `var registered = JobPolicy{Completion: CompletionDeclaration{JobType: TypeCatalogSync}}
+func bind() { svc.RegisterHandler(appjobs.TypeCatalogSync, appjobs.HandlerFunc(func() {})) }`)
+
+	r := &report.Report{}
+	ScanJobOwnership(root, &policy.Policy{}, r)
+	if len(r.Violations) != 0 {
+		t.Fatalf("expected canonical nested JobType to pass, got violations: %+v", r.Violations)
+	}
+}
+
 func TestScanJobOwnership_RejectsMissingRuntimeRegistry(t *testing.T) {
 	root := t.TempDir()
 	writeJobOwnershipFixture(t, root, "job_handler_map:\n  - job_type: catalog.sync\n")

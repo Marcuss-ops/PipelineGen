@@ -33,6 +33,27 @@ func TestScanLegacyRootNewCodeRejectsAddedLegacyFile(t *testing.T) {
 	}
 }
 
+func TestScanLegacyRootNewCodeIgnoresAddedFileMovedOutOfLegacyRoot(t *testing.T) {
+	root := t.TempDir()
+	mustRunGit(t, root, "init")
+	mustRunGit(t, root, "config", "user.email", "archcheck@example.invalid")
+	mustRunGit(t, root, "config", "user.name", "archcheck")
+
+	writeLegacyCodeFixture(t, root, "internal/application/moved.go")
+	if err := os.MkdirAll(filepath.Join(root, "internal", "capabilities"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustRunGit(t, root, "add", ".")
+	mustRunGit(t, root, "commit", "-m", "baseline")
+	mustRunGit(t, root, "mv", "internal/application/moved.go", "internal/capabilities/moved.go")
+
+	r := &report.Report{}
+	ScanLegacyRootNewCode(root, &policy.Policy{LegacyInternalRoots: []string{"application"}}, r)
+	if len(r.Violations) != 0 {
+		t.Fatalf("moved legacy file is not production code at its old path, got %#v", r.Violations)
+	}
+}
+
 func TestScanLegacyRootNewCodeAllowsEditToExistingLegacyFile(t *testing.T) {
 	root := t.TempDir()
 	mustRunGit(t, root, "init")

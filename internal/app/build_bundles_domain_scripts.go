@@ -12,7 +12,7 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"

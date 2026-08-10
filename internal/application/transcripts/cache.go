@@ -6,9 +6,17 @@ import (
 	"sync"
 	"time"
 
+	captranscripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	transcript "github.com/Marcuss-ops/PipelineGen/internal/domain/transcript"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
+
+// SubtitleSource is retained as a compatibility alias while callers migrate
+// from the legacy application package to capabilities/transcripts.
+type SubtitleSource = captranscripts.SubtitleSource
+
+// TranscriptFetcher is the compatibility alias for the canonical capability port.
+type TranscriptFetcher = captranscripts.TranscriptFetcher
 
 // DefaultTranscriptCacheTTL is the canonical 24-hour TTL.
 const DefaultTranscriptCacheTTL = 24 * time.Hour
