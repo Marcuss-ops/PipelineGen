@@ -139,7 +139,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if err := bootstrapProviderRegistry(providerReg, providerEntries, []module.DescriptorProviders{providerDescriptor}); err != nil {
 		return registryCrossStepState{}, err
 	}
-	searchFanOut, searchBackends, searchAgg := registerSearchBackend(
+	searchFanOut, searchBackends, searchAgg, searchErr := registerSearchBackend(
 		log,
 		providerReg,
 		root.Repos.ClipsRepo,
@@ -149,6 +149,9 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		deliveryPort,
 		rerankerPort,
 	)
+	if searchErr != nil {
+		return registryCrossStepState{}, searchErr
+	}
 	crossStep := registryCrossStepState{
 		SearchFanOut:       searchFanOut,
 		SearchBackends:     searchBackends,
