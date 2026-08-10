@@ -66,6 +66,10 @@ func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgUR
 // already staged the bytes via sourceStager.StageSourceV2) and by
 // any caller that already holds a streamed body.
 func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*asset.ImageAsset, error) {
+	if s.repo == nil {
+		return nil, ErrImageRepositoryUnavailable
+	}
+
 	ingestCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
 	defer cancel()
 
@@ -75,15 +79,6 @@ func (s *ImageStorageService) IngestImage(ctx context.Context, slug, style, genI
 	}
 	hashBytes := sha256.Sum256(content)
 	contentHash := hex.EncodeToString(hashBytes[:])
-
-	if s.repo == nil {
-		s.log.Warn("IngestImage: repo is nil, returning mock asset")
-		return &asset.ImageAsset{
-			SlugID: slug, Description: description, SourceURL: sourceURL,
-			Hash: contentHash, Status: "ready", Origin: asset.ImageOriginRetrieved,
-			Provider: asset.ProviderUnknown,
-		}, nil
-	}
 
 	if existing, err := s.repo.GetImageByHash(ingestCtx, contentHash); err == nil && existing != nil {
 		existingStyle := extractStyleFromPath(existing.PathRel)

@@ -40,6 +40,10 @@ var ErrImageTransient error = &errImageTransient{}
 // NOT retryable.
 var ErrImageInvalidResponse = errors.New("image: invalid or corrupt response")
 
+// ErrImageRepositoryUnavailable is returned when image ingestion cannot
+// persist its canonical asset because the repository was not wired.
+var ErrImageRepositoryUnavailable = errors.New("image: repository unavailable")
+
 // ── Search & Download ─────────────────────────────────────────────────
 
 // defaultLicenseAndAuthor resolves the canonical license and author for
