@@ -1,5 +1,8 @@
 # PipelineGen — split ownership section: application
-# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# This file records current ownership while the legacy application root is
+# migrated. It does not make internal/application a target root for new work.
+# The binding target roots are internal/{app,kernel,capabilities,platform};
+# migration-only restrictions are defined by architecture/policy.yaml.
 # Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
 # from these 6 files in canonical order.
 # Edit the source files; the generated view is regenerated deterministically.
@@ -110,12 +113,14 @@ canonical_services:
     constructor: NewReadyChecker
     location: internal/app/bootstrap.go
 
+# Only target roots are valid homes for new architecture. The former
+# application/api/domain/infrastructure roots are migration-only and are
+# governed by architecture/policy.yaml plus package_hotspots.json.
 allowed_internal_roots:
-  - api
   - app
-  - application
-  - domain
-  - infrastructure
+  - kernel
+  - capabilities
+  - platform
 
 # ── Transport (HTTP) ─────────────────────────────────────────────────────────
 
@@ -153,7 +158,7 @@ archcheck_cli:
       - forbidden_top_level_dirs (service, repository, models, utils, helpers)
       - kernel_subzones (asset, job, script, event, identity, errors, observability)
       - capabilities + platform_subzones (forward-looking)
-      - legacy_internal_roots + target_internal_roots (migration tracker)
+      - target_internal_roots + migration-only legacy roots (governed by package_hotspots.json)
       - data_ownership_doc / legacy_policy_doc / ci_gates_doc /
         agent_playbook_doc / removal_doc (5 godlike/ canonical docs)
       - known_grandfathered (Phase 0 report-only; Phase 1+ gates)

@@ -9,10 +9,11 @@ PipelineGen is a headless, server-side media pipeline. Keep it deterministic, CP
 - SQLite is the canonical state store. Keep `mattn/go-sqlite3`; do not introduce FTS5 assumptions.
 - Qdrant is a derived projection and must be completely rebuildable from SQLite.
 - Durable side effects after database commits must use the transactional outbox.
-- `internal/api` owns transport only. It must not own SQL, Drive SDK calls, FFmpeg execution, or provider orchestration.
-- `internal/application` owns use cases and typed ports. It must not depend directly on infrastructure implementations.
-- `internal/infrastructure` owns concrete adapters.
-- `internal/app` is the only composition root.
+- The only target internal roots are `internal/app`, `internal/kernel`, `internal/capabilities`, and `internal/platform`.
+- `internal/app` is the only composition root and owns lifecycle/wiring, not business behavior.
+- `internal/capabilities` owns business capabilities and typed ports; `internal/kernel` owns genuinely shared semantic contracts.
+- `internal/platform` owns concrete adapters, transport mechanics, filesystem/process access, and external systems.
+- `internal/application`, `internal/api`, `internal/infrastructure`, and `internal/domain` are migration-only zones: no new capabilities, public contracts, providers, routes, files, or packages. Changes there must be migration/removal work or a correctness/security fix and must match an owner/deadline/target entry in `architecture/package_hotspots.json`.
 - Google Drive writes from application flows must use the canonical delivery publisher.
 - Never represent an unavailable backend as a successful no-op. Fail closed with typed errors or do not register the capability.
 - New routing, provider selection, source policy, sampling, or resolution logic must enter a shared registry, resolver, or sampler. Do not duplicate the same decision logic across handlers.

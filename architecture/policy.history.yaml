@@ -71,20 +71,21 @@ debt_budget:
 
 # Layout-cutover history -----------------------------------------------------
 target_internal_roots:
-  current: {chosen-as-canonical: "2026-07-25", retired: legacy_internal_roots}
+  current: {chosen-as-canonical: "2026-07-25", legacy_roots: migration-only}
   history:
     - date: "2026-07-25"
-      change: "legacy_internal_roots RETIRED; target_internal_roots is THE canonical layout"
+      change: "target_internal_roots remains THE canonical layout; legacy roots are migration-only"
       note: |
         PipelineGen carried a two-layout mode (legacy_internal_roots +
         target_internal_roots) that accumulated transitional layers,
         allowlists, and ratchets. The legacy zone list (api, app,
         application, domain, infrastructure, transcription, youtube)
-        accumulated because no single direction had policy cover. This
-        commit retires legacy_internal_roots; target_internal_roots is
-        THE canonical layout per godlike/07 ZERO_LEGACY_POLICY §"Default
-        rule". The legacy zones still exist on disk but no longer receive
-        policy cover — each retirement is a follow-up commit. The
+        accumulated because no single direction had policy cover. This commit
+        establishes target_internal_roots as THE canonical layout
+        per godlike/07 ZERO_LEGACY_POLICY §"Default rule". The legacy zones
+        remain on disk only as migration-only surfaces; they are not a second
+        supported architecture and must not receive new capabilities,
+        contracts, providers, routes, files, or packages. The
         stock-legacy-keyword allowlist (docs/migrations/) survives this
         commit ONLY as a forward-pointer tombstone for the 4 still-
         retirement-pending files (service.go, run.go, usecase.go,

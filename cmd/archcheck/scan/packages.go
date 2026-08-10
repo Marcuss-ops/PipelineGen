@@ -35,10 +35,12 @@ type packageHotspot struct {
 }
 
 type internalRootMigration struct {
-	Path     string   `json:"path"`
-	Owner    string   `json:"owner"`
-	Deadline string   `json:"deadline"`
-	Targets  []string `json:"targets"`
+	Path          string   `json:"path"`
+	Owner         string   `json:"owner"`
+	Deadline      string   `json:"deadline"`
+	Status        string   `json:"status"`
+	NewCodePolicy string   `json:"new_code_policy"`
+	Targets       []string `json:"targets"`
 }
 
 // ScanPackages runs the package-size scan. Registered debt is governed by the
@@ -103,6 +105,17 @@ func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, file
 			Severity:    "error",
 			Note:        registryErr.Error(),
 		})
+	}
+	if registryErr == nil && registry != nil && len(pol.LegacyInternalRoots) > 0 {
+		if err := validateLegacyRootRegistry(registry, pol.LegacyInternalRoots); err != nil {
+			r.Violations = append(r.Violations, report.Violation{
+				File:        packageHotspotRegistryPath,
+				MatchedRule: "legacy_root_migration_registry_invalid",
+				Rule:        "pkg_size",
+				Severity:    "error",
+				Note:        err.Error(),
+			})
+		}
 	}
 
 	hotspots := map[string]packageHotspot{}
@@ -246,9 +259,32 @@ func validatePackageHotspot(h packageHotspot) error {
 	return nil
 }
 
+func validateLegacyRootRegistry(registry *packageHotspotRegistry, roots []string) error {
+	seen := make(map[string]bool, len(registry.RootMigrations))
+	for _, migration := range registry.RootMigrations {
+		seen[filepath.ToSlash(migration.Path)] = true
+	}
+	for _, root := range roots {
+		if !seen["internal/"+strings.Trim(root, "/")] {
+			return fmt.Errorf("missing internal root migration entry for legacy root %q", root)
+		}
+	}
+	return nil
+}
+
 func validateInternalRootMigration(m internalRootMigration) error {
 	if !strings.HasPrefix(filepath.ToSlash(m.Path), "internal/") || m.Owner == "" || m.Deadline == "" || len(m.Targets) == 0 {
 		return fmt.Errorf("invalid internal root migration entry for %q", m.Path)
+	}
+	if m.Status != "migration_only" || m.NewCodePolicy != "no_new_capabilities_no_new_public_contracts_no_new_providers_no_new_routes_no_new_files_no_new_packages" {
+		return fmt.Errorf("invalid internal root migration policy for %q: status must be migration_only and new_code_policy must prohibit new capabilities, public contracts, providers, routes, files and packages", m.Path)
+	}
+	for _, target := range m.Targets {
+		target = filepath.ToSlash(strings.TrimSuffix(target, "/"))
+		if target != "internal/kernel" && target != "internal/capabilities" && target != "internal/platform" &&
+			!strings.HasPrefix(target, "internal/kernel/") && !strings.HasPrefix(target, "internal/capabilities/") && !strings.HasPrefix(target, "internal/platform/") {
+			return fmt.Errorf("invalid target %q for internal root migration %q: target must be under internal/kernel, internal/capabilities or internal/platform", target, m.Path)
+		}
 	}
 	if _, err := time.Parse("2006-01-02", m.Deadline); err != nil {
 		return fmt.Errorf("invalid internal root migration deadline for %q: %w", m.Path, err)

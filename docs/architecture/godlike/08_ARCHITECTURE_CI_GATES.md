@@ -27,6 +27,13 @@ Keep the codebase aligned with the canonical architecture by catching dependency
 
 - Stale prose paths and deprecated references are flagged.
 - Legacy compatibility entries must have an owner and deadline.
+- `internal/app`, `internal/kernel`, `internal/capabilities`, and
+  `internal/platform` are the only target roots.
+- `internal/application`, `internal/api`, `internal/infrastructure`, and
+  `internal/domain` are migration-only roots. New capabilities, public
+  contracts, providers, routes, files, and packages are prohibited there;
+  migration records in `architecture/package_hotspots.json` provide ownership
+  and deadlines but do not authorize extending a legacy root.
 
 ## Contract checks
 

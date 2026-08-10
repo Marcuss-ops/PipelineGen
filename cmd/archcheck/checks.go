@@ -21,6 +21,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"kernel_subzone_hints", scan.ScanKernelSubzoneHints},
 		{"kernel_subzone_integrity", scan.ScanKernelSubzoneIntegrity},
 		{"unknown_internal_roots", scan.ScanUnknownInternalRoots},
+		{"percheck_legacy_root_new_code", scan.ScanLegacyRootNewCode},
 		{"ownership_doc", scan.ScanOwnershipDoc},
 		{"legacy_policy_doc", scan.ScanLegacyPolicyDoc},
 		{"ci_gates_doc", scan.ScanCIGatesDoc},

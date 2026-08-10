@@ -148,11 +148,11 @@ passwordless checks.
 
 ```text
 cmd/                     process entry points
-internal/api/            HTTP transport
 internal/app/            composition root and wiring
-internal/application/    use cases, ports, jobs, policies
-internal/domain/         shared domain contracts
-internal/infrastructure/ SQLite, Drive, Qdrant, AI and media adapters
+internal/kernel/         shared semantic contracts
+internal/capabilities/   business capabilities and typed ports
+internal/platform/       adapters, transport, and external systems
+internal/{api,application,domain,infrastructure}/ migration-only zones
 pkg/                     leaf utilities
 migrations/sqlite/       database migrations
 scripts/                 operational and CI utilities
@@ -165,8 +165,9 @@ tests/                   automated and operational tests
 - Qdrant is a rebuildable search projection.
 - Long-running work uses the job system.
 - Post-commit side effects use the transactional outbox.
-- Application code depends on ports; concrete adapters live in infrastructure.
+- Capability code depends on ports; concrete adapters live in `internal/platform`.
 - Dependency construction belongs in `internal/app`.
+- New architecture belongs only under `internal/{app,kernel,capabilities,platform}`; the former `api`, `application`, `domain`, and `infrastructure` roots are migration-only.
 - New capabilities must use shared registries, resolvers, or samplers instead of duplicating routing logic.
 
 ## Verification

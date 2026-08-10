@@ -28,12 +28,12 @@ package policy
 // stale_prose_paths) are doc-only and not consumed for enforcement in
 // Phase 0.
 //
-// `LegacyInternalRoots` is the current (Phase 0) layout — `internal/{api,
-// app, application, domain, infrastructure}`. `TargetInternalRoots` is
-// the migration target — `internal/{app, kernel, capabilities,
-// platform}`. The scan reports any first-level `internal/<x>` not in
-// either list as an unknown-root warning, so the migration progress is
-// visible in the JSON report over time.
+// `TargetInternalRoots` is the sole supported layout —
+// `internal/{app, kernel, capabilities, platform}`. `LegacyInternalRoots`
+// lists existing migration-only roots so the scanner can govern them without
+// treating them as valid homes for new architecture. The scan reports any
+// first-level `internal/<x>` not in either list as an unknown-root violation,
+// so unmanaged roots cannot appear silently.
 //
 // `Capabilities` and `PlatformSubzones` are targets for Phase 1+
 // enforcement of "expected zones exist" rules. For Phase 0 they are
