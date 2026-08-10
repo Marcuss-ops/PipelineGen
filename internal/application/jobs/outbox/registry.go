@@ -34,9 +34,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// Deps bundles the optional dependencies RegisterAll forwards to the
-// real outbox event handlers. Each field is optional; a nil field
-// means the corresponding handler is skipped from registration.
+// Deps bundles the dependencies consumed by the outbox event handlers.
+// Each field is optional unless required by RegisterCoreHandlers; a nil
+// optional field means the corresponding optional handler is skipped.
 //
 // DB: *sql.DB backing store. Required for the DeliveryHandler
 // (delivery_log writes). Also feeds the ProviderSyncHandler fallback
@@ -161,62 +161,6 @@ type Deps struct {
 
 // IndexClipper is declared in indexing.go (canonical owner) — do NOT
 // redeclare here.
-
-// RegisterAll wires the canonical set of handlers into the registry.
-//
-// Deprecated: production code MUST call RegisterCoreHandlers (when
-// cfg.Qdrant.Enabled) and RegisterOptionalHandlers directly so a
-// missing core dep aborts boot rather than producing a runtime
-// dead-letter on the first indexed event. RegisterAll is retained as
-// a back-compat wrapper for legacy tests that exercise partial wiring
-// without fail-closed semantics — pre-PR-3 callers get the same
-// best-effort behavior (missing core deps are LOGGED at Info and
-// skipped, never returned as an error). See PR 3
-// (fix/qdrant-outbox-fail-closed) for the failure-mode context that
-// drove the split.
-//
-// Step 2 (June 2026) signature change: RegisterAll no longer
-// constructs MetadataExportHandler. The composition root builds the
-// metadataexport.MetadataExportHandler (with typed-port adapter) and
-// passes it via metadataExportHandler. Legacy RegisterAll callers
-// can pass nil — the handler is then skipped, matching the pre-Step-2
-// behaviour when deps.MetadataDir was empty.
-//
-// Parameters:
-//   - registry               : the HandlerRegistry to populate.
-//   - log                    : zap logger — nil-safe.
-//   - indexer                : IndexClipper dependency for the IndexingHandler.
-//   - deps                   : Deps bundle (DB + HTTPClient + ...).
-//   - metadataExportHandler  : pre-built metadataexport.MetadataExportHandler
-//     (Step 2); nil → MetadataExportHandler skipped.
-//
-// Returns: the error from RegisterOptionalHandlers (core registration
-// errors are swallowed so legacy callers observe the original
-// "Warning-only" behaviour).
-func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps, metadataExportHandler outboxevents.Handler) error {
-	if registry == nil {
-		return fmtError("outbox RegisterAll: registry is nil")
-	}
-	// Best-effort core registration: legacy callers expect no fatal
-	// error so missing deps are LOGGED not returned.
-	coreHandlers := []outboxevents.Handler{}
-	if indexer != nil && deps != nil && deps.Jobs.SourceVersionQuerier != nil {
-		coreHandlers = append(coreHandlers, buildIndexingHandler(indexer, deps.Jobs.SourceVersionQuerier, log))
-	} else {
-		log.Info("outbox RegisterAll (legacy): IndexingHandler skipped (missing indexer or SourceVersionQuerier)")
-	}
-	if deps != nil && deps.Jobs.VectorPointDeleter != nil && deps.Jobs.AssetDeleter != nil {
-		coreHandlers = append(coreHandlers, NewIndexDeleteHandler(log, deps.Jobs.VectorPointDeleter, deps.Jobs.AssetDeleter))
-	} else {
-		log.Info("outbox RegisterAll (legacy): IndexDeleteHandler skipped (missing VectorPointDeleter or AssetDeleter)")
-	}
-	for _, h := range coreHandlers {
-		if err := registry.Register(h); err != nil {
-			return err
-		}
-	}
-	return RegisterOptionalHandlers(registry, log, deps, metadataExportHandler)
-}
 
 // RegisterCoreHandlers wires handlers that MUST be present when
 // cfg.Qdrant.Enabled is true (verdict Qdrant section #5, PR 3
@@ -424,7 +368,7 @@ func (e *registryError) Error() string { return e.msg }
 // clipindexer.IndexerStateUpdater (compile-time pinned at
 // internal/infrastructure/indexing/clipindexer/state_writer.go:
 // `var _ IndexerStateUpdater = (*Service)(nil)`). When RegisterCoreHandlers
-// / RegisterAll receive a *Service from the composition root, the
+// RegisterCoreHandlers receives a *Service from the composition root; the
 // type-assertion below auto-wires the IndexerStateUpdater port so
 // the ErrIndexClipDisabledButEventRequested branch can stamp
 // INDEXING_SKIPPED_NO_INDEXER on media_assets without a separate
