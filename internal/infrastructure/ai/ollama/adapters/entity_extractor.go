@@ -4,11 +4,13 @@ package adapters
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
@@ -17,6 +19,8 @@ import (
 type OllamaEntityExtractorAdapter struct {
 	client *client.Client
 }
+
+const defaultEntityModel = "gemma3:1b"
 
 func NewOllamaEntityExtractorAdapter(c *client.Client) scriptadapters.EntityExtractor {
 	return &OllamaEntityExtractorAdapter{client: c}
@@ -36,7 +40,7 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 	if entityCount <= 0 {
 		entityCount = 5
 	}
-	analysis, err := a.client.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, req.Model)
+	analysis, err := a.client.ExtractEntitiesFromScriptWithModel(ctx, segments, entityCount, selectedEntityModel())
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +116,84 @@ func (a *OllamaEntityExtractorAdapter) ExtractEntities(ctx context.Context, req 
 		result.Raw = string(rawBytes)
 	}
 	return result, nil
+}
+
+// ExtractEntitiesBatch is the bounded implementation of the canonical entity
+// extraction operation. The processor discovers it without requiring a second
+// public port, so legacy test and fallback adapters remain valid.
+func (a *OllamaEntityExtractorAdapter) ExtractEntitiesBatch(ctx context.Context, reqs []script.EntityExtractionRequest) ([]script.EntityExtractionBatchResult, error) {
+	if a.client == nil {
+		return nil, scriptadapters.ErrEntityExtractorUnavailable
+	}
+	if len(reqs) == 0 {
+		return nil, nil
+	}
+	texts := make([]string, len(reqs))
+	entityCount := 5
+	for i, req := range reqs {
+		texts[i] = req.Text
+		if req.EntityCount > 0 {
+			entityCount = req.EntityCount
+		}
+	}
+	results, err := a.client.ExtractEntitiesFromBatchWithModel(ctx, texts, entityCount, selectedEntityModel())
+	if err != nil {
+		return nil, err
+	}
+	batch := make([]script.EntityExtractionBatchResult, 0, len(reqs))
+	for i, result := range results {
+		batch = append(batch, script.EntityExtractionBatchResult{
+			SegmentID: reqs[i].SegmentID, SegmentIndex: i,
+			Result: entityResultFromAnalysis(result),
+		})
+	}
+	return batch, nil
+}
+
+func selectedEntityModel() string {
+	if model := strings.TrimSpace(os.Getenv("OLLAMA_ENTITY_MODEL")); model != "" {
+		return model
+	}
+	return defaultEntityModel
+}
+
+func entityResultFromAnalysis(result *asset.EntityExtractionResult) *script.EntityResult {
+	if result == nil {
+		return &script.EntityResult{}
+	}
+	out := &script.EntityResult{
+		ArtlistPhrases:   append([]string(nil), result.ArtlistPhrases...),
+		ImportantPhrases: append([]string(nil), result.FrasiImportanti...),
+		ImportantWords:   append([]string(nil), result.ParoleImportanti...),
+	}
+	for _, raw := range result.NomiSpeciali {
+		kind, value := parseTypedEntity(raw)
+		if value == "" {
+			continue
+		}
+		entity := script.Entity{Value: value, Type: kind, Score: 0.98}
+		switch kind {
+		case "PERSON":
+			out.Persons = append(out.Persons, entity)
+		case "PLACE", "LOCATION", "CITY", "COUNTRY":
+			entity.Type = "PLACE"
+			out.Places = append(out.Places, entity)
+		default:
+			out.Concepts = append(out.Concepts, entity)
+		}
+	}
+	for subject, description := range result.EntitaSenzaTesto {
+		if strings.TrimSpace(subject) != "" {
+			out.Concepts = append(out.Concepts, script.Entity{Value: strings.TrimSpace(subject), Type: "VISUAL_SUBJECT", Score: 0.92})
+		}
+		if strings.TrimSpace(description) != "" {
+			out.ArtlistPhrases = append(out.ArtlistPhrases, strings.TrimSpace(description))
+		}
+	}
+	for _, word := range result.ParoleImportanti {
+		out.ImportantWords = append(out.ImportantWords, strings.TrimSpace(word))
+	}
+	return out
 }
 
 // parseTypedEntity accepts the new "TYPE: value" contract while remaining

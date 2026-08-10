@@ -5,6 +5,38 @@ import (
 	"strings"
 )
 
+// BuildEntityExtractionBatchPrompt keeps the per-scene contract intact while
+// allowing one bounded model call to serve several scenes. The explicit start
+// and end markers make scene association deterministic for small models.
+func BuildEntityExtractionBatchPrompt(segments []string, entityCount int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `Extract metadata independently for each numbered documentary segment.
+Never combine information between segments. Return one block per segment using
+exactly these markers and the five labeled sections:
+
+### SEGMENT_INDEX: N
+## frasi_importanti
+- item
+## entity_senza_testo
+- Subject: precise visual search description
+## nomi_speciali
+- TYPE: Value
+## parole_importanti
+- concrete keyword
+## artlist_phrases
+- short visual concept phrase
+### END_SEGMENT
+
+Rules: extract at most %d named entities per segment, use only evidence in that
+segment, and output no JSON, markdown fences, commentary, or missing segment
+blocks.
+`, entityCount)
+	for i, segment := range segments {
+		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)
+	}
+	return b.String()
+}
+
 // BuildEntityExtractionPrompt builds the canonical per-segment extraction prompt.
 func BuildEntityExtractionPrompt(text string, entityCount int) string {
 	if cfg := Get(); cfg != nil {

@@ -79,10 +79,6 @@ func (p *GenerationPostprocessor) Process(
 		}, nil
 	}
 
-	for index, pp := range plan.Postprocessors {
-		tracker.PhasePostprocessProgress(index, len(plan.Postprocessors), pp)
-	}
-
 	procInput := adapters.ProcessInput{
 		Text:              engineResult.Output.Text,
 		WordCount:         engineResult.WordCount,
@@ -98,7 +94,16 @@ func (p *GenerationPostprocessor) Process(
 		ResearchSources:   append([]scriptpkg.SourceReference(nil), plan.ResearchSources...),
 	}
 
-	postResult, err := p.ppReg.Run(ctx, &plan, procInput)
+	postResult, err := p.ppReg.RunWithProgress(ctx, &plan, procInput, func(event adapters.ProcessorProgressEvent) {
+		tracker.PhasePostprocessEvent(
+			event.Index,
+			event.Total,
+			string(event.Name),
+			event.Status,
+			event.Duration,
+			event.Err,
+		)
+	})
 	if err != nil {
 		return nil, &scriptpkg.PostprocessError{
 			ItemID:    item.ID,

@@ -340,7 +340,8 @@
   },
   "ollama": {
     "paths": [
-      "internal/infrastructure/ai/ollama/"
+      "internal/infrastructure/ai/ollama/",
+      "scripts/systemd/ollama.service.d/"
     ],
     "go_packages": [
       "./internal/infrastructure/ai/ollama/..."

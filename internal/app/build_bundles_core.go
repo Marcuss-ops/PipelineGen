@@ -40,7 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/httpclient"
-	processinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	processinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 
 	chromeimages "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/images/chrome"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"

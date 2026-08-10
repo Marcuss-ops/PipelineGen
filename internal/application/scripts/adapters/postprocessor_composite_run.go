@@ -15,6 +15,26 @@ import (
 
 const postprocessorOperationTimeout = 5 * time.Minute
 
+// ProcessorProgressEvent describes an actually executed postprocessor. The
+// registry emits these events at the execution boundary, rather than asking a
+// caller to announce the whole plan in advance.
+type ProcessorProgressEvent struct {
+	Index    int
+	Total    int
+	Name     ProcessorName
+	Status   string // started, completed, failed
+	Duration time.Duration
+	Err      error
+}
+
+type ProcessorProgressReporter func(ProcessorProgressEvent)
+
+func reportProcessorProgress(reporter ProcessorProgressReporter, event ProcessorProgressEvent) {
+	if reporter != nil {
+		reporter(event)
+	}
+}
+
 // ── Run: the canonical postprocessor pipeline ─────────────────────────
 
 // Run executes every processor whose name appears in the plan's
@@ -23,6 +43,27 @@ func (r *PostProcessorRegistry) Run(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
 	input ProcessInput,
+) (*PipelineResult, error) {
+	return r.run(ctx, plan, input, nil)
+}
+
+// RunWithProgress is the canonical execution path for callers that expose
+// live progress. The callback is per invocation, so concurrent jobs cannot
+// overwrite one another's progress sink.
+func (r *PostProcessorRegistry) RunWithProgress(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	input ProcessInput,
+	reporter ProcessorProgressReporter,
+) (*PipelineResult, error) {
+	return r.run(ctx, plan, input, reporter)
+}
+
+func (r *PostProcessorRegistry) run(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	input ProcessInput,
+	reporter ProcessorProgressReporter,
 ) (*PipelineResult, error) {
 	if r == nil {
 		return &PipelineResult{}, nil
@@ -81,7 +122,7 @@ func (r *PostProcessorRegistry) Run(
 		requiredFails     []string
 	)
 
-	for _, rawName := range plan.Postprocessors {
+	for index, rawName := range plan.Postprocessors {
 		name := ProcessorName(rawName)
 		proc, ok := procs[name]
 		policy := policies[name]
@@ -98,6 +139,10 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		if !ok || proc == nil {
+			reportProcessorProgress(reporter, ProcessorProgressEvent{
+				Index: index, Total: len(plan.Postprocessors), Name: name,
+				Status: "failed", Err: fmt.Errorf("postprocessor not registered"),
+			})
 			warn := fmt.Sprintf("postprocessor %q not registered", string(name))
 			warnings = append(warnings, warn)
 			if policy == ProcessorRequired {
@@ -110,6 +155,9 @@ func (r *PostProcessorRegistry) Run(
 			}
 			continue
 		}
+		reportProcessorProgress(reporter, ProcessorProgressEvent{
+			Index: index, Total: len(plan.Postprocessors), Name: name, Status: "started",
+		})
 
 		// Restore the translated scene surface before the next processor
 		// consumes it. This is deliberately before Process, never after the
@@ -174,6 +222,10 @@ func (r *PostProcessorRegistry) Run(
 		ppResult = clonePostProcessResult(ppResult)
 
 		if err != nil {
+			reportProcessorProgress(reporter, ProcessorProgressEvent{
+				Index: index, Total: len(plan.Postprocessors), Name: name,
+				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond, Err: err,
+			})
 			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, err.Error())
 			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
@@ -209,6 +261,11 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		if ppResult == nil {
+			reportProcessorProgress(reporter, ProcessorProgressEvent{
+				Index: index, Total: len(plan.Postprocessors), Name: name,
+				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
+				Err: fmt.Errorf("nil result"),
+			})
 			result.StageDurations[string(name)] = stageReport.DurationMs
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "nil result")
 			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
@@ -224,6 +281,11 @@ func (r *PostProcessorRegistry) Run(
 		result.StageDurations[string(name)] = stageReport.DurationMs
 
 		if ppResult.IsEmpty() {
+			reportProcessorProgress(reporter, ProcessorProgressEvent{
+				Index: index, Total: len(plan.Postprocessors), Name: name,
+				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
+				Err: fmt.Errorf("empty output"),
+			})
 			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "empty output")
 			warn := fmt.Sprintf("postprocessor %q returned empty output", string(name))
 			warnings = append(warnings, warn)
@@ -235,6 +297,10 @@ func (r *PostProcessorRegistry) Run(
 		}
 
 		recordProcessorProgress(result, name, plan, input, job.StageCompleted, plan.ID, "")
+		reportProcessorProgress(reporter, ProcessorProgressEvent{
+			Index: index, Total: len(plan.Postprocessors), Name: name,
+			Status: "completed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
+		})
 		if policy == ProcessorRequired {
 			requiredRequested++
 			requiredSucceeded++

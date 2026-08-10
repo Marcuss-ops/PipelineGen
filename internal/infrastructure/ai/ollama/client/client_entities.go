@@ -4,11 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
+
+// entityExtractionNumPredict is deliberately scoped to this operation. Entity
+// extraction has a small, structured output contract and must not inherit the
+// much larger generation budget used by script generation.
+const entityExtractionNumPredict = 256
+
+const entityExtractionBatchSize = 5
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.
 func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req asset.EntityExtractionRequest) (*asset.EntityExtractionResult, error) {
@@ -29,9 +38,15 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req as
 		err      error
 	)
 	if model != "" {
-		response, err = c.GenerateWithOptions(ctx, model, prompt, nil)
+		response, err = c.GenerateWithOptions(ctx, model, prompt, map[string]any{
+			"num_predict": entityExtractionNumPredict,
+			"temperature": 0,
+		})
 	} else {
-		response, err = c.Generate(ctx, prompt)
+		response, err = c.GenerateWithOptions(ctx, c.model, prompt, map[string]any{
+			"num_predict": entityExtractionNumPredict,
+			"temperature": 0,
+		})
 	}
 	if err != nil {
 		return nil, fmt.Errorf("entity extraction failed: %w", err)
@@ -43,6 +58,121 @@ func (c *Client) ExtractEntitiesFromSegmentWithModel(ctx context.Context, req as
 	}
 
 	return result, nil
+}
+
+// ExtractEntitiesFromBatchWithModel performs one bounded generation for up to
+// five scenes and returns one typed result per input scene.
+func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments []string, entityCount int, model string) ([]*asset.EntityExtractionResult, error) {
+	if len(segments) == 0 || len(segments) > entityExtractionBatchSize {
+		return nil, fmt.Errorf("entity batch size must be between 1 and %d", entityExtractionBatchSize)
+	}
+	if entityCount <= 0 {
+		entityCount = 2
+	}
+	prompt := prompts.BuildEntityExtractionBatchPrompt(segments, entityCount)
+	response, err := c.GenerateWithOptions(ctx, model, prompt, map[string]any{
+		"num_predict": entityExtractionNumPredict * len(segments),
+		"temperature": 0,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("entity batch extraction failed: %w", err)
+	}
+	results, parseErr := parseEntityExtractionBatchResult(response, len(segments))
+	if parseErr == nil {
+		return results, nil
+	}
+	// Small local models can ignore the multi-scene envelope. Retry only this
+	// bounded batch as individually addressed requests, with two concurrent
+	// calls. This preserves correctness without reopening the original 34-call
+	// unbounded fan-out.
+	return c.extractEntityBatchIndividually(ctx, segments, entityCount, model)
+}
+
+func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []string, entityCount int, model string) ([]*asset.EntityExtractionResult, error) {
+	results := make([]*asset.EntityExtractionResult, len(segments))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	for worker := 0; worker < 2; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, asset.EntityExtractionRequest{
+					SegmentText: segments[index], SegmentIndex: index, EntityCount: entityCount,
+				}, model)
+				if err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					errMu.Unlock()
+					continue
+				}
+				results[index] = result
+			}
+		}()
+	}
+	for index := range segments {
+		select {
+		case jobs <- index:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return nil, ctx.Err()
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if firstErr != nil {
+		return nil, fmt.Errorf("entity batch fallback failed: %w", firstErr)
+	}
+	return results, nil
+}
+
+func parseEntityExtractionBatchResult(response string, expected int) ([]*asset.EntityExtractionResult, error) {
+	cleaned := stripMarkdownFences(strings.TrimSpace(response))
+	const marker = "### SEGMENT_INDEX:"
+	parts := strings.Split(cleaned, marker)
+	results := make([]*asset.EntityExtractionResult, expected)
+	seen := make([]bool, expected)
+	for _, part := range parts[1:] {
+		lines := strings.SplitN(part, "\n", 2)
+		if len(lines) != 2 {
+			continue
+		}
+		indexText := strings.TrimSpace(lines[0])
+		index, err := strconv.Atoi(indexText)
+		if err != nil || index < 0 || index >= expected || seen[index] {
+			// Small models sometimes copy the prompt placeholder "N". The
+			// response order is still deterministic, so bind such a block to
+			// the next unassigned input rather than guessing from its content.
+			index = -1
+			for candidate := range seen {
+				if !seen[candidate] {
+					index = candidate
+					break
+				}
+			}
+			if index < 0 {
+				return nil, fmt.Errorf("entity batch response has too many segment blocks")
+			}
+		}
+		block := strings.SplitN(lines[1], "### END_SEGMENT", 2)[0]
+		result, err := parseEntityExtractionResult(strings.TrimSpace(block), index)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse entity batch segment %d: %w", index, err)
+		}
+		results[index] = result
+		seen[index] = true
+	}
+	for index, ok := range seen {
+		if !ok {
+			return nil, fmt.Errorf("entity batch response missing segment %d", index)
+		}
+	}
+	return results, nil
 }
 
 // ExtractEntitiesFromScript extracts entities from all segments.

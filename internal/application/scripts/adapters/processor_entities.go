@@ -105,128 +105,194 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		unavailable error
 		err         error
 	}
-
-	// Extraction is provider/LLM I/O, not CPU-bound work. Keep the worker
-	// count bounded and preserve canonical segment order by storing outcomes
-	// by input index before aggregating them below.
-	workerCount := 4
-	if len(canonical) < workerCount {
-		workerCount = len(canonical)
-	}
-	jobs := make(chan int)
+	batchExtractor, supportsBatch := p.extractor.(batchEntityExtractor)
 	outcomes := make(chan extractionOutcome, len(canonical))
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var wg sync.WaitGroup
-	for worker := 0; worker < workerCount; worker++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				canonicalSeg := canonical[index]
-				device := extractionDevice(plan)
-				if p.metrics != nil {
-					p.metrics.IncSegments()
+	if supportsBatch {
+		const batchSize = 5
+		const batchParallelism = 2
+		batchJobs := make(chan int)
+		var batchWG sync.WaitGroup
+		for worker := 0; worker < batchParallelism; worker++ {
+			batchWG.Add(1)
+			go func() {
+				defer batchWG.Done()
+				for start := range batchJobs {
+					end := start + batchSize
+					if end > len(canonical) {
+						end = len(canonical)
+					}
+					reqs := make([]scriptpkg.EntityExtractionRequest, 0, end-start)
+					for index := start; index < end; index++ {
+						seg := canonical[index]
+						reqs = append(reqs, scriptpkg.EntityExtractionRequest{
+							SegmentID: seg.ID, Text: seg.Text, Title: plan.Title,
+							Language: plan.Language, Device: extractionDevice(plan),
+							Model: plan.Model, EntityCount: extractionLimit,
+							SpecScene: segmentSpecSceneContext(input.SpecScene, seg),
+						})
+					}
+					results, err := batchExtractor.ExtractEntitiesBatch(workerCtx, reqs)
+					if err != nil {
+						outcomes <- extractionOutcome{index: start, err: err}
+						continue
+					}
+					byID := make(map[string]*scriptpkg.EntityResult, len(results))
+					for _, result := range results {
+						byID[result.SegmentID] = result.Result
+					}
+					for index := start; index < end; index++ {
+						canonicalSeg := canonical[index]
+						res := byID[canonicalSeg.ID]
+						if res == nil {
+							outcomes <- extractionOutcome{index: index, err: fmt.Errorf("entity batch missing segment %q", canonicalSeg.ID)}
+							continue
+						}
+						if p.metrics != nil {
+							p.metrics.IncSegments()
+							p.metrics.IncExtractionCache(false)
+						}
+						seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
+						seg.Cache.Extraction = "MISS"
+						outcomes <- extractionOutcome{index: index, segment: seg}
+					}
 				}
-				cacheKey := segmentCacheKey(
-					"extraction-v4-local-v1",
-					canonicalSeg.TextHash,
-					plan.Language,
-					plan.Model,
-					plan.PromptVersion,
-					fmt.Sprintf("%d", extractionLimit),
-					fmt.Sprintf("%d", phrasesLimit),
-					fmt.Sprintf("%d", wordsLimit),
-					fmt.Sprintf("%d", artlistLimit),
-					fmt.Sprintf("%d", imageLimit),
-					device,
-				)
-				if !plan.MediaPlan.ForceRefreshExtraction {
-					if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
-						if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
-							seg = cloneVidRushSegmentResult(seg)
-							seg.Cache.Extraction = "HIT_EXACT"
+			}()
+		}
+		go func() {
+			defer close(batchJobs)
+			for start := 0; start < len(canonical); start += batchSize {
+				select {
+				case batchJobs <- start:
+				case <-workerCtx.Done():
+					return
+				}
+			}
+		}()
+		go func() { batchWG.Wait(); close(outcomes) }()
+	} else {
+
+		// Extraction is provider/LLM I/O, not CPU-bound work. Keep the worker
+		// count bounded and preserve canonical segment order by storing outcomes
+		// by input index before aggregating them below.
+		workerCount := 4
+		if len(canonical) < workerCount {
+			workerCount = len(canonical)
+		}
+		jobs := make(chan int)
+		var wg sync.WaitGroup
+		for worker := 0; worker < workerCount; worker++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for index := range jobs {
+					canonicalSeg := canonical[index]
+					device := extractionDevice(plan)
+					if p.metrics != nil {
+						p.metrics.IncSegments()
+					}
+					cacheKey := segmentCacheKey(
+						"extraction-v4-local-v1",
+						canonicalSeg.TextHash,
+						plan.Language,
+						plan.Model,
+						plan.PromptVersion,
+						fmt.Sprintf("%d", extractionLimit),
+						fmt.Sprintf("%d", phrasesLimit),
+						fmt.Sprintf("%d", wordsLimit),
+						fmt.Sprintf("%d", artlistLimit),
+						fmt.Sprintf("%d", imageLimit),
+						device,
+					)
+					if !plan.MediaPlan.ForceRefreshExtraction {
+						if cached, ok := cacheLoad(&vidrushExtractionCache, cacheKey); ok {
+							if seg, ok := cached.(scriptpkg.VidRushSegmentResult); ok {
+								seg = cloneVidRushSegmentResult(seg)
+								seg.Cache.Extraction = "HIT_EXACT"
+								if p.metrics != nil {
+									p.metrics.IncExtractionCache(true)
+								}
+								outcomes <- extractionOutcome{index: index, segment: seg, cached: true}
+								continue
+							}
+						}
+						var persisted scriptpkg.VidRushSegmentResult
+						if hit, cacheErr := loadVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
+							outcomes <- extractionOutcome{index: index, err: cacheErr}
+							continue
+						} else if hit {
+							persisted = cloneVidRushSegmentResult(persisted)
+							persisted.Cache.Extraction = "HIT_EXACT"
+							cacheStore(&vidrushExtractionCache, cacheKey, persisted)
 							if p.metrics != nil {
 								p.metrics.IncExtractionCache(true)
 							}
-							outcomes <- extractionOutcome{index: index, segment: seg, cached: true}
+							outcomes <- extractionOutcome{index: index, segment: persisted, cached: true}
 							continue
 						}
 					}
-					var persisted scriptpkg.VidRushSegmentResult
-					if hit, cacheErr := loadVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, &persisted); cacheErr != nil {
+
+					select {
+					case p.extractionGate <- struct{}{}:
+					case <-workerCtx.Done():
+						outcomes <- extractionOutcome{index: index, err: workerCtx.Err()}
+						continue
+					}
+					res, err := p.extractor.ExtractEntities(workerCtx, scriptpkg.EntityExtractionRequest{
+						SegmentID:   canonicalSeg.ID,
+						Text:        canonicalSeg.Text,
+						Title:       plan.Title,
+						Language:    plan.Language,
+						Device:      device,
+						Model:       plan.Model,
+						EntityCount: extractionLimit,
+						SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
+					})
+					<-p.extractionGate
+					if err != nil {
+						if errors.Is(err, ErrEntityExtractorUnavailable) {
+							outcomes <- extractionOutcome{index: index, unavailable: err}
+						} else {
+							outcomes <- extractionOutcome{index: index, err: err}
+						}
+						continue
+					}
+					if res == nil {
+						res = &scriptpkg.EntityResult{}
+					}
+					seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
+					seg.Cache.Extraction = "MISS"
+					if plan.MediaPlan.ForceRefreshExtraction {
+						seg.Cache.Extraction = "REFRESHED"
+					}
+					if p.metrics != nil {
+						p.metrics.IncExtractionCache(false)
+					}
+					cacheStore(&vidrushExtractionCache, cacheKey, seg)
+					if cacheErr := storeVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
 						outcomes <- extractionOutcome{index: index, err: cacheErr}
 						continue
-					} else if hit {
-						persisted = cloneVidRushSegmentResult(persisted)
-						persisted.Cache.Extraction = "HIT_EXACT"
-						cacheStore(&vidrushExtractionCache, cacheKey, persisted)
-						if p.metrics != nil {
-							p.metrics.IncExtractionCache(true)
-						}
-						outcomes <- extractionOutcome{index: index, segment: persisted, cached: true}
-						continue
 					}
+					outcomes <- extractionOutcome{index: index, segment: seg}
 				}
-
+			}()
+		}
+		go func() {
+			defer close(jobs)
+			for index := range canonical {
 				select {
-				case p.extractionGate <- struct{}{}:
+				case jobs <- index:
 				case <-workerCtx.Done():
-					outcomes <- extractionOutcome{index: index, err: workerCtx.Err()}
-					continue
+					return
 				}
-				res, err := p.extractor.ExtractEntities(workerCtx, scriptpkg.EntityExtractionRequest{
-					Text:        canonicalSeg.Text,
-					Title:       plan.Title,
-					Language:    plan.Language,
-					Device:      device,
-					Model:       plan.Model,
-					EntityCount: extractionLimit,
-					SpecScene:   segmentSpecSceneContext(input.SpecScene, canonicalSeg),
-				})
-				<-p.extractionGate
-				if err != nil {
-					if errors.Is(err, ErrEntityExtractorUnavailable) {
-						outcomes <- extractionOutcome{index: index, unavailable: err}
-					} else {
-						outcomes <- extractionOutcome{index: index, err: err}
-					}
-					continue
-				}
-				if res == nil {
-					res = &scriptpkg.EntityResult{}
-				}
-				seg := buildVidRushSegmentResult(plan, canonicalSeg, res, extractionLimit, phrasesLimit, wordsLimit, artlistLimit, imageLimit, segmentQueryContext(plan, canonicalSeg))
-				seg.Cache.Extraction = "MISS"
-				if plan.MediaPlan.ForceRefreshExtraction {
-					seg.Cache.Extraction = "REFRESHED"
-				}
-				if p.metrics != nil {
-					p.metrics.IncExtractionCache(false)
-				}
-				cacheStore(&vidrushExtractionCache, cacheKey, seg)
-				if cacheErr := storeVidRushPersistentJSON(workerCtx, p.cache, "extraction", cacheKey, seg); cacheErr != nil {
-					outcomes <- extractionOutcome{index: index, err: cacheErr}
-					continue
-				}
-				outcomes <- extractionOutcome{index: index, segment: seg}
 			}
 		}()
+		go func() {
+			wg.Wait()
+			close(outcomes)
+		}()
 	}
-	go func() {
-		defer close(jobs)
-		for index := range canonical {
-			select {
-			case jobs <- index:
-			case <-workerCtx.Done():
-				return
-			}
-		}
-	}()
-	go func() {
-		wg.Wait()
-		close(outcomes)
-	}()
 
 	outcomeByIndex := make(map[int]extractionOutcome, len(canonical))
 	for outcome := range outcomes {

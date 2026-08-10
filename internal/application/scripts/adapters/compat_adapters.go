@@ -119,6 +119,13 @@ type EntityExtractor interface {
 	ExtractEntities(ctx context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error)
 }
 
+// batchEntityExtractor is an internal capability probe on the canonical port.
+// It avoids a second public extractor ecosystem while keeping older adapters
+// source-compatible during the migration.
+type batchEntityExtractor interface {
+	ExtractEntitiesBatch(ctx context.Context, reqs []scriptpkg.EntityExtractionRequest) ([]scriptpkg.EntityExtractionBatchResult, error)
+}
+
 // MetadataGenerator is the canonical port for video metadata
 // generation. Processors (MetadataProcessor) consume a
 // MetadataGenerator at composition time and dispatch

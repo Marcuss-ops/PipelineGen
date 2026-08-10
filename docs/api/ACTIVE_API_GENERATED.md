@@ -169,6 +169,7 @@
 | POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
 | POST | `/api/media/register-batch` | Batch register assets |
 | POST | `/api/media/register-from-youtube` | Register asset from YouTube URL |
+| POST | `/api/media/resolve/:asset_id` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/search` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/sound_effect/generate` | Generate sound effect |
 | POST | `/api/media/sync` | ⚠️ MISSING DESCRIPTION |
