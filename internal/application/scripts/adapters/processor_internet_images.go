@@ -109,14 +109,17 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 		}
 
 		cacheKey := segmentCacheKey(
-			"internet-images-assets-v2",
+			// Query text is an LLM-derived retrieval hint, not scene
+			// identity. Keep it out of the durable key so a warm replay
+			// reuses the same scene assets even if extraction wording
+			// changes between runs.
+			"internet-images-assets-v3",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
 			plan.Model,
 			plan.PromptVersion,
 			fmt.Sprintf("%d", perQueryLimit),
-			strings.Join(imageQueries, "\u0000"),
 		)
 		if !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushImageCache, cacheKey); ok {
@@ -151,7 +154,6 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 
 		if p.metrics != nil {
 			p.metrics.IncAssetCache("internet_images", false)
-			p.metrics.IncProviderRequest("internet_images")
 		}
 
 		candidates := make([]scriptpkg.SegmentAssetCandidate, 0, perQueryLimit*len(imageQueries))
@@ -196,6 +198,12 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 				}
 			}
 			providerStart := time.Now()
+			if p.metrics != nil {
+				// Count an actual provider invocation, not a segment-level
+				// cache miss. Entity-image L2/L1 hits below may satisfy the
+				// query without calling the external searcher.
+				p.metrics.IncProviderRequest("internet_images")
+			}
 			results, err := p.searcher.SearchImages(ctx, InternetImageSearchRequest{
 				SegmentID: updated.SegmentID,
 				Query:     query,

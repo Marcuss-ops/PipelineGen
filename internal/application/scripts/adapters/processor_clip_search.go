@@ -87,13 +87,16 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		cacheKey := segmentCacheKey(
-			"artlist-assets-v2",
+			// Provider discovery is keyed by the canonical scene identity.
+			// Extracted queries are ranking hints and may vary across
+			// deterministic retries; including them caused warm runs to
+			// refetch the same scene when the LLM chose different wording.
+			"artlist-assets-v3",
 			updated.SegmentID,
 			updated.TextHash,
 			plan.Language,
 			plan.Model,
 			plan.PromptVersion,
-			strings.Join(updated.Insights.ArtlistQueries, "\u0000"),
 		)
 		if !plan.MediaPlan.ForceRefreshAssets {
 			if cached, ok := cacheLoad(&vidrushArtlistCache, cacheKey); ok {
