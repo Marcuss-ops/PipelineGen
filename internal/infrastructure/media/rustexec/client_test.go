@@ -2,13 +2,17 @@ package rustexec
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/adminmedia"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 type fakeRunner struct {
@@ -63,6 +67,37 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	}
 	if sent.DurationSec != 0 || !sent.KeepAudio || sent.Width != 1920 || sent.Height != 1080 || sent.FPS != 24 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "128k" || sent.SampleRate != 48000 || sent.Channels != 2 {
 		t.Fatalf("unexpected fully resolved normalize request: %+v", sent)
+	}
+}
+
+func TestMuxFinalAudioCopySendsDedicatedCopyOperation(t *testing.T) {
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"mux_audio_copy"}`)}
+	client := NewClient("muscles", "ffmpeg", nil)
+	client.runner = runner
+	processor := &VideoProcessor{client: client}
+	audioPath := t.TempDir() + "/final_audio.m4a"
+	if err := os.WriteFile(audioPath, []byte("certified"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte("certified"))
+	asset := capabilityaudio.FinalAudioAsset{AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: capabilityaudio.AudioPlanVersion, AudioPlanSHA256: "plan", FinalAudioSHA256: fmt.Sprintf("%x", hash[:]), Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", DurationMS: 1000, Bitrate: 128000, SizeBytes: 9, FinalMix: true, CopyEligible: true}
+	if err := processor.MuxFinalAudioCopy(context.Background(), "/tmp/video.mp4", audioPath, "/tmp/output.mp4", asset); err != nil {
+		t.Fatalf("MuxFinalAudioCopy() error = %v", err)
+	}
+	var sent request
+	if err := json.Unmarshal(runner.input, &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent.Operation != OperationMuxAudioCopy || len(sent.InputPaths) != 2 {
+		t.Fatalf("unexpected mux request: %+v", sent)
+	}
+}
+
+func TestMuxFinalAudioCopyRejectsIncompatibleAsset(t *testing.T) {
+	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil)}
+	err := processor.MuxFinalAudioCopy(context.Background(), "video.mp4", "audio.m4a", "out.mp4", capabilityaudio.FinalAudioAsset{})
+	if !errors.Is(err, capabilityaudio.ErrAudioMediaIncompatible) {
+		t.Fatalf("error = %v, want AUDIO_MEDIA_INCOMPATIBLE", err)
 	}
 }
 

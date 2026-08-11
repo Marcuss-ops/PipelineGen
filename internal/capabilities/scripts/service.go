@@ -70,6 +70,15 @@ func NewService(
 	}
 }
 
+// SetCombinedAudioRenderer wires the production audio execution port after
+// the composition root has built the media adapter. Combined jobs fail closed
+// until this port is present; chunked jobs remain independent.
+func (s *Service) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
+	if s != nil && s.runner != nil {
+		s.runner.SetCombinedAudioRenderer(renderer)
+	}
+}
+
 // StartResult carries the outcome of Service.Start.
 type StartResult struct {
 	// Run is the newly created GenerationRun.

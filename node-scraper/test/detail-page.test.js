@@ -328,6 +328,10 @@ describe('looksLikeStreamUrl', () => {
     );
   });
 
+  test('does NOT treat site.webmanifest as a media stream', () => {
+    assert.equal(looksLikeStreamUrl('https://artlist.io/site.webmanifest?v=1'), false);
+  });
+
   test('returns false for empty / null / undefined / non-string', () => {
     assert.equal(looksLikeStreamUrl(''), false);
     assert.equal(looksLikeStreamUrl(null), false);

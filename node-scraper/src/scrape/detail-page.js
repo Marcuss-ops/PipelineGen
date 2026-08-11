@@ -36,8 +36,7 @@ export function looksLikeStreamUrl(url) {
   return (
     /\.m3u8(?:\?|$)/i.test(trimmed) ||
     /\.mp4(?:\?|$)/i.test(trimmed) ||
-    /manifest/i.test(trimmed) ||
-    /playlist/i.test(trimmed)
+    /\/(?:manifest|playlist)(?:[./?#]|$)/i.test(trimmed)
   );
 }
 
@@ -363,7 +362,7 @@ function buildResult({
     page_url: clipPageUrl,
     clip_page_url: clipPageUrl,
     thumbnail_url: metadata.thumbnail_url || '',
-    preview_url: preferredPreview || preferredPrimary || preferredStream || preferredVideoSrc || metadata.preview_url || primaryUrl,
+    preview_url: preferredPreview || preferredPrimary || preferredStream || preferredVideoSrc || primaryUrl,
     primary_url: primaryUrl,
     stream_urls: streams,
     raw_metadata: metadata.raw_metadata || {},

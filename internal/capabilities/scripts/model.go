@@ -19,6 +19,8 @@ package scriptgeneration
 
 import "time"
 
+import capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+
 // ── Value types ─────────────────────────────────────────────────────
 
 // Language is an ISO 639-1 two-letter code (e.g. "en", "es").
@@ -47,10 +49,12 @@ const (
 
 // ClipReference identifies a single media clip.
 type ClipReference struct {
-	ID       string  `json:"id"`
-	SourceID string  `json:"source_id,omitempty"`
-	Title    string  `json:"title,omitempty"`
-	Duration float64 `json:"duration,omitempty"` // seconds
+	ID           string  `json:"id"`
+	SourceID     string  `json:"source_id,omitempty"`
+	Title        string  `json:"title,omitempty"`
+	Duration     float64 `json:"duration,omitempty"` // seconds
+	AudioAssetID string  `json:"audio_asset_id,omitempty"`
+	AudioPath    string  `json:"audio_path,omitempty"`
 }
 
 // AudioReference identifies a generated voiceover audio asset.
@@ -71,6 +75,55 @@ type DocumentReference struct {
 type RenderReference struct {
 	JobID  string `json:"job_id"`
 	Status string `json:"status"`
+}
+
+type FinalAudioReference struct {
+	AssetID              string `json:"audio_asset_id"`
+	Path                 string `json:"path,omitempty"`
+	AudioContractVersion string `json:"audio_contract_version,omitempty"`
+	AudioPlanVersion     string `json:"audio_plan_version,omitempty"`
+	PlanSHA256           string `json:"audio_plan_sha256"`
+	FinalAudioSHA256     string `json:"final_audio_sha256"`
+	Codec                string `json:"codec,omitempty"`
+	Profile              string `json:"profile,omitempty"`
+	SampleRate           int    `json:"sample_rate,omitempty"`
+	Channels             int    `json:"channels,omitempty"`
+	ChannelLayout        string `json:"channel_layout,omitempty"`
+	Bitrate              int64  `json:"bitrate,omitempty"`
+	DurationMS           int64  `json:"duration_ms"`
+	StartPTS             int64  `json:"start_pts,omitempty"`
+	SizeBytes            int64  `json:"size_bytes,omitempty"`
+	FinalMix             bool   `json:"final_mix,omitempty"`
+	CopyEligible         bool   `json:"copy_eligible"`
+}
+
+type AudioPipelineMetrics struct {
+	TTSMS              int64             `json:"tts_ms"`
+	MediaFetchMS       int64             `json:"media_fetch_ms"`
+	TimelineCompileMS  int64             `json:"timeline_compile_ms"`
+	AudioPlanCompileMS int64             `json:"audio_plan_compile_ms"`
+	ClipAudioPrepareMS int64             `json:"clip_audio_prepare_ms"`
+	MixMS              int64             `json:"mix_ms"`
+	AACEncodeMS        int64             `json:"aac_encode_ms"`
+	ProbeMS            int64             `json:"probe_ms"`
+	HashMS             int64             `json:"hash_ms"`
+	UploadMS           int64             `json:"upload_ms"`
+	TotalMS            int64             `json:"total_ms"`
+	AudioDurationMS    int64             `json:"audio_duration_ms"`
+	TTSCalls           int               `json:"tts_calls"`
+	AudioRTF           float64           `json:"audio_rtf"`
+	AudioSpeed         float64           `json:"audio_speed"`
+	AudioEncodePasses  int               `json:"audio_encode_passes"`
+	TTSScenes          []TTSSSceneMetric `json:"tts_scenes,omitempty"`
+}
+
+type TTSSSceneMetric struct {
+	SceneID          string   `json:"scene_id"`
+	Language         Language `json:"language"`
+	DurationMS       int64    `json:"duration_ms"`
+	Characters       int      `json:"characters"`
+	Words            int      `json:"words"`
+	OutputDurationMS int64    `json:"output_duration_ms,omitempty"`
 }
 
 // ── DocumentsConfig ──────────────────────────────────────────────────
@@ -112,6 +165,7 @@ type DocumentsConfig struct {
 //
 // Zero I/O in the builder.
 type GenerateRequest struct {
+	Audio capabilityaudio.AudioMode `json:"audio_mode,omitempty"`
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 
@@ -159,11 +213,13 @@ type GenerateRequest struct {
 // clip reference, generated text per language, and an optional
 // voiceover per language.
 type Scene struct {
-	ID        string                      `json:"id"`
-	Index     int                         `json:"index"`
-	Clip      *ClipReference              `json:"clip,omitempty"`
-	Text      map[Language]string         `json:"text"`
-	Voiceover map[Language]AudioReference `json:"voiceover,omitempty"`
+	ID         string                      `json:"id"`
+	Index      int                         `json:"index"`
+	DurationMS int64                       `json:"duration_ms,omitempty"`
+	Clip       *ClipReference              `json:"clip,omitempty"`
+	Text       map[Language]string         `json:"text"`
+	Voiceover  map[Language]AudioReference `json:"voiceover,omitempty"`
+	Audio      capabilityaudio.AudioIntent `json:"audio"`
 }
 
 // GenerateResult is the complete output of a script generation run.
@@ -186,6 +242,11 @@ type GenerateResult struct {
 
 	// WordCount is the total generated word count.
 	WordCount int `json:"word_count"`
+
+	AudioMode     capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
+	AudioStrategy capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
+	FinalAudio    *FinalAudioReference                `json:"final_audio,omitempty"`
+	AudioMetrics  *AudioPipelineMetrics               `json:"audio_metrics,omitempty"`
 }
 
 // GenerationRun is the canonical aggregate that tracks a single

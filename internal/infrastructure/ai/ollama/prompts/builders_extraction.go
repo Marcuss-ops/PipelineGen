@@ -16,20 +16,16 @@ exactly these markers and the five labeled sections:
 
 ### SEGMENT_INDEX: N
 ## frasi_importanti
-- item
 ## entity_senza_testo
-- Subject: precise visual search description
 ## nomi_speciali
-- TYPE: Value
 ## parole_importanti
-- concrete keyword
 ## artlist_phrases
-- short visual concept phrase
 ### END_SEGMENT
 
 Rules: extract at most %d named entities per segment, use only evidence in that
-segment, and output no JSON, markdown fences, commentary, or missing segment
-blocks.
+segment. Add bullet items only when supported by the segment; never copy
+section labels, examples, placeholders, or instructions into the output. Do
+not output JSON, markdown fences, commentary, or missing segment blocks.
 `, entityCount)
 	for i, segment := range segments {
 		fmt.Fprintf(&b, "\nSEGMENT_INPUT_%d:\n%s\n", i, segment)

@@ -36,12 +36,53 @@ import {
   chunkArray,
   collectClipLinksFromHrefs,
 } from './search-dom.js';
+import { buildArtlistSearchURL } from './search-url.js';
 
 /** Minimum intercepted clips required to short-circuit to the API fast path. */
 const FAST_PATH_MIN_CLIPS = 2;
 
 /** Default per-chunk concurrency when opening detail tabs in parallel. */
 const DEFAULT_DETAIL_CONCURRENCY = 8;
+
+async function submitCatalogSearch(page, term) {
+  const query = String(term || '').trim();
+  if (!query) return false;
+  const input = await page.$(
+    'input[type="search"], input[placeholder*="Search" i], input[aria-label*="Search" i], input:not([type="hidden"])'
+  );
+  if (!input) return false;
+  await input.click({ clickCount: 3 });
+  await input.type(query);
+  await input.press('Enter');
+  await new Promise((resolve) => setTimeout(resolve, 1800));
+  return true;
+}
+
+async function collectSearchDiagnostics(page, requestedURL, response, apiResponses) {
+  return page.evaluate(({ requestedURL, responseStatus, responseURL, apiCount }) => {
+    const body = document.body?.innerText || '';
+    const clipLinks = Array.from(document.querySelectorAll('a[href*="/stock-footage/clip/"]'))
+      .map((el) => el.href || el.getAttribute('href') || '')
+      .filter(Boolean);
+    return {
+      requested_url: requestedURL,
+      response_status: responseStatus,
+      response_url: responseURL,
+      page_url: window.location.href,
+      title: document.title || '',
+      body_preview: body.slice(0, 500),
+      dom_anchor_count: document.querySelectorAll('a').length,
+      dom_clip_link_count: clipLinks.length,
+      dom_clip_links: clipLinks.slice(0, 10),
+      api_response_count: apiCount,
+    };
+  }, {
+    requestedURL,
+    responseStatus: response?.status?.() || 0,
+    responseURL: response?.url?.() || '',
+    apiCount: apiResponses.length,
+  });
+}
 
 /**
  * Decides whether the intercepted API responses satisfy the fast-path
@@ -80,7 +121,7 @@ export function shouldUseFastPath(intercepted, limit) {
  * @param {{status?: number, title?: string, bodyText?: string}|null} pageState
  * @returns {{code: string, reason: string}|null}
  */
-export function classifyChallengePage(pageState) {
+export function classifyUnavailableSearchPage(pageState) {
   if (!pageState || typeof pageState !== 'object') return null;
   const status = Number(pageState.status || 0);
   const title = String(pageState.title || '').toLowerCase();
@@ -92,8 +133,8 @@ export function classifyChallengePage(pageState) {
     bodyText.includes('verify you are human')
   ) {
     return {
-      code: 'ARTLIST_RATE_LIMITED',
-      reason: 'Artlist returned an anti-bot or rate-limit challenge page',
+      code: 'ARTLIST_SEARCH_PAGE_UNAVAILABLE',
+      reason: 'Artlist footage search page did not become available',
     };
   }
   return null;
@@ -205,17 +246,15 @@ export async function searchArtlist(
   }
 
   await page.setViewport({ width: 1440, height: 900 });
-  await page.setUserAgent(
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  );
+  const configuredUserAgent = process.env.ARTLIST_USER_AGENT?.trim();
+  if (configuredUserAgent) await page.setUserAgent(configuredUserAgent);
 
   // Cookies are optional. Anonymous Chrome is the default search path;
   // operators may opt in to an explicit session file when required.
   const cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '';
   await importCookies(page, cookiePath);
 
-  const searchUrl = `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`;
+  const searchUrl = buildArtlistSearchURL(term);
 
   // ─── Phase 1: API Interception ─────────────────────────────────────────
   const apiResponses = [];
@@ -229,15 +268,23 @@ export async function searchArtlist(
     // interception/parser phase run deterministically.
     const mainResponse = await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await new Promise((resolve) => setTimeout(resolve, 1800));
+    const submittedSearch = await submitCatalogSearch(page, term);
 
-    const challenge = classifyChallengePage({
+    const diagnostics = await collectSearchDiagnostics(page, searchUrl, mainResponse, apiResponses);
+    diagnostics.search_submitted = submittedSearch;
+    console.log(`[artlist] NAV requested=${diagnostics.requested_url} status=${diagnostics.response_status} ` +
+      `final=${diagnostics.page_url} title=${JSON.stringify(diagnostics.title)} ` +
+      `api=${diagnostics.api_response_count} dom_links=${diagnostics.dom_clip_link_count}`);
+
+    const unavailablePage = classifyUnavailableSearchPage({
       status: mainResponse?.status?.(),
       title: await page.title(),
       bodyText: await page.evaluate(() => (document.body?.innerText || '').slice(0, 4000)),
     });
-    if (challenge) {
-      const error = new Error(challenge.reason);
-      error.code = challenge.code;
+    if (unavailablePage) {
+      const error = new Error(unavailablePage.reason);
+      error.code = unavailablePage.code;
+      error.diagnostics = diagnostics;
       throw error;
     }
 
@@ -256,6 +303,7 @@ export async function searchArtlist(
         term,
         search_url: searchUrl,
         clips: clipsWithStreams.slice(0, limit),
+        diagnostics,
       };
     }
 
@@ -356,6 +404,7 @@ export async function searchArtlist(
       term,
       search_url: searchUrl,
       clips: resultClips,
+      diagnostics,
     };
   } finally {
     try {
@@ -387,19 +436,18 @@ export async function searchArtlistPreview(term, limit, profileDir) {
   const handle = await createBrowserPage(profileDir);
   const { page } = handle;
   await page.setViewport({ width: 1440, height: 900 });
-  await page.setUserAgent(
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-  );
+  const configuredUserAgent = process.env.ARTLIST_USER_AGENT?.trim();
+  if (configuredUserAgent) await page.setUserAgent(configuredUserAgent);
 
   // Cookies are optional; keep the preview path anonymous unless an
   // operator explicitly supplies ARTLIST_COOKIE_FILE.
   const cookiePath = process.env.ARTLIST_COOKIE_FILE?.trim() || '';
   await importCookies(page, cookiePath);
 
-  const searchUrl = `https://artlist.io/stock-footage/search?terms=${encodeURIComponent(term)}`;
+  const searchUrl = buildArtlistSearchURL(term);
   try {
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await submitCatalogSearch(page, term);
     await page
       .waitForSelector('a[href*="/stock-footage/clip/"]', { timeout: 60000 })
       .catch(() => {});

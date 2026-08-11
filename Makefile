@@ -27,6 +27,7 @@
 	go-version-guard go-version-check node-version-check node-version-check-test web-install web-build web-clean build build-muscles build-server clean rebuild run dev \
 	test test-all test-unit test-js coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
+	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-no-secrets verify-repository-integrity verify-no-policy-hardcoding verify-base verify-foundation verify-static verify-fast verify-dev verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-clean-checkout-build verify-full verify-split \
 	verify-node-native verify-node-tests verify-node verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-node-scraper verify-kernel verify-main test-main-stock verify-main-clip verify-release \
@@ -157,5 +158,6 @@ include make/operations.auth.mk
 include make/operations.smoke.mk
 include make/operations.smoke-voiceover.mk
 include make/operations.tidy.mk
+include make/audio.mk
 
 all: build

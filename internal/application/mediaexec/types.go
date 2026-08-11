@@ -5,6 +5,8 @@ package mediaexec
 import (
 	"context"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // VideoProfile describes the fully resolved video artifact independently of
@@ -70,6 +72,7 @@ type AudioProcessor interface {
 	MergeInputs(context.Context, []string, string) error
 	RemoveSilence(context.Context, string, string) error
 	Probe(context.Context, string) (*MediaInfo, error)
+	RenderAudioPlan(context.Context, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, string) (audio.FinalAudioAsset, error)
 }
 
 type NormalizeOptions struct {

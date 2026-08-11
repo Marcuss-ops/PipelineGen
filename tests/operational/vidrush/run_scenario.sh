@@ -703,9 +703,13 @@ run_script_generate() {
 
     # ── Run assertions ─────────────────────────────────────────────────
     local assert_fail=0
-    local seg_count ent_count binding_count unresolved_count
+    local seg_count ent_count segments_with_entities entity_values_total entity_phrases_total important_words_total binding_count unresolved_count
     seg_count=$(jq '[.segments[]?] | length' <<<"$result")
     ent_count=$(jq '[.segments[]?.insights.entities[]?] | length' <<<"$result")
+    segments_with_entities=$(jq '[.segments[]? | select((.insights.entities // []) | length > 0)] | length' <<<"$result")
+    entity_values_total="$ent_count"
+    entity_phrases_total=$(jq '[.segments[]?.insights.important_phrases[]?] | length' <<<"$result")
+    important_words_total=$(jq '[.segments[]?.insights.important_words[]?] | length' <<<"$result")
 	# A VidRush scene is bound either by its verified primary video or, for an
 	# image-only plan, by at least one verified/persisted secondary image.
 	binding_count=$(jq '[.segments[]? | select(.assets.primary_video != null or ([.assets.secondary_images[]? | select(.drive_link != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed")] | length) > 0)] | length' <<<"$result")
@@ -713,6 +717,12 @@ run_script_generate() {
 
     # Per-segment assertions
     echo "  → running assertions on $seg_count segment(s)"
+    local min_segments
+    min_segments=$(jq -r '.assertions.result.min_segments // 0' "$SCENARIO_FILE")
+    if (( seg_count < min_segments )); then
+        printf '%sFAIL%s expected at least %s segment(s), got %s\n' "$RED" "$RESET" "$min_segments" "$seg_count"
+        assert_fail=1
+    fi
     if ! jq -e '
       (.segments | length) >= 1
       and ([.segments[].position] == ([.segments[].position] | sort))
@@ -830,7 +840,7 @@ run_script_generate() {
     if (( assert_fail > 0 )); then
         printf '%sFAIL%s %s: assertions failed\n' "$RED" "$RESET" "$SCENARIO_ID"
         report_json "FAILED" "$job_id" "$cache_mode" "{
-            \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
+            \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"segments_with_entities\":$segments_with_entities,\"entity_values_total\":$entity_values_total,\"entity_phrases_total\":$entity_phrases_total,\"important_words_total\":$important_words_total,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
             \"timing_ms\": {\"dispatch\":$dispatch_ms,\"poll\":$poll_ms,\"total\":$total_ms}
         }" | jq '.'
         return 1
@@ -840,7 +850,7 @@ run_script_generate() {
         "$GREEN" "$RESET" "$SCENARIO_ID" "$job_id" "$seg_count" "$ent_count" "$cache_mode" "$total_ms"
 
     report_json "SUCCEEDED" "$job_id" "$cache_mode" "{
-        \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"provider_requests\":$provider_requests,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
+        \"counts\": {\"segments\":$seg_count,\"entities\":$ent_count,\"segments_with_entities\":$segments_with_entities,\"entity_values_total\":$entity_values_total,\"entity_phrases_total\":$entity_phrases_total,\"important_words_total\":$important_words_total,\"provider_requests\":$provider_requests,\"bindings\":$binding_count,\"unresolved\":$unresolved_count},
         \"timing_ms\": {\"dispatch\":$dispatch_ms,\"poll\":$poll_ms,\"total\":$total_ms},
         \"artifacts\":$artifact_json
     }" | jq '.'

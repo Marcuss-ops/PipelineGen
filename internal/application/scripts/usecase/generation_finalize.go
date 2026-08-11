@@ -89,6 +89,7 @@ func (f *GenerationFinalizer) Finalize(
 	timings := inputs.Timings
 
 	result := buildGenerationResultWithCache(item, plan, engineResult, postResult, timings, f.vidRushCache, ctx)
+	result.AudioMode = plan.AudioMode
 
 	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
 		return nil, err

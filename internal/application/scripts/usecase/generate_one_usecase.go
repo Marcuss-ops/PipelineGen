@@ -35,12 +35,136 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
 )
+
+func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scriptpkg.GenerationItemV2, result *scriptpkg.GenerationResult, post *adapters.PipelineResult) error {
+	started := time.Now()
+	if uc == nil || uc.audioProcessor == nil {
+		return fmt.Errorf("COMBINED_TIMELINE requires a configured audio processor")
+	}
+	if result == nil {
+		return fmt.Errorf("combined audio result is nil")
+	}
+	timeline := capabilityaudio.CanonicalTimeline{Version: capabilityaudio.TimelineVersion}
+	assets := capabilityaudio.ResolvedAudioAssets{}
+	seen := map[string]bool{}
+	add := func(id, path string) error {
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(path) == "" || !fileExists(path) {
+			return fmt.Errorf("required audio asset %q is unavailable", id)
+		}
+		if !seen[id] {
+			assets = append(assets, capabilityaudio.ResolvedAudioAsset{AssetID: id, Path: path})
+			seen[id] = true
+		}
+		return nil
+	}
+	var start int64
+	for i, scene := range result.Output.SpecScene.Scenes {
+		if scene.Index != i || strings.TrimSpace(scene.ID) == "" {
+			return fmt.Errorf("canonical audio scene %d is invalid", i)
+		}
+		duration := sceneDurationMS(scene)
+		if duration <= 0 {
+			return fmt.Errorf("scene %s has no canonical duration", scene.ID)
+		}
+		mode := capabilityaudio.AudioSegmentMode(strings.ToUpper(strings.TrimSpace(scene.AudioMode)))
+		if mode != capabilityaudio.AudioVoiceover && mode != capabilityaudio.AudioClip && mode != capabilityaudio.AudioSilence {
+			return fmt.Errorf("scene %s requires explicit audio_mode", scene.ID)
+		}
+		intent := capabilityaudio.AudioIntent{Mode: mode, SourceInMS: scene.AudioSourceInMS, SourceOutMS: scene.AudioSourceOutMS}
+		video := capabilityaudio.VideoSegment{}
+		if scene.Bindings.Clip != nil {
+			video.AssetID = scene.Bindings.Clip.ClipID
+			video.SourceInMS = scene.Bindings.Clip.StartMs
+			video.SourceOutMS = scene.Bindings.Clip.EndMs
+		}
+		switch mode {
+		case capabilityaudio.AudioVoiceover:
+			binding := scene.Bindings.Voiceover
+			if binding == nil || binding.Status == "failed" {
+				return fmt.Errorf("scene %s voiceover is missing", scene.ID)
+			}
+			id := fmt.Sprintf("vo:%s:%s:%s", item.ID, item.Language, scene.ID)
+			intent.VoiceoverAssetID = id
+			if err := add(id, binding.LocalPath); err != nil {
+				return err
+			}
+		case capabilityaudio.AudioClip:
+			if strings.TrimSpace(scene.AudioAssetID) == "" || scene.AudioSourceOutMS <= scene.AudioSourceInMS {
+				return fmt.Errorf("scene %s clip audio intent is incomplete", scene.ID)
+			}
+			intent.ClipAssetID = scene.AudioAssetID
+			path := findSegmentAssetPath(post, scene.AudioAssetID)
+			if err := add(scene.AudioAssetID, path); err != nil {
+				return err
+			}
+		}
+		timeline.Segments = append(timeline.Segments, capabilityaudio.TimelineSegment{ID: scene.ID, Index: i, TimelineStartMS: start, DurationMS: duration, Video: video, Audio: intent})
+		start += duration
+	}
+	timeline.DurationMS = start
+	plan, err := capabilityaudio.Compile(timeline, capabilityaudio.DefaultAudioProfile())
+	if err != nil {
+		return err
+	}
+	output := filepath.Join(os.TempDir(), "pipelinegen-final-audio-"+plan.PlanSHA256+".m4a")
+	asset, err := uc.audioProcessor.RenderAudioPlan(ctx, plan, assets, output)
+	if err != nil {
+		return fmt.Errorf("render final audio: %w", err)
+	}
+	if err := capabilityaudio.ValidateFinalAudio(asset, plan); err != nil {
+		return fmt.Errorf("final audio certification failed: %w", err)
+	}
+	result.AudioStrategy = "FINAL_AUDIO_COPY"
+	result.Timings.AudioPipelineTotalMs = time.Since(started).Milliseconds()
+	result.Timings.AudioEncodePasses = 1
+	result.Timings.FinalAudioDurationMS = asset.DurationMS
+	result.FinalAudio = &scriptpkg.FinalAudioArtifact{AssetID: asset.AssetID, Path: output, AudioContractVersion: asset.AudioContractVersion, AudioPlanVersion: asset.AudioPlanVersion, AudioPlanSHA256: asset.AudioPlanSHA256, FinalAudioSHA256: asset.FinalAudioSHA256, Codec: asset.Codec, Profile: asset.Profile, SampleRate: asset.SampleRate, Channels: asset.Channels, ChannelLayout: asset.ChannelLayout, Bitrate: asset.Bitrate, DurationMS: asset.DurationMS, StartPTS: asset.StartPTS, SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible}
+	return nil
+}
+
+func sceneDurationMS(scene scriptpkg.SpecScene) int64 {
+	if scene.Bindings.Clip != nil && scene.Bindings.Clip.DurationMs > 0 {
+		return scene.Bindings.Clip.DurationMs
+	}
+	if scene.Bindings.Stock != nil && scene.Bindings.Stock.DurationMs > 0 {
+		return scene.Bindings.Stock.DurationMs
+	}
+	if scene.Bindings.Voiceover != nil {
+		return scene.Bindings.Voiceover.DurationMs
+	}
+	return 0
+}
+
+func findSegmentAssetPath(post *adapters.PipelineResult, assetID string) string {
+	if post == nil {
+		return ""
+	}
+	for _, segment := range post.VidRushSegments {
+		if segment.Assets.PrimaryVideo != nil && segment.Assets.PrimaryVideo.AssetID == assetID {
+			return segment.Assets.PrimaryVideo.LocalPath
+		}
+	}
+	return ""
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
+var _ mediaexec.AudioProcessor
 
 // Execute runs the full pipeline for one item and returns a typed
 // GenerationResult. Progress is reported through the tracker when
@@ -125,6 +249,19 @@ func (uc *GenerateOneUseCase) Execute(
 			return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err, tracker)
 		default:
 			return nil, uc.logPhaseError(item, "finalize", scriptpkg.ErrGenerationFailed, err, tracker)
+		}
+	}
+	if plan.AudioMode == "COMBINED_TIMELINE" {
+		if err := uc.renderCombinedAudio(ctx, item, result, processed.PostResult); err != nil {
+			return nil, uc.logPhaseError(item, "combined_audio", scriptpkg.ErrGenerationFailed, err, tracker)
+		}
+		timings.AudioPipelineTotalMs = result.Timings.AudioPipelineTotalMs
+		timings.AudioEncodePasses = result.Timings.AudioEncodePasses
+		timings.FinalAudioDurationMS = result.Timings.FinalAudioDurationMS
+	} else if plan.AudioMode == "CHUNKED_VOICEOVER" {
+		result.AudioStrategy = "TIMELINE_MIX"
+		if result.FinalAudio != nil {
+			return nil, uc.logPhaseError(item, "audio_mode", scriptpkg.ErrGenerationFailed, fmt.Errorf("CHUNKED_VOICEOVER must not produce final_audio"), tracker)
 		}
 	}
 

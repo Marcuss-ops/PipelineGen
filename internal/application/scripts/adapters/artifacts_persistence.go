@@ -90,7 +90,7 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
 	}
 
-	artifacts := make([]job.Artifact, 0, 3 /* §8.4 best-case ceiling (Sprint 1.0: document retired) */)
+	artifacts := make([]job.Artifact, 0, 4 /* script, scenes, voiceover, optional final audio */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
@@ -99,6 +99,11 @@ func PersistGeneratedArtifacts(
 	// in the serialized contract.
 	publicResult := *result
 	publicResult.Output.SpecScene = stripVoiceoverLocalPaths(result.Output.SpecScene)
+	if publicResult.FinalAudio != nil {
+		finalAudio := *publicResult.FinalAudio
+		finalAudio.Path = ""
+		publicResult.FinalAudio = &finalAudio
+	}
 	scriptData, err := json.MarshalIndent(&publicResult, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("artifacts_persistence: marshal script.json: %w", err)
@@ -206,6 +211,68 @@ func PersistGeneratedArtifacts(
 				zap.String("vo_path", voPath),
 				zap.Error(voStatErr))
 		}
+	}
+
+	if result.AudioMode == "COMBINED_TIMELINE" {
+		if result.FinalAudio == nil || !result.FinalAudio.CopyEligible || !result.FinalAudio.FinalMix || strings.TrimSpace(result.FinalAudio.Path) == "" {
+			return nil, fmt.Errorf("artifacts_persistence: combined audio is not certified")
+		}
+		if result.FinalAudio.Codec != "aac" || !strings.EqualFold(result.FinalAudio.Profile, "LC") || result.FinalAudio.SampleRate != 48000 || result.FinalAudio.Channels != 2 || result.FinalAudio.ChannelLayout != "stereo" || result.FinalAudio.DurationMS <= 0 || result.FinalAudio.Bitrate <= 0 || result.FinalAudio.AudioPlanSHA256 == "" || result.FinalAudio.AudioPlanVersion == "" || result.FinalAudio.AudioContractVersion == "" {
+			return nil, fmt.Errorf("artifacts_persistence: final audio violates canonical copy contract")
+		}
+		info, err := os.Stat(result.FinalAudio.Path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+			return nil, fmt.Errorf("artifacts_persistence: certified final audio is unavailable")
+		}
+		if result.FinalAudio.SizeBytes > 0 && result.FinalAudio.SizeBytes != info.Size() {
+			return nil, fmt.Errorf("artifacts_persistence: final audio size mismatch")
+		}
+		sourceSHA, err := job.ComputeSHA256(result.FinalAudio.Path)
+		if err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: sha256 source final audio: %w", err)
+		}
+		if result.FinalAudio.FinalAudioSHA256 == "" || result.FinalAudio.FinalAudioSHA256 != sourceSHA {
+			return nil, fmt.Errorf("artifacts_persistence: final audio hash mismatch")
+		}
+		source, err := os.ReadFile(result.FinalAudio.Path)
+		if err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: open final audio: %w", err)
+		}
+		finalPath := filepath.Join(outDir, "final_audio.m4a")
+		if err := os.WriteFile(finalPath, source, 0o644); err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: copy final audio: %w", err)
+		}
+		info, err = os.Stat(finalPath)
+		if err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: stat final audio: %w", err)
+		}
+		sha, err := job.ComputeSHA256(finalPath)
+		if err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: sha256 final audio: %w", err)
+		}
+		result.FinalAudio.Path = finalPath
+		result.FinalAudio.SizeBytes = info.Size()
+		result.FinalAudio.FinalAudioSHA256 = sha
+		artifacts = append(artifacts, job.Artifact{
+			ID: result.FinalAudio.AssetID, Kind: job.ArtifactKindFinalAudio,
+			Path: finalPath, Filename: "final_audio.m4a", MIMEType: "audio/mp4",
+			SizeBytes: info.Size(), SHA256: sha, Required: true,
+			ArtifactMetadata: map[string]any{
+				"audio_asset_id":         result.FinalAudio.AssetID,
+				"audio_contract_version": result.FinalAudio.AudioContractVersion,
+				"audio_plan_version":     result.FinalAudio.AudioPlanVersion,
+				"audio_plan_sha256":      result.FinalAudio.AudioPlanSHA256,
+				"final_audio_sha256":     result.FinalAudio.FinalAudioSHA256,
+				"audio_strategy":         "FINAL_AUDIO_COPY",
+				"codec":                  result.FinalAudio.Codec, "profile": result.FinalAudio.Profile,
+				"sample_rate": result.FinalAudio.SampleRate, "channels": result.FinalAudio.Channels,
+				"channel_layout": result.FinalAudio.ChannelLayout,
+				"bitrate":        result.FinalAudio.Bitrate, "size_bytes": result.FinalAudio.SizeBytes,
+				"duration_ms": result.FinalAudio.DurationMS, "start_pts": result.FinalAudio.StartPTS,
+				"final_mix":     result.FinalAudio.FinalMix,
+				"copy_eligible": result.FinalAudio.CopyEligible,
+			},
+		})
 	}
 
 	return artifacts, nil

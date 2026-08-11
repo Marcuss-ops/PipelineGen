@@ -16,7 +16,21 @@ func tokenSet(text string) map[string]struct{} {
 
 func isNoisyExtractionCandidate(text string) bool {
 	lower := strings.ToLower(text)
-	return lower == "" || textutil.IsStopWord(lower)
+	if lower == "" || textutil.IsStopWord(lower) {
+		return true
+	}
+	// These are schema labels that small models sometimes echo as extracted
+	// subjects/names. They are never evidence from the source segment.
+	switch lower {
+	case "subject", "visualsubject", "visual subject", "visual", "type", "value",
+		"item", "concrete keyword", "short visual concept phrase", "full person name",
+		"specific location", "specific organization", "precise visual search description",
+		"visualsubject: precise visual search description":
+		return true
+	default:
+		return strings.HasPrefix(lower, "[") || strings.Contains(lower, "precise visual") ||
+			strings.Contains(lower, "short visual concept")
+	}
 }
 
 func splitSentences(text string) []string {

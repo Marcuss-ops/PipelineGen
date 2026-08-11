@@ -1,6 +1,6 @@
 {
   "scenario_id": "14_generation_live",
-  "description": "VidRush image-generation canary — Artlist e immagini web disabilitate; genera solo le immagini necessarie e verifica il percorso ArtifactManifest verso Drive, SQLite, outbox, Qdrant e binding.",
+  "description": "VidRush image-retrieval canary — Artlist disabilitato e immagini generate disabilitate; trova immagini web e verifica il percorso verso Drive, SQLite, outbox, Qdrant e binding.",
   "version": 1,
   "timeout_seconds": 900,
   "expect": {
@@ -9,7 +9,7 @@
     "max_entities_per_segment": 5,
     "max_image_queries_per_segment": 5,
     "provider_requests_artlist": 0,
-    "provider_requests_internet_images": 0,
+    "provider_requests_internet_images": -1,
     "min_secondary_images_per_segment": 2,
     "require_persisted_images": true,
     "cache_extraction": "MISS"
@@ -50,7 +50,8 @@
           "provider_policy": {
             "artlist": "disabled",
             "internet_images": "disabled",
-            "image_generation": "enabled"
+            "image_generation": "disabled",
+            "internet_images": "enabled"
           },
           "extraction": {
             "enabled": true,
@@ -58,7 +59,7 @@
             "max_important_phrases_per_segment": 5,
             "max_important_words_per_segment": 5,
             "max_artlist_queries_per_segment": 0,
-            "max_image_queries_per_segment": 0
+            "max_image_queries_per_segment": 5
           }
         }
       }

@@ -5,6 +5,9 @@ package script
 // Caller-explicit ToggleDisabled survives the applySafetyDefaults +
 // ApplyPreset chain. SaveToDB is a bool persistence flag.
 type OutputSpec struct {
+	// Audio is the explicit audio execution mode. Empty preserves the
+	// legacy voiceover behavior and is resolved once at the capability edge.
+	Audio AudioOutputConfig `json:"audio,omitempty"`
 	// ── Postprocessors (Toggle tri-state) ──────────────────────────
 	//
 	// ExtractEntities is an ACTIVE inline postprocessor
@@ -75,6 +78,10 @@ type OutputSpec struct {
 	// a single source (the plan); no duplicate expression in
 	// ResolvedGenerationPlan or in processor_translation.go.
 	TranslateTo string `json:"translate_to,omitempty"`
+}
+
+type AudioOutputConfig struct {
+	Mode string `json:"mode,omitempty"`
 }
 
 // HasAnyPostprocessor returns true when at least one active postprocessor

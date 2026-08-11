@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -50,6 +51,30 @@ var (
 	vidrushBindingCache      sync.Map
 	vidrushMaterializedCache sync.Map
 )
+
+func materializeNarrativeScenes(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.SpecScene {
+	if plan == nil || plan.SingleScene || len(scenes) > 1 {
+		return scenes
+	}
+	narrative := strings.TrimSpace(text)
+	if narrative == "" && len(scenes) == 1 {
+		narrative = strings.TrimSpace(scenes[0].Text)
+	}
+	if narrative == "" {
+		narrative = strings.TrimSpace(plan.SourceText)
+	}
+	n := len(splitParagraphSegments(narrative))
+	if n < 2 && plan.SourceText != "" {
+		n = len(splitParagraphSegments(plan.SourceText))
+	}
+	if n < 2 && plan.SegmentWords > 0 {
+		n = (len(strings.Fields(narrative)) + plan.SegmentWords - 1) / plan.SegmentWords
+	}
+	if n < 2 {
+		return scenes
+	}
+	return sceneplanner.NewSceneSynthesizer().FromProse(narrative, n)
+}
 
 func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {
 	if plan == nil {
@@ -207,36 +232,17 @@ func uniqueLimitedStrings(values []string, limit int) []string {
 func buildArtlistQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
 	candidates := make([]string, 0, 12)
 	if visual := compactVisualQuery(segmentText); visual != "" {
-		candidates = append(candidates, visual)
-	}
-	if topic = strings.TrimSpace(topic); topic != "" {
-		// Keep one query grounded in the plan context before the per-segment
-		// enrichment terms consume the provider query limit.
-		candidates = append(candidates, topic+" cinematic scene")
+		candidates = append(candidates, compactArtlistQuery(visual))
 	}
 	for _, entity := range entities {
 		v := strings.TrimSpace(entity.Value)
 		if v == "" {
 			continue
 		}
-		candidates = append(candidates, v+" action scene")
+		candidates = append(candidates, v)
 	}
 	candidates = append(candidates, phrases...)
-	for _, word := range words {
-		word = strings.TrimSpace(word)
-		if word == "" {
-			continue
-		}
-		lower := strings.ToLower(word)
-		if textutil.IsStopWord(lower) {
-			continue
-		}
-		candidates = append(candidates, word+" visual scene")
-	}
-	if segmentText != "" {
-		candidates = append(candidates, segmentText)
-	}
-	return uniqueLimitedStrings(candidates, 5)
+	return normalizeRetrievalQueries(candidates, 6)
 }
 
 func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity, phrases []string, words []string, topic string) []string {
@@ -250,19 +256,9 @@ func buildImageQueries(segmentText string, entities []scriptpkg.ExtractedEntity,
 			continue
 		}
 		candidates = append(candidates, v)
-		if topic != "" {
-			candidates = append(candidates, v+" "+topic)
-		}
 	}
 	candidates = append(candidates, phrases...)
-	candidates = append(candidates, words...)
-	if topic = strings.TrimSpace(topic); topic != "" {
-		candidates = append(candidates, topic)
-	}
-	if segmentText != "" {
-		candidates = append(candidates, segmentText)
-	}
-	return uniqueLimitedStrings(candidates, 5)
+	return normalizeRetrievalQueries(candidates, 8)
 }
 
 // compactVisualQuery converts a source or narration sentence into a bounded
@@ -278,11 +274,113 @@ func compactVisualQuery(text string) string {
 	if end := strings.IndexAny(text, ".!?\n"); end > 0 {
 		text = text[:end]
 	}
+	// A very long sentence is narration, not a retrieval query. Moderately
+	// sized source descriptions may still provide useful visual grounding;
+	// compact those only after stop-word removal.
+	if len(textutil.Tokenize(text)) > 15 {
+		return ""
+	}
 	tokens := textutil.TokenizeWithStopWords(text)
-	if len(tokens) > 7 {
-		tokens = tokens[:7]
+	if len(tokens) > 8 {
+		tokens = tokens[:8]
+	}
+	if len(tokens) < 2 {
+		return ""
+	}
+	return normalizeRetrievalQuery(strings.Join(tokens, " "), 8)
+}
+
+func compactArtlistQuery(query string) string {
+	tokens := textutil.TokenizeWithStopWords(query)
+	if len(tokens) > 6 {
+		tokens = tokens[len(tokens)-6:]
+	}
+	if len(tokens) < 2 {
+		return ""
+	}
+	return normalizeRetrievalQuery(strings.Join(tokens, " "), 6)
+}
+
+func pairImportantWords(words []string) []string {
+	clean := make([]string, 0, len(words))
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+		if word == "" || textutil.IsStopWord(strings.ToLower(word)) {
+			continue
+		}
+		clean = append(clean, word)
+	}
+	pairCapacity := 0
+	if len(clean) > 1 {
+		pairCapacity = len(clean) - 1
+	}
+	pairs := make([]string, 0, pairCapacity)
+	for i := 0; i+1 < len(clean); i++ {
+		pairs = append(pairs, clean[i]+" "+clean[i+1])
+	}
+	return pairs
+}
+
+func normalizeRetrievalQueries(candidates []string, maxWords int) []string {
+	if maxWords < 2 {
+		return nil
+	}
+	out := make([]string, 0, minInt(5, len(candidates)))
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		query := normalizeRetrievalQuery(candidate, maxWords)
+		if query == "" {
+			continue
+		}
+		key := strings.ToLower(query)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, query)
+		if len(out) == 5 {
+			break
+		}
+	}
+	return out
+}
+
+func normalizeRetrievalQuery(raw string, maxWords int) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsAny(raw, "\n\r.!?,;:\"`") {
+		return ""
+	}
+	lower := strings.ToLower(raw)
+	for _, placeholder := range []string{
+		"type", "subject", "item", "concrete keyword", "short visual concept phrase",
+		"cinematic scene", "action scene", "visual scene", "visual concept",
+	} {
+		if lower == placeholder || strings.Contains(lower, placeholder) {
+			return ""
+		}
+	}
+	rawTokens := textutil.Tokenize(raw)
+	if len(rawTokens) > maxWords {
+		return ""
+	}
+	tokens := textutil.TokenizeWithStopWords(raw)
+	if len(tokens) < 2 || len(tokens) > maxWords {
+		return ""
+	}
+	for _, token := range tokens {
+		if retrievalNoiseWords[token] {
+			return ""
+		}
 	}
 	return strings.Join(tokens, " ")
+}
+
+var retrievalNoiseWords = map[string]bool{
+	"best": true, "understood": true, "often": true, "relentless": true,
+	"endeavor": true, "endeavors": true, "march": true, "moment": true,
+	"moments": true, "important": true, "importance": true, "history": true,
+	"humanity": true, "tapestry": true, "manifestation": true, "manifestations": true,
+	"ingenuity": true, "perhaps": true, "progress": true, "advancement": true,
 }
 
 func segmentCacheKey(parts ...string) string {

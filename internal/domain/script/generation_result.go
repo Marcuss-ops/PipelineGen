@@ -121,6 +121,10 @@ type GenerationResult struct {
 	// clips so callers can detect fallback usage.
 	ModeInfo *GenerationModeInfo `json:"mode_info,omitempty"`
 
+	AudioMode     string              `json:"audio_mode,omitempty"`
+	AudioStrategy string              `json:"audio_strategy,omitempty"`
+	FinalAudio    *FinalAudioArtifact `json:"final_audio,omitempty"`
+
 	// Quality carries the editorial quality gate outcome. It is
 	// always populated so callers can inspect the per-item quality
 	// metrics even when the gate passes.
@@ -131,6 +135,26 @@ type GenerationResult struct {
 	// requested_mode, used_mode, fallback_used, model, prompt_version,
 	// planner_version).
 	Provenance *GenerationProvenance `json:"provenance,omitempty"`
+}
+
+type FinalAudioArtifact struct {
+	AssetID              string `json:"audio_asset_id"`
+	Path                 string `json:"path"`
+	AudioContractVersion string `json:"audio_contract_version"`
+	AudioPlanVersion     string `json:"audio_plan_version"`
+	AudioPlanSHA256      string `json:"audio_plan_sha256"`
+	FinalAudioSHA256     string `json:"final_audio_sha256"`
+	Codec                string `json:"codec"`
+	Profile              string `json:"profile"`
+	SampleRate           int    `json:"sample_rate"`
+	Channels             int    `json:"channels"`
+	ChannelLayout        string `json:"channel_layout"`
+	Bitrate              int64  `json:"bitrate"`
+	DurationMS           int64  `json:"duration_ms"`
+	StartPTS             int64  `json:"start_pts"`
+	SizeBytes            int64  `json:"size_bytes"`
+	FinalMix             bool   `json:"final_mix"`
+	CopyEligible         bool   `json:"copy_eligible"`
 }
 
 // GenerationModeInfo describes the requested and actual generation
@@ -332,6 +356,18 @@ type GenerationTimings struct {
 	SQLiteMs                int64 `json:"sqlite_ms,omitempty"`
 	QdrantMs                int64 `json:"qdrant_ms,omitempty"`
 	BindingMs               int64 `json:"binding_ms,omitempty"`
+	TTSTotalMs              int64 `json:"tts_total_ms,omitempty"`
+	TTSCalls                int   `json:"tts_calls,omitempty"`
+	TimelineCompileMs       int64 `json:"timeline_compile_ms,omitempty"`
+	AudioPlanCompileMs      int64 `json:"audio_plan_compile_ms,omitempty"`
+	ClipAudioPrepareMs      int64 `json:"clip_audio_prepare_ms,omitempty"`
+	AudioMixMs              int64 `json:"audio_mix_ms,omitempty"`
+	AudioEncodeMs           int64 `json:"audio_encode_ms,omitempty"`
+	AudioEncodePasses       int   `json:"audio_encode_passes,omitempty"`
+	AudioProbeMs            int64 `json:"audio_probe_ms,omitempty"`
+	AudioHashMs             int64 `json:"audio_hash_ms,omitempty"`
+	AudioPipelineTotalMs    int64 `json:"audio_pipeline_total_ms,omitempty"`
+	FinalAudioDurationMS    int64 `json:"final_audio_duration_ms,omitempty"`
 
 	TotalMs int64 `json:"total_ms"`
 }

@@ -11,6 +11,8 @@ package scriptgeneration
 import (
 	"context"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // ── TextGenerator ───────────────────────────────────────────────────
@@ -98,6 +100,13 @@ type DocumentPublisher interface {
 type RenderEnqueuer interface {
 	// Enqueue submits a render job and returns the job reference.
 	Enqueue(ctx context.Context, result GenerateResult) (RenderReference, error)
+}
+
+// CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
+// return a probed, certified final audio artifact; the runner never falls
+// back to chunked mixing when this port is unavailable or fails.
+type CombinedAudioRenderer interface {
+	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
 }
 
 // ── FailRunInput ────────────────────────────────────────────────────

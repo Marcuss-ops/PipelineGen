@@ -1,9 +1,13 @@
 package ollama
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
@@ -56,6 +60,35 @@ func TestResolveGenerationFormat(t *testing.T) {
 					tc.outputMode, string(tc.format), string(got), string(tc.want))
 			}
 		})
+	}
+}
+
+func TestGenerateScriptForwardsExplicitModelOverride(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode chat request: %v", err)
+		}
+		if body.Model != "gemma2:2b" {
+			t.Errorf("chat model=%q, want explicit request model", body.Model)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":"Testo breve"},"done":true}`))
+	}))
+	defer server.Close()
+
+	gen := NewGenerator(client.NewClient(server.URL, "gemma4:e4b", 5))
+	result, err := gen.GenerateScript(context.Background(), types.TextGenerationRequest{
+		Model: "gemma2:2b", Language: "it", Title: "test", Prompt: "scrivi una frase",
+		SourceText: "testo", MaxChars: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Script != "Testo breve" {
+		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 

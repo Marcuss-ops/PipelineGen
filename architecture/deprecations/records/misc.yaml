@@ -46,7 +46,7 @@ deprecations:
               arg. Nil transformer fails closed: ProcessBook +
               ProcessBookWithProgress surface the canonical
               ErrBookTransformerMissing sentinel (errors.Is-friendly).
-          (d) BookSourceReader + BookExporter ports are RESERVED for
+          (d) BookSourceReader is RESERVED for
               future waves (godlike/06 "one owner per fact" — defined
               here to set the boundary, no concrete yet). The legacy
               drive.Reader.DownloadFile path remains inline in
@@ -98,14 +98,14 @@ deprecations:
             (build_bundles_core.go::buildBooksService wires
             pythontransformer.NewSubprocessTransformer as the 8th
             arg) + 2 test sites (from_drive_test.go passes nil).
-          - book.BookTransformer + BookSourceReader + BookExporter
-            ports   : 3 interfaces declared at
+          - book.BookTransformer + BookSourceReader
+            ports   : 2 interfaces declared at
             internal/application/books/ports.go. BookTransformer has
             1 concrete (SubprocessTransformer); BookSourceReader +
-            BookExporter are reserved.
+            BookSourceReader is reserved.
         Net delta = +1 pythontransformer package (1 .go file +
           1 .go test file at the next wave's TDD step) + -1
-          inline subprocess invocation site + +3 port interfaces +
+          inline subprocess invocation site + +2 port interfaces +
           +1 deprecation record + +1 sentinel error
           (ErrBookTransformerMissing).
       migration_phase: CONTRACT
@@ -124,9 +124,6 @@ deprecations:
           - BACKFILL: implement BookSourceReader concrete + delegate
             ProcessBookFromDrive's drive.Reader.DownloadFile call to
             the port (canonical ownership of source resolution).
-          - BACKFILL: implement BookExporter concrete + delegate the
-            PDF generation + Drive upload side-effects from the
-            Python subprocess to the Go-side delivery.Publisher.
           - CONTRACT: drop the inline drive.Reader call from
             ProcessBookFromDrive; remove books.Config.ScriptPath +
             PythonBin (move to pythontransformer.Config); remove

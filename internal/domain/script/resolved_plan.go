@@ -36,6 +36,7 @@ type ResolvedGenerationPlan struct {
 	Model     string    `json:"model"`
 	Mode      string    `json:"mode"` // "text", "clip_to_script", "batch"
 	MediaMode MediaMode `json:"media_mode,omitempty"`
+	AudioMode string    `json:"audio_mode,omitempty"`
 
 	// ── Source text ───────────────────────────────────────────────────
 	// SourceText is the canonical resolved text fed to the engine.

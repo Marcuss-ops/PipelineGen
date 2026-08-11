@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -78,10 +79,14 @@ func (p *ClipBindingsProcessor) Process(
 	// output mode), build them deterministically.
 	hasSynthesized := false
 	synthesized := false
-	if len(input.SpecScene.Scenes) == 0 {
+	if shouldMaterializeNarrativeScenes(input, plan) {
 		var scenes []scriptpkg.SpecScene
-		if len(input.Text) > 0 {
-			scenePlan := p.planner.Plan(scene.NarrativeDraft{Text: input.Text}, plan)
+		narrativeText := strings.TrimSpace(input.Text)
+		if narrativeText == "" && len(input.SpecScene.Scenes) == 1 {
+			narrativeText = strings.TrimSpace(input.SpecScene.Scenes[0].Text)
+		}
+		if narrativeText != "" {
+			scenePlan := p.planner.Plan(scene.NarrativeDraft{Text: narrativeText}, plan)
 			scenes = scenePlan.Scenes
 			hasSynthesized = true
 			if scenePlan.Source == scene.ScenePlanSourceClipEvidence {
@@ -215,6 +220,23 @@ func (p *ClipBindingsProcessor) Process(
 		result.SynthesizedScenes = input.SpecScene.Scenes
 	}
 	return result, nil
+}
+
+func shouldMaterializeNarrativeScenes(input ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if len(input.SpecScene.Scenes) == 0 {
+		return true
+	}
+	if len(input.SpecScene.Scenes) != 1 || plan == nil || plan.SingleScene {
+		return false
+	}
+	text := strings.TrimSpace(input.Text)
+	if text == "" {
+		text = strings.TrimSpace(input.SpecScene.Scenes[0].Text)
+	}
+	if len(strings.Split(strings.TrimSpace(text), "\n\n")) >= 2 {
+		return true
+	}
+	return plan.SegmentWords > 0 && len(strings.Fields(text)) > plan.SegmentWords
 }
 
 // acceptedClipIDs returns the canonical ordered list of accepted clip

@@ -45,7 +45,10 @@ const (
 	// corrupt and valid URLs. Keep the candidate set bounded upstream, but
 	// allow enough acquisition attempts to reach the requested number of
 	// durable verified images without ever promoting an unverified hit.
-	vidRushImageAcquireSlack = 8
+	// Search providers commonly place unusable hotlinks before downloadable
+	// images. Keep trying the bounded candidate pool until the scene reaches
+	// its target instead of turning the first few bad URLs into a false miss.
+	vidRushImageAcquireSlack = 20
 )
 
 func NewVidRushMaterializationProcessor(providers *VidRushAssetProviderRegistry, finalizer scriptports.VidRushArtifactFinalizer, metrics ...VidRushTimingMetrics) *VidRushMaterializationProcessor {
@@ -221,7 +224,8 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		// true fallback instead of a parallel source that duplicates valid web
 		// assets.
 		imageTarget := vidRushImageTarget(plan)
-		updated.Assets.Candidates = materialize(updated.Assets.Candidates, imageTarget)
+		discoveredCandidates := append([]scriptpkg.SegmentAssetCandidate(nil), updated.Assets.Candidates...)
+		updated.Assets.Candidates = materialize(discoveredCandidates, imageTarget)
 		generationCandidates, generationState := p.planGenerationFallback(plan, updated)
 		updated.Cache.ImageGeneration = generationState
 		if len(generationCandidates) > 0 {
@@ -253,9 +257,26 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 			}
 		}
 		if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
+			diagnostics := make([]string, 0, minInt(len(materialized), 3))
+			for _, candidate := range materialized {
+				if candidate.Provider != scriptpkg.VidRushProviderArtlist {
+					continue
+				}
+				diagnostics = append(diagnostics, fmt.Sprintf("asset=%s acquire=%s verify=%s persist=%s source=%t page=%t drive=%t", candidate.AssetID, candidate.AcquisitionStatus, candidate.VerificationStatus, candidate.PersistenceStatus, strings.TrimSpace(candidate.SourceURL) != "", strings.TrimSpace(candidate.SourcePageURL) != "", strings.TrimSpace(candidate.DriveLink) != ""))
+				if len(diagnostics) == 3 {
+					break
+				}
+			}
+			if len(diagnostics) == 0 {
+				providers := make(map[string]int)
+				for _, candidate := range discoveredCandidates {
+					providers[candidate.Provider]++
+				}
+				diagnostics = append(diagnostics, fmt.Sprintf("discovered=%d providers=%v; no Artlist candidates reached materialization", len(discoveredCandidates), providers))
+			}
 			return vidRushMaterializedSegment{}, fmt.Errorf(
-				"vidrush materialization: required persisted Artlist primary unavailable for segment %s",
-				segment.SegmentID,
+				"vidrush materialization: required persisted Artlist primary unavailable for segment %s (%s)",
+				segment.SegmentID, strings.Join(diagnostics, "; "),
 			)
 		}
 		updated.Assets.CandidateSetHash = candidateSetHash(materialized)

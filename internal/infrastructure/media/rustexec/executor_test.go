@@ -150,6 +150,33 @@ func TestRustProcessRunnerKillsDescendantsOnCancellation(t *testing.T) {
 	t.Fatalf("descendant survived cancellation; pid file=%q", string(dataOrEmpty(t, pidFile)))
 }
 
+func TestPersistentRustProcessRunnerReusesDispatcherProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell process required")
+	}
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pid")
+	script := filepath.Join(dir, "persistent.sh")
+	body := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$$\" > %q\nwhile IFS= read -r line; do printf '{\"ok\":true}\\n'; done\n", pidFile)
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runner := newPersistentRustProcessRunner().(*persistentRustProcessRunner)
+	defer runner.reset()
+	for i := 0; i < 2; i++ {
+		stdout, _, err := runner.Run(context.Background(), script, []byte(`{"request":true}`), 1024)
+		if err != nil {
+			t.Fatalf("request %d failed: %v", i, err)
+		}
+		if string(stdout) != "{\"ok\":true}\n" {
+			t.Fatalf("unexpected response %q", stdout)
+		}
+	}
+	if _, err := os.Stat(pidFile); err != nil {
+		t.Fatalf("persistent process did not start: %v", err)
+	}
+}
+
 func dataOrEmpty(t *testing.T, path string) []byte {
 	t.Helper()
 	data, _ := os.ReadFile(path)

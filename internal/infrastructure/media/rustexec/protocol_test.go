@@ -1,6 +1,9 @@
 package rustexec
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestRequestValidateMediaexecV1Operations(t *testing.T) {
 	tests := []struct {
@@ -52,5 +55,25 @@ func TestRequestValidateAcceptsHealthEnvelope(t *testing.T) {
 	req := request{Version: ProtocolVersion, Operation: OperationHealth}
 	if err := req.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestRequestValidateAcceptsRenderAudioPlanEnvelope(t *testing.T) {
+	req := request{Version: ProtocolVersion, Operation: OperationRenderAudioPlan, OutputPath: "/tmp/final_audio.m4a", AudioPlan: json.RawMessage(`{"version":"compiled-audio-plan.v1"}`), AudioAssets: []audioAsset{{AssetID: "vo-1", Path: "/tmp/vo.mp3"}}}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestRequestValidateAcceptsMuxAudioCopyOnlyWithTwoInputs(t *testing.T) {
+	req := request{Version: ProtocolVersion, Operation: OperationMuxAudioCopy, OutputPath: "/tmp/video-final.mp4", InputPaths: []string{"/tmp/video.mp4", "/tmp/final_audio.m4a"}}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	for _, inputs := range [][]string{nil, {"/tmp/video.mp4"}, {"/tmp/video.mp4", "/tmp/audio.m4a", "/tmp/extra.m4a"}} {
+		req.InputPaths = inputs
+		if err := req.Validate(); err == nil {
+			t.Fatalf("Validate() accepted %d mux inputs", len(inputs))
+		}
 	}
 }
