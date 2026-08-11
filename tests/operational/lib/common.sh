@@ -322,9 +322,26 @@ smoke_poll_terminal() {
         local status
         status=$(jq -r '.status // .job.status // "?"' "$SMOKE_LAST_BODY")
         SMOKE_LAST_STATUS="$status"
-        case "$status" in
-            completed|SUCCEEDED|failed|FAILED|cancelled|dead_letter) return 0 ;;
-        esac
+		case "$status" in
+			completed|SUCCEEDED)
+				# Batch parents use a broker SUCCEEDED hand-off while
+				# children are still running. Do not expose that as a
+				# terminal result to scenario assertions; wait for the
+				# aggregator to replace parent_state=waiting_children.
+				local terminal_body="$SMOKE_LAST_BODY"
+				local full_body=""
+				if smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null && [[ "$SMOKE_LAST_HTTP" == "200" ]]; then
+					full_body="$SMOKE_LAST_BODY"
+				fi
+				if [[ -n "$full_body" ]] && jq -e '.result.data.parent_state == "waiting_children" or .result.parent_state == "waiting_children"' "$full_body" >/dev/null 2>&1; then
+					SMOKE_LAST_BODY="$terminal_body"
+					sleep "$SMOKE_POLL_INTERVAL_SECONDS"
+					continue
+				fi
+				return 0
+				;;
+			failed|FAILED|cancelled|dead_letter) return 0 ;;
+		esac
         sleep "$SMOKE_POLL_INTERVAL_SECONDS"
     done
     return 124

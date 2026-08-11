@@ -670,6 +670,32 @@ run_script_generate() {
     local result
     result=$(jq -c '.result.data.items[0].result // .result.items[0].result // .result.items // .result.output // empty' <<<"$full_body")
     if [[ -z "$result" || "$result" == "null" ]]; then
+        # Batch parents expose the aggregate envelope rather than a single
+        # item result. Fetch every child after the parent aggregator reports
+        # parent_state=succeeded and combine their segments for the common
+        # VidRush assertions.
+        local child_ids child_dir child_count child_failures=0 child_id child_body
+        child_ids=$(jq -r '.result.data.child_job_ids[]? // empty' <<<"$full_body")
+        child_count=$(jq -s 'length' <<<"$child_ids")
+        if [[ "$child_count" -gt 0 ]]; then
+            child_dir="$WORK_DIR/vidrush-child-results"
+            mkdir -p "$child_dir"
+            while IFS= read -r child_id; do
+                [[ -n "$child_id" ]] || continue
+                smoke_curl GET "/api/jobs/${child_id}/full" >/dev/null || { child_failures=$((child_failures + 1)); continue; }
+                child_body=$(cat "$SMOKE_LAST_BODY" 2>/dev/null || echo '{}')
+                if [[ "$(jq -r '.status // ""' <<<"$child_body")" != "SUCCEEDED" && "$(jq -r '.status // ""' <<<"$child_body")" != "completed" ]]; then
+                    child_failures=$((child_failures + 1))
+                    continue
+                fi
+                jq -c '.result.data.items[0].result // .result.items[0].result // empty' <<<"$child_body" > "$child_dir/${child_id}.json"
+            done <<<"$child_ids"
+            if [[ "$child_failures" -eq 0 ]]; then
+                result=$(jq -s '{segments: [.[].segments[]?]}' "$child_dir"/*.json 2>/dev/null || true)
+            fi
+        fi
+    fi
+    if [[ -z "$result" || "$result" == "null" ]]; then
         printf '%sFAIL%s missing generation result in full response\n' "$RED" "$RESET"
         report_json "FAILED" "$job_id" "" "{\"error\":\"missing result\",\"timing_ms\":{\"dispatch\":$dispatch_ms,\"poll\":$poll_ms}}" | jq '.'
         return 1

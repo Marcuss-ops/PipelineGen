@@ -449,6 +449,38 @@ func TestSubmit_IdempotencyHit_ReturnsSameOperation_NoNewWrites(t *testing.T) {
 	assert.Equal(t, 1, opCount, "idempotency hit must NOT commit a new operations row")
 }
 
+// A retry must remain idempotent even when the original payload requested a
+// cache refresh. The refresh flag is a request-control bit; it must not allow
+// the same idempotency key and body to create a second operation.
+func TestSubmit_IdempotencyHit_ForceRefreshSamePayloadReplays(t *testing.T) {
+	env := newFASE2Service(t)
+	req := canonicalSubmitRequest(
+		domainops.ScopeScriptGenerate,
+		"key-force-refresh-replay",
+		makeHashFASE2("body-force-refresh-replay"),
+	)
+	req.ForceRefresh = true
+	req.OperationID = "op-force-refresh-first"
+	req.JobID = "job-force-refresh-first"
+
+	first, err := env.Service.Submit(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, first.Operation)
+
+	second, err := env.Service.Submit(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, second.Operation)
+	assert.True(t, second.IsIdempotencyHit)
+	assert.Equal(t, first.Operation.OperationID, second.Operation.OperationID)
+
+	var count int
+	require.NoError(t, env.DB.QueryRow(
+		`SELECT COUNT(*) FROM operations WHERE scope = ? AND idempotency_key = ?`,
+		string(req.Scope), req.IdempotencyKey,
+	).Scan(&count))
+	assert.Equal(t, 1, count)
+}
+
 // ── Test 4: canonical job-state on replay (FASE 2 close-out) ──
 
 // TestSubmit_IdempotencyHit_ReadsCanonicalJobState pins the FASE 2

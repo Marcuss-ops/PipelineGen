@@ -125,7 +125,7 @@ func (s *Service) decideReplayOrFresh(ctx context.Context, prior *domainops.Oper
 	// from the repository's validateForWrite AFTER BeginTx. The
 	// TX would roll back cleanly, but the error arrives mid-flow
 	// instead of at the input boundary. Detect here.
-	if prior != nil && req.OperationID != "" && req.OperationID == prior.OperationID {
+	if prior != nil && prior.RequestHash != req.RequestHash && req.OperationID != "" && req.OperationID == prior.OperationID {
 		return nil, false, fmt.Errorf("%w: operation_id=%q",
 			domainops.ErrSelfSupersedeReference, req.OperationID)
 	}
@@ -134,8 +134,12 @@ func (s *Service) decideReplayOrFresh(ctx context.Context, prior *domainops.Oper
 	case prior == nil:
 		// No prior — fresh submission. Falls through to TX body.
 		return nil, true, nil
-	case !req.ForceRefresh && prior.RequestHash == req.RequestHash:
-		// Idempotency hit — same key, same hash, no force_refresh.
+	case prior.RequestHash == req.RequestHash:
+		// Idempotency hit — same key and same request hash.
+		// A retry with the same idempotency key is a replay even when
+		// the original payload requested force_refresh. force_refresh
+		// controls creation of a fresh operation only when the request
+		// identity differs; it must never defeat the idempotency key.
 		//
 		// FASE 2 close-out: read canonical live Job state via
 		// JobGetter so the HTTP layer surfaces the canonical
