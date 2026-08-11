@@ -17,7 +17,15 @@ func sanitizeEntityExtractionResult(segment string, result *asset.EntityExtracti
 	// Load the fallback lexicon profile once per sanitization pass so
 	// every sub-filter uses the same centralized stopwords, function
 	// words and verb suffixes instead of hardcoded maps.
-	profile := linguistics.DefaultLexicon().Resolve("fallback")
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		// Low-level client tests and lightweight callers may exercise the
+		// parser before the application composition root installs the
+		// lexicon. Keep extraction usable; production wiring still installs
+		// the registry before this filter is needed.
+		return result
+	}
+	profile := registry.Resolve("fallback")
 
 	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti, profile)
 	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali, profile)

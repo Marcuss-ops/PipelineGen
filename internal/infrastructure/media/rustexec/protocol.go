@@ -1,6 +1,7 @@
 package rustexec
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -26,6 +27,8 @@ const (
 	OperationAdminRender        Operation = "admin_render"
 	OperationMergeInputs        Operation = "merge_inputs"
 	OperationRemoveSilence      Operation = "remove_silence"
+	OperationRenderAudioPlan    Operation = "render_audio_plan"
+	OperationMuxAudioCopy       Operation = "mux_audio_copy"
 )
 
 func (o Operation) String() string { return string(o) }
@@ -36,7 +39,7 @@ func (o Operation) valid() bool {
 		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
 		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationAdminRender,
-		OperationMergeInputs, OperationRemoveSilence:
+		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan, OperationMuxAudioCopy:
 		return true
 	default:
 		return false
@@ -83,6 +86,8 @@ type request struct {
 	Effects          []renderEffect     `json:"effects,omitempty"`
 	Overlays         []renderOverlay    `json:"overlays,omitempty"`
 	MaxDurationSec   float64            `json:"max_duration_sec,omitempty"`
+	AudioPlan        json.RawMessage    `json:"audio_plan,omitempty"`
+	AudioAssets      []audioAsset       `json:"audio_assets,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -123,6 +128,22 @@ func (r request) Validate() error {
 			return err
 		}
 		return requireOutput()
+	case OperationRenderAudioPlan:
+		if err := requireOutput(); err != nil {
+			return err
+		}
+		if len(r.AudioPlan) == 0 || string(r.AudioPlan) == "null" {
+			return fmt.Errorf("%s: audio_plan is required", r.Operation)
+		}
+		return nil
+	case OperationMuxAudioCopy:
+		if err := requireOutput(); err != nil {
+			return err
+		}
+		if len(r.InputPaths) != 2 {
+			return fmt.Errorf("%s: exactly video and final audio inputs are required", r.Operation)
+		}
+		return nil
 	case OperationProbe:
 		return requireSource()
 	case OperationCutBatch:
@@ -153,6 +174,11 @@ func (r request) Validate() error {
 	default:
 		return fmt.Errorf("unsupported media operation: %q", r.Operation)
 	}
+}
+
+type audioAsset struct {
+	AssetID string `json:"asset_id"`
+	Path    string `json:"path"`
 }
 
 type renderTransition struct {
@@ -208,16 +234,20 @@ type cutItem struct {
 }
 
 type mediaMetadata struct {
-	DurationSec float64 `json:"duration_sec"`
-	Width       uint32  `json:"width"`
-	Height      uint32  `json:"height"`
-	FPS         float64 `json:"fps"`
-	VideoCodec  string  `json:"video_codec"`
-	AudioCodec  string  `json:"audio_codec"`
-	SampleRate  uint32  `json:"sample_rate"`
-	Channels    uint32  `json:"channels"`
-	HasVideo    bool    `json:"has_video"`
-	HasAudio    bool    `json:"has_audio"`
+	DurationSec  float64 `json:"duration_sec"`
+	Bitrate      int64   `json:"bitrate"`
+	Width        uint32  `json:"width"`
+	Height       uint32  `json:"height"`
+	FPS          float64 `json:"fps"`
+	VideoCodec   string  `json:"video_codec"`
+	PixelFormat  string  `json:"pixel_format"`
+	AudioCodec   string  `json:"audio_codec"`
+	AudioProfile string  `json:"audio_profile"`
+	SampleRate   uint32  `json:"sample_rate"`
+	Channels     uint32  `json:"channels"`
+	StartPTS     int64   `json:"start_pts"`
+	HasVideo     bool    `json:"has_video"`
+	HasAudio     bool    `json:"has_audio"`
 }
 
 // Wire DTOs for mediaexec.v1. These types intentionally contain only the

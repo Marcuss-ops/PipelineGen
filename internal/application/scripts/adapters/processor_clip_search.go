@@ -8,6 +8,7 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // artlistSegmentCachePayload stores only the Artlist provider delta. Caching
@@ -140,7 +141,33 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 
 		segmentMatches := make([]ArtlistClipMatch, 0)
 		providerStart := time.Now()
-		matches, err := p.searcher.SearchClips(ctx, plan.Title, updated.Insights.ArtlistQueries)
+		// The planner may retain up to five ranked queries for diagnostics and
+		// cache identity, but Artlist search is a serialized browser operation.
+		// Use the two highest-priority queries for the live fan-out so one slow
+		// tail query cannot consume the whole postprocessor budget.
+		searchQueries := updated.Insights.ArtlistQueries
+		if _, liveRegistrySearcher := p.searcher.(*VidRushRegistryClipSearcher); liveRegistrySearcher {
+			// A provider-specific query can legitimately return no clips even
+			// when the scene is searchable. Prefer one compact source-text query
+			// first: the browser search is serialized and a slow narrative query
+			// must not consume the entire provider timeout before the useful
+			// fallback gets a chance to run.
+			if fallback := compactLiveFallbackQuery(updated.Text); fallback != "" {
+				ordered := []string{fallback}
+				for _, query := range searchQueries {
+					if !strings.EqualFold(strings.TrimSpace(query), fallback) {
+						ordered = append(ordered, query)
+					}
+					if len(ordered) == 2 {
+						break
+					}
+				}
+				searchQueries = ordered
+			} else if len(searchQueries) > 2 {
+				searchQueries = searchQueries[:2]
+			}
+		}
+		matches, err := p.searcher.SearchClips(ctx, plan.Title, searchQueries)
 		observeVidRushProviderDuration(p.metrics, "artlist_search", time.Since(providerStart))
 		segmentMatches = append(segmentMatches, matches...)
 		if err != nil {
@@ -193,6 +220,21 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		Warnings:               warnings,
 		Changed:                len(segments) > 0,
 	}, nil
+}
+
+func compactLiveFallbackQuery(text string) string {
+	text = strings.TrimSpace(text)
+	if end := strings.IndexAny(text, ".!?\n"); end > 0 {
+		text = text[:end]
+	}
+	tokens := textutil.TokenizeWithStopWords(text)
+	if len(tokens) > 6 {
+		tokens = tokens[:6]
+	}
+	if len(tokens) < 2 {
+		return ""
+	}
+	return strings.Join(tokens, " ")
 }
 
 // artlistMatchesToCandidates expands every clip in every match. The previous

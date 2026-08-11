@@ -1,4 +1,4 @@
-// Package books — port (Pattern 0) interfaces for the three
+// Package books — port (Pattern 0) interfaces for the two
 // canonical book-pipeline territories (Fase 7 Spina Dorsale,
 // July 2026). Mirrors godlike/06 §"One owner per fact": each port
 // has exactly one canonical surface and exactly one ownership
@@ -6,7 +6,7 @@
 // subprocess today, in-process LLM tomorrow, or a third-party
 // REST adapter next) without leaking through the apply layer.
 //
-// Three territories:
+// Two territories:
 //
 //	BookSourceReader  — read source bytes (local file / Drive
 //	                   download / Google Doc URL resolution).
@@ -26,18 +26,6 @@
 //	                   The transformer is the ONLY Python-aware
 //	                   surface in the books apply layer —
 //	                   books.Service does not import os/exec.
-//
-//	BookExporter      — publish the TransformResult to the
-//	                   requested destinations (Drive via
-//	                   delivery.Publisher, optionally local
-//	                   PDF generation). EXPAND window: the
-//	                   Python transformer still does the PDF
-//	                   + Drive upload side-effect inline; the
-//	                   port is reserved for the next wave to
-//	                   split the exporter out (so the Go-side
-//	                   Drive write fans through the canonical
-//	                   delivery.Publisher, consistent with
-//	                   Fase 3 and Fase 6).
 //
 // Composition-root wiring lives in
 // internal/app/build_bundles_core.go::buildBooksService.
@@ -126,8 +114,8 @@ type TransformRequest struct {
 
 	// GeneratePDF, when true, generates a PDF alongside the
 	// summary. EXPAND-phase: PDF gen happens inside the Python
-	// subprocess; future BookExporter implementations will move
-	// the PDF gen out of the transformer.
+	// subprocess; a future export split must move PDF generation
+	// out of the transformer.
 	GeneratePDF bool
 
 	// PDFStyle is the optional PDF style preset name.
@@ -201,55 +189,4 @@ type BookTransformer interface {
 	// this method by translating onProgress callbacks to
 	// internal phase markers.
 	TransformWithProgress(ctx context.Context, req *TransformRequest, onProgress func(int, string)) (*TransformResult, error)
-}
-
-// ExportRequest carries the post-transform export targets
-// that the BookExporter implements. EXPAND-phase: the Python
-// transformer handles Drive upload + PDF generation in the same
-// subprocess step, so the BookExporter interface is RESERVED —
-// a future wave will move the export side-effects out of the
-// transformer.
-type ExportRequest struct {
-	// Source is the transformer's output surface (PDF +
-	// summary artefacts).
-	Source *TransformResult
-
-	// DriveFolderID is the destination Drive folder ID.
-	DriveFolderID string
-
-	// GeneratePDF, when true, requests a PDF artefact as
-	// part of the export (currently emitted by the Python
-	// transformer; future exporter implementations will own
-	// this).
-	GeneratePDF bool
-
-	// PDFStyle is the optional PDF style preset name.
-	PDFStyle string
-}
-
-// ExportResult is the canonical exporter output shape.
-type ExportResult struct {
-	// DriveFolderURL is the public URL of the Drive folder
-	// the exporter shipped the artefacts to.
-	DriveFolderURL string
-
-	// DriveDocURL is the public URL of the Drive document
-	// (Google Docs surface, if the exporter creates one).
-	DriveDocURL string
-
-	// DrivePDFURL is the public URL of the Drive PDF (Google
-	// Docs surface, if the exporter ships a PDF).
-	DrivePDFURL string
-}
-
-// BookExporter ships post-transform outputs to the requested
-// destinations (Drive upload via delivery.Publisher, etc.).
-//
-// EXPAND-phase contract: BookExporter is RESERVED for the future
-// CUTOVER wave. Today the Python transformer handles export
-// inline; the future adapter will route Drive writes through
-// delivery.Publisher (godlike/06's "one owner per fact" — Fase 3
-// precedent).
-type BookExporter interface {
-	Export(ctx context.Context, req *ExportRequest) (*ExportResult, error)
 }

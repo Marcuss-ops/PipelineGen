@@ -40,6 +40,9 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		if err := validateMediaMode(item, ref); err != nil {
 			return err
 		}
+		if details := validateAudioMode(item, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
 		if details := validateIntroHookStock(item.ScriptParams.Segments, item.Output.StockBindings, ref); len(details) > 0 {
 			return &PlanInvalidError{
 				ItemID:  item.ID,
@@ -98,4 +101,27 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validateAudioMode(item GenerationItemV2, ref string) []string {
+	mode := item.Audio.Mode
+	if mode == "" {
+		mode = item.Output.Audio.Mode
+	}
+	switch mode {
+	case "":
+		if item.Output.VoiceoverEnabled.AsBool() {
+			return []string{ref + ": voiceover_enabled requires explicit audio.mode (CHUNKED_VOICEOVER or COMBINED_TIMELINE)"}
+		}
+		return nil
+	case "NONE", "CHUNKED_VOICEOVER":
+		return nil
+	case "COMBINED_TIMELINE":
+		if !item.Output.GenerateTimeline {
+			return []string{ref + ": audio.mode COMBINED_TIMELINE requires output.generate_timeline=true"}
+		}
+		return nil
+	default:
+		return []string{ref + ": unsupported audio.mode " + mode}
+	}
 }

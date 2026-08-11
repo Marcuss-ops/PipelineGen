@@ -165,6 +165,14 @@ type SpecScene struct {
 	// Kind tags the scene's primary visual treatment.
 	Kind SceneKind `json:"kind"`
 
+	// AudioMode and source range are explicit render intent. Combined audio
+	// jobs must populate these fields; adapters never infer clip audio from
+	// filenames or from the mere presence of a clip binding.
+	AudioMode        string `json:"audio_mode,omitempty"`
+	AudioAssetID     string `json:"audio_asset_id,omitempty"`
+	AudioSourceInMS  int64  `json:"audio_source_in_ms,omitempty"`
+	AudioSourceOutMS int64  `json:"audio_source_out_ms,omitempty"`
+
 	// VisualPlan carries the canonical visual plan produced by the
 	// visual planning processor. It is nil when visual planning is
 	// disabled or produced no layers for this scene.

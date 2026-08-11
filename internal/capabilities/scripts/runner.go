@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"go.uber.org/zap"
 )
 
@@ -33,13 +34,14 @@ import (
 // Each stage is checkpointed so a retry resumes from the last
 // failed stage.
 type Runner struct {
-	repo           RunRepository
-	textGen        TextGenerator
-	translator     Translator
-	voiceoverGen   VoiceoverGenerator
-	docPublisher   DocumentPublisher
-	renderEnqueuer RenderEnqueuer
-	log            *zap.Logger
+	repo                  RunRepository
+	textGen               TextGenerator
+	translator            Translator
+	voiceoverGen          VoiceoverGenerator
+	docPublisher          DocumentPublisher
+	renderEnqueuer        RenderEnqueuer
+	combinedAudioRenderer CombinedAudioRenderer
+	log                   *zap.Logger
 }
 
 // NewRunner constructs the Runner with all required ports.
@@ -70,6 +72,10 @@ func (r *Runner) SetLogger(log *zap.Logger) {
 	if log != nil {
 		r.log = log
 	}
+}
+
+func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
+	r.combinedAudioRenderer = renderer
 }
 
 // Execute runs the complete generation workflow for the given run.
@@ -217,6 +223,11 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 			return
 		}
+		ttsStarted := time.Now()
+		ttsCalls := 0
+		if result.AudioMetrics == nil {
+			result.AudioMetrics = &AudioPipelineMetrics{}
+		}
 		for i := range result.Scenes {
 			scene := &result.Scenes[i]
 			for lang, text := range scene.Text {
@@ -231,6 +242,7 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					)
 					continue
 				}
+				sceneTTSStarted := time.Now()
 				audioRef, err := r.voiceoverGen.Generate(ctx, VoiceoverInput{
 					SceneID:  scene.ID,
 					Language: lang,
@@ -241,6 +253,8 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 						fmt.Errorf("voiceover generation for scene %s lang %s failed: %w", scene.ID, lang, err))
 					return
 				}
+				ttsCalls++
+				result.AudioMetrics.TTSScenes = append(result.AudioMetrics.TTSScenes, TTSSSceneMetric{SceneID: scene.ID, Language: lang, DurationMS: time.Since(sceneTTSStarted).Milliseconds(), Characters: len([]rune(text)), Words: len(strings.Fields(text)), OutputDurationMS: time.Duration(audioRef.Duration * float64(time.Second)).Milliseconds()})
 				if scene.Voiceover == nil {
 					scene.Voiceover = make(map[Language]AudioReference)
 				}
@@ -248,6 +262,8 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			}
 			r.checkpoint(ctx, runID, result)
 		}
+		result.AudioMetrics.TTSMS += time.Since(ttsStarted).Milliseconds()
+		result.AudioMetrics.TTSCalls += ttsCalls
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
 
@@ -294,7 +310,71 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 			return
 		}
-		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)))
+		// Audio mode is an explicit request-level choice. The presence of
+		// generated scenes (or voiceover assets) is never a mode selector.
+		mode, err := capabilityaudio.ResolveAudioMode(req.Audio, false, req.RenderVideo)
+		if err != nil {
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+			return
+		}
+		result.AudioMode = mode
+		if mode != capabilityaudio.AudioModeCombinedTimeline && result.FinalAudio != nil {
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("%s must not carry final audio", mode))
+			return
+		}
+		if mode == capabilityaudio.AudioModeCombinedTimeline {
+			if r.combinedAudioRenderer == nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("COMBINED_TIMELINE requires a CombinedAudioRenderer"))
+				return
+			}
+			started := time.Now()
+			_, audioPlan, audioAssets, err := CompileCanonicalAudioPlan(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+			if err != nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical audio plan failed: %w", err))
+				return
+			}
+			var finalAudio FinalAudioReference
+			var metrics AudioPipelineMetrics
+			if result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, audioPlan) == nil {
+				// A checkpointed certified artifact is the idempotency boundary.
+				// Do not invoke TTS/mix/encode again on a retry.
+				finalAudio = *result.FinalAudio
+				if result.AudioMetrics != nil {
+					metrics = *result.AudioMetrics
+				}
+			} else {
+				finalAudio, metrics, err = r.combinedAudioRenderer.Render(ctx, audioPlan, audioAssets)
+				if err != nil {
+					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("combined audio render failed: %w", err))
+					return
+				}
+				if err := ValidateFinalAudioReference(finalAudio, audioPlan); err != nil {
+					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("final audio certification failed: %w", err))
+					return
+				}
+			}
+			if result.AudioMetrics != nil {
+				metrics.TTSMS += result.AudioMetrics.TTSMS
+				metrics.TTSCalls += result.AudioMetrics.TTSCalls
+				metrics.TTSScenes = append(metrics.TTSScenes, result.AudioMetrics.TTSScenes...)
+			}
+			metrics.TotalMS = time.Since(started).Milliseconds()
+			if metrics.AudioDurationMS > 0 && metrics.TotalMS > 0 {
+				metrics.AudioRTF = float64(metrics.TotalMS) / float64(metrics.AudioDurationMS)
+				metrics.AudioSpeed = 1 / metrics.AudioRTF
+			}
+			result.FinalAudio = &finalAudio
+			result.AudioStrategy = capabilityaudio.FinalAudioCopy
+			result.AudioMetrics = &metrics
+			r.checkpoint(ctx, runID, result)
+		} else if mode == capabilityaudio.AudioModeChunkedVoiceover {
+			if err := ValidateChunkedVoiceovers(*result); err != nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+				return
+			}
+			result.AudioStrategy = capabilityaudio.TimelineMix
+		}
+		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)), zap.String("audio_mode", string(mode)))
 	}
 
 	// ── Stage 7: Enqueue Render ─────────────────────────────────

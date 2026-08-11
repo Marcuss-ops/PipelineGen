@@ -307,6 +307,15 @@ func (r *PostProcessorRegistry) run(
 		}
 
 		mergePostProcessResult(result, ppResult, &input)
+		if r.log != nil {
+			segments, candidates := vidRushPipelineCounts(input.VidRushSegments)
+			r.log.Debug("postprocessor VidRush scene surface",
+				zap.String("name", string(name)),
+				zap.Int("segments", segments),
+				zap.Int("candidates", candidates),
+				zap.String("segment_details", vidRushPipelineSegmentDetails(input.VidRushSegments)),
+			)
+		}
 
 		if len(ppResult.Warnings) > 0 {
 			warnings = append(warnings, ppResult.Warnings...)
@@ -372,6 +381,32 @@ func (r *PostProcessorRegistry) run(
 			scriptpkg.ErrPostprocessFailed, strings.Join(requiredFails, "; "))
 	}
 	return result, nil
+}
+
+func vidRushPipelineCounts(segments []scriptpkg.VidRushSegmentResult) (int, int) {
+	candidates := 0
+	for _, segment := range segments {
+		candidates += len(segment.Assets.Candidates)
+	}
+	return len(segments), candidates
+}
+
+func vidRushPipelineSegmentDetails(segments []scriptpkg.VidRushSegmentResult) string {
+	details := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		details = append(details, fmt.Sprintf("%s/%s q=%d candidates=%d secondary=%d generated=%d ready=%d", segment.SegmentID, segment.SceneID, len(segment.Insights.ImageQueries), len(segment.Assets.Candidates), len(segment.Assets.SecondaryImages), len(segment.Assets.GeneratedImages), countReadyVidRushCandidates(segment.Assets.Candidates)))
+	}
+	return strings.Join(details, " | ")
+}
+
+func countReadyVidRushCandidates(candidates []scriptpkg.SegmentAssetCandidate) int {
+	count := 0
+	for _, candidate := range candidates {
+		if readyVidRushCandidate(candidate) {
+			count++
+		}
+	}
+	return count
 }
 
 func runNarrationSanitizer(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, proc PostProcessor, input *ProcessInput, result *PipelineResult) error {

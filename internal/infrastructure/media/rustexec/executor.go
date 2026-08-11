@@ -1,10 +1,12 @@
 package rustexec
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,7 +85,7 @@ func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Log
 		binaryPath:  binaryPath,
 		ffmpegPath:  ffmpegPath,
 		log:         log,
-		runner:      rustProcessRunner{},
+		runner:      newPersistentRustProcessRunner(),
 		limiter:     NewResourceLimiter(slots),
 		outputLimit: defaultRustOutputLimit,
 		timeout:     defaultRustTimeout,
@@ -152,6 +154,119 @@ func (rustProcessRunner) Run(ctx context.Context, binary string, input []byte, o
 		return stdout.Bytes(), stderr.Bytes(), err
 	}
 	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
+// persistentRustProcessRunner keeps the newline-delimited Rust dispatcher
+// alive across requests. Requests are serialized because run_stdio currently
+// has one request/response stream; the surrounding limiter still controls how
+// many media jobs may execute concurrently in the composition root.
+type persistentRustProcessRunner struct {
+	mu     sync.Mutex
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+	stderr *boundedBuffer
+}
+
+func newPersistentRustProcessRunner() RustProcessRunner {
+	return &persistentRustProcessRunner{}
+}
+
+func (r *persistentRustProcessRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ensure(binary, outputLimit); err != nil {
+		return nil, nil, err
+	}
+
+	if len(input) == 0 || input[len(input)-1] != '\n' {
+		input = append(input, '\n')
+	}
+	if _, err := r.stdin.Write(input); err != nil {
+		r.reset()
+		return nil, nil, fmt.Errorf("write persistent Rust request: %w", err)
+	}
+
+	cancelled := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			if r.stdin != nil {
+				_ = r.stdin.Close()
+			}
+			if r.cmd != nil && r.cmd.Process != nil {
+				_ = syscall.Kill(-r.cmd.Process.Pid, syscall.SIGKILL)
+			}
+		case <-cancelled:
+		}
+	}()
+	line, err := r.stdout.ReadBytes('\n')
+	close(cancelled)
+	if err != nil {
+		stderr := r.stderr.Bytes()
+		r.reset()
+		if ctx.Err() != nil {
+			return nil, stderr, ctx.Err()
+		}
+		return line, stderr, fmt.Errorf("read persistent Rust response: %w", err)
+	}
+	if outputLimit > 0 && int64(len(line)) > outputLimit {
+		stderr := r.stderr.Bytes()
+		r.reset()
+		return nil, stderr, fmt.Errorf("persistent Rust response exceeds output limit")
+	}
+	return line, r.stderr.Bytes(), nil
+}
+
+func (r *persistentRustProcessRunner) ensure(binary string, outputLimit int64) error {
+	if r.cmd != nil {
+		return nil
+	}
+	cmd := exec.Command(binary)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("open persistent Rust stdin: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("open persistent Rust stdout: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("open persistent Rust stderr: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return fmt.Errorf("start persistent Rust: %w", err)
+	}
+	r.cmd = cmd
+	r.stdin = stdin
+	r.stdout = bufio.NewReader(stdout)
+	r.stderr = &boundedBuffer{limit: outputLimit}
+	go func() {
+		_, _ = io.Copy(r.stderr, stderr)
+	}()
+	return nil
+}
+
+func (r *persistentRustProcessRunner) reset() {
+	if r.cmd == nil {
+		return
+	}
+	if r.stdin != nil {
+		_ = r.stdin.Close()
+	}
+	if r.cmd.Process != nil {
+		_ = syscall.Kill(-r.cmd.Process.Pid, syscall.SIGKILL)
+	}
+	_ = r.cmd.Wait()
+	r.cmd = nil
+	r.stdin = nil
+	r.stdout = nil
+	r.stderr = nil
 }
 
 type boundedBuffer struct {

@@ -215,7 +215,13 @@ func (p *vidRushArtlistProvider) Search(ctx context.Context, req scriptports.Vid
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(result.Assets))
 	for _, a := range result.Assets {
 		assetID := firstNonEmpty(a.ID, a.ExternalID)
-		out = append(out, scriptpkg.SegmentAssetCandidate{AssetID: assetID, Provider: p.Name(), Query: req.Query, SourceURL: a.SourceRef, SourcePageURL: a.PageURL, PreviewURL: a.PreviewURL, Score: a.Score, RightsStatus: "unknown", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound})
+		// Artlist discovery returns a stable provider identity in SourceRef,
+		// but acquisition requires the canonical clip page so the browser
+		// scraper can resolve the authenticated HLS stream. Keep the identity
+		// in AssetID and make the page URL the primary retrieval reference.
+		pageURL := strings.TrimSpace(a.PageURL)
+		sourceURL := firstNonEmpty(pageURL, a.SourceRef, a.PreviewURL)
+		out = append(out, scriptpkg.SegmentAssetCandidate{AssetID: assetID, Provider: p.Name(), Query: req.Query, SourceURL: sourceURL, SourcePageURL: pageURL, PreviewURL: firstNonEmpty(a.PreviewURL, pageURL), Score: a.Score, RightsStatus: "unknown", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound})
 	}
 	return out, nil
 }
@@ -223,7 +229,10 @@ func (p *vidRushArtlistProvider) Acquire(ctx context.Context, candidate scriptpk
 	if p == nil || p.downloader == nil {
 		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush artlist: downloader unavailable")
 	}
-	source := firstNonEmpty(candidate.SourceURL, candidate.PreviewURL)
+	// Prefer the page URL: Artlist page references are resolved by the
+	// browser-backed downloader. SourceURL may intentionally be only the
+	// provider identity when discovery came through the shared registry.
+	source := firstNonEmpty(candidate.SourcePageURL, candidate.SourceURL, candidate.PreviewURL)
 	result, err := p.downloader.Download(ctx, artlistpkg.DownloadRequest{SourceRef: source, DestinationID: os.TempDir(), Filename: safeArtifactFilename(candidate.AssetID, ".mp4"), ClipPageURL: candidate.SourcePageURL})
 	if err != nil {
 		return scriptports.LocalArtifact{}, err

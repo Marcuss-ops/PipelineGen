@@ -41,6 +41,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -79,9 +81,12 @@ func (g *stubTextGenerator) GenerateSceneText(ctx context.Context, req GenerateR
 	result := make([]Scene, len(g.scenes))
 	for i, s := range g.scenes {
 		clone := Scene{
-			ID:    s.ID,
-			Index: s.Index,
-			Text:  make(map[Language]string),
+			ID:         s.ID,
+			Index:      s.Index,
+			DurationMS: s.DurationMS,
+			Audio:      s.Audio,
+			Clip:       s.Clip,
+			Text:       make(map[Language]string),
 		}
 		for k, v := range s.Text {
 			clone.Text[k] = v
@@ -331,9 +336,9 @@ func defaultTestRequest() GenerateRequest {
 // defaultTestScenes returns 3 scenes with English text.
 func defaultTestScenes() []Scene {
 	return []Scene{
-		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "First scene text"}},
-		{ID: "scene-1", Index: 1, Text: map[Language]string{"en": "Second scene text"}},
-		{ID: "scene-2", Index: 2, Text: map[Language]string{"en": "Third scene text"}},
+		{ID: "scene-0", Index: 0, DurationMS: 1000, Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}, Text: map[Language]string{"en": "First scene text"}},
+		{ID: "scene-1", Index: 1, DurationMS: 1000, Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}, Text: map[Language]string{"en": "Second scene text"}},
+		{ID: "scene-2", Index: 2, DurationMS: 1000, Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}, Text: map[Language]string{"en": "Third scene text"}},
 	}
 }
 

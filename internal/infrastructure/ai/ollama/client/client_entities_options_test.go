@@ -59,4 +59,6 @@ func TestExtractEntitiesFromBatch_PreservesEverySegment(t *testing.T) {
 	require.Equal(t, float64(entityExtractionNumPredict*2), request.Options["num_predict"])
 	require.Contains(t, request.Prompt, "SEGMENT_INPUT_0")
 	require.Contains(t, request.Prompt, "SEGMENT_INPUT_1")
+	require.NotContains(t, request.Prompt, "Subject: precise visual search description")
+	require.NotContains(t, request.Prompt, "concrete keyword")
 }

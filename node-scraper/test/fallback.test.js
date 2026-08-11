@@ -18,7 +18,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPageOnlyClips, classifyChallengePage, shouldUseFastPath } from '../artlist/search.js';
+import { buildPageOnlyClips, classifyUnavailableSearchPage, shouldUseFastPath } from '../artlist/search.js';
 
 describe('shouldUseFastPath', () => {
   test('returns false for empty intercepted array', () => {
@@ -107,30 +107,30 @@ describe('shouldUseFastPath', () => {
   });
 });
 
-describe('classifyChallengePage', () => {
-  test('classifies a Cloudflare 429 interstitial', () => {
+describe('classifyUnavailableSearchPage', () => {
+  test('classifies an unavailable search page without assigning a provider cause', () => {
     assert.deepEqual(
-      classifyChallengePage({
+      classifyUnavailableSearchPage({
         status: 429,
         title: 'Just a moment...',
         bodyText: 'Performing security verification',
       }),
-      { code: 'ARTLIST_RATE_LIMITED', reason: 'Artlist returned an anti-bot or rate-limit challenge page' },
+      { code: 'ARTLIST_SEARCH_PAGE_UNAVAILABLE', reason: 'Artlist footage search page did not become available' },
     );
   });
 
-  test('classifies a challenge page even when the transport status is 200', () => {
-    const result = classifyChallengePage({
+  test('classifies an unavailable page even when the transport status is 200', () => {
+    const result = classifyUnavailableSearchPage({
       status: 200,
       title: 'Just a moment...',
       bodyText: 'This website uses a security service to protect against malicious bots',
     });
-    assert.equal(result?.code, 'ARTLIST_RATE_LIMITED');
+    assert.equal(result?.code, 'ARTLIST_SEARCH_PAGE_UNAVAILABLE');
   });
 
   test('does not classify a normal Artlist result page', () => {
     assert.equal(
-      classifyChallengePage({ status: 200, title: 'Artlist search', bodyText: 'Mountain footage' }),
+      classifyUnavailableSearchPage({ status: 200, title: 'Artlist search', bodyText: 'Mountain footage' }),
       null,
     );
   });

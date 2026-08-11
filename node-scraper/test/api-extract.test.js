@@ -145,6 +145,22 @@ describe('extractClipsFromApiResponses', () => {
     assert.equal(out[0].clip_page_url, 'https://artlist.io/stock-footage/clip/abc/1');
   });
 
+  test('does not expose a non-media API url as a stream', () => {
+    const clips = extractClipsFromApiResponses([{
+      url: 'https://artlist.io/api/search',
+      data: {
+        items: [{
+          id: '123',
+          title: 'Business meeting',
+          url: 'https://artlist.io/site.webmanifest?v=1',
+          clipPageUrl: 'https://artlist.io/stock-footage/clip/business-meeting/123',
+        }],
+      },
+    }], 'business meeting');
+    assert.equal(clips[0].primary_url, clips[0].clip_page_url);
+    assert.deepEqual(clips[0].stream_urls, []);
+  });
+
   test('stream_urls contains the primary_url when present', () => {
     const data = { items: [{ id: 1, title: 'A', url: 'https://cdn/1' }] };
     const out = extractClipsFromApiResponses([fakeResp('https://api', data)], TERM);

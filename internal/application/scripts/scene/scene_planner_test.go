@@ -209,6 +209,23 @@ func TestScenePlanner_Plan_ProseFallbackNoClipEvidence(t *testing.T) {
 		"prose-fallback with NumClips=2 must produce exactly 2 scenes")
 }
 
+func TestScenePlanner_Plan_MaterializesLongSingleDraftBySegmentWords(t *testing.T) {
+	t.Parallel()
+	p := scene.NewScenePlanner(zap.NewNop())
+	text := "One two three four five six seven eight nine ten. Eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty. Twenty one twenty two twenty three twenty four twenty five twenty six twenty seven twenty eight twenty nine thirty."
+	got := p.Plan(scene.NarrativeDraft{
+		Text:   text,
+		Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: text}},
+	}, &scriptpkg.ResolvedGenerationPlan{SegmentWords: 10})
+	assert.Equal(t, scene.ScenePlanSourceProseFallback, got.Source)
+	assert.True(t, got.Synthesized)
+	assert.GreaterOrEqual(t, len(got.Scenes), 3)
+	for i, s := range got.Scenes {
+		assert.Equal(t, i, s.Index)
+		assert.NotEmpty(t, s.Text)
+	}
+}
+
 // ── PlanFromClipEvidence ─────────────────────────────────────────
 
 // TestScenePlanner_PlanFromClipEvidence_TranscriptPriority locks

@@ -102,7 +102,7 @@ import (
 // Forward-pointer (godlike/07 no-revert rationale): the rejection of
 // the Path A design (parent false + child true + CompleteWithArtifacts
 // fork when child terminates) is EXPLICITLY LOCKED in
-// architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+// architecture/current.yaml#PR-VO-COMPLETEPATH-FIX
 // (status: keep, migration_phase: not applicable, removal_date: never).
 // The record documents 3 reasons: (1) godlike/06 SSOT double-write
 // race between broker's media_assets UPSERT and finalizer's
@@ -159,7 +159,7 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 // Regression guard: same SQL-layer ErrCompleteJobPathViolation
 // trigger if ProducesArtifacts=true is reintroduced on the child.
 //
-// Forward-pointer: architecture/deprecations.yaml#PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
+// Forward-pointer: architecture/current.yaml#PR-VO-COMPLETEPATH-FIX
 // (canonical "Path A rejected" record; 3 documented reasons; see
 // Test 1's forward-pointer block for the full rationale).
 func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {

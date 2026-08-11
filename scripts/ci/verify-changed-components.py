@@ -36,6 +36,9 @@ EXIT_TIMEOUT = 124
 ALL_COMPONENT_EXACT_FILES = frozenset(
     {
         "Makefile",
+        ".gitignore",
+        "operator-console",
+        "regen-current-yaml",
         "go.mod",
         "go.sum",
         ".env.example",
@@ -60,6 +63,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
 ALL_COMPONENT_PREFIXES = (
     "make/",
     "scripts/hooks/",
+    "scripts/systemd/",
     "scripts/ci/",
     "internal/",
     "cmd/",

@@ -6,6 +6,7 @@
 package usecase
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -15,11 +16,18 @@ import (
 // generation item. It owns only the four phase collaborators and
 // the canonical logger — no monolithic configuration state.
 type GenerateOneUseCase struct {
-	preparer      *GenerationPreparer
-	engineRunner  *GenerationEngineRunner
-	postprocessor *GenerationPostprocessor
-	finalizer     *GenerationFinalizer
-	log           *zap.Logger
+	preparer       *GenerationPreparer
+	engineRunner   *GenerationEngineRunner
+	postprocessor  *GenerationPostprocessor
+	finalizer      *GenerationFinalizer
+	log            *zap.Logger
+	audioProcessor mediaexec.AudioProcessor
+}
+
+func (uc *GenerateOneUseCase) SetAudioProcessor(processor mediaexec.AudioProcessor) {
+	if uc != nil {
+		uc.audioProcessor = processor
+	}
 }
 
 // NewGenerateOneUseCase constructs the use case. engine and registry

@@ -1,12 +1,76 @@
 package adapters
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+type boundaryEntityExtractor struct {
+	calls []string
+}
+
+func (e *boundaryEntityExtractor) ExtractEntities(_ context.Context, req scriptpkg.EntityExtractionRequest) (*scriptpkg.EntityResult, error) {
+	e.calls = append(e.calls, req.Text)
+	return &scriptpkg.EntityResult{Concepts: []scriptpkg.Entity{{Value: strings.Fields(req.Text)[0], Type: "CONCEPT"}}}, nil
+}
+
+func TestEntitiesProcessorMaterializesSceneTextWhenTopLevelTextIsEmpty(t *testing.T) {
+	extractor := &boundaryEntityExtractor{}
+	processor := NewEntitiesProcessor(extractor)
+	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "boundary", Model: "fake"}
+	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", Index: 0,
+		Text: "A scientist examines a fossil.\n\nA chef prepares a dish.\n\nAn architect reviews blueprints.",
+	}}}}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("Process returned error: %v", err)
+	}
+	if got := len(extractor.calls); got != 3 {
+		t.Fatalf("extractor calls = %d, want 3", got)
+	}
+	if got := len(result.VidRushSegments); got != 3 {
+		t.Fatalf("returned segments = %d, want 3", got)
+	}
+	if got := len(result.UpdatedSpecScene.Scenes); got != 3 {
+		t.Fatalf("returned scenes = %d, want 3", got)
+	}
+	if result.Entities == nil || len(result.Entities.Concepts) == 0 {
+		t.Fatal("expected non-empty entity aggregate")
+	}
+}
+
+func TestRegistryPreservesMaterializedSceneCountAfterEntities(t *testing.T) {
+	extractor := &boundaryEntityExtractor{}
+	registry := NewPostProcessorRegistry(nil)
+	if !registry.Register(NewEntitiesProcessor(extractor)) {
+		t.Fatal("failed to register entities processor")
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language: "en", Title: "boundary", Model: "fake",
+		Postprocessors: []string{string(ProcessorEntities)},
+	}
+	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", Index: 0,
+		Text: "A scientist examines a fossil.\n\nA chef prepares a dish.\n\nAn architect reviews blueprints.",
+	}}}}
+
+	result, err := registry.Run(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("registry Run returned error: %v", err)
+	}
+	if got := len(result.VidRushSegments); got != 3 {
+		t.Fatalf("registry segments = %d, want 3", got)
+	}
+	if got := len(result.FinalSpecScene.Scenes); got != 3 {
+		t.Fatalf("registry final scenes = %d, want 3", got)
+	}
+}
 
 func TestResolveManualSegmentQueriesFiltersAndDeduplicates(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -104,5 +168,54 @@ func TestBuildVidRushSegmentResultPreservesEntityType(t *testing.T) {
 	}
 	if result.Insights.Entities[0].Type != "ORGANIZATION" {
 		t.Fatalf("entity type = %q, want ORGANIZATION", result.Insights.Entities[0].Type)
+	}
+}
+
+func TestGeneratedRetrievalQueriesAreSearchReady(t *testing.T) {
+	artlist := buildArtlistQueries(
+		"In the summer of 1969, millions watched as American astronauts prepared for one of the most important missions in human history.",
+		[]scriptpkg.ExtractedEntity{{Value: "Apollo 11 astronauts", Type: "EVENT"}},
+		[]string{
+			"NASA mission control",
+			"astronauts prepared for one of the most important missions",
+			"TYPE action scene",
+		},
+		[]string{"Saturn", "V launch", "moon mission"},
+		"historical documentary",
+	)
+	if len(artlist) == 0 || len(artlist) > 5 {
+		t.Fatalf("artlist queries = %v, want 1-5 search queries", artlist)
+	}
+	for _, query := range artlist {
+		words := strings.Fields(query)
+		if len(words) < 2 || len(words) > 6 {
+			t.Errorf("artlist query %q has %d words, want 2-6", query, len(words))
+		}
+		if strings.ContainsAny(query, ".!?\n") {
+			t.Errorf("artlist query %q contains narrative punctuation", query)
+		}
+		if strings.Contains(query, "cinematic") || strings.Contains(query, "action scene") {
+			t.Errorf("artlist query %q contains a generic retrieval suffix", query)
+		}
+	}
+	if strings.Contains(strings.Join(artlist, " | "), "millions watched") {
+		t.Errorf("narrative sentence leaked into Artlist queries: %v", artlist)
+	}
+
+	images := buildImageQueries(
+		"Elon Musk presented the new spacecraft at SpaceX headquarters in Texas.",
+		[]scriptpkg.ExtractedEntity{{Value: "Elon Musk", Type: "PERSON"}},
+		[]string{"Elon Musk SpaceX presentation", "Subject visual scene"},
+		[]string{"spacecraft", "presentation", "Texas"},
+		"generic topic",
+	)
+	for _, query := range images {
+		words := strings.Fields(query)
+		if len(words) < 2 || len(words) > 8 {
+			t.Errorf("image query %q has %d words, want 2-8", query, len(words))
+		}
+	}
+	if strings.Contains(strings.Join(images, " | "), "Subject") {
+		t.Errorf("placeholder leaked into image queries: %v", images)
 	}
 }

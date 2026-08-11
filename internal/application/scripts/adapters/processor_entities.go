@@ -47,14 +47,19 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	if p.extractor == nil {
 		return nil, fmt.Errorf("%w: entities processor: EntityExtractor not configured", scriptpkg.ErrPostprocessFailed)
 	}
-	if strings.TrimSpace(input.Text) == "" {
+	extractionText := strings.TrimSpace(input.Text)
+	if extractionText == "" && len(input.SpecScene.Scenes) == 1 {
+		extractionText = strings.TrimSpace(input.SpecScene.Scenes[0].Text)
+	}
+	if extractionText == "" {
 		return &PostProcessResult{}, nil
 	}
 	if plan == nil {
 		return nil, fmt.Errorf("%w: entities processor: nil ResolvedGenerationPlan", scriptpkg.ErrPostprocessFailed)
 	}
 
-	canonical := buildCanonicalSegments(plan, input.SpecScene.Scenes, input.Text)
+	materializedScenes := materializeNarrativeScenes(plan, input.SpecScene.Scenes, extractionText)
+	canonical := buildCanonicalSegments(plan, materializedScenes, extractionText)
 	if len(canonical) == 0 {
 		return &PostProcessResult{}, nil
 	}
@@ -111,7 +116,10 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	defer cancel()
 	if supportsBatch {
 		const batchSize = 5
-		const batchParallelism = 2
+		// Keep the configured local Ollama instance single-slot until a
+		// concurrency benchmark proves that overlapping batches improve
+		// throughput instead of merely queueing inside the model server.
+		const batchParallelism = 1
 		batchJobs := make(chan int)
 		var batchWG sync.WaitGroup
 		for worker := 0; worker < batchParallelism; worker++ {
@@ -318,6 +326,10 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	// envelope from the canonical segments so annotations are not discarded;
 	// the composite merge later carries them onto synthesized scenes.
 	sceneInput := input.SpecScene
+	if len(materializedScenes) > 0 && len(materializedScenes) != len(sceneInput.Scenes) {
+		sceneInput.Version = 1
+		sceneInput.Scenes = materializedScenes
+	}
 	if len(sceneInput.Scenes) == 0 && len(canonical) > 0 {
 		sceneInput.Version = 1
 		sceneInput.Scenes = make([]scriptpkg.SpecScene, 0, len(canonical))
@@ -485,7 +497,8 @@ func buildVidRushSegmentResult(
 		insights.ArtlistQueries = uniqueLimitedStrings(manualArtlistQueries, artlistLimit)
 	} else if !hasLockedSegmentAssignment(plan.MediaPlan.Assignments, canonicalSeg.ID, mediadomain.SlotPrimaryVideo) {
 		fallbackArtlistQueries := buildArtlistQueries(visualText, insights.Entities, insights.ImportantPhrases, insights.ImportantWords, plan.Topic)
-		llmArtlistQueries := uniqueLimitedStrings(res.ArtlistPhrases, artlistLimit)
+		llmArtlistQueries := normalizeRetrievalQueries(res.ArtlistPhrases, 6)
+		llmArtlistQueries = uniqueLimitedStrings(llmArtlistQueries, artlistLimit)
 		insights.ArtlistQueries = uniqueLimitedStrings(append(fallbackArtlistQueries, llmArtlistQueries...), artlistLimit)
 	}
 

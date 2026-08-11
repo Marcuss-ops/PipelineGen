@@ -54,6 +54,10 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		FallbackPolicy: item.Source.FallbackPolicy, MediaPlan: item.MediaPlan.Clone(),
 		VideoMetadata: scriptpkg.CloneVideoMetadata(item.VideoMetadata),
 	}
+	plan.AudioMode = item.Audio.Mode
+	if plan.AudioMode == "" {
+		plan.AudioMode = item.Output.Audio.Mode
+	}
 	if plan.VideoMetadata != nil {
 		if strings.TrimSpace(plan.VideoMetadata.Language) == "" {
 			plan.VideoMetadata.Language = plan.Language
@@ -161,7 +165,11 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 		processors = append(processors, adapters.ProcessorStockBindings)
 	}
 	if extractEntities {
-		processors = append(processors, adapters.ProcessorEntities, adapters.ProcessorInternetImages, adapters.ProcessorVidRushMaterialization)
+		// Entities is deliberately registered once, before provider search.
+		// Re-running it here would rematerialize the narrative scenes after
+		// clip_search has attached candidates, breaking segment identity and
+		// orphaning provider candidates from the materialization stage.
+		processors = append(processors, adapters.ProcessorInternetImages, adapters.ProcessorVidRushMaterialization)
 	}
 	if output.GenerateSceneImages.AsBool() {
 		processors = append(processors, adapters.ProcessorImages)

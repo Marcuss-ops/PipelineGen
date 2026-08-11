@@ -61,6 +61,21 @@ func TestWithRemoteLocations_AllReady(t *testing.T) {
 	}
 }
 
+func TestToRemotePreservesFinalAudioContractMetadata(t *testing.T) {
+	m := &ArtifactManifest{SchemaVersion: SchemaVersionArtifactManifestV1, JobID: "job-audio", Artifacts: []Artifact{{
+		ID: "job-audio:final_audio", Kind: ArtifactKindFinalAudio, Filename: "final_audio.m4a", MIMEType: "audio/mp4", SHA256: "final-hash", Required: true,
+		ArtifactMetadata: map[string]any{"audio_strategy": "FINAL_AUDIO_COPY", "copy_eligible": true, "codec": "aac", "sample_rate": 48000, "channels": 2},
+	}}}
+	remote, err := m.ToRemote(map[string]RemoteAsset{"job-audio:final_audio": {RemoteAssetID: "remote-audio-1", SHA256: "final-hash"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := remote.Artifacts[0].ArtifactMetadata
+	if metadata["audio_strategy"] != "FINAL_AUDIO_COPY" || metadata["copy_eligible"] != true || metadata["codec"] != "aac" {
+		t.Fatalf("final audio contract metadata was lost: %#v", metadata)
+	}
+}
+
 func TestWithRemoteLocations_RequiredMissing_Error(t *testing.T) {
 	m := &ArtifactManifest{
 		SchemaVersion: SchemaVersionArtifactManifestV1,

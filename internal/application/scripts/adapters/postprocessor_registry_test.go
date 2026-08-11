@@ -267,6 +267,38 @@ func TestRegistry_RunProcessorErrorIsIsolated(t *testing.T) {
 	}
 }
 
+func TestRegistry_RunWithProgressReportsExecutionBoundaries(t *testing.T) {
+	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
+	r.Register(&countingProcessor{
+		name:   "entities",
+		policy: adapterspkg.ProcessorBestEffort,
+		err:    errors.New("ollama timeout"),
+	})
+	r.Register(&countingProcessor{
+		name:     "persistence",
+		policy:   adapterspkg.ProcessorBestEffort,
+		warnings: []string{"persisted"},
+	})
+
+	var got []string
+	_, err := r.RunWithProgress(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+		ID:             "progress-boundaries",
+		Postprocessors: []string{"entities", "persistence"},
+	}, adapterspkg.ProcessInput{Text: "text"}, func(event adapterspkg.ProcessorProgressEvent) {
+		got = append(got, event.Status+":"+string(event.Name))
+	})
+	if err != nil {
+		t.Fatalf("best-effort failure should be isolated: %v", err)
+	}
+	want := []string{
+		"started:entities", "failed:entities",
+		"started:persistence", "completed:persistence",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("progress events = %v, want %v", got, want)
+	}
+}
+
 // TestRegistry_Run_RequiredFailureAlwaysFailsPipeline (Issue 3 /
 // P0, June 2026). A Required-class postprocessor that fails MUST
 // cause the pipeline to abort even if another Required-class

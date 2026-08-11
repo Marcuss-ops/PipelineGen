@@ -3,13 +3,19 @@ package rustexec
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"go.uber.org/zap"
 )
 
@@ -18,6 +24,43 @@ type VideoProcessor struct {
 	policy  mediaexec.EncoderPolicy
 	profile mediaexec.VideoProfile
 }
+
+// CombinedAudioRenderer is the production bridge from the durable script
+// workflow to the Rust audio execution plane. Timing decisions are completed
+// before this adapter is called.
+type CombinedAudioRenderer struct{ processor *VideoProcessor }
+
+func NewCombinedAudioRenderer(processor *VideoProcessor) (*CombinedAudioRenderer, error) {
+	if processor == nil {
+		return nil, fmt.Errorf("combined audio renderer requires a video processor")
+	}
+	return &CombinedAudioRenderer{processor: processor}, nil
+}
+
+func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (scripts.FinalAudioReference, scripts.AudioPipelineMetrics, error) {
+	if r == nil || r.processor == nil {
+		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("combined audio renderer is not configured")
+	}
+	if plan.PlanSHA256 == "" {
+		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("combined audio plan hash is missing")
+	}
+	output := filepath.Join(os.TempDir(), "pipelinegen-final-audio-"+plan.PlanSHA256+".m4a")
+	started := time.Now()
+	asset, err := r.processor.RenderAudioPlan(ctx, plan, assets, output)
+	if err != nil {
+		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
+	}
+	return scripts.FinalAudioReference{
+		AssetID: asset.AssetID, Path: output, AudioContractVersion: asset.AudioContractVersion,
+		AudioPlanVersion: asset.AudioPlanVersion, PlanSHA256: asset.AudioPlanSHA256,
+		FinalAudioSHA256: asset.FinalAudioSHA256, Codec: asset.Codec, Profile: asset.Profile,
+		SampleRate: asset.SampleRate, Channels: asset.Channels, ChannelLayout: asset.ChannelLayout,
+		Bitrate: asset.Bitrate, DurationMS: asset.DurationMS, StartPTS: asset.StartPTS,
+		SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible,
+	}, scripts.AudioPipelineMetrics{TotalMS: time.Since(started).Milliseconds(), AudioDurationMS: asset.DurationMS, AudioEncodePasses: 1}, nil
+}
+
+var _ scripts.CombinedAudioRenderer = (*CombinedAudioRenderer)(nil)
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
 	return NewVideoProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), log)
@@ -171,8 +214,77 @@ func (p *VideoProcessor) MergeInputs(ctx context.Context, inputs []string, outpu
 	return p.run(ctx, request{Operation: OperationMergeInputs, InputPaths: inputs, OutputPath: output})
 }
 
+// MuxFinalAudioCopy is the assembler-only path. It accepts only a previously
+// certified canonical final audio asset and delegates a mux operation whose
+// Rust command uses -c:a copy. There is deliberately no encode fallback.
+func (p *VideoProcessor) MuxFinalAudioCopy(ctx context.Context, video, finalAudio, output string, asset audio.FinalAudioAsset) error {
+	if !asset.CopyEligible || !asset.FinalMix || asset.FinalAudioSHA256 == "" || asset.Codec != "aac" || !strings.EqualFold(asset.Profile, "LC") || asset.SampleRate != 48000 || asset.Channels != 2 || asset.ChannelLayout != "stereo" {
+		return fmt.Errorf("%w: final audio is not canonical copy-eligible media", audio.ErrAudioMediaIncompatible)
+	}
+	if strings.TrimSpace(video) == "" || strings.TrimSpace(finalAudio) == "" || strings.TrimSpace(output) == "" {
+		return fmt.Errorf("%w: video, final audio, and output paths are required", audio.ErrAudioMediaIncompatible)
+	}
+	info, err := os.Stat(finalAudio)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || (asset.SizeBytes > 0 && info.Size() != asset.SizeBytes) {
+		return fmt.Errorf("%w: final audio file is unavailable", audio.ErrAudioMediaIncompatible)
+	}
+	file, err := os.Open(finalAudio)
+	if err != nil {
+		return fmt.Errorf("%w: final audio cannot be opened", audio.ErrAudioMediaIncompatible)
+	}
+	hasher := sha256.New()
+	_, copyErr := io.Copy(hasher, file)
+	closeErr := file.Close()
+	if copyErr != nil || closeErr != nil || fmt.Sprintf("%x", hasher.Sum(nil)) != asset.FinalAudioSHA256 {
+		return fmt.Errorf("%w: final audio hash mismatch", audio.ErrAudioMediaIncompatible)
+	}
+	return p.run(ctx, request{Operation: OperationMuxAudioCopy, InputPaths: []string{video, finalAudio}, OutputPath: output})
+}
+
 func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string) error {
 	return p.run(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
+}
+
+func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error) {
+	if err := plan.Validate(); err != nil {
+		return audio.FinalAudioAsset{}, err
+	}
+	planJSON, err := json.Marshal(plan)
+	if err != nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("marshal audio plan: %w", err)
+	}
+	wireAssets := make([]audioAsset, len(assets))
+	for i, asset := range assets {
+		wireAssets[i] = audioAsset{AssetID: asset.AssetID, Path: asset.Path}
+	}
+	result, err := p.client.call(ctx, request{Operation: OperationRenderAudioPlan, OutputPath: output, AudioPlan: planJSON, AudioAssets: wireAssets})
+	if err != nil {
+		return audio.FinalAudioAsset{}, err
+	}
+	if result.Metadata == nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("render_audio_plan returned no probe metadata")
+	}
+	file, err := os.Open(output)
+	if err != nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("open rendered audio for certification: %w", err)
+	}
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		_ = file.Close()
+		return audio.FinalAudioAsset{}, fmt.Errorf("hash rendered audio: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("close rendered audio: %w", err)
+	}
+	stat, err := os.Stat(output)
+	if err != nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("stat rendered audio: %w", err)
+	}
+	asset := audio.FinalAudioAsset{AssetID: output, AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: fmt.Sprintf("%x", hasher.Sum(nil)), Codec: result.Metadata.AudioCodec, Profile: result.Metadata.AudioProfile, SampleRate: int(result.Metadata.SampleRate), Channels: int(result.Metadata.Channels), ChannelLayout: plan.Output.ChannelLayout, Bitrate: result.Metadata.Bitrate, DurationMS: int64(result.Metadata.DurationSec*1000 + 0.5), StartPTS: result.Metadata.StartPTS, SizeBytes: stat.Size(), FinalMix: true, CopyEligible: true}
+	if err := audio.ValidateFinalAudio(asset, plan); err != nil {
+		return audio.FinalAudioAsset{}, fmt.Errorf("rendered audio certification failed: %w", err)
+	}
+	return asset, nil
 }
 
 var _ mediaexec.AudioProcessor = (*VideoProcessor)(nil)

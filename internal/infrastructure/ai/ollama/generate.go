@@ -163,6 +163,14 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if options == nil {
 		options = make(map[string]any)
 	}
+	// The request-level model is part of the canonical generation plan. The
+	// Ollama client accepts per-call model selection through options; without
+	// forwarding it, every explicit item model was silently replaced by the
+	// process-wide OLLAMA_MODEL, making controlled runs and retries use the
+	// wrong model.
+	if strings.TrimSpace(req.Model) != "" {
+		options["model"] = strings.TrimSpace(req.Model)
+	}
 	if req.MaxChars > 0 {
 		// Gemma4 needs a generous token budget: the model "thinks" first,
 		// consuming tokens before the actual response. Budget = JSON structure

@@ -47,6 +47,8 @@ config.yaml
 # them, including new *_test.go (the W1 batch surfaced this regression).
 # Anchor it so only the root-level build artifact is ignored.
 pipelinegen
+/operator-console
+/regen-current-yaml
 /server
 /admin
 /worker

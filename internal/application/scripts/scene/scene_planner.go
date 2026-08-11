@@ -47,6 +47,9 @@
 package scene
 
 import (
+	"math"
+	"strings"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -256,8 +259,39 @@ func (p *ScenePlanner) Plan(
 	// Case 1 (no-evidence, no-clips-source branch): bail out.
 	if plan.ClipEvidence == nil && len(draft.Scenes) == 0 {
 		// Prose-only path: continue below to text/synthesizer path.
-	} else if plan.ClipEvidence == nil {
-		return ScenePlan{Source: ScenePlanSourceNoop}
+	}
+
+	// Case 3: model-emitted scenes preserved verbatim. A single model
+	// scene is the common plain-text response from small models; when
+	// the request declares a per-segment word budget, it is only a
+	// provisional envelope and must be materialized into ordered
+	// narrative segments before downstream processors run.
+	if len(draft.Scenes) == 1 && plan.SegmentWords > 0 {
+		text := strings.TrimSpace(draft.Scenes[0].Text)
+		if text == "" {
+			text = cleanedText
+		}
+		wordCount := len(strings.Fields(text))
+		n := len(splitProseParagraphs(text))
+		if n < 2 && plan.SegmentWords > 0 && wordCount > plan.SegmentWords {
+			n = int(math.Ceil(float64(wordCount) / float64(plan.SegmentWords)))
+		}
+		if n >= 2 {
+			synthesized := p.synthesizer.FromProse(text, n)
+			if len(synthesized) > 0 {
+				if p.log != nil {
+					p.log.Info("scene_planner: materialized single scene",
+						zap.Int("materialized", len(synthesized)),
+						zap.Int("paragraphs", len(splitProseParagraphs(text))),
+						zap.Int("segment_words", plan.SegmentWords))
+				}
+				return ScenePlan{
+					Scenes:      synthesized,
+					Synthesized: true,
+					Source:      ScenePlanSourceProseFallback,
+				}
+			}
+		}
 	}
 
 	// Case 3: model-emitted scenes preserved verbatim. The planner

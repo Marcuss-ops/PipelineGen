@@ -79,6 +79,16 @@ func (c *Client) ExtractEntitiesFromBatchWithModel(ctx context.Context, segments
 	}
 	results, parseErr := parseEntityExtractionBatchResult(response, len(segments))
 	if parseErr == nil {
+		for i, result := range results {
+			// Keep batched extraction subject to the same evidence and
+			// placeholder filtering as the single-segment path.
+			result = sanitizeEntityExtractionResult(segments[i], result, entityCount)
+			if resultIsEmpty(result) {
+				result = fallbackEntityExtractionResult(segments[i], i, entityCount)
+				result = sanitizeEntityExtractionResult(segments[i], result, entityCount)
+			}
+			results[i] = capEntityExtractionResult(result, entityCount)
+		}
 		return results, nil
 	}
 	// Small local models can ignore the multi-scene envelope. Retry only this
@@ -103,6 +113,12 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 					SegmentText: segments[index], SegmentIndex: index, EntityCount: entityCount,
 				}, model)
 				if err != nil {
+					if c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
+						result = fallbackEntityExtractionResult(segments[index], index, entityCount)
+						result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+						results[index] = capEntityExtractionResult(result, entityCount)
+						continue
+					}
 					errMu.Lock()
 					if firstErr == nil {
 						firstErr = err
@@ -110,7 +126,12 @@ func (c *Client) extractEntityBatchIndividually(ctx context.Context, segments []
 					errMu.Unlock()
 					continue
 				}
-				results[index] = result
+				result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+				if resultIsEmpty(result) && c.entityExtractionFallbackMode != EntityExtractionFallbackDisabled {
+					result = fallbackEntityExtractionResult(segments[index], index, entityCount)
+					result = sanitizeEntityExtractionResult(segments[index], result, entityCount)
+				}
+				results[index] = capEntityExtractionResult(result, entityCount)
 			}
 		}()
 	}

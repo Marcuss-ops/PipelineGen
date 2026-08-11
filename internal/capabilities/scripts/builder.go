@@ -23,6 +23,7 @@ package scriptgeneration
 import (
 	"fmt"
 
+	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -86,6 +87,14 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// the output.generate_timeline or a future render flag.
 	// For now, derive from GenerateTimeline.
 	renderVideo := item.Output.GenerateTimeline
+	audioModeInput := item.Audio.Mode
+	if audioModeInput == "" { // compatibility with the initial nested output shape
+		audioModeInput = item.Output.Audio.Mode
+	}
+	audioMode, err := audiocap.ResolveAudioMode(audiocap.AudioMode(audioModeInput), item.Output.VoiceoverEnabled.AsBool(), renderVideo)
+	if err != nil {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+	}
 
 	return GenerateRequest{
 		IdempotencyKey: idempotencyKey,
@@ -102,6 +111,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		DriveFolderID: docsFolderID,
 		Title:         item.Title,
 		OutputName:    item.Title, // fallback: output name defaults to title
+		Audio:         audioMode,
 	}, nil
 }
 

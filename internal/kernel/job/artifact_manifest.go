@@ -49,6 +49,7 @@ const (
 	ArtifactKindMetadata         = "metadata"
 	ArtifactKindEntities         = "entities"
 	ArtifactKindVoiceover        = "voiceover"
+	ArtifactKindFinalAudio       = "final_audio"
 	ArtifactKindImage            = "image"
 	ArtifactKindClipBindings     = "clip_bindings"
 	ArtifactKindArtifactManifest = "artifact_manifest"
@@ -336,6 +337,9 @@ type UploadedArtifact struct {
 	Requirement   ArtifactRequirement `json:"requirement"`
 	RemoteAssetID string              `json:"remote_asset_id"`
 	Status        string              `json:"status"` // StatusReady | StatusSkipped
+	// ArtifactMetadata is the contract projection needed by remote
+	// consumers such as Velox. It survives local-path removal.
+	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
 }
 
 // RemoteArtifact is the C5 canonical name for the Sender-safe
@@ -437,12 +441,13 @@ func (m *ArtifactManifest) ToRemote(uploaded map[string]RemoteAssetIDAdapter) (*
 		remote, ok := uploaded[a.ID]
 
 		ra := RemoteArtifact{
-			ID:          a.ID,
-			Kind:        a.Kind,
-			Filename:    a.Filename,
-			MIMEType:    a.MIMEType,
-			SHA256:      a.SHA256,
-			Requirement: ArtifactRequirementOptional,
+			ID:               a.ID,
+			Kind:             a.Kind,
+			Filename:         a.Filename,
+			MIMEType:         a.MIMEType,
+			SHA256:           a.SHA256,
+			Requirement:      ArtifactRequirementOptional,
+			ArtifactMetadata: a.ArtifactMetadata,
 		}
 		if a.Required {
 			ra.Requirement = ArtifactRequirementRequired

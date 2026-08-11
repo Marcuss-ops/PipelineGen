@@ -81,6 +81,14 @@ export function extractClipsFromApiResponses(apiResponses, term) {
         const thumbnailUrl = item.thumbnailUrl || item.thumbnail_url || item.image || '';
         const previewUrl = item.previewUrl || item.preview_url || item.video || '';
 
+        const isMediaURL = (value) =>
+          /\.(?:m3u8|mp4)(?:[?#]|$)|\/(?:manifest|playlist)(?:[/?#]|$)/i.test(String(value || ''));
+        // When Artlist supplies an explicit clip page, only known media URLs
+        // may become streams. Legacy/API fixtures without a page URL still
+        // use the generic `url` field as their stream reference.
+        const mediaURL = (isMediaURL(itemUrl) || !clipPageUrl) ? String(itemUrl) : '';
+        const pageURL = String(clipPageUrl || (!mediaURL && itemUrl ? itemUrl : ''));
+
         clips.push({
           clip_id: String(itemId),
           id: String(itemId),
@@ -90,11 +98,11 @@ export function extractClipsFromApiResponses(apiResponses, term) {
           creator: String(creator),
           tags,
           categories,
-          primary_url: String(itemUrl || clipPageUrl),
-          stream_urls: itemUrl ? [String(itemUrl)] : [],
-          clip_page_url: String(clipPageUrl || ''),
+          primary_url: mediaURL || pageURL,
+          stream_urls: mediaURL ? [mediaURL] : [],
+          clip_page_url: pageURL,
           thumbnail_url: String(thumbnailUrl),
-          preview_url: String(previewUrl || itemUrl),
+          preview_url: String(isMediaURL(previewUrl) ? previewUrl : mediaURL),
         });
 
         if (clips.length >= 50) break;

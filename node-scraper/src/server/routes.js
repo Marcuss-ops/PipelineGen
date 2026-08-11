@@ -323,6 +323,7 @@ export async function handleSearch(req, res, ctx) {
       term: result.term,
       search_url: result.search_url,
       clips: result.clips,
+      diagnostics: result.diagnostics,
       saved: 0,
       _meta: { request_id: reqId, elapsed_ms: elapsed },
     }));
@@ -331,7 +332,11 @@ export async function handleSearch(req, res, ctx) {
     console.error(`[${new Date().toISOString()}] #${reqId} ERROR after ${elapsed}ms:`, err.message);
     const status = isArtlistRateLimitedError(err) ? 429 : 500;
     res.writeHead(status, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: err.code || err.message || String(err) }));
+    res.end(JSON.stringify({
+      ok: false,
+      error: err.code || err.message || String(err),
+      diagnostics: err.diagnostics,
+    }));
   } finally {
     // §11.0 SCROLL_TIMEOUT budget backstop: cancel the timer on every code
     // path (success / budget-exceeded / unexpected throw). Without the
