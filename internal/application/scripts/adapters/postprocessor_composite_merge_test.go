@@ -172,6 +172,24 @@ func TestMergePostProcessResult_PropagatesTranslatedToCurrentInput(t *testing.T)
 	}
 }
 
+func TestCloneSceneBindings_PreservesMultiClipBindings(t *testing.T) {
+	original := scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{
+		{ClipID: "clip-a", DriveLink: "https://drive/a", StartMs: 100, EndMs: 1100},
+		{ClipID: "clip-b", DriveLink: "https://drive/b", StartMs: 200, EndMs: 2200},
+	}}
+	cloned := cloneSceneBindings(original)
+	if len(cloned.Clips) != 2 || cloned.Clips[0] != original.Clips[0] || cloned.Clips[1] != original.Clips[1] {
+		t.Fatalf("cloneSceneBindings lost multi-clip bindings: got %#v, want %#v", cloned.Clips, original.Clips)
+	}
+	if cloned.Clip == nil || cloned.Clip.ClipID != "clip-a" {
+		t.Fatalf("legacy alias = %#v, want first canonical clip", cloned.Clip)
+	}
+	cloned.Clips[0].DriveLink = ""
+	if original.Clips[0].DriveLink == "" {
+		t.Fatal("cloneSceneBindings must isolate the multi-clip slice from the source")
+	}
+}
+
 func TestCloneSceneBindings_PreservesMediaBindings(t *testing.T) {
 	original := scriptpkg.SceneBindings{
 		Media: []scriptpkg.ResolvedMediaBinding{{Slot: "background", AssetID: "asset-1", DriveLink: "https://drive.google.com/file/d/media-1/view"}},

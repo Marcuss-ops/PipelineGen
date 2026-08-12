@@ -554,6 +554,59 @@ func TestClipBindings_ExplicitSegmentsPreserveCardinalityAndMultiClipOwnership(t
 	}
 }
 
+func TestClipBindings_ExplicitSegmentsPreserveLinksTimingAndReuse(t *testing.T) {
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a", "clip-b"},
+		DriveLinks: map[string]string{
+			"clip-a": "https://drive.example/a",
+			"clip-b": "https://drive.example/b",
+		},
+		ClipNames: map[string]string{"clip-a": "A", "clip-b": "B"},
+		ClipDetails: map[string]scriptpkg.ClipDetail{
+			"clip-a": {Name: "A", DriveLink: "https://drive.example/a", SubtitleLink: "https://drive.example/a.ass", SubtitleFileID: "sub-a", StartMs: 100, EndMs: 1100},
+			"clip-b": {Name: "B", DriveLink: "https://drive.example/b", SubtitleLink: "https://drive.example/b.ass", SubtitleFileID: "sub-b", StartMs: 200, EndMs: 2200},
+		},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ClipEvidence: evidence,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "scene-a", Kind: "scene", ClipIDs: []string{"clip-a", "clip-b"}},
+			{ID: "scene-b", Kind: "scene", ClipIDs: []string{"clip-b"}},
+			{ID: "scene-c", Kind: "narration"},
+		},
+	}
+	input := adapters.ProcessInput{Text: "A.\n\nB.\n\nC."}
+	result, err := adapters.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process error = %v", err)
+	}
+	if result == nil || len(result.UpdatedSpecScene.Scenes) != 3 {
+		t.Fatalf("updated scenes = %d, want 3", len(result.UpdatedSpecScene.Scenes))
+	}
+
+	scenes := result.UpdatedSpecScene.Scenes
+	if got := []string{scenes[0].Bindings.Clips[0].ClipID, scenes[0].Bindings.Clips[1].ClipID}; !reflect.DeepEqual(got, []string{"clip-a", "clip-b"}) {
+		t.Fatalf("scene-a clip order = %v, want [clip-a clip-b]", got)
+	}
+	if len(scenes[1].Bindings.Clips) != 1 || scenes[1].Bindings.Clips[0].ClipID != "clip-b" {
+		t.Fatalf("scene-b reuse = %+v, want [clip-b]", scenes[1].Bindings.Clips)
+	}
+	if len(scenes[2].Bindings.Clips) != 0 || scenes[2].Bindings.Clip != nil {
+		t.Fatalf("scene-c bindings = %+v, want zero clips", scenes[2].Bindings)
+	}
+	for _, binding := range append(append([]scriptpkg.ClipBinding{}, scenes[0].Bindings.Clips...), scenes[1].Bindings.Clips...) {
+		if binding.DriveLink == "" || binding.SubtitleLink == "" || binding.SubtitleFileID == "" {
+			t.Fatalf("incomplete links for %q: %+v", binding.ClipID, binding)
+		}
+		if binding.DurationMs != binding.EndMs-binding.StartMs {
+			t.Fatalf("duration for %q = %d, want %d", binding.ClipID, binding.DurationMs, binding.EndMs-binding.StartMs)
+		}
+	}
+	if scenes[0].Bindings.Clip != &scenes[0].Bindings.Clips[0] || scenes[1].Bindings.Clip != &scenes[1].Bindings.Clips[0] {
+		t.Fatal("legacy Clip aliases must point at each scene's canonical first Clips entry")
+	}
+}
+
 // TestClipBindings_NoClipEvidence_NoOp verifies that when there is no
 // clip evidence the processor returns an empty result and does not
 // touch the input scenes. Covers both nil ClipEvidence and a non-nil

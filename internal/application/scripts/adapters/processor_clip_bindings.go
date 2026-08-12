@@ -196,7 +196,8 @@ func (p *ClipBindingsProcessor) Process(
 						binding.SubtitleFileID = detail.SubtitleFileID
 					}
 				}
-				scenes[i].Bindings.Clip = binding
+				scenes[i].Bindings.Clips = []scriptpkg.ClipBinding{*binding}
+				scenes[i].Bindings.Clip = &scenes[i].Bindings.Clips[0]
 				if plan.MediaMode == scriptpkg.MediaModeClipOnly {
 					scenes[i].Kind = scriptpkg.SceneClip
 				}
@@ -206,6 +207,7 @@ func (p *ClipBindingsProcessor) Process(
 				continue
 			} else {
 				scenes[i].Bindings.Clip = nil
+				scenes[i].Bindings.Clips = nil
 			}
 		}
 	}
@@ -308,20 +310,43 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 
 func enrichClipBindings(scenes []scriptpkg.SpecScene, plan *scriptpkg.ResolvedGenerationPlan, driveLinks map[string]string) {
 	for i := range scenes {
-		binding := scenes[i].Bindings.Clip
-		if binding == nil {
+		bindings := scenes[i].Bindings.Clips
+		if len(bindings) == 0 && scenes[i].Bindings.Clip != nil {
+			bindings = []scriptpkg.ClipBinding{*scenes[i].Bindings.Clip}
+		}
+		if len(bindings) == 0 {
 			continue
 		}
-		clipID := strings.TrimSpace(binding.ClipID)
-		if clipID == "" {
-			continue
+		for j := range bindings {
+			binding := &bindings[j]
+			clipID := strings.TrimSpace(binding.ClipID)
+			if clipID == "" {
+				continue
+			}
+			if link := strings.TrimSpace(driveLinks[clipID]); link != "" {
+				binding.DriveLink = link
+			}
+			if plan != nil && plan.ClipEvidence != nil {
+				detail, hasDetail := plan.ClipEvidence.ClipDetails[clipID]
+				if hasDetail {
+					if binding.SubtitleLink == "" {
+						binding.SubtitleLink = detail.SubtitleLink
+					}
+					if binding.SubtitleFileID == "" {
+						binding.SubtitleFileID = detail.SubtitleFileID
+					}
+					if binding.StartMs == 0 && binding.EndMs == 0 {
+						binding.StartMs = detail.StartMs
+						binding.EndMs = detail.EndMs
+					}
+				}
+				if binding.ClipTitle == "" {
+					binding.ClipTitle = strings.TrimSpace(plan.ClipEvidence.ClipNames[clipID])
+				}
+			}
 		}
-		if link := strings.TrimSpace(driveLinks[clipID]); link != "" {
-			binding.DriveLink = link
-		}
-		if binding.ClipTitle == "" && plan != nil && plan.ClipEvidence != nil {
-			binding.ClipTitle = strings.TrimSpace(plan.ClipEvidence.ClipNames[clipID])
-		}
+		scenes[i].Bindings.Clips = bindings
+		scenes[i].Bindings.Clip = &scenes[i].Bindings.Clips[0]
 	}
 }
 
