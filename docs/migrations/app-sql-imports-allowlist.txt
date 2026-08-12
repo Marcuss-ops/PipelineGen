@@ -99,7 +99,6 @@ internal/application/assets/providers/stock/enrichment/handler_repository.go  # 
 internal/application/assets/providers/stock/enrichment/outbox_emitter.go  # P1-8 stock enrichment outbox emitter SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/scripts/usecase/clip_sampler_gates.go  # P1-8 subtitle readiness query; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/texttracks/materializer.go  # P1-8 text tracks materializer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
-internal/application/document/usecase.go  # P1-8 document usecase direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/execution/steps/sqlite_store.go  # P1-8 execution steps sqlite store (canonical tx bridge); owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/jobs/finalizer/artifact_writer.go  # P1-8 finalizer artifact writer SQL; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/jobs/finalizer/job_completion_writer.go  # P1-8 finalizer job completion writer SQL; owner: agent/Codebuff; deadline: 2026-08-31
