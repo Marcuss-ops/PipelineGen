@@ -1,0 +1,132 @@
+package render
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+)
+
+func testRenderTimeline() audio.CanonicalTimeline {
+	return audio.CanonicalTimeline{
+		Version:    audio.TimelineVersion,
+		DurationUS: 18000000,
+		Segments: []audio.TimelineSegment{
+			{ID: "a", Index: 0, TimelineStartUS: 0, DurationUS: 5600000, Video: audio.VideoSegment{AssetID: "clip-a", SourceInUS: 33200000, SourceDurationUS: 5600000}, Audio: audio.AudioIntent{Mode: audio.AudioSilence}},
+			{ID: "b", Index: 1, TimelineStartUS: 5600000, DurationUS: 12400000, Video: audio.VideoSegment{AssetID: "clip-b", SourceInUS: 7100000, SourceDurationUS: 12400000}, Audio: audio.AudioIntent{Mode: audio.AudioSilence}},
+		},
+	}
+}
+
+func TestCompileUsesIntegerFramesForSourceAndTimeline(t *testing.T) {
+	plan, err := Compile(CompileInput{
+		JobID:      "job-1",
+		Revision:   "rev-1",
+		OutputPath: "final.mp4",
+		FPS:        30,
+		Timeline:   testRenderTimeline(),
+		Manifest: []AssetManifestEntry{
+			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 2000},
+			{AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 1000},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.VideoTracks[0].Segments[0]; got.Timeline.StartFrame != 0 || got.Timeline.FrameCount != 168 || got.Source.InFrame != 996 || got.Source.FrameCount != 168 {
+		t.Fatalf("unexpected first frame range: %+v", got)
+	}
+	if got := plan.VideoTracks[0].Segments[1]; got.Timeline.StartFrame != 168 || got.Timeline.FrameCount != 372 || got.Source.InFrame != 213 || got.Source.FrameCount != 372 {
+		t.Fatalf("unexpected second frame range: %+v", got)
+	}
+	if plan.TimelineHash == "" || plan.ManifestSHA256 == "" || plan.PlanSHA256 == "" {
+		t.Fatal("sealed plan must contain all hashes")
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("sealed plan did not validate: %v", err)
+	}
+}
+
+func TestCompileUsesRationalFrameRate(t *testing.T) {
+	plan, err := Compile(CompileInput{
+		JobID: "job-rational", Revision: "rev-1", OutputPath: "final.mp4",
+		FrameRate: audio.FrameRate{Numerator: 30000, Denominator: 1001},
+		Timeline:  testRenderTimeline(),
+		Manifest: []AssetManifestEntry{
+			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 2000},
+			{AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 1000},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.FPSNumerator != 30000 || plan.FPSDenominator != 1001 || plan.FPS != 30 {
+		t.Fatalf("rational frame rate was not preserved: %+v", plan)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("rational plan did not validate: %v", err)
+	}
+}
+
+func TestCompileRejectsSourceRangeBeyondAssetFrameCount(t *testing.T) {
+	_, err := Compile(CompileInput{
+		JobID: "job-range", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		Timeline: testRenderTimeline(),
+		Manifest: []AssetManifestEntry{
+			{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 1000},
+			{AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 1000},
+		},
+	})
+	if err == nil {
+		t.Fatal("source frame range beyond asset frame_count must be rejected")
+	}
+}
+
+func TestRenderPlanRejectsHashTampering(t *testing.T) {
+	manifest := []AssetManifestEntry{{AssetID: "clip-a", Path: "/tmp/a.mp4", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FrameCount: 2000}, {AssetID: "clip-b", Path: "/tmp/b.mp4", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", FrameCount: 1000}}
+	plan, err := Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30, Timeline: testRenderTimeline(), Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Timeline.Segments[0].DurationUS++
+	if err := plan.Validate(); err == nil {
+		t.Fatal("timeline mutation must be rejected")
+	}
+	plan, err = Compile(CompileInput{JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30, Timeline: testRenderTimeline(), Manifest: manifest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.ManifestSHA256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	if err := plan.Validate(); err == nil {
+		t.Fatal("manifest hash mutation must be rejected")
+	}
+}
+
+func TestRenderPlanValidatesManifestBytes(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/clip.mp4"
+	contents := []byte("canonical clip bytes")
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(contents)
+	plan, err := Compile(CompileInput{
+		JobID: "job-1", Revision: "rev-1", OutputPath: "final.mp4", FPS: 30,
+		Timeline: testRenderTimeline(),
+		Manifest: []AssetManifestEntry{{AssetID: "clip-a", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 2000}, {AssetID: "clip-b", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 1000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.ValidateManifestFiles(); err != nil {
+		t.Fatalf("matching manifest should validate: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("tampered"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.ValidateManifestFiles(); err == nil {
+		t.Fatal("tampered manifest bytes must be rejected")
+	}
+}

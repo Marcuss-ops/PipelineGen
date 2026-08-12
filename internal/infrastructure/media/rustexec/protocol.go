@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 )
 
 const ProtocolVersion = "mediaexec.v1"
@@ -88,6 +90,10 @@ type request struct {
 	MaxDurationSec   float64            `json:"max_duration_sec,omitempty"`
 	AudioPlan        json.RawMessage    `json:"audio_plan,omitempty"`
 	AudioAssets      []audioAsset       `json:"audio_assets,omitempty"`
+	// RenderPlan is the sealed generation-time contract. The Go adapter
+	// validates its hashes and manifest files before this envelope is sent;
+	// keeping the exact JSON here lets the executor audit the same plan.
+	RenderPlan json.RawMessage `json:"render_plan,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -157,6 +163,18 @@ func (r request) Validate() error {
 	case OperationRenderStock:
 		if len(r.InputPaths) == 0 {
 			return fmt.Errorf("%s: input_paths are required", r.Operation)
+		}
+		if len(r.RenderPlan) > 0 && string(r.RenderPlan) != "null" {
+			var plan capabilityrender.RenderPlan
+			if err := json.Unmarshal(r.RenderPlan, &plan); err != nil {
+				return fmt.Errorf("%s: decode sealed render_plan: %w", r.Operation, err)
+			}
+			// This is the last Go transport boundary. Validate the complete
+			// sealed contract here as well as in StockRenderer so every
+			// caller of Client.call is fail-closed before Rust is invoked.
+			if err := plan.Validate(); err != nil {
+				return fmt.Errorf("%s: sealed render_plan validation failed: %w", r.Operation, err)
+			}
 		}
 		return requireOutput()
 	case OperationAdminRender:

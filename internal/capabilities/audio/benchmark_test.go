@@ -4,10 +4,10 @@ import "testing"
 
 func benchmarkTimeline(durationMS int64) CanonicalTimeline {
 	const segmentMS int64 = 1000
-	timeline := CanonicalTimeline{Version: TimelineVersion, DurationMS: durationMS}
+	timeline := CanonicalTimeline{Version: TimelineVersion, DurationUS: durationMS * 1000}
 	for i := int64(0); i < durationMS/segmentMS; i++ {
 		timeline.Segments = append(timeline.Segments, TimelineSegment{
-			ID: "segment", Index: int(i), TimelineStartMS: i * segmentMS, DurationMS: segmentMS,
+			ID: "segment", Index: int(i), TimelineStartUS: i * segmentMS * 1000, DurationUS: segmentMS * 1000,
 			Audio: AudioIntent{Mode: AudioSilence},
 		})
 	}

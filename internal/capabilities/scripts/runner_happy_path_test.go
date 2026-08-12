@@ -76,6 +76,14 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	require.NotNil(t, final.Result.Documents, "documents should be published")
 	assert.Equal(t, 2, len(docPub.records), "should have 2 doc upsert calls (EN + ES)")
 
+	// Assert the sealed canonical render contract reaches the enqueue stage.
+	require.NotNil(t, final.Result.CanonicalTimeline, "canonical timeline should be persisted")
+	require.NotNil(t, final.Result.RenderPlan, "render plan should be persisted")
+	assert.NotEmpty(t, final.Result.RenderPlan.TimelineHash)
+	assert.NotEmpty(t, final.Result.RenderPlan.ManifestSHA256)
+	assert.NotEmpty(t, final.Result.RenderPlan.PlanSHA256)
+	assert.NoError(t, final.Result.RenderPlan.Validate())
+
 	// Assert render enqueued.
 	require.NotNil(t, final.Result.RenderJob, "render job should exist")
 	assert.Equal(t, "render-xyz-789", final.Result.RenderJob.JobID)

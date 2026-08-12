@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		}
 		return nil
 	}
-	var start int64
+	var startUS int64
 	for i, scene := range result.Output.SpecScene.Scenes {
 		if scene.Index != i || strings.TrimSpace(scene.ID) == "" {
 			return fmt.Errorf("canonical audio scene %d is invalid", i)
@@ -82,12 +83,33 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 		if mode != capabilityaudio.AudioVoiceover && mode != capabilityaudio.AudioClip && mode != capabilityaudio.AudioSilence {
 			return fmt.Errorf("scene %s requires explicit audio_mode", scene.ID)
 		}
-		intent := capabilityaudio.AudioIntent{Mode: mode, SourceInMS: scene.AudioSourceInMS, SourceOutMS: scene.AudioSourceOutMS}
+		audioSourceInUS, err := microseconds(scene.AudioSourceInMS)
+		if err != nil {
+			return fmt.Errorf("scene %s audio source start: %w", scene.ID, err)
+		}
+		if scene.AudioSourceOutMS < scene.AudioSourceInMS {
+			return fmt.Errorf("scene %s audio source range is inverted", scene.ID)
+		}
+		audioSourceDurationMS := int64(0)
+		if scene.AudioSourceOutMS > scene.AudioSourceInMS {
+			audioSourceDurationMS = scene.AudioSourceOutMS - scene.AudioSourceInMS
+		}
+		audioSourceDurationUS, err := microseconds(audioSourceDurationMS)
+		if err != nil {
+			return fmt.Errorf("scene %s audio source duration: %w", scene.ID, err)
+		}
+		intent := capabilityaudio.AudioIntent{Mode: mode, SourceInUS: audioSourceInUS, SourceDurationUS: audioSourceDurationUS}
 		video := capabilityaudio.VideoSegment{}
 		if scene.Bindings.Clip != nil {
-			video.AssetID = scene.Bindings.Clip.ClipID
-			video.SourceInMS = scene.Bindings.Clip.StartMs
-			video.SourceOutMS = scene.Bindings.Clip.EndMs
+			clipStartUS, err := microseconds(scene.Bindings.Clip.StartMs)
+			if err != nil {
+				return fmt.Errorf("scene %s video source start: %w", scene.ID, err)
+			}
+			clipDurationUS, err := microseconds(scene.Bindings.Clip.EndMs - scene.Bindings.Clip.StartMs)
+			if err != nil {
+				return fmt.Errorf("scene %s video source duration: %w", scene.ID, err)
+			}
+			video = capabilityaudio.VideoSegment{AssetID: scene.Bindings.Clip.ClipID, SourceInUS: clipStartUS, SourceDurationUS: clipDurationUS}
 		}
 		switch mode {
 		case capabilityaudio.AudioVoiceover:
@@ -110,10 +132,17 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 				return err
 			}
 		}
-		timeline.Segments = append(timeline.Segments, capabilityaudio.TimelineSegment{ID: scene.ID, Index: i, TimelineStartMS: start, DurationMS: duration, Video: video, Audio: intent})
-		start += duration
+		durationUS, err := microseconds(duration)
+		if err != nil {
+			return fmt.Errorf("scene %s duration: %w", scene.ID, err)
+		}
+		timeline.Segments = append(timeline.Segments, capabilityaudio.TimelineSegment{ID: scene.ID, Index: i, TimelineStartUS: startUS, DurationUS: durationUS, Video: video, Audio: intent})
+		if startUS > math.MaxInt64-durationUS {
+			return fmt.Errorf("scene %s timeline duration overflows", scene.ID)
+		}
+		startUS += durationUS
 	}
-	timeline.DurationMS = start
+	timeline.DurationUS = startUS
 	plan, err := capabilityaudio.Compile(timeline, capabilityaudio.DefaultAudioProfile())
 	if err != nil {
 		return err

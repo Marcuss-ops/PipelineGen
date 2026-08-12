@@ -305,6 +305,8 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 	}
 
 	// ── Stage 6: Build Render Payload ───────────────────────────
+	var canonicalTimeline capabilityaudio.CanonicalTimeline
+	var compiledAudioPlan capabilityaudio.CompiledAudioPlan
 	if !skipIfCompleted(StageBuildingRenderPayload) && req.RenderVideo {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageBuildingRenderPayload); err != nil {
 			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
@@ -328,14 +330,15 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 				return
 			}
 			started := time.Now()
-			_, audioPlan, audioAssets, err := CompileCanonicalAudioPlan(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+			var audioAssets capabilityaudio.ResolvedAudioAssets
+			canonicalTimeline, compiledAudioPlan, audioAssets, err = CompileCanonicalAudioPlan(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
 			if err != nil {
 				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical audio plan failed: %w", err))
 				return
 			}
 			var finalAudio FinalAudioReference
 			var metrics AudioPipelineMetrics
-			if result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, audioPlan) == nil {
+			if result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil {
 				// A checkpointed certified artifact is the idempotency boundary.
 				// Do not invoke TTS/mix/encode again on a retry.
 				finalAudio = *result.FinalAudio
@@ -343,12 +346,12 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					metrics = *result.AudioMetrics
 				}
 			} else {
-				finalAudio, metrics, err = r.combinedAudioRenderer.Render(ctx, audioPlan, audioAssets)
+				finalAudio, metrics, err = r.combinedAudioRenderer.Render(ctx, compiledAudioPlan, audioAssets)
 				if err != nil {
 					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("combined audio render failed: %w", err))
 					return
 				}
-				if err := ValidateFinalAudioReference(finalAudio, audioPlan); err != nil {
+				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
 					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("final audio certification failed: %w", err))
 					return
 				}
@@ -366,15 +369,40 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			result.FinalAudio = &finalAudio
 			result.AudioStrategy = capabilityaudio.FinalAudioCopy
 			result.AudioMetrics = &metrics
+			result.CanonicalTimeline = &canonicalTimeline
+			result.AudioPlan = &compiledAudioPlan
 			r.checkpoint(ctx, runID, result)
 		} else if mode == capabilityaudio.AudioModeChunkedVoiceover {
+			canonicalTimeline, err = CompileCanonicalTimeline(*result)
+			if err != nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical timeline failed: %w", err))
+				return
+			}
 			if err := ValidateChunkedVoiceovers(*result); err != nil {
 				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 				return
 			}
 			result.AudioStrategy = capabilityaudio.TimelineMix
+		} else if mode == capabilityaudio.AudioModeNone {
+			canonicalTimeline, err = CompileCanonicalTimeline(*result)
+			if err != nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical timeline failed: %w", err))
+				return
+			}
 		}
-		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)), zap.String("audio_mode", string(mode)))
+		result.CanonicalTimeline = &canonicalTimeline
+		frameRate := capabilityaudio.IntegerFrameRate(30)
+		if req.RenderFrameRate != nil {
+			frameRate = *req.RenderFrameRate
+		}
+		renderPlan, err := CompileCanonicalRenderPlanWithFrameRate(*result, canonicalTimeline, runID, "generation.v1", frameRate)
+		if err != nil {
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile render plan failed: %w", err))
+			return
+		}
+		result.RenderPlan = renderPlan
+		r.checkpoint(ctx, runID, result)
+		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)), zap.String("audio_mode", string(mode)), zap.String("render_plan_sha256", renderPlan.PlanSHA256))
 	}
 
 	// ── Stage 7: Enqueue Render ─────────────────────────────────
@@ -383,13 +411,23 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
 			return
 		}
+		if result.RenderPlan == nil {
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, fmt.Errorf("render enqueue requires a canonical RenderPlan"))
+			return
+		}
+		if err := result.RenderPlan.Validate(); err != nil {
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, fmt.Errorf("render plan validation failed before enqueue: %w", err))
+			return
+		}
 		renderRef, err := r.renderEnqueuer.Enqueue(ctx, *result)
 		if err != nil {
 			r.failRunWithRetry(ctx, runID, StageEnqueuingRender,
 				fmt.Errorf("enqueue render failed: %w", err))
 			return
 		}
-		renderRef.Status = "QUEUED"
+		if renderRef.Status == "" {
+			renderRef.Status = "QUEUED"
+		}
 		result.RenderJob = &renderRef
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageEnqueuingRender)))
 	}

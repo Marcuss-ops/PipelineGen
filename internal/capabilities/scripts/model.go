@@ -20,6 +20,7 @@ package scriptgeneration
 import "time"
 
 import capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+import capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 
 // ── Value types ─────────────────────────────────────────────────────
 
@@ -55,6 +56,11 @@ type ClipReference struct {
 	Duration     float64 `json:"duration,omitempty"` // seconds
 	AudioAssetID string  `json:"audio_asset_id,omitempty"`
 	AudioPath    string  `json:"audio_path,omitempty"`
+	Path         string  `json:"path,omitempty"`
+	SHA256       string  `json:"sha256,omitempty"`
+	FrameCount   int64   `json:"frame_count,omitempty"`
+	SourceInMS   int64   `json:"source_in_ms,omitempty"`
+	SourceOutMS  int64   `json:"source_out_ms,omitempty"`
 }
 
 // AudioReference identifies a generated voiceover audio asset.
@@ -166,6 +172,9 @@ type DocumentsConfig struct {
 // Zero I/O in the builder.
 type GenerateRequest struct {
 	Audio capabilityaudio.AudioMode `json:"audio_mode,omitempty"`
+	// RenderFrameRate is optional for legacy requests; when present it is
+	// preserved as an exact rational and compiled through FrameResolver.
+	RenderFrameRate *capabilityaudio.FrameRate `json:"render_frame_rate,omitempty"`
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 
@@ -227,6 +236,13 @@ type Scene struct {
 type GenerateResult struct {
 	// Scenes is the ordered list of generated scenes.
 	Scenes []Scene `json:"scenes"`
+
+	// CanonicalTimeline and AudioPlan are persisted so the renderer and
+	// audio compiler consume the same timing decision rather than deriving
+	// independent offsets on either side of the enqueue boundary.
+	CanonicalTimeline *capabilityaudio.CanonicalTimeline `json:"canonical_timeline,omitempty"`
+	AudioPlan         *capabilityaudio.CompiledAudioPlan `json:"audio_plan,omitempty"`
+	RenderPlan        *capabilityrender.RenderPlan       `json:"render_plan,omitempty"`
 
 	// Documents maps each language to the published Google Doc.
 	Documents map[Language]DocumentReference `json:"documents,omitempty"`

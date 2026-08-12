@@ -12,7 +12,7 @@ type stubCombinedAudioRenderer struct{ calls int }
 
 func (s *stubCombinedAudioRenderer) Render(_ context.Context, plan capabilityaudio.CompiledAudioPlan, _ capabilityaudio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error) {
 	s.calls++
-	return FinalAudioReference{AssetID: "final-audio-1", Path: "/tmp/final_audio.m4a", AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: plan.Version, PlanSHA256: plan.PlanSHA256, FinalAudioSHA256: "audio-hash", Codec: plan.Output.Codec, Profile: plan.Output.Profile, SampleRate: plan.Output.SampleRate, Channels: plan.Output.Channels, ChannelLayout: plan.Output.ChannelLayout, Bitrate: 128000, DurationMS: plan.DurationMS, StartPTS: 0, SizeBytes: 1, FinalMix: true, CopyEligible: true}, AudioPipelineMetrics{AudioDurationMS: plan.DurationMS}, nil
+	return FinalAudioReference{AssetID: "final-audio-1", Path: "/tmp/final_audio.m4a", AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: plan.Version, PlanSHA256: plan.PlanSHA256, FinalAudioSHA256: "0000000000000000000000000000000000000000000000000000000000000000", Codec: plan.Output.Codec, Profile: plan.Output.Profile, SampleRate: plan.Output.SampleRate, Channels: plan.Output.Channels, ChannelLayout: plan.Output.ChannelLayout, Bitrate: 128000, DurationMS: plan.DurationMS, StartPTS: 0, SizeBytes: 1, FinalMix: true, CopyEligible: true}, AudioPipelineMetrics{AudioDurationMS: plan.DurationMS}, nil
 }
 
 func TestRunnerCombinedTimelineRequiresCertifiedRenderer(t *testing.T) {
