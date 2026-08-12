@@ -248,6 +248,17 @@ class VerifyPipelineTests(unittest.TestCase):
         self.assertEqual(report["pipelines"]["stock-only"]["status"], "TIMEOUT")
         self.assertEqual(calls, 2)
 
+    def test_process_start_failure_preserves_fail_closed_result_shape(self) -> None:
+        result = verify_pipeline.run_process(
+            ["/definitely/missing/verify-pipeline-command"],
+            1,
+            Path.cwd(),
+        )
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual(result.exit_code, 127)
+        self.assertGreaterEqual(result.duration_ms, 0)
+        self.assertFalse(result.timed_out)
+
     def test_real_registry_loads_initial_pipelines(self) -> None:
         path = Path(__file__).parents[2] / "config" / "verify-pipelines.json"
         registry = verify_pipeline.load_pipeline_registry(path)
