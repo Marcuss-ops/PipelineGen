@@ -97,6 +97,7 @@ type AudioEvent struct {
 	DurationUS       int64          `json:"duration_us"`
 	SourceInUS       int64          `json:"source_in_us,omitempty"`
 	SourceDurationUS int64          `json:"source_duration_us,omitempty"`
+	UseOriginalAudio bool           `json:"use_original_audio,omitempty"`
 	GainDB           float64        `json:"gain_db,omitempty"`
 }
 
