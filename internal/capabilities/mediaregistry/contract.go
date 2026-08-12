@@ -8,6 +8,7 @@ package mediaregistry
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 type Event struct {
@@ -44,6 +45,27 @@ type Run struct {
 	Error              string
 }
 
+// ProjectionStatus is the persisted lifecycle of a rebuildable projection.
+// A projection may only become ACTIVE after it has been validated at the
+// same registry sequence from which it was built.
+type ProjectionStatus string
+
+const (
+	ProjectionBuilding   ProjectionStatus = "BUILDING"
+	ProjectionValidating ProjectionStatus = "VALIDATING"
+	ProjectionReady      ProjectionStatus = "READY"
+	ProjectionActive     ProjectionStatus = "ACTIVE"
+	ProjectionRetired    ProjectionStatus = "RETIRED"
+	ProjectionFailed     ProjectionStatus = "FAILED"
+)
+
+var (
+	ErrInvalidProjectionTransition = errors.New("mediaregistry: invalid projection state transition")
+	ErrProjectionSequenceLag       = errors.New("mediaregistry: projection sequence lags registry")
+	ErrProjectionSequenceAhead     = errors.New("mediaregistry: projection sequence is ahead of registry")
+)
+
+// Projection is the durable metadata for one Qdrant (or future) projection.
 type Projection struct {
 	ProjectionID        string
 	ProjectionType      string
@@ -59,6 +81,54 @@ type Projection struct {
 	QdrantVersion       string
 	CreatedAt           string
 	ActivatedAt         string
+}
+
+// ValidateProjectionTransition enforces the projection state machine. A
+// failed build/validation is terminal for that projection identity; retrying
+// creates a new projection build rather than reviving a partially-built one.
+func ValidateProjectionTransition(from, to ProjectionStatus) error {
+	if from == to {
+		return nil
+	}
+	allowed := map[ProjectionStatus]map[ProjectionStatus]bool{
+		ProjectionBuilding:   {ProjectionValidating: true, ProjectionFailed: true},
+		ProjectionValidating: {ProjectionReady: true, ProjectionFailed: true},
+		ProjectionReady:      {ProjectionActive: true, ProjectionFailed: true},
+		ProjectionActive:     {ProjectionRetired: true},
+		// A retired projection may be reactivated only by an explicit
+		// rollback to a previously known-good target.
+		ProjectionRetired: {ProjectionActive: true},
+		ProjectionFailed:  {},
+	}
+	if allowed[from][to] {
+		return nil
+	}
+	return fmtProjectionTransitionError(from, to)
+}
+
+// ValidateProjectionSequence returns a typed error unless the projection was
+// built from exactly the current canonical registry sequence. Lagging builds
+// are stale and ahead builds indicate a wrong registry/restore; neither may be
+// activated.
+func ValidateProjectionSequence(projectionSequence, registrySequence int64) error {
+	if projectionSequence < 0 || registrySequence < 0 {
+		return fmtProjectionSequenceError(ErrInvalidProjectionTransition, projectionSequence, registrySequence)
+	}
+	if projectionSequence < registrySequence {
+		return fmtProjectionSequenceError(ErrProjectionSequenceLag, projectionSequence, registrySequence)
+	}
+	if projectionSequence > registrySequence {
+		return fmtProjectionSequenceError(ErrProjectionSequenceAhead, projectionSequence, registrySequence)
+	}
+	return nil
+}
+
+func fmtProjectionTransitionError(from, to ProjectionStatus) error {
+	return fmt.Errorf("%w: %s -> %s", ErrInvalidProjectionTransition, from, to)
+}
+
+func fmtProjectionSequenceError(kind error, projectionSequence, registrySequence int64) error {
+	return fmt.Errorf("%w: projection_seq=%d registry_seq=%d", kind, projectionSequence, registrySequence)
 }
 
 type Backup struct {
@@ -88,6 +158,14 @@ type Ledger interface {
 
 type CountsReader interface {
 	ReadCounts(context.Context) (Counts, error)
+}
+
+// ProjectionReader is an optional durable read surface used by the
+// Projection Manager to hydrate lifecycle state after a process restart.
+// It is separate from Ledger so existing ledger implementations remain
+// source-compatible while the registry read model evolves.
+type ProjectionReader interface {
+	ListProjections(context.Context) ([]Projection, error)
 }
 
 // AssetSource is a single provenance record: one logical asset, one place it
