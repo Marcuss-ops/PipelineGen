@@ -41,6 +41,7 @@ type Runner struct {
 	docPublisher          DocumentPublisher
 	renderEnqueuer        RenderEnqueuer
 	combinedAudioRenderer CombinedAudioRenderer
+	recorder              ExecutionRecorder
 	log                   *zap.Logger
 }
 
@@ -57,13 +58,13 @@ func NewRunner(
 		panic("scriptgeneration: RunRepository is required for Runner")
 	}
 	return &Runner{
-		repo:           repo,
-		textGen:        textGen,
-		translator:     translator,
-		voiceoverGen:   voiceoverGen,
-		docPublisher:   docPublisher,
-		renderEnqueuer: renderEnqueuer,
-		log:            zap.NewNop(),
+		repo:         repo,
+		textGen:      textGen,
+		translator:   translator,
+		voiceoverGen: voiceoverGen,
+		docPublisher: docPublisher, renderEnqueuer: renderEnqueuer,
+		recorder: noopExecutionRecorder{},
+		log:      zap.NewNop(),
 	}
 }
 
@@ -76,6 +77,14 @@ func (r *Runner) SetLogger(log *zap.Logger) {
 
 func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 	r.combinedAudioRenderer = renderer
+}
+
+// SetExecutionRecorder injects the durable execution/lineage port. A nil
+// recorder restores the safe no-op implementation used by unit runtimes.
+func (r *Runner) SetExecutionRecorder(recorder ExecutionRecorder) {
+	if r != nil {
+		r.setRecorder(recorder)
+	}
 }
 
 // Execute runs the complete generation workflow for the given run.
@@ -93,6 +102,28 @@ func (r *Runner) SetCombinedAudioRenderer(renderer CombinedAudioRenderer) {
 // The handler must NOT wait for Execute to complete. This method
 // is intended to be launched as a goroutine.
 func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest) {
+	r.ExecuteWithContext(ctx, runID, req, NewExecutionContext(runID, req.IdempotencyKey))
+}
+
+// ExecuteWithContext is the worker-facing entry point that preserves the
+// broker's root/parent/project/video correlation across every stage.
+func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+	if exec.JobID == "" {
+		exec.JobID = runID
+	}
+	if exec.RootJobID == "" {
+		exec.RootJobID = exec.JobID
+	}
+	if exec.CorrelationID == "" {
+		exec.CorrelationID = req.IdempotencyKey
+	}
+	if err := exec.Validate(); err != nil {
+		if r.log != nil {
+			r.log.Warn("scriptgeneration: invalid execution context", zap.Error(err))
+		}
+		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+		return
+	}
 	r.log.Info("scriptgeneration: starting execution",
 		zap.String("run_id", runID),
 		zap.String("source_type", string(req.Source.Type)),
@@ -120,6 +151,12 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			return
 		}
 	}
+	if exec.Attempt <= 0 {
+		exec.Attempt = 1
+		if run != nil && run.AttemptCount > 0 {
+			exec.Attempt = run.AttemptCount + 1
+		}
+	}
 
 	// Helper: skipIfCompleted returns true when the stage is before
 	// the resume index (already completed in a previous attempt).
@@ -128,26 +165,52 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 	}
 
 	// ── Stage 1: Normalize ──────────────────────────────────────
+	normalizeStep, startErr := r.startExecutionStep(ctx, exec, "NORMALIZE", "script")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageNormalizing, startErr)
+		return
+	}
 	if skipIfCompleted(StageNormalizing) {
 		r.log.Info("skipping completed stage", zap.String("stage", string(StageNormalizing)))
 	} else {
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageNormalizing)))
 	}
+	if skipIfCompleted(StageNormalizing) {
+		if err := r.skipExecutionStep(ctx, exec, normalizeStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, normalizeStep); err != nil {
+		r.failExecutionStep(ctx, exec, normalizeStep, err)
+		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
+		return
+	}
 
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
+	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, startErr)
+		return
+	}
 	var result *GenerateResult
-	if !skipIfCompleted(StageGeneratingSceneText) {
+	scriptSkipped := skipIfCompleted(StageGeneratingSceneText)
+	if !scriptSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingSceneText); err != nil {
+			r.failExecutionStep(ctx, exec, scriptStep, err)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 			return
 		}
 		scenes, err := r.textGen.GenerateSceneText(ctx, req)
 		if err != nil {
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text failed: %w", err))
+			cause := fmt.Errorf("generate scene text failed: %w", err)
+			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return
 		}
 		if len(scenes) == 0 {
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, fmt.Errorf("generate scene text returned zero scenes"))
+			cause := fmt.Errorf("generate scene text returned zero scenes")
+			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return
 		}
 		result = &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName}
@@ -161,17 +224,49 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		}
 	}
 
+	// Record resolved clip assets as script inputs once the scene plan exists.
+	if result != nil {
+		ordinal := 0
+		for _, scene := range result.Scenes {
+			if scene.Clip != nil {
+				if err := r.attachInputAsset(ctx, exec, scriptStep.StepID, scene.Clip.ID, ordinal); err != nil {
+					r.failExecutionStep(ctx, exec, scriptStep, err)
+					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+					return
+				}
+				ordinal++
+			}
+		}
+	}
+	if scriptSkipped {
+		if err := r.skipExecutionStep(ctx, exec, scriptStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, scriptStep); err != nil {
+		r.failExecutionStep(ctx, exec, scriptStep, err)
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+		return
+	}
+
 	// Nil guard: result must be non-nil before downstream stages.
 	if result == nil {
 		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName}
 	}
 
 	// ── Stage 3: Translate Scenes (scene-level idempotent) ───────
+	translationStep, startErr := r.startExecutionStep(ctx, exec, "TRANSLATION", "generation")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageTranslatingScenes, startErr)
+		return
+	}
 	// On retry, scenes that already have translated text for a target
 	// language are skipped. The checkpoint after each scene ensures
 	// partial progress is preserved.
-	if !skipIfCompleted(StageTranslatingScenes) && len(req.Languages) > 0 {
+	translationSkipped := skipIfCompleted(StageTranslatingScenes) || len(req.Languages) == 0
+	if !translationSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageTranslatingScenes); err != nil {
+			r.failExecutionStep(ctx, exec, translationStep, err)
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 			return
 		}
@@ -199,8 +294,9 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					SourceText:     sourceText,
 				})
 				if err != nil {
-					r.failRunWithRetry(ctx, runID, StageTranslatingScenes,
-						fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[i].ID, lang, err))
+					cause := fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[i].ID, lang, err)
+					r.failExecutionStep(ctx, exec, translationStep, cause)
+					r.failRunWithRetry(ctx, runID, StageTranslatingScenes, cause)
 					return
 				}
 				if result.Scenes[i].Text == nil {
@@ -213,13 +309,30 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		}
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageTranslatingScenes)))
 	}
+	if translationSkipped {
+		if err := r.skipExecutionStep(ctx, exec, translationStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, translationStep); err != nil {
+		r.failExecutionStep(ctx, exec, translationStep, err)
+		r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
+		return
+	}
 
 	// ── Stage 4: Generate Voiceovers (scene-level idempotent) ───
+	voiceoverStep, startErr := r.startExecutionStep(ctx, exec, "VOICEOVER", "audio")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, startErr)
+		return
+	}
 	// On retry, scenes that already have a voiceover for a language
 	// are skipped. The Upsert-style DocumentPublisher ensures docs
 	// are not duplicated either.
-	if !skipIfCompleted(StageGeneratingVoiceovers) && r.voiceoverGen != nil {
+	voiceoverSkipped := skipIfCompleted(StageGeneratingVoiceovers) || r.voiceoverGen == nil
+	if !voiceoverSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingVoiceovers); err != nil {
+			r.failExecutionStep(ctx, exec, voiceoverStep, err)
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 			return
 		}
@@ -249,8 +362,9 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					Text:     text,
 				})
 				if err != nil {
-					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers,
-						fmt.Errorf("voiceover generation for scene %s lang %s failed: %w", scene.ID, lang, err))
+					cause := fmt.Errorf("voiceover generation for scene %s lang %s failed: %w", scene.ID, lang, err)
+					r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 					return
 				}
 				ttsCalls++
@@ -259,6 +373,18 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 					scene.Voiceover = make(map[Language]AudioReference)
 				}
 				scene.Voiceover[lang] = audioRef
+				if err := r.attachOutputAsset(ctx, exec, voiceoverStep.StepID, audioRef.ID, ttsCalls-1); err != nil {
+					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
+					return
+				}
+				// Voiceover duration is the authoritative duration for
+				// narration-only timeline segments. Clip-bound scenes retain
+				// their source-range duration so audio and video remain
+				// aligned by construction.
+				if scene.Clip == nil && audioRef.Duration > 0 {
+					scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
+				}
 			}
 			r.checkpoint(ctx, runID, result)
 		}
@@ -266,15 +392,32 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		result.AudioMetrics.TTSCalls += ttsCalls
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingVoiceovers)))
 	}
+	if voiceoverSkipped {
+		if err := r.skipExecutionStep(ctx, exec, voiceoverStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, voiceoverStep); err != nil {
+		r.failExecutionStep(ctx, exec, voiceoverStep, err)
+		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
+		return
+	}
 
 	// ── Stage 5: Publish Documents ──────────────────────────────
+	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, startErr)
+		return
+	}
 	// Verdetto: docs.enabled must be explicitly true. One document per
 	// language is created (not one bilingual doc). The identity is
 	// deterministic (run_id + language) for idempotent Upsert.
 	docsEnabled, docsLangs, docsFolderID := req.ResolveDocsConfig()
 
-	if !skipIfCompleted(StagePublishingDocuments) && r.docPublisher != nil && docsEnabled && len(docsLangs) > 0 {
+	documentSkipped := skipIfCompleted(StagePublishingDocuments) || r.docPublisher == nil || !docsEnabled || len(docsLangs) == 0
+	if !documentSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StagePublishingDocuments); err != nil {
+			r.failExecutionStep(ctx, exec, documentStep, err)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return
 		}
@@ -293,22 +436,45 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 				FolderID: docsFolderID,
 			})
 			if err != nil {
-				r.failRunWithRetry(ctx, runID, StagePublishingDocuments,
-					fmt.Errorf("upsert document for language %s failed: %w", lang, err))
+				cause := fmt.Errorf("upsert document for language %s failed: %w", lang, err)
+				r.failExecutionStep(ctx, exec, documentStep, cause)
+				r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 				return
 			}
 			docs[lang] = docRef
+			if err := r.attachOutputAsset(ctx, exec, documentStep.StepID, docRef.ID, len(docs)-1); err != nil {
+				r.failExecutionStep(ctx, exec, documentStep, err)
+				r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
+				return
+			}
 		}
 		result.Documents = docs
 		r.checkpoint(ctx, runID, result)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StagePublishingDocuments)))
 	}
+	if documentSkipped {
+		if err := r.skipExecutionStep(ctx, exec, documentStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, documentStep); err != nil {
+		r.failExecutionStep(ctx, exec, documentStep, err)
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
+		return
+	}
 
 	// ── Stage 6: Build Render Payload ───────────────────────────
+	payloadStep, startErr := r.startExecutionStep(ctx, exec, "RENDER_PLAN", "render")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, startErr)
+		return
+	}
 	var canonicalTimeline capabilityaudio.CanonicalTimeline
 	var compiledAudioPlan capabilityaudio.CompiledAudioPlan
-	if !skipIfCompleted(StageBuildingRenderPayload) && req.RenderVideo {
+	payloadSkipped := skipIfCompleted(StageBuildingRenderPayload) || !req.RenderVideo
+	if !payloadSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageBuildingRenderPayload); err != nil {
+			r.failExecutionStep(ctx, exec, payloadStep, err)
 			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 			return
 		}
@@ -316,24 +482,36 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		// generated scenes (or voiceover assets) is never a mode selector.
 		mode, err := capabilityaudio.ResolveAudioMode(req.Audio, false, req.RenderVideo)
 		if err != nil {
+			r.failExecutionStep(ctx, exec, payloadStep, err)
 			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 			return
 		}
 		result.AudioMode = mode
 		if mode != capabilityaudio.AudioModeCombinedTimeline && result.FinalAudio != nil {
-			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("%s must not carry final audio", mode))
+			cause := fmt.Errorf("%s must not carry final audio", mode)
+			r.failExecutionStep(ctx, exec, payloadStep, cause)
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 			return
 		}
 		if mode == capabilityaudio.AudioModeCombinedTimeline {
+			audioStep, startErr := r.startExecutionStep(ctx, exec, "AUDIO_COMPILE", "audio")
+			if startErr != nil {
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, startErr)
+				return
+			}
 			if r.combinedAudioRenderer == nil {
-				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("COMBINED_TIMELINE requires a CombinedAudioRenderer"))
+				cause := fmt.Errorf("COMBINED_TIMELINE requires a CombinedAudioRenderer")
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
 			}
 			started := time.Now()
 			var audioAssets capabilityaudio.ResolvedAudioAssets
 			canonicalTimeline, compiledAudioPlan, audioAssets, err = CompileCanonicalAudioPlan(*result, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
 			if err != nil {
-				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical audio plan failed: %w", err))
+				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
 			}
 			var finalAudio FinalAudioReference
@@ -348,11 +526,15 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 			} else {
 				finalAudio, metrics, err = r.combinedAudioRenderer.Render(ctx, compiledAudioPlan, audioAssets)
 				if err != nil {
-					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("combined audio render failed: %w", err))
+					cause := fmt.Errorf("combined audio render failed: %w", err)
+					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 					return
 				}
 				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
-					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("final audio certification failed: %w", err))
+					cause := fmt.Errorf("final audio certification failed: %w", err)
+					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 					return
 				}
 			}
@@ -366,6 +548,21 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 				metrics.AudioRTF = float64(metrics.TotalMS) / float64(metrics.AudioDurationMS)
 				metrics.AudioSpeed = 1 / metrics.AudioRTF
 			}
+			if err := r.attachOutputAsset(ctx, exec, audioStep.StepID, finalAudio.AssetID, 0); err != nil {
+				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+				return
+			}
+			if err := r.recordExecutionMetric(ctx, exec, audioStep.StepID, "audio_duration_ms", float64(finalAudio.DurationMS), "ms"); err != nil {
+				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+				return
+			}
+			if err := r.completeExecutionStep(ctx, exec, audioStep); err != nil {
+				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+				return
+			}
 			result.FinalAudio = &finalAudio
 			result.AudioStrategy = capabilityaudio.FinalAudioCopy
 			result.AudioMetrics = &metrics
@@ -375,10 +572,13 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		} else if mode == capabilityaudio.AudioModeChunkedVoiceover {
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
-				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical timeline failed: %w", err))
+				cause := fmt.Errorf("compile canonical timeline failed: %w", err)
+				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
 			}
 			if err := ValidateChunkedVoiceovers(*result); err != nil {
+				r.failExecutionStep(ctx, exec, payloadStep, err)
 				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
 				return
 			}
@@ -386,7 +586,9 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		} else if mode == capabilityaudio.AudioModeNone {
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
-				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile canonical timeline failed: %w", err))
+				cause := fmt.Errorf("compile canonical timeline failed: %w", err)
+				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
 			}
 		}
@@ -397,39 +599,90 @@ func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest)
 		}
 		renderPlan, err := CompileCanonicalRenderPlanWithFrameRate(*result, canonicalTimeline, runID, "generation.v1", frameRate)
 		if err != nil {
-			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, fmt.Errorf("compile render plan failed: %w", err))
+			cause := fmt.Errorf("compile render plan failed: %w", err)
+			r.failExecutionStep(ctx, exec, payloadStep, cause)
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 			return
 		}
 		result.RenderPlan = renderPlan
+		if err := r.recordExecutionMetric(ctx, exec, payloadStep.StepID, "render_plan_duration_frames", float64(renderPlan.DurationFrames), "frames"); err != nil {
+			r.failExecutionStep(ctx, exec, payloadStep, err)
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+			return
+		}
 		r.checkpoint(ctx, runID, result)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageBuildingRenderPayload)), zap.String("audio_mode", string(mode)), zap.String("render_plan_sha256", renderPlan.PlanSHA256))
 	}
+	if payloadSkipped {
+		if err := r.skipExecutionStep(ctx, exec, payloadStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, payloadStep); err != nil {
+		r.failExecutionStep(ctx, exec, payloadStep, err)
+		r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, err)
+		return
+	}
 
 	// ── Stage 7: Enqueue Render ─────────────────────────────────
-	if !skipIfCompleted(StageEnqueuingRender) && req.RenderVideo && r.renderEnqueuer != nil {
+	renderStep, startErr := r.startExecutionStep(ctx, exec, "VELOX_ENQUEUE", "render")
+	if startErr != nil {
+		r.failRunWithRetry(ctx, runID, StageEnqueuingRender, startErr)
+		return
+	}
+	renderSkipped := skipIfCompleted(StageEnqueuingRender) || !req.RenderVideo || r.renderEnqueuer == nil
+	if !renderSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageEnqueuingRender); err != nil {
+			r.failExecutionStep(ctx, exec, renderStep, err)
 			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
 			return
 		}
 		if result.RenderPlan == nil {
-			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, fmt.Errorf("render enqueue requires a canonical RenderPlan"))
+			cause := fmt.Errorf("render enqueue requires a canonical RenderPlan")
+			r.failExecutionStep(ctx, exec, renderStep, cause)
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, cause)
 			return
 		}
 		if err := result.RenderPlan.Validate(); err != nil {
-			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, fmt.Errorf("render plan validation failed before enqueue: %w", err))
+			cause := fmt.Errorf("render plan validation failed before enqueue: %w", err)
+			r.failExecutionStep(ctx, exec, renderStep, cause)
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, cause)
 			return
 		}
 		renderRef, err := r.renderEnqueuer.Enqueue(ctx, *result)
 		if err != nil {
-			r.failRunWithRetry(ctx, runID, StageEnqueuingRender,
-				fmt.Errorf("enqueue render failed: %w", err))
+			cause := fmt.Errorf("enqueue render failed: %w", err)
+			r.failExecutionStep(ctx, exec, renderStep, cause)
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, cause)
 			return
 		}
 		if renderRef.Status == "" {
 			renderRef.Status = "QUEUED"
 		}
 		result.RenderJob = &renderRef
+		if result.RenderPlan.FinalAudio != nil {
+			if err := r.attachInputAsset(ctx, exec, renderStep.StepID, result.RenderPlan.FinalAudio.AssetID, 0); err != nil {
+				r.failExecutionStep(ctx, exec, renderStep, err)
+				r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
+				return
+			}
+		}
+		if err := r.recordExecutionMetric(ctx, exec, renderStep.StepID, "render_duration_frames", float64(result.RenderPlan.DurationFrames), "frames"); err != nil {
+			r.failExecutionStep(ctx, exec, renderStep, err)
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
+			return
+		}
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageEnqueuingRender)))
+	}
+	if renderSkipped {
+		if err := r.skipExecutionStep(ctx, exec, renderStep); err != nil {
+			r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
+			return
+		}
+	} else if err := r.completeExecutionStep(ctx, exec, renderStep); err != nil {
+		r.failExecutionStep(ctx, exec, renderStep, err)
+		r.failRunWithRetry(ctx, runID, StageEnqueuingRender, err)
+		return
 	}
 
 	// ── Complete ────────────────────────────────────────────────

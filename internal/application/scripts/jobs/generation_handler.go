@@ -43,9 +43,10 @@ import (
 // delegates execution to a GenerationDispatcher. All single/batch
 // policy lives in the executors.
 type GenerateJobHandler struct {
-	log        *zap.Logger
-	dispatcher GenerationDispatcher
-	runRepo    scriptgen.RunRepository
+	log           *zap.Logger
+	dispatcher    GenerationDispatcher
+	runRepo       scriptgen.RunRepository
+	durableRunner *scriptgen.Runner
 }
 
 // NewGenerateJobHandler wires the handler to the unified use cases.
@@ -76,6 +77,15 @@ func NewGenerateJobHandler(
 func (h *GenerateJobHandler) SetRunRepository(repo scriptgen.RunRepository) {
 	if h != nil {
 		h.runRepo = repo
+	}
+}
+
+// SetDurableRunner wires the canonical single-item generation runtime. The
+// worker owns execution after the submission job is committed; the HTTP
+// starter deliberately does not launch a second local runner.
+func (h *GenerateJobHandler) SetDurableRunner(runner *scriptgen.Runner) {
+	if h != nil {
+		h.durableRunner = runner
 	}
 }
 
@@ -114,6 +124,30 @@ func (h *GenerateJobHandler) Handle(
 	var run *scriptgen.GenerationRun
 	if h.runRepo != nil {
 		run, _ = h.runRepo.GetByJobID(ctx, j.ID)
+		// The submission transaction commits the job before the HTTP handler
+		// can persist pipeline_runs.job_id. A fast worker may therefore claim
+		// this job in the small correlation window. The submission service
+		// mirrors Idempotency-Key into job.CorrelationID, so use that durable
+		// identity as the deterministic fallback instead of bypassing the
+		// canonical run ledger.
+		if run == nil && j != nil && j.CorrelationID != "" {
+			if finder, ok := h.runRepo.(interface {
+				GetByIdempotencyKey(context.Context, string) (*scriptgen.GenerationRun, error)
+			}); ok {
+				run, _ = finder.GetByIdempotencyKey(ctx, j.CorrelationID)
+				if run != nil && run.JobID == "" {
+					if setter, ok := h.runRepo.(interface {
+						SetJobID(context.Context, string, string) error
+					}); ok {
+						// Best-effort self-healing: the worker already has the
+						// authoritative job ID, so close the race for retries and
+						// GET /full without changing execution semantics.
+						_ = setter.SetJobID(ctx, run.ID, j.ID)
+						run.JobID = j.ID
+					}
+				}
+			}
+		}
 		if run != nil {
 			// The HTTP starter creates the run before the job is committed;
 			// the worker is the owner of the execution lifecycle thereafter.
@@ -139,6 +173,39 @@ func (h *GenerateJobHandler) Handle(
 			zap.String("job_id", j.ID),
 			zap.String("preset", string(env.Preset)),
 			zap.Int("items", len(env.Items)))
+	}
+
+	// Single-item jobs use the durable capability runtime so the same
+	// CanonicalTimeline and RenderPlan flow reaches the canonical Velox
+	// executor. Batch jobs retain the existing fan-out dispatcher until
+	// their per-item runtime is migrated to the same port.
+	if h.durableRunner != nil && len(env.Items) == 1 && run != nil {
+		runRequest, buildErr := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
+		if buildErr != nil {
+			_ = h.runRepo.FailRun(ctx, scriptgen.FailRunInput{RunID: run.ID, FailedStage: scriptgen.StageBuildingRenderPayload, ErrorCode: "INVALID_GENERATION_REQUEST", ErrorMessage: buildErr.Error()})
+			return nil, fmt.Errorf("generate job handler: build durable request: %w", buildErr)
+		}
+		parentLink := job.ParentLinkFromPayload(j.Payload)
+		execution := scriptgen.ExecutionContext{
+			RootJobID:     run.ID,
+			JobID:         j.ID,
+			ParentJobID:   parentLink.ParentJobID,
+			ProjectID:     j.Project,
+			VideoID:       j.VideoName,
+			CorrelationID: j.CorrelationID,
+		}
+		h.durableRunner.ExecuteWithContext(ctx, run.ID, runRequest, execution)
+		updated, getErr := h.runRepo.Get(ctx, run.ID)
+		if getErr != nil {
+			return nil, fmt.Errorf("generate job handler: read durable run result: %w", getErr)
+		}
+		if updated == nil || updated.Status != scriptgen.RunStatusCompleted {
+			if updated != nil && updated.ErrorMessage != "" {
+				return nil, fmt.Errorf("generate job handler: durable run failed: %s", updated.ErrorMessage)
+			}
+			return nil, fmt.Errorf("generate job handler: durable run did not complete")
+		}
+		return map[string]any{"run_id": run.ID, "parent_state": "completed", "result": updated.Result}, nil
 	}
 
 	result, dispatchErr := h.dispatcher.Dispatch(ctx, j, env, tools)
