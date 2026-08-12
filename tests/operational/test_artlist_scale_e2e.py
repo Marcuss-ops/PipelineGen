@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -7,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from artlist_scale_config import Settings, chunks, env_bool, env_float, env_int
+from artlist_scale_reporting import emit_summary
 from artlist_scale_e2e import ScaleRunner
 from artlist_scale_e2e_entry import FailClosedScaleRunner
 
@@ -35,6 +39,29 @@ class ArtlistScaleModuleContractTest(unittest.TestCase):
                 run_phase_mock.side_effect = lambda *_args, **_kwargs: (runner.fail("phase failed"), [])[1]
                 with self.assertRaisesRegex(RuntimeError, "downstream quota work aborted"):
                     runner.run_phase("first")
+
+    def test_summary_reporting_preserves_success_output_and_exit_code(self) -> None:
+        with tempfile.TemporaryDirectory() as report_dir:
+            with patch.dict(os.environ, {"ARTLIST_SCALE_REPORT_DIR": report_dir}, clear=True):
+                runner = ScaleRunner(Settings.load())
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = emit_summary(runner, {"ok": True, "failures": []})
+            self.assertEqual(result, 0)
+            self.assertIn("PASS: Artlist scale, Drive, VLM/Qdrant and replay dedup checks succeeded", output.getvalue())
+            self.assertEqual(json.loads((Path(report_dir) / "summary.json").read_text()), {"ok": True, "failures": []})
+
+    def test_summary_reporting_preserves_failure_output_and_exit_code(self) -> None:
+        with tempfile.TemporaryDirectory() as report_dir:
+            with patch.dict(os.environ, {"ARTLIST_SCALE_REPORT_DIR": report_dir}, clear=True):
+                runner = ScaleRunner(Settings.load())
+            runner.failures.append("synthetic failure")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = emit_summary(runner, {"ok": False, "failures": runner.failures})
+            self.assertEqual(result, 1)
+            self.assertIn("FAILURES:", output.getvalue())
+            self.assertIn("  - synthetic failure", output.getvalue())
 
     def test_configuration_and_pure_helpers(self) -> None:
         with tempfile.TemporaryDirectory() as report_dir:
