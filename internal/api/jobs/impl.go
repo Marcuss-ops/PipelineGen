@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -29,6 +30,7 @@ import (
 type JobsHandler struct {
 	service job.Service
 	stats   appjobs.JobStatsReader
+	history appjobs.HistoryReader
 	log     *zap.Logger
 }
 
@@ -44,6 +46,8 @@ func NewJobsHandler(service job.Service, stats appjobs.JobStatsReader, log *zap.
 	return &JobsHandler{service: service, stats: stats, log: log}
 }
 
+func (h *JobsHandler) SetHistoryReader(reader appjobs.HistoryReader) { h.history = reader }
+
 // RegisterRoutes mounts the job endpoints under the given router group.
 func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("", h.Enqueue)
@@ -54,6 +58,39 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:id/cancel", h.Cancel)
 	r.POST("/:id/retry", h.Retry)
 	r.GET("/:id/events", h.Events)
+}
+
+func (h *JobsHandler) History(c *gin.Context) {
+	if h.history == nil {
+		apiutil.Error(c, 503, "operation history is not configured")
+		return
+	}
+	f := appjobs.HistoryFilter{Status: c.Query("status"), Type: c.Query("type")}
+	if raw := c.Query("from"); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.From = &parsed
+		} else {
+			apiutil.Error(c, 400, "invalid from timestamp")
+			return
+		}
+	}
+	if raw := c.Query("to"); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+			f.To = &parsed
+		} else {
+			apiutil.Error(c, 400, "invalid to timestamp")
+			return
+		}
+	}
+	f.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "200"))
+	f.Offset, _ = strconv.Atoi(c.DefaultQuery("offset", "0"))
+	items, err := h.history.ListHistory(c.Request.Context(), f)
+	if err != nil {
+		h.log.Error("failed to list operation history", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"history": items, "count": len(items), "limit": f.Limit, "offset": f.Offset})
 }
 
 func (h *JobsHandler) Enqueue(c *gin.Context) {

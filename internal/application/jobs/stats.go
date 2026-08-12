@@ -27,9 +27,40 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
+
+type HistoryFilter struct {
+	Status string
+	Type   string
+	From   *time.Time
+	To     *time.Time
+	Limit  int
+	Offset int
+}
+
+type HistoryItem struct {
+	JobID       string          `json:"job_id"`
+	RunID       string          `json:"run_id,omitempty"`
+	Operation   string          `json:"operation"`
+	Status      string          `json:"status"`
+	Correlation string          `json:"correlation_id,omitempty"`
+	StartedAt   *time.Time      `json:"started_at,omitempty"`
+	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	DurationMs  int64           `json:"duration_ms,omitempty"`
+	Result      json.RawMessage `json:"result,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	Report      json.RawMessage `json:"report,omitempty"`
+}
+
+type HistoryReader interface {
+	ListHistory(context.Context, HistoryFilter) ([]HistoryItem, error)
+}
 
 // JobStatsReader is the narrow port for job statistics.
 // Production bindings: *appjobs.Service (delegates to the SQLite

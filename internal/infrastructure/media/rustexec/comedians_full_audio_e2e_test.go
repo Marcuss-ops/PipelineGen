@@ -21,10 +21,10 @@ type comedianClipFixture struct {
 
 func TestComediansFullAudioE2ECertification(t *testing.T) {
 	fixtures := []comedianClipFixture{
-		{id: "clip-a", sourceInUS: 33_200_000, sourceDuration: 5_600_000, timelineStart: 12_400_000, duration: 5_600_000},
-		{id: "clip-b", sourceInUS: 7_100_000, sourceDuration: 6_500_000, timelineStart: 22_000_000, duration: 6_500_000},
-		{id: "clip-c", sourceInUS: 91_000_000, sourceDuration: 4_000_000, timelineStart: 35_000_000, duration: 4_000_000},
-		{id: "clip-d", sourceInUS: 15_500_000, sourceDuration: 6_000_000, timelineStart: 47_000_000, duration: 6_000_000},
+		{id: "clip-a", sourceInUS: 33_200_000, sourceDuration: 5_600_000, timelineStart: 0, duration: 5_600_000},
+		{id: "clip-b", sourceInUS: 7_100_000, sourceDuration: 6_500_000, timelineStart: 5_600_000, duration: 6_500_000},
+		{id: "clip-c", sourceInUS: 91_000_000, sourceDuration: 4_000_000, timelineStart: 12_100_000, duration: 4_000_000},
+		{id: "clip-d", sourceInUS: 15_500_000, sourceDuration: 6_000_000, timelineStart: 16_100_000, duration: 6_000_000},
 	}
 
 	timeline := comediansTimeline(fixtures)
@@ -32,7 +32,7 @@ func TestComediansFullAudioE2ECertification(t *testing.T) {
 		t.Fatalf("comedians canonical timeline is invalid: %v", err)
 	}
 
-	bgm := []audio.AudioLayer{{
+	bgmLayers := []audio.AudioLayer{{
 		AssetID:         "bgm-comedy-bed",
 		TimelineStartUS: 0,
 		DurationUS:      timeline.DurationUS,
@@ -41,40 +41,45 @@ func TestComediansFullAudioE2ECertification(t *testing.T) {
 	// The explicit Whoop and the five random effects are already resolved
 	// before compilation. There is no random operation left in the sealed plan.
 	sfx := []audio.AudioLayer{
-		{AssetID: "whoop-explicit", TimelineStartUS: 8_400_000, DurationUS: 400_000, GainDB: -4},
-		{AssetID: "random-sfx-01", TimelineStartUS: 13_700_000, DurationUS: 350_000, GainDB: -8},
-		{AssetID: "random-sfx-02", TimelineStartUS: 24_600_000, DurationUS: 350_000, GainDB: -8},
-		{AssetID: "random-sfx-03", TimelineStartUS: 33_100_000, DurationUS: 350_000, GainDB: -8},
-		{AssetID: "random-sfx-04", TimelineStartUS: 41_200_000, DurationUS: 350_000, GainDB: -8},
-		{AssetID: "random-sfx-05", TimelineStartUS: 50_400_000, DurationUS: 350_000, GainDB: -8},
+		{AssetID: "whoop-explicit", TimelineStartUS: 1_000_000, DurationUS: 400_000, GainDB: -4},
+		{AssetID: "random-sfx-01", TimelineStartUS: 7_000_000, DurationUS: 350_000, GainDB: -8},
+		{AssetID: "random-sfx-02", TimelineStartUS: 10_000_000, DurationUS: 350_000, GainDB: -8},
+		{AssetID: "random-sfx-03", TimelineStartUS: 14_000_000, DurationUS: 350_000, GainDB: -8},
+		{AssetID: "random-sfx-04", TimelineStartUS: 19_000_000, DurationUS: 350_000, GainDB: -8},
+		{AssetID: "random-sfx-05", TimelineStartUS: 21_000_000, DurationUS: 350_000, GainDB: -8},
 	}
-	plan, err := audio.CompileWithLayers(timeline, audio.DefaultAudioProfile(), bgm, sfx, []audio.AudioAutomation{
-		{TargetLayer: "BGM", StartUS: 12_400_000, EndUS: 18_000_000, GainDB: -24, AttackUS: 100_000, ReleaseUS: 250_000},
+	plan, err := audio.CompileWithLayers(timeline, audio.DefaultAudioProfile(), bgmLayers, sfx, []audio.AudioAutomation{
+		{TargetTrackID: "bgm", StartUS: 0, EndUS: 5_600_000, GainDB: -24, AttackUS: 100_000, ReleaseUS: 250_000},
 	})
 	if err != nil {
 		t.Fatalf("compile comedians audio plan: %v", err)
 	}
-	if len(plan.Events) != 8 || len(plan.BackgroundMusic) != 1 || len(plan.SFX) != 6 || plan.PlanSHA256 == "" {
-		t.Fatalf("unexpected full-audio plan shape: events=%d bgm=%d sfx=%d hash=%q", len(plan.Events), len(plan.BackgroundMusic), len(plan.SFX), plan.PlanSHA256)
+	if len(timeline.Segments) != 4 || len(trackEvents(plan, audio.TrackVoiceover)) != 4 || len(trackEvents(plan, audio.TrackClipAudio)) != 4 || len(trackEvents(plan, audio.TrackBGM)) != 1 || len(trackEvents(plan, audio.TrackSFX)) != 6 || plan.PlanSHA256 == "" {
+		t.Fatalf("unexpected full-audio plan shape: segments=%d vo=%d clip=%d bgm=%d sfx=%d hash=%q", len(timeline.Segments), len(trackEvents(plan, audio.TrackVoiceover)), len(trackEvents(plan, audio.TrackClipAudio)), len(trackEvents(plan, audio.TrackBGM)), len(trackEvents(plan, audio.TrackSFX)), plan.PlanSHA256)
 	}
-	if plan.BackgroundMusic[0].AssetID != "bgm-comedy-bed" || plan.BackgroundMusic[0].TimelineStartUS != 0 || plan.BackgroundMusic[0].DurationUS != 53_000_000 {
-		t.Fatalf("BGM layer is not canonical: %+v", plan.BackgroundMusic[0])
+	if len(plan.Tracks[0].Events) != 4 || len(plan.Tracks[1].Events) != 4 || plan.Tracks[0].Role != audio.TrackVoiceover || plan.Tracks[1].Role != audio.TrackClipAudio {
+		t.Fatalf("combined scene audio was not compiled into simultaneous primary tracks: %#v", plan.Tracks[:2])
+	}
+	bgm := trackEvents(plan, audio.TrackBGM)[0]
+	if bgm.AssetID != "bgm-comedy-bed" || bgm.TimelineStartUS != 0 || bgm.DurationUS != timeline.DurationUS {
+		t.Fatalf("BGM track is not canonical: %+v", bgm)
 	}
 	wantSFX := []struct {
 		id       string
 		start    int64
 		duration int64
 	}{
-		{"whoop-explicit", 8_400_000, 400_000},
-		{"random-sfx-01", 13_700_000, 350_000},
-		{"random-sfx-02", 24_600_000, 350_000},
-		{"random-sfx-03", 33_100_000, 350_000},
-		{"random-sfx-04", 41_200_000, 350_000},
-		{"random-sfx-05", 50_400_000, 350_000},
+		{"whoop-explicit", 1_000_000, 400_000},
+		{"random-sfx-01", 7_000_000, 350_000},
+		{"random-sfx-02", 10_000_000, 350_000},
+		{"random-sfx-03", 14_000_000, 350_000},
+		{"random-sfx-04", 19_000_000, 350_000},
+		{"random-sfx-05", 21_000_000, 350_000},
 	}
 	for i, want := range wantSFX {
-		if plan.SFX[i].AssetID != want.id || plan.SFX[i].TimelineStartUS != want.start || plan.SFX[i].DurationUS != want.duration {
-			t.Fatalf("resolved SFX[%d] drifted: got=%+v want=%+v", i, plan.SFX[i], want)
+		event := trackEvents(plan, audio.TrackSFX)[i]
+		if event.AssetID != want.id || event.TimelineStartUS != want.start || event.DurationUS != want.duration {
+			t.Fatalf("resolved SFX[%d] drifted: got=%+v want=%+v", i, event, want)
 		}
 	}
 	assertComediansClipSync(t, timeline, plan, fixtures)
@@ -168,22 +173,29 @@ func TestComediansFullAudioE2ECertification(t *testing.T) {
 	}
 }
 
+func trackEvents(plan audio.CompiledAudioPlan, role audio.AudioTrackRole) []audio.AudioEvent {
+	var events []audio.AudioEvent
+	for _, track := range plan.Tracks {
+		if track.Role == role {
+			events = append(events, track.Events...)
+		}
+	}
+	return events
+}
+
+func allTrackEvents(plan audio.CompiledAudioPlan) []audio.AudioEvent {
+	var events []audio.AudioEvent
+	for _, track := range plan.Tracks {
+		events = append(events, track.Events...)
+	}
+	return events
+}
+
 func comediansTimeline(fixtures []comedianClipFixture) audio.CanonicalTimeline {
-	segments := make([]audio.TimelineSegment, 0, len(fixtures)*2)
-	cursor := int64(0)
+	segments := make([]audio.TimelineSegment, 0, len(fixtures))
 	for i, fixture := range fixtures {
-		voiceoverDuration := fixture.timelineStart - cursor
-		segments = append(segments, audio.TimelineSegment{
-			ID:              fmt.Sprintf("voiceover-%c", 'a'+i),
-			Index:           len(segments),
-			TimelineStartUS: cursor,
-			DurationUS:      voiceoverDuration,
-			Audio: audio.AudioIntent{
-				Mode:             audio.AudioVoiceover,
-				VoiceoverAssetID: fmt.Sprintf("vo-%c", 'a'+i),
-				SourceDurationUS: voiceoverDuration,
-			},
-		})
+		voiceover := audio.AudioIntent{Mode: audio.AudioVoiceover, VoiceoverAssetID: fmt.Sprintf("vo-%c", 'a'+i), SourceDurationUS: fixture.duration}
+		clipAudio := audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: fixture.id, SourceInUS: fixture.sourceInUS, SourceDurationUS: fixture.sourceDuration, UseOriginalAudio: true}
 		segments = append(segments, audio.TimelineSegment{
 			ID:              fixture.id,
 			Index:           len(segments),
@@ -194,17 +206,11 @@ func comediansTimeline(fixtures []comedianClipFixture) audio.CanonicalTimeline {
 				SourceInUS:       fixture.sourceInUS,
 				SourceDurationUS: fixture.sourceDuration,
 			},
-			Audio: audio.AudioIntent{
-				Mode:             audio.AudioClip,
-				ClipAssetID:      fixture.id,
-				SourceInUS:       fixture.sourceInUS,
-				SourceDurationUS: fixture.sourceDuration,
-				UseOriginalAudio: true,
-			},
+			Audio:        voiceover,
+			AudioIntents: []audio.AudioIntent{voiceover, clipAudio},
 		})
-		cursor = fixture.timelineStart + fixture.duration
 	}
-	return audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: cursor, Segments: segments}
+	return audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: 22_100_000, Segments: segments}
 }
 
 func assertComediansClipSync(t *testing.T, timeline audio.CanonicalTimeline, plan audio.CompiledAudioPlan, fixtures []comedianClipFixture) {
@@ -218,9 +224,14 @@ func assertComediansClipSync(t *testing.T, timeline audio.CanonicalTimeline, pla
 			}
 		}
 		for i := range timeline.Segments {
-			if timeline.Segments[i].Audio.ClipAssetID == fixture.id {
-				candidate := timeline.Segments[i]
-				event = &candidate
+			for _, intent := range timeline.Segments[i].EffectiveAudioIntents() {
+				if intent.Mode == audio.AudioClip && intent.ClipAssetID == fixture.id {
+					candidate := timeline.Segments[i]
+					event = &candidate
+					break
+				}
+			}
+			if event != nil {
 				break
 			}
 		}
@@ -230,13 +241,20 @@ func assertComediansClipSync(t *testing.T, timeline audio.CanonicalTimeline, pla
 		if video.TimelineStartUS != fixture.timelineStart || video.DurationUS != fixture.duration || video.Video.SourceInUS != fixture.sourceInUS || video.Video.SourceDurationUS != fixture.sourceDuration {
 			t.Fatalf("video timing drift for %s: %+v", fixture.id, video)
 		}
-		if event.TimelineStartUS != video.TimelineStartUS || event.DurationUS != video.DurationUS || event.Audio.SourceInUS != video.Video.SourceInUS || event.Audio.SourceDurationUS != video.Video.SourceDurationUS || !event.Audio.UseOriginalAudio {
+		var clipIntent audio.AudioIntent
+		for _, intent := range event.EffectiveAudioIntents() {
+			if intent.Mode == audio.AudioClip {
+				clipIntent = intent
+				break
+			}
+		}
+		if event.TimelineStartUS != video.TimelineStartUS || event.DurationUS != video.DurationUS || clipIntent.SourceInUS != video.Video.SourceInUS || clipIntent.SourceDurationUS != video.Video.SourceDurationUS || !clipIntent.UseOriginalAudio {
 			t.Fatalf("audio/video sync drift for %s: video=%+v audio=%+v", fixture.id, video, event)
 		}
 	}
 	for _, fixture := range fixtures {
 		found := false
-		for _, event := range plan.Events {
+		for _, event := range allTrackEvents(plan) {
 			if event.Type == audio.EventClip && event.AssetID == fixture.id {
 				found = true
 				if event.TimelineStartUS != fixture.timelineStart || event.SourceInUS != fixture.sourceInUS || event.SourceDurationUS != fixture.sourceDuration || !event.UseOriginalAudio {
@@ -250,7 +268,7 @@ func assertComediansClipSync(t *testing.T, timeline audio.CanonicalTimeline, pla
 	}
 	wantVoiceovers := []string{"vo-a", "vo-b", "vo-c", "vo-d"}
 	voiceoverIndex := 0
-	for _, event := range plan.Events {
+	for _, event := range allTrackEvents(plan) {
 		if event.Type != audio.EventVoiceover {
 			continue
 		}
@@ -308,15 +326,17 @@ func (r *comediansAudioRunner) Run(_ context.Context, _ string, input []byte) ([
 				return nil, nil, fmt.Errorf("executor received a clip event without original audio")
 			}
 		}
-		for _, layer := range append(append([]audio.AudioLayer{}, plan.BackgroundMusic...), plan.SFX...) {
-			if _, ok := available[layer.AssetID]; !ok {
-				return nil, nil, fmt.Errorf("executor is missing layer asset %q", layer.AssetID)
+		for _, event := range allTrackEvents(plan) {
+			if event.Type == audio.EventBGM || event.Type == audio.EventSFX {
+				if _, ok := available[event.AssetID]; !ok {
+					return nil, nil, fmt.Errorf("executor is missing layer asset %q", event.AssetID)
+				}
 			}
 		}
 		if err := os.WriteFile(req.OutputPath, r.audioBytes, 0o600); err != nil {
 			return nil, nil, err
 		}
-		return []byte(`{"ok":true,"operation":"render_audio_plan","metadata":{"duration_sec":53,"bitrate":128000,"audio_codec":"aac","audio_profile":"LC","sample_rate":48000,"channels":2,"start_pts":0,"has_audio":true}}`), nil, nil
+		return []byte(`{"ok":true,"operation":"render_audio_plan","metadata":{"duration_sec":22.1,"bitrate":128000,"audio_codec":"aac","audio_profile":"LC","sample_rate":48000,"channels":2,"start_pts":0,"has_audio":true}}`), nil, nil
 	case OperationMuxAudioCopy:
 		return []byte(`{"ok":true,"operation":"mux_audio_copy"}`), nil, nil
 	default:

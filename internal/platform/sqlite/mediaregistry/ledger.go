@@ -186,6 +186,14 @@ func (l *Ledger) ListProjections(ctx context.Context) ([]capregistry.Projection,
 		); err != nil {
 			return nil, fmt.Errorf("scan projection: %w", err)
 		}
+		// Older production databases use VALIDATED for the
+		// pre-ACTIVE state, while the canonical domain contract names
+		// the two in-memory phases VALIDATING and READY. Keep the
+		// storage compatibility at this adapter boundary so the domain
+		// state machine remains explicit and restart hydration works.
+		if projection.Status == "VALIDATED" {
+			projection.Status = string(capregistry.ProjectionReady)
+		}
 		projections = append(projections, projection)
 	}
 	if err := rows.Err(); err != nil {
@@ -200,6 +208,14 @@ func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.
 	}
 	if projection.ProjectionID == "" || projection.ProjectionType == "" || projection.CollectionName == "" || projection.Status == "" || projection.CreatedAt == "" {
 		return errors.New("media registry sqlite ledger: projection identity, status and created_at are required")
+	}
+	storageStatus := projection.Status
+	// Migration 203 production databases created the CHECK constraint
+	// with VALIDATED, before the domain lifecycle was split into
+	// VALIDATING -> READY. Persist both domain phases as VALIDATED;
+	// ListProjections converts it back to READY on hydration.
+	if storageStatus == string(capregistry.ProjectionValidating) || storageStatus == string(capregistry.ProjectionReady) {
+		storageStatus = "VALIDATED"
 	}
 	_, err := l.db.ExecContext(ctx, `
 		INSERT INTO projection_registry
@@ -216,7 +232,7 @@ func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.
 		 transcript_count=excluded.transcript_count, collection_hash=excluded.collection_hash,
 		 qdrant_version=excluded.qdrant_version, activated_at=excluded.activated_at`,
 		projection.ProjectionID, projection.ProjectionType, projection.CollectionName,
-		projection.AliasName, projection.Status, projection.SourceRegistrySeq,
+		projection.AliasName, storageStatus, projection.SourceRegistrySeq,
 		projection.EmbeddingModel, projection.EmbeddingDimensions, projection.AssetCount,
 		projection.TranscriptCount, projection.CollectionHash, projection.QdrantVersion,
 		projection.CreatedAt, projection.ActivatedAt)

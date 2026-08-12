@@ -2,14 +2,19 @@ package capabilities
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	videojob "github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"go.uber.org/zap"
@@ -82,7 +87,29 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		return nil, fmt.Errorf("build combined audio renderer: %w", err)
 	}
 	stockRenderer := rustexec.NewStockRendererWithExecutor(executor, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	renderEnqueuer, err := scriptgen.NewCanonicalRenderEnqueuer(stockRenderer)
+	if root.Jobs == nil || root.Jobs.Service == nil {
+		return nil, fmt.Errorf("build script generation runtime requires jobs service")
+	}
+	renderHandler := appjobs.HandlerFunc(func(ctx context.Context, j *job.Job, _ *appjobs.JobTools) (map[string]any, error) {
+		var plan caprender.RenderPlan
+		if err := json.Unmarshal(j.Payload, &plan); err != nil {
+			return nil, fmt.Errorf("decode render.video payload: %w", err)
+		}
+		validated, err := caprender.ValidateRenderPlan(plan)
+		if err != nil {
+			return nil, err
+		}
+		if err := stockRenderer.RenderCanonicalPlan(ctx, validated); err != nil {
+			return nil, err
+		}
+		return map[string]any{"render_job_id": j.ID, "output_path": plan.OutputPath}, nil
+	})
+	for _, jobType := range []string{videojob.TypeRender, videojob.TypeGenerate} {
+		if err := root.Jobs.Service.RegisterHandler(jobType, renderHandler); err != nil {
+			return nil, fmt.Errorf("register %s handler: %w", jobType, err)
+		}
+	}
+	renderEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service)
 	if err != nil {
 		return nil, fmt.Errorf("build canonical render enqueuer: %w", err)
 	}

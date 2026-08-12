@@ -44,3 +44,22 @@ func TestValidateRunCountsAcceptsCompleteRun(t *testing.T) {
 		t.Fatalf("complete run rejected: %v", err)
 	}
 }
+
+func TestDeriveRunCountsSectionsOnlyUsesSourceIDForStagedSources(t *testing.T) {
+	input := &RunInput{
+		DirectURLs:   []string{"source"},
+		DownloadMode: "sections_only",
+	}
+	state := &RunState{
+		Plan: []ClipPlan{
+			{SourceID: "source", StageKey: "planner:clip:0"},
+			{SourceID: "source", StageKey: "planner:clip:1"},
+		},
+		StagedAssets: []*assets.StagedAsset{{SourceID: "source"}},
+	}
+
+	got := deriveRunCounts(input, state)
+	if got.SelectedVideoCount != 1 || got.DownloadedVideoCount != 1 {
+		t.Fatalf("source counts = %+v, want selected=1 downloaded=1", got)
+	}
+}

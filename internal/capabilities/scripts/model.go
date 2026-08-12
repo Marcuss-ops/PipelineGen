@@ -21,6 +21,7 @@ import "time"
 
 import capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 import capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 // ── Value types ─────────────────────────────────────────────────────
 
@@ -29,12 +30,14 @@ type Language string
 
 // Source describes where the generation input comes from.
 type Source struct {
-	Type       SourceType `json:"type"`
-	Topic      string     `json:"topic,omitempty"`
-	SourceText string     `json:"source_text,omitempty"`
-	ClipIDs    []string   `json:"clip_ids,omitempty"`
-	Query      string     `json:"query,omitempty"`
-	MaxClips   int        `json:"max_clips,omitempty"`
+	Type         SourceType `json:"type"`
+	Topic        string     `json:"topic,omitempty"`
+	SourceText   string     `json:"source_text,omitempty"`
+	ClipIDs      []string   `json:"clip_ids,omitempty"`
+	IntroClipIDs []string   `json:"intro_clip_ids,omitempty"`
+	NumClips     int        `json:"num_clips,omitempty"`
+	Query        string     `json:"query,omitempty"`
+	MaxClips     int        `json:"max_clips,omitempty"`
 }
 
 // SourceType enumerates the supported generation sources.
@@ -53,6 +56,7 @@ type ClipReference struct {
 	ID           string  `json:"id"`
 	SourceID     string  `json:"source_id,omitempty"`
 	Title        string  `json:"title,omitempty"`
+	DriveLink    string  `json:"drive_link,omitempty"`
 	Duration     float64 `json:"duration,omitempty"` // seconds
 	AudioAssetID string  `json:"audio_asset_id,omitempty"`
 	AudioPath    string  `json:"audio_path,omitempty"`
@@ -185,6 +189,10 @@ type GenerateRequest struct {
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`
+	// ScriptParams carries the canonical sizing and ordered segment contract
+	// from the envelope into the durable runtime. Dropping it here makes the
+	// scene planner fall back to an unbounded prose envelope.
+	ScriptParams scriptpkg.ScriptSpec `json:"script_params,omitempty"`
 
 	// SourceLanguage is the primary language of the input (e.g. "en").
 	// Scenes in this language are NOT translated.
@@ -222,13 +230,17 @@ type GenerateRequest struct {
 // clip reference, generated text per language, and an optional
 // voiceover per language.
 type Scene struct {
-	ID         string                      `json:"id"`
-	Index      int                         `json:"index"`
-	DurationMS int64                       `json:"duration_ms,omitempty"`
-	Clip       *ClipReference              `json:"clip,omitempty"`
-	Text       map[Language]string         `json:"text"`
-	Voiceover  map[Language]AudioReference `json:"voiceover,omitempty"`
-	Audio      capabilityaudio.AudioIntent `json:"audio"`
+	ID         string `json:"id"`
+	Index      int    `json:"index"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
+	// DurationUS is the sealed internal timing value. DurationMS remains only
+	// as a legacy wire field at the boundary.
+	DurationUS   int64                         `json:"duration_us,omitempty"`
+	Clip         *ClipReference                `json:"clip,omitempty"`
+	Text         map[Language]string           `json:"text"`
+	Voiceover    map[Language]AudioReference   `json:"voiceover,omitempty"`
+	Audio        capabilityaudio.AudioIntent   `json:"audio"`
+	AudioIntents []capabilityaudio.AudioIntent `json:"audio_intents,omitempty"`
 }
 
 // GenerateResult is the complete output of a script generation run.
@@ -236,6 +248,9 @@ type Scene struct {
 type GenerateResult struct {
 	// Scenes is the ordered list of generated scenes.
 	Scenes []Scene `json:"scenes"`
+	// ResolvedScenes is the sealed technical projection consumed by canonical
+	// timeline/audio/render compilation. Scenes remain editorial input.
+	ResolvedScenes []ResolvedScene `json:"resolved_scenes,omitempty"`
 
 	// CanonicalTimeline and AudioPlan are persisted so the renderer and
 	// audio compiler consume the same timing decision rather than deriving
@@ -257,7 +272,8 @@ type GenerateResult struct {
 	OutputName string `json:"output_name,omitempty"`
 
 	// WordCount is the total generated word count.
-	WordCount int `json:"word_count"`
+	WordCount      int    `json:"word_count"`
+	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 
 	AudioMode     capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
 	AudioStrategy capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`

@@ -32,7 +32,7 @@ func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
 	if err := uc.renderCombinedAudio(context.Background(), item, result, nil); err != nil {
 		t.Fatal(err)
 	}
-	if stub.plan.DurationUS != 1000000 || len(stub.plan.Events) != 1 || result.FinalAudio == nil || !result.FinalAudio.CopyEligible {
+	if stub.plan.DurationUS != 1000000 || len(stub.plan.Tracks) != 1 || len(stub.plan.Tracks[0].Events) != 1 || stub.plan.Version != capabilityaudio.AudioPlanVersion || result.FinalAudio == nil || !result.FinalAudio.CopyEligible {
 		t.Fatalf("plan=%+v audio=%+v", stub.plan, result.FinalAudio)
 	}
 }

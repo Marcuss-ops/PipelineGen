@@ -16,8 +16,13 @@ import (
 type Bundle struct {
 	service     job.Service
 	stats       appjobs.JobStatsReader
+	history     appjobs.HistoryReader
 	enabledFunc func() bool
 	logger      *zap.Logger
+}
+
+func NewBundleWithHistory(service job.Service, stats appjobs.JobStatsReader, history appjobs.HistoryReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
+	return Bundle{service: service, stats: stats, history: history, enabledFunc: enabledFunc, logger: logger}
 }
 
 // NewBundle captures the narrow jobs capability dependencies without exposing
@@ -43,6 +48,7 @@ func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {
 	return NewModule(Dependencies{
 		Service:     b.service,
 		Stats:       b.stats,
+		History:     b.history,
 		EnabledFunc: b.enabledFunc,
 		Logger:      b.logger,
 	}).Build(ctx)

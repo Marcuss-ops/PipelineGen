@@ -16,9 +16,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // GeneratedDraft holds the canonical output of the engine phase.
@@ -63,9 +63,15 @@ func (r *GenerationEngineRunner) Generate(
 	}
 
 	tracker.PhaseGenerateStart()
-	engineStart := time.Now()
-
-	engineResult, engineErr := r.engine.Generate(ctx, &plan)
+	var engineResult *EngineResult
+	var engineErr error
+	stageReport, measureErr := kernobs.MeasureStageReport(ctx, kernobs.StageName("script.generate"), func(opCtx context.Context) error {
+		engineResult, engineErr = r.engine.Generate(opCtx, &plan)
+		return engineErr
+	})
+	if measureErr != nil && engineErr == nil {
+		engineErr = measureErr
+	}
 	if engineErr != nil {
 		return nil, &scriptpkg.GenerationError{
 			ItemID: item.ID,
@@ -77,7 +83,7 @@ func (r *GenerationEngineRunner) Generate(
 		collapseToSingleScene(engineResult)
 	}
 
-	engineMs := time.Since(engineStart).Milliseconds()
+	engineMs := stageReport.DurationMs
 	tracker.PhaseGenerateDone()
 	tracker.TrackEvent("script.generated", "Script text generated", map[string]any{
 		"item_id":      item.ID,

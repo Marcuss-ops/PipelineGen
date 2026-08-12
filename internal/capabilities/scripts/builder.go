@@ -54,12 +54,14 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 
 	// Map SourceSpec → scriptgeneration.Source (pure field copy).
 	source := Source{
-		Type:       SourceType(item.Source.Type),
-		Topic:      item.Source.Topic,
-		SourceText: item.Source.SourceText,
-		ClipIDs:    copyStrings(item.Source.ClipIDs),
-		Query:      item.Source.Query,
-		MaxClips:   item.Source.MaxClips,
+		Type:         SourceType(item.Source.Type),
+		Topic:        item.Source.Topic,
+		SourceText:   item.Source.SourceText,
+		ClipIDs:      copyStrings(item.Source.ClipIDs),
+		IntroClipIDs: copyStrings(item.Source.IntroClipIDs),
+		NumClips:     item.Source.NumClips,
+		Query:        item.Source.Query,
+		MaxClips:     item.Source.MaxClips,
 	}
 
 	// Map languages from the output spec.
@@ -100,6 +102,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		IdempotencyKey: idempotencyKey,
 		ForceRefresh:   env.ForceRefresh,
 		Source:         source,
+		ScriptParams:   item.ScriptParams,
 		SourceLanguage: sourceLang,
 		Languages:      languages,
 		RenderVideo:    renderVideo,

@@ -22,6 +22,7 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -110,6 +111,54 @@ func (stubJobFinalizer) CompleteWithArtifacts(_ context.Context, _ finalization.
 
 // Compile-time assertion: stubJobFinalizer satisfies JobFinalizer.
 var _ finalization.JobFinalizer = stubJobFinalizer{}
+
+type countingJobFinalizer struct{ calls int }
+
+func (f *countingJobFinalizer) CompleteWithArtifacts(_ context.Context, _ finalization.FinalizationRequest) (*finalization.FinalizationResult, error) {
+	f.calls++
+	return &finalization.FinalizationResult{}, nil
+}
+
+var _ finalization.JobFinalizer = (*countingJobFinalizer)(nil)
+
+func TestStockFinalizeStep_IncompleteCountsBeforeSpineWrite(t *testing.T) {
+	finalizer := &countingJobFinalizer{}
+	runner := newFinalizeFakeRunner(
+		&RunInput{
+			DirectURLs:   []string{"source"},
+			DownloadMode: "sections_only",
+			FolderID:     "wf-test",
+		},
+		&RunState{
+			Plan: []ClipPlan{
+				{SourceID: "source", StageKey: "planner:clip:0"},
+				{SourceID: "source", StageKey: "planner:clip:1"},
+			},
+			StagedAssets: []*assets.StagedAsset{{SourceID: "source"}},
+			CutPaths:     []string{"cut-0", "cut-1"},
+			Published: []ChunkState{{
+				Index:      0,
+				ArtifactID: "stock:test:chunk:0",
+				Filename:   "chunk_0.mp4",
+				LocalPath:  "/tmp/chunk_0.mp4",
+				SHA256:     "deadbeef",
+			}},
+		},
+		finalizer,
+	)
+	runner.cfg.Lease = testLease(runner.JobID())
+
+	err := (StockFinalizeStep{}).Run(context.Background(), runner)
+	if err == nil {
+		t.Fatal("expected incomplete run counts to fail before spine write")
+	}
+	if finalizer.calls != 0 {
+		t.Fatalf("CompleteWithArtifacts calls = %d, want 0 on incomplete counts", finalizer.calls)
+	}
+	if !errors.Is(err, ErrStockFinalizeSpineFailed) && !strings.Contains(err.Error(), "stock run completeness") {
+		t.Fatalf("error = %v, want stock run completeness", err)
+	}
+}
 
 // ── Phase-0 gate tests ────────────────────────────────────────────
 

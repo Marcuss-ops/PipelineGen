@@ -131,7 +131,7 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	if len(plan.Segments) == 1 {
 		b.WriteString("Because this request declares one single-scene segment, write between 180 and 260 words for that segment. This range is mandatory.\n")
 	} else {
-		b.WriteString("Every segment must contain at least 100 words.\n")
+		b.WriteString("Respect each segment's declared target_words and any explicit min_words/max_words; do not pad short segments with generic filler. The first segment is an introduction when its topic says introduction, and must remain concise (one sentence whenever possible).\n")
 	}
 	b.WriteString("Write for a modern video voiceover: conversational, youthful, fluid, energetic, and easy to listen to. Use short natural transitions and concrete details instead of explaining the structure of the story.\n")
 	b.WriteString("Paraphrase the supplied source naturally, preserving every name, date, score, result, and supported statement. Do not imitate the speaker or turn the narration into first-person dialogue.\n")

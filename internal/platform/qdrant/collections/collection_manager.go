@@ -124,6 +124,10 @@ func (cm *CollectionManager) SetRegistryLedger(ctx context.Context, ledger media
 		cm.projectionMu.Unlock()
 		return fmt.Errorf("hydrate projection registry: %w", err)
 	}
+	projections, err = cm.reconcileDuplicateActiveProjections(ctx, projections, ledger)
+	if err != nil {
+		return fmt.Errorf("reconcile duplicate active projections: %w", err)
+	}
 	sequence, err := ledger.LatestEventSequence(ctx)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table: registry_events") {
@@ -146,6 +150,56 @@ func (cm *CollectionManager) SetRegistryLedger(ctx context.Context, ledger media
 	}
 	cm.projectionMu.Unlock()
 	return nil
+}
+
+// reconcileDuplicateActiveProjections repairs the crash/migration residue
+// where Qdrant's alias has already moved but SQLite still contains the old
+// projection as ACTIVE. The alias is the external atomic fact; only the
+// projection matching its target may remain ACTIVE. If the alias cannot be
+// resolved, or does not match exactly one active projection, startup remains
+// fail-closed.
+func (cm *CollectionManager) reconcileDuplicateActiveProjections(ctx context.Context, projections []mediaregistry.Projection, ledger mediaregistry.Ledger) ([]mediaregistry.Projection, error) {
+	activeByAlias := make(map[string][]int)
+	for i, projection := range projections {
+		if projection.Status == string(mediaregistry.ProjectionActive) {
+			activeByAlias[projection.AliasName] = append(activeByAlias[projection.AliasName], i)
+		}
+	}
+	for alias, indexes := range activeByAlias {
+		if len(indexes) < 2 {
+			continue
+		}
+		if cm.client == nil {
+			return nil, fmt.Errorf("alias %q has %d ACTIVE projections but Qdrant client is unavailable", alias, len(indexes))
+		}
+		target, err := cm.client.GetAliasTarget(ctx, alias)
+		if err != nil {
+			return nil, fmt.Errorf("resolve alias %q while repairing ACTIVE projections: %w", alias, err)
+		}
+		kept := 0
+		for _, index := range indexes {
+			if projections[index].CollectionName == target {
+				kept++
+			}
+		}
+		if kept != 1 {
+			return nil, fmt.Errorf("alias %q target %q matches %d ACTIVE projections", alias, target, kept)
+		}
+		for _, index := range indexes {
+			if projections[index].CollectionName == target {
+				continue
+			}
+			projections[index].Status = string(mediaregistry.ProjectionRetired)
+			if err := ledger.RegisterProjection(ctx, projections[index]); err != nil {
+				return nil, fmt.Errorf("retire stale projection %q: %w", projections[index].ProjectionID, err)
+			}
+			cm.log.Warn("repaired stale ACTIVE projection during hydration",
+				zap.String("projection_id", projections[index].ProjectionID),
+				zap.String("alias", alias),
+				zap.String("active_collection", target))
+		}
+	}
+	return projections, nil
 }
 
 // ErrPromoteWithoutVerify is the typed error returned by

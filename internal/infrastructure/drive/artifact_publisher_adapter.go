@@ -175,6 +175,8 @@ func (a *ArtifactPublisherAdapter) Publish(
 		Category:       group,
 		Style:          "vidrush",
 		Provider:       provider,
+		ProjectID:      artifact.ProjectID,
+		Language:       artifact.Language,
 		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
 		// ParentFolderID is retained only for legacy envelopes.
 		ParentFolderID: artifact.ParentFolderID,

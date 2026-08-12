@@ -272,6 +272,18 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 			result.Status = "cleaned"
 		}
 	}
+	// The cleaned file is the asset returned to callers. Re-probe it after
+	// silence removal so downstream timeline compilation never uses the
+	// duration of the pre-cleaned source.
+	if result.LocalPath != "" {
+		if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
+			if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr == nil {
+				result.Duration = info.Duration
+			} else {
+				p.log.Warn("failed to probe final synthesized audio duration", zap.Error(probeErr))
+			}
+		}
+	}
 
 	// Compute hash.
 	if result.LocalPath != "" {

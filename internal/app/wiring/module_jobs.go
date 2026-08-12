@@ -36,6 +36,7 @@ type JobsBundle struct {
 	Facade     job.Service // canonical domain interface satisfied by *appjobs.Service
 	Broker     appjobs.CompletionPort
 	JobLedger  capjobregistry.Registry
+	History    appjobs.HistoryReader
 
 	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): cross-domain deps
 	// threaded into buildClipOpsPorts via the strict 2-arg jobs parameter.

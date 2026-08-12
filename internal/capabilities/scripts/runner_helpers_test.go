@@ -81,12 +81,14 @@ func (g *stubTextGenerator) GenerateSceneText(ctx context.Context, req GenerateR
 	result := make([]Scene, len(g.scenes))
 	for i, s := range g.scenes {
 		clone := Scene{
-			ID:         s.ID,
-			Index:      s.Index,
-			DurationMS: s.DurationMS,
-			Audio:      s.Audio,
-			Clip:       s.Clip,
-			Text:       make(map[Language]string),
+			ID:           s.ID,
+			Index:        s.Index,
+			DurationMS:   s.DurationMS,
+			DurationUS:   s.DurationUS,
+			Audio:        s.Audio,
+			AudioIntents: append([]capabilityaudio.AudioIntent(nil), s.AudioIntents...),
+			Clip:         s.Clip,
+			Text:         make(map[Language]string),
 		}
 		for k, v := range s.Text {
 			clone.Text[k] = v

@@ -6,12 +6,12 @@ import (
 	"golang.org/x/text/unicode/norm"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -197,23 +197,24 @@ func (p *InternetImagesProcessor) Process(ctx context.Context, plan *scriptpkg.R
 					}
 				}
 			}
-			providerStart := time.Now()
 			if p.metrics != nil {
 				// Count an actual provider invocation, not a segment-level
 				// cache miss. Entity-image L2/L1 hits below may satisfy the
 				// query without calling the external searcher.
 				p.metrics.IncProviderRequest("internet_images")
 			}
-			results, err := p.searcher.SearchImages(ctx, InternetImageSearchRequest{
-				SegmentID: updated.SegmentID,
-				Query:     query,
-				Entity:    firstEntity,
-				TextHash:  updated.TextHash,
-				Language:  plan.Language,
-				Limit:     perQueryLimit,
-				Provider:  "internet_images",
+			var results []scriptpkg.SegmentAssetCandidate
+			err := measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
+				Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "search", Provider: "internet_images",
+			}, func(callCtx context.Context) error {
+				var searchErr error
+				results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{
+					SegmentID: updated.SegmentID, Query: query, Entity: firstEntity,
+					TextHash: updated.TextHash, Language: plan.Language, Limit: perQueryLimit,
+					Provider: "internet_images",
+				})
+				return searchErr
 			})
-			observeVidRushProviderDuration(p.metrics, "internet_images_search", time.Since(providerStart))
 			if err == nil && entityImagesEnabled && len(results) > 0 {
 				cacheStore(&entityImageCache, entityCacheKey, append([]scriptpkg.SegmentAssetCandidate(nil), results...))
 				if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {

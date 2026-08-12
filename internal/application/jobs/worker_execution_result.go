@@ -107,8 +107,17 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 	// latest expected revision (a concurrent Update during execution
 	// would invalidate the snapshot copied at ClaimNext).
 	finalRevision := j.Revision
-	if jFresh, err := w.repo.Get(ctx, j.ID); err == nil && jFresh != nil && jFresh.Revision > 0 {
-		finalRevision = jFresh.Revision
+	if jFresh, err := w.repo.Get(ctx, j.ID); err == nil && jFresh != nil {
+		// Artifact-producing handlers such as Stock already use the
+		// transactional finalizer, which atomically writes SUCCEEDED.
+		// Do not send a second lease-fenced completion after that commit;
+		// the lease is intentionally cleared by the canonical finalizer.
+		if jFresh.Status == job.StatusSucceeded {
+			return nil
+		}
+		if jFresh.Revision > 0 {
+			finalRevision = jFresh.Revision
+		}
 	}
 
 	workerID := w.id

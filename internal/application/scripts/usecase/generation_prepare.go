@@ -19,7 +19,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -31,11 +30,9 @@ import (
 // PreparedGeneration holds everything produced by the prepare phase
 // that the engine and postprocess phases need.
 type PreparedGeneration struct {
-	Item            scriptpkg.GenerationItemV2
-	Plan            scriptpkg.ResolvedGenerationPlan
-	ResolvedSource  *scriptpkg.ResolvedSource
-	SourceResolveMs int64
-	PlanBuildMs     int64
+	Item           scriptpkg.GenerationItemV2
+	Plan           scriptpkg.ResolvedGenerationPlan
+	ResolvedSource *scriptpkg.ResolvedSource
 }
 
 // GenerationPreparer orchestrates the prepare phase for a single
@@ -117,7 +114,6 @@ func (p *GenerationPreparer) Prepare(
 
 	// ── Phase 3: Source enrichment / resolution ───────────────────────
 	tracker.PhaseResolveSource()
-	sourceStart := time.Now()
 	var resolved *scriptpkg.ResolvedSource
 	if p.registry != nil {
 		resCtx := buildResolutionContext(item)
@@ -158,12 +154,10 @@ func (p *GenerationPreparer) Prepare(
 			}
 		}
 	}
-	sourceResolveMs := time.Since(sourceStart).Milliseconds()
 	p.trackSourceResolved(item, resolved, tracker)
 
 	// ── Phase 4: Build plan ─────────────────────────────────────────
 	tracker.PhaseBuildPlan()
-	planStart := time.Now()
 	resolvedItem, resolveVOErr := ResolveVoiceoverFolderForItem(
 		ctx, item, p.voGroupResolver, p.voRootID, p.log,
 	)
@@ -218,7 +212,6 @@ func (p *GenerationPreparer) Prepare(
 		return nil, p.logPhaseError(item, "plan_validation", scriptpkg.ErrPlanInvalid, err, tracker)
 	}
 
-	planBuildMs := time.Since(planStart).Milliseconds()
 	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
 		tracker.TrackEvent("clip_evidence.built", "Clip evidence assembled into plan", map[string]any{
 			"item_id":    item.ID,
@@ -238,11 +231,9 @@ func (p *GenerationPreparer) Prepare(
 	}
 
 	return &PreparedGeneration{
-		Item:            item,
-		Plan:            plan,
-		ResolvedSource:  resolved,
-		SourceResolveMs: sourceResolveMs,
-		PlanBuildMs:     planBuildMs,
+		Item:           item,
+		Plan:           plan,
+		ResolvedSource: resolved,
 	}, nil
 }
 

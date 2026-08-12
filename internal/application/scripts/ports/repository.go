@@ -40,7 +40,6 @@ import (
 type ScriptRepository interface {
 	SaveScript(ctx context.Context, rec *ScriptRecord, sections []ScriptSectionRecord, matches []ScriptStockMatchRecord) (int64, error)
 	UpdateScriptFinalContent(ctx context.Context, scriptID int64, outputText string, wordCount int, status, metadata, model, ollamaBaseURL string, version int) error
-	SaveGenerationLog(ctx context.Context, log ScriptGenerationLog) error
 	SaveOutlineSections(ctx context.Context, scriptID int64, sections []ScriptOutlineSectionRecord) error
 	SaveResearchSources(ctx context.Context, scriptID int64, sources []ScriptResearchSource) error
 	NextVersionForTopic(ctx context.Context, topic, language, mode string) (int, error)

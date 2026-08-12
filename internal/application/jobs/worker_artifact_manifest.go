@@ -165,14 +165,16 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 	}
 	for _, a := range manifest.Artifacts {
 		staged = append(staged, &domainremote.StagedArtifactReference{
-			ArtifactID:  a.ID,
-			Destination: destinationForArtifactKind(a.Kind, src),
-			SHA256:      a.SHA256,
-			Path:        a.Path,
-			Filename:    a.Filename,
-			MIMEType:    a.MIMEType,
-			SizeBytes:   a.SizeBytes,
-			Required:    a.Required,
+			ArtifactID:    a.ID,
+			Destination:   destinationForArtifactKind(a.Kind, src),
+			SHA256:        a.SHA256,
+			Path:          a.Path,
+			Filename:      a.Filename,
+			MIMEType:      a.MIMEType,
+			SizeBytes:     a.SizeBytes,
+			Required:      a.Required,
+			DriveGroup:    a.DriveGroup,
+			DriveLanguage: a.DriveLanguage,
 		})
 	}
 

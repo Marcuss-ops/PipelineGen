@@ -108,9 +108,16 @@ func (r *Registry) AppendEvent(ctx context.Context, e capregistry.Event) (int64,
 	if e.JobID == "" || e.EventType == "" {
 		return 0, errors.New("job registry: event identity is required")
 	}
-	res, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_events (event_id,job_id,event_type,payload_json,created_at) VALUES (?,?,?,?,?)`, e.EventID, e.JobID, e.EventType, nonEmpty(e.PayloadJSON, "{}"), nonEmpty(e.CreatedAt, "1970-01-01T00:00:00Z"))
+	res, err := r.db.ExecContext(ctx, `INSERT INTO job_registry_events (event_id,job_id,event_type,payload_json,created_at) VALUES (?,?,?,?,?) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.JobID, e.EventType, nonEmpty(e.PayloadJSON, "{}"), nonEmpty(e.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return 0, fmt.Errorf("append job event %q: %w", e.EventID, err)
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		var seq int64
+		if err := r.db.QueryRowContext(ctx, `SELECT seq FROM job_registry_events WHERE event_id=?`, e.EventID).Scan(&seq); err != nil {
+			return 0, fmt.Errorf("append job event %q: read existing event: %w", e.EventID, err)
+		}
+		return seq, nil
 	}
 	return res.LastInsertId()
 }

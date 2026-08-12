@@ -163,6 +163,9 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		mutationsDisp,
 		params.Cfg.Drive.ClipsFolder(),
 	)
+	if params.DriveUploader != nil {
+		reprocessUC.SetRemoteAssetReader(params.DriveUploader)
+	}
 
 	clipsDrive := newClipsDriveAdapter(params.DriveUploader, params.DriveUploader, nil)
 	repoForSource := func(source string) appclips.ClipRepositoryPort {

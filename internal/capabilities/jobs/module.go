@@ -14,6 +14,7 @@ import (
 type Dependencies struct {
 	Service     job.Service
 	Stats       appjobs.JobStatsReader
+	History     appjobs.HistoryReader
 	EnabledFunc func() bool
 	Logger      *zap.Logger
 }
@@ -43,7 +44,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	}
 	return jobsapi.Build(jobsapi.Dependencies{
 		Service: deps.Service, Stats: deps.Stats,
-		EnabledFunc: deps.EnabledFunc, Logger: deps.Logger,
+		EnabledFunc: deps.EnabledFunc, Logger: deps.Logger, History: deps.History,
 	})
 }
 

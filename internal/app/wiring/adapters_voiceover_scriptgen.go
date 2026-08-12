@@ -114,7 +114,10 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	ref := scriptgen.AudioReference{
 		ID:       result.FileHash,
 		FilePath: result.LocalPath,
-		Duration: 0, // Duration is not returned by the current processor — set to 0
+		Duration: result.Duration.Seconds(),
+	}
+	if ref.Duration <= 0 {
+		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: TTS returned non-positive duration for scene %s language %s", input.SceneID, input.Language)
 	}
 
 	g.Log.Info("voiceover scriptgen: TTS generated",

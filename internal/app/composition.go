@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/artifacts"
+	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
 
 	"go.uber.org/zap"
 
@@ -52,6 +53,13 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *wiring.Databas
 	jobs, err := wiring.BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.DriveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
+	}
+	if dbs.Logs != nil {
+		historyReader, historyErr := historyinfra.NewReader(jobsDB.DB, dbs.Logs.DB)
+		if historyErr != nil {
+			return nil, fmt.Errorf("compose history: %w", historyErr)
+		}
+		jobs.History = historyReader
 	}
 
 	ai, err := BuildAIBundle(ctx, cfg, dbs, log, repos, driveBundle)

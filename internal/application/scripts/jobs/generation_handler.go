@@ -26,6 +26,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -125,7 +126,7 @@ func (h *GenerateJobHandler) Handle(
 	if h.runRepo != nil {
 		run, _ = h.runRepo.GetByJobID(ctx, j.ID)
 		// The submission transaction commits the job before the HTTP handler
-		// can persist pipeline_runs.job_id. A fast worker may therefore claim
+		// can persist the canonical run job_id. A fast worker may therefore claim
 		// this job in the small correlation window. The submission service
 		// mirrors Idempotency-Key into job.CorrelationID, so use that durable
 		// identity as the deterministic fallback instead of bypassing the
@@ -205,7 +206,24 @@ func (h *GenerateJobHandler) Handle(
 			}
 			return nil, fmt.Errorf("generate job handler: durable run did not complete")
 		}
-		return map[string]any{"run_id": run.ID, "parent_state": "completed", "result": updated.Result}, nil
+		// The durable runner owns generation/render execution, but the broker
+		// still requires the same canonical artifact manifest as the legacy
+		// dispatcher path. Rehydrate the domain result and use the single
+		// artifact persister; never return a successful artifact-producing job
+		// without its manifest sidecar.
+		domainResult := scriptgen.DurableResultToDomain(updated.Result)
+		if domainResult == nil {
+			return nil, fmt.Errorf("generate job handler: durable result is empty")
+		}
+		artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, domainResult, h.log)
+		if persistErr != nil {
+			return nil, fmt.Errorf("generate job handler: durable artifact persistence: %w", persistErr)
+		}
+		manifest := buildManifestFromArtifacts(j.ID, artifacts)
+		if validateErr := manifest.Validate(); validateErr != nil {
+			return nil, fmt.Errorf("generate job handler: durable artifact manifest: %w", validateErr)
+		}
+		return map[string]any{"run_id": run.ID, "parent_state": "completed", "result": updated.Result, job.ManifestKey: manifest}, nil
 	}
 
 	result, dispatchErr := h.dispatcher.Dispatch(ctx, j, env, tools)

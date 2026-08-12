@@ -182,7 +182,7 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 //
 //  1. script-json   REQUIRED
 //  2. scenes        OPTIONAL (emitted because fixture has 2 scenes)
-//  3. voiceover     OPTIONAL (1 entry per language)
+//  3. voiceover     OPTIONAL (1 entry per generated scene)
 //
 // Total: 3 manifest entries.
 func TestPersistGeneratedArtifacts_HappyPath_ThreeArtifacts(t *testing.T) {
@@ -205,7 +205,7 @@ func TestPersistGeneratedArtifacts_HappyPath_ThreeArtifacts(t *testing.T) {
 	want := map[string]int{
 		job.ArtifactKindScriptJSON: 1,
 		job.ArtifactKindScenes:     1,
-		job.ArtifactKindVoiceover:  1,
+		job.ArtifactKindVoiceover:  2,
 	}
 	for k, wantv := range want {
 		if got := kindCount[k]; got != wantv {
@@ -267,7 +267,7 @@ func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 	}
 }
 
-func TestPersistGeneratedArtifacts_VoiceoverMultilang_OnePerLanguage(t *testing.T) {
+func TestPersistGeneratedArtifacts_VoiceoverMultilang_OnePerScene(t *testing.T) {
 	res := validScriptResult_VoiceoverMultiLanguage()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-multilang", res)
 
@@ -278,12 +278,8 @@ func TestPersistGeneratedArtifacts_VoiceoverMultilang_OnePerLanguage(t *testing.
 			voiceoverLangs = append(voiceoverLangs, filepath.Base(a.ID))
 		}
 	}
-	// PR-OUTBOX-SOURCE-VERSION: PersistGeneratedArtifacts deduplicates
-	// voiceover by result.Language (NOT per-scene language). The
-	// fixture has Language="en" for all scenes, so only 1 entry is
-	// produced (first-seen-wins dedup).
-	if len(voiceoverLangs) != 1 {
-		t.Errorf("voiceover manifest entries = %d, want 1 (dedup by result.Language=%q)", len(voiceoverLangs), "en")
+	if len(voiceoverLangs) != 3 {
+		t.Errorf("voiceover manifest entries = %d, want 3 (one per generated scene)", len(voiceoverLangs))
 	}
 }
 

@@ -153,14 +153,9 @@ func PersistGeneratedArtifacts(
 	}
 
 	// ── 5. voiceover (OPTIONAL, language-grouped) ──────────────────────
-	// §8.4 model is language-grouped (one voiceover per language per
-	// run, NOT one per scene as pre-C12 emitted). Take the first
-	// scene's voiceover binding's LocalPath per language as the
-	// canonical upload target. The first-seen-wins disambiguation
-	// matches the previous double-pass (per-scene) emission's intent:
-	// if multiple scenes share the same language, only one manifest
-	// entry is created and the per-scene voices are uploaded as part
-	// of the same Drive asset via per-language disambiguation.
+	// Voiceover generation produces one independently addressable audio
+	// file per scene. Emit every scene file: the worker's canonical
+	// artifact publisher routes each entry to the voiceover Drive group.
 	//
 	// PR-OUTBOX-SOURCE-VERSION: compute SHA256 + SizeBytes for
 	// voiceover artifacts. Without this, FinalizeAsset emits
@@ -168,8 +163,7 @@ func PersistGeneratedArtifacts(
 	// via the IndexingHandler supersede gate. Skip files that
 	// don't exist on disk (the voiceover pipeline may not have
 	// generated them yet).
-	seenLang := make(map[string]bool)
-	for _, scene := range result.Output.SpecScene.Scenes {
+	for sceneIndex, scene := range result.Output.SpecScene.Scenes {
 		if scene.Bindings.Voiceover == nil || strings.TrimSpace(scene.Bindings.Voiceover.LocalPath) == "" {
 			continue
 		}
@@ -177,15 +171,10 @@ func PersistGeneratedArtifacts(
 		if lang == "" {
 			lang = "default"
 		}
-		if seenLang[lang] {
-			continue
-		}
-		seenLang[lang] = true
-
 		voPath := scene.Bindings.Voiceover.LocalPath
-		voFilename := "voiceover.mp3"
+		voFilename := fmt.Sprintf("voiceover-scene-%d.mp3", sceneIndex)
 		if lang != "" && lang != "default" {
-			voFilename = "voiceover-" + lang + ".mp3"
+			voFilename = fmt.Sprintf("voiceover-scene-%d-%s.mp3", sceneIndex, lang)
 		}
 		// Only include voiceover artifact if the file exists and
 		// we can compute its SHA256. Skip missing files gracefully.
@@ -195,14 +184,16 @@ func PersistGeneratedArtifacts(
 				return nil, fmt.Errorf("artifacts_persistence: sha256 voiceover %s: %w", voPath, voSHAErr)
 			}
 			artifacts = append(artifacts, job.Artifact{
-				ID:        fmt.Sprintf("%s:voiceover:%s", jobID, lang),
-				Kind:      job.ArtifactKindVoiceover,
-				Path:      voPath,
-				Filename:  voFilename,
-				MIMEType:  "audio/mpeg",
-				SizeBytes: voInfo.Size(),
-				SHA256:    voSHA,
-				Required:  false,
+				ID:            fmt.Sprintf("%s:voiceover:scene-%d:%s", jobID, sceneIndex, lang),
+				Kind:          job.ArtifactKindVoiceover,
+				Path:          voPath,
+				Filename:      voFilename,
+				MIMEType:      "audio/mpeg",
+				SizeBytes:     voInfo.Size(),
+				SHA256:        voSHA,
+				Required:      false,
+				DriveGroup:    result.VoiceoverGroup,
+				DriveLanguage: lang,
 			})
 		} else {
 			log.Debug("artifacts_persistence: voiceover file not on disk — skipping artifact",

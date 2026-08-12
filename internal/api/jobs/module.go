@@ -131,7 +131,8 @@ type Dependencies struct {
 
 	// Logger is the canonical structured logger. nil →
 	// zap.NewNop() (composition-root-friendly default).
-	Logger *zap.Logger
+	Logger  *zap.Logger
+	History appjobs.HistoryReader
 }
 
 // JobsDescriptor is the concrete capability Descriptor returned
@@ -156,7 +157,8 @@ type JobsDescriptor struct {
 	// Module is the route-only Module (api.NewRouteModule
 	// instance) the composition root threads into
 	// tryRegisterModuleStrict.
-	Module api.Module
+	Module        api.Module
+	HistoryModule api.Module
 }
 
 // Name returns the module name ("jobs"). The pre-Step-13 jobs
@@ -176,7 +178,12 @@ func (d *JobsDescriptor) Enabled() bool {
 // only via the Module's internal closure.
 func (d *JobsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 	d.Module.RegisterRoutes(rg)
+	d.HistoryModule.RegisterRoutes(rg)
 }
+
+type historyRoute struct{ handler *JobsHandler }
+
+func (h historyRoute) RegisterRoutes(rg *gin.RouterGroup) { rg.GET("", h.handler.History) }
 
 // Build composes the Jobs HTTP capability from the typed narrow
 // dependencies. Returns a fail-closed error when any mandatory dep
@@ -216,6 +223,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Stats,
 		log,
 	)
+	handler.SetHistoryReader(deps.History)
 
 	// Construct the route Module. The closure inside
 	// api.NewRouteModule calls handler.RegisterRoutes(r) — the
@@ -236,8 +244,10 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log,
 		deps.ModuleOpts...,
 	)
+	historyMod := api.NewRouteModule("history", deps.EnabledFunc, "/history", historyRoute{handler: handler}, log)
 
 	return &JobsDescriptor{
-		Module: mod,
+		Module:        mod,
+		HistoryModule: historyMod,
 	}, nil
 }

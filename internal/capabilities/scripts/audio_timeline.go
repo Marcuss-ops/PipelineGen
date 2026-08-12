@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -73,7 +74,11 @@ func CompileCanonicalAudioPlan(result GenerateResult, language Language, profile
 	if len(result.Scenes) == 0 {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("canonical timeline requires scenes")
 	}
-	timeline, err := compileSceneTimeline(result)
+	resolved, err := resolvedScenesFor(result, language)
+	if err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
+	}
+	timeline, err := compileResolvedSceneTimeline(resolved)
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 	}
@@ -91,26 +96,63 @@ func CompileCanonicalAudioPlan(result GenerateResult, language Language, profile
 		return nil
 	}
 	for i, scene := range result.Scenes {
-		intent := timeline.Segments[i].Audio
-		if intent.Mode == audio.AudioVoiceover {
-			ref, ok := scene.Voiceover[language]
-			if !ok || strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.FilePath) == "" {
-				return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("scene %s voiceover asset is missing", scene.ID)
+		intents := timeline.Segments[i].EffectiveAudioIntents()
+		// COMBINED_TIMELINE scenes carry both original clip audio and the
+		// generated voiceover. Merge them only after the voiceover asset has
+		// been resolved; the canonical segment remains the single timing SSOT.
+		if scene.Clip != nil && scene.Audio.Mode == audio.AudioClip {
+			hasVoiceoverIntent := false
+			for _, intent := range intents {
+				if intent.Mode == audio.AudioVoiceover {
+					hasVoiceoverIntent = true
+					break
+				}
 			}
-			intent.VoiceoverAssetID = ref.ID
-			timeline.Segments[i].Audio = intent
-			if err := addAsset(ref.ID, ref.FilePath); err != nil {
-				return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
-			}
-		}
-		if intent.Mode == audio.AudioClip {
-			if scene.Clip == nil || strings.TrimSpace(intent.ClipAssetID) == "" || strings.TrimSpace(scene.Clip.AudioPath) == "" {
-				return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("scene %s clip audio asset is missing", scene.ID)
-			}
-			if err := addAsset(intent.ClipAssetID, scene.Clip.AudioPath); err != nil {
-				return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
+			if !hasVoiceoverIntent {
+				if ref, ok := scene.Voiceover[language]; ok && ref.ID != "" {
+					intents = append(intents, audio.AudioIntent{Mode: audio.AudioVoiceover, VoiceoverAssetID: ref.ID})
+				}
 			}
 		}
+		for j := range intents {
+			intent := &intents[j]
+			if intent.Mode == audio.AudioVoiceover {
+				ref, ok := scene.Voiceover[language]
+				if !ok || strings.TrimSpace(ref.ID) == "" || strings.TrimSpace(ref.FilePath) == "" {
+					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("scene %s voiceover asset is missing", scene.ID)
+				}
+				intent.VoiceoverAssetID = ref.ID
+				// The scene duration is the canonical placement window, but
+				// the source range must use the actual certified TTS duration.
+				// Asking the executor for the whole scene window can exceed a
+				// perfectly valid, shorter voiceover file (especially for the
+				// deliberately brief intro).
+				sourceDurationUS := int64(math.Round(ref.Duration * 1_000_000))
+				if sourceDurationUS <= 0 || sourceDurationUS > timeline.Segments[i].DurationUS {
+					sourceDurationUS = timeline.Segments[i].DurationUS
+				}
+				intent.SourceInUS = 0
+				intent.SourceDurationUS = sourceDurationUS
+				if err := addAsset(ref.ID, ref.FilePath); err != nil {
+					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
+				}
+			}
+			if intent.Mode == audio.AudioClip {
+				if scene.Clip == nil || strings.TrimSpace(intent.ClipAssetID) == "" || strings.TrimSpace(scene.Clip.AudioPath) == "" {
+					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("scene %s clip audio asset is missing", scene.ID)
+				}
+				if err := addAsset(intent.ClipAssetID, scene.Clip.AudioPath); err != nil {
+					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
+				}
+			}
+		}
+		timeline.Segments[i].AudioIntents = intents
+		if len(intents) > 0 {
+			timeline.Segments[i].Audio = intents[0]
+		}
+	}
+	if err := timeline.Validate(); err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 	}
 	plan, err := audio.Compile(timeline, profile)
 	if err != nil {
@@ -126,35 +168,48 @@ func CompileCanonicalTimeline(result GenerateResult) (audio.CanonicalTimeline, e
 	if len(result.Scenes) == 0 {
 		return audio.CanonicalTimeline{}, fmt.Errorf("canonical timeline requires scenes")
 	}
-	return compileSceneTimeline(result)
+	resolved, err := resolvedScenesFor(result, "it")
+	if err != nil {
+		return audio.CanonicalTimeline{}, err
+	}
+	return compileResolvedSceneTimeline(resolved)
 }
 
 func compileSceneTimeline(result GenerateResult) (audio.CanonicalTimeline, error) {
+	resolved, err := resolvedScenesFor(result, "it")
+	if err != nil {
+		return audio.CanonicalTimeline{}, err
+	}
+	return compileResolvedSceneTimeline(resolved)
+}
+
+func resolvedScenesFor(result GenerateResult, language Language) ([]ResolvedScene, error) {
+	if len(result.ResolvedScenes) > 0 {
+		return append([]ResolvedScene(nil), result.ResolvedScenes...), nil
+	}
+	return ResolveScenes(result.Scenes, language)
+}
+
+func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeline, error) {
 	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion}
 	var startUS int64
-	for i, scene := range result.Scenes {
-		if scene.Index != i || strings.TrimSpace(scene.ID) == "" || scene.DurationMS <= 0 {
+	for i, scene := range scenes {
+		if scene.Index != i || strings.TrimSpace(scene.ID) == "" {
 			return audio.CanonicalTimeline{}, fmt.Errorf("scene %d has no canonical index/duration", i)
 		}
-		durationUS, err := microseconds(scene.DurationMS)
-		if err != nil {
-			return audio.CanonicalTimeline{}, fmt.Errorf("scene %s duration: %w", scene.ID, err)
+		durationUS := scene.DurationUS
+		if durationUS <= 0 {
+			return audio.CanonicalTimeline{}, fmt.Errorf("scene %s has no canonical duration", scene.ID)
 		}
-		intent := scene.Audio
-		if intent.Mode == "" {
-			intent.Mode = audio.AudioSilence
-		}
-		video, err := sceneVideoSegment(scene, intent)
-		if err != nil {
-			return audio.CanonicalTimeline{}, fmt.Errorf("scene %s video timing: %w", scene.ID, err)
-		}
+		intents := scene.AudioIntents
 		timeline.Segments = append(timeline.Segments, audio.TimelineSegment{
 			ID:              scene.ID,
 			Index:           i,
 			TimelineStartUS: startUS,
 			DurationUS:      durationUS,
-			Video:           video,
-			Audio:           intent,
+			Video:           scene.Video,
+			Audio:           intents[0],
+			AudioIntents:    intents,
 		})
 
 		if startUS > math.MaxInt64-durationUS {
@@ -167,27 +222,6 @@ func compileSceneTimeline(result GenerateResult) (audio.CanonicalTimeline, error
 		return audio.CanonicalTimeline{}, err
 	}
 	return timeline, nil
-}
-
-func sceneVideoSegment(scene Scene, intent audio.AudioIntent) (audio.VideoSegment, error) {
-	if scene.Clip == nil {
-		return audio.VideoSegment{}, nil
-	}
-	if scene.Clip.SourceInMS == 0 && scene.Clip.SourceOutMS == 0 {
-		return audio.VideoSegment{AssetID: scene.Clip.ID, SourceInUS: intent.SourceInUS, SourceDurationUS: intent.SourceDurationUS}, nil
-	}
-	if scene.Clip.SourceInMS < 0 || scene.Clip.SourceOutMS <= scene.Clip.SourceInMS {
-		return audio.VideoSegment{}, fmt.Errorf("source range must satisfy 0 <= source_in_ms < source_out_ms")
-	}
-	inUS, err := microseconds(scene.Clip.SourceInMS)
-	if err != nil {
-		return audio.VideoSegment{}, fmt.Errorf("source_in_ms: %w", err)
-	}
-	outUS, err := microseconds(scene.Clip.SourceOutMS)
-	if err != nil {
-		return audio.VideoSegment{}, fmt.Errorf("source_out_ms: %w", err)
-	}
-	return audio.VideoSegment{AssetID: scene.Clip.ID, SourceInUS: inUS, SourceDurationUS: outUS - inUS}, nil
 }
 
 // CompileCanonicalRenderPlan turns the canonical timeline into the immutable
@@ -282,6 +316,11 @@ func CompileCanonicalRenderPlanWithFrameRate(result GenerateResult, timeline aud
 	outputPath := strings.TrimSpace(result.OutputName)
 	if outputPath == "" {
 		outputPath = "final.mp4"
+	} else if filepath.Ext(outputPath) == "" {
+		// Titles are valid logical names but not valid media output paths.
+		// The executor needs an extension to select the MP4 muxer, while the
+		// caller still gets the human-readable title as the basename.
+		outputPath += ".mp4"
 	}
 	plan, err := render.Compile(render.CompileInput{JobID: jobID, Revision: revision, OutputPath: outputPath, FrameRate: frameRate, Timeline: timeline, FinalAudio: finalAudio, Manifest: manifest})
 	if err != nil {
