@@ -73,6 +73,8 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 			IdempotencyKey: existing.idempotencyKey,
 			AlreadyApplied: existing.status == "COMPLETED",
 			ResultJSON:     existing.resultJSON,
+			RegistrySeq:    existing.registrySeq,
+			OutboxEventID:  existing.outboxEventID,
 		}
 		switch existing.status {
 		case "COMPLETED":
@@ -107,13 +109,16 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 	if outboxResult == nil {
 		return capcontrol.Result{}, errors.New("controlplane uow: outbox returned nil result")
 	}
+	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) {
+		return capcontrol.Result{}, fmt.Errorf("%w: event_key=%q status=%q", capcontrol.ErrOutboxTerminalConflict, command.Outbox.EventKey, outboxResult.ExistingStatus)
+	}
 
 	now := u.now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE canonical_mutations
-		SET status='COMPLETED', result_json=?, completed_at=?, error_message=''
+		SET status='COMPLETED', result_json=?, completed_at=?, error_message='', registry_seq=?, outbox_event_id=?
 		WHERE command_id=? AND status='IN_PROGRESS'`,
-		resultJSON, now, command.CommandID); err != nil {
+		resultJSON, now, seq, outboxResult.EventID, command.CommandID); err != nil {
 		return capcontrol.Result{}, fmt.Errorf("controlplane uow: complete command %q: %w", command.CommandID, err)
 	}
 
@@ -131,12 +136,70 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 	}, nil
 }
 
+// RunInTransaction applies the canonical protocol inside a transaction
+// owned by the caller. It never commits or rolls back that transaction.
+func (u *UnitOfWork) RunInTransaction(ctx context.Context, transaction capcontrol.Transaction, command capcontrol.Command, mutation capcontrol.Mutation) (capcontrol.Result, error) {
+	if u == nil || u.db == nil || u.box == nil {
+		return capcontrol.Result{}, errors.New("controlplane uow: adapter is not configured")
+	}
+	if err := command.Validate(); err != nil {
+		return capcontrol.Result{}, err
+	}
+	if mutation == nil {
+		return capcontrol.Result{}, errors.New("controlplane uow: mutation callback is required")
+	}
+	tx, ok := transaction.(*sql.Tx)
+	if !ok || tx == nil {
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: expected *sql.Tx, got %T", transaction)
+	}
+	claimed, existing, err := u.claim(ctx, tx, command)
+	if err != nil {
+		return capcontrol.Result{}, err
+	}
+	if !claimed {
+		result := capcontrol.Result{CommandID: existing.commandID, IdempotencyKey: existing.idempotencyKey, AlreadyApplied: existing.status == "COMPLETED", ResultJSON: existing.resultJSON, RegistrySeq: existing.registrySeq, OutboxEventID: existing.outboxEventID}
+		if existing.status == "COMPLETED" {
+			return result, nil
+		}
+		if existing.status == "IN_PROGRESS" {
+			return capcontrol.Result{}, fmt.Errorf("%w: command_id=%q", capcontrol.ErrCommandInProgress, existing.commandID)
+		}
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: unknown stored status %q", existing.status)
+	}
+	resultJSON, err := mutation(ctx, tx)
+	if err != nil {
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: mutation %q: %w", command.CommandID, err)
+	}
+	resultJSON = nonEmptyJSON(resultJSON)
+	seq, err := u.appendAudit(ctx, tx, command)
+	if err != nil {
+		return capcontrol.Result{}, err
+	}
+	outboxResult, err := u.box.Enqueue(ctx, tx, command.Outbox.EventType, nonEmpty(command.Outbox.AggregateID, command.AggregateID), nonEmpty(command.Outbox.AggregateType, command.AggregateType), nonEmptyJSON(command.Outbox.PayloadJSON), command.Outbox.EventKey)
+	if err != nil {
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: enqueue outbox: %w", err)
+	}
+	if outboxResult == nil {
+		return capcontrol.Result{}, errors.New("controlplane uow: outbox returned nil result")
+	}
+	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) {
+		return capcontrol.Result{}, fmt.Errorf("%w: event_key=%q status=%q", capcontrol.ErrOutboxTerminalConflict, command.Outbox.EventKey, outboxResult.ExistingStatus)
+	}
+	now := u.now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `UPDATE canonical_mutations SET status='COMPLETED', result_json=?, completed_at=?, error_message='', registry_seq=?, outbox_event_id=? WHERE command_id=? AND status='IN_PROGRESS'`, resultJSON, now, seq, outboxResult.EventID, command.CommandID); err != nil {
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: complete command %q: %w", command.CommandID, err)
+	}
+	return capcontrol.Result{CommandID: command.CommandID, IdempotencyKey: command.IdempotencyKey, ResultJSON: resultJSON, RegistrySeq: seq, OutboxEventID: outboxResult.EventID}, nil
+}
+
 type storedCommand struct {
 	commandID      string
 	idempotencyKey string
 	requestHash    string
 	status         string
 	resultJSON     string
+	registrySeq    int64
+	outboxEventID  int64
 }
 
 func (u *UnitOfWork) claim(ctx context.Context, tx *sql.Tx, command capcontrol.Command) (bool, storedCommand, error) {
@@ -156,12 +219,13 @@ func (u *UnitOfWork) claim(ctx context.Context, tx *sql.Tx, command capcontrol.C
 
 	var stored storedCommand
 	err = tx.QueryRowContext(ctx, `
-		SELECT command_id, idempotency_key, request_hash, status, result_json
+		SELECT command_id, idempotency_key, request_hash, status, result_json,
+		       COALESCE(registry_seq,0), COALESCE(outbox_event_id,0)
 		FROM canonical_mutations
 		WHERE command_id=? OR idempotency_key=?
 		ORDER BY CASE WHEN command_id=? THEN 0 ELSE 1 END
 		LIMIT 1`, command.CommandID, command.IdempotencyKey, command.CommandID).
-		Scan(&stored.commandID, &stored.idempotencyKey, &stored.requestHash, &stored.status, &stored.resultJSON)
+		Scan(&stored.commandID, &stored.idempotencyKey, &stored.requestHash, &stored.status, &stored.resultJSON, &stored.registrySeq, &stored.outboxEventID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, storedCommand{}, errors.New("controlplane uow: command claim disappeared")
 	}
@@ -169,7 +233,7 @@ func (u *UnitOfWork) claim(ctx context.Context, tx *sql.Tx, command capcontrol.C
 		return false, storedCommand{}, fmt.Errorf("controlplane uow: inspect command claim: %w", err)
 	}
 	if stored.commandID != command.CommandID || stored.idempotencyKey != command.IdempotencyKey ||
-		(stored.requestHash != "" && command.RequestHash != "" && stored.requestHash != command.RequestHash) {
+		stored.requestHash != command.RequestHash {
 		return false, stored, fmt.Errorf("%w: command_id=%q idempotency_key=%q", capcontrol.ErrIdempotencyConflict, command.CommandID, command.IdempotencyKey)
 	}
 	return inserted == 1, stored, nil
@@ -197,6 +261,15 @@ func (u *UnitOfWork) appendAudit(ctx context.Context, tx *sql.Tx, command capcon
 		return 0, fmt.Errorf("controlplane uow: read audit sequence %q: %w", eventID, err)
 	}
 	return seq, nil
+}
+
+func isTerminalOutboxStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "dead", "dead_letter", "superseded":
+		return true
+	default:
+		return false
+	}
 }
 
 func nonEmpty(value, fallback string) string {

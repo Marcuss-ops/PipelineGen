@@ -90,7 +90,7 @@ func newVerifierFixture(t *testing.T, name string, registrySeq, projectionSeq in
 	t.Cleanup(func() { _ = db.Close() })
 
 	statements := []string{
-		`CREATE TABLE schema_migrations(version INTEGER)`,
+		`CREATE TABLE schema_migrations(version INTEGER, filename TEXT NOT NULL, checksum TEXT NOT NULL)`,
 		`CREATE TABLE control_plane_meta(database_id TEXT PRIMARY KEY, schema_family TEXT, instance_role TEXT, canonical_version INTEGER, created_at TEXT)`,
 		`INSERT INTO control_plane_meta VALUES ('cp_test','pipelinegen-control-plane','CANONICAL',1,'2026-08-12T00:00:00Z')`,
 		`CREATE TABLE media_assets(id TEXT PRIMARY KEY, lifecycle_state TEXT, content_sha256 TEXT)`,
@@ -105,10 +105,10 @@ func newVerifierFixture(t *testing.T, name string, registrySeq, projectionSeq in
 		`CREATE TABLE content_objects(sha256 TEXT PRIMARY KEY)`,
 		`CREATE TABLE media_asset_sources(source_id TEXT PRIMARY KEY, content_sha256 TEXT)`,
 		`CREATE TABLE source_identity_registry(source_type TEXT, source_key TEXT, content_sha256 TEXT, PRIMARY KEY(source_type, source_key))`,
-		`CREATE TABLE canonical_mutations(command_id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE, request_hash TEXT, status TEXT, result_json TEXT, created_at TEXT, completed_at TEXT, error_message TEXT)`,
+		`CREATE TABLE canonical_mutations(command_id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE, request_hash TEXT, status TEXT, result_json TEXT, created_at TEXT, completed_at TEXT, error_message TEXT, registry_seq INTEGER DEFAULT 0, outbox_event_id INTEGER DEFAULT 0)`,
 	}
-	for _, version := range []int{191, 192, 193, 194, 195, 197, 198, 199, 200, 201, 202} {
-		statements = append(statements, "INSERT INTO schema_migrations VALUES ("+itoa(version)+")")
+	for _, version := range []int{194, 197, 198, 199, 200, 202, 203} {
+		statements = append(statements, "INSERT INTO schema_migrations VALUES ("+itoa(version)+",'', '')")
 	}
 	if registrySeq > 0 {
 		statements = append(statements, "INSERT INTO registry_events(seq) VALUES ("+itoa(registrySeq)+")")
@@ -117,6 +117,15 @@ func newVerifierFixture(t *testing.T, name string, registrySeq, projectionSeq in
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatalf("%s: %v", statement, err)
+		}
+	}
+	for _, version := range []int{194, 197, 198, 199, 200, 202, 203} {
+		filename, content, err := currentMigration(version)
+		if err != nil {
+			t.Fatalf("current migration %d: %v", version, err)
+		}
+		if _, err := db.Exec(`UPDATE schema_migrations SET filename=?, checksum=? WHERE version=?`, filename, sha256Hex(content), version); err != nil {
+			t.Fatalf("migration ledger %d: %v", version, err)
 		}
 	}
 	return db

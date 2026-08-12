@@ -20,7 +20,9 @@ CREATE TABLE canonical_mutations (
  result_json TEXT NOT NULL DEFAULT '{}',
  created_at TEXT NOT NULL,
  completed_at TEXT,
- error_message TEXT NOT NULL DEFAULT ''
+ error_message TEXT NOT NULL DEFAULT '',
+ registry_seq INTEGER NOT NULL DEFAULT 0,
+ outbox_event_id INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE registry_events (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,7 +126,7 @@ func TestUnitOfWorkReplayDoesNotRunMutationAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.AlreadyApplied || result.ResultJSON != `{"ok":true}` || calls != 1 {
+	if !result.AlreadyApplied || result.ResultJSON != `{"ok":true}` || calls != 1 || result.RegistrySeq != 1 || result.OutboxEventID == 0 {
 		t.Fatalf("replay was not idempotent: result=%+v calls=%d", result, calls)
 	}
 	assertCount(t, db, "SELECT COUNT(*) FROM registry_events", 1)
@@ -177,6 +179,51 @@ func TestUnitOfWorkRejectsIdempotencyConflict(t *testing.T) {
 	if !errors.Is(err, capcontrol.ErrIdempotencyConflict) {
 		t.Fatalf("conflict error = %v, want ErrIdempotencyConflict", err)
 	}
+}
+
+func TestUnitOfWorkRejectsTerminalOutboxConflictAtomically(t *testing.T) {
+	uow, db := newUOWForTest(t)
+	if _, err := db.Exec(`INSERT INTO outbox_events(event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at) VALUES ('asset.updated','asset-1','mutation_target','{}','outbox:cmd-1','completed','now')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := uow.Run(context.Background(), testCommand(), func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
+		_, err := tx.ExecContext(ctx, `INSERT INTO mutation_targets(id, value) VALUES (?, ?)`, "asset-1", "v1")
+		return `{"ok":true}`, err
+	})
+	if !errors.Is(err, capcontrol.ErrOutboxTerminalConflict) {
+		t.Fatalf("terminal outbox error = %v, want ErrOutboxTerminalConflict", err)
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM mutation_targets`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM registry_events`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM canonical_mutations`, 0)
+}
+
+func TestUnitOfWorkCallerOwnedTransactionDefersCommit(t *testing.T) {
+	uow, db := newUOWForTest(t)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := uow.RunInTransaction(context.Background(), tx, testCommand(), func(ctx context.Context, transaction capcontrol.Transaction) (string, error) {
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO mutation_targets(id, value) VALUES (?, ?)`, "asset-1", "v1"); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+	})
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if result.RegistrySeq != 1 || result.OutboxEventID == 0 {
+		_ = tx.Rollback()
+		t.Fatalf("unexpected caller-owned result: %+v", result)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM mutation_targets`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM registry_events`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM outbox_events`, 1)
 }
 
 func assertCount(t *testing.T, db *sql.DB, query string, want int) {

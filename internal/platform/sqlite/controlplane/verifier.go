@@ -3,9 +3,15 @@ package controlplane
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -19,7 +25,7 @@ type Verifier struct {
 
 // MAX(version) is insufficient: a ledger containing 193 and 195 has a
 // plausible maximum while still missing a required schema transition.
-var requiredMigrations = []int{191, 192, 193, 194, 195, 197, 198, 199, 200, 201, 202}
+var requiredMigrations = []int{194, 197, 198, 199, 200, 202, 203}
 
 func New(db *sql.DB, path string) (*Verifier, error) {
 	return NewWithTopology(db, path, nil)
@@ -65,16 +71,26 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 		add("schema_version", "PASS", fmt.Sprintf("%d", version))
 	}
 	for _, required := range requiredMigrations {
-		var applied int
-		if err := v.db.QueryRowContext(ctx, `SELECT version FROM schema_migrations WHERE version=?`, required).Scan(&applied); err != nil {
+		var filename, checksum string
+		if err := v.db.QueryRowContext(ctx, `SELECT filename, checksum FROM schema_migrations WHERE version=?`, required).Scan(&filename, &checksum); err != nil {
 			r.MigrationGaps = append(r.MigrationGaps, required)
-			add(fmt.Sprintf("migration:%03d", required), "FAIL", "required migration is missing")
-		} else {
-			add(fmt.Sprintf("migration:%03d", required), "PASS", "applied")
+			add(fmt.Sprintf("migration:%03d", required), "FAIL", "required migration is missing from ledger")
+			continue
 		}
+		currentFilename, content, err := currentMigration(required)
+		if err != nil {
+			add(fmt.Sprintf("migration:%03d", required), "FAIL", err.Error())
+			continue
+		}
+		currentChecksum := sha256Hex(content)
+		if filename != currentFilename || checksum != currentChecksum {
+			add(fmt.Sprintf("migration:%03d", required), "FAIL", fmt.Sprintf("ledger filename/checksum mismatch: ledger=%s/%s current=%s/%s", filename, checksum, currentFilename, currentChecksum))
+			continue
+		}
+		add(fmt.Sprintf("migration:%03d", required), "PASS", "applied with matching filename and checksum")
 	}
 
-	required := []string{"control_plane_meta", "media_assets", "asset_text_tracks", "jobs", "job_steps", "registry_events", "registry_runs", "projection_registry", "backup_registry", "outbox_events", "content_objects", "media_asset_sources", "source_identity_registry"}
+	required := []string{"control_plane_meta", "media_assets", "asset_text_tracks", "jobs", "job_steps", "registry_events", "registry_runs", "projection_registry", "backup_registry", "outbox_events", "content_objects", "media_asset_sources", "source_identity_registry", "canonical_mutations"}
 	for _, table := range required {
 		var n int
 		err := v.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n)
@@ -156,4 +172,33 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 		add("projection_sync", "FAIL", fmt.Sprintf("projection ahead by=%d", r.ProjectionDrift))
 	}
 	return r, nil
+}
+
+func currentMigration(version int) (string, []byte, error) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", nil, errors.New("control plane verifier: cannot locate source tree")
+	}
+	dir := filepath.Join(filepath.Dir(sourceFile), "../../../../migrations/sqlite")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", nil, fmt.Errorf("control plane verifier: read migrations: %w", err)
+	}
+	prefix := fmt.Sprintf("%03d_", version)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return "", nil, fmt.Errorf("control plane verifier: read migration %s: %w", entry.Name(), err)
+		}
+		return entry.Name(), content, nil
+	}
+	return "", nil, fmt.Errorf("control plane verifier: migration file for version %03d is missing", version)
+}
+
+func sha256Hex(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
 }
