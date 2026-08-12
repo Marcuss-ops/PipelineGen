@@ -44,6 +44,19 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 	// Explicit segment ownership wins over the legacy root field. Keep
 	// accepting source.clip_ids for compatibility, but never redistribute
 	// it when any segment declares clip_ids (including an explicit []).
+	// Validate empty IDs before the aggregate so legacy error messages remain stable.
+	if firstEmpty(item.Source.IntroClipIDs) != -1 {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": intro_clip_ids cannot be empty or whitespace-only"}}
+	}
+	if segmentsExplicit {
+		for i, segment := range item.ScriptParams.Segments {
+			if firstEmpty(segment.ClipIDs) != -1 {
+				return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": segments[" + strconv.Itoa(i) + "].clip_ids cannot be empty or whitespace-only"}}
+			}
+		}
+	} else if firstEmpty(item.Source.ClipIDs) != -1 {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": clip_ids cannot be empty or whitespace-only"}}
+	}
 	if len(CollectRequestedClipIDs(item.Source, item.ScriptParams.Segments)) == 0 {
 		return &PlanInvalidError{
 			ItemID: item.ID,
