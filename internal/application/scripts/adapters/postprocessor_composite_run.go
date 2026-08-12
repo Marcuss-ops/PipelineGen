@@ -479,7 +479,13 @@ func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 		out.Media = make([]scriptpkg.ResolvedMediaBinding, len(b.Media))
 		copy(out.Media, b.Media)
 	}
-	if b.Clip != nil {
+	if len(b.Clips) > 0 {
+		out.Clips = make([]scriptpkg.ClipBinding, len(b.Clips))
+		copy(out.Clips, b.Clips)
+		// Keep the legacy alias pointing at the canonical first entry,
+		// rather than cloning a second divergent binding.
+		out.Clip = &out.Clips[0]
+	} else if b.Clip != nil {
 		c := *b.Clip
 		out.Clip = &c
 	}

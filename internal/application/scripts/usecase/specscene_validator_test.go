@@ -298,6 +298,81 @@ func TestValidateSpecScene_InvalidStatusRejected(t *testing.T) {
 	}
 }
 
+func TestValidateSpecScene_MultiClipContractPreservesOrderLinksTimingAndReuse(t *testing.T) {
+	ev := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"A", "B"},
+		DriveLinks:      map[string]string{"A": "https://drive/A", "B": "https://drive/B"},
+		ClipNames:       map[string]string{"A": "Clip A", "B": "Clip B"},
+	}
+	output := &scriptpkg.ModelScriptOutputV1{
+		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
+			{ID: "s1", Kind: scriptpkg.SceneClip, Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{
+				{ClipID: "A", StartMs: 100, EndMs: 1100, SubtitleLink: "https://drive/A.ass", SubtitleFileID: "sub-A"},
+				{ClipID: "B", StartMs: 200, EndMs: 2200, SubtitleLink: "https://drive/B.ass", SubtitleFileID: "sub-B"},
+			}}},
+			{ID: "s2", Kind: scriptpkg.SceneMixed, Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{
+				{ClipID: "B", StartMs: 300, EndMs: 1300},
+			}}},
+		}},
+	}
+	enriched, _, err := scripts.ValidateAndEnrichSpecScene(context.Background(), output, ev)
+	if err != nil {
+		t.Fatalf("multi-clip validation failed: %v", err)
+	}
+	if enriched == nil || len(enriched.Scenes) != 2 {
+		t.Fatalf("enriched scenes = %#v, want 2 scenes", enriched)
+	}
+	first := enriched.Scenes[0].Bindings.Clips
+	if len(first) != 2 || first[0].ClipID != "A" || first[1].ClipID != "B" {
+		t.Fatalf("multi-clip order = %#v, want [A B]", first)
+	}
+	if first[0].DriveLink != "https://drive/A" || first[0].SubtitleLink != "https://drive/A.ass" || first[0].SubtitleFileID != "sub-A" || first[0].DurationMs != 1000 {
+		t.Fatalf("clip A enrichment/preservation = %+v", first[0])
+	}
+	if first[0].EndMs-first[0].StartMs != 1000 || first[1].EndMs-first[1].StartMs != 2000 {
+		t.Fatalf("multi-clip timing changed: %+v", first)
+	}
+	if enriched.Scenes[0].Bindings.Clip != &enriched.Scenes[0].Bindings.Clips[0] {
+		t.Fatal("legacy alias must point at the canonical first multi-clip entry")
+	}
+	if got := enriched.Scenes[1].Bindings.Clips[0].ClipID; got != "B" {
+		t.Fatalf("cross-scene reuse lost: got %q, want B", got)
+	}
+	if output.SpecScene.Scenes[0].Bindings.Clips[0].DriveLink != "" {
+		t.Fatal("validator must not mutate the model output")
+	}
+}
+
+func TestValidateSpecScene_MultiClipUnknownIDRejected(t *testing.T) {
+	ev := helperEvidence("A")
+	output := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+		ID: "s1", Kind: scriptpkg.SceneMixed,
+		Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{
+			{ClipID: "A", StartMs: 0, EndMs: 1000},
+			{ClipID: "GHOST", StartMs: 0, EndMs: 1000},
+		}},
+	}}}}
+	_, _, err := scripts.ValidateAndEnrichSpecScene(context.Background(), output, ev)
+	if err == nil || !strings.Contains(err.Error(), "not in resolved ClipEvidence") {
+		t.Fatalf("expected unknown multi-clip ID rejection, got %v", err)
+	}
+}
+
+func TestValidateSpecScene_MultiClipDuplicateWithinSceneRejected(t *testing.T) {
+	ev := helperEvidence("A")
+	output := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
+		ID: "s1", Kind: scriptpkg.SceneClip,
+		Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{
+			{ClipID: "A", StartMs: 0, EndMs: 1000},
+			{ClipID: "A", StartMs: 1000, EndMs: 2000},
+		}},
+	}}}}
+	_, _, err := scripts.ValidateAndEnrichSpecScene(context.Background(), output, ev)
+	if err == nil || !strings.Contains(err.Error(), "duplicate clip_id") {
+		t.Fatalf("expected duplicate multi-clip ID rejection, got %v", err)
+	}
+}
+
 func TestValidateSpecScene_EmptySpecscene(t *testing.T) {
 	ev := helperEvidence("A")
 	output := &scriptpkg.ModelScriptOutputV1{

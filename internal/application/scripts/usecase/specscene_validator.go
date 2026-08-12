@@ -123,10 +123,12 @@ func ValidateAndEnrichSpecScene(
 	// "not in resolved ClipEvidence", "clip_id is empty").
 	var badMessages []string
 
-	for i, scene := range output.SpecScene.Scenes {
-		// Copy the scene verbatim; per-rule helpers mutate the
-		// local copy. The main loop only commits the final mutated
-		// scene to enriched.Scenes[i] at the end of the iteration.
+	for i, originalScene := range output.SpecScene.Scenes {
+		// Copy the scene and all clip bindings before per-rule helpers
+		// enrich them. The validator is a pure projection and must not
+		// mutate the model output or leave the legacy alias detached from
+		// the canonical multi-clip slice.
+		scene := cloneSceneForClipValidation(originalScene)
 		enriched.Scenes[i] = scene
 		hardFail := false
 		// perSceneMsg captures the most recent warning appended
@@ -135,19 +137,16 @@ func ValidateAndEnrichSpecScene(
 		// canonical per-rule text.
 		var perSceneMsg string
 
-		// Rule A: kind=clip requires ClipID present + in evidence.
-		// Hard failure: if Rule A fails, skip Rules B/C/D because
-		// we already know the scene is broken (continues pre-PR
-		// behaviour).
-		if scene.Kind == scriptpkg.SceneClip {
-			var newHardFail bool
-			enriched.Scenes[i], warnings, newHardFail = applyKindClipRule(
-				i, scene, allowedClips, evidence, warnings,
-			)
-			hardFail = newHardFail
-			if hardFail && len(warnings) > 0 {
-				perSceneMsg = warnings[len(warnings)-1]
-			}
+		// Rule A: validate every canonical clip binding. A clip scene
+		// requires at least one; non-clip scenes may still carry media
+		// bindings, which must use the same ID/link/timing contract.
+		var newHardFail bool
+		enriched.Scenes[i], warnings, newHardFail = applyKindClipRule(
+			i, scene, allowedClips, evidence, warnings,
+		)
+		hardFail = newHardFail
+		if hardFail && len(warnings) > 0 {
+			perSceneMsg = warnings[len(warnings)-1]
 		}
 		if hardFail {
 			recordBadIndex(&badIndices, &badKinds, &badMessages, i, scene.Kind, perSceneMsg)
@@ -221,44 +220,82 @@ func applyKindClipRule(
 	evidence *scriptpkg.ClipEvidence,
 	warnings []string,
 ) (scriptpkg.SpecScene, []string, bool) {
-	clipID := ""
-	if scene.Bindings.Clip != nil {
-		clipID = strings.TrimSpace(scene.Bindings.Clip.ClipID)
+	bindings := scene.Bindings.Clips
+	if len(bindings) == 0 && scene.Bindings.Clip != nil {
+		bindings = []scriptpkg.ClipBinding{*scene.Bindings.Clip}
 	}
-	if clipID == "" {
+	if scene.Kind == scriptpkg.SceneClip && len(bindings) == 0 {
 		warnings = append(warnings,
 			fmt.Sprintf("scene[%d]: kind=clip but clip_id is empty", i))
 		return scene, warnings, true
 	}
-	if _, ok := allowedClips[clipID]; !ok && len(allowedClips) > 0 {
-		warnings = append(warnings,
-			fmt.Sprintf("scene[%d]: clip_id %q not in resolved ClipEvidence", i, clipID))
-		return scene, warnings, true
+	if len(bindings) == 0 {
+		return scene, warnings, false
 	}
 
-	// Auto-enrich: DriveLink + ClipTitle (placeholder). The
-	// pointer-to-ClipBinding is the canonical mutation target;
-	// we update the pointed-to struct in-place, then return
-	// the (value-copied) scene so the main loop commits it.
-	if scene.Bindings.Clip == nil {
-		scene.Bindings.Clip = &scriptpkg.ClipBinding{}
-	}
-	if scene.Bindings.Clip.DriveLink == "" && evidence != nil && evidence.DriveLinks != nil {
-		if link, ok := evidence.DriveLinks[clipID]; ok {
-			scene.Bindings.Clip.DriveLink = link
+	seen := make(map[string]struct{}, len(bindings))
+	for j := range bindings {
+		binding := &bindings[j]
+		clipID := strings.TrimSpace(binding.ClipID)
+		if clipID == "" {
+			warnings = append(warnings,
+				fmt.Sprintf("scene[%d]: clip_id is empty in binding[%d]", i, j))
+			return scene, warnings, true
+		}
+		if _, duplicate := seen[clipID]; duplicate {
+			warnings = append(warnings,
+				fmt.Sprintf("scene[%d]: duplicate clip_id %q", i, clipID))
+			return scene, warnings, true
+		}
+		seen[clipID] = struct{}{}
+		if evidence != nil {
+			if _, ok := allowedClips[clipID]; !ok {
+				warnings = append(warnings,
+					fmt.Sprintf("scene[%d]: clip_id %q not in resolved ClipEvidence", i, clipID))
+				return scene, warnings, true
+			}
+		}
+
+		if binding.DriveLink == "" && evidence != nil && evidence.DriveLinks != nil {
+			binding.DriveLink = evidence.DriveLinks[clipID]
+		}
+		if binding.ClipTitle == "" && evidence != nil {
+			binding.ClipTitle = strings.TrimSpace(evidence.ClipNames[clipID])
+		}
+		if binding.ClipTitle == "" {
+			t := clipID
+			if len(t) > 16 {
+				t = t[:16]
+			}
+			binding.ClipTitle = "Clip " + t
+		}
+		if binding.DurationMs == 0 && binding.EndMs > binding.StartMs {
+			binding.DurationMs = binding.EndMs - binding.StartMs
 		}
 	}
-	if scene.Bindings.Clip.ClipTitle == "" {
-		// PR 6 (June 2026): canonical placeholder until
-		// clips metadata lookup ships. Truncated to 16
-		// chars for operator-readability.
-		t := clipID
-		if len(t) > 16 {
-			t = t[:16]
-		}
-		scene.Bindings.Clip.ClipTitle = "Clip " + t
-	}
+
+	// Make `clips` canonical while retaining `clip` as the first-entry
+	// compatibility alias. Reuse across different scenes remains valid;
+	// only duplicates within this scene are rejected above.
+	scene.Bindings.Clips = bindings
+	scene.Bindings.Clip = &scene.Bindings.Clips[0]
 	return scene, warnings, false
+}
+
+// cloneSceneForClipValidation isolates mutable clip pointers and preserves
+// every non-clip binding while normalizing the legacy single-clip shape.
+func cloneSceneForClipValidation(scene scriptpkg.SpecScene) scriptpkg.SpecScene {
+	out := scene
+	out.Bindings = scene.Bindings
+	if len(scene.Bindings.Clips) > 0 {
+		out.Bindings.Clips = append([]scriptpkg.ClipBinding(nil), scene.Bindings.Clips...)
+		out.Bindings.Clip = &out.Bindings.Clips[0]
+	} else if scene.Bindings.Clip != nil {
+		binding := *scene.Bindings.Clip
+		out.Bindings.Clips = []scriptpkg.ClipBinding{binding}
+		out.Bindings.Clip = &out.Bindings.Clips[0]
+	}
+	return out
 }
 
 // applyTemporalRangeRule validates that the scene's clip binding
@@ -268,25 +305,26 @@ func applyKindClipRule(
 // Returns the (warning, bad) tuple. The bad bool contributes to
 // the final SpecSceneValidationError.
 func applyTemporalRangeRule(i int, scene scriptpkg.SpecScene, warnings []string) sceneRuleResult {
-	if scene.Bindings.Clip == nil {
-		return sceneRuleResult{}
+	bindings := scene.Bindings.Clips
+	if len(bindings) == 0 && scene.Bindings.Clip != nil {
+		bindings = []scriptpkg.ClipBinding{*scene.Bindings.Clip}
 	}
-	startMs := scene.Bindings.Clip.StartMs
-	endMs := scene.Bindings.Clip.EndMs
-	if startMs == 0 && endMs == 0 {
-		// No temporal range set — skip rule (caller didn't
-		// supply a range, so we don't reject on missing range).
-		return sceneRuleResult{}
-	}
-	if startMs < 0 || endMs < 0 {
-		warnings = append(warnings,
-			fmt.Sprintf("scene[%d]: negative temporal range (start_ms=%d end_ms=%d)", i, startMs, endMs))
-		return sceneRuleResult{warning: warnings[len(warnings)-1], bad: true}
-	}
-	if endMs <= startMs {
-		warnings = append(warnings,
-			fmt.Sprintf("scene[%d]: invalid temporal range (end_ms=%d <= start_ms=%d)", i, endMs, startMs))
-		return sceneRuleResult{warning: warnings[len(warnings)-1], bad: true}
+	for j := range bindings {
+		startMs := bindings[j].StartMs
+		endMs := bindings[j].EndMs
+		if startMs == 0 && endMs == 0 {
+			continue
+		}
+		if startMs < 0 || endMs < 0 {
+			warnings = append(warnings,
+				fmt.Sprintf("scene[%d] binding[%d]: negative temporal range (start_ms=%d end_ms=%d)", i, j, startMs, endMs))
+			return sceneRuleResult{warning: warnings[len(warnings)-1], bad: true}
+		}
+		if endMs <= startMs {
+			warnings = append(warnings,
+				fmt.Sprintf("scene[%d] binding[%d]: invalid temporal range (end_ms=%d <= start_ms=%d)", i, j, endMs, startMs))
+			return sceneRuleResult{warning: warnings[len(warnings)-1], bad: true}
+		}
 	}
 	return sceneRuleResult{}
 }
@@ -384,8 +422,14 @@ func appendSoftWarnings(warnings []string, output *scriptpkg.ModelScriptOutputV1
 	// (operator-allowed).
 	clipUseCount := make(map[string]int, len(output.SpecScene.Scenes))
 	for _, scene := range output.SpecScene.Scenes {
-		if scene.Bindings.Clip != nil && scene.Bindings.Clip.ClipID != "" {
-			clipUseCount[scene.Bindings.Clip.ClipID]++
+		bindings := scene.Bindings.Clips
+		if len(bindings) == 0 && scene.Bindings.Clip != nil {
+			bindings = []scriptpkg.ClipBinding{*scene.Bindings.Clip}
+		}
+		for _, binding := range bindings {
+			if id := strings.TrimSpace(binding.ClipID); id != "" {
+				clipUseCount[id]++
+			}
 		}
 	}
 	for id, count := range clipUseCount {
