@@ -104,6 +104,128 @@ func TestNewClipEvidence_DeepCopiesSegmentClipTags(t *testing.T) {
 	}
 }
 
+func TestNewClipEvidence_DeepCopyPreservesEmptySlicesTagsAndEditorialOwnership(t *testing.T) {
+	original := ClipEvidence{
+		AcceptedClipIDs:      []string{"clip-a"},
+		RenderableClipIDs:    make([]string, 0, 1),
+		Excluded:             make([]ExcludedClip, 0, 1),
+		MissingClipIDs:       make([]MissingClipID, 0, 1),
+		ClipTranscriptHashes: make([]string, 0, 1),
+		ClipDetails: map[string]ClipDetail{
+			"clip-a": {Name: "Clip A", Tags: []string{"top-level"}},
+		},
+		SegmentEvidence: []SegmentClipEvidence{
+			{
+				SegmentID:  "segment-one",
+				Kind:       "scene",
+				Topic:      "First topic",
+				SourceText: "First source",
+				ClipIDs:    []string{"clip-a"},
+				Clips: map[string]ClipDetail{
+					"clip-a": {Name: "Clip A", Tags: []string{"segment-tag"}},
+				},
+			},
+			{
+				SegmentID:  "segment-two",
+				Kind:       "narration",
+				Topic:      "Second topic",
+				SourceText: "Second source",
+				ClipIDs:    make([]string, 0, 1),
+				Clips:      map[string]ClipDetail{},
+			},
+		},
+	}
+
+	clone := NewClipEvidence(original)
+	if clone == nil {
+		t.Fatal("NewClipEvidence returned nil")
+	}
+	for name, got := range map[string][]string{
+		"RenderableClipIDs":    clone.RenderableClipIDs,
+		"ClipTranscriptHashes": clone.ClipTranscriptHashes,
+	} {
+		if got == nil || len(got) != 0 {
+			t.Errorf("%s = %#v, want a preserved non-nil empty slice", name, got)
+		}
+	}
+	if clone.Excluded == nil || len(clone.Excluded) != 0 {
+		t.Errorf("Excluded = %#v, want a preserved non-nil empty slice", clone.Excluded)
+	}
+	if clone.MissingClipIDs == nil || len(clone.MissingClipIDs) != 0 {
+		t.Errorf("MissingClipIDs = %#v, want a preserved non-nil empty slice", clone.MissingClipIDs)
+	}
+
+	if len(clone.SegmentEvidence) != 2 {
+		t.Fatalf("SegmentEvidence length = %d, want 2", len(clone.SegmentEvidence))
+	}
+	first, second := clone.SegmentEvidence[0], clone.SegmentEvidence[1]
+	if first.SegmentID != "segment-one" || first.Kind != "scene" || first.Topic != "First topic" || first.SourceText != "First source" {
+		t.Fatalf("first segment editorial ownership changed: %+v", first)
+	}
+	if second.SegmentID != "segment-two" || second.Kind != "narration" || second.Topic != "Second topic" || second.SourceText != "Second source" {
+		t.Fatalf("second segment editorial ownership changed: %+v", second)
+	}
+	if second.ClipIDs == nil || len(second.ClipIDs) != 0 {
+		t.Errorf("second segment ClipIDs = %#v, want a preserved non-nil empty slice", second.ClipIDs)
+	}
+	if second.Clips == nil || len(second.Clips) != 0 {
+		t.Errorf("second segment Clips = %#v, want a preserved non-nil empty map", second.Clips)
+	}
+
+	clone.AcceptedClipIDs[0] = "mutated-accepted"
+	clone.ClipDetails["clip-a"] = ClipDetail{Name: "mutated top-level", Tags: []string{"mutated"}}
+	clone.SegmentEvidence[0].ClipIDs[0] = "mutated-segment"
+	segmentDetail := clone.SegmentEvidence[0].Clips["clip-a"]
+	segmentDetail.Tags[0] = "mutated-segment-tag"
+	clone.SegmentEvidence[0].Clips["clip-a"] = segmentDetail
+	clone.RenderableClipIDs = append(clone.RenderableClipIDs, "clone-renderable")
+	clone.ClipTranscriptHashes = append(clone.ClipTranscriptHashes, "clone-hash")
+	clone.Excluded = append(clone.Excluded, ExcludedClip{ClipID: "clone-excluded"})
+	clone.MissingClipIDs = append(clone.MissingClipIDs, MissingClipID{ClipID: "clone-missing"})
+	clone.SegmentEvidence[1].ClipIDs = append(clone.SegmentEvidence[1].ClipIDs, "new-clip")
+	clone.SegmentEvidence[1].Clips["new-clip"] = ClipDetail{Name: "new clip"}
+
+	if original.AcceptedClipIDs[0] != "clip-a" {
+		t.Fatal("AcceptedClipIDs shares storage with the clone")
+	}
+	if original.ClipDetails["clip-a"].Name != "Clip A" || original.ClipDetails["clip-a"].Tags[0] != "top-level" {
+		t.Fatal("top-level ClipDetails or tags share storage with the clone")
+	}
+	if original.SegmentEvidence[0].ClipIDs[0] != "clip-a" {
+		t.Fatal("segment ClipIDs share storage with the clone")
+	}
+	if original.SegmentEvidence[0].Clips["clip-a"].Tags[0] != "segment-tag" {
+		t.Fatal("segment ClipDetails tags share storage with the clone")
+	}
+	if len(original.RenderableClipIDs) != 0 || original.RenderableClipIDs[:1][0] == "clone-renderable" {
+		t.Fatal("empty RenderableClipIDs shares backing storage with the clone")
+	}
+	if len(original.ClipTranscriptHashes) != 0 || original.ClipTranscriptHashes[:1][0] == "clone-hash" {
+		t.Fatal("empty ClipTranscriptHashes shares backing storage with the clone")
+	}
+	if len(original.Excluded) != 0 || original.Excluded[:1][0].ClipID == "clone-excluded" {
+		t.Fatal("empty Excluded shares backing storage with the clone")
+	}
+	if len(original.MissingClipIDs) != 0 || original.MissingClipIDs[:1][0].ClipID == "clone-missing" {
+		t.Fatal("empty MissingClipIDs shares backing storage with the clone")
+	}
+	if len(original.SegmentEvidence[1].ClipIDs) != 0 || original.SegmentEvidence[1].ClipIDs[:1][0] == "new-clip" || len(original.SegmentEvidence[1].Clips) != 0 {
+		t.Fatal("empty second segment ownership changed through the clone")
+	}
+}
+
+func TestNewClipEvidence_DeepCopyPreservesNilSlicesAndMaps(t *testing.T) {
+	clone := NewClipEvidence(ClipEvidence{
+		AcceptedClipIDs:   nil,
+		RenderableClipIDs: nil,
+		ClipDetails:       nil,
+		SegmentEvidence:   nil,
+	})
+	if clone.AcceptedClipIDs != nil || clone.RenderableClipIDs != nil || clone.ClipDetails != nil || clone.SegmentEvidence != nil {
+		t.Fatalf("nil collection identity was not preserved: %+v", clone)
+	}
+}
+
 func TestGenerationEnvelopeValidate_AllowsAdvancedOwnershipMixedWithRoot(t *testing.T) {
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
