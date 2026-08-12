@@ -487,6 +487,73 @@ func TestClipBindings_ModelProducedScenes_BindsClips(t *testing.T) {
 	}
 }
 
+func TestClipBindings_ExplicitSegmentsPreserveCardinalityAndMultiClipOwnership(t *testing.T) {
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"intro-clip", "clip-a", "clip-b", "clip-c"},
+		ClipNames: map[string]string{
+			"intro-clip": "Intro clip",
+			"clip-a":     "Clip A",
+			"clip-b":     "Clip B",
+			"clip-c":     "Clip C",
+		},
+		DriveLinks: map[string]string{
+			"intro-clip": "https://drive/intro",
+			"clip-a":     "https://drive/a",
+			"clip-b":     "https://drive/b",
+			"clip-c":     "https://drive/c",
+		},
+		ClipDetails: map[string]scriptpkg.ClipDetail{
+			"intro-clip": {Name: "Intro clip", StartMs: 0, EndMs: 1000, DriveLink: "https://drive/intro"},
+			"clip-a":     {Name: "Clip A", StartMs: 1000, EndMs: 2500, DriveLink: "https://drive/a"},
+			"clip-b":     {Name: "Clip B", StartMs: 0, EndMs: 2000, DriveLink: "https://drive/b"},
+			"clip-c":     {Name: "Clip C", StartMs: 2000, EndMs: 4000, DriveLink: "https://drive/c"},
+		},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind:   string(scriptpkg.SourceClips),
+		NumClips:     4,
+		ClipEvidence: evidence,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "intro", Kind: "intro", Topic: "Opening", ClipIDs: []string{"intro-clip"}},
+			{ID: "scene-1", Kind: "scene", Topic: "Combined beat", ClipIDs: []string{"clip-a", "clip-b"}},
+			{ID: "scene-2", Kind: "narration", Topic: "Text only", ClipIDs: []string{}},
+			{ID: "scene-3", Kind: "scene", Topic: "Closing", ClipIDs: []string{"clip-c"}},
+		},
+	}
+	input := adapters.ProcessInput{Text: "Intro paragraph.\n\nCombined paragraph.\n\nText-only paragraph.\n\nClosing paragraph."}
+
+	result, err := adapters.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process error = %v", err)
+	}
+	if result == nil || len(result.SynthesizedScenes) != 4 {
+		t.Fatalf("synthesized scene count = %d, want 4", len(result.SynthesizedScenes))
+	}
+	if len(result.UpdatedSpecScene.Scenes) != 4 {
+		t.Fatalf("updated scene count = %d, want 4", len(result.UpdatedSpecScene.Scenes))
+	}
+
+	scenes := result.SynthesizedScenes
+	if scenes[0].SegmentID != "intro" || scenes[0].Kind != scriptpkg.SceneIntro {
+		t.Fatalf("intro scene identity = (%q, %q), want (intro, intro)", scenes[0].SegmentID, scenes[0].Kind)
+	}
+	if len(scenes[0].Bindings.Clips) != 1 || scenes[0].Bindings.Clip == nil || scenes[0].Bindings.Clip.ClipID != "intro-clip" {
+		t.Fatalf("intro clip bindings = %+v, want one intro clip", scenes[0].Bindings)
+	}
+	if scenes[1].SegmentID != "scene-1" || len(scenes[1].Bindings.Clips) != 2 {
+		t.Fatalf("multi-clip scene = (%q, %+v), want segment scene-1 with two clips", scenes[1].SegmentID, scenes[1].Bindings.Clips)
+	}
+	if scenes[1].Bindings.Clips[0].ClipID != "clip-a" || scenes[1].Bindings.Clips[1].ClipID != "clip-b" {
+		t.Fatalf("multi-clip order = %v, want [clip-a clip-b]", []string{scenes[1].Bindings.Clips[0].ClipID, scenes[1].Bindings.Clips[1].ClipID})
+	}
+	if scenes[2].SegmentID != "scene-2" || scenes[2].Kind != scriptpkg.SceneNarration || len(scenes[2].Bindings.Clips) != 0 || scenes[2].Bindings.Clip != nil {
+		t.Fatalf("text-only scene = %+v, want narration with zero clips", scenes[2])
+	}
+	if scenes[3].SegmentID != "scene-3" || len(scenes[3].Bindings.Clips) != 1 || scenes[3].Bindings.Clips[0].ClipID != "clip-c" {
+		t.Fatalf("closing scene = %+v, want one clip-c binding", scenes[3])
+	}
+}
+
 // TestClipBindings_NoClipEvidence_NoOp verifies that when there is no
 // clip evidence the processor returns an empty result and does not
 // touch the input scenes. Covers both nil ClipEvidence and a non-nil

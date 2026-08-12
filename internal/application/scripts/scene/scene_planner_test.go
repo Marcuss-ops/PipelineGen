@@ -194,6 +194,31 @@ func TestScenePlanner_Plan_ProseFallbackEngaged(t *testing.T) {
 // prose-only path: scenes empty + text non-empty + no clips →
 // synthesizer produces a NumClips-sized partition OR a
 // sentence-derived partition when NumClips is zero.
+func TestScenePlanner_Plan_ExplicitSegmentsOverrideClipDerivedCount(t *testing.T) {
+	t.Parallel()
+	p := scene.NewScenePlanner(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind:   string(scriptpkg.SourceClips),
+		NumClips:     2,
+		SegmentWords: 80,
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "intro", Kind: "intro", Topic: "Opening"},
+			{ID: "scene-1", Kind: "scene", Topic: "Multi clip"},
+			{ID: "scene-2", Kind: "narration", Topic: "Text only"},
+			{ID: "scene-3", Kind: "scene", Topic: "Closing"},
+		},
+		ClipEvidence: &scriptpkg.ClipEvidence{AcceptedClipIDs: []string{"clip-a", "clip-b"}},
+	}
+	got := p.Plan(scene.NarrativeDraft{
+		SourceKind: string(scriptpkg.SourceClips),
+		Text:       "Paragraph one.\n\nParagraph two.\n\nParagraph three.\n\nParagraph four.",
+	}, plan)
+
+	require.Len(t, got.Scenes, 4, "declared segment count must override clip count and word heuristics")
+	assert.Equal(t, "Paragraph one.", got.Scenes[0].Text)
+	assert.Equal(t, "Paragraph four.", got.Scenes[3].Text)
+}
+
 func TestScenePlanner_Plan_ProseFallbackNoClipEvidence(t *testing.T) {
 	t.Parallel()
 	p := scene.NewScenePlanner(zap.NewNop())

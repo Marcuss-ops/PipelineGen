@@ -273,7 +273,12 @@ func (p *ScenePlanner) Plan(
 		}
 		wordCount := len(strings.Fields(text))
 		n := len(splitProseParagraphs(text))
-		if n < 2 && plan.SegmentWords > 0 && wordCount > plan.SegmentWords {
+		if len(plan.Segments) > 0 {
+			// Explicit segments are the authoritative scene cardinality;
+			// clip count and prose paragraph heuristics must not split or
+			// merge the caller's editorial slots.
+			n = len(plan.Segments)
+		} else if n < 2 && plan.SegmentWords > 0 && wordCount > plan.SegmentWords {
 			n = int(math.Ceil(float64(wordCount) / float64(plan.SegmentWords)))
 		}
 		if n >= 2 {
@@ -340,7 +345,11 @@ func (p *ScenePlanner) Plan(
 		if effectiveNumClips <= 0 {
 			effectiveNumClips = draft.NumClips
 		}
-		if effectiveNumClips > 0 && (n == 0 || effectiveNumClips < n) {
+		if len(plan.Segments) > 0 {
+			// N declared segments always produce N scenes, including
+			// text-only segments and segments containing multiple clips.
+			n = len(plan.Segments)
+		} else if effectiveNumClips > 0 && (n == 0 || effectiveNumClips < n) {
 			n = effectiveNumClips
 		}
 		if n <= 0 && sentencesPerImage > 0 {
