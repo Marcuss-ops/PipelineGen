@@ -30,6 +30,15 @@ func NewUnitOfWork(db *sql.DB, box *outboxevents.Repository) (*UnitOfWork, error
 	if box == nil {
 		return nil, errors.New("controlplane uow: nil outbox repository")
 	}
+	for _, column := range []string{"registry_seq", "outbox_event_id"} {
+		var present int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('canonical_mutations') WHERE name=?`, column).Scan(&present); err != nil {
+			return nil, fmt.Errorf("controlplane uow: inspect canonical_mutations.%s: %w", column, err)
+		}
+		if present != 1 {
+			return nil, fmt.Errorf("controlplane uow: canonical_mutations.%s is missing; migration 203 is required", column)
+		}
+	}
 	return &UnitOfWork{db: db, box: box, now: time.Now}, nil
 }
 

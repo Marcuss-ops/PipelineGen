@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
@@ -90,6 +91,30 @@ func testCommand() capcontrol.Command {
 	}
 }
 
+func TestNewUnitOfWorkFailsClosedBeforeReplayMetadataMigration(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE canonical_mutations (
+		command_id TEXT PRIMARY KEY,
+		idempotency_key TEXT NOT NULL UNIQUE,
+		request_hash TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		result_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		completed_at TEXT,
+		error_message TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewUnitOfWork(db, outboxevents.NewRepository(db))
+	if err == nil || !strings.Contains(err.Error(), "migration 203 is required") {
+		t.Fatalf("constructor error = %v, want migration 203 guard", err)
+	}
+}
+
 func TestUnitOfWorkCommitsMutationAuditOutboxAndCommand(t *testing.T) {
 	uow, db := newUOWForTest(t)
 	result, err := uow.Run(context.Background(), testCommand(), func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
@@ -149,6 +174,26 @@ func TestUnitOfWorkRollsBackMutationAndAuditWhenMutationFails(t *testing.T) {
 	assertCount(t, db, "SELECT COUNT(*) FROM registry_events", 0)
 	assertCount(t, db, "SELECT COUNT(*) FROM outbox_events", 0)
 	assertCount(t, db, "SELECT COUNT(*) FROM canonical_mutations", 0)
+}
+
+func TestUnitOfWorkRollsBackMutationWhenAuditInsertFails(t *testing.T) {
+	uow, db := newUOWForTest(t)
+	if _, err := db.Exec(`INSERT INTO registry_events(event_id, event_type, created_at) VALUES ('mutation:cmd-1', 'existing', 'now')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := uow.Run(context.Background(), testCommand(), func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO mutation_targets(id, value) VALUES (?, ?)`, "asset-1", "v1"); err != nil {
+			return "", err
+		}
+		return `{"ok":true}`, nil
+	})
+	if err == nil {
+		t.Fatal("audit uniqueness failure unexpectedly committed")
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM mutation_targets`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM canonical_mutations`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM outbox_events`, 0)
+	assertCount(t, db, `SELECT COUNT(*) FROM registry_events`, 1)
 }
 
 func TestUnitOfWorkRequiresRequestHash(t *testing.T) {
