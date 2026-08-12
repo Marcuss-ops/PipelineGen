@@ -162,6 +162,43 @@ func validateNoDuplicateVersions(migrations []migrationFile, log *zap.Logger) er
 	return nil
 }
 
+// validateAppliedMigrationSet fails closed when a later migration is recorded
+// while an earlier in-scope migration is missing. MAX(version) alone cannot
+// detect a ledger such as 193,195; this checks the exact applied/file set.
+func validateAppliedMigrationSet(applied map[int]appliedRecord, migrations []migrationFile, targetDB string) error {
+	known := make(map[int]migrationFile, len(migrations))
+	for _, migration := range migrations {
+		known[migration.version] = migration
+		if !migrationAppliesToTargetDB(migration.scope, targetDB) {
+			if _, ok := applied[migration.version]; ok {
+				return fmt.Errorf("storage: migration ledger contains out-of-scope version %03d (%s) for target database %q", migration.version, migration.filename, targetDB)
+			}
+		}
+	}
+	for version := range applied {
+		if _, ok := known[version]; !ok {
+			return fmt.Errorf("storage: migration ledger contains version %03d but no migration file exists on disk", version)
+		}
+	}
+	for index, migration := range migrations {
+		if !migrationAppliesToTargetDB(migration.scope, targetDB) {
+			continue
+		}
+		if _, ok := applied[migration.version]; ok {
+			continue
+		}
+		for _, later := range migrations[index+1:] {
+			if !migrationAppliesToTargetDB(later.scope, targetDB) {
+				continue
+			}
+			if _, ok := applied[later.version]; ok {
+				return fmt.Errorf("storage: migration ledger gap: version %03d (%s) is missing while later version %03d (%s) is applied", migration.version, migration.filename, later.version, later.filename)
+			}
+		}
+	}
+	return nil
+}
+
 // warnOnGaps logs warnings for any version gaps in the migration sequence.
 // Gaps are informational only — the runner proceeds normally. Real migration
 // directories may have gaps from historical renumbering or removed migrations.
