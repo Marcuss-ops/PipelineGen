@@ -288,7 +288,7 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 
 	// Source defaults.
 	if item.Source.TranscriptPolicy == "" {
-		item.Source.TranscriptPolicy = "auto"
+		item.Source.TranscriptPolicy = scriptpkg.TranscriptPolicyStrict
 	}
 	if item.Source.OrderingStrategy == "" {
 		item.Source.OrderingStrategy = "relevance"

@@ -325,6 +325,15 @@ func TestValidateItemValidClips(t *testing.T) {
 	}
 }
 
+func TestNormalizeItemDefaultsClipTranscriptPolicyToStrict(t *testing.T) {
+	item := clipsItem()
+	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
+
+	if got := item.Source.TranscriptPolicy; got != scriptpkg.TranscriptPolicyStrict {
+		t.Fatalf("clip transcript policy = %q, want strict", got)
+	}
+}
+
 func TestValidateItemEmptySource(t *testing.T) {
 	item := scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceClips, ClipIDs: nil},

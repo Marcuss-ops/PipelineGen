@@ -165,6 +165,98 @@ func TestClipSourceBuilder_HydratesAssetTimingAndSubtitleWithoutSearch(t *testin
 	}
 }
 
+func TestClipSourceBuilder_StrictTranscriptPolicyRejectsMissingTranscript(t *testing.T) {
+	resolver := newFakeClipResolver()
+	resolver.AddClip(makeTestClip("clip-strict", "Strict", time.Second))
+	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+
+	_, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-strict"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
+	})
+	if err == nil {
+		t.Fatal("strict transcript policy must reject a clip without a READY transcript")
+	}
+}
+
+func TestClipSourceBuilder_UnknownTranscriptPolicyRejectsMissingTranscript(t *testing.T) {
+	resolver := newFakeClipResolver()
+	resolver.AddClip(makeTestClip("clip-unknown-policy", "Unknown policy", time.Second))
+	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+
+	_, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-unknown-policy"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: "unsupported", SourceText: "EXPLICIT_SOURCE_TEXT",
+	})
+	if err == nil {
+		t.Fatal("unknown transcript policy must not authorize source_text fallback")
+	}
+}
+
+func TestClipSourceBuilder_StrictPolicyAllowsFallbackOnlyForExplicitSourceText(t *testing.T) {
+	resolver := newFakeClipResolver()
+	resolver.AddClip(makeTestClip("clip-fallback", "Fallback", time.Second))
+	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+
+	evidence, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-fallback"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict, SourceText: "EXPLICIT_GLOBAL_SOURCE_TEXT",
+	})
+	if err != nil {
+		t.Fatalf("explicit global source_text should authorize strict fallback: %v", err)
+	}
+	if evidence == nil || evidence.ClipDetails["clip-fallback"].Transcript != "" {
+		t.Fatalf("fallback must retain clip metadata without fabricating transcript evidence: %+v", evidence)
+	}
+
+	_, _, _, err = builder.BuildClipContext(context.Background(), []string{"clip-fallback"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
+		Segments: []scriptpkg.ScriptSegment{{ID: "scene", ClipIDs: []string{"clip-fallback"}, SourceText: "EXPLICIT_SEGMENT_SOURCE_TEXT"}},
+	})
+	if err != nil {
+		t.Fatalf("explicit segment source_text should authorize strict fallback: %v", err)
+	}
+
+	_, _, _, err = builder.BuildClipContext(context.Background(), []string{"clip-fallback"}, &ClipGenerationOptions{
+		Language: "en", TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
+		Segments: []scriptpkg.ScriptSegment{{ID: "scene", ClipIDs: []string{"other-clip"}, SourceText: "SOURCE_FOR_ANOTHER_CLIP"}},
+	})
+	if err == nil {
+		t.Fatal("source_text belonging to another clip must not authorize transcript fallback")
+	}
+}
+
+func TestClipsResolver_GlobalSourceTextSurvivesTranscriptFallback(t *testing.T) {
+	recorder := &recordClipBuilder{
+		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"clip-source-text"})},
+	}
+	resolver := &ClipsSourceResolver{clipBuilder: recorder, log: zap.NewNop()}
+
+	resolved, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
+		Type:             scriptpkg.SourceClips,
+		ClipIDs:          []string{"clip-source-text"},
+		SourceText:       "EXPLICIT_GLOBAL_SOURCE_TEXT",
+		TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
+	}, makeTestResCtx())
+	if err != nil {
+		t.Fatalf("explicit global source_text should survive clip resolution: %v", err)
+	}
+	if resolved.SourceText != "EXPLICIT_GLOBAL_SOURCE_TEXT" {
+		t.Fatalf("resolved source text = %q, want explicit global source text", resolved.SourceText)
+	}
+}
+
+func TestClipsResolver_RejectsSilentEmptyClipEvidence(t *testing.T) {
+	recorder := &recordClipBuilder{fakeClipBuilder: fakeClipBuilder{ev: nil}}
+	resolver := &ClipsSourceResolver{clipBuilder: recorder, log: zap.NewNop()}
+	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
+		Type: scriptpkg.SourceClips, ClipIDs: []string{"declared-clip"}, TranscriptPolicy: scriptpkg.TranscriptPolicyStrict,
+	}, makeTestResCtx())
+	if err == nil || !strings.Contains(err.Error(), "empty clip evidence") {
+		t.Fatalf("silent empty evidence must fail explicitly, got %v", err)
+	}
+}
+
 func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
 	evidence := &scriptpkg.ClipEvidence{
 		AcceptedClipIDs: []string{"intro-clip", "clip-b", "clip-a"},

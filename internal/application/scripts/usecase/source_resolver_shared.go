@@ -56,6 +56,14 @@ func buildResolvedClipSource(
 			Inner:       fmt.Errorf("clip context build failed: %w", buildErr),
 		}
 	}
+	if p.sourceType == scriptpkg.SourceClips && (evidence == nil || len(evidence.AcceptedClipIDs) == 0) {
+		return nil, &scriptpkg.SourceResolutionError{
+			SourceType:  p.sourceType,
+			Query:       p.query,
+			ResultCount: len(p.clipIDs),
+			Inner:       fmt.Errorf("clip context build returned empty clip evidence"),
+		}
+	}
 
 	// P1 #9 (June 2026): resolvedTitle is the plan-derived title from
 	// BuildClipContext. Fall back to the resolver-supplied title.
@@ -65,9 +73,17 @@ func buildResolvedClipSource(
 	}
 
 	fingerprint := BuildClipFingerprint(src, evidence)
-	modelSourceText := sourceText
+	modelSourceText := strings.TrimSpace(sourceText)
 	if evidence != nil {
-		modelSourceText = strings.TrimSpace(evidence.ModelSourceText())
+		if evidenceText := strings.TrimSpace(evidence.ModelSourceText()); evidenceText != "" {
+			modelSourceText = evidenceText
+		}
+	}
+	// A clip source may intentionally omit transcripts when the caller
+	// supplied explicit source_text. Preserve that authoritative text as
+	// the model input instead of silently returning an empty source.
+	if modelSourceText == "" {
+		modelSourceText = strings.TrimSpace(src.SourceText)
 	}
 
 	if log != nil {

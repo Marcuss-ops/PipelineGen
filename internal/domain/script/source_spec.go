@@ -25,6 +25,15 @@ const (
 	GroundingPolicyBalanced      = "balanced"
 )
 
+// TranscriptPolicy values control how clip-driven generation handles a
+// missing READY transcript. Strict/auto retain the fail-closed contract, with
+// the only exception being explicit caller-provided source_text.
+const (
+	TranscriptPolicyStrict             = "strict"
+	TranscriptPolicyAuto               = "auto" // legacy alias for strict behavior
+	TranscriptPolicySourceTextFallback = "source_text_fallback"
+)
+
 const (
 	FallbackPolicyStrict     = "strict"
 	FallbackPolicyAllowProse = "allow_prose"
