@@ -76,6 +76,7 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		SegmentWords:     resCtx.SegmentWords,
 		SegmentTopics:    append([]string(nil), resCtx.SegmentTopics...),
 		Segments:         canonicalSegments,
+		SourceText:       src.SourceText,
 		TranscriptPolicy: src.TranscriptPolicy,
 		// Explicit source.type=clips payloads own their declared order;
 		// never let a resolver-side ordering strategy reorder those IDs.

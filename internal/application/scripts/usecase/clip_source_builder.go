@@ -188,7 +188,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		excludedClips  []scriptpkg.ExcludedClip
 	)
 	results := concurrent.ParallelMap(uniqueIDs, clipParallelism(len(uniqueIDs)), func(_ int, id string) clipContextResult {
-		return c.resolveClipContextResult(ctx, id, language, requireDriveLink)
+		return c.resolveClipContextResult(ctx, id, language, requireDriveLink, transcriptFallbackAllowed(opts, id))
 	})
 
 	records := make([]clipContextRecord, 0, len(results))

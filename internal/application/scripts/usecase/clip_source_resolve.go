@@ -16,6 +16,8 @@ package usecase
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -83,6 +85,7 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	id string,
 	language string,
 	requireDriveLink bool,
+	allowTranscriptFallback bool,
 ) clipContextResult {
 	clip, reason := c.resolveOneClip(ctx, id)
 	switch reason {
@@ -132,6 +135,13 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	// resolvedTracks accumulator + buildClipEvidence).
 	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
 	if resolveErr != nil {
+		var notReady *ErrTextTrackNotReady
+		if allowTranscriptFallback && errors.As(resolveErr, &notReady) {
+			// Explicit source_text is the only permitted fallback. Keep the
+			// resolved clip record so its metadata remains available, but do
+			// not fabricate transcript/evidence content.
+			return clipContextResult{record: clipContextRecord{id: id, clip: clip}}
+		}
 		if c.log != nil {
 			c.log.Warn("clip source builder: text track resolve failed",
 				zap.String("clip_id", id),
@@ -148,5 +158,38 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 			transcript: transcript,
 			track:      track,
 		},
+	}
+}
+
+// transcriptFallbackAllowed permits a missing transcript only when the
+// caller supplied explicit source text for the whole request or for the
+// segment that owns this clip. The policy names are intentionally narrow:
+// unknown policies remain strict and never enable a silent fallback.
+func transcriptFallbackAllowed(opts *ClipGenerationOptions, clipID string) bool {
+	if opts == nil || !transcriptPolicyAllowsSourceTextFallback(opts.TranscriptPolicy) {
+		return false
+	}
+	if strings.TrimSpace(opts.SourceText) != "" {
+		return true
+	}
+	for _, segment := range opts.Segments {
+		if strings.TrimSpace(segment.SourceText) == "" {
+			continue
+		}
+		for _, declaredID := range segment.ClipIDs {
+			if strings.TrimSpace(declaredID) == strings.TrimSpace(clipID) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func transcriptPolicyAllowsSourceTextFallback(policy string) bool {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case "", scriptpkg.TranscriptPolicyAuto, scriptpkg.TranscriptPolicyStrict, scriptpkg.TranscriptPolicySourceTextFallback:
+		return true
+	default:
+		return false
 	}
 }
