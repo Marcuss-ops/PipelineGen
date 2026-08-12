@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 )
@@ -96,6 +98,71 @@ func equalClipIDs(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+type hydrationSubtitleRepository struct {
+	artifacts []asset.SubtitleArtifact
+}
+
+func (r *hydrationSubtitleRepository) Upsert(_ context.Context, _ *asset.SubtitleArtifact) error {
+	return nil
+}
+
+func (r *hydrationSubtitleRepository) FindCurrent(_ context.Context, _ string, _ string, _ asset.SubtitleFormat) (*asset.SubtitleArtifact, error) {
+	return nil, nil
+}
+
+func (r *hydrationSubtitleRepository) ListByAsset(_ context.Context, assetID string) ([]asset.SubtitleArtifact, error) {
+	out := make([]asset.SubtitleArtifact, 0, len(r.artifacts))
+	for _, artifact := range r.artifacts {
+		if artifact.AssetID == assetID {
+			out = append(out, artifact)
+		}
+	}
+	return out, nil
+}
+
+func TestClipSourceBuilder_HydratesAssetTimingAndSubtitleWithoutSearch(t *testing.T) {
+	resolver := newFakeClipResolver()
+	clip := makeTestClip("clip-a", "Clip A", 2*time.Second)
+	clip.SetMetadataInt("start_ms", 1250)
+	clip.SetMetadataInt("end_ms", 4750)
+	resolver.AddClip(clip)
+
+	builder := NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{
+		tracks: map[string]*asset.TextTrack{"clip-a:en": makeTrack("clip-a", "en", "hydrated transcript")},
+	})
+	builder.ConfigureSubtitleArtifactRepository(&hydrationSubtitleRepository{artifacts: []asset.SubtitleArtifact{{
+		AssetID: "clip-a", Format: asset.SubtitleFormatASS, Status: asset.SubtitleStatusReady, IsCurrent: true,
+		DriveURL: "https://drive/subtitle-a", DriveFileID: "subtitle-a",
+	}}})
+
+	evidence, _, _, err := builder.BuildClipContext(context.Background(), []string{"clip-a"}, &ClipGenerationOptions{Language: "en", RequireDriveLink: true})
+	if err != nil {
+		t.Fatalf("BuildClipContext failed: %v", err)
+	}
+	detail, ok := evidence.ClipDetails["clip-a"]
+	if !ok {
+		t.Fatalf("hydrated clip detail missing: %+v", evidence.ClipDetails)
+	}
+	if detail.StartMs != 1250 || detail.EndMs != 4750 {
+		t.Fatalf("timing was not hydrated from the asset: %+v", detail)
+	}
+	if detail.DriveLink != clip.DriveLink() {
+		t.Fatalf("DriveLink = %q, want %q", detail.DriveLink, clip.DriveLink())
+	}
+	if detail.SubtitleLink != "https://drive/subtitle-a" || detail.SubtitleFileID != "subtitle-a" {
+		t.Fatalf("subtitle link/file ID were not hydrated: %+v", detail)
+	}
+
+	resolver.mu.RLock()
+	mediaCalls := append([]string(nil), resolver.mediaCalls...)
+	driveCalls := append([]string(nil), resolver.driveCalls...)
+	resolver.mu.RUnlock()
+	if !equalClipIDs(mediaCalls, []string{"clip-a"}) || len(driveCalls) != 0 {
+		t.Fatalf("hydration performed unexpected lookups: media=%v drive=%v", mediaCalls, driveCalls)
+	}
 }
 
 func TestClipsResolver_HydratesExplicitSegmentsWithoutSearch(t *testing.T) {
