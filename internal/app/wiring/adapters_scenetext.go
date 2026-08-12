@@ -365,6 +365,7 @@ func (g *SceneTextGenerator) convertScenes(
 					return nil, fmt.Errorf("resolve clip %s: %w", binding.ClipID, err)
 				}
 				if canonical != nil {
+					clip.DriveLink = canonical.DriveLink()
 					clip.Path = canonical.LocalPath()
 					clip.SHA256, err = renderAssetSHA256(canonical)
 					if err != nil {
