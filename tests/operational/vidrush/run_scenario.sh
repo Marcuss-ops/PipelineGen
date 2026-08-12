@@ -97,6 +97,8 @@ source "$DIR/lib/concurrency.sh"
 source "$DIR/lib/idempotency.sh"
 # shellcheck disable=SC1091
 source "$DIR/lib/blocked.sh"
+# shellcheck disable=SC1091
+source "$DIR/lib/assertions.sh"
 
 # ── Dry-run path ───────────────────────────────────────────────────────
 if [[ "$DRY_MODE" == "1" ]]; then
@@ -427,137 +429,16 @@ run_script_generate() {
     fi
 
     # ── Run assertions ─────────────────────────────────────────────────
-    local assert_fail=0
-    local seg_count ent_count segments_with_entities entity_values_total entity_phrases_total important_words_total binding_count unresolved_count
-    seg_count=$(jq '[.segments[]?] | length' <<<"$result")
-    ent_count=$(jq '[.segments[]?.insights.entities[]?] | length' <<<"$result")
-    segments_with_entities=$(jq '[.segments[]? | select((.insights.entities // []) | length > 0)] | length' <<<"$result")
-    entity_values_total="$ent_count"
-    entity_phrases_total=$(jq '[.segments[]?.insights.important_phrases[]?] | length' <<<"$result")
-    important_words_total=$(jq '[.segments[]?.insights.important_words[]?] | length' <<<"$result")
-	# A VidRush scene is bound either by its verified primary video or, for an
-	# image-only plan, by at least one verified/persisted secondary image.
-	binding_count=$(jq '[.segments[]? | select(.assets.primary_video != null or ([.assets.secondary_images[]? | select(.drive_link != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed")] | length) > 0)] | length' <<<"$result")
-    unresolved_count=$(jq '[.segments[]? | select(.assets.primary_video == null and (.assets.candidates | length) == 0)] | length' <<<"$result")
-
-    # Per-segment assertions
-    echo "  → running assertions on $seg_count segment(s)"
-    local min_segments
-    min_segments=$(jq -r '.assertions.result.min_segments // 0' "$SCENARIO_FILE")
-    if (( seg_count < min_segments )); then
-        printf '%sFAIL%s expected at least %s segment(s), got %s\n' "$RED" "$RESET" "$min_segments" "$seg_count"
-        assert_fail=1
-    fi
-    if ! jq -e '
-      (.segments | length) >= 1
-      and ([.segments[].position] == ([.segments[].position] | sort))
-      and (([.segments[].segment_id] | unique | length) == ([.segments[].segment_id] | length))
-      and all(.segments[];
-        (.segment_id | length) > 0
-        and (.text | length) > 0
-        and (.text_hash | length) > 0
-      )
-    ' <<<"$result" >/dev/null; then
-        printf '%sFAIL%s segment structural contract failed\n' "$RED" "$RESET"
-        assert_fail=1
-    fi
-
-    # Check entity types (when entities are expected)
-    local expect_entities
-    expect_entities=$(jq -r '.expect.max_entities_per_segment // 0' "$SCENARIO_FILE")
-    if [[ "$expect_entities" != "0" ]]; then
-        if ! jq -e --argjson max "$expect_entities" '
-          all(.segments[]; (.insights.entities | length) <= $max)
-          and all(.segments[]; all(.insights.entities[]?; .type != null and (.type | length) > 0))
-        ' <<<"$result" >/dev/null; then
-            printf '%sFAIL%s entity assertions failed (max=%s, entities=%s)\n' "$RED" "$RESET" "$expect_entities" "$ent_count"
-            assert_fail=1
-        fi
-    fi
-
-    # Check provider request counters
-    local expect_artlist expect_images
-    expect_artlist=$(jq -r '.expect.provider_requests_artlist // -1' "$SCENARIO_FILE")
-    expect_images=$(jq -r '.expect.provider_requests_internet_images // -1' "$SCENARIO_FILE")
-    if [[ "$expect_artlist" == "0" && "$artlist_before" != "MISSING" ]]; then
-        local artlist_after
-        artlist_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2}' | tail -1) || true
-        if [[ "$artlist_before" != "$artlist_after" ]]; then
-            printf '%sFAIL%s artlist provider was called but should be disabled (counter %s → %s)\n' "$RED" "$RESET" "$artlist_before" "$artlist_after"
-            assert_fail=1
-        else
-            printf '  %sPASS%s artlist provider not called (counter unchanged: %s)\n' "$GREEN" "$RESET" "$artlist_before"
-        fi
-    fi
-    if [[ "$expect_images" == "0" && "$images_before" != "MISSING" ]]; then
-        local images_after
-        images_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2}' | tail -1) || true
-        if [[ "$images_before" != "$images_after" ]]; then
-            printf '%sFAIL%s internet_images provider was called but should be disabled (counter %s → %s)\n' "$RED" "$RESET" "$images_before" "$images_after"
-            assert_fail=1
-        else
-            printf '  %sPASS%s internet_images provider not called (counter unchanged: %s)\n' "$GREEN" "$RESET" "$images_before"
-        fi
-    fi
-
-    # Live acceptance is deliberately fail-closed. The prose in a scenario
-    # is not evidence: when a manifest requests durable media, require the
-    # lifecycle fields and a Drive link in the returned binding. Rights are
-    # intentionally not part of the retrieved-image canary: this scenario
-    # verifies technical retrieval and persistence, not licensing metadata.
-    if [[ "$(jq -r '.expect.require_primary_per_segment // false' "$SCENARIO_FILE")" == "true" ]]; then
-        if ! jq -e 'all(.segments[]; .assets.primary_video != null and (.assets.primary_video.drive_link | length) > 0 and .assets.primary_video.acquisition_status == "acquired" and .assets.primary_video.verification_status == "verified" and .assets.primary_video.persistence_status == "persisted" and .assets.primary_video.index_status == "indexed" and .assets.primary_video.rights_status == "verified")' <<<"$result" >/dev/null; then
-            printf '%sFAIL%s live Artlist acceptance: every segment needs a persisted, indexed, verified primary video\n' "$RED" "$RESET"
-            assert_fail=1
-        fi
-    fi
-    if [[ "$(jq -r '.expect.min_secondary_images_per_segment // 0' "$SCENARIO_FILE")" -gt 0 ]]; then
-        local min_images
-        min_images=$(jq -r '.expect.min_secondary_images_per_segment' "$SCENARIO_FILE")
-        if ! jq -e --argjson min "$min_images" 'all(.segments[]; ([.assets.secondary_images[]? | select((.drive_link // "") != "" and .acquisition_status == "acquired" and .verification_status == "verified" and .persistence_status == "persisted" and .index_status == "indexed")] | length) >= $min)' <<<"$result" >/dev/null; then
-            printf '%sFAIL%s live image acceptance: every segment needs at least %s durable technically valid images\n' "$RED" "$RESET" "$min_images"
-            assert_fail=1
-        fi
-    fi
-
-    # Determine cache mode
-    local cache_mode
-    cache_mode=$(jq -r '[.segments[]?.cache.extraction // "UNKNOWN"] | if all(.[]; . == "HIT_EXACT") then "warm" elif all(.[]; . == "MISS") then "cold" else "mixed" end' <<<"$result")
-
-    # Derive durable-artifact evidence from the returned lifecycle contract.
-    # Do not report Drive/Qdrant as verified merely because the job succeeded:
-    # every returned media artifact must carry its own persistence/index proof.
-    local artifact_json
-    artifact_json=$(jq -c '
-      [
-        .segments[]?.assets.primary_video?,
-        .segments[]?.assets.secondary_images[]?,
-        .segments[]?.assets.generated_images[]?
-      ] | map(select(. != null))
-      | if length == 0 then
-          {sqlite_verified:false, qdrant_verified:false, drive_verified:false, render_verified:false}
-        else
-          {
-            sqlite_verified: all(.[]; .persistence_status == "persisted"),
-            qdrant_verified: all(.[]; .index_status == "indexed"),
-            drive_verified: all(.[]; ((.drive_link // "") | length) > 0),
-            render_verified: false
-          }
-        end' <<<"$result")
-
-    local provider_requests=0 artlist_after images_after
-    if [[ "$artlist_before" != "MISSING" ]]; then
-        artlist_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="artlist"/ {print $2}' | tail -1) || true
-        if [[ "$artlist_before" =~ ^[0-9]+$ && "$artlist_after" =~ ^[0-9]+$ ]]; then
-            provider_requests=$((provider_requests + artlist_after - artlist_before))
-        fi
-    fi
-    if [[ "$images_before" != "MISSING" ]]; then
-        images_after=$(curl -fsS --max-time 8 -H "Authorization: Bearer ${METRICS_AUTH_TOKEN:-$SMOKE_TOKEN}" "$metrics_url" 2>/dev/null | awk '$1 ~ /^vidrush_provider_requests_total\{/ && $1 ~ /provider="internet_images"/ {print $2}' | tail -1) || true
-        if [[ "$images_before" =~ ^[0-9]+$ && "$images_after" =~ ^[0-9]+$ ]]; then
-            provider_requests=$((provider_requests + images_after - images_before))
-        fi
-    fi
+    vidrush_assert_result "$result" "$SCENARIO_FILE" "$metrics_url" "$artlist_before" "$images_before"
+    local assert_fail="$VIDRUSH_ASSERT_FAIL"
+    local seg_count="$VIDRUSH_SEG_COUNT" ent_count="$VIDRUSH_ENTITY_COUNT"
+    local segments_with_entities="$VIDRUSH_SEGMENTS_WITH_ENTITIES"
+    local entity_values_total="$VIDRUSH_ENTITY_VALUES_TOTAL"
+    local entity_phrases_total="$VIDRUSH_ENTITY_PHRASES_TOTAL"
+    local important_words_total="$VIDRUSH_IMPORTANT_WORDS_TOTAL"
+    local binding_count="$VIDRUSH_BINDING_COUNT" unresolved_count="$VIDRUSH_UNRESOLVED_COUNT"
+    local cache_mode="$VIDRUSH_CACHE_MODE" artifact_json="$VIDRUSH_ARTIFACT_JSON"
+    local provider_requests="$VIDRUSH_PROVIDER_REQUESTS"
 
     # ── Final report ───────────────────────────────────────────────────
     local total_ms=$(( $(date +%s%3N 2>/dev/null || date +%s000) - TIMESTAMP_START ))
