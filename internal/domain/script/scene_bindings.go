@@ -4,7 +4,11 @@ package script
 // Each optional binding is omitted when no asset of that type
 // is associated with the scene.
 type SceneBindings struct {
-	// Clip binds this scene to a selected YouTube clip.
+	// Clips binds this scene to zero or more selected YouTube clips in
+	// editorial order. Clip remains the first-entry compatibility alias.
+	Clips []ClipBinding `json:"clips,omitempty"`
+
+	// Clip binds this scene to a selected YouTube clip (legacy alias).
 	Clip *ClipBinding `json:"clip,omitempty"`
 
 	// Image binds this scene to an AI-generated image.
