@@ -17,11 +17,25 @@ import (
 // schemaMigrationsTable is the DDL for the migration tracking table.
 const schemaMigrationsTable = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
-    version     INTEGER PRIMARY KEY,
-    filename    TEXT    NOT NULL,
-    checksum    TEXT    NOT NULL,
-    applied_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    version          INTEGER PRIMARY KEY,
+    migration_id     INTEGER NOT NULL UNIQUE,
+    filename         TEXT    NOT NULL,
+    checksum         TEXT    NOT NULL,
+    checksum_sha256  TEXT    NOT NULL,
+    applied_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    duration_ms      INTEGER NOT NULL DEFAULT 0,
+    app_git_sha      TEXT    NOT NULL DEFAULT 'unknown'
 )`
+
+// currentAppGitSHA returns the build identity captured with each newly
+// applied migration. Local tests and development binaries use an explicit
+// stable fallback rather than an empty audit value.
+func currentAppGitSHA() string {
+	if value := strings.TrimSpace(os.Getenv("PIPELINEGEN_GIT_SHA")); value != "" {
+		return value
+	}
+	return "unknown"
+}
 
 // migrationFile represents a single SQL migration file in the canonical
 // migrations dir. Scope is the parsed target-DB list from the file's
@@ -97,9 +111,11 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 // so existing primary DBs that pre-date the `-- database: primary`
 // header preserve their applied status.
 func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error {
-	// Ensure ledger table exists
-	if _, err := db.Exec(schemaMigrationsTable); err != nil {
-		return fmt.Errorf("storage: create schema_migrations: %w", err)
+	// Bootstrap and expand the ledger before reading migration files. Existing
+	// databases may have the legacy four-column shape; expansion backfills the
+	// canonical identity/checksum fields without dropping migration history.
+	if err := ensureMigrationLedger(db); err != nil {
+		return fmt.Errorf("storage: ensure schema_migrations: %w", err)
 	}
 
 	// Discover migration files
@@ -122,6 +138,9 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	applied, err := loadAppliedMigrations(db)
 	if err != nil {
 		return fmt.Errorf("storage: load applied migrations: %w", err)
+	}
+	if err := validateAppliedMigrationSet(applied, migrations, targetDB); err != nil {
+		return err
 	}
 
 	// Apply pending migrations
@@ -150,14 +169,14 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		checksum := sha256Hex(content)
 
 		if prev, ok := applied[m.version]; ok {
-			if prev.checksum != checksum { // One-time checksum upgrade
+			if prev.filename != m.filename || prev.checksum != checksum { // Identity or checksum drift
 				// Deployment reconciliation for the already-applied local 186
 				// outbox-priority migration. The SQL is unchanged in effect;
 				// only the untracked deployment copy's checksum differs.
-				if m.version == 186 && targetDB == "primary" &&
+				if m.version == 186 && targetDB == "primary" && prev.filename == m.filename &&
 					prev.checksum == "06d40a3bee8655737dacdc758aeb4bf3fe36b5731da74e5f804f39a78b43e807" &&
 					checksum == "aa56b176ff008dde206b6da3946859712fbf76fb24bb40d3e42a930a8f950d40" {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ? WHERE version = 186", checksum); err != nil {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 186", checksum, checksum); err != nil {
 						return fmt.Errorf("storage: shim update 186 checksum: %w", err)
 					}
 					if log != nil {
@@ -177,7 +196,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 				// shimmed, preserving the never-modify-already-
 				// applied invariant (the SHA-256 ledger is the
 				// canonical audit trail for everything else).
-				if m.version == 109 && targetDB == "primary" {
+				if m.version == 109 && targetDB == "primary" && prev.filename == m.filename {
 					// The shim ONLY fires when
 					// the file content carries the magic marker
 					// `-- TODO-8-SCOPE-FLAG-RECONCILE-109`. Without
@@ -202,8 +221,8 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 						)
 					}
 					if _, err := db.Exec(
-						"UPDATE schema_migrations SET checksum = ? WHERE version = 109",
-						checksum,
+						"UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 109",
+						checksum, checksum,
 					); err != nil {
 						return fmt.Errorf(
 							"storage: shim update 109 checksum: %w", err,
@@ -225,9 +244,9 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					continue
 				}
 				return fmt.Errorf(
-					"storage: migration %03d (%s) checksum mismatch — "+
-						"applied=%s current=%s. Migrations must never be modified after being applied",
-					m.version, m.filename, prev.checksum, checksum,
+					"storage: migration %03d (%s) identity/checksum mismatch — "+
+						"applied=%s/%s current=%s/%s. Migrations must never be modified or renamed after being applied",
+					m.version, m.filename, prev.filename, prev.checksum, m.filename, checksum,
 				)
 			}
 			// Already applied with matching checksum — skip
@@ -281,6 +300,7 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 	if log == nil {
 		log = zap.NewNop()
 	}
+	startedAt := time.Now()
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -354,9 +374,10 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 
 	// Record in ledger
 	now := time.Now().UTC().Format(time.RFC3339)
+	durationMS := time.Since(startedAt).Milliseconds()
 	if _, err := tx.Exec(
-		"INSERT INTO schema_migrations (version, filename, checksum, applied_at) VALUES (?, ?, ?, ?)",
-		version, filename, checksum, now,
+		"INSERT INTO schema_migrations (version, migration_id, filename, checksum, checksum_sha256, applied_at, duration_ms, app_git_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		version, version, filename, checksum, checksum, now, durationMS, currentAppGitSHA(),
 	); err != nil {
 		return fmt.Errorf("record migration %d: %w", version, err)
 	}
