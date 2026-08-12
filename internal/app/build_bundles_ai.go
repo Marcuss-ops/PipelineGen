@@ -9,9 +9,13 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	"os"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,6 +32,15 @@ import (
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+func whisperBridgeVersion(scriptPath string) string {
+	body, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return "whisper/bridge-v1"
+	}
+	digest := sha256.Sum256(body)
+	return "whisper/bridge-v1/" + hex.EncodeToString(digest[:])
+}
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
 // and Drive.DriveUploader (which were constructed earlier).
@@ -140,7 +153,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// (structural subset). DefaultTimeout is left at 0 — the
 	// adapter's constructor applies the canonical 5-minute
 	// default (see ytinfra.WhisperTranscriberConfig).
-	whisperAdapter, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{}, log)
+	whisperConcrete, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{}, log)
 	if wErr != nil {
 		// godlike/07 fail-closed: surface the typed error.
 		// The composition root MUST NOT register a
@@ -149,6 +162,23 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 		return nil, fmt.Errorf("compose ai: whisper transcriber: %w", wErr)
 	}
 	log.Info("WhisperTranscriber adapter configured (Fase 5)")
+	// Derived transcript cache: source bytes + Whisper processor version
+	// identify the result; local temporary paths never become cache keys.
+	var whisperAdapter ytinfra.WhisperTranscriber = whisperConcrete
+	if cache, cacheErr := wiring.NewArtifactCache(cfg, dbs.DualPool.Writer, log); cacheErr == nil {
+		// The Whisper bridge has its own execution contract; the Ollama
+		// chat model is unrelated and must not invalidate or alias
+		// transcription artifacts.
+		version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
+		if cached, wrapErr := ytinfra.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+			whisperAdapter = cached
+			log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
+		} else {
+			log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
+		}
+	} else {
+		log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
+	}
 
 	// P1 verdetto: wiring.SceneTextGenerator wraps the Engine to produce
 	// AI-generated scene text (scene-by-scene) separate from the

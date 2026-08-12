@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -163,9 +164,23 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	// Use processStep (which already zero-copy-skips when source
 	// matches target) — produces canonical codec without re-encoding
 	// when the source is already H.264/AAC/yuv420p/30fps/1920x1080.
-	masterPath, err := p.processStep(ctx, input, rawPath, masterPath)
-	if err != nil {
-		return nil, fmt.Errorf("master normalization failed: %w", err)
+	rawSHA := hashFileSHA256(rawPath)
+	masterCached := false
+	masterLeaseID := ""
+	masterKey := capcache.Key{}
+	if rawSHA != "" {
+		masterKey = capcacheKey(rawSHA, "normalize", p.videoCfg, "media-normalize/v1")
+		masterCached, masterLeaseID = p.materializeCachedFile(ctx, masterKey, masterPath)
+	}
+	if !masterCached {
+		masterPath, err := p.processStep(ctx, input, rawPath, masterPath)
+		if err != nil {
+			p.releaseCachedClaim(ctx, masterKey, masterLeaseID, err.Error())
+			return nil, fmt.Errorf("master normalization failed: %w", err)
+		}
+		if rawSHA != "" {
+			p.storeCachedFile(ctx, masterKey, masterLeaseID, masterPath, "video/mp4")
+		}
 	}
 	if err := os.Chmod(masterPath, 0o444); err != nil {
 		p.log.Warn("failed to make master read-only", zap.String("path", masterPath), zap.Error(err))
@@ -191,8 +206,24 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	if err := os.MkdirAll(previewDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create preview dir: %w", err)
 	}
-	if err := p.ffmpeg.GenerateProxy(ctx, masterPath, previewPath); err != nil {
-		return nil, fmt.Errorf("preview generation failed: %w", err)
+	masterSHA := hashFileSHA256(masterPath)
+	proxyKey := capcache.Key{}
+	if masterSHA != "" {
+		proxyKey = capcacheKey(masterSHA, "proxy", map[string]any{"profile": p.videoCfg.Profile}, "media-proxy/v1")
+	}
+	proxyCached := false
+	proxyLeaseID := ""
+	if proxyKey.SourceSHA256 != "" {
+		proxyCached, proxyLeaseID = p.materializeCachedFile(ctx, proxyKey, previewPath)
+	}
+	if !proxyCached {
+		if err := p.ffmpeg.GenerateProxy(ctx, masterPath, previewPath); err != nil {
+			p.releaseCachedClaim(ctx, proxyKey, proxyLeaseID, err.Error())
+			return nil, fmt.Errorf("preview generation failed: %w", err)
+		}
+		if proxyKey.SourceSHA256 != "" {
+			p.storeCachedFile(ctx, proxyKey, proxyLeaseID, previewPath, "video/mp4")
+		}
 	}
 
 	// 3. Thumbnail: center frame from the master. Kept under the
@@ -211,8 +242,22 @@ func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessI
 	if info, err := p.ffmpeg.Probe(ctx, masterPath); err == nil && info.Duration > 0 {
 		thumbnailTimestamp = info.Duration.Seconds() / 2
 	}
-	if err := p.ffmpeg.ExtractFrame(ctx, masterPath, thumbnailPath, thumbnailTimestamp); err != nil {
-		p.log.Warn("thumbnail generation failed", zap.String("id", input.ID), zap.Error(err))
+	thumbnailKey := capcache.Key{}
+	if masterSHA != "" {
+		thumbnailKey = capcacheKey(masterSHA, "thumbnail", map[string]any{"timestamp_seconds": thumbnailTimestamp, "format": "jpg"}, "media-thumbnail/v1")
+	}
+	thumbnailCached := false
+	thumbnailLeaseID := ""
+	if thumbnailKey.SourceSHA256 != "" {
+		thumbnailCached, thumbnailLeaseID = p.materializeCachedFile(ctx, thumbnailKey, thumbnailPath)
+	}
+	if !thumbnailCached {
+		if err := p.ffmpeg.ExtractFrame(ctx, masterPath, thumbnailPath, thumbnailTimestamp); err != nil {
+			p.releaseCachedClaim(ctx, thumbnailKey, thumbnailLeaseID, err.Error())
+			p.log.Warn("thumbnail generation failed", zap.String("id", input.ID), zap.Error(err))
+		} else if thumbnailKey.SourceSHA256 != "" {
+			p.storeCachedFile(ctx, thumbnailKey, thumbnailLeaseID, thumbnailPath, "image/jpeg")
+		}
 	}
 
 	// 4. Storyboard: tiled key frames from the master. Kept under
