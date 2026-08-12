@@ -17,6 +17,8 @@ func (cm *CollectionManager) RollbackCandidate(ctx context.Context, currentTarge
 		zap.String("alias", cm.schema.RuntimeAlias),
 		zap.String("from", currentTarget),
 		zap.String("to", rollbackTarget))
+	cm.aliasMu.Lock()
+	defer cm.aliasMu.Unlock()
 	return cm.client.SwitchAlias(ctx, cm.schema.RuntimeAlias, currentTarget, rollbackTarget)
 }
 

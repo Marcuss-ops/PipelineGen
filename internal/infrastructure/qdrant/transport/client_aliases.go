@@ -127,6 +127,18 @@ func (c *Client) CreateAlias(ctx context.Context, alias, target string) error {
 	})
 }
 
+// DeleteAlias removes an alias without creating a replacement. It is used
+// only for compensation when activation created a previously absent alias.
+func (c *Client) DeleteAlias(ctx context.Context, alias string) error {
+	return c.UpdateAliases(ctx, []map[string]any{
+		{
+			"delete_alias": map[string]string{
+				"alias_name": alias,
+			},
+		},
+	})
+}
+
 // SwitchAlias atomically changes an alias from oldTarget to newTarget.
 func (c *Client) SwitchAlias(ctx context.Context, alias, oldTarget, newTarget string) error {
 	actions := []map[string]any{}

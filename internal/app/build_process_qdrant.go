@@ -49,6 +49,7 @@ import (
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
 // BuildProcessBundle builds the media-processing adapters and assembles
@@ -205,6 +206,10 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 
 	var runtime *qdrant.QdrantRuntime
 	if cfg.Qdrant.Enabled {
+		registryLedger, ledgerErr := regsql.NewLedger(dbs.DualPool.Writer)
+		if ledgerErr != nil {
+			return nil, fmt.Errorf("buildQdrantDeps: media registry ledger: %w", ledgerErr)
+		}
 		var rerr error
 		runtime, rerr = qdrant.NewRuntime(qdrant.RuntimeConfig{
 			QdrantCfg: &schema.Config{
@@ -212,8 +217,9 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *wiring.Databa
 				APIKey:  cfg.Qdrant.APIKey,
 				Timeout: cfg.Qdrant.Timeout,
 			},
-			DB:     dbs.DualPool.Writer,
-			Logger: log,
+			DB:             dbs.DualPool.Writer,
+			Logger:         log,
+			RegistryLedger: registryLedger,
 		})
 		if rerr != nil {
 			return nil, fmt.Errorf("buildQdrantDeps: qdrant.NewRuntime: %w", rerr)

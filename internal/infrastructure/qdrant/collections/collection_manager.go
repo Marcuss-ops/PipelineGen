@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
 )
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -45,6 +48,18 @@ type CollectionManager struct {
 	verifyLedgerMu sync.RWMutex
 	verifyLedger   map[string]bool
 
+	// projectionMu protects the in-process lifecycle mirror. Durable
+	// projection metadata remains owned by Media Registry; this mirror is
+	// the fail-closed guard between build, validation and alias activation.
+	projectionMu sync.RWMutex
+	projections  map[string]mediaregistry.Projection
+	// aliasMu serializes read/compare/switch/compensation sequences for
+	// this manager. Qdrant's alias endpoint is atomic per request but does
+	// not provide compare-and-swap semantics for the old target.
+	aliasMu         sync.Mutex
+	reindexVerifier *verification.ReindexVerifier
+	registryLedger  mediaregistry.Ledger
+
 	// OnAliasSwitch is called after a successful PromoteCandidate.
 	// nil is safe — the callback is optional. The canonical consumer
 	// is Searcher.ResetSearchCache, wired at runtime construction.
@@ -53,12 +68,84 @@ type CollectionManager struct {
 
 // NewCollectionManager creates a CollectionManager bound to a schema.
 func NewCollectionManager(client *transport.Client, schema *schema.IndexSchema, log *zap.Logger) *CollectionManager {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &CollectionManager{
 		client:       client,
 		schema:       schema,
 		log:          log,
 		verifyLedger: make(map[string]bool),
+		projections:  make(map[string]mediaregistry.Projection),
 	}
+}
+
+// NewProjectionManager is the canonical semantic constructor for the
+// Qdrant projection lifecycle. CollectionManager remains the concrete
+// implementation used by existing composition roots.
+func NewProjectionManager(client *transport.Client, schema *schema.IndexSchema, log *zap.Logger) *CollectionManager {
+	return NewCollectionManager(client, schema, log)
+}
+
+// SetReindexVerifier wires the full failure-oriented validation gate. It is
+// optional for schema-only/admin callers; production runtime wiring supplies
+// it so activation requires complete point, ID, payload, sequence-independent
+// and scan validation rather than only a non-empty collection.
+func (cm *CollectionManager) SetReindexVerifier(verifier *verification.ReindexVerifier) {
+	cm.projectionMu.Lock()
+	cm.reindexVerifier = verifier
+	cm.projectionMu.Unlock()
+}
+
+// SetRegistryLedger wires the canonical Media Registry as the source of the
+// current registry sequence and durable projection lifecycle metadata.
+func (cm *CollectionManager) SetRegistryLedger(ctx context.Context, ledger mediaregistry.Ledger) error {
+	cm.projectionMu.Lock()
+	cm.registryLedger = ledger
+	cm.projectionMu.Unlock()
+	if ledger == nil {
+		return nil
+	}
+	reader, ok := ledger.(mediaregistry.ProjectionReader)
+	if !ok {
+		return nil
+	}
+	projections, err := reader.ListProjections(ctx)
+	if err != nil {
+		// Keep the ledger wired during the migration window when a
+		// deliberately minimal admin/test database predates projection
+		// registry migration 203. Projection operations will still fail
+		// closed when they attempt to read the canonical sequence.
+		if strings.Contains(err.Error(), "no such table: projection_registry") {
+			return nil
+		}
+		cm.projectionMu.Lock()
+		cm.registryLedger = nil
+		cm.projectionMu.Unlock()
+		return fmt.Errorf("hydrate projection registry: %w", err)
+	}
+	sequence, err := ledger.LatestEventSequence(ctx)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table: registry_events") {
+			return nil
+		}
+		cm.projectionMu.Lock()
+		cm.registryLedger = nil
+		cm.projectionMu.Unlock()
+		return fmt.Errorf("hydrate projection registry sequence: %w", err)
+	}
+	if err := validateHydratedProjections(projections, sequence); err != nil {
+		cm.projectionMu.Lock()
+		cm.registryLedger = nil
+		cm.projectionMu.Unlock()
+		return err
+	}
+	cm.projectionMu.Lock()
+	for _, projection := range projections {
+		cm.projections[projection.ProjectionID] = projection
+	}
+	cm.projectionMu.Unlock()
+	return nil
 }
 
 // ErrPromoteWithoutVerify is the typed error returned by

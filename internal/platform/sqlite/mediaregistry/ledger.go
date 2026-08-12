@@ -24,6 +24,7 @@ func NewLedger(db *sql.DB) (*Ledger, error) {
 }
 
 var _ capregistry.Ledger = (*Ledger)(nil)
+var _ capregistry.ProjectionReader = (*Ledger)(nil)
 var _ capregistry.CountsReader = (*Ledger)(nil)
 var _ capregistry.AssetContentRegistry = (*Ledger)(nil)
 
@@ -148,12 +149,57 @@ func (l *Ledger) FinishRun(ctx context.Context, run capregistry.Run) error {
 	return nil
 }
 
+func (l *Ledger) ListProjections(ctx context.Context) ([]capregistry.Projection, error) {
+	if l == nil || l.db == nil {
+		return nil, ErrNotWired
+	}
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT projection_id, projection_type, collection_name, alias_name, status,
+		 source_registry_seq, embedding_model, embedding_dimensions, asset_count,
+		 transcript_count, collection_hash, qdrant_version, created_at,
+		 COALESCE(activated_at, '')
+		FROM projection_registry
+		ORDER BY created_at ASC, projection_id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list projections: %w", err)
+	}
+	defer rows.Close()
+
+	var projections []capregistry.Projection
+	for rows.Next() {
+		var projection capregistry.Projection
+		if err := rows.Scan(
+			&projection.ProjectionID,
+			&projection.ProjectionType,
+			&projection.CollectionName,
+			&projection.AliasName,
+			&projection.Status,
+			&projection.SourceRegistrySeq,
+			&projection.EmbeddingModel,
+			&projection.EmbeddingDimensions,
+			&projection.AssetCount,
+			&projection.TranscriptCount,
+			&projection.CollectionHash,
+			&projection.QdrantVersion,
+			&projection.CreatedAt,
+			&projection.ActivatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan projection: %w", err)
+		}
+		projections = append(projections, projection)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate projections: %w", err)
+	}
+	return projections, nil
+}
+
 func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.Projection) error {
 	if l == nil || l.db == nil {
 		return ErrNotWired
 	}
-	if projection.ProjectionID == "" || projection.ProjectionType == "" || projection.CollectionName == "" {
-		return errors.New("media registry sqlite ledger: projection identity is required")
+	if projection.ProjectionID == "" || projection.ProjectionType == "" || projection.CollectionName == "" || projection.Status == "" || projection.CreatedAt == "" {
+		return errors.New("media registry sqlite ledger: projection identity, status and created_at are required")
 	}
 	_, err := l.db.ExecContext(ctx, `
 		INSERT INTO projection_registry
@@ -162,10 +208,13 @@ func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.
 		 transcript_count, collection_hash, qdrant_version, created_at,
 		 activated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))
-		ON CONFLICT(projection_id) DO UPDATE SET status=excluded.status,
-		 source_registry_seq=excluded.source_registry_seq, asset_count=excluded.asset_count,
+		ON CONFLICT(projection_id) DO UPDATE SET
+		 projection_type=excluded.projection_type, collection_name=excluded.collection_name,
+		 alias_name=excluded.alias_name, status=excluded.status,
+		 source_registry_seq=excluded.source_registry_seq, embedding_model=excluded.embedding_model,
+		 embedding_dimensions=excluded.embedding_dimensions, asset_count=excluded.asset_count,
 		 transcript_count=excluded.transcript_count, collection_hash=excluded.collection_hash,
-		 activated_at=excluded.activated_at`,
+		 qdrant_version=excluded.qdrant_version, activated_at=excluded.activated_at`,
 		projection.ProjectionID, projection.ProjectionType, projection.CollectionName,
 		projection.AliasName, projection.Status, projection.SourceRegistrySeq,
 		projection.EmbeddingModel, projection.EmbeddingDimensions, projection.AssetCount,

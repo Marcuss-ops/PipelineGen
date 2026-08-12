@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -29,7 +30,20 @@ func (cm *CollectionManager) PromoteCandidate(ctx context.Context, candidate str
 	cm.log.Info("promoting candidate to runtime alias",
 		zap.String("alias", cm.schema.RuntimeAlias),
 		zap.String("target", candidate))
-	if err := cm.client.CreateAlias(ctx, cm.schema.RuntimeAlias, candidate); err != nil {
+	cm.aliasMu.Lock()
+	defer cm.aliasMu.Unlock()
+	oldTarget, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if !errors.As(err, &notFound) {
+			return fmt.Errorf("resolve current alias target: %w", err)
+		}
+		oldTarget = ""
+	}
+	// SwitchAlias sends delete+create as one Qdrant action request when an
+	// old target exists. This preserves the previous alias on transport
+	// failure and makes promotion equivalent to the Projection Manager path.
+	if err := cm.client.SwitchAlias(ctx, cm.schema.RuntimeAlias, oldTarget, candidate); err != nil {
 		return err
 	}
 	// Invalidate downstream caches atomically with the alias switch.

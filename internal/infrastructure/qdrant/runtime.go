@@ -25,12 +25,14 @@
 package qdrant
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	"go.uber.org/zap"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	capmediaregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
@@ -61,6 +63,10 @@ type RuntimeConfig struct {
 	// different version for diagnostics / DR tests. Optional; nil
 	// falls back to DefaultV3Schema().
 	Schema *schema.IndexSchema
+	// RegistryLedger is the canonical Media Registry port. When wired,
+	// projection sequence checks read the SSOT directly and lifecycle
+	// transitions are persisted before the manager reports success.
+	RegistryLedger capmediaregistry.Ledger
 }
 
 // QdrantRuntime composes every Qdrant infrastructure subsystem behind
@@ -180,7 +186,15 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 
 	writer := indexing.NewIndexWriter(client, schema, mapper, log)
 	searcher := search.NewSearcher(client, schema, log)
-	manager := collections.NewCollectionManager(client, schema, log)
+	manager := collections.NewProjectionManager(client, schema, log)
+	// The Projection Manager must use the complete reindex verifier, not
+	// only the collection non-empty check. This makes point parity,
+	// canonical IDs, payloads, embedding versions, full scan and smoke
+	// failures blocking before an alias can become ACTIVE.
+	manager.SetReindexVerifier(verification.NewReindexVerifier(client, store, nil, schema, nil, log))
+	if err := manager.SetRegistryLedger(context.Background(), cfg.RegistryLedger); err != nil {
+		return nil, fmt.Errorf("qdrant.NewRuntime: %w", err)
+	}
 	// QDRANT-ALIAS-CACHE (July 2026): wire the cache invalidation so
 	// PromoteCandidate resets the Searcher's alias-target cache
 	// atomically with every alias switch.
