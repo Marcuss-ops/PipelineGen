@@ -19,7 +19,7 @@ import (
 // ClipsSourceResolver resolves SourceClips (explicit clip IDs)
 // into a ResolvedSource with ClipEvidence.
 type ClipsSourceResolver struct {
-	clipBuilder *ClipSourceBuilder
+	clipBuilder clipContextBuilder
 	log         *zap.Logger
 }
 
@@ -48,7 +48,9 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		}
 	}
 
-	if len(src.ClipIDs) == 0 {
+	canonicalSegments := scriptpkg.CanonicalizeSegmentClipIDs(src, resCtx.Segments)
+	requestedIDs := scriptpkg.CollectRequestedClipIDs(src, resCtx.Segments)
+	if len(requestedIDs) == 0 {
 		return nil, &scriptpkg.NoSourceError{
 			ItemID: resCtx.ItemID,
 			Reason: "clips source requires at least one clip_id",
@@ -64,18 +66,20 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		// (curate resolver historically did this; the bug class
 		// is now centralised: any resolver reading Guidelines as
 		// a technical field is wrong).
-		Language:           resCtx.Language,
-		Title:              resCtx.Title,
-		Tone:               resCtx.Tone,
-		Model:              resCtx.Model,
-		Style:              resCtx.Style,
-		TargetWords:        resCtx.TargetWords,
-		NumClips:           resCtx.NumClips,
-		SegmentWords:       resCtx.SegmentWords,
-		SegmentTopics:      append([]string(nil), resCtx.SegmentTopics...),
-		Segments:           append([]scriptpkg.ScriptSegment(nil), resCtx.Segments...),
-		TranscriptPolicy:   src.TranscriptPolicy,
-		OrderingStrategy:   src.OrderingStrategy,
+		Language:         resCtx.Language,
+		Title:            resCtx.Title,
+		Tone:             resCtx.Tone,
+		Model:            resCtx.Model,
+		Style:            resCtx.Style,
+		TargetWords:      resCtx.TargetWords,
+		NumClips:         resCtx.NumClips,
+		SegmentWords:     resCtx.SegmentWords,
+		SegmentTopics:    append([]string(nil), resCtx.SegmentTopics...),
+		Segments:         canonicalSegments,
+		TranscriptPolicy: src.TranscriptPolicy,
+		// Explicit source.type=clips payloads own their declared order;
+		// never let a resolver-side ordering strategy reorder those IDs.
+		OrderingStrategy:   "",
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
 		MinTranscriptWords: ptrutil.DerefOr(src.MinTranscriptWords, 0),
 		// P0 #3 (June 2026): DriveLink required only when caller
@@ -83,14 +87,21 @@ func (r *ClipsSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		RequireDriveLink: resCtx.RequireDriveLink,
 	}
 
-	return buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{
+	resolved, err := buildResolvedClipSource(ctx, r.clipBuilder, src, resolvedClipParams{
 		sourceType:    scriptpkg.SourceClips,
-		query:         strings.Join(src.ClipIDs, ","),
-		clipIDs:       src.ClipIDs,
+		query:         strings.Join(requestedIDs, ","),
+		clipIDs:       requestedIDs,
 		opts:          opts,
 		titleFallback: textutil.FirstNonEmpty(resCtx.Title, "Clip Script"),
 		startTime:     start,
 	}, r.log)
+	if err != nil {
+		return nil, err
+	}
+	if resolved != nil && resolved.ClipEvidence != nil && len(canonicalSegments) > 0 {
+		resolved.ClipEvidence.SegmentEvidence = scriptpkg.BuildSegmentClipEvidence(canonicalSegments, resolved.ClipEvidence)
+	}
+	return resolved, nil
 }
 
 // BuildClipFingerprint computes a deterministic fingerprint from the
