@@ -214,14 +214,70 @@ func CompileCanonicalRenderPlanWithFrameRate(result GenerateResult, timeline aud
 			continue
 		}
 		seen[clip.ID] = struct{}{}
-		if clip.FrameCount <= 0 {
+		frameCount := clip.FrameCount
+		if clip.Duration > 0 {
+			durationUS, err := microseconds(int64(math.Round(clip.Duration * 1000)))
+			if err != nil {
+				return nil, fmt.Errorf("render plan clip %s duration: %w", scene.ID, err)
+			}
+			resolver, err := audio.NewFrameResolver(frameRate)
+			if err != nil {
+				return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
+			}
+			frameCount, err = resolver.FrameCountForDuration(durationUS)
+			if err != nil {
+				return nil, fmt.Errorf("render plan clip %s frame count: %w", scene.ID, err)
+			}
+		}
+		if frameCount <= 0 {
+			resolver, err := audio.NewFrameResolver(frameRate)
+			if err != nil {
+				return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
+			}
+			for _, segment := range timeline.Segments {
+				if segment.Video.AssetID != clip.ID || segment.Video.SourceDurationUS <= 0 {
+					continue
+				}
+				endUS := segment.Video.SourceInUS + segment.Video.SourceDurationUS
+				if endUS < segment.Video.SourceInUS {
+					return nil, fmt.Errorf("render plan clip %s source range overflows", scene.ID)
+				}
+				endFrame, frameErr := resolver.FrameAt(endUS)
+				if frameErr != nil {
+					return nil, fmt.Errorf("render plan clip %s source frame count: %w", scene.ID, frameErr)
+				}
+				if endFrame > frameCount {
+					frameCount = endFrame
+				}
+			}
+		}
+		if frameCount <= 0 {
 			return nil, fmt.Errorf("render plan clip %s requires positive frame_count", scene.ID)
 		}
-		manifest = append(manifest, render.AssetManifestEntry{AssetID: clip.ID, Path: clip.Path, SHA256: clip.SHA256, FrameCount: clip.FrameCount})
+		manifest = append(manifest, render.AssetManifestEntry{AssetID: clip.ID, Path: clip.Path, SHA256: clip.SHA256, FrameCount: frameCount})
 	}
 	var finalAudio *render.FinalAudioAsset
 	if result.FinalAudio != nil {
-		finalAudio = &render.FinalAudioAsset{AssetID: result.FinalAudio.AssetID, Path: result.FinalAudio.Path, SHA256: result.FinalAudio.FinalAudioSHA256, PlanSHA256: result.FinalAudio.PlanSHA256}
+		finalAudio = &render.FinalAudioAsset{
+			AssetID:              result.FinalAudio.AssetID,
+			AssetKind:            "final_audio",
+			Strategy:             string(audio.FinalAudioCopy),
+			Path:                 result.FinalAudio.Path,
+			SHA256:               result.FinalAudio.FinalAudioSHA256,
+			PlanSHA256:           result.FinalAudio.PlanSHA256,
+			AudioContractVersion: result.FinalAudio.AudioContractVersion,
+			AudioPlanVersion:     result.FinalAudio.AudioPlanVersion,
+			Codec:                result.FinalAudio.Codec,
+			Profile:              result.FinalAudio.Profile,
+			SampleRate:           result.FinalAudio.SampleRate,
+			Channels:             result.FinalAudio.Channels,
+			ChannelLayout:        result.FinalAudio.ChannelLayout,
+			DurationMS:           result.FinalAudio.DurationMS,
+			StartPTS:             result.FinalAudio.StartPTS,
+			SizeBytes:            result.FinalAudio.SizeBytes,
+			FinalMix:             result.FinalAudio.FinalMix,
+			CopyEligible:         result.FinalAudio.CopyEligible,
+		}
 	}
 	outputPath := strings.TrimSpace(result.OutputName)
 	if outputPath == "" {

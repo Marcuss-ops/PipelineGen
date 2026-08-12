@@ -84,11 +84,15 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 // Rust process is invoked, then sends the exact plan JSON as an audit field.
 // The executor receives integer frame ranges and never performs timestamp
 // rounding or asset selection.
-func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, plan render.RenderPlan) error {
+func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, validated render.ValidatedRenderPlan) error {
+	plan := validated.Plan()
+	// Re-check physical identity immediately before invoking Velox. The
+	// validator mints the typed handoff, while this final check closes the
+	// replacement window between validation and process execution.
 	if err := plan.ValidateManifestFiles(); err != nil {
-		return fmt.Errorf("canonical render plan rejected: %w", err)
+		return fmt.Errorf("canonical render plan changed after validation: %w", err)
 	}
-	planJSON, err := json.Marshal(plan)
+	planJSON, err := json.Marshal(validated)
 	if err != nil {
 		return fmt.Errorf("marshal canonical render plan: %w", err)
 	}
@@ -110,6 +114,9 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, plan render.Ren
 	videoOutput := plan.OutputPath
 	if plan.FinalAudio != nil {
 		videoOutput = plan.OutputPath + ".video.mp4"
+		// Always remove the intermediate video, including when the render
+		// process fails before the mux step starts.
+		defer os.Remove(videoOutput)
 	}
 	_, err = r.client.call(ctx, request{
 		Operation:        OperationRenderStock,
@@ -135,7 +142,6 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, plan render.Ren
 		return fmt.Errorf("execute canonical render plan: %w", err)
 	}
 	if plan.FinalAudio != nil {
-		defer os.Remove(videoOutput)
 		_, err = r.client.call(ctx, request{Operation: OperationMuxAudioCopy, InputPaths: []string{videoOutput, plan.FinalAudio.Path}, OutputPath: plan.OutputPath})
 		if err != nil {
 			return fmt.Errorf("mux canonical final audio copy: %w", err)

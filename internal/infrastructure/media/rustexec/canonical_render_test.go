@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/mediaexec"
@@ -32,7 +33,7 @@ func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T
 	plan, err := render.Compile(render.CompileInput{
 		JobID: "job-1", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FrameRate: audio.FrameRate{Numerator: 30000, Denominator: 1001},
 		Timeline: timeline,
-		Manifest: []render.AssetManifestEntry{{AssetID: "clip-a", Path: path, SHA256: hex.EncodeToString(sum[:])}},
+		Manifest: []render.AssetManifestEntry{{AssetID: "clip-a", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 2000}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +43,11 @@ func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
 	stock := &StockRenderer{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	if err := stock.RenderCanonicalPlan(context.Background(), plan); err != nil {
+	validated, err := render.ValidateRenderPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stock.RenderCanonicalPlan(context.Background(), validated); err != nil {
 		t.Fatalf("RenderCanonicalPlan() error = %v", err)
 	}
 	var sent request
@@ -66,7 +71,7 @@ func TestStockRendererRenderCanonicalPlanValidatesAndTransportsPlan(t *testing.T
 	}
 
 	plan.PlanSHA256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-	if err := stock.RenderCanonicalPlan(context.Background(), plan); err == nil {
+	if _, err := render.ValidateRenderPlan(plan); err == nil {
 		t.Fatal("tampered plan hash must be rejected before executor call")
 	}
 }
@@ -96,8 +101,13 @@ func TestStockRendererRenderCanonicalPlanCopiesCertifiedFinalAudio(t *testing.T)
 	timeline := audio.CanonicalTimeline{Version: audio.TimelineVersion, DurationUS: 1000000, Segments: []audio.TimelineSegment{{ID: "scene", Index: 0, DurationUS: 1000000, Video: audio.VideoSegment{AssetID: "clip", SourceInUS: 0, SourceDurationUS: 1000000}, Audio: audio.AudioIntent{Mode: audio.AudioSilence}}}}
 	plan, err := render.Compile(render.CompileInput{
 		JobID: "job-audio", Revision: "generation.v1", OutputPath: t.TempDir() + "/final.mp4", FPS: 30, Timeline: timeline,
-		FinalAudio: &render.FinalAudioAsset{AssetID: "final-audio", Path: audioPath, SHA256: hex.EncodeToString(audioHash[:])},
-		Manifest:   []render.AssetManifestEntry{{AssetID: "clip", Path: videoPath, SHA256: hex.EncodeToString(videoHash[:])}},
+		FinalAudio: &render.FinalAudioAsset{
+			AssetID: "final-audio", AssetKind: "final_audio", Strategy: string(audio.FinalAudioCopy), Path: audioPath, SHA256: hex.EncodeToString(audioHash[:]), PlanSHA256: strings.Repeat("a", 64),
+			AudioContractVersion: audio.AudioContractVersion, AudioPlanVersion: audio.AudioPlanVersion,
+			Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo",
+			DurationMS: 1000, StartPTS: 0, SizeBytes: int64(len(audioBytes)), FinalMix: true, CopyEligible: true,
+		},
+		Manifest: []render.AssetManifestEntry{{AssetID: "clip", Path: videoPath, SHA256: hex.EncodeToString(videoHash[:]), FrameCount: 1000}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +116,11 @@ func TestStockRendererRenderCanonicalPlanCopiesCertifiedFinalAudio(t *testing.T)
 	client := NewClient("muscles", "ffmpeg", nil)
 	client.runner = runner
 	stock := &StockRenderer{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	if err := stock.RenderCanonicalPlan(context.Background(), plan); err != nil {
+	validated, err := render.ValidateRenderPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stock.RenderCanonicalPlan(context.Background(), validated); err != nil {
 		t.Fatal(err)
 	}
 	if len(runner.inputs) != 2 {
@@ -121,5 +135,8 @@ func TestStockRendererRenderCanonicalPlanCopiesCertifiedFinalAudio(t *testing.T)
 	}
 	if first.Operation != OperationRenderStock || second.Operation != OperationMuxAudioCopy || len(second.InputPaths) != 2 {
 		t.Fatalf("unexpected audio copy sequence: first=%+v second=%+v", first, second)
+	}
+	if first.OutputPath != plan.OutputPath+".video.mp4" || second.InputPaths[0] != first.OutputPath || second.InputPaths[1] != audioPath || second.OutputPath != plan.OutputPath {
+		t.Fatalf("FINAL_AUDIO_COPY paths are not wired canonically: first=%+v second=%+v", first, second)
 	}
 }
