@@ -9,6 +9,7 @@ VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFai
 
 verify-vidrush-contract:
 	@$(GO) test -count=1 $(VIDRUSH_GO_PACKAGES) -run 'VidRush|CanonicalProcessorNames'
+	@bash tests/operational/vidrush/test_contract.sh
 
 verify-vidrush-extraction:
 	@$(GO) test -count=1 ./internal/application/scripts/adapters -run 'Entities|Segment|Extraction'
