@@ -120,31 +120,8 @@ PENDING_REPORTS_DIR="$REPORTS_DIR/.pending"
 INCOMPLETE_REPORTS_DIR="$REPORTS_DIR/incomplete"
 mkdir -p "$REPORTS_DIR" "$PENDING_REPORTS_DIR" "$INCOMPLETE_REPORTS_DIR"
 
-atomic_publish_file() {
-    local source="$1"
-    local destination="$2"
-    local temporary="${destination}.tmp"
-    mkdir -p "$(dirname "$destination")"
-    cp "$source" "$temporary"
-    mv -f "$temporary" "$destination"
-}
-
-archive_pending_reports() {
-    local num="$1"
-    local stamp
-    stamp=$(date -u +%Y%m%dT%H%M%SZ)
-    local archived=0
-    local path
-    for path in "$PENDING_REPORTS_DIR/${num}_"*; do
-        [[ -e "$path" ]] || continue
-        mv -f "$path" "$INCOMPLETE_REPORTS_DIR/${stamp}_$(basename "$path")"
-        archived=$((archived + 1))
-    done
-    if (( archived > 0 )); then
-        printf '%sArchived %d incomplete report artifact(s) for scenario %s%s\\n' \
-            "$YELLOW" "$archived" "$num" "$RESET" >&2
-    fi
-}
+# shellcheck disable=SC1091
+source "$DIR/lib/reporting.sh"
 
 refresh_parent_full_until_terminal() {
     local job_id="$1"
@@ -194,59 +171,6 @@ refresh_parent_full_until_children() {
     return 124
 }
 
-publish_scenario_reports() {
-    local num="$1"
-    local name="$2"
-    local pending_raw="$PENDING_REPORTS_DIR/${num}_${name}_job.json"
-    local pending_verification="$PENDING_REPORTS_DIR/${num}_${name}_verification_report.json"
-    local raw_destination="$REPORTS_DIR/raw/${num}_${name}_job.json"
-    local verification_destination="$REPORTS_DIR/${num}_${name}_verification_report.json"
-    local raw_tmp="${raw_destination}.tmp"
-    local verification_tmp="${verification_destination}.tmp"
-    local raw_backup="${raw_destination}.bak.$$"
-    local verification_backup="${verification_destination}.bak.$$"
-    local had_raw=0
-    local had_verification=0
-
-    mkdir -p "$(dirname "$raw_destination")" "$(dirname "$verification_destination")"
-    # Stage both files before touching canonical paths. Keep backups of both
-    # existing reports so a failure publishing either file restores the prior
-    # valid pair rather than destroying evidence.
-    if [[ -e "$raw_destination" ]]; then
-        cp "$raw_destination" "$raw_backup" || return 1
-        had_raw=1
-    fi
-    if [[ -e "$verification_destination" ]]; then
-        cp "$verification_destination" "$verification_backup" || {
-            rm -f "$raw_backup"
-            return 1
-        }
-        had_verification=1
-    fi
-    if ! cp "$pending_raw" "$raw_tmp" || ! cp "$pending_verification" "$verification_tmp"; then
-        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
-        return 1
-    fi
-    if ! mv -f "$raw_tmp" "$raw_destination"; then
-        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
-        return 1
-    fi
-    if ! mv -f "$verification_tmp" "$verification_destination"; then
-        if (( had_raw )); then
-            mv -f "$raw_backup" "$raw_destination" || true
-        else
-            rm -f "$raw_destination"
-        fi
-        if (( had_verification )); then
-            mv -f "$verification_backup" "$verification_destination" || true
-        else
-            rm -f "$verification_destination"
-        fi
-        rm -f "$raw_tmp" "$verification_tmp" "$raw_backup" "$verification_backup"
-        return 1
-    fi
-    rm -f "$pending_raw" "$pending_verification" "$raw_backup" "$verification_backup"
-}
 
 # Helper function to preprocess JSON scenarios
 prepare_payload() {
