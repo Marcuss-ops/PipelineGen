@@ -1,6 +1,7 @@
 package script
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -27,28 +28,22 @@ func validateGenerationSourceResearch(item GenerationItemV2, ref string) error {
 func validateGenerationSourceText(item GenerationItemV2, ref string) error {
 	if item.Source.Topic == "" && item.Source.SourceText == "" {
 		return &PlanInvalidError{
-			ItemID: item.ID,
-			Details: []string{
-				ref + ": text source requires topic or source_text",
-			},
+			ItemID:  item.ID,
+			Details: []string{ref + ": text source requires topic or source_text"},
 		}
 	}
 	return nil
 }
 
 // validateGenerationSourceClips validates root and segment-owned clip payloads.
-// Explicit segment ownership is authoritative; root clip_ids are only used by
-// the legacy shape and are never redistributed into explicit segments.
+// Explicit segment ownership is authoritative. Legacy root clip_ids remains
+// accepted for compatibility, but is ignored whenever any segment declares
+// clip_ids; intro_clip_ids remains available for the intro segment.
 func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 	segmentsExplicit := HasExplicitSegmentClipIDs(item.ScriptParams.Segments)
-	if segmentsExplicit && len(item.Source.ClipIDs) > 0 {
-		return &PlanInvalidError{
-			ItemID: item.ID,
-			Details: []string{
-				ref + ": source.clip_ids cannot be combined with explicit script_params.segments[].clip_ids; use segment ownership or the legacy root shape",
-			},
-		}
-	}
+	// Explicit segment ownership wins over the legacy root field. Keep
+	// accepting source.clip_ids for compatibility, but never redistribute
+	// it when any segment declares clip_ids (including an explicit []).
 	if len(CollectRequestedClipIDs(item.Source, item.ScriptParams.Segments)) == 0 {
 		return &PlanInvalidError{
 			ItemID: item.ID,
@@ -112,31 +107,25 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 	return nil
 }
 
-// validateGenerationSourceCatalogOrSearch validates a catalog or
-// search source item (SourceCatalog and SourceSearch share the
-// query + max_clips requirement).
+// validateGenerationSourceCatalogOrSearch validates a catalog or search item.
 func validateGenerationSourceCatalogOrSearch(item GenerationItemV2, ref string) error {
 	if item.Source.Query == "" {
 		return &PlanInvalidError{
-			ItemID: item.ID,
-			Details: []string{
-				ref + ": " + string(item.Source.Type) + " source requires a query",
-			},
+			ItemID:  item.ID,
+			Details: []string{ref + ": " + string(item.Source.Type) + " source requires a query"},
 		}
 	}
 	if item.Source.MaxClips <= 0 {
 		return &PlanInvalidError{
-			ItemID: item.ID,
-			Details: []string{
-				ref + ": " + string(item.Source.Type) + " source requires max_clips > 0",
-			},
+			ItemID:  item.ID,
+			Details: []string{ref + ": " + string(item.Source.Type) + " source requires max_clips > 0"},
 		}
 	}
 	return nil
 }
 
-// firstEmpty returns the index of the first empty-or-whitespace-only
-// string in the slice, or -1 when all values are non-empty.
+// firstEmpty returns the index of the first empty-or-whitespace-only string,
+// or -1 when all values are non-empty.
 func firstEmpty(ids []string) int {
 	for i, id := range ids {
 		if strings.TrimSpace(id) == "" {
@@ -146,8 +135,8 @@ func firstEmpty(ids []string) int {
 	return -1
 }
 
-// firstDuplicate returns the first duplicate string in the slice,
-// or "" when all values are unique.
+// firstDuplicate returns the first duplicate string, or "" when all values
+// are unique.
 func firstDuplicate(ids []string) string {
 	seen := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
@@ -163,8 +152,9 @@ func firstDuplicate(ids []string) string {
 	return ""
 }
 
-// CloneScriptSegments returns a defensive copy of segment metadata, including
-// each segment's caller-owned clip ID slice.
+// CloneScriptSegments returns a deep copy of segment metadata, including the
+// per-segment clip ID slices. Segment clip ownership is editorial input and
+// must not alias the request payload after plan construction.
 func CloneScriptSegments(in []ScriptSegment) []ScriptSegment {
 	if in == nil {
 		return nil
@@ -172,16 +162,19 @@ func CloneScriptSegments(in []ScriptSegment) []ScriptSegment {
 	out := make([]ScriptSegment, len(in))
 	for i, segment := range in {
 		out[i] = segment
+		// Preserve nil versus non-nil empty slices: omitted clip_ids means
+		// legacy fallback is eligible, while clip_ids: [] is explicit zero
+		// clip ownership and must select advanced mode.
 		if segment.ClipIDs != nil {
-			out[i].ClipIDs = make([]string, len(segment.ClipIDs))
-			copy(out[i].ClipIDs, segment.ClipIDs)
+			out[i].ClipIDs = slices.Clone(segment.ClipIDs)
 		}
 	}
 	return out
 }
 
-// HasExplicitSegmentClipIDs reports whether the caller supplied segment-owned
-// clip_ids. A non-nil empty slice intentionally means zero clips for a segment.
+// HasExplicitSegmentClipIDs reports whether the caller selected the advanced
+// segment-owned clip contract. A non-nil empty slice represents an explicit
+// JSON clip_ids: [] declaration and therefore still selects this contract.
 func HasExplicitSegmentClipIDs(segments []ScriptSegment) bool {
 	for _, segment := range segments {
 		if segment.ClipIDs != nil {
@@ -191,18 +184,23 @@ func HasExplicitSegmentClipIDs(segments []ScriptSegment) bool {
 	return false
 }
 
-// CanonicalizeSegmentClipIDs copies segments and normalizes legacy root fields.
-// Explicit segment-owned clip_ids are authoritative; intro_clip_ids remain
-// attached to the first segment as an explicit intro assignment.
+// CanonicalizeSegmentClipIDs normalizes legacy root clip fields into the
+// segment model without changing the caller's slices. Explicit segment-owned
+// clip_ids always win. In the legacy shape, intro clips stay on the first
+// segment and root clips are distributed in order.
 func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []ScriptSegment {
 	out := CloneScriptSegments(segments)
 	if len(out) == 0 {
 		return out
 	}
+
 	if HasExplicitSegmentClipIDs(out) {
-		out[0].ClipIDs = prependUnique(source.IntroClipIDs, out[0].ClipIDs)
+		if len(source.IntroClipIDs) > 0 {
+			out[0].ClipIDs = prependUnique(source.IntroClipIDs, out[0].ClipIDs)
+		}
 		return out
 	}
+
 	out[0].ClipIDs = appendUnique(out[0].ClipIDs, source.IntroClipIDs...)
 	rootIDs := appendUnique(nil, source.ClipIDs...)
 	cursor := 0
@@ -221,8 +219,8 @@ func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []S
 	return out
 }
 
-// CollectRequestedClipIDs returns the unique ordered IDs the resolver may
-// fetch. It never invents replacements or searches for undeclared clips.
+// CollectRequestedClipIDs returns the unique, ordered IDs the clips resolver
+// is allowed to fetch. It never searches for replacements.
 func CollectRequestedClipIDs(source SourceSpec, segments []ScriptSegment) []string {
 	ids := appendUnique(nil, source.IntroClipIDs...)
 	if HasExplicitSegmentClipIDs(segments) {
