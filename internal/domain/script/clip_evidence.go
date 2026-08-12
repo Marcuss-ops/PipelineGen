@@ -3,6 +3,7 @@ package script
 import (
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,7 @@ type ClipEvidence struct {
 	MissingClipIDs       []MissingClipID       `json:"missing_clip_ids,omitempty"`
 	ClipTranscriptHashes []string              `json:"clip_transcript_hashes,omitempty"`
 	ClipDetails          map[string]ClipDetail `json:"clip_details,omitempty"`
+	SegmentEvidence      []SegmentClipEvidence `json:"segment_evidence,omitempty"`
 	LanguageCode         string                `json:"language_code,omitempty"`
 	TextTrackVersion     string                `json:"text_track_version,omitempty"`
 	TranscriptHash       string                `json:"transcript_hash,omitempty"`
@@ -28,6 +30,12 @@ type ClipEvidence struct {
 // ModelSourceText returns the narration-safe projection of the evidence.
 func (e *ClipEvidence) ModelSourceText() string {
 	if e == nil {
+		return ""
+	}
+	// Explicit segment evidence is rendered by buildSegmentInstructions;
+	// returning the global narrative projection as well would duplicate the
+	// same clips in one ungrouped block and can make the model merge segments.
+	if len(e.SegmentEvidence) > 0 {
 		return ""
 	}
 	if text := strings.TrimSpace(e.NarrativeText); text != "" {
@@ -64,6 +72,18 @@ func (e *ClipEvidence) CoverageSourceText() string {
 	return strings.Join(parts, " ")
 }
 
+func cloneClipDetails(in map[string]ClipDetail) map[string]ClipDetail {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]ClipDetail, len(in))
+	for clipID, detail := range in {
+		detail.Tags = slices.Clone(detail.Tags)
+		out[clipID] = detail
+	}
+	return out
+}
+
 // NewClipEvidence creates a snapshot-safe copy of the supplied evidence.
 func NewClipEvidence(e ClipEvidence) *ClipEvidence {
 	e.AcceptedClipIDs = slices.Clone(e.AcceptedClipIDs)
@@ -73,8 +93,62 @@ func NewClipEvidence(e ClipEvidence) *ClipEvidence {
 	e.MissingClipIDs = slices.Clone(e.MissingClipIDs)
 	e.DriveLinks = maps.Clone(e.DriveLinks)
 	e.ClipNames = maps.Clone(e.ClipNames)
-	e.ClipDetails = maps.Clone(e.ClipDetails)
+	e.ClipDetails = cloneClipDetails(e.ClipDetails)
+	if e.SegmentEvidence != nil {
+		segments := e.SegmentEvidence
+		e.SegmentEvidence = make([]SegmentClipEvidence, len(segments))
+		for i, segment := range segments {
+			e.SegmentEvidence[i] = segment
+			e.SegmentEvidence[i].ClipIDs = slices.Clone(segment.ClipIDs)
+			e.SegmentEvidence[i].Clips = cloneClipDetails(segment.Clips)
+		}
+	}
 	return &e
+}
+
+// SegmentClipEvidence keeps the caller's editorial grouping alongside the
+// resolved clip evidence. An empty ClipIDs list is intentional: a segment can
+// be narrative-only while the surrounding source still uses clips.
+type SegmentClipEvidence struct {
+	SegmentID  string                `json:"segment_id,omitempty"`
+	Kind       string                `json:"kind,omitempty"`
+	Topic      string                `json:"topic,omitempty"`
+	SourceText string                `json:"source_text,omitempty"`
+	ClipIDs    []string              `json:"clip_ids,omitempty"`
+	Clips      map[string]ClipDetail `json:"clips,omitempty"`
+}
+
+// BuildSegmentClipEvidence projects resolved clip details into the exact
+// segment ownership declared by the caller. It never searches or reallocates
+// clips; missing details remain absent and are surfaced by the resolver.
+func BuildSegmentClipEvidence(segments []ScriptSegment, evidence *ClipEvidence) []SegmentClipEvidence {
+	if len(segments) == 0 || evidence == nil {
+		return nil
+	}
+	out := make([]SegmentClipEvidence, len(segments))
+	for i, segment := range segments {
+		segmentID := strings.TrimSpace(segment.ID)
+		if segmentID == "" {
+			segmentID = "segment-" + strconv.Itoa(i+1)
+		}
+		out[i] = SegmentClipEvidence{
+			SegmentID:  segmentID,
+			Kind:       strings.TrimSpace(segment.Kind),
+			Topic:      segment.Topic,
+			SourceText: segment.SourceText,
+			ClipIDs:    slices.Clone(segment.ClipIDs),
+			Clips:      make(map[string]ClipDetail, len(segment.ClipIDs)),
+		}
+		for _, clipID := range segment.ClipIDs {
+			if detail, ok := evidence.ClipDetails[clipID]; ok {
+				out[i].Clips[clipID] = detail
+			}
+		}
+		if len(out[i].Clips) == 0 {
+			out[i].Clips = nil
+		}
+	}
+	return out
 }
 
 // ClipDetail carries the primary evidence for one accepted clip.

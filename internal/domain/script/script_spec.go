@@ -15,10 +15,12 @@ package script
 // layer (DoD #8). ScriptSpec.Segments is the SOLE canonical owner;
 // SourceSpec and Item layers consume via generator-normalizer copies.
 type ScriptSegment struct {
-	ID          string `json:"id,omitempty"`
-	Topic       string `json:"topic"`
-	SourceText  string `json:"source_text,omitempty"`
-	TargetWords int    `json:"target_words,omitempty"`
+	ID          string   `json:"id,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Topic       string   `json:"topic"`
+	SourceText  string   `json:"source_text,omitempty"`
+	ClipIDs     []string `json:"clip_ids,omitempty"`
+	TargetWords int      `json:"target_words,omitempty"`
 	// MinWords and MaxWords are optional explicit QA bounds. When omitted,
 	// the segment validator derives them from TargetWords and its configured
 	// tolerance.
