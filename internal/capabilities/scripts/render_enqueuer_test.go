@@ -2,6 +2,9 @@ package scriptgeneration
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -13,19 +16,27 @@ type captureRenderExecutor struct {
 	calls int
 }
 
-func (e *captureRenderExecutor) RenderCanonicalPlan(_ context.Context, plan render.RenderPlan) error {
+func (e *captureRenderExecutor) RenderCanonicalPlan(_ context.Context, validated render.ValidatedRenderPlan) error {
 	e.calls++
-	e.plan = plan
+	e.plan = validated.Plan()
 	return nil
 }
 
 func TestCanonicalRenderEnqueuerForwardsAndValidatesPlan(t *testing.T) {
+	path := t.TempDir() + "/clip.mp4"
+	contents := []byte("canonical clip")
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(contents)
 	timeline := audio.CanonicalTimeline{
 		Version:    audio.TimelineVersion,
-		DurationMS: 1000,
-		Segments:   []audio.TimelineSegment{{ID: "scene", Index: 0, DurationMS: 1000, Audio: audio.AudioIntent{Mode: audio.AudioSilence}}},
+		DurationUS: 1000000,
+		Segments: []audio.TimelineSegment{{ID: "scene", Index: 0, DurationUS: 1000000,
+			Video: audio.VideoSegment{AssetID: "clip", SourceInUS: 0, SourceDurationUS: 1000000},
+			Audio: audio.AudioIntent{Mode: audio.AudioSilence}}},
 	}
-	plan, err := render.Compile(render.CompileInput{JobID: "job-render", Revision: "generation.v1", OutputPath: "final.mp4", FPS: 30, Timeline: timeline})
+	plan, err := render.Compile(render.CompileInput{JobID: "job-render", Revision: "generation.v1", OutputPath: "final.mp4", FPS: 30, Timeline: timeline, Manifest: []render.AssetManifestEntry{{AssetID: "clip", Path: path, SHA256: hex.EncodeToString(sum[:]), FrameCount: 100}}})
 	if err != nil {
 		t.Fatal(err)
 	}

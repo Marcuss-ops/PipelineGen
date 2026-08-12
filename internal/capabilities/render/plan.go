@@ -58,10 +58,24 @@ type AssetManifestEntry struct {
 }
 
 type FinalAudioAsset struct {
-	AssetID    string `json:"asset_id"`
-	Path       string `json:"path"`
-	SHA256     string `json:"sha256"`
-	PlanSHA256 string `json:"audio_plan_sha256,omitempty"`
+	AssetID              string `json:"asset_id"`
+	AssetKind            string `json:"asset_kind,omitempty"`
+	Strategy             string `json:"audio_strategy,omitempty"`
+	Path                 string `json:"path"`
+	SHA256               string `json:"sha256"`
+	PlanSHA256           string `json:"audio_plan_sha256,omitempty"`
+	AudioContractVersion string `json:"audio_contract_version,omitempty"`
+	AudioPlanVersion     string `json:"audio_plan_version,omitempty"`
+	Codec                string `json:"codec,omitempty"`
+	Profile              string `json:"profile,omitempty"`
+	SampleRate           int    `json:"sample_rate,omitempty"`
+	Channels             int    `json:"channels,omitempty"`
+	ChannelLayout        string `json:"channel_layout,omitempty"`
+	DurationMS           int64  `json:"duration_ms,omitempty"`
+	StartPTS             int64  `json:"start_pts,omitempty"`
+	SizeBytes            int64  `json:"size_bytes,omitempty"`
+	FinalMix             bool   `json:"final_mix,omitempty"`
+	CopyEligible         bool   `json:"copy_eligible,omitempty"`
 }
 
 type RenderPlan struct {
@@ -375,6 +389,10 @@ func (p RenderPlan) ValidateManifestFiles() error {
 		file, err := os.Open(p.FinalAudio.Path)
 		if err != nil {
 			return fmt.Errorf("%w: open final audio %s: %v", ErrAssetHashDrift, p.FinalAudio.AssetID, err)
+		}
+		if info, statErr := file.Stat(); statErr != nil || info.Size() != p.FinalAudio.SizeBytes {
+			_ = file.Close()
+			return fmt.Errorf("%w: final audio size mismatch for %s", ErrAssetHashDrift, p.FinalAudio.AssetID)
 		}
 		hash := sha256.New()
 		_, copyErr := io.Copy(hash, file)

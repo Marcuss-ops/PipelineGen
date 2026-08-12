@@ -11,7 +11,7 @@ import (
 // media adapter. Keeping it here lets the generation runtime remain unaware of
 // infrastructure packages while still enforcing the canonical plan boundary.
 type RenderPlanExecutor interface {
-	RenderCanonicalPlan(context.Context, render.RenderPlan) error
+	RenderCanonicalPlan(context.Context, render.ValidatedRenderPlan) error
 }
 
 // CanonicalRenderEnqueuer adapts a RenderPlanExecutor to the generation
@@ -35,10 +35,11 @@ func (e *CanonicalRenderEnqueuer) Enqueue(ctx context.Context, result GenerateRe
 	if result.RenderPlan == nil {
 		return RenderReference{}, fmt.Errorf("canonical render enqueue requires RenderPlan")
 	}
-	if err := result.RenderPlan.Validate(); err != nil {
+	validated, err := render.ValidateRenderPlan(*result.RenderPlan)
+	if err != nil {
 		return RenderReference{}, fmt.Errorf("canonical render enqueue validation failed: %w", err)
 	}
-	if err := e.executor.RenderCanonicalPlan(ctx, *result.RenderPlan); err != nil {
+	if err := e.executor.RenderCanonicalPlan(ctx, validated); err != nil {
 		return RenderReference{}, fmt.Errorf("canonical render executor failed: %w", err)
 	}
 	return RenderReference{JobID: result.RenderPlan.JobID, Status: "COMPLETED"}, nil

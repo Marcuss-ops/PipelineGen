@@ -172,7 +172,7 @@ func (r request) Validate() error {
 			// This is the last Go transport boundary. Validate the complete
 			// sealed contract here as well as in StockRenderer so every
 			// caller of Client.call is fail-closed before Rust is invoked.
-			if err := plan.Validate(); err != nil {
+			if _, err := capabilityrender.ValidateRenderPlan(plan); err != nil {
 				return fmt.Errorf("%s: sealed render_plan validation failed: %w", r.Operation, err)
 			}
 		}
