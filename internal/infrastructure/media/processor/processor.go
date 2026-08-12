@@ -3,6 +3,8 @@ package processor
 import (
 	"context"
 	"fmt"
+
+	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	"os"
 	"path/filepath"
 
@@ -53,7 +55,8 @@ type Processor struct {
 	// download path. nil-safe: when nil, downloadStep falls through
 	// to yt-dlp (Rule 4). Wired in build_bundles_artlist.go via an
 	// adapter wrapping downloader.Resolver.Download().
-	artlistDL ArtlistDownloader
+	artlistDL     ArtlistDownloader
+	artifactCache capcache.Cache
 }
 
 var _ asset.Processor = (*Processor)(nil)
@@ -78,6 +81,17 @@ func (p *Processor) SetArtlistDownloader(dl ArtlistDownloader) {
 	if dl != nil {
 		p.artlistDL = dl
 	}
+}
+
+// SetArtifactCache attaches the shared CAS-backed derived-artifact cache.
+// Cache failures never replace the media processor's fail-closed execution
+// errors: a cache is disposable, so generation falls through to the real
+// processor and logs the cache degradation.
+func (p *Processor) SetArtifactCache(cache capcache.Cache) *Processor {
+	if p != nil {
+		p.artifactCache = cache
+	}
+	return p
 }
 
 // ProcessorConfig holds the constructor dependencies for Processor.
@@ -242,15 +256,28 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			_ = os.Remove(actualRawPath)
 		}
 	} else {
-		// Step 2: Process/Normalize. Caller-provided LocalPath cleanup skipped
-		// below (Step 9/12 wire-up): the stager owns the staged file lifecycle.
-		processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
-		if err != nil {
-			if input.LocalPath == "" {
-				_ = os.Remove(actualRawPath)
+		// Step 2: Process/Normalize. The normalized output is a deterministic
+		// derived artifact keyed by source bytes + encoder policy/version.
+		sourceSHA := hashFileSHA256(actualRawPath)
+		normalizeKey := capcacheKey(sourceSHA, "normalize", p.videoCfg, "media-normalize/v1")
+		normalizeCached := false
+		normalizeLeaseID := ""
+		if sourceSHA != "" {
+			normalizeCached, normalizeLeaseID = p.materializeCachedFile(ctx, normalizeKey, processedPath)
+		}
+		if !normalizeCached {
+			processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
+			if err != nil {
+				p.releaseCachedClaim(ctx, normalizeKey, normalizeLeaseID, err.Error())
+				if input.LocalPath == "" {
+					_ = os.Remove(actualRawPath)
+				}
+				result.Error = fmt.Sprintf("process failed: %v", err)
+				return result, err
 			}
-			result.Error = fmt.Sprintf("process failed: %v", err)
-			return result, err
+			if sourceSHA != "" {
+				p.storeCachedFile(ctx, normalizeKey, normalizeLeaseID, processedPath, "video/mp4")
+			}
 		}
 
 		// Perceptual deduplication.
