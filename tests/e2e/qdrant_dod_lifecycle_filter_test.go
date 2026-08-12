@@ -6,10 +6,11 @@
 // internal/infrastructure/qdrant/search/filter_compiler.go. Per
 // filter_compiler.go §3: "LifecycleState allow-list is ALWAYS present
 // (defaults to {"ACTIVE"} when AssetFilter.LifecycleState is empty)."
-// The lifecycleClauses function emits one should-clause per state in
-// the allow-list, and the compiled filter carries `min_should: 1` —
-// lifecycle states are alternatives (ACTIVE+PUBLISHED must NOT AND
-// together), so the canonical placement is `should`, not `must`.
+// The lifecycleClauses function emits one min_should condition per state in
+// the allow-list, and the compiled filter carries Qdrant's structured
+// `min_should: {conditions: [...], min_count: 1}` object — lifecycle
+// states are alternatives (ACTIVE+PUBLISHED must NOT AND together), so
+// the canonical placement is the min_should conditions branch, not `must`.
 // The default-ACTIVE invariant is the load-bearing contract for Gate 9
 // — without it, search results would silently include
 // DELETED / DELETE_REQUESTED points.
@@ -17,12 +18,13 @@
 // This test pins the contract in 6 hermetic sub-cases:
 //
 //	(1) Default empty LifecycleState → filter contains the canonical
-//	    lifecycle_state=ACTIVE should-clause + min_should=1 (the
-//	    godlike/06 SSOT default).
+//	    lifecycle_state=ACTIVE condition + min_should.min_count=1
+//	    (the godlike/06 SSOT default).
 //	(2) Caller-supplied LifecycleState=["ACTIVE","PUBLISHED"] → filter
-//	    contains BOTH should-clauses (per lifecycleClauses expansion).
+//	    contains BOTH min_should conditions (per lifecycleClauses expansion).
+
 //	(3) Admin override LifecycleState=["DELETED"] → filter contains
-//	    DELETED should-clause (for reconcile/snapshot admin paths).
+//	    DELETED lifecycle condition (for reconcile/snapshot admin paths).
 //	(4) WorkspaceID empty + IsSystem=false → returns typed error
 //	    (fail-closed per filter_compiler.go §Invariants 1).
 //	(5) WorkspaceID="default" + IsSystem=false → returns typed error
@@ -61,10 +63,10 @@ import (
 
 // TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause is the
 // canonical hermetic TDD lock for Gate 9. The compiled filter is the
-// canonical wire body sent to Qdrant; the lifecycle_state must-clause
-// is the load-bearing invariant for excluding non-ACTIVE points.
+// canonical wire body sent to Qdrant; the lifecycle_state condition in
+// min_should is the load-bearing invariant for excluding non-ACTIVE points.
 func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T) {
-	t.Run("default_empty_lifecycle_state_emits_active_should_clause", func(t *testing.T) {
+	t.Run("default_empty_lifecycle_state_emits_active_condition", func(t *testing.T) {
 		scope := appsearch.SearchScope{IsSystem: false, WorkspaceID: "ws_test_001"}
 		filter := appsearch.AssetFilter{} // empty LifecycleState → defaults to ["ACTIVE"]
 
@@ -73,15 +75,15 @@ func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T
 			t.Fatalf("CompileQdrantFilter: unexpected error (fail-closed contract should NOT fire for valid scope): %v", err)
 		}
 
-		if !hasLifecycleStateShouldClause(compiled, "ACTIVE") {
-			t.Fatalf("compiled filter missing canonical lifecycle_state=ACTIVE should-clause (the godlike/06 SSOT default); compiled=%v", compiled)
+		if !hasLifecycleStateCondition(compiled, "ACTIVE") {
+			t.Fatalf("compiled filter missing canonical lifecycle_state=ACTIVE condition (the godlike/06 SSOT default); compiled=%v", compiled)
 		}
 		if got := minShould(compiled); got != 1 {
-			t.Fatalf("min_should=%d, want 1 (at least one lifecycle state must match); compiled=%v", got, compiled)
+			t.Fatalf("min_should.min_count=%d, want 1 (at least one lifecycle state must match); compiled=%v", got, compiled)
 		}
 	})
 
-	t.Run("caller_supplied_lifecycle_state_emits_all_should_clauses", func(t *testing.T) {
+	t.Run("caller_supplied_lifecycle_state_emits_all_conditions", func(t *testing.T) {
 		scope := appsearch.SearchScope{IsSystem: false, WorkspaceID: "ws_test_002"}
 		filter := appsearch.AssetFilter{
 			LifecycleState: []string{"ACTIVE", "PUBLISHED"},
@@ -92,18 +94,18 @@ func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T
 			t.Fatalf("CompileQdrantFilter: %v", err)
 		}
 
-		if !hasLifecycleStateShouldClause(compiled, "ACTIVE") {
-			t.Errorf("compiled filter missing lifecycle_state=ACTIVE should-clause; compiled=%v", compiled)
+		if !hasLifecycleStateCondition(compiled, "ACTIVE") {
+			t.Errorf("compiled filter missing lifecycle_state=ACTIVE condition; compiled=%v", compiled)
 		}
-		if !hasLifecycleStateShouldClause(compiled, "PUBLISHED") {
-			t.Errorf("compiled filter missing lifecycle_state=PUBLISHED should-clause; compiled=%v", compiled)
+		if !hasLifecycleStateCondition(compiled, "PUBLISHED") {
+			t.Errorf("compiled filter missing lifecycle_state=PUBLISHED condition; compiled=%v", compiled)
 		}
 		if got := minShould(compiled); got != 1 {
-			t.Errorf("min_should=%d, want 1; compiled=%v", got, compiled)
+			t.Errorf("min_should.min_count=%d, want 1; compiled=%v", got, compiled)
 		}
 	})
 
-	t.Run("admin_override_lifecycle_state_emits_deleted_should_clause", func(t *testing.T) {
+	t.Run("admin_override_lifecycle_state_emits_deleted_condition", func(t *testing.T) {
 		// godlike/06 SSOT: the IsSystem=true path bypasses the
 		// workspace must-clause (admin/reconcile/snapshot use case).
 		// The admin can pass LifecycleState=["DELETED"] to
@@ -120,16 +122,16 @@ func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T
 			t.Fatalf("CompileQdrantFilter: %v", err)
 		}
 
-		if !hasLifecycleStateShouldClause(compiled, "DELETED") {
-			t.Errorf("compiled filter missing lifecycle_state=DELETED should-clause (admin override); compiled=%v", compiled)
+		if !hasLifecycleStateCondition(compiled, "DELETED") {
+			t.Errorf("compiled filter missing lifecycle_state=DELETED condition (admin override); compiled=%v", compiled)
 		}
-		// The default-ACTIVE should-clause MUST NOT be present when
+		// The default-ACTIVE lifecycle condition MUST NOT be present when
 		// the caller supplies an explicit non-empty allow-list.
-		if hasLifecycleStateShouldClause(compiled, "ACTIVE") {
-			t.Errorf("compiled filter contains stale lifecycle_state=ACTIVE should-clause (default should NOT override caller-supplied allow-list); compiled=%v", compiled)
+		if hasLifecycleStateCondition(compiled, "ACTIVE") {
+			t.Errorf("compiled filter contains stale lifecycle_state=ACTIVE condition (default should NOT override caller-supplied allow-list); compiled=%v", compiled)
 		}
 		if got := minShould(compiled); got != 1 {
-			t.Errorf("min_should=%d, want 1; compiled=%v", got, compiled)
+			t.Errorf("min_should.min_count=%d, want 1; compiled=%v", got, compiled)
 		}
 	})
 
@@ -181,14 +183,14 @@ func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T
 			t.Fatalf("CompileQdrantFilter: %v", err)
 		}
 
-		// The default-ACTIVE should-clause MUST still be present
+		// The default-ACTIVE lifecycle condition MUST still be present
 		// even on the admin path (lifecycle filter is
 		// always-on per filter_compiler.go §Invariants 2).
-		if !hasLifecycleStateShouldClause(compiled, "ACTIVE") {
-			t.Errorf("compiled filter missing canonical lifecycle_state=ACTIVE should-clause on admin path; compiled=%v", compiled)
+		if !hasLifecycleStateCondition(compiled, "ACTIVE") {
+			t.Errorf("compiled filter missing canonical lifecycle_state=ACTIVE condition on admin path; compiled=%v", compiled)
 		}
 		if got := minShould(compiled); got != 1 {
-			t.Errorf("min_should=%d, want 1; compiled=%v", got, compiled)
+			t.Errorf("min_should.min_count=%d, want 1; compiled=%v", got, compiled)
 		}
 		// The workspace must-clause MUST NOT be present on
 		// the admin path (bypass per filter_compiler.go §Invariants 1).
@@ -198,24 +200,31 @@ func TestQdrantDoDLifecycleFilter_CompileFilterContainsActiveClause(t *testing.T
 	})
 }
 
-// hasLifecycleStateShouldClause reports whether the compiled filter
-// contains a should-clause with key="lifecycle_state" and
+// hasLifecycleStateCondition reports whether the compiled filter
+// contains a lifecycle condition with key="lifecycle_state" and
 // match.value=<expected>. The canonical compiler (filter_compiler.go
-// §3) deliberately places the lifecycle allow-list in `should` with
-// `min_should=1` — states are alternatives (ACTIVE+PUBLISHED must not
-// AND together), so the DoD gate asserts the `should` section, not
-// `must`. The match.value is a string per filter_compiler.go::matchClause
-// ({"key", "match": {"value", ...}}).
-func hasLifecycleStateShouldClause(compiled map[string]interface{}, expected string) bool {
+// §3) deliberately places the lifecycle allow-list in the structured
+// `min_should.conditions` branch with `min_count=1` — states are
+// alternatives (ACTIVE+PUBLISHED must not AND together), so the DoD
+// gate asserts that branch, not `must`. The match.value is a string per
+// filter_compiler.go::matchClause ({"key", "match": {"value", ...}}).
+func hasLifecycleStateCondition(compiled map[string]interface{}, expected string) bool {
 	return hasKeyClauseWithValue(compiled, "should", "lifecycle_state", expected)
 }
 
 // hasKeyClauseWithValue is the generic version — checks for any
 // key/match.value pair in the named section ("must" or "should").
-// Used to assert both the lifecycle_state clauses (should) and the
-// workspace_id clause (must), which share the matchClause wire shape.
+// For "should", it unwraps the canonical min_should.conditions branch.
+// Used to assert both lifecycle conditions and the workspace_id clause,
+// which share the matchClause wire shape.
 func hasKeyClauseWithValue(compiled map[string]interface{}, section, key, value string) bool {
 	clauses, ok := compiled[section].([]map[string]interface{})
+	if !ok && section == "should" {
+		structured, structuredOK := compiled["min_should"].(map[string]interface{})
+		if structuredOK {
+			clauses, ok = structured["conditions"].([]map[string]interface{})
+		}
+	}
 	if !ok {
 		return false
 	}
@@ -234,11 +243,15 @@ func hasKeyClauseWithValue(compiled map[string]interface{}, section, key, value 
 	return false
 }
 
-// minShould returns the canonical min_should value from the compiled
-// filter (1 per filter_compiler.go §3 — at least one lifecycle state
-// must match).
+// minShould returns the canonical min_should.min_count value from the
+// compiled filter (1 per filter_compiler.go §3 — at least one lifecycle
+// state must match).
 func minShould(compiled map[string]interface{}) int {
-	switch v := compiled["min_should"].(type) {
+	structured, ok := compiled["min_should"].(map[string]interface{})
+	if !ok {
+		return -1
+	}
+	switch v := structured["min_count"].(type) {
 	case int:
 		return v
 	case float64:
