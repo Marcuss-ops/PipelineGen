@@ -66,10 +66,33 @@ func (cm *CollectionManager) Projection(projectionID string) (capregistry.Projec
 	return projection, ok
 }
 
+// GetStatus returns the explicit persisted/in-memory lifecycle state.
+func (cm *CollectionManager) GetStatus(projectionID string) (capregistry.ProjectionStatus, error) {
+	projection, err := cm.requireProjection(projectionID)
+	if err != nil {
+		return "", err
+	}
+	return capregistry.ProjectionStatus(projection.Status), nil
+}
+
+// Build is the concise canonical operation name. BuildProjection remains
+// available as a descriptive compatibility spelling.
+func (cm *CollectionManager) Build(ctx context.Context, projectionID, collection string, registrySequence int64) error {
+	return cm.BuildProjection(ctx, projectionID, collection, registrySequence)
+}
+
 // BuildProjection creates the physical candidate without touching the runtime
 // alias. Any preparation failure permanently marks this build FAILED; callers
 // must start a new projection identity to retry.
 func (cm *CollectionManager) BuildProjection(ctx context.Context, projectionID, collection string, registrySequence int64) error {
+	return cm.BuildProjectionWith(ctx, projectionID, collection, registrySequence, nil)
+}
+
+// BuildProjectionWith creates a physical candidate and, when populate is
+// supplied, fills it through the caller's canonical index writer before the
+// candidate can be validated. The manager still owns the BUILDING state and
+// fail-closed transition on either preparation or population failure.
+func (cm *CollectionManager) BuildProjectionWith(ctx context.Context, projectionID, collection string, registrySequence int64, populate ProjectionPopulateFunc) error {
 	resolvedSequence, err := cm.resolveRegistrySequence(ctx, registrySequence)
 	if err != nil {
 		return err
@@ -83,7 +106,34 @@ func (cm *CollectionManager) BuildProjection(ctx context.Context, projectionID, 
 		}
 		return fmt.Errorf("build projection %q: %w", projectionID, err)
 	}
+	if populate != nil {
+		if err := populate(ctx, collection); err != nil {
+			if failErr := cm.failProjection(ctx, projectionID); failErr != nil {
+				return fmt.Errorf("populate projection %q: %w; persist FAILED state: %v", projectionID, err, failErr)
+			}
+			return fmt.Errorf("populate projection %q: %w", projectionID, err)
+		}
+	}
 	return nil
+}
+
+// RebuildProjection starts a fresh build identity. A failed or retired
+// projection is never revived in place; callers must pass a new projectionID
+// and collection name. The previous projection remains available for rollback
+// until an explicit retention policy retires it.
+func (cm *CollectionManager) RebuildProjection(ctx context.Context, projectionID, collection string, registrySequence int64, populate ProjectionPopulateFunc) error {
+	return cm.BuildProjectionWith(ctx, projectionID, collection, registrySequence, populate)
+}
+
+// Rebuild is the concise semantic alias for callers that use the manager as a
+// capability rather than the concrete CollectionManager.
+func (cm *CollectionManager) Rebuild(ctx context.Context, projectionID, collection string, registrySequence int64, populate ProjectionPopulateFunc) error {
+	return cm.RebuildProjection(ctx, projectionID, collection, registrySequence, populate)
+}
+
+// Validate is the concise canonical operation name.
+func (cm *CollectionManager) Validate(ctx context.Context, projectionID string, registrySequence int64, expectedPoints int) (*schema.SwitchReport, error) {
+	return cm.ValidateProjection(ctx, projectionID, registrySequence, expectedPoints)
 }
 
 // ValidateProjection performs the full verifier gate when one is wired. A
@@ -145,6 +195,11 @@ func (cm *CollectionManager) ValidateProjection(ctx context.Context, projectionI
 		return nil, err
 	}
 	return nil, nil
+}
+
+// Activate is the concise canonical operation name.
+func (cm *CollectionManager) Activate(ctx context.Context, projectionID string, registrySequence int64) error {
+	return cm.ActivateProjection(ctx, projectionID, registrySequence)
 }
 
 // ActivateProjection switches the alias in one Qdrant action request. A
@@ -241,6 +296,11 @@ func (cm *CollectionManager) ActivateProjection(ctx context.Context, projectionI
 	return nil
 }
 
+// Rollback is the concise canonical operation name.
+func (cm *CollectionManager) Rollback(ctx context.Context, projectionID, rollbackTarget string) error {
+	return cm.RollbackProjection(ctx, projectionID, rollbackTarget)
+}
+
 // RollbackProjection atomically restores the alias to rollbackTarget. A
 // failed rollback leaves the currently active projection ACTIVE; a successful
 // rollback retires the candidate and marks a known rollback build ACTIVE.
@@ -297,6 +357,77 @@ func (cm *CollectionManager) RollbackProjection(ctx context.Context, projectionI
 		cm.OnAliasSwitch()
 	}
 	return nil
+}
+
+// ReconcileProjection compares the runtime alias with durable lifecycle
+// metadata after restart. If Qdrant switched successfully but the process
+// stopped before the ACTIVE registry write, a READY/RETIRED matching target
+// is promoted in the registry without issuing another alias mutation. An
+// unknown target or an impossible state fails closed for operator repair.
+func (cm *CollectionManager) ReconcileProjection(ctx context.Context) error {
+	cm.projectionMu.RLock()
+	count := len(cm.projections)
+	cm.projectionMu.RUnlock()
+	if count == 0 {
+		return nil
+	}
+
+	target, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if errors.As(err, &notFound) {
+			target = ""
+		} else {
+			return fmt.Errorf("reconcile projection alias: %w", err)
+		}
+	}
+	if target == "" {
+		return fmt.Errorf("%w: runtime alias %q has no target while projection state exists", ErrProjectionInvalidState, cm.schema.RuntimeAlias)
+	}
+
+	projectionID, ok := cm.projectionByCollection(target)
+	if !ok {
+		return fmt.Errorf("%w: runtime alias %q points to unknown collection %q", ErrProjectionInvalidState, cm.schema.RuntimeAlias, target)
+	}
+	projection, _ := cm.Projection(projectionID)
+	latestSequence, err := cm.resolveRegistrySequence(ctx, projection.SourceRegistrySeq)
+	if err != nil {
+		return err
+	}
+	if err := capregistry.ValidateProjectionSequence(projection.SourceRegistrySeq, latestSequence); err != nil {
+		return fmt.Errorf("reconcile projection %q: %w", projectionID, err)
+	}
+	info, err := cm.client.GetCollection(ctx, target)
+	if err != nil {
+		return fmt.Errorf("reconcile projection %q schema: %w", projectionID, err)
+	}
+	if diff := schema.CompareSchema(cm.schema, info); !diff.Compatible {
+		return fmt.Errorf("%w: alias target %q schema is incompatible (missing_vectors=%v dimension_mismatches=%v missing_indexes=%v)", ErrProjectionInvalidState, target, diff.MissingVectors, diff.DimensionMismatches, diff.MissingIndexes)
+	}
+	switch capregistry.ProjectionStatus(projection.Status) {
+	case capregistry.ProjectionActive:
+		return nil
+	case capregistry.ProjectionReady, capregistry.ProjectionRetired:
+		if err := cm.transitionProjection(ctx, projectionID, capregistry.ProjectionActive); err != nil {
+			return fmt.Errorf("reconcile projection %q as ACTIVE: %w", projectionID, err)
+		}
+		cm.projectionMu.RLock()
+		predecessors := make([]string, 0)
+		for id, candidate := range cm.projections {
+			if id != projectionID && candidate.AliasName == projection.AliasName && candidate.Status == string(capregistry.ProjectionActive) {
+				predecessors = append(predecessors, id)
+			}
+		}
+		cm.projectionMu.RUnlock()
+		for _, id := range predecessors {
+			if err := cm.transitionProjection(ctx, id, capregistry.ProjectionRetired); err != nil {
+				return fmt.Errorf("reconcile predecessor %q as RETIRED: %w", id, err)
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: alias target %q has projection %q in state %s", ErrProjectionInvalidState, target, projectionID, projection.Status)
+	}
 }
 
 func (cm *CollectionManager) projectionByCollection(collection string) (string, bool) {

@@ -167,6 +167,13 @@ func (cm *CollectionManager) EnsureSchema(ctx context.Context) (*EnsureResult, e
 	}
 	candidate := cm.schema.CanonicalName()
 
+	// On restart, repair the durable lifecycle mirror before deciding
+	// whether the runtime alias is compatible. This handles the crash
+	// window after Qdrant's atomic alias switch and before SQLite recorded
+	// ACTIVE, without issuing a second alias mutation.
+	if err := cm.ReconcileProjection(ctx); err != nil {
+		return nil, err
+	}
 	target, diff, err := cm.InspectRuntime(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("inspect runtime: %w", err)
@@ -184,17 +191,18 @@ func (cm *CollectionManager) EnsureSchema(ctx context.Context) (*EnsureResult, e
 		}, nil
 	}
 
-	if err := cm.PrepareCandidate(ctx, candidate); err != nil {
-		return nil, fmt.Errorf("prepare candidate: %w", err)
+	// Route the complete startup lifecycle through the Projection Manager:
+	// BUILDING -> VALIDATING -> READY -> ACTIVE. Legacy callers may still
+	// use the lower-level blue/green methods during migration, but the
+	// canonical startup path must persist lifecycle state before alias use.
+	if err := cm.BuildProjection(ctx, candidate, candidate, 0); err != nil {
+		return nil, fmt.Errorf("build projection: %w", err)
 	}
-	if err := cm.ReindexCandidate(ctx, candidate); err != nil {
-		return nil, fmt.Errorf("reindex candidate: %w", err)
+	if _, err := cm.ValidateProjection(ctx, candidate, 0, 0); err != nil {
+		return nil, fmt.Errorf("validate projection: %w", err)
 	}
-	if err := cm.VerifyCandidate(ctx, candidate); err != nil {
-		return nil, fmt.Errorf("verify candidate: %w", err)
-	}
-	if err := cm.PromoteCandidate(ctx, candidate); err != nil {
-		return nil, fmt.Errorf("promote candidate: %w", err)
+	if err := cm.ActivateProjection(ctx, candidate, 0); err != nil {
+		return nil, fmt.Errorf("activate projection: %w", err)
 	}
 
 	cm.log.Info("ensure-schema: created + promoted",
