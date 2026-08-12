@@ -12,6 +12,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -225,7 +226,10 @@ func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobT
 			jobCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer cancel()
 
-			err := s.IndexClip(jobCtx, arg.ID)
+			err := kernobs.MeasureOperation(jobCtx, kernobs.OperationInfo{
+				Stage: kernobs.StageName("index"), Component: kernobs.ComponentName("clipindexer"),
+				Operation: kernobs.OperationName("clip.index"), Items: 1,
+			}, func(opCtx context.Context) error { return s.IndexClip(opCtx, arg.ID) })
 			if err != nil {
 				failed.Add(1)
 			} else {

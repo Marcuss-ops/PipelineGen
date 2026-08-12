@@ -115,7 +115,9 @@ type PublishedArtifact struct {
 	// PR-STOCK-SOURCE-FIX (July 2026): stock assets must NOT use
 	// Location.Action="created" as source — that's the publish
 	// action, not the content source.
-	Source string `json:"source,omitempty"`
+	Source    string `json:"source,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Language  string `json:"language,omitempty"`
 
 	// Location is the canonical descriptor of where the artifact was
 	// published.

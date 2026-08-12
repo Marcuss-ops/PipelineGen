@@ -67,17 +67,17 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggrega
 	// With SetMaxOpenConns(1) this deadlocks (the only connection is
 	// already held by the caller's tx).
 	var existingID int64
-	var existingStatus string
+	var existingStatus, existingEventType, existingAggregateType, existingAggregateID string
 	queryRow := r.db.QueryRowContext
 	if tx != nil {
 		queryRow = tx.QueryRowContext
 	}
 	if scanErr := queryRow(ctx,
-		`SELECT id, status FROM outbox_events WHERE event_key = ?`, eventKey,
-	).Scan(&existingID, &existingStatus); scanErr != nil {
+		`SELECT id, status, event_type, aggregate_type, aggregate_id FROM outbox_events WHERE event_key = ?`, eventKey,
+	).Scan(&existingID, &existingStatus, &existingEventType, &existingAggregateType, &existingAggregateID); scanErr != nil {
 		return nil, fmt.Errorf("outboxevents.Enqueue(%s, %s): ON CONFLICT suppressed, but query existing row: %w", eventType, aggregateID, scanErr)
 	}
-	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus}, nil
+	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus, ExistingEventType: existingEventType, ExistingAggregateType: existingAggregateType, ExistingAggregateID: existingAggregateID}, nil
 }
 
 // EnqueueWithPriority inserts a new outbox event with an explicit
@@ -116,17 +116,17 @@ func (r *Repository) EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventT
 	// With SetMaxOpenConns(1) this deadlocks (the only connection is
 	// already held by the caller's tx).
 	var existingID int64
-	var existingStatus string
+	var existingStatus, existingEventType, existingAggregateType, existingAggregateID string
 	queryRow := r.db.QueryRowContext
 	if tx != nil {
 		queryRow = tx.QueryRowContext
 	}
 	if scanErr := queryRow(ctx,
-		`SELECT id, status FROM outbox_events WHERE event_key = ?`, eventKey,
-	).Scan(&existingID, &existingStatus); scanErr != nil {
+		`SELECT id, status, event_type, aggregate_type, aggregate_id FROM outbox_events WHERE event_key = ?`, eventKey,
+	).Scan(&existingID, &existingStatus, &existingEventType, &existingAggregateType, &existingAggregateID); scanErr != nil {
 		return nil, fmt.Errorf("outboxevents.EnqueueWithPriority(%s, %s): ON CONFLICT suppressed, but query existing row: %w", eventType, aggregateID, scanErr)
 	}
-	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus}, nil
+	return &EnqueueResult{EventID: existingID, Inserted: false, ExistingStatus: existingStatus, ExistingEventType: existingEventType, ExistingAggregateType: existingAggregateType, ExistingAggregateID: existingAggregateID}, nil
 }
 
 // ClaimNext claims the oldest pending event atomically using CTE.

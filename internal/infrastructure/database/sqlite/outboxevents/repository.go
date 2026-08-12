@@ -101,9 +101,12 @@ type Claim struct {
 // the existing row's status so the producer can decide whether
 // to retry with a new event_key, surface a warning, or move on.
 type EnqueueResult struct {
-	EventID        int64  // ID of the row (new or existing)
-	Inserted       bool   // true if INSERT landed, false if ON CONFLICT suppressed
-	ExistingStatus string // existing row's status when Inserted=false; empty when Inserted=true
+	EventID               int64  // ID of the row (new or existing)
+	Inserted              bool   // true if INSERT landed, false if ON CONFLICT suppressed
+	ExistingStatus        string // existing row's status when Inserted=false; empty when Inserted=true
+	ExistingEventType     string // existing event type when Inserted=false
+	ExistingAggregateType string // existing aggregate type when Inserted=false
+	ExistingAggregateID   string // existing aggregate ID when Inserted=false
 }
 
 // Repository wraps SQL access to the outbox_events table.

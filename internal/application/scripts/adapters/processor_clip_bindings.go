@@ -214,12 +214,37 @@ func (p *ClipBindingsProcessor) Process(
 			}
 		}
 	}
+	// The clip planner may synthesize a detailed binding before this
+	// processor runs.  That binding is authoritative for timing, but the
+	// public/document surface must still carry the canonical Drive URL from
+	// ClipEvidence.  Complete it for both synthesized and binder-produced
+	// scenes so the narrative text can never detach from its source clip.
+	enrichClipBindings(scenes, plan, driveLinks)
 
 	result := &PostProcessResult{Changed: true}
 	if hasSynthesized {
 		result.SynthesizedScenes = input.SpecScene.Scenes
 	}
 	return result, nil
+}
+
+func enrichClipBindings(scenes []scriptpkg.SpecScene, plan *scriptpkg.ResolvedGenerationPlan, driveLinks map[string]string) {
+	for i := range scenes {
+		binding := scenes[i].Bindings.Clip
+		if binding == nil {
+			continue
+		}
+		clipID := strings.TrimSpace(binding.ClipID)
+		if clipID == "" {
+			continue
+		}
+		if link := strings.TrimSpace(driveLinks[clipID]); link != "" {
+			binding.DriveLink = link
+		}
+		if binding.ClipTitle == "" && plan != nil && plan.ClipEvidence != nil {
+			binding.ClipTitle = strings.TrimSpace(plan.ClipEvidence.ClipNames[clipID])
+		}
+	}
 }
 
 func shouldMaterializeNarrativeScenes(input ProcessInput, plan *scriptpkg.ResolvedGenerationPlan) bool {

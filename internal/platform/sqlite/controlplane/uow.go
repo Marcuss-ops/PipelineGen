@@ -118,7 +118,7 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 	if outboxResult == nil {
 		return capcontrol.Result{}, errors.New("controlplane uow: outbox returned nil result")
 	}
-	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) {
+	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) && !isCompletedReplay(outboxResult, command.Outbox) {
 		return capcontrol.Result{}, fmt.Errorf("%w: event_key=%q status=%q", capcontrol.ErrOutboxTerminalConflict, command.Outbox.EventKey, outboxResult.ExistingStatus)
 	}
 
@@ -191,7 +191,7 @@ func (u *UnitOfWork) RunInTransaction(ctx context.Context, transaction capcontro
 	if outboxResult == nil {
 		return capcontrol.Result{}, errors.New("controlplane uow: outbox returned nil result")
 	}
-	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) {
+	if !outboxResult.Inserted && isTerminalOutboxStatus(outboxResult.ExistingStatus) && !isCompletedReplay(outboxResult, command.Outbox) {
 		return capcontrol.Result{}, fmt.Errorf("%w: event_key=%q status=%q", capcontrol.ErrOutboxTerminalConflict, command.Outbox.EventKey, outboxResult.ExistingStatus)
 	}
 	now := u.now().UTC().Format(time.RFC3339Nano)
@@ -279,6 +279,19 @@ func isTerminalOutboxStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// isCompletedReplay permits a deterministic mutation to be replayed after
+// its indexing intent was already completed. The event key is the durable
+// idempotency boundary; matching event and aggregate identity prevents a
+// different command from piggybacking on an unrelated terminal row.
+func isCompletedReplay(existing *outboxevents.EnqueueResult, requested capcontrol.OutboxEvent) bool {
+	if existing == nil || strings.ToLower(strings.TrimSpace(existing.ExistingStatus)) != "completed" {
+		return false
+	}
+	return existing.ExistingEventType == requested.EventType &&
+		existing.ExistingAggregateType == requested.AggregateType &&
+		existing.ExistingAggregateID == requested.AggregateID
 }
 
 func nonEmpty(value, fallback string) string {

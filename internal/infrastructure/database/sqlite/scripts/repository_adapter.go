@@ -154,10 +154,6 @@ func (a *sqliteRepoAdapter) UpdateScriptFinalContent(ctx context.Context, script
 	return a.inner.UpdateScriptFinalContent(ctx, scriptID, outputText, wordCount, status, metadata, model, ollamaBaseURL, version)
 }
 
-func (a *sqliteRepoAdapter) SaveGenerationLog(ctx context.Context, log ports.ScriptGenerationLog) error {
-	return a.inner.SaveGenerationLog(ctx, toSQLiteGenerationLog(log))
-}
-
 func (a *sqliteRepoAdapter) SaveOutlineSections(ctx context.Context, scriptID int64, sections []ports.ScriptOutlineSectionRecord) error {
 	return a.inner.SaveOutlineSections(ctx, scriptID, buildOutlineSectionRows(sections).Slice())
 }

@@ -81,9 +81,9 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
-	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/topicsourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
 	"go.uber.org/zap"
 )
@@ -263,8 +263,8 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// Build the script-generation run repository when a DB is available.
 	// This repository backs GET /jobs/:id/full and the durable runner.
 	var runRepo scriptgen.RunRepository
-	if root.DB != nil {
-		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.DB.DB, log)
+	if root.ObservabilityDB != nil {
+		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.ObservabilityDB.DB, log)
 		if err != nil {
 			return fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)
 		}

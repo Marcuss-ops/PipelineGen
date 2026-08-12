@@ -23,17 +23,13 @@ func deriveRunCounts(input *RunInput, state *RunState) RunCounts {
 		}
 		for src := range uniquePlanSources(state.Plan) {
 			available := false
-			for _, plan := range state.Plan {
-				if plan.SourceID == src {
-					key := plan.StageKey
-					if key == "" {
-						key = plan.SourceID
-					}
-					if _, ok := stagedKeys[key]; ok {
-						available = true
-						break
-					}
-				}
+			// StageKey identifies a per-clip cache/output key in
+			// sections_only mode. StagedAsset.SourceID identifies the
+			// downloaded source URL. Count source availability by the
+			// latter; using StageKey here made every explicit-clip run
+			// report downloaded=0 even when staging succeeded.
+			if _, ok := stagedKeys[src]; ok {
+				available = true
 			}
 			if available {
 				c.DownloadedVideoCount++

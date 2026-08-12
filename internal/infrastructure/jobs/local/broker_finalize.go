@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -48,6 +49,9 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 		}
 		isStaged := len(staged) > 0 && staged[0] != nil && staged[0].Destination != ""
 		if isStaged {
+			if b.preparation == nil {
+				return nil, fmt.Errorf("broker: staged artifacts require canonical ArtifactPreparation")
+			}
 			artifacts = make([]finalization.PublishedArtifact, 0, len(staged))
 			for _, ref := range staged {
 				if ref == nil {
@@ -61,12 +65,31 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 				if ref.Required {
 					requirement = finalization.ArtifactRequirementRequired
 				}
-				artifacts = append(artifacts, finalization.PublishedArtifact{
+				if strings.TrimSpace(ref.Path) == "" {
+					return nil, fmt.Errorf("broker: staged artifact %q has no local path for canonical publication", ref.ArtifactID)
+				}
+				verified := finalization.VerifiedArtifact{
 					ArtifactID: ref.ArtifactID, Kind: kind, Filename: ref.Filename,
-					MIMEType: ref.MIMEType, SizeBytes: ref.SizeBytes, SHA256: ref.SHA256,
-					Requirement: requirement, IdempotencyKey: ref.ArtifactID,
-					Location: finalization.AssetLocation{Provider: "local", FileID: ref.ArtifactID, DownloadLink: ref.Path, Action: finalization.PublishCreated},
-				})
+					LocalPath: ref.Path, MIMEType: ref.MIMEType, SizeBytes: ref.SizeBytes,
+					SHA256: ref.SHA256, SourceVersion: 1, Requirement: requirement,
+					IdempotencyKey: ref.ArtifactID, Source: string(kind),
+					ProjectID: ref.DriveGroup, Language: ref.DriveLanguage,
+				}
+				// Script/document destinations require a logical project path;
+				// worker manifests do not need to duplicate it for every file.
+				// Use the job identity as the stable fallback, while preserving
+				// the explicit voiceover group when supplied.
+				if verified.ProjectID == "" {
+					verified.ProjectID = cmd.JobID
+				}
+				if verified.Language == "" {
+					verified.Language = "it"
+				}
+				published, err := b.preparation.Prepare(ctx, verified)
+				if err != nil {
+					return nil, fmt.Errorf("broker: publish staged artifact %q: %w", ref.ArtifactID, err)
+				}
+				artifacts = append(artifacts, published)
 			}
 		} else if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
 			return nil, fmt.Errorf("broker: deserialise published artifacts: %w", err)

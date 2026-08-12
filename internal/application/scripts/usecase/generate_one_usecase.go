@@ -45,6 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 
 	"go.uber.org/zap"
 )
@@ -228,15 +229,21 @@ func (uc *GenerateOneUseCase) Execute(
 	timings := scriptpkg.GenerationTimings{}
 
 	// ── Phases 1-4: Prepare ─────────────────────────────────────────
-	prepared, err := uc.preparer.Prepare(ctx, item, preset, tracker)
+	var prepared *PreparedGeneration
+	prepareReport, err := kernobs.MeasureStageReport(ctx, kernobs.StageName("script.prepare"), func(stageCtx context.Context) error {
+		var prepareErr error
+		prepared, prepareErr = uc.preparer.Prepare(stageCtx, item, preset, tracker)
+		return prepareErr
+	})
 	if err != nil {
 		return nil, err
 	}
 	item = prepared.Item
 	plan := prepared.Plan
 	resolved := prepared.ResolvedSource
-	timings.SourceResolveMs = prepared.SourceResolveMs
-	timings.PlanBuildMs = prepared.PlanBuildMs
+	// Legacy response fields are projections only. The canonical duration is
+	// the persisted RunReport stage observation.
+	timings.SourceResolveMs = prepareReport.DurationMs
 
 	// ── Phase 5: Generate script ────────────────────────────────────
 	draft, err := uc.engineRunner.Generate(ctx, item, plan, tracker)

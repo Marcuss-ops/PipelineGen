@@ -11,13 +11,14 @@ import (
 )
 
 type Broker struct {
-	jobs       job.Store
-	workers    *workernodes.WorkerNodesRepository
-	progress   ProgressSink
-	coalescer  *ProgressCoalescer
-	finalizer  finalization.JobFinalizer
-	log        *zap.Logger
-	coalesceOn bool // true when coalescer is configured; gated via nil-check
+	jobs        job.Store
+	workers     *workernodes.WorkerNodesRepository
+	progress    ProgressSink
+	coalescer   *ProgressCoalescer
+	finalizer   finalization.JobFinalizer
+	preparation finalization.ArtifactPreparationService
+	log         *zap.Logger
+	coalesceOn  bool // true when coalescer is configured; gated via nil-check
 }
 
 // Deps is the constructor dependency injection container (mandatory for
@@ -65,4 +66,12 @@ func New(d Deps) (*Broker, error) {
 		log:        d.Log,
 		coalesceOn: d.Coalescer != nil,
 	}, nil
+}
+
+// WithArtifactPreparation wires the canonical pre-finalization publication
+// step. Staged worker artifacts are not considered published until this
+// service has resolved and delivered them through the configured publisher.
+func (b *Broker) WithArtifactPreparation(p finalization.ArtifactPreparationService) *Broker {
+	b.preparation = p
+	return b
 }

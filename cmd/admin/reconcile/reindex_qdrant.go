@@ -55,6 +55,7 @@ import (
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
+	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
 // reindexQdrantDeps holds the parsed flags for RunReindexQdrant.
@@ -185,6 +186,13 @@ func RunReindexQdrant(args []string) error {
 	}, log)
 	writer := indexing.NewIndexWriter(client, schemaObj, mapper, log)
 	collectionMgr := collections.NewCollectionManager(client, schemaObj, log)
+	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
+	if err != nil {
+		return fmt.Errorf("create media registry ledger: %w", err)
+	}
+	if err := collectionMgr.SetRegistryLedger(ctx, registryLedger); err != nil {
+		return fmt.Errorf("hydrate media registry projection ledger: %w", err)
+	}
 
 	// Determine the target collection.
 	targetCollection := deps.TargetCollection

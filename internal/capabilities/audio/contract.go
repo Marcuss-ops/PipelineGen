@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	TimelineVersion  = "canonical-timeline.v2"
-	AudioPlanVersion = "compiled-audio-plan.v1"
+	TimelineVersion        = "canonical-timeline.v2"
+	AudioPlanVersion       = "compiled-audio-plan.v2"
+	LegacyAudioPlanVersion = "compiled-audio-plan.v1"
 
 	// FinalAudioAsset remains a separately versioned artifact contract; the
 	// timeline migration does not invalidate certified media metadata.
@@ -48,13 +49,34 @@ type AudioIntent struct {
 	GainDB           float64          `json:"gain_db,omitempty"`
 }
 
+type AudioTrackRole string
+
+const (
+	TrackVoiceover AudioTrackRole = "VOICEOVER"
+	TrackClipAudio AudioTrackRole = "CLIP_AUDIO"
+	TrackBGM       AudioTrackRole = "BGM"
+	TrackSFX       AudioTrackRole = "SFX"
+)
+
 type TimelineSegment struct {
 	ID              string       `json:"id"`
 	Index           int          `json:"index"`
 	TimelineStartUS int64        `json:"timeline_start_us"`
 	DurationUS      int64        `json:"duration_us"`
 	Video           VideoSegment `json:"video"`
-	Audio           AudioIntent  `json:"audio"`
+	// Audio is retained for v1 compatibility. New plans use AudioIntents.
+	Audio        AudioIntent   `json:"audio"`
+	AudioIntents []AudioIntent `json:"audio_intents,omitempty"`
+}
+
+func (s TimelineSegment) EffectiveAudioIntents() []AudioIntent {
+	if len(s.AudioIntents) > 0 {
+		return append([]AudioIntent(nil), s.AudioIntents...)
+	}
+	if s.Audio.Mode == "" {
+		return []AudioIntent{{Mode: AudioSilence}}
+	}
+	return []AudioIntent{s.Audio}
 }
 
 type CanonicalTimeline struct {
@@ -88,9 +110,12 @@ const (
 	EventVoiceover AudioEventType = "VOICEOVER"
 	EventClip      AudioEventType = "CLIP_AUDIO"
 	EventSilence   AudioEventType = "SILENCE"
+	EventBGM       AudioEventType = "BGM"
+	EventSFX       AudioEventType = "SFX"
 )
 
 type AudioEvent struct {
+	EventID          string         `json:"event_id"`
 	Type             AudioEventType `json:"type"`
 	AssetID          string         `json:"asset_id,omitempty"`
 	TimelineStartUS  int64          `json:"timeline_start_us"`
@@ -109,12 +134,23 @@ type AudioLayer struct {
 }
 
 type AudioAutomation struct {
-	TargetLayer string  `json:"target_layer"`
+	TargetTrackID  string `json:"target_track_id"`
+	TriggerTrackID string `json:"trigger_track_id,omitempty"`
+	// TargetLayer is read only for legacy v1 checkpoints. New v2 plans must
+	// use TargetTrackID.
+	TargetLayer string  `json:"target_layer,omitempty"`
 	StartUS     int64   `json:"start_us"`
 	EndUS       int64   `json:"end_us"`
 	GainDB      float64 `json:"gain_db"`
 	AttackUS    int64   `json:"attack_us"`
 	ReleaseUS   int64   `json:"release_us"`
+}
+
+type AudioTrack struct {
+	TrackID       string         `json:"track_id"`
+	Role          AudioTrackRole `json:"role"`
+	OverlapPolicy string         `json:"overlap_policy,omitempty"`
+	Events        []AudioEvent   `json:"events"`
 }
 
 type AudioOutputContract struct {
@@ -154,7 +190,8 @@ type CompiledAudioPlan struct {
 	Version         string              `json:"audio_plan_version"`
 	TimelineVersion string              `json:"timeline_version"`
 	DurationUS      int64               `json:"duration_us"`
-	Events          []AudioEvent        `json:"primary_events"`
+	Events          []AudioEvent        `json:"primary_events,omitempty"`
+	Tracks          []AudioTrack        `json:"tracks,omitempty"`
 	BackgroundMusic []AudioLayer        `json:"background_music,omitempty"`
 	SFX             []AudioLayer        `json:"sfx,omitempty"`
 	Automation      []AudioAutomation   `json:"automation,omitempty"`
@@ -190,13 +227,15 @@ func (t CanonicalTimeline) Validate() error {
 		if s.Video.SourceInUS < 0 || s.Video.SourceDurationUS < 0 || (s.Video.AssetID != "" && s.Video.SourceDurationUS <= 0) {
 			return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
 		}
-		if s.Audio.SourceInUS < 0 || s.Audio.SourceDurationUS < 0 || (s.Audio.Mode == AudioClip && s.Audio.SourceDurationUS <= 0) {
-			return fmt.Errorf("%w: segment %d audio source range", ErrInvalidTimeline, i)
-		}
-		switch s.Audio.Mode {
-		case AudioVoiceover, AudioClip, AudioSilence:
-		default:
-			return fmt.Errorf("%w: segment %d audio mode", ErrInvalidTimeline, i)
+		for _, intent := range s.EffectiveAudioIntents() {
+			if intent.SourceInUS < 0 || intent.SourceDurationUS < 0 || (intent.Mode == AudioClip && intent.SourceDurationUS <= 0) {
+				return fmt.Errorf("%w: segment %d audio source range", ErrInvalidTimeline, i)
+			}
+			switch intent.Mode {
+			case AudioVoiceover, AudioClip, AudioSilence:
+			default:
+				return fmt.Errorf("%w: segment %d audio mode", ErrInvalidTimeline, i)
+			}
 		}
 	}
 	if end != t.DurationUS {
@@ -206,11 +245,51 @@ func (t CanonicalTimeline) Validate() error {
 }
 
 func (p *CompiledAudioPlan) Validate() error {
-	if p == nil || p.Version != AudioPlanVersion || p.TimelineVersion != TimelineVersion || p.DurationUS < 0 {
+	if p == nil || (p.Version != AudioPlanVersion && p.Version != LegacyAudioPlanVersion) || p.TimelineVersion != TimelineVersion || p.DurationUS < 0 {
 		return fmt.Errorf("%w: version or duration", ErrInvalidAudioPlan)
 	}
 	if p.Output != (AudioOutputContract{}) && (p.Output.Codec == "" || p.Output.SampleRate <= 0 || p.Output.Channels <= 0 || p.Output.ChannelLayout == "") {
 		return fmt.Errorf("%w: incomplete output contract", ErrInvalidAudioPlan)
+	}
+	if p.Version == AudioPlanVersion {
+		if len(p.Tracks) == 0 {
+			return fmt.Errorf("%w: v2 requires tracks", ErrInvalidAudioPlan)
+		}
+		if len(p.Events) > 0 || len(p.BackgroundMusic) > 0 || len(p.SFX) > 0 {
+			return fmt.Errorf("%w: v2 cannot contain legacy primary/layer fields", ErrInvalidAudioPlan)
+		}
+		seenTracks := map[string]struct{}{}
+		seenEvents := map[string]struct{}{}
+		for _, track := range p.Tracks {
+			if track.TrackID == "" || (track.Role != TrackVoiceover && track.Role != TrackClipAudio && track.Role != TrackBGM && track.Role != TrackSFX) {
+				return fmt.Errorf("%w: invalid audio track", ErrInvalidAudioPlan)
+			}
+			if _, ok := seenTracks[track.TrackID]; ok {
+				return fmt.Errorf("%w: duplicate audio track %s", ErrInvalidAudioPlan, track.TrackID)
+			}
+			seenTracks[track.TrackID] = struct{}{}
+			var previousEnd int64 = -1
+			for _, event := range track.Events {
+				if strings.TrimSpace(event.EventID) == "" {
+					return fmt.Errorf("%w: event id is required", ErrInvalidAudioPlan)
+				}
+				if _, ok := seenEvents[event.EventID]; ok {
+					return fmt.Errorf("%w: duplicate event id %s", ErrInvalidAudioPlan, event.EventID)
+				}
+				seenEvents[event.EventID] = struct{}{}
+				if event.TimelineStartUS < 0 || event.DurationUS <= 0 || event.TimelineStartUS > math.MaxInt64-event.DurationUS || event.TimelineStartUS+event.DurationUS > p.DurationUS {
+					return fmt.Errorf("%w: track %s event range", ErrInvalidAudioPlan, track.TrackID)
+				}
+				if (track.Role == TrackVoiceover || track.Role == TrackClipAudio) && previousEnd >= 0 && event.TimelineStartUS < previousEnd {
+					return fmt.Errorf("%w: overlapping events on exclusive track %s", ErrInvalidAudioPlan, track.TrackID)
+				}
+				previousEnd = event.TimelineStartUS + event.DurationUS
+				if err := validateEvent(event, track.Role); err != nil {
+					return err
+				}
+			}
+		}
+		return p.validateAutomation()
 	}
 	var previous int64
 	for i, e := range p.Events {
@@ -218,23 +297,53 @@ func (p *CompiledAudioPlan) Validate() error {
 			return fmt.Errorf("%w: event %d range", ErrInvalidAudioPlan, i)
 		}
 		previous = e.TimelineStartUS + e.DurationUS
-		if e.Type != EventVoiceover && e.Type != EventClip && e.Type != EventSilence {
-			return fmt.Errorf("%w: event %d type", ErrInvalidAudioPlan, i)
-		}
-		if (e.Type == EventVoiceover || e.Type == EventClip) && strings.TrimSpace(e.AssetID) == "" {
-			return fmt.Errorf("%w: event %d asset", ErrInvalidAudioPlan, i)
-		}
-		if e.Type == EventClip && e.SourceDurationUS <= 0 {
-			return fmt.Errorf("%w: event %d source range", ErrInvalidAudioPlan, i)
+		if err := validateEvent(e, ""); err != nil {
+			return err
 		}
 	}
+	if previous != p.DurationUS {
+		return fmt.Errorf("%w: duration does not equal event end", ErrInvalidAudioPlan)
+	}
+	return p.validateLayersAndAutomation()
+}
+
+func validateEvent(e AudioEvent, role AudioTrackRole) error {
+	if e.Type != EventVoiceover && e.Type != EventClip && e.Type != EventSilence && e.Type != EventBGM && e.Type != EventSFX {
+		return fmt.Errorf("%w: event type", ErrInvalidAudioPlan)
+	}
+	if (e.Type != EventSilence) && strings.TrimSpace(e.AssetID) == "" {
+		return fmt.Errorf("%w: event asset", ErrInvalidAudioPlan)
+	}
+	if e.Type == EventClip && (!e.UseOriginalAudio || e.SourceDurationUS <= 0) {
+		return fmt.Errorf("%w: clip audio requires original source range", ErrInvalidAudioPlan)
+	}
+	if role == TrackVoiceover && e.Type != EventVoiceover && e.Type != EventSilence {
+		return fmt.Errorf("%w: voiceover track contains %s", ErrInvalidAudioPlan, e.Type)
+	}
+	if role == TrackClipAudio && e.Type != EventClip {
+		return fmt.Errorf("%w: clip track contains %s", ErrInvalidAudioPlan, e.Type)
+	}
+	if role == TrackBGM && e.Type != EventBGM {
+		return fmt.Errorf("%w: BGM track contains %s", ErrInvalidAudioPlan, e.Type)
+	}
+	if role == TrackSFX && e.Type != EventSFX {
+		return fmt.Errorf("%w: SFX track contains %s", ErrInvalidAudioPlan, e.Type)
+	}
+	return nil
+}
+
+func (p *CompiledAudioPlan) validateLayersAndAutomation() error {
 	for _, layer := range append(append([]AudioLayer{}, p.BackgroundMusic...), p.SFX...) {
 		if strings.TrimSpace(layer.AssetID) == "" || layer.TimelineStartUS < 0 || layer.DurationUS <= 0 || layer.TimelineStartUS > math.MaxInt64-layer.DurationUS || layer.TimelineStartUS+layer.DurationUS > p.DurationUS {
 			return fmt.Errorf("%w: layer range or asset", ErrInvalidAudioPlan)
 		}
 	}
+	return p.validateAutomation()
+}
+
+func (p *CompiledAudioPlan) validateAutomation() error {
 	for _, automation := range p.Automation {
-		if strings.TrimSpace(automation.TargetLayer) == "" || automation.StartUS < 0 || automation.EndUS <= automation.StartUS || automation.EndUS > p.DurationUS || automation.AttackUS < 0 || automation.ReleaseUS < 0 {
+		if p.Version == AudioPlanVersion && strings.TrimSpace(automation.TargetTrackID) == "" || p.Version != AudioPlanVersion && strings.TrimSpace(automation.TargetTrackID) == "" && strings.TrimSpace(automation.TargetLayer) == "" || automation.StartUS < 0 || automation.EndUS <= automation.StartUS || automation.EndUS > p.DurationUS || automation.AttackUS < 0 || automation.ReleaseUS < 0 {
 			return fmt.Errorf("%w: automation range", ErrInvalidAudioPlan)
 		}
 	}

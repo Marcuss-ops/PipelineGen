@@ -29,8 +29,8 @@ import (
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts/legacy"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 
 	"go.uber.org/zap"
 
@@ -63,8 +63,8 @@ type workerDeps struct {
 func buildWorkerSteps(deps workerDeps) []StartupStep {
 	var steps []StartupStep
 	var scriptRunRepo scriptgen.RunRepository
-	if deps.root != nil && deps.root.DB != nil {
-		if repo, err := scriptgenrepo.NewSQLiteRunRepository(deps.root.DB.DB, deps.log); err == nil {
+	if deps.root != nil && deps.root.ObservabilityDB != nil {
+		if repo, err := scriptgenrepo.NewSQLiteRunRepository(deps.root.ObservabilityDB.DB, deps.log); err == nil {
 			scriptRunRepo = repo
 		} else if deps.log != nil {
 			deps.log.Warn("script parent aggregator: run repository unavailable", zap.Error(err))

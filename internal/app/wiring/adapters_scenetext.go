@@ -25,13 +25,17 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scenepkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
@@ -104,7 +108,27 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		return nil, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
 	}
 	if len(scenes) == 0 {
-		return nil, fmt.Errorf("scenetext: engine returned zero scenes")
+		// Fresh clip generation uses a plain-text model contract.  The
+		// canonical scene planner/postprocessor is responsible for
+		// partitioning that prose and binding the resolved clips; failing
+		// here would discard the valid model output before that boundary.
+		// Keep this envelope deliberately provisional: it is replaced by
+		// the planner before timeline/audio compilation.
+		prose := strings.TrimSpace(engineResult.Output.Text)
+		if prose == "" {
+			return nil, fmt.Errorf("scenetext: engine returned zero scenes and empty prose")
+		}
+		scenes, err = g.convertClipProseScenes(ctx, plan, prose, req)
+		if err != nil {
+			return nil, fmt.Errorf("scenetext: resolve prose scenes: %w", err)
+		}
+		if len(scenes) == 0 {
+			return nil, fmt.Errorf("scenetext: prose scene planner returned zero scenes")
+		}
+		if g.Log != nil {
+			g.Log.Info("scenetext: passing prose to canonical scene planner",
+				zap.Int("prose_words", len(strings.Fields(prose))))
+		}
 	}
 
 	if g.Log != nil {
@@ -114,6 +138,101 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		)
 	}
 
+	return scenes, nil
+}
+
+// convertClipProseScenes is the canonical bridge for the plain-text clip
+// contract. The model owns narrative prose; PipelineGen owns scene count,
+// clip binding, source ranges and audio intents. In particular, the first
+// declared segment is an unbound short intro and accepted clips bind to the
+// following scenes one-to-one.
+func (g *SceneTextGenerator) convertClipProseScenes(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	prose string,
+	req scriptgen.GenerateRequest,
+) ([]scriptgen.Scene, error) {
+	if plan == nil || plan.ClipEvidence == nil {
+		return nil, fmt.Errorf("clip prose requires clip evidence")
+	}
+	clipIDs := plan.ClipEvidence.AcceptedClipIDs
+	count := len(clipIDs)
+	if len(plan.Segments) > 0 {
+		count = len(plan.Segments)
+	}
+	if count <= 0 {
+		return nil, fmt.Errorf("clip prose requires accepted clips")
+	}
+	draft := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+	if len(draft) != count {
+		return nil, fmt.Errorf("planned %d scenes, synthesized %d", count, len(draft))
+	}
+
+	scenes := make([]scriptgen.Scene, 0, count)
+	for i, raw := range draft {
+		text := strings.TrimSpace(raw.Text)
+		if text == "" {
+			return nil, fmt.Errorf("scene %d has empty prose", i)
+		}
+		durationMS := int64(math.Max(1000, float64(len(strings.Fields(text))*60000/150)))
+		out := scriptgen.Scene{
+			ID:           fmt.Sprintf("scene-%d", i),
+			Index:        i,
+			DurationMS:   durationMS,
+			DurationUS:   durationMS * 1000,
+			Text:         map[scriptgen.Language]string{req.SourceLanguage: text},
+			Audio:        capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+			AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover}},
+		}
+
+		// The first declared segment is the short intro. It is intentionally
+		// not assigned a clip; clip i maps to scene i+1.
+		clipIndex := i
+		if len(plan.Segments) == len(clipIDs)+1 {
+			clipIndex = i - 1
+		}
+		if clipIndex < 0 {
+			scenes = append(scenes, out)
+			continue
+		}
+		if clipIndex >= len(clipIDs) {
+			return nil, fmt.Errorf("scene %d has no matching accepted clip", i)
+		}
+		clipID := clipIDs[clipIndex]
+		canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, clipID)
+		if err != nil || canonical == nil {
+			if err == nil {
+				err = fmt.Errorf("asset not found")
+			}
+			return nil, fmt.Errorf("resolve clip %s: %w", clipID, err)
+		}
+		sha256Hex, err := renderAssetSHA256(canonical)
+		if err != nil {
+			return nil, fmt.Errorf("resolve clip %s binary sha256: %w", clipID, err)
+		}
+		durationSeconds, err := renderAssetDurationSeconds(canonical)
+		if err != nil {
+			return nil, fmt.Errorf("resolve clip %s duration: %w", clipID, err)
+		}
+		clip := &scriptgen.ClipReference{ID: clipID, Title: plan.ClipEvidence.ClipNames[clipID], Path: canonical.LocalPath(), AudioPath: canonical.LocalPath(), SHA256: sha256Hex, Duration: durationSeconds, FrameCount: int64(math.Round(durationSeconds * 30))}
+		if detail, ok := plan.ClipEvidence.ClipDetails[clipID]; ok {
+			clip.SourceInMS, clip.SourceOutMS = detail.StartMs, detail.EndMs
+		}
+		if clip.SourceOutMS <= clip.SourceInMS {
+			clip.SourceInMS = 0
+			clip.SourceOutMS = int64(math.Round(clip.Duration * 1000))
+		}
+		if clip.SourceOutMS <= clip.SourceInMS {
+			return nil, fmt.Errorf("clip %s has no usable source duration", clipID)
+		}
+		clipDurationUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
+		out.Clip = clip
+		out.DurationMS = clipDurationUS / 1000
+		out.DurationUS = clipDurationUS
+		out.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clipID, SourceInUS: clip.SourceInMS * 1000, SourceDurationUS: clipDurationUS, UseOriginalAudio: true}
+		out.AudioIntents = []capabilityaudio.AudioIntent{out.Audio, {Mode: capabilityaudio.AudioVoiceover}}
+		scenes = append(scenes, out)
+	}
 	return scenes, nil
 }
 
@@ -154,14 +273,27 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 	renderedPrompt := buildEditorialPromptFromGenReq(req)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:             req.IdempotencyKey,
-		Title:          title,
-		Topic:          topic,
-		Language:       string(req.SourceLanguage),
-		SourceText:     req.Source.SourceText,
-		RenderedPrompt: renderedPrompt,
-		Mode:           scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
-		SourceKind:     string(req.Source.Type),
+		ID:                req.IdempotencyKey,
+		Title:             title,
+		Topic:             topic,
+		Language:          string(req.SourceLanguage),
+		SourceText:        req.Source.SourceText,
+		RenderedPrompt:    renderedPrompt,
+		Mode:              scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
+		SourceKind:        string(req.Source.Type),
+		TargetWords:       req.ScriptParams.TargetWords,
+		SingleScene:       req.ScriptParams.SingleScene,
+		Duration:          req.ScriptParams.Duration,
+		MinWords:          req.ScriptParams.MinWords,
+		SegmentWords:      req.ScriptParams.SegmentWords,
+		SegmentTopics:     append([]string(nil), req.ScriptParams.SegmentTopics...),
+		Segments:          append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
+		SentencesPerImage: req.ScriptParams.SentencesPerImage,
+		ImagesPerScene:    req.ScriptParams.ImagesPerScene,
+		Style:             req.ScriptParams.Style,
+		Guidelines:        req.ScriptParams.Guidelines,
+		IntroClipIDs:      append([]string(nil), req.Source.IntroClipIDs...),
+		NumClips:          req.Source.NumClips,
 		// Postprocessors left empty — the engine generates raw
 		// narrative prose. Downstream phases handle translation,
 		// voiceover, and docs.
@@ -226,7 +358,7 @@ func (g *SceneTextGenerator) convertScenes(
 		// registry/CAS ownership boundary.
 		if s.Bindings.Clip != nil && s.Bindings.Clip.ClipID != "" {
 			binding := s.Bindings.Clip
-			clip := &scriptgen.ClipReference{ID: binding.ClipID, Title: binding.ClipTitle}
+			clip := &scriptgen.ClipReference{ID: binding.ClipID, Title: binding.ClipTitle, DriveLink: binding.DriveLink}
 			if g.ClipAssets != nil {
 				canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, binding.ClipID)
 				if err != nil {
@@ -234,9 +366,15 @@ func (g *SceneTextGenerator) convertScenes(
 				}
 				if canonical != nil {
 					clip.Path = canonical.LocalPath()
-					clip.SHA256 = canonical.FileHash()
+					clip.SHA256, err = renderAssetSHA256(canonical)
+					if err != nil {
+						return nil, fmt.Errorf("resolve clip %s binary sha256: %w", binding.ClipID, err)
+					}
 					clip.AudioPath = canonical.LocalPath()
-					clip.Duration = canonical.Duration.Seconds()
+					clip.Duration, err = renderAssetDurationSeconds(canonical)
+					if err != nil {
+						return nil, fmt.Errorf("resolve clip %s duration: %w", binding.ClipID, err)
+					}
 					// The current render runtime uses the canonical 30 fps
 					// default; the request-level rational rate is applied at
 					// RenderPlan compilation. Keep the asset bound in frames so
@@ -259,7 +397,9 @@ func (g *SceneTextGenerator) convertScenes(
 			switch requestedAudio {
 			case capabilityaudio.AudioModeCombinedTimeline:
 				if s.Bindings.Clip != nil && durationUS > 0 {
-					scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID, SourceInUS: sourceInUS, SourceDurationUS: durationUS}
+					clipIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID, SourceInUS: sourceInUS, SourceDurationUS: durationUS, UseOriginalAudio: true}
+					scene.Audio = clipIntent
+					scene.AudioIntents = []capabilityaudio.AudioIntent{clipIntent}
 				} else {
 					scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}
 				}
@@ -269,6 +409,7 @@ func (g *SceneTextGenerator) convertScenes(
 				scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence}
 			}
 			scene.DurationMS = int64(math.Round(float64(durationUS) / 1000))
+			scene.DurationUS = durationUS
 			scene.Clip = clip
 		}
 		scenes = append(scenes, scene)
@@ -286,6 +427,9 @@ func (g *SceneTextGenerator) convertScenes(
 	for i := range scenes {
 		if scenes[i].DurationMS <= 0 {
 			scenes[i].DurationMS = fallbackMS
+		}
+		if scenes[i].DurationUS <= 0 {
+			scenes[i].DurationUS = scenes[i].DurationMS * 1000
 		}
 	}
 	return scenes, nil
@@ -352,6 +496,46 @@ func copyStrings(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+// renderAssetSHA256 returns the binary identity required by RenderPlan. Older
+// imported clip rows may only contain a Drive MD5; that value is not accepted
+// as a render manifest identity, so derive the SHA-256 from the canonical local
+// bytes at the boundary.
+func renderAssetSHA256(a *asset.Asset) (string, error) {
+	if a == nil || strings.TrimSpace(a.LocalPath()) == "" {
+		return "", fmt.Errorf("asset has no local path")
+	}
+	if candidate := strings.TrimSpace(a.FileHash()); len(candidate) == 64 && !strings.Contains(candidate, ":") {
+		return candidate, nil
+	}
+	return fileutil.SHA256File(a.LocalPath())
+}
+
+// renderAssetDurationSeconds is the execution-boundary fallback for legacy
+// registry rows whose online Drive asset is valid but whose duration column
+// was never backfilled. The media bytes remain the source of truth; this does
+// not invent a timeline duration or persist a second timing representation.
+func renderAssetDurationSeconds(a *asset.Asset) (float64, error) {
+	if a == nil {
+		return 0, fmt.Errorf("asset is nil")
+	}
+	if a.Duration > 0 {
+		return a.Duration.Seconds(), nil
+	}
+	path := strings.TrimSpace(a.LocalPath())
+	if path == "" {
+		return 0, fmt.Errorf("asset has no local execution source")
+	}
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path).Output()
+	if err != nil {
+		return 0, fmt.Errorf("probe media duration: %w", err)
+	}
+	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || seconds <= 0 {
+		return 0, fmt.Errorf("probe returned invalid duration %q", strings.TrimSpace(string(out)))
+	}
+	return seconds, nil
 }
 
 // firstLine returns the first line of a multi-line string.

@@ -109,4 +109,10 @@ type VerifiedArtifact struct {
 	// which is "created" — the publish action, not the content
 	// source. Every pipeline MUST set this before calling Prepare.
 	Source string `json:"source,omitempty"`
+
+	// ProjectID and Language are canonical delivery metadata for destinations
+	// such as voiceover. They describe logical routing only; folder resolution
+	// remains owned by the delivery registry.
+	ProjectID string `json:"project_id,omitempty"`
+	Language  string `json:"language,omitempty"`
 }

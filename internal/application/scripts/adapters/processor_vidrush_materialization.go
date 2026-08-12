@@ -9,6 +9,7 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -167,9 +168,14 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				acquireCtx, cancelAcquire := context.WithTimeout(ctx, vidRushProviderTimeout(providerName))
-				acquireStart := time.Now()
-				local, err := provider.Acquire(acquireCtx, candidate)
-				observeVidRushProviderDuration(p.metrics, providerName+"_acquire", time.Since(acquireStart))
+				var local scriptports.LocalArtifact
+				err = measureVidRushProvider(acquireCtx, p.metrics, kernobs.OperationInfo{
+					Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "acquire", Provider: providerName,
+				}, func(callCtx context.Context) error {
+					var acquireErr error
+					local, acquireErr = provider.Acquire(callCtx, candidate)
+					return acquireErr
+				})
 				cancelAcquire()
 				if err != nil {
 					candidate.AcquisitionStatus = scriptpkg.VidRushStatusFailed
@@ -178,9 +184,14 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				verifyCtx, cancelVerify := context.WithTimeout(ctx, vidRushVerifyTimeout)
-				verifyStart := time.Now()
-				verified, err := provider.Verify(verifyCtx, local)
-				observeVidRushProviderDuration(p.metrics, providerName+"_verify", time.Since(verifyStart))
+				var verified scriptports.VerifiedArtifact
+				err = measureVidRushProvider(verifyCtx, p.metrics, kernobs.OperationInfo{
+					Stage: kernobs.StageVerify, Component: "vidrush", Operation: "verify", Provider: providerName,
+				}, func(callCtx context.Context) error {
+					var verifyErr error
+					verified, verifyErr = provider.Verify(callCtx, local)
+					return verifyErr
+				})
 				cancelVerify()
 				if err != nil {
 					candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
@@ -190,9 +201,14 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 					continue
 				}
 				cacheKey := vidRushCandidateIdentity(candidate)
-				finalizeStart := time.Now()
-				persisted, err := p.finalizer.Finalize(ctx, verified)
-				observeVidRushProviderDuration(p.metrics, "vidrush_finalize", time.Since(finalizeStart))
+				var persisted scriptpkg.SegmentAssetCandidate
+				err = measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
+					Stage: kernobs.StagePersist, Component: "vidrush", Operation: "finalize", Provider: providerName,
+				}, func(callCtx context.Context) error {
+					var finalizeErr error
+					persisted, finalizeErr = p.finalizer.Finalize(callCtx, verified)
+					return finalizeErr
+				})
 				if err != nil {
 					verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
 					warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))

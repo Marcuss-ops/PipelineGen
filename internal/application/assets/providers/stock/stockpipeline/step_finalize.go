@@ -141,6 +141,18 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 	}
 
+	// Validate the run-completeness invariant before the single-TX spine
+	// write. CompleteWithArtifacts is the terminal SUCCEEDED transition;
+	// allowing it to run first would leave a job SUCCEEDED when the
+	// orchestrator discovers incomplete source/clip accounting afterwards.
+	counts := deriveRunCounts(in, runner.State())
+	if runner.State().FinalStatus == job.StatusSucceeded &&
+		(counts.PlannedClipCount > 0 || counts.SelectedVideoCount > 0) {
+		if err := ValidateRunCounts(counts); err != nil {
+			return fmt.Errorf("stock run cannot be SUCCEEDED: %w", err)
+		}
+	}
+
 	// ── Phase 3+4: single-TX spine write ────────────────────────────
 	// godlike/07 fail-closed (no-fake-availability): the production
 	// symmetric gate (validateStockSymmetricGate in

@@ -68,9 +68,10 @@ type GenerationResult struct {
 	ScriptID int64 `json:"script_id,omitempty"`
 
 	// Identity
-	Title    string `json:"title,omitempty"`
-	Language string `json:"language,omitempty"`
-	Model    string `json:"model,omitempty"`
+	Title          string `json:"title,omitempty"`
+	Language       string `json:"language,omitempty"`
+	Model          string `json:"model,omitempty"`
+	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 
 	// Script is the compact script surface requested by VidRush
 	// consumers. Output remains the canonical historical surface.

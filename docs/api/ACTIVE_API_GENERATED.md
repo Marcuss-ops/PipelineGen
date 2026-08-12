@@ -127,6 +127,7 @@
 | GET | `/api/jobs/:id/events` | Get job event stream |
 | GET | `/api/jobs/:id/full` | Get full job details |
 | GET | `/api/jobs/stats` | Get job statistics |
+| GET | `/api/history` | Get canonical operation history |
 | POST | `/api/jobs` | Enqueue a new job |
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |

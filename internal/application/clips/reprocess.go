@@ -3,6 +3,8 @@ package clips
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +27,14 @@ type ReprocessUseCase struct {
 	processor     asset.Processor
 	dispatcher    mutations.AssetMutationDispatcher
 	clipsFolderID string
+	remoteReader  RemoteAssetReader
+}
+
+// RemoteAssetReader is the minimal read port needed to stage a Drive-backed
+// clip for processing. A Drive URL is a valid canonical source; a local path
+// is only an execution-time staging detail and is not persisted as identity.
+type RemoteAssetReader interface {
+	DownloadFile(context.Context, string) (io.ReadCloser, string, error)
 }
 
 // NewReprocessUseCase constructs the use case.
@@ -36,6 +46,15 @@ type ReprocessUseCase struct {
 // a configure-time error if dispatcher is nil.
 func NewReprocessUseCase(repo asset.Repository, proc asset.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
 	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}
+}
+
+// SetRemoteAssetReader wires the canonical remote read port. It is optional
+// for legacy sources, but required when a clip is Drive-backed without a
+// persisted local rendition.
+func (uc *ReprocessUseCase) SetRemoteAssetReader(reader RemoteAssetReader) {
+	if uc != nil {
+		uc.remoteReader = reader
+	}
 }
 
 // ReprocessRequest contains the input for reprocessing a clip.
@@ -93,6 +112,40 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 			"source": req.Source,
 			"tags":   clip.Tags,
 		},
+	}
+	var stagedPath string
+	if req.Source == "clip_drive" && clip.LocalPath() == "" {
+		if uc.remoteReader == nil {
+			return nil, fmt.Errorf("clip %s has no local rendition and remote reader is not configured", req.ClipID)
+		}
+		driveID := strings.TrimSpace(clip.DriveFileID())
+		if driveID == "" {
+			return nil, fmt.Errorf("clip %s has no Drive file id", req.ClipID)
+		}
+		body, contentType, err := uc.remoteReader.DownloadFile(ctx, driveID)
+		if err != nil {
+			return nil, fmt.Errorf("download Drive clip %s: %w", req.ClipID, err)
+		}
+		defer body.Close()
+		ext := ".mp4"
+		if strings.Contains(strings.ToLower(contentType), "quicktime") {
+			ext = ".mov"
+		}
+		file, err := os.CreateTemp("", "pipelinegen-clip-stage-*-"+ext)
+		if err != nil {
+			return nil, fmt.Errorf("create Drive staging file: %w", err)
+		}
+		stagedPath = file.Name()
+		defer os.Remove(stagedPath)
+		if _, err := io.Copy(file, body); err != nil {
+			file.Close()
+			return nil, fmt.Errorf("stage Drive clip %s: %w", req.ClipID, err)
+		}
+		if err := file.Close(); err != nil {
+			return nil, fmt.Errorf("close Drive staging file: %w", err)
+		}
+		processInput.SourceURL = ""
+		processInput.LocalPath = stagedPath
 	}
 
 	result, err := uc.processor.Process(ctx, processInput)

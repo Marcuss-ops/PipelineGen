@@ -1,6 +1,11 @@
 package adapters
 
-import "time"
+import (
+	"context"
+	"time"
+
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+)
 
 // VidRushTimingMetrics is the optional timing extension of the bounded
 // VidRush counter port. Keeping it separate preserves compatibility with
@@ -21,4 +26,18 @@ func observeVidRushProviderDuration(metrics any, provider string, elapsed time.D
 	if timing, ok := metrics.(VidRushTimingMetrics); ok && timing != nil {
 		timing.ObserveProviderDuration(provider, elapsed.Seconds())
 	}
+}
+
+// measureVidRushProvider makes the canonical run observation the only timer
+// on worker executions. The Prometheus timing hook remains only for callers
+// that intentionally execute the processor without a bound Run (legacy
+// callers and unit fixtures).
+func measureVidRushProvider(ctx context.Context, metrics any, info kernobs.OperationInfo, fn func(context.Context) error) error {
+	if kernobs.FromContext(ctx) != nil {
+		return kernobs.MeasureOperation(ctx, info, fn)
+	}
+	started := time.Now()
+	err := fn(ctx)
+	observeVidRushProviderDuration(metrics, info.Provider+"_"+string(info.Operation), time.Since(started))
+	return err
 }

@@ -34,7 +34,7 @@ type FrameRange struct {
 }
 
 type RenderSource struct {
-	InFrame    int64 `json:"in_frame"`
+	InFrame    int64 `json:"start_frame"`
 	FrameCount int64 `json:"frame_count"`
 }
 
@@ -334,7 +334,12 @@ func (p RenderPlan) Validate() error {
 		return fmt.Errorf("%w: duration frame count does not match timeline", ErrInvalidPlan)
 	}
 	for _, track := range p.VideoTracks {
-		expectedStart := int64(0)
+		// A canonical timeline may begin with an audio-only intro. In that
+		// case the first visual segment legitimately starts after frame 0;
+		// the renderer fills the leading interval according to its track
+		// policy. Once video starts, segments on the primary track must remain
+		// contiguous and still cover the remainder of the output.
+		expectedStart := int64(-1)
 		if track.Index == 0 {
 			timelineVideo := make([]audio.TimelineSegment, 0, len(p.Timeline.Segments))
 			for _, timelineSegment := range p.Timeline.Segments {
@@ -352,6 +357,9 @@ func (p RenderPlan) Validate() error {
 			}
 		}
 		for _, segment := range track.Segments {
+			if expectedStart < 0 {
+				expectedStart = segment.Timeline.StartFrame
+			}
 			if segment.Source.InFrame < 0 || segment.Source.FrameCount <= 0 || segment.Timeline.StartFrame != expectedStart || segment.Timeline.StartFrame < 0 || segment.Timeline.FrameCount <= 0 || segment.Source.FrameCount != segment.Timeline.FrameCount || segment.Timeline.StartFrame > math.MaxInt64-segment.Timeline.FrameCount || segment.Timeline.StartFrame+segment.Timeline.FrameCount > p.DurationFrames || expectedStart > math.MaxInt64-segment.Timeline.FrameCount {
 				return fmt.Errorf("%w: invalid or non-contiguous integer frame segment", ErrInvalidPlan)
 			}

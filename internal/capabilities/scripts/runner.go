@@ -213,7 +213,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return
 		}
-		result = &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName}
+		result = &GenerateResult{Scenes: scenes, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 		r.checkpoint(ctx, runID, result)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
 	} else {
@@ -251,7 +251,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 
 	// Nil guard: result must be non-nil before downstream stages.
 	if result == nil {
-		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName}
+		result = &GenerateResult{Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
 	}
 
 	// ── Stage 3: Translate Scenes (scene-level idempotent) ───────
@@ -514,6 +514,12 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
 			}
+			if result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage); err != nil {
+				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
+				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
+				return
+			}
 			var finalAudio FinalAudioReference
 			var metrics AudioPipelineMetrics
 			if result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil {
@@ -587,6 +593,15 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
 				cause := fmt.Errorf("compile canonical timeline failed: %w", err)
+				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
+				return
+			}
+		}
+		if len(result.ResolvedScenes) == 0 {
+			result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage)
+			if err != nil {
+				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
 				r.failExecutionStep(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageBuildingRenderPayload, cause)
 				return
@@ -751,6 +766,12 @@ func buildDocumentContent(scenes []Scene, lang Language) string {
 			content += "\n\n"
 		}
 		content += fmt.Sprintf("Scene %d\n%s", scene.Index+1, text)
+		if scene.Clip != nil && strings.TrimSpace(scene.Clip.DriveLink) != "" {
+			content += fmt.Sprintf("\nClip: %s", scene.Clip.DriveLink)
+		}
+		if vo, ok := scene.Voiceover[lang]; ok && strings.TrimSpace(vo.URL) != "" {
+			content += fmt.Sprintf("\nVoiceover %s: %s", lang, vo.URL)
+		}
 	}
 	return content
 }

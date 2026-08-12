@@ -339,9 +339,10 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 }
 
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *wiring.ComposeRoot) error {
-	capability := capjobs.NewBundle(
+	capability := capjobs.NewBundleWithHistory(
 		root.Jobs.Service,
 		root.Jobs.Service,
+		root.Jobs.History,
 		func() bool { return true },
 		log,
 	)

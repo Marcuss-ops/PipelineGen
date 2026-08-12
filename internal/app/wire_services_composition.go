@@ -48,6 +48,7 @@ import (
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/workernodes"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"go.uber.org/zap"
@@ -156,6 +157,13 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		}
 		finalizer := jobsfinalizer.New(root.DB.DB, root.Outbox.EventsRepo, assetTx, log)
 		broker.WithFinalizer(finalizer)
+		if root.Drive != nil && root.Drive.Publisher != nil {
+			preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
+			broker.WithArtifactPreparation(preparation)
+			log.Info("wired canonical ArtifactPreparation into local broker; staged artifacts publish through Drive before finalization")
+		} else {
+			log.Warn("canonical ArtifactPreparation NOT wired: Drive publisher unavailable; staged artifact jobs will fail closed")
+		}
 		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
 	} else {
 		log.Warn("JobFinalizer NOT wired into local broker (one or more deps nil — root.Outbox, root.Outbox.EventsRepo, or root.DB). Path B artifact-producing jobs will fail at CompleteWithArtifacts with ErrFinalizerNotConfigured.",

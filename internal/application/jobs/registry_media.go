@@ -10,9 +10,9 @@ import "time"
 // Compose() function per AGENTS.md Pattern 5.
 func registerMediaEntries(r *Registry) {
 	// ── Video ──
-	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
-	// TypeVideoGenerate, TypeRenderVideo, TypeYouTubeUpload are orphaned
-	// registry entries — no production handler is statically registered.
+	// Video generation and rendering are bound by the script runtime to the
+	// canonical render executor; both types share the validated RenderPlan
+	// handler and therefore remain real worker capabilities.
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeVideoGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeRenderVideo, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
 

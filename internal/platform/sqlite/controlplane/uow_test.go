@@ -228,7 +228,7 @@ func TestUnitOfWorkRejectsIdempotencyConflict(t *testing.T) {
 
 func TestUnitOfWorkRejectsTerminalOutboxConflictAtomically(t *testing.T) {
 	uow, db := newUOWForTest(t)
-	if _, err := db.Exec(`INSERT INTO outbox_events(event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at) VALUES ('asset.updated','asset-1','mutation_target','{}','outbox:cmd-1','completed','now')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO outbox_events(event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at) VALUES ('different.event','asset-1','mutation_target','{}','outbox:cmd-1','completed','now')`); err != nil {
 		t.Fatal(err)
 	}
 	_, err := uow.Run(context.Background(), testCommand(), func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
@@ -241,6 +241,25 @@ func TestUnitOfWorkRejectsTerminalOutboxConflictAtomically(t *testing.T) {
 	assertCount(t, db, `SELECT COUNT(*) FROM mutation_targets`, 0)
 	assertCount(t, db, `SELECT COUNT(*) FROM registry_events`, 0)
 	assertCount(t, db, `SELECT COUNT(*) FROM canonical_mutations`, 0)
+}
+
+func TestUnitOfWorkAllowsCompletedReplayForSameOutboxIntent(t *testing.T) {
+	uow, db := newUOWForTest(t)
+	if _, err := db.Exec(`INSERT INTO outbox_events(event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at) VALUES ('asset.updated','asset-1','mutation_target','{}','outbox:cmd-1','completed','now')`); err != nil {
+		t.Fatal(err)
+	}
+	result, err := uow.Run(context.Background(), testCommand(), func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
+		_, err := tx.ExecContext(ctx, `INSERT INTO mutation_targets(id, value) VALUES (?, ?)`, "asset-1", "replayed")
+		return `{"ok":true}`, err
+	})
+	if err != nil {
+		t.Fatalf("completed replay error = %v", err)
+	}
+	if result.AlreadyApplied || result.OutboxEventID == 0 {
+		t.Fatalf("unexpected replay result: %+v", result)
+	}
+	assertCount(t, db, `SELECT COUNT(*) FROM mutation_targets`, 1)
+	assertCount(t, db, `SELECT COUNT(*) FROM outbox_events`, 1)
 }
 
 func TestUnitOfWorkCallerOwnedTransactionDefersCommit(t *testing.T) {

@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func eventsForRole(plan CompiledAudioPlan, role AudioTrackRole) []AudioEvent {
+	for _, track := range plan.Tracks {
+		if track.Role == role {
+			return track.Events
+		}
+	}
+	return nil
+}
+
 func testTimeline() CanonicalTimeline {
 	return CanonicalTimeline{Version: TimelineVersion, DurationUS: 60000000, Segments: []TimelineSegment{
 		{ID: "s1", Index: 0, TimelineStartUS: 0, DurationUS: 14000000, Audio: AudioIntent{Mode: AudioVoiceover, VoiceoverAssetID: "vo_001"}},
@@ -22,11 +31,12 @@ func TestCompileUsesCanonicalTimingAndSealsDeterministically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.DurationUS != timeline.DurationUS || len(plan.Events) != len(timeline.Segments) {
+	if plan.DurationUS != timeline.DurationUS || len(eventsForRole(plan, TrackVoiceover))+len(eventsForRole(plan, TrackClipAudio)) != len(timeline.Segments) {
 		t.Fatalf("plan timing mismatch: %+v", plan)
 	}
-	if plan.Events[1].TimelineStartUS != 14000000 || plan.Events[1].SourceInUS != 34000000 || plan.Events[1].SourceDurationUS != 12000000 {
-		t.Fatalf("clip source/timeline timing lost: %+v", plan.Events[1])
+	clipEvents := eventsForRole(plan, TrackClipAudio)
+	if clipEvents[0].TimelineStartUS != 14000000 || clipEvents[0].SourceInUS != 34000000 || clipEvents[0].SourceDurationUS != 12000000 {
+		t.Fatalf("clip source/timeline timing lost: %+v", clipEvents[0])
 	}
 	if plan.PlanSHA256 == "" {
 		t.Fatal("plan hash is empty")
@@ -39,12 +49,12 @@ func TestCompileUsesCanonicalTimingAndSealsDeterministically(t *testing.T) {
 	if err := json.Unmarshal(encoded, &wire); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"audio_plan_version", "timeline_version", "duration_us", "primary_events", "canonical_audio_profile", "audio_plan_sha256"} {
+	for _, key := range []string{"audio_plan_version", "timeline_version", "duration_us", "tracks", "canonical_audio_profile", "audio_plan_sha256"} {
 		if _, ok := wire[key]; !ok {
 			t.Fatalf("compiled plan missing canonical JSON field %q: %s", key, encoded)
 		}
 	}
-	if got := plan.Events[0].SourceDurationUS; got != 14000000 {
+	if got := eventsForRole(plan, TrackVoiceover)[0].SourceDurationUS; got != 14000000 {
 		t.Fatalf("voiceover source range = %d, want 14000", got)
 	}
 	for i := 0; i < 100; i++ {
@@ -73,9 +83,16 @@ func TestCanonicalTimelineMatchesVideoAndAudioOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, want := range wantStarts {
-		if plan.Events[i].TimelineStartUS != want*1000 {
-			t.Fatalf("audio event %d start = %d, want %d", i, plan.Events[i].TimelineStartUS/1000, want)
+	for _, want := range wantStarts {
+		found := false
+		for _, event := range append(eventsForRole(plan, TrackVoiceover), eventsForRole(plan, TrackClipAudio)...) {
+			if event.TimelineStartUS == want*1000 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("audio event start %d not found", want)
 		}
 	}
 	// A duration change is applied once to the canonical timeline; all later
@@ -89,8 +106,14 @@ func TestCanonicalTimelineMatchesVideoAndAudioOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Events[2].TimelineStartUS != 29000000 || plan.Events[3].TimelineStartUS != 47000000 || plan.Events[4].TimelineStartUS != 61000000 {
-		t.Fatalf("audio offsets did not follow canonical timeline: %+v", plan.Events)
+	starts := map[int64]bool{}
+	for _, event := range append(eventsForRole(plan, TrackVoiceover), eventsForRole(plan, TrackClipAudio)...) {
+		starts[event.TimelineStartUS] = true
+	}
+	for _, want := range []int64{29000000, 47000000, 61000000} {
+		if !starts[want] {
+			t.Fatalf("audio offset %d did not follow canonical timeline: %+v", want, starts)
+		}
 	}
 }
 
@@ -137,6 +160,68 @@ func TestPlanHashChangesWhenAudioContentChanges(t *testing.T) {
 		if changed.PlanSHA256 == base.PlanSHA256 {
 			t.Fatalf("mutation %d did not change plan hash", i)
 		}
+	}
+}
+
+func TestCompileV2AllowsVoiceoverAndClipAudioOnSameScene(t *testing.T) {
+	timeline := CanonicalTimeline{
+		Version: TimelineVersion, DurationUS: 5_000_000,
+		Segments: []TimelineSegment{{
+			ID: "scene-1", Index: 0, TimelineStartUS: 0, DurationUS: 5_000_000,
+			Video: VideoSegment{AssetID: "clip-1", SourceInUS: 33_200_000, SourceDurationUS: 5_000_000},
+			AudioIntents: []AudioIntent{
+				{Mode: AudioVoiceover, VoiceoverAssetID: "vo-1"},
+				{Mode: AudioClip, ClipAssetID: "clip-1", SourceInUS: 33_200_000, SourceDurationUS: 5_000_000},
+			},
+		}},
+	}
+	plan, err := Compile(timeline, DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Version != AudioPlanVersion || len(plan.Tracks) != 2 {
+		t.Fatalf("expected v2 with two tracks, got version=%s tracks=%d", plan.Version, len(plan.Tracks))
+	}
+	if len(plan.Tracks[0].Events) != 1 || len(plan.Tracks[1].Events) != 1 {
+		t.Fatalf("expected one event per primary track: %#v", plan.Tracks)
+	}
+	if plan.Tracks[0].Role != TrackVoiceover || plan.Tracks[1].Role != TrackClipAudio {
+		t.Fatalf("unexpected track roles: %#v", plan.Tracks)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := wire["primary_events"]; ok {
+		t.Fatal("v2 must not serialize primary_events")
+	}
+	if _, ok := wire["background_music"]; ok {
+		t.Fatal("v2 must not serialize legacy background_music")
+	}
+	if _, ok := wire["sfx"]; ok {
+		t.Fatal("v2 must not serialize legacy sfx")
+	}
+}
+
+func TestV2RejectsDuplicateEventID(t *testing.T) {
+	timeline := CanonicalTimeline{Version: TimelineVersion, DurationUS: 2_000_000, Segments: []TimelineSegment{
+		{ID: "a", Index: 0, TimelineStartUS: 0, DurationUS: 1_000_000, AudioIntents: []AudioIntent{{Mode: AudioVoiceover, VoiceoverAssetID: "vo-a"}}},
+		{ID: "b", Index: 1, TimelineStartUS: 1_000_000, DurationUS: 1_000_000, AudioIntents: []AudioIntent{{Mode: AudioVoiceover, VoiceoverAssetID: "vo-b"}}},
+	}}
+	plan, err := Compile(timeline, DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Tracks[0].Events[1].EventID = plan.Tracks[0].Events[0].EventID
+	if err := plan.Validate(); err == nil {
+		t.Fatal("duplicate event IDs must be rejected")
 	}
 }
 

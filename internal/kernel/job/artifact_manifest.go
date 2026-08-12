@@ -123,6 +123,13 @@ type Artifact struct {
 	// artefacts are silently dropped on upload failure.
 	Required bool `json:"required"`
 
+	// DriveGroup and DriveLanguage carry optional logical routing metadata
+	// for the canonical delivery publisher. They are deliberately hints,
+	// never folder IDs: the publisher/resolver remains the only owner of
+	// Drive folder topology.
+	DriveGroup    string `json:"drive_group,omitempty"`
+	DriveLanguage string `json:"drive_language,omitempty"`
+
 	// RemoteFileID, RemoteWebViewLink, and RemoteDownloadLink are
 	// populated by producers that already completed publication. They
 	// are additive manifest fields used by capability-specific result

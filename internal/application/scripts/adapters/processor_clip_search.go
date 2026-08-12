@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -140,7 +140,6 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		}
 
 		segmentMatches := make([]ArtlistClipMatch, 0)
-		providerStart := time.Now()
 		// The planner may retain up to five ranked queries for diagnostics and
 		// cache identity, but Artlist search is a serialized browser operation.
 		// Use the two highest-priority queries for the live fan-out so one slow
@@ -167,8 +166,14 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 				searchQueries = searchQueries[:2]
 			}
 		}
-		matches, err := p.searcher.SearchClips(ctx, plan.Title, searchQueries)
-		observeVidRushProviderDuration(p.metrics, "artlist_search", time.Since(providerStart))
+		var matches []ArtlistClipMatch
+		err := measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
+			Stage: kernobs.StageAcquire, Component: "vidrush", Operation: "search", Provider: "artlist",
+		}, func(callCtx context.Context) error {
+			var searchErr error
+			matches, searchErr = p.searcher.SearchClips(callCtx, plan.Title, searchQueries)
+			return searchErr
+		})
 		segmentMatches = append(segmentMatches, matches...)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("clip_search: Artlist provider search failed for segment %s: %v", updated.SegmentID, err))
