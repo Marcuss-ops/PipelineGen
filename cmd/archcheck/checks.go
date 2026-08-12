@@ -91,6 +91,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_asset_committer_event_ssot", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanAssetCommitterEventSSOT(root, pol, r, productionOnly)
 		}},
+		{"percheck_control_plane_sql_writes", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanControlPlaneSQLWrites(root, pol, r, productionOnly)
+		}},
 		{"percheck_upsert_points_sole_owner", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanUpsertPointsSoleOwner(root, pol, r, productionOnly)
 		}},

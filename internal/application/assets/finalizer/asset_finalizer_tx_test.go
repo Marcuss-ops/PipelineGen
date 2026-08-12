@@ -346,6 +346,15 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 	if locationKind != "local" || renditionKind != "master" {
 		t.Fatalf("location_kind=%q rendition_kind=%q", locationKind, renditionKind)
 	}
+	var width, height int
+	if err := tx.QueryRowContext(context.Background(), `
+		SELECT width, height FROM asset_renditions WHERE asset_id = ? AND kind = ?`,
+		artifact.ArtifactID, "master").Scan(&width, &height); err != nil {
+		t.Fatalf("read rendition dimensions: %v", err)
+	}
+	if width != 1920 || height != 1080 {
+		t.Fatalf("rendition dimensions=%dx%d, want 1920x1080", width, height)
+	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}

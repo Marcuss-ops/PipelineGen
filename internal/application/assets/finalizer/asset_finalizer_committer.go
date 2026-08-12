@@ -49,56 +49,6 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		})
 	}
 
-	// Populate backward-compatible media_assets columns (width, height, local_path, source_provider, source_version)
-	// for media querying scripts and tests that expect them at the top-level asset schema.
-	var width, height int
-	var localPath string
-	for i := range artifact.Renditions {
-		k := strings.ToLower(artifact.Renditions[i].Kind)
-		if strings.Contains(k, "mezzanine") || strings.Contains(k, "master") {
-			width = artifact.Renditions[i].Width
-			height = artifact.Renditions[i].Height
-			localPath = artifact.Renditions[i].URI
-			if strings.Contains(k, "mezzanine") {
-				break
-			}
-		}
-	}
-	if width == 0 {
-		width = metadataInt(artifact.ArtifactMetadata["width"])
-	}
-	if height == 0 {
-		height = metadataInt(artifact.ArtifactMetadata["height"])
-	}
-	if localPath == "" {
-		if value, ok := artifact.ArtifactMetadata["local_path"].(string); ok {
-			localPath = value
-		}
-	}
-	if width == 0 {
-		width = 1920
-	}
-	if height == 0 {
-		height = 1080
-	}
-	sourceProvider := artifact.Source
-	if sourceProvider == "" {
-		sourceProvider = "artlist"
-	}
-	sourceVersion := artifact.SHA256
-
-	_, err = sqlTx.ExecContext(ctx, `
-		UPDATE media_assets
-		SET width = ?, height = ?, local_path = ?, source_provider = ?, source_version = ?,
-			drive_file_id = ?, drive_link = ?, download_link = ?, folder_id = ?, folder_path = ?
-		WHERE id = ?
-	`, width, height, localPath, sourceProvider, sourceVersion,
-		artifact.Location.FileID, artifact.Location.WebViewLink, artifact.Location.DownloadLink,
-		artifact.Location.FolderID, artifact.Location.FolderPath, artifact.ArtifactID)
-	if err != nil {
-		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: update media_assets backward compat: %w", err)
-	}
-
 	versionNum, err := s.insertAssetVersion(ctx, tx, &artifact, nowStr)
 	if err != nil {
 		return finalization.ArtifactRef{}, nil, err
@@ -124,6 +74,21 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 		zap.String("media_type", kindToMediaType(artifact.Kind)),
 	)
 	return ref, events, nil
+}
+
+func artifactLocalPath(artifact finalization.PublishedArtifact) string {
+	for i := range artifact.Renditions {
+		kind := strings.ToLower(artifact.Renditions[i].Kind)
+		if strings.Contains(kind, "mezzanine") || strings.Contains(kind, "master") {
+			if artifact.Renditions[i].URI != "" {
+				return artifact.Renditions[i].URI
+			}
+		}
+	}
+	if value, ok := artifact.ArtifactMetadata["local_path"].(string); ok {
+		return value
+	}
+	return ""
 }
 
 func metadataInt(value any) int {
@@ -220,6 +185,17 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 	if source == "youtube" {
 		lifecycleState = string(asset.StateActive)
 	}
+	localPath := artifactLocalPath(artifact)
+	sourceProvider := metadata.SourceProvider
+	if sourceProvider == "" {
+		sourceProvider = source
+	}
+	sourceVersion := metadata.SourceVersion
+	if sourceVersion == "" {
+		sourceVersion = artifact.SHA256
+	}
+	metadata.SourceVersion = sourceVersion
+	metadata.SourceProvider = sourceProvider
 	// Script-required acquisition: the stock pipeline finalizer emits
 	// asset.index.requested events whose assets unblock script
 	// generation. Stamp the outbox event with the high priority so
@@ -241,10 +217,11 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		DurationMs:     durationMs,
 		LifecycleState: lifecycleState,
 		IndexState:     string(initIndex),
+		LocalPath:      localPath,
 		FolderID:       artifact.Location.FolderID,
 		FolderPath:     artifact.Location.FolderPath,
 		SourceURL:      sourceURL,
-		SourceProvider: metadata.SourceProvider,
+		SourceProvider: sourceProvider,
 		SourceVideoID:  metadata.SourceVideoID,
 		StartMs:        int64(metadata.StartSec * 1000),
 		EndMs:          int64(metadata.EndSec * 1000),
