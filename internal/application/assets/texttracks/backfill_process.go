@@ -258,6 +258,7 @@ func (s *BackfillService) ProcessAsset(
 			}
 			_, mErr := s.subMaterializer.Materialize(ctx, SubtitleMaterializerInput{
 				AssetID:         assetItem.ID,
+				DriveFilename:   assetItem.Filename,
 				LanguageCode:    lang,
 				TextTrackID:     track.ID,
 				ClipDurationMs:  assetItem.Duration.Milliseconds(),

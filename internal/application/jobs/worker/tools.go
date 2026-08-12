@@ -65,8 +65,8 @@ func (t *Tools) Complete(ctx context.Context, result json.RawMessage) error {
 // AZIONE 5 (July 2026): broker now returns canonical AssetIDs from
 // finalization. The runner does not need these IDs (only the HTTP
 // handler does), so Tools discards them and returns only the error.
-func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMessage, publishedArtifacts json.RawMessage, outboxEvents json.RawMessage) error {
-	_, err := t.broker.CompleteWithArtifacts(ctx, appjobs.CompleteWithArtifactsCommand{
+func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMessage, publishedArtifacts json.RawMessage, outboxEvents json.RawMessage) ([]string, error) {
+	return t.broker.CompleteWithArtifacts(ctx, appjobs.CompleteWithArtifactsCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -76,7 +76,6 @@ func (t *Tools) CompleteWithArtifacts(ctx context.Context, resultData json.RawMe
 		StagedArtifacts:  publishedArtifacts,
 		OutboxEvents:     outboxEvents,
 	})
-	return err
 }
 
 // Fail forwards a terminal job outcome (with a stringified error)
@@ -131,6 +130,7 @@ type Tools struct {
 	revision    atomic.Int64
 	workspace   string
 	assetClient AssetClient
+	ledger      *appjobs.JobRegistryRecorder
 }
 
 // NewTools constructs a Tools. Note: revision is initialised AFTER
@@ -153,8 +153,13 @@ func NewTools(broker appjobs.Broker, store eventStore, workerID, sessionID strin
 	return t
 }
 
+func (t *Tools) WithJobRegistry(ledger *appjobs.JobRegistryRecorder) *Tools {
+	t.ledger = ledger
+	return t
+}
+
 func (t *Tools) Progress(ctx context.Context, progress int, message string) error {
-	return t.broker.Progress(ctx, appjobs.ProgressCommand{
+	err := t.broker.Progress(ctx, appjobs.ProgressCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -163,6 +168,10 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 		Progress:         progress,
 		Message:          message,
 	})
+	if t.ledger != nil {
+		t.ledger.RecordProgress(ctx, t.jobID, progress, message)
+	}
+	return err
 }
 
 // Event records a typed timeline event for the in-flight job.
@@ -171,10 +180,14 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 // directly. Errors are logged but not propagated — event emission
 // must never fail the job.
 func (t *Tools) Event(ctx context.Context, eventType, message string, data map[string]any) error {
-	if t.store == nil {
-		return nil
+	var err error
+	if t.store != nil {
+		err = t.store.AddEvent(ctx, t.jobID, eventType, message, data)
 	}
-	return t.store.AddEvent(ctx, t.jobID, eventType, message, data)
+	if t.ledger != nil {
+		t.ledger.RecordEvent(ctx, t.jobID, eventType, message, data)
+	}
+	return err
 }
 
 func (t *Tools) IsCancelled(ctx context.Context) (bool, error) {

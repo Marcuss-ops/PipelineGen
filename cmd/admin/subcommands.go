@@ -101,6 +101,7 @@ var commandRegistry = map[string]commandHandler{
 	"organize-foley-drive":           runOrganizeFoleyDrive,
 	"organize-sound-effects-drive":   runOrganizeSoundEffectsDrive,
 	"qdrant-maintenance":             runQdrantMaintenance,
+	"qdrant-enrichment-recover":      runQdrantEnrichmentRecover,
 	"qdrant-preflight":               runQdrantPreflight,
 	"qdrant-readiness":               runQdrantReadiness,
 	"reconcile-qdrant":               reconcile.RunReconcileQdrant,

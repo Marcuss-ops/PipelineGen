@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -217,6 +218,7 @@ type Runner struct {
 	registry   *Registry
 	workers    []*Worker
 	broker     CompletionPort
+	jobLedger  capjobregistry.Registry
 
 	// observer is the kernel observability entry point propagated to
 	// every Worker built by buildWorkers (FASE 2, August 2026). nil =
@@ -254,6 +256,9 @@ func (r *Runner) WithBroker(cp CompletionPort) *Runner {
 	r.broker = cp
 	return r
 }
+
+// WithJobRegistry attaches the durable execution ledger to every worker.
+func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
 
 // WithObserver attaches the kernel observability RunObserver to the
 // Runner (FASE 2, August 2026). The observer is propagated onto every
@@ -296,6 +301,9 @@ func (r *Runner) buildWorkers() []*Worker {
 		w.WithRegistry(r.registry)
 		if r.broker != nil {
 			w.WithBroker(r.broker)
+		}
+		if r.jobLedger != nil {
+			w.WithJobRegistry(r.jobLedger)
 		}
 		if r.observer != nil {
 			w.WithObserver(r.observer)

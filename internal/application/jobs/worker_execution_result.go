@@ -102,7 +102,7 @@ import (
 // re-raise; a lease-loss during a finalisation SQL UPDATE means another
 // worker has already CAS-won the row, so the next worker's transition
 // is the authoritative one.
-func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]any, dispatchErr error) {
+func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]any, dispatchErr error) []string {
 	// Refresh revision from the DB so the final CAS write carries the
 	// latest expected revision (a concurrent Update during execution
 	// would invalidate the snapshot copied at ClaimNext).
@@ -121,7 +121,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 	// the typed CompletionPort, then the legacy non-artifact Complete.
 	if dispatchErr != nil {
 		w.finalizeJobDispatchError(ctx, j, workerID, leaseID, finalRevision, dispatchErr)
-		return
+		return nil
 	}
 
 	// PR-WORKER-RUNNER-INPROCESS-MIGRATION (July 2026): artifact-
@@ -137,8 +137,8 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 	// preserving existing test fixtures that don't build a registry.
 	producesArtifacts := w.reg != nil && w.reg.ProducesArtifacts(j.Type)
 	if producesArtifacts {
-		w.finalizeJobArtifactPath(ctx, j, workerID, leaseID, finalRevision, result)
-		return
+		return w.finalizeJobArtifactPath(ctx, j, workerID, leaseID, finalRevision, result)
 	}
 	w.finalizeJobLegacyComplete(ctx, j, workerID, leaseID, finalRevision, result)
+	return nil
 }

@@ -1,0 +1,3 @@
+-- database: primary
+-- Historical media-registry ledger marker. The deployed schema is already
+-- materialized; retained so the migration ledger remains reproducible.

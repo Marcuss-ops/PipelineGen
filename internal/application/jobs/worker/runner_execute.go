@@ -28,6 +28,33 @@ import (
 // leases.
 func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr error) {
 	job := lease.Job
+	ledger := appjobs.NewJobRegistryRecorder(r.jobLedger, r.log)
+	attemptID := fmt.Sprintf("%s:%d", job.ID, job.Revision)
+	stepID := ""
+	var handlerResult map[string]any
+	var terminalErr error
+	ledgerFinished := false
+	finishLedger := func(report *kernobs.RunReport) {
+		if ledgerFinished {
+			return
+		}
+		ledgerFinished = true
+		status := "SUCCEEDED"
+		var finishErr error
+		if retErr != nil {
+			status = "FAILED"
+			finishErr = retErr
+		}
+		if terminalErr != nil {
+			status = "FAILED"
+			finishErr = terminalErr
+		}
+		var resultJSON []byte
+		if handlerResult != nil {
+			resultJSON, _ = json.Marshal(handlerResult)
+		}
+		ledger.Finish(parent, job, stepID, r.workerID, attemptID, status, resultJSON, finishErr, report)
+	}
 
 	// Defensive: the claim filter should prevent this, but verify the
 	// claimed job type is actually supported before doing any work.
@@ -36,7 +63,11 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 			zap.String("job_type", job.Type),
 			zap.String("job_id", job.ID),
 		)
-		return r.fail(parent, lease, fmt.Errorf("%w: %s", ErrHandlerNotRegistered, job.Type))
+		unsupportedErr := fmt.Errorf("%w: %s", ErrHandlerNotRegistered, job.Type)
+		terminalErr = unsupportedErr
+		stepID = ledger.Start(parent, job, r.workerID, attemptID)
+		finishLedger(nil)
+		return r.fail(parent, lease, unsupportedErr)
 	}
 
 	jobCtx, cancel := context.WithCancel(parent)
@@ -56,10 +87,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 	// fail-return site; the deferred closure prefers retErr (a
 	// non-nil finalisation error, e.g. ErrLeaseLostDuringRun), then
 	// terminalErr, and only otherwise closes the run as SUCCEEDED.
-	var (
-		run         *kernobs.Run
-		terminalErr error
-	)
+	var run *kernobs.Run
 	if r.observer != nil {
 		run = r.observer.StartRunForClaim(parent, kernobs.ClaimRunInfo{
 			JobID:       job.ID,
@@ -78,6 +106,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 			}
 			if rec := recover(); rec != nil {
 				run.FinishWithPanic(rec)
+				finishLedger(run.Report())
 				panic(rec)
 			}
 			switch {
@@ -88,7 +117,11 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 			default:
 				run.Finish()
 			}
+			finishLedger(run.Report())
 		}()
+	}
+	if run == nil {
+		defer func() { finishLedger(nil) }()
 	}
 
 	jobDir, err := r.workspace.Prepare(lease.Job.ID)
@@ -104,7 +137,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 	if s, ok := r.broker.(eventStore); ok {
 		store = s
 	}
-	tools := NewTools(r.broker, store, r.workerID, r.sessionID, lease.Job, jobDir, r.assetClient)
+	tools := NewTools(r.broker, store, r.workerID, r.sessionID, lease.Job, jobDir, r.assetClient).WithJobRegistry(ledger)
 
 	// Start lease renewal loop (W1 Phase 7).
 	renewCtx, renewCancel := context.WithCancel(jobCtx)
@@ -141,6 +174,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 				terminalErr = downloadErr
 				return tools.Fail(jobCtx, downloadErr.Error())
 			}
+			ledger.Downloaded(jobCtx, job.ID, assetID, i)
 			// FASE 0.2 (July 4 2026) silent-drop rewrite per
 			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
 			// pre-PR the runner used `_ = tools.Progress(...)` which
@@ -164,7 +198,7 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 	}
 
 	// Handler dispatch
-	handlerResult, err := r.registry.Dispatch(jobCtx, lease.Job, tools)
+	handlerResult, err = r.registry.Dispatch(jobCtx, lease.Job, tools)
 	if err != nil {
 		terminalErr = err
 		return tools.Fail(jobCtx, err.Error())
@@ -230,7 +264,17 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) (retErr 
 				return tools.Fail(jobCtx, err.Error())
 			}
 		}
-		return tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)
+		canonicalAssetIDs, completeErr := tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)
+		if completeErr != nil {
+			terminalErr = completeErr
+			return completeErr
+		}
+		ledger.RecordCanonicalOutputs(jobCtx, job.ID, appjobs.OutputRelationForJobType(job.Type), canonicalAssetIDs)
+		return nil
 	}
-	return tools.Complete(jobCtx, resultJSON)
+	if completeErr := tools.Complete(jobCtx, resultJSON); completeErr != nil {
+		terminalErr = completeErr
+		return completeErr
+	}
+	return nil
 }

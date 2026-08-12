@@ -1,12 +1,17 @@
 package jobs
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
+
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
@@ -279,4 +284,79 @@ func manifestToRawJSON(t *testing.T, m *job.ArtifactManifest) json.RawMessage {
 		t.Fatalf("failed to marshal manifest: %v", err)
 	}
 	return json.RawMessage(b)
+}
+
+type jobRegistryRecorderFake struct {
+	jobs      []capjobregistry.Job
+	steps     []capjobregistry.Step
+	metrics   []capjobregistry.Metric
+	relations []capjobregistry.AssetRelation
+	events    []capjobregistry.Event
+}
+
+func (f *jobRegistryRecorderFake) RecordJob(_ context.Context, j capjobregistry.Job) error {
+	f.jobs = append(f.jobs, j)
+	return nil
+}
+func (f *jobRegistryRecorderFake) UpdateJob(_ context.Context, j capjobregistry.Job) error {
+	f.jobs = append(f.jobs, j)
+	return nil
+}
+func (f *jobRegistryRecorderFake) RecordStep(_ context.Context, s capjobregistry.Step) error {
+	f.steps = append(f.steps, s)
+	return nil
+}
+func (f *jobRegistryRecorderFake) RecordMetric(_ context.Context, m capjobregistry.Metric) error {
+	f.metrics = append(f.metrics, m)
+	return nil
+}
+func (f *jobRegistryRecorderFake) RelateAsset(_ context.Context, a capjobregistry.AssetRelation) error {
+	f.relations = append(f.relations, a)
+	return nil
+}
+func (f *jobRegistryRecorderFake) AppendEvent(_ context.Context, e capjobregistry.Event) (int64, error) {
+	f.events = append(f.events, e)
+	return int64(len(f.events)), nil
+}
+func (f *jobRegistryRecorderFake) Stats(context.Context, string, string) (capjobregistry.Stats, error) {
+	return capjobregistry.Stats{}, nil
+}
+
+func TestJobRegistryRecorder_RecordsCanonicalFinalizationAssetIDs(t *testing.T) {
+	fake := &jobRegistryRecorderFake{}
+	recorder := NewJobRegistryRecorder(fake, nil)
+	recorder.RecordCanonicalOutputs(context.Background(), "job-canonical", "RENDERED", []string{"asset-1", "asset-2", ""})
+	if len(fake.relations) != 2 {
+		t.Fatalf("expected two canonical output relations, got %+v", fake.relations)
+	}
+	for i, relation := range fake.relations {
+		if relation.JobID != "job-canonical" || relation.Relation != "RENDERED" || relation.Ordinal != i {
+			t.Fatalf("unexpected canonical relation %d: %+v", i, relation)
+		}
+	}
+}
+
+func TestJobRegistryRecorder_PreservesPayloadAndRuntimeLineage(t *testing.T) {
+	fake := &jobRegistryRecorderFake{}
+	recorder := NewJobRegistryRecorder(fake, nil)
+	started := time.Now().UTC().Add(-time.Second)
+	j := &job.Job{ID: "job-ledger-test", Type: "script.generate", Status: job.StatusRunning, Revision: 3, Payload: json.RawMessage(`{"parent_job_id":"parent-1","input_assets":[{"asset_id":"input-1"}]}`), CreatedAt: started.Add(-time.Second), StartedAt: &started}
+	stepID := recorder.Start(context.Background(), j, "worker-1", "attempt-1")
+	report := &kernobs.RunReport{RunID: "run-1", JobID: j.ID, AttemptID: "attempt-1", Status: kernobs.StatusSucceeded, WallTimeMs: 42, QueueWaitMs: 7, Operations: []kernobs.OperationReport{{Operation: "whisper", DurationMs: 11, Items: 1, Bytes: 12}}}
+	recorder.Finish(context.Background(), j, stepID, "worker-1", "attempt-1", "SUCCEEDED", []byte(`{"output_assets":[{"asset_id":"output-1"}]}`), nil, report)
+	if len(fake.jobs) != 2 || fake.jobs[0].PayloadJSON != string(j.Payload) || fake.jobs[1].PayloadJSON != string(j.Payload) {
+		t.Fatalf("payload was not preserved in both lifecycle writes: %+v", fake.jobs)
+	}
+	if len(fake.steps) < 2 {
+		t.Fatalf("expected start and terminal steps, got %d", len(fake.steps))
+	}
+	if len(fake.metrics) < 5 {
+		t.Fatalf("expected runtime metrics, got %d", len(fake.metrics))
+	}
+	if len(fake.relations) != 2 || fake.relations[0].Relation != "INPUT" || fake.relations[1].Relation != "GENERATED" {
+		t.Fatalf("lineage = %+v", fake.relations)
+	}
+	if len(fake.events) != 2 || fake.events[0].EventType != "JOB_CLAIMED" || fake.events[1].EventType != "JOB_COMPLETED" {
+		t.Fatalf("events = %+v", fake.events)
+	}
 }

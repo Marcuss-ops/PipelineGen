@@ -170,6 +170,67 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 
 		if prev, ok := applied[m.version]; ok {
 			if prev.filename != m.filename || prev.checksum != checksum { // Identity or checksum drift
+				// Migration 198 was deployed once with the equivalent
+				// database_id-primary-key form of control_plane_meta. The
+				// canonical file now contains the stronger singleton form.
+				// Reconcile only that known deployment hash and only after
+				// proving the live schema is the expected compatible shape.
+				// This repairs the ledger; it does not silently accept an
+				// arbitrary edited migration.
+				if m.version == 198 && targetDB == "primary" &&
+					prev.filename == m.filename &&
+					prev.checksum == "c5b770ce3c9fca18234ac8953e143535ec7da8b7740f186f7ce9edb0c518843b" &&
+					isLegacyControlPlaneMetaSchema(db) {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 198", checksum, checksum); err != nil {
+						return fmt.Errorf("storage: shim update 198 checksum: %w", err)
+					}
+					if log != nil {
+						log.Warn("reconciled migration 198 ledger for compatible deployed control-plane schema", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
+				// Migration 201 was applied by an earlier deployment but its
+				// file was not retained in the repository. The deployed schema
+				// already contains the taxonomy columns; accept only the known
+				// ledger hash and only after verifying those columns exist.
+				if m.version == 201 && targetDB == "primary" &&
+					prev.filename == m.filename &&
+					prev.checksum == "1f1d9052bd130dd810215705923088e79ccd8748f1f7ec46ff47419a1f75c019" &&
+					hasMediaTaxonomyColumns(db) {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 201", checksum, checksum); err != nil {
+						return fmt.Errorf("storage: shim update 201 checksum: %w", err)
+					}
+					if log != nil {
+						log.Warn("reconciled missing migration 201 ledger for deployed media taxonomy", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
+				if m.version == 195 && targetDB == "primary" &&
+					prev.filename == m.filename &&
+					prev.checksum == "a341d66a5411f4e8db9c66b75dc57dce44275972db98684ab4602497890b6b6a" &&
+					hasMediaTaxonomyColumns(db) {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 195", checksum, checksum); err != nil {
+						return fmt.Errorf("storage: shim update 195 checksum: %w", err)
+					}
+					if log != nil {
+						log.Warn("reconciled migration 195 ledger for deployed media taxonomy", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
+				legacyChecksums := map[int]string{
+					191: "441f6502693e3ffceb4bf85a18d22559b937624861c5db6daa6cc59233f91d5b",
+					192: "90a5ffc831f380fa4e0763835b5699d0049db5192f84125c3b15bac8f77d6d66",
+					193: "e5f9ea1d18ca6542346cf6abe0e07d145b992d7b95e50a05affb1b4f44e43358",
+				}
+				if expected, ok := legacyChecksums[m.version]; ok && targetDB == "primary" && prev.filename == m.filename && prev.checksum == expected {
+					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
+						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
+					}
+					if log != nil {
+						log.Warn("reconciled removed historical migration ledger entry", zap.Int("version", m.version), zap.String("filename", m.filename))
+					}
+					continue
+				}
 				// Deployment reconciliation for the already-applied local 186
 				// outbox-priority migration. The SQL is unchanged in effect;
 				// only the untracked deployment copy's checksum differs.
@@ -268,6 +329,89 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		zap.Int("already_applied", len(applied)),
 	)
 	return nil
+}
+
+// isLegacyControlPlaneMetaSchema recognizes the schema produced by the one
+// deployed pre-singleton variant of migration 198. It is intentionally
+// narrow: the checksum shim must never turn an arbitrary schema drift into a
+// successful migration run.
+func isLegacyControlPlaneMetaSchema(db queryable) bool {
+	rows, err := db.Query("PRAGMA table_info(control_plane_meta)")
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+
+	want := map[string]bool{
+		"database_id":       false,
+		"schema_family":     false,
+		"instance_role":     false,
+		"canonical_version": false,
+		"created_at":        false,
+	}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false
+		}
+		if _, ok := want[name]; !ok || name == "singleton_id" {
+			return false
+		}
+		want[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return false
+	}
+	for _, present := range want {
+		if !present {
+			return false
+		}
+	}
+	countRows, err := db.Query("SELECT COUNT(*) FROM control_plane_meta")
+	if err != nil {
+		return false
+	}
+	defer countRows.Close()
+	if !countRows.Next() {
+		return false
+	}
+	var count int
+	if err := countRows.Scan(&count); err != nil {
+		return false
+	}
+	return count == 1
+}
+
+func hasMediaTaxonomyColumns(db queryable) bool {
+	rows, err := db.Query("PRAGMA table_info(media_assets)")
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	want := map[string]bool{"namespace": false, "asset_kind": false, "source_type": false}
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false
+		}
+		if _, ok := want[name]; ok {
+			want[name] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false
+	}
+	for _, present := range want {
+		if !present {
+			return false
+		}
+	}
+	return true
 }
 
 // queryable abstracts the database handle so migrateAll works with both

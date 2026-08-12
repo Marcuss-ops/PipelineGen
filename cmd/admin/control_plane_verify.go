@@ -15,6 +15,7 @@ func runControlPlaneVerify(args []string) error {
 	fs := flag.NewFlagSet("control-plane verify", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	jsonOutput := fs.Bool("json", false, "emit JSON")
+	deep := fs.Bool("deep", false, "certify the complete migration ledger")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -45,7 +46,12 @@ func runControlPlaneVerify(args []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := v.Verify(cmdContext())
+	var report capcontrol.Report
+	if *deep {
+		report, err = v.VerifyDeep(cmdContext())
+	} else {
+		report, err = v.Verify(cmdContext())
+	}
 	if err != nil {
 		return err
 	}
@@ -64,7 +70,7 @@ func runControlPlaneVerify(args []string) error {
 
 func runControlPlane(args []string) error {
 	if len(args) == 0 || args[0] != "verify" {
-		return fmt.Errorf("usage: admin control-plane verify [--json]")
+		return fmt.Errorf("usage: admin control-plane verify [--json] [--deep]")
 	}
 	return runControlPlaneVerify(args[1:])
 }
@@ -78,6 +84,7 @@ func printControlPlaneReport(r capcontrol.Report) {
 	fmt.Printf("Instance role      %s\n", r.InstanceRole)
 	fmt.Printf("Schema version     %d\n", r.SchemaVersion)
 	fmt.Printf("Migration gaps     %v\n", r.MigrationGaps)
+	fmt.Printf("Migration checksum mismatches %v\n", r.MigrationChecksumMismatches)
 	fmt.Printf("Assets             %d\n", r.Assets)
 	fmt.Printf("Transcripts        %d\n", r.Transcripts)
 	fmt.Printf("Descriptions       %d\n", r.Descriptions)
@@ -89,6 +96,8 @@ func printControlPlaneReport(r capcontrol.Report) {
 	fmt.Printf("Projection sequence %d\n", r.ProjectionSeq)
 	fmt.Printf("Projection drift   %d\n\n", r.ProjectionDrift)
 	fmt.Printf("Projection state   %s\n\n", r.ProjectionState)
+	fmt.Printf("Performance runs   %d\n", r.PerformanceRuns)
+	fmt.Printf("Uncorrelated perf  %d\n\n", r.UncorrelatedPerformanceRuns)
 	for _, check := range r.Checks {
 		fmt.Printf("%-30s %s", check.Name, check.Status)
 		if check.Detail != "" {

@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -67,7 +68,8 @@ type Runner struct {
 	// 2026). When non-nil, every claimed lease executed by runLease gets
 	// a Run (queue_wait, wall_time, status, attempts). nil = legacy
 	// un-instrumented behaviour (test fixtures keep working).
-	observer *kernobs.RunObserver
+	observer  *kernobs.RunObserver
+	jobLedger capjobregistry.Registry
 }
 
 // NewRunner constructs a Runner with the default renewal cadence
@@ -96,6 +98,9 @@ func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
 	r.observer = observer
 	return r
 }
+
+// WithJobRegistry attaches the durable Job Registry projection to this runner.
+func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
 
 // SetRenewInterval overrides the renewal cadence. Returns the
 // receiver for chaining. Zero / negative / sub-minRenewInterval

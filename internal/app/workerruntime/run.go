@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	logging "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
@@ -73,6 +74,7 @@ type WorkerComposition struct {
 	WorkspaceRoot   string
 	Cleanup         func()
 	ObservabilityDB *storage.SQLiteDB
+	JobLedger       capjobregistry.Registry
 }
 
 // buildWorkerComposition builds the canonical worker composition
@@ -156,6 +158,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 			WorkspaceRoot:   workspaceRoot,
 			Cleanup:         cleanup,
 			ObservabilityDB: compositionRoot.ObservabilityDB,
+			JobLedger:       compositionRoot.Jobs.JobLedger,
 		}, nil
 	}
 
@@ -248,6 +251,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 			WorkspaceRoot:   workspaceRoot,
 			Cleanup:         cleanup,
 			ObservabilityDB: compositionRoot.ObservabilityDB,
+			JobLedger:       compositionRoot.Jobs.JobLedger,
 		}, nil
 	}
 }
@@ -363,6 +367,7 @@ func Run(ctx context.Context, cfgPath string) error {
 		log.Warn("observability recorder unavailable; using metrics-only projection")
 	}
 	runner.WithObserver(kernobs.NewRunObserverWithCollector(recorder, obsmetrics.NewRunReportsCollector()))
+	runner.WithJobRegistry(comp.JobLedger)
 	if rErr := runner.Run(runCtx); rErr != nil && runCtx.Err() == nil {
 		log.Error("worker runner failed", zap.Error(rErr))
 		return fmt.Errorf("worker runner: %w", rErr)
