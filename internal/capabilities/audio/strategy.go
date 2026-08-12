@@ -81,7 +81,8 @@ func ValidateFinalAudio(asset FinalAudioAsset, plan CompiledAudioPlan) error {
 	if asset.AudioContractVersion != AudioContractVersion || asset.AudioPlanVersion != plan.Version || asset.AudioPlanSHA256 != plan.PlanSHA256 {
 		return fmt.Errorf("%w: final audio contract does not match plan", ErrAudioMediaIncompatible)
 	}
-	if !asset.FinalMix || !asset.CopyEligible || asset.FinalAudioSHA256 == "" || asset.DurationMS <= 0 || asset.SizeBytes <= 0 || asset.Bitrate <= 0 || asset.StartPTS < 0 || asset.DurationMS < plan.DurationMS-40 || asset.DurationMS > plan.DurationMS+40 || asset.Codec != plan.Output.Codec || asset.Profile != plan.Output.Profile || asset.SampleRate != plan.Output.SampleRate || asset.Channels != plan.Output.Channels || asset.ChannelLayout != plan.Output.ChannelLayout {
+	planDurationMS := (plan.DurationUS + 999) / 1000
+	if !asset.FinalMix || !asset.CopyEligible || asset.FinalAudioSHA256 == "" || asset.DurationMS <= 0 || asset.SizeBytes <= 0 || asset.Bitrate <= 0 || asset.StartPTS < 0 || asset.DurationMS < planDurationMS-40 || asset.DurationMS > planDurationMS+40 || asset.Codec != plan.Output.Codec || asset.Profile != plan.Output.Profile || asset.SampleRate != plan.Output.SampleRate || asset.Channels != plan.Output.Channels || asset.ChannelLayout != plan.Output.ChannelLayout {
 		return fmt.Errorf("%w: final audio probe failed canonical validation", ErrAudioMediaIncompatible)
 	}
 	return nil

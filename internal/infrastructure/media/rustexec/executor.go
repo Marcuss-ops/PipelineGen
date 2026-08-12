@@ -188,14 +188,19 @@ func (r *persistentRustProcessRunner) Run(ctx context.Context, binary string, in
 	}
 
 	cancelled := make(chan struct{})
+	// Capture the process handles before starting the cancellation watcher.
+	// reset() clears the runner fields after the read fails; the watcher must
+	// not race on those shared fields while it tears the process down.
+	stdin := r.stdin
+	cmd := r.cmd
 	go func() {
 		select {
 		case <-ctx.Done():
-			if r.stdin != nil {
-				_ = r.stdin.Close()
+			if stdin != nil {
+				_ = stdin.Close()
 			}
-			if r.cmd != nil && r.cmd.Process != nil {
-				_ = syscall.Kill(-r.cmd.Process.Pid, syscall.SIGKILL)
+			if cmd != nil && cmd.Process != nil {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			}
 		case <-cancelled:
 		}

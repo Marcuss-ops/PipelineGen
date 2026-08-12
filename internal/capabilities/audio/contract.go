@@ -1,5 +1,8 @@
 // Package audio owns the canonical, implementation-independent audio timeline
 // contract. It deliberately contains no FFmpeg, filesystem, or transport code.
+//
+// Internal timing is exclusively integer microseconds. Millisecond fields are
+// accepted only by the legacy wire DTO and normalized at the boundary.
 package audio
 
 import (
@@ -8,12 +11,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
 const (
-	TimelineVersion      = "canonical-timeline.v1"
-	AudioPlanVersion     = "compiled-audio-plan.v1"
+	TimelineVersion  = "canonical-timeline.v2"
+	AudioPlanVersion = "compiled-audio-plan.v1"
+
+	// FinalAudioAsset remains a separately versioned artifact contract; the
+	// timeline migration does not invalidate certified media metadata.
 	AudioContractVersion = "canonical-audio.v1"
 )
 
@@ -26,17 +33,17 @@ const (
 )
 
 type VideoSegment struct {
-	AssetID     string `json:"asset_id,omitempty"`
-	SourceInMS  int64  `json:"source_in_ms,omitempty"`
-	SourceOutMS int64  `json:"source_out_ms,omitempty"`
+	AssetID          string `json:"asset_id,omitempty"`
+	SourceInUS       int64  `json:"source_in_us,omitempty"`
+	SourceDurationUS int64  `json:"source_duration_us,omitempty"`
 }
 
 type AudioIntent struct {
 	Mode             AudioSegmentMode `json:"mode"`
 	VoiceoverAssetID string           `json:"voiceover_asset_id,omitempty"`
 	ClipAssetID      string           `json:"clip_asset_id,omitempty"`
-	SourceInMS       int64            `json:"source_in_ms,omitempty"`
-	SourceOutMS      int64            `json:"source_out_ms,omitempty"`
+	SourceInUS       int64            `json:"source_in_us,omitempty"`
+	SourceDurationUS int64            `json:"source_duration_us,omitempty"`
 	UseOriginalAudio bool             `json:"use_original_audio,omitempty"`
 	GainDB           float64          `json:"gain_db,omitempty"`
 }
@@ -44,16 +51,35 @@ type AudioIntent struct {
 type TimelineSegment struct {
 	ID              string       `json:"id"`
 	Index           int          `json:"index"`
-	TimelineStartMS int64        `json:"timeline_start_ms"`
-	DurationMS      int64        `json:"duration_ms"`
+	TimelineStartUS int64        `json:"timeline_start_us"`
+	DurationUS      int64        `json:"duration_us"`
 	Video           VideoSegment `json:"video"`
 	Audio           AudioIntent  `json:"audio"`
 }
 
 type CanonicalTimeline struct {
 	Version    string            `json:"version"`
-	DurationMS int64             `json:"duration_ms"`
+	DurationUS int64             `json:"duration_us"`
 	Segments   []TimelineSegment `json:"segments"`
+}
+
+// UnmarshalJSON prevents internal consumers from silently accepting legacy
+// millisecond fields by unmarshalling directly into the canonical type. Legacy
+// wire payloads must use NormalizeTimelineJSON at the boundary.
+func (t *CanonicalTimeline) UnmarshalJSON(data []byte) error {
+	if t == nil {
+		return fmt.Errorf("cannot unmarshal canonical timeline into nil receiver")
+	}
+	if hasLegacyTimelineFields(data) {
+		return fmt.Errorf("canonical timeline accepts only microsecond fields; use NormalizeTimelineJSON for legacy input")
+	}
+	type canonicalTimeline CanonicalTimeline
+	var decoded canonicalTimeline
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*t = CanonicalTimeline(decoded)
+	return nil
 }
 
 type AudioEventType string
@@ -65,29 +91,29 @@ const (
 )
 
 type AudioEvent struct {
-	Type            AudioEventType `json:"type"`
-	AssetID         string         `json:"asset_id,omitempty"`
-	TimelineStartMS int64          `json:"timeline_start_ms"`
-	DurationMS      int64          `json:"duration_ms"`
-	SourceInMS      int64          `json:"source_in_ms,omitempty"`
-	SourceOutMS     int64          `json:"source_out_ms,omitempty"`
-	GainDB          float64        `json:"gain_db,omitempty"`
+	Type             AudioEventType `json:"type"`
+	AssetID          string         `json:"asset_id,omitempty"`
+	TimelineStartUS  int64          `json:"timeline_start_us"`
+	DurationUS       int64          `json:"duration_us"`
+	SourceInUS       int64          `json:"source_in_us,omitempty"`
+	SourceDurationUS int64          `json:"source_duration_us,omitempty"`
+	GainDB           float64        `json:"gain_db,omitempty"`
 }
 
 type AudioLayer struct {
 	AssetID         string  `json:"asset_id"`
-	TimelineStartMS int64   `json:"timeline_start_ms"`
-	DurationMS      int64   `json:"duration_ms"`
+	TimelineStartUS int64   `json:"timeline_start_us"`
+	DurationUS      int64   `json:"duration_us"`
 	GainDB          float64 `json:"gain_db,omitempty"`
 }
 
 type AudioAutomation struct {
 	TargetLayer string  `json:"target_layer"`
-	StartMS     int64   `json:"start_ms"`
-	EndMS       int64   `json:"end_ms"`
+	StartUS     int64   `json:"start_us"`
+	EndUS       int64   `json:"end_us"`
 	GainDB      float64 `json:"gain_db"`
-	AttackMS    int64   `json:"attack_ms"`
-	ReleaseMS   int64   `json:"release_ms"`
+	AttackUS    int64   `json:"attack_us"`
+	ReleaseUS   int64   `json:"release_us"`
 }
 
 type AudioOutputContract struct {
@@ -126,7 +152,7 @@ func (p CanonicalAudioProfile) Output() AudioOutputContract {
 type CompiledAudioPlan struct {
 	Version         string              `json:"audio_plan_version"`
 	TimelineVersion string              `json:"timeline_version"`
-	DurationMS      int64               `json:"duration_ms"`
+	DurationUS      int64               `json:"duration_us"`
 	Events          []AudioEvent        `json:"primary_events"`
 	BackgroundMusic []AudioLayer        `json:"background_music,omitempty"`
 	SFX             []AudioLayer        `json:"sfx,omitempty"`
@@ -148,17 +174,23 @@ var (
 )
 
 func (t CanonicalTimeline) Validate() error {
-	if t.Version != TimelineVersion || t.DurationMS <= 0 || len(t.Segments) == 0 {
+	if t.Version != TimelineVersion || t.DurationUS <= 0 || len(t.Segments) == 0 {
 		return fmt.Errorf("%w: version or duration", ErrInvalidTimeline)
 	}
 	var end int64
 	for i, s := range t.Segments {
-		if s.Index != i || strings.TrimSpace(s.ID) == "" || s.DurationMS <= 0 || s.TimelineStartMS != end {
+		if s.Index != i || strings.TrimSpace(s.ID) == "" || s.DurationUS <= 0 || s.TimelineStartUS != end {
 			return fmt.Errorf("%w: segment %d is not contiguous", ErrInvalidTimeline, i)
 		}
-		end += s.DurationMS
-		if s.Audio.SourceInMS < 0 || s.Audio.SourceOutMS < 0 || (s.Audio.SourceOutMS > 0 && s.Audio.SourceOutMS <= s.Audio.SourceInMS) {
-			return fmt.Errorf("%w: segment %d source range", ErrInvalidTimeline, i)
+		if end > math.MaxInt64-s.DurationUS {
+			return fmt.Errorf("%w: segment %d duration overflows", ErrInvalidTimeline, i)
+		}
+		end += s.DurationUS
+		if s.Video.SourceInUS < 0 || s.Video.SourceDurationUS < 0 || (s.Video.AssetID != "" && s.Video.SourceDurationUS <= 0) {
+			return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
+		}
+		if s.Audio.SourceInUS < 0 || s.Audio.SourceDurationUS < 0 || (s.Audio.Mode == AudioClip && s.Audio.SourceDurationUS <= 0) {
+			return fmt.Errorf("%w: segment %d audio source range", ErrInvalidTimeline, i)
 		}
 		switch s.Audio.Mode {
 		case AudioVoiceover, AudioClip, AudioSilence:
@@ -166,14 +198,14 @@ func (t CanonicalTimeline) Validate() error {
 			return fmt.Errorf("%w: segment %d audio mode", ErrInvalidTimeline, i)
 		}
 	}
-	if end != t.DurationMS {
-		return fmt.Errorf("%w: duration %d does not equal segment end %d", ErrInvalidTimeline, t.DurationMS, end)
+	if end != t.DurationUS {
+		return fmt.Errorf("%w: duration %d does not equal segment end %d", ErrInvalidTimeline, t.DurationUS, end)
 	}
 	return nil
 }
 
 func (p *CompiledAudioPlan) Validate() error {
-	if p == nil || p.Version != AudioPlanVersion || p.TimelineVersion != TimelineVersion || p.DurationMS < 0 {
+	if p == nil || p.Version != AudioPlanVersion || p.TimelineVersion != TimelineVersion || p.DurationUS < 0 {
 		return fmt.Errorf("%w: version or duration", ErrInvalidAudioPlan)
 	}
 	if p.Output != (AudioOutputContract{}) && (p.Output.Codec == "" || p.Output.SampleRate <= 0 || p.Output.Channels <= 0 || p.Output.ChannelLayout == "") {
@@ -181,27 +213,27 @@ func (p *CompiledAudioPlan) Validate() error {
 	}
 	var previous int64
 	for i, e := range p.Events {
-		if e.TimelineStartMS != previous || e.TimelineStartMS < 0 || e.DurationMS <= 0 || e.TimelineStartMS+e.DurationMS > p.DurationMS {
+		if e.TimelineStartUS != previous || e.TimelineStartUS < 0 || e.DurationUS <= 0 || e.TimelineStartUS > math.MaxInt64-e.DurationUS || e.TimelineStartUS+e.DurationUS > p.DurationUS {
 			return fmt.Errorf("%w: event %d range", ErrInvalidAudioPlan, i)
 		}
-		previous = e.TimelineStartMS + e.DurationMS
+		previous = e.TimelineStartUS + e.DurationUS
 		if e.Type != EventVoiceover && e.Type != EventClip && e.Type != EventSilence {
 			return fmt.Errorf("%w: event %d type", ErrInvalidAudioPlan, i)
 		}
 		if (e.Type == EventVoiceover || e.Type == EventClip) && strings.TrimSpace(e.AssetID) == "" {
 			return fmt.Errorf("%w: event %d asset", ErrInvalidAudioPlan, i)
 		}
-		if e.Type == EventClip && e.SourceOutMS <= e.SourceInMS {
+		if e.Type == EventClip && e.SourceDurationUS <= 0 {
 			return fmt.Errorf("%w: event %d source range", ErrInvalidAudioPlan, i)
 		}
 	}
 	for _, layer := range append(append([]AudioLayer{}, p.BackgroundMusic...), p.SFX...) {
-		if strings.TrimSpace(layer.AssetID) == "" || layer.TimelineStartMS < 0 || layer.DurationMS <= 0 || layer.TimelineStartMS+layer.DurationMS > p.DurationMS {
+		if strings.TrimSpace(layer.AssetID) == "" || layer.TimelineStartUS < 0 || layer.DurationUS <= 0 || layer.TimelineStartUS > math.MaxInt64-layer.DurationUS || layer.TimelineStartUS+layer.DurationUS > p.DurationUS {
 			return fmt.Errorf("%w: layer range or asset", ErrInvalidAudioPlan)
 		}
 	}
 	for _, automation := range p.Automation {
-		if strings.TrimSpace(automation.TargetLayer) == "" || automation.StartMS < 0 || automation.EndMS <= automation.StartMS || automation.EndMS > p.DurationMS || automation.AttackMS < 0 || automation.ReleaseMS < 0 {
+		if strings.TrimSpace(automation.TargetLayer) == "" || automation.StartUS < 0 || automation.EndUS <= automation.StartUS || automation.EndUS > p.DurationUS || automation.AttackUS < 0 || automation.ReleaseUS < 0 {
 			return fmt.Errorf("%w: automation range", ErrInvalidAudioPlan)
 		}
 	}
@@ -229,4 +261,16 @@ func (p *CompiledAudioPlan) Seal() error {
 	}
 	p.PlanSHA256 = h
 	return nil
+}
+
+func (t CanonicalTimeline) Hash() (string, error) {
+	if err := t.Validate(); err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(t)
+	if err != nil {
+		return "", fmt.Errorf("hash canonical timeline: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }

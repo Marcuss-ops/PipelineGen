@@ -8,9 +8,15 @@ func Compile(t CanonicalTimeline, profile CanonicalAudioProfile) (CompiledAudioP
 	if err := t.Validate(); err != nil {
 		return CompiledAudioPlan{}, err
 	}
-	p := CompiledAudioPlan{Version: AudioPlanVersion, TimelineVersion: t.Version, DurationMS: t.DurationMS, Output: profile.Output()}
+	p := CompiledAudioPlan{Version: AudioPlanVersion, TimelineVersion: t.Version, DurationUS: t.DurationUS, Output: profile.Output()}
 	for _, s := range t.Segments {
-		e := AudioEvent{TimelineStartMS: s.TimelineStartMS, DurationMS: s.DurationMS, SourceInMS: s.Audio.SourceInMS, SourceOutMS: s.Audio.SourceOutMS, GainDB: s.Audio.GainDB}
+		e := AudioEvent{
+			TimelineStartUS:  s.TimelineStartUS,
+			DurationUS:       s.DurationUS,
+			SourceInUS:       s.Audio.SourceInUS,
+			SourceDurationUS: s.Audio.SourceDurationUS,
+			GainDB:           s.Audio.GainDB,
+		}
 		switch s.Audio.Mode {
 		case AudioVoiceover:
 			e.Type, e.AssetID = EventVoiceover, s.Audio.VoiceoverAssetID
@@ -19,11 +25,10 @@ func Compile(t CanonicalTimeline, profile CanonicalAudioProfile) (CompiledAudioP
 		case AudioSilence:
 			e.Type = EventSilence
 		}
-		// Voiceover assets are trimmed against the canonical segment window.
-		// Materialising the range here keeps source timing out of the FFmpeg
-		// filtergraph and makes every non-silence event self-contained.
-		if e.Type == EventVoiceover && e.SourceOutMS == 0 {
-			e.SourceOutMS = e.SourceInMS + e.DurationMS
+		// Voiceover assets occupy the canonical segment window. The source
+		// range is materialized once here; downstream mixers do not infer it.
+		if e.Type == EventVoiceover && e.SourceDurationUS == 0 {
+			e.SourceDurationUS = e.DurationUS
 		}
 		if e.Type != EventSilence && e.AssetID == "" {
 			return CompiledAudioPlan{}, fmt.Errorf("segment %s: audio asset is required for %s", s.ID, e.Type)

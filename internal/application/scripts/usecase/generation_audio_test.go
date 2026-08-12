@@ -21,7 +21,7 @@ func (s *audioPlanProcessorStub) Probe(context.Context, string) (*mediaexec.Medi
 }
 func (s *audioPlanProcessorStub) RenderAudioPlan(_ context.Context, plan capabilityaudio.CompiledAudioPlan, _ capabilityaudio.ResolvedAudioAssets, _ string) (capabilityaudio.FinalAudioAsset, error) {
 	s.plan = plan
-	return capabilityaudio.FinalAudioAsset{AssetID: "final", AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: "hash", Codec: plan.Output.Codec, Profile: plan.Output.Profile, SampleRate: plan.Output.SampleRate, Channels: plan.Output.Channels, ChannelLayout: plan.Output.ChannelLayout, Bitrate: 128000, DurationMS: plan.DurationMS, SizeBytes: 10, FinalMix: true, CopyEligible: true, StartPTS: 0}, nil
+	return capabilityaudio.FinalAudioAsset{AssetID: "final", AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: plan.Version, AudioPlanSHA256: plan.PlanSHA256, FinalAudioSHA256: "hash", Codec: plan.Output.Codec, Profile: plan.Output.Profile, SampleRate: plan.Output.SampleRate, Channels: plan.Output.Channels, ChannelLayout: plan.Output.ChannelLayout, Bitrate: 128000, DurationMS: plan.DurationUS / 1000, SizeBytes: 10, FinalMix: true, CopyEligible: true, StartPTS: 0}, nil
 }
 
 func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
@@ -32,7 +32,7 @@ func TestRenderCombinedAudioCompilesExplicitVoiceoverIntent(t *testing.T) {
 	if err := uc.renderCombinedAudio(context.Background(), item, result, nil); err != nil {
 		t.Fatal(err)
 	}
-	if stub.plan.DurationMS != 1000 || len(stub.plan.Events) != 1 || result.FinalAudio == nil || !result.FinalAudio.CopyEligible {
+	if stub.plan.DurationUS != 1000000 || len(stub.plan.Events) != 1 || result.FinalAudio == nil || !result.FinalAudio.CopyEligible {
 		t.Fatalf("plan=%+v audio=%+v", stub.plan, result.FinalAudio)
 	}
 }
