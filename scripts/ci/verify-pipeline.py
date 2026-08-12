@@ -16,17 +16,23 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shlex
-import signal
-import subprocess
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from verify_runtime import (
+    git_sha as _runtime_git_sha,
+    now_utc as _runtime_now_utc,
+    run_bounded_process,
+    text_output as _runtime_text_output,
+    write_json_report,
+)
 
 
 DEFAULT_REGISTRY = Path("config/verify-pipelines.json")
@@ -79,20 +85,13 @@ class ExecuteContext:
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    """Compatibility wrapper for the shared report timestamp helper."""
+    return _runtime_now_utc()
 
 
 def _git_sha(root: Path) -> str | None:
-    completed = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(root),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        check=False,
-    )
-    value = completed.stdout.strip()
-    return value if completed.returncode == 0 and value else None
+    """Compatibility wrapper for the shared Git metadata helper."""
+    return _runtime_git_sha(root)
 
 
 def _positive_number(value: Any, field: str, context: str) -> float:
@@ -264,26 +263,15 @@ def resolve_components(
 
 
 def _text(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
+    """Compatibility wrapper for callers that used the old local helper."""
+    return _runtime_text_output(value)
 
 
 def run_process(argv: Sequence[str], timeout_seconds: float, cwd: Path) -> ProcessResult:
-    """Run one command in an isolated process group with bounded cleanup."""
+    """Adapt the shared bounded process result to the pipeline contract."""
     started = time.monotonic()
     try:
-        process = subprocess.Popen(
-            list(argv),
-            cwd=str(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            start_new_session=True,
-        )
-        stdout, stderr = process.communicate(timeout=max(0.001, timeout_seconds))
+        result = run_bounded_process(argv, timeout_seconds, cwd)
     except OSError as exc:
         return ProcessResult(
             status="FAIL",
@@ -291,30 +279,13 @@ def run_process(argv: Sequence[str], timeout_seconds: float, cwd: Path) -> Proce
             duration_ms=int((time.monotonic() - started) * 1000),
             stderr=str(exc),
         )
-    except subprocess.TimeoutExpired as exc:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.communicate(timeout=1)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.communicate()
-        return ProcessResult(
-            status="TIMEOUT",
-            exit_code=None,
-            duration_ms=int((time.monotonic() - started) * 1000),
-            stdout=_text(exc.stdout),
-            stderr=_text(exc.stderr),
-            timed_out=True,
-        )
     return ProcessResult(
-        status="PASS" if process.returncode == 0 else "FAIL",
-        exit_code=process.returncode,
-        duration_ms=int((time.monotonic() - started) * 1000),
-        stdout=stdout,
-        stderr=stderr,
+        status=result.status,
+        exit_code=result.exit_code,
+        duration_ms=result.duration_ms,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        timed_out=result.timed_out,
     )
 
 
@@ -329,20 +300,8 @@ def _result_dict(result: ProcessResult, command: Sequence[str]) -> dict[str, Any
 
 
 def _write_report(path: Path, report: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+    """Write reports through the shared atomic JSON writer."""
+    write_json_report(path, report)
 
 
 def _read_json_object(path: Path) -> dict[str, Any] | None:

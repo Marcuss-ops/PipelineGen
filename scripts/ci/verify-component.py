@@ -21,17 +21,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import shlex
-import signal
-import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from verify_runtime import (
+    git_sha as _runtime_git_sha,
+    now_utc as _runtime_now_utc,
+    run_bounded_process,
+    text_output as _runtime_text_output,
+    write_json_report,
+)
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
@@ -329,44 +334,18 @@ def build_commands(
 
 
 def _text_output(value: str | bytes | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    return value
+    """Compatibility wrapper for callers that used the old local helper."""
+    return _runtime_text_output(value)
 
 
 def _run_subprocess(argv: Sequence[str], timeout_seconds: float, cwd: Path) -> Execution:
-    """Run a command in its own process group so timeout cleanup is bounded."""
-    started = time.monotonic()
-    process = subprocess.Popen(
-        list(argv),
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
+    """Adapt the shared bounded process result to the component contract."""
+    result = run_bounded_process(argv, timeout_seconds, cwd)
+    return Execution(
+        CommandResult(result.status, result.exit_code, result.duration_ms, result.timed_out),
+        result.stdout,
+        result.stderr,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=max(0.001, timeout_seconds))
-    except subprocess.TimeoutExpired as exc:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.communicate(timeout=1)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.communicate()
-        duration_ms = int((time.monotonic() - started) * 1000)
-        stdout = _text_output(exc.stdout)
-        stderr = _text_output(exc.stderr)
-        return Execution(CommandResult("TIMEOUT", None, duration_ms, timed_out=True), stdout, stderr)
-
-    duration_ms = int((time.monotonic() - started) * 1000)
-    status = "PASS" if process.returncode == 0 else "FAIL"
-    return Execution(CommandResult(status, process.returncode, duration_ms), stdout, stderr)
 
 
 def _command_result(command: Command, execution: Execution, reused: bool = False) -> dict[str, Any]:
@@ -378,25 +357,13 @@ def _command_result(command: Command, execution: Execution, reused: bool = False
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    """Compatibility wrapper for the canonical report timestamp."""
+    return _runtime_now_utc()
 
 
 def write_report(path: Path, report: Mapping[str, Any]) -> None:
-    """Write reports atomically, creating the artifact directory if needed."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(report, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    finally:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+    """Write reports through the shared atomic JSON writer."""
+    write_json_report(path, report)
 
 
 def run_components(
@@ -559,20 +526,8 @@ def run_components(
 
 
 def _git_sha(root: Path) -> str | None:
-    """Return the current revision without making Git a verification dependency."""
-    try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(root),
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except OSError:
-        return None
-    value = completed.stdout.strip()
-    return value if completed.returncode == 0 and value else None
+    """Compatibility wrapper for the shared Git metadata helper."""
+    return _runtime_git_sha(root)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
