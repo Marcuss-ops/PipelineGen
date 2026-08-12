@@ -5,13 +5,13 @@
       "path": "cmd/admin",
       "owner": "cmd/admin composition and command dispatch",
       "deadline": "2026-09-30",
-      "baseline_files": 109,
+      "baseline_files": 111,
       "baseline": {
-        "files": 109,
+        "files": 111,
         "max_loc": 17092
       },
       "current": {
-        "files": 109,
+        "files": 111,
         "max_loc": 14618
       },
       "target_packages": [
@@ -42,18 +42,18 @@
       ]
     },
     {
-    "path": "internal/app",
-    "owner": "internal/app composition root",
-    "deadline": "2026-09-30",
-    "baseline_files": 137,
-    "baseline": {
-      "files": 137,
-      "max_loc": 26637
-    },
-  "current": {
-    "files": 137,
-    "max_loc": 23098
-  },
+      "path": "internal/app",
+      "owner": "internal/app composition root",
+      "deadline": "2026-09-30",
+      "baseline_files": 137,
+      "baseline": {
+        "files": 137,
+        "max_loc": 26637
+      },
+      "current": {
+        "files": 137,
+        "max_loc": 23098
+      },
       "target_packages": [
         "internal/app/workerruntime",
         "internal/app/wiring",
