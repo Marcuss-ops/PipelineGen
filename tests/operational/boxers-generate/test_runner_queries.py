@@ -6,12 +6,16 @@ from pathlib import Path
 
 
 RUNNER = Path(__file__).with_name("run.sh")
+SETUP_HELPER = RUNNER.parent / "lib" / "setup.sh"
 
 
 class RunnerLifecycleStateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = RUNNER.read_text(encoding="utf-8")
+        cls.source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (RUNNER, SETUP_HELPER)
+        )
 
     def test_active_queries_use_canonical_lifecycle_state(self):
         self.assertNotIn("lifecycle_status='ACTIVE'", self.source)
