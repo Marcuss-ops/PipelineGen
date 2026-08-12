@@ -8,15 +8,22 @@ package assets
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
+	capcontrol "github.com/Marcuss-ops/PipelineGen/internal/capabilities/controlplane"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	sqlitecontrol "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/controlplane"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // SQLiteAssetCommitter is the canonical adapter for
@@ -25,6 +32,7 @@ type SQLiteAssetCommitter struct {
 	db  *sql.DB
 	box *outboxevents.Repository
 	log *zap.Logger
+	uow capcontrol.UnitOfWork
 }
 
 // NewSQLiteAssetCommitter constructs the adapter. Both db and box are
@@ -40,7 +48,41 @@ func NewSQLiteAssetCommitter(db *sql.DB, box *outboxevents.Repository, log *zap.
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &SQLiteAssetCommitter{db: db, box: box, log: log}
+	return &SQLiteAssetCommitter{db: db, box: box, log: log, uow: discoverUnitOfWork(db, box)}
+}
+
+func discoverUnitOfWork(db *sql.DB, box *outboxevents.Repository) capcontrol.UnitOfWork {
+	var present int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='canonical_mutations'`).Scan(&present); err != nil {
+		if strings.Contains(err.Error(), "database is closed") {
+			return nil
+		}
+		panic(fmt.Sprintf("assets.NewSQLiteAssetCommitter: inspect canonical UoW schema: %v", err))
+	}
+	if present == 1 {
+		for _, table := range []string{"registry_events", "outbox_events"} {
+			var count int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil || count != 1 {
+				panic(fmt.Sprintf("assets.NewSQLiteAssetCommitter: required canonical table %q is missing", table))
+			}
+		}
+		for _, column := range []string{"registry_seq", "outbox_event_id"} {
+			var count int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('canonical_mutations') WHERE name=?`, column).Scan(&count); err != nil || count != 1 {
+				panic(fmt.Sprintf("assets.NewSQLiteAssetCommitter: canonical_mutations.%s is missing", column))
+			}
+		}
+		uow, err := sqlitecontrol.NewUnitOfWork(db, box)
+		if err != nil {
+			panic(fmt.Sprintf("assets.NewSQLiteAssetCommitter: initialize canonical UoW: %v", err))
+		}
+		return uow
+	}
+	var ledger int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&ledger); err == nil && ledger == 1 {
+		panic("assets.NewSQLiteAssetCommitter: canonical_mutations missing from migrated database")
+	}
+	return nil
 }
 
 // Compile-time assertion.
@@ -56,6 +98,9 @@ func (c *SQLiteAssetCommitter) CommitAsset(ctx context.Context, req persistence.
 // CommitAndIndex opens a new transaction, writes the asset, and commits.
 // This is the standalone-producer entry point.
 func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if c.uow != nil {
+		return c.commitWithUnitOfWork(ctx, req)
+	}
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return persistence.CommitResult{}, fmt.Errorf("asset committer: begin tx: %w", err)
@@ -97,8 +142,135 @@ func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persisten
 }
 
 // CommitTx writes the asset, locations, metadata and optional indexing
-// request inside the caller-owned transaction.
+// request inside the caller-owned transaction. On migrated databases it also
+// applies the canonical UoW protocol without taking ownership of the tx.
 func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if c.uow != nil {
+		return c.commitTxWithUnitOfWork(ctx, tx, req)
+	}
+	return c.commitTxRaw(ctx, tx, req)
+}
+
+func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if err := req.Validate(); err != nil {
+		return persistence.CommitResult{}, err
+	}
+	if !req.EmitIndexEvent {
+		return persistence.CommitResult{}, fmt.Errorf("asset committer: canonical UoW requires EmitIndexEvent=true")
+	}
+	command, err := buildAssetMutationCommand(req)
+	if err != nil {
+		return persistence.CommitResult{}, err
+	}
+	result, err := c.uow.RunInTransaction(ctx, tx, command, func(ctx context.Context, uowTx capcontrol.Transaction) (string, error) {
+		committed, mutationErr := c.commitTxRaw(ctx, uowTx, req)
+		if mutationErr != nil {
+			return "", mutationErr
+		}
+		payload, marshalErr := json.Marshal(committed)
+		if marshalErr != nil {
+			return "", marshalErr
+		}
+		return string(payload), nil
+	})
+	if err != nil {
+		return persistence.CommitResult{}, err
+	}
+	var committed persistence.CommitResult
+	if err := json.Unmarshal([]byte(result.ResultJSON), &committed); err != nil {
+		return persistence.CommitResult{}, fmt.Errorf("asset committer: decode UoW result: %w", err)
+	}
+	return committed, nil
+}
+
+func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
+	if err := req.Validate(); err != nil {
+		return persistence.CommitResult{}, err
+	}
+	if !req.EmitIndexEvent {
+		return persistence.CommitResult{}, fmt.Errorf("asset committer: canonical UoW requires EmitIndexEvent=true")
+	}
+	command, err := buildAssetMutationCommand(req)
+	if err != nil {
+		return persistence.CommitResult{}, err
+	}
+	result, err := c.uow.Run(ctx, command, func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
+		committed, mutationErr := c.commitTxRaw(ctx, tx, req)
+		if mutationErr != nil {
+			return "", mutationErr
+		}
+		payload, marshalErr := json.Marshal(committed)
+		if marshalErr != nil {
+			return "", marshalErr
+		}
+		return string(payload), nil
+	})
+	if err != nil {
+		return persistence.CommitResult{}, err
+	}
+	var committed persistence.CommitResult
+	if err := json.Unmarshal([]byte(result.ResultJSON), &committed); err != nil {
+		return persistence.CommitResult{}, fmt.Errorf("asset committer: decode UoW result: %w", err)
+	}
+	return committed, nil
+}
+
+func buildAssetMutationCommand(req persistence.CommitRequest) (capcontrol.Command, error) {
+	fingerprint, err := commitRequestFingerprint(req)
+	if err != nil {
+		return capcontrol.Command{}, fmt.Errorf("asset committer: build mutation fingerprint: %w", err)
+	}
+	outboxEvent, err := buildAssetMutationOutboxEvent(req)
+	if err != nil {
+		return capcontrol.Command{}, err
+	}
+	commandID := fmt.Sprintf("asset-commit:%s:%s", req.AssetID, fingerprint)
+	return capcontrol.Command{
+		CommandID: commandID, IdempotencyKey: commandID, RequestHash: fingerprint,
+		AggregateType: "media_asset", AggregateID: req.AssetID, Actor: "asset-committer",
+		EventType:   "MEDIA_ASSET_MUTATED",
+		PayloadJSON: fmt.Sprintf(`{"asset_id":%q,"request_hash":%q}`, req.AssetID, fingerprint),
+		Outbox:      outboxEvent,
+	}, nil
+}
+
+func commitRequestFingerprint(req persistence.CommitRequest) (string, error) {
+	req.RequestedAt = time.Time{}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func buildAssetMutationOutboxEvent(req persistence.CommitRequest) (capcontrol.OutboxEvent, error) {
+	sourceVersion := req.Metadata.SourceVersion
+	if sourceVersion == "" {
+		sourceVersion = req.ContentHash
+	}
+	if sourceVersion == "" {
+		return capcontrol.OutboxEvent{}, fmt.Errorf("asset committer: source version is required for canonical outbox event")
+	}
+	requestedAt := req.RequestedAt
+	if requestedAt.IsZero() {
+		requestedAt = time.Now()
+	}
+	if req.Source == "artlist" {
+		eventKey, err := idempotency.OutboxKey(outboxevents.EventAssetIndexRequested, req.Source, req.AssetID, sourceVersion)
+		if err != nil {
+			return capcontrol.OutboxEvent{}, fmt.Errorf("asset committer: build outbox event key: %w", err)
+		}
+		return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: "{}", EventKey: eventKey}, nil
+	}
+	eventKey, payload, err := outboxevents.BuildReindexEnvelopeV1(req.AssetID, clipindexer.CollectionVersion(), sourceVersion, requestedAt)
+	if err != nil {
+		return capcontrol.OutboxEvent{}, fmt.Errorf("asset committer: build outbox envelope: %w", err)
+	}
+	return capcontrol.OutboxEvent{EventType: outboxevents.EventAssetIndexRequested, AggregateType: "media_asset", AggregateID: req.AssetID, PayloadJSON: payload, EventKey: eventKey}, nil
+}
+
+func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
 	}
