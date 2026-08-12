@@ -200,6 +200,58 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 	return dbs, nil
 }
 
+// ValidateControlPlaneIdentity verifies the durable identity of the primary
+// control plane and the configured single-writer topology. The observability
+// database is intentionally excluded: it is an operational log store, not a
+// control-plane writer. A split jobs database is a second writable control
+// plane and therefore fails closed until it is assigned a non-writer role by
+// an explicit migration/cutover.
+func (d *Databases) ValidateControlPlaneIdentity(ctx context.Context) error {
+	if d == nil || d.Main == nil || d.Main.DB == nil {
+		return fmt.Errorf("control plane identity: primary database is not configured")
+	}
+	meta, err := storage.ReadControlPlaneMeta(ctx, d.Main.DB)
+	if err != nil {
+		return err
+	}
+	if meta.InstanceRole != storage.ControlPlaneRoleCanonical {
+		return fmt.Errorf("control plane identity: primary database_id=%q has role %q, want %q", meta.DatabaseID, meta.InstanceRole, storage.ControlPlaneRoleCanonical)
+	}
+
+	databases := []storage.ConfiguredDatabase{{
+		Name:         "primary",
+		Path:         d.Main.Path(),
+		Role:         meta.InstanceRole,
+		Writable:     true,
+		ControlPlane: true,
+	}}
+	if d.Logs != nil {
+		// Observability is a separately writable operational log store,
+		// not a control-plane writer. Keeping it in the inventory makes
+		// that boundary explicit instead of silently omitting a known DB.
+		databases = append(databases, storage.ConfiguredDatabase{
+			Name:         "observability",
+			Path:         d.Logs.Path(),
+			Role:         storage.ControlPlaneRoleReadOnly,
+			Writable:     true,
+			ControlPlane: false,
+		})
+	}
+	if d.Jobs != nil {
+		databases = append(databases, storage.ConfiguredDatabase{
+			Name:         "jobs",
+			Path:         d.Jobs.Path(),
+			Role:         storage.ControlPlaneRoleCanonical,
+			Writable:     true,
+			ControlPlane: true,
+		})
+	}
+	if err := storage.ValidateConfiguredControlPlaneWriters(databases); err != nil {
+		return err
+	}
+	return nil
+}
+
 // jobsMigrationsDir is the EXPAND-PR-Queue-Split migration directory
 // scanned at boot time WHEN dbs.Jobs is open (SplitDBEnabled=true). The
 // directory mirrors the canonical migrations/sqlite/ but scoped to the
@@ -238,6 +290,13 @@ func jobsDBPathFromPrimary(primaryPath string) string {
 func RunAllMigrations(dbs *Databases, log *zap.Logger) error {
 	if err := dbs.Set.Migrate(log); err != nil {
 		return err
+	}
+	// The identity gate runs immediately after the primary migration pass,
+	// before any optional split-database migration can start. This makes a
+	// second writable control-plane database fail closed at boot rather than
+	// allowing it to begin serving writes.
+	if err := dbs.ValidateControlPlaneIdentity(context.Background()); err != nil {
+		return fmt.Errorf("validate control plane identity: %w", err)
 	}
 	// EXPAND / ADR-0003: when the jobs DB is open, run its peer-ledger
 	// migrations from migrations/sqlite_jobs/ . Each DB has its own
