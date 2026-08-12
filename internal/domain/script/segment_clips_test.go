@@ -12,31 +12,52 @@ func TestCanonicalizeSegmentClipIDs_ExplicitSegmentsWin(t *testing.T) {
 		IntroClipIDs: []string{"intro"},
 	}
 	segments := []ScriptSegment{
-		{ID: "intro", Topic: "Opening", ClipIDs: []string{"clip-a", "clip-b"}},
-		{ID: "scene-2", Topic: "Second", ClipIDs: []string{}},
+		{ID: "scene", Topic: "Scene", ClipIDs: []string{"clip-a", "clip-b"}},
+		{ID: "narration", Topic: "Narration", ClipIDs: []string{}},
 	}
 
 	got := CanonicalizeSegmentClipIDs(source, segments)
-	if len(got) != 2 || len(got[0].ClipIDs) != 3 || got[0].ClipIDs[0] != "intro" || got[0].ClipIDs[1] != "clip-a" || got[0].ClipIDs[2] != "clip-b" {
-		t.Fatalf("explicit segment ownership was not preserved: %+v", got)
-	}
-	if len(got[1].ClipIDs) != 0 {
-		t.Fatalf("legacy root clip_ids leaked into an explicit empty segment: %+v", got[1].ClipIDs)
-	}
+	want := [][]string{{"intro", "clip-a", "clip-b"}, {}}
+	assertSegmentClipIDs(t, got, want)
 }
 
 func TestCanonicalizeSegmentClipIDs_ExplicitEmptySegmentsWin(t *testing.T) {
 	source := SourceSpec{Type: SourceClips, ClipIDs: []string{"legacy-a", "legacy-b"}}
-	segments := []ScriptSegment{{ID: "empty", Topic: "Narration", ClipIDs: []string{}}, {ID: "also-empty", Topic: "More", ClipIDs: []string{}}}
+	segments := []ScriptSegment{
+		{ID: "empty", Topic: "Narration", ClipIDs: []string{}},
+		{ID: "also-empty", Topic: "More", ClipIDs: []string{}},
+	}
+
 	got := CanonicalizeSegmentClipIDs(source, segments)
 	if !HasExplicitSegmentClipIDs(segments) {
 		t.Fatal("non-nil empty clip_ids must select advanced ownership")
 	}
-	for i, segment := range got {
-		if len(segment.ClipIDs) != 0 {
-			t.Fatalf("legacy root clip_ids leaked into explicit empty segment[%d]: %v", i, segment.ClipIDs)
-		}
+	assertSegmentClipIDs(t, got, [][]string{{}, {}})
+}
+
+func TestCanonicalizeSegmentClipIDs_ExplicitNilDoesNotReactivateLegacyDistribution(t *testing.T) {
+	source := SourceSpec{Type: SourceClips, ClipIDs: []string{"legacy-a", "legacy-b"}}
+	segments := []ScriptSegment{
+		{ID: "explicit", Topic: "Explicit", ClipIDs: []string{"declared"}},
+		{ID: "narration", Topic: "Narration", ClipIDs: nil},
 	}
+
+	got := CanonicalizeSegmentClipIDs(source, segments)
+	assertSegmentClipIDs(t, got, [][]string{{"declared"}, {}})
+	if got[1].ClipIDs != nil {
+		t.Fatalf("nil segment reactivated legacy distribution: %v", got[1].ClipIDs)
+	}
+}
+
+func TestCanonicalizeSegmentClipIDs_IntroTargetsMarkedIntroSegment(t *testing.T) {
+	source := SourceSpec{Type: SourceClips, IntroClipIDs: []string{"intro-clip"}, ClipIDs: []string{"ignored-root"}}
+	segments := []ScriptSegment{
+		{ID: "scene-1", Kind: "scene", Topic: "Main", ClipIDs: []string{"scene-clip"}},
+		{ID: "opening", Kind: "intro", Topic: "Opening", ClipIDs: []string{"opening-clip"}},
+	}
+
+	got := CanonicalizeSegmentClipIDs(source, segments)
+	assertSegmentClipIDs(t, got, [][]string{{"scene-clip"}, {"intro-clip", "opening-clip"}})
 }
 
 func TestCanonicalizeSegmentClipIDs_LegacyRootCompatibility(t *testing.T) {
@@ -44,21 +65,17 @@ func TestCanonicalizeSegmentClipIDs_LegacyRootCompatibility(t *testing.T) {
 	segments := []ScriptSegment{{ID: "one", Topic: "One"}, {ID: "two", Topic: "Two"}}
 
 	got := CanonicalizeSegmentClipIDs(source, segments)
-	if got[0].ClipIDs[0] != "intro" || got[0].ClipIDs[1] != "a" || got[1].ClipIDs[0] != "b" || got[1].ClipIDs[1] != "c" {
-		t.Fatalf("legacy IDs were not assigned in order: %+v", got)
-	}
+	assertSegmentClipIDs(t, got, [][]string{{"intro", "a"}, {"b", "c"}})
 	if source.ClipIDs[0] != "a" || len(source.IntroClipIDs) != 1 {
 		t.Fatal("canonicalization mutated the caller source")
 	}
 }
 
 func TestBuildSegmentClipEvidencePreservesZeroToManyOwnership(t *testing.T) {
-	evidence := &ClipEvidence{
-		ClipDetails: map[string]ClipDetail{
-			"a": {Name: "A", Transcript: "alpha"},
-			"b": {Name: "B", Transcript: "bravo"},
-		},
-	}
+	evidence := &ClipEvidence{ClipDetails: map[string]ClipDetail{
+		"a": {Name: "A", Transcript: "alpha"},
+		"b": {Name: "B", Transcript: "bravo"},
+	}}
 	segments := []ScriptSegment{
 		{ID: "empty", Topic: "Narration"},
 		{ID: "multi", Kind: "scene", Topic: "Scene", ClipIDs: []string{"a", "b"}},
@@ -74,20 +91,14 @@ func TestBuildSegmentClipEvidencePreservesZeroToManyOwnership(t *testing.T) {
 }
 
 func TestNewClipEvidence_DeepCopiesSegmentClipTags(t *testing.T) {
-	original := ClipEvidence{
-		SegmentEvidence: []SegmentClipEvidence{{
-			SegmentID: "scene-1",
-			Clips: map[string]ClipDetail{
-				"clip-a": {Tags: []string{"original"}},
-			},
-		}},
-	}
-
+	original := ClipEvidence{SegmentEvidence: []SegmentClipEvidence{{
+		SegmentID: "scene-1",
+		Clips:     map[string]ClipDetail{"clip-a": {Tags: []string{"original"}}},
+	}}}
 	clone := NewClipEvidence(original)
 	clonedDetail := clone.SegmentEvidence[0].Clips["clip-a"]
 	clonedDetail.Tags[0] = "changed"
 	clone.SegmentEvidence[0].Clips["clip-a"] = clonedDetail
-
 	if original.SegmentEvidence[0].Clips["clip-a"].Tags[0] != "original" {
 		t.Fatal("segment clip tags were not defensively copied")
 	}
@@ -97,20 +108,16 @@ func TestGenerationEnvelopeValidate_AllowsAdvancedOwnershipMixedWithRoot(t *test
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
 		Items: []GenerationItemV2{{
-			ID:     "item-advanced",
-			Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-a"}},
-			ScriptParams: ScriptSpec{Segments: []ScriptSegment{{
-				Topic:   "Scene",
-				ClipIDs: []string{"clip-a"},
-			}}},
+			ID: "advanced", Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"legacy-root"}},
+			ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "Scene", ClipIDs: []string{"clip-a"}}}},
 		}},
 	}
 	if err := envelope.Validate(); err != nil {
-		t.Fatalf("advanced segment ownership should override legacy root IDs: %v", err)
+		t.Fatalf("explicit segments must override legacy root clip_ids: %v", err)
 	}
 	got := CollectRequestedClipIDs(envelope.Items[0].Source, envelope.Items[0].ScriptParams.Segments)
 	if len(got) != 1 || got[0] != "clip-a" {
-		t.Fatalf("legacy root ID was resolved despite advanced ownership: %v", got)
+		t.Fatalf("legacy root clip was resolved in authoritative mode: %v", got)
 	}
 }
 
@@ -118,12 +125,8 @@ func TestGenerationEnvelopeValidate_AllowsSegmentOnlyClipSource(t *testing.T) {
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
 		Items: []GenerationItemV2{{
-			ID:     "item-1",
-			Source: SourceSpec{Type: SourceClips},
-			ScriptParams: ScriptSpec{Segments: []ScriptSegment{
-				{ID: "intro", Topic: "Opening", ClipIDs: []string{"clip-a", "clip-b"}},
-				{ID: "scene", Topic: "Scene", ClipIDs: nil},
-			}},
+			ID: "segment-only", Source: SourceSpec{Type: SourceClips},
+			ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "Scene", ClipIDs: []string{"clip-a"}}}},
 		}},
 	}
 	if err := envelope.Validate(); err != nil {
@@ -131,24 +134,18 @@ func TestGenerationEnvelopeValidate_AllowsSegmentOnlyClipSource(t *testing.T) {
 	}
 }
 
-// TestGenerationEnvelopePayloadContract_PreservesEditorialSegments pins the
-// wire contract that belongs to the caller: segment order, kind, source_text,
-// and zero/one/many clip cardinality must survive JSON decoding unchanged.
 func TestGenerationEnvelopePayloadContract_PreservesEditorialSegments(t *testing.T) {
 	original := GenerationEnvelopeV2{
-		Version: 2,
-		Preset:  PresetCustom,
+		Version: 2, Preset: PresetCustom,
 		Items: []GenerationItemV2{{
-			ID:     "payload-contract",
-			Source: SourceSpec{Type: SourceClips},
+			ID: "payload-contract", Source: SourceSpec{Type: SourceClips},
 			ScriptParams: ScriptSpec{Segments: []ScriptSegment{
-				{ID: "intro", Kind: "intro", Topic: "Opening", SourceText: "INTRO_SOURCE_SENTINEL"},
-				{ID: "single", Kind: "scene", Topic: "One clip", SourceText: "ONE_SOURCE_SENTINEL", ClipIDs: []string{"clip-one"}},
-				{ID: "many", Kind: "scene", Topic: "Many clips", SourceText: "MANY_SOURCE_SENTINEL", ClipIDs: []string{"clip-a", "clip-b", "clip-c"}},
+				{ID: "intro", Kind: "intro", Topic: "Opening", SourceText: "INTRO"},
+				{ID: "single", Topic: "One", SourceText: "ONE", ClipIDs: []string{"clip-one"}},
+				{ID: "many", Topic: "Many", SourceText: "MANY", ClipIDs: []string{"clip-a", "clip-b", "clip-c"}},
 			}},
 		}},
 	}
-
 	if err := original.Validate(); err != nil {
 		t.Fatalf("valid caller payload rejected: %v", err)
 	}
@@ -160,125 +157,88 @@ func TestGenerationEnvelopePayloadContract_PreservesEditorialSegments(t *testing
 	if err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
-
 	segments := decoded.Items[0].ScriptParams.Segments
-	if len(segments) != 3 {
-		t.Fatalf("segment count = %d, want 3", len(segments))
-	}
-	wantIDs := []string{"intro", "single", "many"}
-	wantTexts := []string{"INTRO_SOURCE_SENTINEL", "ONE_SOURCE_SENTINEL", "MANY_SOURCE_SENTINEL"}
-	wantClipCounts := []int{0, 1, 3}
-	for i, segment := range segments {
-		if segment.ID != wantIDs[i] {
-			t.Errorf("segment[%d].id = %q, want %q", i, segment.ID, wantIDs[i])
-		}
-		if segment.SourceText != wantTexts[i] {
-			t.Errorf("segment[%d].source_text = %q, want %q", i, segment.SourceText, wantTexts[i])
-		}
-		if len(segment.ClipIDs) != wantClipCounts[i] {
-			t.Errorf("segment[%d] clip count = %d, want %d", i, len(segment.ClipIDs), wantClipCounts[i])
-		}
-	}
-	if segments[0].Kind != "intro" {
-		t.Fatalf("intro kind was not preserved: %q", segments[0].Kind)
-	}
-	if segments[2].ClipIDs[0] != "clip-a" || segments[2].ClipIDs[1] != "clip-b" || segments[2].ClipIDs[2] != "clip-c" {
-		t.Fatalf("multi-clip order was not preserved: %v", segments[2].ClipIDs)
+	if len(segments) != 3 || segments[0].SourceText != "INTRO" || segments[1].SourceText != "ONE" || len(segments[2].ClipIDs) != 3 {
+		t.Fatalf("editorial segment contract changed across JSON: %+v", segments)
 	}
 }
 
-// TestGenerationEnvelopePayloadContract_ResolvesOnlyDeclaredClips pins the
-// no-automatic-search rule at the source boundary: the resolver input is the
-// ordered union of intro and segment-owned IDs, with no inferred replacements.
 func TestGenerationEnvelopePayloadContract_ResolvesOnlyDeclaredClips(t *testing.T) {
-	source := SourceSpec{
-		Type:         SourceClips,
-		IntroClipIDs: []string{"intro-a"},
-	}
-	segments := []ScriptSegment{
-		{ID: "intro", Topic: "Opening", ClipIDs: []string{"clip-a", "clip-b"}},
-		{ID: "scene", Topic: "Scene", ClipIDs: []string{"clip-c"}},
-	}
-
+	source := SourceSpec{Type: SourceClips, IntroClipIDs: []string{"intro-a"}}
+	segments := []ScriptSegment{{ClipIDs: []string{"clip-a", "clip-b"}}, {ClipIDs: []string{"clip-c"}}}
 	got := CollectRequestedClipIDs(source, segments)
 	want := []string{"intro-a", "clip-a", "clip-b", "clip-c"}
 	if len(got) != len(want) {
-		t.Fatalf("requested clip count = %d, want %d: %v", len(got), len(want), got)
+		t.Fatalf("requested IDs = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("requested clip[%d] = %q, want %q; got %v", i, got[i], want[i], got)
+			t.Errorf("requested[%d] = %q, want %q", i, got[i], want[i])
 		}
-	}
-}
-
-func TestGenerationEnvelopePayloadContract_AllowsAdvancedOwnershipMixedWithRoot(t *testing.T) {
-	envelope := GenerationEnvelopeV2{
-		Version: 2,
-		Items: []GenerationItemV2{{
-			ID:     "mixed-ownership",
-			Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"ignored-root-clip"}},
-			ScriptParams: ScriptSpec{Segments: []ScriptSegment{{
-				ID:      "scene-1",
-				Topic:   "Scene",
-				ClipIDs: []string{"segment-clip"},
-			}}},
-		}},
-	}
-	if err := envelope.Validate(); err != nil {
-		t.Fatalf("advanced segment ownership should override legacy root IDs: %v", err)
-	}
-	got := CollectRequestedClipIDs(envelope.Items[0].Source, envelope.Items[0].ScriptParams.Segments)
-	if len(got) != 1 || got[0] != "segment-clip" {
-		t.Fatalf("legacy root ID was resolved despite advanced ownership: %v", got)
 	}
 }
 
 func TestGenerationEnvelopePayloadContract_RejectsDuplicateClipWithinOneSegment(t *testing.T) {
-	envelope := GenerationEnvelopeV2{
-		Version: 2,
-		Items: []GenerationItemV2{{
-			ID:     "duplicate-in-scene",
-			Source: SourceSpec{Type: SourceClips},
-			ScriptParams: ScriptSpec{Segments: []ScriptSegment{{
-				ID:      "scene-1",
-				Topic:   "Scene",
-				ClipIDs: []string{"clip-a", "clip-a"},
-			}}},
-		}},
-	}
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "duplicate", Source: SourceSpec{Type: SourceClips},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "Scene", ClipIDs: []string{"clip-a", "clip-a"}}}},
+	}}}
 	if err := envelope.Validate(); err == nil {
 		t.Fatal("duplicate clip within one segment must be rejected")
 	}
 }
 
 func TestGenerationEnvelopePayloadContract_AllowsExplicitClipReuseAcrossSegments(t *testing.T) {
-	envelope := GenerationEnvelopeV2{
-		Version: 2,
-		Items: []GenerationItemV2{{
-			ID:     "reuse-across-scenes",
-			Source: SourceSpec{Type: SourceClips},
-			ScriptParams: ScriptSpec{Segments: []ScriptSegment{
-				{ID: "scene-1", Topic: "First use", ClipIDs: []string{"clip-a"}},
-				{ID: "scene-2", Topic: "Second use", ClipIDs: []string{"clip-a"}},
-			}},
-		}},
-	}
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "reuse", Source: SourceSpec{Type: SourceClips},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "First", ClipIDs: []string{"clip-a"}}, {Topic: "Second", ClipIDs: []string{"clip-a"}}}},
+	}}}
 	if err := envelope.Validate(); err != nil {
-		t.Fatalf("the same explicitly declared clip may be reused across scenes: %v", err)
+		t.Fatalf("explicit cross-segment reuse should be allowed: %v", err)
 	}
 }
 
-func TestGenerationEnvelopePayloadContract_SourceTextStaysWithItsSegment(t *testing.T) {
-	segments := []ScriptSegment{
-		{ID: "scene-a", Topic: "A", SourceText: "SOURCE_A", ClipIDs: []string{"clip-a"}},
-		{ID: "scene-b", Topic: "B", SourceText: "SOURCE_B", ClipIDs: nil},
+func TestGenerationEnvelopeValidate_RejectsAllEmptyExplicitSegmentsWithoutIntro(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "all-empty", Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"ignored-root"}},
+		ScriptParams: ScriptSpec{Segments: []ScriptSegment{{Topic: "One", ClipIDs: []string{}}, {Topic: "Two", ClipIDs: []string{}}}},
+	}}}
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("all-empty explicit segments must not fall back to root clips")
 	}
-	got := CanonicalizeSegmentClipIDs(SourceSpec{Type: SourceClips}, segments)
-	if got[0].SourceText != "SOURCE_A" || got[1].SourceText != "SOURCE_B" {
-		t.Fatalf("source_text crossed segment boundaries: %+v", got)
+}
+
+func TestGenerationEnvelopeValidate_RejectsDuplicateLegacyIntroClipIDs(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "duplicate-intro", Source: SourceSpec{Type: SourceClips, IntroClipIDs: []string{"intro", "intro"}},
+	}}}
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("duplicate intro_clip_ids must be rejected")
 	}
-	if len(got[0].ClipIDs) != 1 || got[0].ClipIDs[0] != "clip-a" || len(got[1].ClipIDs) != 0 {
-		t.Fatalf("segment clip ownership changed while preserving source_text: %+v", got)
+}
+
+func TestGenerationEnvelopeValidate_RejectsDuplicateAcrossLegacyFields(t *testing.T) {
+	envelope := GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{{
+		ID: "duplicate-legacy", Source: SourceSpec{Type: SourceClips, IntroClipIDs: []string{"shared"}, ClipIDs: []string{"shared"}},
+	}}}
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("duplicate IDs across legacy fields must be rejected")
+	}
+}
+
+func assertSegmentClipIDs(t *testing.T, got []ScriptSegment, want [][]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("segment count = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if len(got[i].ClipIDs) != len(want[i]) {
+			t.Fatalf("segment[%d] clips = %v, want %v", i, got[i].ClipIDs, want[i])
+		}
+		for j := range want[i] {
+			if got[i].ClipIDs[j] != want[i][j] {
+				t.Fatalf("segment[%d].clip_ids[%d] = %q, want %q", i, j, got[i].ClipIDs[j], want[i][j])
+			}
+		}
 	}
 }

@@ -196,7 +196,14 @@ func CanonicalizeSegmentClipIDs(source SourceSpec, segments []ScriptSegment) []S
 
 	if HasExplicitSegmentClipIDs(out) {
 		if len(source.IntroClipIDs) > 0 {
-			out[0].ClipIDs = prependUnique(source.IntroClipIDs, out[0].ClipIDs)
+			introIndex := 0
+			for i, segment := range out {
+				if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") || strings.EqualFold(strings.TrimSpace(segment.ID), "intro") {
+					introIndex = i
+					break
+				}
+			}
+			out[introIndex].ClipIDs = prependUnique(source.IntroClipIDs, out[introIndex].ClipIDs)
 		}
 		return out
 	}
