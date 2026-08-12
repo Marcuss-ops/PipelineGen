@@ -77,6 +77,7 @@ var commandRegistry = map[string]commandHandler{
 	"cleanup-artlist-empty-folders":  runCleanupArtlistEmptyFolders,
 	"cleanup-orphans":                runCleanupOrphans,
 	"cleanup-stock-orphans":          runCleanupStockOrphans,
+	"control-plane":                  runControlPlane,
 	"db":                             runDB,
 	"delete-specific-folders":        runDeleteSpecificFolders,
 	"delete-drive-images":            runDeleteDriveImages,
