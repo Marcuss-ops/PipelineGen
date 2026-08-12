@@ -35,12 +35,11 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	}
 
 	requestedClips := len(plan.ClipEvidence.AcceptedClipIDs)
-	if plan.NumClips > 0 && plan.NumClips < requestedClips {
-		requestedClips = plan.NumClips
-	}
 
 	var extra []string
-	if plan.NumClips > 0 {
+	if len(plan.Segments) > 0 {
+		extra = append(extra, fmt.Sprintf("Use exactly %d declared editorial segments; clips are supporting evidence grouped under those segments.", len(plan.Segments)))
+	} else if plan.NumClips > 0 {
 		extra = append(extra, fmt.Sprintf("Use exactly %d clip-driven scenes.", requestedClips))
 	}
 	if plan.SegmentWords > 0 {
@@ -63,9 +62,9 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	lines := []string{
 		"CLIP-GROUNDED WRITING RULES:",
 		"1. Treat the supplied clip evidence as the primary source.",
-		"2. Every scene must describe what is happening in the clips: action, movement, setting, objects, reactions, and immediate consequences.",
-		"3. Stay anchored to the clip sequence and its narrative evidence blocks. Do not drift into generic biography unless it directly explains the clip.",
-		"4. If a clip contains multiple beats, narrate those beats in order instead of abstracting them away.",
+		"2. Every declared scene or segment must describe what is happening in the clips or supporting evidence: action, movement, setting, objects, reactions, and immediate consequences when available.",
+		"3. Stay anchored to the clip sequence, declared segment order, and each segment's evidence blocks. Do not drift into generic biography unless it directly explains the requested topic.",
+		"4. If assigned clip evidence contains multiple beats, narrate those beats in order instead of abstracting them away; a segment without clips must follow its topic and source_text.",
 		"5. Do not invent events, dialogue, or transitions that are not supported by the clip evidence.",
 		"6. Treat every transcript as private reference evidence, not as copy-ready script text.",
 		"7. Rewrite and paraphrase what each clip is about in natural narrative language; do not reproduce transcript sentences verbatim.",
@@ -73,11 +72,30 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"9. Keep the spoken text natural and clean: do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists, or other technical markers in the narrated text.",
 		"10. Put technical details only in metadata or bindings when the output contract supports them; never print them inside the voiceover text. Sources belong in metadata.sources, and narrative text and sources must remain separate fields when structured output is enabled.",
 		"11. The text field is speakable and must contain only words intended for the viewer: never use [Fonte: ...], [Source: ...], markdown links, URLs, or bibliography notes.",
-		"12. Write as an external narrator describing what is happening across the clips; never speak as the person shown or heard in a clip.",
+		"12. Write as an external narrator describing what is happening across the supplied segments and clips; never speak as the person shown or heard in a clip.",
 		"13. Use third person narration. Do not use first-person roleplay such as I, me, my, or we, and do not rewrite the speaker's words as if you were that speaker.",
 		"14. Use a youthful, conversational, video-friendly voice: concise, energetic, smooth, and lightly funny when the source supports it.",
 		"15. Prefer concrete details, active verbs, and natural transitions. Avoid academic or formulaic analysis such as 'the narrative shifts', 'this segment illustrates', or 'the speaker provides insight'.",
-		"16. For compilation videos, give each clip its own clear narrative beat and connect the beats with short, natural transitions without inventing dialogue or events.",
+		"16. For clip compilations, preserve each clip's concrete beats and connect them with short, natural transitions without inventing dialogue or events; explicit segments may combine multiple clips into one narrative beat.",
+	}
+	if len(plan.Segments) > 0 {
+		lines = append(lines,
+			fmt.Sprintf("17. There are exactly %d declared editorial segments; a segment may contain zero, one, or many clips.", len(plan.Segments)),
+			fmt.Sprintf("18. Output exactly %d non-empty prose paragraphs, one paragraph per declared segment, separated by one blank line.", len(plan.Segments)),
+			"19. Paragraph i must correspond exclusively to declared segment i and may use only that segment's assigned clip evidence. Never merge segments, skip a segment, or reorder paragraphs.",
+			"20. Every paragraph must preserve concrete details from its segment evidence: names, visible actions, subjects, settings, reactions, and supported transcript facts. Do not replace concrete information with generic commentary.",
+			"21. Multiple clips assigned to one segment are supporting evidence for one paragraph; they must not become separate scenes or paragraphs.",
+			"22. Do not output paragraph numbers, headings, labels, or evidence markers; output only the paragraph text.",
+		)
+	} else {
+		lines = append(lines,
+			fmt.Sprintf("17. There are exactly %d ordered narrative evidence blocks, one for each supplied clip.", requestedClips),
+			fmt.Sprintf("18. Output exactly %d non-empty prose paragraphs, one paragraph per clip, separated by one blank line.", requestedClips),
+			"19. Paragraph i must correspond exclusively to NARRATIVE EVIDENCE i and the i-th clip in the supplied order. Never merge two clips into one paragraph, skip a clip, or reorder the paragraphs.",
+			"20. Every paragraph must preserve concrete details from its own evidence: names, visible actions, subjects, settings, reactions, and supported transcript facts. Do not replace concrete information with generic commentary.",
+			"21. Do not output paragraph numbers, headings, labels, or evidence markers; output only the paragraph text.",
+			"22. For clip-driven requests, this one-paragraph-per-clip contract is authoritative even when other segment guidance is present.",
+		)
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
@@ -116,11 +134,41 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 		}
 		fmt.Fprintf(&b, "SEGMENT %d\n", i+1)
 		fmt.Fprintf(&b, "Topic: %s\n", s.Topic)
+		if kind := strings.TrimSpace(s.Kind); kind != "" {
+			fmt.Fprintf(&b, "Kind: %s\n", kind)
+		}
 		b.WriteString("Scope: write exclusively about this topic; do not mention another declared segment or introduce the next segment.\n")
 		fmt.Fprintf(&b, "Target words: %d", target)
 		if strings.TrimSpace(s.SourceText) != "" {
 			b.WriteString("\nSource text:\n")
 			b.WriteString(s.SourceText)
+		}
+		if len(s.ClipIDs) > 0 {
+			b.WriteString("\nAssigned clip_ids (use only these clips for this segment): ")
+			b.WriteString(strings.Join(s.ClipIDs, ", "))
+		}
+		if plan.ClipEvidence != nil && i < len(plan.ClipEvidence.SegmentEvidence) {
+			segmentEvidence := plan.ClipEvidence.SegmentEvidence[i]
+			if len(segmentEvidence.Clips) > 0 {
+				b.WriteString("\nCLIP EVIDENCE:\n")
+				for _, clipID := range segmentEvidence.ClipIDs {
+					detail, ok := segmentEvidence.Clips[clipID]
+					if !ok {
+						continue
+					}
+					fmt.Fprintf(&b, "- %s", clipID)
+					if detail.Name != "" {
+						fmt.Fprintf(&b, " (%s)", detail.Name)
+					}
+					if detail.Description != "" {
+						fmt.Fprintf(&b, "\n  Description: %s", detail.Description)
+					}
+					if detail.Transcript != "" {
+						fmt.Fprintf(&b, "\n  Transcript: %s", detail.Transcript)
+					}
+					b.WriteByte('\n')
+				}
+			}
 		}
 	}
 	// Footer canonical — DoD-driven contract emitted once.

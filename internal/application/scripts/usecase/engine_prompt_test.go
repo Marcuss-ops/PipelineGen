@@ -214,6 +214,67 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 	}
 }
 
+func TestEnginePrompt_ClipGrounding_OneParagraphPerClipPreservesOrderAndConcreteDetails(t *testing.T) {
+	t.Parallel()
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		NumClips: 3,
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-1", "clip-2", "clip-3"},
+		},
+	}
+	prompt := buildClipGroundingInstructions(plan)
+
+	mustContain(t, prompt, []string{
+		"There are exactly 3 ordered narrative evidence blocks, one for each supplied clip.",
+		"Output exactly 3 non-empty prose paragraphs, one paragraph per clip, separated by one blank line.",
+		"Paragraph i must correspond exclusively to NARRATIVE EVIDENCE i and the i-th clip in the supplied order.",
+		"Never merge two clips into one paragraph, skip a clip, or reorder the paragraphs.",
+		"Every paragraph must preserve concrete details from its own evidence: names, visible actions, subjects, settings, reactions, and supported transcript facts.",
+		"Do not replace concrete information with generic commentary.",
+		"Do not output paragraph numbers, headings, labels, or evidence markers",
+		"For clip-driven requests, this one-paragraph-per-clip contract is authoritative even when other segment guidance is present.",
+	})
+
+	paragraphRule := "Output exactly 3 non-empty prose paragraphs"
+	if strings.Count(prompt, paragraphRule) != 1 {
+		t.Fatalf("one-paragraph-per-clip rule must appear exactly once, got %d occurrences in %q", strings.Count(prompt, paragraphRule), prompt)
+	}
+	first := strings.Index(prompt, "NARRATIVE EVIDENCE i")
+	if first < 0 {
+		t.Fatalf("prompt must name the ordered NARRATIVE EVIDENCE mapping, got %q", prompt)
+	}
+	if strings.Index(prompt, "Never merge two clips") < first {
+		t.Fatalf("paragraph-order prohibition must follow the evidence mapping, got %q", prompt)
+	}
+}
+
+func TestEnginePrompt_ClipGroundingUsesDeclaredSegmentsWhenClipCountDiffers(t *testing.T) {
+	t.Parallel()
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		NumClips: 1,
+		Segments: []scriptpkg.ScriptSegment{{Topic: "single segment", ClipIDs: []string{"clip-1", "clip-2", "clip-3"}}},
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-1", "clip-2", "clip-3"},
+		},
+	}
+	prompt := buildClipGroundingInstructions(plan)
+
+	if !strings.Contains(prompt, "There are exactly 1 declared editorial segments") {
+		t.Fatalf("declared segment count must be authoritative, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Output exactly 1 non-empty prose paragraphs, one paragraph per declared segment") {
+		t.Fatalf("prompt must require one paragraph for the declared segment, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Multiple clips assigned to one segment are supporting evidence for one paragraph") {
+		t.Fatalf("prompt must keep multiple clips inside one segment paragraph, got %q", prompt)
+	}
+	if strings.Contains(prompt, "one-paragraph-per-clip") {
+		t.Fatalf("advanced segment prompt must not reintroduce the legacy clip paragraph contract, got %q", prompt)
+	}
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 // blockOnly extracts the per-segment block portion of the prompt,

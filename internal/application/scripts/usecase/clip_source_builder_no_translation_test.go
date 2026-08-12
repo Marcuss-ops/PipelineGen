@@ -18,6 +18,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,21 +133,18 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 	b2 := scripts.NewClipSourceBuilder(stubClips, nil, zap.NewNop())
 	b2.ConfigureTextTrackReader(readerEmpty)
 	ev2, _, _, err := b2.BuildClipContext(context.Background(), []string{"clip-A"}, &scripts.ClipGenerationOptions{Language: "it"})
-	if err != nil {
-		t.Fatalf("missing-track path returned error: %v", err)
+	if err == nil {
+		t.Fatal("missing-track path must fail closed; got nil error")
 	}
-	if ev2 == nil {
-		t.Fatal("missing-track path: evidence is nil")
+	if ev2 != nil {
+		t.Fatalf("missing-track path: evidence = %v, want nil", ev2)
 	}
-	if ev2.ClipCount != 1 {
-		t.Fatalf("missing-track path: ClipCount = %d, want 1", ev2.ClipCount)
+	var notReady *scripts.ErrTextTrackNotReady
+	if !errors.As(err, &notReady) {
+		t.Fatalf("missing-track path: error = %T %v, want *ErrTextTrackNotReady", err, err)
 	}
-	// The 3 fingerprint fields are empty (no READY track).
-	if ev2.LanguageCode != "" {
-		t.Fatalf("missing-track path: LanguageCode = %q, want empty", ev2.LanguageCode)
-	}
-	if ev2.TranscriptHash != "" {
-		t.Fatalf("missing-track path: TranscriptHash = %q, want empty", ev2.TranscriptHash)
+	if notReady.AssetID != "clip-A" || notReady.RequestedLanguage != "it" {
+		t.Fatalf("missing-track path: typed error = %+v, want asset clip-A/language it", notReady)
 	}
 
 	// Path 3: mixed resolution (1 resolved + 1 missing-from-DB).
@@ -174,6 +172,50 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 	// ── 3. Final assertion: spy was never invoked ─────────────────
 	if spy.calls != 0 {
 		t.Fatalf("translation spy was invoked %d times across 4 builder paths; the video pipeline MUST NOT invoke translation (Fase 4 §19 test #7)", spy.calls)
+	}
+}
+
+// TestClipSourceBuilder_MissingTranscriptFailsClosedForMixedBatch pins
+// the batch-level contract: a valid clip cannot make a batch with
+// another valid clip lacking a transcript succeed partially.
+func TestClipSourceBuilder_MissingTranscriptFailsClosedForMixedBatch(t *testing.T) {
+	const (
+		validID   = "clip-A"
+		missingID = "clip-B"
+	)
+
+	reader := &stubTextTrackReader{
+		tracks: map[string]*asset.TextTrack{
+			validID + ":en": makeTrack(validID, "en", "valid transcript", asset.TextTrackReady),
+		},
+	}
+	stubClips := &stubClipsResolver{
+		byID: map[string]*asset.Asset{
+			validID:   makeTestAsset(validID, "Clip A", "https://drive/clip-A"),
+			missingID: makeTestAsset(missingID, "Clip B", "https://drive/clip-B"),
+		},
+	}
+
+	builder := scripts.NewClipSourceBuilder(stubClips, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(reader)
+
+	ev, _, _, err := builder.BuildClipContext(
+		context.Background(),
+		[]string{validID, missingID},
+		&scripts.ClipGenerationOptions{Language: "en"},
+	)
+	if err == nil {
+		t.Fatal("mixed batch with missing transcript must fail closed; got nil error")
+	}
+	if ev != nil {
+		t.Fatalf("mixed batch returned partial evidence: %v", ev)
+	}
+	var notReady *scripts.ErrTextTrackNotReady
+	if !errors.As(err, &notReady) {
+		t.Fatalf("mixed batch error = %T %v, want *ErrTextTrackNotReady", err, err)
+	}
+	if notReady.AssetID != missingID {
+		t.Fatalf("mixed batch typed error AssetID = %q, want %q", notReady.AssetID, missingID)
 	}
 }
 

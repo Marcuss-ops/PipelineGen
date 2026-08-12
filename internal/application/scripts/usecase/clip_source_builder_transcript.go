@@ -47,10 +47,9 @@ import (
 // read is RETIRED (Fase 4 hard cutover); the parameter is
 // retained so BuildClipContext's call site does not drift.
 //
-// godlike/07 minimum-blast-radius: the typed error is returned
-// to the caller (BuildClipContext logs it and continues with
-// an empty transcript — strict-error propagation lands in a
-// follow-up PR).
+// godlike/07 fail-closed: the typed error is returned to the
+// caller and BuildClipContext propagates it without assembling
+// evidence from an empty transcript.
 //
 // Callers:
 //   - BuildClipContext (uses both the transcript string and the

@@ -19,16 +19,33 @@ import (
 // modelSourceText returns the canonical model-facing source projection.
 // Clip plans keep their narrative evidence separate from plan.SourceText;
 // the engine must send that evidence to the model instead of stale
-// request-level source text. Non-clip plans preserve their existing
-// SourceText value.
-func modelSourceText(plan *scriptpkg.ResolvedGenerationPlan) string {
+// request-level source text. A clip-native plan without evidence is
+// invalid and must fail closed rather than falling back to stale text.
+// Non-clip plans preserve their existing SourceText value.
+func modelSourceText(plan *scriptpkg.ResolvedGenerationPlan) (string, error) {
 	if plan == nil {
-		return ""
+		return "", nil
 	}
-	if plan.HasClips() && plan.ClipEvidence != nil {
-		return strings.TrimSpace(plan.ClipEvidence.ModelSourceText())
+	if isClipSourcePlan(plan) {
+		if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
+			return "", &scriptpkg.PlanInvalidError{
+				ItemID:  plan.ID,
+				Details: []string{"clip-native plan requires non-empty clip evidence"},
+			}
+		}
+		return strings.TrimSpace(plan.ClipEvidence.ModelSourceText()), nil
 	}
-	return plan.SourceText
+	return strings.TrimSpace(plan.SourceText), nil
+}
+
+func isClipSourcePlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil {
+		return false
+	}
+	return plan.ClipEvidence != nil ||
+		plan.SourceKind == string(scriptpkg.SourceClips) ||
+		plan.Mode == "clip_to_script" ||
+		plan.MediaMode == scriptpkg.MediaModeClipOnly
 }
 
 // Generate executes the full generation pipeline for a resolved plan.
@@ -63,7 +80,10 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	tone := plan.Tone
 	model := plan.Model
 	mode := plan.Mode
-	sourceText := modelSourceText(plan)
+	sourceText, sourceErr := modelSourceText(plan)
+	if sourceErr != nil {
+		return nil, sourceErr
+	}
 	// PR 2: engine reads RenderedPrompt (editorial instructions).
 	// The legacy plan.Prompt field was removed — it conflated
 	// fingerprint with model input. RenderedPrompt never contains

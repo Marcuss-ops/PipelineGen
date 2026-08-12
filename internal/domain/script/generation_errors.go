@@ -167,7 +167,21 @@ func (e *SourceResolutionError) Error() string {
 	return msg
 }
 
-func (e *SourceResolutionError) Unwrap() error { return ErrSourceResolutionFailed }
+// Unwrap preserves the concrete source-resolution cause so callers can
+// inspect typed failures such as *usecase.ErrTextTrackNotReady with
+// errors.As, while Is below keeps the canonical phase classification.
+func (e *SourceResolutionError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Inner
+}
+
+// Is preserves the canonical source-resolution classification after
+// Unwrap exposes the concrete inner cause.
+func (e *SourceResolutionError) Is(target error) bool {
+	return target == ErrSourceResolutionFailed
+}
 
 // GenerationError carries the structured details behind
 // ErrGenerationFailed.

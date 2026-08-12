@@ -35,6 +35,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 
@@ -307,6 +308,26 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
 }
 
+func TestEngineGenerate_ClipPlanWithoutEvidenceFailsClosed(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:         "clip-without-evidence",
+		Language:   "en",
+		Mode:       "clip_to_script",
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "stale request-level source text must never be used",
+	}
+
+	_, err := e.Generate(context.Background(), plan)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, scriptpkg.ErrPlanInvalid), "missing clip evidence must be classified as ErrPlanInvalid: %v", err)
+	assert.Contains(t, err.Error(), "clip-native plan requires non-empty clip evidence")
+	assert.Equal(t, int32(0), gen.calls.Load(), "Ollama must not be invoked without clip evidence")
+}
+
 func TestEngineGenerate_ClipEvidenceIsModelSourceText(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}
@@ -330,9 +351,11 @@ func TestEngineGenerate_ClipEvidenceIsModelSourceText(t *testing.T) {
 
 	captured := gen.capturedReq.Load()
 	require.NotNil(t, captured)
+	require.Equal(t, int32(1), gen.calls.Load(), "the fake Ollama must receive exactly one generation request")
+	require.NotEmpty(t, captured.SourceText, "the captured model SourceText must not be empty")
 	assert.Equal(t, plan.ClipEvidence.ModelSourceText(), captured.SourceText)
-	assert.Contains(t, captured.SourceText, sentinel)
-	assert.NotContains(t, captured.SourceText, staleSourceText)
+	assert.Contains(t, captured.SourceText, sentinel, "the unique clip transcript sentinel must reach Ollama")
+	assert.NotContains(t, captured.SourceText, staleSourceText, "stale request-level source text must not reach Ollama")
 }
 
 func TestEngineGenerate_PassesGroundingPolicyToRequest(t *testing.T) {

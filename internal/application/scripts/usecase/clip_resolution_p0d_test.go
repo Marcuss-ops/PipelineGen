@@ -232,12 +232,13 @@ func TestClipResolution_P0D_BuilderOrder(t *testing.T) {
 
 			resolver := seedP0DResolver(t)
 			builder := NewClipSourceBuilder(resolver, nil, nil)
+			configureFakeClipTranscripts(builder, resolver, "en")
 
 			// RequireDriveLink=false (text-only path) so all
 			// 8 clips make it into RenderableClipIDs regardless
 			// of seed; this tests ORDER preservation, not the
 			// DriveLink filter (covered in the P0.C suite).
-			opts := &ClipGenerationOptions{RequireDriveLink: false}
+			opts := &ClipGenerationOptions{Language: "en", RequireDriveLink: false}
 
 			ev, _, sourceText, err := builder.BuildClipContext(
 				context.Background(), tc.clipIDs, opts,
