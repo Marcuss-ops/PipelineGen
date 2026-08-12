@@ -107,11 +107,13 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	scenes := input.SpecScene.Scenes
-	if plan != nil && len(plan.Segments) > 0 {
+	explicitSegments := plan != nil && len(plan.Segments) > 0
+	if explicitSegments {
 		// Explicit segment payloads are authoritative even when no clip
 		// evidence is present. Keep narrative slots stable for clip-only,
 		// stock-only, and text-only matrix cases alike.
 		input.SpecScene.Scenes = normalizeScenesForExplicitSegments(scenes, plan.Segments)
+		applyExplicitSegmentClipBindings(input.SpecScene.Scenes, plan)
 		scenes = input.SpecScene.Scenes
 	}
 	// A text generation may legitimately have no accepted media clips.
@@ -139,7 +141,7 @@ func (p *ClipBindingsProcessor) Process(
 	// the binder would overwrite them with a minimal binding, losing
 	// ClipTitle, StartMs, EndMs and DurationMs. Preserve the planner's
 	// detailed bindings by skipping the binder for the synthesized path.
-	if !synthesized {
+	if !synthesized && !explicitSegments {
 		reqs := make([]scene.ClipBindingRequest, 0, len(scenes))
 		for _, s := range scenes {
 			reqs = append(reqs, scene.ClipBindingRequest{
@@ -222,10 +224,86 @@ func (p *ClipBindingsProcessor) Process(
 	enrichClipBindings(scenes, plan, driveLinks)
 
 	result := &PostProcessResult{Changed: true}
+	if explicitSegments {
+		// Explicit segment normalization and its multi-clip bindings are
+		// canonical output, not transient processor state. Return them so
+		// the registry writes the exact N-scene surface to downstream
+		// processors and persistence.
+		result.UpdatedSpecScene = input.SpecScene
+	}
 	if hasSynthesized {
 		result.SynthesizedScenes = input.SpecScene.Scenes
 	}
 	return result, nil
+}
+
+// applyExplicitSegmentClipBindings projects the caller-owned clip membership
+// onto the already-normalized scene slots. It deliberately does not use the
+// global accepted-clip order: one segment may own zero, one, or many clips,
+// and that per-segment order is the editorial contract.
+func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *scriptpkg.ResolvedGenerationPlan) {
+	if plan == nil || plan.ClipEvidence == nil {
+		for i := range scenes {
+			scenes[i].Bindings.Clip = nil
+			scenes[i].Bindings.Clips = nil
+		}
+		return
+	}
+	evidence := plan.ClipEvidence
+	accepted := make(map[string]struct{}, len(evidence.AcceptedClipIDs))
+	for _, clipID := range evidence.AcceptedClipIDs {
+		accepted[strings.TrimSpace(clipID)] = struct{}{}
+	}
+	for i := range scenes {
+		if i >= len(plan.Segments) {
+			break
+		}
+		segment := plan.Segments[i]
+		bindings := make([]scriptpkg.ClipBinding, 0, len(segment.ClipIDs))
+		for _, clipID := range segment.ClipIDs {
+			clipID = strings.TrimSpace(clipID)
+			if clipID == "" {
+				continue
+			}
+			if _, ok := accepted[clipID]; !ok {
+				// Missing or excluded IDs remain unbound even when they
+				// still appear in the caller's segment metadata.
+				continue
+			}
+			detail := evidence.ClipDetails[clipID]
+			binding := scriptpkg.ClipBinding{
+				ClipID:         clipID,
+				ClipTitle:      detail.Name,
+				DriveLink:      detail.DriveLink,
+				SubtitleLink:   detail.SubtitleLink,
+				SubtitleFileID: detail.SubtitleFileID,
+				StartMs:        detail.StartMs,
+				EndMs:          detail.EndMs,
+				DurationMs:     scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
+			}
+			if binding.ClipTitle == "" {
+				binding.ClipTitle = evidence.ClipNames[clipID]
+			}
+			if binding.DriveLink == "" {
+				binding.DriveLink = evidence.DriveLinks[clipID]
+			}
+			bindings = append(bindings, binding)
+		}
+		scenes[i].Bindings.Clips = bindings
+		scenes[i].Bindings.Clip = nil
+		if len(bindings) > 0 {
+			scenes[i].Bindings.Clip = &scenes[i].Bindings.Clips[0]
+		}
+		if kind := scriptpkg.SceneKind(strings.TrimSpace(segment.Kind)); kind.Valid() {
+			scenes[i].Kind = kind
+		}
+		if segment.ID == scriptpkg.IntroHookSegmentID {
+			scenes[i].Kind = scriptpkg.SceneIntro
+		}
+		if len(bindings) == 0 && strings.EqualFold(strings.TrimSpace(segment.Kind), "narration") {
+			scenes[i].Kind = scriptpkg.SceneNarration
+		}
+	}
 }
 
 func enrichClipBindings(scenes []scriptpkg.SpecScene, plan *scriptpkg.ResolvedGenerationPlan, driveLinks map[string]string) {

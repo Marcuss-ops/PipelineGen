@@ -145,7 +145,9 @@ func normalizeScenesForExplicitSegments(existing []scriptpkg.SpecScene, segments
 				scenes[i].Text = strings.TrimSpace(segment.Topic)
 			}
 		}
-		if !scenes[i].Kind.Valid() {
+		if kind := scriptpkg.SceneKind(strings.TrimSpace(segment.Kind)); kind.Valid() {
+			scenes[i].Kind = kind
+		} else if !scenes[i].Kind.Valid() {
 			scenes[i].Kind = scriptpkg.SceneClip
 		}
 	}
