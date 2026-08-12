@@ -245,6 +245,10 @@ type PublishRequest struct {
 	// falls back to ParentFolderID (legacy admin escape hatch)
 	// and then to the registry root.
 	DestinationFolderID string `json:"destination_folder_id,omitempty"`
+	// DestinationSubpath is an optional child path below an already
+	// resolved DestinationFolderID. It is used for deterministic sidecar
+	// folders such as "Ass Sub"; it never changes the destination root.
+	DestinationSubpath []string `json:"destination_subpath,omitempty"`
 
 	// ParentFolderID is the semantic parent folder used when resolving
 	// a destination hierarchy. It is not a direct upload target: callers

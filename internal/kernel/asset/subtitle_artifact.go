@@ -55,7 +55,7 @@ type SubtitleArtifactRepository interface {
 
 func RequiresSubtitles(source string) bool {
 	switch source {
-	case "youtube", "youtube-manual", "manual", "upload":
+	case "youtube", "youtube-manual", "manual", "upload", "clip_drive":
 		return true
 	default:
 		return false

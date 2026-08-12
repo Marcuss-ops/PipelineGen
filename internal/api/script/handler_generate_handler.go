@@ -224,9 +224,10 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 	// After submission, set the JobID on the run so GET /full can
 	// correlate the job with its generation run.
 	if h.scriptgenSvc != nil {
-		runReq := scriptgen.GenerateRequest{
-			IdempotencyKey: submitReq.IdempotencyKey,
-			ForceRefresh:   submitReq.ForceRefresh,
+		runReq, buildErr := scriptgen.BuildGenerateRequest(cmd.Envelope, submitReq.IdempotencyKey)
+		if buildErr != nil {
+			writeGenerateSubmitError(c, buildErr)
+			return
 		}
 		run, startErr := h.scriptgenSvc.Start(c.Request.Context(), runReq)
 		if startErr != nil {

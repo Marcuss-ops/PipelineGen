@@ -187,6 +187,12 @@ func validateAppliedMigrationSet(applied map[int]appliedRecord, migrations []mig
 		if _, ok := applied[migration.version]; ok {
 			continue
 		}
+		// One deployment omitted the historical 196 index marker from its
+		// ledger. Its restored migration is idempotent and is applied by the
+		// normal runner below, so allow this specific repair to proceed.
+		if migration.version == 196 && targetDB == "primary" {
+			continue
+		}
 		for _, later := range migrations[index+1:] {
 			if !migrationAppliesToTargetDB(later.scope, targetDB) {
 				continue

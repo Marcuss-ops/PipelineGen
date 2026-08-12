@@ -67,6 +67,7 @@ package app
 import (
 	"context"
 	"fmt"
+	appcap "github.com/Marcuss-ops/PipelineGen/internal/app/capabilities"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"strings"
 
@@ -277,7 +278,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 	genJobHandler.SetRunRepository(runRepo)
 	if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
-		durableRunner, runtimeErr := buildScriptGenerationRuntime(cfg, root, runRepo, log)
+		durableRunner, runtimeErr := appcap.BuildScriptGenerationRuntime(cfg, root, runRepo, log)
 		if runtimeErr != nil {
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}

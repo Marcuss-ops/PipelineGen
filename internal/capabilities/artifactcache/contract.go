@@ -17,6 +17,10 @@ var (
 	ErrInvalidKey = errors.New("artifact cache: invalid key")
 	ErrNotWired   = errors.New("artifact cache: not wired")
 	ErrLeaseLost  = errors.New("artifact cache: lease lost")
+	// ErrLeaseBusy is returned when an abandoned/in-flight builder has not
+	// released its lease within the caller's bounded wait window. Callers may
+	// fall back to recomputing the artifact without blocking a whole batch.
+	ErrLeaseBusy = errors.New("artifact cache: lease busy")
 )
 
 // Key identifies a deterministic computation. ParametersJSON must be the

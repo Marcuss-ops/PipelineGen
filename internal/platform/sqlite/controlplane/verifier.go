@@ -25,7 +25,7 @@ type Verifier struct {
 
 // MAX(version) is insufficient: a ledger containing 193 and 195 has a
 // plausible maximum while still missing a required schema transition.
-var requiredMigrations = []int{194, 197, 198, 199, 200, 202, 203}
+var requiredMigrations = []int{194, 197, 198, 199, 200, 202, 203, 206}
 
 func New(db *sql.DB, path string) (*Verifier, error) {
 	return NewWithTopology(db, path, nil)
@@ -90,7 +90,7 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 		add(fmt.Sprintf("migration:%03d", required), "PASS", "applied with matching filename and checksum")
 	}
 
-	required := []string{"control_plane_meta", "media_assets", "asset_text_tracks", "jobs", "job_steps", "registry_events", "registry_runs", "projection_registry", "backup_registry", "outbox_events", "content_objects", "media_asset_sources", "source_identity_registry", "canonical_mutations"}
+	required := []string{"control_plane_meta", "media_assets", "asset_text_tracks", "jobs", "job_steps", "registry_events", "registry_runs", "projection_registry", "backup_registry", "outbox_events", "content_objects", "media_asset_sources", "source_identity_registry", "canonical_mutations", "performance_runs", "performance_steps", "performance_artifacts", "benchmark_workloads"}
 	for _, table := range required {
 		var n int
 		err := v.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n)
@@ -135,6 +135,8 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 		{"broken_cas_links", `SELECT COUNT(*) FROM media_assets a LEFT JOIN content_objects c ON c.sha256=a.content_sha256 WHERE COALESCE(a.content_sha256,'') <> '' AND c.sha256 IS NULL`, &r.BrokenCASLinks},
 		{"registry_seq", `SELECT COALESCE(MAX(seq),0) FROM registry_events`, &r.RegistrySeq},
 		{"projection_seq", `SELECT COALESCE(MAX(source_registry_seq),0) FROM projection_registry WHERE status='ACTIVE'`, &r.ProjectionSeq},
+		{"performance_runs", `SELECT COUNT(*) FROM performance_runs`, &r.PerformanceRuns},
+		{"uncorrelated_performance_runs", `SELECT COUNT(*) FROM performance_runs WHERE job_id='' OR root_job_id=''`, &r.UncorrelatedPerformanceRuns},
 	}
 	for _, q := range queries {
 		if err := v.db.QueryRowContext(ctx, q.sql).Scan(q.dst); err != nil {
@@ -160,6 +162,11 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 	} else {
 		add("cas_links", "PASS", "0")
 	}
+	if r.UncorrelatedPerformanceRuns > 0 {
+		add("performance_lineage", "FAIL", fmt.Sprintf("%d performance runs lack job/root correlation", r.UncorrelatedPerformanceRuns))
+	} else {
+		add("performance_lineage", "PASS", "all performance runs are correlated")
+	}
 	switch {
 	case r.RegistrySeq == r.ProjectionSeq:
 		r.ProjectionState = "SYNCHRONIZED"
@@ -172,6 +179,110 @@ func (v *Verifier) Verify(ctx context.Context) (capcontrol.Report, error) {
 		add("projection_sync", "FAIL", fmt.Sprintf("projection ahead by=%d", r.ProjectionDrift))
 	}
 	return r, nil
+}
+
+// VerifyDeep extends the normal health check with an exact migration-ledger
+// comparison. MAX(version) is deliberately not used as the certification
+// criterion: every migration file must have one matching ledger row and every
+// ledger row must still have a source file.
+func (v *Verifier) VerifyDeep(ctx context.Context) (capcontrol.Report, error) {
+	r, err := v.Verify(ctx)
+	if err != nil {
+		return r, err
+	}
+	add := func(name, status, detail string) {
+		r.Checks = append(r.Checks, capcontrol.Check{Name: name, Status: status, Detail: detail})
+		if status != "PASS" {
+			r.Status = "FAILED"
+		}
+	}
+
+	entries, err := os.ReadDir(migrationsDirectory())
+	if err != nil {
+		add("migration_ledger_exact", "FAIL", err.Error())
+		return r, nil
+	}
+	files := make(map[int]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		version, ok := migrationVersion(entry.Name())
+		if !ok {
+			continue
+		}
+		files[version] = struct{}{}
+		content, readErr := os.ReadFile(filepath.Join(migrationsDirectory(), entry.Name()))
+		if readErr != nil {
+			add(fmt.Sprintf("migration:%03d", version), "FAIL", readErr.Error())
+			continue
+		}
+		var filename, checksum string
+		queryErr := v.db.QueryRowContext(ctx, `SELECT filename, checksum FROM schema_migrations WHERE version=?`, version).Scan(&filename, &checksum)
+		if queryErr == sql.ErrNoRows {
+			r.MigrationGaps = appendUniqueInt(r.MigrationGaps, version)
+			add(fmt.Sprintf("migration:%03d", version), "FAIL", "migration file is not recorded in schema_migrations")
+			continue
+		}
+		if queryErr != nil {
+			add(fmt.Sprintf("migration:%03d", version), "FAIL", queryErr.Error())
+			continue
+		}
+		expected := sha256Hex(content)
+		if filename != entry.Name() || checksum != expected {
+			r.MigrationChecksumMismatches = appendUniqueInt(r.MigrationChecksumMismatches, version)
+			add(fmt.Sprintf("migration:%03d", version), "FAIL", "filename or SHA-256 checksum mismatch")
+		}
+	}
+	rows, queryErr := v.db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	if queryErr != nil {
+		add("migration_ledger_exact", "FAIL", queryErr.Error())
+		return r, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version int
+		if scanErr := rows.Scan(&version); scanErr != nil {
+			add("migration_ledger_exact", "FAIL", scanErr.Error())
+			return r, nil
+		}
+		if _, ok := files[version]; !ok {
+			add(fmt.Sprintf("migration:%03d", version), "FAIL", "ledger row has no migration file")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		add("migration_ledger_exact", "FAIL", err.Error())
+		return r, nil
+	}
+	if len(r.MigrationGaps) == 0 && len(r.MigrationChecksumMismatches) == 0 {
+		add("migration_ledger_exact", "PASS", fmt.Sprintf("%d migration files certified", len(files)))
+	}
+	return r, nil
+}
+
+func migrationsDirectory() string {
+	_, sourceFile, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(sourceFile), "../../../../migrations/sqlite")
+}
+
+func migrationVersion(name string) (int, bool) {
+	if len(name) < 4 || name[3] != '_' {
+		return 0, false
+	}
+	var version int
+	if _, err := fmt.Sscanf(name[:3], "%03d", &version); err != nil {
+		return 0, false
+	}
+	return version, true
+}
+
+func appendUniqueInt(values []int, value int) []int {
+	for _, current := range values {
+		if current == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func currentMigration(version int) (string, []byte, error) {

@@ -41,7 +41,6 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
@@ -49,6 +48,7 @@ import (
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 

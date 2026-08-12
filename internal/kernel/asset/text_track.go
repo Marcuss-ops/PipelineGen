@@ -20,6 +20,10 @@ const (
 	TextTrackTitle         TextTrackKind = "title"
 	TextTrackKeywords      TextTrackKind = "keywords"
 	TextTrackVisualSummary TextTrackKind = "visual_summary"
+	// TextTrackSearchText is the lexical/semantic text recovered from a
+	// historical projection. It is kept as a first-class artifact so the
+	// projection can be rebuilt without treating Qdrant as canonical state.
+	TextTrackSearchText TextTrackKind = "search_text"
 )
 
 // TextTrackSource records the provenance of a text track — how the text
@@ -33,6 +37,7 @@ const (
 	TextSourceTranslation     TextTrackSource = "translation"
 	TextSourceManual          TextTrackSource = "manual"
 	TextSourceVisualAnalysis  TextTrackSource = "visual_analysis"
+	TextSourceQdrantRecovery  TextTrackSource = "qdrant-recovery"
 )
 
 // TextTrackStatus is the tri-state lifecycle of a text track.

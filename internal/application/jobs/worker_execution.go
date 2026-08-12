@@ -64,6 +64,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -131,6 +132,24 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		zap.String("lease_id", j.LeaseID),
 		zap.Int("revision", j.Revision),
 	)
+
+	ledger := NewJobRegistryRecorder(w.jobLedger, w.log)
+	attemptID := ""
+	if run != nil {
+		if report := run.Report(); report != nil {
+			attemptID = report.AttemptID
+		}
+	}
+	if attemptID == "" {
+		attemptID = fmt.Sprintf("%s:%d", j.ID, j.Revision)
+	}
+	stepID := ledger.Start(ctx, j, w.id, attemptID)
+	defer func() {
+		if rec := recover(); rec != nil {
+			ledger.Finish(context.Background(), j, stepID, w.id, attemptID, "FAILED", nil, fmt.Errorf("panic in worker execution: %v", rec), nil)
+			panic(rec)
+		}
+	}()
 
 	// Step 8 (July 2026): emit "leased" event so the operator can
 	// trace the full job lifecycle: queued → leased → ... → completed.
@@ -235,5 +254,34 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	finalizationCtx, finalCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer finalCancel()
 
-	w.finalizeJob(finalizationCtx, j, result, dispatchErr)
+	canonicalAssetIDs := w.finalizeJob(finalizationCtx, j, result, dispatchErr)
+
+	finalStatus := "SUCCEEDED"
+	var finalResult []byte
+	if dispatchErr != nil {
+		finalStatus = "FAILED"
+	}
+	if finalJob, getErr := w.repo.Get(finalizationCtx, j.ID); getErr == nil && finalJob != nil {
+		finalStatus = string(finalJob.Status)
+		finalResult = finalJob.Result
+	} else if getErr != nil {
+		// If finalization state cannot be read, fail closed in the
+		// execution ledger rather than claiming success based only on
+		// the dispatcher result.
+		finalStatus = "FAILED"
+	}
+	if len(finalResult) == 0 {
+		finalResult, _ = json.Marshal(result)
+	}
+	var report *kernobs.RunReport
+	if run != nil {
+		if dispatchErr != nil {
+			run.FinishWithError(dispatchErr)
+		} else {
+			run.Finish()
+		}
+		report = run.Report()
+	}
+	ledger.Finish(finalizationCtx, j, stepID, w.id, attemptID, finalStatus, finalResult, dispatchErr, report)
+	ledger.RecordCanonicalOutputs(finalizationCtx, j.ID, OutputRelationForJobType(j.Type), canonicalAssetIDs)
 }

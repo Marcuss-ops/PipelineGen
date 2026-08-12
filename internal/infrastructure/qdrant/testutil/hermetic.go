@@ -30,9 +30,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
 // WithHermeticCollection creates a unique Qdrant collection, calls fn

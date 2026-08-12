@@ -31,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 )
 
 func whisperBridgeVersion(scriptPath string) string {
@@ -170,7 +171,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 		// chat model is unrelated and must not invalidate or alias
 		// transcription artifacts.
 		version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
-		if cached, wrapErr := ytinfra.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+		if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
 			whisperAdapter = cached
 			log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
 		} else {
@@ -185,6 +186,12 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *wiring.Database
 	// Translator. The adapter bridges scriptgeneration.GenerateRequest
 	// to the existing engine ResolvedGenerationPlan.
 	sceneTextGen := wiring.NewSceneTextGenerator(engine, log)
+	if repos != nil && repos.ClipsRepo != nil {
+		sceneTextGen.SetClipAssetResolver(repos.ClipsRepo)
+		log.Info("wiring.SceneTextGenerator canonical clip asset resolver configured")
+	} else {
+		log.Warn("wiring.SceneTextGenerator clip asset resolver unavailable; canonical render plans will fail closed")
+	}
 	log.Info("wiring.SceneTextGenerator adapter configured (P1 verdetto)")
 
 	return &wiring.AIBundle{

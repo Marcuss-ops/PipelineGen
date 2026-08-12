@@ -76,7 +76,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		Name:      rootName,
 		Filename:  rootName,
 		Group:     target.Source,
-		MediaType: asset.MediaType(target.MediaType),
+		MediaType: asset.MediaType("folder"),
 		Source:    asset.Source(target.Source),
 		Category:  "folder",
 		Tags:      []string{},
@@ -169,12 +169,19 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 		}
 
 		now := time.Now().UTC()
+		childMediaType := target.MediaType
+		if child.MimeType == folderMimeType {
+			// A Drive folder is catalog metadata, never a media clip. Keeping
+			// it as media_type=clip makes enrichment attempt downloads of
+			// Google Workspace folders and pollutes the clip candidate set.
+			childMediaType = "folder"
+		}
 		clip := &asset.Asset{
 			ID:        child.ID,
 			Name:      childName,
 			Filename:  childName,
 			Group:     target.Source,
-			MediaType: asset.MediaType(target.MediaType),
+			MediaType: asset.MediaType(childMediaType),
 			Source:    asset.Source(target.Source),
 			Category:  category,
 			Tags:      []string{},
@@ -189,7 +196,15 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 		// remain non-indexable via IsFolder, but must still carry a valid
 		// lifecycle state for the SQLite state trigger.
 		clip.LifecycleState = asset.StateActive
-		clip.SetFolderID(child.ID)
+		// For a file, folder_id is the containing Drive folder. A file ID is
+		// not a valid Drive parent and must never be used as the destination
+		// for sidecar artifacts. Folder nodes keep their own ID so recursive
+		// traversal and reconciliation can address them directly.
+		if child.MimeType == folderMimeType {
+			clip.SetFolderID(child.ID)
+		} else {
+			clip.SetFolderID(folderID)
+		}
 		clip.SetParentFolderID(folderID)
 		clip.SetDepth(0)
 		clip.SetIsFolder(child.MimeType == folderMimeType)

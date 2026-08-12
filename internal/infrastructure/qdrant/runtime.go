@@ -34,7 +34,6 @@ import (
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	capmediaregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
@@ -42,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/verification"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
 // RuntimeConfig is the bundle NewRuntime consumes. Avoiding a direct

@@ -3,6 +3,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // DriveFileInfo holds summary info for a file in a Drive listing.
@@ -23,14 +24,16 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 		return nil, fmt.Errorf("drive service not configured")
 	}
 	query := fmt.Sprintf("'%s' in parents and trashed=false", parentID)
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	list, err := u.Service.Files.List().
 		Q(query).
 		Fields("nextPageToken, files(id, name, mimeType, size, md5Checksum, webViewLink, webContentLink, parents)").
 		PageSize(1000).
-		Context(ctx).
+		Context(requestCtx).
 		Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list Drive children for %s: %w", parentID, err)
 	}
 	// PR-DRIVE-LIST-NIL-GUARD (July 2026): guard against (nil, nil)
 	// edge case in google-api-go-client Files.List. Without this

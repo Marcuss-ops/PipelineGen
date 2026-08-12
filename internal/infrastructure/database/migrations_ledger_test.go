@@ -300,7 +300,7 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pre194Dir := copyMigrationSubset(t, targetDir, 193, map[int]bool{194: true, 197: true})
+	pre194Dir := copyMigrationSubset(t, targetDir, 193, map[int]bool{194: true, 195: true, 196: true, 197: true})
 	dbPath := filepath.Join(t.TempDir(), "production-copy.sqlite")
 	if err := RunMigrationsOnDB(dbPath, nil, pre194Dir, "primary"); err != nil {
 		t.Fatal(err)

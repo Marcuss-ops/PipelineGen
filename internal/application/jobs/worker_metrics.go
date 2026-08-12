@@ -82,7 +82,7 @@ func (r *JobRegistryRecorder) Start(ctx context.Context, j *kernjob.Job, workerI
 	}
 	stepID := executionStepID(j.ID, attemptID, j.Revision)
 	payload := rawJSON(j.Payload)
-	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt)}); err != nil {
+	if err := r.registry.RecordJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(string(j.Status), "RUNNING"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: payload, PayloadHash: payloadHash(payload), ResultJSON: rawJSON(j.Result), GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt)}); err != nil {
 		r.warn("record job start", j.ID, err)
 	}
 	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: "RUNNING", StartedAt: started.Format(time.RFC3339Nano), CreatedAt: started.Format(time.RFC3339Nano)}); err != nil {
@@ -124,9 +124,12 @@ func (r *JobRegistryRecorder) RecordOutputs(ctx context.Context, jobID string, r
 // RecordCanonicalOutputs persists the asset IDs returned by the
 // transactional completion/finalization path. These IDs are authoritative
 // and must not be inferred from a handler result or an artifact ID.
-func (r *JobRegistryRecorder) RecordCanonicalOutputs(ctx context.Context, jobID string, assetIDs []string) {
+func (r *JobRegistryRecorder) RecordCanonicalOutputs(ctx context.Context, jobID, relation string, assetIDs []string) {
 	if !r.enabled() || strings.TrimSpace(jobID) == "" {
 		return
+	}
+	if strings.TrimSpace(relation) == "" {
+		relation = "GENERATED"
 	}
 	ctx, cancel := r.projectionContext(ctx)
 	defer cancel()
@@ -135,14 +138,31 @@ func (r *JobRegistryRecorder) RecordCanonicalOutputs(ctx context.Context, jobID 
 		if strings.TrimSpace(assetID) == "" {
 			continue
 		}
-		r.relate(ctx, capregistry.AssetRelation{JobID: jobID, AssetID: assetID, Relation: "GENERATED", Ordinal: ordinal})
+		r.relate(ctx, capregistry.AssetRelation{JobID: jobID, AssetID: assetID, Relation: relation, Ordinal: ordinal})
 		ordinal++
 	}
+}
+
+// OutputRelationForJobType maps canonical output lineage to the job
+// capability that produced it. Render jobs are tracked separately from
+// generated source/media artifacts for reconciliation and statistics.
+func OutputRelationForJobType(jobType string) string {
+	if strings.Contains(strings.ToLower(jobType), "render") || jobType == TypeRenderVideo {
+		return "RENDERED"
+	}
+	return "GENERATED"
 }
 
 func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID, workerID, attemptID, status string, result []byte, errValue error, report *kernobs.RunReport) {
 	if !r.enabled() || j == nil {
 		return
+	}
+	// Terminal writes must survive handler timeout, lease cancellation, or
+	// worker shutdown. The Job Registry is telemetry/provenance, so it uses
+	// an independent bounded context rather than inheriting a canceled job
+	// context.
+	if ctx == nil || ctx.Err() != nil {
+		ctx = context.Background()
 	}
 	ctx, cancel := r.projectionContext(ctx)
 	defer cancel()
@@ -164,7 +184,7 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	}
 	resultJSON := rawJSON(result)
 	completed := finished.Format(time.RFC3339Nano)
-	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt), CompletedAt: completed, DurationMS: duration}); err != nil {
+	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: nonEmpty(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTimePtr(j.StartedAt), CompletedAt: completed, DurationMS: duration}); err != nil {
 		r.warn("record job terminal state", j.ID, err)
 	}
 	if stepID == "" {
@@ -361,10 +381,16 @@ func statusForStep(status string) string {
 	}
 }
 func terminalEvent(status string) string {
-	if strings.EqualFold(status, "SUCCEEDED") {
+	switch strings.ToUpper(status) {
+	case "SUCCEEDED", "COMPLETED", "SUCCESS":
 		return "JOB_COMPLETED"
+	case "RETRY_WAIT", "QUEUED", "RETRYING":
+		return "JOB_RETRY_SCHEDULED"
+	case "DEAD_LETTER", "DEAD_LETTERED", "DLQ":
+		return "JOB_DEAD_LETTERED"
+	default:
+		return "JOB_FAILED"
 	}
-	return "JOB_FAILED"
 }
 func nonEmpty(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {

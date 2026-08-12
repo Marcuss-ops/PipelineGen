@@ -98,6 +98,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 
 	return GenerateRequest{
 		IdempotencyKey: idempotencyKey,
+		ForceRefresh:   env.ForceRefresh,
 		Source:         source,
 		SourceLanguage: sourceLang,
 		Languages:      languages,

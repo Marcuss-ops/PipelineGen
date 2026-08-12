@@ -1,0 +1,3 @@
+-- database: primary
+-- Historical asset-link repair marker. Retained for reproducible migration
+-- discovery; the repaired schema is already present in deployed databases.

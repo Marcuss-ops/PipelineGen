@@ -17,7 +17,11 @@ import (
 )
 
 type SubtitleMaterializerInput struct {
-	AssetID         string
+	AssetID string
+	// DriveFilename is the source clip filename when known. Keeping the
+	// basename in the sidecar name makes the association obvious in Drive;
+	// AssetID remains the deterministic fallback for legacy callers.
+	DriveFilename   string
 	LanguageCode    string
 	TextTrackID     int64
 	ClipDurationMs  int64
@@ -171,12 +175,20 @@ func (m *SubtitleArtifactMaterializer) Materialize(ctx context.Context, in Subti
 	if strings.TrimSpace(in.DriveFolderID) == "" {
 		return markFailed(fmt.Errorf("ass_materializer: Drive folder is not configured for asset %s", in.AssetID))
 	}
+	filename := fmt.Sprintf("%s.%s.ass", in.AssetID, in.LanguageCode)
+	if strings.TrimSpace(in.DriveFilename) != "" {
+		base := strings.TrimSuffix(filepath.Base(strings.TrimSpace(in.DriveFilename)), filepath.Ext(strings.TrimSpace(in.DriveFilename)))
+		if base != "" {
+			filename = fmt.Sprintf("%s.%s.ass", base, in.LanguageCode)
+		}
+	}
 	result, err := m.publisher.Publish(ctx, delivery.PublishRequest{
 		Destination:         delivery.DestinationClipMetadata,
 		DestinationFolderID: in.DriveFolderID,
 		LocalPath:           localPath,
-		Filename:            fmt.Sprintf("%s.%s.ass", in.AssetID, in.LanguageCode),
+		Filename:            filename,
 		AssetID:             in.AssetID,
+		DestinationSubpath:  []string{"Ass Sub"},
 		ContentHash:         fileHash,
 		IdempotencyKey:      delivery.DeriveIdempotencyKey(delivery.DestinationClipMetadata, in.AssetID+":"+in.LanguageCode, fileHash, in.TextTrackID),
 		ConflictPolicy:      delivery.ConflictOverwrite,

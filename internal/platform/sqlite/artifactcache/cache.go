@@ -113,6 +113,17 @@ func (c *Cache) Claim(ctx context.Context, key capcache.Key, lease time.Duration
 	if lease <= 0 {
 		lease = 15 * time.Minute
 	}
+	// A crashed worker can leave a BUILDING lease valid for the full lease
+	// duration. Never make a batch wait 15 minutes for that stale owner: the
+	// caller can safely recompute after this bounded contention window.
+	waitWindow := 5 * time.Second
+	if expectedWorkMS > 0 {
+		candidate := time.Duration(expectedWorkMS) * time.Millisecond
+		if candidate > waitWindow && candidate < 30*time.Second {
+			waitWindow = candidate
+		}
+	}
+	waitDeadline := time.Now().Add(waitWindow)
 	for {
 		now := time.Now().UTC()
 		leaseUntil := now.Add(lease).Format(time.RFC3339Nano)
@@ -159,6 +170,9 @@ func (c *Cache) Claim(ctx context.Context, key capcache.Key, lease time.Duration
 		leaseActive := status == "BUILDING" && storedLeaseUntil != ""
 		if leaseActive {
 			if until, parseErr := time.Parse(time.RFC3339Nano, storedLeaseUntil); parseErr == nil && until.After(now) {
+				if time.Now().After(waitDeadline) {
+					return capcache.Claim{}, fmt.Errorf("%w: %s", capcache.ErrLeaseBusy, digest)
+				}
 				timer := time.NewTimer(100 * time.Millisecond)
 				select {
 				case <-ctx.Done():

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -111,9 +112,11 @@ func (u *Uploader) GetFileMeta(ctx context.Context, fileID string) (*FileMeta, e
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
 	}
-	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size, webViewLink, parents, trashed").Context(ctx).Do()
+	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size, webViewLink, parents, trashed").Context(requestCtx).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get Drive metadata for %s: %w", fileID, err)
 	}
 	return &FileMeta{
 		ID:          f.Id,

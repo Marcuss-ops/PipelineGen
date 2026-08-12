@@ -28,10 +28,18 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	// re-resolving here would let configuration or semantic path rules move
 	// an upload away from the folder selected by the application plan.
 	if folderID := strings.TrimSpace(req.DestinationFolderID); folderID != "" {
+		if len(req.DestinationSubpath) > 0 {
+			child, err := p.folders.EnsureFolder(ctx, folderID, req.DestinationSubpath...)
+			if err != nil {
+				return nil, fmt.Errorf("delivery: resolve destination subpath: %w", err)
+			}
+			folderID = child
+		}
 		return &ResolvedDriveDestination{
 			Destination:  req.Destination,
 			RootFolderID: folderID,
 			FolderID:     folderID,
+			PathSegments: append([]string(nil), req.DestinationSubpath...),
 		}, nil
 	}
 

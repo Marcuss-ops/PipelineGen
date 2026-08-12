@@ -179,6 +179,9 @@ func buildJobRunner(deps jobRunnerDeps) *appjobs.Runner {
 	if deps.root.Jobs.Broker != nil {
 		runner.WithBroker(deps.root.Jobs.Broker)
 	}
+	if deps.root.Jobs.JobLedger != nil {
+		runner.WithJobRegistry(deps.root.Jobs.JobLedger)
+	}
 	// Canonical observability: the collector remains a live metrics
 	// projection while the SQLite recorder owns durable run lifecycle.
 	var recorder kernobs.Recorder

@@ -106,8 +106,12 @@ func newVerifierFixture(t *testing.T, name string, registrySeq, projectionSeq in
 		`CREATE TABLE media_asset_sources(source_id TEXT PRIMARY KEY, content_sha256 TEXT)`,
 		`CREATE TABLE source_identity_registry(source_type TEXT, source_key TEXT, content_sha256 TEXT, PRIMARY KEY(source_type, source_key))`,
 		`CREATE TABLE canonical_mutations(command_id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE, request_hash TEXT, status TEXT, result_json TEXT, created_at TEXT, completed_at TEXT, error_message TEXT, registry_seq INTEGER DEFAULT 0, outbox_event_id INTEGER DEFAULT 0)`,
+		`CREATE TABLE performance_runs(run_id TEXT PRIMARY KEY, job_id TEXT, root_job_id TEXT, status TEXT, started_at TEXT)`,
+		`CREATE TABLE performance_steps(step_id TEXT PRIMARY KEY, run_id TEXT, name TEXT, status TEXT, started_at TEXT)`,
+		`CREATE TABLE performance_artifacts(artifact_id TEXT PRIMARY KEY, run_id TEXT, kind TEXT, sha256 TEXT, created_at TEXT)`,
+		`CREATE TABLE benchmark_workloads(workload_id TEXT, version TEXT, input_manifest_sha256 TEXT, created_at TEXT, PRIMARY KEY(workload_id,version))`,
 	}
-	for _, version := range []int{194, 197, 198, 199, 200, 202, 203} {
+	for _, version := range []int{194, 197, 198, 199, 200, 202, 203, 206} {
 		statements = append(statements, "INSERT INTO schema_migrations VALUES ("+itoa(version)+",'', '')")
 	}
 	if registrySeq > 0 {
@@ -119,7 +123,7 @@ func newVerifierFixture(t *testing.T, name string, registrySeq, projectionSeq in
 			t.Fatalf("%s: %v", statement, err)
 		}
 	}
-	for _, version := range []int{194, 197, 198, 199, 200, 202, 203} {
+	for _, version := range []int{194, 197, 198, 199, 200, 202, 203, 206} {
 		filename, content, err := currentMigration(version)
 		if err != nil {
 			t.Fatalf("current migration %d: %v", version, err)

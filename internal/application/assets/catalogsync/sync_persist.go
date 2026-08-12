@@ -24,6 +24,14 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	}
 
 	var alreadyIndexedUnchanged bool
+	// Catalog topology is source-owned metadata. Preserve the freshly
+	// scanned containing folder while merging enrichment/local fields from
+	// the existing asset; otherwise a stale metadata blob can put a file's
+	// own ID back into folder_id and make Drive sidecar publishing fail with
+	// parentNotAFolder.
+	incomingFolderID := clip.FolderID()
+	incomingParentFolderID := clip.ParentFolderID()
+	incomingFolderPath := clip.FolderPath()
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
 		// Capture the freshly computed remote fingerprint (set by
 		// sync_recursive.go via remoteFileFingerprint) BEFORE the
@@ -46,6 +54,9 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 			clip.CreatedAt = existing.CreatedAt
 		}
 		clip.Tags = mergeTags(clip.Tags, existing.Tags)
+		clip.SetFolderID(incomingFolderID)
+		clip.SetParentFolderID(incomingParentFolderID)
+		clip.SetFolderPath(incomingFolderPath)
 
 		// Producer-side re-index guard (July 2026): a bulk folder
 		// re-sync must NOT re-enqueue asset.index.requested for rows

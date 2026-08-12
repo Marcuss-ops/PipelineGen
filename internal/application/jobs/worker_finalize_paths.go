@@ -120,7 +120,7 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 //   - CompleteWithArtifacts error → Fail + DeadLetter
 //     (PR-COMPLETE-WORKER-BROAD-FIX: pre-PR code silently logged and
 //     returned, leaving the job RUNNING forever).
-func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, workerID, leaseID string, finalRevision int, result map[string]any) {
+func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, workerID, leaseID string, finalRevision int, result map[string]any) []string {
 	if w.broker == nil {
 		w.log.Error("artifact-producing job encountered without CompletionPort wired — failing job",
 			zap.String("job_id", j.ID),
@@ -137,7 +137,7 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 					zap.Error(failErr))
 			}
 		}
-		return
+		return nil
 	}
 
 	// Extract the artifact manifest from the handler result. Handlers
@@ -181,7 +181,7 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 			w.log.Warn("failed to dead-letter job after manifest extract error",
 				zap.String("job_id", j.ID), zap.Error(dlqErr))
 		}
-		return
+		return nil
 	}
 
 	cmd := CompleteWithArtifactsCommand{
@@ -196,19 +196,20 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 		OutboxEvents:     nil,
 	}
 
-	if _, err := w.broker.CompleteWithArtifacts(ctx, cmd); err != nil {
-		completionErr := fmt.Sprintf("CompletionPort.CompleteWithArtifacts failed for artifact-producing job %q: %v", j.Type, err)
+	canonicalAssetIDs, completionErr := w.broker.CompleteWithArtifacts(ctx, cmd)
+	if completionErr != nil {
+		diagnostic := fmt.Sprintf("CompletionPort.CompleteWithArtifacts failed for artifact-producing job %q: %v", j.Type, completionErr)
 		w.log.Error("failed to mark artifact-producing job as completed via CompletionPort — failing job",
 			zap.String("job_id", j.ID),
 			zap.String("job_type", j.Type),
-			zap.Error(err))
+			zap.Error(completionErr))
 		// PR-COMPLETE-WORKER-BROAD-FIX (July 2026): the pre-PR code
 		// silently logged the error and returned, leaving the job
 		// RUNNING forever. The canonical fix is to fail the job
 		// with a diagnostic naming the CompletionPort failure so
 		// the operator can see WHY the job never reached SUCCEEDED.
 		if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision,
-			completionErr); failErr != nil {
+			diagnostic); failErr != nil {
 			if errors.Is(failErr, job.ErrLeaseLost) {
 				w.log.Warn("lease lost during fail-after-completion-error",
 					zap.String("job_id", j.ID))
@@ -220,7 +221,7 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 		}
 		// DeadLetter for audit-trail completeness — mirrors the
 		// dispatchErr exhausted-retries path (code-review, July 2026).
-		if dlqErr := w.repo.DeadLetter(ctx, j.ID, completionErr); dlqErr != nil {
+		if dlqErr := w.repo.DeadLetter(ctx, j.ID, diagnostic); dlqErr != nil {
 			w.log.Warn("failed to dead-letter job after CompletionPort error",
 				zap.String("job_id", j.ID), zap.Error(dlqErr))
 		}
@@ -229,6 +230,7 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 			zap.String("job_id", j.ID),
 			zap.String("job_type", j.Type))
 	}
+	return canonicalAssetIDs
 }
 
 // finalizeJobLegacyComplete handles the ProducesArtifacts=false terminal

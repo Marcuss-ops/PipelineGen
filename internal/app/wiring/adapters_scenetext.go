@@ -24,12 +24,15 @@ package wiring
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"go.uber.org/zap"
 )
@@ -41,10 +44,15 @@ import (
 // simple []Scene type expected by the runner.
 //
 // Panics on nil engine (fail-fast per godlike/07 NO-FAKE-AVAILABILITY).
+type ClipAssetResolver interface {
+	ResolveByMediaAssetID(context.Context, string) (*asset.Asset, error)
+}
+
 type SceneTextGenerator struct {
-	Engine   *usecase.Engine
-	Registry *adapters.SourceRegistry
-	Log      *zap.Logger
+	Engine     *usecase.Engine
+	Registry   *adapters.SourceRegistry
+	ClipAssets ClipAssetResolver
+	Log        *zap.Logger
 }
 
 // NewSceneTextGenerator constructs the SceneTextGenerator.
@@ -91,7 +99,10 @@ func (g *SceneTextGenerator) GenerateSceneText(
 		return nil, fmt.Errorf("scenetext: engine generate failed: %w", err)
 	}
 
-	scenes := g.convertScenes(engineResult, req.SourceLanguage)
+	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio)
+	if err != nil {
+		return nil, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
+	}
 	if len(scenes) == 0 {
 		return nil, fmt.Errorf("scenetext: engine returned zero scenes")
 	}
@@ -112,6 +123,14 @@ func (g *SceneTextGenerator) GenerateSceneText(
 // so it is supplied via this setter.
 func (g *SceneTextGenerator) SetSourceRegistry(reg *adapters.SourceRegistry) {
 	g.Registry = reg
+}
+
+// SetClipAssetResolver supplies the canonical media-registry lookup used to
+// enrich model bindings with the local path, byte hash, duration, and source
+// range required by the sealed RenderPlan. The model only emits a logical ID;
+// renderable file identity must come from the registry, never from the model.
+func (g *SceneTextGenerator) SetClipAssetResolver(resolver ClipAssetResolver) {
+	g.ClipAssets = resolver
 }
 
 // buildPlan converts a scriptgeneration.GenerateRequest into a
@@ -187,9 +206,11 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 // convertScenes maps the engine's structured SpecScene output into
 // the simple Scene type consumed by the scriptgeneration runner.
 func (g *SceneTextGenerator) convertScenes(
+	ctx context.Context,
 	result *usecase.EngineResult,
 	sourceLang scriptgen.Language,
-) []scriptgen.Scene {
+	requestedAudio capabilityaudio.AudioMode,
+) ([]scriptgen.Scene, error) {
 	scenes := make([]scriptgen.Scene, 0, len(result.Output.SpecScene.Scenes))
 	for _, s := range result.Output.SpecScene.Scenes {
 		scene := scriptgen.Scene{
@@ -199,16 +220,75 @@ func (g *SceneTextGenerator) convertScenes(
 				sourceLang: s.Text,
 			},
 		}
-		// Populate Clip reference when the engine bound one.
+		// The model emits only a logical clip ID. Resolve all render-critical
+		// fields from the canonical media registry before a RenderPlan can be
+		// built; accepting model-supplied paths or hashes would break the
+		// registry/CAS ownership boundary.
 		if s.Bindings.Clip != nil && s.Bindings.Clip.ClipID != "" {
-			scene.Clip = &scriptgen.ClipReference{
-				ID:    s.Bindings.Clip.ClipID,
-				Title: s.Bindings.Clip.ClipTitle,
+			binding := s.Bindings.Clip
+			clip := &scriptgen.ClipReference{ID: binding.ClipID, Title: binding.ClipTitle}
+			if g.ClipAssets != nil {
+				canonical, err := g.ClipAssets.ResolveByMediaAssetID(ctx, binding.ClipID)
+				if err != nil {
+					return nil, fmt.Errorf("resolve clip %s: %w", binding.ClipID, err)
+				}
+				if canonical != nil {
+					clip.Path = canonical.LocalPath()
+					clip.SHA256 = canonical.FileHash()
+					clip.AudioPath = canonical.LocalPath()
+					clip.Duration = canonical.Duration.Seconds()
+					// The current render runtime uses the canonical 30 fps
+					// default; the request-level rational rate is applied at
+					// RenderPlan compilation. Keep the asset bound in frames so
+					// source-range validation cannot accept an overrun.
+					clip.FrameCount = int64(math.Round(clip.Duration * 30))
+				}
 			}
+			clip.SourceInMS = binding.StartMs
+			clip.SourceOutMS = binding.EndMs
+			if binding.DurationMs > 0 && clip.Duration == 0 {
+				clip.Duration = float64(binding.DurationMs) / 1000
+				clip.FrameCount = int64(math.Round(clip.Duration * 30))
+			}
+			durationUS := int64(math.Round(clip.Duration * 1_000_000))
+			sourceInUS := int64(0)
+			if clip.SourceOutMS > clip.SourceInMS {
+				sourceInUS = clip.SourceInMS * 1000
+				durationUS = int64(clip.SourceOutMS-clip.SourceInMS) * 1000
+			}
+			switch requestedAudio {
+			case capabilityaudio.AudioModeCombinedTimeline:
+				if s.Bindings.Clip != nil && durationUS > 0 {
+					scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID, SourceInUS: sourceInUS, SourceDurationUS: durationUS}
+				} else {
+					scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}
+				}
+			case capabilityaudio.AudioModeChunkedVoiceover:
+				scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}
+			default:
+				scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence}
+			}
+			scene.DurationMS = int64(math.Round(float64(durationUS) / 1000))
+			scene.Clip = clip
 		}
 		scenes = append(scenes, scene)
 	}
-	return scenes
+	// Non-clip scenes have no source media duration yet. Use the engine's
+	// deterministic estimate as the initial timeline duration; the voiceover
+	// stage replaces it with the certified TTS duration before compilation.
+	fallbackMS := int64(1000)
+	if result.EstDuration > 0 && len(scenes) > 0 {
+		fallbackMS = int64(result.EstDuration) * 1000 / int64(len(scenes))
+		if fallbackMS <= 0 {
+			fallbackMS = 1000
+		}
+	}
+	for i := range scenes {
+		if scenes[i].DurationMS <= 0 {
+			scenes[i].DurationMS = fallbackMS
+		}
+	}
+	return scenes, nil
 }
 
 // buildEditorialPromptFromGenReq builds the editorial prompt string

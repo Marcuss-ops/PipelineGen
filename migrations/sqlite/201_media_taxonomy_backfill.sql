@@ -1,0 +1,6 @@
+-- database: primary
+-- Canonical media taxonomy indexes.
+-- The taxonomy columns are introduced by the deployment's canonical media
+-- registry bootstrap. This ledger entry is intentionally a no-op on fresh
+-- databases; existing deployments are reconciled by the guarded migration
+-- runner shim when those columns are already present.

@@ -60,6 +60,7 @@ import (
 
 	"go.uber.org/zap"
 
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -124,7 +125,8 @@ type Worker struct {
 	// PR-WORKER-RUNNER-INPROCESS-MIGRATION (July 2026). See
 	// WithBroker() below + CompletionPort interface declaration at
 	// internal/application/jobs/broker.go:50 for the contract.
-	broker CompletionPort
+	broker    CompletionPort
+	jobLedger capjobregistry.Registry
 
 	// observer is the kernel observability entry point (FASE 2, August
 	// 2026). When non-nil, every claimed job in runJob gets a Run:
@@ -251,6 +253,12 @@ func (w *Worker) WithRegistry(reg *Registry) *Worker {
 // `internal/app/build_bundles_workers.go`.
 func (w *Worker) WithBroker(cp CompletionPort) *Worker {
 	w.broker = cp
+	return w
+}
+
+// WithJobRegistry attaches the durable Job Registry projection to this worker.
+func (w *Worker) WithJobRegistry(reg capjobregistry.Registry) *Worker {
+	w.jobLedger = reg
 	return w
 }
 

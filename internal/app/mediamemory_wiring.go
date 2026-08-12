@@ -39,10 +39,10 @@ import (
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/qdrantmm"
 	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
 // MediaMemoryQdrantWiring is the bag of dependencies.

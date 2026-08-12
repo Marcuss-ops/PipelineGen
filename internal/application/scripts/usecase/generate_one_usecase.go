@@ -49,6 +49,10 @@ import (
 	"go.uber.org/zap"
 )
 
+func microseconds(milliseconds int64) (int64, error) {
+	return capabilityaudio.MicrosecondsFromMilliseconds(milliseconds)
+}
+
 func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scriptpkg.GenerationItemV2, result *scriptpkg.GenerationResult, post *adapters.PipelineResult) error {
 	started := time.Now()
 	if uc == nil || uc.audioProcessor == nil {

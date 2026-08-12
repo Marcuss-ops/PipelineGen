@@ -1,0 +1,3 @@
+-- database: primary
+-- Historical job-registry marker. Retained so deployed ledgers can be
+-- validated after the original migration source was removed.

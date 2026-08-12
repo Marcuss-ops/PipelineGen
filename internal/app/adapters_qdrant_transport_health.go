@@ -35,9 +35,9 @@ import (
 	"time"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/collections"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 )
 
 // qdrantEndpointCanaryTTL is how long the semantic canary result

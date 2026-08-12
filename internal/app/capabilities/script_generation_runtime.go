@@ -1,4 +1,4 @@
-package app
+package capabilities
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"go.uber.org/zap"
 )
 
@@ -64,7 +64,7 @@ func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, 
 // buildScriptGenerationRuntime creates the worker-owned durable runtime. The
 // HTTP starter only creates/correlates the run; this runtime is invoked by the
 // script.generate worker after the submission transaction has committed.
-func buildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, runRepo scriptgen.RunRepository, log *zap.Logger) (*scriptgen.Runner, error) {
+func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, runRepo scriptgen.RunRepository, log *zap.Logger) (*scriptgen.Runner, error) {
 	if cfg == nil || root == nil || runRepo == nil {
 		return nil, fmt.Errorf("script generation runtime requires config, composition root, and run repository")
 	}
