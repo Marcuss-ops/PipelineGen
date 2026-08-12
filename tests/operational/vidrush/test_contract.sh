@@ -21,6 +21,7 @@ RUNNER="$DIR/run_scenario.sh"
 REPORT_LIB="$DIR/lib/report.sh"
 CONCURRENCY_LIB="$DIR/lib/concurrency.sh"
 IDEMPOTENCY_LIB="$DIR/lib/idempotency.sh"
+ASSERTIONS_LIB="$DIR/lib/assertions.sh"
 
 for required in bash jq md5sum mktemp find; do
     command -v "$required" >/dev/null 2>&1 || {
@@ -33,7 +34,7 @@ done
     printf 'setup error: runner not found: %s\n' "$RUNNER" >&2
     exit 2
 }
-[[ -f "$REPORT_LIB" && -f "$CONCURRENCY_LIB" && -f "$IDEMPOTENCY_LIB" ]] || {
+[[ -f "$REPORT_LIB" && -f "$CONCURRENCY_LIB" && -f "$IDEMPOTENCY_LIB" && -f "$ASSERTIONS_LIB" ]] || {
     printf 'setup error: VidRush phase library missing\n' >&2
     exit 2
 }
@@ -127,6 +128,64 @@ if (
     printf '  PASS report_json schema and field merge\n'
 else
     printf '  FAIL report_json schema and field merge\n' >&2
+    failures=$((failures + 1))
+fi
+
+printf '\n=== VidRush contract: assertion helper ===\n'
+cat >"$TEST_ROOT/assertion-result.json" <<'EOF'
+{
+  "segments": [
+    {
+      "position": 1,
+      "segment_id": "contract-segment-1",
+      "text": "A hermetic contract segment.",
+      "text_hash": "contract-hash",
+      "insights": {
+        "entities": [],
+        "important_phrases": [],
+        "important_words": []
+      },
+      "assets": {
+        "primary_video": null,
+        "secondary_images": [],
+        "generated_images": [],
+        "candidates": []
+      },
+      "cache": {"extraction": "MISS"}
+    }
+  ]
+}
+EOF
+if (
+    RED= GREEN= YELLOW= CYAN= DIM= RESET=""
+    export RED GREEN YELLOW CYAN DIM RESET
+    # shellcheck disable=SC1091
+    source "$ASSERTIONS_LIB"
+    vidrush_assert_result "$(cat "$TEST_ROOT/assertion-result.json")" \
+        "$TEST_ROOT/contract-manifest.json" "http://127.0.0.1:1/metrics" MISSING MISSING
+    [[ "$VIDRUSH_ASSERT_FAIL" == "0" ]]
+    [[ "$VIDRUSH_SEG_COUNT" == "1" ]]
+    [[ "$VIDRUSH_CACHE_MODE" == "cold" ]]
+    [[ "$(jq -r '.drive_verified' <<<"$VIDRUSH_ARTIFACT_JSON")" == "false" ]]
+); then
+    printf '  PASS assertion helper derives counts/cache/artifacts\n'
+else
+    printf '  FAIL assertion helper derives counts/cache/artifacts\n' >&2
+    failures=$((failures + 1))
+fi
+invalid_result=$(jq 'del(.segments[0].text_hash)' "$TEST_ROOT/assertion-result.json")
+if (
+    RED= GREEN= YELLOW= CYAN= DIM= RESET=""
+    export RED GREEN YELLOW CYAN DIM RESET
+    # shellcheck disable=SC1091
+    source "$ASSERTIONS_LIB"
+    vidrush_assert_result "$invalid_result" "$TEST_ROOT/contract-manifest.json" \
+        "http://127.0.0.1:1/metrics" MISSING MISSING
+    [[ "$VIDRUSH_ASSERT_FAIL" == "1" ]]
+); then
+    printf '  PASS assertion helper fails closed on structural drift\n'
+else
+    printf '  FAIL assertion helper fails closed on structural drift\n' >&2
     failures=$((failures + 1))
 fi
 
