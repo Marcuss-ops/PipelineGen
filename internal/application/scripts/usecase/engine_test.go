@@ -307,6 +307,34 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
 }
 
+func TestEngineGenerate_ClipEvidenceIsModelSourceText(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	const staleSourceText = "stale request-level source text"
+	const sentinel = "unique transcript sentinel XYZ"
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:      "Clip Evidence Source",
+		Language:   "en",
+		Mode:       "clip_to_script",
+		SourceText: staleSourceText,
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-sentinel"},
+			NarrativeText:   "NARRATIVE EVIDENCE 1\\nTranscript: " + sentinel,
+		},
+	}
+
+	_, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+
+	captured := gen.capturedReq.Load()
+	require.NotNil(t, captured)
+	assert.Equal(t, plan.ClipEvidence.ModelSourceText(), captured.SourceText)
+	assert.Contains(t, captured.SourceText, sentinel)
+	assert.NotContains(t, captured.SourceText, staleSourceText)
+}
+
 func TestEngineGenerate_PassesGroundingPolicyToRequest(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
@@ -14,6 +15,21 @@ import (
 )
 
 // ── Generate: the canonical engine entry point ────────────────────────
+
+// modelSourceText returns the canonical model-facing source projection.
+// Clip plans keep their narrative evidence separate from plan.SourceText;
+// the engine must send that evidence to the model instead of stale
+// request-level source text. Non-clip plans preserve their existing
+// SourceText value.
+func modelSourceText(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return ""
+	}
+	if plan.HasClips() && plan.ClipEvidence != nil {
+		return strings.TrimSpace(plan.ClipEvidence.ModelSourceText())
+	}
+	return plan.SourceText
+}
 
 // Generate executes the full generation pipeline for a resolved plan.
 // It owns: memory gate check, ollama invocation, and payload decoding.
@@ -47,7 +63,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	tone := plan.Tone
 	model := plan.Model
 	mode := plan.Mode
-	sourceText := plan.SourceText
+	sourceText := modelSourceText(plan)
 	// PR 2: engine reads RenderedPrompt (editorial instructions).
 	// The legacy plan.Prompt field was removed — it conflated
 	// fingerprint with model input. RenderedPrompt never contains
