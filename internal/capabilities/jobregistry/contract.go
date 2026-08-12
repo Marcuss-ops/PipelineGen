@@ -27,8 +27,8 @@ type Metric struct {
 }
 
 type AssetRelation struct {
-	JobID, AssetID, Relation, CreatedAt string
-	Ordinal                             int
+	JobID, AssetID, Relation, StepID, CreatedAt string
+	Ordinal                                     int
 }
 
 type Event struct {

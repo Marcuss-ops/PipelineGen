@@ -12,6 +12,10 @@ import (
 	"context"
 	"time"
 
+	"fmt"
+
+	"github.com/google/uuid"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
@@ -107,6 +111,81 @@ type RenderEnqueuer interface {
 // back to chunked mixing when this port is unavailable or fails.
 type CombinedAudioRenderer interface {
 	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
+}
+
+// ExecutionContext is the immutable correlation envelope propagated through
+// every script-generation step. JobID is the current execution identity;
+// RootJobID remains stable across child/retry work.
+type ExecutionContext struct {
+	RootJobID     string
+	JobID         string
+	ParentJobID   string
+	ProjectID     string
+	VideoID       string
+	CorrelationID string
+	Attempt       int
+}
+
+func (c ExecutionContext) Validate() error {
+	if c.JobID == "" || c.RootJobID == "" || c.CorrelationID == "" {
+		return fmt.Errorf("execution context requires job_id, root_job_id, and correlation_id")
+	}
+	return nil
+}
+
+// NewExecutionContext creates the default single-job correlation envelope.
+func NewExecutionContext(jobID, correlationID string) ExecutionContext {
+	if correlationID == "" {
+		correlationID = uuid.NewString()
+	}
+	return ExecutionContext{RootJobID: jobID, JobID: jobID, CorrelationID: correlationID, Attempt: 1}
+}
+
+type ExecutionStep struct {
+	StepID       string
+	Name         string
+	Type         string
+	Status       string
+	StartedAt    time.Time
+	CompletedAt  time.Time
+	DurationMS   int64
+	ErrorMessage string
+}
+
+// ExecutionRecorder is the technology-independent lineage/step port. It is
+// deliberately narrower than the Job Registry adapter; the pipeline never
+// imports SQLite or a provider-specific recorder.
+type ExecutionRecorder interface {
+	StartStep(context.Context, ExecutionContext, ExecutionStep) error
+	CompleteStep(context.Context, ExecutionContext, ExecutionStep) error
+	FailStep(context.Context, ExecutionContext, ExecutionStep, error) error
+	AttachInputAsset(context.Context, ExecutionContext, string, string, int) error
+	AttachOutputAsset(context.Context, ExecutionContext, string, string, int) error
+	RecordMetric(context.Context, ExecutionContext, string, string, float64, string) error
+}
+
+// noopExecutionRecorder keeps local/unit runtimes safe when durable lineage
+// is intentionally not wired. Production composition injects the Job Registry
+// adapter; this is not a fake success path for registry writes.
+type noopExecutionRecorder struct{}
+
+func (noopExecutionRecorder) StartStep(context.Context, ExecutionContext, ExecutionStep) error {
+	return nil
+}
+func (noopExecutionRecorder) CompleteStep(context.Context, ExecutionContext, ExecutionStep) error {
+	return nil
+}
+func (noopExecutionRecorder) FailStep(context.Context, ExecutionContext, ExecutionStep, error) error {
+	return nil
+}
+func (noopExecutionRecorder) AttachInputAsset(context.Context, ExecutionContext, string, string, int) error {
+	return nil
+}
+func (noopExecutionRecorder) AttachOutputAsset(context.Context, ExecutionContext, string, string, int) error {
+	return nil
+}
+func (noopExecutionRecorder) RecordMetric(context.Context, ExecutionContext, string, string, float64, string) error {
+	return nil
 }
 
 // ── FailRunInput ────────────────────────────────────────────────────

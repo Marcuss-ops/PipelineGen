@@ -37,12 +37,12 @@ func (r *Registry) RecordJob(ctx context.Context, j capregistry.Job) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO jobs
 		(id,type,status,project,video_name,correlation_id,payload_json,payload_hash,result_json,error,worker_id,
-		 created_at,updated_at,started_at,completed_at,project_id,video_id,parent_job_id,root_job_id,host,duration_ms)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 created_at,updated_at,started_at,completed_at,project_id,video_id,parent_job_id,root_job_id,host,duration_ms,git_sha,app_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.JobID, j.JobType, nonEmpty(j.Status, "QUEUED"), j.ProjectID, j.VideoID, j.CorrelationID,
 		nonEmpty(j.PayloadJSON, "{}"), hash, nonEmpty(j.ResultJSON, "{}"), j.ErrorMessage, j.WorkerID,
 		nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nonEmpty(j.CreatedAt, "1970-01-01T00:00:00Z"), nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt),
-		j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID, j.Host, j.DurationMS)
+		j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID, j.Host, j.DurationMS, j.GitSHA, j.AppVersion)
 	if err != nil {
 		return fmt.Errorf("record job %q: %w", j.JobID, err)
 	}
@@ -54,10 +54,10 @@ func (r *Registry) UpdateJob(ctx context.Context, j capregistry.Job) error {
 	if hash == "" {
 		hash = hashPayload(j.PayloadJSON)
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET status=?, correlation_id=?, project_id=?, video_id=?, parent_job_id=?, root_job_id=?, payload_json=?, payload_hash=?, result_json=?, error=?, worker_id=?, started_at=?, completed_at=?, duration_ms=?, updated_at=COALESCE(?, updated_at) WHERE id=?`,
+	_, err := r.db.ExecContext(ctx, `UPDATE jobs SET status=?, correlation_id=?, project_id=?, video_id=?, parent_job_id=?, root_job_id=?, payload_json=?, payload_hash=?, result_json=?, error=?, worker_id=?, started_at=?, completed_at=?, duration_ms=?, git_sha=?, app_version=?, updated_at=COALESCE(?, updated_at) WHERE id=?`,
 		nonEmpty(j.Status, "QUEUED"), j.CorrelationID, j.ProjectID, j.VideoID, j.ParentJobID, j.RootJobID,
 		nonEmpty(j.PayloadJSON, "{}"), hash, nonEmpty(j.ResultJSON, "{}"), j.ErrorMessage, j.WorkerID,
-		nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt), j.DurationMS, nullIfEmpty(j.CompletedAt), j.JobID)
+		nullIfEmpty(j.StartedAt), nullIfEmpty(j.CompletedAt), j.DurationMS, j.GitSHA, j.AppVersion, nullIfEmpty(j.CompletedAt), j.JobID)
 	if err != nil {
 		return fmt.Errorf("update job %q: %w", j.JobID, err)
 	}
@@ -94,7 +94,7 @@ func (r *Registry) RelateAsset(ctx context.Context, a capregistry.AssetRelation)
 	if a.JobID == "" || a.AssetID == "" || a.Relation == "" {
 		return errors.New("job registry: asset relation identity is required")
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO job_asset_relations (job_id,asset_id,relation,ordinal,created_at) VALUES (?,?,?,?,?) ON CONFLICT(job_id,asset_id,relation) DO UPDATE SET ordinal=excluded.ordinal`, a.JobID, a.AssetID, a.Relation, a.Ordinal, nonEmpty(a.CreatedAt, "1970-01-01T00:00:00Z"))
+	_, err := r.db.ExecContext(ctx, `INSERT INTO job_asset_relations (job_id,asset_id,relation,step_id,ordinal,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(job_id,asset_id,relation,step_id) DO UPDATE SET ordinal=excluded.ordinal`, a.JobID, a.AssetID, a.Relation, a.StepID, a.Ordinal, nonEmpty(a.CreatedAt, "1970-01-01T00:00:00Z"))
 	if err != nil {
 		return fmt.Errorf("relate job %q to asset %q: %w", a.JobID, a.AssetID, err)
 	}

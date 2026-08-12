@@ -6,12 +6,14 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets/imagesrepo"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	platformjobregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 )
 
 // JobsBundle is the Job module's *owned* runtime surface.
@@ -33,6 +35,7 @@ type JobsBundle struct {
 	Service    *appjobs.Service
 	Facade     job.Service // canonical domain interface satisfied by *appjobs.Service
 	Broker     appjobs.CompletionPort
+	JobLedger  capjobregistry.Registry
 
 	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): cross-domain deps
 	// threaded into buildClipOpsPorts via the strict 2-arg jobs parameter.
@@ -86,6 +89,10 @@ func BuildJobsBundle(
 	// SQLiteStore.Complete path (they must use CompleteWithArtifacts).
 	registry := appjobs.Compose()
 	repo.SetProducesArtifacts(registry.ProducesArtifactsMap())
+	jobLedger, err := platformjobregistry.New(db.DB)
+	if err != nil {
+		return nil, fmt.Errorf("build jobs bundle: job registry: %w", err)
+	}
 	dispatcher := appjobs.NewDispatcher()
 	// PR-jobs-retry-contract (July 2026): fail-closed 4-arg constructor;
 	// ErrRegistryRequired propagates here so composition wiring surfaces
@@ -100,6 +107,7 @@ func BuildJobsBundle(
 		Dispatcher:     dispatcher,
 		Service:        svc,
 		Facade:         svc,
+		JobLedger:      jobLedger,
 		VoiceoverRepo:  voiceoverRepo,
 		ImagesRepo:     imagesRepo,
 		DriveUploader:  driveUploader,

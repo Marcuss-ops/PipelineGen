@@ -276,6 +276,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		return fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
 	}
 	genJobHandler.SetRunRepository(runRepo)
+	if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
+		durableRunner, runtimeErr := buildScriptGenerationRuntime(cfg, root, runRepo, log)
+		if runtimeErr != nil {
+			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
+		}
+		genJobHandler.SetDurableRunner(durableRunner)
+		log.Info("wireScriptFlow: durable single-item runtime wired through canonical RenderPlan executor")
+	} else {
+		log.Warn("wireScriptFlow: Rust media executor path is empty; durable RenderPlan runtime is unavailable")
+	}
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
