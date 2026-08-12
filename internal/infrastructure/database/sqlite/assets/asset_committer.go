@@ -347,8 +347,7 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 			created_at, updated_at, thumbnail_url, url,
 			asset_version, asset_location, rendition,
 			source_provider, source_video_id, source_url,
-			start_ms, end_ms, title
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			start_ms, end_ms, title			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -380,8 +379,7 @@ func (c *SQLiteAssetCommitter) commitTxRaw(ctx context.Context, tx persistence.T
 			end_ms = excluded.end_ms,
 			title = excluded.title
 	`,
-		req.AssetID, req.Source, name, req.Filename, req.MediaType,
-		req.Category, req.DurationMs,
+		req.AssetID, req.Source, name, req.Filename, req.MediaType, req.Category, req.DurationMs,
 		req.ContentHash, primaryDriveFileID(req.Locations), primaryWebViewLink(req.Locations), primaryDownloadURL(req.Locations),
 		req.LocalPath, req.FolderID, req.FolderPath,
 		req.LifecycleState, indexState, string(metadataJSON),

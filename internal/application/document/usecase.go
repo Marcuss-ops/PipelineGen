@@ -14,7 +14,6 @@ package document
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +26,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // GenerateDocumentUseCase is the canonical use case for the
@@ -58,7 +56,7 @@ type GenerateDocumentUseCase struct {
 	// and finalises through the JobFinalizer. When any is nil,
 	// the pre-spine local-path-only behaviour is used.
 	DeliveryPublisher delivery.Publisher        // Drive upload (PublishRequest → PublishResult)
-	SpineDB           *sql.DB                   // for INSERT INTO jobs (lease row)
+	SpineJobs         job.JobBroker             // canonical jobs repository (lease row)
 	SpineFinalizer    finalization.JobFinalizer // CompleteWithArtifacts
 }
 
@@ -105,7 +103,7 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 	artifactID := info.JobID + ":" + string(job.ArtifactKindPDF)
 	var driveFileID, driveWebViewLink, driveDownloadLink, driveFolderID, driveFolderPath string
 
-	if uc.DeliveryPublisher != nil && uc.SpineDB != nil && uc.SpineFinalizer != nil {
+	if uc.DeliveryPublisher != nil && uc.SpineJobs != nil && uc.SpineFinalizer != nil {
 		// (a) Publish to Drive via delivery.Publisher.
 		pubResult, pubErr := uc.DeliveryPublisher.Publish(ctx, delivery.PublishRequest{
 			Destination: delivery.DestinationDocument,
@@ -140,18 +138,31 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 		//     row (ensureJobSession); the finalizer does its own
 		//     lease validation inside the transaction anyway.
 		now := time.Now().UTC()
-		nowStr := timeutil.FormatRFC3339(now)
-		futureStr := timeutil.FormatRFC3339(now.Add(5 * time.Minute))
+		future := now.Add(5 * time.Minute)
 		workerID := "doc-sync-" + jobID
 		leaseID := "lease-doc-" + jobID
 
-		_, dbErr := uc.SpineDB.ExecContext(ctx,
-			`INSERT OR IGNORE INTO jobs (id, type, status, worker_id, lease_id, lease_expiry, retry_count, revision, created_at, updated_at)
-			 VALUES (?, 'document.generate', 'RUNNING', ?, ?, ?, 0, 1, ?, ?)`,
-			jobID, workerID, leaseID, futureStr, nowStr, nowStr,
-		)
+		// The canonical JobBroker owns the jobs-table write. Read first
+		// to preserve INSERT OR IGNORE idempotency from the retired SQL
+		// path, then create the leased row only when it is absent.
+		existing, dbErr := uc.SpineJobs.Get(ctx, jobID)
 		if dbErr != nil {
-			return job.ExecutionResult[DocumentResult]{}, fmt.Errorf("document.GenerateDocumentUseCase.Handle: insert job row: %w", dbErr)
+			return job.ExecutionResult[DocumentResult]{}, fmt.Errorf("document.GenerateDocumentUseCase.Handle: read job row: %w", dbErr)
+		}
+		if existing == nil {
+			if dbErr := uc.SpineJobs.Create(ctx, &job.Job{
+				ID:          jobID,
+				Type:        "document.generate",
+				Status:      job.StatusRunning,
+				WorkerID:    workerID,
+				LeaseID:     leaseID,
+				LeaseExpiry: &future,
+				Revision:    1,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}); dbErr != nil {
+				return job.ExecutionResult[DocumentResult]{}, fmt.Errorf("document.GenerateDocumentUseCase.Handle: create job row: %w", dbErr)
+			}
 		}
 
 		// (c) Build the finalization request and complete.
