@@ -93,7 +93,7 @@ func TestNewClipEvidence_DeepCopiesSegmentClipTags(t *testing.T) {
 	}
 }
 
-func TestGenerationEnvelopeValidate_AllowsAdvancedOwnershipMixedWithRoot(t *testing.T) {
+func TestGenerationEnvelopeValidate_RejectsAdvancedOwnershipMixedWithRoot(t *testing.T) {
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
 		Items: []GenerationItemV2{{
@@ -105,12 +105,8 @@ func TestGenerationEnvelopeValidate_AllowsAdvancedOwnershipMixedWithRoot(t *test
 			}}},
 		}},
 	}
-	if err := envelope.Validate(); err != nil {
-		t.Fatalf("advanced segment ownership should override legacy root IDs: %v", err)
-	}
-	got := CollectRequestedClipIDs(envelope.Items[0].Source, envelope.Items[0].ScriptParams.Segments)
-	if len(got) != 1 || got[0] != "clip-a" {
-		t.Fatalf("legacy root ID was resolved despite advanced ownership: %v", got)
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("root and explicit segment clip ownership must not be combined")
 	}
 }
 
@@ -212,7 +208,7 @@ func TestGenerationEnvelopePayloadContract_ResolvesOnlyDeclaredClips(t *testing.
 	}
 }
 
-func TestGenerationEnvelopePayloadContract_AdvancedSegmentsIgnoreLegacyRootIDs(t *testing.T) {
+func TestGenerationEnvelopePayloadContract_RejectsMixedRootAndSegmentOwnership(t *testing.T) {
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
 		Items: []GenerationItemV2{{
@@ -225,12 +221,8 @@ func TestGenerationEnvelopePayloadContract_AdvancedSegmentsIgnoreLegacyRootIDs(t
 			}}},
 		}},
 	}
-	if err := envelope.Validate(); err != nil {
-		t.Fatalf("advanced segment ownership should override legacy root IDs: %v", err)
-	}
-	got := CollectRequestedClipIDs(envelope.Items[0].Source, envelope.Items[0].ScriptParams.Segments)
-	if len(got) != 1 || got[0] != "segment-clip" {
-		t.Fatalf("legacy root ID was resolved despite advanced ownership: %v", got)
+	if err := envelope.Validate(); err == nil {
+		t.Fatal("root and explicit segment clip ownership must not be combined")
 	}
 }
 
