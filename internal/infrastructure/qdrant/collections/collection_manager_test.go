@@ -18,55 +18,12 @@ import (
 
 // ── Alias switch tests ───────────────────────────────────────────────
 
-func TestCollectionManager_SwitchAlias(t *testing.T) {
+func TestCollectionManager_SwitchAlias_RequiresRegisteredProjection(t *testing.T) {
 	t.Parallel()
 
-	var mu sync.Mutex
-	var aliasActions []map[string]interface{}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		if r.Method == http.MethodPost && r.URL.Path == "/collections/aliases" {
-			var body map[string]interface{}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-			actions, _ := body["actions"].([]interface{})
-			for _, a := range actions {
-				aliasActions = append(aliasActions, a.(map[string]interface{}))
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": true,
-				"status": "ok",
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	idxSchema := schema.DefaultV3Schema()
-	client := transport.NewClient(&schema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
-	cm := NewCollectionManager(client, idxSchema, zap.NewNop())
-
+	cm := NewCollectionManager(nil, schema.DefaultV3Schema(), zap.NewNop())
 	err := cm.SwitchAlias(context.Background(), "media_assets_v3_old", "media_assets_v3_new")
-	require.NoError(t, err)
-
-	require.Len(t, aliasActions, 2)
-
-	// First action: delete old alias.
-	deleteAction := aliasActions[0]
-	deleteAlias, ok := deleteAction["delete_alias"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "media_assets_current", deleteAlias["alias_name"])
-
-	// Second action: create new alias.
-	createAction := aliasActions[1]
-	createAlias, ok := createAction["create_alias"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "media_assets_current", createAlias["alias_name"])
-	assert.Equal(t, "media_assets_v3_new", createAlias["collection_name"])
+	require.Error(t, err, "unregistered alias mutations must be rejected")
 }
 
 // (TestCollectionManager_RollbackAlias retired — PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE 2026-07-10;

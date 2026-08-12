@@ -2,34 +2,38 @@ package collections
 
 import (
 	"context"
+	"fmt"
 
-	"go.uber.org/zap"
+	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
-// ── Rollback ───────────────────────────────────────────────────────────
-
-// RollbackCandidate switches the alias back to `rollbackTarget`.
-// Used by `cmd/admin/reconcile_qdrant.go` to undo a failed reindex
-// promote. PR 6 §#5: RollbackCandidate is also a (re)writer; it is
-// the ONLY safe counterpart to PromoteCandidate.
+// RollbackCandidate is a compatibility wrapper for the pre-state-machine
+// API. It resolves the registered ACTIVE projection and delegates to the
+// canonical RollbackProjection operation.
 func (cm *CollectionManager) RollbackCandidate(ctx context.Context, currentTarget, rollbackTarget string) error {
-	cm.log.Warn("rolling back alias",
-		zap.String("alias", cm.schema.RuntimeAlias),
-		zap.String("from", currentTarget),
-		zap.String("to", rollbackTarget))
-	cm.aliasMu.Lock()
-	defer cm.aliasMu.Unlock()
-	return cm.client.SwitchAlias(ctx, cm.schema.RuntimeAlias, currentTarget, rollbackTarget)
+	projectionID, ok := cm.projectionByCollection(currentTarget)
+	if !ok {
+		return fmt.Errorf("%w: current collection %q is not registered", ErrProjectionNotFound, currentTarget)
+	}
+	projection, _ := cm.Projection(projectionID)
+	if projection.Status != string(capregistry.ProjectionActive) {
+		return fmt.Errorf("%w: current collection %q has status %s", ErrProjectionInvalidState, currentTarget, projection.Status)
+	}
+	return cm.RollbackProjection(ctx, projectionID, rollbackTarget)
 }
 
-// SwitchAlias atomically switches the runtime alias from oldTarget to newTarget.
-// DEPRECATED: use PromoteCandidate or RollbackCandidate directly.
+// SwitchAlias is retained only as a migration wrapper. It never calls the
+// transport client directly: activation and rollback must pass through the
+// Projection Manager state machine.
 func (cm *CollectionManager) SwitchAlias(ctx context.Context, oldTarget, newTarget string) error {
+	if oldTarget == newTarget {
+		return nil
+	}
+	if newID, ok := cm.projectionByCollection(newTarget); ok {
+		newProjection, _ := cm.Projection(newID)
+		if newProjection.Status == string(capregistry.ProjectionReady) {
+			return cm.ActivateProjection(ctx, newID, newProjection.SourceRegistrySeq)
+		}
+	}
 	return cm.RollbackCandidate(ctx, oldTarget, newTarget)
 }
-
-// (RollbackAlias retired — PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE 2026-07-10;
-//  3-line thin wrapper over RollbackCandidate with zero callers in
-//  production + zero callers in tests after the test deletion. The
-//  canonical typed-port contract is RollbackCandidate(currentTarget,
-//  rollbackTarget). See CHANGELOG.md ## Unreleased for the closure entry.)
