@@ -8,6 +8,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -136,7 +137,19 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
 		stockRegistry := artifacts.NewClipsRegistry(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)
 		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, bundle.Assets.Repository(), bundle.Assets, bundle.Assets.LocationRepository(), bundle.Assets.ProcessingRepository(), mutationsDisp)}, log)
-		downloader := downloader.NewMediaDownloader(90 * time.Second)
+		var downloader assets.MediaDownloader = downloader.NewMediaDownloader(90 * time.Second)
+		// CAS-backed source-aware downloader (August 2026): optional
+		// enhancement over the plain HTTP downloader; fall back + log when
+		// the CAS layer cannot be wired (media acquisition must never be
+		// blocked by the optional cache layer).
+		if bundle.DB != nil && bundle.DB.DB != nil {
+			if casDL, casErr := buildSourceAwareDownloader(cfg, bundle.DB.DB, log); casErr == nil {
+				downloader = casDL
+			} else {
+				log.Warn("CAS-backed downloader not wired — falling back to plain media downloader",
+					zap.Error(casErr))
+			}
+		}
 		// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy
 		// `bundle.DriveUploader.Admin()` arg is REMOVED from the
 		// canonical NewService ctor (the field was unused; the
