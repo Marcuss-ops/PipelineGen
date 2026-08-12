@@ -34,7 +34,10 @@ type Result struct {
 }
 
 type UnitOfWork interface {
+	// Run owns the transaction lifecycle.
 	Run(context.Context, Command, Mutation) (Result, error)
+	// RunInTransaction applies the same protocol in a caller-owned transaction.
+	RunInTransaction(context.Context, Transaction, Command, Mutation) (Result, error)
 }
 
 var (
@@ -46,6 +49,7 @@ var (
 	ErrOutboxRequired         = errors.New("controlplane: transactional outbox event is required")
 	ErrIdempotencyConflict    = errors.New("controlplane: idempotency key conflicts with a different command or request")
 	ErrCommandInProgress      = errors.New("controlplane: command is already in progress")
+	ErrOutboxTerminalConflict = errors.New("controlplane: outbox event already has terminal status")
 )
 
 func (c Command) Validate() error {
