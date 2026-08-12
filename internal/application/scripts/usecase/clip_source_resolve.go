@@ -40,6 +40,7 @@ type clipContextRecord struct {
 type clipContextResult struct {
 	record  clipContextRecord
 	missing *scriptpkg.MissingClipID
+	err     error
 }
 
 // clipResolveReason is the typed return value of resolveOneClip.
@@ -130,15 +131,14 @@ func (c *ClipSourceBuilder) resolveClipContextResult(
 	// feeds the 3 new fingerprint fields (via the
 	// resolvedTracks accumulator + buildClipEvidence).
 	transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
-	if resolveErr != nil && c.log != nil {
-		// godlike/07 minimum-blast-radius: the typed error is
-		// logged but NOT propagated (the existing BuildClipContext
-		// signature is preserved; strict-error surfacing lands in a
-		// follow-up PR that threads the error up to the HTTP handler).
-		c.log.Warn("clip source builder: text track resolve returned error (continuing with empty transcript)",
-			zap.String("clip_id", id),
-			zap.String("language", language),
-			zap.Error(resolveErr))
+	if resolveErr != nil {
+		if c.log != nil {
+			c.log.Warn("clip source builder: text track resolve failed",
+				zap.String("clip_id", id),
+				zap.String("language", language),
+				zap.Error(resolveErr))
+		}
+		return clipContextResult{err: resolveErr}
 	}
 
 	return clipContextResult{

@@ -113,8 +113,11 @@ func TestClipSourceBuilder_Canonical_DriveFileIDRequested_PR6(t *testing.T) {
 	}
 
 	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	b.ConfigureTextTrackReader(&a4StubTextTrackReader{transcripts: map[string]string{
+		internalID: "fixture transcript for " + internalID,
+	}})
 
-	ev, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, nil)
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{driveFileID}, &scripts.ClipGenerationOptions{Language: "en"})
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
 	}
@@ -162,7 +165,10 @@ func TestClipSourceBuilder_Canonical_AssetIDRequested_PR6(t *testing.T) {
 	}
 
 	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	ev, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, nil)
+	b.ConfigureTextTrackReader(&a4StubTextTrackReader{transcripts: map[string]string{
+		assetID: "fixture transcript for " + assetID,
+	}})
+	ev, _, _, err := b.BuildClipContext(context.Background(), []string{assetID}, &scripts.ClipGenerationOptions{Language: "en"})
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)
 	}
@@ -242,10 +248,14 @@ func TestClipSourceBuilder_Missing_MixedResolutions_PR6(t *testing.T) {
 	}
 
 	builder := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&a4StubTextTrackReader{transcripts: map[string]string{
+		"internal-AAA": "fixture transcript for internal-AAA",
+		"clipB":        "fixture transcript for clipB",
+	}})
 	ev, _, _, err := builder.BuildClipContext(
 		context.Background(),
 		[]string{canonicalA, "missing-X", "clipB"},
-		nil,
+		&scripts.ClipGenerationOptions{Language: "en"},
 	)
 	if err != nil {
 		t.Fatalf("BuildClipContext returned error: %v", err)

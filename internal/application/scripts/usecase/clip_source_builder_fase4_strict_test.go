@@ -38,12 +38,11 @@
 // The test file lives in `package usecase` (internal) so it can
 // invoke the unexported `(b *ClipSourceBuilder).resolveTranscript`
 // method directly. This is the canonical Fase 4 typed-error
-// surface — passing it through BuildClipContext would dilute
-// the pin (BuildClipContext logs-and-continues; the typed error
-// is logged, not surfaced to the caller's struct assertion
-// surface, so the errors.As probe WOULD fail at the caller
-// level). Probing resolveTranscript directly keeps the errors.As
-// invariant pure — godlike/07 no-fake-availability.
+// surface — the direct probe keeps the errors.As assertion focused
+// on the typed resolver contract, while BuildClipContext now
+// propagates the same typed error and fails closed. Probing
+// resolveTranscript directly keeps the carry-field assertions
+// precise — godlike/07 no-fake-availability.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every probe asserts the
 // canonical surface (typed error + struct-discriminated fields +
@@ -146,11 +145,10 @@ func (r *fase4PositiveReader) ListReadyLanguages(_ context.Context, _ string, _ 
 // fail-closed (no silent no-op, no metadata_json fallback).
 //
 // The probe invokes (c *ClipSourceBuilder).resolveTranscript
-// directly because BuildClipContext's per-clip loop logs and
-// continues on the typed error (the typed error is NOT surfaced
-// to the Go error-return channel of BuildClipContext — that
-// threads through a follow-up PR). The probe at this layer
-// pins the typed-error chain's own godlike/07 contract.
+// directly to pin the typed error's carry fields. BuildClipContext
+// propagates this error to its caller and does not assemble evidence
+// from a missing transcript; the direct probe keeps the resolver
+// contract independently observable.
 func TestFase4_ResolveTranscript_NilReader_ReturnsErrTextTrackNotReady(t *testing.T) {
 	b := &ClipSourceBuilder{
 		// nil textTrackReader — composition gap

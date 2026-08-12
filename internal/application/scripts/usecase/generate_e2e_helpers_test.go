@@ -29,6 +29,27 @@ func newFakeClipResolver() *fakeClipResolver {
 	return &fakeClipResolver{clips: make(map[string]*asset.Asset)}
 }
 
+// configureFakeClipTranscripts wires deterministic READY transcript
+// tracks for every clip currently held by a fake resolver. Production
+// remains fail-closed; this helper makes valid test fixtures explicit.
+func configureFakeClipTranscripts(builder *ClipSourceBuilder, resolver *fakeClipResolver, language string) {
+	resolver.mu.RLock()
+	defer resolver.mu.RUnlock()
+
+	reader, ok := builder.textTrackReader.(*stubTextTrackReader)
+	if !ok || reader == nil {
+		reader = &stubTextTrackReader{tracks: make(map[string]*asset.TextTrack)}
+		builder.ConfigureTextTrackReader(reader)
+	}
+	for id, clip := range resolver.clips {
+		text := clip.SearchText
+		if strings.TrimSpace(text) == "" {
+			text = defaultClipSearchText
+		}
+		reader.tracks[id+":"+language] = makeTrack(id, language, text)
+	}
+}
+
 func (r *fakeClipResolver) AddClip(a *asset.Asset) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

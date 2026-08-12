@@ -193,6 +193,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 	records := make([]clipContextRecord, 0, len(results))
 	for _, result := range results {
+		if result.err != nil {
+			return nil, "", "", result.err
+		}
 		if result.missing != nil {
 			missingClipIDs = append(missingClipIDs, *result.missing)
 			continue

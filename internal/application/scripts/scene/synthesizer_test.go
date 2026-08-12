@@ -370,6 +370,82 @@ func TestSceneSynthesizer_FromText_BindsClipsOneToOne(t *testing.T) {
 	}
 }
 
+// TestSceneSynthesizer_FromText_ParagraphsScenesAndBindingsOneToOne pins
+// the complete clip-native contract in one assertion surface:
+// exactly N non-empty input paragraphs must become exactly N scenes,
+// preserve paragraph order/text, and receive exactly N ordered clip
+// bindings with no drops or modulo reuse.
+func TestSceneSynthesizer_FromText_ParagraphsScenesAndBindingsOneToOne(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+
+	const prose = "PARAGRAPH ONE: Paul opens the round table.\n\n" +
+		"PARAGRAPH TWO: Andrew answers with a concrete example.\n\n" +
+		"PARAGRAPH THREE: Jeffrey describes the creative process.\n\n" +
+		"PARAGRAPH FOUR: Demi closes the conversation."
+	paragraphs := []string{
+		"PARAGRAPH ONE: Paul opens the round table.",
+		"PARAGRAPH TWO: Andrew answers with a concrete example.",
+		"PARAGRAPH THREE: Jeffrey describes the creative process.",
+		"PARAGRAPH FOUR: Demi closes the conversation.",
+	}
+	clipIDs := []string{"clip-paul", "clip-andrew", "clip-jeffrey", "clip-demi"}
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: clipIDs,
+		ClipNames: map[string]string{
+			"clip-paul":    "Paul",
+			"clip-andrew":  "Andrew",
+			"clip-jeffrey": "Jeffrey",
+			"clip-demi":    "Demi",
+		},
+		DriveLinks: map[string]string{
+			"clip-paul":    "https://drive.test/paul",
+			"clip-andrew":  "https://drive.test/andrew",
+			"clip-jeffrey": "https://drive.test/jeffrey",
+			"clip-demi":    "https://drive.test/demi",
+		},
+	}
+
+	got := s.FromText(prose, len(paragraphs), evidence)
+	if len(got) != len(paragraphs) {
+		t.Fatalf("FromText returned %d scenes, want exactly %d", len(got), len(paragraphs))
+	}
+	if len(evidence.AcceptedClipIDs) != len(paragraphs) {
+		t.Fatalf("fixture must contain exactly N clip IDs: got %d, want %d", len(evidence.AcceptedClipIDs), len(paragraphs))
+	}
+
+	seen := make(map[string]bool, len(got))
+	for i, wantParagraph := range paragraphs {
+		sc := got[i]
+		if strings.TrimSpace(sc.Text) == "" {
+			t.Fatalf("scene[%d].Text is empty; every paragraph must produce non-empty scene text", i)
+		}
+		if sc.Text != wantParagraph {
+			t.Errorf("scene[%d].Text = %q, want paragraph[%d] %q", i, sc.Text, i, wantParagraph)
+		}
+		if sc.Index != i {
+			t.Errorf("scene[%d].Index = %d, want %d", i, sc.Index, i)
+		}
+		if sc.Bindings.Clip == nil {
+			t.Fatalf("scene[%d].Bindings.Clip is nil, want binding to %q", i, clipIDs[i])
+		}
+		binding := sc.Bindings.Clip
+		if binding.ClipID != clipIDs[i] {
+			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q", i, binding.ClipID, clipIDs[i])
+		}
+		if binding.DriveLink != evidence.DriveLinks[clipIDs[i]] {
+			t.Errorf("scene[%d].Bindings.Clip.DriveLink = %q, want %q", i, binding.DriveLink, evidence.DriveLinks[clipIDs[i]])
+		}
+		if seen[binding.ClipID] {
+			t.Errorf("clip %q is bound more than once; one-to-one binding violated", binding.ClipID)
+		}
+		seen[binding.ClipID] = true
+	}
+	if len(seen) != len(clipIDs) {
+		t.Fatalf("got %d unique clip bindings, want %d", len(seen), len(clipIDs))
+	}
+}
+
 // TestSceneSynthesizer_FromText_NilEvidence_ReturnsScenesUnbound
 // verifies that nil evidence returns scenes without any clip
 // bindings (the caller preserves the no-op invariant).

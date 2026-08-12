@@ -22,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // buildUsecaseWithClipResolver returns a GenerateOneUseCase wired with a
@@ -29,18 +30,25 @@ import (
 // registry. Callers can optionally register extra postprocessors before the
 // registry is frozen.
 func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipResolver) *GenerateOneUseCase {
-	reg := adapters.NewSourceRegistry(zap.NewNop())
+	var builder *ClipSourceBuilder
 	if clipResolver != nil {
-		reg.Register(scriptpkg.SourceClips, NewClipsSourceResolver(NewClipSourceBuilder(clipResolver, nil, zap.NewNop()), zap.NewNop()))
+		builder = NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
+		configureFakeClipTranscripts(builder, clipResolver, "en")
+		configureFakeClipTranscripts(builder, clipResolver, "it")
+	}
+	return buildUsecaseWithClipBuilder(gen, builder)
+}
+
+func buildUsecaseWithClipBuilder(gen *fakeOllamaGen, builder *ClipSourceBuilder) *GenerateOneUseCase {
+	reg := adapters.NewSourceRegistry(zap.NewNop())
+	if builder != nil {
+		reg.Register(scriptpkg.SourceClips, NewClipsSourceResolver(builder, zap.NewNop()))
 	}
 	reg.Register(scriptpkg.SourceText, NewTextSourceResolver())
 	reg.Freeze()
 
 	e := buildTestEngine(gen, nil)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
-	// Sprint 1.0: extraProcs parameter dropped — the only caller
-	// (TestGenerateE2E_DocumentServiceUnavailable) was retired when
-	// inline document creation was decommissioned.
 	// Wire the real clip-bindings processor so clip-source plans can
 	// synthesise scenes when the engine returns plain text.
 	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
@@ -73,6 +81,73 @@ func TestGenerateE2E_OneClipWithoutSourceText(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, []string{"clip-1"}, result.Source.AcceptedClipIDs)
+}
+
+// TestGenerateE2E_MissingTranscriptFailsClosed verifies the full
+// script.generate boundary: a valid clip plus a clip without a READY
+// transcript fails before the engine can invoke the LLM.
+func TestGenerateE2E_MissingTranscriptFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	clipResolver := newFakeClipResolver()
+	clipResolver.AddClip(makeTestClip("clip-valid", "Valid Clip", 30*time.Second))
+	clipResolver.AddClip(makeTestClip("clip-missing-transcript", "Missing Transcript", 30*time.Second))
+
+	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{
+		tracks: map[string]*asset.TextTrack{
+			"clip-valid:en": makeTrack("clip-valid", "en", "valid transcript"),
+		},
+	})
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+		Script:    canonicalSceneJSON(2, []string{"clip-valid", "clip-missing-transcript"}, ""),
+		WordCount: 10, EstDuration: 3, Model: "llama3:8b",
+	}}
+
+	uc := buildUsecaseWithClipBuilder(gen, builder)
+	item := makeClipsItem("e2e-missing-transcript", []string{"clip-valid", "clip-missing-transcript"}, "")
+
+	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var notReady *ErrTextTrackNotReady
+	require.True(t, errors.As(err, &notReady), "expected *ErrTextTrackNotReady in script.generate error: %v", err)
+	require.Equal(t, "clip-missing-transcript", notReady.AssetID)
+	require.Nil(t, gen.capturedReq.Load(), "LLM must not be invoked when transcript evidence is missing")
+}
+
+// TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback
+// pins the no-fake-success contract for the smallest clip request:
+// missing READY transcript must fail before the model can turn an empty
+// evidence surface into generic prose.
+func TestGenerateE2E_SingleClipWithoutReadyTranscriptRejectsGenericFallback(t *testing.T) {
+	t.Parallel()
+
+	const genericFallback = "The actor shares some reflections about the industry."
+	clipResolver := newFakeClipResolver()
+	clipResolver.AddClip(makeTestClip("clip-no-transcript", "Clip Without Transcript", 30*time.Second))
+
+	builder := NewClipSourceBuilder(clipResolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{tracks: map[string]*asset.TextTrack{}})
+	gen := &fakeOllamaGen{result: &scriptports.GenerationResult{
+		Script:      genericFallback,
+		WordCount:   9,
+		EstDuration: 3,
+		Model:       "llama3:8b",
+	}}
+
+	uc := buildUsecaseWithClipBuilder(gen, builder)
+	item := makeClipsItem("e2e-single-missing-transcript", []string{"clip-no-transcript"}, "")
+
+	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+	require.Error(t, err, "a clip without a READY transcript must be rejected")
+	require.Nil(t, result, "missing transcript must not produce a succeeded/degraded result")
+	var notReady *ErrTextTrackNotReady
+	require.ErrorAs(t, err, &notReady)
+	require.Equal(t, "clip-no-transcript", notReady.AssetID)
+	require.Equal(t, int32(0), gen.calls.Load(), "the LLM must not receive empty clip evidence")
+	require.Nil(t, gen.capturedReq.Load(), "no Ollama request may be created for missing transcript evidence")
+	require.NotContains(t, err.Error(), genericFallback, "generic fallback prose must not be returned as a successful job")
 }
 
 // TestGenerateE2E_OneClipWithCompatibleSourceText verifies that a clip

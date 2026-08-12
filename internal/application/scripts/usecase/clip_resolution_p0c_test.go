@@ -150,7 +150,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			name:    "scenario_1_eight_valid_ids",
 			seed:    func(r *fakeClipResolver) {},
 			clipIDs: []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"},
-			opts:    &ClipGenerationOptions{}, // RequireDriveLink=false — text-only path
+			opts:    &ClipGenerationOptions{Language: "en"}, // RequireDriveLink=false — text-only path
 			want: want{
 				acceptedCount:   8,
 				missingCount:    0,
@@ -163,7 +163,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			name:    "scenario_2_seven_valid_one_missing",
 			seed:    func(r *fakeClipResolver) {},
 			clipIDs: []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7", "missing-9"},
-			opts:    &ClipGenerationOptions{},
+			opts:    &ClipGenerationOptions{Language: "en"},
 			want: want{
 				acceptedCount:  7,
 				missingCount:   1,
@@ -181,7 +181,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			name:    "scenario_4_media_asset_id_resolves",
 			seed:    func(r *fakeClipResolver) {},
 			clipIDs: []string{"c1", "c3", "c5"},
-			opts:    &ClipGenerationOptions{},
+			opts:    &ClipGenerationOptions{Language: "en"},
 			want: want{
 				acceptedCount:   3,
 				missingCount:    0,
@@ -203,7 +203,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 				}
 			},
 			clipIDs: []string{"c1", "c2"},
-			opts:    &ClipGenerationOptions{RequireDriveLink: true},
+			opts:    &ClipGenerationOptions{Language: "en", RequireDriveLink: true},
 			want: want{
 				acceptedCount:  1,
 				missingCount:   1,
@@ -226,7 +226,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 				}
 			},
 			clipIDs: []string{"c1"},
-			opts:    &ClipGenerationOptions{RequireDriveLink: false},
+			opts:    &ClipGenerationOptions{Language: "en", RequireDriveLink: false},
 			want: want{
 				acceptedCount:   1,
 				missingCount:    0,
@@ -265,7 +265,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 				}
 			},
 			clipIDs: []string{"c1"},
-			opts:    &ClipGenerationOptions{},
+			opts:    &ClipGenerationOptions{Language: "en"},
 			want: want{
 				acceptedCount:   1,
 				missingCount:    0,
@@ -291,6 +291,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			}
 
 			builder := NewClipSourceBuilder(resolver, nil, nil)
+			configureFakeClipTranscripts(builder, resolver, "en")
 			ev, title, sourceText, err := builder.BuildClipContext(
 				context.Background(), tc.clipIDs, tc.opts,
 			)
@@ -432,10 +433,15 @@ func TestClipResolution_P0C_DriveFileIDFallback(t *testing.T) {
 	// caller-side surface (so a real client-side regression on the
 	// fallback dispatch would also fail this test).
 	builder := NewClipSourceBuilder(resolver, nil, nil)
+	builder.ConfigureTextTrackReader(&stubTextTrackReader{
+		tracks: map[string]*asset.TextTrack{
+			internalID + ":en": makeTrack(internalID, "en", "fallback fixture transcript"),
+		},
+	})
 	ev, _, _, err := builder.BuildClipContext(
 		context.Background(),
 		[]string{driveID},
-		&ClipGenerationOptions{},
+		&ClipGenerationOptions{Language: "en"},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, ev)
