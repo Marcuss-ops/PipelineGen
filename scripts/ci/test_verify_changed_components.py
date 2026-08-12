@@ -27,7 +27,13 @@ class VerifyChangedComponentsTests(unittest.TestCase):
     def registry() -> dict[str, dict[str, Any]]:
         return {
             "script": {"paths": ["internal/domain/script/"], "dependencies": []},
-            "stock": {"paths": ["internal/application/assets/providers/stock/"], "dependencies": ["script"]},
+            "stock": {
+                "paths": [
+                    "internal/application/assets/providers/stock/",
+                    "out/stock-e2e-muhammad-ali-10m.payload.json",
+                ],
+                "dependencies": ["script"],
+            },
             "clips": {"paths": ["internal/domain/clips/"], "dependencies": ["script"]},
             "drive": {"paths": ["internal/infrastructure/drive/"], "dependencies": []},
         }
@@ -55,6 +61,17 @@ class VerifyChangedComponentsTests(unittest.TestCase):
         )
         self.assertEqual(impacted, ["script", "stock", "clips", "drive"])
         self.assertEqual(mapping["Makefile"], impacted)
+        self.assertEqual(unmapped, [])
+
+    def test_real_registry_preserves_registered_stock_out_fixture(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        registry = json.loads(
+            (repo_root / "config/verify-components.json").read_text(encoding="utf-8")
+        )
+        path = "out/stock-e2e-muhammad-ali-10m.payload.json"
+        mapping, impacted, unmapped = verify_changed.map_changed_files([path], registry)
+        self.assertEqual(mapping[path], ["stock"])
+        self.assertEqual(impacted, ["stock"])
         self.assertEqual(unmapped, [])
 
     def test_build_and_ci_files_impact_every_component(self) -> None:
@@ -136,6 +153,34 @@ class VerifyChangedComponentsTests(unittest.TestCase):
             tracked.unlink()
             changes = verify_changed.collect_changed_files(root, "HEAD")
             self.assertEqual(changes.files, ("internal/domain/clips/deleted.go",))
+
+    def test_ignores_deleted_generated_out_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.git(root, "init", "-q")
+            self.git(root, "config", "user.email", "test@example.invalid")
+            self.git(root, "config", "user.name", "Test")
+            generated = root / "out" / "report.json"
+            preserved = root / "out" / "stock-e2e-muhammad-ali-10m.payload.json"
+            generated.parent.mkdir(parents=True)
+            generated.write_text("{}\n", encoding="utf-8")
+            preserved.write_text("{}\n", encoding="utf-8")
+            self.git(root, "add", ".")
+            self.git(root, "commit", "-qm", "initial")
+            generated.unlink()
+            preserved.unlink()
+            changes = verify_changed.collect_changed_files(
+                root,
+                "HEAD",
+                {"out/stock-e2e-muhammad-ali-10m.payload.json"},
+            )
+            self.assertEqual(changes.files, ("out/stock-e2e-muhammad-ali-10m.payload.json",))
+            mapping, impacted, unmapped = verify_changed.map_changed_files(
+                changes.files, self.registry()
+            )
+            self.assertEqual(mapping["out/stock-e2e-muhammad-ali-10m.payload.json"], ["stock"])
+            self.assertEqual(impacted, ["stock"])
+            self.assertEqual(unmapped, [])
 
     def test_run_changed_components_invokes_shared_runner_once(self) -> None:
         calls: list[tuple[str, ...]] = []

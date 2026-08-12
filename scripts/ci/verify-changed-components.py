@@ -72,7 +72,12 @@ ALL_COMPONENT_PREFIXES = (
         "architecture/",
     ".github/workflows/",
 )
+# Generated local outputs are not component source changes. This also filters
+# committed cleanup deletions from older output snapshots while preserving
+# fail-closed coverage for deleted source/config files. Canonical fixtures
+# under out/ are supplied from the component registry at collection time.
 IGNORED_CHANGED_PREFIXES = ("artifacts/", "tmp/", "data/")
+IGNORED_GENERATED_OUT_PREFIX = "out/"
 
 
 class ChangedComponentsError(RuntimeError):
@@ -208,9 +213,14 @@ def select_base_ref(
     return None, True
 
 
-def collect_changed_files(repo_root: Path, base_ref: str | None) -> GitChanges:
-    """Collect committed, staged, unstaged, and untracked non-ignored paths."""
+def collect_changed_files(
+    repo_root: Path,
+    base_ref: str | None,
+    preserved_out_files: Iterable[str] = (),
+) -> GitChanges:
+    """Collect changed paths, preserving registry-owned output fixtures."""
     paths: set[str] = set()
+    preserved = frozenset(normalize_path(path) for path in preserved_out_files)
     if base_ref is not None:
         paths.update(_changed_against_base(repo_root, base_ref))
     paths.update(_git_command(repo_root, ["diff", "--name-only", "-z"]))
@@ -220,7 +230,7 @@ def collect_changed_files(repo_root: Path, base_ref: str | None) -> GitChanges:
         sorted(
             path
             for path in (normalize_path(item) for item in paths)
-            if path and not path.startswith(IGNORED_CHANGED_PREFIXES)
+            if path and not _is_ignored_changed_path(path, preserved)
         )
     )
     return GitChanges(
@@ -237,6 +247,13 @@ def normalize_path(path: str) -> str:
     while value.startswith("./"):
         value = value[2:]
     return value.strip("/")
+
+
+def _is_ignored_changed_path(path: str, preserved_out_files: frozenset[str]) -> bool:
+    normalized = normalize_path(path)
+    if normalized.startswith(IGNORED_CHANGED_PREFIXES):
+        return True
+    return normalized.startswith(IGNORED_GENERATED_OUT_PREFIX) and normalized not in preserved_out_files
 
 
 def _path_matches(path: str, registered_path: str) -> bool:
@@ -521,8 +538,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         runner = _load_component_runner(runner_path)
         registry = runner.module.load_registry(registry_path)
+        preserved_out_files = {
+            normalize_path(path)
+            for definition in registry.values()
+            for path in definition.get("paths", [])
+            if normalize_path(path).startswith(IGNORED_GENERATED_OUT_PREFIX)
+        }
         base_ref, fallback = select_base_ref(root, args.base)
-        changes = collect_changed_files(root, base_ref)
+        changes = collect_changed_files(root, base_ref, preserved_out_files)
         changes = GitChanges(
             files=changes.files,
             base_ref=changes.base_ref,
