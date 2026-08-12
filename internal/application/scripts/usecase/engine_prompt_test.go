@@ -249,6 +249,52 @@ func TestEnginePrompt_ClipGrounding_OneParagraphPerClipPreservesOrderAndConcrete
 	}
 }
 
+func TestEnginePrompt_SegmentEvidenceReachesMatchingSegmentBlock(t *testing.T) {
+	t.Parallel()
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "segment-one", Topic: "First topic", ClipIDs: []string{"clip-one"}},
+			{ID: "segment-two", Topic: "Second topic", ClipIDs: []string{"clip-two"}},
+		},
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			SegmentEvidence: []scriptpkg.SegmentClipEvidence{
+				{
+					SegmentID: "segment-one",
+					ClipIDs:   []string{"clip-one"},
+					Clips: map[string]scriptpkg.ClipDetail{
+						"clip-one": {Name: "First clip", Transcript: "TRANSCRIPT_SENTINEL_ONE"},
+					},
+				},
+				{
+					SegmentID: "segment-two",
+					ClipIDs:   []string{"clip-two"},
+					Clips: map[string]scriptpkg.ClipDetail{
+						"clip-two": {Name: "Second clip", Transcript: "TRANSCRIPT_SENTINEL_TWO"},
+					},
+				},
+			},
+		},
+	}
+
+	prompt := buildSegmentInstructions(plan)
+	segmentTwo := strings.Index(prompt, "SEGMENT 2")
+	firstTranscript := strings.Index(prompt, "TRANSCRIPT_SENTINEL_ONE")
+	secondTranscript := strings.Index(prompt, "TRANSCRIPT_SENTINEL_TWO")
+	if segmentTwo < 0 || firstTranscript < 0 || secondTranscript < 0 {
+		t.Fatalf("prompt lost segment evidence: %q", prompt)
+	}
+	if firstTranscript > segmentTwo {
+		t.Fatalf("first segment transcript appears after SEGMENT 2: %q", prompt)
+	}
+	if secondTranscript < segmentTwo {
+		t.Fatalf("second segment transcript appears before SEGMENT 2: %q", prompt)
+	}
+	if strings.Index(prompt, "TRANSCRIPT_SENTINEL_ONE") > secondTranscript {
+		t.Fatalf("segment evidence order was reversed: %q", prompt)
+	}
+}
+
 func TestEnginePrompt_ClipGroundingUsesDeclaredSegmentsWhenClipCountDiffers(t *testing.T) {
 	t.Parallel()
 
