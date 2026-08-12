@@ -114,7 +114,7 @@ type SegmentClipEvidence struct {
 	Kind       string                `json:"kind,omitempty"`
 	Topic      string                `json:"topic,omitempty"`
 	SourceText string                `json:"source_text,omitempty"`
-	ClipIDs    []string              `json:"clip_ids,omitempty"`
+	ClipIDs    []string              `json:"clip_ids"`
 	Clips      map[string]ClipDetail `json:"clips,omitempty"`
 }
 
@@ -141,6 +141,7 @@ func BuildSegmentClipEvidence(segments []ScriptSegment, evidence *ClipEvidence) 
 		}
 		for _, clipID := range segment.ClipIDs {
 			if detail, ok := evidence.ClipDetails[clipID]; ok {
+				detail.Tags = slices.Clone(detail.Tags)
 				out[i].Clips[clipID] = detail
 			}
 		}
