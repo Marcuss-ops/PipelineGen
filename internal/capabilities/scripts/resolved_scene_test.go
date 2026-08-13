@@ -34,6 +34,53 @@ func TestResolvedScenesRoundTripPreservesCanonicalTimingAndAssets(t *testing.T) 
 			t.Fatalf("scene lost canonical fields: %+v", scene)
 		}
 	}
+	// timeline_start_us is the cumulative placement; end is always derived.
+	var expectedStart int64
+	for _, scene := range after {
+		if scene.TimelineStartUS != expectedStart {
+			t.Fatalf("scene %s timeline_start_us = %d, want contiguous %d", scene.ID, scene.TimelineStartUS, expectedStart)
+		}
+		expectedStart += scene.DurationUS
+	}
+}
+
+func TestResolvedScenesCarryContiguousTimelineStart(t *testing.T) {
+	scenes := []Scene{
+		{ID: "scene-0", Index: 0, DurationUS: 3_000_000},
+		{ID: "scene-1", Index: 1, DurationUS: 5_000_000},
+		{ID: "scene-2", Index: 2, DurationUS: 2_000_000},
+	}
+	resolved, err := ResolveScenes(scenes, "it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStarts := []int64{0, 3_000_000, 8_000_000}
+	for i, want := range wantStarts {
+		if resolved[i].TimelineStartUS != want {
+			t.Fatalf("scene %d timeline_start_us = %d, want %d", i, resolved[i].TimelineStartUS, want)
+		}
+	}
+	raw, err := json.Marshal(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsJSONField(t, raw, "timeline_start_us") {
+		t.Fatalf("resolved scenes JSON must carry timeline_start_us: %s", raw)
+	}
+}
+
+func containsJSONField(t *testing.T, raw []byte, field string) bool {
+	t.Helper()
+	var wire []map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range wire {
+		if _, ok := m[field]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func mustJSON(t *testing.T, value any) string {
