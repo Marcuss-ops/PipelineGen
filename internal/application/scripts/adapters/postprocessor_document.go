@@ -40,32 +40,28 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return nil, fmt.Errorf("document publishing requires at least one language")
 	}
 
+	// The document publisher is read-only with respect to SpecScene: it must
+	// never rewrite scene state. Any upstream mismatch (e.g. single-scene
+	// narrative placement) has to be resolved before this point.
 	model := &scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: input.Text, SpecScene: input.SpecScene, WordCount: input.WordCount, ModelUsed: input.ModelUsed}
-	if plan.SingleScene {
-		var bindings scriptpkg.SceneBindings
-		if len(model.SpecScene.Scenes) > 0 {
-			bindings = model.SpecScene.Scenes[0].Bindings
-		}
-		model.SpecScene.Scenes = []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Kind: scriptpkg.SceneNarration, Text: input.Text, Bindings: bindings}}
-	}
-	if len(model.SpecScene.Scenes) == 1 && strings.TrimSpace(input.Text) != "" {
-		model.SpecScene.Scenes[0].Text = input.Text
-	}
 	documentTitle := strings.TrimSpace(plan.Title)
 	if plan.VideoMetadata != nil && strings.TrimSpace(plan.VideoMetadata.Title) != "" {
 		documentTitle = strings.TrimSpace(plan.VideoMetadata.Title)
 	}
-	content := BuildSpecSceneDocumentHTML(model, documentTitle, plan.VideoMetadata, input.Provenance)
-	if strings.TrimSpace(content) == "" {
-		return nil, fmt.Errorf("document content is empty")
-	}
-
 	var firstID, firstLink string
-	refreshDocument := plan.ForceRefresh || specSceneHasSubtitleLinks(input.SpecScene)
+	refreshDocument := plan.ForceRefresh || specSceneHasLateBoundDocumentData(input.SpecScene)
 	for _, language := range languages {
 		language = strings.TrimSpace(language)
 		if language == "" {
 			continue
+		}
+		content := BuildSpecSceneDocumentHTML(model, SpecSceneDocumentOptions{
+			Title:           documentTitle,
+			Language:        language,
+			DefaultLanguage: plan.Language,
+		})
+		if strings.TrimSpace(content) == "" {
+			return nil, fmt.Errorf("document content is empty for language %s", language)
 		}
 		link, id, createErr := p.service.CreateDoc(ctx, documentTitle+"_"+language, content, nil, plan.DocsFolderID, plan.ID+"-"+language, refreshDocument)
 		if createErr != nil {
@@ -84,10 +80,32 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	return &PostProcessResult{DocID: firstID, DocLink: firstLink}, nil
 }
 
-func specSceneHasSubtitleLinks(spec scriptpkg.SpecSceneOutput) bool {
+// specSceneHasLateBoundDocumentData reports whether the SpecScene carries
+// data that can arrive after the first document publish (voiceover links and
+// clip subtitle links). When such data appears later, an existing document
+// must be refreshed so the human surface stays current.
+func specSceneHasLateBoundDocumentData(spec scriptpkg.SpecSceneOutput) bool {
 	for _, scene := range spec.Scenes {
+		voice := scene.Bindings.Voiceover
+		if voice != nil {
+			if strings.TrimSpace(voice.Link) != "" {
+				return true
+			}
+			for _, link := range voice.Links {
+				if strings.TrimSpace(link) != "" {
+					return true
+				}
+			}
+		}
+
 		if scene.Bindings.Clip != nil && strings.TrimSpace(scene.Bindings.Clip.SubtitleLink) != "" {
 			return true
+		}
+
+		for _, clip := range scene.Bindings.Clips {
+			if strings.TrimSpace(clip.SubtitleLink) != "" {
+				return true
+			}
 		}
 	}
 	return false

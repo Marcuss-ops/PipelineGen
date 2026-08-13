@@ -371,7 +371,7 @@ func TestTranslateScriptSpec_CreatesGoogleDocWithSceneMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	title := "Top 10 Momenti Incredibili di Jackie Chan"
-	html := adapters.BuildSpecSceneDocumentHTML(out, title, nil)
+	html := adapters.BuildSpecSceneDocumentHTML(out, adapters.SpecSceneDocumentOptions{Title: title})
 	require.NotEmpty(t, html, "BuildSpecSceneDocumentHTML must produce HTML output")
 
 	assert.Contains(t, html, "<h2>Scenes</h2>",
