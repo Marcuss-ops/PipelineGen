@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"path/filepath"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -44,7 +45,11 @@ type SpecSceneDocumentOptions struct {
 	Language        string
 	DefaultLanguage string
 	FullAudio       *scriptpkg.DocumentAudioRef
-	AudioTimeline   *capabilityaudio.CanonicalTimeline
+	// FinalAudio is the full master certification. When present the renderer
+	// embeds it verbatim (minus the local path) so the video renderer and the
+	// document both reference the same asset by ID.
+	FinalAudio    *scriptpkg.FinalAudioArtifact
+	AudioTimeline *capabilityaudio.CanonicalTimeline
 }
 
 // BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
@@ -104,9 +109,65 @@ func BuildSpecSceneDocumentHTML(
 			b.WriteString("</code></pre>")
 		}
 	}
+	if block := buildFinalAudioBlock(opts.FinalAudio, opts.Language); block != nil {
+		if finalAudio, finalAudioErr := json.MarshalIndent(block, "", "  "); finalAudioErr == nil {
+			b.WriteString("<h2>Final Audio JSON</h2><pre><code>")
+			b.WriteString(html.EscapeString(string(finalAudio)))
+			b.WriteString("</code></pre>")
+		}
+	}
 
 	b.WriteString("</body></html>")
 	return b.String()
+}
+
+// finalAudioDocumentBlock is the document projection of the certified master.
+// It intentionally excludes the local path and derives duration_us from the
+// canonical duration_ms, so the same asset ID certified here is the one the
+// video renderer must consume.
+type finalAudioDocumentBlock struct {
+	AudioAssetID     string `json:"audio_asset_id"`
+	Language         string `json:"language"`
+	DriveLink        string `json:"drive_link,omitempty"`
+	Container        string `json:"container,omitempty"`
+	Codec            string `json:"codec,omitempty"`
+	Profile          string `json:"profile,omitempty"`
+	SampleRate       int    `json:"sample_rate,omitempty"`
+	Channels         int    `json:"channels,omitempty"`
+	ChannelLayout    string `json:"channel_layout,omitempty"`
+	DurationUS       int64  `json:"duration_us,omitempty"`
+	AudioPlanSHA256  string `json:"audio_plan_sha256,omitempty"`
+	FinalAudioSHA256 string `json:"final_audio_sha256,omitempty"`
+	FinalMix         bool   `json:"final_mix,omitempty"`
+	CopyEligible     bool   `json:"copy_eligible,omitempty"`
+}
+
+func buildFinalAudioBlock(ref *scriptpkg.FinalAudioArtifact, language string) *finalAudioDocumentBlock {
+	if ref == nil {
+		return nil
+	}
+	return &finalAudioDocumentBlock{
+		AudioAssetID:     ref.AssetID,
+		Language:         language,
+		DriveLink:        ref.DriveLink,
+		Container:        mediaContainerFromPath(ref.Path),
+		Codec:            ref.Codec,
+		Profile:          ref.Profile,
+		SampleRate:       ref.SampleRate,
+		Channels:         ref.Channels,
+		ChannelLayout:    ref.ChannelLayout,
+		DurationUS:       ref.DurationMS * 1000,
+		AudioPlanSHA256:  ref.AudioPlanSHA256,
+		FinalAudioSHA256: ref.FinalAudioSHA256,
+		FinalMix:         ref.FinalMix,
+		CopyEligible:     ref.CopyEligible,
+	}
+}
+
+// mediaContainerFromPath derives the media container (e.g. "m4a") from the
+// local artifact path without ever exposing the path itself in the document.
+func mediaContainerFromPath(path string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
 }
 
 func writeDocumentFullAudio(b *strings.Builder, opts SpecSceneDocumentOptions) {

@@ -3,13 +3,12 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 )
 
 func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
-	// ── Stage 5: Publish Documents ──────────────────────────────
+	// ── Publish Documents after the final audio/render payload ───
 	documentStep, startErr := r.startExecutionStep(ctx, exec, "DOCUMENT", "publication")
 	if startErr != nil {
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, startErr)
@@ -27,9 +26,39 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return false
 		}
+		if r.documentRenderer == nil {
+			cause := fmt.Errorf("canonical document renderer is not configured")
+			r.failExecutionStep(ctx, exec, documentStep, cause)
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
+			return false
+		}
 		docs := make(map[Language]DocumentReference)
+		renderers := make(map[Language]string)
+		hashes := make(map[Language]string)
+		sceneCounts := make(map[Language]int)
 		for _, lang := range docsLangs {
-			content := buildDocumentContent(result.Scenes, lang)
+			model := modelScriptOutputForDocument(result, lang)
+			content, renderErr := r.documentRenderer.RenderDocument(model, DocumentRenderOptions{
+				Title:           req.Title,
+				Language:        lang,
+				DefaultLanguage: req.SourceLanguage,
+				FullAudio:       documentAudioRef(result, lang),
+				FinalAudio:      result.FinalAudio,
+				AudioTimeline:   result.CanonicalTimeline,
+			})
+			if renderErr != nil {
+				cause := fmt.Errorf("render document for language %s failed: %w", lang, renderErr)
+				r.failExecutionStep(ctx, exec, documentStep, cause)
+				r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
+				return false
+			}
+			rendererID := "unknown"
+			if identified, ok := r.documentRenderer.(IdentifiedDocumentRenderer); ok {
+				rendererID = identified.DocumentRendererID()
+			}
+			renderers[lang] = rendererID
+			hashes[lang] = documentSpecSceneSHA256(model)
+			sceneCounts[lang] = len(model.SpecScene.Scenes)
 			title := req.Title
 			if title == "" {
 				title = "Script"
@@ -55,6 +84,9 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			}
 		}
 		result.Documents = docs
+		result.DocumentRenderers = renderers
+		result.DocumentSpecSceneSHA256 = hashes
+		result.DocumentSceneCounts = sceneCounts
 		r.checkpoint(ctx, runID, result)
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StagePublishingDocuments)))
 	}
@@ -72,25 +104,13 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 	return true
 }
 
-// buildDocumentContent assembles the content string for a Google Doc
-// from the scenes in the given language.
-func buildDocumentContent(scenes []Scene, lang Language) string {
-	var content string
-	for _, scene := range scenes {
-		text, ok := scene.Text[lang]
-		if !ok || text == "" {
-			continue
-		}
-		if content != "" {
-			content += "\n\n"
-		}
-		content += fmt.Sprintf("Scene %d\n%s", scene.Index+1, text)
-		// The document surface is human-only: technical bindings (clip,
-		// subtitle, stock, entity links) never appear here. Voiceover is
-		// rendered as its URL so it can be read and copied directly.
-		if vo, ok := scene.Voiceover[lang]; ok && strings.TrimSpace(vo.URL) != "" {
-			content += fmt.Sprintf("\nVoiceover: %s", vo.URL)
-		}
+func documentAudioRef(result *GenerateResult, language Language) *DocumentAudioRef {
+	if result == nil || result.FinalAudio == nil {
+		return nil
 	}
-	return content
+	ref := result.FinalAudio
+	return &DocumentAudioRef{
+		AssetID: ref.AssetID, Language: string(language), DriveLink: ref.DriveLink,
+		DurationMS: ref.DurationMS, SHA256: ref.FinalAudioSHA256,
+	}
 }

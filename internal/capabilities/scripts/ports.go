@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── TextGenerator ───────────────────────────────────────────────────
@@ -97,6 +98,42 @@ type DocumentPublisher interface {
 	UpsertDocument(ctx context.Context, input DocumentInput) (DocumentReference, error)
 }
 
+// DocumentRenderOptions are the caller-facing inputs for the canonical
+// document renderer. The renderer owns presentation; the runner only supplies
+// the canonical model and the requested language.
+type DocumentRenderOptions struct {
+	Title           string
+	Language        Language
+	DefaultLanguage Language
+	// FullAudio is the already-certified master produced by the audio
+	// pipeline. The renderer only projects this reference; it never probes,
+	// trims, mixes, or uploads the file.
+	FullAudio *DocumentAudioRef
+	// FinalAudio is the full certification of the master asset (codec,
+	// profile, sample rate, channels, hashes, mix/copy eligibility). The
+	// renderer projects it verbatim so the video renderer consumes exactly
+	// the same asset the document certifies. Nil when no master was built.
+	FinalAudio *FinalAudioReference
+	// AudioTimeline is the canonical timeline used to compile FullAudio.
+	AudioTimeline *audio.CanonicalTimeline
+}
+
+type DocumentAudioRef = scriptpkg.DocumentAudioRef
+
+// DocumentRenderer is the single rendering seam used by every document
+// producer. The composition root wires the canonical implementation, while
+// the capability remains independent of HTML and Google Docs.
+type DocumentRenderer interface {
+	RenderDocument(*scriptpkg.ModelScriptOutputV1, DocumentRenderOptions) (string, error)
+}
+
+// IdentifiedDocumentRenderer is an optional observability seam. Production
+// renderers implement it so completed runs prove which formatter was used;
+// test renderers may omit it and remain valid port fakes.
+type IdentifiedDocumentRenderer interface {
+	DocumentRendererID() string
+}
+
 // ── RenderEnqueuer ──────────────────────────────────────────────────
 
 // RenderEnqueuer submits a render job to the worker queue.
@@ -111,6 +148,13 @@ type RenderEnqueuer interface {
 // back to chunked mixing when this port is unavailable or fails.
 type CombinedAudioRenderer interface {
 	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
+}
+
+// FinalAudioPublisher publishes the already-certified combined master before
+// document publication. It is deliberately narrower than the renderer: it
+// receives the immutable result and returns only the canonical public link.
+type FinalAudioPublisher interface {
+	PublishFinalAudio(context.Context, string, Language, FinalAudioReference) (string, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through
