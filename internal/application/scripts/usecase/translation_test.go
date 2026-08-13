@@ -374,8 +374,8 @@ func TestTranslateScriptSpec_CreatesGoogleDocWithSceneMetadata(t *testing.T) {
 	html := adapters.BuildSpecSceneDocumentHTML(out, adapters.SpecSceneDocumentOptions{Title: title})
 	require.NotEmpty(t, html, "BuildSpecSceneDocumentHTML must produce HTML output")
 
-	assert.Contains(t, html, "<h2>Scenes</h2>",
-		"HTML must contain the canonical Scenes section")
+	assert.Contains(t, html, "<h2>Scene 1</h2>",
+		"HTML must contain the canonical human scene heading")
 	assert.Contains(t, html, "SpecScene JSON",
 		"HTML must include the full canonical SpecScene JSON payload")
 
@@ -384,7 +384,7 @@ func TestTranslateScriptSpec_CreatesGoogleDocWithSceneMetadata(t *testing.T) {
 		"HTML must contain translated scene text (suffix _IT)")
 	for _, driveID := range []string{"abc1", "abc2", "abc3"} {
 		assert.Contains(t, html, "drive.google.com/file/d/"+driveID,
-			"HTML must contain drive_link for %s (binding preserved)", driveID)
+			"HTML must contain drive_link for %s inside the SpecScene JSON (binding preserved)", driveID)
 	}
 
 	// The user-facing document keeps rendered scene metadata and the full
