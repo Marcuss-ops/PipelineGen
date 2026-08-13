@@ -225,6 +225,41 @@ func TestV2RejectsDuplicateEventID(t *testing.T) {
 	}
 }
 
+func TestCanonicalTimelineJSONCarriesPerSceneTimingWithoutEndUS(t *testing.T) {
+	timeline := testTimeline()
+	encoded, err := json.Marshal(timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Segments []struct {
+			ID              string `json:"id"`
+			TimelineStartUS int64  `json:"timeline_start_us"`
+			DurationUS      int64  `json:"duration_us"`
+			EndUS           *int64 `json:"end_us"`
+		} `json:"segments"`
+	}
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if len(wire.Segments) != len(timeline.Segments) {
+		t.Fatalf("wire segments = %d, want %d", len(wire.Segments), len(timeline.Segments))
+	}
+	var expectedEnd int64
+	for i, seg := range wire.Segments {
+		if seg.TimelineStartUS != timeline.Segments[i].TimelineStartUS || seg.DurationUS != timeline.Segments[i].DurationUS {
+			t.Fatalf("segment %d timing not preserved on the wire: %+v", i, seg)
+		}
+		if seg.EndUS != nil {
+			t.Fatalf("segment %d must not serialize end_us; end is derived as start + duration", i)
+		}
+		if seg.TimelineStartUS != expectedEnd {
+			t.Fatalf("segment %d start = %d, want contiguous %d", i, seg.TimelineStartUS, expectedEnd)
+		}
+		expectedEnd = seg.TimelineStartUS + seg.DurationUS
+	}
+}
+
 func TestCanonicalTimelineRejectsIndependentTiming(t *testing.T) {
 	timeline := testTimeline()
 	timeline.Segments[2].TimelineStartUS = 25000000
