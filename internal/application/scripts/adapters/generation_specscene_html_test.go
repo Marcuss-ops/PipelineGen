@@ -38,15 +38,7 @@ func TestBuildSpecSceneDocumentHTML_RendersVisibleScenesAndLinks(t *testing.T) {
 			},
 		},
 	}
-	prov := &scriptpkg.GenerationProvenance{
-		DocID:         "doc-1",
-		DocLink:       "https://docs.google.com/document/d/doc-1/edit",
-		SourceType:    "clips",
-		RequestedMode: "clip_native",
-		UsedMode:      "clip_native",
-	}
-
-	html := adapters.BuildSpecSceneDocumentHTML(model, "Canonical Script", nil, prov)
+	html := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Canonical Script"})
 
 	for _, want := range []string{
 		"<h1>Canonical Script</h1>",
@@ -92,7 +84,7 @@ func TestBuildSpecSceneDocumentHTML_RendersConciseEntityImageLinks(t *testing.T)
 		}}},
 	}}}}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, "Famous people", nil)
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Famous people"})
 	require.Contains(t, out, "<strong>Entità:</strong> John Cena")
 	require.Contains(t, out, "<strong>Image link Drive:</strong>")
 	require.Contains(t, out, "https://drive.google.com/file/d/cena/view")
@@ -103,7 +95,7 @@ func TestBuildSpecSceneDocumentHTML_RendersConciseEntityImageLinks(t *testing.T)
 
 func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	t.Parallel()
-	if got := adapters.BuildSpecSceneDocumentHTML(nil, "ignored", nil); got != "" {
+	if got := adapters.BuildSpecSceneDocumentHTML(nil, adapters.SpecSceneDocumentOptions{Title: "ignored"}); got != "" {
 		t.Fatalf("expected empty output for nil model, got %q", got)
 	}
 }
@@ -196,7 +188,7 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 		},
 	}
 
-	out := adapters.BuildSpecSceneDocumentHTML(model, "Stock HTML test", nil, nil)
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Stock HTML test"})
 
 	// Stock metadata remains in the escaped JSON snapshot, but it must
 	// not be rendered as a synthetic visible Clip note or link.
@@ -218,7 +210,7 @@ func TestBuildSpecSceneDocumentHTML_StockBindingDriveLinkEscape(t *testing.T) {
 	}
 }
 
-func TestBuildSpecSceneDocumentHTML_PrintsManualVideoMetadata(t *testing.T) {
+func TestBuildSpecSceneDocumentHTML_UsesOptionsTitleOnly(t *testing.T) {
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		SpecScene: scriptpkg.SpecSceneOutput{
@@ -232,38 +224,23 @@ func TestBuildSpecSceneDocumentHTML_PrintsManualVideoMetadata(t *testing.T) {
 		},
 	}
 
-	metadata := &scriptpkg.VideoMetadata{
-		Title:       "Titolo & Tyson",
-		Description: "Descrizione <speciale> del video",
-		Tags:        []string{"boxe", "Mike <Tyson>", "finanza & analisi"},
-	}
-
 	html := adapters.BuildSpecSceneDocumentHTML(
 		model,
-		"Titolo interno",
-		metadata,
+		adapters.SpecSceneDocumentOptions{Title: "Titolo & Tyson"},
 	)
 
 	require.Contains(t, html, "<h1>Titolo &amp; Tyson</h1>")
-	require.Contains(t, html, "<h2>Description</h2>")
-	require.Contains(t, html, "Descrizione &lt;speciale&gt; del video")
-	require.Contains(t, html, "<h2>Tags</h2>")
-	require.Contains(t, html, "boxe, Mike &lt;Tyson&gt;, finanza &amp; analisi")
-	require.NotContains(t, html, "Mike <Tyson>")
-	require.NotContains(t, html, "finanza & analisi")
+	require.NotContains(t, html, "<h2>Description</h2>")
+	require.NotContains(t, html, "<h2>Tags</h2>")
 	require.Contains(t, html, "Testo della scena")
 }
 
 func TestBuildSpecSceneDocumentHTML_PrintsOneTitleOnly(t *testing.T) {
 	html := adapters.BuildSpecSceneDocumentHTML(
 		&scriptpkg.ModelScriptOutputV1{},
-		"Titolo interno",
-		&scriptpkg.VideoMetadata{
-			Title: "Titolo video",
-		},
+		adapters.SpecSceneDocumentOptions{Title: "Titolo video"},
 	)
 
 	require.Equal(t, 1, strings.Count(html, "<h1>"))
 	require.Contains(t, html, "<h1>Titolo video</h1>")
-	require.NotContains(t, html, "<h1>Titolo interno</h1>")
 }

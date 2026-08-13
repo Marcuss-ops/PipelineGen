@@ -28,15 +28,23 @@ func (s *documentServiceStub) CreateDoc(_ context.Context, title, content string
 }
 func (s *documentServiceStub) UpdateDoc(context.Context, string, string, string) error { return nil }
 
-func TestDocumentsProcessor_UsesFullNarrativeForSingleScene(t *testing.T) {
+func TestDocumentsProcessor_DoesNotRewriteSingleSceneSpecScene(t *testing.T) {
 	stub := &documentServiceStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-full", Title: "Full narrative", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}, SingleScene: true}
-	fullText := "Questo è il testo completo generato dall'endpoint, non il preview della scena."
-	if _, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{Text: fullText, SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Text: "preview breve"}}}}); err != nil {
+	canonical := "CANONICAL-SCENE-TEXT"
+	global := "GLOBAL-TEXT-DIFFERENT"
+	if _, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{Text: global, SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Text: canonical}}}}); err != nil {
 		t.Fatal(err)
 	}
-	if len(stub.content) != 1 || !strings.Contains(stub.content[0], html.EscapeString(fullText)) {
-		t.Fatalf("document must contain full narrative: %v", stub.content)
+	if len(stub.content) != 1 {
+		t.Fatalf("expected one document, got %d", len(stub.content))
+	}
+	content := stub.content[0]
+	if !strings.Contains(content, html.EscapeString(canonical)) {
+		t.Errorf("document must contain canonical scene text, got: %s", content)
+	}
+	if strings.Contains(content, html.EscapeString(global)) {
+		t.Errorf("document publisher must not rewrite SpecScene with global narrative text, got: %s", content)
 	}
 }
 
@@ -70,15 +78,22 @@ func TestDocumentsProcessor_DisabledPlanDoesNotRequirePublisher(t *testing.T) {
 	}
 }
 
-func TestDocumentsProcessor_RendersManualVideoMetadata(t *testing.T) {
+func TestDocumentsProcessor_UsesMetadataTitleOnly(t *testing.T) {
 	stub := &documentServiceStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-metadata", Title: "Titolo interno", Language: "it", DocsEnabled: true, DocsLanguages: []string{"it"}, VideoMetadata: &scriptpkg.VideoMetadata{Title: "Titolo YouTube", Description: "Descrizione <manuale>", Tags: []string{"boxe", "analisi"}}}
 	if _, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{Text: "Testo"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<h1>Titolo YouTube</h1>", "<h2>Description</h2>", "Descrizione &lt;manuale&gt;", "<h2>Tags</h2>", "boxe, analisi"} {
-		if !strings.Contains(stub.content[0], want) {
-			t.Errorf("document missing %q: %s", want, stub.content[0])
+	if len(stub.content) != 1 {
+		t.Fatalf("expected one document, got %d", len(stub.content))
+	}
+	content := stub.content[0]
+	if !strings.Contains(content, "<h1>Titolo YouTube</h1>") {
+		t.Errorf("document missing metadata title: %s", content)
+	}
+	for _, forbidden := range []string{"<h2>Description</h2>", "Descrizione", "<h2>Tags</h2>", "boxe", "analisi"} {
+		if strings.Contains(content, forbidden) {
+			t.Errorf("document must not render %q: %s", forbidden, content)
 		}
 	}
 }
@@ -92,6 +107,30 @@ func TestDocumentsProcessor_RefreshesExistingDocWhenASSLinkAppears(t *testing.T)
 	}
 	if len(stub.titles) != 2 || stub.titles[1] != "refresh" {
 		t.Fatalf("ASS document must refresh: %v", stub.titles)
+	}
+}
+
+func TestDocumentsProcessor_RefreshesWhenVoiceoverLinkExists(t *testing.T) {
+	stub := &documentServiceStub{}
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-vo", Title: "With voiceover", DocsLanguages: []string{"it"}, DocsEnabled: true}
+	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{Links: map[string]string{"it": "VOICE-IT"}}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.titles) != 2 || stub.titles[1] != "refresh" {
+		t.Fatalf("voiceover document must refresh: %v", stub.titles)
+	}
+}
+
+func TestDocumentsProcessor_RefreshesWhenMultiClipSubtitleAppears(t *testing.T) {
+	stub := &documentServiceStub{}
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "run-multiclip", Title: "With multi-clip subtitles", DocsLanguages: []string{"en"}, DocsEnabled: true}
+	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{Bindings: scriptpkg.SceneBindings{Clips: []scriptpkg.ClipBinding{{SubtitleLink: "https://drive.google.com/file/d/ass-b/view"}}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.titles) != 2 || stub.titles[1] != "refresh" {
+		t.Fatalf("multi-clip subtitle document must refresh: %v", stub.titles)
 	}
 }
 
