@@ -8,14 +8,17 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	videojob "github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/rustexec"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"go.uber.org/zap"
 )
@@ -49,6 +52,56 @@ func (a *scriptGenerationTranslator) Translate(ctx context.Context, input script
 // provider; the capability sees only its typed port.
 type scriptGenerationDocumentPublisher struct {
 	client drive.DocClient
+}
+
+// scriptGenerationDocumentRenderer is the composition-root adapter from the
+// capability renderer port to the canonical application renderer. The
+// capability runner never owns HTML formatting or a second document builder.
+type scriptGenerationDocumentRenderer struct{}
+
+// finalAudioArtifactForDocument converts the capability-owned master
+// reference into the domain artifact consumed by the document renderer. It
+// never invents fields: unavailable values remain their zero value and are
+// omitted from the projected JSON.
+func finalAudioArtifactForDocument(ref *scriptgen.FinalAudioReference) *scriptpkg.FinalAudioArtifact {
+	if ref == nil {
+		return nil
+	}
+	return &scriptpkg.FinalAudioArtifact{
+		AssetID:              ref.AssetID,
+		Path:                 ref.Path,
+		DriveLink:            ref.DriveLink,
+		AudioContractVersion: ref.AudioContractVersion,
+		AudioPlanVersion:     ref.AudioPlanVersion,
+		AudioPlanSHA256:      ref.PlanSHA256,
+		FinalAudioSHA256:     ref.FinalAudioSHA256,
+		Codec:                ref.Codec,
+		Profile:              ref.Profile,
+		SampleRate:           ref.SampleRate,
+		Channels:             ref.Channels,
+		ChannelLayout:        ref.ChannelLayout,
+		Bitrate:              ref.Bitrate,
+		DurationMS:           ref.DurationMS,
+		StartPTS:             ref.StartPTS,
+		SizeBytes:            ref.SizeBytes,
+		FinalMix:             ref.FinalMix,
+		CopyEligible:         ref.CopyEligible,
+	}
+}
+
+func (scriptGenerationDocumentRenderer) DocumentRendererID() string {
+	return documentadapters.CanonicalDocumentRendererID
+}
+
+func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) (string, error) {
+	return documentadapters.BuildSpecSceneDocumentHTML(model, documentadapters.SpecSceneDocumentOptions{
+		Title:           opts.Title,
+		Language:        string(opts.Language),
+		DefaultLanguage: string(opts.DefaultLanguage),
+		FullAudio:       opts.FullAudio,
+		FinalAudio:      finalAudioArtifactForDocument(opts.FinalAudio),
+		AudioTimeline:   opts.AudioTimeline,
+	}), nil
 }
 
 func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, input scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
@@ -95,7 +148,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		if err := json.Unmarshal(j.Payload, &plan); err != nil {
 			return nil, fmt.Errorf("decode render.video payload: %w", err)
 		}
-		validated, err := caprender.ValidateRenderPlan(plan)
+		validated, err := caprender.ValidateRenderPlan(plan, filesystem.NewOS())
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +162,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 			return nil, fmt.Errorf("register %s handler: %w", jobType, err)
 		}
 	}
-	renderEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service)
+	renderEnqueuer, err := scriptgen.NewJobRenderEnqueuer(root.Jobs.Service, filesystem.NewOS())
 	if err != nil {
 		return nil, fmt.Errorf("build canonical render enqueuer: %w", err)
 	}
@@ -125,8 +178,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *wiring.ComposeRoot, 
 		root.AI.ScriptVoiceoverGenerator,
 		docPublisher,
 		renderEnqueuer,
+		scriptGenerationDocumentRenderer{},
 	)
 	runner.SetCombinedAudioRenderer(audioRenderer)
+	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, log))
 	if root.Jobs != nil && root.Jobs.JobLedger != nil {
 		runner.SetExecutionRecorder(scriptjobs.NewJobRegistryExecutionRecorder(root.Jobs.JobLedger))
 		log.Info("script generation execution recorder wired to Job Registry")

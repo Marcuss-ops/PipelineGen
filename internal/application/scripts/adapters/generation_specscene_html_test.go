@@ -212,6 +212,68 @@ func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
 	require.NotContains(t, extractSpecSceneJSON(t, out), "end_us")
 }
 
+func TestDocument_ProjectsFinalAudioCertification(t *testing.T) {
+	t.Parallel()
+
+	finalAudio := &scriptpkg.FinalAudioArtifact{
+		AssetID:          "final-audio-it",
+		Path:             "/tmp/final_audio_it.m4a",
+		DriveLink:        "https://drive.google.com/file/d/final-audio-it/view",
+		AudioPlanSHA256:  "plan-sha",
+		FinalAudioSHA256: "final-sha",
+		Codec:            "aac",
+		Profile:          "LC",
+		SampleRate:       48000,
+		Channels:         2,
+		ChannelLayout:    "stereo",
+		DurationMS:       45000,
+		FinalMix:         true,
+		CopyEligible:     true,
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title: "Final audio", Language: "it", FinalAudio: finalAudio,
+	})
+
+	require.Contains(t, out, "<h2>Final Audio JSON</h2>")
+	require.NotContains(t, out, "/tmp/final_audio_it.m4a")
+
+	const marker = "<h2>Final Audio JSON</h2><pre><code>"
+	pos := strings.Index(out, marker)
+	require.NotEqual(t, -1, pos)
+	pos += len(marker)
+	end := strings.Index(out[pos:], "</code></pre>")
+	require.NotEqual(t, -1, end)
+
+	var block map[string]any
+	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(out[pos:pos+end])), &block))
+
+	require.Equal(t, "final-audio-it", block["audio_asset_id"])
+	require.Equal(t, "it", block["language"])
+	require.Equal(t, "m4a", block["container"])
+	require.Equal(t, "aac", block["codec"])
+	require.Equal(t, "LC", block["profile"])
+	require.Equal(t, float64(48000), block["sample_rate"])
+	require.Equal(t, float64(2), block["channels"])
+	require.Equal(t, "stereo", block["channel_layout"])
+	require.Equal(t, float64(45_000_000), block["duration_us"])
+	require.Equal(t, "plan-sha", block["audio_plan_sha256"])
+	require.Equal(t, "final-sha", block["final_audio_sha256"])
+	require.Equal(t, true, block["final_mix"])
+	require.Equal(t, true, block["copy_eligible"])
+	require.NotContains(t, block, "path")
+}
+
+func TestDocument_OmitsFinalAudioJSONWithoutReference(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No final audio"})
+
+	require.NotContains(t, out, "Final Audio JSON")
+}
+
 func TestDocument_OmitsSceneTimingWithoutCanonicalTimeline(t *testing.T) {
 	t.Parallel()
 
