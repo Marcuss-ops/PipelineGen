@@ -139,10 +139,10 @@ func TestDocumentsProcessor_RefreshesWhenMultiClipSubtitleAppears(t *testing.T) 
 func TestDocumentsProcessor_BuildsLanguageSpecificContent(t *testing.T) {
 	stub := &documentServiceStub{}
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:           "run-multi",
-		Title:        "Multi voiceover",
-		Language:     "it",
-		DocsEnabled:  true,
+		ID:            "run-multi",
+		Title:         "Multi voiceover",
+		Language:      "it",
+		DocsEnabled:   true,
 		DocsLanguages: []string{"it", "en"},
 	}
 	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{

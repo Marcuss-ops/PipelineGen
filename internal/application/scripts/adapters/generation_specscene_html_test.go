@@ -1,6 +1,7 @@
 package adapters_test
 
 import (
+	"encoding/json"
 	"html"
 	"strings"
 	"testing"
@@ -294,4 +295,304 @@ func extractSpecSceneJSON(t *testing.T, output string) string {
 	require.NotEqual(t, -1, end, "SpecScene JSON closing marker missing")
 
 	return html.UnescapeString(output[start : start+end])
+}
+
+// complexSpecSceneFixture builds a rich, multi-scene SpecScene covering clip,
+// multi-clip, voiceover, stock, image, and entity annotations. It is used by
+// the round-trip and no-mutation tests to prove the embedded JSON snapshot
+// preserves the complete canonical object.
+func complexSpecSceneFixture() scriptpkg.SpecSceneOutput {
+	return scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{
+				ID:        "scene-0",
+				SegmentID: "segment-0",
+				Index:     0,
+				Text:      "Scena introduttiva completa.",
+				Title:     "Intro",
+				Kind:      scriptpkg.SceneIntro,
+				Bindings: scriptpkg.SceneBindings{
+					Clip: &scriptpkg.ClipBinding{
+						ClipID:         "clip-a",
+						ClipTitle:      "Clip A",
+						DriveLink:      "https://drive.google.com/file/d/clip-a/view",
+						SubtitleLink:   "https://drive.google.com/file/d/sub-a/view",
+						SubtitleFileID: "sub-a",
+						StartMs:        1000,
+						EndMs:          5000,
+						DurationMs:     4000,
+					},
+					Voiceover: &scriptpkg.VoiceoverBinding{
+						Status:     "completed",
+						Link:       "https://drive.google.com/file/d/voice-legacy/view",
+						Links:      map[string]string{"it": "https://drive.google.com/file/d/voice-it/view", "en": "https://drive.google.com/file/d/voice-en/view"},
+						LocalPath:  "/tmp/voice.mp3",
+						DurationMs: 4200,
+					},
+					Stock: &scriptpkg.StockBinding{
+						AssetID:    "stock-1",
+						Name:       "Stock One",
+						Source:     "stock",
+						DriveLink:  "https://drive.google.com/file/d/stock-1/view",
+						FolderID:   "folder-1",
+						FolderLink: "https://drive.google.com/drive/folders/folder-1",
+						Score:      0.5,
+						StartMs:    0,
+						EndMs:      5000,
+						DurationMs: 5000,
+					},
+					Image: &scriptpkg.ImageBinding{
+						ImageID:   "img-1",
+						Prompt:    "intro image",
+						URL:       "https://img.example.com/intro.png",
+						LocalPath: "/tmp/intro.png",
+						Status:    "generated",
+					},
+				},
+				Annotations: &scriptpkg.SceneAnnotations{
+					Version:  1,
+					Language: "it",
+					PrimaryEntities: []scriptpkg.AnnotatedEntity{
+						{ID: "e1", Text: "Jackie Chan", CanonicalName: "Jackie Chan", Type: "person", Confidence: 0.99},
+					},
+					Status: "completed",
+				},
+			},
+			{
+				ID:    "scene-1",
+				Index: 1,
+				Text:  "Scena con multi-clip.",
+				Kind:  scriptpkg.SceneClip,
+				Bindings: scriptpkg.SceneBindings{
+					Clips: []scriptpkg.ClipBinding{
+						{ClipID: "clip-b", DriveLink: "https://drive.google.com/file/d/clip-b/view"},
+						{ClipID: "clip-c", DriveLink: "https://drive.google.com/file/d/clip-c/view"},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestBuildSpecSceneDocumentHTML_DoesNotMutateSpecScene(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: complexSpecSceneFixture()}
+
+	before, err := json.Marshal(model.SpecScene)
+	require.NoError(t, err)
+
+	_ = adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No mutation"})
+
+	after, err := json.Marshal(model.SpecScene)
+	require.NoError(t, err)
+
+	require.Equal(t, string(before), string(after), "renderer must not mutate SpecScene")
+}
+
+func TestDocument_HumanSceneLabelsAreOneBased(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: "Prima scena.", Kind: scriptpkg.SceneNarration},
+			{ID: "scene-1", Index: 1, Text: "Seconda scena.", Kind: scriptpkg.SceneNarration},
+		},
+	}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Ordinal"})
+	human := humanDocumentHTML(t, out)
+
+	require.Contains(t, human, "<h2>Scene 1</h2>")
+	require.Contains(t, human, "<h2>Scene 2</h2>")
+	require.NotContains(t, human, "scene-0")
+	require.NotContains(t, human, "scene-1")
+}
+
+func TestDocument_UsesCanonicalSceneText(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{
+		Text: "TESTO GLOBALE DA NON STAMPARE",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{
+				{ID: "scene-0", Index: 0, Text: "TESTO SCENA CORRETTO", Kind: scriptpkg.SceneNarration},
+			},
+		},
+	}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Testo"})
+	human := humanDocumentHTML(t, out)
+
+	require.Contains(t, human, "TESTO SCENA CORRETTO")
+	require.NotContains(t, human, "TESTO GLOBALE DA NON STAMPARE")
+}
+
+func TestDocument_SpecSceneJSONIsComplete(t *testing.T) {
+	t.Parallel()
+
+	original := complexSpecSceneFixture()
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: original}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Completo"})
+	raw := extractSpecSceneJSON(t, out)
+
+	var decoded scriptpkg.SpecSceneOutput
+	require.NoError(t, json.Unmarshal([]byte(raw), &decoded))
+	require.Equal(t, original, decoded, "embedded SpecScene JSON must round-trip byte-faithfully")
+}
+
+func TestDocument_SpecSceneJSONAppearsAfterAllHumanScenes(t *testing.T) {
+	t.Parallel()
+
+	sceneTexts := []string{"SCENE_TEXT_1", "SCENE_TEXT_2", "SCENE_TEXT_3"}
+	scenes := make([]scriptpkg.SpecScene, 0, len(sceneTexts))
+	for i, text := range sceneTexts {
+		scenes = append(scenes, scriptpkg.SpecScene{ID: "s" + string(rune('0'+i)), Index: i, Text: text, Kind: scriptpkg.SceneNarration})
+	}
+
+	out := adapters.BuildSpecSceneDocumentHTML(&scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, adapters.SpecSceneDocumentOptions{Title: "Ordine"})
+
+	specPos := strings.Index(out, "<h2>SpecScene JSON</h2>")
+	require.GreaterOrEqual(t, specPos, 0)
+
+	for _, text := range sceneTexts {
+		scenePos := strings.Index(out, text)
+		require.GreaterOrEqual(t, scenePos, 0)
+		require.Greater(t, specPos, scenePos, "SpecScene JSON must appear after scene text %q", text)
+	}
+}
+
+func TestDocument_TitleIsFirstVisibleElement(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Testo", Kind: scriptpkg.SceneNarration}}}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Titolo"})
+
+	bodyStart := strings.Index(out, "<body>")
+	titleStart := strings.Index(out, "<h1>")
+	require.Greater(t, titleStart, bodyStart)
+
+	// Nothing but the title heading may sit between <body> and <h1>.
+	between := out[bodyStart+len("<body>") : titleStart]
+	require.NotContains(t, between, "<")
+}
+
+func TestDocument_PreservesSpecSceneOrder(t *testing.T) {
+	t.Parallel()
+
+	scenes := []scriptpkg.SpecScene{
+		{ID: "scene-A", Index: 0, Text: "ALPHA", Kind: scriptpkg.SceneNarration},
+		{ID: "scene-B", Index: 1, Text: "BRAVO", Kind: scriptpkg.SceneNarration},
+		{ID: "scene-C", Index: 2, Text: "CHARLIE", Kind: scriptpkg.SceneNarration},
+	}
+
+	out := adapters.BuildSpecSceneDocumentHTML(&scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: scenes}}, adapters.SpecSceneDocumentOptions{Title: "Ordine"})
+
+	posAlpha := strings.Index(out, "ALPHA")
+	posBravo := strings.Index(out, "BRAVO")
+	posCharlie := strings.Index(out, "CHARLIE")
+	specPos := strings.Index(out, "<h2>SpecScene JSON</h2>")
+
+	require.Greater(t, posBravo, posAlpha)
+	require.Greater(t, posCharlie, posBravo)
+	require.Greater(t, specPos, posCharlie)
+}
+
+func TestDocument_EmptySceneTextDoesNotInventFallbackText(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{
+		Text: "TESTO GLOBALE DI FALLBACK",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{
+				{ID: "scene-0", Index: 0, Text: "", Kind: scriptpkg.SceneNarration},
+			},
+		},
+	}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Vuota"})
+	human := humanDocumentHTML(t, out)
+
+	require.Contains(t, human, "<h2>Scene 1</h2>")
+	require.NotContains(t, human, "TESTO GLOBALE DI FALLBACK")
+}
+
+func TestDocument_Golden_HumanSurfacePlusCompleteSpecScene(t *testing.T) {
+	t.Parallel()
+
+	original := scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{
+				ID:    "scene-0",
+				Index: 0,
+				Text:  "TESTO SCENA UNO",
+				Kind:  scriptpkg.SceneIntro,
+				Bindings: scriptpkg.SceneBindings{
+					Clip: &scriptpkg.ClipBinding{ClipID: "CLIP-A", DriveLink: "CLIP-A-DRIVE"},
+					Voiceover: &scriptpkg.VoiceoverBinding{
+						Status: "completed",
+						Links:  map[string]string{"it": "VOICE-IT-1"},
+					},
+				},
+			},
+			{
+				ID:    "scene-1",
+				Index: 1,
+				Text:  "TESTO SCENA DUE",
+				Kind:  scriptpkg.SceneNarration,
+				Bindings: scriptpkg.SceneBindings{
+					Clips: []scriptpkg.ClipBinding{
+						{ClipID: "CLIP-B", DriveLink: "CLIP-B-DRIVE"},
+						{ClipID: "CLIP-C", DriveLink: "CLIP-C-DRIVE"},
+					},
+				},
+			},
+		},
+	}
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: original}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title:           "TITOLO TEST",
+		Language:        "it",
+		DefaultLanguage: "it",
+	})
+
+	human := humanDocumentHTML(t, out)
+	for _, want := range []string{
+		"TITOLO TEST",
+		"<h2>Scene 1</h2>",
+		"TESTO SCENA UNO",
+		"<strong>Voiceover:</strong>",
+		"VOICE-IT-1",
+		"<h2>Scene 2</h2>",
+		"TESTO SCENA DUE",
+	} {
+		require.Contains(t, human, want)
+	}
+
+	for _, forbidden := range []string{
+		"CLIP-A", "CLIP-A-DRIVE", "CLIP-B", "CLIP-B-DRIVE", "CLIP-C", "CLIP-C-DRIVE",
+		"<strong>Clip:</strong>", "Subtitles:", "Stock:", "Entità:", "Image link:", "Description", "Tags",
+	} {
+		require.NotContains(t, human, forbidden)
+	}
+
+	specJSON := extractSpecSceneJSON(t, out)
+	for _, want := range []string{
+		"scene-0", "scene-1",
+		"CLIP-A", "CLIP-A-DRIVE", "CLIP-B", "CLIP-B-DRIVE", "CLIP-C", "CLIP-C-DRIVE",
+		"VOICE-IT-1", "intro", "narration",
+	} {
+		require.Contains(t, specJSON, want)
+	}
+
+	var decoded scriptpkg.SpecSceneOutput
+	require.NoError(t, json.Unmarshal([]byte(specJSON), &decoded))
+	require.Equal(t, original, decoded, "golden SpecScene must round-trip byte-faithfully")
 }
