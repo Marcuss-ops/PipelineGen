@@ -175,6 +175,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	if len(tts.WordBoundaries) == 0 {
 		if policy.Mode == audio.TimingRequired {
 			emitTiming("failed")
+			timingEvent(log, "voiceover.timing.failed", cmd, tts.Provider, tts.BoundaryMode, len(tts.WordBoundaries), tts.Duration.Microseconds())
 			return nil, newPipelineErrorCode(StageTiming, false, FailureTimingUnavailable,
 				fmt.Errorf("%s: TTS produced no word boundaries for required timing", FailureTimingUnavailable))
 		}
@@ -192,6 +193,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		if post == nil || len(post.EditMap) == 0 || post.DurationUS <= 0 {
 			if policy.Mode == audio.TimingRequired {
 				emitTiming("failed")
+				timingEvent(log, "voiceover.timing.failed", cmd, tts.Provider, tts.BoundaryMode, len(tts.WordBoundaries), tts.Duration.Microseconds())
 				return nil, newPipelineErrorCode(StageTiming, false, FailureTimingIncompatible,
 					fmt.Errorf("timing required + remove_silence: the audio post-processor reported no edit map, so accurate timestamps are impossible"))
 			}
@@ -215,14 +217,14 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	if len(postEditMap) > 0 {
 		remapped, err := audio.RemapSpeechTiming(words, postEditMap)
 		if err != nil {
-			return u.timingBuildFailure(policy, fmt.Errorf("remap speech timing after silence removal: %w", err))
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("remap speech timing after silence removal: %w", err))
 		}
 		words = remapped
 		durationUS = post.DurationUS
 	}
 	audioSHA, err := files.HashFile(uploadPath, sha256.New())
 	if err != nil {
-		return u.timingBuildFailure(policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))
+		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))
 	}
 	artifact, err := audio.BuildSpeechTimingArtifact(
 		tts.Provider,
@@ -234,12 +236,16 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		words,
 	)
 	if err != nil {
-		return u.timingBuildFailure(policy, err)
+		return u.timingBuildFailure(cmd, log, policy, err)
 	}
+
+	// Raw provider boundaries are now normalized into the canonical SSOT
+	// artifact. Emit the summary event (never the per-word array).
+	timingEvent(log, "voiceover.timing.normalized", cmd, artifact.Provider, artifact.BoundaryMode, len(artifact.Words), artifact.DurationUS)
 
 	artifactJSON, err := json.Marshal(artifact)
 	if err != nil {
-		return u.timingBuildFailure(policy, fmt.Errorf("marshal timing artifact: %w", err))
+		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("marshal timing artifact: %w", err))
 	}
 
 	projections := map[audio.TimingFormat][]byte{}
@@ -249,14 +255,14 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	if policy.HasFormat(audio.TimingSRT) {
 		srt, err := audio.RenderSRT(*artifact, audio.CueOptions{})
 		if err != nil {
-			return u.timingBuildFailure(policy, fmt.Errorf("render SRT: %w", err))
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("render SRT: %w", err))
 		}
 		projections[audio.TimingSRT] = srt
 	}
 	if policy.HasFormat(audio.TimingVTT) {
 		vtt, err := audio.RenderVTT(*artifact, audio.CueOptions{})
 		if err != nil {
-			return u.timingBuildFailure(policy, fmt.Errorf("render VTT: %w", err))
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("render VTT: %w", err))
 		}
 		projections[audio.TimingVTT] = vtt
 	}
@@ -277,7 +283,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		filename := timingProjectionFilename(base, format)
 		localPath := filepath.Join(dir, filename)
 		if err := os.WriteFile(localPath, data, 0o644); err != nil {
-			return u.timingPublishFailure(policy, fmt.Errorf("write timing projection %s: %w", filename, err))
+			return u.timingPublishFailure(cmd, log, policy, fmt.Errorf("write timing projection %s: %w", filename, err))
 		}
 		written = append(written, localPath)
 
@@ -291,7 +297,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 			IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, string(format)),
 		})
 		if err != nil {
-			return u.timingPublishFailure(policy, fmt.Errorf("publish timing projection %s: %w", filename, err))
+			return u.timingPublishFailure(cmd, log, policy, fmt.Errorf("publish timing projection %s: %w", filename, err))
 		}
 		switch format {
 		case audio.TimingJSON:
@@ -315,10 +321,12 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// an impossible regression, surfaces an invalid-artifact error that
 	// must fail closed rather than emit a partial bundle.
 	if moments, err := audio.LocateMoments(*artifact, cmd.Moments); err != nil {
-		return u.timingBuildFailure(policy, fmt.Errorf("locate moments: %w", err))
+		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
 	} else {
 		res.Moments = moments
 	}
+
+	timingEvent(log, "voiceover.timing.published", cmd, artifact.Provider, artifact.BoundaryMode, res.WordCount, res.DurationUS)
 
 	emitTiming("completed")
 	return res, nil
@@ -328,7 +336,8 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 // to the policy: required fails the segment permanently with
 // FailureTimingBuild; best-effort degrades the timing status to failed
 // while the audio stays completed.
-func (u *ProcessSegmentUseCase) timingBuildFailure(policy audio.TimingRequest, err error) (*VoiceoverTimingResult, error) {
+func (u *ProcessSegmentUseCase) timingBuildFailure(cmd *ProcessSegmentCommand, log *zap.Logger, policy audio.TimingRequest, err error) (*VoiceoverTimingResult, error) {
+	timingEvent(log, "voiceover.timing.failed", cmd, "", "", 0, 0)
 	if policy.Mode == audio.TimingRequired {
 		return nil, newPipelineErrorCode(StageTiming, false, FailureTimingBuild, err)
 	}
@@ -340,7 +349,8 @@ func (u *ProcessSegmentUseCase) timingBuildFailure(policy audio.TimingRequest, e
 // FailureTimingPublish (the audio is already on Drive — the orphan
 // cleanup path recovers it); best-effort degrades the timing status to
 // failed while the audio stays completed.
-func (u *ProcessSegmentUseCase) timingPublishFailure(policy audio.TimingRequest, err error) (*VoiceoverTimingResult, error) {
+func (u *ProcessSegmentUseCase) timingPublishFailure(cmd *ProcessSegmentCommand, log *zap.Logger, policy audio.TimingRequest, err error) (*VoiceoverTimingResult, error) {
+	timingEvent(log, "voiceover.timing.failed", cmd, "", "", 0, 0)
 	if policy.Mode == audio.TimingRequired {
 		return nil, newPipelineErrorCode(StageTiming, false, FailureTimingPublish, err)
 	}
@@ -368,4 +378,35 @@ func timingProjectionFilename(base string, format audio.TimingFormat) string {
 		return base + ".vtt"
 	}
 	return base + "-" + string(format)
+}
+
+// timingEvent emits one structured voiceover.timing.* lifecycle event. It
+// carries summary metadata only — scene id, language, provider, boundary
+// mode, word count and duration — and NEVER the per-word array, so the log
+// volume stays bounded regardless of scene length (godlike/07: do not log
+// thousands of word boundaries).
+func timingEvent(log *zap.Logger, event string, cmd *ProcessSegmentCommand, provider string, boundaryMode audio.BoundaryMode, wordCount int, durationUS int64) {
+	if log == nil || cmd == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("scene_id", cmd.ID),
+		zap.String("language", string(cmd.Language)),
+	}
+	if cmd.Project != "" {
+		fields = append(fields, zap.String("project", cmd.Project))
+	}
+	if provider != "" {
+		fields = append(fields, zap.String("provider", provider))
+	}
+	if boundaryMode != "" {
+		fields = append(fields, zap.String("boundary_mode", string(boundaryMode)))
+	}
+	if wordCount > 0 {
+		fields = append(fields, zap.Int("word_count", wordCount))
+	}
+	if durationUS > 0 {
+		fields = append(fields, zap.Int64("duration_us", durationUS))
+	}
+	log.Info(event, fields...)
 }

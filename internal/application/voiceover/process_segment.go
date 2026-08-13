@@ -304,6 +304,16 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// AudioPostProcessor would re-process an already-cleaned file —
 	// double-processing that wastes CPU and risks audio artifacts.
 	emitTTS := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "tts", string(cmd.Language))
+	// Timing capture lifecycle: capture.started fires before synthesis and
+	// capture.completed after, so operators can trace boundary capture
+	// without ever logging the per-word array.
+	timingPolicy := audio.DefaultTimingRequest()
+	if cmd.Timing != nil {
+		timingPolicy = cmd.Timing.Normalized()
+	}
+	if timingPolicy.Mode != audio.TimingDisabled {
+		timingEvent(log, "voiceover.timing.capture.started", cmd, "", "", 0, 0)
+	}
 	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
 		Text:          cmd.Text,
 		Language:      cmd.Language,
@@ -326,6 +336,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		return out, newPipelineErrorCode(StageTTS, true, FailureTTS, err)
 	}
 	emitTTS("completed")
+	if timingPolicy.Mode != audio.TimingDisabled {
+		timingEvent(log, "voiceover.timing.capture.completed", cmd, ttsOut.Provider, ttsOut.BoundaryMode, len(ttsOut.WordBoundaries), ttsOut.Duration.Microseconds())
+	}
 	out.LocalPath = ttsOut.LocalPath
 	out.CleanedPath = ttsOut.CleanedPath
 	out.DurationMs = ttsOut.Duration.Milliseconds()
