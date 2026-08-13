@@ -85,11 +85,11 @@ func buildDocumentContent(scenes []Scene, lang Language) string {
 			content += "\n\n"
 		}
 		content += fmt.Sprintf("Scene %d\n%s", scene.Index+1, text)
-		if scene.Clip != nil && strings.TrimSpace(scene.Clip.DriveLink) != "" {
-			content += fmt.Sprintf("\nClip: %s", scene.Clip.DriveLink)
-		}
+		// The document surface is human-only: technical bindings (clip,
+		// subtitle, stock, entity links) never appear here. Voiceover is
+		// rendered as its URL so it can be read and copied directly.
 		if vo, ok := scene.Voiceover[lang]; ok && strings.TrimSpace(vo.URL) != "" {
-			content += fmt.Sprintf("\nVoiceover %s: %s", lang, vo.URL)
+			content += fmt.Sprintf("\nVoiceover: %s", vo.URL)
 		}
 	}
 	return content
