@@ -388,6 +388,7 @@ func (u *GenerateVoiceoversUseCase) processOneLanguage(
 		Strategy:      string(cmd.Strategy),
 		Metadata:      cmd.Metadata,
 		RemoveSilence: removeSilence,
+		Timing:        cmd.Timing,
 		Dest:          dest,
 		Project:       cmd.Project,
 		// ShouldSwap stays false: the batch path does not capture

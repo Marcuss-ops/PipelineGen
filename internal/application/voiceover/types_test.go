@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
@@ -49,6 +51,70 @@ func TestBatchRequestPayloadMapIncludesDestinationAndMetadata(t *testing.T) {
 	}
 	if meta["source"] != "manual" {
 		t.Fatalf("expected metadata to be preserved, got %#v", meta)
+	}
+}
+
+func TestBatchRequestPayloadMapIncludesVoiceoverTiming(t *testing.T) {
+	req := &BatchRequest{
+		Text:      "Hello world",
+		Languages: []Language{"it"},
+		Timing: &audio.TimingRequest{
+			Mode:         audio.TimingRequired,
+			BoundaryMode: audio.BoundaryWord,
+			Formats:      []audio.TimingFormat{audio.TimingJSON, audio.TimingVTT},
+		},
+	}
+
+	payload := req.PayloadMap()
+	timing, ok := payload["voiceover_timing"].(*audio.TimingRequest)
+	if !ok {
+		t.Fatalf("expected *audio.TimingRequest under voiceover_timing, got %#v", payload["voiceover_timing"])
+	}
+	if timing.Mode != audio.TimingRequired || timing.BoundaryMode != audio.BoundaryWord {
+		t.Fatalf("unexpected voiceover_timing payload: %#v", timing)
+	}
+	// The whole payload map must round-trip through JSON (the job.Payload
+	// boundary) without losing the policy.
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roundTripped struct {
+		Timing *audio.TimingRequest `json:"voiceover_timing"`
+	}
+	if err := json.Unmarshal(encoded, &roundTripped); err != nil {
+		t.Fatal(err)
+	}
+	if roundTripped.Timing == nil || roundTripped.Timing.Mode != audio.TimingRequired || roundTripped.Timing.BoundaryMode != audio.BoundaryWord || len(roundTripped.Timing.Formats) != 2 {
+		t.Fatalf("voiceover_timing changed after round-trip: %#v", roundTripped.Timing)
+	}
+}
+
+func TestGenerateVoiceoverItemCommandValidateTiming(t *testing.T) {
+	base := GenerateVoiceoverItemCommand{
+		ParentJobID: "parent-1",
+		RequestID:   "req-1",
+		Text:        "Hello world",
+		Language:    "it",
+		Filename:    "hello-it.mp3",
+		TextHash:    "abcd1234",
+	}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("base command must validate: %v", err)
+	}
+
+	// Empty timing policy resolves to the canonical defaults and validates.
+	withEmptyTiming := base
+	withEmptyTiming.Timing = &audio.TimingRequest{}
+	if err := withEmptyTiming.Validate(); err != nil {
+		t.Fatalf("empty timing policy must normalize to defaults and validate: %v", err)
+	}
+
+	// Caller-explicit invalid mode fails closed.
+	withBogusMode := base
+	withBogusMode.Timing = &audio.TimingRequest{Mode: "sometimes"}
+	if err := withBogusMode.Validate(); err == nil {
+		t.Fatal("bogus timing mode must fail validation")
 	}
 }
 

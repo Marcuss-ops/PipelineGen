@@ -1,5 +1,7 @@
 package script
 
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+
 // OutputSpec declares which post-generation artifacts to produce.
 // ExtractEntities and GenerateMetadata are Toggle tri-state values.
 // Caller-explicit ToggleDisabled survives the applySafetyDefaults +
@@ -82,6 +84,11 @@ type OutputSpec struct {
 
 type AudioOutputConfig struct {
 	Mode string `json:"mode,omitempty"`
+	// Timing is the canonical voiceover timing policy nested inside the
+	// existing audio config (wire key "timing"). nil means the pipeline
+	// applies the canonical defaults (best_effort / word / [json]) —
+	// timing capture is never implicitly mandatory.
+	Timing *audio.TimingRequest `json:"timing,omitempty"`
 }
 
 // HasAnyPostprocessor returns true when at least one active postprocessor

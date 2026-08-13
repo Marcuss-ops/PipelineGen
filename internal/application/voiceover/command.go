@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -128,6 +129,12 @@ type GenerateVoiceoversCommand struct {
 	// post-processing). Explicit `true` enables post-processing for
 	// every item in the batch.
 	RemoveSilence bool `json:"remove_silence,omitempty"`
+
+	// Timing is the canonical voiceover timing policy for the whole
+	// batch. nil means the canonical defaults apply
+	// (best_effort / word / [json]) — timing capture is never
+	// implicitly mandatory.
+	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
 
 	// Parallelism is the requested fan-out concurrency. Clamped by the
 	// use case to min(requested, MaxParallelism, len(Items)).
@@ -237,6 +244,10 @@ type GenerateVoiceoverItemCommand struct {
 	// RemoveSilence toggles audio post-processing for THIS child.
 	RemoveSilence bool `json:"remove_silence,omitempty"`
 
+	// Timing is the voiceover timing policy for THIS child, copied
+	// from the parent batch. nil means the canonical defaults apply.
+	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
+
 	// Metadata is the per-batch user-supplied meta overlay that flows
 	// into the row's metadata column.
 	Metadata map[string]any `json:"metadata,omitempty"`
@@ -284,6 +295,14 @@ func (c *GenerateVoiceoverItemCommand) Validate() error {
 	if c.Destination != nil {
 		if vErr := c.Destination.Validate(); vErr != nil {
 			return fmt.Errorf("destination: %w", vErr)
+		}
+	}
+	if c.Timing != nil {
+		// Normalize first so an empty policy (all-zero slots) resolves to
+		// the canonical defaults instead of failing; caller-explicit
+		// invalid values still surface.
+		if vErr := c.Timing.Normalized().Validate(); vErr != nil {
+			return fmt.Errorf("voiceover_timing: %w", vErr)
 		}
 	}
 	return nil
