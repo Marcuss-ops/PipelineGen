@@ -139,6 +139,11 @@ type VoiceoverItemResult struct {
 	// (CleanedPath empty → LocalPath is the canonical artifact).
 	LocalPath string
 
+	// DurationMs is the measured TTS audio duration. It is propagated to
+	// the script scene binding so API consumers do not need to probe the
+	// local artifact again.
+	DurationMs int64
+
 	// CleanedPath is the path of the post-processed (silence removal)
 	// audio file. Empty when RemoveSilence was false or post-process
 	// failed before production.

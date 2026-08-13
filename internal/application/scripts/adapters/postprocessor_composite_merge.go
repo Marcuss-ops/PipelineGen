@@ -74,8 +74,11 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		currentInput.SpecScene.Scenes = cloneSpecSceneSlice(currentInput.SpecScene.Scenes)
 	}
 	if len(src.UpdatedSpecScene.Scenes) > 0 && currentInput != nil {
-		currentInput.SpecScene = src.UpdatedSpecScene
-		dst.FinalSpecScene = src.UpdatedSpecScene
+		previous := append([]scriptpkg.SpecScene(nil), currentInput.SpecScene.Scenes...)
+		updated := src.UpdatedSpecScene
+		updated.Scenes = preserveSceneBindings(previous, updated.Scenes)
+		currentInput.SpecScene = updated
+		dst.FinalSpecScene = updated
 	}
 	if src.SpecSceneChanged {
 		dst.SpecSceneChanged = true
@@ -120,17 +123,33 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 				if sc.Bindings.Voiceover == nil {
 					sc.Bindings.Voiceover = &scriptpkg.VoiceoverBinding{}
 				}
-				sc.Bindings.Voiceover.Status = v.Status
-				sc.Bindings.Voiceover.Link = v.Link
-				if strings.TrimSpace(v.Language) != "" && strings.TrimSpace(v.Link) != "" {
-					if sc.Bindings.Voiceover.Links == nil {
-						sc.Bindings.Voiceover.Links = make(map[string]string)
+				binding := sc.Bindings.Voiceover
+				language := strings.TrimSpace(v.Language)
+				if language != "" && strings.TrimSpace(v.Link) != "" {
+					if binding.Links == nil {
+						binding.Links = make(map[string]string)
 					}
-					sc.Bindings.Voiceover.Links[strings.TrimSpace(v.Language)] = v.Link
+					binding.Links[language] = v.Link
 				}
-				// LocalPath is an internal filesystem detail and must never
-				// enter the document/API SpecScene surface.
-				sc.Bindings.Voiceover.LocalPath = ""
+				// Keep the first successful language as the compatibility
+				// default Link/LocalPath/Duration. Later language outcomes
+				// remain available in Links without overwriting that default.
+				if binding.Link == "" && strings.TrimSpace(v.Link) != "" {
+					binding.Link = v.Link
+				}
+				if binding.LocalPath == "" && strings.TrimSpace(v.LocalPath) != "" {
+					binding.LocalPath = v.LocalPath
+				}
+				if binding.DurationMs == 0 && v.DurationMs > 0 {
+					binding.DurationMs = v.DurationMs
+				}
+				if binding.Status == "" || binding.Status == string(scriptpkg.VoiceoverStatusSkipped) {
+					binding.Status = v.Status
+				} else if v.Status == string(scriptpkg.VoiceoverStatusFailed) {
+					// Any failed language must remain visible at the
+					// scene aggregate even when another language completed.
+					binding.Status = v.Status
+				}
 			}
 		}
 	}
@@ -320,10 +339,15 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		dst.TranslatedSpecScene = src.TranslatedSpecScene
 		// PR-TRANSLATION-PIPELINE-2026-07-09 WRITE-BACK:
 		// propagate translated SpecScene into currentInput so
-		// downstream processors see translated scene text.
+		// downstream processors see translated scene text, while
+		// retaining any already-materialized clip/subtitle/voiceover
+		// bindings absent from the translation result.
 		if currentInput != nil {
-			currentInput.SpecScene = src.TranslatedSpecScene
-			currentInput.TranslatedSpecScene = src.TranslatedSpecScene
+			previous := append([]scriptpkg.SpecScene(nil), currentInput.SpecScene.Scenes...)
+			translated := src.TranslatedSpecScene
+			translated.Scenes = preserveSceneBindings(previous, translated.Scenes)
+			currentInput.SpecScene = translated
+			currentInput.TranslatedSpecScene = translated
 		}
 	}
 	if strings.TrimSpace(src.OriginalText) != "" && currentInput != nil {
@@ -391,6 +415,158 @@ func reapplyTranslatedSceneText(input *ProcessInput) {
 			input.SpecScene.Scenes[i].Title = translated.Title
 		}
 	}
+}
+
+func preserveSceneBindings(previous, replacement []scriptpkg.SpecScene) []scriptpkg.SpecScene {
+	if len(previous) == 0 || len(replacement) == 0 {
+		return replacement
+	}
+	out := append([]scriptpkg.SpecScene(nil), replacement...)
+	bySegment := make(map[string]int, len(previous))
+	byID := make(map[string]int, len(previous))
+	for i, scene := range previous {
+		if key := strings.TrimSpace(scene.SegmentID); key != "" {
+			bySegment[key] = i
+		}
+		if key := strings.TrimSpace(scene.ID); key != "" {
+			byID[key] = i
+		}
+	}
+	used := make(map[int]struct{}, len(previous))
+	for i := range out {
+		previousIndex := -1
+		if key := strings.TrimSpace(out[i].SegmentID); key != "" {
+			if index, ok := bySegment[key]; ok {
+				previousIndex = index
+			}
+		} else if key := strings.TrimSpace(out[i].ID); key != "" {
+			if index, ok := byID[key]; ok {
+				previousIndex = index
+			}
+		} else if i < len(previous) {
+			previousIndex = i
+		}
+		if previousIndex < 0 || previousIndex >= len(previous) {
+			continue
+		}
+		if _, exists := used[previousIndex]; exists {
+			continue
+		}
+		used[previousIndex] = struct{}{}
+		out[i].Bindings = preserveBindings(previous[previousIndex].Bindings, out[i].Bindings)
+	}
+	return out
+}
+
+func preserveBindings(previous, replacement scriptpkg.SceneBindings) scriptpkg.SceneBindings {
+	previous = cloneSceneBindings(previous)
+	replacement = cloneSceneBindings(replacement)
+
+	switch {
+	case len(replacement.Clips) > 0:
+		usedPrevious := make(map[int]struct{}, len(replacement.Clips))
+		for i := range replacement.Clips {
+			previousIndex := -1
+			if replacement.Clips[i].ClipID != "" {
+				for j := range previous.Clips {
+					if previous.Clips[j].ClipID == replacement.Clips[i].ClipID {
+						previousIndex = j
+						break
+					}
+				}
+			}
+			if previousIndex < 0 && i < len(previous.Clips) {
+				previousIndex = i
+			}
+			if previousIndex >= 0 {
+				usedPrevious[previousIndex] = struct{}{}
+				replacement.Clips[i] = mergeClipBinding(previous.Clips[previousIndex], replacement.Clips[i])
+			}
+		}
+		// Translation and other scene replacements are often partial. Keep
+		// previously materialized clips that were not mentioned by the
+		// replacement so a multi-clip scene cannot collapse to one entry.
+		for i := range previous.Clips {
+			if _, exists := usedPrevious[i]; !exists {
+				replacement.Clips = append(replacement.Clips, previous.Clips[i])
+			}
+		}
+	case replacement.Clip != nil:
+		// A legacy replacement containing only Clip must not collapse an
+		// already-materialized multi-clip scene to one entry.
+		if len(previous.Clips) > 0 {
+			replacement.Clips = append([]scriptpkg.ClipBinding(nil), previous.Clips...)
+			for i := range replacement.Clips {
+				if replacement.Clips[i].ClipID == replacement.Clip.ClipID {
+					replacement.Clips[i] = mergeClipBinding(previous.Clips[i], *replacement.Clip)
+					break
+				}
+			}
+		} else {
+			replacement.Clips = []scriptpkg.ClipBinding{*replacement.Clip}
+		}
+	default:
+		replacement.Clips = append([]scriptpkg.ClipBinding(nil), previous.Clips...)
+	}
+	if len(replacement.Clips) > 0 {
+		replacement.Clip = &replacement.Clips[0]
+	}
+
+	if previous.Voiceover != nil {
+		if replacement.Voiceover == nil {
+			replacement.Voiceover = previous.Voiceover
+		} else {
+			if replacement.Voiceover.Status == "" {
+				replacement.Voiceover.Status = previous.Voiceover.Status
+			}
+			if replacement.Voiceover.Link == "" {
+				replacement.Voiceover.Link = previous.Voiceover.Link
+			}
+			if replacement.Voiceover.LocalPath == "" {
+				replacement.Voiceover.LocalPath = previous.Voiceover.LocalPath
+			}
+			if replacement.Voiceover.DurationMs == 0 {
+				replacement.Voiceover.DurationMs = previous.Voiceover.DurationMs
+			}
+			if len(previous.Voiceover.Links) > 0 {
+				links := make(map[string]string, len(previous.Voiceover.Links)+len(replacement.Voiceover.Links))
+				for language, link := range previous.Voiceover.Links {
+					links[language] = link
+				}
+				for language, link := range replacement.Voiceover.Links {
+					links[language] = link
+				}
+				replacement.Voiceover.Links = links
+			}
+		}
+	}
+	return replacement
+}
+
+func mergeClipBinding(previous, replacement scriptpkg.ClipBinding) scriptpkg.ClipBinding {
+	if replacement.ClipID == "" {
+		replacement.ClipID = previous.ClipID
+	}
+	if replacement.ClipTitle == "" {
+		replacement.ClipTitle = previous.ClipTitle
+	}
+	if replacement.DriveLink == "" {
+		replacement.DriveLink = previous.DriveLink
+	}
+	if replacement.SubtitleLink == "" {
+		replacement.SubtitleLink = previous.SubtitleLink
+	}
+	if replacement.SubtitleFileID == "" {
+		replacement.SubtitleFileID = previous.SubtitleFileID
+	}
+	if replacement.StartMs == 0 && replacement.EndMs == 0 {
+		replacement.StartMs = previous.StartMs
+		replacement.EndMs = previous.EndMs
+	}
+	if replacement.DurationMs == 0 {
+		replacement.DurationMs = previous.DurationMs
+	}
+	return replacement
 }
 
 func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {

@@ -74,6 +74,30 @@ func TestVoiceoverProcessor_UsesTranslatedSceneTextAndTargetLanguage(t *testing.
 	assert.Empty(t, result.Warnings)
 }
 
+func TestVoiceoverProcessor_PropagatesSceneDuration(t *testing.T) {
+	stub := &stubItemExecutor{
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error) {
+			return &voiceover.VoiceoverItemResult{
+				Status:     voiceover.StatusCompleted,
+				Language:   voiceover.Language(lang),
+				Filename:   filename,
+				DriveLink:  "https://drive.example.test/" + filename,
+				LocalPath:  "/tmp/" + filename,
+				DurationMs: 4321,
+			}, nil
+		},
+	}
+	proc := NewVoiceoverProcessor(stub, zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{ID: "duration-voiceover", Title: "Duration", Language: "en"}
+	result, err := proc.Process(context.Background(), plan, ProcessInput{
+		Text:      "Narration text.",
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Narration text."}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Voiceovers, 1)
+	assert.Equal(t, int64(4321), result.Voiceovers[0].DurationMs)
+}
+
 func TestVoiceoverProcessor_SkipsWhenRequestedTranslationDidNotComplete(t *testing.T) {
 	stub := &stubItemExecutor{}
 	proc := NewVoiceoverProcessor(stub, zap.NewNop())

@@ -396,7 +396,12 @@
     "paths": [
       "internal/application/assets/providers/artlist/",
       "internal/infrastructure/artlist/",
-      "internal/api/assets/artlist/"
+      "internal/api/assets/artlist/",
+      "scripts/artlist_pipeline_live_test.sh",
+      "scripts/lib/artlist_pipeline_payload.sh",
+      "scripts/lib/artlist_pipeline_polling.sh",
+      "scripts/lib/artlist_pipeline_preflight.sh",
+      "scripts/lib/artlist_pipeline_report.sh"
     ],
     "go_packages": [
       "./internal/application/assets/providers/artlist/...",

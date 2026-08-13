@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
@@ -428,8 +429,9 @@ func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput
 		return s
 	}
 	out := scriptpkg.SpecSceneOutput{
-		Version: s.Version,
-		Scenes:  make([]scriptpkg.SpecScene, len(s.Scenes)),
+		Version:           s.Version,
+		Scenes:            make([]scriptpkg.SpecScene, len(s.Scenes)),
+		VisualAssignments: append([]mediadomain.VisualAssignment(nil), s.VisualAssignments...),
 	}
 	for i, sc := range s.Scenes {
 		out.Scenes[i] = sc
@@ -495,6 +497,12 @@ func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 	}
 	if b.Voiceover != nil {
 		v := *b.Voiceover
+		if b.Voiceover.Links != nil {
+			v.Links = make(map[string]string, len(b.Voiceover.Links))
+			for language, link := range b.Voiceover.Links {
+				v.Links[language] = link
+			}
+		}
 		out.Voiceover = &v
 	}
 	if b.Stock != nil {
