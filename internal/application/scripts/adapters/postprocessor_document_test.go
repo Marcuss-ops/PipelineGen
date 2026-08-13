@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -132,6 +134,62 @@ func TestDocumentsProcessor_RefreshesWhenMultiClipSubtitleAppears(t *testing.T) 
 	if len(stub.titles) != 2 || stub.titles[1] != "refresh" {
 		t.Fatalf("multi-clip subtitle document must refresh: %v", stub.titles)
 	}
+}
+
+func TestDocumentsProcessor_BuildsLanguageSpecificContent(t *testing.T) {
+	stub := &documentServiceStub{}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:           "run-multi",
+		Title:        "Multi voiceover",
+		Language:     "it",
+		DocsEnabled:  true,
+		DocsLanguages: []string{"it", "en"},
+	}
+	_, err := NewDocumentsProcessor(stub).Process(context.Background(), plan, ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID:   "scene-0",
+				Text: "Scena con voiceover multilingua.",
+				Bindings: scriptpkg.SceneBindings{
+					Voiceover: &scriptpkg.VoiceoverBinding{
+						Links: map[string]string{
+							"it": "VOICE-IT",
+							"en": "VOICE-EN",
+						},
+					},
+				},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	require.Len(t, stub.content, 2)
+
+	humanIT := documentHumanSection(t, stub.content[0])
+	humanEN := documentHumanSection(t, stub.content[1])
+
+	require.Contains(t, humanIT, "VOICE-IT")
+	require.NotContains(t, humanIT, "VOICE-EN")
+	require.Contains(t, humanEN, "VOICE-EN")
+	require.NotContains(t, humanEN, "VOICE-IT")
+}
+
+// documentHumanSection returns the human-facing part of a rendered document
+// body (everything before the SpecScene JSON snapshot), so assertions can
+// distinguish the human surface from the JSON block that legitimately carries
+// every language's voiceover link.
+func documentHumanSection(t *testing.T, output string) string {
+	t.Helper()
+
+	const marker = "<h2>SpecScene JSON</h2>"
+	index := strings.Index(output, marker)
+	if index < 0 {
+		t.Fatal("SpecScene JSON marker missing")
+	}
+	return output[:index]
 }
 
 func TestPostProcessResult_IsEmptyFalseForDocumentReference(t *testing.T) {
