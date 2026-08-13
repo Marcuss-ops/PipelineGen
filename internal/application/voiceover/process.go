@@ -244,6 +244,7 @@ func (s *Service) processLanguage(
 		Strategy:       req.Strategy,
 		Metadata:       req.Metadata,
 		RemoveSilence:  removeSilence,
+		Timing:         req.Timing,
 		Dest:           &processDest,
 		Project:        req.Project,
 		ShouldSwap:     shouldSwap,

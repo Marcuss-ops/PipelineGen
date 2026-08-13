@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -411,6 +412,56 @@ func TestRequest_ToCommand_NormalisesInputs(t *testing.T) {
 	}
 	if cmd.Parallelism != 4 {
 		t.Errorf("Parallelism: got %d, want 4", cmd.Parallelism)
+	}
+}
+
+// TestRequest_ToCommand_PropagatesTimingPolicy locks the voiceover
+// timing policy pass-through: the wire-shape options block
+// (voiceover_timing) must reach the canonical Command verbatim.
+func TestRequest_ToCommand_PropagatesTimingPolicy(t *testing.T) {
+	req := &GenerateVoiceoversRequest{
+		Items: []VoiceoverItem{{Text: "Hello", Language: "en-US"}},
+		Options: VoiceoverOptions{
+			Timing: &audio.TimingRequest{
+				Mode:         audio.TimingRequired,
+				BoundaryMode: audio.BoundaryWord,
+				Formats:      []audio.TimingFormat{audio.TimingJSON, audio.TimingSRT, audio.TimingVTT},
+			},
+		},
+	}
+	cmd := req.ToCommand()
+	if cmd.Timing == nil {
+		t.Fatal("Options.Timing was dropped by ToCommand")
+	}
+	if cmd.Timing.Mode != audio.TimingRequired {
+		t.Errorf("Timing.Mode: got %q, want required", cmd.Timing.Mode)
+	}
+	if !reflect.DeepEqual(cmd.Timing.Formats, []audio.TimingFormat{audio.TimingJSON, audio.TimingSRT, audio.TimingVTT}) {
+		t.Errorf("Timing.Formats: got %v, want [json srt vtt]", cmd.Timing.Formats)
+	}
+
+	// The wire key must be voiceover_timing and survive a JSON round-trip.
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	options, ok := wire["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("request options missing from wire: %s", encoded)
+	}
+	timing, ok := options["voiceover_timing"].(map[string]any)
+	if !ok {
+		t.Fatalf("voiceover_timing missing from options wire: %s", encoded)
+	}
+	if timing["mode"] != "required" {
+		t.Errorf("wire mode = %v, want required", timing["mode"])
+	}
+	if timing["boundary"] != "word" {
+		t.Errorf("wire boundary = %v, want word", timing["boundary"])
 	}
 }
 

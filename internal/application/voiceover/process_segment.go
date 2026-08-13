@@ -58,6 +58,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
 )
@@ -121,6 +122,12 @@ type ProcessSegmentCommand struct {
 
 	// Behavior flags
 	RemoveSilence bool
+
+	// Timing is the canonical voiceover timing policy for this segment.
+	// nil means the canonical defaults apply (best_effort / word /
+	// [json]) — timing capture is never implicitly mandatory. Consumed
+	// by the TTS stage once providers produce raw word boundaries.
+	Timing *audio.TimingRequest
 
 	// Semantic routing (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
 	// Canonical project identifier forwarded from the per-item command.

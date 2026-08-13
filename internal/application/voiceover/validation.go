@@ -71,6 +71,14 @@ func (c *GenerateVoiceoversCommand) Validate() error {
 	if c.Parallelism < 0 {
 		return fmt.Errorf("parallelism: must be >= 0 (clamped to 0 sequentially at use-case boundary)")
 	}
+	if c.Timing != nil {
+		// Normalize first so an empty policy (all-zero slots) resolves to
+		// the canonical defaults instead of failing; caller-explicit
+		// invalid values still surface.
+		if vErr := c.Timing.Normalized().Validate(); vErr != nil {
+			return fmt.Errorf("voiceover_timing: %w", vErr)
+		}
+	}
 	return nil
 }
 

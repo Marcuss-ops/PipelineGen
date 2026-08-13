@@ -39,6 +39,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -116,6 +117,11 @@ type VoiceoverOptions struct {
 	// row's metadata column (process_metadata_test.go pins the
 	// collision-drop contract from mergeUserMetadata).
 	Metadata map[string]any `json:"metadata,omitempty"`
+	// Timing is the canonical voiceover timing policy (voiceover_timing
+	// wire block). nil applies the canonical defaults
+	// (best_effort / word / [json]) — timing capture is never
+	// implicitly mandatory.
+	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
 }
 
 // Validate runs the canonical request-side validation. Returns nil
@@ -207,6 +213,7 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 		Strategy:      asset.NormalizeStrategy(r.Options.Strategy, false),
 		RemoveSilence: r.Options.RemoveSilence,
 		Parallelism:   r.Options.Parallelism,
+		Timing:        r.Options.Timing,
 		// Metadata is forwarded verbatim through the canonical Command
 		// (the worker's journal mergeUserMetadata uses it for collision
 		// resolution on the voiceovers row's metadata column).

@@ -3,6 +3,7 @@ package voiceover
 import (
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
@@ -52,6 +53,9 @@ type BatchRequest struct {
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
 	Metadata         map[string]any      `json:"metadata,omitempty"`
+	// Timing is the canonical voiceover timing policy. nil means the
+	// pipeline applies the canonical defaults (best_effort / word / [json]).
+	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
 	// VoiceOverrides is the canonical per-language voice override map
 	// keyed by BCP-47 code (mapped to voice identifiers like
 	// "it-IT-IsabellaNeural"). nil-safe (synthesizeStage reads this map
@@ -120,6 +124,9 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 	}
 	if len(r.Metadata) > 0 {
 		payload["metadata"] = r.Metadata
+	}
+	if r.Timing != nil {
+		payload["voiceover_timing"] = r.Timing
 	}
 	if r.Project != "" {
 		payload["project"] = r.Project

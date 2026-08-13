@@ -218,6 +218,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			Destination:   cmd.Destination,
 			Strategy:      cmd.Strategy,
 			RemoveSilence: cmd.RemoveSilence,
+			Timing:        cmd.Timing,
 			Metadata:      cmd.Metadata,
 			// ThreadingCampaign 2026-07-08: propagate the parent's
 			// Project field down to every child so the
