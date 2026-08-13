@@ -171,7 +171,10 @@ func CompileCanonicalAudioPlan(result GenerateResult, language Language, profile
 	if err := timeline.Validate(); err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 	}
-	plan, err := audio.Compile(timeline, profile)
+	// The combined timeline is narration-first: the voiceover sits at unity
+	// and the original clip audio is ducked underneath it. The decision is
+	// recorded on the plan (mix_policy) so the mixer and renderer agree.
+	plan, err := audio.CompileWithMixPolicy(timeline, profile, audio.MixVoiceoverWithDuckedClip)
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 	}
