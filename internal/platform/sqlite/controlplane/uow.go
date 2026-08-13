@@ -95,7 +95,7 @@ func (u *UnitOfWork) Run(ctx context.Context, command capcontrol.Command, mutati
 		}
 	}
 
-	resultJSON, err := mutation(ctx, tx)
+	resultJSON, err := mutation(ctx, WrapTx(tx))
 	if err != nil {
 		return capcontrol.Result{}, fmt.Errorf("controlplane uow: mutation %q: %w", command.CommandID, err)
 	}
@@ -157,9 +157,9 @@ func (u *UnitOfWork) RunInTransaction(ctx context.Context, transaction capcontro
 	if mutation == nil {
 		return capcontrol.Result{}, errors.New("controlplane uow: mutation callback is required")
 	}
-	tx, ok := transaction.(*sql.Tx)
+	tx, ok := UnwrapSQLTx(transaction)
 	if !ok || tx == nil {
-		return capcontrol.Result{}, fmt.Errorf("controlplane uow: expected *sql.Tx, got %T", transaction)
+		return capcontrol.Result{}, fmt.Errorf("controlplane uow: expected sqlite transaction, got %T", transaction)
 	}
 	claimed, existing, err := u.claim(ctx, tx, command)
 	if err != nil {
@@ -175,7 +175,7 @@ func (u *UnitOfWork) RunInTransaction(ctx context.Context, transaction capcontro
 		}
 		return capcontrol.Result{}, fmt.Errorf("controlplane uow: unknown stored status %q", existing.status)
 	}
-	resultJSON, err := mutation(ctx, tx)
+	resultJSON, err := mutation(ctx, WrapTx(tx))
 	if err != nil {
 		return capcontrol.Result{}, fmt.Errorf("controlplane uow: mutation %q: %w", command.CommandID, err)
 	}

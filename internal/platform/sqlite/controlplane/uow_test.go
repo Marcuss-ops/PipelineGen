@@ -268,7 +268,7 @@ func TestUnitOfWorkCallerOwnedTransactionDefersCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := uow.RunInTransaction(context.Background(), tx, testCommand(), func(ctx context.Context, transaction capcontrol.Transaction) (string, error) {
+	result, err := uow.RunInTransaction(context.Background(), WrapTx(tx), testCommand(), func(ctx context.Context, transaction capcontrol.Transaction) (string, error) {
 		if _, err := transaction.ExecContext(ctx, `INSERT INTO mutation_targets(id, value) VALUES (?, ?)`, "asset-1", "v1"); err != nil {
 			return "", err
 		}

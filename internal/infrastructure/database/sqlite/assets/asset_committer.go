@@ -162,8 +162,16 @@ func (c *SQLiteAssetCommitter) commitTxWithUnitOfWork(ctx context.Context, tx pe
 	if err != nil {
 		return persistence.CommitResult{}, err
 	}
-	result, err := c.uow.RunInTransaction(ctx, tx, command, func(ctx context.Context, uowTx capcontrol.Transaction) (string, error) {
-		committed, mutationErr := c.commitTxRaw(ctx, uowTx, req)
+	sqlTx, ok := tx.(*sql.Tx)
+	if !ok || sqlTx == nil {
+		return persistence.CommitResult{}, fmt.Errorf("asset committer: expected *sql.Tx, got %T", tx)
+	}
+	result, err := c.uow.RunInTransaction(ctx, sqlitecontrol.WrapTx(sqlTx), command, func(ctx context.Context, uowTx capcontrol.Transaction) (string, error) {
+		uowSQLTx, ok := sqlitecontrol.UnwrapSQLTx(uowTx)
+		if !ok || uowSQLTx == nil {
+			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
+		}
+		committed, mutationErr := c.commitTxRaw(ctx, uowSQLTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}
@@ -195,7 +203,11 @@ func (c *SQLiteAssetCommitter) commitWithUnitOfWork(ctx context.Context, req per
 		return persistence.CommitResult{}, err
 	}
 	result, err := c.uow.Run(ctx, command, func(ctx context.Context, tx capcontrol.Transaction) (string, error) {
-		committed, mutationErr := c.commitTxRaw(ctx, tx, req)
+		sqlTx, ok := sqlitecontrol.UnwrapSQLTx(tx)
+		if !ok || sqlTx == nil {
+			return "", fmt.Errorf("asset committer: uow transaction is not a sqlite transaction")
+		}
+		committed, mutationErr := c.commitTxRaw(ctx, sqlTx, req)
 		if mutationErr != nil {
 			return "", mutationErr
 		}

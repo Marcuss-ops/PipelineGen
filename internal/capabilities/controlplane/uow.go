@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 )
 
@@ -20,8 +19,22 @@ type OutboxEvent struct {
 }
 
 type Transaction interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (ExecResult, error)
+	QueryRowContext(context.Context, string, ...any) Row
+}
+
+// ExecResult mirrors database/sql.Result. sql.Result satisfies it
+// structurally, so SQLite adapters can delegate without re-wrapping.
+type ExecResult interface {
+	LastInsertId() (int64, error)
+	RowsAffected() (int64, error)
+}
+
+// Row mirrors *sql.Row. *sql.Row satisfies it structurally, so SQLite
+// adapters can delegate without re-wrapping.
+type Row interface {
+	Scan(dest ...any) error
+	Err() error
 }
 
 type Mutation func(context.Context, Transaction) (string, error)
