@@ -24,6 +24,28 @@ class SynthesizeRequestError(Exception):
         self.message = message
 
 
+# Canonical boundary values accepted on the wire. The canonical
+# PipelineGen timing contract is word-level; sentence is kept for
+# generic callers that want the edge-tts default semantics explicitly.
+_BOUNDARY_MODES = ("word", "sentence")
+
+# Wire value → edge-tts Communicate boundary literal.
+_EDGE_BOUNDARY_MODES = {
+    "word": "WordBoundary",
+    "sentence": "SentenceBoundary",
+}
+
+
+def edge_boundary_mode(boundary: str) -> str:
+    """Map the canonical wire boundary value to the edge-tts literal.
+
+    Unknown values fail closed to WordBoundary (the canonical mode for
+    PipelineGen timing capture) rather than silently downgrading to the
+    edge-tts default SentenceBoundary.
+    """
+    return _EDGE_BOUNDARY_MODES.get(boundary, "WordBoundary")
+
+
 @dataclass
 class SynthesizeRequest:
     """Validated JSON-RPC body for POST /synthesize."""
@@ -32,6 +54,10 @@ class SynthesizeRequest:
     out: str
     lang: str = "en"
     voice: str = ""
+    # boundary defaults to "word": edge-tts would otherwise silently
+    # use SentenceBoundary. PipelineGen explicitly requests word-level
+    # boundaries so timing capture never depends on a library default.
+    boundary: str = "word"
 
     @classmethod
     def from_dict(cls, body: Any) -> "SynthesizeRequest":
@@ -61,7 +87,15 @@ class SynthesizeRequest:
         # Optional field: voice (verbatim, may be empty).
         voice = str(body.get("voice") or "").strip()
 
-        return cls(text=text, out=out_path, lang=lang, voice=voice)
+        # Optional field: boundary (word|sentence, default word).
+        boundary = str(body.get("boundary") or "word").strip().lower() or "word"
+        if boundary not in _BOUNDARY_MODES:
+            raise SynthesizeRequestError(
+                f'invalid "boundary" value: {boundary!r} '
+                f'(expected one of: {", ".join(_BOUNDARY_MODES)})'
+            )
+
+        return cls(text=text, out=out_path, lang=lang, voice=voice, boundary=boundary)
 
 
 def normalize_language(lang: str) -> str:
