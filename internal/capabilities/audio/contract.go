@@ -34,19 +34,23 @@ const (
 )
 
 type VideoSegment struct {
-	AssetID          string `json:"asset_id,omitempty"`
-	SourceInUS       int64  `json:"source_in_us,omitempty"`
-	SourceDurationUS int64  `json:"source_duration_us,omitempty"`
+	AssetID            string `json:"asset_id,omitempty"`
+	SourceInUS         int64  `json:"source_in_us,omitempty"`
+	SourceDurationUS   int64  `json:"source_duration_us,omitempty"`
+	TimelineOffsetUS   int64  `json:"timeline_offset_us,omitempty"`
+	TimelineDurationUS int64  `json:"timeline_duration_us,omitempty"`
 }
 
 type AudioIntent struct {
-	Mode             AudioSegmentMode `json:"mode"`
-	VoiceoverAssetID string           `json:"voiceover_asset_id,omitempty"`
-	ClipAssetID      string           `json:"clip_asset_id,omitempty"`
-	SourceInUS       int64            `json:"source_in_us,omitempty"`
-	SourceDurationUS int64            `json:"source_duration_us,omitempty"`
-	UseOriginalAudio bool             `json:"use_original_audio,omitempty"`
-	GainDB           float64          `json:"gain_db,omitempty"`
+	Mode               AudioSegmentMode `json:"mode"`
+	VoiceoverAssetID   string           `json:"voiceover_asset_id,omitempty"`
+	ClipAssetID        string           `json:"clip_asset_id,omitempty"`
+	SourceInUS         int64            `json:"source_in_us,omitempty"`
+	SourceDurationUS   int64            `json:"source_duration_us,omitempty"`
+	TimelineOffsetUS   int64            `json:"timeline_offset_us,omitempty"`
+	TimelineDurationUS int64            `json:"timeline_duration_us,omitempty"`
+	UseOriginalAudio   bool             `json:"use_original_audio,omitempty"`
+	GainDB             float64          `json:"gain_db,omitempty"`
 }
 
 type AudioTrackRole string
@@ -59,14 +63,31 @@ const (
 )
 
 type TimelineSegment struct {
-	ID              string       `json:"id"`
-	Index           int          `json:"index"`
-	TimelineStartUS int64        `json:"timeline_start_us"`
-	DurationUS      int64        `json:"duration_us"`
-	Video           VideoSegment `json:"video"`
+	ID              string         `json:"id"`
+	Index           int            `json:"index"`
+	TimelineStartUS int64          `json:"timeline_start_us"`
+	DurationUS      int64          `json:"duration_us"`
+	Video           VideoSegment   `json:"video"`
+	VideoSegments   []VideoSegment `json:"video_segments,omitempty"`
 	// Audio is retained for v1 compatibility. New plans use AudioIntents.
 	Audio        AudioIntent   `json:"audio"`
 	AudioIntents []AudioIntent `json:"audio_intents,omitempty"`
+}
+
+// EffectiveVideoSegments preserves the legacy Video alias while exposing all
+// visual clips owned by one editorial scene.
+func (s TimelineSegment) EffectiveVideoSegments() []VideoSegment {
+	if len(s.VideoSegments) > 0 {
+		return append([]VideoSegment(nil), s.VideoSegments...)
+	}
+	if s.Video.AssetID == "" {
+		return nil
+	}
+	video := s.Video
+	if video.TimelineDurationUS == 0 {
+		video.TimelineDurationUS = s.DurationUS
+	}
+	return []VideoSegment{video}
 }
 
 func (s TimelineSegment) EffectiveAudioIntents() []AudioIntent {
@@ -224,11 +245,19 @@ func (t CanonicalTimeline) Validate() error {
 			return fmt.Errorf("%w: segment %d duration overflows", ErrInvalidTimeline, i)
 		}
 		end += s.DurationUS
-		if s.Video.SourceInUS < 0 || s.Video.SourceDurationUS < 0 || (s.Video.AssetID != "" && s.Video.SourceDurationUS <= 0) {
-			return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
+		videos := s.EffectiveVideoSegments()
+		var videoEnd int64
+		for _, video := range videos {
+			if video.AssetID == "" || video.SourceInUS < 0 || video.SourceDurationUS <= 0 || video.TimelineOffsetUS < 0 || video.TimelineDurationUS <= 0 || video.TimelineOffsetUS != videoEnd || video.TimelineDurationUS > s.DurationUS-video.TimelineOffsetUS {
+				return fmt.Errorf("%w: segment %d video source range", ErrInvalidTimeline, i)
+			}
+			videoEnd += video.TimelineDurationUS
+		}
+		if len(videos) > 0 && videoEnd != s.DurationUS {
+			return fmt.Errorf("%w: segment %d video does not cover scene duration", ErrInvalidTimeline, i)
 		}
 		for _, intent := range s.EffectiveAudioIntents() {
-			if intent.SourceInUS < 0 || intent.SourceDurationUS < 0 || (intent.Mode == AudioClip && intent.SourceDurationUS <= 0) {
+			if intent.SourceInUS < 0 || intent.SourceDurationUS < 0 || intent.TimelineOffsetUS < 0 || intent.TimelineOffsetUS > s.DurationUS || intent.TimelineDurationUS < 0 || intent.TimelineDurationUS > s.DurationUS-intent.TimelineOffsetUS || (intent.Mode == AudioClip && intent.SourceDurationUS <= 0) {
 				return fmt.Errorf("%w: segment %d audio source range", ErrInvalidTimeline, i)
 			}
 			switch intent.Mode {
