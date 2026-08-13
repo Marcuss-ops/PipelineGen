@@ -82,6 +82,17 @@ func BuildVoiceoverIdempotencyKey(jobID string, language Language, textHash Text
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// BuildVoiceoverTimingIdempotencyKey derives the deterministic retry-safe
+// key for a timing bundle file (timing.json / SRT / VTT). It extends the
+// canonical audio triple (jobID:language:textHash) with a kind suffix so
+// the timing files never collide with the audio upload's idempotency key
+// and each projection retries to the same Drive file.
+func BuildVoiceoverTimingIdempotencyKey(jobID string, language Language, textHash TextHash, kind string) string {
+	h := sha256.New()
+	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash) + ":timing:" + kind))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // ProcessSegmentCommand — neutral DTO consumed by ProcessSegmentUseCase
 // ────────────────────────────────────────────────────────────────────────
@@ -348,8 +359,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	}
 	// Stage 3: VoiceoverPublisher.Publish — delegates to publishStage
 	// (process_segment_publish.go) for metadata building + idempotency
-	// key derivation + Drive upload.
-	pub, err := u.publishStage(ctx, cmd, out, log)
+	// key derivation + Drive upload + the timing bundle publish (audio
+	// + timing.json + optional SRT/VTT with required/best-effort/disabled
+	// semantics).
+	pub, err := u.publishStage(ctx, cmd, out, &ttsOut, log)
 	if err != nil {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		var pipelineErr *PipelineError

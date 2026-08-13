@@ -159,6 +159,26 @@ const (
 	// FailureDownload — preserved for back-compat with the legacy
 	// service_test.go fixture at line 236.
 	FailureDownload FailureCode = "download_failed"
+	// FailureTimingIncompatible — publish stage: the timing policy is
+	// required but the segment also requests silence removal. Raw
+	// provider boundaries describe the PRE-clean audio; without an
+	// edit-map remap the published timestamps would be fake. Fail
+	// closed per godlike/07 (never represent unavailable timing as
+	// a successful no-op).
+	FailureTimingIncompatible FailureCode = "timing_incompatible_with_silence_removal"
+	// FailureTimingUnavailable — publish stage: timing is required but
+	// the TTS provider produced no word boundaries. The canonical
+	// machine-readable surface is VOICEOVER_TIMING_UNAVAILABLE so
+	// job/API layers never see a "SUCCEEDED but the data we thought
+	// we had does not exist" outcome.
+	FailureTimingUnavailable FailureCode = "VOICEOVER_TIMING_UNAVAILABLE"
+	// FailureTimingBuild — publish stage: the canonical timing artifact
+	// could not be assembled (hash, artifact validation, or SRT/VTT
+	// projection rendering failed).
+	FailureTimingBuild FailureCode = "timing_artifact_build_failed"
+	// FailureTimingPublish — publish stage: a timing bundle file upload
+	// failed AFTER the audio upload succeeded.
+	FailureTimingPublish FailureCode = "timing_publish_failed"
 )
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -180,4 +180,52 @@ type VoiceoverItemResult struct {
 	// parent aggregators can merge translation, voiceover, upload, and
 	// persistence outcomes without reconstructing them from percentages.
 	StageProgress map[string]job.StageProgress
+
+	// Timing carries the published timing bundle references (timing.json
+	// SSOT + optional SRT/VTT projections). nil when the timing policy is
+	// disabled (legacy behavior preserved byte-for-byte).
+	Timing *VoiceoverTimingResult
+}
+
+// VoiceoverTimingStatus is the canonical per-item timing bundle state.
+// It distinguishes "timing exists and is accurate" from "timing is
+// intentionally absent" so consumers never confuse an unavailable
+// timing with a successful one (godlike/07 no-fake-availability).
+type VoiceoverTimingStatus string
+
+const (
+	// TimingStatusCompleted — the canonical artifact and all requested
+	// projections were built and published; links are real Publisher
+	// file IDs, never hand-built.
+	TimingStatusCompleted VoiceoverTimingStatus = "completed"
+	// TimingStatusUnavailable — timing was requested but could not be
+	// captured (provider returned no boundaries, or best-effort policy
+	// combined with silence removal whose edit-map remap is not yet
+	// implemented). No timestamps are fabricated.
+	TimingStatusUnavailable VoiceoverTimingStatus = "unavailable"
+	// TimingStatusFailed — timing was requested under the best-effort
+	// policy but the bundle could not be built or published. The audio
+	// stays completed; the timing failure is explicitly surfaced.
+	TimingStatusFailed VoiceoverTimingStatus = "failed"
+)
+
+// VoiceoverTimingResult carries the published timing bundle references.
+// JSON wire shape mirrors the design's VoiceoverTimingBinding surface:
+// links are optional (only populated for the formats actually published)
+// and hashes bind the artifact to exactly one synthesized text + one
+// final audio file.
+type VoiceoverTimingResult struct {
+	Status VoiceoverTimingStatus `json:"status,omitempty"`
+
+	JSONLink string `json:"json_link,omitempty"`
+	SRTLink  string `json:"srt_link,omitempty"`
+	VTTLink  string `json:"vtt_link,omitempty"`
+
+	BoundaryMode string `json:"boundary_mode,omitempty"`
+
+	WordCount  int   `json:"word_count,omitempty"`
+	DurationUS int64 `json:"duration_us,omitempty"`
+
+	TextSHA256  string `json:"text_sha256,omitempty"`
+	AudioSHA256 string `json:"audio_sha256,omitempty"`
 }

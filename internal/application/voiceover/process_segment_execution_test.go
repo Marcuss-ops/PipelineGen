@@ -48,7 +48,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -961,14 +964,29 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_Propagates
 // TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS pins the timing
 // policy pass-through: the per-segment command's Timing must reach the
 // TTS provider input verbatim (the provider only returns raw boundaries;
-// the canonical artifact is built later from the final audio).
+// the canonical artifact is built later from the final audio). The stub
+// returns REAL word boundaries + a real audio file so the required
+// policy reaches a completed timing bundle (fail-closed contract: a
+// required policy with no boundaries would fail the segment).
 func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 	db := openProcessTestDB(t)
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "timing-forward.mp3")
+	require.NoError(t, os.WriteFile(audioPath, []byte("fake-mp3-bytes"), 0o644))
+
 	tts := &stubProcessTTS{
 		cannedOut: TTSOutput{
-			LocalPath: "/tmp/vo/timing-forward.mp3",
-			Voice:     "en-US-RogerNeural",
-			FileHash:  "timing-forward-hash",
+			LocalPath:    audioPath,
+			Voice:        "en-US-RogerNeural",
+			FileHash:     "timing-forward-hash",
+			Provider:     "edge_tts",
+			BoundaryMode: audio.BoundaryWord,
+			Duration:     2500 * time.Millisecond,
+			WordBoundaries: []RawSpeechBoundary{
+				{Text: "Text", StartUS: 0, EndUS: 200_000},
+				{Text: "with", StartUS: 200_000, EndUS: 600_000},
+				{Text: "timing", StartUS: 600_000, EndUS: 900_000},
+			},
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-timing-forward"}
@@ -984,10 +1002,7 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 		Logger:              zap.NewNop(),
 	})
 
-	dest := &stubProcessDestResolver{folderID: "dest-timing-forward"}
-	resolvedDest, err := dest.Resolve(context.Background(),
-		&DestinationRequest{FolderID: "dest-timing-forward"})
-	require.NoError(t, err)
+	resolvedDest := &ResolvedDestination{FolderID: "dest-timing-forward", FolderPath: dir}
 
 	timing := &audio.TimingRequest{
 		Mode:         audio.TimingRequired,
@@ -1016,7 +1031,26 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 	assert.Equal(t, audio.BoundaryWord, tts.synthesized[0].Timing.BoundaryMode)
 	assert.Len(t, tts.synthesized[0].Timing.Formats, 3)
 
-	// nil cmd.Timing stays nil on the input (defaults applied by the provider).
+	// The required timing policy must reach a completed bundle: all
+	// three projections published, real links, and hashes populated.
+	require.NotNil(t, out.Timing, "required timing must produce a timing result")
+	assert.Equal(t, TimingStatusCompleted, out.Timing.Status)
+	assert.NotEmpty(t, out.Timing.JSONLink)
+	assert.NotEmpty(t, out.Timing.SRTLink)
+	assert.NotEmpty(t, out.Timing.VTTLink)
+	assert.Equal(t, 3, out.Timing.WordCount)
+	assert.NotEmpty(t, out.Timing.TextSHA256)
+	assert.NotEmpty(t, out.Timing.AudioSHA256)
+	// Audio publish + 3 timing projections = 4 Publisher calls.
+	require.Len(t, pub.published, 4, "audio + json + srt + vtt must all be published")
+	assert.Equal(t, cmd.Filename, pub.published[0].Filename)
+	assert.Equal(t, "timing-forward-timing.json", pub.published[1].Filename)
+	assert.Equal(t, "timing-forward.srt", pub.published[2].Filename)
+	assert.Equal(t, "timing-forward.vtt", pub.published[3].Filename)
+
+	// nil cmd.Timing stays nil on the input (defaults applied by the
+	// provider); the default best-effort policy still completes when the
+	// provider returns boundaries.
 	cmdNil := &ProcessSegmentCommand{
 		ID:       "vo-timing-forward-nil",
 		Text:     "Text without an explicit timing policy",
@@ -1029,4 +1063,6 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 	require.NotNil(t, outNil)
 	require.Len(t, tts.synthesized, 2)
 	assert.Nil(t, tts.synthesized[1].Timing, "TTSInput.Timing must stay nil when cmd.Timing is nil")
+	require.NotNil(t, outNil.Timing, "best-effort default with boundaries must still produce a timing bundle")
+	assert.Equal(t, TimingStatusCompleted, outNil.Timing.Status)
 }
