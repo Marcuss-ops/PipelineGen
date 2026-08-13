@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -211,11 +213,19 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 			CleanedPath: "",
 			Voice:       "en_female",
 			FileHash:    "abc123",
+			Duration:    45*time.Second + 210*time.Millisecond, // 45_210_000 us pre-clean
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
 	audioPost := &stubProcessAudioPost{
-		cannedOut: AudioPostOutput{CleanedPath: "/tmp/vo/cleaned_test_en.mp3"},
+		cannedOut: AudioPostOutput{
+			CleanedPath: "/tmp/vo/cleaned_test_en.mp3",
+			DurationUS:  43_870_000,
+			EditMap: []audio.AudioEdit{
+				{SourceStartUS: 0, SourceEndUS: 620_000},
+				{SourceStartUS: 44_490_000, SourceEndUS: 45_210_000},
+			},
+		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-123"}
 	finalizer := &stubProcessFinalizer{
@@ -267,6 +277,14 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 	// Assertion 3: the cleaned path from AudioPostProcessor was used
 	assert.Equal(t, "/tmp/vo/cleaned_test_en.mp3", res.CleanedPath,
 		"Cleaned path from AudioPostProcessor must populate result.CleanedPath")
+
+	// Assertion 4: the silence-cleanup report is built and surfaced on the
+	// result, so operators can verify the timeline uses the cleaned duration.
+	require.NotNil(t, res.SilenceCleanup, "SilenceCleanup must be populated when RemoveSilence removes edits")
+	assert.Equal(t, int64(45_210_000), res.SilenceCleanup.OriginalDurationUS)
+	assert.Equal(t, int64(620_000), res.SilenceCleanup.TrimStartUS)
+	assert.Equal(t, int64(720_000), res.SilenceCleanup.TrimEndUS)
+	assert.Equal(t, int64(43_870_000), res.SilenceCleanup.CleanDurationUS)
 }
 
 // TestRemoveSilence_SkipsPostProcessingWhenFalse ensures that when
