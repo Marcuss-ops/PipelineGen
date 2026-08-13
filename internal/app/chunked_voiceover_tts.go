@@ -103,7 +103,20 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 	if err != nil {
 		return voiceover.TTSOutput{}, fmt.Errorf("hash merged voiceover: %w", err)
 	}
-	return voiceover.TTSOutput{LocalPath: merged, Voice: outputs[0].Voice, FileHash: hash, Duration: timeDuration(duration)}, nil
+	// The merged track inherits the provider identity + boundary mode from
+	// the first chunk. Per-chunk WordBoundaries are NOT merged here: chunk
+	// offsets restart per synthesis, so merging requires a global offset
+	// remap — deferred to the timing-artifact step (same text can still be
+	// synthesized in one pass by providers that do not enforce a chunk
+	// ceiling).
+	return voiceover.TTSOutput{
+		LocalPath:    merged,
+		Voice:        outputs[0].Voice,
+		FileHash:     hash,
+		Duration:     timeDuration(duration),
+		Provider:     outputs[0].Provider,
+		BoundaryMode: outputs[0].BoundaryMode,
+	}, nil
 }
 
 func splitVoiceoverWords(text string, maxWords int) []string {

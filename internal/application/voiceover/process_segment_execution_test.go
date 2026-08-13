@@ -54,6 +54,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"go.uber.org/zap"
 )
 
@@ -955,4 +956,77 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_Propagates
 	// Finalizer MUST NOT be invoked after Publisher failure.
 	assert.Len(t, finalizer.calls, 0,
 		"Finalizer.Finalize MUST NOT be invoked after Publisher failure (short-circuit at Stage 3)")
+}
+
+// TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS pins the timing
+// policy pass-through: the per-segment command's Timing must reach the
+// TTS provider input verbatim (the provider only returns raw boundaries;
+// the canonical artifact is built later from the final audio).
+func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/timing-forward.mp3",
+			Voice:     "en-US-RogerNeural",
+			FileHash:  "timing-forward-hash",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-timing-forward"}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "vo-timing-forward", Reused: false},
+	}
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	dest := &stubProcessDestResolver{folderID: "dest-timing-forward"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-timing-forward"})
+	require.NoError(t, err)
+
+	timing := &audio.TimingRequest{
+		Mode:         audio.TimingRequired,
+		BoundaryMode: audio.BoundaryWord,
+		Formats:      []audio.TimingFormat{audio.TimingJSON, audio.TimingSRT, audio.TimingVTT},
+	}
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-timing-forward",
+		Text:     "Text with an explicit timing policy",
+		Language: "en",
+		Voice:    "en-US-RogerNeural",
+		Filename: "timing-forward.mp3",
+		Timing:   timing,
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, StatusCompleted, out.Status)
+
+	require.Len(t, tts.synthesized, 1)
+	require.NotNil(t, tts.synthesized[0].Timing, "TTSInput.Timing must not be nil when cmd.Timing is set")
+	assert.Equal(t, audio.TimingRequired, tts.synthesized[0].Timing.Mode)
+	assert.Equal(t, audio.BoundaryWord, tts.synthesized[0].Timing.BoundaryMode)
+	assert.Len(t, tts.synthesized[0].Timing.Formats, 3)
+
+	// nil cmd.Timing stays nil on the input (defaults applied by the provider).
+	cmdNil := &ProcessSegmentCommand{
+		ID:       "vo-timing-forward-nil",
+		Text:     "Text without an explicit timing policy",
+		Language: "en",
+		Filename: "timing-forward-nil.mp3",
+		Dest:     resolvedDest,
+	}
+	outNil, errNil := uc.Execute(context.Background(), cmdNil)
+	require.NoError(t, errNil)
+	require.NotNil(t, outNil)
+	require.Len(t, tts.synthesized, 2)
+	assert.Nil(t, tts.synthesized[1].Timing, "TTSInput.Timing must stay nil when cmd.Timing is nil")
 }
