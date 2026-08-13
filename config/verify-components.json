@@ -40,7 +40,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "script"],
+    "dependencies": [
+      "database",
+      "script"
+    ],
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -94,7 +97,10 @@
     "race_timeout_seconds": 1200,
     "race_enabled": true,
     "live_tests": [
-      ["make", "verify-stock-live"]
+      [
+        "make",
+        "verify-stock-live"
+      ]
     ]
   },
   "qdrant": {
@@ -110,7 +116,9 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database"],
+    "dependencies": [
+      "database"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -131,7 +139,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "qdrant"],
+    "dependencies": [
+      "database",
+      "qdrant"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -178,7 +189,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "drive"],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": false,
@@ -186,11 +200,14 @@
   },
   "voiceover": {
     "paths": [
-      "internal/domain/voiceover/",
-      "internal/application/voiceover/",
-      "internal/api/assets/voiceover/",
       "cleaned_jackie-chan-is-seen-on-graham_en-US.mp3",
-      "jackie-chan-is-seen-on-graham_en-US.mp3"
+      "internal/api/assets/voiceover/",
+      "internal/application/voiceover/",
+      "internal/domain/voiceover/",
+      "jackie-chan-is-seen-on-graham_en-US.mp3",
+      "scripts/bridges/edge_tts_bridge/",
+      "scripts/bridges/tts_edge.py",
+      "scripts/bridges/tts_edge_server.py"
     ],
     "go_packages": [
       "./internal/domain/voiceover/...",
@@ -199,7 +216,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "drive"],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -220,7 +240,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "drive"],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -239,7 +262,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "ollama"],
+    "dependencies": [
+      "database",
+      "ollama"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -256,7 +282,9 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["storage"],
+    "dependencies": [
+      "storage"
+    ],
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -275,7 +303,9 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database"],
+    "dependencies": [
+      "database"
+    ],
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -301,10 +331,11 @@
       "internal/application/jobs/",
       "internal/api/jobs/",
       "internal/infrastructure/jobs/",
-      "internal/infrastructure/database/sqlite/jobs/",  "scripts/bridges/slide_worker_runtime/",
-  "scripts/worker-bootstrap-smoke.sh",
-  "scripts/velox_client.py"
- ],
+      "internal/infrastructure/database/sqlite/jobs/",
+      "scripts/bridges/slide_worker_runtime/",
+      "scripts/worker-bootstrap-smoke.sh",
+      "scripts/velox_client.py"
+    ],
     "go_packages": [
       "./internal/application/jobs/...",
       "./internal/api/jobs/...",
@@ -313,7 +344,9 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database"],
+    "dependencies": [
+      "database"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
     "race_enabled": true,
@@ -360,20 +393,21 @@
       "internal/application/youtube/",
       "internal/application/assets/providers/youtube/",
       "internal/application/assets/sourcing/youtube/",
-      "internal/infrastructure/youtube/",  "internal/api/assets/youtube/",
-  "scripts/tools/transcribe_detect_lang.py",
-  "scripts/requirements-whisper.txt",
+      "internal/infrastructure/youtube/",
+      "internal/api/assets/youtube/",
+      "scripts/tools/transcribe_detect_lang.py",
+      "scripts/requirements-whisper.txt",
       "requirements/whisper.lock.txt",
-  "scripts/verify-whisper.sh",
-  "scripts/ci/whisper-deployment-contract_test.py",
-  "scripts/tools/whisper_preflight.py",
-  "scripts/tools/whisper_runtime.py",
+      "scripts/verify-whisper.sh",
+      "scripts/ci/whisper-deployment-contract_test.py",
+      "scripts/tools/whisper_preflight.py",
+      "scripts/tools/whisper_runtime.py",
       "scripts/tools/test_whisper_preflight.py",
       "scripts/systemd/pipelinegen.service.d/whisper.conf",
       "scripts/systemd/pipelinegen.service.d/youtube-dlp.conf",
       "scripts/yt-dlp-pipeline",
       "docker-compose.yml"
- ],
+    ],
     "go_packages": [
       "./internal/domain/youtube/...",
       "./internal/application/youtube/...",
@@ -384,9 +418,15 @@
     ],
     "node_tests": [],
     "python_tests": [
-      ["python3", "scripts/ci/whisper-deployment-contract_test.py"]
+      [
+        "python3",
+        "scripts/ci/whisper-deployment-contract_test.py"
+      ]
     ],
-    "dependencies": ["database", "drive"],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 1200,
     "race_enabled": true,
@@ -410,7 +450,10 @@
     ],
     "node_tests": [],
     "python_tests": [],
-    "dependencies": ["database", "drive"],
+    "dependencies": [
+      "database",
+      "drive"
+    ],
     "timeout_seconds": 900,
     "race_timeout_seconds": 1200,
     "race_enabled": true,
@@ -424,7 +467,12 @@
       "./internal/infrastructure/artlist/scraper/..."
     ],
     "node_tests": [
-      ["npm", "--prefix", "node-scraper", "test"]
+      [
+        "npm",
+        "--prefix",
+        "node-scraper",
+        "test"
+      ]
     ],
     "python_tests": [],
     "dependencies": [],
@@ -474,7 +522,13 @@
     ],
     "go_packages": [],
     "node_tests": [
-      ["npm", "--prefix", "web", "run", "build"]
+      [
+        "npm",
+        "--prefix",
+        "web",
+        "run",
+        "build"
+      ]
     ],
     "python_tests": [],
     "dependencies": [],
