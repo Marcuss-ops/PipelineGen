@@ -271,6 +271,7 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 				if layer.AssetID == "" {
 					continue
 				}
+				durationMs := layer.EndMs - layer.StartMs
 				scenes[i].Bindings.Media = append(scenes[i].Bindings.Media, scriptpkg.ResolvedMediaBinding{Slot: string(layer.Slot), AssetID: layer.AssetID, BindingID: layer.BindingID, Provider: layer.Provider, Score: layer.CandidateScore})
 				if layer.Slot == mediadomain.SlotPrimaryVideo {
 					if scenes[i].Bindings.Stock == nil {
@@ -279,8 +280,18 @@ func projectVisualBindings(scenes []scriptpkg.SpecScene, plans []mediamemory.Sce
 					scenes[i].Bindings.Stock.AssetID = layer.AssetID
 					scenes[i].Bindings.Stock.Source = layer.Provider
 					scenes[i].Bindings.Stock.Score = layer.CandidateScore
+					// A locked primary-video assignment is also a canonical
+					// renderable clip binding. Keep the visual/media binding
+					// for planning provenance, but expose the clip identity in
+					// SpecScene so downstream render, Drive reconciliation and
+					// /jobs/:id/full consumers see the same scene skeleton.
+					scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{
+						ClipID:     layer.AssetID,
+						StartMs:    layer.StartMs,
+						EndMs:      layer.EndMs,
+						DurationMs: durationMs,
+					}
 				}
-				durationMs := layer.EndMs - layer.StartMs
 				visualPlan.Layers = append(visualPlan.Layers, scriptpkg.VisualLayer{
 					Slot:       layer.Slot,
 					AssetID:    layer.AssetID,
