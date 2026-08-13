@@ -92,7 +92,7 @@ func (u *ProcessSegmentUseCase) publishStage(
 	// Derive deterministic idempotency key.
 	var idemKey string
 	if cmd.JobID != "" {
-		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash)
+		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, TimingPolicyFingerprint(cmd.Timing, cmd.RemoveSilence))
 	}
 
 	// Publish to Drive.
@@ -294,7 +294,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 			FolderID:       cmd.Dest.FolderID,
 			Project:        cmd.Project,
 			Language:       string(cmd.Language),
-			IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, string(format)),
+			IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, TimingPolicyFingerprint(cmd.Timing, cmd.RemoveSilence), string(format)),
 		})
 		if err != nil {
 			return u.timingPublishFailure(cmd, log, policy, fmt.Errorf("publish timing projection %s: %w", filename, err))

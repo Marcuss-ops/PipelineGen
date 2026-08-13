@@ -63,7 +63,7 @@ import (
 // caller; the finalizer reads them but never mutates the command.
 type FinalizeCommand struct {
 	// IdempotencyKey is the deterministic retry-safe deduplication key
-	// computed by BuildVoiceoverIdempotencyKey(jobID, language, textHash).
+	// computed by BuildVoiceoverIdempotencyKey(jobID, language, textHash, policyFingerprint).
 	// Step 0 of Finalize reads this field BEFORE the dedupe gate (Step 1)
 	// to short-circuit the entire 6-step sequence when a prior attempt
 	// already persisted the same logical row. Empty IdempotencyKey means
