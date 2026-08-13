@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -228,4 +229,12 @@ type VoiceoverTimingResult struct {
 
 	TextSHA256  string `json:"text_sha256,omitempty"`
 	AudioSHA256 string `json:"audio_sha256,omitempty"`
+
+	// Moments are the deterministic timestamped projections of the
+	// scene's semantic annotations (entity/keyword/phrase strings from the
+	// LLM) onto the canonical word timing. The LLM never produced these
+	// timestamps — they are derived exclusively via PhraseLocator, so a
+	// moment exists only when its value occurs verbatim in the speech.
+	// Empty when no annotation queries were supplied or none matched.
+	Moments []audio.Moment `json:"moments,omitempty"`
 }

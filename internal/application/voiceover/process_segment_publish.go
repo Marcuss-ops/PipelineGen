@@ -308,6 +308,18 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	res.DurationUS = artifact.DurationUS
 	res.TextSHA256 = artifact.TextSHA256
 	res.AudioSHA256 = artifact.AudioSHA256
+
+	// Moments: deterministic annotation → word-timing projection. The
+	// artifact is already validated, so LocateMoments only skips
+	// not-found annotation values (never fabricates timestamps) or, in
+	// an impossible regression, surfaces an invalid-artifact error that
+	// must fail closed rather than emit a partial bundle.
+	if moments, err := audio.LocateMoments(*artifact, cmd.Moments); err != nil {
+		return u.timingBuildFailure(policy, fmt.Errorf("locate moments: %w", err))
+	} else {
+		res.Moments = moments
+	}
+
 	emitTiming("completed")
 	return res, nil
 }

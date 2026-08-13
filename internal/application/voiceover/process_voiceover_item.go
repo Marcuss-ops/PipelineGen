@@ -327,6 +327,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		Metadata:      item.Metadata,
 		RemoveSilence: item.RemoveSilence,
 		Timing:        item.Timing,
+		Moments:       item.Moments,
 		// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): forward the
 		// canonical semantic project identifier from the per-item command
 		// (API request or internal caller) so the adapter (Stage 3

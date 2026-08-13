@@ -248,6 +248,12 @@ type GenerateVoiceoverItemCommand struct {
 	// from the parent batch. nil means the canonical defaults apply.
 	Timing *audio.TimingRequest `json:"voiceover_timing,omitempty"`
 
+	// Moments are the optional LLM-produced annotation queries (kind +
+	// value) to anchor onto the canonical word timing. Only the scene
+	// fanout path populates this (from SceneAnnotations); the batch path
+	// has no annotations and leaves it nil.
+	Moments []audio.MomentQuery `json:"moments,omitempty"`
+
 	// Metadata is the per-batch user-supplied meta overlay that flows
 	// into the row's metadata column.
 	Metadata map[string]any `json:"metadata,omitempty"`

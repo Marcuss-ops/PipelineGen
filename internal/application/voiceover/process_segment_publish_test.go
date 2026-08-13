@@ -345,3 +345,32 @@ func TestProcessSegmentUseCase_Execute_RequiredTimingNoBoundariesFailsJob(t *tes
 	require.Len(t, pub.published, 1)
 	assert.Equal(t, "required-nb.mp3", pub.published[0].Filename)
 }
+
+// TestPublishTimingBundle_Moments_AnchorsAnnotationsDeterministically pins
+// the extraction → PhraseLocator → moments connection: the LLM contributes
+// only (kind, value) strings; the timing stage derives exact timestamps
+// from the canonical word timing. Not-found values are skipped, never
+// fabricated, and the audio still completes.
+func TestPublishTimingBundle_Moments_AnchorsAnnotationsDeterministically(t *testing.T) {
+	_, audioPath, tts, cmd := timingTestFixture(t)
+	cmd.Timing = &audio.TimingRequest{Mode: audio.TimingRequired, BoundaryMode: audio.BoundaryWord, Formats: []audio.TimingFormat{audio.TimingJSON}}
+	cmd.Moments = []audio.MomentQuery{
+		{Kind: audio.MomentEntity, Value: "celebre"},
+		{Kind: audio.MomentKeyword, Value: "Mussolini"}, // not present — skipped
+	}
+	pub := &stubProcessPublisher{fileID: "drive-moments"}
+	uc := newPublishTimingUseCase(t, pub)
+	out := &VoiceoverItemResult{Voice: "it-IT-DiegoNeural", LocalPath: audioPath}
+
+	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, nil, audioPath, zap.NewNop())
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Len(t, res.Moments, 1)
+	got := res.Moments[0]
+	assert.Equal(t, audio.MomentEntity, got.Kind)
+	assert.Equal(t, "celebre", got.Value)
+	assert.Equal(t, 1, got.WordStart)
+	assert.Equal(t, int64(125_000), got.StartUS)
+	assert.Equal(t, int64(487_000), got.EndUS)
+}
