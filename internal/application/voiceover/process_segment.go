@@ -140,6 +140,12 @@ type ProcessSegmentCommand struct {
 	// by the TTS stage once providers produce raw word boundaries.
 	Timing *audio.TimingRequest
 
+	// Moments are the optional LLM-produced annotation queries (kind +
+	// value) to anchor onto the canonical word timing. The model provides
+	// only text; timestamps are derived by the timing stage via
+	// PhraseLocator. nil means no moment projection (legacy behavior).
+	Moments []audio.MomentQuery
+
 	// Semantic routing (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
 	// Canonical project identifier forwarded from the per-item command.
 	// Empty Project is OK — the adapter builds the canonical subpath

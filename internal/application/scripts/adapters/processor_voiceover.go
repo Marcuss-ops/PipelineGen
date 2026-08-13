@@ -32,6 +32,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
@@ -301,6 +302,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Voice:       p.voices[language],
 				Filename:    filename,
 				Destination: dest,
+				Moments:     momentQueriesFromAnnotations(scene.Annotations),
 			})
 		}
 
@@ -395,6 +397,47 @@ func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {
 		dst[i].Text = strings.Clone(src[i].Text)
 	}
 	return dst
+}
+
+// momentQueriesFromAnnotations converts a scene's deterministic semantic
+// annotations into PhraseLocator queries. The LLM produced only text spans;
+// timestamps are derived later from the canonical word timing — never from
+// the model. Entities contribute their mention surface forms (the exact
+// text that appears in the speech, not the canonical name); important
+// phrases and keywords contribute their span text.
+func momentQueriesFromAnnotations(ann *scriptpkg.SceneAnnotations) []audio.MomentQuery {
+	if ann == nil {
+		return nil
+	}
+	var queries []audio.MomentQuery
+	entities := make([]scriptpkg.AnnotatedEntity, 0, len(ann.PrimaryEntities)+len(ann.SecondaryEntities))
+	entities = append(entities, ann.PrimaryEntities...)
+	entities = append(entities, ann.SecondaryEntities...)
+	for _, entity := range entities {
+		for _, mention := range entity.Mentions {
+			if v := strings.TrimSpace(mention.Text); v != "" {
+				queries = append(queries, audio.MomentQuery{Kind: audio.MomentEntity, Value: v})
+			}
+		}
+		// Fallback when grounding produced no mention spans: use the entity
+		// surface text verbatim. LocatePhrase skips it if it does not occur.
+		if len(entity.Mentions) == 0 {
+			if v := strings.TrimSpace(entity.Text); v != "" {
+				queries = append(queries, audio.MomentQuery{Kind: audio.MomentEntity, Value: v})
+			}
+		}
+	}
+	for _, phrase := range ann.ImportantPhrases {
+		if v := strings.TrimSpace(phrase.Text); v != "" {
+			queries = append(queries, audio.MomentQuery{Kind: audio.MomentPhrase, Value: v})
+		}
+	}
+	for _, word := range ann.ImportantWords {
+		if v := strings.TrimSpace(word.Text); v != "" {
+			queries = append(queries, audio.MomentQuery{Kind: audio.MomentKeyword, Value: v})
+		}
+	}
+	return queries
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0, June 2026): the

@@ -47,6 +47,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -68,6 +69,11 @@ type VoiceoverSceneInput struct {
 	Voice       string
 	Filename    string
 	Destination *voiceover.DestinationRequest
+
+	// Moments are the optional LLM-produced annotation queries (kind +
+	// value) to anchor onto the canonical word timing. The model provides
+	// only text; timestamps are derived deterministically via PhraseLocator.
+	Moments []audio.MomentQuery
 }
 
 // SceneOutcome is the canonical per-scene fanout return shape. Status
@@ -167,6 +173,7 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			Project:       sceneProject(item.Destination),
 			Strategy:      "replace", // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
 			RemoveSilence: false,     // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			Moments:       item.Moments,
 		}
 
 		// Execute the per-item pipeline (TTS → publish → finalize).
