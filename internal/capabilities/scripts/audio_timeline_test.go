@@ -58,6 +58,51 @@ func TestCompileCanonicalAudioPlanMakesVoiceoverTimelinePlacementExplicit(t *tes
 	}
 }
 
+func TestCompileCanonicalAudioPlanAppliesDuckedMixPolicyWithExplicitVOTiming(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-combined", Index: 0, DurationUS: 5_000_000,
+		Clip:      &ClipReference{ID: "clip-a", AudioPath: "/video/a.mp4", SourceInMS: 1000, SourceOutMS: 6000},
+		Audio:     audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceInUS: 1_000_000, SourceDurationUS: 5_000_000, UseOriginalAudio: true},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-a", FilePath: "/audio/a.m4a", Duration: 4.0}},
+	}}}
+	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The mix decision is recorded on the compiled plan.
+	if plan.MixPolicy != audio.MixVoiceoverWithDuckedClip {
+		t.Fatalf("mix policy = %q, want %q", plan.MixPolicy, audio.MixVoiceoverWithDuckedClip)
+	}
+
+	// The voiceover carries explicit timeline placement.
+	intents := timeline.Segments[0].EffectiveAudioIntents()
+	var vo, clip *audio.AudioIntent
+	for i := range intents {
+		switch intents[i].Mode {
+		case audio.AudioVoiceover:
+			vo = &intents[i]
+		case audio.AudioClip:
+			clip = &intents[i]
+		}
+	}
+	if vo == nil || vo.TimelineOffsetUS != 0 || vo.TimelineDurationUS != 5_000_000 {
+		t.Fatalf("voiceover must carry explicit timeline placement: %+v", vo)
+	}
+	if clip == nil {
+		t.Fatalf("clip intent missing: %+v", intents)
+	}
+
+	// Clip audio is ducked, never full-volume, with ducking automation.
+	clipEvents := eventsForRole(plan, audio.TrackClipAudio)
+	if len(clipEvents) != 1 || clipEvents[0].GainDB != audio.DuckClipBaseGainDB {
+		t.Fatalf("clip audio must be ducked: %+v", clipEvents)
+	}
+	if len(plan.Automation) == 0 {
+		t.Fatalf("ducking automation missing: %+v", plan.Automation)
+	}
+}
+
 func TestCompileCanonicalAudioPlanFailsClosedForMissingClipAudio(t *testing.T) {
 	_, _, _, err := CompileCanonicalAudioPlan(GenerateResult{Scenes: []Scene{{
 		ID: "scene-1", Index: 0, DurationMS: 1000, Clip: &ClipReference{ID: "clip-1"}, Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-1"},
