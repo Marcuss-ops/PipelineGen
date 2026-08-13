@@ -52,12 +52,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	voiceoververification "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/verification"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	sqliteverification "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/verification"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
@@ -606,7 +606,11 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 	}
 
 	// ── Stage C: assert media_assets projection (source='voiceover') ─
-	hit, err := voiceoververification.HasVoiceoverProjection(ctx, db, voiceoverID)
+	projectionReader, readerErr := sqliteverification.NewProjectionReader(db)
+	if readerErr != nil {
+		t.Fatalf("NewProjectionReader: %v", readerErr)
+	}
+	hit, err := projectionReader.HasVoiceoverProjection(ctx, voiceoverID)
 	if err != nil {
 		t.Fatalf("HasVoiceoverProjection: %v", err)
 	}
