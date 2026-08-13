@@ -313,6 +313,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 				Link:       out.Link,
 				LocalPath:  out.LocalPath,
 				DurationMs: out.DurationMs,
+				Timing:     voiceoverTimingToDomain(out.Timing),
 			})
 			if out.Status == "failed" {
 				warnings = append(warnings, fmt.Sprintf("voiceover failed for scene %d (language %s): %s", out.SceneIndex, language, out.Error))
@@ -363,6 +364,25 @@ func capIntroNarration(input *ProcessInput, plan *scriptpkg.ResolvedGenerationPl
 	}
 	input.SpecScene.Scenes[0].Text = strings.Join(words[:maxIntroWords], " ")
 	return true
+}
+
+// voiceoverTimingToDomain converts the per-item timing result into the
+// domain binding shape (nil-safe: disabled timing produces a nil entry).
+func voiceoverTimingToDomain(in *voiceover.VoiceoverTimingResult) *scriptpkg.VoiceoverTimingBinding {
+	if in == nil {
+		return nil
+	}
+	return &scriptpkg.VoiceoverTimingBinding{
+		Status:       string(in.Status),
+		JSONLink:     in.JSONLink,
+		SRTLink:      in.SRTLink,
+		VTTLink:      in.VTTLink,
+		BoundaryMode: in.BoundaryMode,
+		WordCount:    in.WordCount,
+		DurationUS:   in.DurationUS,
+		TextSHA256:   in.TextSHA256,
+		AudioSHA256:  in.AudioSHA256,
+	}
 }
 
 func cloneVoiceoverScenes(src []scriptpkg.SpecScene) []scriptpkg.SpecScene {

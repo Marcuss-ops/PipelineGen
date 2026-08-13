@@ -85,6 +85,11 @@ type SceneOutcome struct {
 	DurationMs int64
 	// Error carries the error message when Status == "failed"; empty otherwise.
 	Error string
+
+	// Timing carries the per-item timing bundle references when the
+	// pipeline produced one (nil when timing is disabled). Forwarded so
+	// the scene binding can expose timing links per language.
+	Timing *voiceover.VoiceoverTimingResult
 }
 
 // RunVoiceoverSceneFanout fans out a slice of VoiceoverSceneInput to
@@ -200,6 +205,7 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverIt
 			out.Link = result.DriveLink
 			out.LocalPath = result.LocalPath
 			out.DurationMs = result.DurationMs
+			out.Timing = result.Timing
 		}
 		return out
 	})

@@ -60,6 +60,10 @@ type stubServiceForGetFull struct {
 	// eventsList / eventsErr feed the events slice via ListEvents().
 	eventsList []job.Event
 	eventsErr  error
+
+	// outResult is the canonical job.Result payload returned from Get()
+	// (surfaced verbatim as the /full `result` field).
+	outResult json.RawMessage
 }
 
 func (s *stubServiceForGetFull) Enqueue(_ context.Context, _ *job.EnqueueRequest) (*job.Job, error) {
@@ -71,6 +75,7 @@ func (s *stubServiceForGetFull) Get(_ context.Context, _ string) (*job.Job, erro
 		Type:   s.outType,
 		Status: s.outStatus,
 		Error:  s.outErr,
+		Result: s.outResult,
 	}, nil
 }
 func (s *stubServiceForGetFull) Cancel(_ context.Context, _ string) error { return nil }
@@ -247,6 +252,65 @@ func TestGetFull_EmptyErrorOnSuccess(t *testing.T) {
 	assert.Equal(t, "", env.Error, "empty job.Error MUST round-trip as empty top-level")
 	assert.Contains(t, string(body), `"error":""`,
 		"empty error MUST serialize as `\"error\":\"\"` (not absent — contract is field-present)")
+}
+
+// TestGetFull_ExposesTimingReferences pins the timing-bundle surface on
+// the /full payload: a script.generate result whose scene binding carries
+// a per-language VoiceoverTimingBinding must surface verbatim in the
+// `result` field (the handler passes j.Result through untouched), while
+// the word-level timing array stays in the published timing.json (never
+// inlined in the binding).
+func TestGetFull_ExposesTimingReferences(t *testing.T) {
+	envelope := scriptpkg.GenerationEnvelopeResult{
+		Version: scriptpkg.EnvelopeVersion,
+		OK:      true,
+		Items: []scriptpkg.GenerationEnvelopeItem{{
+			ItemID: "item-1",
+			Result: &scriptpkg.GenerationResult{
+				Output: scriptpkg.ScriptOutput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+					ID:   "scene-1",
+					Text: "Il celebre incontro di Teano",
+					Bindings: scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{
+						Status: "completed",
+						Link:   "https://drive.google.com/file/d/audio-it/view",
+						Timing: map[string]scriptpkg.VoiceoverTimingBinding{
+							"it": {
+								Status:       "completed",
+								JSONLink:     "https://drive.google.com/file/d/timing-it/view",
+								SRTLink:      "https://drive.google.com/file/d/subtitles-it-srt/view",
+								VTTLink:      "https://drive.google.com/file/d/subtitles-it-vtt/view",
+								BoundaryMode: "word",
+								WordCount:    184,
+								DurationUS:   18_342_000,
+								TextSHA256:   "text-en",
+								AudioSHA256:  "audio-en",
+							},
+						},
+					}},
+				}}},
+				},
+			}}},
+		Summary: scriptpkg.GenerationEnvelopeSummary{Total: 1, Succeeded: 1},
+	}
+	raw, err := json.Marshal(envelope)
+	require.NoError(t, err)
+
+	stub := &stubServiceForGetFull{
+		outID:     "job-timing-1",
+		outType:   pushedType,
+		outStatus: job.StatusSucceeded,
+		outResult: raw,
+	}
+	env, body, code := runGetFull(t, stub)
+	require.Equal(t, http.StatusOK, code)
+	require.NotEmpty(t, env.Result, "/full must surface the job result payload")
+	result := string(env.Result)
+	assert.Contains(t, result, `"timing"`, "the result payload must expose the per-language timing map")
+	assert.Contains(t, result, `"json_link"`, "the timing bundle must expose the timing.json link")
+	assert.Contains(t, result, `"vtt_link"`, "the timing bundle must expose the VTT link")
+	assert.Contains(t, result, `"duration_us"`, "the timing bundle must expose the duration")
+	assert.NotContains(t, result, `"words"`, "the /full payload must NOT inline the word-level timing array")
+	_ = body
 }
 
 // TestGetFull_BackwardCompat_ExistingFieldsPreserved locks the

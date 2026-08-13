@@ -43,6 +43,44 @@ type VoiceoverBinding struct {
 
 	// DurationMs is the audio duration in milliseconds.
 	DurationMs int64 `json:"duration_ms,omitempty"`
+
+	// Timing maps the published timing bundle (timing.json SSOT + optional
+	// SRT/VTT projections + hashes) per generated language. Populated by
+	// the voiceover postprocessor from the canonical per-item timing
+	// result; preserved by clone / merge / translation write-back /
+	// persistence so previously produced timing links are never erased.
+	Timing map[string]VoiceoverTimingBinding `json:"timing,omitempty"`
+}
+
+// VoiceoverTimingBinding carries the published timing bundle references
+// for one voiceover language. It mirrors the per-item timing result: the
+// JSON artifact is the SSOT and SRT/VTT are display projections; the
+// SHA-256 hashes bind the artifact to exactly one synthesized text and
+// one final audio file. Word-level timing is intentionally NOT inlined
+// here — the canonical word array lives in the published timing.json.
+type VoiceoverTimingBinding struct {
+	// Status is "completed" | "unavailable" | "failed" (godlike/07
+	// no-fake-availability: an absent timing is explicit, never silent).
+	Status string `json:"status,omitempty"`
+
+	// JSONLink / SRTLink / VTTLink are the verified Drive links of the
+	// published timing projections (only the formats actually requested).
+	JSONLink string `json:"json_link,omitempty"`
+	SRTLink  string `json:"srt_link,omitempty"`
+	VTTLink  string `json:"vtt_link,omitempty"`
+
+	// BoundaryMode is the captured boundary granularity ("word").
+	BoundaryMode string `json:"boundary_mode,omitempty"`
+
+	// WordCount is the number of word boundaries in the artifact.
+	WordCount int `json:"word_count,omitempty"`
+	// DurationUS is the final audio duration in microseconds.
+	DurationUS int64 `json:"duration_us,omitempty"`
+
+	// TextSHA256 binds the artifact to the exact synthesized text.
+	TextSHA256 string `json:"text_sha256,omitempty"`
+	// AudioSHA256 binds the artifact to the exact final audio bytes.
+	AudioSHA256 string `json:"audio_sha256,omitempty"`
 }
 
 // StockBinding binds a scene to a semantically associated stock

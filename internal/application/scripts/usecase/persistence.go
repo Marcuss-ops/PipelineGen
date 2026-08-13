@@ -219,6 +219,15 @@ func buildGenerationResultWithCache(
 					}
 					sc.Bindings.Voiceover.Status = v.Status
 					sc.Bindings.Voiceover.Link = v.Link
+					// Timing write-back on the response surface. The sanitized
+					// copy deep-copies the Timing map, so this mutation never
+					// aliases the pipeline's final binding map.
+					if v.Timing != nil {
+						if sc.Bindings.Voiceover.Timing == nil {
+							sc.Bindings.Voiceover.Timing = make(map[string]scriptpkg.VoiceoverTimingBinding)
+						}
+						sc.Bindings.Voiceover.Timing[language] = *v.Timing
+					}
 				}
 			}
 			for i := range result.Artifacts.Voiceovers {
@@ -328,6 +337,15 @@ func sanitizeSpecSceneOutputForResponse(in scriptpkg.SpecSceneOutput) scriptpkg.
 		}
 		voCopy := *vo
 		voCopy.LocalPath = ""
+		// Deep-copy the per-language timing map so later response-surface
+		// writes (buildGenerationResult voiceover write-back) never mutate
+		// the pipeline's final binding map through a shared reference.
+		if vo.Timing != nil {
+			voCopy.Timing = make(map[string]scriptpkg.VoiceoverTimingBinding, len(vo.Timing))
+			for language, timing := range vo.Timing {
+				voCopy.Timing[language] = timing
+			}
+		}
 		out.Scenes[i].Bindings.Voiceover = &voCopy
 	}
 	return out

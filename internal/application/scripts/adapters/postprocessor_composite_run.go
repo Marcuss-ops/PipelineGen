@@ -503,6 +503,12 @@ func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
 				v.Links[language] = link
 			}
 		}
+		if b.Voiceover.Timing != nil {
+			v.Timing = make(map[string]scriptpkg.VoiceoverTimingBinding, len(b.Voiceover.Timing))
+			for language, timing := range b.Voiceover.Timing {
+				v.Timing[language] = timing
+			}
+		}
 		out.Voiceover = &v
 	}
 	if b.Stock != nil {

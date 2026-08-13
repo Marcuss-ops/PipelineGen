@@ -88,3 +88,61 @@ func TestMergePostProcessResult_PreservesVoiceoverFieldsAndLanguageLinks(t *test
 		t.Fatalf("voiceover fields were lost after scene replacement: %#v", binding)
 	}
 }
+
+// TestMergePostProcessResult_PreservesVoiceoverTimingMap pins the
+// per-language timing write-back + preservation contract: the merge
+// writes VoiceoverBinding.Timing[language] from each SceneVoiceover,
+// and both the scene-replacement (translation/synthesis) and the
+// translated-scene write-back paths retain previously produced timing
+// links — timing links are never erased.
+func TestMergePostProcessResult_PreservesVoiceoverTimingMap(t *testing.T) {
+	currentInput := &ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "source"}},
+	}}
+
+	// First merge: two languages, one completed bundle + one explicit
+	// best-effort failure (failed status must stay visible).
+	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{Voiceovers: []SceneVoiceover{
+		{SceneIndex: 0, Language: "en", Status: "completed", Link: "https://drive/vo-en", Timing: &scriptpkg.VoiceoverTimingBinding{
+			Status: "completed", JSONLink: "https://drive/timing-en.json", SRTLink: "https://drive/timing-en.srt",
+			BoundaryMode: "word", WordCount: 184, DurationUS: 18_342_000, TextSHA256: "text-en", AudioSHA256: "audio-en",
+		}},
+		{SceneIndex: 0, Language: "it", Status: "completed", Link: "https://drive/vo-it", Timing: &scriptpkg.VoiceoverTimingBinding{
+			Status: "failed",
+		}},
+	}}, currentInput)
+
+	binding := currentInput.SpecScene.Scenes[0].Bindings.Voiceover
+	if binding == nil {
+		t.Fatal("voiceover binding was not materialized")
+	}
+	if binding.Timing == nil || binding.Timing["en"].JSONLink != "https://drive/timing-en.json" || binding.Timing["en"].WordCount != 184 || binding.Timing["en"].AudioSHA256 != "audio-en" {
+		t.Fatalf("en timing bundle was not written: %#v", binding.Timing)
+	}
+	if binding.Timing["it"].Status != "failed" {
+		t.Fatalf("best-effort timing failure must stay visible per language: %#v", binding.Timing["it"])
+	}
+
+	// Phase 2 — scene replacement (translation/synthesis path): an empty
+	// replacement scene must retain the complete timing map.
+	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{UpdatedSpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "translated"}},
+	}}, currentInput)
+	binding = currentInput.SpecScene.Scenes[0].Bindings.Voiceover
+	if binding == nil || binding.Timing["en"].JSONLink != "https://drive/timing-en.json" || binding.Timing["it"].Status != "failed" {
+		t.Fatalf("timing links were erased after scene replacement: %#v", binding)
+	}
+
+	// Phase 3 — translated-scene write-back: same preservation guarantee
+	// through the TranslatedSpecScene path.
+	mergePostProcessResult(&PipelineResult{}, &PostProcessResult{TranslatedSpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-1", SegmentID: "segment-1", Index: 0, Text: "tradotto"}},
+	}}, currentInput)
+	binding = currentInput.SpecScene.Scenes[0].Bindings.Voiceover
+	if binding == nil || binding.Timing["en"].JSONLink != "https://drive/timing-en.json" || binding.Timing["it"].Status != "failed" {
+		t.Fatalf("timing links were erased by translation write-back: %#v", binding)
+	}
+}
