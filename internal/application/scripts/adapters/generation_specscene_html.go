@@ -2,20 +2,38 @@
 // Google Doc body for generated scripts.
 //
 // The document surface combines a caller-facing title with the human scene
-// view (scene text + optional voiceover URL) and one structured SpecScene
-// JSON representation. Technical bindings (clip, stock, subtitle, entity
-// images) remain excluded from the human surface and live only inside the
-// SpecScene JSON snapshot.
+// view (scene text + available Drive links) and one structured SpecScene JSON
+// representation. Technical metadata remains excluded from the human
+// surface; the links themselves are deliberately visible and clickable.
 package adapters
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+// CanonicalDocumentRendererID is the observable identity of the only
+// production renderer for SpecScene documents.
+const CanonicalDocumentRendererID = "specscene-html-v2"
+
+// SpecSceneSHA256 hashes the canonical JSON representation received by the
+// renderer. It is used for runtime proof that the embedded JSON came from the
+// same SpecScene that was rendered.
+func SpecSceneSHA256(spec scriptpkg.SpecSceneOutput) string {
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
 
 // SpecSceneDocumentOptions carries the caller-facing inputs the document
 // renderer needs. The renderer is deterministic: it renders only the title,
@@ -25,12 +43,14 @@ type SpecSceneDocumentOptions struct {
 	Title           string
 	Language        string
 	DefaultLanguage string
+	FullAudio       *scriptpkg.DocumentAudioRef
+	AudioTimeline   *capabilityaudio.CanonicalTimeline
 }
 
 // BuildSpecSceneDocumentHTML renders the canonical production Google Doc.
 //
 // Visible sections include the optional title, followed by the human scene
-// view ("Scene N" + scene text + optional voiceover URL) and the complete
+// view ("Scene N" + scene text + available resource links) and the complete
 // SpecScene JSON snapshot. The JSON block is the canonical machine-consumable
 // surface and must remain byte-faithful to model.SpecScene.
 func BuildSpecSceneDocumentHTML(
@@ -50,6 +70,8 @@ func BuildSpecSceneDocumentHTML(
 		b.WriteString("</h1>")
 	}
 
+	writeDocumentFullAudio(&b, opts)
+
 	for i := range model.SpecScene.Scenes {
 		scene := &model.SpecScene.Scenes[i]
 
@@ -62,7 +84,9 @@ func BuildSpecSceneDocumentHTML(
 			b.WriteString("</p>")
 		}
 
-		writeDocumentVoiceover(&b, scene.Bindings.Voiceover, opts)
+		writeDocumentSceneTiming(&b, scene, opts)
+
+		writeDocumentSceneLinks(&b, scene, opts)
 
 		b.WriteString("</section>")
 	}
@@ -73,24 +97,170 @@ func BuildSpecSceneDocumentHTML(
 		b.WriteString(html.EscapeString(string(raw)))
 		b.WriteString("</code></pre>")
 	}
+	if opts.AudioTimeline != nil {
+		if timeline, timelineErr := json.MarshalIndent(opts.AudioTimeline, "", "  "); timelineErr == nil {
+			b.WriteString("<h2>Audio Timeline JSON</h2><pre><code>")
+			b.WriteString(html.EscapeString(string(timeline)))
+			b.WriteString("</code></pre>")
+		}
+	}
 
 	b.WriteString("</body></html>")
 	return b.String()
 }
 
-// writeDocumentVoiceover renders the scene's voiceover URL into the human
-// section. It is intentionally silent when no link resolves, and it renders
-// the raw URL as both the anchor target and the visible label so operators
-// can read and copy it directly.
-func writeDocumentVoiceover(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts SpecSceneDocumentOptions) {
+func writeDocumentFullAudio(b *strings.Builder, opts SpecSceneDocumentOptions) {
+	if opts.FullAudio == nil || strings.TrimSpace(opts.FullAudio.DriveLink) == "" {
+		return
+	}
+	b.WriteString("<section><h2>Full Audio</h2>")
+	if language := strings.TrimSpace(opts.FullAudio.Language); language != "" {
+		b.WriteString("<p><strong>Lang:</strong> ")
+		b.WriteString(html.EscapeString(documentLanguageLabel(language)))
+		b.WriteString("</p>")
+	}
+	link := strings.TrimSpace(opts.FullAudio.DriveLink)
+	b.WriteString("<p>")
+	b.WriteString(renderDocumentLink(link, link, link))
+	b.WriteString("</p>")
+	if opts.FullAudio.DurationMS > 0 {
+		seconds := opts.FullAudio.DurationMS / 1000
+		b.WriteString(fmt.Sprintf("<p><strong>Duration:</strong> %02d:%02d</p>", seconds/60, seconds%60))
+	}
+	b.WriteString("</section>")
+}
+
+func documentLanguageLabel(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "it":
+		return "Italiano"
+	case "pt":
+		return "Português"
+	case "en":
+		return "English"
+	default:
+		return language
+	}
+}
+
+// writeDocumentSceneTiming projects the canonical timeline placement of a
+// scene into the human surface. The end timestamp is always derived as
+// start + duration and is never stored as a separate source-of-truth field:
+// the canonical timeline keeps timeline_start_us + duration_us only.
+func writeDocumentSceneTiming(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+	if opts.AudioTimeline == nil || scene == nil {
+		return
+	}
+	segment := timelineSegmentForScene(opts.AudioTimeline, scene.Index)
+	if segment == nil || segment.DurationUS <= 0 {
+		return
+	}
+	startUS := segment.TimelineStartUS
+	b.WriteString("<p><strong>Start:</strong> ")
+	b.WriteString(html.EscapeString(formatTimelineTimestamp(startUS)))
+	b.WriteString("</p>")
+	b.WriteString("<p><strong>End:</strong> ")
+	b.WriteString(html.EscapeString(formatTimelineTimestamp(startUS + segment.DurationUS)))
+	b.WriteString("</p>")
+}
+
+// timelineSegmentForScene returns the canonical segment matching the scene's
+// zero-based index, or nil when the timeline does not cover that scene.
+func timelineSegmentForScene(timeline *capabilityaudio.CanonicalTimeline, index int) *capabilityaudio.TimelineSegment {
+	if timeline == nil {
+		return nil
+	}
+	for i := range timeline.Segments {
+		if timeline.Segments[i].Index == index {
+			return &timeline.Segments[i]
+		}
+	}
+	return nil
+}
+
+// formatTimelineTimestamp renders microsecond precision as MM:SS.mmm.
+func formatTimelineTimestamp(us int64) string {
+	if us < 0 {
+		us = 0
+	}
+	totalMs := us / 1000
+	ms := totalMs % 1000
+	totalSec := totalMs / 1000
+	sec := totalSec % 60
+	min := totalSec / 60
+	return fmt.Sprintf("%02d:%02d.%03d", min, sec, ms)
+}
+
+// writeDocumentSceneLinks renders only usable external links. Labels are
+// human-facing, while IDs, paths, durations and statuses stay in the JSON.
+func writeDocumentSceneLinks(b *strings.Builder, scene *scriptpkg.SpecScene, opts SpecSceneDocumentOptions) {
+	if scene == nil {
+		return
+	}
+
+	seen := make(map[string]struct{})
+	write := func(label, link string) {
+		link = strings.TrimSpace(link)
+		if link == "" {
+			return
+		}
+		key := label + "\x00" + link
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		b.WriteString("<p><strong>")
+		b.WriteString(html.EscapeString(label))
+		b.WriteString(":</strong> ")
+		b.WriteString(renderDocumentLink(link, link, link))
+		b.WriteString("</p>")
+	}
+
+	// Clip is a legacy alias for the first Clips entry. Render each resource
+	// once even when both compatibility fields are populated.
+	for _, clip := range scene.Bindings.Clips {
+		write("Clip", clip.DriveLink)
+		write("Subtitles", clip.SubtitleLink)
+	}
+	if clip := scene.Bindings.Clip; clip != nil {
+		write("Clip", clip.DriveLink)
+		write("Subtitles", clip.SubtitleLink)
+	}
+
+	if stock := scene.Bindings.Stock; stock != nil {
+		write("Stock", stock.DriveLink)
+		write("Stock folder", stock.FolderLink)
+	}
+
+	if image := scene.Bindings.Image; image != nil {
+		write("Image", image.URL)
+	}
+
+	for _, media := range scene.Bindings.Media {
+		label := "Media"
+		if slot := strings.TrimSpace(media.Slot); slot != "" {
+			label += " " + slot
+		}
+		write(label, media.DriveLink)
+	}
+
+	if annotations := scene.Annotations; annotations != nil {
+		for _, entity := range append(append([]scriptpkg.AnnotatedEntity{}, annotations.PrimaryEntities...), annotations.SecondaryEntities...) {
+			if entity.Image != nil {
+				write("Entity image", entity.Image.DriveLink)
+			}
+		}
+	}
+
+	writeDocumentVoiceover(b, scene.Bindings.Voiceover, opts, write)
+}
+
+func writeDocumentVoiceover(b *strings.Builder, voiceover *scriptpkg.VoiceoverBinding, opts SpecSceneDocumentOptions, write func(string, string)) {
 	link := resolveDocumentVoiceoverLink(voiceover, opts.Language, opts.DefaultLanguage)
 	if link == "" {
 		return
 	}
-
-	b.WriteString("<p><strong>Voiceover:</strong> ")
-	b.WriteString(renderDocumentLink(link, link, link))
-	b.WriteString("</p>")
+	write("Voiceover", link)
 }
 
 func renderDocumentLink(url, label, fallback string) string {

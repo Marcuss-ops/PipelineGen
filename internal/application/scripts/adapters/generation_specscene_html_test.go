@@ -6,13 +6,66 @@ import (
 	"strings"
 	"testing"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndVoiceoverOnly(t *testing.T) {
+func TestDocument_FullAudioAndCanonicalTimelineAreProjected(t *testing.T) {
+	t.Parallel()
+	timeline := &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 125000000,
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 125000000,
+			Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: "vo-en-0"},
+		}},
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Text: "AUDIO SCENE"}},
+	}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title: "Audio contract", Language: "en", DefaultLanguage: "en",
+		FullAudio: &scriptpkg.DocumentAudioRef{
+			AssetID: "final-audio-en", Language: "en",
+			DriveLink:  "https://drive.google.com/file/d/final-audio-en/view",
+			DurationMS: 125000,
+		},
+		AudioTimeline: timeline,
+	})
+	human := humanDocumentHTML(t, out)
+	require.Contains(t, human, "<h2>Full Audio</h2>")
+	require.Contains(t, human, "<strong>Lang:</strong> English")
+	require.Contains(t, human, "https://drive.google.com/file/d/final-audio-en/view")
+	require.Contains(t, human, "<strong>Duration:</strong> 02:05")
+	require.NotContains(t, human, "local_path")
+
+	const marker = "<h2>Audio Timeline JSON</h2><pre><code>"
+	pos := strings.Index(out, marker)
+	require.NotEqual(t, -1, pos)
+	pos += len(marker)
+	end := strings.Index(out[pos:], "</code></pre>")
+	require.NotEqual(t, -1, end)
+	var decoded capabilityaudio.CanonicalTimeline
+	require.NoError(t, json.Unmarshal([]byte(html.UnescapeString(out[pos:pos+end])), &decoded))
+	require.Equal(t, *timeline, decoded)
+}
+
+func TestDocument_FullAudioIsOmittedWithoutCanonicalDriveLink(t *testing.T) {
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Version: 1}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Language:  "en",
+		FullAudio: &scriptpkg.DocumentAudioRef{AssetID: "final-audio-en", Language: "en", DurationMS: 1000},
+	})
+	require.NotContains(t, out, "Full Audio")
+	require.NotContains(t, out, "local_path")
+}
+
+func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndDriveLinks(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{
@@ -57,6 +110,10 @@ func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndVoiceoverOnly(t *testin
 		"Canonical scene text.",
 		"<strong>Voiceover:</strong>",
 		"https://drive.google.com/file/d/voice-1/view",
+		"<strong>Clip:</strong>",
+		"https://drive.google.com/file/d/clip-1/view",
+		"<strong>Subtitles:</strong>",
+		"https://drive.google.com/file/d/subtitle-1/view",
 	} {
 		if !strings.Contains(human, want) {
 			t.Errorf("expected human document section to contain %q; human=%s", want, human)
@@ -66,10 +123,6 @@ func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndVoiceoverOnly(t *testin
 	for _, unwanted := range []string{
 		"<h2>Scenes</h2>",
 		"scene-clip-1",
-		"<strong>Clip:</strong>",
-		"Subtitles ASS",
-		"https://drive.google.com/file/d/clip-1/view",
-		"https://drive.google.com/file/d/subtitle-1/view",
 		"This prose must not be duplicated in the document.",
 	} {
 		if strings.Contains(human, unwanted) {
@@ -91,7 +144,7 @@ func TestBuildSpecSceneDocumentHTML_RendersHumanScenesAndVoiceoverOnly(t *testin
 	}
 }
 
-func TestBuildSpecSceneDocumentHTML_EntityLinksOnlyInSpecSceneJSON(t *testing.T) {
+func TestBuildSpecSceneDocumentHTML_RendersEntityDriveLinks(t *testing.T) {
 	t.Parallel()
 
 	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
@@ -107,10 +160,8 @@ func TestBuildSpecSceneDocumentHTML_EntityLinksOnlyInSpecSceneJSON(t *testing.T)
 	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Famous people"})
 
 	human := humanDocumentHTML(t, out)
-	require.NotContains(t, human, "<strong>Entità:</strong>")
-	require.NotContains(t, human, "<strong>Image link Drive:</strong>")
-	require.NotContains(t, human, "Describe John Cena")
-	require.NotContains(t, human, "https://drive.google.com/file/d/cena/view")
+	require.Contains(t, human, "<strong>Entity image:</strong>")
+	require.Contains(t, human, "https://drive.google.com/file/d/cena/view")
 	require.Contains(t, human, "John Cena enters the arena.")
 
 	specJSON := extractSpecSceneJSON(t, out)
@@ -120,6 +171,61 @@ func TestBuildSpecSceneDocumentHTML_EntityLinksOnlyInSpecSceneJSON(t *testing.T)
 	require.Contains(t, specJSON, "Describe John Cena")
 }
 
+func TestDocument_ProjectsSceneTimingFromCanonicalTimeline(t *testing.T) {
+	t.Parallel()
+
+	timeline := &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 45_100_000,
+		Segments: []capabilityaudio.TimelineSegment{
+			{ID: "scene-1", Index: 0, TimelineStartUS: 0, DurationUS: 12_430_000},
+			{ID: "scene-2", Index: 1, TimelineStartUS: 12_430_000, DurationUS: 14_390_000},
+			{ID: "scene-3", Index: 2, TimelineStartUS: 26_820_000, DurationUS: 18_280_000},
+		},
+	}
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-1", Index: 0, Text: "Scena uno.", Kind: scriptpkg.SceneNarration},
+			{ID: "scene-2", Index: 1, Text: "Scena due.", Kind: scriptpkg.SceneNarration},
+			{ID: "scene-3", Index: 2, Text: "Scena tre.", Kind: scriptpkg.SceneNarration},
+		},
+	}}
+
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{
+		Title: "Timing", AudioTimeline: timeline,
+	})
+	human := humanDocumentHTML(t, out)
+
+	for _, want := range []string{
+		"<strong>Start:</strong> 00:00.000",
+		"<strong>End:</strong> 00:12.430",
+		"<strong>Start:</strong> 00:12.430",
+		"<strong>End:</strong> 00:26.820",
+		"<strong>Start:</strong> 00:26.820",
+		"<strong>End:</strong> 00:45.100",
+	} {
+		require.Contains(t, human, want)
+	}
+
+	// The end timestamp is a derived projection, never a stored SSOT field.
+	require.NotContains(t, extractSpecSceneJSON(t, out), "end_us")
+}
+
+func TestDocument_OmitsSceneTimingWithoutCanonicalTimeline(t *testing.T) {
+	t.Parallel()
+
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes:  []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Senza timing.", Kind: scriptpkg.SceneNarration}},
+	}}
+	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "No timeline"})
+	human := humanDocumentHTML(t, out)
+
+	require.NotContains(t, human, "<strong>Start:</strong>")
+	require.NotContains(t, human, "<strong>End:</strong>")
+}
+
 func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	if got := adapters.BuildSpecSceneDocumentHTML(nil, adapters.SpecSceneDocumentOptions{Title: "ignored"}); got != "" {
@@ -127,10 +233,10 @@ func TestBuildSpecSceneDocumentHTML_NilModelReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestBuildSpecSceneDocumentHTML_TechnicalBindingsStayOutOfHumanSection pins
-// that clip, stock, and other technical bindings never leak into the human
-// document surface — they only live inside the SpecScene JSON snapshot.
-func TestBuildSpecSceneDocumentHTML_TechnicalBindingsStayOutOfHumanSection(t *testing.T) {
+// TestBuildSpecSceneDocumentHTML_RendersAvailableDriveLinks pins that
+// technical metadata stays out of the human surface while available Drive
+// resources remain visible and clickable.
+func TestBuildSpecSceneDocumentHTML_RendersAvailableDriveLinks(t *testing.T) {
 	t.Parallel()
 
 	const maliciousDriveLink = `https://drive.google.com/file/d/stock-1/view?a=1&b=2<script>alert("x")</script>`
@@ -181,15 +287,11 @@ func TestBuildSpecSceneDocumentHTML_TechnicalBindingsStayOutOfHumanSection(t *te
 	out := adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{Title: "Stock HTML test"})
 
 	human := humanDocumentHTML(t, out)
-	if strings.Contains(human, "<strong>Clip:</strong>") {
-		t.Errorf("clip binding leaked into the human document section; human=%s", human)
-	}
-	if strings.Contains(human, maliciousDriveLink) || strings.Contains(human, stockLabel) {
-		t.Errorf("stock metadata leaked into the human document section; human=%s", human)
-	}
-	if strings.Contains(human, "https://drive.google.com/file/d/clip-9/view") {
-		t.Errorf("clip drive_link leaked into the human document section; human=%s", human)
-	}
+	require.Contains(t, human, "<strong>Stock:</strong>")
+	require.Contains(t, human, "<strong>Clip:</strong>")
+	require.Contains(t, human, "https://drive.google.com/file/d/clip-9/view")
+	require.NotContains(t, human, stockLabel)
+	require.Contains(t, human, html.EscapeString(maliciousDriveLink))
 
 	// The raw malicious URL is never emitted verbatim anywhere in the HTML.
 	require.NotContains(t, out, maliciousDriveLink)
@@ -577,10 +679,14 @@ func TestDocument_Golden_HumanSurfacePlusCompleteSpecScene(t *testing.T) {
 	}
 
 	for _, forbidden := range []string{
-		"CLIP-A", "CLIP-A-DRIVE", "CLIP-B", "CLIP-B-DRIVE", "CLIP-C", "CLIP-C-DRIVE",
-		"<strong>Clip:</strong>", "Subtitles:", "Stock:", "Entità:", "Image link:", "Description", "Tags",
+		"Description", "Tags",
 	} {
 		require.NotContains(t, human, forbidden)
+	}
+	for _, want := range []string{
+		"<strong>Clip:</strong>", "CLIP-A-DRIVE", "CLIP-B-DRIVE", "CLIP-C-DRIVE",
+	} {
+		require.Contains(t, human, want)
 	}
 
 	specJSON := extractSpecSceneJSON(t, out)
@@ -595,4 +701,24 @@ func TestDocument_Golden_HumanSurfacePlusCompleteSpecScene(t *testing.T) {
 	var decoded scriptpkg.SpecSceneOutput
 	require.NoError(t, json.Unmarshal([]byte(specJSON), &decoded))
 	require.Equal(t, original, decoded, "golden SpecScene must round-trip byte-faithfully")
+}
+
+func TestDocument_DoesNotRepeatLegacyClipAlias(t *testing.T) {
+	t.Parallel()
+
+	const link = "https://drive.google.com/file/d/clip-once/view"
+	model := &scriptpkg.ModelScriptOutputV1{SpecScene: scriptpkg.SpecSceneOutput{
+		Version: 1,
+		Scenes: []scriptpkg.SpecScene{{
+			ID:   "scene-0",
+			Text: "Una clip.",
+			Bindings: scriptpkg.SceneBindings{
+				Clips: []scriptpkg.ClipBinding{{ClipID: "clip-once", DriveLink: link}},
+				Clip:  &scriptpkg.ClipBinding{ClipID: "clip-once", DriveLink: link},
+			},
+		}},
+	}}
+
+	human := humanDocumentHTML(t, adapters.BuildSpecSceneDocumentHTML(model, adapters.SpecSceneDocumentOptions{}))
+	require.Equal(t, 1, strings.Count(human, `href="`+link+`">`), "legacy Clip alias must not duplicate the same Drive link")
 }
