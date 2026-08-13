@@ -131,6 +131,16 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 					}
 					binding.Links[language] = v.Link
 				}
+				// Per-language timing bundle write-back. Populated for every
+				// timing outcome (completed / unavailable / failed) so the
+				// scene binding reflects the timing policy result, and never
+				// erases a previously written language entry.
+				if language != "" && v.Timing != nil {
+					if binding.Timing == nil {
+						binding.Timing = make(map[string]scriptpkg.VoiceoverTimingBinding)
+					}
+					binding.Timing[language] = *v.Timing
+				}
 				// Keep the first successful language as the compatibility
 				// default Link/LocalPath/Duration. Later language outcomes
 				// remain available in Links without overwriting that default.
@@ -550,6 +560,21 @@ func preserveBindings(previous, replacement scriptpkg.SceneBindings) scriptpkg.S
 					links[language] = link
 				}
 				replacement.Voiceover.Links = links
+			}
+			// Per-language timing bundles are additive state: previously
+			// published timing links must survive a partial replacement
+			// (translation / synthesis / reconciliation). The replacement
+			// entry wins per language, but never erases a language that the
+			// replacement did not touch.
+			if len(previous.Voiceover.Timing) > 0 {
+				timing := make(map[string]scriptpkg.VoiceoverTimingBinding, len(previous.Voiceover.Timing)+len(replacement.Voiceover.Timing))
+				for language, entry := range previous.Voiceover.Timing {
+					timing[language] = entry
+				}
+				for language, entry := range replacement.Voiceover.Timing {
+					timing[language] = entry
+				}
+				replacement.Voiceover.Timing = timing
 			}
 		}
 	}

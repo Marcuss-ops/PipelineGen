@@ -210,6 +210,27 @@ func TestCloneSceneBindings_PreservesMultiClipBindings(t *testing.T) {
 	}
 }
 
+func TestCloneSceneBindings_DeepCopiesVoiceoverTimingMap(t *testing.T) {
+	original := scriptpkg.SceneBindings{Voiceover: &scriptpkg.VoiceoverBinding{
+		Status: "completed",
+		Links:  map[string]string{"en": "https://drive/vo-en"},
+		Timing: map[string]scriptpkg.VoiceoverTimingBinding{
+			"en": {Status: "completed", JSONLink: "https://drive/timing-en.json", WordCount: 184},
+			"it": {Status: "failed"},
+		},
+	}}
+
+	cloned := cloneSceneBindings(original)
+	if cloned.Voiceover == nil || cloned.Voiceover.Timing["en"].JSONLink != "https://drive/timing-en.json" || cloned.Voiceover.Timing["it"].Status != "failed" {
+		t.Fatalf("cloneSceneBindings lost the voiceover timing map: %#v", cloned.Voiceover)
+	}
+	// Mutating the clone's timing map must not affect the original.
+	cloned.Voiceover.Timing["en"] = scriptpkg.VoiceoverTimingBinding{Status: "failed"}
+	if original.Voiceover.Timing["en"].Status == "failed" {
+		t.Fatal("cloneSceneBindings must deep-copy the voiceover timing map")
+	}
+}
+
 func TestCloneSceneBindings_PreservesMediaBindings(t *testing.T) {
 	original := scriptpkg.SceneBindings{
 		Media: []scriptpkg.ResolvedMediaBinding{{Slot: "background", AssetID: "asset-1", DriveLink: "https://drive.google.com/file/d/media-1/view"}},

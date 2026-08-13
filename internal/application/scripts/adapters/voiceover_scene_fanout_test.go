@@ -42,6 +42,9 @@ import (
 type fakeItemExecutor struct {
 	mu    sync.Mutex
 	calls []fakeItemCall
+	// timing is returned on every successful Execute result when set
+	// (mirrors the per-item pipeline returning a timing bundle).
+	timing *voiceover.VoiceoverTimingResult
 }
 
 type fakeItemCall struct {
@@ -75,6 +78,7 @@ func (f *fakeItemExecutor) Execute(_ context.Context, item *voiceover.GenerateVo
 		Filename:  item.Filename,
 		DriveLink: "https://drive.example.test/" + item.Filename,
 		LocalPath: "/tmp/" + item.Filename,
+		Timing:    f.timing,
 	}, nil
 }
 
@@ -168,6 +172,42 @@ func TestScriptsFanout_NoDirectServiceReference(t *testing.T) {
 		if !matched {
 			t.Errorf("no recorded call had matching (text, filename) tuple across items[%d] — canonical scene-fanout rule broken", len(items))
 		}
+	}
+}
+
+// TestSceneFanout_CarriesTimingBundle pins the per-item timing
+// propagation: the fanout outcome forwards the pipeline's timing bundle
+// so the voiceover processor can write it into the scene binding's
+// per-language Timing map (timing links must survive the whole chain).
+func TestSceneFanout_CarriesTimingBundle(t *testing.T) {
+	exec := &fakeItemExecutor{timing: &voiceover.VoiceoverTimingResult{
+		Status:       voiceover.TimingStatusCompleted,
+		JSONLink:     "https://drive.google.com/file/d/timing-0/view",
+		SRTLink:      "https://drive.google.com/file/d/srt-0/view",
+		BoundaryMode: "word",
+		WordCount:    184,
+		DurationUS:   18_342_000,
+		TextSHA256:   strings.Repeat("a", 64),
+		AudioSHA256:  strings.Repeat("b", 64),
+	}}
+
+	items := []VoiceoverSceneInput{
+		{SceneIndex: 0, Text: "Scene 0 text", Filename: "scene-0.mp3"},
+	}
+	outcomes := RunVoiceoverSceneFanout(context.Background(), exec, "en", items, 4)
+
+	if len(outcomes) != 1 {
+		t.Fatalf("got %d outcomes, want 1", len(outcomes))
+	}
+	out := outcomes[0]
+	if out.Status != "completed" {
+		t.Fatalf("outcome status = %q, want completed", out.Status)
+	}
+	if out.Timing == nil {
+		t.Fatal("outcome must carry the per-item timing bundle")
+	}
+	if out.Timing.JSONLink != "https://drive.google.com/file/d/timing-0/view" || out.Timing.WordCount != 184 {
+		t.Fatalf("timing bundle drifted through the fanout: %#v", out.Timing)
 	}
 }
 
