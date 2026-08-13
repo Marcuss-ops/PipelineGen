@@ -80,6 +80,38 @@ func (s *stubFetcher) Fetch(ctx context.Context, url string) (io.ReadCloser, int
 	return io.NopCloser(strings.NewReader(string(s.Body))), s.Size, nil
 }
 
+// ── test filesystem adapter ──────────────────────────────────────────────
+
+// testFS is the real-filesystem adapter used by the in-package tests.
+// It mirrors internal/platform/filesystem.OS but lives here so the
+// kernel package test does not import the platform adapter (which
+// would invert the adapter→contract dependency direction).
+type testFS struct{}
+
+func (testFS) Abs(path string) (string, error) { return filepath.Abs(path) }
+
+func (testFS) MkdirAll(path string, perm uint32) error {
+	return os.MkdirAll(path, os.FileMode(perm))
+}
+
+func (testFS) OpenFile(path string, perm uint32) (io.WriteCloser, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(perm))
+}
+
+func (testFS) Remove(path string) error    { return os.Remove(path) }
+func (testFS) RemoveAll(path string) error { return os.RemoveAll(path) }
+
+func (testFS) Lstat(path string) (FileEntry, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return FileEntry{}, nil
+		}
+		return FileEntry{}, err
+	}
+	return FileEntry{Exists: true, IsSymlink: info.Mode()&os.ModeSymlink != 0}, nil
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 // hexSHA256 returns the canonical lowercase hex of the SHA-256 digest
@@ -97,9 +129,9 @@ func hexSHA256(b []byte) string {
 func newStubManager(t *testing.T, fetcher Fetcher) (WorkspaceManager, string) {
 	t.Helper()
 	root := t.TempDir()
-	m, err := managerWithFetcher(root, fetcher)
+	m, err := NewManagerWithDeps(root, fetcher, testFS{})
 	if err != nil {
-		t.Fatalf("managerWithFetcher: %v", err)
+		t.Fatalf("NewManagerWithDeps: %v", err)
 	}
 	return m, root
 }
@@ -514,7 +546,7 @@ func TestManager_PathContainment_SymlinkToOutside_Rejected(t *testing.T) {
 
 	// Secondary assertion: assertContained also rejects the symlink
 	// link itself as a workspace-root leak.
-	if cerr := assertContained(globalRoot, linkPath); cerr == nil {
+	if cerr := assertContained(testFS{}, globalRoot, linkPath); cerr == nil {
 		t.Error("assertContained must reject a symlink at the globalRoot level too")
 	} else if !errors.Is(cerr, ErrSymlinkRejected) {
 		t.Errorf("assertContained global-level symlink err = %v; want wraps ErrSymlinkRejected", cerr)
@@ -602,7 +634,7 @@ func TestManager_AssertContained_AbsoluteToOutside(t *testing.T) {
 	ws, _ := mgr.Prepare(context.Background(), "j-pc-assert", 1)
 
 	absOutside := filepath.Join(t.TempDir(), "abs-candidate.txt")
-	err := assertContained(ws.Root, absOutside)
+	err := assertContained(testFS{}, ws.Root, absOutside)
 	if err == nil {
 		t.Fatal("assertContained must reject an absolute-path candidate outside ws.Root")
 	}
@@ -611,11 +643,11 @@ func TestManager_AssertContained_AbsoluteToOutside(t *testing.T) {
 	}
 
 	// Positive control: the workspace's own root is contained.
-	if err := assertContained(ws.Root, ws.Root); err != nil {
+	if err := assertContained(testFS{}, ws.Root, ws.Root); err != nil {
 		t.Errorf("assertContained(ws.Root, ws.Root) must pass: %v", err)
 	}
 	// Positive control: a deep-but-correct child is contained.
-	if err := assertContained(ws.Root, filepath.Join(ws.Root, "a", "b", "c.txt")); err != nil {
+	if err := assertContained(testFS{}, ws.Root, filepath.Join(ws.Root, "a", "b", "c.txt")); err != nil {
 		t.Errorf("assertContained(ws.Root, deep child) must pass: %v", err)
 	}
 }
@@ -665,7 +697,7 @@ func TestManager_PathContainment_SymlinkOnGlobalRoot_Rejected(t *testing.T) {
 	linkRoot := filepath.Join(t.TempDir(), "linkroot")
 	symlink(t, realRoot, linkRoot)
 
-	MgrWithRejectedRoot, merr := managerWithFetcher(linkRoot, &stubFetcher{})
+	MgrWithRejectedRoot, merr := NewManagerWithDeps(linkRoot, &stubFetcher{}, testFS{})
 	if MgrWithRejectedRoot == nil && merr != nil {
 		t.Skipf("manager construction rejected symlink-root as expected: %v", merr)
 	}
