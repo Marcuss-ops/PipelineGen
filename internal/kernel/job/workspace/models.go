@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
@@ -188,3 +189,61 @@ var ErrHashMismatch = errors.New("workspace: downloaded SHA-256 does not match R
 // from the Fetcher (typically Content-Length) is consulted FIRST, so
 // a known-mismatch fails without writing any bytes.
 var ErrSizeMismatch = errors.New("workspace: downloaded SizeBytes does not match RemoteAssetRef")
+
+// ── I/O ports (godlike/06 SSOT — contract only, no drivers) ─────────────
+//
+// The kernel owns the semantic contract; concrete network + filesystem
+// I/O lives behind these ports and is wired by the composition root via
+// internal/platform/filesystem. The manager never imports net/http or
+// os directly — it speaks only to Fetcher and FileSystem.
+
+// Fetcher is the network-transport port the manager delegates asset download
+// to. Concrete HTTP transport belongs to the platform adapter.
+type Fetcher interface {
+	Fetch(ctx context.Context, url string) (body io.ReadCloser, sizeHint int64, err error)
+}
+
+// FileEntry is the neutral filesystem-entry view surfaced by
+// FileSystem.Lstat. It carries only the facts the §5.4 path-containment
+// contract needs — existence + symlink flag — not the full os.FileInfo
+// (which would leak an os-driver type into the kernel contract).
+type FileEntry struct {
+	// Exists is true when the path resolves to a real entry. A
+	// not-exist path returns Exists=false with a nil error so the
+	// caller can branch on existence without probing os.ErrNotExist.
+	Exists bool
+
+	// IsSymlink is true when the entry is a symbolic link. The §5.4
+	// contract rejects symlinks at any intermediate component.
+	IsSymlink bool
+}
+
+// FileSystem is the filesystem port the manager delegates concrete
+// disk I/O to. All operations use neutral, capability-owned parameter
+// types (uint32 permission bits, FileEntry) rather than os.FileMode /
+// os.FileInfo so the kernel stays free of the os driver.
+type FileSystem interface {
+	// Abs resolves path to its absolute, cleaned canonical form.
+	Abs(path string) (string, error)
+
+	// MkdirAll creates the directory (and parents) with the given
+	// permission bits. Idempotent like os.MkdirAll.
+	MkdirAll(path string, perm uint32) error
+
+	// OpenFile opens path for writing, creating/truncating it with
+	// the given permission bits. The write/truncate flags are owned
+	// by the adapter (the manager's only use case is "stream a fresh
+	// download into place").
+	OpenFile(path string, perm uint32) (io.WriteCloser, error)
+
+	// Remove deletes a single file (best-effort partial-clean paths).
+	Remove(path string) error
+
+	// RemoveAll removes a path recursively. Idempotent like
+	// os.RemoveAll.
+	RemoveAll(path string) error
+
+	// Lstat returns a FileEntry for path WITHOUT following symlinks.
+	// A not-exist path returns FileEntry{Exists:false} and a nil error.
+	Lstat(path string) (FileEntry, error)
+}

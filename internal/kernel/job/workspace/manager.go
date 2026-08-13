@@ -2,9 +2,9 @@
 //
 // WorkspaceManager is the canonical Manager for per-job isolated
 // filesystems. The contract surface (interface + types + sentinel
-// errors) lives in models.go in this same package; this file holds
-// the concrete implementation + the canonical package doc that
-// explicitly re-declares the §5.4 path-containment contract.
+// errors + I/O ports) lives in models.go in this same package; this
+// file holds the concrete implementation + the canonical package doc
+// that explicitly re-declares the §5.4 path-containment contract.
 //
 // ─── §5.4 path-containment contract (re-declared) ───────────────────────────
 //
@@ -16,8 +16,8 @@
 //     canonicalise-both-ends algorithm is implemented in
 //     assertContained() below:
 //
-//     a. filepath.Abs(root) + filepath.Clean(root) for the boundary.
-//     b. filepath.Abs(candidate) + filepath.Clean(candidate) for the
+//     a. fs.Abs(root) + filepath.Clean(root) for the boundary.
+//     b. fs.Abs(candidate) + filepath.Clean(candidate) for the
 //     input.
 //     c. Reject when candidate has neither the canonical equality
 //     with root nor a HasPrefix relationship with the
@@ -28,9 +28,10 @@
 //     root.
 //
 //  2. Symlinks at any intermediate component of the candidate path
-//     are REJECTED (os.Lstat walk). The rule is strict per §5.4:
-//     the manager never follows a symlink. A symlink on the root
-//     itself is ALSO rejected.
+//     are REJECTED (per-component Lstat walk via the FileSystem
+//     port). The rule is strict per §5.4: the manager never
+//     follows a symlink. A symlink on the root itself is ALSO
+//     rejected.
 //
 //  3. TOCTOU mitigation: the manager calls assertContained at the
 //     point of use (just before each OpenFile / RemoveAll). A
@@ -44,6 +45,15 @@
 // `docs/voiceover/p0-bundle-A1-A6.md`. C9 is the next link in the
 // chain: per-job workspace allocation under a strict containment
 // contract.
+//
+// ─── I/O isolation ─────────────────────────────────────────────────────────
+//
+// The manager owns the semantic contract only. Concrete network +
+// filesystem I/O is delegated through the Fetcher and FileSystem
+// ports (declared in models.go); the production adapters live in
+// internal/platform/filesystem and are injected by the composition
+// root via NewManagerWithDeps. This file imports no net/http and no
+// os driver — it speaks only to the ports.
 package workspace
 
 import (
@@ -52,12 +62,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // ─── directory layout constants ───────────────────────────────────────────
@@ -65,98 +72,55 @@ import (
 const (
 	jobDirPrefix     = "job-"
 	attemptDirPrefix = "attempt-"
+
+	// dirPerm / filePerm are the neutral permission bits the manager
+	// passes to FileSystem. Kept as capability-owned constants (not
+	// os.FileMode) so the kernel contract stays driver-free.
+	dirPerm  uint32 = 0o755
+	filePerm uint32 = 0o644
 )
-
-// ─── Fetcher port (private — workspace package internal) ────────────────
-//
-// Fetcher is the small port the manager delegates the actual HTTP
-// transport to. It returns an io.ReadCloser (the body), an optional
-// byte-count hint (typically Content-Length), and an error. Default
-// implementation is httpFetcher; tests inject stubFetcher via
-// managerWithFetcher (test-only constructor — not exported).
-//
-// Why a port (not a direct *http.Client call): the manager's test
-// surface needs to inject predictable bytes + a known SHA-256 for
-// hash/size verification. Wiring the manager to *http.Client directly
-// forces a spinning localhost httptest.NewServer into every test;
-// the port indirection lets us supply a deterministic stub.
-
-type Fetcher interface {
-	Fetch(ctx context.Context, url string) (body io.ReadCloser, sizeHint int64, err error)
-}
-
-// httpFetcher is the default production implementation of Fetcher.
-// 30-second default timeout matches the canonical worker HTTP
-// timeout (godlike/06 forward-prevention: no implicit long-running
-// fetches without a deadline).
-type httpFetcher struct {
-	client *http.Client
-}
-
-func newHTTPFetcher() *httpFetcher {
-	return &httpFetcher{client: &http.Client{Timeout: 30 * time.Second}}
-}
-
-func (f *httpFetcher) Fetch(ctx context.Context, url string) (io.ReadCloser, int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("fetcher: build request %q: %w", url, err)
-	}
-	resp, err := f.client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("fetcher: do request %q: %w", url, err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_ = resp.Body.Close()
-		return nil, 0, fmt.Errorf("fetcher: non-2xx status %d for %q", resp.StatusCode, url)
-	}
-	var sizeHint int64
-	if resp.ContentLength > 0 {
-		sizeHint = resp.ContentLength
-	}
-	return resp.Body, sizeHint, nil
-}
 
 // ─── Manager ─────────────────────────────────────────────────────────────
 
 // manager is the canonical concrete implementation of WorkspaceManager.
-// Allocated via NewManager (production) or managerWithFetcher (tests).
+// Allocated via NewManagerWithDeps (production wiring in
+// internal/platform/filesystem) or directly with a test Fetcher /
+// FileSystem.
 type manager struct {
 	globalRoot string
 	fetcher    Fetcher
+	fs         FileSystem
 }
 
-// NewManager constructs the canonical WorkspaceManager with a
-// production HTTP fetcher. The globalRoot is the parent of every
-// per-job workspace tree; the manager creates it if missing.
-func NewManager(globalRoot string) (WorkspaceManager, error) {
-	return newManagerWithFetcher(globalRoot, newHTTPFetcher())
-}
-
-// managerWithFetcher is a test-only constructor that injects a custom
-// Fetcher. Not exported because the only legitimate non-HTTP
-// implementations are test fixtures (C9's stub fetcher).
-func managerWithFetcher(globalRoot string, fetcher Fetcher) (WorkspaceManager, error) {
-	return newManagerWithFetcher(globalRoot, fetcher)
-}
-
-func newManagerWithFetcher(globalRoot string, fetcher Fetcher) (WorkspaceManager, error) {
+// NewManagerWithDeps constructs the canonical WorkspaceManager with the
+// supplied fetch + filesystem adapters. The globalRoot is the parent of
+// every per-job workspace tree; the manager creates it if missing.
+//
+// The production adapters (HTTP fetcher + OS filesystem) are wired by
+// internal/platform/filesystem.NewManager; tests inject stubs. The
+// kernel keeps this constructor exported so the platform adapter — and
+// only the platform adapter — composes the concrete implementations.
+func NewManagerWithDeps(globalRoot string, fetcher Fetcher, fs FileSystem) (WorkspaceManager, error) {
 	if globalRoot == "" {
 		return nil, fmt.Errorf("workspace.NewManager: globalRoot is required (C9 contract)")
 	}
 	if fetcher == nil {
 		return nil, fmt.Errorf("workspace.NewManager: fetcher is nil")
 	}
-	absRoot, err := filepath.Abs(globalRoot)
-	if err != nil {
-		return nil, fmt.Errorf("workspace.NewManager: filepath.Abs(%q): %w", globalRoot, err)
+	if fs == nil {
+		return nil, fmt.Errorf("workspace.NewManager: fs is nil")
 	}
-	if err := os.MkdirAll(absRoot, 0o755); err != nil {
+	absRoot, err := fs.Abs(globalRoot)
+	if err != nil {
+		return nil, fmt.Errorf("workspace.NewManager: abs(%q): %w", globalRoot, err)
+	}
+	if err := fs.MkdirAll(absRoot, dirPerm); err != nil {
 		return nil, fmt.Errorf("workspace.NewManager: mkdir globalRoot %q: %w", absRoot, err)
 	}
 	return &manager{
 		globalRoot: absRoot,
 		fetcher:    fetcher,
+		fs:         fs,
 	}, nil
 }
 
@@ -176,7 +140,7 @@ func newManagerWithFetcher(globalRoot string, fetcher Fetcher) (WorkspaceManager
 // reveals "job-foo/attempt-1/, attempt-2/, ...") than a UUID layout.
 //
 // Idempotent at the directory level: a second Prepare for the same
-// (jobID, attempt) succeeds because os.MkdirAll is idempotent. A
+// (jobID, attempt) succeeds because MkdirAll is idempotent. A
 // future per-call side-effect (e.g. writing a manifest.json) would
 // carry the idempotency responsibility.
 func (m *manager) Prepare(ctx context.Context, jobID string, attempt int) (*ManagedWorkspace, error) {
@@ -189,11 +153,11 @@ func (m *manager) Prepare(ctx context.Context, jobID string, attempt int) (*Mana
 	_ = ctx // reserved for future (cancellation hooks)
 
 	jobDir := filepath.Join(m.globalRoot, jobDirPrefix+sanitizeSegment(jobID))
-	if err := os.MkdirAll(jobDir, 0o755); err != nil {
+	if err := m.fs.MkdirAll(jobDir, dirPerm); err != nil {
 		return nil, fmt.Errorf("workspace.Prepare: mkdir job dir %q: %w", jobDir, err)
 	}
 	attemptDir := filepath.Join(jobDir, attemptDirPrefix+strconv.Itoa(attempt))
-	if err := os.MkdirAll(attemptDir, 0o755); err != nil {
+	if err := m.fs.MkdirAll(attemptDir, dirPerm); err != nil {
 		return nil, fmt.Errorf("workspace.Prepare: mkdir attempt dir %q: %w", attemptDir, err)
 	}
 
@@ -203,7 +167,7 @@ func (m *manager) Prepare(ctx context.Context, jobID string, attempt int) (*Mana
 	// root that becomes a symlink after NewManager (operator
 	// mistake); the workspace we just allocated would fail the
 	// self-check. Fail-closed surfaces that class of regression.
-	if err := assertContained(m.globalRoot, attemptDir); err != nil {
+	if err := assertContained(m.fs, m.globalRoot, attemptDir); err != nil {
 		return nil, fmt.Errorf("workspace.Prepare: self-check on freshly allocated %q: %w", attemptDir, err)
 	}
 
@@ -297,9 +261,9 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 	// silently land inside ws.Root as a non-escaping nested component
 	// (the assertContained walk would PASS but the file is still being
 	// written under a name the operator did not sanction). The §5.4
-	// spec literal — "reject anything whose filepath.Abs is not under
+	// spec literal — "reject anything whose fs.Abs is not under
 	// the workspace root" — requires this fail-closed semantic:
-	// filepath.Abs("/etc/leak.txt") == "/etc/leak.txt", which is
+	// fs.Abs("/etc/leak.txt") == "/etc/leak.txt", which is
 	// not under ws.Root, therefore reject.
 	if filepath.IsAbs(ref.Filename) {
 		return LocalInputRef{}, fmt.Errorf("%w: ref.Filename %q is an absolute path (must be workspace-relative per §5.4)", ErrPathOutsideWorkspace, ref.Filename)
@@ -307,7 +271,7 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 
 	// Compute target path + §5.4 containment check (BEFORE any write)
 	targetPath := filepath.Join(ws.Root, ref.Filename)
-	if err := assertContained(ws.Root, targetPath); err != nil {
+	if err := assertContained(m.fs, ws.Root, targetPath); err != nil {
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: target path %q (from ref.Filename %q): %w", targetPath, ref.Filename, err)
 	}
 
@@ -317,10 +281,10 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 	// OpenFile does NOT create parent directories. The §5.4 contract
 	// on the parent dir was already enforced by assertContained above
 	// (every component is canonicalised against ws.Root).
-	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+	if err := m.fs.MkdirAll(filepath.Dir(targetPath), dirPerm); err != nil {
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: mkdir parent %q: %w", filepath.Dir(targetPath), err)
 	}
-	f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := m.fs.OpenFile(targetPath, filePerm)
 	if err != nil {
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: open target %q: %w", targetPath, err)
 	}
@@ -329,20 +293,20 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 	h := sha256.New()
 	written, err := io.Copy(io.MultiWriter(f, h), body)
 	if err != nil {
-		_ = os.Remove(targetPath) // best-effort partial-clean
+		_ = m.fs.Remove(targetPath) // best-effort partial-clean
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: stream copy to %q: %w", targetPath, err)
 	}
 
 	// Post-flight size check
 	if written != ref.SizeBytes {
-		_ = os.Remove(targetPath)
+		_ = m.fs.Remove(targetPath)
 		return LocalInputRef{}, fmt.Errorf("%w: expected=%d got=%d (streamed)", ErrSizeMismatch, ref.SizeBytes, written)
 	}
 
 	// Hash compare
 	actualHash := hex.EncodeToString(h.Sum(nil))
 	if actualHash != ref.SHA256 {
-		_ = os.Remove(targetPath)
+		_ = m.fs.Remove(targetPath)
 		return LocalInputRef{}, fmt.Errorf("%w: expected=%s got=%s", ErrHashMismatch, ref.SHA256, actualHash)
 	}
 
@@ -361,10 +325,10 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 //     (success / fail / cancelled) regardless of outcome. The
 //     manager does not gate on job status — the caller does.
 //   - Idempotent: a second Cleanup on a removed workspace returns
-//     nil because os.RemoveAll is natively idempotent. A test
+//     nil because RemoveAll is natively idempotent. A test
 //     verifies this.
 //   - Path-containment: assertContained(globalRoot, ws.Root) is
-//     called BEFORE os.RemoveAll so a workspace whose Root has been
+//     called BEFORE RemoveAll so a workspace whose Root has been
 //     swapped outside the globalRoot (operator mistake /
 //     unsafe-port migration) fails closed.
 //   - Always completes: this method does not return early on
@@ -380,10 +344,10 @@ func (m *manager) Cleanup(ctx context.Context, ws *ManagedWorkspace) error {
 	}
 	_ = ctx // reserved
 
-	if err := assertContained(m.globalRoot, ws.Root); err != nil {
+	if err := assertContained(m.fs, m.globalRoot, ws.Root); err != nil {
 		return fmt.Errorf("workspace.Cleanup: workspace root %q: %w", ws.Root, err)
 	}
-	if err := os.RemoveAll(ws.Root); err != nil {
+	if err := m.fs.RemoveAll(ws.Root); err != nil {
 		return fmt.Errorf("workspace.Cleanup: RemoveAll(%q): %w", ws.Root, err)
 	}
 	return nil
@@ -392,26 +356,26 @@ func (m *manager) Cleanup(ctx context.Context, ws *ManagedWorkspace) error {
 // ─── Path-containment helper ─────────────────────────────────────────────
 
 // assertContained enforces the §5.4 path-containment contract.
-// Implementation: canonicalise-both-ends (filepath.Abs + filepath.Clean
-// for each) + per-component os.Lstat walk to reject symlinks at any
-// intermediate point.
+// Implementation: canonicalise-both-ends (fs.Abs + filepath.Clean
+// for each) + per-component Lstat walk (via the FileSystem port) to
+// reject symlinks at any intermediate point.
 //
 // Algorithm:
-//  1. Compute absRoot = filepath.Abs(root); cleanedRoot = filepath.Clean(absRoot).
-//  2. Compute absCand = filepath.Abs(candidate); cleanedCand = filepath.Clean(absCand).
+//  1. Compute absRoot = fs.Abs(root); cleanedRoot = filepath.Clean(absRoot).
+//  2. Compute absCand = fs.Abs(candidate); cleanedCand = filepath.Clean(absCand).
 //  3. Fail-fast textual containment check: cleanedCand MUST be either
 //     == cleanedRoot OR have HasPrefix("<cleanedRoot><sep>").
 //     This catches both `../`-style traversal AND absolute-path-to-outside.
 //  4. Walk each PATH component of cleanedCand (relative to cleanedRoot):
-//     os.Lstat each one. If Mode has ModeSymlink, reject — the
+//     Lstat each one. If the entry is a symlink, reject — the
 //     manager NEVER follows a symlink per §5.4.
 //  5. Special case: when candidate IS root (rel == "."), reject if
 //     the root itself is a symlink. Symlink-roots would defeat the
 //     containment contract by re-routing the entire subtree.
-func assertContained(root, candidate string) error {
-	absRoot, err := filepath.Abs(root)
+func assertContained(fs FileSystem, root, candidate string) error {
+	absRoot, err := fs.Abs(root)
 	if err != nil {
-		return fmt.Errorf("workspace.assertContained: filepath.Abs(root=%q): %w", root, err)
+		return fmt.Errorf("workspace.assertContained: abs(root=%q): %w", root, err)
 	}
 	cleanedRoot := filepath.Clean(absRoot)
 
@@ -421,18 +385,20 @@ func assertContained(root, candidate string) error {
 	// possible point (the boundary call itself) so an operator-set
 	// symlink-root regression fails closed on the first Prepare /
 	// Download / Cleanup, not on a downstream side-effect.
-	if info, lerr := os.Lstat(cleanedRoot); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+	if rootEntry, lerr := fs.Lstat(cleanedRoot); lerr != nil {
+		return fmt.Errorf("workspace.assertContained: lstat root %q: %w", cleanedRoot, lerr)
+	} else if rootEntry.Exists && rootEntry.IsSymlink {
 		return fmt.Errorf("%w: workspace root %q is a symlink", ErrSymlinkRejected, cleanedRoot)
 	}
 
-	absCand, err := filepath.Abs(candidate)
+	absCand, err := fs.Abs(candidate)
 	if err != nil {
-		return fmt.Errorf("workspace.assertContained: filepath.Abs(candidate=%q): %w", candidate, err)
+		return fmt.Errorf("workspace.assertContained: abs(candidate=%q): %w", candidate, err)
 	}
 	cleanedCand := filepath.Clean(absCand)
 
 	// (3) textual containment
-	if cleanedCand != cleanedRoot && !strings.HasPrefix(cleanedCand, cleanedRoot+string(os.PathSeparator)) {
+	if cleanedCand != cleanedRoot && !strings.HasPrefix(cleanedCand, cleanedRoot+string(filepath.Separator)) {
 		return fmt.Errorf("%w: candidate resolves to %q which is outside root %q", ErrPathOutsideWorkspace, cleanedCand, cleanedRoot)
 	}
 
@@ -443,15 +409,19 @@ func assertContained(root, candidate string) error {
 	}
 	if rel == "." {
 		// (5) candidate IS the root — reject if root itself is a symlink
-		if info, lerr := os.Lstat(cleanedRoot); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+		if rootEntry, lerr := fs.Lstat(cleanedRoot); lerr != nil {
+			return fmt.Errorf("workspace.assertContained: lstat root %q: %w", cleanedRoot, lerr)
+		} else if rootEntry.Exists && rootEntry.IsSymlink {
 			return fmt.Errorf("%w: workspace root %q is a symlink", ErrSymlinkRejected, cleanedRoot)
 		}
 		return nil
 	}
 	cur := cleanedRoot
-	for _, seg := range strings.Split(rel, string(os.PathSeparator)) {
+	for _, seg := range strings.Split(rel, string(filepath.Separator)) {
 		cur = filepath.Join(cur, seg)
-		if info, lerr := os.Lstat(cur); lerr == nil && info.Mode()&os.ModeSymlink != 0 {
+		if entry, lerr := fs.Lstat(cur); lerr != nil {
+			return fmt.Errorf("workspace.assertContained: lstat %q: %w", cur, lerr)
+		} else if entry.Exists && entry.IsSymlink {
 			return fmt.Errorf("%w: %q is a symlink (intermediate component of %q)", ErrSymlinkRejected, cur, candidate)
 		}
 	}

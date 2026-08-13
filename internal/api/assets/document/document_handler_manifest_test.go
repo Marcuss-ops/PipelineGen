@@ -38,21 +38,22 @@ import (
 	docpkg "github.com/Marcuss-ops/PipelineGen/internal/application/document"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 // ── helpers ──────────────────────────────────────────────────────────
 
 // newTestWorkspaceManager returns a Manager backed by a temp dir for
-// each test (matches the C9 stub precedent at
-// `internal/kernel/job/workspace/manager_test.go::newStubManager`,
-// the canonical home after the P1-7 retirement of legacy
-// `internal/domain/job/`).
+// each test. Production wiring lives in internal/platform/filesystem
+// (OS filesystem + HTTP fetcher injected into the kernel's canonical
+// implementation); this test constructs it the same way the
+// composition root does.
 func newTestWorkspaceManager(t *testing.T) workspace.WorkspaceManager {
 	t.Helper()
 	root := t.TempDir()
-	mgr, err := workspace.NewManager(root)
+	mgr, err := filesystem.NewManager(root)
 	if err != nil {
-		t.Fatalf("workspace.NewManager: %v", err)
+		t.Fatalf("filesystem.NewManager: %v", err)
 	}
 	return mgr
 }
