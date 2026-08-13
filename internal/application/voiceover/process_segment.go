@@ -65,32 +65,60 @@ import (
 
 // BuildVoiceoverIdempotencyKey derives the deterministic retry-safe
 // deduplication key for the voiceover pipeline (FASE 3, July 2026).
-// The canonical triple (jobID + language + textHash) ensures that:
+// The canonical tuple (jobID + language + textHash + policyFingerprint)
+// ensures that:
 //   - Same job retried → same key (idempotency gate fires)
 //   - Different job with same text → different key (no cross-job collision)
 //   - Same job, different language → different key (per-language isolation)
+//   - Same job/text but a DIFFERENT timing/post-processing policy →
+//     different key, so a legacy audio-only cache entry is never reused
+//     as a valid hit for a timing-required request.
 //
-// The key is a SHA-256 hex string of "jobID:language:textHash" so it
-// is byte-stable across retries with the same inputs. Empty inputs
-// produce a unique key that still hashes deterministically.
+// The key is a SHA-256 hex string of
+// "jobID:language:textHash:policyFingerprint" so it is byte-stable across
+// retries with the same inputs. Empty inputs produce a unique key that
+// still hashes deterministically.
 //
 // godlike/07 minimum-blast-radius: the hash is computed via
 // crypto/sha256 directly (no new dependencies).
-func BuildVoiceoverIdempotencyKey(jobID string, language Language, textHash TextHash) string {
+func BuildVoiceoverIdempotencyKey(jobID string, language Language, textHash TextHash, policyFingerprint string) string {
 	h := sha256.New()
-	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash)))
+	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash) + ":" + policyFingerprint))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 // BuildVoiceoverTimingIdempotencyKey derives the deterministic retry-safe
 // key for a timing bundle file (timing.json / SRT / VTT). It extends the
-// canonical audio triple (jobID:language:textHash) with a kind suffix so
-// the timing files never collide with the audio upload's idempotency key
-// and each projection retries to the same Drive file.
-func BuildVoiceoverTimingIdempotencyKey(jobID string, language Language, textHash TextHash, kind string) string {
+// canonical audio tuple with the timing policy fingerprint and a kind
+// suffix so the timing files never collide with the audio upload's
+// idempotency key, each projection retries to the same Drive file, and a
+// changed timing policy produces a fresh timing file rather than reusing a
+// stale one.
+func BuildVoiceoverTimingIdempotencyKey(jobID string, language Language, textHash TextHash, policyFingerprint string, kind string) string {
 	h := sha256.New()
-	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash) + ":timing:" + kind))
+	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash) + ":" + policyFingerprint + ":timing:" + kind))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// TimingPolicyFingerprint derives the stable cache fingerprint for the
+// timing + post-processing policy. It captures the boundary mode, the
+// timing schema version, the timing mode (disabled/best_effort/required)
+// and the silence-removal policy, so a legacy audio-only cache entry (or
+// an entry produced under a different policy) can never be reused as a
+// valid hit for a request that expects a different timing bundle.
+//
+// nil timing falls back to the canonical defaults (best_effort / word /
+// json), mirroring how the pipeline normalizes an absent policy.
+func TimingPolicyFingerprint(timing *audio.TimingRequest, removeSilence bool) string {
+	policy := audio.DefaultTimingRequest()
+	if timing != nil {
+		policy = timing.Normalized()
+	}
+	schema := 0
+	if policy.Mode != audio.TimingDisabled {
+		schema = audio.SpeechTimingVersion
+	}
+	return fmt.Sprintf("mode=%s;boundary=%s;schema=%d;silence=%t", policy.Mode, policy.BoundaryMode, schema, removeSilence)
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -115,7 +143,7 @@ func BuildVoiceoverTimingIdempotencyKey(jobID string, language Language, textHas
 type ProcessSegmentCommand struct {
 	// JobID is the canonical job identifier that produced this voiceover
 	// item. Used to derive the deterministic idempotency key via
-	// BuildVoiceoverIdempotencyKey(jobID, language, textHash).
+	// BuildVoiceoverIdempotencyKey(jobID, language, textHash, policyFingerprint).
 	// Empty JobID is OK — the idempotency gate is skipped when empty
 	// (backward-compat with pre-FASE-3 callers).
 	JobID string
