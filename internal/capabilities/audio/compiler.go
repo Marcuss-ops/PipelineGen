@@ -12,11 +12,24 @@ func Compile(t CanonicalTimeline, profile CanonicalAudioProfile) (CompiledAudioP
 	return CompileWithLayers(t, profile, nil, nil, nil)
 }
 
+// CompileWithMixPolicy builds the primary-event plan and applies the given
+// mix policy. VOICEOVER_ONLY drops clip audio; VOICEOVER_DUCKED_CLIP keeps
+// the voiceover at unity and ducks the original clip audio underneath it with
+// a static gain plus dynamic ducking automation. The chosen policy is recorded
+// on the plan so the mixer and renderer consume the same decision.
+func CompileWithMixPolicy(t CanonicalTimeline, profile CanonicalAudioProfile, policy AudioMixPolicy) (CompiledAudioPlan, error) {
+	return compilePlan(t, profile, nil, nil, nil, policy)
+}
+
 // CompileWithLayers extends Compile with already-resolved BGM and SFX layers.
 // Random selection must happen before this boundary; the compiled plan only
 // contains concrete asset IDs and integer timeline ranges. The same canonical
 // timeline still owns every primary event offset.
 func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation) (CompiledAudioPlan, error) {
+	return compilePlan(t, profile, bgm, sfx, automation, "")
+}
+
+func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []AudioLayer, automation []AudioAutomation, policy AudioMixPolicy) (CompiledAudioPlan, error) {
 	if err := t.Validate(); err != nil {
 		return CompiledAudioPlan{}, err
 	}
@@ -26,6 +39,7 @@ func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, 
 		DurationUS:      t.DurationUS,
 		Output:          profile.Output(),
 		Automation:      append([]AudioAutomation(nil), automation...),
+		MixPolicy:       policy.Normalize(),
 	}
 	for _, s := range t.Segments {
 		for i, intent := range s.EffectiveAudioIntents() {
@@ -66,10 +80,93 @@ func CompileWithLayers(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, 
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")
 		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("sfx-%d", i), Type: EventSFX, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
 	}
+	applyMixPolicy(&p)
 	if err := p.Seal(); err != nil {
 		return CompiledAudioPlan{}, err
 	}
 	return p, nil
+}
+
+// applyMixPolicy mutates the compiled plan in place to honour its recorded
+// mix policy. It runs after all primary and layer events are materialized so
+// it can see whether a voiceover is actually present before ducking the clip.
+func applyMixPolicy(p *CompiledAudioPlan) {
+	switch p.MixPolicy {
+	case MixVoiceoverOnly:
+		removeTrack(&p.Tracks, TrackClipAudio)
+	case MixVoiceoverWithDuckedClip:
+		if findTrack(p.Tracks, TrackVoiceover) == nil {
+			return // nothing to duck under
+		}
+		clip := findTrack(p.Tracks, TrackClipAudio)
+		if clip == nil {
+			return
+		}
+		for i := range clip.Events {
+			if clip.Events[i].GainDB == 0 {
+				clip.Events[i].GainDB = DuckClipBaseGainDB
+			}
+		}
+		p.Automation = append(p.Automation, clipDuckingAutomation(p.Tracks)...)
+	}
+}
+
+// clipDuckingAutomation lowers the clip-audio track while the voiceover is
+// speaking. Every overlapping clip/voiceover interval produces one automation
+// entry so the clip returns to its base gain outside the narration.
+func clipDuckingAutomation(tracks []AudioTrack) []AudioAutomation {
+	vo := findTrack(tracks, TrackVoiceover)
+	clip := findTrack(tracks, TrackClipAudio)
+	if vo == nil || clip == nil {
+		return nil
+	}
+	var out []AudioAutomation
+	for _, ce := range clip.Events {
+		clipEnd := ce.TimelineStartUS + ce.DurationUS
+		for _, ve := range vo.Events {
+			voEnd := ve.TimelineStartUS + ve.DurationUS
+			start := ce.TimelineStartUS
+			if ve.TimelineStartUS > start {
+				start = ve.TimelineStartUS
+			}
+			end := clipEnd
+			if voEnd < end {
+				end = voEnd
+			}
+			if end <= start {
+				continue
+			}
+			out = append(out, AudioAutomation{
+				TargetTrackID:  strings.ToLower(string(TrackClipAudio)),
+				TriggerTrackID: strings.ToLower(string(TrackVoiceover)),
+				StartUS:        start,
+				EndUS:          end,
+				GainDB:         DuckClipActiveGainDB,
+				AttackUS:       DuckAttackUS,
+				ReleaseUS:      DuckReleaseUS,
+			})
+		}
+	}
+	return out
+}
+
+func findTrack(tracks []AudioTrack, role AudioTrackRole) *AudioTrack {
+	for i := range tracks {
+		if tracks[i].Role == role {
+			return &tracks[i]
+		}
+	}
+	return nil
+}
+
+func removeTrack(tracks *[]AudioTrack, role AudioTrackRole) {
+	out := (*tracks)[:0]
+	for _, tr := range *tracks {
+		if tr.Role != role {
+			out = append(out, tr)
+		}
+	}
+	*tracks = out
 }
 
 func findOrCreateLayerTrack(tracks *[]AudioTrack, role AudioTrackRole, id string) *AudioTrack {

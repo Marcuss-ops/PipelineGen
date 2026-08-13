@@ -217,7 +217,11 @@ type CompiledAudioPlan struct {
 	SFX             []AudioLayer        `json:"sfx,omitempty"`
 	Automation      []AudioAutomation   `json:"automation,omitempty"`
 	Output          AudioOutputContract `json:"canonical_audio_profile"`
-	PlanSHA256      string              `json:"audio_plan_sha256"`
+	// MixPolicy records the editorial mix decision applied by the compiler
+	// (VOICEOVER_ONLY vs VOICEOVER_DUCKED_CLIP). Empty means no policy was
+	// applied (legacy full-volume overlap). It is part of the plan hash.
+	MixPolicy  AudioMixPolicy `json:"mix_policy,omitempty"`
+	PlanSHA256 string         `json:"audio_plan_sha256"`
 }
 
 type ResolvedAudioAsset struct {
