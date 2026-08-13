@@ -55,6 +55,17 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		VideoMetadata: scriptpkg.CloneVideoMetadata(item.VideoMetadata),
 	}
 	plan.AudioMode = item.Audio.Mode
+	// Legacy callers may declare clip ownership at source level while using
+	// explicit editorial segments. Materialize that one-to-one ownership on
+	// the canonical segment plan so downstream binding never loses the
+	// caller's scene skeleton when evidence hydration is unavailable.
+	if len(plan.Segments) > 0 && len(item.Source.ClipIDs) > 0 {
+		for i := range plan.Segments {
+			if len(plan.Segments[i].ClipIDs) == 0 && i < len(item.Source.ClipIDs) {
+				plan.Segments[i].ClipIDs = []string{item.Source.ClipIDs[i]}
+			}
+		}
+	}
 	if plan.AudioMode == "" {
 		plan.AudioMode = item.Output.Audio.Mode
 	}
