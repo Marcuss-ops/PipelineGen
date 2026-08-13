@@ -452,6 +452,14 @@ func preserveSceneBindings(previous, replacement []scriptpkg.SpecScene) []script
 			continue
 		}
 		used[previousIndex] = struct{}{}
+		if strings.TrimSpace(out[i].SegmentID) == "" {
+			out[i].SegmentID = previous[previousIndex].SegmentID
+		}
+		if !out[i].Kind.Valid() || out[i].Kind == scriptpkg.SceneNarration {
+			if previous[previousIndex].Kind.Valid() {
+				out[i].Kind = previous[previousIndex].Kind
+			}
+		}
 		out[i].Bindings = preserveBindings(previous[previousIndex].Bindings, out[i].Bindings)
 	}
 	return out

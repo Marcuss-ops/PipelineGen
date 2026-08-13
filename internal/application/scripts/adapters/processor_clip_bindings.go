@@ -244,7 +244,7 @@ func (p *ClipBindingsProcessor) Process(
 // global accepted-clip order: one segment may own zero, one, or many clips,
 // and that per-segment order is the editorial contract.
 func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *scriptpkg.ResolvedGenerationPlan) {
-	if plan == nil || plan.ClipEvidence == nil {
+	if plan == nil {
 		for i := range scenes {
 			scenes[i].Bindings.Clip = nil
 			scenes[i].Bindings.Clips = nil
@@ -252,9 +252,12 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 		return
 	}
 	evidence := plan.ClipEvidence
-	accepted := make(map[string]struct{}, len(evidence.AcceptedClipIDs))
-	for _, clipID := range evidence.AcceptedClipIDs {
-		accepted[strings.TrimSpace(clipID)] = struct{}{}
+	accepted := make(map[string]struct{})
+	if evidence != nil {
+		accepted = make(map[string]struct{}, len(evidence.AcceptedClipIDs))
+		for _, clipID := range evidence.AcceptedClipIDs {
+			accepted[strings.TrimSpace(clipID)] = struct{}{}
+		}
 	}
 	for i := range scenes {
 		if i >= len(plan.Segments) {
@@ -267,12 +270,17 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 			if clipID == "" {
 				continue
 			}
-			if _, ok := accepted[clipID]; !ok {
-				// Missing or excluded IDs remain unbound even when they
-				// still appear in the caller's segment metadata.
-				continue
+			if evidence != nil && len(accepted) > 0 {
+				if _, ok := accepted[clipID]; !ok {
+					// Missing or excluded IDs remain unbound even when they
+					// still appear in the caller's segment metadata.
+					continue
+				}
 			}
-			detail := evidence.ClipDetails[clipID]
+			var detail scriptpkg.ClipDetail
+			if evidence != nil {
+				detail = evidence.ClipDetails[clipID]
+			}
 			binding := scriptpkg.ClipBinding{
 				ClipID:         clipID,
 				ClipTitle:      detail.Name,
@@ -284,10 +292,17 @@ func applyExplicitSegmentClipBindings(scenes []scriptpkg.SpecScene, plan *script
 				DurationMs:     scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs),
 			}
 			if binding.ClipTitle == "" {
-				binding.ClipTitle = evidence.ClipNames[clipID]
+				if evidence != nil {
+					binding.ClipTitle = evidence.ClipNames[clipID]
+				}
 			}
 			if binding.DriveLink == "" {
-				binding.DriveLink = evidence.DriveLinks[clipID]
+				if evidence != nil {
+					binding.DriveLink = evidence.DriveLinks[clipID]
+				}
+			}
+			if binding.DriveLink == "" {
+				binding.DriveLink = "https://drive.google.com/file/d/" + clipID + "/view?usp=drivesdk"
 			}
 			bindings = append(bindings, binding)
 		}
