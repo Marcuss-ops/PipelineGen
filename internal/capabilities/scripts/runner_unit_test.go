@@ -130,6 +130,38 @@ func TestBuildDocumentContent(t *testing.T) {
 	assert.Contains(t, esContent, "Segunda escena")
 }
 
+// TestBuildDocumentContentHumanOnly asserts the document surface never
+// leaks technical bindings (clip links) and renders voiceover as a
+// bare, copyable URL rather than a language-labelled technical line.
+func TestBuildDocumentContentHumanOnly(t *testing.T) {
+	scenes := []Scene{
+		{
+			Index: 0,
+			Text:  map[Language]string{"en": "First"},
+			Clip:  &ClipReference{DriveLink: "https://drive.google.com/CLIP-SECRET"},
+			Clips: []*ClipReference{
+				{DriveLink: "https://drive.google.com/CLIP-A"},
+				{DriveLink: "https://drive.google.com/CLIP-B"},
+			},
+			Voiceover: map[Language]AudioReference{
+				"en": {URL: "https://drive.google.com/VOICE-EN"},
+			},
+		},
+	}
+
+	content := buildDocumentContent(scenes, "en")
+
+	// Technical bindings must never leak into the human surface.
+	assert.NotContains(t, content, "CLIP-SECRET")
+	assert.NotContains(t, content, "CLIP-A")
+	assert.NotContains(t, content, "CLIP-B")
+	assert.NotContains(t, content, "Clip:")
+
+	// Voiceover is a bare, copyable URL.
+	assert.Contains(t, content, "Voiceover: https://drive.google.com/VOICE-EN")
+	assert.NotContains(t, content, "Voiceover en:")
+}
+
 // TestContainsAny asserts the small substring-match helper used by
 // deriveErrorCode. Variadic substring list; any match → true.
 func TestContainsAny(t *testing.T) {
