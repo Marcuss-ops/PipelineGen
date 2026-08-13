@@ -1,8 +1,11 @@
 package voiceover
 
-import "time"
+import (
+	"context"
+	"time"
 
-import "context"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+)
 
 // ────────────────────────────────────────────────────────────────────────
 // Synthesis territory — text-to-speech + post-processing.
@@ -34,6 +37,20 @@ type TTSInput struct {
 	Filename      string
 	OutputDir     string
 	RemoveSilence bool
+	// Timing is the canonical voiceover timing policy. nil means the
+	// provider applies the canonical defaults (best_effort / word /
+	// [json]) — timing capture is never implicitly mandatory.
+	Timing *audio.TimingRequest
+}
+
+// RawSpeechBoundary is one provider-neutral word boundary in integer
+// microseconds. Providers hand these over in TTSOutput; the application
+// layer is responsible for building the canonical SpeechTimingArtifact
+// (hash-bound to the final audio), never the provider.
+type RawSpeechBoundary struct {
+	Text    string
+	StartUS int64
+	EndUS   int64
 }
 
 // TTSOutput is the canonical return shape.
@@ -43,6 +60,18 @@ type TTSOutput struct {
 	Voice       string
 	FileHash    string
 	Duration    time.Duration
+
+	// Provider is the canonical provider identifier (e.g. "edge_tts")
+	// that produced this output. Empty when the provider does not
+	// declare an identity.
+	Provider string
+	// BoundaryMode is the boundary granularity captured by the
+	// provider. Zero (empty) means no timing was captured.
+	BoundaryMode audio.BoundaryMode
+	// WordBoundaries are the RAW provider boundaries in microseconds.
+	// The canonical artifact (hashes + monotonic validation) is built
+	// by the use case, not the provider.
+	WordBoundaries []RawSpeechBoundary
 }
 
 // AudioPostProcessor is the canonical port for post-TTS audio cleanup

@@ -294,6 +294,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		Filename:      cmd.Filename,
 		OutputDir:     cmd.Dest.FolderPath,
 		RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
+		// Timing is the canonical timing policy; nil means the provider
+		// applies the defaults. The provider only returns RAW boundaries;
+		// the canonical artifact is built later from the final audio.
+		Timing: cmd.Timing,
 	})
 	if err != nil {
 		emitTTS("failed")
