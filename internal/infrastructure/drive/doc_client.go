@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
+	platformdrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
 
@@ -63,32 +63,33 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 		docTitle = "Untitled script"
 	}
 
-	// Detect HTML content
-	isHTML := strings.Contains(content, "<html") || strings.Contains(content, "<div") || strings.Contains(content, "<h1") || strings.Contains(content, "<p>") || strings.Contains(content, "<style")
-
-	if isHTML && d.driveService != nil {
-		fileMetadata := &drive.File{
-			Name:     docTitle,
-			MimeType: "application/vnd.google-apps.document",
-		}
-		if folderID != "" {
-			fileMetadata.Parents = []string{folderID}
+	// HTML content is built structurally via the Docs API so the title
+	// heading and code blocks survive. Drive's HTML import silently drops
+	// both, so it must not be used for the canonical document surface.
+	if isHTMLContent(content) {
+		if d.docsService == nil {
+			return nil, fmt.Errorf("google docs service not initialized")
 		}
 
-		media := strings.NewReader(content)
-		created, err := d.driveService.Files.Create(fileMetadata).
-			Media(media, googleapi.ContentType("text/html")).
-			Fields("id,webViewLink").
-			Context(ctx).
-			Do()
+		created, err := d.docsService.Documents.Create(&docs.Document{
+			Title: docTitle,
+		}).Context(ctx).Do()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create google doc from html: %w", err)
+			return nil, fmt.Errorf("failed to create google doc: %w", err)
+		}
+
+		if err := d.insertHTMLContent(ctx, created.DocumentId, content); err != nil {
+			return nil, err
+		}
+
+		if err := d.moveToFolder(ctx, created.DocumentId, folderID); err != nil {
+			return nil, err
 		}
 
 		return &Doc{
-			ID:      created.Id,
+			ID:      created.DocumentId,
 			Title:   docTitle,
-			URL:     googleDocsEditURL(created.Id),
+			URL:     googleDocsEditURL(created.DocumentId),
 			Content: content,
 		}, nil
 	}
@@ -220,6 +221,49 @@ func (d *DocClientImpl) insertContent(ctx context.Context, docID, content string
 	}
 
 	return nil
+}
+
+// insertHTMLContent builds the canonical document HTML structurally via the
+// Docs API, preserving the title heading and the SpecScene JSON code block
+// that Drive's HTML import would otherwise drop.
+func (d *DocClientImpl) insertHTMLContent(ctx context.Context, docID, content string) error {
+	reqs, err := platformdrive.BuildInsertRequests(content)
+	if err != nil {
+		return err
+	}
+	if len(reqs) == 0 {
+		return nil
+	}
+	if _, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{Requests: reqs}).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to insert document html content: %w", err)
+	}
+	return nil
+}
+
+// clearDocumentBody removes all body content from a document so a subsequent
+// insert starts from a clean slate.
+func (d *DocClientImpl) clearDocumentBody(ctx context.Context, docID string) error {
+	document, err := d.docsService.Documents.Get(docID).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to read google doc before update: %w", err)
+	}
+	if endIndex := bodyEndIndex(document); endIndex > 2 {
+		if _, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
+			Requests: []*docs.Request{
+				{DeleteContentRange: &docs.DeleteContentRangeRequest{Range: &docs.Range{StartIndex: 1, EndIndex: endIndex - 1}}},
+			},
+		}).Context(ctx).Do(); err != nil {
+			return fmt.Errorf("failed to clear google doc content: %w", err)
+		}
+	}
+	return nil
+}
+
+func bodyEndIndex(document *docs.Document) int64 {
+	if document == nil || document.Body == nil || len(document.Body.Content) == 0 {
+		return 1
+	}
+	return document.Body.Content[len(document.Body.Content)-1].EndIndex
 }
 
 // ShareDoc shares a Google Doc with a specific user by email.
@@ -374,20 +418,41 @@ func (d *DocClientImpl) GetDocument(ctx context.Context, docID string) (*docs.Do
 }
 
 // UpdateDoc updates the title and content of an existing Google Doc.
+// HTML content is rebuilt structurally so the title heading and code
+// blocks survive; plain-text content is inserted as-is.
 func (d *DocClientImpl) UpdateDoc(ctx context.Context, docID, title, content string) error {
 	if d.driveService == nil {
 		return fmt.Errorf("drive service not initialized")
 	}
-	fileMetadata := &drive.File{
-		Name: title,
+	if d.docsService == nil {
+		return fmt.Errorf("google docs service not initialized")
 	}
-	media := strings.NewReader(content)
-	_, err := d.driveService.Files.Update(docID, fileMetadata).
-		Media(media, googleapi.ContentType("text/html")).
-		Context(ctx).
-		Do()
-	if err != nil {
-		return fmt.Errorf("failed to update google doc content: %w", err)
+
+	if docTitle := strings.TrimSpace(title); docTitle != "" {
+		if _, err := d.driveService.Files.Update(docID, &drive.File{Name: docTitle}).
+			Fields("id").
+			Context(ctx).
+			Do(); err != nil {
+			return fmt.Errorf("failed to rename google doc: %w", err)
+		}
 	}
-	return nil
+
+	if err := d.clearDocumentBody(ctx, docID); err != nil {
+		return err
+	}
+
+	if isHTMLContent(content) {
+		return d.insertHTMLContent(ctx, docID, content)
+	}
+	return d.insertContent(ctx, docID, content)
+}
+
+// isHTMLContent reports whether content is a canonical document HTML
+// payload rather than plain text.
+func isHTMLContent(content string) bool {
+	return strings.Contains(content, "<html") ||
+		strings.Contains(content, "<div") ||
+		strings.Contains(content, "<h1") ||
+		strings.Contains(content, "<p>") ||
+		strings.Contains(content, "<style")
 }
