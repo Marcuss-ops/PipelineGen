@@ -329,6 +329,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	out.FileHash = ttsOut.FileHash
 
 	// Stage 2: optional AudioPostProcessor (silence removal). Nil-safe.
+	// The post output (cleaned path + edit map) is forwarded to the
+	// publish stage so timing boundaries are remapped onto the CLEANED
+	// timeline instead of producing timestamps for the pre-clean audio.
+	var post *AudioPostOutput
 	if cmd.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
 		emitPost := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "audio_post", string(cmd.Language))
 		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
@@ -348,6 +352,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		if postOut.CleanedPath != "" {
 			out.CleanedPath = postOut.CleanedPath
 		}
+		post = &postOut
 	}
 
 	if out.LocalPath == "" && out.CleanedPath == "" {
@@ -362,7 +367,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// key derivation + Drive upload + the timing bundle publish (audio
 	// + timing.json + optional SRT/VTT with required/best-effort/disabled
 	// semantics).
-	pub, err := u.publishStage(ctx, cmd, out, &ttsOut, log)
+	pub, err := u.publishStage(ctx, cmd, out, &ttsOut, post, log)
 	if err != nil {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		var pipelineErr *PipelineError

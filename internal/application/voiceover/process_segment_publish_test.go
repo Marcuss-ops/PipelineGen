@@ -81,7 +81,7 @@ func TestPublishTimingBundle_Disabled_PreservesLegacyBehavior(t *testing.T) {
 	pub := &stubProcessPublisher{fileID: "drive-timing"}
 	uc := newPublishTimingUseCase(t, pub)
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, tts.LocalPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, nil, tts.LocalPath, zap.NewNop())
 
 	require.NoError(t, err)
 	assert.Nil(t, res, "disabled policy must produce no timing result (legacy behavior)")
@@ -95,7 +95,7 @@ func TestPublishTimingBundle_Required_NoBoundaries_FailsClosed(t *testing.T) {
 	pub := &stubProcessPublisher{fileID: "drive-timing"}
 	uc := newPublishTimingUseCase(t, pub)
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, tts.LocalPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, nil, tts.LocalPath, zap.NewNop())
 
 	require.Error(t, err)
 	assert.Nil(t, res)
@@ -115,7 +115,7 @@ func TestPublishTimingBundle_BestEffort_NoBoundaries_Unavailable(t *testing.T) {
 	pub := &stubProcessPublisher{fileID: "drive-timing"}
 	uc := newPublishTimingUseCase(t, pub)
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, tts.LocalPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, nil, tts.LocalPath, zap.NewNop())
 
 	require.NoError(t, err, "best-effort must not fail the segment when boundaries are absent")
 	require.NotNil(t, res)
@@ -130,7 +130,7 @@ func TestPublishTimingBundle_Required_RemoveSilence_Rejected(t *testing.T) {
 	pub := &stubProcessPublisher{fileID: "drive-timing"}
 	uc := newPublishTimingUseCase(t, pub)
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, tts.LocalPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, nil, tts.LocalPath, zap.NewNop())
 
 	require.Error(t, err)
 	assert.Nil(t, res)
@@ -148,7 +148,7 @@ func TestPublishTimingBundle_BestEffort_RemoveSilence_Unavailable(t *testing.T) 
 	pub := &stubProcessPublisher{fileID: "drive-timing"}
 	uc := newPublishTimingUseCase(t, pub)
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, tts.LocalPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, &VoiceoverItemResult{}, tts, nil, tts.LocalPath, zap.NewNop())
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -167,7 +167,7 @@ func TestPublishTimingBundle_HappyPath_PublishesJSONAndSRT(t *testing.T) {
 	uc := newPublishTimingUseCase(t, pub)
 	out := &VoiceoverItemResult{Voice: "it-IT-DiegoNeural", LocalPath: audioPath}
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, audioPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, nil, audioPath, zap.NewNop())
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -209,7 +209,7 @@ func TestPublishTimingBundle_Required_PublishFailure_Fails(t *testing.T) {
 	uc := newPublishTimingUseCase(t, pub)
 	out := &VoiceoverItemResult{Voice: "it-IT-DiegoNeural", LocalPath: audioPath}
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, audioPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, nil, audioPath, zap.NewNop())
 
 	require.Error(t, err)
 	assert.Nil(t, res)
@@ -227,12 +227,63 @@ func TestPublishTimingBundle_BestEffort_PublishFailure_VisibleButNotFatal(t *tes
 	uc := newPublishTimingUseCase(t, pub)
 	out := &VoiceoverItemResult{Voice: "it-IT-DiegoNeural", LocalPath: audioPath}
 
-	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, audioPath, zap.NewNop())
+	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, nil, audioPath, zap.NewNop())
 
 	require.NoError(t, err, "best-effort timing publish failure must not fail the segment")
 	require.NotNil(t, res)
 	assert.Equal(t, TimingStatusFailed, res.Status, "best-effort timing failure must be explicitly visible")
 	assert.Empty(t, res.JSONLink)
+}
+
+// TestPublishTimingBundle_Required_RemoveSilence_WithEditMap_Completes
+// pins the DEFINITIVE remap path (design step 6): when the post-
+// processor reports an edit map + final duration, timing required +
+// remove_silence produces a completed bundle whose word timestamps
+// refer to the CLEANED audio and whose duration matches the final file.
+func TestPublishTimingBundle_Required_RemoveSilence_WithEditMap_Completes(t *testing.T) {
+	dir, audioPath, tts, cmd := timingTestFixture(t)
+	cleanedPath := filepath.Join(dir, "scene-0-it.cleaned.mp3")
+	require.NoError(t, os.WriteFile(cleanedPath, []byte("cleaned-fake-mp3"), 0o644))
+
+	cmd.Timing = &audio.TimingRequest{Mode: audio.TimingRequired, BoundaryMode: audio.BoundaryWord, Formats: []audio.TimingFormat{audio.TimingJSON}}
+	cmd.RemoveSilence = true
+	// 3s original audio; a 1s silence at [1s,2s) is removed → 2s final.
+	tts.Duration = 3 * time.Second
+	tts.WordBoundaries = []RawSpeechBoundary{
+		{Text: "Il", StartUS: 0, EndUS: 500_000},
+		{Text: "celebre", StartUS: 500_000, EndUS: 900_000},
+		{Text: "incontro.", StartUS: 2_100_000, EndUS: 2_500_000},
+	}
+	post := &AudioPostOutput{
+		CleanedPath: cleanedPath,
+		DurationUS:  2_000_000,
+		EditMap: []audio.AudioEdit{
+			{SourceStartUS: 1_000_000, SourceEndUS: 2_000_000, OutputStartUS: 1_000_000, OutputEndUS: 1_000_000},
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-remap"}
+	uc := newPublishTimingUseCase(t, pub)
+	out := &VoiceoverItemResult{Voice: "it-IT-DiegoNeural", LocalPath: audioPath, CleanedPath: cleanedPath}
+
+	res, err := uc.publishTimingBundle(context.Background(), cmd, out, tts, post, cleanedPath, zap.NewNop())
+
+	require.NoError(t, err, "required timing + remove_silence with an edit map must succeed")
+	require.NotNil(t, res)
+	assert.Equal(t, TimingStatusCompleted, res.Status)
+	assert.NotEmpty(t, res.JSONLink)
+	// The artifact must describe the CLEANED audio: final duration 2s and
+	// the post-silence word shifted left by the removed 1s.
+	assert.Equal(t, int64(2_000_000), res.DurationUS)
+	assert.Equal(t, 3, res.WordCount)
+	assert.Equal(t, files.SHA256String("cleaned-fake-mp3"), res.AudioSHA256,
+		"the artifact must bind to the CLEANED audio bytes")
+
+	// The timing.json projection is published with the canonical filename
+	// and the cleaned audio's duration (2s) baked into the artifact.
+	require.Len(t, pub.published, 1)
+	assert.Equal(t, "scene-0-it-timing.json", pub.published[0].Filename)
+	assert.Equal(t, "it", pub.published[0].Language)
+	assert.Equal(t, "progetto-storia", pub.published[0].Project)
 }
 
 // TestProcessSegmentUseCase_Execute_RequiredTimingNoBoundariesFailsJob
