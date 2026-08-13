@@ -133,15 +133,32 @@ func CompileCanonicalAudioPlan(result GenerateResult, language Language, profile
 				}
 				intent.SourceInUS = 0
 				intent.SourceDurationUS = sourceDurationUS
+				// The voiceover placement on the timeline must be explicit:
+				// it starts at the scene origin and occupies the full scene
+				// window, while source_duration_us keeps the actual certified
+				// TTS file length (which may be shorter than the window).
+				intent.TimelineOffsetUS = 0
+				intent.TimelineDurationUS = timeline.Segments[i].DurationUS
 				if err := addAsset(ref.ID, ref.FilePath); err != nil {
 					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 				}
 			}
 			if intent.Mode == audio.AudioClip {
-				if scene.Clip == nil || strings.TrimSpace(intent.ClipAssetID) == "" || strings.TrimSpace(scene.Clip.AudioPath) == "" {
+				clipPath := ""
+				clips := scene.Clips
+				if len(clips) == 0 && scene.Clip != nil {
+					clips = []*ClipReference{scene.Clip}
+				}
+				for _, clip := range clips {
+					if clip != nil && clip.ID == intent.ClipAssetID {
+						clipPath = clip.AudioPath
+						break
+					}
+				}
+				if strings.TrimSpace(intent.ClipAssetID) == "" || strings.TrimSpace(clipPath) == "" {
 					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, fmt.Errorf("scene %s clip audio asset is missing", scene.ID)
 				}
-				if err := addAsset(intent.ClipAssetID, scene.Clip.AudioPath); err != nil {
+				if err := addAsset(intent.ClipAssetID, clipPath); err != nil {
 					return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, err
 				}
 			}
@@ -208,6 +225,7 @@ func compileResolvedSceneTimeline(scenes []ResolvedScene) (audio.CanonicalTimeli
 			TimelineStartUS: startUS,
 			DurationUS:      durationUS,
 			Video:           scene.Video,
+			VideoSegments:   scene.VideoSegments,
 			Audio:           intents[0],
 			AudioIntents:    intents,
 		})
@@ -237,58 +255,65 @@ func CompileCanonicalRenderPlanWithFrameRate(result GenerateResult, timeline aud
 	manifest := make([]render.AssetManifestEntry, 0)
 	seen := make(map[string]struct{})
 	for _, scene := range result.Scenes {
-		if scene.Clip == nil {
-			continue
+		clips := scene.Clips
+		if len(clips) == 0 && scene.Clip != nil {
+			clips = []*ClipReference{scene.Clip}
 		}
-		clip := scene.Clip
-		if strings.TrimSpace(clip.ID) == "" || strings.TrimSpace(clip.Path) == "" || strings.TrimSpace(clip.SHA256) == "" {
-			return nil, fmt.Errorf("render plan clip %s requires path and SHA256", scene.ID)
-		}
-		if _, ok := seen[clip.ID]; ok {
-			continue
-		}
-		seen[clip.ID] = struct{}{}
-		frameCount := clip.FrameCount
-		if clip.Duration > 0 {
-			durationUS, err := microseconds(int64(math.Round(clip.Duration * 1000)))
-			if err != nil {
-				return nil, fmt.Errorf("render plan clip %s duration: %w", scene.ID, err)
+		for _, clip := range clips {
+			if clip == nil {
+				continue
 			}
-			resolver, err := audio.NewFrameResolver(frameRate)
-			if err != nil {
-				return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
+			if strings.TrimSpace(clip.ID) == "" || strings.TrimSpace(clip.Path) == "" || strings.TrimSpace(clip.SHA256) == "" {
+				return nil, fmt.Errorf("render plan clip %s requires path and SHA256", scene.ID)
 			}
-			frameCount, err = resolver.FrameCountForDuration(durationUS)
-			if err != nil {
-				return nil, fmt.Errorf("render plan clip %s frame count: %w", scene.ID, err)
+			if _, ok := seen[clip.ID]; ok {
+				continue
 			}
-		}
-		if frameCount <= 0 {
-			resolver, err := audio.NewFrameResolver(frameRate)
-			if err != nil {
-				return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
-			}
-			for _, segment := range timeline.Segments {
-				if segment.Video.AssetID != clip.ID || segment.Video.SourceDurationUS <= 0 {
-					continue
+			seen[clip.ID] = struct{}{}
+			frameCount := clip.FrameCount
+			if clip.Duration > 0 {
+				durationUS, err := microseconds(int64(math.Round(clip.Duration * 1000)))
+				if err != nil {
+					return nil, fmt.Errorf("render plan clip %s duration: %w", scene.ID, err)
 				}
-				endUS := segment.Video.SourceInUS + segment.Video.SourceDurationUS
-				if endUS < segment.Video.SourceInUS {
-					return nil, fmt.Errorf("render plan clip %s source range overflows", scene.ID)
+				resolver, err := audio.NewFrameResolver(frameRate)
+				if err != nil {
+					return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
 				}
-				endFrame, frameErr := resolver.FrameAt(endUS)
-				if frameErr != nil {
-					return nil, fmt.Errorf("render plan clip %s source frame count: %w", scene.ID, frameErr)
-				}
-				if endFrame > frameCount {
-					frameCount = endFrame
+				frameCount, err = resolver.FrameCountForDuration(durationUS)
+				if err != nil {
+					return nil, fmt.Errorf("render plan clip %s frame count: %w", scene.ID, err)
 				}
 			}
+			if frameCount <= 0 {
+				resolver, err := audio.NewFrameResolver(frameRate)
+				if err != nil {
+					return nil, fmt.Errorf("render plan clip %s frame rate: %w", scene.ID, err)
+				}
+				for _, segment := range timeline.Segments {
+					for _, video := range segment.EffectiveVideoSegments() {
+						if video.AssetID != clip.ID || video.SourceDurationUS <= 0 {
+							continue
+						}
+						endUS := video.SourceInUS + video.SourceDurationUS
+						if endUS < video.SourceInUS {
+							return nil, fmt.Errorf("render plan clip %s source range overflows", scene.ID)
+						}
+						endFrame, frameErr := resolver.FrameAt(endUS)
+						if frameErr != nil {
+							return nil, fmt.Errorf("render plan clip %s source frame count: %w", scene.ID, frameErr)
+						}
+						if endFrame > frameCount {
+							frameCount = endFrame
+						}
+					}
+				}
+			}
+			if frameCount <= 0 {
+				return nil, fmt.Errorf("render plan clip %s requires positive frame_count", scene.ID)
+			}
+			manifest = append(manifest, render.AssetManifestEntry{AssetID: clip.ID, Path: clip.Path, SHA256: clip.SHA256, FrameCount: frameCount})
 		}
-		if frameCount <= 0 {
-			return nil, fmt.Errorf("render plan clip %s requires positive frame_count", scene.ID)
-		}
-		manifest = append(manifest, render.AssetManifestEntry{AssetID: clip.ID, Path: clip.Path, SHA256: clip.SHA256, FrameCount: frameCount})
 	}
 	var finalAudio *render.FinalAudioAsset
 	if result.FinalAudio != nil {
