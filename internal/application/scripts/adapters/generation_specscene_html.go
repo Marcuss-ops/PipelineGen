@@ -150,3 +150,54 @@ func renderDocumentLink(url, label, fallback string) string {
 	}
 	return "<a href=\"" + html.EscapeString(url) + "\">" + html.EscapeString(label) + "</a>"
 }
+
+// resolveDocumentVoiceoverLink picks the single Drive link to surface in the
+// human document section for a scene's voiceover binding.
+//
+// Resolution order:
+//  1. The canonical language-specific link in Links[language].
+//  2. The legacy/default-language surface (Link) only when no language is
+//     requested or when it matches the job's default language.
+//  3. A single available link when no language was requested and exactly one
+//     link exists.
+//
+// It deliberately never falls back to a wrong-language link: a document built
+// for language X must not show the voiceover of language Y just because it is
+// the only one present.
+func resolveDocumentVoiceoverLink(
+	voiceover *scriptpkg.VoiceoverBinding,
+	language string,
+	defaultLanguage string,
+) string {
+	if voiceover == nil {
+		return ""
+	}
+
+	language = strings.TrimSpace(language)
+	defaultLanguage = strings.TrimSpace(defaultLanguage)
+
+	// 1. Canonical language-specific link.
+	if language != "" && voiceover.Links != nil {
+		if link := strings.TrimSpace(voiceover.Links[language]); link != "" {
+			return link
+		}
+	}
+
+	// 2. Legacy/default-language compatibility.
+	if language == "" || language == defaultLanguage {
+		if link := strings.TrimSpace(voiceover.Link); link != "" {
+			return link
+		}
+	}
+
+	// 3. No language requested + exactly one available link.
+	if language == "" && len(voiceover.Links) == 1 {
+		for _, raw := range voiceover.Links {
+			if link := strings.TrimSpace(raw); link != "" {
+				return link
+			}
+		}
+	}
+
+	return ""
+}
