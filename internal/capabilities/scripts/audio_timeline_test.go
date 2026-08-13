@@ -38,6 +38,26 @@ func TestCompileCanonicalAudioPlanUsesOneTimelineForPrimaryEvents(t *testing.T) 
 	}
 }
 
+func TestCompileCanonicalAudioPlanMakesVoiceoverTimelinePlacementExplicit(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-vo", Index: 0, DurationUS: 4_500_000,
+		Audio:     audio.AudioIntent{Mode: audio.AudioVoiceover},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/audio/vo-1.m4a", Duration: 3.2}},
+	}}}
+	timeline, _, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	intents := timeline.Segments[0].EffectiveAudioIntents()
+	if len(intents) != 1 {
+		t.Fatalf("intents=%+v", intents)
+	}
+	vo := intents[0]
+	if vo.Mode != audio.AudioVoiceover || vo.TimelineOffsetUS != 0 || vo.TimelineDurationUS != 4_500_000 || vo.SourceInUS != 0 || vo.SourceDurationUS != 3_200_000 {
+		t.Fatalf("voiceover intent must carry explicit timeline placement: %+v", vo)
+	}
+}
+
 func TestCompileCanonicalAudioPlanFailsClosedForMissingClipAudio(t *testing.T) {
 	_, _, _, err := CompileCanonicalAudioPlan(GenerateResult{Scenes: []Scene{{
 		ID: "scene-1", Index: 0, DurationMS: 1000, Clip: &ClipReference{ID: "clip-1"}, Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-1"},
@@ -66,6 +86,32 @@ func TestCompileCanonicalAudioPlanPreservesUSDurationAndCombinedIntents(t *testi
 	}
 	if len(assets) != 2 {
 		t.Fatalf("expected clip and voiceover assets, got %#v", assets)
+	}
+}
+
+func TestCompileCanonicalAudioPlanUsesEveryClipOwnedByScene(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID: "scene-multi", Index: 0,
+		Clips: []*ClipReference{
+			{ID: "clip-a", AudioPath: "/video/a.mp4", SourceOutMS: 2000, Duration: 2},
+			{ID: "clip-b", AudioPath: "/video/b.mp4", SourceOutMS: 3000, Duration: 3},
+		},
+		Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceDurationUS: 2000000},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-a", SourceDurationUS: 2000000, TimelineDurationUS: 2000000, UseOriginalAudio: true},
+			{Mode: audio.AudioClip, ClipAssetID: "clip-b", SourceDurationUS: 3000000, TimelineOffsetUS: 2000000, TimelineDurationUS: 3000000, UseOriginalAudio: true},
+		},
+	}}}
+	timeline, _, assets, err := CompileCanonicalAudioPlan(result, "en", audio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	videos := timeline.Segments[0].EffectiveVideoSegments()
+	if len(videos) != 2 || videos[0].AssetID != "clip-a" || videos[1].AssetID != "clip-b" || videos[1].TimelineOffsetUS != 2000000 {
+		t.Fatalf("multi-clip video projection = %+v", videos)
+	}
+	if len(assets) != 2 {
+		t.Fatalf("multi-clip audio assets = %+v, want both clip assets", assets)
 	}
 }
 
