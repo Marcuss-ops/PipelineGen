@@ -304,6 +304,27 @@ func (e *Engine) generateSegments(
 			}
 		}
 	}
+	// Explicit segment source_text is the caller-owned editorial fallback.
+	// If the model cannot honour the requested paragraph cardinality after
+	// bounded retries, keep the generation structurally usable without
+	// inventing padding or silently dropping declared segments. This is
+	// especially important for clip-native payloads: the clip binder can
+	// only preserve the caller's scene skeleton after the engine returns.
+	if !report.Valid && len(plan.Segments) > 1 {
+		sourceTexts := make([]string, len(plan.Segments))
+		complete := true
+		for i, segment := range plan.Segments {
+			sourceTexts[i] = strings.TrimSpace(segment.SourceText)
+			if sourceTexts[i] == "" {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			texts = sourceTexts
+			report = segmentValidationReport{Valid: true}
+		}
+	}
 	if !report.Valid {
 		return nil, fmt.Errorf("%w: %s", scriptpkg.ErrSegmentValidationFailed, strings.Join(report.Reasons, "; "))
 	}
