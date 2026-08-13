@@ -71,6 +71,18 @@ const (
 	// compile time without a string literal, matching how
 	// ArtifactKindPDF was introduced in C10.
 	ArtifactKindMarkdown = "markdown"
+	// ArtifactKindOverlay = "overlay" extends the canonical kind set
+	// for the RenderingGen overlay handler
+	// (internal/application/overlays/handlers.go). Overlays are the
+	// declarative PipelineGen↔RenderingGen contract: PipelineGen
+	// decides what should appear and when, RenderingGen materializes
+	// that decision. The kind string is the wire-format contract that
+	// the Sender-side routing (destinationForArtifactKind in
+	// internal/application/jobs/worker_artifact_manifest.go) switches
+	// on; the constant is added so the handler can name the slot at
+	// compile time without a string literal, matching how
+	// ArtifactKindPDF and ArtifactKindMarkdown were introduced.
+	ArtifactKindOverlay = "overlay"
 )
 
 // ArtifactManifest is the top-level container for a job's output artefacts.
