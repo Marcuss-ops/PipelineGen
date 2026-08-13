@@ -108,6 +108,9 @@ func TestVisualPlanningLockedAssignmentSkipsResolverAndPlannerCannotInvent(t *te
 	if result.SynthesizedScenes[0].Bindings.Stock == nil || result.SynthesizedScenes[0].Bindings.Stock.AssetID != "locked-drive" {
 		t.Fatalf("locked compatibility binding=%+v", result.SynthesizedScenes[0].Bindings.Stock)
 	}
+	if result.SynthesizedScenes[0].Bindings.Clip == nil || result.SynthesizedScenes[0].Bindings.Clip.ClipID != "locked-drive" {
+		t.Fatalf("locked primary-video clip binding=%+v", result.SynthesizedScenes[0].Bindings.Clip)
+	}
 	if result.VisualPlans[1].Layers[0].AssetID != "resolver-winner" {
 		t.Fatalf("invalid planner changed asset=%q", result.VisualPlans[1].Layers[0].AssetID)
 	}
