@@ -44,10 +44,7 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	// never rewrite scene state. Any upstream mismatch (e.g. single-scene
 	// narrative placement) has to be resolved before this point.
 	model := &scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: input.Text, SpecScene: input.SpecScene, WordCount: input.WordCount, ModelUsed: input.ModelUsed}
-	documentTitle := strings.TrimSpace(plan.Title)
-	if plan.VideoMetadata != nil && strings.TrimSpace(plan.VideoMetadata.Title) != "" {
-		documentTitle = strings.TrimSpace(plan.VideoMetadata.Title)
-	}
+	documentTitle := resolveDocumentTitle(plan)
 	var firstID, firstLink string
 	refreshDocument := plan.ForceRefresh || specSceneHasLateBoundDocumentData(input.SpecScene)
 	for _, language := range languages {
@@ -78,6 +75,23 @@ func (p *DocumentsProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return nil, fmt.Errorf("document publishing languages are empty")
 	}
 	return &PostProcessResult{DocID: firstID, DocLink: firstLink}, nil
+}
+
+// resolveDocumentTitle returns the caller-facing document title. It prefers the
+// video metadata title when present and non-empty, otherwise it falls back to
+// the plan title. A nil plan yields an empty title.
+func resolveDocumentTitle(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return ""
+	}
+
+	if plan.VideoMetadata != nil {
+		if title := strings.TrimSpace(plan.VideoMetadata.Title); title != "" {
+			return title
+		}
+	}
+
+	return strings.TrimSpace(plan.Title)
 }
 
 // specSceneHasLateBoundDocumentData reports whether the SpecScene carries
